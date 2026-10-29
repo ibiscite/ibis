@@ -50,6 +50,7 @@ fn picker_choice(request: &CitationRequest) -> Option<(Vec<FileSelection>, KeyFo
                 id: item.item.clone(),
                 cite: item.expected_cite.clone()?,
                 form: None,
+                page_input: None,
                 locator: item.locator.clone().map(Into::into),
             })
         })
@@ -326,12 +327,23 @@ fn labelled_pages_use_the_shared_parser_before_preview_and_canonical_copy() -> R
             ("pp. １２–１５", "１２–１５"),
             ("pp. ๑๒–๑๕", "๑๒–๑๕"),
             ("pp. 𝟙𝟚–𝟙𝟝", "𝟙𝟚–𝟙𝟝"),
+            ("S.12", "12"),
+            ("pp. \"S.12\"", "S.12"),
+            ("pp. \"pages of notes\"", "pages of notes"),
+            ("pp. \"pp. 12\"", "pp. 12"),
         ] {
             let expected = file
                 .preview(file.reserve_preview(), vec![selection("page", value)?], format, style)
                 .map_err(|e| e.to_string())?;
             let actual = file
-                .preview(file.reserve_preview(), vec![selection("page", typed)?], format, style)
+                .preview(
+                    file.reserve_preview(),
+                    vec![serde_json::from_value(json!({
+                        "id":pick.object.id(), "cite":pick.fingerprints.cite, "page_input":typed
+                    }))?],
+                    format,
+                    style,
+                )
                 .map_err(|e| e.to_string())?;
             assert_eq!(actual.text, expected.text, "{format:?} {style:?}: {typed}");
             assert_eq!(actual.html, expected.html);
@@ -369,7 +381,8 @@ fn labelled_pages_use_the_shared_parser_before_preview_and_canonical_copy() -> R
 }
 
 #[test]
-fn label_only_pages_refuse_preview_and_copy_with_an_actionable_message() -> Result<(), Box<dyn std::error::Error>> {
+fn invalid_page_editor_input_refuses_preview_and_copy_with_an_actionable_message()
+-> Result<(), Box<dyn std::error::Error>> {
     let case = cases()?
         .into_iter()
         .find(|case| case.name == "02-pandoc")
@@ -384,6 +397,8 @@ fn label_only_pages_refuse_preview_and_copy_with_an_actionable_message() -> Resu
         (KeyFormat::Pandoc, Some(CitationStyle::Ieee)),
     ] {
         for value in [
+            "",
+            " ",
             "pp.",
             " p. ",
             "PP",
@@ -395,7 +410,7 @@ fn label_only_pages_refuse_preview_and_copy_with_an_actionable_message() -> Resu
             "pp. 12 appendix",
         ] {
             let selection = serde_json::from_value(json!({"id":pick.object.id(), "cite":pick.fingerprints.cite,
-                "locator":{"label":"page","value":value}}))?;
+                "page_input":value}))?;
             let mut writes = 0;
             let outcome = file
                 .preview(file.reserve_preview(), vec![selection], format, style)
@@ -414,6 +429,27 @@ fn label_only_pages_refuse_preview_and_copy_with_an_actionable_message() -> Resu
             );
         }
     }
+    Ok(())
+}
+
+#[test]
+fn page_editor_input_cannot_override_a_canonical_locator() -> Result<(), Box<dyn std::error::Error>> {
+    let case = cases()?
+        .into_iter()
+        .find(|case| case.name == "02-pandoc")
+        .ok_or("case")?;
+    let file = FileLibrary::from_engine(engine_for(&case)?);
+    let pick = &case.library.objects()[0];
+    let selection = serde_json::from_value(json!({"id":pick.object.id(),"cite":pick.fingerprints.cite,
+        "locator":{"label":"page","value":"S.12"},"page_input":"12"}))?;
+    let error = file
+        .preview(file.reserve_preview(), vec![selection], KeyFormat::Pandoc, None)
+        .err()
+        .ok_or("ambiguous page input was accepted")?;
+    assert_eq!(
+        error.to_string(),
+        "Reference 1: Page editor input and a captured locator cannot be combined."
+    );
     Ok(())
 }
 
@@ -475,6 +511,96 @@ fn unsupported_group_forms_refuse_and_field_losses_name_the_reference() -> Resul
         )
         .is_err()
     );
+    Ok(())
+}
+
+#[test]
+fn quoted_page_search_preserves_canonical_text_through_preview_and_copy() -> Result<(), Box<dyn std::error::Error>> {
+    let case = cases()?
+        .into_iter()
+        .find(|case| case.name == "02-pandoc")
+        .ok_or("case")?;
+    let file = FileLibrary::from_engine(engine_for(&case)?);
+    for value in ["S.12", "pages of notes", "pp.", "pp. 12"] {
+        let reply = file.search(
+            &SearchQuery {
+                text: format!("Example pp. \"{value}\""),
+                interpret_locators: true,
+            },
+            20,
+            None,
+            &Cancellation::default(),
+        )?;
+        let read = reply.interpretation.ok_or("missing quoted page")?;
+        assert_eq!(read.locator.label, LocatorTerm::Page);
+        assert_eq!(read.locator.value, value);
+        assert_eq!(reply.results.len(), 1);
+        let row = &reply.results[0];
+        for (format, style, output) in [
+            (
+                KeyFormat::Pandoc,
+                None,
+                OutputSpec::Key {
+                    syntax: KeySyntax::Pandoc,
+                    command: None,
+                },
+            ),
+            (
+                KeyFormat::Typst,
+                None,
+                OutputSpec::Key {
+                    syntax: KeySyntax::Typst,
+                    command: None,
+                },
+            ),
+            (
+                KeyFormat::Autocite,
+                None,
+                OutputSpec::Key {
+                    syntax: KeySyntax::Biblatex,
+                    command: Some("autocite".into()),
+                },
+            ),
+            (
+                KeyFormat::Pandoc,
+                Some(CitationStyle::Apa),
+                OutputSpec::Csl { style: "apa".into() },
+            ),
+        ] {
+            let mut request = case.request.clone();
+            request.items[0].locator = Some(read.locator.clone().into());
+            request.output = output;
+            request.keep_order = style.is_none();
+            let expected = file
+                .engine
+                .cite(&request, &Cancellation::default())
+                .map_err(|_| "cite")?;
+            assert!(expected.copy_content(1).is_some());
+            let preview = file
+                .preview(
+                    file.reserve_preview(),
+                    vec![serde_json::from_value(
+                        json!({"id":row.id,"cite":row.cite,"locator":read.locator}),
+                    )?],
+                    format,
+                    style,
+                )
+                .map_err(|e| e.to_string())?;
+            assert_eq!(preview.text, expected.text, "{format:?} {style:?}: {value}");
+            assert_eq!(preview.html, expected.html);
+            assert_eq!(preview.content_hash, expected.content_hash.as_str());
+            let mut writes = 0;
+            file.copy(&preview.ticket, &preview.content_hash, |content| {
+                writes += 1;
+                assert_eq!(content.text, expected.text);
+                assert_eq!(content.html, expected.html.as_deref());
+                assert_eq!(content.rtf, expected.rtf.as_deref());
+                Ok(())
+            })
+            .map_err(|e| e.to_string())?;
+            assert_eq!(writes, 1);
+        }
+    }
     Ok(())
 }
 

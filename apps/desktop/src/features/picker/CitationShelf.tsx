@@ -173,7 +173,7 @@ export function CitationShelf({ announce, selected, highlightedReference, onChan
           )}
           {edited && onChangeReference && <CitationDetails key={idKey(edited.id)} pageRef={page} label={citationDetailsText.details(edited.title || edited.key)}
             page={edited.locator?.label === "page" ? edited.locator.value : ""} form={edited.form ?? "normal"}
-            onPageChange={(value) => onChangeReference(edited, { locator: value.trim() ? { label: "page", value } : null })}
+            onPageChange={(value) => onChangeReference(edited, { locator: value.trim() ? { label: "page", value, input: "page-editor" } : null })}
             onFormChange={(form) => onChangeReference(edited, { form })} />}
           {shown !== undefined && (
             <section ref={preserveFocus} aria-label={pickerText.preview} className="shelf-output" data-keys={keys || undefined}

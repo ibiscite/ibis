@@ -172,6 +172,7 @@ fn chosen_groups_keep_source_identity_counts_and_scopes_consistent() -> Result<(
                         id: serde_json::from_value(row.id.clone())?,
                         cite: serde_json::from_value(json!(row.cite))?,
                         locator: None,
+                        page_input: None,
                         form: None,
                     }],
                     KeyFormat::Pandoc,

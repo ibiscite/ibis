@@ -403,6 +403,9 @@ it. On copy the shelf shows a closing beak and "Copied" at the line end.
   label must have a valid value: `pp.` is refused with a request to enter a
   page or range, or clear Page. It never becomes literal page text. Page values
   keep the shared parser's length limit. The field keeps the typed text.
+  Only Page edits are parsed as raw input. A locator captured from search is
+  already canonical: quoted text such as `S.12` or `pages of notes` keeps its
+  literal value through preview, form changes and copying.
   Controls and actionable formatting refusals
   remain visible with the paste preview hidden. Engine losses name the reference
   and field beside the preview; an unsupported form explains the refusal there

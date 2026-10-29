@@ -182,7 +182,7 @@ pub(crate) struct PastedList {
 #[serde(deny_unknown_fields)]
 pub(crate) struct Locator {
     pub(crate) label: LocatorTerm,
-    /// As typed by the user, e.g. "12", "24-26", "3, 7".
+    /// Canonical value, including literal text preserved by the engine.
     pub(crate) value: String,
 }
 

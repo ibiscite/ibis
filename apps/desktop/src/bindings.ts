@@ -217,7 +217,10 @@ export type FilePreview = {
 export type FileSelection = {
 	id: unknown,
 	cite: string,
+	/**  A canonical locator captured from search; its value is never parsed again. */
 	locator: Locator | null,
+	/**  Raw Page editor text, mutually exclusive with a captured locator. */
+	page_input?: string | null,
 	form?: ReferenceForm | null,
 };
 
@@ -309,7 +312,7 @@ export type LibraryStatus = {
 /**  Picker wire names over the engine's canonical locator vocabulary. */
 export type Locator = {
 	label: LocatorTerm,
-	/**  As typed by the user, e.g. "12", "24-26", "3, 7". */
+	/**  Canonical value, including literal text preserved by the engine. */
 	value: string,
 };
 

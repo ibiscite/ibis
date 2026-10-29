@@ -37,7 +37,11 @@ pub(crate) struct FileSelection {
     pub(crate) id: ItemRef,
     #[specta(type = String)]
     pub(crate) cite: Fingerprint,
+    /// A canonical locator captured from search; its value is never parsed again.
     pub(crate) locator: Option<Locator>,
+    /// Raw Page editor text, mutually exclusive with a captured locator.
+    #[specta(optional)]
+    pub(crate) page_input: Option<String>,
     #[specta(optional)]
     pub(crate) form: Option<ReferenceForm>,
 }
@@ -374,25 +378,29 @@ impl FileLibrary {
             .into_iter()
             .enumerate()
             .map(|(index, item)| {
-                let locator = item
-                    .locator
-                    .map(|mut locator| -> Result<ibis_core::contract::Locator, CommandError> {
-                        if locator.label == LocatorTerm::Page {
-                            locator.value = ibis_core::locator::page_value(&locator.value).map_err(|error| {
-                                let hint = match error {
-                                    ibis_core::locator::PageValueError::MissingValue => {
-                                        "Page needs a page or range. Enter one after the label, or clear Page."
-                                    }
-                                    ibis_core::locator::PageValueError::InvalidValue => {
-                                        "Page needs a valid page or range after its label. Correct it, or clear Page."
-                                    }
-                                };
-                                CommandError::from(format!("Reference {}: {hint}", index + 1))
-                            })?;
-                        }
-                        Ok(locator.into())
-                    })
-                    .transpose()?;
+                let locator = match (item.locator, item.page_input) {
+                    (Some(_), Some(_)) => {
+                        return Err(CommandError::from(format!(
+                            "Reference {}: Page editor input and a captured locator cannot be combined.",
+                            index + 1
+                        )));
+                    }
+                    (locator, None) => locator.map(Into::into),
+                    (None, Some(input)) => Some(ibis_core::contract::Locator {
+                        term: LocatorTerm::Page,
+                        value: ibis_core::locator::page_value(&input).map_err(|error| {
+                            let hint = match error {
+                                ibis_core::locator::PageValueError::MissingValue => {
+                                    "Page needs a page or range. Enter one after the label, or clear Page."
+                                }
+                                ibis_core::locator::PageValueError::InvalidValue => {
+                                    "Page needs a valid page or range after its label. Correct it, or clear Page."
+                                }
+                            };
+                            CommandError::from(format!("Reference {}: {hint}", index + 1))
+                        })?,
+                    }),
+                };
                 Ok(CitationItem {
                     item: item.id,
                     expected_cite: Some(item.cite),
