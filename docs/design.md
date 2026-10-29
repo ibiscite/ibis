@@ -879,6 +879,9 @@ settings. Changes arrive from the portal without polling or saving a trigger
 to `settings.json`. Cancellation or portal loss clears the trigger and explains
 how to bind `ibis toggle`, with the exact Sway and Hyprland configuration lines
 and Nightly's command when applicable. Restart Ibis to retry portal consent.
+If a successful session reports no usable trigger, both the picker and Settings
+show these binding instructions, keeping the session and its **Change…** capability
+active. A later reported trigger clears the instructions.
 XWayland's focus or full-screen state never decides whether this shortcut opens
 Ibis; the picker uses its toolkit's own focus state.
 

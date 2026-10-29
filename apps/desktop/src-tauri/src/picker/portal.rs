@@ -643,7 +643,12 @@ mod tests {
                         )
                         .await?;
                 }
-                let shortcuts = vec![(ID.to_string(), dict("trigger_description", "Ctrl+Shift+Y"))];
+                let label = if self.0.load(Ordering::Relaxed) == 15 {
+                    ""
+                } else {
+                    "Ctrl+Shift+Y"
+                };
+                let shortcuts = vec![(ID.to_string(), dict("trigger_description", label))];
                 let values = HashMap::from([(
                     "shortcuts".into(),
                     Value::new(shortcuts).try_to_owned().map_err(zbus::Error::from)?,
@@ -734,7 +739,7 @@ mod tests {
                     assert_eq!(v1.configure.open().await, Err(Failure::Unavailable));
                     code.store(14, Ordering::Relaxed);
                     assert!(matches!(Portal::connect().await, Err(Failure::Unavailable)));
-                    for response in [0, 1, 2, 3, 4, 5, 10, 11, 12] {
+                    for response in [0, 1, 2, 3, 4, 5, 10, 11, 12, 15] {
                         code.store(0, Ordering::Relaxed);
                         let portal = Portal::connect().await.map_err(|_| "session failed")?;
                         code.store(response, Ordering::Relaxed);
@@ -770,10 +775,14 @@ mod tests {
                         })
                         .await
                         .map_err(|_| "signal draining must not hang")??;
-                        if matches!(response, 0 | 4 | 5 | 10..=12) {
-                            let label = if response == 4 { "Alt+Y" } else { "Ctrl+Shift+Y" };
+                        if matches!(response, 0 | 4 | 5 | 10..=12 | 15) {
+                            let label = match response {
+                                15 => None, // Hyprland succeeds with an empty trigger; activation must still work.
+                                4 => Some("Alt+Y".into()),
+                                _ => Some("Ctrl+Shift+Y".into()),
+                            };
                             let token = (response == 10).then(|| "synthetic-latest-token".to_string());
-                            assert_eq!(events, [Event::Trigger(Some(label.into())), Event::Activated(token)]);
+                            assert_eq!(events, [Event::Trigger(label), Event::Activated(token)]);
                         } else {
                             assert!(events.is_empty(), "consent failure must not activate");
                         }

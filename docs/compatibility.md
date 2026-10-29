@@ -63,6 +63,9 @@ Without a working portal, or after cancellation/session loss, Ibis explains
 the launcher and system-binding fallback, including exact Sway and Hyprland
 configuration lines. Restart Ibis to retry the portal; there is no hidden
 polling or automatic consent retry.
+Successful sessions with no usable trigger (including an empty description)
+also show the exact binding instructions. The portal session stays active for
+activation and configuration; a later reported trigger clears that guidance.
 
 Only these tested sessions are claimed. Candidates and hands-on evidence are
 tracked per desktop in [#1387](https://github.com/ibiscite/ibis/issues/1387).

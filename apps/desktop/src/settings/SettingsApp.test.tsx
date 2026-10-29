@@ -121,6 +121,21 @@ test("portal configuration prevents repeated requests, reports failure and allow
   expect(state.shortcutChoices).toEqual([]);
 });
 
+test.each([false, true])("a successful session without a trigger shows Hyprland bindings and keeps configuration capability (%s)", async (configurable) => {
+  const { api, state } = fakeApi();
+  const guidance = 'Hyprland: add `hl.bind("CTRL + SHIFT + Y", hl.dsp.exec_cmd("ibis toggle"))`. For hyprland.conf: `bind = CTRL SHIFT, Y, exec, ibis toggle`.';
+  state.shortcut = { shortcut: "", registered: false, error: "Your desktop did not report a shortcut.", desktop: { configurable, guidance } };
+  render(<SettingsApp api={api} initialPage="shortcuts" />);
+  expect(await screen.findByText(guidance)).toBeTruthy();
+  expect(screen.getByText("Not assigned")).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Open Ibis" })).toBeNull();
+  if (configurable) {
+    fireEvent.click(screen.getByRole("button", { name: "Change…" }));
+    await waitFor(() => expect(state.configured).toBe(1));
+  } else expect(screen.queryByRole("button", { name: "Change…" })).toBeNull();
+  expect(state.shortcutChoices).toEqual([]);
+});
+
 test("portal loss removes the stale trigger and Change, showing the exact fallback binding", async () => {
   const { api, state } = fakeApi();
   state.shortcut = { shortcut: "Ctrl+Shift+Y", registered: true, error: null, desktop: { configurable: true, guidance: "Desktop settings" } };

@@ -57,7 +57,7 @@ fn fallback(desktop: &str, binary: &str) -> String {
         format!("Bind `{command}` to Ctrl+Shift+Y in your desktop's keyboard settings. {sway} {hyprland}")
     };
     format!(
-        "The desktop shortcut is unavailable. Open Ibis from your application launcher. {binding} Without the ibis CLI, use {} toggle instead.",
+        "Open Ibis from your application launcher. {binding} Without the ibis CLI, use {} toggle instead.",
         binary
     )
 }
@@ -70,6 +70,28 @@ fn status(trigger: Option<String>, configurable: bool, guidance: String, error: 
         error,
         desktop: Some(DesktopShortcut { configurable, guidance }),
     }
+}
+
+#[cfg(any(target_os = "linux", test))]
+fn reported_status(
+    trigger: Option<String>,
+    configurable: bool,
+    guidance: &str,
+    desktop: &str,
+    binary: &str,
+) -> ShortcutStatus {
+    let missing = trigger.is_none();
+    let guidance = if missing {
+        fallback(desktop, binary)
+    } else {
+        guidance.into()
+    };
+    status(
+        trigger,
+        configurable,
+        guidance,
+        missing.then(|| "Your desktop did not report a shortcut.".into()),
+    )
 }
 
 #[cfg(any(target_os = "linux", test))]
@@ -174,7 +196,7 @@ mod linux {
                             if let Ok(mut current) = app.state::<Mutex<Option<Configure>>>().lock() {
                                 *current = Some(configure.clone());
                             }
-                            publish(&app, status(trigger, configurable, guidance.into(), None));
+                            publish(&app, reported_status(trigger, configurable, guidance, &desktop, binary));
                         }
                         Event::Activated(token) => {
                             let handle = app.clone();
@@ -228,6 +250,41 @@ mod linux {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn successful_session_without_a_trigger_shows_bindings_and_keeps_configuration() {
+        for configurable in [false, true] {
+            for binary in ["ibis-desktop", "ibis-nightly"] {
+                let next = reported_status(None, configurable, "Desktop settings", "Hyprland", binary);
+                assert!(!next.registered);
+                assert!(next.shortcut.is_empty());
+                assert!(
+                    next.error.is_some(),
+                    "the picker must show guidance even though the session succeeded"
+                );
+                let desktop = next.desktop.unwrap_or_else(|| panic!("missing desktop status"));
+                assert_eq!(desktop.configurable, configurable);
+                assert!(desktop.guidance.contains("hl.bind(\"CTRL + SHIFT + Y\""));
+                assert!(desktop.guidance.contains("bind = CTRL SHIFT, Y, exec, ibis toggle"));
+                assert!(desktop.guidance.contains(&format!("{binary} toggle")));
+                assert!(!desktop.guidance.contains("Restart"));
+            }
+        }
+        let assigned = reported_status(
+            Some("Alt+Y".into()),
+            true,
+            "Desktop settings",
+            "Hyprland",
+            "ibis-desktop",
+        );
+        assert!(assigned.registered);
+        assert_eq!(assigned.shortcut, "Alt+Y");
+        assert!(assigned.error.is_none());
+        assert_eq!(
+            assigned.desktop.map(|desktop| desktop.guidance).as_deref(),
+            Some("Desktop settings")
+        );
+    }
 
     #[test]
     fn wayland_never_uses_xwayland_focus_or_full_screen_state() {

@@ -27,6 +27,16 @@ test("the picker shows the exact compositor binding when the portal is unavailab
   expect((await screen.findByText(/Sway: add bindsym/)).textContent).toContain(guidance);
 });
 
+test("the picker shows bindings for a successful session without a reported trigger and clears them when assigned", async () => {
+  const guidance = "Hyprland: add bind = CTRL SHIFT, Y, exec, ibis toggle to hyprland.conf.";
+  backend({ shortcut_status: () => ({ shortcut: "", registered: false, error: "Your desktop did not report a shortcut.", desktop: { configurable: true, guidance } }) });
+  render(<App />);
+  expect((await screen.findByText(/Hyprland: add bind/)).textContent).toContain(guidance);
+  expect(screen.queryByText(/Restart Ibis/)).toBeNull();
+  await act(async () => { await emit("shortcut:status", { shortcut: "Alt+Y", registered: true, error: null, desktop: { configurable: true, guidance: "Your desktop manages this shortcut." } }); });
+  await waitFor(() => expect(screen.queryByText(/Hyprland: add bind/)).toBeNull());
+});
+
 test("a shortcut that could not be registered is explained", async () => {
   backend({
     shortcut_status: () => ({ shortcut: "Control+Command+R", registered: false, error: "another app may be using it" }),
