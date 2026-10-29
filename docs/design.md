@@ -871,7 +871,18 @@ When a row's text and control do not fit side by side, the control wraps below
 and its choices or labels wrap within the card, including at the minimum
 window width and larger system text sizes.
 
-**Shortcuts.** The recorder button shows the current shortcut in the system's
+**Shortcuts.** On Wayland the desktop owns the opening shortcut. There is no
+recorder or **Use Default**: show the desktop's trigger text verbatim, or
+**Not assigned** when none is reported. Portal version 2 offers **Change…**,
+which opens the desktop's configuration; version 1 names the desktop's keyboard
+settings. Changes arrive from the portal without polling or saving a trigger
+to `settings.json`. Cancellation or portal loss clears the trigger and explains
+how to bind `ibis toggle`, with the exact Sway and Hyprland configuration lines
+and Nightly's command when applicable. Restart Ibis to retry portal consent.
+XWayland's focus or full-screen state never decides whether this shortcut opens
+Ibis; the picker uses its toolkit's own focus state.
+
+On macOS, Windows and X11, the recorder button shows the current shortcut in the system's
 own notation (⇧⌘Y on macOS). Clicking it says **Type a shortcut…**; Esc or
 moving focus cancels. Tab and Shift+Tab cancel and move focus normally.
 ASCII letters are saved as logical letters and follow the typed letter on macOS;

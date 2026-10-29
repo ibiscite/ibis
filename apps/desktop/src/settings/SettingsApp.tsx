@@ -203,6 +203,14 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
       })
       .finally(() => { pending.current -= 1; shortcutBusy.current = false; setShortcutSaving(false); });
   };
+  const configureShortcut = () => {
+    if (shortcutBusy.current) return;
+    shortcutBusy.current = true;
+    setShortcutSaving(true);
+    setShortcutProblem(null);
+    void api.configureShortcuts().catch(() => setShortcutProblem(settingsText.shortcut.configureFailed))
+      .finally(() => { shortcutBusy.current = false; setShortcutSaving(false); });
+  };
   const name = login?.name ?? "Ibis";
   const mac = platform === "macos";
   const defaultLabel = shortcutLabel(DEFAULT_PICKER_SHORTCUT, mac);
@@ -274,11 +282,14 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
         {page === "shortcuts" && (
           <>
             <Group id="open-ibis">
-              <Row id="open-shortcut" label={settingsText.shortcut.open} description={settingsText.shortcut.description}>
-                {shortcut && <ShortcutRecorder shortcut={shortcut.shortcut} label={settingsText.shortcut.open}
+              <Row id="open-shortcut" label={settingsText.shortcut.open} description={shortcut?.desktop?.guidance ?? (shortcut ? settingsText.shortcut.description : undefined)}>
+                {shortcut?.desktop ? <>
+                  <span role="status">{shortcut.shortcut || settingsText.shortcut.notAssigned}</span>
+                  {shortcut.desktop.configurable && <Button isDisabled={shortcutSaving} onPress={configureShortcut}>{settingsText.shortcut.change}</Button>}
+                </> : shortcut && <ShortcutRecorder shortcut={shortcut.shortcut} label={settingsText.shortcut.open}
                   prompt={settingsText.shortcut.record} isDisabled={shortcutSaving} onRecord={changeShortcut} />}
               </Row>
-              {shortcut && !isDefault && (
+              {shortcut && !shortcut.desktop && !isDefault && (
                 <Row id="default-shortcut" label={defaultLabel}>
                   <Button isDisabled={shortcutSaving} onPress={() => changeShortcut(null)}>{settingsText.shortcut.useDefault}</Button>
                 </Row>

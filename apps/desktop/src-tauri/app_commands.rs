@@ -24,6 +24,7 @@ pub const APP_COMMANDS: &[&str] = &[
     "fit_picker",
     "quit",
     "shortcut_status",
+    "configure_shortcuts",
     "show_copied_notice",
     "copied_notice",
     "native_appearance",

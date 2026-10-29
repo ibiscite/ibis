@@ -22,6 +22,7 @@
     "allow-open-paste-permission",
     "allow-finish-paste-guide",
     "allow-shortcut-status",
-    "allow-set-shortcut"
+    "allow-set-shortcut",
+    "allow-configure-shortcuts"
   ]
 }

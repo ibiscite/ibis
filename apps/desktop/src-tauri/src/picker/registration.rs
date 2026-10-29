@@ -307,6 +307,7 @@ mod tests {
             shortcut: "Command+Shift+Y".into(),
             registered: true,
             error: None,
+            desktop: None,
         };
         layout_status(&mut status, Ok(()), Some(NO_KEY_TYPES_THE_LETTER));
         assert_eq!(status.error.as_deref(), Some(NO_KEY_TYPES_THE_LETTER));

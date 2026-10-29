@@ -124,7 +124,7 @@ pub(super) enum Event {
 }
 
 // Tokens are opaque, native-only focus authorization: never serialize, persist
-// or expose them to diagnostics/WebView events. A future adapter consumes them.
+// or expose them to diagnostics/WebView events. The GTK adapter consumes them.
 impl std::fmt::Debug for Event {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -178,6 +178,27 @@ pub(super) struct Portal {
     pub(super) owner: String,
     pub(super) session: OwnedObjectPath,
     owner_changes: MessageStream,
+    pub(super) configure: Configure,
+}
+
+#[derive(Clone)]
+pub(super) struct Configure {
+    connection: Connection,
+    owner: String,
+    session: OwnedObjectPath,
+    pub(super) version: u32,
+}
+
+impl Configure {
+    pub(super) async fn open(&self) -> Result<(), Failure> {
+        if self.version < 2 {
+            return Err(Failure::Unavailable);
+        }
+        let proxy = bounded(Proxy::new(&self.connection, self.owner.as_str(), ROOT, INTERFACE)).await?;
+        bounded(proxy.call::<_, _, ()>("ConfigureShortcuts", &(&self.session, "", Dict::new())))
+            .await
+            .map_err(Into::into)
+    }
 }
 
 impl Portal {
@@ -208,12 +229,25 @@ impl Portal {
             .await?
             .to_string();
         let proxy = bounded(Proxy::new(&connection, owner.as_str(), ROOT, INTERFACE)).await?;
+        // Configuration capability must belong to the same unique owner as
+        // the session, even if the service changed hands during activation.
+        let version: u32 = bounded(proxy.get_property("version")).await?;
+        if version == 0 {
+            return Err(Failure::Unavailable);
+        }
         let session = session_handle(request(&proxy, "CreateSession", None).await?.0)?;
+        let configure = Configure {
+            connection: connection.clone(),
+            owner: owner.clone(),
+            session: session.clone(),
+            version,
+        };
         Ok(Self {
             connection: connection.clone(),
             owner,
             session,
             owner_changes,
+            configure,
         })
     }
 
@@ -228,6 +262,7 @@ impl Portal {
             owner,
             session,
             mut owner_changes,
+            configure: _,
         } = self;
         let rule = MatchRule::builder()
             .msg_type(zbus::message::Type::Signal)
@@ -484,7 +519,24 @@ mod tests {
                         .request_name_with_flags(SERVICE, zbus::fdo::RequestNameFlags::AllowReplacement.into())
                         .await?;
                 }
-                Ok(2)
+                Ok(match self.0.load(Ordering::Relaxed) {
+                    13 => 1,
+                    14 => 0,
+                    _ => 2,
+                })
+            }
+
+            async fn configure_shortcuts(
+                &self,
+                session: OwnedObjectPath,
+                parent: String,
+                options: Dict,
+            ) -> zbus::fdo::Result<()> {
+                assert_ne!(self.0.load(Ordering::Relaxed), 13, "version 1 must never be configured");
+                assert_eq!(session.as_str(), format!("{ROOT}/session/fake"));
+                assert!(parent.is_empty());
+                assert!(options.is_empty());
+                Ok(())
             }
 
             async fn create_session(
@@ -511,12 +563,19 @@ mod tests {
             async fn bind_shortcuts(
                 &self,
                 session: OwnedObjectPath,
-                _shortcuts: Shortcuts,
+                shortcuts: Shortcuts,
                 _parent: String,
                 options: Dict,
                 #[zbus(connection)] connection: &Connection,
                 #[zbus(header)] header: zbus::message::Header<'_>,
             ) -> zbus::fdo::Result<OwnedObjectPath> {
+                assert_eq!(shortcuts.len(), 1);
+                assert_eq!(shortcuts[0].0, ID);
+                assert_eq!(<&str>::try_from(&shortcuts[0].1["description"]).ok(), Some("Open Ibis"));
+                assert_eq!(
+                    <&str>::try_from(&shortcuts[0].1["preferred_trigger"]).ok(),
+                    Some("CTRL+SHIFT+y")
+                );
                 let other = OwnedObjectPath::try_from(format!("{ROOT}/session/other")).map_err(zbus::Error::from)?;
                 // Exceed zbus's default signal queue while the method is pending.
                 for _ in 0..128 {
@@ -667,6 +726,14 @@ mod tests {
                         .await?;
                     let portal = Portal::connect().await.map_err(|_| "session failed")?;
                     assert_eq!(portal.session.as_str(), format!("{ROOT}/session/fake"));
+                    assert_eq!(portal.configure.version, 2);
+                    assert_eq!(portal.configure.open().await, Ok(()));
+                    code.store(13, Ordering::Relaxed);
+                    let v1 = Portal::connect().await.map_err(|_| "version 1 session failed")?;
+                    assert_eq!(v1.configure.version, 1);
+                    assert_eq!(v1.configure.open().await, Err(Failure::Unavailable));
+                    code.store(14, Ordering::Relaxed);
+                    assert!(matches!(Portal::connect().await, Err(Failure::Unavailable)));
                     for response in [0, 1, 2, 3, 4, 5, 10, 11, 12] {
                         code.store(0, Ordering::Relaxed);
                         let portal = Portal::connect().await.map_err(|_| "session failed")?;

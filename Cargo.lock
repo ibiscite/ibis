@@ -2024,6 +2024,7 @@ version = "0.2.0"
 dependencies = [
  "auto-launch",
  "clipboard-win",
+ "gtk",
  "ibis",
  "ibis-core",
  "ibis-engine",

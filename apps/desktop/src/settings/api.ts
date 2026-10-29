@@ -19,6 +19,7 @@ export const settingsApi = {
   finishPasteGuide: commands.finishPasteGuide,
   shortcutStatus: commands.shortcutStatus,
   setShortcut: commands.setShortcut,
+  configureShortcuts: commands.configureShortcuts,
   onShortcutStatus: (handler: (status: ShortcutStatus) => void): Promise<UnlistenFn> => listen<ShortcutStatus>("shortcut:status", (event) => handler(event.payload)),
   version: getVersion,
   /** Settings is asked to show a page, such as the paste guide after a refused paste. */

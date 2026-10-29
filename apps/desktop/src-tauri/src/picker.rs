@@ -15,8 +15,9 @@ mod full_screen;
 #[cfg(any(target_os = "macos", test))]
 mod layout;
 #[cfg(target_os = "linux")]
-#[expect(dead_code, reason = "portal transport is wired to the picker in the next #782 slice")]
 mod portal;
+pub(crate) mod wayland;
+pub(crate) use wayland::{desktop_owned, start_shortcut};
 mod registration;
 #[cfg(target_os = "linux")]
 mod x11_focus;
@@ -38,6 +39,16 @@ pub(crate) struct ShortcutStatus {
     pub(crate) shortcut: String,
     pub(crate) registered: bool,
     pub(crate) error: Option<String>,
+    /// Present on Wayland, including when the portal is unavailable.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[specta(optional)]
+    pub(crate) desktop: Option<DesktopShortcut>,
+}
+
+#[derive(Clone, Serialize, specta::Type)]
+pub(crate) struct DesktopShortcut {
+    pub(crate) configurable: bool,
+    pub(crate) guidance: String,
 }
 
 /// Preserve the recorder's intent: `Q` follows a letter, `KeyQ` stays physical.
@@ -186,7 +197,7 @@ fn resolve_focus(native: Result<Option<bool>, ()>, toolkit: impl FnOnce() -> Opt
 
 pub(crate) fn focused_for_shortcut(window: &tauri::WebviewWindow) -> Option<bool> {
     #[cfg(target_os = "linux")]
-    return resolve_focus(x11_focus::query(window), || {
+    return resolve_focus(wayland::x11_state(desktop_owned(), || x11_focus::query(window)), || {
         checked(window.is_focused(), NativeIssue::FocusState)
     });
     #[cfg(not(target_os = "linux"))]
@@ -195,6 +206,10 @@ pub(crate) fn focused_for_shortcut(window: &tauri::WebviewWindow) -> Option<bool
 
 /// Toggle the picker: hide it if it is visible and focused, show it otherwise.
 pub(crate) fn toggle_picker(app: &AppHandle) {
+    toggle_picker_with(app, || {});
+}
+
+fn toggle_picker_with(app: &AppHandle, before_show: impl FnOnce()) {
     if let Some(window) = app.get_webview_window("main") {
         let visible = checked(window.is_visible(), NativeIssue::Visibility);
         // Preserve the short circuit: a hidden picker does not query focus.
@@ -207,13 +222,17 @@ pub(crate) fn toggle_picker(app: &AppHandle) {
         eprintln!("{}", toggle_trace(visible, focused));
         match toggle_action(visible, focused) {
             ToggleAction::Hide => dismiss_picker(app),
-            ToggleAction::Show if shortcut_allowed(app) => show_picker(app),
+            ToggleAction::Show if shortcut_allowed(app) => {
+                before_show();
+                show_picker(app);
+            }
             ToggleAction::Show => {
                 #[cfg(debug_assertions)]
                 eprintln!("ibis-picker: toggle ignored over full-screen app");
             }
         }
     } else {
+        before_show();
         show_picker(app);
     }
 }
@@ -232,7 +251,7 @@ fn foreground_full_screen() -> Option<bool> {
     {
         static FAILURE_REPORTED: AtomicBool = AtomicBool::new(false);
         crate::diagnostics::checked_once(
-            x11_focus::foreground_full_screen(),
+            wayland::x11_state(desktop_owned(), x11_focus::foreground_full_screen),
             NativeIssue::FullScreen,
             &FAILURE_REPORTED,
         )
