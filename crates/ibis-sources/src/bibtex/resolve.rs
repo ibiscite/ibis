@@ -11,6 +11,7 @@
 //! a link it could follow. Indexed field positions and merged names avoid
 //! quadratic name searches while preserving field order and precedence.
 
+use std::borrow::Cow;
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
@@ -93,7 +94,10 @@ pub(crate) const ESCAPE: char = '\u{E002}';
 
 /// Encode escaped braces and escape placeholder characters already present.
 /// Decoded by `convert::clean`.
-fn encode_literals(text: &str) -> String {
+fn encode_literals(text: &str) -> Cow<'_, str> {
+    if !text.contains(['\\', LEFT_BRACE, RIGHT_BRACE, BACKSLASH, ESCAPE]) {
+        return Cow::Borrowed(text);
+    }
     let mut out = String::with_capacity(text.len());
     let mut chars = text.chars().peekable();
     while let Some(c) = chars.next() {
@@ -117,14 +121,17 @@ fn encode_literals(text: &str) -> String {
             _ => out.push(c),
         }
     }
-    out
+    Cow::Owned(out)
 }
 
 /// `biblatex` decodes this symbol before our TeX conversion; protect it until
 /// final cleaning. Apply only to parser input, retaining resolved source text
 /// for the unchanged fallback used when a field has an unknown command.
-fn protect_backslashes(text: &str) -> String {
+fn protect_backslashes(text: &str) -> Cow<'_, str> {
     const BACKSLASH_COMMAND: &str = "textbackslash";
+    if !text.as_bytes().contains(&b'\\') {
+        return Cow::Borrowed(text);
+    }
     let mut out = String::with_capacity(text.len());
     let mut chars = text.chars().peekable();
     while let Some(c) = chars.next() {
@@ -163,7 +170,7 @@ fn protect_backslashes(text: &str) -> String {
             _ => out.push(c),
         }
     }
-    out
+    Cow::Owned(out)
 }
 
 pub(super) const MONTHS: [(&str, &str); 12] = [
@@ -276,8 +283,11 @@ impl<'a> Resolver<'a> {
         };
         let fields = self.effective(i, MAX_DEPTH, &mut walk);
         let mut problems = walk.problems;
-        let fields: Vec<_> = fields
-            .iter()
+        // The completed root belongs to this walk. Release its memo before
+        // taking the fields; cached parent snapshots keep their own ownership.
+        drop(walk.memo);
+        let fields: Vec<_> = Rc::unwrap_or_clone(fields)
+            .into_iter()
             .take_while(|(name, value)| {
                 self.budget.charge(
                     name.len()
@@ -302,14 +312,30 @@ impl<'a> Resolver<'a> {
         {
             return Resolved::default();
         }
-        let rendered: Vec<String> = fields.iter().map(|(name, value)| render_field(name, value)).collect();
-        let source = format!("@{}{{{},\n{}}}\n", entry.kind, entry.key, rendered.join(",\n"));
+        let capacity = fields
+            .iter()
+            .fold(entry.kind.len() + entry.key.len() + 6, |n, (name, value)| {
+                n + name.len() + value.len() + 9
+            });
+        let mut source = String::with_capacity(capacity);
+        source.push('@');
+        source.push_str(&entry.kind);
+        source.push('{');
+        source.push_str(&entry.key);
+        source.push_str(",\n");
+        for (i, (name, value)) in fields.iter().enumerate() {
+            if i != 0 {
+                source.push_str(",\n");
+            }
+            render_field(&mut source, name, value);
+        }
+        source.push_str("}\n");
         // The same problem can be found many times; report each one once.
         let mut unique = HashSet::new();
         problems.retain(|p| self.budget.charge(p.len().saturating_mul(4)) && unique.insert(p.clone()));
         Resolved {
             source,
-            fields: fields.into_iter().cloned().collect(),
+            fields: fields.into_iter().collect(),
             problems,
         }
     }
@@ -613,10 +639,17 @@ impl<'a> Resolver<'a> {
             return String::new();
         }
         let mut out = x.out;
-        if DATE_FIELDS.contains(&field) {
+        if DATE_FIELDS.contains(&field) && !out.is_ascii() {
             out = ascii_digits(&out);
         }
-        encode_literals(&dotless_to_plain(&out))
+        let out = match dotless_to_plain(&out) {
+            Cow::Borrowed(_) => out,
+            Cow::Owned(plain) => plain,
+        };
+        match encode_literals(&out) {
+            Cow::Borrowed(_) => out,
+            Cow::Owned(encoded) => encoded,
+        }
     }
 
     fn expand_macro(
@@ -859,24 +892,31 @@ fn crossref_targets<'n>(parent: &str, child: &str, field: &'n str) -> Vec<&'n st
 
 /// Render one field canonically. A month written as a three-letter
 /// abbreviation stays bare so the parser reads it as a month.
-fn render_field(name: &str, value: &str) -> String {
+fn render_field(out: &mut String, name: &str, value: &str) {
     let bare_month = name == "month" && MONTHS.iter().any(|(abbr, _)| *abbr == value);
+    out.push_str("  ");
+    out.push_str(name);
+    out.push_str(" = ");
     if bare_month {
-        format!("  {name} = {value}")
+        out.push_str(value);
     } else {
+        out.push('{');
         // URLs are verbatim: command-looking path text remains literal.
-        let value = if name == "url" {
-            value.to_string()
+        if name == "url" {
+            out.push_str(value);
         } else {
-            protect_backslashes(value)
-        };
-        format!("  {name} = {{{value}}}")
+            out.push_str(&protect_backslashes(value));
+        }
+        out.push('}');
     }
 }
 
 /// Replace the dotless `\\i` and `\\j` commands with plain letters so accents
 /// apply: `{\\'\\i}` becomes `{\\'i}`, which the parser reads as "í".
-fn dotless_to_plain(text: &str) -> String {
+fn dotless_to_plain(text: &str) -> Cow<'_, str> {
+    if !text.as_bytes().contains(&b'\\') {
+        return Cow::Borrowed(text);
+    }
     let mut out = String::with_capacity(text.len());
     let mut rest = text;
     while let Some(pos) = rest.find(['\\']) {
@@ -897,7 +937,7 @@ fn dotless_to_plain(text: &str) -> String {
         }
     }
     out.push_str(rest);
-    out
+    Cow::Owned(out)
 }
 
 /// Convert decimal digits from common scripts (Arabic-Indic, Persian,
@@ -1029,8 +1069,9 @@ mod tests {
                     Budget::new(credits),
                     None,
                 );
-                let records = serde_json::to_value(&loaded.records).unwrap();
-                let snapshot = Snapshot::new(loaded.records.into_iter().map(LibraryObject::Record).collect()).unwrap();
+                let records = serde_json::to_value(&loaded.records).unwrap_or_else(|e| panic!("{e}"));
+                let snapshot = Snapshot::new(loaded.records.into_iter().map(LibraryObject::Record).collect())
+                    .unwrap_or_else(|e| panic!("{e}"));
                 transcript.push(json!({
                     "credits": credits,
                     "resolved": resolved,
@@ -1040,7 +1081,7 @@ mod tests {
                     "limited": limited,
                 }));
             }
-            let actual = Fingerprint::of_bytes(&serde_json::to_vec(&transcript).unwrap());
+            let actual = Fingerprint::of_bytes(&serde_json::to_vec(&transcript).unwrap_or_else(|e| panic!("{e}")));
             if actual.as_str() != expected {
                 mismatches.push(format!("{name}: {}", actual.as_str()));
             }
