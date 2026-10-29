@@ -1768,6 +1768,124 @@ test.each([[30_000, true, "first"], [61_000, true, ""], [61_000, false, "first"]
     }
   });
 
+test.each(["before", "after"])("reopening from a result replaces the query when native focus arrives %s the show event", async (activation) => {
+  backend({ search: () => [result("a", "First")] });
+  const focused = vi.spyOn(document, "hasFocus").mockReturnValue(true);
+  try {
+    render(<App />);
+    const box = screen.getByLabelText<HTMLInputElement>("Search references");
+    fireEvent.change(box, { target: { value: "previous query" } });
+    const row = await screen.findByRole("option", { name: /First/ });
+    // Model the result that WebKit restores when the native window activates.
+    row.tabIndex = -1;
+    act(() => row.focus());
+    expect(document.activeElement).toBe(row);
+    await act(async () => { await emit("picker:hidden"); });
+    focused.mockReturnValue(false);
+    const activate = () => {
+      focused.mockReturnValue(true);
+      act(() => row.focus());
+      fireEvent.focus(window);
+    };
+    if (activation === "before") activate();
+    await act(async () => { await emit("picker:shown"); });
+    if (activation === "after") activate();
+
+    expect(document.activeElement).toBe(box);
+    const replacement = "new query";
+    const text = box.value.slice(0, box.selectionStart!) + replacement + box.value.slice(box.selectionEnd!);
+    fireEvent.input(document.activeElement!, { target: { value: text } });
+    expect(box.value).toBe(replacement);
+
+    // A later activation must neither steal control focus nor select typed text.
+    fireEvent.focus(window);
+    expect(box.selectionStart).toBe(replacement.length);
+    expect(box.selectionEnd).toBe(replacement.length);
+    act(() => row.focus());
+    fireEvent.focus(window);
+    expect(document.activeElement).toBe(row);
+  } finally {
+    focused.mockRestore();
+  }
+});
+
+test.each(["before", "after"])("an escaped query is replaced when native focus arrives %s restoration renders", async (activation) => {
+  backend({ search: () => [result("a", "First")] });
+  const focused = vi.spyOn(document, "hasFocus").mockReturnValue(true);
+  try {
+    render(<App />);
+    const box = screen.getByLabelText<HTMLInputElement>("Search references");
+    fireEvent.change(box, { target: { value: "previous query" } });
+    await screen.findByRole("option", { name: /First/ });
+    fireEvent.keyDown(box, { key: "Escape" });
+    fireEvent.keyDown(box, { key: "Escape" });
+    await act(async () => { await emit("picker:hidden"); });
+    focused.mockReturnValue(false);
+    const activate = () => {
+      focused.mockReturnValue(true);
+      fireEvent.focus(window);
+    };
+    await act(async () => {
+      await emit("picker:shown");
+      if (activation === "before") activate();
+    });
+    expect(box.value).toBe("previous query");
+    if (activation === "after") activate();
+
+    expect(document.activeElement).toBe(box);
+    const text = box.value.slice(0, box.selectionStart!) + "new query" + box.value.slice(box.selectionEnd!);
+    fireEvent.input(document.activeElement!, { target: { value: text } });
+    expect(box.value).toBe("new query");
+  } finally {
+    focused.mockRestore();
+  }
+});
+
+test.each([false, true])("typing before native activation keeps the new query and appends the next key (escaped: %s)", async (escaped) => {
+  backend({ search: () => [result("a", "First")] });
+  const focused = vi.spyOn(document, "hasFocus").mockReturnValue(false);
+  try {
+    render(<App />);
+    const box = screen.getByLabelText<HTMLInputElement>("Search references");
+    fireEvent.change(box, { target: { value: "previous query" } });
+    const row = await screen.findByRole("option", { name: /First/ });
+    row.tabIndex = -1;
+    if (escaped) {
+      fireEvent.keyDown(box, { key: "Escape" });
+      fireEvent.keyDown(box, { key: "Escape" });
+    }
+    await act(async () => { await emit("picker:hidden"); await emit("picker:shown"); });
+    fireEvent.input(box, { target: { value: "ab" } });
+    act(() => row.focus());
+    focused.mockReturnValue(true);
+    fireEvent.focus(window);
+
+    expect(document.activeElement).toBe(box);
+    const text = box.value.slice(0, box.selectionStart!) + "c" + box.value.slice(box.selectionEnd!);
+    fireEvent.input(document.activeElement!, { target: { value: text } });
+    expect(box.value).toBe("abc");
+  } finally {
+    focused.mockRestore();
+  }
+});
+
+test("hiding cancels a pending Search focus handoff", async () => {
+  backend({ search: () => [result("a", "First")] });
+  const focused = vi.spyOn(document, "hasFocus").mockReturnValue(false);
+  try {
+    render(<App />);
+    const row = await screen.findByRole("option", { name: /First/ });
+    row.tabIndex = -1;
+    await act(async () => { await emit("picker:shown"); });
+    await act(async () => { await emit("picker:hidden"); });
+    act(() => row.focus());
+    fireEvent.focus(window);
+    expect(document.activeElement).toBe(row);
+  } finally {
+    focused.mockRestore();
+  }
+});
+
 test("a saved citation style, density and text size come back at start", async () => {
   backend({
     copy_format: () => "typst",

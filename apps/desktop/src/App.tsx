@@ -218,19 +218,41 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     let acceptInitialStatus = true;
     let mounted = true;
     let visibilityEvents = 0;
+    let focusAfterActivation = false;
+    let searchAtShow = "";
     const subscriptionFailure = (operation: Operation) => {
       if (mounted) report(operation);
       else console.error(FAILURE_MESSAGES[operation]);
       return () => undefined;
     };
+    const selectSearch = () => {
+      input.current?.focus();
+      input.current?.select();
+    };
+    const activated = (event: FocusEvent) => {
+      if (event.target !== event.currentTarget || !focusAfterActivation) return;
+      focusAfterActivation = false;
+      const search = input.current;
+      if (!search) return;
+      search.focus();
+      if (search.value === searchAtShow) search.select();
+      else search.setSelectionRange(search.value.length, search.value.length);
+    };
+    window.addEventListener("focus", activated);
     const focusSearch = () => {
+      searchAtShow = input.current?.value ?? "";
       resetPointer();
       copyVisibility.current += 1;
       pickerShows.current += 1;
-      if (!permissionDetour.current && hiddenAt.current !== null && performance.now() - hiddenAt.current > KEEP_SEARCH_MS) clearSearch();
-      else if (hiddenAt.current !== null && escapedQuery.current !== null) {
+      if (!permissionDetour.current && hiddenAt.current !== null && performance.now() - hiddenAt.current > KEEP_SEARCH_MS) {
+        clearSearch();
+        searchAtShow = "";
+      } else if (hiddenAt.current !== null && escapedQuery.current !== null) {
         const escaped = escapedQuery.current;
         escapedQuery.current = null;
+        // Compare activation against the restored query; React updates the
+        // input after this handler.
+        searchAtShow ||= escaped.text;
         setQuery((now) => (now === "" ? escaped.text : now));
         setInterpretLocators(escaped.interpretLocators);
         setRestored((n) => n + 1);
@@ -239,13 +261,16 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       destination.read(true, permissionDetour.current);
       readLoginItem();
       readShortcut();
-      input.current?.focus();
-      input.current?.select();
+      // On X11, showing can precede native activation. WebKit restores the
+      // previous control then, so finish Search focus once activation arrives.
+      focusAfterActivation = !document.hasFocus();
+      selectSearch();
     };
     // Every hide is reported, including the native one when focus moves away;
     // a monotonic clock keeps clock changes from clearing or keeping a search.
     const unlistenHidden = onPickerHidden(() => {
       visibilityEvents += 1;
+      focusAfterActivation = false;
       // A hidden native window may not throttle the web view: pause looping animations.
       document.documentElement.dataset.pickerHidden = "";
       resetPointer();
@@ -289,6 +314,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     return () => {
       acceptInitialStatus = false;
       mounted = false;
+      window.removeEventListener("focus", activated);
       copyVisibility.current += 1;
       void unlistenHidden.then((stop) => stop()).catch(() => console.error("Picker event cleanup failed."));
       void unlisten.then((stop) => stop()).catch(() => console.error("Picker event cleanup failed."));
