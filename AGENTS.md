@@ -48,6 +48,8 @@ node scripts/pr-lint.mjs --title "fix: explain the change"
 
 2026-10-29: Before final review and CI of a shared contract change, merge current `origin/main`; verify that reviewed head still contains it immediately before squash. Focus local Vitest checks with `pnpm -C apps/desktop exec vitest run FILE --maxWorkers=1` (`pnpm test --` runs the full suite).
 
+2026-10-29: Settle synthetic native windows before launching Ibis; accessibility focus does not prove keyboard ownership.
+
 ## Brief for an implementing agent
 
 ```text

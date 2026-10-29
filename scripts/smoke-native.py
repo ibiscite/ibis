@@ -860,6 +860,20 @@ class Linux:
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         self.app = None
         self.last_window_state = "not read"
+        # The previous app must settle before Ibis launches. A late xterm map
+        # can otherwise steal initial focus from the already-visible picker.
+        def editor_ready():
+            if self.editor.poll() is not None:
+                raise Unavailable("Synthetic editor exited before app launch")
+            try:
+                return self.window(self.editor.pid) is not None and self.editor_focused()
+            except subprocess.CalledProcessError:
+                return False
+        try:
+            wait_for(editor_ready, "synthetic editor mapped and focused before app launch")
+        except BaseException:
+            self.close()
+            raise
 
     def window(self, pid):
         try:
@@ -2232,7 +2246,8 @@ class ContractTests(unittest.TestCase):
         modules = {"pyatspi": Mock(), "gi": Mock(), "gi.repository": Mock()}
         with patch("shutil.which", return_value="/usr/bin/tool"), patch.dict(os.environ, {"DISPLAY": ":99", "DBUS_SESSION_BUS_ADDRESS": "unix:x"}), \
                 patch.dict(sys.modules, modules), patch("subprocess.Popen", side_effect=launch), \
-                patch.object(Linux, "window_manager_ready", check), patch("time.sleep"):
+                patch.object(Linux, "window_manager_ready", check), patch.object(Linux, "window", return_value="42"), \
+                patch.object(Linux, "editor_focused", return_value=True), patch("time.sleep"):
             native = Linux()
             self.addCleanup(native.close)
         self.assertEqual(events, ["openbox", "ready?", "ready?", "ready?", "xterm"])
@@ -2545,6 +2560,67 @@ class ContractTests(unittest.TestCase):
         names["2"] = NOTICE_TITLE
         with patch(f"{__name__}.run", side_effect=fake):
             self.assertIsNone(linux.window(42))
+
+    def linux_editor_startup(self, *, never_ready=False):
+        events, state = [], {"mapped": never_ready, "focused": False}
+        wm, editor = Mock(pid=55), Mock(pid=100)
+        wm.poll.return_value = editor.poll.return_value = None
+        editor_input = Mock(name="synthetic-editor-input")
+        bridge = Mock()
+        bridge.GLib.Error = RuntimeError
+        def spawn(command, **_options):
+            if command[0] == "openbox":
+                return wm
+            if command[0] == "xterm":
+                events.append("editor-launch")
+                return editor
+            self.assertTrue(state["mapped"] and state["focused"], "Ibis launched before its synthetic editor settled")
+            events.append("app-launch")
+            return Mock()
+        def mapped(_pid):
+            events.append("editor-map-query")
+            return "42" if state["mapped"] else None
+        def focused():
+            events.append("editor-focus-query")
+            return state["focused"]
+        def wait(predicate, description):
+            for _ in range(3):
+                if predicate():
+                    if state["focused"]:
+                        events.append("editor-ready")
+                    return
+                if not never_ready:
+                    state["focused"], state["mapped"] = state["mapped"], True
+            raise AssertionError("Timed out: " + description)
+        with patch("shutil.which", return_value="synthetic-tool"), \
+             patch.dict(os.environ, {"DISPLAY": ":synthetic", "DBUS_SESSION_BUS_ADDRESS": "synthetic"}), \
+             patch.dict(sys.modules, {"pyatspi": Mock(), "gi": Mock(), "gi.repository": bridge}), \
+             patch("subprocess.Popen", side_effect=spawn), patch("tempfile.NamedTemporaryFile", return_value=editor_input), \
+             patch.object(Linux, "window_manager_ready", return_value=True), \
+             patch.object(Linux, "window", side_effect=mapped), patch.object(Linux, "editor_focused", side_effect=focused), \
+             patch(__name__ + ".wait_for", side_effect=wait):
+            if never_ready:
+                with self.assertRaisesRegex(AssertionError, "synthetic editor mapped and focused"):
+                    Linux()
+            else:
+                native = Linux()
+                subprocess.Popen(["synthetic-app"])
+                native.close()
+        return events, wm, editor, editor_input
+
+    def test_linux_editor_settles_before_the_app_launches(self):
+        events, _, _, _ = self.linux_editor_startup()
+        self.assertLess(events.index("editor-ready"), events.index("app-launch"))
+        self.assertEqual(events.count("editor-launch"), 1)
+        self.assertGreaterEqual(events.count("editor-map-query"), 2)
+        self.assertGreaterEqual(events.count("editor-focus-query"), 2)
+
+    def test_linux_missing_editor_ownership_refuses_app_launch_and_cleans_up(self):
+        events, wm, editor, editor_input = self.linux_editor_startup(never_ready=True)
+        self.assertNotIn("app-launch", events)
+        wm.terminate.assert_called_once()
+        editor.terminate.assert_called_once()
+        editor_input.close.assert_called_once()
 
     def test_linux_initial_focus_queries_native_owner_instead_of_accessible_focus(self):
         native = Linux.__new__(Linux)
