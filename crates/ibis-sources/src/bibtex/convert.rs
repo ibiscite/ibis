@@ -1418,6 +1418,132 @@ pub(super) fn file_value(encoded: &str) -> String {
 mod tests {
     use super::*;
 
+    fn conversion_trace(text: &str, credits: usize) -> Value {
+        use ibis_core::contract::{LibraryObject, Snapshot};
+
+        let mut macros = Vec::new();
+        let mut entries = Vec::new();
+        let mut raw = Vec::new();
+        for block in super::super::lexer::split_blocks(text).0 {
+            if block.kind == "string" {
+                macros.extend(super::super::lexer::parse_string(&block));
+            } else {
+                let mut entry = super::super::lexer::parse_entry(&block).unwrap_or_else(|e| panic!("{e}"));
+                entry.macro_epoch = macros.len();
+                entries.push(entry);
+                raw.push(block.text);
+            }
+        }
+        let source = LibraryId::file(b"synthetic-conversion.bib");
+        let budget = super::super::Budget::new(credits);
+        let resolver = super::super::resolve::Resolver::new(macros, &entries, &budget);
+        let converted: Vec<_> = entries
+            .iter()
+            .enumerate()
+            .filter(|(_, entry)| entry.kind != "xdata")
+            .map(|(i, entry)| {
+                match super::super::load_entry(&source, &resolver, i, entry, raw[i]) {
+                    Ok((record, file, problems)) => {
+                        let value = serde_json::to_value(&record).unwrap_or_else(|e| panic!("{e}"));
+                        let snapshot = Snapshot::new(vec![LibraryObject::Record(record)])
+                            .unwrap_or_else(|e| panic!("{e}"));
+                        json!({"record":value,"file":file,"problems":problems,"fingerprints":snapshot.fingerprints(),"remaining":budget.0.get()})
+                    }
+                    Err(error) => json!({"error":error,"remaining":budget.0.get()}),
+                }
+            })
+            .collect();
+        let (loaded, limited) = super::super::load_with_budget(&source, text, super::super::Budget::new(credits), None);
+        json!({"entries":converted,"records":loaded.records,"warnings":loaded.warnings,"limited":limited})
+    }
+
+    #[test]
+    fn absent_empty_and_malformed_conversion_fields_keep_meaning_and_diagnostics() {
+        use ibis_core::contract::Fingerprint;
+
+        // Capture the existing outcomes before skipping absent typed retrieval.
+        // Include detailed conversion diagnostics as well as final source warnings,
+        // exact records/fingerprints and remaining work credits at partial cuts.
+        let cases = [
+            (
+                "absent",
+                "@book{k,title={Synthetic}}",
+                "4026ea0e345927b7dd403359a1e98c0cf549922073879098d89e317a74f7c1ec",
+            ),
+            (
+                "present-empty",
+                "@book{k,title={Synthetic},author={},editor={},editortype={},translator={},bookauthor={},\
+                 annotator={},date={},year=2024,urldate={},urlyear=2024,origdate={},eventdate={}}",
+                "34f0f363eb28a7644e87c9c9f71e7559019d5288cdfdc128ca47a4f7fd9f5e62",
+            ),
+            (
+                "present-malformed",
+                "@book{k,title={Synthetic},author={One, Two, Three, Four},editor={Taylor, Mira},\
+                 editortype={not-a-role},translator={One, Two, Three, Four},\
+                 bookauthor={One, Two, Three, Four},annotator={},commentator={},introduction={},\
+                 foreword={},afterword={},urldate={nonsense},origyear={bad},origmonth={99},\
+                 eventyear={+ 2024},eventmonth={04}}",
+                "a98f64dd371daf91c6fcb7ab24ee36f28b506e241a9c535dfbf924a9b336a3b1",
+            ),
+            (
+                "types-and-parts-without-names-or-years",
+                "@book{k,title={Synthetic},editortype={not-a-role},editoratype={},editorbtype={compiler},\
+                 editorctype={bogus},urlmonth={bad},urlday=1,origmonth=2,origday=3,eventmonth={9999},eventday=4}",
+                "b18603a829c670b5cd69558c178cd30b24fdda267dc7e697357c2a1a5136a9c8",
+            ),
+            (
+                "fallback-dates",
+                "@book{k,title={Synthetic},year={２０２４},month=mar,day={৫},\
+                 urlyear=2025,urlmonth=2,urlday=3,origyear=1999,origmonth=12,origday=31,\
+                 eventyear=2001,eventmonth=4,eventday=30}",
+                "6e7c9503afb2f3dd2fa91c93528d7e21804fe09858874a5597921a1e86f13c32",
+            ),
+            (
+                "macro-epochs-inherited-roles-and-literals",
+                concat!(
+                    "@string{person={Taylor, Mira}}\n\
+                     @xdata{names,author=person,editor={Example, Ann},editortype={compiler},\
+                     editorc={Director, Dana},editorctype={director},translator={Traducteur, René},\
+                     bookauthor={{Synthetic Organization}}}\n",
+                    r"@book{k,title={Garc{\'\i}a {NASA}},xdata={names},url={https://example.invalid/\textbackslash}}",
+                    "\n@string{person={Changed, Bea}}\n@book{later,title={Later},author=person,xdata={names}}",
+                ),
+                "7110eccadf0dc4a77432ab2c97665d867d3e88258614494ed02bdef1c6258c60",
+            ),
+        ];
+        let mut mismatches = Vec::new();
+        for (name, text, expected) in cases {
+            let trace: Vec<_> = [0, 1_024, 4_096, 16_384, 65_536, usize::MAX]
+                .into_iter()
+                .map(|credits| conversion_trace(text, credits))
+                .collect();
+            let actual = Fingerprint::of_bytes(&serde_json::to_vec(&trace).unwrap_or_else(|e| panic!("{e}")));
+            if actual.as_str() != expected {
+                mismatches.push(format!("{name}: {}", actual.as_str()));
+            }
+        }
+        assert!(mismatches.is_empty(), "{}", mismatches.join("\n"));
+
+        let absent = conversion_trace(cases[0].1, usize::MAX);
+        let type_only = conversion_trace(cases[3].1, usize::MAX);
+        assert_eq!(absent["entries"][0]["record"], type_only["entries"][0]["record"]);
+        assert_eq!(type_only["entries"][0]["problems"], json!([]));
+        for i in [1, 2] {
+            let present = conversion_trace(cases[i].1, usize::MAX);
+            assert!(!present["entries"][0]["problems"].as_array().is_none_or(Vec::is_empty));
+        }
+        let dates = conversion_trace(cases[4].1, usize::MAX);
+        let csl = &dates["entries"][0]["record"]["csl"];
+        for (field, expected) in [
+            ("issued", json!([[2024, 3, 5]])),
+            ("accessed", json!([[2025, 2, 3]])),
+            ("original-date", json!([[1999, 12, 31]])),
+            ("event-date", json!([[2001, 4, 30]])),
+        ] {
+            assert_eq!(csl[field]["date-parts"], expected, "{field}");
+        }
+    }
+
     #[test]
     fn cleaning_collapses_unicode_whitespace_and_decodes_literals_once() {
         assert_eq!(
