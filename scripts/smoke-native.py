@@ -26,10 +26,14 @@ from unittest.mock import Mock, call, patch
 # Contract subprocesses also load this file with runpy, outside Python's script path.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from native_test_settings import clean_settings, settings_exist
+from native_evidence import (ACTIVE, BundleError, Evidence, collect_metadata, failure,
+                             load_bundle, observe_native, recording, unavailable)
 
 
 class Unavailable(RuntimeError):
-    pass
+    def __init__(self, message, code="native-session"):
+        super().__init__(message)
+        self.code = code
 
 
 # The short Copied notice is a second visible window of the app (#496); it is
@@ -375,7 +379,7 @@ def answer_update_question(settings):
 
 def claim_settings(candidate):
     if settings_exist(candidate):
-        raise Unavailable("Use a disposable desktop account without existing Ibis settings")
+        raise Unavailable("Use a disposable desktop account without existing Ibis settings", "disposable-settings")
     return candidate
 
 
@@ -837,16 +841,16 @@ class Linux:
     def __init__(self):
         for program in ("xdotool", "xclip", "xterm", "openbox", "xprop"):
             if not shutil.which(program):
-                raise Unavailable(f"Linux native smoke needs {program}")
+                raise Unavailable(f"Linux native smoke needs {program}", "native-driver")
         if not os.environ.get("DISPLAY") or not os.environ.get("DBUS_SESSION_BUS_ADDRESS"):
-            raise Unavailable("Linux smoke needs X11 and a D-Bus session (use xvfb-run and dbus-run-session)")
+            raise Unavailable("Linux smoke needs X11 and a D-Bus session (use xvfb-run and dbus-run-session)", "linux-x11")
         try:
             import pyatspi
             from gi.repository import GLib
             self.atspi = pyatspi
             self.accessibility_error = GLib.Error
         except (ImportError, ValueError) as error:
-            raise Unavailable("Use /usr/bin/python3 with distro python3-pyatspi installed") from error
+            raise Unavailable("Use /usr/bin/python3 with distro python3-pyatspi installed", "accessibility-driver") from error
         self.wm = subprocess.Popen(["openbox"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         # A window mapped before the window manager runs keeps no EWMH state:
         # GTK sends later hint changes such as skip-taskbar to the manager
@@ -967,7 +971,7 @@ class Linux:
     def focus_editor(self):
         window = self.window(self.editor.pid)
         if not window:
-            raise Unavailable("Synthetic terminal editor has no X11 window")
+            raise Unavailable("Synthetic terminal editor has no X11 window", "synthetic-editor")
         run("xdotool", "windowactivate", "--sync", window)
 
     def editor_active(self):
@@ -1026,12 +1030,15 @@ class Linux:
 
 
 def wait_for(predicate, description, timeout=20, *, interval=.1):
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        if predicate():
-            return
-        time.sleep(interval)
-    raise AssertionError(f"Timed out: {description}")
+    # Source locations are stable IDs within the recorded harness hash. Never
+    # serialize descriptions: callers may interpolate desktop observations.
+    with recording("request", f"wait-{sys._getframe(1).f_lineno}"):
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if predicate():
+                return
+            time.sleep(interval)
+        raise AssertionError(f"Timed out: {description}")
 
 
 def saved_typst(settings):
@@ -1087,15 +1094,21 @@ NO_MATCH = "zzqx no such reference"
 
 
 def first_run_preferences_main(args):
+    return evidence_main(args, _first_run_preferences_main, "first-run-preferences")
+
+
+def _first_run_preferences_main(args):
     args.output.mkdir(parents=True, exist_ok=True)
     system = platform.system()
     report = {"platform": system, "scenario": "first-run-preferences", "status": "failed", "checks": []}
     native = app = log = owned_settings = temporary = None
     exit_code = 1
     try:
-        if not args.app.is_file() or system != "Linux":
-            raise Unavailable("Build the embedded app on Linux/X11")
-        native = Linux()
+        if not args.app.is_file():
+            raise Unavailable("Build the embedded app on Linux/X11", "app-build")
+        if system != "Linux":
+            raise Unavailable("Build the embedded app on Linux/X11", "linux-x11")
+        native = observe_native(Linux())
         temporary = tempfile.TemporaryDirectory(prefix="ibis native preferences ")
         folder = Path(temporary.name)
         library = folder / "synthetic 引用.bib"
@@ -1114,7 +1127,8 @@ def first_run_preferences_main(args):
             if not with_library:
                 child.pop("IBIS_LIBRARY", None)
             answer_update_question(settings)
-            app = subprocess.Popen([str(args.app.resolve())], env=child, stdout=log, stderr=log)
+            with recording("action", "launch-" + label):
+                app = subprocess.Popen([str(args.app.resolve())], env=child, stdout=log, stderr=log)
             native.app = app
 
         def snapshot():
@@ -1190,9 +1204,11 @@ def first_run_preferences_main(args):
         assert saved_typst(settings), "Normal Quit lost the saved Typst choice"
         report["status"], exit_code = "passed", 0
     except Unavailable as error:
+        unavailable(error.code)
         report.update(status="unavailable", reason=str(error))
         exit_code = 2
     except (AssertionError, RuntimeError, ValueError, KeyError, TypeError, subprocess.SubprocessError, OSError) as error:
+        failure(error)
         report["reason"] = str(error) if isinstance(error, AssertionError) else type(error).__name__
     finally:
         def stop():
@@ -1209,7 +1225,8 @@ def first_run_preferences_main(args):
             try:
                 if cleanup:
                     cleanup()
-            except (OSError, subprocess.SubprocessError, RuntimeError, AssertionError):
+            except (OSError, subprocess.SubprocessError, RuntimeError, AssertionError) as error:
+                failure(error, "cleanup")
                 report.update(status="failed", reason="Owned native preference cleanup failed")
                 exit_code = 1
         print("NATIVE FIRST-RUN PREFERENCES " + json.dumps(report), flush=True)
@@ -1217,17 +1234,77 @@ def first_run_preferences_main(args):
     return exit_code
 
 
+def evidence_main(args, scenario, scenario_id):
+    """Always persist the closed manifest, independently of legacy diagnostics."""
+    try:
+        replay = getattr(args, "replay_bundle", None)
+        options = {"identifier": args.identifier, "shortcut": args.shortcut or "ctrl+shift+y",
+                   "skip_performance": bool(getattr(args, "skip_performance", False)),
+                   "seed": getattr(args, "seed", 0)}
+        fixtures = {"small": fixture().encode(), "initial-document": b"",
+                    "initial-settings": b'{"schema_version": 2, "update_checks": false}'}
+        if scenario_id == "native-smoke":
+            fixtures.update(four=fixture(4).encode(), empty=b"",
+                            damaged=(Path(__file__).resolve().parent.parent / "fixtures/bibtex/damaged.bib").read_bytes())
+            if not options["skip_performance"]:
+                fixtures["large"] = fixture(100000).encode()
+        recorder = Evidence(scenario_id, options, collect_metadata(args.app, fixtures), replay)
+        recorder.finish(2)  # Validate all metadata/options before any native action.
+    except BundleError as error:
+        print(str(error), file=sys.stderr)
+        return 1
+    token = ACTIVE.set(recorder)
+    exit_code = 1
+    try:
+        exit_code = scenario(args)
+    except (KeyboardInterrupt, SystemExit) as error:
+        # Interrupted waits record cancellation, and still leave a bundle.
+        recorder.failure(error)
+        exit_code = 1
+    except Exception as error:
+        # Includes setup/cleanup failures outside the legacy scenario handlers.
+        recorder.failure(error)
+        exit_code = 1
+    finally:
+        ACTIVE.reset(token)
+    try:
+        bundle = recorder.finish(exit_code)
+        recorder.write(args.output, bundle)
+        return {"pass": 0, "fail": 1, "unavailable": 2}[bundle["result"]["outcome"]]
+    except BundleError as error:
+        print(str(error), file=sys.stderr)
+        return 1
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--app", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--identifier", default="com.ibiscite.ibis", help="Bundle identifier, which names the settings folder")
-    parser.add_argument("--shortcut", help="xdotool-style chord; defaults to Ctrl+Shift+Y or Command+Shift+Y on macOS")
-    parser.add_argument("--skip-performance", action="store_true", help="Keep correctness checks but skip the four 100,000-reference launches")
-    parser.add_argument("--first-run-preferences", action="store_true", help="Exercise first-run format persistence and settled More/Quit only")
+    parser.add_argument("--identifier", help="Bundle identifier, which names the settings folder")
+    parser.add_argument("--shortcut", help="xdotool-style chord; defaults to Ctrl+Shift+Y")
+    parser.add_argument("--skip-performance", action="store_true", default=None, help="Keep correctness checks but skip the four 100,000-reference launches")
+    parser.add_argument("--first-run-preferences", action="store_true", default=None, help="Exercise first-run format persistence and settled More/Quit only")
+    parser.add_argument("--seed", type=int, help="Recorded seed (the current scenarios are deterministic)")
+    parser.add_argument("--replay", type=Path, help="Replay a version-1 evidence manifest against the same build")
     args = parser.parse_args()
+    try:
+        args.replay_bundle = load_bundle(args.replay) if args.replay else None
+        defaults = (args.replay_bundle["options"] if args.replay_bundle else
+                    {"identifier": "com.ibiscite.ibis", "shortcut": "ctrl+shift+y", "skip_performance": False, "seed": 0})
+        for key, value in defaults.items():
+            if getattr(args, key) is None:
+                setattr(args, key, value)
+        if args.first_run_preferences is None and args.replay_bundle:
+            args.first_run_preferences = args.replay_bundle["scenario"] == "first-run-preferences"
+    except BundleError as error:
+        print(str(error), file=sys.stderr)
+        return 1
     if args.first_run_preferences:
         return first_run_preferences_main(args)
+    return evidence_main(args, smoke_main, "native-smoke")
+
+
+def smoke_main(args):
     args.output.mkdir(parents=True, exist_ok=True)
     system = platform.system()
     report = {"platform": system, "checks": [], "performance": {"status": "not-run"}, "status": "failed"}
@@ -1240,10 +1317,10 @@ def main():
     started = time.monotonic()
     try:
         if not args.app.is_file():
-            raise Unavailable("Build the embedded native app before running smoke")
+            raise Unavailable("Build the embedded native app before running smoke", "app-build")
         if system != "Linux":
-            raise Unavailable("Unsupported native smoke platform")
-        native = Linux()
+            raise Unavailable("Unsupported native smoke platform", "linux-x11")
+        native = observe_native(Linux())
         with tempfile.TemporaryDirectory(prefix="ibis native smoke ") as temporary:
             folder = Path(temporary)
             library = folder / "synthetic 引用.bib"
@@ -1258,18 +1335,20 @@ def main():
                 log = log_path.open("w", encoding="utf-8")
                 diagnostic_logs.append(log_path)
                 answer_update_question(settings)
-                app = subprocess.Popen([str(args.app.resolve())], env=env, stdout=log, stderr=log)
+                with recording("action", "launch-" + label):
+                    app = subprocess.Popen([str(args.app.resolve())], env=env, stdout=log, stderr=log)
                 native.app = app
 
             def stop():
                 nonlocal app, log
-                if app and app.poll() is None:
-                    app.terminate()
-                    try:
-                        app.wait(timeout=10)
-                    except subprocess.TimeoutExpired:
-                        app.kill()
-                        app.wait(timeout=5)
+                with recording("action", "stop"):
+                    if app and app.poll() is None:
+                        app.terminate()
+                        try:
+                            app.wait(timeout=10)
+                        except subprocess.TimeoutExpired:
+                            app.kill()
+                            app.wait(timeout=5)
                 if log:
                     log.close()
                 app = None
@@ -1288,7 +1367,8 @@ def main():
 
             def check(name, action):
                 try:
-                    action()
+                    with recording("request", f"check-{sys._getframe(1).f_lineno}"):
+                        action()
                 except Exception:
                     if system == "Linux":
                         try:
@@ -1361,7 +1441,8 @@ def main():
                 native.focus_editor()
                 wait_for(native.editor_focused, "editor focused before second launch")
                 with (args.output / "startup-second-instance.log").open("w", encoding="utf-8") as second_log:
-                    second = subprocess.Popen([str(args.app.resolve())], env=env, stdout=second_log, stderr=second_log)
+                    with recording("action", "launch-second-instance"):
+                        second = subprocess.Popen([str(args.app.resolve())], env=env, stdout=second_log, stderr=second_log)
                     try:
                         assert second.wait(timeout=20) == 0, "Second instance did not exit successfully"
                     finally:
@@ -1402,7 +1483,8 @@ def main():
                 external["shortcut"] = "Control+Alt+F12"
                 external.pop("copy_format", None)  # Copying must not recreate a removed preference.
                 settings.parent.mkdir(parents=True, exist_ok=True)
-                settings.write_text(json.dumps(external), encoding="utf-8")
+                with recording("action", "settings-live-edit"):
+                    settings.write_text(json.dumps(external), encoding="utf-8")
                 external_bytes = settings.read_bytes()
                 try:
                     copy()
@@ -1410,11 +1492,12 @@ def main():
                     assert saved.get("shortcut") == external["shortcut"], "Native copy lost a live external settings edit"
                     assert settings.read_bytes() == external_bytes, "Native copy changed live settings"
                 finally:
-                    for path, content in prior.items():
-                        if content is None:
-                            path.unlink(missing_ok=True)
-                        else:
-                            path.write_bytes(content)
+                    with recording("action", "settings-restore"):
+                        for path, content in prior.items():
+                            if content is None:
+                                path.unlink(missing_ok=True)
+                            else:
+                                path.write_bytes(content)
             check("Enter copies, hides, restores editor focus and preserves live settings edits", live_settings_copy)
 
             def reopen():
@@ -1439,13 +1522,15 @@ def main():
             check("picker shortcut-to-interactive timing reported (Linux only; 100 ms p95 gate not enforced)", picker_opens)
 
             def reload():
-                library.write_text(fixture(4), encoding="utf-8")
+                with recording("action", "fixture-four"):
+                    library.write_text(fixture(4), encoding="utf-8")
                 wait_for(lambda: shows_count(snapshot(), "4 references"), "file watcher updates reference count")
                 query("smoke000003", "Ibis smoke reference 000003")
             check("edited library reloads through native watcher", reload)
 
             def missing():
-                library.unlink()
+                with recording("action", "fixture-missing"):
+                    library.unlink()
                 try:
                     menu_action(native, "Reload")
                 finally:
@@ -1461,17 +1546,20 @@ def main():
             check("missing library shows an error", missing)
 
             def recover():
-                library.write_text("", encoding="utf-8")
+                with recording("action", "fixture-empty"):
+                    library.write_text("", encoding="utf-8")
                 menu_action(native, "Reload")
                 wait_for(lambda: " · no references" in strings(snapshot()), "empty library count")
-                library.write_text(fixture(), encoding="utf-8")
+                with recording("action", "fixture-small"):
+                    library.write_text(fixture(), encoding="utf-8")
                 menu_action(native, "Reload")
                 wait_for(lambda: shows_count(snapshot(), "3 references"), "reload recovers after error")
             check("empty library and recovery after error", recover)
             stop()
 
             def damaged():
-                library.write_text((Path(__file__).resolve().parent.parent / "fixtures/bibtex/damaged.bib").read_text(encoding="utf-8"), encoding="utf-8")
+                with recording("action", "fixture-damaged"):
+                    library.write_text((Path(__file__).resolve().parent.parent / "fixtures/bibtex/damaged.bib").read_text(encoding="utf-8"), encoding="utf-8")
                 launch("damaged")
                 wait_for(lambda: library.name in strings(snapshot()) and "reading notice" in strings(snapshot()),
                          "damaged library starts with a reading notice")
@@ -1482,7 +1570,8 @@ def main():
             if args.skip_performance:
                 report["performance"] = {"status": "skipped"}
             else:
-                library.write_text(fixture(100000), encoding="utf-8")
+                with recording("action", "fixture-large"):
+                    library.write_text(fixture(100000), encoding="utf-8")
                 samples = []
                 # Startup medians remain separate from shortcut-to-interactive reporting.
                 # Launch 0 warms the OS file cache and is discarded from those medians.
@@ -1508,10 +1597,12 @@ def main():
         report["status"] = "passed"
         exit_code = 0
     except Unavailable as error:
+        unavailable(error.code)
         report.update(status="unavailable", reason=str(error))
         print(f"UNAVAILABLE: {error}", file=sys.stderr)
         exit_code = 2
     except (AssertionError, RuntimeError, ValueError, KeyError, TypeError, subprocess.SubprocessError, OSError) as error:
+        failure(error)
         report.update(reason=str(error) if isinstance(error, (AssertionError, Unavailable)) else type(error).__name__)
         print(f"FAIL: {report['reason']}", file=sys.stderr)
         if "last_native_state" in report:
@@ -1542,13 +1633,15 @@ def main():
         if native:
             try:
                 native.close()
-            except (OSError, subprocess.SubprocessError, RuntimeError, AssertionError):
+            except (OSError, subprocess.SubprocessError, RuntimeError, AssertionError) as error:
+                failure(error, "cleanup")
                 report.update(status="failed", reason="Native editor cleanup failed")
                 exit_code = 1
         if owned_settings:
             try:
                 clean_settings(owned_settings)
-            except OSError:
+            except OSError as error:
+                failure(error, "cleanup")
                 report.update(status="failed", reason="Disposable settings cleanup failed")
                 exit_code = 1
         report["elapsed_seconds"] = round(time.monotonic() - started, 2)
@@ -1557,6 +1650,12 @@ def main():
 
 
 class ContractTests(unittest.TestCase):
+    def setUp(self):
+        # Metadata must not launch subprocesses through a mocked app launcher,
+        # or inspect the developer's desktop during portable contract tests.
+        probe = patch("native_evidence._probe", return_value=b"")
+        probe.start()
+        self.addCleanup(probe.stop)
 
 
     class CensusNode:
@@ -1976,7 +2075,7 @@ class ContractTests(unittest.TestCase):
                 native.close.assert_called_once()
 
 
-    def preference_probe(self, failure=None):
+    def preference_probe(self, failure=None, replay=None):
         clock, launches, actions = [0.0], [], []
         native = Mock()
         native.query = ""
@@ -2107,7 +2206,8 @@ class ContractTests(unittest.TestCase):
             root = Path(temporary)
             app = root / "synthetic-app"
             app.touch()
-            args = argparse.Namespace(app=app, output=root / "report", identifier="com.ibiscite.ibis", shortcut=None)
+            args = argparse.Namespace(app=app, output=root / "report", identifier="com.ibiscite.ibis", shortcut=None,
+                                      replay_bundle=replay)
             candidate = root / "preexisting/settings.json"
             candidate.parent.mkdir()
             if failure == "preexisting":
@@ -2128,6 +2228,11 @@ class ContractTests(unittest.TestCase):
                     patch("builtins.print"):
                 result = first_run_preferences_main(args)
             report = json.loads((args.output / "smoke.json").read_text(encoding="utf-8"))
+            manifests = list(args.output.glob("evidence-*/manifest.json"))
+            self.assertEqual(len(manifests), 1)
+            report["evidence"] = load_bundle(manifests[0])
+            self.assertEqual(report["evidence"]["result"]["outcome"], {0: "pass", 1: "fail", 2: "unavailable"}[result])
+            self.assertNotIn("private result payload", json.dumps(report["evidence"]))
             if failure == "preexisting":
                 self.assertEqual(candidate.read_text(encoding="utf-8"), "preserve this file")
             elif failure == "symlink":
@@ -2149,6 +2254,60 @@ class ContractTests(unittest.TestCase):
         pick = actions.index(("Typst", 2))
         self.assertEqual(actions[pick - 2:pick], [("Down", 2), ("Return in Copy as", 2)], "Typst was not picked from the filter")
         self.assertEqual([action for action in actions if action[0] == "Quit Ibis"], [("Quit Ibis", 1), ("Quit Ibis", 2)])
+
+    def test_first_run_bundle_replays_actions_and_failed_invariants(self):
+        for error in (None, "wrong-copy", "delayed-query"):
+            with self.subTest(error=error):
+                result, report, _, actions = self.preference_probe(error)
+                replay_result, replay_report, _, replay_actions = self.preference_probe(error, report["evidence"])
+                self.assertEqual(replay_result, result)
+                self.assertEqual(replay_report["evidence"]["result"], report["evidence"]["result"])
+                self.assertEqual(replay_actions, actions)
+                self.assertEqual(replay_report["evidence"]["replay_of"], report["evidence"]["run_id"])
+
+    def test_cli_restores_replay_options_and_refuses_old_format_before_native_work(self):
+        _, report, _, _ = self.preference_probe()
+        bundle = report["evidence"]
+        bundle["options"].update(seed=37, shortcut="ctrl+super+r", identifier="com.ibiscite.ibis.nightly")
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            manifest = root / "manifest.json"
+            manifest.write_text(json.dumps(bundle), encoding="utf-8")
+            command = ["smoke", "--app", str(root / "synthetic-app"), "--output", str(root / "output"),
+                       "--replay", str(manifest)]
+            with patch("sys.argv", command), patch(__name__ + ".first_run_preferences_main", return_value=0) as scenario:
+                self.assertEqual(main(), 0)
+                restored = scenario.call_args.args[0]
+                self.assertEqual(restored.seed, 37)
+                self.assertEqual(restored.shortcut, "ctrl+super+r")
+                self.assertEqual(restored.identifier, "com.ibiscite.ibis.nightly")
+            bundle["schema_version"] = 0
+            manifest.write_text(json.dumps(bundle), encoding="utf-8")
+            message = io.StringIO()
+            with patch("sys.argv", command), patch(__name__ + ".first_run_preferences_main") as scenario, redirect_stderr(message):
+                self.assertEqual(main(), 1)
+                scenario.assert_not_called()
+            self.assertIn("Unsupported evidence schema version", message.getvalue())
+
+    def test_cli_missing_build_emits_and_replays_unavailable_bundle(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            command = ["smoke", "--app", str(root / "missing-app"), "--output", str(root / "output")]
+            with patch("sys.argv", command), patch("platform.system", return_value="Linux"), \
+                    patch(__name__ + ".Linux") as driver, patch("builtins.print"):
+                self.assertEqual(main(), 2)
+                driver.assert_not_called()
+            manifest = next((root / "output").glob("evidence-*/manifest.json"))
+            bundle = load_bundle(manifest)
+            self.assertEqual(bundle["result"]["outcome"], "unavailable")
+            self.assertEqual(bundle["missing_capabilities"], ["app-build"])
+            command[4] = str(root / "replay")
+            with patch("sys.argv", command + ["--replay", str(manifest)]), \
+                    patch("platform.system", return_value="Linux"), patch(__name__ + ".Linux") as driver, patch("builtins.print"):
+                self.assertEqual(main(), 2)
+                driver.assert_not_called()
+            replay = load_bundle(next((root / "replay").glob("evidence-*/manifest.json")))
+            self.assertEqual(replay["result"], bundle["result"])
 
     def test_first_run_preferences_failures_cannot_pass_during_cleanup(self):
         for failure in ("wrong-format", "duplicate", "malformed", "wrong-schema", "retained-style", "non-json", "oversized",
