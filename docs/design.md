@@ -583,8 +583,10 @@ without hover.
 
 - **Opening.** On the focused window's display, at the last position there,
   with a 120 ms fade and focus in search. A search from under a minute ago
-  returns selected (memory only). Reopening from a focused result or another
-  control still starts typing in search. Text received by Search while the
+  returns selected (memory only), including a search cleared by Escape before
+  hiding, even if native activation arrives after the query returns.
+  Reopening from a focused result or another control still starts typing in
+  search. Text received by Search while the
   window opens survives activation, with the caret at the end; only the
   untouched previous query is selected. On X11, keys sent before the picker
   is mapped and has input focus go to the previously focused window. Ibis does

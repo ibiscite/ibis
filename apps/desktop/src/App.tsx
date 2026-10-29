@@ -226,13 +226,19 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     };
     window.addEventListener("focus", activated);
     const focusSearch = () => {
+      searchAtShow = input.current?.value ?? "";
       resetPointer();
       copyVisibility.current += 1;
       pickerShows.current += 1;
-      if (hiddenAt.current !== null && performance.now() - hiddenAt.current > KEEP_SEARCH_MS) clearSearch();
-      else if (hiddenAt.current !== null && escapedQuery.current !== null) {
+      if (hiddenAt.current !== null && performance.now() - hiddenAt.current > KEEP_SEARCH_MS) {
+        clearSearch();
+        searchAtShow = "";
+      } else if (hiddenAt.current !== null && escapedQuery.current !== null) {
         const escaped = escapedQuery.current;
         escapedQuery.current = null;
+        // Compare activation against the restored query; React updates the
+        // input after this handler.
+        searchAtShow ||= escaped.text;
         setQuery((now) => (now === "" ? escaped.text : now));
         setInterpretLocators(escaped.interpretLocators);
         setRestored((n) => n + 1);
@@ -245,7 +251,6 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       // previous control then, so finish Search focus once activation arrives.
       focusAfterActivation = !document.hasFocus();
       selectSearch();
-      searchAtShow = input.current?.value ?? "";
     };
     // Every hide is reported, including the native one when focus moves away;
     // a monotonic clock keeps clock changes from clearing or keeping a search.

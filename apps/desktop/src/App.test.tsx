@@ -1682,7 +1682,39 @@ test.each(["before", "after"])("reopening from a result replaces the query when 
   }
 });
 
-test("typing before native activation keeps the new query and appends the next key", async () => {
+test.each(["before", "after"])("an escaped query is replaced when native focus arrives %s restoration renders", async (activation) => {
+  backend({ search: () => [result("a", "First")] });
+  const focused = vi.spyOn(document, "hasFocus").mockReturnValue(true);
+  try {
+    render(<App />);
+    const box = screen.getByLabelText<HTMLInputElement>("Search references");
+    fireEvent.change(box, { target: { value: "previous query" } });
+    await screen.findByRole("option", { name: /First/ });
+    fireEvent.keyDown(box, { key: "Escape" });
+    fireEvent.keyDown(box, { key: "Escape" });
+    await act(async () => { await emit("picker:hidden"); });
+    focused.mockReturnValue(false);
+    const activate = () => {
+      focused.mockReturnValue(true);
+      fireEvent.focus(window);
+    };
+    await act(async () => {
+      await emit("picker:shown");
+      if (activation === "before") activate();
+    });
+    expect(box.value).toBe("previous query");
+    if (activation === "after") activate();
+
+    expect(document.activeElement).toBe(box);
+    const text = box.value.slice(0, box.selectionStart!) + "new query" + box.value.slice(box.selectionEnd!);
+    fireEvent.input(document.activeElement!, { target: { value: text } });
+    expect(box.value).toBe("new query");
+  } finally {
+    focused.mockRestore();
+  }
+});
+
+test.each([false, true])("typing before native activation keeps the new query and appends the next key (escaped: %s)", async (escaped) => {
   backend({ search: () => [result("a", "First")] });
   const focused = vi.spyOn(document, "hasFocus").mockReturnValue(false);
   try {
@@ -1691,6 +1723,10 @@ test("typing before native activation keeps the new query and appends the next k
     fireEvent.change(box, { target: { value: "previous query" } });
     const row = await screen.findByRole("option", { name: /First/ });
     row.tabIndex = -1;
+    if (escaped) {
+      fireEvent.keyDown(box, { key: "Escape" });
+      fireEvent.keyDown(box, { key: "Escape" });
+    }
     await act(async () => { await emit("picker:hidden"); await emit("picker:shown"); });
     fireEvent.input(box, { target: { value: "ab" } });
     act(() => row.focus());
