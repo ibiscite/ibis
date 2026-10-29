@@ -4,6 +4,8 @@
  * for its queue's pending[n].complete(value), inside React act(). Searches and
  * previews take invented engine fixtures; copy validates the returned ticket/hash
  * and writes that exact preview to the clipboard, never a supplied copy receipt.
+ * Like macOS, its successful write captures the current app and presentation;
+ * App must suppress stale completion feedback even after that native write.
  *
  * show_copied_notice queues delivery first: completing it consumes a matching
  * one-use proof, checks clipboard ownership/sequence and picker presentation,
@@ -104,13 +106,12 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
       });
     },
     copy_file_citation: (args) => {
-      const captured = { presentation, app: document.app };
       return copy.enqueue(args, () => {
         const { preview } = prepared(args);
         if (args.ticket !== activeTicket) throw { code: "snapshot_changed" };
         Object.assign(clipboard, { text: preview.text, html: preview.html, owner: "ibis", sequence: clipboard.sequence + 1 });
         const token = ++nextDelivery;
-        proof = { ...captured, text: preview.text, delivery: token, sequence: clipboard.sequence };
+        proof = { presentation, app: document.app, text: preview.text, delivery: token, sequence: clipboard.sequence };
         return { text: clipboard.text, warnings: preview.warnings, delivery: token };
       });
     },

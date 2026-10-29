@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { invoke } from "@tauri-apps/api/core";
 import { App } from "./App";
+import type { Copied, Delivered, FilePreview } from "./bindings";
 import { resetApp, result } from "./testing/app";
 import { deliveryHarness } from "./testing/delivery";
 
@@ -242,4 +244,51 @@ test.each(["preview", "copy"] as const)("a failed %s leaves the document and cli
   expect(harness.receipt.textContent).toBe("");
   expect(harness.visible).toBe(true);
   expect(harness.delivery.calls).toHaveLength(0);
+});
+
+
+test("the fake captures a copy's app and presentation at its successful write", async () => {
+  const harness = deliveryHarness();
+  const pendingPreview = invoke<FilePreview>("preview_file_citation", {
+    items: [], format: "pandoc", style: null, expectedRevision: "1",
+    intent: { page: 1, request: 1, cancel: false },
+  });
+  await act(async () => { harness.preview.pending[0]!.complete({ text: "[@a]" }); });
+  const preview = await pendingPreview;
+  const pendingCopy = invoke<Copied>("copy_file_citation", { ticket: preview.ticket, contentHash: preview.content_hash });
+  harness.document.app = "Reopened Writer";
+  await act(async () => { await harness.reopen(); });
+  await act(async () => { harness.copy.pending[0]!.complete(); });
+  const copied = await pendingCopy;
+  // Bypass App's stale-completion guard to prove this native write can paste.
+  // A fake that freezes the old presentation would mask that UI regression.
+  await act(async () => { await invoke("hide_picker"); });
+  const pendingNotice = invoke<Delivered>("show_copied_notice", { text: copied.text, delivery: copied.delivery });
+  await finishDelivery(harness);
+  expect(await pendingNotice).toEqual({ outcome: "pasted", app: "Reopened Writer" });
+  expect(harness.document.text).toBe("Draft: [@a].");
+  expect(harness.document.pastes).toEqual([{ app: "Reopened Writer", text: "[@a]", start: 7, end: 17, delivery: 1 }]);
+  expectReceipt(harness, "Pasted into Reopened Writer", "[@a]");
+});
+
+test("reopening during a pending copy keeps the new query and selection without delivering the late copy", async () => {
+  const harness = await open();
+  await choose(harness, "first");
+  await enter(true);
+  await enter();
+  expect(harness.copy.pending).toHaveLength(1);
+  await act(async () => { await harness.reopen(); });
+  await type("second query");
+  await act(async () => { harness.search.pending[0]!.complete({ revision: "1", results: [second] }); });
+  await enter(true);
+  await act(async () => { harness.copy.pending[0]!.complete(); });
+  expect(harness.clipboard).toMatchObject({ text: "[@a]", owner: "ibis", sequence: 1 });
+  expect(harness.visible).toBe(true);
+  expect((searchBox() as HTMLInputElement).value).toBe("second query");
+  expect(screen.getByRole("button", { name: "Remove a from the selection" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Remove b from the selection" })).toBeTruthy();
+  expect(harness.delivery.calls).toHaveLength(0);
+  expect(harness.document.text).toBe("Draft: [citation].");
+  expect(harness.document.pastes).toEqual([]);
+  expect(harness.receipt.textContent).toBe("");
 });
