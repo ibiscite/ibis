@@ -145,24 +145,80 @@ the formatter task, and exhaustion remains a typed resource-limit error.
 ### Large-library measurement (#1251)
 
 At 100,000 references the release budgets are load/refresh < 3 s, memory <
-400 MB, summon/search p95 ≤ 100 ms and typing p95 ≤ 50 ms. These are targets,
-not assertions tied to CI hardware.
+400 MB, summon p95 ≤ 100 ms and typing p95 ≤ 50 ms (engine search p95 ≤ 20 ms).
+These are fixed limits, per decision 0032. Pull request CI fails on search
+p95 > 20 ms and picker assets > 400 KiB gzipped. The 100k open/refresh gate
+fails Preview's nightly/release build above the unchanged < 3 s limit.
 
-The ignored `ibis-engine` test `refresh_budget` generates its own 21.05 MB
+The explicitly invoked `ibis-engine` test `refresh_budget` generates its own 21.05 MB
 BibTeX file (two authors, journal, date, pages, DOI, volume and issue per entry).
-It opens the file, changes one record, refreshes while committing a prepared
-citation every millisecond, and measures 50 searches. The prepared citation
-retains the old snapshot throughout refresh. No real library or large fixture
-is needed. Run from the repository root with a worktree-local target directory:
+The `open_refresh_budget` case opens the file, changes one record, refreshes
+while committing a prepared citation every millisecond, and measures 250 searches (50 for each of five
+queries, including first calls). Each query's p95 must meet 20 ms independently;
+cheap queries cannot hide a slow case. The prepared citation
+retains the old snapshot throughout refresh. It reports search p50/p95/p99.
+The PR case, `search_budget`, loads the same library and checks search and
+ranking without asserting open timing or performing refresh. Both stay ignored
+in ordinary debug tests and run explicitly in release mode, alone. No real
+library or large fixture is needed. Run from the repository root with a
+worktree-local target directory:
 
 ```sh
-CARGO_TARGET_DIR="$PWD/target" cargo test -p ibis-engine --locked --release --test refresh_budget -- --ignored --nocapture
+CARGO_TARGET_DIR="$PWD/target" cargo test -p ibis-engine --locked --release --test refresh_budget -- search_budget --ignored --nocapture --test-threads=1
+CARGO_TARGET_DIR="$PWD/target" cargo test -p ibis-engine --locked --release --test refresh_budget -- open_refresh_budget --ignored --nocapture --test-threads=1
 CARGO_TARGET_DIR="$PWD/target" python3 crates/ibis-engine/tests/refresh_budget.py
 ```
 
 The Python standard-library runner builds first, then measures the test process
 alone with `getrusage` on macOS/Linux, excluding compiler memory. It also works
 when a sandbox denies `ps` and macOS `time -l`'s `sysctl` call.
+
+The first strict #1369 gate run on this arm64 Mac (2026-10-28, release) passed
+open at 2,685 ms and refresh at 2,476 ms, but failed search p95 at 25.94 ms.
+Temporary stage timers on its slow query (`synthetic signals 99999`) found
+these median milliseconds; normalization (~0.006 ms), final result cloning
+(~0.05 ms) and serialization (~0.1 ms) were not the bottleneck. Ranking already
+selected top-k rather than sorting every match:
+
+| Search stage | Before | After |
+|---|---:|---:|
+| Initial term matching | 5.69 | 5.89 |
+| Exact-key scan | 7.29 | 1.05 |
+| Typo/abstract/closest fallback work | 12.13 | 0.09 |
+
+ASCII keys now compare lowercase bytes; other keys retain Unicode folding.
+Each search reuses at most eight metadata term-score arrays and starts fallback
+intersections from the rarest cached term. Scope, year and already-found filters
+are still applied on every pass. The cache is discarded after the request and
+adds at most 1.6 MB at 100k, plus the existing scratch scan. Empty abstracts skip
+the redundant abstract pass. Ordering, scoring and closest-match semantics stay
+unchanged: eleven cases compare ordered keys, scores and match flags against
+digests captured from the original 100k scorer before these changes.
+
+Three alternating fresh-process pairs, built beforehand without timers, gave
+before p95 25.68–27.44 ms and after p95 7.49–7.56 ms. Each new run includes 250
+samples (750 total); the worst per-query p95 was 7.85 ms, a 12.15 ms / 61% margin
+below 20 ms. The slowest first call was 7.90 ms. Open was 2,657–2,776 ms and
+refresh 2,407–2,559 ms. OS file caches persist across processes.
+Before splitting enforcement, the combined gate also passed: search p95
+7.16 ms (worst query p95 7.25 ms), open 2,758 ms and refresh 2,464 ms.
+
+Enforcement is split by measured margin (maintainer, 2026-10-28):
+
+| Budget | Enforced in | Reason |
+|---|---|---|
+| Search p95 ≤ 20 ms, each query | `ci.yml` → `test` (`Test (ubuntu-24.04)`), release `search_budget` | At least 61% measured margin |
+| Picker JS/CSS ≤ 400 KiB gzipped | `ci.yml` → `changes` and `web`, both picker build paths | Deterministic asset bytes |
+| 100k open and refresh < 3 s each | `preview.yml` → Linux `build`, release `open_refresh_budget` | Only 224 ms open margin; shared PR-runner noise can exceed it |
+
+Preview's build covers nightly packages from `main`, tagged releases and manual
+package builds; the scheduled update-test-only run retains its existing build
+skip. Failing open/refresh blocks that build and its downstream publication.
+Both engine cases use one test thread after compilation finishes; no retries,
+discarded warmups or best-of selection hide failures. One instrumented run
+immediately after compilation took 3,638 ms to open while search passed, which
+is why open/refresh timing no longer rejects a PR. The limits are unchanged.
+These local engine runs do not substitute for native release-machine measurements.
 
 Measured on this arm64 Mac on 2026-10-28, release build; the baseline is
 `28bfce26` (`origin/main` when work began), exported without git metadata and
@@ -253,7 +309,67 @@ still needs further work.
   saves. Normal picker presentation captures the current destination and
   retires the old clipboard proof. No paste is attempted until a fresh Enter.
 - **Language:** the engine returns message codes; the app words them through Fluent from 0.3, so German and one right-to-left language can follow in 0.4. Interface language, citation language and text direction are separate; mixed-direction names are isolated in the preview and on the clipboard.
-- **Budgets (release builds, limits from 0.3; decision 0032):** picker interactive p95 ≤ 100 ms after the shortcut; typing to results p95 ≤ 50 ms at 100,000 references (engine search ≤ 20 ms of it); hidden idle CPU ≤ 0.2 % of one core and at most one wakeup a second, so no polling loops; hidden memory ≤ 200 MiB at 10,000 references; initial picker JS and CSS ≤ 400 KiB gzipped. Engine search, refresh and picker asset size are deterministic checks that fail pull request CI; open latency, idle CPU, wakeups and whole-app memory (web view processes included) are measured warm and cold, at least 30 samples after a 60 s settle, on the named release machines before each release. All use invented libraries, report p50/p95/p99 and compare against fixed limits rather than only against `main`. Superseded previews and searches are cancelled, not ignored.
+- **Budgets (release builds, limits from 0.3; decision 0032):** picker interactive p95 ≤ 100 ms after the shortcut; typing to results p95 ≤ 50 ms at 100,000 references (engine search ≤ 20 ms of it); hidden idle CPU ≤ 0.2 % of one core and at most one wakeup a second, so no polling loops; hidden memory ≤ 200 MiB at 10,000 references; initial picker JS and CSS ≤ 400 KiB gzipped. Engine search and picker asset size fail pull request CI; 100k open/refresh fails Preview’s Linux nightly/release build; open latency, idle CPU, wakeups and whole-app memory (web view processes included) are measured warm and cold, at least 30 samples after a 60 s settle, on the named release machines before each release. All use invented libraries, report p50/p95/p99 and compare against fixed limits rather than only against `main`. Superseded previews and searches are cancelled, not ignored.
+
+The picker asset gate (`node scripts/picker-budget.mjs`) reads Vite's manifest
+and sums gzip level-9 bytes for `index.html`'s JS, static imports and CSS,
+deduplicated by file. Other windows and lazy imports are excluded. Missing
+entries/assets fail the check. Both native and interface-only PR builds run it.
+Library notification workers block on channels. EOF or replacing the desktop
+library disconnects the subscription, waking the worker without a timer or
+retaining the old engine indefinitely. Search cancellation reaches the index;
+reserving a replacement preview cancels the prior engine/formatter token,
+including a worker that has not started yet.
+Clearing the selection or unmounting the preview aborts the same engine token.
+Page/request numbers keep late aborts and late worker starts from cancelling a
+replacement; cancellation messages are handled before taking the library lock.
+
+### Native release measurements (#1369)
+
+Before each release, use the exact release revision/build on each named macOS,
+Windows and Linux release machine. Record its stable machine name and platform.
+Use only generated libraries at 10,000 and 100,000 references. For each size,
+collect at least 30 cold-picker and 30 warm-picker samples after settling hidden
+for at least 60 s. Cold means the first shortcut presentation after a fresh
+process has loaded its snapshot and settled; warm means a subsequent
+hide/summon in that process. Disk/source startup time is the separate engine
+open/refresh gate, not shortcut latency.
+
+Measure shortcut-to-interactive and typing-to-results latency with native tracing,
+not accessibility tree polling. While hidden, record CPU as percent of **one core**, wakeups per
+second, and the entire process tree's resident/working-set bytes, including
+webview helpers. Use platform profilers (Instruments on macOS, WPR/WPA on
+Windows, perf on Linux); record idle CPU/wakeups over one-second intervals.
+Shared pages may be counted twice when summing process RSS; never omit helpers.
+Keep the raw traces locally and export only these fixed numeric fields:
+
+```json
+{
+  "schema": 1,
+  "revision": "0123456789abcdef0123456789abcdef01234567",
+  "platform": "macOS",
+  "machine": "synthetic-release-machine",
+  "measurements": [{
+    "mode": "cold", "references": 10000, "settle_seconds": 60,
+    "samples": [{"open_ms": 85, "typing_ms": 30, "idle_cpu_percent": 0.1,
+                 "wakeups_per_second": 0, "memory_bytes": 150000000}]
+  }]
+}
+```
+
+This abbreviated shape is not passing evidence: all four size/mode cases need
+30 samples. `node scripts/release-budgets.mjs evidence.json RELEASE_SHA` checks
+the exact revision, completeness, settling and fixed limits, and reports
+p50/p95/p99. Open p95 must be ≤ 100 ms and typing p95 ≤ 50 ms;
+every idle sample must be ≤ 0.2% CPU
+and ≤ 1 wakeup/s. Memory must be ≤ 200 MiB at 10k and < 400 MB at 100k.
+Run the validator for each platform and attach its successful output to the
+release evidence. `scripts/smoke-native.py`'s debug launch/accessibility timings
+are explicitly diagnostic-only and cannot satisfy this gate.
+
+Actual release machine names, native trace collection and release-workflow
+evidence attachment still require the release operator; no measurements or
+machine certifications are supplied by the validator.
 
 ## What gets replaced
 

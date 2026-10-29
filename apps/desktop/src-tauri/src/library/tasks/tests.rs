@@ -2,6 +2,42 @@ use super::super::state::candidate;
 use super::*;
 
 #[test]
+fn replacing_a_library_disconnects_its_idle_observer_but_keeps_it_for_the_same_engine()
+-> Result<(), Box<dyn std::error::Error>> {
+    use super::super::state::install;
+    use std::sync::{Arc, mpsc};
+    use std::time::Duration;
+
+    let directory = tempfile::tempdir()?;
+    let path = directory.path().join("synthetic.bib");
+    let library = Mutex::new(candidate(Source::File(path), "@misc{synthetic}"));
+    let (file, events) = observe_current(&library).ok_or("observer")?;
+    let requests = LoadRequests::default();
+    install(
+        &library,
+        &requests,
+        0,
+        Ok(Library {
+            file: Some(Arc::clone(&file)),
+            ..Library::default()
+        }),
+    )
+    .ok_or("same engine")?;
+    assert!(matches!(events.try_recv(), Err(mpsc::TryRecvError::Empty)));
+    assert!(observe_current(&library).is_none(), "same engine has only one worker");
+
+    let (done, finished) = mpsc::channel();
+    let worker = std::thread::spawn(move || {
+        let _retained_engine = file;
+        done.send(events.recv().is_err()).unwrap_or_else(|e| panic!("{e}"));
+    });
+    install(&library, &requests, 0, Ok(Library::default())).ok_or("replace")?;
+    assert!(finished.recv_timeout(Duration::from_secs(2))?);
+    worker.join().map_err(|_| "observer worker")?;
+    Ok(())
+}
+
+#[test]
 fn the_chooser_accepts_each_library_file_format_the_engine_reads() {
     let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
     for (extension, contents) in [

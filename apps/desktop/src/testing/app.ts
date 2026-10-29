@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, screen } from "@testing-library/react";
 import { clearMocks, mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { vi } from "vitest";
 import type * as api from "../api";
-import type { FilePreview, ReferenceForm } from "../bindings";
+import type { FilePreview, PreviewIntent, ReferenceForm } from "../bindings";
 
 export async function resetApp() {
   cleanup();
@@ -46,6 +46,7 @@ export type PreviewRequest = {
   format: api.CopyFormat;
   style: string | null;
   expectedRevision: string;
+  intent: PreviewIntent;
 };
 type Prepared = { request: PreviewRequest; preview: FilePreview };
 const receipts = new Map<string, Prepared>();
@@ -104,6 +105,9 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
   mockIPC(
     (cmd, args) => {
       calls.push(cmd);
+      if (cmd === "preview_file_citation" && (args as PreviewRequest).intent.cancel) {
+        return Promise.reject({ code: "failed", message: "A newer citation preview replaced this request." });
+      }
       const handler = overrides[cmd] ?? defaults[cmd];
       if (!handler) throw new Error(`unexpected command ${cmd}`);
       const value = handler((args ?? {}) as Parameters<Handler>[0]);

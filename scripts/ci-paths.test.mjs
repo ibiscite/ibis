@@ -132,6 +132,21 @@ test("Desktop starts after classification and CI result retains the required job
   assert.match(workflow, /result:[\s\S]*needs: \[changes, test, web, desktop, fidelity, dependencies\]/, "CI result still needs every required job");
 });
 
+test("pull request CI gates search and picker size; Preview gates open and refresh", () => {
+  const workflow = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
+  const engine = workflow.match(/\n  test:\n([\s\S]*?)\n  web:/)[1];
+  assert.match(engine, /os: \[ubuntu-24\.04\]/);
+  assert.match(engine, /cargo test -p ibis-engine --locked --release --test refresh_budget -- search_budget --ignored --nocapture --test-threads=1/);
+  assert.doesNotMatch(workflow, /-- open_refresh_budget|Enforce 100k open\/refresh/);
+  assert.ok(engine.indexOf("Enforce 100k search budget") > engine.indexOf("run: cargo test --locked"));
+  const preview = readFileSync(new URL("../.github/workflows/preview.yml", import.meta.url), "utf8");
+  const build = preview.split("\n  build:\n")[1].split("\n  sign-macos:\n")[0];
+  assert.match(build, /- name: Enforce 100k open\/refresh budgets \(Linux, release\)\n        if: runner.os == 'Linux'\n        env:\n          RUSTFLAGS: -D warnings\n        run: cargo test -p ibis-engine --locked --release --test refresh_budget -- open_refresh_budget --ignored --nocapture --test-threads=1/);
+  for (const build of [workflow.match(/\n  changes:\n([\s\S]*?)\n  test:/)[1], workflow.match(/\n  web:\n([\s\S]*?)\n  desktop:/)[1]]) {
+    assert.match(build, /node ..\/..\/scripts\/picker-budget.mjs dist/);
+  }
+});
+
 test("Rust and fidelity skip only documentation through the conservative path decision", () => {
   const workflow = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
   for (const job of ["test", "fidelity"]) {
@@ -194,7 +209,8 @@ test("CI result accepts only deliberate skips and rejects failures, cancellation
 test("slow checks run in the existing nightly/release workflow, never on pull requests", () => {
   const ci = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
   const preview = readFileSync(new URL("../.github/workflows/preview.yml", import.meta.url), "utf8");
-  assert.doesNotMatch(ci, /--release|toolchain install|--seconds 60|-Seconds 60|real-zotero.sh/);
+  const withoutEngineGate = ci.replace("cargo test -p ibis-engine --locked --release --test refresh_budget -- search_budget --ignored --nocapture --test-threads=1", "");
+  assert.doesNotMatch(withoutEngineGate, /--release|toolchain install|--seconds 60|-Seconds 60|real-zotero.sh/);
   assert.doesNotMatch(preview, /^  pull_request:/m);
   assert.match(preview, /^  schedule:\n    - cron:/m);
   const build = preview.split("\n  build:\n")[1].split("\n  sign-macos:\n")[0];

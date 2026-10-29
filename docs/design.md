@@ -765,7 +765,11 @@ that owns its area in ROADMAP.md.
    while results load runs once, never twice. After the window closes a short
    receipt says what happened, and the last outcome stays readable in More.
 4. Open in under 100 ms with the last snapshot; keys typed before the window
-   appears are kept.
+   appears are kept. Typing replaces the engine's previous search and preview
+   work by cancelling it, including queued formatting. Hidden Ibis waits for
+   events; it does not poll for library notifications. Fixed speed/resource
+   limits and the release-machine measurement protocol are in
+   [architecture](architecture.md#native-release-measurements-1369).
 5. Forgiving search: accents and transliteration folded, any word order, one
    typo tolerated, initials, "et al." ignored, Chinese, Japanese and Korean
    names with or without spaces, Enter safe while an input method composes.

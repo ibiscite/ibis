@@ -46,7 +46,7 @@ export const commands = {
 	 *  omitted/null searches all, an empty list searches none. It never reloads sources.
 	 */
 	search: (query: SearchQuery, limit: number, page: number, request: number, scope: string[] | null) => __TAURI_INVOKE<SearchReply_Serialize>("search", { query, limit, page, request, scope }),
-	previewFileCitation: (items: FileSelection[], format: KeyFormat, style: "apa" | "chicago-author-date" | "harvard-cite-them-right" | "ieee" | "modern-language-association" | null, expectedRevision: string) => __TAURI_INVOKE<FilePreview>("preview_file_citation", { items, format, style, expectedRevision }),
+	previewFileCitation: (items: FileSelection[], format: KeyFormat, style: "apa" | "chicago-author-date" | "harvard-cite-them-right" | "ieee" | "modern-language-association" | null, expectedRevision: string, intent: PreviewIntent) => __TAURI_INVOKE<FilePreview>("preview_file_citation", { items, format, style, expectedRevision, intent }),
 	copyFileCitation: (ticket: string, contentHash: string) => __TAURI_INVOKE<Copied_Serialize>("copy_file_citation", { ticket, contentHash }),
 	/**  The format the picker starts with: the last one chosen, or Pandoc. */
 	copyFormat: () => __TAURI_INVOKE<KeyFormat>("copy_format"),
@@ -435,6 +435,12 @@ export type PickerPreferencesPatch_Serialize = {
 export type PickerSave = {
 	preferences: PickerPreferences,
 	copy_format: KeyFormat,
+};
+
+export type PreviewIntent = {
+	page: number,
+	request: number,
+	cancel: boolean,
 };
 
 export type ReferenceForm = "normal" | "narrative" | "author-omitted";

@@ -88,6 +88,7 @@ jobs:
         run: |
           pnpm install --frozen-lockfile
           pnpm exec vite build
+          node ../../scripts/picker-budget.mjs dist
 
       - name: Share the web interface
         if: steps.classify.outputs.native == 'true'
@@ -131,6 +132,11 @@ jobs:
 
       - name: Test
         run: cargo test --locked
+
+      - name: Enforce 100k search budget (release)
+        # Compilation and the ordinary test processes finish before measurement;
+        # this binary runs alone, with its first search retained in the samples.
+        run: cargo test -p ibis-engine --locked --release --test refresh_budget -- search_budget --ignored --nocapture --test-threads=1
 
   web:
     name: Web interface
@@ -188,6 +194,7 @@ jobs:
           pnpm lint
           pnpm test
           pnpm build
+          node ../../scripts/picker-budget.mjs dist
 
   desktop:
     name: Desktop (${{ matrix.os }})

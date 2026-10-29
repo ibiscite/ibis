@@ -23,7 +23,7 @@ mod status;
 mod tasks;
 
 pub(crate) use error::{CommandError, LoadError};
-pub(crate) use search::SearchRequests;
+pub(crate) use search::{PreviewIntent, PreviewRequests, SearchRequests};
 pub(crate) use source::Source;
 pub(crate) use state::{Library, LoadRequests};
 pub(crate) use status::{LibraryState, LibraryStatus};

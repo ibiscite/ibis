@@ -49,30 +49,15 @@ fn run_with_changes<R: BufRead, W: Write + Send>(
             }
             Ok(())
         });
-        let stopping = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let close_changes = changes.as_ref().map(LibrarySubscription::close_handle);
         let forwarding = changes.map(|changes| {
             let output = output.clone();
-            let stopping = stopping.clone();
             scope.spawn(move || {
-                loop {
-                    let stopped = stopping.load(std::sync::atomic::Ordering::Acquire);
-                    let event = if stopped {
-                        changes.try_recv().ok()
-                    } else {
-                        match changes.recv_timeout(std::time::Duration::from_millis(20)) {
-                            Ok(event) => Some(event),
-                            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
-                            Err(_) => None,
-                        }
-                    };
-                    let Some(_) = event else { break };
+                while changes.recv().is_ok() {
                     if output
                         .send(json!({"jsonrpc":"2.0","method":"ibis/libraryChanged","params":{}}))
                         .is_err()
                     {
-                        break;
-                    }
-                    if stopped {
                         break;
                     }
                 }
@@ -171,7 +156,7 @@ fn run_with_changes<R: BufRead, W: Write + Send>(
         // EOF drains accepted work. Only the reader owns the active-token map.
         drop(requests);
         let worked = working.join().map_err(|_| FrameError::Io);
-        stopping.store(true, std::sync::atomic::Ordering::Release);
+        drop(close_changes);
         if let Some(forwarding) = forwarding {
             forwarding.join().map_err(|_| FrameError::Io)?;
         }

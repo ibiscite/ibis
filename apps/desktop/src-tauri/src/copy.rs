@@ -7,7 +7,7 @@ use ibis_core::settings;
 use serde::Serialize;
 use tauri::{AppHandle, State};
 
-use crate::library::{CommandError, Library};
+use crate::library::{CommandError, Library, PreviewIntent, PreviewRequests};
 use crate::preferences::SettingsFile;
 
 #[derive(Serialize, specta::Type)]
@@ -42,8 +42,13 @@ pub(crate) async fn preview_file_citation(
     format: KeyFormat,
     style: Option<settings::CitationStyle>,
     expected_revision: String,
+    intent: PreviewIntent,
     library: State<'_, Mutex<Library>>,
+    requests: State<'_, PreviewRequests>,
 ) -> Result<crate::library::engine_file::FilePreview, CommandError> {
+    let cancel = requests
+        .start(intent)
+        .ok_or_else(|| CommandError::from("A newer citation preview replaced this request."))?;
     let file = {
         let library = library
             .lock()
@@ -57,7 +62,7 @@ pub(crate) async fn preview_file_citation(
             .clone()
             .ok_or_else(|| CommandError::from("The selected file is no longer open."))?
     };
-    let reservation = file.reserve_preview();
+    let reservation = file.reserve_preview_with(cancel);
     tauri::async_runtime::spawn_blocking(move || file.preview(reservation, items, format, style))
         .await
         .map_err(|_| CommandError::from("The preview is unavailable. Try again."))?

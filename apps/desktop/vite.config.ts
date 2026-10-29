@@ -7,6 +7,7 @@ export default defineConfig({
   clearScreen: false,
   server: { port: 5173, strictPort: true },
   build: {
+    manifest: true,
     target: "es2022",
     outDir: "dist",
     rollupOptions: {
