@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, screen } from "@testing-library/react";
 import { clearMocks, mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { vi } from "vitest";
 import type * as api from "../api";
-import type { FilePreview, PreviewIntent, ReferenceForm } from "../bindings";
+import type { FilePreview, FileSelection, PreviewIntent } from "../bindings";
 
 export async function resetApp() {
   cleanup();
@@ -42,7 +42,7 @@ export function result(key: string, title: string, source = "refs.bib") {
 
 export type SyntheticId = { library: string; key: string };
 export type PreviewRequest = {
-  items: { id: SyntheticId; cite: string; locator: api.Locator | null; form?: ReferenceForm }[];
+  items: (Omit<FileSelection, "id"> & { id: SyntheticId })[];
   format: api.CopyFormat;
   style: string | null;
   expectedRevision: string;
@@ -90,7 +90,7 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
     picker_preferences: () => ({ citation_style: null, density: "comfortable", larger_text: false, show_paste_preview: true }),
     set_picker_preferences: () => null,
     // Opened from no app Ibis knows: the default format applies.
-    picker_destination: () => ({ app: null, app_id: null, automatic: null, remembered: null, unreadable: false, output_question: null }),
+    picker_destination: () => ({ app: null, app_id: null, automatic: null, remembered: null, unreadable: false, can_paste: false, output_question: null }),
     remember_app_output: () => null,
     forget_app_outputs: () => null,
     login_item: () => ({ name: "Ibis", enabled: false, problem: null }),

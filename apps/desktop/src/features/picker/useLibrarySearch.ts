@@ -5,12 +5,14 @@ import type { LibraryStatus, LocatorQuery, PastedList, SearchResult } from "../.
 import { pickerText } from "../../messages";
 import { choiceKey } from "./choice";
 
-export function useLibrarySearch({ search, query, interpretLocators, library, libraryVersion, setActive, refreshSnapshot }: {
+export function useLibrarySearch({ search, query, interpretLocators, library, statusFailed, libraryVersion, setActive, refreshSnapshot }: {
   search: typeof nativeApi.search;
   query: string;
   interpretLocators: boolean;
   /** Undefined while loading; null means the status request itself failed. */
   library: LibraryStatus | null | undefined;
+  /** A failed status read ends a reconciliation wait; a later update needs fresh Enter. */
+  statusFailed: boolean;
   /** Changes whenever a library opens, so the current query is searched again. */
   libraryVersion: number;
   setActive: (index: number) => void;
@@ -26,9 +28,11 @@ export function useLibrarySearch({ search, query, interpretLocators, library, li
   const [resultsQuery, setResultsQuery] = useState<string | null>(null);
   const [resultsRevision, setResultsRevision] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [settled, setSettled] = useState<{ queryKey: string; library: typeof library; version: number } | null>(null);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: searches when the query (queryKey covers query and locator mode) or the library changes. The earlier results are read only to keep the user's row when a reply repeats them.
   useEffect(() => {
+    const request = { queryKey, library, version: libraryVersion };
     setAnnouncement("");
     // Typing before choosing a library is normal; preserve the query and
     // chooser. Actual library/status failures still report search errors.
@@ -39,6 +43,7 @@ export function useLibrarySearch({ search, query, interpretLocators, library, li
       setResultsQuery(queryKey);
       setActive(0);
       setError(null);
+      setSettled(request);
       return;
     }
     let current = true;
@@ -56,6 +61,7 @@ export function useLibrarySearch({ search, query, interpretLocators, library, li
           const sameResults = resultsQuery === queryKey && resultsRevision === revision && choiceKey(results) === choiceKey(found);
           if (!sameResults) setActive(0);
           setError(null);
+          setSettled(request);
           announcementTimer = window.setTimeout(() => {
             const count = pickerText.resultCount(found.length);
             setAnnouncement(found.some((r) => r.partial) ? `${pickerText.closestMatches} · ${count}` : count);
@@ -70,6 +76,7 @@ export function useLibrarySearch({ search, query, interpretLocators, library, li
           setList(null);
           setResultsQuery(queryKey);
           setError(pickerText.searchError);
+          setSettled(request);
         }
       });
     return () => {
@@ -82,5 +89,10 @@ export function useLibrarySearch({ search, query, interpretLocators, library, li
   // pending, the rows still on screen are not acted on or offered by any key,
   // click or footer hint; only these current results are.
   const current = resultsQuery === queryKey && resultsRevision === library?.revision && results.every((record) => record.revision === resultsRevision) ? results : [];
-  return { queryKey, results, current, interpretation, list: current === results ? list : null, announcement, resultsQuery, error };
+  // A reply ahead of status is not actionable yet, even though its request
+  // finished. Keep Enter waiting through the status read and refreshed search.
+  const reconciling = !error && Boolean(library?.has_snapshot) && resultsQuery === queryKey && resultsRevision !== library?.revision;
+  const pending = !statusFailed && (library === undefined || library?.state === "loading" || settled?.queryKey !== queryKey
+    || settled.library !== library || settled.version !== libraryVersion || reconciling);
+  return { queryKey, results, current, interpretation, list: current === results ? list : null, announcement, resultsQuery, error, pending };
 }

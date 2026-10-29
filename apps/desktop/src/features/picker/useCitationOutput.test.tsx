@@ -100,6 +100,34 @@ test.each([
   unmount();
 });
 
+test("the same page text in the editor retires its canonical receipt and uses the raw input field", async () => {
+  const pending: ((value: FilePreview) => void)[] = [];
+  const previewFileCitation = vi.fn<Preview>(() => new Promise((resolve) => pending.push(resolve)));
+  const canonical: CitationReference = { ...reference(), locator: { label: "page", value: "S.12" } };
+  const initial = options({ chosen: [canonical], previewFileCitation });
+  const { result, rerender } = renderHook(useCitationOutput, { initialProps: initial });
+  const oldSignal = previewFileCitation.mock.calls[0]?.[4];
+  expect(previewFileCitation.mock.calls[0]?.[0]).toEqual([
+    { id: canonical.id, cite: canonical.cite, locator: { label: "page", value: "S.12" } },
+  ]);
+  await act(async () => { pending[0]?.(preview("canonical S.12")); });
+  expect(result.current.shown).toMatchObject({ text: "canonical S.12" });
+
+  rerender({ ...initial, chosen: [{ ...canonical, locator: { label: "page", value: "S.12", input: "page-editor" } }] });
+  expect(oldSignal?.aborted).toBe(true);
+  expect(result.current.shown).toBeNull();
+  expect(previewFileCitation.mock.calls[1]?.[0]).toEqual([
+    { id: canonical.id, cite: canonical.cite, locator: null, page_input: "S.12" },
+  ]);
+  // Applying the captured locator again must restore canonical interpretation.
+  rerender(initial);
+  expect(previewFileCitation.mock.calls[1]?.[4]?.aborted).toBe(true);
+  await act(async () => { pending[2]?.(preview("canonical S.12")); });
+  await act(async () => { pending[1]?.(preview("editor page 12")); });
+  expect(result.current.shown).toMatchObject({ text: "canonical S.12" });
+  expect(previewFileCitation.mock.calls[2]?.[0]).toEqual(previewFileCitation.mock.calls[0]?.[0]);
+});
+
 test("a failed native preview keeps its actionable explanation without refreshing the snapshot", async () => {
   const previewFileCitation = vi.fn<Preview>().mockRejectedValue({ code: "failed", message: conflictMessage });
   const refreshSnapshot = vi.fn();

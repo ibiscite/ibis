@@ -73,7 +73,25 @@ test("the notice says where the citation was pasted, or why it was only copied",
   expect(noticeTitle(copied("[@a]", "terminal"))).toBe("Copied. Not pasted into a terminal");
   expect(noticeTitle(copied("[@a]", "no-permission"))).toBe("Copied. Ibis needs your OK to paste");
   expect(noticeTitle(copied("[@a]", "key-release-failed"))).toBe("Copied. Press and release Ctrl and V");
-  for (const reason of [null, "no-target", "unknown-future-code"]) expect(noticeTitle(copied("[@a]", reason))).toBe("Copied");
+  expect(noticeTitle(copied("[@a]", "paste-off"))).toBe("Copied. Pasting is off");
+  expect(noticeTitle(copied("[@a]", "unsupported-system"))).toBe("Copied. Paste it into your document");
+  expect(noticeTitle(copied("[@a]", "no-target"))).toBe("Copied. No app to paste into");
+  for (const reason of [null, "unknown-future-code"]) expect(noticeTitle(copied("[@a]", reason))).toBe("Copied");
+});
+
+test.each(["macos", "windows", "linux"] as const)("%s receipt updates announce the result without moving document focus", (platform) => {
+  const editor = document.createElement("input"), root = document.createElement("div");
+  document.body.append(editor, root);
+  try {
+    editor.focus();
+    const show = renderNotice(root, platform);
+    show({ delivered: { outcome: "pasted", app: "Example Writer" }, text: "[@invented]" });
+    expect(root.querySelector("strong")?.textContent).toBe("Pasted into Example Writer");
+    show(copied("[@invented]", "paste-off"));
+    expect(root.querySelector('[role="status"]')?.getAttribute("aria-live")).toBe("polite");
+    expect(root.querySelector("strong")?.textContent).toBe("Copied. Pasting is off");
+    expect(document.activeElement).toBe(editor);
+  } finally { editor.remove(); root.remove(); }
 });
 
 test.each([

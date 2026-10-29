@@ -4,18 +4,20 @@ import { keyLabel, keysFor } from "../../keys";
 import { LibraryDetail } from "../../LibraryStatusLine";
 import { densityNames, keyText, loginItemText, pickerText } from "../../messages";
 import { currentPlatform, isMac } from "../../platform";
+import { MenuDetail } from "../../ui/Menu";
 import { MenuItem, MenuSection, MenuSeparator, MoreMenu } from "./MoreMenu";
 
 const label = (accelerator: string) => keyLabel(accelerator, isMac);
 
 /** The More button and menu: the library and its Zotero scope, view settings,
  * starting at login, updates, the keys overlay and Quit. */
-export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library, libraryDetail, zotero, density, largerText, searchMark, showPastePreview, pinned, startAtLogin, updates, actions }: {
+export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library, libraryDetail, lastOutcome, zotero, density, largerText, searchMark, showPastePreview, pinned, startAtLogin, updates, actions }: {
   isOpen: boolean; onOpenChange: (open: boolean) => void;
   buttonRef: Ref<HTMLButtonElement>; searchRef: RefObject<HTMLElement | null>;
   library: LibraryStatus | null | undefined;
   /** Where the references come from and how fresh they are. */
   libraryDetail: [string, string | null] | null;
+  lastOutcome?: string | null;
   /** The Zotero libraries to offer, when the library is Zotero and can be narrowed. */
   zotero: { offered: ZoteroLibrary[]; isChosen: (choice: ZoteroLibrary) => boolean; chosenCount: number; name: (choice: ZoteroLibrary) => string; toggle: (choice: ZoteroLibrary) => void } | null;
   density: Density;
@@ -36,8 +38,8 @@ export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library
       keys={keysFor("more")}>
       {/* Where the references come from and how fresh they are, read
           as the group's name when the menu is reached by keyboard. */}
-      <MenuSection id="library" label={libraryDetail?.filter(Boolean).join(". ")}
-        header={libraryDetail && <LibraryDetail lines={libraryDetail} />}>
+      <MenuSection id="library" label={[lastOutcome && pickerText.lastOutcome(lastOutcome), libraryDetail?.filter(Boolean).join(". ")].filter(Boolean).join(". ")}
+        header={lastOutcome || libraryDetail ? <>{lastOutcome && <MenuDetail title={lastOutcome} />}{libraryDetail && <LibraryDetail lines={libraryDetail} />}</> : undefined}>
         <MenuItem id="choose" label={pickerText.chooseLibrary} title={pickerText.chooseTitle} onAction={actions.choose} />
         {!library?.zotero && (
           <MenuItem id="zotero" label={pickerText.useZotero} title={pickerText.useZoteroTitle} onAction={actions.useZotero} />
