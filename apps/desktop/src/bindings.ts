@@ -16,6 +16,8 @@ export const commands = {
 	 *  `library:changed`.
 	 */
 	useZotero: () => __TAURI_INVOKE<void>("use_zotero"),
+	/**  Samples are an explicit, temporary source, never a saved library preference. */
+	useSampleLibrary: (enabled: boolean) => __TAURI_INVOKE<null>("use_sample_library", { enabled }),
 	/**
 	 *  Find what setup can offer: whether Zotero is open, and `.bib` files in
 	 *  the documents, desktop and downloads folders.
@@ -298,6 +300,8 @@ export type LibraryStatus = {
 	 *  `zotero` (the requested source) after a failed switch.
 	 */
 	snapshot_zotero: boolean,
+	/**  The searchable snapshot contains only bundled invented references. */
+	sample?: boolean,
 	/**
 	 *  An update of the searched library failed and its earlier references
 	 *  are still searched; not set when a switch to another library failed.
@@ -490,6 +494,8 @@ export type SearchReply_Serialize = {
 };
 
 export type SearchResult = {
+	/**  This row comes from the bundled invented library, including while a replacement search is pending. */
+	sample?: boolean,
 	/**  Revision captured with the index used for this result. */
 	revision: string,
 	/**  Identity of the record; selection and copying use this, not the key. */

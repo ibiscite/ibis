@@ -15,6 +15,7 @@ export type NoticeMessage = NonNullable<Awaited<ReturnType<typeof commands.copie
 export const {
   chooseLibrary,
   useZotero,
+  useSampleLibrary,
   useZoteroLibraries,
   zoteroGroups,
   reloadLibrary,

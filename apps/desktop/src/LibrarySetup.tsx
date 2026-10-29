@@ -8,13 +8,14 @@ import { ChoiceList, type Choice } from "./ui/ChoiceList";
 type SetupApi = {
   chooseLibrary: () => Promise<unknown>;
   useZotero: () => Promise<unknown>;
+  useSampleLibrary?: (enabled: boolean) => Promise<unknown>;
   findSources?: () => Promise<Sources>;
   openFoundLibrary?: (list: number, index: number) => Promise<unknown>;
 };
 
 export type EmptyLibraryChoices = { title: ReactNode; zotero: boolean };
 
-type Action = "choose" | "zotero" | "findSources" | "openFound";
+type Action = "choose" | "zotero" | "findSources" | "openFound" | "samples";
 
 /** First run, and the screen while no library is chosen: Zotero, a
  * library file through the system chooser, and, only when asked, libraries found
@@ -26,7 +27,7 @@ export function LibrarySetup({ api, perform, autoFocus = false, empty }: {
   autoFocus?: boolean;
   empty?: EmptyLibraryChoices;
 }) {
-  const { chooseLibrary, useZotero, findSources, openFoundLibrary } = api;
+  const { chooseLibrary, useZotero, useSampleLibrary: changeSamples, findSources, openFoundLibrary } = api;
   // Undefined while looking; null before an explicit search or after failure.
   const [sources, setSources] = useState<Sources | null | undefined>(null);
   const [search, setSearch] = useState(0);
@@ -64,10 +65,13 @@ export function LibrarySetup({ api, perform, autoFocus = false, empty }: {
       // Stays enabled while looking so keyboard focus stays on it; presses wait.
       icon: <ChoiceIcon name="find" />,
     }] : []),
+    ...(!empty && changeSamples ? [{ id: "samples", title: setupText.samples, help: setupText.samplesHelp,
+      icon: <ChoiceIcon name="library" /> }] : []),
   ];
   const choose = (id: string) => {
     if (id === "zotero") void perform("zotero", useZotero);
     else if (id === "file") void perform("choose", chooseLibrary);
+    else if (id === "samples" && changeSamples) void perform("samples", () => changeSamples(true));
     else if (id === "find") { if (!looking) lookAgain(); }
     else if (id.startsWith("found-") && sources && openFoundLibrary) {
       const index = Number(id.slice("found-".length));
@@ -87,4 +91,15 @@ export function LibrarySetup({ api, perform, autoFocus = false, empty }: {
       {findSources && search > 0 && <p className="visually-hidden" role="status">{outcome}</p>}
     </div>
   );
+}
+
+/** The same keyboard choice rows let a sample session return to setup. */
+export function SampleLibraryExit({ useSampleLibrary: changeSamples, perform }: {
+  useSampleLibrary?: SetupApi["useSampleLibrary"];
+  perform: (action: Action, run: () => Promise<unknown>) => Promise<void>;
+}) {
+  if (!changeSamples) return null;
+  return <ChoiceList title={setupText.sampleTitle} choices={[{
+    id: "own", title: setupText.ownLibrary, help: setupText.ownLibraryHelp, icon: <ChoiceIcon name="swap" />,
+  }]} onChoose={() => void perform("samples", () => changeSamples(false))} />;
 }

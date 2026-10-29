@@ -4,7 +4,7 @@ import type { Density, SearchResult } from "../../api";
 import { rowClickAction } from "../../copyFeedback";
 import { isMac } from "../../platform";
 import { AddGlyph, TypeIcon } from "../../icons";
-import { pickerText, rowText } from "../../messages";
+import { pickerText, rowText, setupText } from "../../messages";
 import { PointerButton } from "../../ui/Button";
 import { Option } from "../../ui/Option";
 import { idKey } from "./choice";
@@ -124,7 +124,7 @@ export const ResultRow = memo(function ResultRow({ record: r, index: i, active, 
       </span>
       <span className="result-body" title={r.key || undefined}>
         <span className="result-line">
-          <strong className="result-title">{r.title}</strong>
+          <strong className="result-title">{r.sample && <><bdi>{setupText.sampleLabel}</bdi>{" · "}</>}{r.title}</strong>
           {compact && r.first_author && <span className="result-first-author" dir="auto">{r.first_author}{r.author_count > 1 && <> {etAl}</>}</span>}
         </span>
         <span className="result-meta">

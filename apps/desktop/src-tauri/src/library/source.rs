@@ -10,6 +10,7 @@ use ibis_core::settings::{LibrarySetting, ZoteroLibraries, ZoteroLibrary};
 pub(crate) enum Source {
     File(PathBuf),
     Zotero(ZoteroLibraries),
+    Samples(PathBuf),
 }
 
 impl From<PathBuf> for Source {
@@ -28,16 +29,18 @@ impl From<LibrarySetting> for Source {
 }
 
 impl Source {
-    pub(super) fn setting(&self) -> LibrarySetting {
+    pub(super) fn setting(&self) -> Option<LibrarySetting> {
         match self {
-            Source::File(path) => LibrarySetting::Bibtex(path.clone()),
-            Source::Zotero(libraries) => LibrarySetting::Zotero(libraries.clone()),
+            Source::File(path) => Some(LibrarySetting::Bibtex(path.clone())),
+            Source::Zotero(libraries) => Some(LibrarySetting::Zotero(libraries.clone())),
+            Source::Samples(_) => None,
         }
     }
 
     /// The name shown to the user: a file name only, never a full path.
     pub(super) fn name(&self) -> Option<String> {
         match self {
+            Source::Samples(_) => Some("Sample references".to_string()),
             Source::File(path) => path.file_name().map(|n| n.to_string_lossy().into_owned()),
             Source::Zotero(libraries) => Some(match libraries.libraries() {
                 [ZoteroLibrary::User] => "Zotero library".to_string(),
@@ -62,8 +65,8 @@ mod tests {
             .unwrap_or_else(|| panic!("valid choice"));
         let source = Source::Zotero(chosen.clone());
         assert_eq!(source.name().as_deref(), Some("2 Zotero libraries"));
-        assert_eq!(source.setting(), LibrarySetting::Zotero(chosen.clone()));
-        assert_eq!(Source::from(source.setting()), source);
+        assert_eq!(source.setting(), Some(LibrarySetting::Zotero(chosen.clone())));
+        assert_eq!(source.setting().map(Source::from), Some(source.clone()));
 
         let library = Mutex::new(Library::default());
         let requests = LoadRequests::default();

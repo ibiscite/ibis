@@ -11,6 +11,103 @@ fn case() -> Result<GoldenCase, Box<dyn std::error::Error>> {
         "../../../fixtures/cases/02-pandoc.json"
     ))?)
 }
+
+#[test]
+fn sample_provenance_labels_every_representation_and_binds_the_preview_hash() -> Result<(), Box<dyn std::error::Error>>
+{
+    let mut case = case()?;
+    let engine = Engine::from_snapshot(Arc::new(case.library.clone()));
+    for output in [case.request.output.clone(), OutputSpec::Csl { style: "apa".into() }] {
+        case.request.output = output;
+        let original = engine
+            .prepare_citation(&case.request, &Cancellation::default())
+            .map_err(|_| "prepare")?;
+        let unmarked = original.result().clone();
+        let sample = original.mark_sample().map_err(|_| "mark sample")?;
+        let result = sample.result().clone();
+        assert_eq!(result.text, format!("{} [Sample]", unmarked.text));
+        assert_eq!(result.html.is_some(), unmarked.html.is_some());
+        assert_eq!(result.rtf.is_some(), unmarked.rtf.is_some());
+        assert!(result.content_matches_hash());
+        assert_ne!(result.content_hash, unmarked.content_hash);
+        assert!(matches!(
+            engine.commit_citation(&sample, &unmarked.content_hash, |_| panic!("unmarked preview")),
+            Err(CitationCommitError::PreviewChanged)
+        ));
+        engine.commit_citation(&sample, &result.content_hash, |content| {
+            assert_eq!(content.text, result.text);
+            if let Some(html) = content.html {
+                assert!(html.ends_with("<span> [Sample]</span>"), "visible HTML marker");
+            }
+            if let Some(rtf) = content.rtf {
+                assert!(rtf.starts_with("{\\rtf1"));
+                assert!(
+                    rtf.ends_with(" {\\plain [Sample]}}"),
+                    "visible RTF marker inside the root group"
+                );
+            }
+        })?;
+        let display_text: String = result
+            .display
+            .nodes
+            .iter()
+            .flat_map(|node| &node.content)
+            .map(|run| run.text.as_str())
+            .collect();
+        assert!(display_text.ends_with(" [Sample]"));
+        let sample = sample.mark_sample().map_err(|_| "repeat marker")?;
+        assert_eq!(sample.result(), &result, "provenance is applied once");
+        let normal = engine
+            .prepare_citation(&case.request, &Cancellation::default())
+            .map_err(|_| "normal citation")?;
+        assert_eq!(
+            normal.result(),
+            &unmarked,
+            "marking a prepared citation never changes the library"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn labelled_samples_keep_the_source_change_guard_and_cannot_label_a_refusal() -> Result<(), Box<dyn std::error::Error>>
+{
+    let mut case = case()?;
+    let engine = Engine::from_snapshot(Arc::new(case.library.clone()));
+    let sample = engine
+        .prepare_citation(&case.request, &Cancellation::default())
+        .map_err(|_| "prepare")?
+        .mark_sample()
+        .map_err(|_| "mark sample")?;
+    let LibraryObject::Record(mut record) = case.library.objects()[0].object.clone() else {
+        return Err("record".into());
+    };
+    record.csl.insert("title".into(), json!("Changed invented title"));
+    engine
+        .publish_library(
+            record.id.library.clone(),
+            Arc::new(Snapshot::new(vec![LibraryObject::Record(record)])?),
+        )
+        .map_err(|_| "publish")?;
+    assert!(matches!(
+        engine.commit_citation(&sample, &sample.result().content_hash, |_| panic!("changed source")),
+        Err(CitationCommitError::Refused {
+            item: 0,
+            error: CitationError::ChangedItem
+        })
+    ));
+    case.request.output = OutputSpec::Csl {
+        style: "invented-unavailable-style".into(),
+    };
+    let refused = engine
+        .prepare_citation(&case.request, &Cancellation::default())
+        .map_err(|_| "prepare refusal")?;
+    assert_eq!(
+        refused.mark_sample().err().ok_or("refusal labelled")?.code,
+        ErrorCode::BadInput
+    );
+    Ok(())
+}
 #[test]
 fn changed_pick_never_reaches_the_native_commit() -> Result<(), Box<dyn std::error::Error>> {
     let mut case = case()?;
