@@ -1,12 +1,12 @@
 // The picker's saved formatting and view preferences.
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type * as nativeApi from "../../api";
 import type { CopyFormat, Density, PickerPreferences } from "../../api";
+import { PreferencePatchQueue } from "../../preferencePatchQueue";
 import { styleOf, type Choice } from "./choice";
 import type { Operation } from "./Notices";
 
 const DENSITIES: Density[] = ["compact", "comfortable", "spacious"];
-const SAVE_BEFORE_QUIT_MS = 2_000;
 
 type PreferencesApi = Pick<typeof nativeApi, "copyFormat" | "pickerPreferences" | "setPickerPreferences" | "quit">;
 
@@ -22,76 +22,51 @@ export function usePickerPreferences(
   const [ready, setReady] = useState(false);
   const [available, setAvailable] = useState(false);
   const [format, setFormat] = useState<Choice>("pandoc");
-  // Saved preferences, once read; choices made before that wait in `pending`
-  // so a slow read never overwrites them and a failed read never resets the
-  // file to defaults.
   const [density, setDensity] = useState<Density>("comfortable");
   const [largerText, setLargerText] = useState(false);
   const [searchMark, setSearchMark] = useState(false);
   const [showPastePreview, setShowPastePreview] = useState(true);
   const previewVisibility = useRef(true);
-  const savedPreferences = useRef<PickerPreferences | null>(null);
-  const pending = useRef<Partial<PickerPreferences>>({});
-  const pendingRevision = useRef<Partial<Record<keyof PickerPreferences, number>>>({});
-  const pendingKeyFormat = useRef<{ format: CopyFormat; saved: boolean } | null>(null);
-  const preferenceReads = useRef(0);
-  const preferenceChanges = useRef(0);
-  const preferenceSave = useRef<Promise<unknown>>(Promise.resolve());
-  const preferenceLoad = useRef<Promise<void>>(Promise.resolve());
-  const applyView = (value: PickerPreferences) => {
+  const [queue] = useState(() => new PreferencePatchQueue({
+    read: async () => {
+      const [key, saved] = await Promise.allSettled([copyFormat(), pickerPreferences()]);
+      return {
+        preferences: saved.status === "fulfilled" ? saved.value : null,
+        copy_format: key.status === "fulfilled" ? key.value : undefined,
+        formatFailed: key.status === "rejected",
+      };
+    },
+    write: setPickerPreferences,
+  }, { readAfterWrites: true }));
+  const applyView = useCallback((value: PickerPreferences) => {
     setDensity(value.density);
     setLargerText(value.larger_text);
     setSearchMark(value.search_mark ?? false);
     previewVisibility.current = value.show_paste_preview;
     setShowPastePreview(value.show_paste_preview);
-  };
-  const savePreferences = (change: Partial<PickerPreferences>, keyFormat: CopyFormat | null = null) => {
-    const revision = ++preferenceChanges.current;
-    const reading = preferenceReads.current;
-    if (keyFormat !== null) pendingKeyFormat.current = { format: keyFormat, saved: false };
-    pending.current = { ...pending.current, ...change };
-    for (const key of Object.keys(change) as (keyof PickerPreferences)[]) pendingRevision.current[key] = revision;
-    if (!savedPreferences.current) return;
-    // Send only explicit changes; a stale window never rewrites unrelated choices.
-    const queued = { ...pending.current };
-    const queuedRevision = { ...pendingRevision.current };
-    const deliberate = new Set(Object.keys(change));
-    const chosenKey = pendingKeyFormat.current;
-    const save = preferenceSave.current.catch(() => undefined)
-      .then(async () => {
-        // Earlier writes may have acknowledged fields while this operation waited.
-        const patch = Object.fromEntries(Object.entries(queued).filter(([key]) =>
-          deliberate.has(key) || pendingRevision.current[key as keyof PickerPreferences] === queuedRevision[key as keyof PickerPreferences]));
-        const saved = await setPickerPreferences(patch, chosenKey && !chosenKey.saved ? chosenKey.format : null);
-        return { saved, patch };
-      })
-      .then(({ saved, patch }) => {
-        for (const key of Object.keys(patch) as (keyof PickerPreferences)[]) {
-          if (pendingRevision.current[key] === queuedRevision[key]) {
-            delete pending.current[key];
-            delete pendingRevision.current[key];
-          }
-        }
-        if (chosenKey) chosenKey.saved = true;
-        if (pendingKeyFormat.current === chosenKey) pendingKeyFormat.current = null;
-        if (revision !== preferenceChanges.current || reading !== preferenceReads.current) return;
-        savedPreferences.current = saved.preferences;
-        setAvailable(true);
-        applyView(saved.preferences);
-        setFormat(saved.preferences.citation_style ? `style:${saved.preferences.citation_style}` : saved.copy_format);
-      });
-    preferenceSave.current = save;
-    void perform("preferences", () => save);
-  };
+  }, []);
+  useEffect(() => queue.subscribe((event) => {
+    if (event.type === "saving") {
+      void perform("preferences", () => event.promise);
+    } else if (event.type === "saved") {
+      setAvailable(true);
+      applyView(event.value.preferences);
+      setFormat(event.value.preferences.citation_style ? `style:${event.value.preferences.citation_style}` : event.value.copy_format);
+    } else if (event.type === "read") {
+      const { preferences: saved, copy_format: key, formatFailed } = event.value;
+      setReady(true);
+      if (formatFailed) report("format");
+      setAvailable(saved !== null);
+      if (saved) applyView(saved);
+      else report("preferences");
+      if (event.pendingStyle) return;
+      if (saved?.citation_style && styles) setFormat(`style:${saved.citation_style}`);
+      else if (key) setFormat(key);
+    }
+  }), [queue, styles, report, perform, applyView]);
+  const savePreferences = (change: Partial<PickerPreferences>, keyFormat: CopyFormat | null = null) => queue.change(change, keyFormat);
   const quitAfterSaving = async () => {
-    // Drain choices already made, including ones awaiting the initial read.
-    // A failed or stuck settings command must never trap someone in the app.
-    let timer: number | undefined;
-    await Promise.race([
-      preferenceLoad.current.then(() => preferenceSave.current).catch(() => undefined),
-      new Promise<void>((resolve) => { timer = window.setTimeout(resolve, SAVE_BEFORE_QUIT_MS); }),
-    ]);
-    window.clearTimeout(timer);
+    await queue.finishSaving();
     await quit();
   };
   const chooseFormat = (choice: Choice) => {
@@ -128,34 +103,7 @@ export function usePickerPreferences(
   }, [density, largerText]);
   /** Reads the saved key format and preferences. The picker calls this from its
    * mount effect, after the library status, so the calls keep their order. */
-  const loadPreferences = (mounted: () => boolean) => {
-    const request = ++preferenceReads.current;
-    const revision = preferenceChanges.current;
-    const loadedBefore = savedPreferences.current !== null;
-    // A notification cannot read behind this window's own outstanding writes.
-    preferenceLoad.current = preferenceSave.current.catch(() => undefined)
-      .then(() => Promise.allSettled([copyFormat(), pickerPreferences()])).then(([key, saved]) => {
-      if (!mounted() || request !== preferenceReads.current || loadedBefore && revision !== preferenceChanges.current) return;
-      setReady(true);
-      if (key.status === "rejected") report("format");
-      if (saved.status === "rejected") {
-        setAvailable(false);
-        report("preferences");
-        if (pending.current.citation_style === undefined && key.status === "fulfilled") setFormat(key.value);
-        return;
-      }
-      setAvailable(true);
-      const loaded = { ...saved.value, ...pending.current } as PickerPreferences;
-      savedPreferences.current = saved.value;
-      applyView(loaded);
-      const chosen = pending.current.citation_style !== undefined;
-      if (Object.keys(pending.current).length > 0) savePreferences({});
-      if (chosen) return;
-      const style = saved.value.citation_style;
-      if (style && styles) setFormat(`style:${style}`);
-      else if (key.status === "fulfilled") setFormat(key.value);
-    });
-  };
+  const loadPreferences = (mounted: () => boolean) => { void queue.load(mounted); };
 
   return { ready, available, format, density, largerText, searchMark, showPastePreview, chooseFormat, changeDensity, toggleLargerText, toggleSearchMark, togglePastePreview, quitAfterSaving, loadPreferences };
 }

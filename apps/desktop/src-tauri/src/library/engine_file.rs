@@ -22,6 +22,7 @@ use std::sync::{
 static TICKETS: AtomicU64 = AtomicU64::new(1);
 pub(crate) struct FileLibrary {
     pub(super) engine: Engine,
+    sample: bool,
     prepared: Mutex<Option<(String, PreparedCitation)>>,
     latest_preview: Mutex<(u64, Cancellation)>,
     observing: AtomicBool,
@@ -52,7 +53,21 @@ pub(crate) struct FilePreview {
 }
 impl FileLibrary {
     pub(crate) fn open(path: &Path) -> Result<Self, super::LoadError> {
-        let engine = Engine::new().map_err(|_| super::LoadError::Stopped)?;
+        Self::open_file(path, Engine::new().map_err(|_| super::LoadError::Stopped)?)
+    }
+
+    pub(super) fn open_samples(path: &Path) -> Result<Self, super::LoadError> {
+        let mut file = Self::open_file(
+            path,
+            Engine::new()
+                .map_err(|_| super::LoadError::Stopped)?
+                .without_file_watches(),
+        )?;
+        file.sample = true;
+        Ok(file)
+    }
+
+    fn open_file(path: &Path, engine: Engine) -> Result<Self, super::LoadError> {
         engine
             .dispatch(
                 Method::Libraries,
@@ -71,6 +86,7 @@ impl FileLibrary {
     fn from_engine(engine: Engine) -> Self {
         Self {
             engine,
+            sample: false,
             prepared: Mutex::new(None),
             latest_preview: Mutex::new((0, Cancellation::default())),
             observing: AtomicBool::new(false),
@@ -290,6 +306,7 @@ impl FileLibrary {
                     if let Some(source) = sources.get(record.id.library.as_str()) {
                         result.source.clone_from(source);
                     }
+                    result.sample = self.sample;
                     Some(result)
                 }
                 _ => None,
@@ -438,6 +455,11 @@ impl FileLibrary {
         record.citation_key().ok().flatten().map(str::to_owned)
     }
     fn publish_preview(&self, reservation: u64, citation: PreparedCitation) -> Result<FilePreview, CommandError> {
+        let citation = if self.sample {
+            citation.mark_sample().map_err(CommandError::from)?
+        } else {
+            citation
+        };
         let mut slot = self
             .prepared
             .lock()

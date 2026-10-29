@@ -1,0 +1,34 @@
+[
+  {
+    "id": "sample-lanterns",
+    "citation-key": "vale2024lanterns",
+    "type": "article-journal",
+    "title": "Lantern gardens and the rhythm of imaginary cities",
+    "author": [{ "family": "Vale", "given": "Mira" }],
+    "issued": { "date-parts": [[2024]] },
+    "container-title": "Journal of Invented Landscapes",
+    "volume": "8",
+    "issue": "2",
+    "page": "12-24"
+  },
+  {
+    "id": "sample-clouds",
+    "citation-key": "fen2023clouds",
+    "type": "book",
+    "title": "A field guide to clockwork clouds",
+    "author": [{ "family": "Fen", "given": "Tavi" }],
+    "issued": { "date-parts": [[2023]] },
+    "publisher": "Imaginary Orchard Press"
+  },
+  {
+    "id": "sample-maps",
+    "citation-key": "reed2025maps",
+    "type": "article-journal",
+    "title": "Mapping the quiet islands of an invented sea",
+    "author": [{ "family": "Reed", "given": "Neri" }, { "family": "Vale", "given": "Mira" }],
+    "issued": { "date-parts": [[2025]] },
+    "container-title": "Review of Fictional Cartography",
+    "volume": "3",
+    "page": "40-48"
+  }
+]

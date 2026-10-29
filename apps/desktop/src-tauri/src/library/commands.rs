@@ -6,7 +6,7 @@ use ibis_core::settings::{ZoteroLibraries, ZoteroLibrary};
 use ibis_core::zotero::libraries;
 use ibis_zotero_local::LocalZotero;
 use serde::Serialize;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State, path::BaseDirectory};
 
 use super::search::{SearchQuery, SearchReply, SearchRequests};
 use super::source::Source;
@@ -28,6 +28,23 @@ pub(crate) fn choose_library(app: AppHandle) {
 #[specta::specta]
 pub(crate) fn use_zotero(app: AppHandle) {
     use_zotero_library(&app);
+}
+
+/// Samples are an explicit, temporary source, never a saved library preference.
+#[tauri::command]
+#[specta::specta]
+pub(crate) fn use_sample_library(app: AppHandle, enabled: bool) -> Result<(), String> {
+    if enabled {
+        let path = app
+            .path()
+            .resolve("resources/samples.csljson", BaseDirectory::Resource)
+            .map_err(|_| "The sample references could not be found".to_string())?;
+        start_open(&app, Source::Samples(path), false);
+    } else {
+        super::state::leave_samples(&app.state(), &app.state());
+        super::tasks::publish_current(&app);
+    }
+    Ok(())
 }
 
 /// Read these Zotero libraries together from now on, in this order; the

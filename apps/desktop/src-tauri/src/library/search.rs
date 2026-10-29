@@ -60,6 +60,9 @@ impl PreviewRequests {
 
 #[derive(Serialize, specta::Type)]
 pub(crate) struct SearchResult {
+    /// This row comes from the bundled invented library, including while a replacement search is pending.
+    #[specta(optional)]
+    pub(super) sample: bool,
     /// Revision captured with the index used for this result.
     pub(super) revision: String,
     /// Identity of the record; selection and copying use this, not the key.
@@ -138,6 +141,7 @@ impl SearchResult {
             .find(|text| !text.is_empty())
             .map(|text| capped(text, CONTAINER_LIMIT));
         Self {
+            sample: false,
             revision: revision.into(),
             id: serde_json::json!(&record.id),
             source: record.id.library.as_str().to_owned(),

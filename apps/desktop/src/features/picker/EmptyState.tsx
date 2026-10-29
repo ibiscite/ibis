@@ -105,7 +105,7 @@ export function EmptyState({ library, query, narrowed, onChooseLibrary, onClearS
     })}</div>;
   }
   const title = query ? pickerText.noMatches : pickerText.typeToFind;
-  const description = query ? pickerText.noMatchesHint : pickerText.typeToFindHint;
+  const description = query ? pickerText.noMatchesHint : library.sample ? setupText.sampleSearchHelp : pickerText.typeToFindHint;
   return (
     <div className="empty-state empty-template">
       <svg className="empty-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">

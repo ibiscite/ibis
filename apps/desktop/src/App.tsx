@@ -2,7 +2,7 @@ import * as nativeApi from "./api";
 import { copiedNoticeText, keyText, libraryMessages, operationFailures as FAILURE_MESSAGES, pickerText } from "./messages";
 import { KEY_TABLE, type KeyBinding } from "./keys";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { LibrarySetup } from "./LibrarySetup";
+import { LibrarySetup, SampleLibraryExit } from "./LibrarySetup";
 import { focusChoices } from "./ui/ChoiceList";
 import { zoteroLibraryNames } from "./LibraryStatusLine";
 import { usePointerSelection } from "./pointerSelection";
@@ -51,7 +51,7 @@ const noSelection = new Map<string, CitationReference>();
 export type PickerApi = Pick<typeof nativeApi,
   "chooseLibrary" | "useZotero" | "libraryStatus" | "reloadLibrary" | "previewFileCitation" | "copyFileCitation" | "copyFormat" | "pickerPreferences" | "setPickerPreferences" |
   "hidePicker" | "pickerVisible" | "setPinned" | "onLibraryChanged" | "onPickerShown" | "onPickerHidden" | "quit" | "search" | "shortcutStatus"> &
-  Partial<Pick<typeof nativeApi, "useZoteroLibraries" | "zoteroGroups" | "pickerDestination" | "rememberAppOutput" | "forgetAppOutputs" | "fitPicker" | "findSources" | "openFoundLibrary" | "rowContext" | "showCopiedNotice" | "loginItem" | "setLoginItem" | "onUpdateProgress" | "updateChecks" | "setUpdateChecks" | "onUpdateChecks" | "updateAvailable" | "onUpdateAvailable" | "checkForUpdates" | "onShortcutStatus" | "openSettings" | "onPreferencesChanged">>;
+  Partial<Pick<typeof nativeApi, "useSampleLibrary" | "useZoteroLibraries" | "zoteroGroups" | "pickerDestination" | "rememberAppOutput" | "forgetAppOutputs" | "fitPicker" | "findSources" | "openFoundLibrary" | "rowContext" | "showCopiedNotice" | "loginItem" | "setLoginItem" | "onUpdateProgress" | "updateChecks" | "setUpdateChecks" | "onUpdateChecks" | "updateAvailable" | "onUpdateAvailable" | "checkForUpdates" | "onShortcutStatus" | "openSettings" | "onPreferencesChanged">>;
 
 export type PickerPreview = { query?: string; copied?: Copied };
 
@@ -62,8 +62,8 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     useZoteroLibraries: chooseZoteroLibraries, zoteroGroups } = api;
   const { rowContext, findSources, openFoundLibrary, showCopiedNotice, loginItem, setLoginItem, fitPicker, updateChecks, setUpdateChecks, onUpdateChecks, updateAvailable, onUpdateAvailable, checkForUpdates, onShortcutStatus, openSettings, onPreferencesChanged } = api;
   const [updateProgress, setUpdateProgress] = useState<nativeApi.UpdateProgress | null>(null);
-  const setupApi = useMemo(() => ({ chooseLibrary, useZotero, findSources, openFoundLibrary }),
-    [chooseLibrary, useZotero, findSources, openFoundLibrary]);
+  const setupApi = useMemo(() => ({ chooseLibrary, useZotero, useSampleLibrary: api.useSampleLibrary, findSources, openFoundLibrary }),
+    [chooseLibrary, useZotero, api.useSampleLibrary, findSources, openFoundLibrary]);
   const [query, setQuery] = useState(preview?.query ?? "");
   const [interpretLocators, setInterpretLocators] = useState(true);
   const [active, setActive] = useState(0);
@@ -187,6 +187,17 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   }, [setupDone, setFailures]);
   // A copy (Enter or a click) still waiting for its preview must never copy once the user has left.
   const [pendingCopy, setPendingCopy] = useState<{ choice: string | null; selection: typeof selected; queryKey: string; format: Choice | null; output: ReturnType<typeof destination.copyToken>; question?: "open" | "answered" } | null>(null);
+  const sample = Boolean(library?.sample);
+  const previousSample = useRef(sample);
+  useEffect(() => {
+    if (previousSample.current === sample) return;
+    previousSample.current = sample;
+    setSelected(new Map());
+    setPendingCopy(null);
+    setCopied(null);
+    setCopyError(null);
+    input.current?.focus();
+  }, [sample]);
   const requestCopy = (choice: string | null) => {
     if (hiddenAt.current === null) setPendingCopy({ choice, selection: selected, queryKey,
       format: destination.ready && preferences.ready ? format : null, output: destination.copyToken() });
@@ -244,19 +255,41 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     let acceptInitialStatus = true;
     let mounted = true;
     let visibilityEvents = 0;
+    let focusAfterActivation = false;
+    let searchAtShow = "";
     const subscriptionFailure = (operation: Operation) => {
       if (mounted) report(operation);
       else console.error(FAILURE_MESSAGES[operation]);
       return () => undefined;
     };
+    const selectSearch = () => {
+      input.current?.focus();
+      input.current?.select();
+    };
+    const activated = (event: FocusEvent) => {
+      if (event.target !== event.currentTarget || !focusAfterActivation) return;
+      focusAfterActivation = false;
+      const search = input.current;
+      if (!search) return;
+      search.focus();
+      if (search.value === searchAtShow) search.select();
+      else search.setSelectionRange(search.value.length, search.value.length);
+    };
+    window.addEventListener("focus", activated);
     const focusSearch = () => {
+      searchAtShow = input.current?.value ?? "";
       resetPointer();
       copyVisibility.current += 1;
       pickerShows.current += 1;
-      if (!permissionDetour.current && hiddenAt.current !== null && performance.now() - hiddenAt.current > KEEP_SEARCH_MS) clearSearch();
-      else if (hiddenAt.current !== null && escapedQuery.current !== null) {
+      if (!permissionDetour.current && hiddenAt.current !== null && performance.now() - hiddenAt.current > KEEP_SEARCH_MS) {
+        clearSearch();
+        searchAtShow = "";
+      } else if (hiddenAt.current !== null && escapedQuery.current !== null) {
         const escaped = escapedQuery.current;
         escapedQuery.current = null;
+        // Compare activation against the restored query; React updates the
+        // input after this handler.
+        searchAtShow ||= escaped.text;
         setQuery((now) => (now === "" ? escaped.text : now));
         setInterpretLocators(escaped.interpretLocators);
         setRestored((n) => n + 1);
@@ -265,13 +298,16 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       destination.read(true, permissionDetour.current);
       readLoginItem();
       readShortcut();
-      input.current?.focus();
-      input.current?.select();
+      // On X11, showing can precede native activation. WebKit restores the
+      // previous control then, so finish Search focus once activation arrives.
+      focusAfterActivation = !document.hasFocus();
+      selectSearch();
     };
     // Every hide is reported, including the native one when focus moves away;
     // a monotonic clock keeps clock changes from clearing or keeping a search.
     const unlistenHidden = onPickerHidden(() => {
       visibilityEvents += 1;
+      focusAfterActivation = false;
       // A hidden native window may not throttle the web view: pause looping animations.
       document.documentElement.dataset.pickerHidden = "";
       resetPointer();
@@ -315,6 +351,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     return () => {
       acceptInitialStatus = false;
       mounted = false;
+      window.removeEventListener("focus", activated);
       copyVisibility.current += 1;
       void unlistenHidden.then((stop) => stop()).catch(() => console.error("Picker event cleanup failed."));
       void unlisten.then((stop) => stop()).catch(() => console.error("Picker event cleanup failed."));
@@ -578,7 +615,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   };
   // The keys overlay lists the global shortcut too, when it works.
   const bindings: readonly KeyBinding[] = shortcut?.registered
-    ? [...KEY_TABLE, { region: "system", action: "open", keys: [shortcut.shortcut] }]
+    ? [...KEY_TABLE, { region: "system", action: "open", keys: [shortcut.shortcut], displayLabel: shortcut.desktop ? shortcut.shortcut : undefined }]
     : KEY_TABLE;
   // What Enter does now, from the same state the copy uses; null when it does nothing.
   // A refused or stale engine preview cannot be copied.
@@ -665,6 +702,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       {shortcut?.error && (
         <p role="status">
           {pickerText.shortcutError(shortcut.registered, shortcut.shortcut, shortcut.error)}
+          {shortcut.desktop && ` ${shortcut.desktop.guidance}`}
         </p>
       )}
       <PickerHeader
@@ -793,6 +831,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
             input.current?.focus();
           }} />}
         {!busy && emptyState}
+        {library?.sample && <SampleLibraryExit useSampleLibrary={api.useSampleLibrary} perform={perform} />}
       </div>
       </div>
       {/* Keep the selection live region mounted when choices remove citation controls. */}

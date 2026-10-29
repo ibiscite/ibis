@@ -290,7 +290,7 @@ fn empty_group_membership_is_installed_even_when_records_are_unchanged() -> Resu
         assert_eq!(library.source, Some(source));
         assert_eq!(
             library.source.as_ref().ok_or("source")?.setting(),
-            ibis_core::settings::LibrarySetting::Zotero(chosen.clone())
+            Some(ibis_core::settings::LibrarySetting::Zotero(chosen.clone()))
         );
         let status = crate::library::status::status(&library);
         assert_eq!(status.zotero_libraries, chosen.libraries());

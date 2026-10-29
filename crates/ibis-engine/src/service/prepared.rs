@@ -12,6 +12,7 @@ pub struct PreparedCitation {
     snapshot: Arc<Snapshot>,
     request: CitationRequest,
     result: CitationResult,
+    sample: bool,
 }
 impl PreparedCitation {
     pub fn result(&self) -> &CitationResult {
@@ -19,6 +20,58 @@ impl PreparedCitation {
     }
     pub fn into_result(self) -> CitationResult {
         self.result
+    }
+
+    /// Bind sample provenance to every representation before preview or commit.
+    /// The marker is fixed text, never source-provided markup. The original
+    /// request and source validation stay attached to the marked result.
+    pub fn mark_sample(mut self) -> Result<Self, EngineError> {
+        if self.sample {
+            return Ok(self);
+        }
+        if self.result.copy_content(self.request.items.len()).is_none() {
+            return Err(error(ErrorCode::BadInput));
+        }
+        let CitationResult {
+            text,
+            html,
+            rtf,
+            mut display,
+            outcomes,
+            losses,
+            notices,
+            ..
+        } = self.result;
+        let rtf = rtf
+            .map(|rtf| {
+                // The formatter owns the RTF document. Keep its header and content,
+                // and put a plain, visible marker inside its final root brace.
+                let rtf = rtf.trim_end();
+                let body = rtf
+                    .strip_suffix('}')
+                    .filter(|_| rtf.starts_with("{\\rtf1"))
+                    .ok_or_else(|| error(ErrorCode::Internal))?;
+                Ok(format!("{body} {{\\plain [Sample]}}}}"))
+            })
+            .transpose()?;
+        display.nodes.push(DisplayNode {
+            item: None,
+            content: vec![TextRun {
+                text: " [Sample]".into(),
+                ..TextRun::default()
+            }],
+        });
+        self.result = CitationResult::new(
+            format!("{text} [Sample]"),
+            html.map(|html| format!("{html}<span> [Sample]</span>")),
+            rtf,
+            display,
+            outcomes,
+            losses,
+            notices,
+        );
+        self.sample = true;
+        Ok(self)
     }
 }
 #[derive(Debug, thiserror::Error)]
@@ -65,6 +118,7 @@ impl Engine {
             snapshot,
             request: request.clone(),
             result,
+            sample: false,
         })
     }
     /// Caller holds its native source/intent guard; callback must not reenter the

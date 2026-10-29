@@ -74,6 +74,22 @@ pub(super) fn dialog_path_error(library: &mut Library, requests: &LoadRequests) 
     library.error = Some(LoadError::NotLocal);
 }
 
+/// Leave a sample session without touching the saved real-library choice.
+pub(super) fn leave_samples(library: &Mutex<Library>, requests: &LoadRequests) {
+    let Ok(mut library) = library.lock() else { return };
+    if !matches!(library.source, Some(Source::Samples(_))) && !matches!(library.requested, Some(Source::Samples(_))) {
+        return;
+    }
+    requests.0.fetch_add(1, Ordering::SeqCst);
+    if let Some(file) = &library.file {
+        file.invalidate();
+    }
+    *library = Library {
+        settings_notice: library.settings_notice.take(),
+        ..Library::default()
+    };
+}
+
 /// Make a loaded library current, or record why it failed to open. Returns
 /// `None` when a newer request has been made since this one.
 pub(crate) fn install(
