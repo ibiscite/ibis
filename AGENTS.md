@@ -52,6 +52,8 @@ node scripts/pr-lint.mjs --title "fix: explain the change"
 
 2026-10-29: Unchanged release notes can leave Release Please on old main; merge final main and check every workspace lock version before release.
 
+2026-10-29: Control generated sandboxed Mac test apps by verified PID; CUA app lookups can hang or relaunch them, so enforce helper-process deadlines.
+
 ## Brief for an implementing agent
 
 ```text
