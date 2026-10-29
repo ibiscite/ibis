@@ -269,7 +269,8 @@ fn press(key: co::VK, up: bool) -> w::HwKbMouse {
 mod tests {
     use super::*;
     use crate::paste::notepad_test::{
-        EditorIdentity, Failure, Reading, Session, Stage, activate, qualify_paste, wait_for,
+        Candidate, CandidateKind, EditorIdentity, Failure, Reading, Session, Stage, activate, qualify_paste,
+        select_document, wait_for,
     };
     use std::process::Command;
 
@@ -388,36 +389,72 @@ mod tests {
                 let automation = uia(uiautomation::UIAutomation::new(), Stage::Automation)?;
                 let root = uia(automation.element_from_handle(hwnd.into()), Stage::Window)?;
                 let walker = uia(automation.create_tree_walker(), Stage::Editor)?;
-                let parent_root = root.clone();
-                let compare = automation.clone();
-                let editor = uia(
+                let fields = uia(
                     automation
                         .create_matcher()
-                        .from(root)
+                        .from(root.clone())
                         .depth(20)
                         .timeout(0)
                         .filter_fn(Box::new(move |field: &uiautomation::UIElement| {
-                            // Modern and classic Notepad editors; exclude search
-                            // dialogs, inactive restored tabs and nested Edit boxes.
+                            // Inspect only active supported editor classes. The
+                            // shared selector still requires document semantics
+                            // and refuses multiple eligible candidates.
                             if field.get_process_id()? != pid || field.is_offscreen()? || !field.is_enabled()? {
                                 return Ok(false);
                             }
-                            match field.get_classname()?.as_str() {
-                                "RichEditD2DPT" => Ok(true),
-                                "Edit" => compare.compare_elements(&walker.get_parent(field)?, &parent_root),
-                                _ => Ok(false),
-                            }
+                            Ok(matches!(field.get_classname()?.as_str(), "RichEditD2DPT" | "Edit"))
                         }))
-                        .find_first(),
+                        .find_all(),
                     Stage::Editor,
                 )?;
-                let owner = identity(&editor)?;
+                if fields.len() > 128 {
+                    return Err(Failure::new(Stage::Editor));
+                }
+                let candidates = fields
+                    .iter()
+                    .map(|field| {
+                        use uiautomation::types::ControlType;
+                        let kind = match uia(field.get_classname(), Stage::Editor)?.as_str() {
+                            "RichEditD2DPT"
+                                if uia(field.get_control_type(), Stage::Editor)? == ControlType::Document =>
+                            {
+                                CandidateKind::ModernDocument
+                            }
+                            "Edit"
+                                if uia(field.get_control_type(), Stage::Editor)? == ControlType::Edit
+                                    && uia(
+                                        automation
+                                            .compare_elements(&uia(walker.get_parent(field), Stage::Editor)?, &root),
+                                        Stage::Editor,
+                                    )? =>
+                            {
+                                CandidateKind::ClassicRootEdit
+                            }
+                            _ => CandidateKind::Other,
+                        };
+                        let editor = if matches!(kind, CandidateKind::Other) {
+                            None
+                        } else {
+                            Some(identity(field)?)
+                        };
+                        Ok(Candidate {
+                            kind: Some(kind),
+                            editor,
+                        })
+                    })
+                    .collect::<Result<Vec<_>, Failure>>()?;
+                let owner = select_document(&candidates)?;
+                let selected = candidates
+                    .iter()
+                    .position(|candidate| candidate.editor.as_ref() == Some(&owner))
+                    .ok_or(Failure::new(Stage::Editor))?;
+                let editor = &fields[selected];
                 if owner.process != pid {
                     return Err(Failure::new(Stage::Identity));
                 }
                 uia(editor.set_focus(), Stage::Focus)?;
                 let focused = uia(automation.get_focused_element(), Stage::Focus)?;
-                if !uia(automation.compare_elements(&editor, &focused), Stage::Focus)? || identity(&focused)? != owner {
+                if !uia(automation.compare_elements(editor, &focused), Stage::Focus)? || identity(&focused)? != owner {
                     return Err(Failure {
                         focused: Some(false),
                         ..Failure::new(Stage::Focus)

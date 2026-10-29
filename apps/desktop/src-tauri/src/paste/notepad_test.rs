@@ -61,6 +61,36 @@ pub(crate) struct Reading {
     pub text: String,
 }
 
+#[derive(Clone, Copy)]
+pub(crate) enum CandidateKind {
+    ModernDocument,
+    ClassicRootEdit,
+    Other,
+}
+
+pub(crate) struct Candidate {
+    pub kind: Option<CandidateKind>,
+    pub editor: Option<EditorIdentity>,
+}
+
+/// Native discovery supplies positive semantic/structural evidence. A first
+/// text-field match is not itself a document identity.
+pub(crate) fn select_document(candidates: &[Candidate]) -> Result<EditorIdentity, Failure> {
+    let mut selected = None;
+    for candidate in candidates {
+        match candidate.kind {
+            Some(CandidateKind::Other) => continue,
+            None => return Err(Failure::new(Stage::Editor)),
+            Some(CandidateKind::ModernDocument | CandidateKind::ClassicRootEdit) => {}
+        }
+        let editor = candidate.editor.as_ref().ok_or(Failure::new(Stage::Identity))?;
+        if selected.replace(editor.clone()).is_some() {
+            return Err(Failure::new(Stage::Editor));
+        }
+    }
+    selected.ok_or(Failure::new(Stage::Editor))
+}
+
 /// The real Windows test and portable consumer regressions share this exact
 /// sequence. Readbacks are never inferred from successful input injection.
 pub(crate) fn qualify_paste(
@@ -84,7 +114,7 @@ pub(crate) fn qualify_paste(
     let await_text = |wanted: &str, stage| {
         let mut last = Failure::new(stage);
         wait_for(limit, || match checked() {
-            Ok(text) if text.trim() == wanted => Some(()),
+            Ok(text) if text == wanted => Some(()),
             Ok(_) => {
                 last = Failure {
                     owned: Some(true),
@@ -104,7 +134,7 @@ pub(crate) fn qualify_paste(
     prepare()?;
     let refused = std::cell::Cell::new(None);
     if !paste(&|| match checked() {
-        Ok(text) if text.trim().is_empty() => true,
+        Ok(text) if text.is_empty() => true,
         Ok(_) => {
             refused.set(Some(Failure {
                 owned: Some(true),
@@ -386,6 +416,135 @@ mod tests {
         assert_eq!(outcome, Err(failure));
         assert_eq!(&*document.borrow(), "synthetic citation");
         assert_eq!(sends.get(), 1);
+    }
+
+    #[test]
+    fn qualification_refuses_preexisting_or_added_whitespace_instead_of_trimming_it() {
+        for (before, after, expected_sends) in [
+            (" ", " synthetic citation", 0),
+            ("", " synthetic citation", 1),
+            ("", "synthetic citation\n", 1),
+        ] {
+            let document = std::cell::RefCell::new(before.to_owned());
+            let sends = Cell::new(0);
+            let outcome = qualify_paste(
+                &editor(1),
+                "synthetic citation",
+                Duration::ZERO,
+                |owner| {
+                    Ok(Reading {
+                        editor: owner.clone(),
+                        text: document.borrow().clone(),
+                    })
+                },
+                || Ok(()),
+                |ready| {
+                    if !ready() {
+                        return false;
+                    }
+                    sends.set(sends.get() + 1);
+                    *document.borrow_mut() = after.into();
+                    true
+                },
+            );
+            assert!(outcome.is_err(), "whitespace changed the actual document bytes");
+            assert_eq!(sends.get(), expected_sends);
+        }
+    }
+
+    #[test]
+    fn capture_uses_unique_document_semantics_not_first_same_process_text_field() {
+        for kind in [CandidateKind::ModernDocument, CandidateKind::ClassicRootEdit] {
+            let candidates = [
+                Candidate {
+                    kind: Some(CandidateKind::Other),
+                    editor: Some(editor(2)),
+                },
+                Candidate {
+                    kind: Some(kind),
+                    editor: Some(editor(1)),
+                },
+            ];
+            let captured = select_document(&candidates).unwrap_or_else(|_| panic!("positive synthetic document"));
+            assert!(captured == editor(1), "same-process search field captured as document");
+            let document = std::cell::RefCell::new(String::new());
+            let outcome = qualify_paste(
+                &captured,
+                "synthetic citation",
+                Duration::ZERO,
+                |_| {
+                    Ok(Reading {
+                        editor: editor(1),
+                        text: document.borrow().clone(),
+                    })
+                },
+                || Ok(()),
+                |ready| {
+                    if !ready() {
+                        return false;
+                    }
+                    *document.borrow_mut() = "synthetic citation".into();
+                    true
+                },
+            );
+            assert_eq!(outcome, Ok(()));
+            assert_eq!(&*document.borrow(), "synthetic citation");
+        }
+    }
+
+    #[test]
+    fn ambiguous_unknown_or_unidentified_document_candidates_never_reach_input() {
+        for candidates in [
+            vec![
+                Candidate {
+                    kind: Some(CandidateKind::ModernDocument),
+                    editor: Some(editor(1)),
+                },
+                Candidate {
+                    kind: Some(CandidateKind::ModernDocument),
+                    editor: Some(editor(2)),
+                },
+            ],
+            vec![Candidate {
+                kind: None,
+                editor: Some(editor(1)),
+            }],
+            vec![Candidate {
+                kind: Some(CandidateKind::ModernDocument),
+                editor: None,
+            }],
+            vec![Candidate {
+                kind: Some(CandidateKind::Other),
+                editor: Some(editor(1)),
+            }],
+            vec![],
+        ] {
+            let sends = Cell::new(0);
+            let outcome = select_document(&candidates).and_then(|owner| {
+                qualify_paste(
+                    &owner,
+                    "synthetic citation",
+                    Duration::ZERO,
+                    |identity| {
+                        Ok(Reading {
+                            editor: identity.clone(),
+                            text: String::new(),
+                        })
+                    },
+                    || Ok(()),
+                    |ready| {
+                        if ready() {
+                            sends.set(sends.get() + 1);
+                            true
+                        } else {
+                            false
+                        }
+                    },
+                )
+            });
+            assert!(outcome.is_err());
+            assert_eq!(sends.get(), 0);
+        }
     }
 
     #[test]
