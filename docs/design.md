@@ -491,7 +491,8 @@ its locator; later searches keep prepared references unchanged. **Apply locator*
 updates only the highlighted, already added reference. A shared locator token
 names its type and value and offers an accessible remove action that keeps the
 reference. Both key and formatted previews/copies use these per-reference values.
-The nine existing types are supported; timestamp interpretation remains planned.
+Interpretation uses the engine's shared parser and all 29 CSL locator types,
+including Unicode page numbers; the typed digits stay as written.
 
 **Focus order.** Tab: search box (Tab picks the first tag or author suggestion
 while they are open), header pop-ups, the pin, the browsing tabs while visible

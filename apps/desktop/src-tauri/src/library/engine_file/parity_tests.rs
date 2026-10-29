@@ -47,16 +47,10 @@ fn picker_choice(request: &CitationRequest) -> Option<(Vec<FileSelection>, KeyFo
                 && item.annotation.is_none();
             plain.then_some(())?;
             Some(FileSelection {
-                id: serde_json::to_value(&item.item).ok()?,
-                cite: item.expected_cite.as_ref()?.as_str().to_owned(),
+                id: item.item.clone(),
+                cite: item.expected_cite.clone()?,
                 form: None,
-                locator: match &item.locator {
-                    Some(locator) => {
-                        let locator = serde_json::to_value(locator).ok()?;
-                        Some(serde_json::from_value(json!({"label":locator["term"],"value":locator["value"]})).ok()?)
-                    }
-                    None => None,
-                },
+                locator: item.locator.clone().map(Into::into),
             })
         })
         .collect::<Option<Vec<_>>>()?;
@@ -485,7 +479,63 @@ fn unsupported_group_forms_refuse_and_field_losses_name_the_reference() -> Resul
 }
 
 #[test]
+fn picker_search_preserves_unicode_page_intent_through_preview_and_copy() -> Result<(), Box<dyn std::error::Error>> {
+    let directory = tempfile::tempdir()?;
+    let path = directory.path().join("synthetic.bib");
+    std::fs::write(&path, "@misc{taylor,title={Synthetic study},author={Taylor, Alex}}")?;
+    let engine = Engine::new().map_err(|_| "engine")?.without_file_watches();
+    engine
+        .dispatch(
+            Method::Libraries,
+            &json!({"action":"open-file","path":path}),
+            &Cancellation::default(),
+        )
+        .map_err(|_| "open")?;
+    let file = FileLibrary::from_engine(engine);
+    for value in ["١٢–١٥", "۱۲–۱۵", "१२–१५", "１２–１５", "๑๒–๑๕", "𝟙𝟚–𝟙𝟝", "XII–XV"]
+    {
+        let reply = file.search(
+            &SearchQuery {
+                text: format!("Taylor pp. {value}"),
+                interpret_locators: true,
+            },
+            20,
+            None,
+            &Cancellation::default(),
+        )?;
+        let interpretation = reply.interpretation.ok_or("picker lost page intent")?;
+        assert_eq!(interpretation.search, "Taylor");
+        assert_eq!(interpretation.typed, format!("pp. {value}"));
+        assert_eq!(interpretation.locator.value, value);
+        assert_eq!(reply.results.len(), 1);
+        let row = &reply.results[0];
+        let preview = file
+            .preview(
+                file.reserve_preview(),
+                vec![serde_json::from_value(
+                    json!({"id":row.id,"cite":row.cite,"locator":interpretation.locator}),
+                )?],
+                KeyFormat::Pandoc,
+                None,
+            )
+            .map_err(|e| e.to_string())?;
+        assert_eq!(preview.text, format!("[@taylor, pp. {}]", value.replace('–', "-")));
+        file.copy(&preview.ticket, &preview.content_hash, |content| {
+            assert_eq!(content.text, preview.text);
+            Ok(())
+        })
+        .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[test]
 fn picker_rows_list_the_engines_search_hits_in_order() -> Result<(), Box<dyn std::error::Error>> {
+    #[derive(Deserialize)]
+    struct LocatorCase {
+        query: String,
+    }
+    let locators: Vec<LocatorCase> = serde_json::from_str(include_str!("../../../../../../fixtures/locators.json"))?;
     for case in cases()? {
         let engine = engine_for(&case)?;
         let words: Vec<String> = case
@@ -498,37 +548,63 @@ fn picker_rows_list_the_engines_search_hits_in_order() -> Result<(), Box<dyn std
             })
             .flat_map(|title| title.split_whitespace().map(str::to_owned).collect::<Vec<_>>())
             .chain(["no such synthetic words".to_owned()])
+            .chain(locators.iter().map(|case| case.query.clone()))
             .collect();
         let file = FileLibrary::from_engine(engine.clone());
         for word in words {
-            let hits: Vec<Value> = engine
-                .search(
-                    &SearchRequest {
-                        interpret_locator: false,
-                        query: word.clone(),
-                        limit: 50,
-                        libraries: None,
-                    },
-                    &Cancellation::default(),
-                )
-                .map_err(|_| "engine search")?
-                .hits
-                .iter()
-                .map(|hit| serde_json::to_value(hit.item.object.id()))
-                .collect::<Result<_, _>>()?;
-            let rows: Vec<Value> = file
-                .search(
-                    &serde_json::from_value(json!({"text":word,"interpret_locators":false}))?,
-                    50,
-                    None,
-                    &Cancellation::default(),
-                )
-                .map_err(|_| "picker search")?
-                .results
-                .iter()
-                .map(|row| row.id.clone())
-                .collect();
-            assert_eq!(rows, hits, "{}: {word}", case.name);
+            for (text, interpret_locators) in [
+                (word.clone(), false),
+                (word.clone(), true),
+                (format!("{word} pp. ١٢–١٥"), true),
+                (format!("{word} page123"), true),
+                (format!("{word} appendix B"), true),
+                (format!("{word}, ٢٠٢٦"), true),
+                (format!("{word} p."), true),
+            ] {
+                let reply = engine
+                    .search(
+                        &SearchRequest {
+                            interpret_locator: interpret_locators,
+                            query: text.clone(),
+                            limit: 50,
+                            libraries: None,
+                        },
+                        &Cancellation::default(),
+                    )
+                    .map_err(|_| "engine search")?;
+                let hits: Vec<Value> = reply
+                    .hits
+                    .iter()
+                    .map(|hit| serde_json::to_value(hit.item.object.id()))
+                    .collect::<Result<_, _>>()?;
+                let picker = file
+                    .search(
+                        &SearchQuery {
+                            text: text.clone(),
+                            interpret_locators,
+                        },
+                        50,
+                        None,
+                        &Cancellation::default(),
+                    )
+                    .map_err(|_| "picker search")?;
+                assert_eq!(picker.revision, reply.snapshot.full.as_str());
+                let interpretation = picker.interpretation.map(|read| {
+                    (
+                        read.search,
+                        read.typed,
+                        ibis_core::contract::Locator::from(read.locator),
+                    )
+                });
+                assert_eq!(
+                    interpretation,
+                    reply.locator.map(|read| (read.search, read.typed, read.locator)),
+                    "{}: {text}",
+                    case.name
+                );
+                let rows: Vec<Value> = picker.results.iter().map(|row| row.id.clone()).collect();
+                assert_eq!(rows, hits, "{}: {text}", case.name);
+            }
         }
     }
     Ok(())

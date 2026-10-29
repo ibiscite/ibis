@@ -108,6 +108,12 @@ only that receipt. Hiding citation text retains formatting refusals and their
 actionable explanations. This adds no polling or formatter runtime and retains
 only one page string and form per selected reference.
 
+Picker search asks the engine to interpret trailing locators in the same search
+and snapshot as its result rows; pasted-list precedence stays in the engine.
+The native boundary reads typed item identities and fingerprints, then constructs
+the canonical citation request directly. Its locator wire names adapt the shared
+29-term vocabulary without a second parser or JSON reconstruction.
+
 Literal affixes escape default consumer smart punctuation as well as markup.
 Pandoc narrative, plain LaTeX and Typst place prefixes outside the citation and
 report a typed prefix/flattened loss, since a footnote-style citation cannot
