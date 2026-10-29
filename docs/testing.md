@@ -32,11 +32,16 @@ optional extensions; none blocks the baseline plan or its release checks.
 - **Interface tests:** picker, Settings and shared controls exercise keys,
   selection, delayed replies, saved choices and accessibility structure in a
   simulated document. The [shared IPC fake](../apps/desktop/src/testing/app.ts)
-  keeps preview tickets/content hashes and preference state; its receipts
-  contain test-chosen output, not real formatting or delivery.
-  [PR #1407](https://github.com/ibiscite/ibis/pull/1407)'s version of the stateful
-  fake is not verified in this checkout; check it before adding its assertions
-  to this inventory.
+  keeps preview tickets/content hashes and preference state. The
+  [stateful delivery fake](../apps/desktop/src/testing/delivery.ts) models
+  clipboard ownership and sequence, one-use proofs, picker presentation and
+  replacement of the invented document's selection. Its
+  [15 consumer scenarios](../apps/desktop/src/App.delivery.test.tsx) manually
+  reorder search, preview, copy, delivery and receipt completions, asserting
+  document contents, exactly-once delivery and the production receipt renderer.
+  They cover late replies, hide/reopen, clipboard replacement and worker
+  failures. These simulate the interface contract; they do not exercise OS
+  clipboard/input/permission APIs, native deadlines or engine formatting.
 - **Linux native smoke:** [smoke-native.py](../scripts/smoke-native.py) drives
   the embedded app on X11 with one display and the default keyboard layout.
   It checks shortcut/focus, typing, exact Pandoc clipboard text, hide/reopen,
@@ -96,7 +101,9 @@ Both existing `scripts/smoke-native.py` entry points now write one
 `OUTPUT/evidence-RUN_ID/manifest.json` per invocation, including failure,
 timeout, interruption and unavailable capability. Exit codes remain 0 (pass),
 1 (failure, including evidence I/O) and 2 (unavailable); unavailable never
-counts as passing coverage. Invalid replay input is refused before a run.
+counts as passing coverage. A synthetic desktop setup assertion is a harness
+failure before any app action, never a product failure. Invalid replay input is
+refused before a run.
 
 The closed [version-1 schema](../scripts/native_evidence.schema.json) is checked
 on write and read, with contract tests in
