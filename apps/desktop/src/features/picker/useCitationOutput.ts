@@ -82,5 +82,5 @@ export function useCitationOutput({ chosen, library, libraryVersion, sessionId =
       } });
     return () => { live = false; abort.abort(); };
   }, [previewKey, sessionId]);
-  return { formatted, chosenKey, chosenRevision, keyFormat, shown, previewProblem, displayedOutput };
+  return { formatted, chosenKey, keyFormat, shown, previewProblem, displayedOutput };
 }

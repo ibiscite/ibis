@@ -30,7 +30,7 @@ type Completion = { id: number; session: number };
 export type SessionEvent =
   | { type: "view"; session: number; interaction: number; view: SessionView }
   | { type: "query"; value: string }
-  | { type: "literal" | "clear" | "escape-search" | "cancel" | "retire" | "sample" }
+  | { type: "literal" | "escape-search" | "cancel" | "retire" | "sample" }
   | { type: "dismiss"; copied?: Copied }
   | { type: "highlight"; index: number; cancel?: boolean }
   | { type: "toggle"; result?: SearchResult; locator?: Readonly<Locator> | null }
@@ -106,7 +106,6 @@ export function reduceSession(s: SessionState, event: SessionEvent): [SessionSta
     case "query": return [changed(s, { query: event.value, interpretLocators: true, escapedQuery: null }), []];
     case "literal": return [changed(s, { interpretLocators: false }), []];
     case "escape-search": return [changed(s, { escapedQuery: { text: s.query, interpretLocators: s.interpretLocators }, query: "", interpretLocators: true }), []];
-    case "clear": return [changed(s, { query: "", interpretLocators: true, escapedQuery: null, selected: new Map(), active: 0 }), []];
     case "sample": return [changed(s, { selected: new Map(), copied: null, copyError: null }), []];
     case "cancel": return [s.pendingCopy ? { ...s, pendingCopy: null } : s, []];
     case "dismiss": return [s.copied && (!event.copied || event.copied === s.copied) ? { ...s, copied: null } : s, []];
