@@ -12,6 +12,8 @@ use serde::Serialize;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum LoadError {
     Source(SourceError),
+    /// The engine rejected the file's reference format.
+    InvalidData,
     Zotero(ZoteroError),
     EngineZotero(ibis_core::contract::ErrorCode),
     /// The file dialog returned something that is not a local file.
@@ -56,6 +58,7 @@ impl fmt::Display for LoadError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             LoadError::Source(error) => error.fmt(f),
+            LoadError::InvalidData => f.write_str("the library file does not contain valid reference data"),
             LoadError::Zotero(error) => error.fmt(f),
             LoadError::EngineZotero(code) => f.write_str(match code {
                 ibis_core::contract::ErrorCode::Cancelled => "reading Zotero was cancelled",

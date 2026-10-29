@@ -20,6 +20,7 @@
     "allow-check-for-updates",
     "allow-paste-permission",
     "allow-open-paste-permission",
+    "allow-finish-paste-guide",
     "allow-shortcut-status",
     "allow-set-shortcut"
   ]

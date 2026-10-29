@@ -20,7 +20,9 @@ test("initial setup never searches and manual source choices are immediately usa
   await act(async () => {});
   expect(screen.getByRole("listbox", { name: "Where do your references live?" })).toBeTruthy();
   expect(findSources).not.toHaveBeenCalled();
-  press(option(/^BibTeX or BibLaTeX file/));
+  expect(option(/^Zotero/).textContent).toContain("Reads Zotero 7–10, open or closed; uses a private copy when closed");
+  expect(option(/^BibTeX, BibLaTeX or CSL-JSON file/).textContent).toContain("Choose a .bib, .bibtex, .json or .csljson file");
+  press(option(/^BibTeX, BibLaTeX or CSL-JSON file/));
   press(option(/^Zotero/));
   expect(chooseLibrary).toHaveBeenCalledOnce();
   expect(useZotero).toHaveBeenCalledOnce();
@@ -34,7 +36,7 @@ test("arrow keys move between rows and Enter chooses the focused one", async () 
   const zotero = option(/^Zotero/);
   act(() => zotero.focus());
   fireEvent.keyDown(zotero, { key: "ArrowDown", code: "ArrowDown" });
-  const file = option(/^BibTeX or BibLaTeX file/);
+  const file = option(/^BibTeX, BibLaTeX or CSL-JSON file/);
   expect(document.activeElement).toBe(file);
   fireEvent.keyDown(file, { key: "Enter", code: "Enter" });
   fireEvent.keyUp(file, { key: "Enter", code: "Enter" });
@@ -48,7 +50,7 @@ test.each(["available", "absent", "access_off"] as const)("Zotero %s is told in 
   press(option(/^Look for libraries on this computer/));
   await waitFor(() => expect(option(/^Look again/).textContent).not.toContain("Looking"));
   expect(option(/^Zotero/).textContent?.includes("Found on this")).toBe(zotero === "available");
-  expect(screen.queryByText(/does not let other apps read it/) !== null).toBe(zotero === "access_off");
+  expect(screen.queryByText(/To read your references, in Zotero/) !== null).toBe(zotero === "access_off");
   expect(document.querySelectorAll("[data-suggested]")).toHaveLength(0);
 });
 
@@ -101,7 +103,7 @@ test("a refused discovery leaves manual choices and retry available", async () =
   press(option(/^Look for libraries on this computer/));
   await waitFor(() => expect(failed).toHaveBeenCalledOnce());
   expect(option(/^Look again/).getAttribute("aria-disabled")).toBeNull();
-  press(option(/^BibTeX or BibLaTeX file/));
+  press(option(/^BibTeX, BibLaTeX or CSL-JSON file/));
   press(option(/^Zotero/));
   expect(chooseLibrary).toHaveBeenCalledOnce();
   expect(useZotero).toHaveBeenCalledOnce();

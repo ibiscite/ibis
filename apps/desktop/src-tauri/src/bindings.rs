@@ -36,6 +36,7 @@ pub(crate) fn commands() -> tauri_specta::Builder<tauri::Wry> {
             crate::updater::setting::check_for_updates,
             crate::updater::update_available,
             crate::settings_window::open_settings,
+            crate::settings_window::finish_paste_guide,
             crate::paste::permission::paste_permission,
             crate::paste::permission::open_paste_permission,
             crate::shortcut_setting::set_shortcut
@@ -65,12 +66,18 @@ mod tests {
         "check_for_updates",
         "paste_permission",
         "open_paste_permission",
+        "finish_paste_guide",
         "shortcut_status",
         "set_shortcut",
     ];
 
     /// Only Settings asks about paste permission or changes the global shortcut.
-    const SETTINGS_ONLY: &[&str] = &["paste_permission", "open_paste_permission", "set_shortcut"];
+    const SETTINGS_ONLY: &[&str] = &[
+        "paste_permission",
+        "open_paste_permission",
+        "finish_paste_guide",
+        "set_shortcut",
+    ];
 
     fn destination() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../src/bindings.ts")

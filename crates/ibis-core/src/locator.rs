@@ -142,6 +142,36 @@ pub fn parse(text: &str) -> Option<Locator> {
     (text.len() <= MAX_LOCATOR_LEN).then(|| read(text, false)).flatten()
 }
 
+/// Why a Page field cannot become a locator value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PageValueError {
+    MissingValue,
+    InvalidValue,
+}
+
+/// Read a Page field without leaving a recognised page label in its value.
+/// Bare printed labels stay literal; a recognised page prefix must parse fully.
+pub fn page_value(text: &str) -> Result<String, PageValueError> {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return Err(PageValueError::MissingValue);
+    }
+    if trimmed.len() > MAX_LOCATOR_LEN {
+        return Err(PageValueError::InvalidValue);
+    }
+    if let Some((label, rest)) = find_label(trimmed)
+        && label.term == LocatorTerm::Page
+    {
+        if rest.trim().is_empty() {
+            return Err(PageValueError::MissingValue);
+        }
+        return parse(trimmed)
+            .map(|locator| locator.value)
+            .ok_or(PageValueError::InvalidValue);
+    }
+    Ok(text.to_owned())
+}
+
 /// Split a trailing locator off `query`, or `None` when there is none or
 /// nothing would be left to search for.
 pub fn parse_trailing(query: &str) -> Option<TrailingLocator> {
@@ -290,10 +320,10 @@ fn find_label(text: &str) -> Option<(&'static Label, &str)> {
     if dot {
         return Some((label, &rest[1..]));
     }
-    if rest.starts_with(char::is_whitespace) {
+    if rest.is_empty() || rest.starts_with(char::is_whitespace) {
         return Some((label, rest));
     }
-    (label.words.contains(&word.as_str()) && rest.starts_with(|c: char| c.is_ascii_digit())).then_some((label, rest))
+    (label.words.contains(&word.as_str()) && rest.starts_with(char::is_numeric)).then_some((label, rest))
 }
 
 /// One or more values separated by commas or `&`, such as `12`, `24-26`,
@@ -316,7 +346,8 @@ fn is_plain_pages(text: &str) -> bool {
             let plain = |part: Option<&str>| {
                 part.is_some_and(|part| {
                     let part = part.trim();
-                    !part.is_empty() && part.len() != 4 && part.len() <= 9 && part.bytes().all(|b| b.is_ascii_digit())
+                    let count = part.chars().count();
+                    count > 0 && count != 4 && count <= 9 && part.chars().all(char::is_numeric)
                 })
             };
             let first = parts.next();
@@ -343,8 +374,9 @@ fn is_single(text: &str, kind: Value) -> bool {
     if kind == Value::Lettered && text.chars().count() == 1 && text.chars().all(|c| c.is_ascii_alphabetic()) {
         return true;
     }
-    let digits = text.bytes().take_while(u8::is_ascii_digit).count();
-    let rest = &text[digits..];
+    let end = text.find(|c: char| !c.is_numeric()).unwrap_or(text.len());
+    let digits = text[..end].chars().count();
+    let rest = &text[end..];
     if digits > 0 {
         let suffix = rest.is_empty()
             || rest.eq_ignore_ascii_case("ff")
@@ -441,6 +473,65 @@ mod tests {
                 assert!(case.query.ends_with(&read.typed));
                 assert!(read.typed.len() <= MAX_LOCATOR_LEN);
             }
+        }
+    }
+
+    #[test]
+    fn unquoted_unicode_page_numbers_preserve_digits_and_count_characters() {
+        for value in ["١٢–١٥", "۱۲–۱۵", "१२–१५", "１２–１５", "๑๒–๑๕", "𝟙𝟚–𝟙𝟝", "١٢٣٤٥٦٧٨٩a"]
+        {
+            let expected = Some(Locator {
+                term: LocatorTerm::Page,
+                value: value.into(),
+            });
+            assert_eq!(parse(&format!("pp. {value}")), expected);
+            assert_eq!(
+                parse_trailing(&format!("Synthetic pp. {value}")).map(|p| p.locator),
+                expected
+            );
+            assert_eq!(parse(&format!("page{value}")), expected);
+        }
+        assert!(
+            parse("pp. ١٢٣٤٥٦٧٨٩٠").is_none(),
+            "ten digits still exceed the numeric limit"
+        );
+        assert!(
+            parse_trailing("Synthetic, ٢٠٢٦").is_none(),
+            "four Unicode digits can be a year"
+        );
+        assert_eq!(
+            parse_trailing("Synthetic, ١٢–١٥").map(|p| p.locator.value),
+            Some("١٢–١٥".into())
+        );
+    }
+
+    #[test]
+    fn page_fields_distinguish_literal_values_from_incomplete_or_invalid_labels() {
+        for value in ["", " ", "p", "p.", "PP", "pp.", "page", "pages", "pgs.", "S."] {
+            assert_eq!(page_value(value), Err(PageValueError::MissingValue), "{value:?}");
+        }
+        for value in [
+            "pp. \"\"",
+            "pp. 12 appendix",
+            "pp. \"12\" trailing",
+            "p. --",
+            "pp. ١٢٣٤٥٦٧٨٩٠",
+        ] {
+            assert_eq!(page_value(value), Err(PageValueError::InvalidValue), "{value:?}");
+        }
+        assert_eq!(
+            page_value(&"1".repeat(MAX_LOCATOR_LEN + 1)),
+            Err(PageValueError::InvalidValue)
+        );
+        for (typed, value) in [
+            ("pp. ١٢–١٥", "١٢–١٥"),
+            (" P. iv ", "iv"),
+            ("pp. \"the epigraph\"", "the epigraph"),
+            ("p53", "p53"),
+            ("S12", "S12"),
+            ("chap. 3", "chap. 3"),
+        ] {
+            assert_eq!(page_value(typed), Ok(value.into()));
         }
     }
 

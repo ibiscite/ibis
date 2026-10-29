@@ -251,6 +251,8 @@ impl LibraryObject {
     fn fingerprints(&self) -> Result<Fingerprints, ModelError> {
         let full = digest_json(self)?;
         let cite = match self {
+            // With no search-only fields, both views serialize identically.
+            Self::Record(record) if record.identifiers.is_empty() => full.clone(),
             Self::Record(record) => {
                 #[derive(Serialize)]
                 struct CiteRecord<'a> {
@@ -295,12 +297,68 @@ pub struct SnapshotObject {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Snapshot {
-    objects: Vec<Arc<SnapshotObject>>,
+    objects: Arc<[Arc<SnapshotObject>]>,
     fingerprints: Fingerprints,
 }
 
 impl Snapshot {
-    pub fn new(mut objects: Vec<LibraryObject>) -> Result<Self, ModelError> {
+    pub fn new(objects: Vec<LibraryObject>) -> Result<Self, ModelError> {
+        Self::from_sorted(Self::prepare(objects)?)
+    }
+
+    /// Reuse validated objects by position without building a second payload.
+    pub fn new_reusing(objects: Vec<LibraryObject>, previous: &Self, reused: &[usize]) -> Result<Self, ModelError> {
+        if reused.is_empty() {
+            return Self::new(objects);
+        }
+        let mut objects = Self::prepare(objects)?;
+        objects.reserve(reused.len());
+        for &position in reused {
+            objects.push(
+                previous
+                    .objects
+                    .get(position)
+                    .ok_or(ModelError::InvalidItemRef)?
+                    .clone(),
+            );
+        }
+        objects.sort_unstable_by(|left, right| left.object.id().cmp(right.object.id()));
+        if objects
+            .windows(2)
+            .any(|pair| pair[0].object.id() == pair[1].object.id())
+        {
+            return Err(ModelError::DuplicateItem);
+        }
+        Self::from_sorted(objects)
+    }
+
+    /// An identical record can be discarded immediately by a source adapter.
+    pub fn matching_record(&self, record: &Record) -> Option<usize> {
+        let position = self
+            .objects
+            .binary_search_by(|item| item.object.id().cmp(&record.id))
+            .ok()?;
+        // Value equality treats +0.0 and -0.0 as equal; JSON fingerprints do
+        // not. Object iteration order matters too if preserve_order is enabled.
+        fn same_encoding(left: &Value, right: &Value) -> bool {
+            match (left, right) {
+                (Value::Number(left), Value::Number(right)) => {
+                    left.as_f64().map(f64::to_bits) == right.as_f64().map(f64::to_bits)
+                }
+                (Value::Array(left), Value::Array(right)) => left.iter().zip(right).all(|(a, b)| same_encoding(a, b)),
+                (Value::Object(left), Value::Object(right)) => left
+                    .iter()
+                    .zip(right)
+                    .all(|((a, av), (b, bv))| a == b && same_encoding(av, bv)),
+                _ => true, // Lengths, keys, types and values already compared equal.
+            }
+        }
+        matches!(&self.objects[position].object, LibraryObject::Record(old)
+            if old == record && old.csl.values().zip(record.csl.values()).all(|(a, b)| same_encoding(a, b)))
+        .then_some(position)
+    }
+
+    fn prepare(mut objects: Vec<LibraryObject>) -> Result<Vec<Arc<SnapshotObject>>, ModelError> {
         // Check every recursively shaped payload before any other validation
         // can return and drop it. Values assembled by sources do not have the
         // JSON reader's recursion limit.
@@ -324,38 +382,44 @@ impl Snapshot {
         {
             return Err(ModelError::InvalidItemRef);
         }
-        let objects = objects
+        objects
             .into_iter()
             .map(|object| {
                 let fingerprints = object.fingerprints()?;
                 Ok(Arc::new(SnapshotObject { object, fingerprints }))
             })
-            .collect::<Result<Vec<_>, ModelError>>()?;
-        Self::from_sorted(objects)
+            .collect()
     }
 
     /// This snapshot's objects whose library passes `keep`, plus all of
     /// `other`'s. Both inputs were validated and fingerprinted already.
     pub fn merged(&self, other: &Snapshot, keep: impl Fn(&LibraryId) -> bool) -> Result<Self, ModelError> {
-        let mut kept = self
-            .objects
-            .iter()
-            .filter(|item| keep(&item.object.id().library))
-            .peekable();
-        let mut added = other.objects.iter().peekable();
-        let mut objects = Vec::with_capacity(self.objects.len() + other.objects.len());
-        loop {
-            let next = match (kept.peek(), added.peek()) {
-                (Some(left), Some(right)) => match left.object.id().cmp(right.object.id()) {
-                    std::cmp::Ordering::Less => kept.next(),
-                    std::cmp::Ordering::Greater => added.next(),
-                    std::cmp::Ordering::Equal => return Err(ModelError::DuplicateItem),
-                },
-                (Some(_), None) => kept.next(),
-                (None, _) => added.next(),
-            };
-            let Some(next) = next else { break };
-            objects.push(next.clone());
+        self.merged_many(&[other], keep)
+    }
+
+    /// Combine a publication once, including its aggregate fingerprints.
+    pub fn merged_many(&self, others: &[&Snapshot], keep: impl Fn(&LibraryId) -> bool) -> Result<Self, ModelError> {
+        let kept = self.objects.iter().filter(|item| keep(&item.object.id().library));
+        let count = kept.clone().count();
+        if count == 0
+            && let [other] = others
+        {
+            return Ok((*other).clone());
+        }
+        if others.is_empty() && count == self.objects.len() {
+            return Ok(self.clone());
+        }
+        let mut objects = Vec::with_capacity(count + others.iter().map(|other| other.objects.len()).sum::<usize>());
+        objects.extend(kept.cloned());
+        for other in others {
+            objects.extend(other.objects.iter().cloned());
+        }
+        objects.sort_unstable_by(|left, right| left.object.id().cmp(right.object.id()));
+        if objects
+            .windows(2)
+            .any(|pair| pair[0].object.id() == pair[1].object.id())
+        {
+            return Err(ModelError::DuplicateItem);
         }
         Self::from_sorted(objects)
     }
@@ -365,15 +429,45 @@ impl Snapshot {
             .iter()
             .map(|item| (item.object.id(), &item.fingerprints.cite))
             .collect();
-        let full: Vec<_> = objects
+        let cite = digest_json(&cite)?;
+        let full = if objects
             .iter()
-            .map(|item| (item.object.id(), &item.fingerprints.full))
-            .collect();
-        let fingerprints = Fingerprints {
-            cite: digest_json(&cite)?,
-            full: digest_json(&full)?,
+            .all(|item| item.fingerprints.cite == item.fingerprints.full)
+        {
+            cite.clone()
+        } else {
+            digest_json(
+                &objects
+                    .iter()
+                    .map(|item| (item.object.id(), &item.fingerprints.full))
+                    .collect::<Vec<_>>(),
+            )?
         };
-        Ok(Self { objects, fingerprints })
+        let fingerprints = Fingerprints { cite, full };
+        Ok(Self {
+            objects: objects.into(),
+            fingerprints,
+        })
+    }
+
+    /// Retain the old allocation for objects whose complete content is unchanged.
+    /// Both snapshots have already been validated; their fingerprints stay valid.
+    pub fn reuse_unchanged(&mut self, previous: &Snapshot) {
+        let mut old = previous.objects.iter().peekable();
+        for position in 0..self.objects.len() {
+            let item = &self.objects[position];
+            while old.peek().is_some_and(|old| old.object.id() < item.object.id()) {
+                old.next();
+            }
+            if let Some(old) = old.peek()
+                && old.object.id() == item.object.id()
+                && old.fingerprints.full == item.fingerprints.full
+                && !Arc::ptr_eq(old, item)
+            {
+                let old = Arc::clone(old);
+                Arc::make_mut(&mut self.objects)[position] = old;
+            }
+        }
     }
 
     pub fn objects(&self) -> &[Arc<SnapshotObject>] {
@@ -435,8 +529,11 @@ fn digest_json(value: &impl Serialize) -> Result<Fingerprint, ModelError> {
             Ok(())
         }
     }
-    let mut digest = Digest(Sha256::new());
+    // serde emits many tiny writes. Batch them without changing a single byte
+    // of the JSON or materializing a whole-library JSON value.
+    let mut digest = std::io::BufWriter::new(Digest(Sha256::new()));
     serde_json::to_writer(&mut digest, value).map_err(|_| ModelError::InvalidObject)?;
+    let digest = digest.into_inner().map_err(|_| ModelError::InvalidObject)?;
     Ok(Fingerprint(format!("{:x}", digest.0.finalize())))
 }
 
@@ -513,6 +610,9 @@ mod tests {
         let merged = first.merged(&second, |_| true).unwrap();
         let fresh = Snapshot::new(vec![LibraryObject::Record(record()), LibraryObject::Record(moved)]).unwrap();
         assert_eq!(merged, fresh);
+        let empty = Snapshot::new(vec![]).unwrap();
+        assert_eq!(empty.merged_many(&[&second, &first], |_| false).unwrap(), fresh);
+        assert_eq!(merged.merged_many(&[], |_| true).unwrap(), merged);
         assert!(
             merged
                 .objects()
@@ -550,6 +650,81 @@ mod tests {
             digest_json(&map).unwrap(),
             Fingerprint::of_bytes(serde_json::to_string(&map).unwrap().as_bytes())
         );
+        // Buffered writes, including values larger than the buffer, Unicode
+        // and escaped bytes, must never change fingerprint values.
+        let value = json!(["研究\n\\\"".repeat(10_000), map]);
+        assert_eq!(
+            digest_json(&value).unwrap(),
+            Fingerprint::of_bytes(&serde_json::to_vec(&value).unwrap())
+        );
+    }
+
+    #[test]
+    fn reuse_keeps_unchanged_objects_and_preserves_fingerprints() {
+        let unchanged = LibraryObject::Record(record());
+        let mut changed = record();
+        changed.id.key = "changed".into();
+        let before = Snapshot::new(vec![unchanged.clone(), LibraryObject::Record(changed.clone())]).unwrap();
+        let mut shared = before.clone();
+        shared.reuse_unchanged(&before);
+        assert!(Arc::ptr_eq(&shared.objects, &before.objects));
+        changed.csl.insert("title".into(), json!("Changed synthetic title"));
+        let fresh = Snapshot::new(vec![unchanged, LibraryObject::Record(changed.clone())]).unwrap();
+        let mut reused = fresh.clone();
+        reused.reuse_unchanged(&before);
+        assert_eq!(reused, fresh);
+        for (old, new) in before.objects().iter().zip(reused.objects()) {
+            assert_eq!(Arc::ptr_eq(old, new), old.object.id() != &changed.id);
+        }
+        // The source and sole published library share the object slice itself.
+        let empty = Snapshot::new(vec![]).unwrap();
+        let installed = empty.merged_many(&[&reused], |_| false).unwrap();
+        assert!(Arc::ptr_eq(&installed.objects, &reused.objects));
+        assert_eq!(installed, fresh);
+        let combined = empty.merged_many(&[&before, &fresh], |_| false);
+        assert_eq!(combined, Err(ModelError::DuplicateItem));
+    }
+
+    #[test]
+    fn reused_positions_are_validated_and_match_a_fresh_snapshot() {
+        let keep = record();
+        let previous = Snapshot::new(vec![LibraryObject::Record(keep.clone())]).unwrap();
+        let position = previous.matching_record(&keep).unwrap();
+        let mut added = keep.clone();
+        added.id.key = "new".into();
+        let next = Snapshot::new_reusing(vec![LibraryObject::Record(added.clone())], &previous, &[position]).unwrap();
+        let fresh = Snapshot::new(vec![LibraryObject::Record(keep.clone()), LibraryObject::Record(added)]).unwrap();
+        assert_eq!(next, fresh);
+        assert!(
+            next.objects()
+                .iter()
+                .any(|item| Arc::ptr_eq(item, &previous.objects()[0]))
+        );
+        assert_eq!(
+            Snapshot::new_reusing(vec![], &previous, &[1]),
+            Err(ModelError::InvalidItemRef)
+        );
+        assert_eq!(
+            Snapshot::new_reusing(vec![], &previous, &[position, position]),
+            Err(ModelError::DuplicateItem)
+        );
+        assert_eq!(
+            Snapshot::new_reusing(vec![LibraryObject::Record(keep)], &previous, &[position]),
+            Err(ModelError::DuplicateItem)
+        );
+    }
+
+    #[test]
+    fn equal_values_with_different_json_encodings_are_not_reused() {
+        let mut positive = record();
+        positive.csl.insert("custom".into(), json!({"nested":[0.0]}));
+        let mut negative = positive.clone();
+        negative.csl.insert("custom".into(), json!({"nested":[-0.0]}));
+        assert_eq!(positive, negative);
+        let previous = Snapshot::new(vec![LibraryObject::Record(positive)]).unwrap();
+        assert!(previous.matching_record(&negative).is_none());
+        let fresh = Snapshot::new(vec![LibraryObject::Record(negative)]).unwrap();
+        assert_ne!(previous.fingerprints(), fresh.fingerprints());
     }
 
     fn round_trip<T: Serialize + DeserializeOwned + PartialEq + std::fmt::Debug>(value: &T) {

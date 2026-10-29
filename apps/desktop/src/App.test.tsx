@@ -13,10 +13,136 @@ import { backend, chooseFromMore, prepared, receipt, resetApp, result, type Synt
 // Vitest can load these existing runtime builtins without a Node-types dependency.
 afterEach(resetApp);
 
+test("a pasted list previews and copies every result in order, with a safe missing-key notice", async () => {
+  const copied = vi.fn((args: unknown) => {
+    const { preview } = prepared(args);
+    return { text: preview.text, warnings: [] };
+  });
+  const calls = backend({
+    search: ({ query }) => query.text ? { revision: "1", results: [result("b", "Second"), result("a", "First")], list: { missing: ["<script>invented</script>"] } } : [],
+    copy_file_citation: copied,
+  });
+  render(<App />);
+  const box = screen.getByLabelText("Search references");
+  fireEvent.paste(box, { clipboardData: { getData: () => "b\na\nmissing" } });
+  expect((box as HTMLInputElement).value).toBe("b\ta\tmissing");
+  await screen.findByText("Pasted list");
+  expect(await screen.findByText("Copy 2 citations")).toBeTruthy();
+  expect(await screen.findByText("Not in your library: <script>invented</script>")).toBeTruthy();
+  expect(document.querySelector("script")).toBeNull();
+  await waitFor(() => expect(screen.getByRole("region", { name: "Preview" }).textContent).toContain("@b; @a"));
+  fireEvent.keyDown(box, { key: "ArrowDown" });
+  fireEvent.keyDown(box, { key: "Enter" });
+  await waitFor(() => expect(copied).toHaveBeenCalledOnce());
+  const request = prepared(copied.mock.calls[0]![0]).request;
+  expect(request.items.map(({ id }) => id.key)).toEqual(["b", "a"]);
+  await waitFor(() => expect(calls).toContain("hide_picker"));
+});
+
+test("an explicit selection overrides the pasted list and a pending query cannot copy it", async () => {
+  const copied = vi.fn((args: unknown) => {
+    const { preview } = prepared(args);
+    return { text: preview.text, warnings: [] };
+  });
+  backend({
+    search: ({ query }) => query.text === "pending" ? new Promise(() => undefined) : query.text ? { revision: "1", results: [result("b", "Second"), result("a", "First")], list: { missing: ["absent"] } } : [],
+    copy_file_citation: copied,
+  });
+  render(<App />);
+  const box = screen.getByLabelText("Search references");
+  fireEvent.change(box, { target: { value: "@b @a" } });
+  await screen.findByText("Pasted list");
+  fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
+  await waitFor(() => expect(screen.getByRole("region", { name: "Preview" }).textContent).toContain("@b"));
+  expect(chipKeys()).toEqual(["b"]);
+  fireEvent.keyDown(box, { key: "Enter" });
+  await waitFor(() => expect(copied).toHaveBeenCalledOnce());
+  expect(prepared(copied.mock.calls[0]![0]).request.items.map(({ id }) => id.key)).toEqual(["b"]);
+  fireEvent.change(box, { target: { value: "pending" } });
+  expect(screen.queryByText("Not in your library: absent")).toBeNull();
+  fireEvent.keyDown(box, { key: "Enter" });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  expect(copied).toHaveBeenCalledOnce();
+});
+
+test("a pasted list with only missing keys shows its notice and cannot copy", async () => {
+  const calls = backend({ search: () => ({ revision: "1", results: [], list: { missing: ["absent", "日本🌙"] } }) });
+  render(<App />);
+  const box = screen.getByLabelText("Search references");
+  fireEvent.change(box, { target: { value: "@absent @日本🌙" } });
+  await screen.findByText("Not in your library: absent, 日本🌙");
+  fireEvent.keyDown(box, { key: "Enter" });
+  expect(calls).not.toContain("preview_file_citation");
+  expect(calls).not.toContain("copy_file_citation");
+});
+
 const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
 const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
 const tokens = readFileSync(new FileURL("./tokens.css", import.meta.url), "utf8");
 const styles = readFileSync(new FileURL("./styles.css", import.meta.url), "utf8");
+
+test("selected closest-match warnings survive exact searches and copying a mixed citation", async () => {
+  const copied: unknown[] = [];
+  const calls = backend({
+    search: ({ query: { text } }) => text === "sleep photon"
+      ? [{ ...result("near", "Synthetic closest reference"), partial: true }]
+      : [result("exact", "Synthetic exact reference")],
+    copy_file_citation: (args) => {
+      copied.push(prepared(args).request);
+      return { text: "[@exact; @near]", warnings: [] };
+    },
+  });
+  render(<App />);
+  const box = screen.getByLabelText("Search references");
+  await screen.findByText("Synthetic exact reference");
+  fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
+  fireEvent.change(box, { target: { value: "sleep photon" } });
+  await screen.findByText("Synthetic closest reference");
+  fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
+  fireEvent.change(box, { target: { value: "exact" } });
+  await screen.findByText("Best matches");
+  expect(screen.queryByText("Closest matches")).toBeNull();
+  const chip = screen.getByRole("button", { name: "Remove near from the selection" }).closest("li")!;
+  expect(within(chip).getByText("Closest match")).toBeTruthy();
+  expect(screen.getByRole("status", { name: "Citation selection" }).textContent).toContain("only some search words matched");
+  fireEvent.keyDown(box, { key: "Enter" });
+  await waitFor(() => expect(copied).toHaveLength(1));
+  expect(copied[0]).toMatchObject({ items: selections([{ library: "refs.bib", key: "exact" }, { library: "refs.bib", key: "near" }]) });
+  const warnings = await screen.findByRole("list", { name: "Copy warnings" });
+  expect(warnings.textContent).toContain("Synthetic closest reference");
+  expect(warnings.textContent).toContain("only some search words matched");
+  expect(calls).not.toContain("hide_picker");
+});
+
+test("partial results say Closest matches visibly and aloud and remain usable", async () => {
+  const calls = backend({
+    search: ({ query: { text } }) => text === "sleep photon"
+      ? [{ ...result("sleep", "Sleep research"), partial: true }]
+      : text === "sleep" ? [result("sleep", "Sleep research")] : [],
+  });
+  render(<App />);
+  const box = screen.getByLabelText("Search references");
+  fireEvent.change(box, { target: { value: "sleep photon" } });
+  await screen.findByText("Closest matches");
+  expect(document.querySelector(".results-heading")?.textContent).toBe("Closest matches1 result");
+  expect(screen.queryByText("Best matches")).toBeNull();
+  const status = screen.getByRole("status", { name: "Search results" });
+  await waitFor(() => expect(status.textContent).toBe("Closest matches · 1 result"));
+  expect(screen.getByRole("option", { selected: true }).textContent).toContain("Sleep research");
+  await waitFor(() => expect(screen.getByRole("region", { name: "Preview" }).textContent).toContain("@sleep"));
+  fireEvent.keyDown(box, { key: "Enter" });
+  await waitFor(() => expect(calls).toContain("copy_file_citation"));
+
+  fireEvent.change(box, { target: { value: "sleep" } });
+  await screen.findByText("Best matches");
+  expect(screen.queryByText("Closest matches")).toBeNull();
+  await waitFor(() => expect(status.textContent).toBe("1 result"));
+
+  fireEvent.change(box, { target: { value: "photon" } });
+  await screen.findByText("No matching references");
+  expect(document.querySelector(".results-heading")).toBeNull();
+  await waitFor(() => expect(status.textContent).toBe("0 results"));
+});
 
 
 test("the shelf shows what Enter pastes in a key syntax, without copying, and leaves out a failed key preview", async () => {
@@ -95,7 +221,7 @@ function pressRow(row: HTMLElement) {
   fireEvent.keyDown(row, { key: "Enter", code: "Enter" });
   fireEvent.keyUp(row, { key: "Enter", code: "Enter" });
 }
-const FILE_ROW = /^BibTeX or BibLaTeX file/;
+const FILE_ROW = /^BibTeX, BibLaTeX or CSL-JSON file/;
 const formatButton = (name: string | RegExp = /^Copy as /) => within(screen.getByLabelText("Search references").closest("header")!).getByRole("button", { name });
 
 /** Picks a format in the header's format menu, as a click would. */
@@ -525,7 +651,7 @@ test.each([
     for (let i = 1; i < count; i++) fireEvent.keyDown(box, { key: "ArrowUp" });
     const active = box.getAttribute("aria-activedescendant");
     const tray = screen.getByRole("list", { name: "Selected references" });
-    const remove = within(tray).getAllByRole("button")[index]!;
+    const remove = within(tray).getAllByRole("button", { name: /^Remove .* from the selection$/ })[index]!;
     act(() => remove.focus());
     if (activation === "pointer") {
       fireEvent.pointerDown(remove, { button: 0 });
@@ -1093,7 +1219,7 @@ test.each(["", "sleep"])("an empty loaded library is explained even for query %s
   expect(screen.getByText("Choose a library with references.")).toBeTruthy();
   expect(screen.queryByText("Type to find a reference")).toBeNull();
   expect(screen.queryByText("No matching references")).toBeNull();
-  expect(screen.getByRole("option", { name: /^BibTeX or BibLaTeX file/ })).toBeTruthy();
+  expect(screen.getByRole("option", { name: /^BibTeX, BibLaTeX or CSL-JSON file/ })).toBeTruthy();
 });
 
 
@@ -2280,7 +2406,7 @@ test("when Zotero refuses other apps and no files are found, setup explains Zote
   backend({ library_status: () => NO_LIBRARY, find_sources: () => ({ zotero: "access_off", list: 1, files: [], cut_short: false }) });
   render(<App />);
   pressRow(await screen.findByRole("option", { name: /^Look for libraries on this computer/ }));
-  expect(await screen.findByText(/does not let other apps read it yet/)).toBeTruthy();
+  expect(await screen.findByText(/To read your references, in Zotero/)).toBeTruthy();
   expect(screen.queryByText(/No Zotero or .bib files found/)).toBeNull();
 });
 

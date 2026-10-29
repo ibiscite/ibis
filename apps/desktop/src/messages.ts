@@ -1,6 +1,20 @@
 import type { KeyFormat, LibraryStatus, LoginItemProblem, ShortcutRefusal } from "./bindings";
 import type { Platform } from "./platform";
 
+export const citationDetailsText = {
+  page: "Page",
+  pageExample: "12–15",
+  pageHint: "A page or range",
+  form: "Citation form",
+  forms: [
+    { value: "normal", label: "Normal" },
+    { value: "narrative", label: "Narrative" },
+    { value: "author-omitted", label: "Omit author" },
+  ] as const,
+  edit: (reference: string) => `Edit ${reference}`,
+  details: (reference: string) => `Citation details for ${reference}`,
+};
+
 /** Production picker text. Accessible names are stable automation contracts.
  * Native error reasons, notes, settings notices, shortcut errors and copy warnings
  * arrive as English strings from Rust; translating those needs structured codes.
@@ -74,16 +88,16 @@ export const setupText = {
   emptyLine: "Choose a library with references.",
   dropFile: "You can drop a file here too.",
   zotero: "Zotero",
-  zoteroHelp: "Reads your library while Zotero is open",
+  zoteroHelp: "Reads Zotero 7–10, open or closed; uses a private copy when closed",
   foundOn: (platform: Platform) => `Found on this ${platform === "macos" ? "Mac" : platform === "windows" ? "PC" : "computer"}`,
-  file: "BibTeX or BibLaTeX file",
-  fileHelp: "Choose a .bib file",
+  file: "BibTeX, BibLaTeX or CSL-JSON file",
+  fileHelp: "Choose a .bib, .bibtex, .json or .csljson file",
   findLibraries: "Look for libraries on this computer",
   findHelp: "Zotero and .bib files in your usual folders",
   lookAgain: "Look again",
   looking: "Looking for Zotero and .bib files…",
   zoteroAccessOff:
-    "Zotero is open, but it does not let other apps read it yet. In Zotero, open Settings, then Advanced, and turn on " +
+    "To read your references, in Zotero › Settings › Advanced turn on " +
     "“Allow other applications on this computer to communicate with Zotero”.",
   cutShort: "Some folders were too large to search fully. Choose the file yourself if it is not listed.",
   nothingFound: "No Zotero or .bib files found nearby. Choose the file yourself.",
@@ -102,7 +116,7 @@ export const setupText = {
   tryAgain: "Try again",
   tryAgainHelp: "Read the library again",
   another: "Use another library",
-  anotherHelp: "Zotero or another .bib file",
+  anotherHelp: "Zotero or another library file",
   /** A backend reason as a sentence: capitalised, with a full stop. */
   sentence: (reason: string) => {
     const text = reason.charAt(0).toUpperCase() + reason.slice(1);
@@ -170,6 +184,12 @@ export const pickerText = {
   addNamed: (name: string) => `Add ${name} to citation`,
   removeNamed: (name: string) => `Remove ${name} from citation`,
   bestMatches: "Best matches",
+  pastedList: "Pasted list",
+  copyCitations: (count: number) => `Copy ${count} ${count === 1 ? "citation" : "citations"}`,
+  missingCitations: (keys: string[]) => `Not in your library: ${keys.join(", ")}`,
+  closestMatches: "Closest matches",
+  closestMatch: "Closest match",
+  closestMatchWarning: (title: string) => `“${title}” is a closest match: only some search words matched.`,
   noMatches: "No matching references",
   noMatchesHint: "Try a surname, year or fewer words.",
   clearSearch: "Clear search",
@@ -186,7 +206,7 @@ export const pickerText = {
   chooseLibrary: "Choose library…",
   chooseTitle: "Choose a library",
   useZotero: "Use Zotero",
-  useZoteroTitle: "Read your Zotero library while Zotero is open",
+  useZoteroTitle: "Read your Zotero library, open or closed",
   libraryRegion: "Library",
   libraryStatus: "Library status",
   reload: "Reload",
@@ -451,7 +471,10 @@ export const copiedNoticeText = {
     "remote-desktop": "Copied. Not pasted into a remote desktop",
     "virtual-machine": "Copied. Not pasted into a virtual machine",
     "secure-field": "Copied. Not pasted into a password field",
+    "secure-input": "Copied. Secure typing is on, possibly in another app. Press ⌘V to paste.",
+    "paste-unavailable": "Copied. Press ⌘V to paste.",
     "elevated-app": "Copied. Not pasted into an administrator app",
+    "key-release-failed": "Copied. Press and release Ctrl and V",
   } as Record<string, string>,
   windowsTitle: "Citation copied. Press Ctrl+V to paste.",
   source: "Ibis",
@@ -489,7 +512,7 @@ export const settingsText = {
     allowed: (list: string) => `Allowed in Privacy & Security › ${list}`,
     allowedNote: "Ibis presses ⌘V once, only in the app you opened it from.",
     guideTitle: "Allow Ibis to paste for you",
-    guideWhy: "macOS asks you once. Ibis only presses ⌘V, only in the app you came from, and never reads what you type.",
+    guideWhy: "To paste, allow Ibis in macOS; it only presses ⌘V in the app you came from and never reads what you type.",
     steps: (name: string, list: string) => [
       "Click Open System Settings.",
       `In Privacy & Security › ${list}, turn on ${name}.`,
@@ -498,6 +521,7 @@ export const settingsText = {
     open: "Open System Settings",
     waiting: "Waiting for your OK…",
     granted: "Ibis can paste now.",
+    returnFailed: "Couldn't return to your citation. Open Ibis with your shortcut to continue.",
     stale: (name: string) => `Already on, but still waiting? An update gave ${name} a new identity. Open System Settings again: Ibis clears the old switch so you can turn on the new one.`,
     copyInstead: "Just copy",
   },

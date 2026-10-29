@@ -12,7 +12,7 @@ const styles = readFileSync(new FileURL("../../styles.css", import.meta.url), "u
 
 const rows: SearchResult[] = Array.from({ length: 10 }, (_, i) => ({
   revision: "1", id: { source: "refs.bib", native_key: `k${i}` }, key: `k${i}`, title: `Title ${i}`, authors: "Author", year: 2020,
-  matched: ["title"], first_author: "Author", author_count: 1, container: null, item_type: "book",
+  matched: ["title"], partial: false, first_author: "Author", author_count: 1, container: null, item_type: "book",
 }));
 
 test("metadata reflow measures the space left beside the year", () => {

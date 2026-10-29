@@ -115,7 +115,7 @@ fn watched_path(path: &Path) -> std::io::Result<PathBuf> {
 /// Initial loads remain tolerant of damaged entries. A reload additionally
 /// refuses unclosed blocks, while duplicate keys and other warnings still load.
 pub(crate) fn load_library_file(path: &Path, reload: bool) -> Result<LoadedLibrary, SourceError> {
-    parse(path, &read_library_file(path)?, reload)
+    parse(path, &read_library_file(path)?, reload, None)
 }
 
 /// The exact bytes and source identity seen by a completed load. Pass this to
@@ -132,7 +132,7 @@ pub struct SourceSnapshot {
 pub fn load_file_snapshot(path: &Path) -> Result<(LoadedLibrary, SourceSnapshot), SourceError> {
     let text = read_library_file(path)?;
     let source = resolved_path(path).map_err(|_| SourceError::Unavailable)?;
-    let loaded = parse(&source, &text, false)?;
+    let loaded = parse(&source, &text, false, None)?;
     Ok((
         loaded,
         SourceSnapshot {
@@ -142,8 +142,8 @@ pub fn load_file_snapshot(path: &Path) -> Result<(LoadedLibrary, SourceSnapshot)
     ))
 }
 
-fn parse(path: &Path, text: &str, reload: bool) -> Result<LoadedLibrary, SourceError> {
-    parse_with_budget(path, text, reload, bibtex::Budget::for_input(text.len()))
+fn parse(path: &Path, text: &str, reload: bool, previous: Option<&Snapshot>) -> Result<LoadedLibrary, SourceError> {
+    parse_with_budget(path, text, reload, bibtex::Budget::for_input(text.len()), previous)
 }
 
 fn parse_with_budget(
@@ -151,18 +151,15 @@ fn parse_with_budget(
     text: &str,
     reload: bool,
     budget: bibtex::Budget,
+    previous: Option<&Snapshot>,
 ) -> Result<LoadedLibrary, SourceError> {
     let source = resolved_path(path).map_err(|_| SourceError::Unavailable)?;
     let library = LibraryId::file(source.as_os_str().as_encoded_bytes());
     let text = text.trim_start_matches('\u{feff}');
     let extension = source.extension();
-    let json = if extension.is_some_and(|extension| extension.eq_ignore_ascii_case("bib")) {
-        false
-    } else {
-        extension.is_some_and(|extension| {
-            extension.eq_ignore_ascii_case("json") || extension.eq_ignore_ascii_case("csljson")
-        }) || text.trim_start().starts_with('[')
-    };
+    // Select by suffix: BibTeX comments may start with a JSON-looking bracket.
+    let json = extension
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("json") || extension.eq_ignore_ascii_case("csljson"));
     let (parsed, limited) = if json {
         let parsed = csl_json::load_str(&library, text)?;
         let limited = parsed
@@ -174,7 +171,7 @@ fn parse_with_budget(
         if reload && bibtex::has_incomplete_blocks(text) {
             return Err(SourceError::Incomplete);
         }
-        bibtex::load_with_budget(&library, text, budget)
+        bibtex::load_with_budget(&library, text, budget, previous)
     };
     if reload && limited {
         return Err(SourceError::LoadLimit);
@@ -192,7 +189,14 @@ fn parse_with_budget(
     if reload && attachment_limited {
         return Err(SourceError::LoadLimit);
     }
-    let snapshot = Snapshot::new(objects).map_err(|_| SourceError::InvalidData)?;
+    let mut snapshot = match previous {
+        Some(previous) => Snapshot::new_reusing(objects, previous, &parsed.reused),
+        None => Snapshot::new(objects),
+    }
+    .map_err(|_| SourceError::InvalidData)?;
+    if let Some(previous) = previous {
+        snapshot.reuse_unchanged(previous);
+    }
     Ok(LoadedLibrary {
         library,
         snapshot,
@@ -209,10 +213,19 @@ pub fn load_file(path: &Path) -> Result<LoadedLibrary, SourceError> {
 
 /// Explicit refresh obeys the same two-identical-observations rule as watches.
 pub fn reload_file(path: &Path) -> Result<LoadedLibrary, SourceError> {
+    reload(path, None)
+}
+
+/// Reuse unchanged records while parsing, before a second CSL library accumulates.
+pub fn reload_file_reusing(path: &Path, previous: &Snapshot) -> Result<LoadedLibrary, SourceError> {
+    reload(path, Some(previous))
+}
+
+fn reload(path: &Path, previous: Option<&Snapshot>) -> Result<LoadedLibrary, SourceError> {
     let (sender, events) = mpsc::sync_channel(1);
     let stopped = AtomicBool::new(false);
     let mut snapshot = None;
-    let result = stable_read(path, &events, &stopped, &mut snapshot, false)?.ok_or(SourceError::Changing);
+    let result = stable_read(path, &events, &stopped, &mut snapshot, false, previous)?.ok_or(SourceError::Changing);
     drop(sender);
     result
 }
@@ -228,9 +241,12 @@ pub struct SourceWatch {
 impl SourceWatch {
     pub fn new(
         path: &Path,
-        changed: impl FnMut(Result<LoadedLibrary, SourceError>) + Send + 'static,
+        mut changed: impl FnMut(Result<LoadedLibrary, SourceError>) + Send + 'static,
     ) -> Result<Self, SourceError> {
-        Self::start(path, None, changed)
+        Self::start(path, None, None, move |candidate| {
+            changed(candidate);
+            None
+        })
     }
 
     /// Check once after registration, but publish only if the source differs
@@ -238,15 +254,30 @@ impl SourceWatch {
     pub fn with_snapshot(
         path: &Path,
         snapshot: SourceSnapshot,
-        changed: impl FnMut(Result<LoadedLibrary, SourceError>) + Send + 'static,
+        mut changed: impl FnMut(Result<LoadedLibrary, SourceError>) + Send + 'static,
     ) -> Result<Self, SourceError> {
-        Self::start(path, Some(snapshot), changed)
+        Self::start(path, Some(snapshot), None, move |candidate| {
+            changed(candidate);
+            None
+        })
+    }
+
+    /// Seed parsing with the already loaded model. The callback returns the
+    /// source-scoped model it installed after coalescing, or None on rejection.
+    pub fn with_library(
+        path: &Path,
+        observation: Option<SourceSnapshot>,
+        model: Snapshot,
+        changed: impl FnMut(Result<LoadedLibrary, SourceError>) -> Option<Snapshot> + Send + 'static,
+    ) -> Result<Self, SourceError> {
+        Self::start(path, observation, Some(model), changed)
     }
 
     fn start(
         path: &Path,
         mut snapshot: Option<SourceSnapshot>,
-        mut changed: impl FnMut(Result<LoadedLibrary, SourceError>) + Send + 'static,
+        mut model: Option<Snapshot>,
+        mut changed: impl FnMut(Result<LoadedLibrary, SourceError>) -> Option<Snapshot> + Send + 'static,
     ) -> Result<Self, SourceError> {
         // Keep the selected filename, rather than canonicalizing the file inode.
         let path = watched_path(path).map_err(|_| SourceError::WatchUnavailable)?;
@@ -317,12 +348,13 @@ impl SourceWatch {
                     if failed.swap(false, Ordering::SeqCst) {
                         unavailable_retry = None;
                         error_reported = true;
-                        changed(Err(SourceError::WatchUnavailable));
+                        let _ = changed(Err(SourceError::WatchUnavailable));
                         continue;
                     }
                     // A selected symlink may now point into a different directory.
-                    let candidate = rearm_target(&mut watcher, &path, &target, &mut target_parent)
-                        .and_then(|()| stable_read(&path, &events, &stop, &mut snapshot, error_reported));
+                    let candidate = rearm_target(&mut watcher, &path, &target, &mut target_parent).and_then(|()| {
+                        stable_read(&path, &events, &stop, &mut snapshot, error_reported, model.as_ref())
+                    });
                     unavailable_retry = if matches!(candidate, Err(SourceError::Unavailable)) {
                         Some(unavailable_retry.map_or(SETTLE, |delay| (delay * 2).min(MAX_UNAVAILABLE_RETRY)))
                     } else {
@@ -335,12 +367,12 @@ impl SourceWatch {
                         match candidate {
                             Ok(Some(loaded)) => {
                                 error_reported = false;
-                                changed(Ok(loaded));
+                                publish_candidate(&mut model, loaded, &mut changed);
                             }
                             Ok(None) => {}
                             Err(error) => {
                                 error_reported = true;
-                                changed(Err(error));
+                                let _ = changed(Err(error));
                             }
                         }
                     }
@@ -349,6 +381,16 @@ impl SourceWatch {
             .map_err(|_| SourceError::WatchUnavailable)?;
         let _ = signal.try_send(());
         Ok(Self { stopped, signal })
+    }
+}
+
+fn publish_candidate(
+    model: &mut Option<Snapshot>,
+    loaded: LoadedLibrary,
+    changed: &mut impl FnMut(Result<LoadedLibrary, SourceError>) -> Option<Snapshot>,
+) {
+    if let Some(installed) = changed(Ok(loaded)) {
+        *model = Some(installed);
     }
 }
 
@@ -407,6 +449,7 @@ fn stable_read(
     stopped: &AtomicBool,
     snapshot: &mut Option<SourceSnapshot>,
     error_reported: bool,
+    previous: Option<&Snapshot>,
 ) -> Result<Option<LoadedLibrary>, SourceError> {
     let before = read_library_file(path)?;
     // A zero-length file and a valid prefix can both occur during a save.
@@ -431,12 +474,12 @@ fn stable_read(
         // An earlier gap error must clear even if the file returns unchanged.
         // Only these exact initially accepted bytes retain tolerant loading.
         return if error_reported {
-            parse(&source, &after, false).map(Some)
+            parse(&source, &after, false, previous).map(Some)
         } else {
             Ok(None)
         };
     }
-    parse(&source, &after, true).map(Some)
+    parse(&source, &after, true, previous).map(Some)
 }
 
 impl Drop for SourceWatch {
@@ -476,6 +519,37 @@ mod subprocess_watchdog;
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn watcher_caches_only_the_accepted_coalesced_model() {
+        let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
+        let path = directory.path().join("synthetic.bib");
+        std::fs::write(&path, "@book{a,title={Keep}}\n@book{b,title={Before}}")
+            .unwrap_or_else(|error| panic!("{error}"));
+        let published = load_file(&path).unwrap_or_else(|error| panic!("{error}")).snapshot;
+        let candidate = load_file(&path).unwrap_or_else(|error| panic!("{error}"));
+        let discarded = Arc::downgrade(&candidate.snapshot.objects()[0]);
+        let mut model = Some(Snapshot::new(vec![]).unwrap_or_else(|error| panic!("{error}")));
+        publish_candidate(&mut model, candidate, &mut |result| {
+            let mut loaded = result.unwrap_or_else(|error| panic!("{error}"));
+            // Another selected owner already published the same library.
+            loaded.snapshot.reuse_unchanged(&published);
+            assert!(
+                discarded.upgrade().is_none(),
+                "the watcher retained a pre-publication payload"
+            );
+            Some(loaded.snapshot)
+        });
+        assert!(Arc::ptr_eq(
+            &model.as_ref().unwrap_or_else(|| panic!("accepted model")).objects()[0],
+            &published.objects()[0]
+        ));
+        std::fs::write(&path, "@book{a,title={Rejected}}").unwrap_or_else(|error| panic!("{error}"));
+        let rejected = load_file(&path).unwrap_or_else(|error| panic!("{error}"));
+        let rejected_payload = Arc::downgrade(&rejected.snapshot.objects()[0]);
+        publish_candidate(&mut model, rejected, &mut |_| None);
+        assert!(rejected_payload.upgrade().is_none());
+        assert_eq!(model.as_ref(), Some(&published));
+    }
     #[cfg(unix)]
     #[test]
     fn a_file_replaced_by_a_fifo_after_metadata_cannot_block() {
@@ -516,6 +590,7 @@ mod tests {
                 &text,
                 reload,
                 bibtex::Budget::new(32 * 1024),
+                None,
             )
         };
         let initial = parse_limited(false).unwrap_or_else(|error| panic!("{error}"));

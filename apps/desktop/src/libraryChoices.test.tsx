@@ -6,7 +6,7 @@ import { backend, resetApp, result } from "./testing/app";
 
 afterEach(resetApp);
 const choiceRow = (name: RegExp) => screen.getByRole("option", { name });
-const FILE_ROW = /^BibTeX or BibLaTeX file/;
+const FILE_ROW = /^BibTeX, BibLaTeX or CSL-JSON file/;
 function pressRow(row: HTMLElement) {
   act(() => row.focus());
   fireEvent.keyDown(row, { key: "Enter", code: "Enter" });

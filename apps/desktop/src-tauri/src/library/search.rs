@@ -49,6 +49,8 @@ pub(crate) struct SearchResult {
     authors: String,
     year: Option<i32>,
     matched: Vec<MatchField>,
+    /// Only some query words matched; shown under "Closest matches".
+    partial: bool,
     /// Family name of the first author (or the whole name of an
     /// organization); empty when the record names no authors.
     first_author: String,
@@ -79,6 +81,7 @@ impl SearchResult {
         record: &ibis_core::contract::Record,
         cite: &str,
         matched: Vec<MatchField>,
+        partial: bool,
         revision: &str,
     ) -> Self {
         let text = |field: &str| {
@@ -128,6 +131,7 @@ impl SearchResult {
                 .and_then(serde_json::Value::as_i64)
                 .and_then(|year| i32::try_from(year).ok()),
             matched,
+            partial,
             container,
             item_type: text("type"),
         }
@@ -142,6 +146,12 @@ pub(crate) struct SearchQuery {
     pub(super) interpret_locators: bool,
 }
 
+/// Missing explicit citation keys in a recognized pasted list.
+#[derive(Serialize, specta::Type)]
+pub(crate) struct PastedList {
+    pub(super) missing: Vec<String>,
+}
+
 /// A search keeps its snapshot identity even when no references match.
 #[derive(Serialize, specta::Type)]
 pub(crate) struct SearchReply {
@@ -150,6 +160,9 @@ pub(crate) struct SearchReply {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[specta(optional)]
     pub(super) interpretation: Option<LocatorQuery>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[specta(optional)]
+    pub(super) list: Option<PastedList>,
 }
 
 #[cfg(test)]

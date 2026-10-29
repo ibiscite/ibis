@@ -2,6 +2,43 @@ use super::super::state::candidate;
 use super::*;
 
 #[test]
+fn the_chooser_accepts_each_library_file_format_the_engine_reads() {
+    let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+    for (extension, contents) in [
+        ("bib", "@misc{synthetic,title={Example reference}}"),
+        ("bibtex", "@misc{synthetic,title={Example reference}}"),
+        (
+            "json",
+            r#"[{"id":"synthetic","type":"book","title":"Example reference"}]"#,
+        ),
+        (
+            "csljson",
+            r#"[{"id":"synthetic","type":"book","title":"Example reference"}]"#,
+        ),
+    ] {
+        assert!(
+            LIBRARY_FILE_EXTENSIONS.contains(&extension),
+            "chooser hides .{extension}"
+        );
+        let path = directory.path().join(format!("synthetic.{extension}"));
+        std::fs::write(&path, contents).unwrap_or_else(|e| panic!("{e}"));
+        let file = super::super::engine_file::FileLibrary::open(&path).unwrap_or_else(|e| panic!("{e}"));
+        let reply = file
+            .search(
+                &super::super::search::SearchQuery {
+                    text: "Example".into(),
+                    interpret_locators: false,
+                },
+                20,
+                None,
+                &ibis_engine::Cancellation::default(),
+            )
+            .unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(reply.results.len(), 1, ".{extension} must load a reference");
+    }
+}
+
+#[test]
 fn three_rapid_choices_run_only_first_and_last_loads_and_the_last_wins() {
     use std::sync::mpsc;
     use std::time::Duration;

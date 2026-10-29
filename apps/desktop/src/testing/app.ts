@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, screen } from "@testing-library/react";
 import { clearMocks, mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { vi } from "vitest";
 import type * as api from "../api";
-import type { FilePreview } from "../bindings";
+import type { FilePreview, ReferenceForm } from "../bindings";
 
 export async function resetApp() {
   cleanup();
@@ -36,13 +36,13 @@ export async function chooseFromMore(name: string, role: "menuitem" | "menuitemc
 export function result(key: string, title: string, source = "refs.bib") {
   return {
     revision: "1", id: { library: source, key }, cite: `synthetic-cite-${key}`, source, key, title, authors: "Smith", year: 2020, matched: ["title"],
-    first_author: "Smith", author_count: 1, container: null as string | null, item_type: "article-journal",
+    first_author: "Smith", author_count: 1, container: null as string | null, item_type: "article-journal", partial: false,
   };
 }
 
 export type SyntheticId = { library: string; key: string };
 export type PreviewRequest = {
-  items: { id: SyntheticId; cite: string; locator: api.Locator | null }[];
+  items: { id: SyntheticId; cite: string; locator: api.Locator | null; form?: ReferenceForm }[];
   format: api.CopyFormat;
   style: string | null;
   expectedRevision: string;

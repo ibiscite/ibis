@@ -87,13 +87,17 @@ impl Engine {
                 return Err(error(ErrorCode::Cancelled));
             }
         }
-        let (loaded, observation) = if strict {
-            (ibis_sources::reload_file(&path).map_err(source_error)?, None)
+        let (mut loaded, observation) = if strict {
+            (
+                ibis_sources::reload_file_reusing(&path, self.snapshot()?.as_ref()).map_err(source_error)?,
+                None,
+            )
         } else {
             let (loaded, observation) = ibis_sources::load_file_snapshot(&path).map_err(source_error)?;
             (loaded, Some(observation))
         };
         cancel.check()?;
+        loaded.snapshot.reuse_unchanged(self.snapshot()?.as_ref());
         let mut registry = self.shared.sources.lock().map_err(|_| error(ErrorCode::Internal))?;
         let existing = registry
             .slots
@@ -113,12 +117,11 @@ impl Engine {
         let generation = existing.as_ref().map_or(0, |entry| entry.1.wrapping_add(1));
         let weak = Arc::downgrade(&self.shared);
         let callback = move |candidate| {
-            if let Some(shared) = weak.upgrade() {
-                shared.file_changed(id, generation, candidate);
-            }
+            weak.upgrade()
+                .and_then(|shared| shared.file_changed(id, generation, candidate))
         };
         let (watch, watch_warning) = if self.watch_files {
-            match self.watch(&path, observation, callback) {
+            match self.watch(&path, observation, loaded.snapshot.clone(), callback) {
                 Ok(watch) => (Some(watch), None),
                 Err(_) => (None, Some(WatchWarning::LiveRefreshOff)),
             }
@@ -165,16 +168,14 @@ impl Engine {
         &self,
         path: &Path,
         observation: Option<ibis_sources::SourceSnapshot>,
-        callback: impl Fn(Result<LoadedLibrary, SourceError>) + Send + Sync + 'static,
+        model: Snapshot,
+        callback: impl Fn(Result<LoadedLibrary, SourceError>) -> Option<Snapshot> + Send + Sync + 'static,
     ) -> Result<SourceWatch, SourceError> {
         #[cfg(test)]
         if self.resources.fail_watches.load(Ordering::Relaxed) {
             return Err(SourceError::WatchUnavailable);
         }
-        match observation {
-            Some(observation) => SourceWatch::with_snapshot(path, observation, callback),
-            None => SourceWatch::new(path, callback),
-        }
+        SourceWatch::with_library(path, observation, model, callback)
     }
     pub(super) fn reload_files(&self, library: Option<&LibraryId>, cancel: &Cancellation) -> Result<(), EngineError> {
         let loaded_zotero = self
@@ -337,18 +338,27 @@ impl Engine {
     }
 }
 impl Shared {
-    fn file_changed(&self, id: u64, generation: u64, candidate: Result<LoadedLibrary, SourceError>) {
-        let Ok(mut registry) = self.sources.lock() else { return };
-        let Some(slot) = registry.slots.get(&id) else { return };
+    fn file_changed(
+        &self,
+        id: u64,
+        generation: u64,
+        candidate: Result<LoadedLibrary, SourceError>,
+    ) -> Option<Snapshot> {
+        let mut registry = self.sources.lock().ok()?;
+        let slot = registry.slots.get(&id)?;
         if slot.generation != generation {
-            return;
+            return None;
         }
         let previous = slot.loaded.library.clone();
         match candidate {
             Err(failure) => {
                 let _ = self.failed(&previous, source_error(failure).code);
+                None
             }
-            Ok(loaded) => {
+            Ok(mut loaded) => {
+                if let Ok(state) = self.state_view() {
+                    loaded.snapshot.reuse_unchanged(state.index.snapshot());
+                }
                 let remove = (previous != loaded.library
                     && !registry
                         .slots
@@ -357,12 +367,13 @@ impl Shared {
                 .then_some(previous.clone());
                 match self.install(info(&loaded), &loaded.snapshot, remove) {
                     Ok(()) => {
-                        if let Some(slot) = registry.slots.get_mut(&id) {
-                            slot.loaded = Arc::new(loaded);
-                        }
+                        let installed = loaded.snapshot.clone();
+                        registry.slots.get_mut(&id)?.loaded = Arc::new(loaded);
+                        Some(installed)
                     }
                     Err(failure) => {
                         let _ = self.failed(&previous, failure.code);
+                        None
                     }
                 }
             }
@@ -460,7 +471,7 @@ mod tests {
         write("Replacement");
         engine.open_file(&path, &cancel).unwrap();
         let fresh = engine.snapshot().unwrap().fingerprints().clone();
-        engine.shared.file_changed(id, generation, Ok(old));
+        assert!(engine.shared.file_changed(id, generation, Ok(old)).is_none());
         assert_eq!(engine.snapshot().unwrap().fingerprints(), &fresh);
         let (generation, prior) = {
             let registry = engine.shared.sources.lock().unwrap();
@@ -475,7 +486,9 @@ mod tests {
             };
             MAX_WARNING_DETAILS + 1
         ];
-        engine.shared.file_changed(id, generation, Ok(same));
+        let prepared_index = engine.state().unwrap().index.clone();
+        assert!(engine.shared.file_changed(id, generation, Ok(same)).is_some());
+        assert!(Arc::ptr_eq(&prepared_index, &engine.state().unwrap().index));
         let libraries = engine.libraries().unwrap();
         assert_eq!(libraries.libraries[0].warnings.len(), MAX_WARNING_DETAILS);
         assert_eq!(libraries.libraries[0].warnings_total, MAX_WARNING_DETAILS + 1);

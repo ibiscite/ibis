@@ -5,10 +5,12 @@ import { copiesEntry } from "../../format/styles";
 import { STYLE_NAMES } from "../../format/styles";
 import { render } from "../../format/markup";
 import type { StyleId } from "../../format/styles";
-import { pickerText } from "../../messages";
-import type { CitationReference } from "./choice";
+import { citationDetailsText, pickerText } from "../../messages";
+import { idKey, type CitationDetailsChange, type CitationReference } from "./choice";
+import { closestMatchWarnings } from "./rows";
 import { LocatorToken } from "../../ui/LocatorToken";
 import { Button } from "../../ui/Button";
+import { CitationDetails } from "../../ui/CitationDetails";
 import { beak } from "../../brand";
 import "./CitationShelf.css";
 
@@ -33,10 +35,12 @@ export function chipLabels(records: SearchResult[]): string[] {
 /** What Enter pastes, above the footer's Copy action (docs/design.md, "Shelf"):
  * a line of chips for the references chosen with Shift+Enter, then the exact
  * output on one line. Results above never move when a reference is added. */
-export function CitationShelf({ announce, selected, removeLabel, onRemove, onRemoveLocator, style, keys, shown, problem, focusable, fallbackFocusRef }: {
+export function CitationShelf({ announce, selected, highlightedReference, onChangeReference, removeLabel, onRemove, onRemoveLocator, style, keys, shown, problem, focusable, fallbackFocusRef }: {
   /** False until the selection first changes, so opening the picker is silent. */
   announce: boolean;
   selected: Map<string, CitationReference>;
+  highlightedReference?: CitationReference;
+  onChangeReference?: (reference: CitationReference, change: CitationDetailsChange) => void;
   removeLabel: (r: SearchResult) => string;
   onRemove: (r: SearchResult) => void;
   onRemoveLocator?: (r: CitationReference) => void;
@@ -64,7 +68,19 @@ export function CitationShelf({ announce, selected, removeLabel, onRemove, onRem
   }, [fallbackFocusRef]);
   const records = [...selected.values()];
   const keysOf = [...selected.keys()];
+  const [editing, setEditing] = useState<string | null>(null);
+  const edited = (editing ? selected.get(editing) : undefined) ?? records[0] ?? highlightedReference;
+  const page = useRef<HTMLInputElement>(null);
+  const [editRequest, setEditRequest] = useState(0);
+  useLayoutEffect(() => {
+    // After the chosen editor mounts, bypass intervening reference controls.
+    if (editRequest > 0) page.current?.focus({ preventScroll: true });
+  }, [editRequest]);
   const labels = chipLabels(records);
+  const partialWarnings = closestMatchWarnings(records);
+  const warnings = [...(shown && typeof shown === "object" ? shown.warnings : []), ...partialWarnings];
+  const moreLabel = (count: number) => records.slice(records.length - count).some((r) => r.partial)
+    ? `${pickerText.moreChosen(count)} · ${pickerText.closestMatches}` : pickerText.moreChosen(count);
   // More than SHELF_CHIPS fold into "+N", which shows every chip on a few
   // scrolling lines, so each chosen reference can always be removed here.
   const [expanded, setExpanded] = useState(false);
@@ -85,7 +101,9 @@ export function CitationShelf({ announce, selected, removeLabel, onRemove, onRem
       const first = list.querySelector<HTMLElement>(".chip");
       if (!first || list.clientWidth <= 0) return;
       const style = getComputedStyle(list);
-      const minimum = parseFloat(getComputedStyle(first).minWidth);
+      const minimum = Math.max(parseFloat(getComputedStyle(first).minWidth),
+        ...[...list.querySelectorAll<HTMLElement>(".chip[data-partial]")].map((chip) =>
+          parseFloat(getComputedStyle(chip).maxWidth) || chip.getBoundingClientRect().width));
       if (!(minimum > 0)) return;
       const gap = parseFloat(style.columnGap) || 0;
       const available = list.clientWidth - (parseFloat(style.paddingInlineStart) || 0) - (parseFloat(style.paddingInlineEnd) || 0);
@@ -116,20 +134,27 @@ export function CitationShelf({ announce, selected, removeLabel, onRemove, onRem
   return (
     <>
       <p className="visually-hidden" role="status" aria-label={pickerText.citationSelection} aria-live="polite" aria-atomic="true">
-        {announce ? pickerText.selectionCount(selected.size) : ""}
+        {announce ? [pickerText.selectionCount(selected.size), ...partialWarnings].join(" ") : ""}
       </p>
-      {(records.length > 0 || shown !== undefined) && (
+      {(records.length > 0 || shown !== undefined || edited) && (
         <div className="shelf" ref={preserveFocus}>
           {records.length > 0 && (
             <ul ref={chips} className="shelf-chips" aria-label={pickerText.selectedReferences} data-expanded={(folded > 0 && expanded) || undefined}>
               <li ref={sizes} className="chip-more chip-fit-measure" aria-hidden="true" inert>
                 {Array.from({ length: Math.min(records.length, SHELF_CHIPS + 1) }, (_, i) => (
-                  <Button key={i} variant="quiet" size="small" excludeFromTabOrder>{pickerText.moreChosen(records.length - i)}</Button>
+                  <Button key={i} variant="quiet" size="small" excludeFromTabOrder>{moreLabel(records.length - i)}</Button>
                 ))}
               </li>
               {shownChips.map((r, i) => (
-                <li key={keysOf[i]} ref={preserveFocus} className="chip" title={r.key} hidden={!expanded && i >= visibleChips}>
-                  <bdi className="chip-label">{labels[i]}</bdi>
+                <li key={keysOf[i]} ref={preserveFocus} className="chip" title={r.key} data-partial={r.partial || undefined} hidden={!expanded && i >= visibleChips}
+                  onFocusCapture={() => setEditing(keysOf[i]!)}>
+                  {onChangeReference ? <Button variant="quiet" size="small" aria-label={citationDetailsText.edit(labels[i]!)}
+                    aria-pressed={edited === r} onPress={() => { setEditing(keysOf[i]!); setEditRequest((request) => request + 1); }}><bdi className="chip-label">{labels[i]}</bdi></Button>
+                    : <bdi className="chip-label">{labels[i]}</bdi>}
+                  {r.partial && <span className="shelf-pill" title={pickerText.closestMatchWarning(r.title || r.key)}>
+                    <span aria-hidden="true">{pickerText.closestMatch}</span>
+                    <span className="visually-hidden">{pickerText.closestMatchWarning(r.title || r.key)}</span>
+                  </span>}
                   {r.locator && onRemoveLocator && <LocatorToken text={`${r.locator.label} ${r.locator.value}`}
                     removeLabel={pickerText.removeLocator(r.locator.label, r.locator.value, r.key)} onRemove={() => onRemoveLocator(r)} />}
                   <Button variant="icon" size="small" className="chip-remove" onPress={() => onRemove(r)} aria-label={removeLabel(r)} />
@@ -138,13 +163,18 @@ export function CitationShelf({ announce, selected, removeLabel, onRemove, onRem
               {folded > 0 && (
                 <li ref={moreRef} className="chip-more">
                   <Button variant="quiet" size="small" aria-expanded={expanded} onPress={() => setExpanded(!expanded)}
+                    title={!expanded ? closestMatchWarnings(records.slice(visibleChips)).join(" ") || undefined : undefined}
                     aria-label={expanded ? pickerText.fewerChosen : pickerText.allChosen(records.length)}>
-                    {expanded ? pickerText.fewerChosenShort : pickerText.moreChosen(folded)}
+                    {expanded ? pickerText.fewerChosenShort : moreLabel(folded)}
                   </Button>
                 </li>
               )}
             </ul>
           )}
+          {edited && onChangeReference && <CitationDetails key={idKey(edited.id)} pageRef={page} label={citationDetailsText.details(edited.title || edited.key)}
+            page={edited.locator?.label === "page" ? edited.locator.value : ""} form={edited.form ?? "normal"}
+            onPageChange={(value) => onChangeReference(edited, { locator: value.trim() ? { label: "page", value } : null })}
+            onFormChange={(form) => onChangeReference(edited, { form })} />}
           {shown !== undefined && (
             <section ref={preserveFocus} aria-label={pickerText.preview} className="shelf-output" data-keys={keys || undefined}
               data-state={shown === null || typeof shown === "string" ? (shown ?? "pending") : undefined}
@@ -166,10 +196,10 @@ export function CitationShelf({ announce, selected, removeLabel, onRemove, onRem
                       <span className="visually-hidden">{pickerText.entryOnly(STYLE_NAMES[style])}</span>
                     </span>
                   )}
-                  {shown.warnings.length > 0 && (
-                    <span className="shelf-pill" title={shown.warnings.join("\n")}>
-                      <span aria-hidden="true">{pickerText.warningCount(shown.warnings.length)}</span>
-                      <span className="visually-hidden">{shown.warnings.join(" ")}</span>
+                  {warnings.length > 0 && (
+                    <span className="shelf-pill" title={warnings.join("\n")}>
+                      <span aria-hidden="true">{pickerText.warningCount(warnings.length)}</span>
+                      <span className="visually-hidden">{warnings.join(" ")}</span>
                     </span>
                   )}
                 </>

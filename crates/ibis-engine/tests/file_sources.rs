@@ -74,6 +74,42 @@ fn wait_for(mut predicate: impl FnMut() -> bool) {
     }
 }
 #[test]
+fn one_record_reload_reuses_unchanged_records_with_a_pending_citation() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("synthetic.bib");
+    let write = |title: &str| {
+        std::fs::write(
+            &path,
+            format!("@article{{a,title={{Unchanged synthetic}}}}\n@article{{b,title={{{title}}}}}\n"),
+        )
+        .unwrap();
+    };
+    write("Original synthetic");
+    let engine = Engine::new().unwrap().without_file_watches();
+    open(&engine, &path);
+    let old = engine.snapshot().unwrap();
+    let request: CitationRequest = serde_json::from_value(json!({
+        "items": [{"item":old.objects()[0].object.id()}],
+        "output": {"kind":"key","syntax":"pandoc","command":null},
+        "keep_order": true,
+    }))
+    .unwrap();
+    let prepared = engine.prepare_citation(&request, &Cancellation::default()).unwrap();
+    write("Edited synthetic");
+    engine
+        .dispatch(Method::Libraries, &json!({"action":"reload"}), &Cancellation::default())
+        .unwrap();
+    let refreshed = engine.snapshot().unwrap();
+    assert!(std::sync::Arc::ptr_eq(&old.objects()[0], &refreshed.objects()[0]));
+    assert!(!std::sync::Arc::ptr_eq(&old.objects()[1], &refreshed.objects()[1]));
+    let text = engine
+        .commit_citation(&prepared, &prepared.result().content_hash, |content| {
+            content.text.to_owned()
+        })
+        .unwrap();
+    assert_eq!(text, "[@a]");
+}
+#[test]
 fn damaged_refresh_keeps_last_good_data_and_exposes_fixed_status() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("synthetic.bib");

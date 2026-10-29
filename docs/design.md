@@ -3,7 +3,8 @@
 The one current rule book for how Ibis looks and behaves: picker, first run,
 Settings, preview, brand and website. [Decisions](decisions.md) win over it. Values live in
 [`apps/desktop/src/tokens.css`](../apps/desktop/src/tokens.css): this page names
-tokens by role and gives numbers only where no token exists. The Settings
+tokens by role and gives numbers only where no token exists. Settings has
+General, Shortcuts and About. The Settings
 window's remaining pages wait in #776; scope is
 in [ROADMAP.md](../ROADMAP.md) and progress in the issues. Tags such as [C9]
 (design canvas) and [D7] (token foundations) are cited by code and tests; keep
@@ -53,6 +54,9 @@ including its 16-point shadow margin; the frame ignores the pointer. The
 notice never clips its words: a citation that would be cut short moves to a
 second line. A green check means pasted; copied without a paste shows the
 same mark in `--muted` with the reason in words.
+If Windows cannot release the keys Ibis injected, the notice says "Copied.
+Press and release Ctrl and V". Ibis retains the unsent releases and retries
+them before any later delivery; it sends no new paste while they remain blocked.
 
 | Role | Tokens | Rule |
 |---|---|---|
@@ -350,6 +354,12 @@ age ticks every 30 s outside the live region.
 **Notices.** "Copied" or "Inserted" shows after the picker hides, in a window
 that never takes focus: the same pill near the top centre on every system. In-window toasts ("Removed · Undo") last 8 s and pause
 on hover and focus. Errors are one sentence beside their cause, never a modal.
+On macOS, system-wide Secure Event Input only copies and says "Copied. Secure
+typing is on, possibly in another app. Press ⌘V to paste." An unavailable or
+timed-out paste check says "Copied. Press ⌘V to paste." Keep these reasons
+distinct: the flag does not identify the destination's field and does not
+detect every password control. Neither notice calls the destination a
+password field.
 
 **Empty states.** First run, no library, an actually empty library and a library that could not be opened
 use the choice screen [C12]. Otherwise one template, centred: a 48 px symbolic icon in
@@ -379,6 +389,27 @@ it. On copy the shelf shows a closing beak and "Copied" at the line end.
 - **Text.** Text colours; key formats monospace with punctuation in `--muted`;
   formatted styles in the UI font. A read-only `<bdi dir="auto">` line with an
   ellipsis; the full text is in the tooltip and the wide pane.
+- **Page and form** (#1366). The focused shelf reference has a labelled Page
+  field (a page or range, including Roman numerals) and the shared Normal,
+  Narrative and Omit author choices. Focusing a reference's label shows its
+  details; activating Edit moves focus directly into that reference's Page
+  field, past other chips. The first reference is shown initially. With no built
+  selection, these controls edit the highlighted result. The first edit adds
+  that result to the shelf; subsequent searches cannot change its page or form.
+  Editing keeps focus in the control, clears a queued copy and prepares a new preview.
+  Clearing Page removes only that reference's page. Optional page labels such
+  as `p. 12` or unquoted `pp. ١٢–١٥` use the shared locator parser before
+  formatting; Unicode numbers keep their written digits. A recognised page
+  label must have a valid value: `pp.` is refused with a request to enter a
+  page or range, or clear Page. It never becomes literal page text. Page values
+  keep the shared parser's length limit. The field keeps the typed text.
+  Controls and actionable formatting refusals
+  remain visible with the paste preview hidden. Engine losses name the reference
+  and field beside the preview; an unsupported form explains the refusal there
+  and blocks copying until corrected. Enter leaves that explanation visible.
+  Mixed narrative clusters, other locator controls, prefixes and suffixes
+  remain in #24/#1315. Controls wrap at narrow widths and keep the shared
+  keyboard focus and touch targets.
 - **Year-only citations.** Keep supported style forms available through conditional
   layouts. Each selected item's output must show its issued year, or the style's
   own no-date term for an undated or zero-year item; otherwise refuse the citation.
@@ -395,7 +426,9 @@ it. On copy the shelf shows a closing beak and "Copied" at the line end.
 - **Show what will be pasted.** On by default (`show_paste_preview`, decision 0020),
   ⌘I / Ctrl+I, in More until Settings exists. Off hides only the line and
   closes the wide pane; the chosen references and copy readiness stay. If the
-  output had focus, Search receives it first. Copied while the window is kept
+  output had focus, Search receives it first. Formatting refusals stay visible
+  until corrected, including refusals received while the output is hidden.
+  Copied while the window is kept
   open says "Copied" without repeating text only when the visible output is
   exactly the copied string.
 - **Per OS** [C13]. A tint on the macOS glass, a stroked card on Windows,
@@ -474,6 +507,34 @@ and `a:` take their place while typing.
 **Search rules** (#1204, in `ibis-core` so every front end shares them). The
 index is built once per library change; a keystroke only scans it.
 
+- Pasted lists (#1326): every key syntax in the writer's capability table,
+  including BibLaTeX multicites, literal Typst `label("…")` constructors,
+  Org, MyST, MultiMarkdown, AsciiDoc, HTML and the key-bearing JSON outputs;
+  bare `@key` (also `-@key` and `@{any key}`), keys separated by newlines,
+  tabs, commas or semicolons, and identifiers separated by whitespace. Citation
+  syntax ignores surrounding prose and locators; it does not attach those
+  locators to the new citation. Keys and identifiers can be mixed in paste
+  order. Complete identifiers are read before their internal punctuation;
+  whitespace ends a DOI token, so a semicolon and `@` in its suffix stay literal.
+  Plain lists need at least two entries and every unqualified key must resolve
+  exactly, otherwise ordinary word search runs. In comma-separated bare-key
+  output, semicolons inside keys stay literal.
+  Keys and aliases ignore case; identifiers use their canonical forms.
+  Results keep paste order, deduplicate by record identity and ignore the
+  ordinary result limit. The heading is “Pasted list”. Missing explicit
+  keys and identifiers appear in “Not in your library: …”, including when all
+  are missing. Missing identifiers deduplicate by their canonical value.
+  With no explicit selection, the preview, Enter and Copy use every current
+  list result; the footer says “Copy N citations”. A selection takes priority.
+  A pending or stale search cannot supply list results or a missing-key notice.
+  A pasted list takes priority over trailing-locator interpretation, so a
+  numeric key stays a key. Closest matches never join a recognized list.
+  Unclosed citation syntax runs to the end of input.
+  Multiline paste replaces line breaks with tabs in the single-line search
+  field, preserving whitespace inside citation arguments without adding punctuation.
+  Recognition stops at 1,000 entries or 64 KiB; overflow falls back to search
+  rather than offering a truncated list. No document text is saved.
+
 - Any word order; case, accents and letter variants folded; "et al." and an
   "and" between names ignored. Every word must match somewhere.
 - Per word, the best of: a whole word, the start of a word, inside a word
@@ -511,6 +572,8 @@ index is built once per library change; a keystroke only scans it.
   (numbers and one- or two-letter words not counted, abstracts not searched)
   and every hinted word, most words first, then by the rules above. One-word
   searches, pasted identifiers and long pasted text get none.
+- Partial results use the existing results heading, labelled "Closest matches" instead of "Best matches"; the screen-reader result count includes that label.
+- A selected partial result keeps a "Closest match" warning pill on its shelf chip across searches; marked chips retain their width before folding, folded choices name "Closest matches", and selection announcements and copy/paste warnings retain that provenance.
 
 **Learning and parity** (#788). First minute: type, Enter, paste; first week:
 one footer tip at a time, retired once done (local "seen" flags only); power:
@@ -628,7 +691,7 @@ fills as the active result row; one suggested row at most gets an accent tile.
 A choice screen hides the result heading, the shelf and the Copy hint.
 
 - **No library:** "Where do your references live?": Zotero ("Found on this
-  Mac/PC/computer" once looked for), BibTeX or BibLaTeX file, then "Look for
+  Mac/PC/computer" once looked for), BibTeX, BibLaTeX or CSL-JSON file, then "Look for
   libraries on this computer". Nothing is searched until that row is chosen;
   found .bib files join as rows above it (folder as the tag), and the row
   becomes "Look again" with the outcome as its help line. Zotero refusing other
@@ -636,7 +699,7 @@ A choice screen hides the result heading, the shelf and the Copy hint.
   joins when that source ships (0.2).
 - **Empty library:** only after a successful load reports zero references: "No
   references in thesis.bib", then "Choose a library with references." Zotero
-  and BibTeX or BibLaTeX file are the two rows; a detected Zotero library gets
+  and BibTeX, BibLaTeX or CSL-JSON file are the two rows; a detected Zotero library gets
   "Found on this Mac/PC/computer". Below: "You can drop a file here too."
   A search with no matches keeps its search actions; a failed refresh keeps
   its searchable snapshot and failure notice. No shelf or Copy is shown on
@@ -696,6 +759,15 @@ that owns its area in ROADMAP.md.
 2. Setup that finishes itself (above); a permission detour keeps the prepared
    citation, notices the grant and waits for a fresh Enter. The two grants are
    named apart: "read your references" and "paste".
+   References, locators, search and the prepared output survive the detour,
+   including longer than the usual minute away. On return after a read-back
+   grant, the guide closes and the picker captures the destination again;
+   it never replays the earlier Enter. Its prepared output applies once, even
+   if the destination changed, without changing that app's remembered format.
+   Reopening before the grant keeps the detour active; destination refreshes
+   in the same opening keep its prepared output. A successful copy clears
+   the shelf even if hiding fails; only a confirmed permission refusal keeps
+   the copied selection for another attempt.
 3. Enter does what the footer says ("Paste into Word · APA"). Enter pressed
    while results load runs once, never twice. After the window closes a short
    receipt says what happened, and the last outcome stays readable in More.
@@ -719,7 +791,8 @@ that owns its area in ROADMAP.md.
 9. Change the last citation: an explicit action in More (with its key)
    reopens that shelf, pages included. Ibis replaces text only when the old
    citation is selected; otherwise it copies the new one and says so.
-10. A page example in the empty state and a "Page…" control on the focused row.
+10. A page example in the empty state and a Page field for the focused shelf
+    reference (#1366, above); a row shortcut to it remains planned.
 11. Empty results name the obstacle and its one fix: a filter, a library
     scope, or "Not in your libraries".
 12. Peek: the focused reference's full title, edition, year, identifiers and
@@ -836,6 +909,13 @@ opens by itself once per run, the first time a paste is refused, and lives in
 Settings › General › Pasting afterwards. Because macOS keys the permission to
 the code signature, opening the guide first clears Ibis's own entry when the
 permission is not working, so the list shows one fresh switch (#1292, #1242).
+Only the guide opened after a refused paste returns to the picker on grant;
+an ordinary Settings visit stays open and confirms the grant in words. A
+background grant never brings Ibis forward: completion waits for the person
+to return. Hidden pages make no permission reads; pasting switched off stops
+the one-second checks, keeping the capability read on return.
+Zotero's sharing line explains reading references; the macOS guide's line
+explains pasting. These are separate grants, never instructions to give both.
 
 Until the remaining pages exist, those settings live in More and the tray menu. **Start Ibis when you log
 in** is off until turned on (App Review 2.4.5(iii)), uses each system's words

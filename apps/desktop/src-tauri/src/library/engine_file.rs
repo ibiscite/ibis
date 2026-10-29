@@ -32,6 +32,15 @@ pub(crate) struct FileSelection {
     pub(crate) id: Value,
     pub(crate) cite: String,
     pub(crate) locator: Option<Locator>,
+    #[specta(optional)]
+    pub(crate) form: Option<ReferenceForm>,
+}
+#[derive(Clone, Copy, PartialEq, Eq, Deserialize, specta::Type)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum ReferenceForm {
+    Normal,
+    Narrative,
+    AuthorOmitted,
 }
 #[derive(Serialize, specta::Type)]
 pub(crate) struct FilePreview {
@@ -50,12 +59,11 @@ impl FileLibrary {
                 &json!({"action":"open-file","path":path}),
                 &Cancellation::default(),
             )
-            .map_err(|error| {
-                super::LoadError::Source(match error.code {
-                    ibis_core::contract::ErrorCode::SourceUnavailable => ibis_core::source::SourceError::Unavailable,
-                    ibis_core::contract::ErrorCode::ResourceLimit => ibis_core::source::SourceError::TooLarge,
-                    _ => ibis_core::source::SourceError::Unreadable,
-                })
+            .map_err(|error| match error.code {
+                ibis_core::contract::ErrorCode::BadInput => super::LoadError::InvalidData,
+                ibis_core::contract::ErrorCode::SourceUnavailable => ibis_core::source::SourceError::Unavailable.into(),
+                ibis_core::contract::ErrorCode::ResourceLimit => ibis_core::source::SourceError::TooLarge.into(),
+                _ => ibis_core::source::SourceError::Unreadable.into(),
             })?;
         Ok(Self::from_engine(engine))
     }
@@ -197,20 +205,13 @@ impl FileLibrary {
         scope: Option<Vec<String>>,
         cancel: &Cancellation,
     ) -> Result<SearchReply, String> {
-        let interpretation = query
-            .interpret_locators
-            .then(|| ibis_core::locator_query::split(&query.text))
-            .flatten();
-        if interpretation
-            .as_ref()
-            .map_or(query.text.as_str(), |q| q.search.as_str())
-            .trim()
-            .is_empty()
-        {
+        let mut interpretation = None;
+        if query.text.trim().is_empty() {
             return Ok(SearchReply {
                 revision: self.revision(),
                 results: vec![],
                 interpretation,
+                list: None,
             });
         }
         // The existing native boundary names Zotero sources for the picker;
@@ -234,27 +235,41 @@ impl FileLibrary {
                 })
                 .collect::<Vec<_>>()
         });
-        let reply = match self.engine.search(
-            &SearchRequest {
-                interpret_locator: false,
-                query: interpretation
-                    .as_ref()
-                    .map_or_else(|| query.text.clone(), |q| q.search.clone()),
-                limit: limit.min(200),
-                libraries: scope
-                    .map(|ids| serde_json::from_value(json!(ids)))
-                    .transpose()
-                    .map_err(|_| "Invalid library scope.".to_string())?,
-            },
-            cancel,
-        ) {
+        let libraries: Option<Vec<ibis_core::contract::LibraryId>> = scope
+            .map(|ids| serde_json::from_value(json!(ids)))
+            .transpose()
+            .map_err(|_| "Invalid library scope.".to_string())?;
+        let run = |text: &str| {
+            self.engine.search(
+                &SearchRequest {
+                    interpret_locator: false,
+                    query: text.to_owned(),
+                    limit: limit.min(200),
+                    libraries: libraries.clone(),
+                },
+                cancel,
+            )
+        };
+        // A numeric key in a pasted list must not become a page locator.
+        let outcome: Result<_, ibis_core::contract::EngineError> = (|| {
+            let mut reply = run(&query.text)?;
+            if reply.list.is_none() && query.interpret_locators {
+                interpretation = ibis_core::locator_query::split(&query.text);
+                if let Some(interpreted) = &interpretation {
+                    reply = run(&interpreted.search)?;
+                }
+            }
+            Ok(reply)
+        })();
+        let reply = match outcome {
             Ok(reply) => reply,
             // A newer search replaced this one; the interface ignores the empty reply.
             Err(error) if error.code == ibis_core::contract::ErrorCode::Cancelled => {
                 return Ok(SearchReply {
                     revision: self.revision(),
                     results: vec![],
-                    interpretation,
+                    interpretation: None,
+                    list: None,
                 });
             }
             Err(_) => return Err("The library could not be searched.".to_string()),
@@ -263,13 +278,15 @@ impl FileLibrary {
         let results = reply
             .hits
             .into_iter()
-            // The picker cannot mark closest matches yet, so it leaves them out
-            // rather than show them as full matches.
-            .filter(|hit| !hit.partial)
             .filter_map(|hit| match hit.item.object {
                 LibraryObject::Record(record) => {
-                    let mut result =
-                        SearchResult::from_engine(&record, hit.item.fingerprints.cite.as_str(), hit.matched, &revision);
+                    let mut result = SearchResult::from_engine(
+                        &record,
+                        hit.item.fingerprints.cite.as_str(),
+                        hit.matched,
+                        hit.partial,
+                        &revision,
+                    );
                     if let Some(source) = sources.get(record.id.library.as_str()) {
                         result.source.clone_from(source);
                     }
@@ -282,6 +299,9 @@ impl FileLibrary {
             revision,
             results,
             interpretation,
+            list: reply
+                .list
+                .map(|list| super::search::PastedList { missing: list.missing }),
         })
     }
     pub(crate) fn reserve_preview(&self) -> u64 {
@@ -296,6 +316,16 @@ impl FileLibrary {
         format: KeyFormat,
         style: Option<CitationStyle>,
     ) -> Result<FilePreview, CommandError> {
+        // Narrative is the textcite member of the BibLaTeX output family.
+        // Mixed command clusters remain outside the picker's small editor.
+        let format = if items.len() == 1
+            && items[0].form == Some(ReferenceForm::Narrative)
+            && matches!(format, KeyFormat::Autocite | KeyFormat::Parencite)
+        {
+            KeyFormat::Textcite
+        } else {
+            format
+        };
         let output = if let Some(style) = style {
             json!({"kind":"csl","style":style})
         } else {
@@ -312,8 +342,33 @@ impl FileLibrary {
         };
         let items: Vec<_> = items
             .into_iter()
-            .map(|item| json!({"item":item.id,"expected_cite":item.cite,"locator":item.locator.map(|locator| json!({"term":locator.label,"value":locator.value}))}))
-            .collect();
+            .enumerate()
+            .map(|(index, item)| {
+                let locator = item
+                    .locator
+                    .map(|mut locator| -> Result<Value, CommandError> {
+                        if locator.label == ibis_core::cite::LocatorLabel::Page {
+                            locator.value = ibis_core::locator::page_value(&locator.value).map_err(|error| {
+                                let hint = match error {
+                                    ibis_core::locator::PageValueError::MissingValue => {
+                                        "Page needs a page or range. Enter one after the label, or clear Page."
+                                    }
+                                    ibis_core::locator::PageValueError::InvalidValue => {
+                                        "Page needs a valid page or range after its label. Correct it, or clear Page."
+                                    }
+                                };
+                                CommandError::from(format!("Reference {}: {hint}", index + 1))
+                            })?;
+                        }
+                        Ok(json!({"term":locator.label,"value":locator.value}))
+                    })
+                    .transpose()?;
+                Ok(json!({"item":item.id,"expected_cite":item.cite,
+                "form":(item.form == Some(ReferenceForm::Narrative)).then_some("narrative"),
+                "suppress_author":item.form == Some(ReferenceForm::AuthorOmitted),
+                "locator":locator}))
+            })
+            .collect::<Result<_, CommandError>>()?;
         let request: CitationRequest = serde_json::from_value(json!({"items":items,"output":output,"form":if style == Some(CitationStyle::Ieee) { "bibliography-only" } else { "normal" },"keep_order":style.is_none()}))
             .map_err(|_| CommandError::from("The selected references could not be read. Search again."))?;
         let citation = self
@@ -331,6 +386,14 @@ impl FileLibrary {
             // A key another record also has is named, so the picker can say what to rename.
             if let Some(key) = refused(CitationError::AmbiguousKey).and_then(|item| self.citation_key(&request, item)) {
                 return Err(CommandError::SharedCitationKey { key });
+            }
+            if let Some(item) = refused(CitationError::UnsupportedForm) {
+                let form = if request.items[item].form == Some(ibis_core::contract::CitationForm::Narrative) {
+                    "Narrative"
+                } else {
+                    "This citation form"
+                };
+                return Err(format!("Reference {}: {form} cannot be expressed in this output or group. Choose Normal, cite it alone, or choose another output.", item + 1).into());
             }
             return Err(if refused(CitationError::ConflictingKey).is_some() {
                 "These references have conflicting citation keys. Resolve them in your library or choose a formatted style."
@@ -395,6 +458,7 @@ impl FileLibrary {
         Ok(crate::copy::Copied {
             text: citation.result().text.clone(),
             warnings: citation_warnings(citation.result()),
+            delivery: None,
         })
     }
 }
@@ -412,8 +476,17 @@ fn citation_warnings(result: &CitationResult) -> Vec<String> {
     if result.notices.contains(&Notice::YearSuffixWithheld) {
         warnings.push("Year suffixes require the whole document; Ibis leaves them out.".into());
     }
-    if !result.losses.is_empty() {
-        warnings.push("This format cannot express part of the citation.".into());
+    for loss in &result.losses {
+        use ibis_core::contract::LossField;
+        let detail = match loss.field {
+            LossField::Locator => "Page or location",
+            LossField::AuthorSuppression => "Omit author",
+            _ => "Part of the citation",
+        };
+        let owner = loss
+            .item
+            .map_or_else(String::new, |item| format!("Reference {}: ", item + 1));
+        warnings.push(format!("{owner}{detail} cannot be fully expressed in this output."));
     }
     warnings
 }
