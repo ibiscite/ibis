@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Density, LoginItem, PickerPreferences, ShortcutStatus } from "../bindings";
 import { DEFAULT_PICKER_SHORTCUT, KEY_TABLE, keyLabel, shortcutLabel } from "../keys";
 import { densityNames, keyText, loginItemText, settingsText, shortcutRefusalText } from "../messages";
+import { PreferencePatchQueue } from "../preferencePatchQueue";
 import { currentPlatform } from "../platform";
 import { Button } from "../ui/Button";
 import { Segmented } from "../ui/Segmented";
@@ -16,17 +17,6 @@ import "./Settings.css";
 type Page = "general" | "shortcuts" | "about";
 const PAGES: readonly Page[] = ["general", "shortcuts", "about"];
 const DENSITIES: readonly Density[] = ["compact", "comfortable", "spacious"];
-
-/** Every way out of Settings gives queued choices at most two seconds. */
-async function finishSaving(pending: { current: number }, saving: { current: Promise<unknown> }) {
-  let timer: number | undefined;
-  const drain = async () => { while (pending.current) await saving.current; };
-  await Promise.race([
-    drain().catch(() => undefined),
-    new Promise<void>((resolve) => { timer = window.setTimeout(resolve, 2_000); }),
-  ]);
-  window.clearTimeout(timer);
-}
 
 /** A page asked for by name; "paste" is General, scrolled to pasting. */
 export function pageOf(name: string | null): { page: Page; focus: "paste" | null } {
@@ -63,12 +53,15 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   const [detour, setDetour] = useState(initialPage === "paste");
   const [returnFailed, setReturnFailed] = useState(false);
   const [focused, setFocused] = useState(true);
-  const saving = useRef<Promise<unknown>>(Promise.resolve());
-  const generation = useRef(0);
-  const reads = useRef(0);
-  const unsaved = useRef<Partial<PickerPreferences>>({});
-  const unsavedRevision = useRef<Partial<Record<keyof PickerPreferences, number>>>({});
-  const pending = useRef(0);
+  const queue = useMemo(() => new PreferencePatchQueue({
+    read: async () => ({ preferences: await api.pickerPreferences() }),
+    write: (patch, key) => api.setPickerPreferences(patch, key),
+  }, { restoreOnFailure: true }), [api]);
+  useEffect(() => queue.subscribe((event) => {
+    if (event.type === "error") setFailed(true);
+    else if (event.type === "read") setPreferences(event.value.preferences);
+    else if (event.type === "saved") setPreferences(event.value.preferences);
+  }), [queue]);
   const permission = usePastePermission(api, page === "general", preferences?.paste === true);
 
   useEffect(() => {
@@ -82,11 +75,11 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     let live = true;
     setReturnFailed(false);
     // Finish queued preferences before leaving Settings, as on a normal close.
-    void finishSaving(pending, saving).then(async () => {
+    void queue.finishSaving().then(async () => {
       if (live && await api.finishPasteGuide()) setDetour(false);
     }).catch(() => { if (live) setReturnFailed(true); });
     return () => { live = false; };
-  }, [api, detour, focused, permission, preferences?.paste]);
+  }, [api, queue, detour, focused, permission, preferences?.paste]);
 
   useEffect(() => {
     let active = true;
@@ -103,12 +96,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
       });
     };
     const readAll = () => {
-      const request = ++reads.current;
-      const started = generation.current;
-      const idle = pending.current === 0;
-      api.pickerPreferences().then((next) => {
-        if (request === reads.current && idle && started === generation.current && pending.current === 0) setPreferences(next);
-      }).catch(() => setFailed(true));
+      void queue.load(() => active);
       api.loginItem().then(setLogin).catch(() => setLogin(null));
       const updateRequest = ++updateReads.current;
       api.updateChecks().then((next) => {
@@ -133,7 +121,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
       updateReads.current += 1;
       setUpdates(next);
     });
-    const close = api.onCloseRequested(() => finishSaving(pending, saving));
+    const close = api.onCloseRequested(() => queue.finishSaving());
     return () => {
       active = false;
       window.removeEventListener("focus", readAll);
@@ -143,7 +131,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
       void automatic.then((stop) => stop()).catch(() => undefined);
       void close.then((stop) => stop()).catch(() => undefined);
     };
-  }, [api]);
+  }, [api, queue]);
   useEffect(() => {
     const scroller = pageRef.current;
     if (!focus || !scroller) return;
@@ -159,57 +147,22 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
 
   const change = (next: Partial<PickerPreferences>) => {
     if (!preferences) return;
-    const chosen = { ...preferences, ...next };
-    const edited = ++generation.current;
-    unsaved.current = { ...unsaved.current, ...next };
-    for (const key of Object.keys(next) as (keyof PickerPreferences)[]) unsavedRevision.current[key] = edited;
-    const queued = { ...unsaved.current };
-    const queuedRevision = { ...unsavedRevision.current };
-    const deliberate = new Set(Object.keys(next));
-    pending.current += 1;
-    setPreferences(chosen);
+    setPreferences({ ...preferences, ...next });
     setFailed(false);
-    // Saved in the order chosen, so quick changes end as the last one shows.
-    saving.current = saving.current.catch(() => undefined)
-      .then(async () => {
-        const patch = Object.fromEntries(Object.entries(queued).filter(([key]) =>
-          deliberate.has(key) || unsavedRevision.current[key as keyof PickerPreferences] === queuedRevision[key as keyof PickerPreferences]));
-        const saved = await api.setPickerPreferences(patch, null);
-        for (const key of Object.keys(patch) as (keyof PickerPreferences)[]) {
-          if (unsavedRevision.current[key] === queuedRevision[key]) {
-            delete unsaved.current[key];
-            delete unsavedRevision.current[key];
-          }
-        }
-        if (edited === generation.current) setPreferences(saved.preferences);
-      })
-      .finally(() => { pending.current -= 1; })
-      .catch(() => {
-        setFailed(true);
-        if (pending.current !== 0 || edited !== generation.current) return;
-        const request = ++reads.current;
-        void api.pickerPreferences().then((saved) => {
-          if (request === reads.current && pending.current === 0 && edited === generation.current) {
-            unsaved.current = {};
-            unsavedRevision.current = {};
-            setPreferences(saved);
-          }
-        }).catch(() => undefined);
-      });
+    queue.change(next);
   };
   const changeShortcut = (next: string | null) => {
     if (shortcutBusy.current) return;
     shortcutBusy.current = true;
     const request = ++shortcutReads.current;
-    pending.current += 1;
     setShortcutSaving(true);
     setShortcutProblem(null);
-    saving.current = saving.current.catch(() => undefined).then(() => api.setShortcut(next))
+    void queue.enqueue(() => api.setShortcut(next))
       .then((status) => { if (request === shortcutReads.current) setShortcut(status); })
       .catch((refusal: unknown) => {
         setShortcutProblem(shortcutRefusalText(refusal));
       })
-      .finally(() => { pending.current -= 1; shortcutBusy.current = false; setShortcutSaving(false); });
+      .finally(() => { shortcutBusy.current = false; setShortcutSaving(false); });
   };
   const configureShortcut = () => {
     if (shortcutBusy.current) return;
