@@ -146,6 +146,8 @@ export const commands = {
 	pastePermission: () => __TAURI_INVOKE<PastePermission>("paste_permission"),
 	/**  Clear a stale entry, ask macOS to list Ibis, then open the pane with the switch. */
 	openPastePermission: () => __TAURI_INVOKE<void>("open_paste_permission"),
+	/**  Drag only the running app bundle into the permission list. */
+	dragPasteApp: () => __TAURI_INVOKE<null>("drag_paste_app"),
 	/**
 	 *  Open Ibis with `shortcut` from now on (`None`: the default), and remember it.
 	 *  Every window and the menu bar item show the change at once.

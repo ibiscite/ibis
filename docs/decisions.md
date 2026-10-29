@@ -108,10 +108,18 @@ The workspace keeps `unsafe_code = "forbid"`. Native calls use maintained
 safe bindings where available. Decision 0006's Windows closed-reader module
 and `paste/macos/secure_input.rs` are scoped exceptions: their crates use
 `deny`, with an allow only on the native module and a safety comment on each
-block. Changes there need independent security-boundary review.
+block. `paste/permission/drag.rs` is also scoped to allow AppKit's drag-source
+protocol implementation, NSObject initialization and the image-contents setter:
+the generated bindings offer no safe source constructor or typed image setter.
+It uses the existing objc2 bindings, with no new dependency (2026-10-28, #1390).
+The Settings-only command accepts no file path; it publishes only
+`NSBundle.mainBundle.bundleURL` as a file URL from a live Settings mouse drag,
+refuses unbundled executables, and allows only copy even with modifier keys.
+Its stateless source stays on the main thread for the session's lifetime.
+Changes to these modules need independent security-boundary review.
 
-On macOS the boundary is just `IsSecureEventInputEnabled`, whose SDK result
-is a Boolean (`u8`). It is read on the main thread, as Carbon requires. The
+For paste safety on macOS, the boundary is just `IsSecureEventInputEnabled`,
+whose SDK result is a Boolean (`u8`). It is read on the main thread, as Carbon requires. The
 flag is system-wide and can be enabled by another app; it does not establish
 that the destination is a password field. An enabled flag copies with the
 `secure-input` reason: "Copied. Secure typing is on, possibly in another app.

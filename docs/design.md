@@ -898,6 +898,15 @@ opens by itself once per run, the first time a paste is refused, and lives in
 Settings › General › Pasting afterwards. Because macOS keys the permission to
 the code signature, opening the guide first clears Ibis's own entry when the
 permission is not working, so the list shows one fresh switch (#1292, #1242).
+Automatic listing stays first. Beside **Open System Settings**, the Ibis app
+icon is a file drag source, followed by one line: "If Ibis is not in the list,
+drag it there." It drags the running bundle's file URL, including a renamed,
+moved or Nightly copy, with only a copy operation; it never moves the app or
+changes the citation clipboard. The icon uses the shared `ui/FileDrag` and
+button states; clicking or pressing it opens System Settings as the keyboard
+alternative. An unbundled development executable cannot be dragged; a failed
+drag points to the list's **+** button. Neither starting nor completing a drag
+claims a grant: the same live permission read must confirm it (#1390).
 Only the guide opened after a refused paste returns to the picker on grant;
 an ordinary Settings visit stays open and confirms the grant in words. A
 background grant never brings Ibis forward: completion waits for the person

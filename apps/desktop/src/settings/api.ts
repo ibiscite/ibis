@@ -16,6 +16,7 @@ export const settingsApi = {
   checkForUpdates: commands.checkForUpdates,
   pastePermission: commands.pastePermission as () => Promise<PastePermission>,
   openPastePermission: commands.openPastePermission,
+  dragPasteApp: commands.dragPasteApp,
   finishPasteGuide: commands.finishPasteGuide,
   shortcutStatus: commands.shortcutStatus,
   setShortcut: commands.setShortcut,
