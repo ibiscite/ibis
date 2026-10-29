@@ -137,6 +137,8 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   useEffect(() => setSearchFocused(document.activeElement === input.current), []);
   // When the picker last went away; the search waits a minute, in memory only.
   const hiddenAt = useRef<number | null>(null);
+  // A permission detour owns the prepared shelf, even beyond the usual minute.
+  const permissionDetour = useRef(false);
   // A search Escape cleared comes back on reopening within the same minute.
   const escapedQuery = useRef<{ text: string; interpretLocators: boolean } | null>(null);
   const [restored, setRestored] = useState(0);
@@ -217,7 +219,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       resetPointer();
       copyVisibility.current += 1;
       pickerShows.current += 1;
-      if (hiddenAt.current !== null && performance.now() - hiddenAt.current > KEEP_SEARCH_MS) clearSearch();
+      if (!permissionDetour.current && hiddenAt.current !== null && performance.now() - hiddenAt.current > KEEP_SEARCH_MS) clearSearch();
       else if (hiddenAt.current !== null && escapedQuery.current !== null) {
         const escaped = escapedQuery.current;
         escapedQuery.current = null;
@@ -226,7 +228,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
         setRestored((n) => n + 1);
       }
       hiddenAt.current = null;
-      destination.read();
+      destination.read(true, permissionDetour.current);
       readLoginItem();
       readShortcut();
       input.current?.focus();
@@ -367,6 +369,18 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     input.current?.focus({ preventScroll: true });
   };
 
+  const changeReference = (reference: CitationReference, change: Pick<CitationReference, "locator" | "form">) => {
+    setPendingCopy(null);
+    setSelectionChanged(true);
+    setSelected((previous) => {
+      const prepared = previous.get(idKey(reference.id));
+      if (prepared ? prepared !== reference : previous.size > 0) return previous;
+      const next = new Map(previous);
+      next.set(idKey(reference.id), { ...reference, ...change });
+      return next;
+    });
+  };
+
   const rowScope = useMemo(() => ({ api, current, selected, queryKey, format, snapshotRevision }), [api, current, selected, queryKey, format, snapshotRevision]);
   const latestRowScope = useRef(rowScope);
   latestRowScope.current = rowScope;
@@ -383,6 +397,8 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     const ownsCompletion = () => request === copyRequest.current && context === copyContext.current && visibility === copyVisibility.current && destination.isCurrentCopy(outputToken);
     setCopied(null);
     setCopyError(null);
+    // The shelf already shows the actionable refusal, even with its text hidden.
+    if (shown === "failed") return;
     if (shown === "stale" || !chosenRevision) {
       setCopyError(pickerText.snapshotChanged);
       refreshSnapshot();
@@ -405,26 +421,37 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       return;
     }
     const ownsFeedback = ownsCompletion();
-    // A successful copy consumes its override even after the user moved to another row.
-    const nextFormat = destination.consumeOnce(outputToken);
-    if (!ownsFeedback) return;
+    if (!ownsFeedback) { destination.consumeOnce(outputToken); return; }
     setCopied(outcome);
-    const clearedSelection = new Map<string, CitationReference>();
-    const completedContext = { ...context, format: nextFormat ?? context.format, selected: clearedSelection, activeChoice: latestDefaultChoice.current };
-    copyContext.current = completedContext;
-    setSelected(clearedSelection);
+    const complete = () => {
+      const nextFormat = destination.consumeOnce(outputToken);
+      const clearedSelection = new Map<string, CitationReference>();
+      copyContext.current = { ...context, format: nextFormat ?? context.format, selected: clearedSelection, activeChoice: latestDefaultChoice.current };
+      setSelected(clearedSelection);
+      permissionDetour.current = false;
+    };
     // After a copy, reopening keeps the current search, not one cleared before it.
     escapedQuery.current = null;
     // Get out of the way so the user can paste, unless there is something to
     // read or the picker is pinned beside the document.
     if (afterCopy(outcome, currentPin.current) === "hide-and-notify") {
+      // Keep the shelf until delivery says whether macOS sent us to its guide.
+      // A return during delivery also keeps it and cancels this completion.
+      permissionDetour.current = true;
       void perform("hide", async () => {
-        await hidePicker();
-        if (request !== copyRequest.current || shownAt !== pickerShows.current || completedContext !== copyContext.current) return;
-        // The notice is extra; a failure to show it never undoes the copy.
-        await showCopiedNotice?.(outcome.text, outcome.delivery ?? null).catch(() => console.error(copiedNoticeText.noticeFailed));
+        const current = () => request === copyRequest.current && shownAt === pickerShows.current && context === copyContext.current;
+        let permissionRefused = false;
+        try {
+          await hidePicker();
+          if (!current()) return;
+          // The notice is extra; a failure to show it never undoes the copy.
+          const delivered = await showCopiedNotice?.(outcome.text, outcome.delivery ?? null).catch(() => console.error(copiedNoticeText.noticeFailed));
+          permissionRefused = !!delivered && delivered.outcome === "copied" && delivered.reason === "no-permission";
+        } finally {
+          if (current() && !permissionRefused) complete();
+        }
       });
-    }
+    } else complete();
   };
   // Enter, Copy or a click on a row copies what is chosen then (the row, or the
   // citation being built), once its preview is ready; anything changing first cancels it.
@@ -492,7 +519,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const usingLocator = current === results && interpretLocators && showCitations ? interpretation?.locator : null;
   const prepared = highlighted && selected.get(idKey(highlighted.id));
   const canApplyLocator = usingLocator && prepared && prepared.revision === highlighted.revision &&
-    choiceKey([prepared]) !== choiceKey([{ ...highlighted, locator: usingLocator }]);
+    choiceKey([prepared]) !== choiceKey([{ ...highlighted, locator: usingLocator, form: prepared.form }]);
   const shiftEnterAction = highlighted && showCitations
     ? (selected.has(idKey(highlighted.id)) ? keyText.removeFromCitation : keyText.addToCitation) : null;
   const escapeAction = menuOpen ? keyText.closeMenu : query ? keyText.clearSearch : keyText.hide;
@@ -693,7 +720,8 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       <CitationShelf announce={selectionChanged} selected={showCitations ? selected : noSelection} removeLabel={removeLabel} onRemove={(r) => {
         toggle(r);
         input.current?.focus({ preventScroll: true });
-      }} onRemoveLocator={(r) => changeLocator(r, null)} style={style} keys={keyFormat !== null}
+      }} onRemoveLocator={(r) => changeLocator(r, null)} highlightedReference={selected.size === 0 ? chosen[0] : undefined}
+        onChangeReference={changeReference} style={style} keys={keyFormat !== null}
         shown={showCitations ? displayedOutput : undefined} problem={previewProblem} focusable={selected.size > 0} fallbackFocusRef={input} />
       <PickerFooter library={library} groupName={groupName}
         hints={{ enter: enterAction, shiftEnter: shiftEnterAction, escape: escapeAction }}

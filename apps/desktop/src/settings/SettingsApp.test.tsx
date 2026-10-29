@@ -28,6 +28,7 @@ function fakeApi(permission: Partial<PastePermission> = {}, preferences: Partial
     patches: [] as Partial<PickerPreferences>[],
     opened: 0,
     reads: 0,
+    finished: 0,
     pages: [] as ((page: string) => void)[],
     closes: [] as (() => Promise<void>)[],
     shortcut: { shortcut: DEFAULT_PICKER_SHORTCUT, registered: true, error: null } as ShortcutStatus,
@@ -51,6 +52,7 @@ function fakeApi(permission: Partial<PastePermission> = {}, preferences: Partial
     checkForUpdates: async () => undefined as never,
     pastePermission: async () => { state.reads += 1; return state.permission; },
     openPastePermission: async () => { state.opened += 1; return undefined as never; },
+    finishPasteGuide: async () => { state.finished += 1; return true; },
     shortcutStatus: async () => state.shortcut,
     setShortcut: async (shortcut) => {
       state.shortcutChoices.push(shortcut);
@@ -224,10 +226,12 @@ test("a paste deep link waits for permission data and scrolls only the page", as
 test("the paste guide names the list, opens it, notices the grant on its own and says so", async () => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
   const { api, state } = fakeApi();
-  render(<SettingsApp api={api} initialPage="paste" />);
+  render(<SettingsApp api={api} initialPage="general" />);
   const guide = await screen.findByRole("heading", { name: "Allow Ibis to paste for you" });
   const card = guide.closest(".paste-guide") as HTMLElement;
   expect(card.textContent).toContain("In Privacy & Security › Device Control and Data Access, turn on Ibis Nightly.");
+  expect(card.textContent).toContain("To paste, allow Ibis in macOS;");
+  expect(card.textContent).not.toContain("Zotero");
   fireEvent.click(within(card).getByRole("button", { name: "Open System Settings" }));
   expect(state.opened).toBe(1);
   expect(within(card).getByRole("status").textContent).toBe("Waiting for your OK…");
@@ -243,6 +247,62 @@ test("the paste guide names the list, opens it, notices the grant on its own and
   const reads = state.reads;
   await act(async () => { await vi.advanceTimersByTimeAsync(RECHECK_MS * 5); });
   expect(state.reads).toBeLessThanOrEqual(reads + 1);
+});
+
+test("the permission detour finishes only on return after a read-back grant", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const { api, state } = fakeApi();
+  render(<SettingsApp api={api} initialPage="paste" />);
+  await screen.findByRole("heading", { name: "Allow Ibis to paste for you" });
+  fireEvent.blur(window);
+  state.permission = { ...state.permission, granted: true };
+  await act(async () => { await vi.advanceTimersByTimeAsync(RECHECK_MS); });
+  expect(state.finished).toBe(0);
+  fireEvent.focus(window);
+  await act(async () => { await Promise.resolve(); });
+  expect(state.finished).toBe(1);
+});
+
+test("an ungranted return and an ordinary Settings visit never finish a detour", async () => {
+  const detour = fakeApi();
+  const { unmount } = render(<SettingsApp api={detour.api} initialPage="paste" />);
+  await screen.findByRole("heading", { name: "Allow Ibis to paste for you" });
+  fireEvent.focus(window);
+  expect(detour.state.finished).toBe(0);
+  unmount();
+  const ordinary = fakeApi({ granted: true });
+  render(<SettingsApp api={ordinary.api} initialPage="general" />);
+  await screen.findByText(/Allowed in Privacy/);
+  fireEvent.focus(window);
+  expect(ordinary.state.finished).toBe(0);
+});
+
+test.each(["saved", "stuck"])("returning from the guide drains a %s preference save for at most two seconds", async (outcome) => {
+  const { api, state, commit } = fakeApi();
+  const save = deferred<null>();
+  vi.spyOn(api, "setPickerPreferences").mockImplementation(async (next) => { await save.promise; return commit(next); });
+  render(<SettingsApp api={api} initialPage="general" />);
+  const larger = await screen.findByRole("switch", { name: "Larger text" });
+  vi.useFakeTimers();
+  fireEvent.click(larger);
+  act(() => state.pages[0]!("paste"));
+  state.permission = { ...state.permission, granted: true };
+  await act(async () => { fireEvent.focus(window); });
+  expect(state.finished).toBe(0);
+  if (outcome === "saved") await act(async () => save.resolve(null));
+  else await act(async () => { await vi.advanceTimersByTimeAsync(2_000); });
+  expect(state.finished).toBe(1);
+  await act(async () => save.resolve(null));
+});
+
+test("a failed guide return keeps recovery instructions in Settings", async () => {
+  const { api, state } = fakeApi();
+  vi.spyOn(api, "finishPasteGuide").mockRejectedValue(new Error("synthetic window failure"));
+  render(<SettingsApp api={api} initialPage="paste" />);
+  await screen.findByRole("heading", { name: "Allow Ibis to paste for you" });
+  state.permission = { ...state.permission, granted: true };
+  fireEvent.focus(window);
+  expect((await screen.findByRole("alert")).textContent).toBe("Couldn't return to your citation. Open Ibis with your shortcut to continue.");
 });
 
 test("a permission already given shows one quiet line, and turning pasting off hides the guide", async () => {

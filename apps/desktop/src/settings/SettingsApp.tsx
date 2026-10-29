@@ -17,6 +17,17 @@ type Page = "general" | "shortcuts" | "about";
 const PAGES: readonly Page[] = ["general", "shortcuts", "about"];
 const DENSITIES: readonly Density[] = ["compact", "comfortable", "spacious"];
 
+/** Every way out of Settings gives queued choices at most two seconds. */
+async function finishSaving(pending: { current: number }, saving: { current: Promise<unknown> }) {
+  let timer: number | undefined;
+  const drain = async () => { while (pending.current) await saving.current; };
+  await Promise.race([
+    drain().catch(() => undefined),
+    new Promise<void>((resolve) => { timer = window.setTimeout(resolve, 2_000); }),
+  ]);
+  window.clearTimeout(timer);
+}
+
 /** A page asked for by name; "paste" is General, scrolled to pasting. */
 export function pageOf(name: string | null): { page: Page; focus: "paste" | null } {
   if (name === "paste") return { page: "general", focus: "paste" };
@@ -49,13 +60,33 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   const updateReads = useRef(0);
   /** The guide stays to confirm a permission given while it was open. */
   const [guided, setGuided] = useState(false);
+  const [detour, setDetour] = useState(initialPage === "paste");
+  const [returnFailed, setReturnFailed] = useState(false);
+  const [focused, setFocused] = useState(true);
   const saving = useRef<Promise<unknown>>(Promise.resolve());
   const generation = useRef(0);
   const reads = useRef(0);
   const unsaved = useRef<Partial<PickerPreferences>>({});
   const unsavedRevision = useRef<Partial<Record<keyof PickerPreferences, number>>>({});
   const pending = useRef(0);
-  const permission = usePastePermission(api, page === "general");
+  const permission = usePastePermission(api, page === "general", preferences?.paste === true);
+
+  useEffect(() => {
+    const focus = () => setFocused(true), blur = () => setFocused(false);
+    window.addEventListener("focus", focus);
+    window.addEventListener("blur", blur);
+    return () => { window.removeEventListener("focus", focus); window.removeEventListener("blur", blur); };
+  }, []);
+  useEffect(() => {
+    if (!detour || !focused || !preferences?.paste || !permission?.granted) return;
+    let live = true;
+    setReturnFailed(false);
+    // Finish queued preferences before leaving Settings, as on a normal close.
+    void finishSaving(pending, saving).then(async () => {
+      if (live && await api.finishPasteGuide()) setDetour(false);
+    }).catch(() => { if (live) setReturnFailed(true); });
+    return () => { live = false; };
+  }, [api, detour, focused, permission, preferences?.paste]);
 
   useEffect(() => {
     let active = true;
@@ -96,22 +127,13 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
       if (active) setShortcut(next);
     });
     void shortcuts.catch(() => { if (active) setShortcutProblem(settingsText.shortcut.readFailed); }).then(() => { if (active) readShortcut(); });
-    const page = api.onPage((name) => { const next = pageOf(name); setPage(next.page); setFocus(next.focus ?? "top"); });
+    const page = api.onPage((name) => { const next = pageOf(name); setDetour(name === "paste"); setPage(next.page); setFocus(next.focus ?? "top"); });
     const automatic = api.onUpdateChecks((next) => {
       if (!active) return;
       updateReads.current += 1;
       setUpdates(next);
     });
-    const close = api.onCloseRequested(async () => {
-      // Give queued choices time to save; a stuck command must not trap the window.
-      let timer: number | undefined;
-      const drain = async () => { while (pending.current) await saving.current; };
-      await Promise.race([
-        drain().catch(() => undefined),
-        new Promise<void>((resolve) => { timer = window.setTimeout(resolve, 2_000); }),
-      ]);
-      window.clearTimeout(timer);
-    });
+    const close = api.onCloseRequested(() => finishSaving(pending, saving));
     return () => {
       active = false;
       window.removeEventListener("focus", readAll);
@@ -200,11 +222,12 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
       <div className="settings-titlebar" data-tauri-drag-region />
       <nav className="settings-sidebar" aria-label={settingsText.pages}>
         <SideNavigation label={settingsText.pages} value={page} options={PAGES.map((value) => ({ value, label: settingsText[value] }))}
-          onChange={(next) => { setPage(next); setFocus("top"); }} />
+          onChange={(next) => { setDetour(false); setPage(next); setFocus("top"); }} />
       </nav>
       <main ref={pageRef} className="settings-page" aria-labelledby="settings-page-title">
         <h1 id="settings-page-title" className="settings-page-title">{settingsText[page]}</h1>
         {failed && <p className="settings-problem" role="alert">{settingsText.failed}</p>}
+        {detour && returnFailed && <p className="settings-problem" role="alert">{settingsText.paste.returnFailed}</p>}
         {page === "general" && (
           <>
             {login && !(login.problem === "unsupported") && (
