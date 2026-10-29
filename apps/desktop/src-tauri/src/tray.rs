@@ -222,6 +222,7 @@ mod tests {
             note: None,
             settings_notice: None,
             snapshot_zotero: false,
+            sample: false,
             stale: false,
             updated_at: None,
             checked_at: None,

@@ -14,6 +14,7 @@
     "allow-choose-library",
     "allow-reload-library",
     "allow-use-zotero",
+    "allow-use-sample-library",
     "allow-find-sources",
     "allow-open-found-library",
     "allow-use-zotero-libraries",

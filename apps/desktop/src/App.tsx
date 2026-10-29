@@ -2,7 +2,7 @@ import * as nativeApi from "./api";
 import { copiedNoticeText, keyText, libraryMessages, operationFailures as FAILURE_MESSAGES, pickerText } from "./messages";
 import { KEY_TABLE, type KeyBinding } from "./keys";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { LibrarySetup } from "./LibrarySetup";
+import { LibrarySetup, SampleLibraryExit } from "./LibrarySetup";
 import { focusChoices } from "./ui/ChoiceList";
 import { zoteroLibraryNames } from "./LibraryStatusLine";
 import { usePointerSelection } from "./pointerSelection";
@@ -49,7 +49,7 @@ const noSelection = new Map<string, CitationReference>();
 export type PickerApi = Pick<typeof nativeApi,
   "chooseLibrary" | "useZotero" | "libraryStatus" | "reloadLibrary" | "previewFileCitation" | "copyFileCitation" | "copyFormat" | "pickerPreferences" | "setPickerPreferences" |
   "hidePicker" | "pickerVisible" | "setPinned" | "onLibraryChanged" | "onPickerShown" | "onPickerHidden" | "quit" | "search" | "shortcutStatus"> &
-  Partial<Pick<typeof nativeApi, "useZoteroLibraries" | "zoteroGroups" | "pickerDestination" | "rememberAppOutput" | "forgetAppOutputs" | "fitPicker" | "findSources" | "openFoundLibrary" | "rowContext" | "showCopiedNotice" | "loginItem" | "setLoginItem" | "onUpdateProgress" | "updateChecks" | "setUpdateChecks" | "onUpdateChecks" | "updateAvailable" | "onUpdateAvailable" | "checkForUpdates" | "onShortcutStatus" | "openSettings" | "onPreferencesChanged">>;
+  Partial<Pick<typeof nativeApi, "useSampleLibrary" | "useZoteroLibraries" | "zoteroGroups" | "pickerDestination" | "rememberAppOutput" | "forgetAppOutputs" | "fitPicker" | "findSources" | "openFoundLibrary" | "rowContext" | "showCopiedNotice" | "loginItem" | "setLoginItem" | "onUpdateProgress" | "updateChecks" | "setUpdateChecks" | "onUpdateChecks" | "updateAvailable" | "onUpdateAvailable" | "checkForUpdates" | "onShortcutStatus" | "openSettings" | "onPreferencesChanged">>;
 
 export type PickerPreview = { query?: string; copied?: Copied };
 
@@ -60,8 +60,8 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     useZoteroLibraries: chooseZoteroLibraries, zoteroGroups } = api;
   const { rowContext, findSources, openFoundLibrary, showCopiedNotice, loginItem, setLoginItem, fitPicker, updateChecks, setUpdateChecks, onUpdateChecks, updateAvailable, onUpdateAvailable, checkForUpdates, onShortcutStatus, openSettings, onPreferencesChanged } = api;
   const [updateProgress, setUpdateProgress] = useState<nativeApi.UpdateProgress | null>(null);
-  const setupApi = useMemo(() => ({ chooseLibrary, useZotero, findSources, openFoundLibrary }),
-    [chooseLibrary, useZotero, findSources, openFoundLibrary]);
+  const setupApi = useMemo(() => ({ chooseLibrary, useZotero, useSampleLibrary: api.useSampleLibrary, findSources, openFoundLibrary }),
+    [chooseLibrary, useZotero, api.useSampleLibrary, findSources, openFoundLibrary]);
   const [query, setQuery] = useState(preview?.query ?? "");
   const [interpretLocators, setInterpretLocators] = useState(true);
   const [active, setActive] = useState(0);
@@ -168,6 +168,17 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   }, [setupDone, setFailures]);
   // A copy (Enter or a click) still waiting for its preview must never copy once the user has left.
   const [pendingCopy, setPendingCopy] = useState<{ choice: string; queryKey: string; format: Choice | null; output: ReturnType<typeof destination.copyToken>; question?: "open" | "answered" } | null>(null);
+  const sample = Boolean(library?.sample);
+  const previousSample = useRef(sample);
+  useEffect(() => {
+    if (previousSample.current === sample) return;
+    previousSample.current = sample;
+    setSelected(new Map());
+    setPendingCopy(null);
+    setCopied(null);
+    setCopyError(null);
+    input.current?.focus();
+  }, [sample]);
   const requestCopy = (choice: string) => setPendingCopy({ choice, queryKey,
     format: destination.ready && preferences.ready ? format : null, output: destination.copyToken() });
   const hide = () => {
@@ -737,6 +748,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
             input.current?.focus();
           }} />}
         {!busy && emptyState}
+        {library?.sample && <SampleLibraryExit useSampleLibrary={api.useSampleLibrary} perform={perform} />}
       </div>
       </div>
       {/* Keep the selection live region mounted when choices remove citation controls. */}

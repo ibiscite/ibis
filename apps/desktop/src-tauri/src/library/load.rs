@@ -75,6 +75,18 @@ pub(super) fn load_source(
     }
     match source {
         Source::File(path) => load_file(path, reload, previous_file, &cancelled),
+        Source::Samples(path) => {
+            // A separate engine, using the normal CSL-JSON file reader. The
+            // bundled immutable file needs neither a watch nor a saved choice.
+            let file = super::engine_file::FileLibrary::open_samples(&path)?;
+            check_cancelled(&cancelled)?;
+            Ok(Loaded::New(Box::new(Library {
+                source: Some(Source::Samples(path)),
+                file: Some(std::sync::Arc::new(file)),
+                checked_at: Some(std::time::SystemTime::now()),
+                ..Library::default()
+            })))
+        }
         Source::Zotero(chosen) => {
             let (bridge, unchanged) = if let Some(bridge) = previous_file {
                 let before = bridge.revision();
