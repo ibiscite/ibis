@@ -1,11 +1,11 @@
 // The search for the current query in the open library, and which of its results may be acted on.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type * as nativeApi from "../../api";
 import type { LibraryStatus, LocatorQuery, PastedList, SearchResult } from "../../api";
 import { pickerText } from "../../messages";
 import { choiceKey } from "./choice";
 
-export function useLibrarySearch({ search, query, interpretLocators, library, statusFailed, libraryVersion, setActive, refreshSnapshot }: {
+export function useLibrarySearch({ search, query, interpretLocators, library, statusFailed, libraryVersion, sessionId = 0, isCurrentSession, setActive, refreshSnapshot }: {
   search: typeof nativeApi.search;
   query: string;
   interpretLocators: boolean;
@@ -15,6 +15,8 @@ export function useLibrarySearch({ search, query, interpretLocators, library, st
   statusFailed: boolean;
   /** Changes whenever a library opens, so the current query is searched again. */
   libraryVersion: number;
+  sessionId?: number;
+  isCurrentSession?: (id: number) => boolean;
   setActive: (index: number) => void;
   /** Reads the library status again when a reply comes from a newer snapshot. */
   refreshSnapshot: () => void;
@@ -27,12 +29,20 @@ export function useLibrarySearch({ search, query, interpretLocators, library, st
   // The query the shown results belong to; differs while a search is pending.
   const [resultsQuery, setResultsQuery] = useState<string | null>(null);
   const [resultsRevision, setResultsRevision] = useState<string | null>(null);
+  const currentSession = useRef(sessionId);
+  currentSession.current = sessionId;
   const [error, setError] = useState<string | null>(null);
-  const [settled, setSettled] = useState<{ queryKey: string; library: typeof library; version: number } | null>(null);
+  const [settled, setSettled] = useState<{ queryKey: string; library: typeof library; version: number; sessionId: number } | null>(null);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: searches when the query (queryKey covers query and locator mode) or the library changes. The earlier results are read only to keep the user's row when a reply repeats them.
   useEffect(() => {
-    const request = { queryKey, library, version: libraryVersion };
+    const request = { queryKey, library, version: libraryVersion, sessionId };
+    // Already settled results can be adopted by a new opening. An unfinished
+    // request is replaced, and its old completion cannot publish into it.
+    if (settled && settled.sessionId !== sessionId && settled.queryKey === queryKey && settled.library === library && settled.version === libraryVersion) {
+      setSettled(request);
+      return;
+    }
     setAnnouncement("");
     // Typing before choosing a library is normal; preserve the query and
     // chooser. Actual library/status failures still report search errors.
@@ -47,10 +57,11 @@ export function useLibrarySearch({ search, query, interpretLocators, library, st
       return;
     }
     let current = true;
+    const owns = () => current && currentSession.current === sessionId && (isCurrentSession?.(sessionId) ?? true);
     let announcementTimer: number | undefined;
     search(query, undefined, undefined, interpretLocators)
       .then(({ revision, results: found, interpretation: interpreted, list: pasted }) => {
-        if (current) {
+        if (owns()) {
           setResults(found);
           setInterpretation(interpreted ?? null);
           setList(pasted ?? null);
@@ -63,6 +74,7 @@ export function useLibrarySearch({ search, query, interpretLocators, library, st
           setError(null);
           setSettled(request);
           announcementTimer = window.setTimeout(() => {
+            if (!owns()) return;
             const count = pickerText.resultCount(found.length);
             setAnnouncement(found.some((r) => r.partial) ? `${pickerText.closestMatches} · ${count}` : count);
           }, 300);
@@ -70,7 +82,7 @@ export function useLibrarySearch({ search, query, interpretLocators, library, st
       })
       .catch(() => {
         // Results of an earlier query must not sit beside this query's error.
-        if (current) {
+        if (owns()) {
           setResults([]);
           setInterpretation(null);
           setList(null);
@@ -83,7 +95,7 @@ export function useLibrarySearch({ search, query, interpretLocators, library, st
       current = false;
       window.clearTimeout(announcementTimer);
     };
-  }, [queryKey, library, libraryVersion]);
+  }, [queryKey, library, libraryVersion, sessionId]);
 
   // Results belong to the query that produced them. While a newer search is
   // pending, the rows still on screen are not acted on or offered by any key,
@@ -93,6 +105,6 @@ export function useLibrarySearch({ search, query, interpretLocators, library, st
   // finished. Keep Enter waiting through the status read and refreshed search.
   const reconciling = !error && Boolean(library?.has_snapshot) && resultsQuery === queryKey && resultsRevision !== library?.revision;
   const pending = !statusFailed && (library === undefined || library?.state === "loading" || settled?.queryKey !== queryKey
-    || settled.library !== library || settled.version !== libraryVersion || reconciling);
+    || settled.library !== library || settled.version !== libraryVersion || settled.sessionId !== sessionId || reconciling);
   return { queryKey, results, current, interpretation, list: current === results ? list : null, announcement, resultsQuery, error, pending };
 }
