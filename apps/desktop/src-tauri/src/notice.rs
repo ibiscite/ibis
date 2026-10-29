@@ -130,8 +130,6 @@ pub(crate) fn copied_notice(notice: State<'_, Notice>) -> Option<NoticeMessage> 
 pub(crate) async fn show_copied_notice(app: AppHandle, text: String, delivery: Option<u32>) -> Delivered {
     #[cfg(target_os = "windows")]
     let ticket = crate::paste::take_copy(&app, delivery);
-    #[cfg(not(target_os = "windows"))]
-    let _ = delivery;
     // A paste may wait up to a second for the app to come back to the front.
     let delivered = {
         let (app, text) = (app.clone(), text.clone());
@@ -142,7 +140,7 @@ pub(crate) async fn show_copied_notice(app: AppHandle, text: String, delivery: O
             }
             #[cfg(not(target_os = "windows"))]
             {
-                crate::paste::deliver_copy(&app, &text)
+                crate::paste::deliver_copy(&app, &text, delivery)
             }
         })
         .await

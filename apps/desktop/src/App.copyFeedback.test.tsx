@@ -213,7 +213,7 @@ test("a clean copy hides the picker, then says Copied with the copied text", asy
   expect(calls.indexOf("hide_picker")).toBeLessThan(calls.indexOf("show_copied_notice"));
 });
 
-test("a Windows copy carries its delivery receipt through hiding to the notice", async () => {
+test("a copy carries its write token through hiding to the notice", async () => {
   let finishHide!: () => void;
   const notices: unknown[] = [];
   const calls = await openPicker({

@@ -15,7 +15,7 @@ pub(crate) struct Copied {
     pub(crate) text: String,
     /// What the chosen syntax could not express, and other problems the user should see.
     pub(crate) warnings: Vec<String>,
-    /// Windows receipt for this copy's immutable delivery ticket.
+    /// Unique write token for this copy's one-use paste proof.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[specta(optional)]
     pub(crate) delivery: Option<u32>,
@@ -84,20 +84,21 @@ pub(crate) fn copy_file_citation(
         }
         library.file.clone().ok_or(CommandError::SnapshotChanged)?
     };
-    #[cfg(not(target_os = "windows"))]
-    {
-        file.copy(&ticket, &content_hash, |content| clipboard::write(&app, content))
-    }
     #[cfg(target_os = "windows")]
-    {
-        let target = crate::paste::copy_target(&app);
-        let mut delivery = None;
-        let mut copied = file.copy(&ticket, &content_hash, |content| {
+    let target = crate::paste::copy_target(&app);
+    let mut delivery = None;
+    let mut copied = file.copy(&ticket, &content_hash, |content| {
+        #[cfg(target_os = "windows")]
+        {
             let sequence = clipboard::write(&app, content)?;
             delivery = crate::paste::remember_copy(&app, target, sequence);
-            Ok(())
-        })?;
-        copied.delivery = delivery;
-        Ok(copied)
-    }
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            delivery = clipboard::write(&app, content)?;
+        }
+        Ok(())
+    })?;
+    copied.delivery = delivery;
+    Ok(copied)
 }
