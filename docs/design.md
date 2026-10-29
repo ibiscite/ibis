@@ -325,6 +325,10 @@ keep their extension. Budget +35 % for German and Greek. RTL uses logical
 properties (tile, year and chevron mirror; key caps keep platform order);
 mixed-direction strings are isolated and citation keys stay LTR.
 
+**Search logo.** The generated bird keeps its canonical scarlet colour and
+uses the tile-sized box (its artwork fills about three quarters); symmetric
+optical outsets preserve query/result alignment and the compact header.
+
 **Icons.** Ibis's own drawings on every platform: 20 px grid, 1.5 px rounded
 stroke (1.6 px macOS, 1 px Windows, 16 px symbolic `ibis-…-symbolic` on GNOME);
 "on" is the filled form. Seven type icons (article, book, chapter, thesis, web

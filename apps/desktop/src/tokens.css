@@ -143,6 +143,8 @@
      inset + lead + icon + lead-gap = inset + row-pad + tile + row-gap. */
   --search-gap: var(--space-1);
   --search-icon-width: var(--icon-glyph-size);
+  --search-mark-size: var(--tile-size);
+  --search-mark-outset: calc((var(--search-mark-size) - var(--search-icon-width)) / 2);
   --lead: calc(var(--row-pad) + (var(--tile-size) - var(--icon-glyph-size)) / 2);
   --lead-gap: calc((var(--tile-size) - var(--icon-glyph-size)) / 2 + var(--row-gap));
   --search-min-width: 12rem;
