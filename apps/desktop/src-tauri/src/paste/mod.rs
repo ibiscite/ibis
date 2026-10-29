@@ -16,6 +16,8 @@ use tauri::{AppHandle, Manager};
 mod capture;
 #[cfg(target_os = "macos")]
 mod macos;
+#[cfg(test)]
+mod notepad_test;
 pub(crate) mod permission;
 #[cfg(target_os = "windows")]
 mod windows;

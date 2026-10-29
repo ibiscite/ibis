@@ -268,22 +268,8 @@ fn press(key: co::VK, up: bool) -> w::HwKbMouse {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::process::{Child, Command};
-    use std::time::Instant;
-
-    fn wait_for<T>(limit: Duration, mut condition: impl FnMut() -> Option<T>) -> Option<T> {
-        let deadline = Instant::now() + limit;
-        loop {
-            if let Some(value) = condition() {
-                return Some(value);
-            }
-            let remaining = deadline.saturating_duration_since(Instant::now());
-            if remaining.is_zero() {
-                return None;
-            }
-            std::thread::sleep(remaining.min(Duration::from_millis(100)));
-        }
-    }
+    use crate::paste::notepad_test::{Session, activate, wait_for};
+    use std::process::Command;
 
     /// Never log titles or full executable paths, including on a developer's desktop.
     fn describe_window(window: Option<&w::HWND>) -> String {
@@ -342,9 +328,47 @@ mod tests {
             .flatten()
     }
 
-    /// Clean up the actual app as well as its launcher, even on a panic or skip.
+    fn tap(key: co::VK) {
+        let sent = w::SendInput(&[press(key, false), press(key, true)]);
+        if sent != Ok(2) {
+            let released = w::SendInput(&[press(key, true)]);
+            panic!("foreground key tap {key:?}: {sent:?}; key release: {released:?}");
+        }
+    }
+
+    /// Recover the editor explicitly: ALT can arrive after asynchronous
+    /// activation and select Notepad's menu instead of its document.
+    fn focus_document(worker: &QueryWorker, hwnd: isize, pid: u32) -> Option<()> {
+        worker
+            .run(Duration::from_secs(1), move || {
+                let automation = uiautomation::UIAutomation::new().ok()?;
+                let root = automation.element_from_handle(hwnd.into()).ok()?;
+                let editor = automation
+                    .create_matcher()
+                    .from(root)
+                    .depth(20)
+                    .timeout(0)
+                    .filter_fn(Box::new(|field: &uiautomation::UIElement| {
+                        // Modern and classic Notepad editors; exclude search
+                        // boxes and tab controls in a restored session.
+                        Ok(matches!(field.get_classname()?.as_str(), "RichEditD2DPT" | "Edit"))
+                    }))
+                    .find_first()
+                    .ok()?;
+                if editor.get_process_id().ok()? != pid {
+                    return None;
+                }
+                editor.set_focus().ok()?;
+                let focused = automation.get_focused_element().ok()?;
+                automation.compare_elements(&editor, &focused).ok()?.then_some(())
+            })
+            .flatten()
+    }
+
+    /// Neither a launcher nor a handed-off process proves exclusive ownership:
+    /// both can contain restored documents. Keep handles, never force-kill.
     struct Notepad {
-        launcher: Child,
+        session: Session<w::guard::CloseHandleGuard<w::HPROCESS>>,
         window: Option<w::HWND>,
     }
 
@@ -357,13 +381,7 @@ mod tests {
                     describe_window(w::HWND::GetForegroundWindow().as_ref())
                 );
             }
-            if let Some(window) = &self.window {
-                let _ = Command::new("taskkill")
-                    .args(["/F", "/PID", &window.GetWindowThreadProcessId().1.to_string()])
-                    .output();
-            }
-            let _ = self.launcher.kill();
-            let _ = self.launcher.wait();
+            eprintln!("Leaving Notepad open: its process may contain unrelated restored or shared documents.");
         }
     }
 
@@ -397,10 +415,13 @@ mod tests {
             .and_then(|name| name.to_str())
             .unwrap_or_else(|| panic!("synthetic document has no UTF-8 name"));
         let mut notepad = Notepad {
-            launcher: Command::new("notepad.exe")
-                .arg(&file)
-                .spawn()
-                .unwrap_or_else(|error| panic!("notepad: {error}")),
+            session: Session {
+                launcher: Command::new("notepad.exe")
+                    .arg(&file)
+                    .spawn()
+                    .unwrap_or_else(|error| panic!("notepad: {error}")),
+                process: None,
+            },
             window: None,
         };
         notepad.window = wait_for(Duration::from_secs(20), || notepad_window(document));
@@ -410,31 +431,71 @@ mod tests {
             .unwrap_or_else(|| panic!("Notepad never opened the synthetic document"));
         let front = front(window, true).unwrap_or_else(|| panic!("cannot inspect Notepad's process"));
         assert!(!front.elevated);
+        let pid = window.GetWindowThreadProcessId().1;
+        notepad.session.process = Some(
+            w::HPROCESS::OpenProcess(
+                co::PROCESS::QUERY_LIMITED_INFORMATION | co::PROCESS::SYNCHRONIZE,
+                false,
+                pid,
+            )
+            .unwrap_or_else(|error| panic!("retaining Notepad's process: {error}")),
+        );
+        let process = notepad
+            .session
+            .process
+            .as_ref()
+            .unwrap_or_else(|| panic!("Notepad process handle"));
         window
             .ShowWindowAsync(co::SW::RESTORE)
             .unwrap_or_else(|error| panic!("restoring Notepad: {error}"));
-        let in_front = || w::HWND::GetForegroundWindow().as_ref() == Some(window);
-        window.SetForegroundWindow();
-        if !in_front() {
-            // ALT permits a foreground change without changing the runner's
-            // foreground-lock settings. Keep both events in a single SendInput.
-            let alt = w::SendInput(&[press(co::VK::MENU, false), press(co::VK::MENU, true)]);
-            if alt != Ok(2) {
-                // A partial insertion must not leave ALT down after the test.
-                let released = w::SendInput(&[press(co::VK::MENU, true)]);
-                panic!("foreground ALT tap: {alt:?}; ALT release: {released:?}");
-            }
-        }
-        if wait_for(Duration::from_secs(10), || {
-            if !in_front() {
+        let in_front = || {
+            process.WaitForSingleObject(Some(0)) == Ok(co::WAIT::TIMEOUT)
+                && window.GetWindowThreadProcessId().1 == pid
+                && window.GetWindowText().is_ok_and(|title| title.contains(document))
+                && w::HWND::GetForegroundWindow().as_ref() == Some(window)
+        };
+        let worker = QueryWorker::default();
+        let hwnd = window.ptr() as isize;
+        if !activate(
+            Duration::from_secs(5),
+            || {
+                // SetForegroundWindow can return before the target's input
+                // queue activates it. Wait before considering the ALT fallback.
                 window.SetForegroundWindow();
-            }
-            in_front().then_some(())
-        })
-        .is_none()
-        {
+            },
+            in_front,
+            || tap(co::VK::MENU),
+            |used_alt| {
+                assert!(in_front(), "Notepad lost the foreground before focus recovery");
+                if used_alt {
+                    // Cancel menu mode even if ALT reached the newly activated
+                    // window. Then focus the actual editor, not a search box.
+                    tap(co::VK::ESCAPE);
+                }
+                assert!(
+                    wait_for(Duration::from_secs(5), || {
+                        if !in_front() {
+                            return None;
+                        }
+                        focus_document(&worker, hwnd, pid)
+                    })
+                    .is_some(),
+                    "Notepad's document never received keyboard focus"
+                );
+            },
+        ) {
             // A timeout alone is not grounds for skipping. Verify a live,
             // usable target and an explicit OS denial of our foreground right.
+            assert_eq!(
+                process.WaitForSingleObject(Some(0)),
+                Ok(co::WAIT::TIMEOUT),
+                "Notepad exited during activation"
+            );
+            assert_eq!(
+                window.GetWindowThreadProcessId().1,
+                pid,
+                "Notepad's window changed process"
+            );
             assert!(window.IsWindow() && window.IsWindowVisible() && window.IsWindowEnabled());
             let permission = w::AllowSetForegroundWindow(Some(w::GetCurrentProcessId()));
             let foreground = describe_window(w::HWND::GetForegroundWindow().as_ref());
@@ -447,8 +508,6 @@ mod tests {
             }
             panic!("Notepad never came to the front; foreground permission: {permission:?}; in front: {foreground}");
         }
-        let worker = QueryWorker::default();
-        let pid = window.GetWindowThreadProcessId().1;
         assert!(
             wait_for(Duration::from_secs(5), || {
                 (in_front() && focused_text(&worker, pid)?.trim().is_empty()).then_some(())
