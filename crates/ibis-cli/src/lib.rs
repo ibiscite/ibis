@@ -669,13 +669,13 @@ fn key_items(args: &ArgMatches) -> Result<Vec<KeyItem>, Failure> {
     }
     Ok(items.into_iter().map(|(_, item)| item).collect())
 }
-/// The canonical locator reader, applied to the whole value.
+/// The picker's locator reader, applied to the whole value.
 fn locator(text: &str) -> Result<Locator, Failure> {
     [format!("x {text}"), format!("x, {text}")]
         .iter()
-        .filter_map(|query| ibis_core::locator::parse_trailing(query))
+        .filter_map(|query| ibis_core::locator_query::split(query))
         .find(|split| split.search == "x")
-        .map(|split| split.locator)
+        .and_then(|split| serde_json::from_value(json!({"term":split.locator.label,"value":split.locator.value})).ok())
         .ok_or_else(|| {
             Failure::new(
                 ErrorCode::Usage,

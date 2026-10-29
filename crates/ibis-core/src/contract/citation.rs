@@ -8,7 +8,6 @@ use super::model::{Fingerprint, ItemRef};
 /// CSL 1.0.2 input locator vocabulary, including the disambiguating `-locator` names.
 /// https://github.com/citation-style-language/schema/blob/v1.0.2/schemas/input/csl-citation.json
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
 #[serde(rename_all = "kebab-case")]
 pub enum LocatorTerm {
     Act,

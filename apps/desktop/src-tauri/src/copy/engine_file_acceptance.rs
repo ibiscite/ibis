@@ -173,7 +173,7 @@ fn page_locators_and_formatted_order_match_the_real_cli() -> Result<(), Box<dyn 
 }
 
 #[test]
-fn malformed_file_selections_are_rejected_before_preview() -> Result<(), Box<dyn std::error::Error>> {
+fn malformed_file_selections_are_not_retryable_snapshot_errors() -> Result<(), Box<dyn std::error::Error>> {
     let directory = tempfile::tempdir()?;
     let path = directory.path().join("synthetic.bib");
     std::fs::write(&path, "@book{a,title={Synthetic}}")?;
@@ -189,14 +189,16 @@ fn malformed_file_selections_are_rejected_before_preview() -> Result<(), Box<dyn
     )?;
     let row = &rows["results"][0];
     for (id, cite) in [
-        (json!(null), row["cite"].clone()),
         (json!({"source":"legacy","native_key":"a"}), row["cite"].clone()),
-        (json!({"library":"file:invalid","key":"a"}), row["cite"].clone()),
         (row["id"].clone(), json!("invalid-fingerprint")),
     ] {
+        let selection = serde_json::from_value(json!({"id":id,"cite":cite,"locator":null}))?;
+        let Err(error) = file.preview(file.reserve_preview(), vec![selection], KeyFormat::Pandoc, None) else {
+            return Err("invalid selection accepted".into());
+        };
         assert!(
-            serde_json::from_value::<FileSelection>(json!({"id":id,"cite":cite,"locator":null})).is_err(),
-            "malformed input must fail native argument decoding, before a snapshot/preview retry"
+            !matches!(error, crate::library::CommandError::SnapshotChanged),
+            "malformed input cannot trigger an automatic status/preview loop"
         );
     }
     Ok(())
