@@ -468,7 +468,7 @@ test("the shortcuts table breaks actions only between words and keeps keys on on
 test("whole-row fitting preserves variable-height wrapped action rows", () => {
   const frame = document.createElement("div"), list = document.createElement("div");
   frame.append(list); document.body.append(frame);
-  const geometry = [[0, 28], [28, 56], [84, 56]];
+  const geometry = [[0, 28], [28, 56.4], [84.4, 56]];
   for (const [top, height] of geometry) {
     const row = document.createElement("div"); row.setAttribute("role", "menuitem"); list.append(row);
     vi.spyOn(row, "getBoundingClientRect").mockReturnValue(new DOMRect(0, top, 200, height));
@@ -477,6 +477,38 @@ test("whole-row fitting preserves variable-height wrapped action rows", () => {
   Object.defineProperty(list, "scrollHeight", { value: 140 });
   const hook = renderHook(() => useWholeRows({ current: list }));
   act(() => hook.result.current(frame));
-  expect(list.style.maxHeight).toBe("84px");
+  expect(list.style.maxHeight).toBe("85px");
   act(() => hook.result.current(null)); frame.remove();
+});
+
+
+test("focus, row resize and reopening update safe fades without an old opening or manual scroll taking over", async () => {
+  const callbacks: (() => void)[] = [];
+  vi.stubGlobal("ResizeObserver", class { constructor(callback: () => void) { callbacks.push(callback); } observe() {} disconnect() {} });
+  const frame = document.createElement("div"), list = document.createElement("div"), row = document.createElement("div");
+  row.setAttribute("role", "menuitem"); row.dataset.focused = "true";
+  list.append(row); frame.append(list); document.body.append(frame);
+  Object.defineProperty(list, "clientHeight", { value: 100 });
+  Object.defineProperty(list, "scrollHeight", { value: 300 });
+  vi.spyOn(list, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 200, 100));
+  let top = 60;
+  vi.spyOn(row, "getBoundingClientRect").mockImplementation(() => new DOMRect(0, top, 200, 40));
+  const ref = { current: list }, hook = renderHook(() => useWholeRows(ref));
+  act(() => hook.result.current(frame));
+  expect(list.style.getPropertyValue("--scroll-fade-below-space")).toBe("0px");
+  top = 0;
+  await act(async () => { row.setAttribute("data-focused", ""); });
+  expect(list.style.getPropertyValue("--scroll-fade-above-space")).toBe("0px");
+  list.scrollTop = 70; fireEvent.scroll(list);
+  expect(list.scrollTop).toBe(70);
+  const oldResize = callbacks[0]!;
+  const next = document.createElement("div"); document.body.append(next);
+  act(() => { hook.result.current(null); next.append(list); hook.result.current(next); });
+  top = 30;
+  act(() => oldResize());
+  expect(list.style.getPropertyValue("--scroll-fade-above-space")).toBe("0px");
+  act(() => callbacks.at(-1)!());
+  expect(list.style.getPropertyValue("--scroll-fade-above-space")).toBe("30px");
+  expect(list.scrollTop).toBe(70);
+  act(() => hook.result.current(null)); frame.remove(); next.remove();
 });

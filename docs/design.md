@@ -307,7 +307,10 @@ GNOME) and Fluent's thin bar on Windows, from `--scrollbar-width` and
 `--scrollbar-color`. The side inset sits inside the bar, so a classic bar never
 takes it. An edge with more content beyond it fades over `--scroll-fade-size`,
 so a list that ends on a whole row still shows there is more; the results list
-needs no fade, as a cut row already shows it.
+needs no fade, as a cut row already shows it. A fade yields to the whole
+active row (label, fill and shortcut), shrinking to the free space beyond it;
+true scroll ends have no fade. Keyboard/hover focus and reflow update this
+without taking scroll ownership from React Aria.
 
 **Tables** (the keyboard shortcuts list, Settings lists). Columns size to their
 content and never break a word; a table that does not fit scrolls or drops a
