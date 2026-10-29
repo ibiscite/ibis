@@ -372,6 +372,11 @@ export type PastePermission = {
 	list: string,
 };
 
+/**  Missing explicit citation keys in a recognized pasted list. */
+export type PastedList = {
+	missing: string[],
+};
+
 /**  What the picker needs to know about the app it was opened from. */
 export type PickerDestination = {
 	/**  The app's own name; `None` when no app was captured. */
@@ -447,6 +452,7 @@ export type SearchReply_Deserialize = {
 	revision: string,
 	results: SearchResult[],
 	interpretation?: LocatorQuery | null,
+	list?: PastedList | null,
 };
 
 /**  A search keeps its snapshot identity even when no references match. */
@@ -454,6 +460,7 @@ export type SearchReply_Serialize = {
 	revision: string,
 	results: SearchResult[],
 	interpretation?: LocatorQuery | null,
+	list?: PastedList | null,
 };
 
 export type SearchResult = {
