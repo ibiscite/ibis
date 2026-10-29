@@ -92,8 +92,12 @@ where clients still use them.
 
 The picker's small per-reference editor (#1366) sends its captured page and
 Normal, Narrative or Omit author intent through the native preview request.
-The native adapter uses `ibis_core::locator::page_value` to remove an optional
-page label before constructing the request. Recognised labels with missing or
+The native adapter uses `ibis_core::locator::page_value` only for the separate
+`page_input` field containing raw Page editor text, removing an optional
+page label once before constructing the request. A captured canonical locator
+is passed through unchanged, including quoted values such as `S.12` or
+`pages of notes`; form-only edits never turn it back into raw input. Sending
+both a captured locator and raw Page input is refused. Recognised labels with missing or
 invalid values are refused before preparation; they never fall back to literal
 text. The shared numeric grammar accepts Unicode numeric characters, counts
 characters for numeric bounds and keeps four-digit years ambiguous in unlabelled
@@ -107,6 +111,14 @@ preview identity, then prepare a fresh canonical receipt; copy still consumes
 only that receipt. Hiding citation text retains formatting refusals and their
 actionable explanations. This adds no polling or formatter runtime and retains
 only one page string and form per selected reference.
+Preview identity also distinguishes raw editor text from a canonical locator,
+even when the strings are equal, so their receipts cannot be reused across edits.
+
+Picker search asks the engine to interpret trailing locators in the same search
+and snapshot as its result rows; pasted-list precedence stays in the engine.
+The native boundary reads typed item identities and fingerprints, then constructs
+the canonical citation request directly. Its locator wire names adapt the shared
+29-term vocabulary without a second parser or JSON reconstruction.
 
 Literal affixes escape default consumer smart punctuation as well as markup.
 Pandoc narrative, plain LaTeX and Typst place prefixes outside the citation and

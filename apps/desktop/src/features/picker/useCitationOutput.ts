@@ -50,7 +50,12 @@ export function useCitationOutput({ chosen, library, libraryVersion, format, sty
     let live = true;
     const abort = new AbortController();
     const key = previewKey;
-    const made = previewFileCitation(chosen.map((r) => ({ id: r.id, cite: r.cite ?? "", locator: r.locator ?? null, ...(r.form ? { form: r.form } : {}) })), keyFormat ?? "pandoc", style, chosenRevision, abort.signal).then((result) => ({ markup: result.html ? parse(result.html) : [result.text], text: result.text, html: result.html ?? "", warnings: result.warnings, fileTicket: result.ticket, fileHash: result.content_hash }));
+    const made = previewFileCitation(chosen.map((r) => ({
+      id: r.id, cite: r.cite ?? "",
+      locator: r.locator?.input === "page-editor" ? null : r.locator ?? null,
+      ...(r.locator?.input === "page-editor" ? { page_input: r.locator.value } : {}),
+      ...(r.form ? { form: r.form } : {}),
+    })), keyFormat ?? "pandoc", style, chosenRevision, abort.signal).then((result) => ({ markup: result.html ? parse(result.html) : [result.text], text: result.text, html: result.html ?? "", warnings: result.warnings, fileTicket: result.ticket, fileHash: result.content_hash }));
     made
       .then((result) => { if (live) setFormatted({ key, result }); })
       .catch((error) => { if (live) {
