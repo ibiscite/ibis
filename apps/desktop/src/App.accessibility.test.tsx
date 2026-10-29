@@ -110,3 +110,21 @@ test("hide/reopen retires Rows feedback before an old save completes", async () 
   expect(updates).toEqual(["Rows: Spacious"]);
   expect(document.documentElement.dataset.density).toBe("spacious");
 });
+
+test("the same Rows label announces again after a silent background view change", async () => {
+  await open();
+  const { region, updates } = feedback();
+  await chooseFromMore("Rows: Comfortable");
+  await waitFor(() => expect(document.documentElement.dataset.density).toBe("spacious"));
+  await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+  expect(updates).toEqual(["Rows: Spacious"]);
+  // A fresh read applies the saved external view; it is not an old reply.
+  await act(async () => { await emit("preferences:changed"); });
+  expect(document.documentElement.dataset.density).toBe("comfortable");
+  expect(updates).toEqual(["Rows: Spacious"]);
+  await chooseFromMore("Rows: Comfortable");
+  await waitFor(() => expect(document.documentElement.dataset.density).toBe("spacious"));
+  await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+  expect(region.textContent).toBe("Rows: Spacious");
+  expect(updates).toEqual(["Rows: Spacious", "Rows: Spacious"]);
+});

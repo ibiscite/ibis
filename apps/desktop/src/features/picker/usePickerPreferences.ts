@@ -43,6 +43,8 @@ export function usePickerPreferences(
   }, { readAfterWrites: true }));
   const applyView = useCallback((value: PickerPreferences) => {
     setDensity(value.density);
+    // A silent external view change retires its label so the next user choice can repeat it.
+    setDensityFeedback((current) => current?.density === value.density ? current : null);
     setLargerText(value.larger_text);
     setSearchMark(value.search_mark ?? false);
     previewVisibility.current = value.show_paste_preview;
