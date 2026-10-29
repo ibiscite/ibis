@@ -36,6 +36,20 @@ class Unavailable(RuntimeError):
         self.code = code
 
 
+class NativeSetupFailure(RuntimeError):
+    """A synthetic desktop precondition failed before Ibis was launched."""
+
+
+def native_session():
+    try:
+        native = Linux()
+    except AssertionError:
+        # Setup waits assert too, but no product was exercised yet. Keep the
+        # failure typed and fixed; desktop diagnostics never enter evidence.
+        raise NativeSetupFailure("Native test setup could not be established.") from None
+    return observe_native(native)
+
+
 # The short Copied notice is a second visible window of the app (#496); it is
 # never the picker, so picker visibility checks skip it.
 NOTICE_TITLE = "Ibis notice"
@@ -1108,7 +1122,7 @@ def _first_run_preferences_main(args):
             raise Unavailable("Build the embedded app on Linux/X11", "app-build")
         if system != "Linux":
             raise Unavailable("Build the embedded app on Linux/X11", "linux-x11")
-        native = observe_native(Linux())
+        native = native_session()
         temporary = tempfile.TemporaryDirectory(prefix="ibis native preferences ")
         folder = Path(temporary.name)
         library = folder / "synthetic 引用.bib"
@@ -1320,7 +1334,7 @@ def smoke_main(args):
             raise Unavailable("Build the embedded native app before running smoke", "app-build")
         if system != "Linux":
             raise Unavailable("Unsupported native smoke platform", "linux-x11")
-        native = observe_native(Linux())
+        native = native_session()
         with tempfile.TemporaryDirectory(prefix="ibis native smoke ") as temporary:
             folder = Path(temporary)
             library = folder / "synthetic 引用.bib"
@@ -2288,6 +2302,45 @@ class ContractTests(unittest.TestCase):
                 self.assertEqual(main(), 1)
                 scenario.assert_not_called()
             self.assertIn("Unsupported evidence schema version", message.getvalue())
+
+    def test_cli_native_setup_refusal_is_a_replayable_harness_failure(self):
+        for first_run in (False, True):
+            with self.subTest(first_run=first_run), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                app = root / "synthetic-app"
+                app.touch()
+                original = None
+                manifest = None
+                for name in ("original", "replay"):
+                    output = root / name
+                    command = ["smoke", "--app", str(app), "--output", str(output), "--skip-performance"]
+                    if first_run:
+                        command.append("--first-run-preferences")
+                    if manifest:
+                        command += ["--replay", str(manifest)]
+                    with patch("sys.argv", command), patch("platform.system", return_value="Linux"), \
+                            patch(__name__ + ".Linux", side_effect=AssertionError("PRIVATE synthetic setup failure")), \
+                            patch("subprocess.Popen") as launch, patch("builtins.print") as printed:
+                        self.assertEqual(main(), 1)
+                        launch.assert_not_called()
+                    manifest = next(output.glob("evidence-*/manifest.json"))
+                    bundle = load_bundle(manifest)
+                    self.assertEqual(bundle["result"], {"outcome": "fail", "failure_kind": "harness",
+                                                       "reason": "harness-failed", "failed_invariant": "scenario"})
+                    self.assertEqual(bundle["events"], [])
+                    self.assertEqual(bundle["missing_capabilities"], [])
+                    self.assertNotIn("PRIVATE", json.dumps(bundle) + str(printed.call_args_list))
+                    if original:
+                        self.assertEqual(bundle["result"], original["result"])
+                        self.assertEqual(bundle["replay_of"], original["run_id"])
+                    else:
+                        original = bundle
+
+    def test_post_launch_product_assertion_keeps_product_classification_and_cleanup(self):
+        result, report, launches, _actions = self.preference_probe("wrong-copy")
+        self.assertEqual(result, 1)
+        self.assertEqual(len(launches), 2)
+        self.assertEqual(report["evidence"]["result"]["failure_kind"], "product")
 
     def test_cli_missing_build_emits_and_replays_unavailable_bundle(self):
         with tempfile.TemporaryDirectory() as temporary:
