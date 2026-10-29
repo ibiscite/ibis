@@ -71,9 +71,7 @@ test("Enter waits for a preview, then copies and replaces the document selection
   expect(harness.delivery.calls).toHaveLength(1);
 });
 
-// Known App.tsx bugs owned by #1401. Remove .fails when integrating its fix:
-// an unexpected pass fails the suite, so these cannot silently stay inverted.
-test.fails("#1401: Enter during search loading eventually pastes only the new result once", async () => {
+test("Enter during search loading eventually pastes only the new result once", async () => {
   const harness = await open();
   await choose(harness, "old");
   await type("new");
@@ -83,11 +81,9 @@ test.fails("#1401: Enter during search loading eventually pastes only the new re
   expect(harness.document.pastes).toEqual([]);
   await act(async () => { harness.search.pending[0]!.complete({ revision: "1", results: [second] }); });
   await act(async () => { harness.preview.pending[0]!.complete({ text: "[@b]" }); });
-  // Allow the scenario to reach its document assertion when Enter is dropped.
-  if (harness.copy.pending.length > 0) {
-    await finishCopy(harness);
-    await finishDelivery(harness);
-  }
+  expect(harness.copy.pending).toHaveLength(1);
+  await finishCopy(harness);
+  await finishDelivery(harness);
   expect(harness.document.text).toBe("Draft: [@b].");
   expect(harness.document.pastes).toHaveLength(1);
   expectReceipt(harness, "Pasted into Example Writer", "[@b]");
@@ -95,7 +91,7 @@ test.fails("#1401: Enter during search loading eventually pastes only the new re
   expect(harness.delivery.calls).toHaveLength(1);
 });
 
-test.fails("#1401: Shift+Enter cancels a queued Enter even when adding the same reference keeps the preview unchanged", async () => {
+test("Shift+Enter cancels a queued Enter even when adding the same reference keeps the preview unchanged", async () => {
   const harness = await open();
   await type("first");
   await act(async () => { harness.search.pending[0]!.complete({ revision: "1", results: [first] }); });

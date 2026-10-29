@@ -93,7 +93,7 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
 
   const calls = backend({
     "plugin:window|is_visible": () => visible,
-    picker_destination: () => ({ app: document.app, app_id: "example.writer", automatic: { key: "pandoc" }, remembered: null, unreadable: false, output_question: null }),
+    picker_destination: () => ({ app: document.app, app_id: "example.writer", automatic: { key: "pandoc" }, remembered: null, unreadable: false, can_paste: true, output_question: null }),
     search: ({ query }) => search.enqueue(query, (reply) => reply),
     preview_file_citation: (args) => {
       const request = ++latestPreview;
