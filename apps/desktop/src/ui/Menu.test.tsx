@@ -2,7 +2,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } from "@testing-library/react";
 import axe from "axe-core";
 import { useRef, useState } from "react";
-import { Menu, MenuItem, MenuSection, MenuSeparator, useMenuBoundary, useMenuPlacement, useWholeRows } from "./Menu";
+import { Menu, MenuDetail, MenuItem, MenuSection, MenuSeparator, useMenuBoundary, useMenuPlacement, useWholeRows } from "./Menu";
 import { useMenuLifecycle } from "./useMenuLifecycle";
 
 test.each(["frame", "cancel", "reopen", "unmount"])("a deferred menu focus request respects %s", async (action) => {
@@ -35,7 +35,7 @@ function Harness({ onAction, toggle }: { onAction: (id: string) => void; toggle:
   return <main onKeyDown={(event) => { if (event.key === "k" && event.ctrlKey) setOpen((now) => !now); }}>
     <input ref={search} aria-label="Search" />
     <Menu label="Actions" trigger="Actions" isOpen={open} onOpenChange={setOpen} tabFocusRef={search}>
-      <MenuSection id="plain">
+      <MenuSection id="plain" label="Last outcome. Copied. Pasting is off" header={<MenuDetail title="Copied. Pasting is off" />}>
         <MenuItem id="open" label="Open" keys="Ctrl+O" onAction={() => { onAction("open"); setOpen(false); search.current?.focus(); }} />
       </MenuSection>
       <MenuSeparator />
@@ -61,6 +61,7 @@ test.each(["macos", "windows", "linux"])("%s: a pointer opens with nothing highl
   const { trigger, search } = mount();
   fireEvent.pointerDown(trigger, { button: 0, pointerType: "mouse" });
   const menu = await screen.findByRole("menu", { name: "Actions" });
+  expect(screen.getByRole("group", { name: "Last outcome. Copied. Pasting is off" }).textContent).toContain("Copied. Pasting is off");
   expect(document.activeElement).toBe(menu);
   expect(menu.querySelector("[data-focused]")).toBeNull();
   fireEvent.keyDown(menu, { key: "ArrowDown" });

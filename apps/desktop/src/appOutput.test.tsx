@@ -8,8 +8,8 @@ import { backend, chooseFromMore, prepared, receipt, resetApp, result, type Prev
 afterEach(resetApp);
 const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
 const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
-const WORD: PickerDestination = { app: "Example Word", app_id: "example.word", automatic: { style: "apa" }, remembered: null, unreadable: false, output_question: null };
-const BROWSER: PickerDestination = { app: "Example Browser", app_id: "example.browser", automatic: null, remembered: null, unreadable: false, output_question: "browser" };
+const WORD: PickerDestination = { app: "Example Word", app_id: "example.word", automatic: { style: "apa" }, remembered: null, unreadable: false, can_paste: false, output_question: null };
+const BROWSER: PickerDestination = { app: "Example Browser", app_id: "example.browser", automatic: null, remembered: null, unreadable: false, can_paste: false, output_question: "browser" };
 const formatButton = () => within(screen.getByLabelText("Search references").closest("header")!).getByRole("button", { name: /^Copy as / });
 const formatShown = () => formatButton().getAttribute("aria-label")!.slice("Copy as ".length);
 const openFormats = () => { if (formatButton().getAttribute("aria-expanded") !== "true") fireEvent.click(formatButton()); };
@@ -156,6 +156,23 @@ test("an Enter during a slow destination read waits and then asks", async () => 
   await act(async () => finish(BROWSER));
   await screen.findByRole("menu");
   expect(copies).toEqual([]);
+});
+
+test("Enter during a browser search waits, asks, then copies the chosen format once", async () => {
+  let finish!: (results: ReturnType<typeof result>[]) => void;
+  const searching = new Promise<ReturnType<typeof result>[]>((resolve) => { finish = resolve; });
+  const { calls, copies, remembered } = opened(() => BROWSER, { search: () => searching });
+  await waitFor(() => expect(calls).toContain("search"));
+  fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
+  fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
+  expect(screen.queryByRole("menu")).toBeNull();
+  expect(copies).toEqual([]);
+  await act(async () => finish([result("a", "First")]));
+  fireEvent.click(await screen.findByRole("menuitemradio", { name: "APA · text" }));
+  await waitFor(() => expect(copies).toHaveLength(1));
+  expect(prepared(copies[0]).request).toMatchObject({ style: "apa", items: [{ id: { key: "a" } }] });
+  expect(remembered).toEqual([{ style: "apa" }]);
+  expect(calls.filter((call) => call === "show_copied_notice")).toHaveLength(1);
 });
 
 test("the question appears even when the global key preview fails, then waits for the chosen style's preview", async () => {
@@ -321,7 +338,7 @@ test("an unreadable per-app file says defaults apply, and More forgets every app
 });
 
 test("without a captured app no app name or Automatic action is offered", async () => {
-  opened(() => ({ app: null, app_id: null, automatic: null, remembered: null, unreadable: false, output_question: null }));
+  opened(() => ({ app: null, app_id: null, automatic: null, remembered: null, unreadable: false, can_paste: false, output_question: null }));
   await screen.findByText("First");
   expect(formatShown()).toBe("Pandoc key");
   await pick("Just this once", "menuitemcheckbox");
@@ -331,7 +348,7 @@ test("without a captured app no app name or Automatic action is offered", async 
 
 test("without a destination app format picks change the global default, as both README claims explain", async () => {
   const saved: unknown[] = [];
-  const { remembered } = opened(() => ({ app: null, app_id: null, automatic: null, remembered: null, unreadable: false, output_question: null }), {
+  const { remembered } = opened(() => ({ app: null, app_id: null, automatic: null, remembered: null, unreadable: false, can_paste: false, output_question: null }), {
     set_picker_preferences: ({ copyFormat }) => { saved.push(copyFormat); return null; },
   });
   await screen.findByText("First");

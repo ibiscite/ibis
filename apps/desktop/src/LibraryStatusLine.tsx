@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { LibraryStatus, ZoteroLibrary } from "./bindings";
 import { appLocale, isolate, libraryMessages, pickerText } from "./messages";
+import { MenuDetail } from "./ui/Menu";
 
 /** A same-source freshness failure whose retained index remains searchable. */
 export function hasRetainedFreshnessProblem(library: LibraryStatus | null | undefined): boolean {
@@ -87,10 +88,5 @@ export function LibraryStatusLine({ library, groupName }: {
 
 /** The library detail at the top of More: a short line, then a quieter one. */
 export function LibraryDetail({ lines }: { lines: [string, string | null] }) {
-  return (
-    <p className="menu-detail" aria-hidden="true">
-      <span className="menu-detail-title">{lines[0]}</span>
-      {lines[1] && <span>{lines[1]}</span>}
-    </p>
-  );
+  return <MenuDetail title={lines[0]} detail={lines[1]} />;
 }

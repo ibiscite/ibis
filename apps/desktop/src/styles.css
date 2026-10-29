@@ -260,8 +260,6 @@ main[data-selection] .results-area { flex: 1 0 var(--results-min-height); }
 :root[data-density="compact"] .result-meta { display: none; }
 :root[data-density="spacious"] { --row-height: var(--row-spacious); }
 :root[data-text-size="larger"] { font-size: calc(100% * var(--larger-text-scale)); }
-.menu-detail { width: 0; min-width: 100%; margin: 0; padding: var(--space-1) 0 var(--space-2); display: flex; flex-direction: column; gap: var(--space-1); color: var(--muted); font-size: var(--hint-size); overflow-wrap: break-word; }
-.menu-detail-title { color: var(--text); font-weight: var(--type-strong-weight); }
 
 /* Rows that tell similar references apart (#492). Comfortable and Spacious
    rows show shortened authors and the container on one line; Spacious adds

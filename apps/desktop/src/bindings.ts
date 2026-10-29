@@ -416,6 +416,8 @@ export type PickerDestination = {
 	remembered: AppOutput | null,
 	/**  The per-app file could not be read, so defaults apply. */
 	unreadable: boolean,
+	/**  The current paste policy permits an attempt; final delivery checks still apply. */
+	can_paste: boolean,
 	/**  The app cannot identify document syntax; ask until an output is remembered. */
 	output_question: OutputQuestion | null,
 };

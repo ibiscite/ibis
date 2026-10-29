@@ -324,7 +324,8 @@ page, report, other) never reuse an attachment drawing. Platform icons only
 where the platform owns the meaning.
 
 **Footer and status** [C8]. Status dot and text at the leading edge, then
-"Copy N as <format> ↵" (the primary hint, text colour), "Shortcuts ⌘/" and
+"Paste into Word · APA ↵" or "Copy N as <format> ↵" (the primary hint,
+text colour), "Shortcuts ⌘/" and
 "More ⌘K" (secondary). Every hint is label first, then keys: 8 px between them,
 16 px between hints, label type on one baseline. Actions are quiet 24 px fills,
 radius `--r-tile`, with 32 px targets; they invoke the same guarded actions as
@@ -793,8 +794,31 @@ that owns its area in ROADMAP.md.
    the shelf even if hiding fails; only a confirmed permission refusal keeps
    the copied selection for another attempt.
 3. Enter does what the footer says ("Paste into Word · APA"). Enter pressed
-   while results load runs once, never twice. After the window closes a short
-   receipt says what happened, and the last outcome stays readable in More.
+   while results or the citation preview load waits for the current search and
+   output, including reconciliation when results arrive before library status,
+   then runs once. Repeated Enter, row and footer activations on the
+   unchanged citation during copying, hiding or delivery cannot start another
+   copy, even when only the search or chooser scope changes. Returning to a
+   citation whose copy is still outstanding cannot repeat it. Deliberately
+   choosing a different citation permits a fresh copy; an earlier reply cannot
+   replace its shelf or current copy feedback. A changed query,
+   reference, page, form or output, arrow navigation, Escape or hiding cancels
+   a waiting Enter. Every add/remove activation cancels it, including Shift+Enter
+   with no highlighted result. A prepared shelf can copy while the next search
+   loads or finds nothing. The footer uses the captured app and native paste policy;
+   kept-open citations and citations with warnings say Copy. Final delivery
+   still checks the target and may copy with a reason instead. After the
+   window closes the existing brief, pointer-ignoring receipt says what
+   happened without taking focus. More keeps the actual last outcome and its
+   reason, in memory for this run, after the brief confirmation expires; it
+   does not retain citation text there. A failed or unfinished later copy
+   attempt does not discard a successful copy's delivery receipt; a newer
+   successful copy does.
+   A fresh Enter for the same prepared citation joins its outstanding copy
+   with the current context and scope, so that copy can finish with one
+   delivery and receipt. Every activation goes through the same readiness
+   checks before starting or joining a copy. A failed reconciliation status
+   read cancels waiting Enter; a later library update never replays it.
 4. Open in under 100 ms with the last snapshot; text received by Search during
    opening is kept (see **Opening** for X11 input routing). The Linux smoke
    types once as soon as the picker is mapped, without waiting for focus.
