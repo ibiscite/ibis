@@ -130,10 +130,10 @@ pub(crate) fn convert(
         }
     }
 
-    let authors = match entry.author() {
-        Ok(people) => names(people, own_fields.get("author").map(String::as_str)),
-        Err(RetrievalError::Missing(_)) => Vec::new(),
-        Err(err) => {
+    let authors = match entry.get("author").map(|_| entry.author()) {
+        Some(Ok(people)) => names(people, own_fields.get("author").map(String::as_str)),
+        None | Some(Err(RetrievalError::Missing(_))) => Vec::new(),
+        Some(Err(err)) => {
             problems.push(format!("authors could not be read: {err}"));
             Vec::new()
         }
@@ -142,7 +142,26 @@ pub(crate) fn convert(
     // as general contributors, and the loss of detail is reported.
     let mut other_names: BTreeMap<String, Vec<Name>> = BTreeMap::new();
     let mut editors = Vec::new();
-    match entry.editors() {
+    // Keep typed parsing (including type-only and empty fields) whenever any
+    // editor field is present; absent fields need no owned missing-field errors.
+    let editor_groups = if [
+        "editor",
+        "editortype",
+        "editora",
+        "editoratype",
+        "editorb",
+        "editorbtype",
+        "editorc",
+        "editorctype",
+    ]
+    .iter()
+    .any(|field| entry.get(field).is_some())
+    {
+        entry.editors()
+    } else {
+        Ok(Vec::new())
+    };
+    match editor_groups {
         Ok(groups) => {
             for (people, role) in groups {
                 let converted = names(people, None);
@@ -178,6 +197,9 @@ pub(crate) fn convert(
         ("afterword", "contributor"),
     ];
     for (field, csl_role) in roles {
+        if entry.get(field).is_none() {
+            continue;
+        }
         match entry.get_as::<Vec<biblatex::Person>>(field) {
             Ok(people) => {
                 if csl_role == "contributor" {
@@ -493,20 +515,35 @@ fn wholly_braced(name: &str) -> bool {
 // ---------- Dates ----------
 
 fn issued(entry: &Entry, problems: &mut Vec<String>) -> Option<Issued> {
-    date_value(entry, "date", problems, || entry.date())
+    date_value(entry, ["date", "year", "month", "day"], problems, || entry.date())
 }
 
 /// Further CSL date variables: access date, original date, event date.
 fn other_dates(entry: &Entry, problems: &mut Vec<String>) -> BTreeMap<String, Issued> {
     let sources = [
-        ("accessed", date_value(entry, "urldate", problems, || entry.url_date())),
+        (
+            "accessed",
+            date_value(entry, ["urldate", "urlyear", "urlmonth", "urlday"], problems, || {
+                entry.url_date()
+            }),
+        ),
         (
             "original-date",
-            date_value(entry, "origdate", problems, || entry.orig_date()),
+            date_value(
+                entry,
+                ["origdate", "origyear", "origmonth", "origday"],
+                problems,
+                || entry.orig_date(),
+            ),
         ),
         (
             "event-date",
-            date_value(entry, "eventdate", problems, || entry.event_date()),
+            date_value(
+                entry,
+                ["eventdate", "eventyear", "eventmonth", "eventday"],
+                problems,
+                || entry.event_date(),
+            ),
         ),
     ];
     sources
@@ -517,21 +554,27 @@ fn other_dates(entry: &Entry, problems: &mut Vec<String>) -> BTreeMap<String, Is
 
 fn date_value(
     entry: &Entry,
-    field: &str,
+    [field, year_field, month_field, day_field]: [&str; 4],
     problems: &mut Vec<String>,
     read: impl FnOnce() -> Result<PermissiveType<biblatex::Date>, RetrievalError>,
 ) -> Option<Issued> {
-    let guarded = entry
-        .get(field)
+    let primary = entry.get(field);
+    let fallback_year = if primary.is_none() { entry.get(year_field) } else { None };
+    if primary.is_none()
+        && fallback_year.is_none()
+        && entry.get(month_field).is_none()
+        && entry.get(day_field).is_none()
+    {
+        return None;
+    }
+    let guarded = primary
         .filter(|chunks| unsafe_date_value(&chunks.format_verbatim()))
         .map(|chunks| PermissiveType::Chunks(chunks.to_vec()))
         .or_else(|| {
-            if entry.get(field).is_some() {
+            if primary.is_some() {
                 return None;
             }
-            let prefix = field.strip_suffix("date")?;
-            let year_field = format!("{prefix}year");
-            let year = entry.get(&year_field)?;
+            let year = fallback_year?;
             let raw_year = year.format_verbatim();
             if raw_year
                 .trim_start()
@@ -541,9 +584,8 @@ fn date_value(
                 problems.push(format!("`{year_field}` has whitespace after its sign; no date is used"));
                 return Some(PermissiveType::Chunks(year.to_vec()));
             }
-            let month_field = format!("{prefix}month");
-            let month = entry.get(&month_field)?.format_verbatim();
-            if !unsafe_date_parts(&month, entry.get(&format!("{prefix}day")).is_some()) {
+            let month = entry.get(month_field)?.format_verbatim();
+            if !unsafe_date_parts(&month, entry.get(day_field).is_some()) {
                 return None;
             }
             problems.push(format!(
