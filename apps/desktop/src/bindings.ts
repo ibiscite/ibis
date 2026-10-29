@@ -105,8 +105,9 @@ export const commands = {
 	 *  picker (see `copyFeedback.ts`); copies with warnings keep their notice
 	 *  inside the picker. Failures are reported as fixed diagnostics: the
 	 *  citation is on the clipboard either way.
+	 *  Returns the delivery outcome so a permission detour keeps the prepared shelf.
 	 */
-	showCopiedNotice: (text: string, delivery: number | null) => __TAURI_INVOKE<void>("show_copied_notice", { text, delivery }),
+	showCopiedNotice: (text: string, delivery: number | null) => __TAURI_INVOKE<Delivered>("show_copied_notice", { text, delivery }),
 	/**
 	 *  The notice being shown, for a notice page that has just loaded and missed
 	 *  the event that announced it.
@@ -139,6 +140,8 @@ export const commands = {
 	openSettings: (page: "general" |
 /**  General, scrolled to pasting and its permission. */
 "paste" | "shortcuts" | "citations" | "about" | null) => __TAURI_INVOKE<void>("open_settings", { page }),
+	/**  Return from the paste guide after a live grant, without replaying Enter. */
+	finishPasteGuide: () => __TAURI_INVOKE<boolean>("finish_paste_guide"),
 	/**  Whether Ibis may paste now. Read each time: the person can change it at any moment. */
 	pastePermission: () => __TAURI_INVOKE<PastePermission>("paste_permission"),
 	/**  Clear a stale entry, ask macOS to list Ibis, then open the pane with the switch. */

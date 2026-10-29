@@ -16,6 +16,7 @@ export const settingsApi = {
   checkForUpdates: commands.checkForUpdates,
   pastePermission: commands.pastePermission as () => Promise<PastePermission>,
   openPastePermission: commands.openPastePermission,
+  finishPasteGuide: commands.finishPasteGuide,
   shortcutStatus: commands.shortcutStatus,
   setShortcut: commands.setShortcut,
   onShortcutStatus: (handler: (status: ShortcutStatus) => void): Promise<UnlistenFn> => listen<ShortcutStatus>("shortcut:status", (event) => handler(event.payload)),

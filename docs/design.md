@@ -752,6 +752,15 @@ that owns its area in ROADMAP.md.
 2. Setup that finishes itself (above); a permission detour keeps the prepared
    citation, notices the grant and waits for a fresh Enter. The two grants are
    named apart: "read your references" and "paste".
+   References, locators, search and the prepared output survive the detour,
+   including longer than the usual minute away. On return after a read-back
+   grant, the guide closes and the picker captures the destination again;
+   it never replays the earlier Enter. Its prepared output applies once, even
+   if the destination changed, without changing that app's remembered format.
+   Reopening before the grant keeps the detour active; destination refreshes
+   in the same opening keep its prepared output. A successful copy clears
+   the shelf even if hiding fails; only a confirmed permission refusal keeps
+   the copied selection for another attempt.
 3. Enter does what the footer says ("Paste into Word · APA"). Enter pressed
    while results load runs once, never twice. After the window closes a short
    receipt says what happened, and the last outcome stays readable in More.
@@ -889,6 +898,13 @@ opens by itself once per run, the first time a paste is refused, and lives in
 Settings › General › Pasting afterwards. Because macOS keys the permission to
 the code signature, opening the guide first clears Ibis's own entry when the
 permission is not working, so the list shows one fresh switch (#1292, #1242).
+Only the guide opened after a refused paste returns to the picker on grant;
+an ordinary Settings visit stays open and confirms the grant in words. A
+background grant never brings Ibis forward: completion waits for the person
+to return. Hidden pages make no permission reads; pasting switched off stops
+the one-second checks, keeping the capability read on return.
+Zotero's sharing line explains reading references; the macOS guide's line
+explains pasting. These are separate grants, never instructions to give both.
 
 Until the remaining pages exist, those settings live in More and the tray menu. **Start Ibis when you log
 in** is off until turned on (App Review 2.4.5(iii)), uses each system's words

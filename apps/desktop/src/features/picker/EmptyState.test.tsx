@@ -17,6 +17,13 @@ function mount(query = "", empty = false) {
   return { container, choose, clear, searchAll };
 }
 
+test("Zotero sharing explains reading references separately from macOS paste permission", () => {
+  const { container } = render(<EmptyState library={{ ...loaded, state: "error", has_snapshot: false, zotero: true, problem: "zotero_access_off" }} query="" narrowed={false}
+    onChooseLibrary={vi.fn()} onClearSearch={vi.fn()} onSearchAll={vi.fn()} onReload={vi.fn()} setup={setup} />);
+  expect(container.textContent).toContain("To read your references, in Zotero › Settings › Advanced turn on “Allow other applications on this computer to communicate with Zotero”.");
+  expect(container.textContent).not.toContain("macOS");
+});
+
 test.each(["", "unmatched"])("one empty-state template has a plain title, description and decorative icon (query=%s)", (query) => {
   const { container } = mount(query);
   expect(container.querySelector(".empty-title")?.textContent).toBe(query ? "No matching references" : "Type to find a reference");
