@@ -80,7 +80,23 @@ test("a clean copy hides the picker, then says Copied with the copied text", asy
   expect(notices).toEqual([]);
   expect(screen.getByText("Copied", { selector: ".copy-notice p" })).toBeTruthy();
   await act(async () => { finishHide(); });
-  expect(notices).toEqual([{ text: "[@a]" }]);
+  expect(notices).toEqual([{ text: "[@a]", delivery: null }]);
+  expect(calls.indexOf("hide_picker")).toBeLessThan(calls.indexOf("show_copied_notice"));
+});
+
+test("a Windows copy carries its delivery receipt through hiding to the notice", async () => {
+  let finishHide!: () => void;
+  const notices: unknown[] = [];
+  const calls = await openPicker({
+    copy_file_citation: () => ({ text: "[@a]", warnings: [], delivery: 17 }),
+    hide_picker: () => new Promise<void>((resolve) => { finishHide = resolve; }),
+    show_copied_notice: (args) => { notices.push(args); return null; },
+  });
+  await copy();
+  expect(calls).toContain("hide_picker");
+  expect(notices).toEqual([]);
+  await act(async () => { finishHide(); });
+  expect(notices).toEqual([{ text: "[@a]", delivery: 17 }]);
   expect(calls.indexOf("hide_picker")).toBeLessThan(calls.indexOf("show_copied_notice"));
 });
 

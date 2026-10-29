@@ -115,6 +115,7 @@ pub(crate) async fn search(
             revision: file.revision(),
             results: Vec::new(),
             interpretation: None,
+            list: None,
         });
     };
     tauri::async_runtime::spawn_blocking(move || file.search(&query, limit, scope, &cancel))

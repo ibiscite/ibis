@@ -1,7 +1,7 @@
 // The search for the current query in the open library, and which of its results may be acted on.
 import { useEffect, useState } from "react";
 import type * as nativeApi from "../../api";
-import type { LibraryStatus, LocatorQuery, SearchResult } from "../../api";
+import type { LibraryStatus, LocatorQuery, PastedList, SearchResult } from "../../api";
 import { pickerText } from "../../messages";
 import { choiceKey } from "./choice";
 
@@ -19,6 +19,7 @@ export function useLibrarySearch({ search, query, interpretLocators, library, li
 }) {
   const queryKey = JSON.stringify([query, interpretLocators]);
   const [interpretation, setInterpretation] = useState<LocatorQuery | null>(null);
+  const [list, setList] = useState<PastedList | null>(null);
   const [results, setResults] = useState<SearchResult[]>([]);
   const [announcement, setAnnouncement] = useState("");
   // The query the shown results belong to; differs while a search is pending.
@@ -34,6 +35,7 @@ export function useLibrarySearch({ search, query, interpretLocators, library, li
     if (library === undefined || library?.state === "none" || library?.state === "loading" || (library?.state === "error" && !library.has_snapshot)) {
       setResults([]);
       setInterpretation(null);
+      setList(null);
       setResultsQuery(queryKey);
       setActive(0);
       setError(null);
@@ -42,10 +44,11 @@ export function useLibrarySearch({ search, query, interpretLocators, library, li
     let current = true;
     let announcementTimer: number | undefined;
     search(query, undefined, undefined, interpretLocators)
-      .then(({ revision, results: found, interpretation: interpreted }) => {
+      .then(({ revision, results: found, interpretation: interpreted, list: pasted }) => {
         if (current) {
           setResults(found);
           setInterpretation(interpreted ?? null);
+          setList(pasted ?? null);
           setResultsRevision(revision);
           if (revision !== library?.revision) refreshSnapshot();
           setResultsQuery(queryKey);
@@ -64,6 +67,7 @@ export function useLibrarySearch({ search, query, interpretLocators, library, li
         if (current) {
           setResults([]);
           setInterpretation(null);
+          setList(null);
           setResultsQuery(queryKey);
           setError(pickerText.searchError);
         }
@@ -78,5 +82,5 @@ export function useLibrarySearch({ search, query, interpretLocators, library, li
   // pending, the rows still on screen are not acted on or offered by any key,
   // click or footer hint; only these current results are.
   const current = resultsQuery === queryKey && resultsRevision === library?.revision && results.every((record) => record.revision === resultsRevision) ? results : [];
-  return { queryKey, results, current, interpretation, announcement, resultsQuery, error };
+  return { queryKey, results, current, interpretation, list: current === results ? list : null, announcement, resultsQuery, error };
 }

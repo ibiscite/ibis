@@ -843,6 +843,20 @@
             ],
             "type": "object"
           },
+          "PastedList": {
+            "properties": {
+              "missing": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "missing"
+            ],
+            "type": "object"
+          },
           "Record": {
             "additionalProperties": false,
             "properties": {
@@ -1030,6 +1044,16 @@
               "$ref": "#/$defs/SearchHit"
             },
             "type": "array"
+          },
+          "list": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/PastedList"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "locator": {
             "anyOf": [

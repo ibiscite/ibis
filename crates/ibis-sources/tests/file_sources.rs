@@ -545,14 +545,37 @@ fn record_caps_keep_a_bounded_prefix_and_refuse_reload() -> Result<(), Box<dyn s
 }
 
 #[test]
-fn bib_extension_overrides_a_leading_square_bracket() -> Result<(), Box<dyn std::error::Error>> {
+fn file_bibtex_extensions_override_a_leading_square_bracket() -> Result<(), Box<dyn std::error::Error>> {
     let dir = tempfile::tempdir()?;
-    let path = dir.path().join("synthetic.bib");
-    std::fs::write(
-        &path,
-        "[Invented export comment]\n@book{invented,title={Invented title}}",
-    )?;
-    let loaded = ibis_sources::load_file(&path)?;
-    assert_eq!(loaded.snapshot.objects().len(), 1);
+    for extension in ["bib", "bibtex", "BIB", "BIBTEX"] {
+        let path = dir.path().join(format!("synthetic.{extension}"));
+        std::fs::write(
+            &path,
+            "[Invented export comment]\n@book{invented,title={Invented title}}",
+        )?;
+        assert_eq!(ibis_sources::load_file(&path)?.snapshot.objects().len(), 1);
+        assert_eq!(ibis_sources::reload_file(&path)?.snapshot.objects().len(), 1);
+    }
+    Ok(())
+}
+
+#[test]
+fn file_json_extensions_use_csl_json() -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempfile::tempdir()?;
+    for extension in ["json", "csljson", "JSON", "CSLJSON"] {
+        let path = dir.path().join(format!("synthetic.{extension}"));
+        std::fs::write(&path, r#"[{"id":"invented","type":"book","title":"Invented title"}]"#)?;
+        assert_eq!(ibis_sources::load_file(&path)?.snapshot.objects().len(), 1);
+        assert_eq!(ibis_sources::reload_file(&path)?.snapshot.objects().len(), 1);
+        std::fs::write(&path, "@book{invented,title={Invented title}}")?;
+        assert_eq!(
+            ibis_sources::load_file(&path).err(),
+            Some(ibis_sources::SourceError::InvalidData)
+        );
+        assert_eq!(
+            ibis_sources::reload_file(&path).err(),
+            Some(ibis_sources::SourceError::InvalidData)
+        );
+    }
     Ok(())
 }
