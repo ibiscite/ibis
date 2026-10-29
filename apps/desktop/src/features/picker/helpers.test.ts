@@ -1,13 +1,22 @@
 import { expect, test } from "vitest";
 import type React from "react";
 import type { SearchResult } from "../../api";
+import pickerConflicts from "../../testing/picker-shortcut-conflicts.json";
 import { choiceKey, choiceName, idKey, sameLibrary, styleOf } from "./choice";
 import { abbreviatedAuthors, hiddenMatch, tileName } from "./rows";
-import { isKeysShortcut, isMenuShortcut, isPreviewShortcut, isQuitShortcut } from "./shortcuts";
+import { isFormatShortcut, isKeysShortcut, isMenuShortcut, isPinShortcut, isPreviewShortcut, isQuitShortcut } from "./shortcuts";
 
 const record = (more: Partial<SearchResult> = {}): SearchResult => ({
   revision: "1", id: { source: "refs.bib", native_key: "a" }, key: "a", title: "T", authors: "García", year: 2021,
   matched: [], partial: false, first_author: "García", author_count: 1, container: null, item_type: "article-journal", ...more,
+});
+
+test.each(pickerConflicts)("the refused $name event belongs to its picker command on both modifier models", ({ event, command }) => {
+  const handlers = { format: isFormatShortcut, pin: isPinShortcut, keys: isKeysShortcut };
+  for (const mac of [false, true]) {
+    const press = { altKey: false, target: null, ...event, ctrlKey: !mac, metaKey: mac } as unknown as React.KeyboardEvent;
+    expect(handlers[command as keyof typeof handlers](press, mac)).toBe(true);
+  }
 });
 
 test("a choice names a key format or a citation style", () => {

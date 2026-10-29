@@ -1,4 +1,4 @@
-import type { KeyFormat, LibraryStatus, LoginItemProblem, ShortcutRefusal } from "./bindings";
+import type { KeyFormat, LibraryStatus, LoginItemProblem, PickerCommand, ShortcutRefusal } from "./bindings";
 import type { Platform } from "./platform";
 
 export const citationDetailsText = {
@@ -550,7 +550,17 @@ export const settingsText = {
       "in-use": "Another app or the system may be using that shortcut. Try another.",
       unavailable: "Global shortcuts are unavailable on this desktop. Open Ibis from your application launcher.",
       "not-saved": "The shortcut works now, but Ibis could not save it for next time. Try again.",
-    } satisfies Record<ShortcutRefusal, string>,
+    } satisfies Record<Extract<ShortcutRefusal, string>, string>,
+    commands: {
+      format: "Choose Output Format",
+      pin: "Keep Window Open",
+      keys: "Keyboard Shortcuts",
+      more: "More",
+      preview: "Show What Will Be Pasted",
+      settings: "Settings",
+      quit: "Quit Ibis",
+    } satisfies Record<PickerCommand, string>,
+    pickerConflict: (command: string) => `That shortcut is used for ${command}. Try another shortcut.`,
   },
   updates: {
     automatic: "Check for updates automatically",
@@ -561,3 +571,18 @@ export const settingsText = {
   },
   failed: "Ibis could not save that. Try again.",
 } as const;
+
+/** Native refusals carry only known codes and command identifiers. */
+export function shortcutRefusalText(refusal: unknown): string {
+  const text = settingsText.shortcut;
+  if (typeof refusal === "string" && Object.hasOwn(text.refusals, refusal)) {
+    return text.refusals[refusal as Extract<ShortcutRefusal, string>];
+  }
+  if (typeof refusal === "object" && refusal !== null && "picker-shortcut" in refusal) {
+    const command = refusal["picker-shortcut"];
+    if (typeof command === "string" && Object.hasOwn(text.commands, command)) {
+      return text.pickerConflict(text.commands[command as PickerCommand]);
+    }
+  }
+  return text.failed;
+}

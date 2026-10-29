@@ -883,6 +883,13 @@ all other keys are saved as physical codes and stay at that position, including
 after a restart or layout change. Recorded modifiers are Control, Alt, Shift, Command, in that
 order. A shortcut needs Control, Alt/Option or Command; **⌘ + one key is
 refused** (Ctrl + one key elsewhere) because apps use it for their own commands.
+Picker commands, including the format chooser, pin and keyboard help, are also
+reserved: the opening shortcut cannot take them.
+On macOS, the check uses the active keyboard layout and preserves the recorder's
+logical letter or physical key intent; on AZERTY, ⇧⌘? on physical M belongs to
+keyboard help. Refusals name the command that owns the chord. Saved shortcuts
+pass the same validator at startup; a refused one uses the default with an
+explanation.
 On Windows, Ctrl+Alt with a printable key (also with Shift) is refused because
 it can consume AltGr typing; a Windows-key combination or a non-typing key is available instead.
 An unsafe saved shortcut falls back to the default at startup with an explanation.
@@ -918,6 +925,8 @@ the system, never `settings.json` (`login_item.rs`, [PRIVACY.md](../PRIVACY.md))
 menus with the same commands, so desktops without a tray reach them; builds
 without an update key show neither. Both show only the saved choice, and clicks in
 either are saved in the order they were made.
+In Settings, a saved-choice event supersedes any older automatic-update read,
+including a failed read; returning focus may read the choice again.
 The tray click carries the absolute choice its item displayed, so a queued save
 repainting the check cannot change an earlier click's intent.
 On every OS, automatic update offers never show or focus the picker: while it

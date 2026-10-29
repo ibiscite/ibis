@@ -5,7 +5,7 @@
     "shortcut": "Control+KeyQ",
     "typed": { "12": "'", "7": "q" },
     "registered": "Control+KeyQ",
-    "windows_refusal": "app-shortcut"
+    "windows_refusal": { "picker-shortcut": "quit" }
   },
   {
     "name": "Dvorak Q follows the logical letter",
@@ -13,7 +13,7 @@
     "shortcut": "Control+Q",
     "typed": { "12": "'", "7": "q" },
     "registered": "Control+KeyX",
-    "windows_refusal": "app-shortcut"
+    "windows_refusal": { "picker-shortcut": "quit" }
   },
   {
     "name": "Dvorak shifted apostrophe stays on physical Q",
