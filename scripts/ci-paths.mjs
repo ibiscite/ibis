@@ -11,8 +11,10 @@ const documentation = (path) => !path.split("/").includes("vendor") && (
   (path.endsWith(".md") && (!path.includes("/") || path.startsWith("docs/") || path === "website/README.md"))
   || path === "LICENSE" || path.startsWith(".github/ISSUE_TEMPLATE/")
 );
-const interfaceFile = (path) => /^apps\/desktop\/src\/.*\.(?:ts|tsx|css|svg)$/.test(path)
-  || path === "apps/desktop/index.html";
+// Generated bindings are also a native contract, checked by Rust tests.
+const interfaceFile = (path) => path !== "apps/desktop/src/bindings.ts" && (
+  /^apps\/desktop\/src\/.*\.(?:ts|tsx|css|svg)$/.test(path) || path === "apps/desktop/index.html"
+);
 // The website is plain files checked by the script tests in the Web job.
 const websiteFile = (path) => path.startsWith("website/");
 

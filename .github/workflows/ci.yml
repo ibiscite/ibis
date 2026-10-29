@@ -279,6 +279,12 @@ jobs:
           name: desktop-web
           path: apps/desktop/dist
 
+      # Compile desktop test targets before unrelated suites so contract errors
+      # report early on every native platform.
+      - name: Lint all desktop targets
+        if: env.NATIVE == 'true'
+        run: cargo clippy -p ibis-desktop --all-targets --locked
+
       - name: Lint and test the core and scripts (macOS and Windows)
         if: env.NATIVE == 'true' && runner.os != 'Linux'
         run: |
@@ -291,7 +297,6 @@ jobs:
         id: native_build
         working-directory: .
         run: |
-          cargo clippy -p ibis-desktop --all-targets --locked
           cargo test -p ibis-desktop --locked
           # Embed the built interface; a plain debug build uses localhost:5173.
           cargo build -p ibis-desktop --locked --features tauri/custom-protocol
