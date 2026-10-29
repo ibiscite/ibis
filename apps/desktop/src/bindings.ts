@@ -228,7 +228,10 @@ export type FilePreview = {
 export type FileSelection = {
 	id: unknown,
 	cite: string,
+	/**  A canonical locator captured from search; its value is never parsed again. */
 	locator: Locator | null,
+	/**  Raw Page editor text, mutually exclusive with a captured locator. */
+	page_input?: string | null,
 	form?: ReferenceForm | null,
 };
 
@@ -319,16 +322,14 @@ export type LibraryStatus = {
 	checked_at: number | null,
 };
 
+/**  Picker wire names over the engine's canonical locator vocabulary. */
 export type Locator = {
-	label: LocatorLabel,
-	/**  As typed by the user, e.g. "12", "24-26", "3, 7". */
+	label: LocatorTerm,
+	/**  Canonical value, including literal text preserved by the engine. */
 	value: string,
 };
 
-/**  Kind of locator ("p. 12", "chap. 3"). */
-export type LocatorLabel = "page" | "chapter" | "section" | "paragraph" | "figure" | "line" | "note" | "volume" | "verse";
-
-/**  A search with a locator split off its end. */
+/**  The engine's interpretation, shown so the person can search as typed. */
 export type LocatorQuery = {
 	/**  What remains to search for. */
 	search: string,
@@ -336,6 +337,12 @@ export type LocatorQuery = {
 	/**  The text read as the locator, exactly as typed. */
 	typed: string,
 };
+
+/**
+ *  CSL 1.0.2 input locator vocabulary, including the disambiguating `-locator` names.
+ *  https://github.com/citation-style-language/schema/blob/v1.0.2/schemas/input/csl-citation.json
+ */
+export type LocatorTerm = "act" | "appendix" | "article-locator" | "book" | "canon" | "chapter" | "column" | "elocation" | "equation" | "figure" | "folio" | "issue" | "line" | "note" | "opus" | "page" | "paragraph" | "part" | "rule" | "scene" | "section" | "sub-verbo" | "supplement" | "table" | "timestamp" | "title-locator" | "verse" | "version" | "volume";
 
 /**  Whether Ibis starts when the person logs in, as the system reports it. */
 export type LoginItem = {

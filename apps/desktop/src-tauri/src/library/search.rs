@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-use ibis_core::locator_query::LocatorQuery;
+use ibis_core::contract::LocatorTerm;
 use ibis_core::search::MatchField;
 use ibis_engine::Cancellation;
 use serde::{Deserialize, Serialize};
@@ -179,6 +179,53 @@ pub(crate) struct SearchQuery {
 #[derive(Serialize, specta::Type)]
 pub(crate) struct PastedList {
     pub(super) missing: Vec<String>,
+}
+
+/// Picker wire names over the engine's canonical locator vocabulary.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, specta::Type)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct Locator {
+    pub(crate) label: LocatorTerm,
+    /// Canonical value, including literal text preserved by the engine.
+    pub(crate) value: String,
+}
+
+impl From<ibis_core::contract::Locator> for Locator {
+    fn from(locator: ibis_core::contract::Locator) -> Self {
+        Self {
+            label: locator.term,
+            value: locator.value,
+        }
+    }
+}
+
+impl From<Locator> for ibis_core::contract::Locator {
+    fn from(locator: Locator) -> Self {
+        Self {
+            term: locator.label,
+            value: locator.value,
+        }
+    }
+}
+
+/// The engine's interpretation, shown so the person can search as typed.
+#[derive(Serialize, specta::Type)]
+pub(crate) struct LocatorQuery {
+    /// What remains to search for.
+    pub(crate) search: String,
+    pub(crate) locator: Locator,
+    /// The text read as the locator, exactly as typed.
+    pub(crate) typed: String,
+}
+
+impl From<ibis_core::locator::TrailingLocator> for LocatorQuery {
+    fn from(read: ibis_core::locator::TrailingLocator) -> Self {
+        Self {
+            search: read.search,
+            locator: read.locator.into(),
+            typed: read.typed,
+        }
+    }
 }
 
 /// A search keeps its snapshot identity even when no references match.

@@ -5,13 +5,29 @@ import { backend, prepared, receipt, resetApp, result, type PreviewRequest } fro
 
 afterEach(resetApp);
 
+test.each(["S.12", "pages of notes"])("a form edit preserves the captured page %s as canonical text", async (value) => {
+  const previews: PreviewRequest[] = [];
+  const locator = { label: "page", value };
+  backend({ search: () => ({ revision: "1", results: [result("a", "Synthetic work")],
+    interpretation: { search: "Example", locator, typed: `pp. "${value}"` } }),
+    preview_file_citation: (request) => { previews.push(request); return receipt("Canonical output"); } });
+  render(<App />);
+  const page = await screen.findByRole("textbox", { name: "Page" }) as HTMLInputElement;
+  expect(page.value).toBe(value);
+  fireEvent.click(screen.getByRole("radio", { name: "Omit author" }));
+  await waitFor(() => expect(previews.at(-1)?.items[0]).toEqual({
+    id: result("a", "").id, cite: result("a", "").cite, locator, form: "author-omitted",
+  }));
+  expect(page.value).toBe(value);
+});
+
 test.each([false, true])("a label-only Page refuses copy until corrected (preview hidden: %s)", async (hidden) => {
   const message = "Reference 1: Page needs a page or range. Enter one after the label, or clear Page.";
   const copied: string[] = [];
   const calls = backend({ search: () => [result("a", "Synthetic work")],
     preview_file_citation: ({ items }) => {
-      if (items[0]?.locator?.value === "pp.") throw { code: "failed", message };
-      return receipt(items[0]?.locator ? "Synthetic normalized output" : "Original output");
+      if (items[0]?.page_input === "pp.") throw { code: "failed", message };
+      return receipt(items[0]?.page_input ? "Synthetic normalized output" : "Original output");
     },
     copy_file_citation: (args) => { const saved = prepared(args); copied.push(saved.preview.text); return { text: saved.preview.text, warnings: [] }; },
   });
@@ -53,11 +69,11 @@ test.each(["pointer", "Enter", " "])("Edit activated with %s focuses Page and ed
     expect(document.activeElement).toBe(page);
     expect(screen.getByRole("region", { name: `Citation details for ${title}` }).contains(page)).toBe(true);
     fireEvent.change(page, { target: { value } });
-    await waitFor(() => expect(previews.at(-1)?.items.find((item) => item.id.key === key)?.locator?.value).toBe(value));
+    await waitFor(() => expect(previews.at(-1)?.items.find((item) => item.id.key === key)?.page_input).toBe(value));
   }
   expect(previews.at(-1)?.items).toMatchObject([
-    { id: result("a", "").id, locator: { label: "page", value: "16" } },
-    { id: result("b", "").id, locator: { label: "page", value: "29" } },
+    { id: result("a", "").id, locator: null, page_input: "16" },
+    { id: result("b", "").id, locator: null, page_input: "29" },
   ]);
   expect(calls).not.toContain("copy_file_citation");
 });
@@ -101,7 +117,7 @@ test("editing the highlighted reference freezes its page and form for preview an
   expect(document.activeElement).toBe(page);
   fireEvent.click(screen.getByRole("radio", { name: "Narrative" }));
   await waitFor(() => expect(previews.at(-1)?.items).toMatchObject([
-    { id: result("a", "").id, locator: { label: "page", value: "12–15" }, form: "narrative" },
+    { id: result("a", "").id, locator: null, page_input: "12–15", form: "narrative" },
   ]));
   const search = screen.getByLabelText("Search references");
   fireEvent.change(search, { target: { value: "second" } });
@@ -109,7 +125,7 @@ test("editing the highlighted reference freezes its page and form for preview an
   expect((page as HTMLInputElement).value).toBe("12–15");
   fireEvent.keyDown(search, { key: "Enter" });
   await waitFor(() => expect(copies).toHaveLength(1));
-  expect(copies[0]?.items).toMatchObject([{ id: result("a", "").id, locator: { label: "page", value: "12–15" }, form: "narrative" }]);
+  expect(copies[0]?.items).toMatchObject([{ id: result("a", "").id, locator: null, page_input: "12–15", form: "narrative" }]);
 });
 
 test("each shelf reference keeps independent details and an empty Page removes only that page", async () => {
@@ -129,7 +145,7 @@ test("each shelf reference keeps independent details and an empty Page removes o
   fireEvent.click(screen.getByRole("radio", { name: "Narrative" }));
   fireEvent.change(screen.getByRole("textbox", { name: "Page" }), { target: { value: "" } });
   await waitFor(() => expect(previews.at(-1)?.items).toMatchObject([
-    { id: result("a", "").id, locator: { label: "page", value: "iv–vi" }, form: "author-omitted" },
+    { id: result("a", "").id, locator: null, page_input: "iv–vi", form: "author-omitted" },
     { id: result("b", "").id, locator: null, form: "narrative" },
   ]));
   fireEvent.click(edit("a"));
@@ -200,10 +216,10 @@ test("page and form survive changing output and remain editable with the paste p
   fireEvent.click(within(search.closest("header")!).getByRole("button", { name: "Copy as Pandoc key" }));
   fireEvent.click(screen.getByRole("menuitemradio", { name: "Typst key" }));
   await waitFor(() => expect(previews.at(-1)?.format).toBe("typst"));
-  expect(previews.at(-1)?.items[0]).toMatchObject({ locator: { label: "page", value: "42" }, form: "author-omitted" });
+  expect(previews.at(-1)?.items[0]).toMatchObject({ locator: null, page_input: "42", form: "author-omitted" });
   fireEvent.keyDown(search, { key: "i", code: "KeyI", ctrlKey: true });
   expect(screen.queryByRole("region", { name: "Preview" })).toBeNull();
   fireEvent.change(page, { target: { value: "42–45" } });
-  await waitFor(() => expect(previews.at(-1)?.items[0]?.locator?.value).toBe("42–45"));
+  await waitFor(() => expect(previews.at(-1)?.items[0]?.page_input).toBe("42–45"));
   expect(previews.at(-1)?.items[0]?.form).toBe("author-omitted");
 });
