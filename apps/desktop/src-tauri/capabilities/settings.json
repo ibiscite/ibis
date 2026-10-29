@@ -20,6 +20,7 @@
     "allow-check-for-updates",
     "allow-paste-permission",
     "allow-open-paste-permission",
+    "allow-drag-paste-app",
     "allow-finish-paste-guide",
     "allow-shortcut-status",
     "allow-set-shortcut",

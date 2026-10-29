@@ -3,13 +3,13 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
 import type { AppOutput, PickerDestination } from "./api";
-import { backend, chooseFromMore, prepared, resetApp, result, type PreviewRequest } from "./testing/app";
+import { backend, chooseFromMore, prepared, receipt, resetApp, result, type PreviewRequest } from "./testing/app";
 
 afterEach(resetApp);
 const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
 const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
-const WORD: PickerDestination = { app: "Example Word", app_id: "example.word", automatic: { style: "apa" }, remembered: null, unreadable: false };
-const BROWSER: PickerDestination = { app: "Example Browser", app_id: "example.browser", automatic: null, remembered: null, unreadable: false };
+const WORD: PickerDestination = { app: "Example Word", app_id: "example.word", automatic: { style: "apa" }, remembered: null, unreadable: false, output_question: null };
+const BROWSER: PickerDestination = { app: "Example Browser", app_id: "example.browser", automatic: null, remembered: null, unreadable: false, output_question: "browser" };
 const formatButton = () => within(screen.getByLabelText("Search references").closest("header")!).getByRole("button", { name: /^Copy as / });
 const formatShown = () => formatButton().getAttribute("aria-label")!.slice("Copy as ".length);
 const openFormats = () => { if (formatButton().getAttribute("aria-expanded") !== "true") fireEvent.click(formatButton()); };
@@ -47,22 +47,209 @@ async function copy(previews: PreviewRequest[], copies: { ticket: string; conten
   expect(copies[0]).toEqual({ ticket: `ticket-${preview}`, contentHash: `hash-${preview}` });
 }
 
+test.each(["browser", "editor"] as const)("the first %s paste asks, remembers the pick, and copies its exact preview once", async (kind) => {
+  let destination: PickerDestination = { ...BROWSER, output_question: kind };
+  const { previews, copies, remembered } = opened(() => destination);
+  await screen.findByText("First");
+  fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
+  await screen.findByRole("menuitemradio", { name: "APA · text" });
+  expect(copies).toEqual([]);
+  fireEvent.click(screen.getByRole("menuitemradio", { name: "APA · text" }));
+  await waitFor(() => expect(remembered).toEqual([{ style: "apa" }]));
+  await waitFor(() => expect(formatShown()).toBe(`APA remembered for this ${kind}`));
+  await waitFor(() => expect(copies).toHaveLength(1));
+  expect(previews.at(-1)?.style).toBe("apa");
+  expect(copies[0]).toEqual({ ticket: `ticket-${previews.length}`, contentHash: `hash-${previews.length}` });
+  destination = { ...BROWSER, remembered: { style: "apa" } };
+  await act(async () => { await emit("picker:shown"); });
+  await waitFor(() => expect(formatButton().hasAttribute("disabled")).toBe(false));
+  fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
+  await waitFor(() => expect(copies).toHaveLength(2));
+  expect(screen.queryByRole("menu")).toBeNull();
+});
+
+test.each(["Escape", "Tab"])("%s uses the global default for this paste and asks again next time", async (key) => {
+  const { copies, remembered } = opened(() => BROWSER);
+  await screen.findByText("First");
+  fireEvent.click(screen.getByRole("button", { name: "Keep Window Open" }));
+  fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
+  await screen.findByRole("menu");
+  expect(copies).toEqual([]);
+  fireEvent.keyDown(screen.getByRole("searchbox"), { key });
+  await waitFor(() => expect(copies).toHaveLength(1));
+  expect(prepared(copies[0]).request.format).toBe("pandoc");
+  fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
+  await screen.findByRole("menu");
+  expect(copies).toHaveLength(1);
+  expect(remembered).toEqual([]);
+});
+
+test("Just this once keeps the first question open for a pick without saving it", async () => {
+  const { copies, remembered } = opened(() => BROWSER);
+  await screen.findByText("First");
+  fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
+  fireEvent.click(await screen.findByRole("menuitemcheckbox", { name: "Just this once" }));
+  expect(await screen.findByRole("menuitemcheckbox", { name: "Just this once", checked: true })).toBeTruthy();
+  fireEvent.click(screen.getByRole("menuitemradio", { name: "APA · text" }));
+  await waitFor(() => expect(copies).toHaveLength(1));
+  expect(prepared(copies[0]).request.style).toBe("apa");
+  expect(remembered).toEqual([]);
+  await act(async () => { await emit("picker:shown"); });
+  fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
+  await screen.findByRole("menu");
+});
+
+test.each(["query", "hidden", "reopened", "command"])("a %s change cancels the citation held by the question", async (change) => {
+  const { copies } = opened(() => BROWSER);
+  await screen.findByText("First");
+  fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
+  await screen.findByRole("menu");
+  if (change === "query") fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "another" } });
+  else if (change === "command") fireEvent.keyDown(screen.getByRole("searchbox"), { key: "k", ctrlKey: true });
+  else await act(async () => { await emit(change === "hidden" ? "picker:hidden" : "picker:shown"); });
+  if (change !== "command") {
+    const item = screen.queryByRole("menuitemradio", { name: "APA · text" });
+    if (item) fireEvent.click(item);
+  } else {
+    const more = await screen.findByRole("menu", { name: /^More/ });
+    fireEvent.keyDown(more, { key: "Escape" });
+  }
+  await waitFor(() => expect(formatButton().hasAttribute("disabled")).toBe(false));
+  await act(async () => { await new Promise(requestAnimationFrame); });
+  expect(copies).toEqual([]);
+});
+
+test("a first-paste pick waits for its save; failure copies the choice once and asks again", async () => {
+  let fail!: () => void;
+  const saving = new Promise<null>((_, reject) => { fail = () => reject(new Error("synthetic save failure")); });
+  const { copies } = opened(() => BROWSER, { remember_app_output: () => saving });
+  await screen.findByText("First");
+  fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
+  fireEvent.click(await screen.findByRole("menuitemradio", { name: "APA · text" }));
+  expect(copies).toEqual([]);
+  expect(formatShown()).toBe("APA for this citation");
+  await act(async () => fail());
+  await waitFor(() => expect(copies).toHaveLength(1));
+  expect(prepared(copies[0]).request.style).toBe("apa");
+  await act(async () => { await emit("picker:shown"); });
+  fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
+  await screen.findByRole("menu");
+});
+
+test.each(["footer", "double-click"])("%s asks through the same first-paste chooser", async (action) => {
+  const { copies } = opened(() => BROWSER);
+  await screen.findByText("First");
+  if (action === "footer") fireEvent.click(within(screen.getByRole("group", { name: "Keys" })).getByRole("button", { name: "Copy as Pandoc" }));
+  else fireEvent.click(screen.getByText("First"), { detail: 2 });
+  await screen.findByRole("menuitemradio", { name: "Pandoc key" });
+  expect(copies).toEqual([]);
+});
+
+test("an Enter during a slow destination read waits and then asks", async () => {
+  let finish!: (destination: PickerDestination) => void;
+  const reading = new Promise<PickerDestination>((resolve) => { finish = resolve; });
+  const { copies } = opened(() => BROWSER, { picker_destination: () => reading });
+  await screen.findByText("First");
+  fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
+  expect(copies).toEqual([]);
+  expect(screen.queryByRole("menu")).toBeNull();
+  await act(async () => finish(BROWSER));
+  await screen.findByRole("menu");
+  expect(copies).toEqual([]);
+});
+
+test("the question appears even when the global key preview fails, then waits for the chosen style's preview", async () => {
+  let finish!: (preview: unknown) => void;
+  const rendering = new Promise((resolve) => { finish = resolve; });
+  const { copies } = opened(() => BROWSER, { preview_file_citation: ({ style }) => {
+    if (!style) throw new Error("synthetic key unavailable");
+    return rendering;
+  } });
+  await screen.findByText("First");
+  fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
+  fireEvent.click(await screen.findByRole("menuitemradio", { name: "APA · text" }));
+  await waitFor(() => expect(formatShown()).toBe("APA remembered for this browser"));
+  expect(copies).toEqual([]);
+  await act(async () => finish({ ticket: "style-ticket", content_hash: "style-hash", text: "Synthetic APA", html: null, warnings: [] }));
+  await waitFor(() => expect(copies).toEqual([{ ticket: "style-ticket", contentHash: "style-hash" }]));
+});
+
+test("hiding while a first choice saves cancels its pending copy", async () => {
+  let finish!: () => void;
+  const saving = new Promise<null>((resolve) => { finish = () => resolve(null); });
+  const { copies } = opened(() => BROWSER, { remember_app_output: () => saving });
+  await screen.findByText("First");
+  fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
+  fireEvent.click(await screen.findByRole("menuitemradio", { name: "APA · text" }));
+  await act(async () => { await emit("picker:hidden"); finish(); });
+  await waitFor(() => expect(formatButton().hasAttribute("disabled")).toBe(false));
+  expect(copies).toEqual([]);
+});
+
+test.each(["More", "Keyboard shortcuts"])("opening %s cancels a dismissed question waiting for its preview", async (overlay) => {
+  let finish!: (preview: ReturnType<typeof receipt>) => void;
+  const rendering = new Promise<ReturnType<typeof receipt>>((resolve) => { finish = resolve; });
+  const { copies, calls } = opened(() => BROWSER, { preview_file_citation: () => rendering });
+  await screen.findByText("First");
+  await waitFor(() => expect(calls).toContain("preview_file_citation"));
+  fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
+  fireEvent.keyDown(await screen.findByRole("searchbox"), { key: "Escape" });
+  await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+  if (overlay === "More") fireEvent.click(screen.getByRole("button", { name: /^More/ }));
+  else fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "/", ctrlKey: true });
+  const role = overlay === "More" ? "menu" : "dialog";
+  await screen.findByRole(role, { name: new RegExp(`^${overlay}`) });
+  await act(async () => finish(receipt("Synthetic delayed preview")));
+  expect(copies).toEqual([]);
+  expect(calls).not.toContain("hide_picker");
+  fireEvent.keyDown(screen.getByRole(role), { key: "Escape" });
+  await waitFor(() => expect(screen.queryByRole(role)).toBeNull());
+  expect(copies).toEqual([]);
+});
+
+test.each(["More", "Keyboard shortcuts"])("opening %s cancels a first-paste pick waiting for its save", async (overlay) => {
+  let finish!: () => void;
+  const saving = new Promise<null>((resolve) => { finish = () => resolve(null); });
+  const { copies, calls } = opened(() => BROWSER, { remember_app_output: () => saving });
+  await screen.findByText("First");
+  fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
+  fireEvent.click(await screen.findByRole("menuitemradio", { name: "APA · text" }));
+  await waitFor(() => expect(calls).toContain("remember_app_output"));
+  const button = formatButton();
+  if (overlay === "More") fireEvent.click(screen.getByRole("button", { name: /^More/ }));
+  else fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "/", ctrlKey: true });
+  const role = overlay === "More" ? "menu" : "dialog";
+  await screen.findByRole(role, { name: new RegExp(`^${overlay}`) });
+  await act(async () => finish());
+  await waitFor(() => expect(button.getAttribute("aria-label")).toBe("Copy as APA remembered for this browser"));
+  expect(copies).toEqual([]);
+  expect(calls).not.toContain("hide_picker");
+  fireEvent.keyDown(screen.getByRole(role), { key: "Escape" });
+  await waitFor(() => expect(screen.queryByRole(role)).toBeNull());
+  expect(copies).toEqual([]);
+});
+
 test("opened from a word processor the preview is APA and copy uses its exact receipt", async () => {
   const { previews, copies } = opened(() => WORD);
   await screen.findByText("First");
-  await waitFor(() => expect(formatShown()).toBe("APA · Example Word"));
+  await waitFor(() => expect(formatShown()).toBe("APA · text · Example Word"));
   await waitFor(() => expect(previews.at(-1)?.style).toBe("apa"));
   await copy(previews, copies);
 });
 
 test.each([
-  ["cite", "\\cite"], ["pandoc", "Pandoc"], ["typst", "Typst"],
+  ["cite", "\\cite"], ["pandoc", "Pandoc key"], ["typst", "Typst key"],
 ] as const)("a browser-hosted key workflow uses the chosen global %s default and exact preview", async (format, name) => {
   const { previews, copies } = opened(() => BROWSER, { copy_format: () => format });
   await screen.findByText("First");
   await waitFor(() => expect(formatShown()).toBe(`${name} · Example Browser`));
   await waitFor(() => expect(previews.at(-1)).toMatchObject({ style: null, format }));
-  await copy(previews, copies);
+  fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
+  await screen.findByRole("menuitemradio", { name: "APA · text" });
+  expect(copies).toEqual([]);
+  fireEvent.keyDown(screen.getByRole("searchbox"), { key: "Escape" });
+  await waitFor(() => expect(copies).toHaveLength(1));
+  expect(prepared(copies[0]).request).toMatchObject({ format, style: null });
 });
 
 test("a format pick is remembered for the browser, then Automatic restores its global fallback", async () => {
@@ -76,7 +263,7 @@ test("a format pick is remembered for the browser, then Automatic restores its g
   await waitFor(() => expect(formatShown()).toBe("\\cite · Example Browser"));
   await pick("Automatic", "menuitem");
   await waitFor(() => expect(remembered).toEqual([{ key: "cite" }, null]));
-  await waitFor(() => expect(formatShown()).toBe("Pandoc · Example Browser"));
+  await waitFor(() => expect(formatShown()).toBe("Pandoc key · Example Browser"));
   expect(calls).not.toContain("set_picker_preferences");
 });
 
@@ -85,7 +272,7 @@ test("Just this once overrides a remembered app output for one copy without savi
   await screen.findByText("First");
   await waitFor(() => expect(formatShown()).toBe("\\cite · Example Browser"));
   await pick("Just this once", "menuitemcheckbox");
-  await pick("Typst");
+  await pick("Typst key");
   await waitFor(() => expect(previews.at(-1)).toMatchObject({ style: null, format: "typst" }));
   await copy(previews, copies);
   await waitFor(() => expect(formatShown()).toBe("\\cite · Example Browser"));
@@ -99,7 +286,7 @@ test("a pasted list consumes a one-time format and hides after copying every res
   });
   await screen.findByText("Pasted list");
   await pick("Just this once", "menuitemcheckbox");
-  await pick("Typst");
+  await pick("Typst key");
   await waitFor(() => expect(previews.at(-1)).toMatchObject({ format: "typst", items: [{ id: { key: "b" } }, { id: { key: "a" } }] }));
   await copy(previews, copies);
   await waitFor(() => expect(formatShown()).toBe("\\cite · Example Browser"));
@@ -113,12 +300,12 @@ test("deliberately setting a global default preserves another app's remembered c
   const { remembered } = opened(() => destination, { set_picker_preferences: ({ copyFormat }) => { saved.push(copyFormat); return null; } });
   await screen.findByText("First");
   await pick("Just this once", "menuitemcheckbox");
-  await pick("Typst");
+  await pick("Typst key");
   await pick("Use as global default", "menuitem");
   await waitFor(() => expect(saved).toEqual(["typst"]));
   destination = { ...BROWSER, app: "Example Editor", app_id: "example.editor" };
   await act(async () => { await emit("picker:shown"); });
-  await waitFor(() => expect(formatShown()).toBe("Typst · Example Editor"));
+  await waitFor(() => expect(formatShown()).toBe("Typst key · Example Editor"));
   destination = { ...BROWSER, remembered: { key: "cite" } };
   await act(async () => { await emit("picker:shown"); });
   await waitFor(() => expect(formatShown()).toBe("\\cite · Example Browser"));
@@ -134,9 +321,9 @@ test("an unreadable per-app file says defaults apply, and More forgets every app
 });
 
 test("without a captured app no app name or Automatic action is offered", async () => {
-  opened(() => ({ app: null, app_id: null, automatic: null, remembered: null, unreadable: false }));
+  opened(() => ({ app: null, app_id: null, automatic: null, remembered: null, unreadable: false, output_question: null }));
   await screen.findByText("First");
-  expect(formatShown()).toBe("Pandoc");
+  expect(formatShown()).toBe("Pandoc key");
   await pick("Just this once", "menuitemcheckbox");
   openFormats();
   expect(screen.queryByRole("menuitem", { name: "Automatic" })).toBeNull();
@@ -144,7 +331,7 @@ test("without a captured app no app name or Automatic action is offered", async 
 
 test("without a destination app format picks change the global default, as both README claims explain", async () => {
   const saved: unknown[] = [];
-  const { remembered } = opened(() => ({ app: null, app_id: null, automatic: null, remembered: null, unreadable: false }), {
+  const { remembered } = opened(() => ({ app: null, app_id: null, automatic: null, remembered: null, unreadable: false, output_question: null }), {
     set_picker_preferences: ({ copyFormat }) => { saved.push(copyFormat); return null; },
   });
   await screen.findByText("First");
@@ -163,12 +350,12 @@ test("without a destination app format picks change the global default, as both 
 test("Automatic in a formatted app uses the global style just chosen in this picker", async () => {
   const { remembered } = opened(() => WORD);
   await screen.findByText("First");
-  await pick("IEEE");
+  await pick("IEEE · reference entry");
   await waitFor(() => expect(remembered).toEqual([{ style: "ieee" }]));
   await pick("Use as global default", "menuitem");
   await pick("Automatic", "menuitem");
   await waitFor(() => expect(remembered).toEqual([{ style: "ieee" }, null]));
-  await waitFor(() => expect(formatShown()).toBe("IEEE · Example Word"));
+  await waitFor(() => expect(formatShown()).toBe("IEEE · reference entry · Example Word"));
 });
 
 test("a successful once-only copy consumes its override even after the highlighted row changed", async () => {
@@ -186,7 +373,7 @@ test("a successful once-only copy consumes its override even after the highlight
   await screen.findByText("First");
   fireEvent.click(screen.getByRole("button", { name: "Keep Window Open" }));
   await pick("Just this once", "menuitemcheckbox");
-  await pick("Typst");
+  await pick("Typst key");
   const search = screen.getByLabelText("Search references");
   fireEvent.keyDown(search, { key: "Enter" });
   await waitFor(() => expect(formats).toEqual(["typst"]));
@@ -218,7 +405,7 @@ test("an unrelated Settings refresh does not extend a one-time copy override", a
   await screen.findByText("First");
   fireEvent.click(screen.getByRole("button", { name: "Keep Window Open" }));
   await pick("Just this once", "menuitemcheckbox");
-  await pick("Typst");
+  await pick("Typst key");
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
   await waitFor(() => expect(calls).toContain("copy_file_citation"));
   await act(async () => { await emit("preferences:changed"); });
@@ -232,7 +419,7 @@ test("a failed preference read keeps the native app's authoritative automatic st
     picker_preferences: () => { throw new Error("synthetic preference read failure"); },
   });
   await screen.findByText("First");
-  await waitFor(() => expect(formatShown()).toBe("IEEE · Example Word"));
+  await waitFor(() => expect(formatShown()).toBe("IEEE · reference entry · Example Word"));
   await waitFor(() => expect(previews.at(-1)?.style).toBe("ieee"));
   await copy(previews, copies);
 });
@@ -247,13 +434,16 @@ test("Automatic cancels an Enter that was waiting for another output's preview",
   });
   await screen.findByText("First");
   await pick("Just this once", "menuitemcheckbox");
-  await pick("Typst");
+  await pick("Typst key");
   const search = screen.getByLabelText("Search references");
   fireEvent.keyDown(search, { key: "Enter" });
   await pick("Automatic", "menuitem");
-  await waitFor(() => expect(formatShown()).toBe("Pandoc · Example Browser"));
+  await waitFor(() => expect(formatShown()).toBe("Pandoc key · Example Browser"));
   await act(async () => { finish({ ticket: "old-typst", content_hash: "old-typst", text: "old Typst", html: null, warnings: [] }); });
   expect(copies).toEqual([]);
   fireEvent.keyDown(search, { key: "Enter" });
+  await screen.findByRole("menu");
+  expect(copies).toEqual([]);
+  fireEvent.keyDown(screen.getByRole("searchbox"), { key: "Escape" });
   await waitFor(() => expect(copies).toEqual([{ ticket: "ticket-pandoc", contentHash: "hash-pandoc" }]));
 });

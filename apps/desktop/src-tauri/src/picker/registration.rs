@@ -21,7 +21,6 @@ pub(crate) const SHORTCUT_BACKEND_UNAVAILABLE: &str =
     "Global shortcuts need a working X11 connection with XKB. Open Ibis from your application launcher.";
 const SHORTCUT_REGISTRATION_FAILED: &str =
     "The shortcut could not be registered. Another app may be using it; choose a different shortcut in settings.";
-#[cfg(any(target_os = "macos", test))]
 const NO_KEY_TYPES_THE_LETTER: &str =
     "No key on this keyboard layout types the shortcut's letter, so it uses that letter's place on a US keyboard.";
 
@@ -38,7 +37,6 @@ fn on_layout(requested: OpeningShortcut) -> (Shortcut, Option<&'static str>) {
     (requested.shortcut, None)
 }
 
-#[cfg(any(target_os = "macos", test))]
 pub(crate) fn on_layout_with(
     requested: OpeningShortcut,
     typed: impl Fn(u16, tauri_plugin_global_shortcut::Modifiers) -> Option<char>,

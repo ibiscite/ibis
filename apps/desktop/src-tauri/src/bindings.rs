@@ -40,6 +40,7 @@ pub(crate) fn commands() -> tauri_specta::Builder<tauri::Wry> {
             crate::settings_window::finish_paste_guide,
             crate::paste::permission::paste_permission,
             crate::paste::permission::open_paste_permission,
+            crate::paste::permission::drag_paste_app,
             crate::shortcut_setting::set_shortcut
         ])
         // Match Tauri's existing Promise rejection behavior.
@@ -67,6 +68,7 @@ mod tests {
         "check_for_updates",
         "paste_permission",
         "open_paste_permission",
+        "drag_paste_app",
         "finish_paste_guide",
         "shortcut_status",
         "set_shortcut",
@@ -77,6 +79,7 @@ mod tests {
     const SETTINGS_ONLY: &[&str] = &[
         "paste_permission",
         "open_paste_permission",
+        "drag_paste_app",
         "finish_paste_guide",
         "set_shortcut",
         "configure_shortcuts",

@@ -12,7 +12,6 @@ use crate::placement::place_on_active_display;
 
 mod dialogs;
 mod full_screen;
-#[cfg(any(target_os = "macos", test))]
 mod layout;
 #[cfg(target_os = "linux")]
 mod portal;
@@ -25,13 +24,16 @@ mod x11_focus;
 pub(crate) use dialogs::ChooserLease;
 pub(crate) use dialogs::ChooserOpen;
 pub(crate) use full_screen::FullScreenGuard;
+pub(crate) use layout::{character, us_character};
 #[cfg(target_os = "macos")]
 pub(crate) use layout::{command_key, typing};
 #[cfg(target_os = "macos")]
 pub(crate) use registration::follow_layout;
-pub(crate) use registration::{Registered, SHORTCUT_BACKEND_UNAVAILABLE, register_shortcut, replace_shortcut};
 #[cfg(test)]
-pub(crate) use registration::{on_layout_with, replace_with};
+pub(crate) use registration::replace_with;
+pub(crate) use registration::{
+    Registered, SHORTCUT_BACKEND_UNAVAILABLE, on_layout_with, register_shortcut, replace_shortcut,
+};
 
 /// Whether the global shortcut is working, shown in the interface.
 #[derive(Default, Clone, Serialize, specta::Type)]
@@ -98,29 +100,36 @@ pub(crate) fn shortcut_label() -> &'static str {
 /// The shortcut from settings (for example `"CommandOrControl+Shift+Y"`), or the
 /// default. An invalid setting falls back to the default with an explanation.
 pub(crate) fn configured_shortcut(setting: Option<&str>) -> (OpeningShortcut, String, Option<String>) {
-    configured_shortcut_for(setting, cfg!(target_os = "windows"))
+    configured_shortcut_with(setting, crate::shortcut_setting::check_shortcut)
 }
 
+#[cfg(test)]
 pub(crate) fn configured_shortcut_for(
     setting: Option<&str>,
     windows: bool,
 ) -> (OpeningShortcut, String, Option<String>) {
+    let command = if windows || !cfg!(target_os = "macos") {
+        Modifiers::CONTROL
+    } else {
+        Modifiers::SUPER
+    };
+    configured_shortcut_with(setting, |text| {
+        crate::shortcut_setting::check_shortcut_for(text, command, windows)
+    })
+}
+
+pub(crate) fn configured_shortcut_with(
+    setting: Option<&str>,
+    validate: impl Fn(&str) -> Result<OpeningShortcut, crate::shortcut_setting::ShortcutRefusal>,
+) -> (OpeningShortcut, String, Option<String>) {
     match setting {
-        Some(text) => match text.parse::<OpeningShortcut>() {
-            Ok(shortcut) if windows && crate::shortcut_setting::uses_altgr(shortcut) => (
-                default_shortcut(),
-                shortcut_label().to_string(),
-                Some(format!(
-                    "Ctrl+Alt with a typing key is reserved for AltGr on Windows; using {}",
-                    shortcut_label()
-                )),
-            ),
+        Some(text) => match validate(text) {
             Ok(shortcut) => (shortcut, text.to_string(), None),
             Err(e) => (
                 default_shortcut(),
                 shortcut_label().to_string(),
                 Some(format!(
-                    "the shortcut \"{text}\" in settings is not valid ({e}); using {}",
+                    "The saved opening shortcut was refused: {e}; using {}",
                     shortcut_label()
                 )),
             ),
@@ -532,27 +541,42 @@ mod tests {
     }
 
     #[test]
+    fn saved_picker_shortcut_conflicts_fall_back_with_an_explanation() {
+        for keys in [
+            "CmdOrCtrl+Shift+F",
+            "CmdOrCtrl+Shift+P",
+            "CmdOrCtrl+Shift+Slash",
+            "CmdOrCtrl+K",
+        ] {
+            let (shortcut, label, error) = configured_shortcut_for(Some(keys), cfg!(target_os = "windows"));
+            assert_eq!(shortcut, default_shortcut(), "{keys}");
+            assert_eq!(label, shortcut_label(), "{keys}");
+            assert!(error.is_some_and(|error| error.contains("using")), "{keys}");
+        }
+    }
+
+    #[test]
     fn shortcuts_from_settings_are_parsed_and_invalid_ones_fall_back() {
-        let (_, label, error) = configured_shortcut(Some("Alt+Shift+K"));
+        let (_, label, error) = configured_shortcut_for(Some("Alt+Shift+K"), cfg!(target_os = "windows"));
         assert_eq!(label, "Alt+Shift+K");
         assert!(error.is_none());
-        let (_, label, error) = configured_shortcut(Some("Control+Nonsense"));
+        let (_, label, error) = configured_shortcut_for(Some("Control+Nonsense"), cfg!(target_os = "windows"));
         assert_eq!(label, shortcut_label());
         assert!(error.is_some());
-        let (_, label, error) = configured_shortcut(None);
+        let (_, label, error) = configured_shortcut_for(None, cfg!(target_os = "windows"));
         assert_eq!(label, shortcut_label());
         assert!(error.is_none());
     }
 
     #[test]
-    fn automatic_suggestion_policy_preserves_configured_and_empty_settings() {
-        for label in ["Ctrl+Q", "CmdOrCtrl+K", "Control+Command+R", "Control+Alt+F8"] {
-            let (shortcut, shown, error) = configured_shortcut(Some(label));
+    fn safe_configured_shortcuts_survive_startup_and_empty_settings_fall_back() {
+        for label in ["Alt+Q", "CmdOrCtrl+Shift+Y", "Control+Command+R", "Control+Alt+F8"] {
+            let (shortcut, shown, error) = configured_shortcut_for(Some(label), cfg!(target_os = "windows"));
             assert_eq!(Some(shortcut), label.parse::<OpeningShortcut>().ok());
             assert_eq!(shown, label);
             assert!(error.is_none());
         }
-        let (shortcut, shown, error) = configured_shortcut(Some(""));
+        let (shortcut, shown, error) = configured_shortcut_for(Some(""), cfg!(target_os = "windows"));
         assert_eq!(shortcut, default_shortcut());
         assert_eq!(shown, shortcut_label());
         assert!(error.is_some());
@@ -575,7 +599,7 @@ mod tests {
             assert_eq!(shown, label);
             assert!(error.is_none());
         }
-        for label in ["Ctrl+Q", "Control+Alt+F8", "Control+Alt+Command+KeyC"] {
+        for label in ["Control+Shift+Y", "Control+Alt+F8", "Control+Alt+Command+KeyC"] {
             let (shortcut, shown, error) = configured_shortcut_for(Some(label), true);
             assert_eq!(Some(shortcut), label.parse::<OpeningShortcut>().ok());
             assert_eq!(shown, label);

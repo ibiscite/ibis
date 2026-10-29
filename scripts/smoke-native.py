@@ -485,7 +485,7 @@ def summarize_performance(samples):
     measured = [sample for sample in samples if not sample.get("warmup")]
     if not measured:
         raise ValueError("No measured 100k launches")
-    return {"status": "measured-without-budget", "references": 100000,
+    return {"status": "diagnostic-only", "release_evidence": False, "references": 100000,
             "sample_count": len(measured), "warmup_count": len(samples) - len(measured), "samples": samples,
             "summary": "timings: median of fresh measured launches after one discarded warm-up; memory: maximum of all launches; "
                        "OS file caches persist",
@@ -1024,11 +1024,12 @@ def first_run_preferences_main(args):
         wait_for(lambda: visible_text("3 references"), "synthetic references after relaunch")
         wait_for(lambda: picker_ready(typing=True), "restarted native search focus")
         # The writing question needs a library chosen in the app; Copy as sets the same preference.
-        # With no match the footer offers no "Copy as Pandoc", so the name is the header's alone.
+        # The header has no stable native identifier; keep its action in the accessible name.
+        # With no match there is no footer copy action to invoke accidentally.
         type_query(native, snapshot, NO_MATCH, "ctrl+a")
         wait_for(lambda: visible_text("No matching references"), "no highlighted result to copy")
-        native.click("Copy as Pandoc")
-        wait_for(lambda: bool(named(snapshot(), "Typst")), "Copy as lists Typst")
+        native.click("Copy as Pandoc key")
+        wait_for(lambda: bool(named(snapshot(), "Typst key")), "Copy as lists Typst key")
         # Pick with the filter: accessibility exposes the menu's radio items
         # without a pattern the exact-name click helper accepts.
         # Not every platform reports focus on the filter; the filtered list proves where typing went.
@@ -1346,7 +1347,8 @@ def main():
             else:
                 library.write_text(fixture(100000), encoding="utf-8")
                 samples = []
-                # Launch 0 is a warm-up held only to the hard ceiling; the gate uses the median of the rest (#464).
+                # Debug launches and accessibility probes diagnose startup; release
+                # shortcut/idle limits use named-machine evidence (#1369).
                 for sample in range(1 + MEASURED_LAUNCHES):
                     native.focus_editor()
                     phases = {}
@@ -1723,10 +1725,11 @@ class ContractTests(unittest.TestCase):
                     raise RuntimeError("Synthetic uncertain activation")
             elif name == "More":
                 native.more_open = True
-            elif name == "Copy as Pandoc":
-                # The footer's Copy action shares this name while a result is highlighted.
-                self.assertEqual(native.query, NO_MATCH, "Copy as Pandoc was ambiguous")
+            elif name == "Copy as Pandoc key":
+                self.assertEqual(native.query, NO_MATCH, "Format selection needs no highlighted result")
                 native.format_filter = ""
+            else:
+                raise AssertionError(f"No invokable accessibility control {name!r}")
 
         def key(chord):
             if chord == "Return" and native.format_filter is not None:
@@ -1755,7 +1758,9 @@ class ContractTests(unittest.TestCase):
             if len(launches) == 1:
                 names += ["Where do your references live?"]
             else:
-                names += ["Copy as Pandoc", "Typst", "3 references"]
+                names += ["Copy as Pandoc key", "3 references"]
+                if native.format_filter is not None:
+                    names += ["Typst key"]
                 names += ["No matching references"] if native.query == NO_MATCH else [
                     "Copy as Pandoc", "1 result" if clock[0] >= native.query_ready_at else "3 results", "Ibis smoke reference 000001"]
             result_focus = failure == "active-result-reopen" and native.reopened
@@ -1829,7 +1834,7 @@ class ContractTests(unittest.TestCase):
         self.assertNotIn("IBIS_LIBRARY", launches[0])
         self.assertIn("IBIS_LIBRARY", launches[1])
         self.assertEqual(launches[0]["XDG_CONFIG_HOME"], launches[1]["XDG_CONFIG_HOME"])
-        self.assertEqual([action for action in actions if action[0] in ("Copy as Pandoc", "Typst")], [("Copy as Pandoc", 2), ("Typst", 2)])
+        self.assertEqual([action for action in actions if action[0] in ("Copy as Pandoc key", "Typst")], [("Copy as Pandoc key", 2), ("Typst", 2)])
         pick = actions.index(("Typst", 2))
         self.assertEqual(actions[pick - 2:pick], [("Down", 2), ("Return in Copy as", 2)], "Typst was not picked from the filter")
         self.assertEqual([action for action in actions if action[0] == "Quit Ibis"], [("Quit Ibis", 1), ("Quit Ibis", 2)])
@@ -2515,6 +2520,12 @@ class ContractTests(unittest.TestCase):
     def test_performance_summary_requires_a_measured_launch(self):
         with self.assertRaises(ValueError):
             summarize_performance(self.perf_samples(50))
+
+    def test_debug_launch_timings_do_not_claim_release_budget_evidence(self):
+        report = summarize_performance(self.perf_samples(100, 200, 300, 400))
+        self.assertEqual(report["status"], "diagnostic-only")
+        self.assertFalse(report["release_evidence"])
+        self.assertEqual(report["sample_count"], 3)
 
     def test_phase_facts_reject_private_extra_fields_and_nonfinite_or_negative_numbers(self):
         valid = dict.fromkeys(PROBE_PHASE_KEYS, 1)

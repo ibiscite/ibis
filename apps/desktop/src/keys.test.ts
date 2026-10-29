@@ -1,6 +1,7 @@
 import { expect, test } from "vitest";
 import { ariaKeys, DEFAULT_PICKER_SHORTCUT, KEY_TABLE, keyLabel, keysFor, matchesAccelerator, shortcutLabel } from "./keys";
 import { keyText } from "./messages";
+import pickerCommands from "./testing/picker-command-shortcuts.json";
 
 test("key labels follow the platform", () => {
   expect(["CmdOrCtrl+K", "Shift+Enter", "CmdOrCtrl+/", "Escape", "ArrowDown", "?"].map((keys) => keyLabel(keys, true)))
@@ -23,6 +24,12 @@ test("every key in the table has words and a region, and none is listed twice", 
       seen.add(where);
     }
   }
+});
+
+test("native shortcut refusals cover every modified picker command", () => {
+  const commands = KEY_TABLE.flatMap((binding) => binding.keys.filter((keys) => keys.includes("CmdOrCtrl")));
+  // isKeysShortcut also accepts the shifted punctuation used to type ?.
+  expect(new Set(pickerCommands)).toEqual(new Set([...commands, "CmdOrCtrl+Shift+/"]));
 });
 
 const press = (key: string, more: Partial<{ code: string; ctrlKey: boolean; metaKey: boolean; altKey: boolean; shiftKey: boolean }> = {}) =>

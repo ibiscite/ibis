@@ -2,6 +2,65 @@ use super::*;
 use std::sync::{Arc, Barrier};
 
 #[test]
+fn replacing_or_invalidating_a_preview_cancels_its_engine_work() -> Result<(), Box<dyn std::error::Error>> {
+    let file = FileLibrary::from_engine(Engine::new().map_err(|_| "engine")?);
+    let first = file.reserve_preview();
+    let running = file.preview_cancellation(first).map_err(|_| "token")?;
+    let replacement = file.reserve_preview();
+    let current = file
+        .preview_cancellation(replacement)
+        .map_err(|_| "replacement token")?;
+    assert!(running.is_cancelled());
+    assert!(!current.is_cancelled());
+    let late = file.reserve_preview_with(running.clone());
+    assert!(file.preview_cancellation(late).is_err());
+    assert!(
+        !current.is_cancelled(),
+        "a late cancelled command cannot retire its replacement"
+    );
+    let request = serde_json::from_value(json!({
+        "items": [], "output": {"kind":"csl", "style":"apa"}
+    }))?;
+    assert_eq!(
+        file.engine
+            .prepare_citation(&request, &running)
+            .err()
+            .ok_or("cancelled preview ran")?
+            .code,
+        ibis_core::contract::ErrorCode::Cancelled
+    );
+    file.invalidate();
+    assert!(current.is_cancelled());
+    Ok(())
+}
+
+#[test]
+fn a_superseded_preview_stops_before_reading_its_page_and_form() -> Result<(), Box<dyn std::error::Error>> {
+    let file = FileLibrary::from_engine(Engine::new().map_err(|_| "engine")?);
+    let older = file.reserve_preview();
+    file.reserve_preview();
+    let error = file
+        .preview(
+            older,
+            vec![FileSelection {
+                id: Value::Null,
+                cite: String::new(),
+                form: Some(ReferenceForm::Narrative),
+                locator: Some(serde_json::from_value(json!({"label":"page","value":"pp."}))?),
+            }],
+            KeyFormat::Pandoc,
+            Some(CitationStyle::Apa),
+        )
+        .err()
+        .ok_or("obsolete preview ran")?;
+    assert_eq!(
+        error,
+        CommandError::from("A newer citation preview replaced this request.")
+    );
+    Ok(())
+}
+
+#[test]
 fn unrelated_json_reports_a_format_error_in_library_status() -> Result<(), Box<dyn std::error::Error>> {
     use crate::library::state::{begin_open, install};
     use crate::library::{Library, LoadRequests, Source};
