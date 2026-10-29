@@ -166,7 +166,9 @@ trailing and vertically centred.
 **Size follows content** [C10]. Every state is as tall as its content: search
 and footer alone, one hint line, Recently added, or a list of choices. Results
 grow the window in 220 ms with the top edge fixed, up to the remembered height;
-it never shrinks while open and starts compact next time. Reduced motion: no
+it never shrinks while open and starts compact next time. More and output
+menus stay inside the current picker frame with bounded scrolling; only
+content changes and explicit dialogs request more room. Reduced motion: no
 animation. Width: 720 px by default, 360 px minimum.
 
 **Compact start** [C11]. With an empty query the picker shows its hint (the
@@ -272,9 +274,11 @@ menus `top end`, flipping then shifting within 8 px of the window; a menu opened
 above the footer ends at least 8 px above it. A menu that scrolls ends on a
 whole row and fades at an edge with more rows beyond it; its side inset sits on the scrolling list, so a scroll bar never
 takes it. Any pointer movement over an item highlights it, also after arrow
-keys. Labels never wrap: the menu widens, then the label ends with an
-ellipsis. A shortcut in
-a menu is plain trailing text in native modifier order (⇧⌘C), never a key cap.
+keys. Menus size to their full action labels up to the viewport boundary; at
+narrow widths and Larger or 200% text, labels wrap instead of disappearing
+behind an ellipsis, while checks, whole shortcuts and pointer targets remain
+intact. A shortcut in a menu is plain trailing text in native modifier order
+(⇧⌘C), never a key cap.
 Check each menu side by side with a real one on every platform.
 
 **Buttons.** Primary: `--accent` with `--text-on-accent`, one per view.
@@ -309,8 +313,9 @@ needs no fade, as a cut row already shows it.
 content and never break a word; a table that does not fit scrolls or drops a
 column, it does not hyphenate.
 
-**Labels and long strings.** Labels on actions and menu items never wrap,
-also at Larger text: the layout widens, or the label truncates with a tooltip.
+**Labels and long strings.** Menu action labels remain readable by widening
+then wrapping at the viewport limit. Outside menus, action labels stay on one
+line: the layout widens, or the label truncates with a tooltip.
 Settings rows and segmented choices follow the wrapping rule in **Settings**.
 Data truncates with a tooltip; file names shorten in the middle and
 keep their extension. Budget +35 % for German and Greek. RTL uses logical

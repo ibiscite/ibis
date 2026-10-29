@@ -440,18 +440,21 @@ test("any pointer movement over an item highlights it, also after arrow keys", a
   expect(menu.isConnected).toBe(true);
 });
 
-test("rows keep equal insets beside a scroll bar, labels never wrap, and metrics come from tokens", () => {
+test("rows keep equal insets, fit intrinsic labels to the viewport and wrap at its limit", () => {
   const popover = menuCss.slice(menuCss.indexOf(".menu-popover {\n  box-sizing"));
   expect(popover.slice(0, popover.indexOf("}"))).toMatch(/padding-block: var\(--menu-padding\);/);
   expect(popover.slice(0, popover.indexOf("}"))).not.toMatch(/[^-]padding: /);
   expect(menuCss).toMatch(/\.menu-popover \[role="menu"\] \{[^}]*padding-inline: var\(--menu-padding\);/);
   expect(menuCss).toMatch(/\.menu-popover > :not\(\[role="menu"\]\) \{ margin-inline: var\(--menu-padding\); \}/);
-  expect(menuCss).toMatch(/\.menu-label \{[^}]*overflow: hidden; text-overflow: ellipsis; white-space: nowrap; \}/);
+  expect(menuCss).toMatch(/\.menu-popover \{[^}]*width: max-content;/);
+  expect(menuCss).toMatch(/\.menu-label \{[^}]*white-space: normal;/);
+  expect(menuCss).not.toMatch(/\.menu-label \{[^}]*text-overflow: ellipsis/);
   expect(menuCss).toMatch(/--menu-label-start: calc\(var\(--menu-item-pad\) \+ var\(--menu-check-width\) \+ var\(--menu-item-gap\)\);/);
   const toolbar = readFileSync(new FileURL("./ToolbarMenu.css", import.meta.url), "utf8");
   // The filter text and section headings start where the labels do.
   expect(toolbar.match(/padding-inline: var\(--menu-label-start\) var\(--menu-item-pad\)/g)).toHaveLength(2);
-  expect(toolbar).toMatch(/\.toolbar-menu-popover \{ width: 16\.5rem; \}/);
+  expect(toolbar).toMatch(/\.toolbar-menu-popover \{[^}]*width: max-content;[^}]*min-width: min\(16\.5rem,/);
+  expect(toolbar).toMatch(/\.toolbar-menu-sample \{[^}]*min-width: 0;[^}]*white-space: normal;/);
   expect(`${menuCss}${toolbar}`.match(/\b(10|18|34)px\b/g)).toEqual(["10px", "18px"]);
 });
 
@@ -459,4 +462,21 @@ test("the shortcuts table breaks actions only between words and keeps keys on on
   expect(styles).not.toMatch(/\.keys-scroll[^{]*\{[^}]*overflow-wrap: anywhere/);
   expect(styles).toMatch(/\.keys-scroll th, \.keys-scroll td \{[^}]*overflow-wrap: break-word;/);
   expect(styles).toMatch(/\.keys-scroll td \{[^}]*text-align: end; white-space: nowrap; \}/);
+});
+
+
+test("whole-row fitting preserves variable-height wrapped action rows", () => {
+  const frame = document.createElement("div"), list = document.createElement("div");
+  frame.append(list); document.body.append(frame);
+  const geometry = [[0, 28], [28, 56], [84, 56]];
+  for (const [top, height] of geometry) {
+    const row = document.createElement("div"); row.setAttribute("role", "menuitem"); list.append(row);
+    vi.spyOn(row, "getBoundingClientRect").mockReturnValue(new DOMRect(0, top, 200, height));
+  }
+  Object.defineProperty(list, "clientHeight", { value: 90 });
+  Object.defineProperty(list, "scrollHeight", { value: 140 });
+  const hook = renderHook(() => useWholeRows({ current: list }));
+  act(() => hook.result.current(frame));
+  expect(list.style.maxHeight).toBe("84px");
+  act(() => hook.result.current(null)); frame.remove();
 });
