@@ -236,7 +236,9 @@ def prepare_initial_picker_show(native, snapshot):
     if snapshot()["visible"]:
         def ready():
             current = snapshot()
-            return current["visible"] and search_focused(current)
+            # AT-SPI may publish focused Search before X11 routes keys to
+            # the app. Do not send Escape into the previous native window.
+            return current["visible"] and search_focused(current) and native.picker_has_input_focus()
         wait_for(ready, "initial picker search ready")
         escape_to_hide(native, snapshot, "initial Escape hides picker")
 
@@ -858,6 +860,20 @@ class Linux:
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         self.app = None
         self.last_window_state = "not read"
+        # The previous app must settle before Ibis launches. A late xterm map
+        # can otherwise steal initial focus from the already-visible picker.
+        def editor_ready():
+            if self.editor.poll() is not None:
+                raise Unavailable("Synthetic editor exited before app launch")
+            try:
+                return self.window(self.editor.pid) is not None and self.editor_focused()
+            except subprocess.CalledProcessError:
+                return False
+        try:
+            wait_for(editor_ready, "synthetic editor mapped and focused before app launch")
+        except BaseException:
+            self.close()
+            raise
 
     def window(self, pid):
         try:
@@ -904,6 +920,16 @@ class Linux:
     def picker_mapped(self):
         # --onlyvisible checks X11 map state, without querying or waiting for focus.
         return self.window(self.app.pid) is not None
+
+    def picker_has_input_focus(self):
+        # Like the editor check, xdotool resolves a child without WM_CLASS to
+        # its native ancestor. EWMH activation and AT-SPI focus alone can lag
+        # actual X11 keyboard ownership during the initial presentation.
+        try:
+            focused = run("xdotool", "getwindowfocus")
+            return run("xdotool", "getwindowpid", focused) == str(self.app.pid)
+        except subprocess.CalledProcessError:
+            return False
 
     def editor_received(self):
         if self.editor.poll() is not None:
@@ -1779,7 +1805,7 @@ class ContractTests(unittest.TestCase):
     def test_startup_maps_the_picker_before_waiting_for_its_accessible_count(self):
         # WebKitGTK exposes only the application root until the native window
         # is mapped. An --at-login launch cannot satisfy the footer count wait.
-        native = Mock(spec=["snapshot", "focus_editor", "editor_focused", "key", "text", "close", "app", "picker_mapped"])
+        native = Mock(spec=["snapshot", "focus_editor", "editor_focused", "key", "text", "close", "app", "picker_mapped", "picker_has_input_focus"])
         app = Mock(pid=100)
         app.poll.return_value = None
         visible, query, clock, events = [False], [""], [0.0], []
@@ -1810,6 +1836,7 @@ class ContractTests(unittest.TestCase):
 
         native.snapshot.side_effect = snapshot
         native.picker_mapped.side_effect = lambda: events.append(("mapped", visible[0])) or visible[0]
+        native.picker_has_input_focus.side_effect = lambda: visible[0]
         native.key.side_effect = key
         native.text.side_effect = text
         native.editor_focused.return_value = True
@@ -1839,7 +1866,7 @@ class ContractTests(unittest.TestCase):
 
     def shortcut_focus_probe(self, *, loses_focus=False, loses_selection=False, failure_at=2):
         native = Mock(spec=["snapshot", "focus_editor", "editor_focused", "editor_active",
-                            "editor_has_input_focus", "key", "text", "close", "app", "skips_taskbar", "picker_mapped"])
+                            "editor_has_input_focus", "key", "text", "close", "app", "skips_taskbar", "picker_mapped", "picker_has_input_focus"])
         app, second = Mock(pid=100), Mock(pid=101)
         app.poll.return_value = None
         second.wait.return_value = 0
@@ -1900,6 +1927,7 @@ class ContractTests(unittest.TestCase):
 
         native.snapshot.side_effect = snapshot
         native.picker_mapped.side_effect = lambda: state["visible"]
+        native.picker_has_input_focus.side_effect = lambda: state["visible"] and state["foreground"]
         native.focus_editor.side_effect = focus_editor
         native.editor_focused.return_value = True
         native.editor_active.side_effect = lambda: not state["foreground"]
@@ -2218,7 +2246,8 @@ class ContractTests(unittest.TestCase):
         modules = {"pyatspi": Mock(), "gi": Mock(), "gi.repository": Mock()}
         with patch("shutil.which", return_value="/usr/bin/tool"), patch.dict(os.environ, {"DISPLAY": ":99", "DBUS_SESSION_BUS_ADDRESS": "unix:x"}), \
                 patch.dict(sys.modules, modules), patch("subprocess.Popen", side_effect=launch), \
-                patch.object(Linux, "window_manager_ready", check), patch("time.sleep"):
+                patch.object(Linux, "window_manager_ready", check), patch.object(Linux, "window", return_value="42"), \
+                patch.object(Linux, "editor_focused", return_value=True), patch("time.sleep"):
             native = Linux()
             self.addCleanup(native.close)
         self.assertEqual(events, ["openbox", "ready?", "ready?", "ready?", "xterm"])
@@ -2494,8 +2523,8 @@ class ContractTests(unittest.TestCase):
                 self.assertNotIn("private", errors.getvalue() + json.dumps(report))
 
     class InitialPickerModel:
-        def __init__(self, visible=True, search_ready=True, accepts_escape=True):
-            self.visible, self.key_window = visible, visible
+        def __init__(self, visible=True, search_ready=True, accepts_escape=True, owns_keys=True):
+            self.visible, self.key_window = visible, visible and owns_keys
             self.search_ready, self.accepts_escape = search_ready, accepts_escape
             self.events = []
 
@@ -2504,13 +2533,16 @@ class ContractTests(unittest.TestCase):
                 "name": "Search references", "focused": self.search_ready,
             }]}
 
+        def picker_has_input_focus(self):
+            return self.key_window
+
         def focus_editor(self):
             # The editor can already be frontmost while the panel owns keys.
             self.events.append(("editor", self.visible))
 
         def key(self, key):
             self.events.append((key, self.visible))
-            if key == "Escape" and self.accepts_escape:
+            if key == "Escape" and self.accepts_escape and self.key_window:
                 self.visible = self.key_window = False
             elif key == "ctrl+super+r":
                 self.visible = not (self.visible and self.key_window)
@@ -2528,6 +2560,84 @@ class ContractTests(unittest.TestCase):
         names["2"] = NOTICE_TITLE
         with patch(f"{__name__}.run", side_effect=fake):
             self.assertIsNone(linux.window(42))
+
+    def linux_editor_startup(self, *, never_ready=False):
+        events, state = [], {"mapped": never_ready, "focused": False}
+        wm, editor = Mock(pid=55), Mock(pid=100)
+        wm.poll.return_value = editor.poll.return_value = None
+        editor_input = Mock(name="synthetic-editor-input")
+        bridge = Mock()
+        bridge.GLib.Error = RuntimeError
+        def spawn(command, **_options):
+            if command[0] == "openbox":
+                return wm
+            if command[0] == "xterm":
+                events.append("editor-launch")
+                return editor
+            self.assertTrue(state["mapped"] and state["focused"], "Ibis launched before its synthetic editor settled")
+            events.append("app-launch")
+            return Mock()
+        def mapped(_pid):
+            events.append("editor-map-query")
+            return "42" if state["mapped"] else None
+        def focused():
+            events.append("editor-focus-query")
+            return state["focused"]
+        def wait(predicate, description):
+            for _ in range(3):
+                if predicate():
+                    if state["focused"]:
+                        events.append("editor-ready")
+                    return
+                if not never_ready:
+                    state["focused"], state["mapped"] = state["mapped"], True
+            raise AssertionError("Timed out: " + description)
+        with patch("shutil.which", return_value="synthetic-tool"), \
+             patch.dict(os.environ, {"DISPLAY": ":synthetic", "DBUS_SESSION_BUS_ADDRESS": "synthetic"}), \
+             patch.dict(sys.modules, {"pyatspi": Mock(), "gi": Mock(), "gi.repository": bridge}), \
+             patch("subprocess.Popen", side_effect=spawn), patch("tempfile.NamedTemporaryFile", return_value=editor_input), \
+             patch.object(Linux, "window_manager_ready", return_value=True), \
+             patch.object(Linux, "window", side_effect=mapped), patch.object(Linux, "editor_focused", side_effect=focused), \
+             patch(__name__ + ".wait_for", side_effect=wait):
+            if never_ready:
+                with self.assertRaisesRegex(AssertionError, "synthetic editor mapped and focused"):
+                    Linux()
+            else:
+                native = Linux()
+                subprocess.Popen(["synthetic-app"])
+                native.close()
+        return events, wm, editor, editor_input
+
+    def test_linux_editor_settles_before_the_app_launches(self):
+        events, _, _, _ = self.linux_editor_startup()
+        self.assertLess(events.index("editor-ready"), events.index("app-launch"))
+        self.assertEqual(events.count("editor-launch"), 1)
+        self.assertGreaterEqual(events.count("editor-map-query"), 2)
+        self.assertGreaterEqual(events.count("editor-focus-query"), 2)
+
+    def test_linux_missing_editor_ownership_refuses_app_launch_and_cleans_up(self):
+        events, wm, editor, editor_input = self.linux_editor_startup(never_ready=True)
+        self.assertNotIn("app-launch", events)
+        wm.terminate.assert_called_once()
+        editor.terminate.assert_called_once()
+        editor_input.close.assert_called_once()
+
+    def test_linux_initial_focus_queries_native_owner_instead_of_accessible_focus(self):
+        native = Linux.__new__(Linux)
+        native.app = Mock(pid=100)
+        for owner, expected in (("100", True), ("200", False)):
+            with self.subTest(owner=owner), patch(__name__ + ".run", side_effect=["42", owner]) as query:
+                self.assertEqual(native.picker_has_input_focus(), expected)
+                self.assertEqual(query.call_args_list, [call("xdotool", "getwindowfocus"),
+                                                       call("xdotool", "getwindowpid", "42")])
+
+    def test_linux_initial_focus_query_failure_never_claims_keyboard_ownership(self):
+        native = Linux.__new__(Linux)
+        native.app = Mock(pid=100)
+        for replies in ([subprocess.CalledProcessError(1, "xdotool")],
+                        ["42", subprocess.CalledProcessError(1, "xdotool")]):
+            with self.subTest(replies=replies), patch(__name__ + ".run", side_effect=replies):
+                self.assertFalse(native.picker_has_input_focus())
 
     def test_initial_key_panel_requires_hidden_precondition_before_shortcut_show(self):
         old = self.InitialPickerModel()
@@ -2578,6 +2688,28 @@ class ContractTests(unittest.TestCase):
             escape_to_hide(native, snapshot, "hidden")
         self.assertEqual(native.key.call_count, 3)
         self.assertNotIn("private query", printed.call_args.args[0])
+
+    def test_initial_escape_waits_for_native_keyboard_owner_after_accessible_focus(self):
+        native = self.InitialPickerModel(owns_keys=False)
+        def settled(predicate, description):
+            if predicate():
+                return
+            # Native activation can follow the accessible focused flag. No key
+            # may be sent to the previous app while ownership is still pending.
+            self.assertEqual(native.events, [])
+            native.key_window = True
+            self.assertTrue(predicate(), description)
+        with patch(__name__ + ".wait_for", side_effect=settled):
+            prepare_initial_picker_show(native, native.snapshot)
+        self.assertFalse(native.visible)
+        self.assertEqual(native.events, [("Escape", True)])
+
+    def test_initial_escape_refuses_accessible_focus_without_native_keyboard_owner(self):
+        native = self.InitialPickerModel(owns_keys=False)
+        with patch(__name__ + ".wait_for", side_effect=lambda predicate, description: self.assertTrue(predicate(), description)):
+            with self.assertRaisesRegex(AssertionError, "initial picker search ready"):
+                prepare_initial_picker_show(native, native.snapshot)
+        self.assertEqual(native.events, [])
 
     def test_hidden_initial_picker_does_not_send_escape_into_the_editor(self):
         native = self.InitialPickerModel(visible=False)
