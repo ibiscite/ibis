@@ -1,4 +1,5 @@
-// The mocked Rust side and shared steps for tests that render the whole picker.
+// The lightweight mocked Rust side and shared steps for whole-picker tests.
+// For clipboard/document outcomes and reordered workers, use ./delivery instead.
 import { act, cleanup, fireEvent, screen } from "@testing-library/react";
 import { clearMocks, mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { vi } from "vitest";
@@ -35,7 +36,7 @@ export async function chooseFromMore(name: string, role: "menuitem" | "menuitemc
 
 export function result(key: string, title: string, source = "refs.bib") {
   return {
-    revision: "1", id: { library: source, key }, cite: `synthetic-cite-${key}`, source, key, title, authors: "Smith", year: 2020, matched: ["title"],
+    revision: "1", id: { library: source, key }, cite: `synthetic-cite-${key}`, source, key, title, authors: "Smith", year: 2020, matched: ["title" as const],
     first_author: "Smith", author_count: 1, container: null as string | null, item_type: "article-journal", partial: false,
   };
 }
