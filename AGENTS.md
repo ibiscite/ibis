@@ -2,7 +2,8 @@
 
 Ibis is one shortcut to cite from your library in any app. Read only what your task needs:
 scope in [ROADMAP.md](ROADMAP.md), structure in [docs/architecture.md](docs/architecture.md),
-look and behaviour in [docs/design.md](docs/design.md), lasting decisions in
+look and behaviour in [docs/design.md](docs/design.md), testing and coverage in
+[docs/testing.md](docs/testing.md), lasting decisions in
 [docs/decisions.md](docs/decisions.md). Current work and owners: the tracking issue (label `tracking`).
 
 ```sh

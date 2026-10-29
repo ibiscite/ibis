@@ -324,7 +324,8 @@ page, report, other) never reuse an attachment drawing. Platform icons only
 where the platform owns the meaning.
 
 **Footer and status** [C8]. Status dot and text at the leading edge, then
-"Copy N as <format> ↵" (the primary hint, text colour), "Shortcuts ⌘/" and
+"Paste into Word · APA ↵" or "Copy N as <format> ↵" (the primary hint,
+text colour), "Shortcuts ⌘/" and
 "More ⌘K" (secondary). Every hint is label first, then keys: 8 px between them,
 16 px between hints, label type on one baseline. Actions are quiet 24 px fills,
 radius `--r-tile`, with 32 px targets; they invoke the same guarded actions as
@@ -403,6 +404,9 @@ it. On copy the shelf shows a closing beak and "Copied" at the line end.
   label must have a valid value: `pp.` is refused with a request to enter a
   page or range, or clear Page. It never becomes literal page text. Page values
   keep the shared parser's length limit. The field keeps the typed text.
+  Only Page edits are parsed as raw input. A locator captured from search is
+  already canonical: quoted text such as `S.12` or `pages of notes` keeps its
+  literal value through preview, form changes and copying.
   Controls and actionable formatting refusals
   remain visible with the paste preview hidden. Engine losses name the reference
   and field beside the preview; an unsupported form explains the refusal there
@@ -491,7 +495,8 @@ its locator; later searches keep prepared references unchanged. **Apply locator*
 updates only the highlighted, already added reference. A shared locator token
 names its type and value and offers an accessible remove action that keeps the
 reference. Both key and formatted previews/copies use these per-reference values.
-The nine existing types are supported; timestamp interpretation remains planned.
+Interpretation uses the engine's shared parser and all 29 CSL locator types,
+including Unicode page numbers; the typed digits stay as written.
 
 **Focus order.** Tab: search box (Tab picks the first tag or author suggestion
 while they are open), header pop-ups, the pin, the browsing tabs while visible
@@ -646,7 +651,14 @@ without hover.
 
 - **Opening.** On the focused window's display, at the last position there,
   with a 120 ms fade and focus in search. A search from under a minute ago
-  returns selected (memory only). The at-cursor form opens under the caret.
+  returns selected (memory only), including a search cleared by Escape before
+  hiding, even if native activation arrives after the query returns.
+  Reopening from a focused result or another control still starts typing in
+  search. Text received by Search while the
+  window opens survives activation, with the caret at the end; only the
+  untouched previous query is selected. On X11, keys sent before the picker
+  is mapped and has input focus go to the previously focused window. Ibis does
+  not capture those keys with a global keyboard grab. The at-cursor form opens under the caret.
 - **Moving.** Drag the empty header, never the list; snap to the centre line and
   upper third within 18 px (Alt places freely); remembered per display.
 - **Clicking outside** hides Ibis and the click reaches its target, unless
@@ -748,7 +760,17 @@ A choice screen hides the result heading, the shelf and the Copy hint.
   its own once it is on; when Zotero is closed, Ibis reads the library anyway;
   with several Zotero profiles, Ibis asks which one; with no library at all,
   built-in sample references let people try Ibis, labelled "Sample" on every
-  row and in the footer. The
+  row and in the footer. The explicit **Try sample references** choice uses
+  three bundled invented CSL-JSON references for this run; it never saves a
+  library preference. Its search hint names words in the samples. A
+  **Use your own library** choice row returns to setup.
+  Choosing a real source replaces samples; sample selections and copy notices
+  leave with them. Samples never join a real library. Every sample citation
+  ends with the visible text ` [Sample]`, including key outputs and every
+  clipboard representation (plain text, HTML and RTF). The marker belongs to
+  the prepared citation and its content hash: previews and receipts show the
+  same marked text that lands in the document. These are demo citations;
+  choosing a real library produces ordinary citations. The
   footer, receipt and announcement describe the action actually taken:
   "Paste into Word", "Copied. Press ⌘V to paste." (the right key per system)
   when pasting is off or unavailable, or "Copied" with the reason. The footer shows the library, Shortcuts and More.
@@ -772,10 +794,38 @@ that owns its area in ROADMAP.md.
    the shelf even if hiding fails; only a confirmed permission refusal keeps
    the copied selection for another attempt.
 3. Enter does what the footer says ("Paste into Word · APA"). Enter pressed
-   while results load runs once, never twice. After the window closes a short
-   receipt says what happened, and the last outcome stays readable in More.
-4. Open in under 100 ms with the last snapshot; keys typed before the window
-   appears are kept. Typing replaces the engine's previous search and preview
+   while results or the citation preview load waits for the current search and
+   output, including reconciliation when results arrive before library status,
+   then runs once. Repeated Enter, row and footer activations on the
+   unchanged citation during copying, hiding or delivery cannot start another
+   copy, even when only the search or chooser scope changes. Returning to a
+   citation whose copy is still outstanding cannot repeat it. Deliberately
+   choosing a different citation permits a fresh copy; an earlier reply cannot
+   replace its shelf or current copy feedback. A changed query,
+   reference, page, form or output, arrow navigation, Escape or hiding cancels
+   a waiting Enter. Every add/remove activation cancels it, including Shift+Enter
+   with no highlighted result. A prepared shelf can copy while the next search
+   loads or finds nothing. The footer uses the captured app and native paste policy;
+   kept-open citations and citations with warnings say Copy. Final delivery
+   still checks the target and may copy with a reason instead. After the
+   window closes the existing brief, pointer-ignoring receipt says what
+   happened without taking focus. More keeps the actual last outcome and its
+   reason, in memory for this run, after the brief confirmation expires; it
+   does not retain citation text there. A failed or unfinished later copy
+   attempt does not discard a successful copy's delivery receipt; a newer
+   successful copy does.
+   A fresh Enter for the same prepared citation joins its outstanding copy
+   with the current context and scope, so that copy can finish with one
+   delivery and receipt. Every activation goes through the same readiness
+   checks before starting or joining a copy. A failed reconciliation status
+   read cancels waiting Enter; a later library update never replays it.
+4. Open in under 100 ms with the last snapshot; text received by Search during
+   opening is kept (see **Opening** for X11 input routing). The Linux smoke
+   types once as soon as the picker is mapped, without waiting for focus.
+   Timing is reported on Linux only; the 100 ms p95 gate is
+   enforced nowhere yet. macOS/Windows open time is judged in the maintainer
+   hand test [#79](https://github.com/ibiscite/ibis/issues/79).
+   Typing replaces the engine's previous search and preview
    work by cancelling it, including queued formatting. Hidden Ibis waits for
    events; it does not poll for library notifications. Fixed speed/resource
    limits and the release-machine measurement protocol are in
@@ -889,7 +939,21 @@ When a row's text and control do not fit side by side, the control wraps below
 and its choices or labels wrap within the card, including at the minimum
 window width and larger system text sizes.
 
-**Shortcuts.** The recorder button shows the current shortcut in the system's
+**Shortcuts.** On Wayland the desktop owns the opening shortcut. There is no
+recorder or **Use Default**: show the desktop's trigger text verbatim, or
+**Not assigned** when none is reported. Portal version 2 offers **Change…**,
+which opens the desktop's configuration; version 1 names the desktop's keyboard
+settings. Changes arrive from the portal without polling or saving a trigger
+to `settings.json`. Cancellation or portal loss clears the trigger and explains
+how to bind `ibis toggle`, with the exact Sway and Hyprland configuration lines
+and Nightly's command when applicable. Restart Ibis to retry portal consent.
+If a successful session reports no usable trigger, both the picker and Settings
+show these binding instructions, keeping the session and its **Change…** capability
+active. A later reported trigger clears the instructions.
+XWayland's focus or full-screen state never decides whether this shortcut opens
+Ibis; the picker uses its toolkit's own focus state.
+
+On macOS, Windows and X11, the recorder button shows the current shortcut in the system's
 own notation (⇧⌘Y on macOS). Clicking it says **Type a shortcut…**; Esc or
 moving focus cancels. Tab and Shift+Tab cancel and move focus normally.
 ASCII letters are saved as logical letters and follow the typed letter on macOS;

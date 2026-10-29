@@ -52,7 +52,7 @@ export function KeysDialog({ bindings, isMac, onClose }: { bindings: readonly Ke
                   <tr key={binding.action}>
                     <th scope="row">{keyText.actions[binding.action]}</th>
                     <td>{binding.keys.map((keys, i) => (
-                      <span key={keys}>{i > 0 && ` ${keyText.or} `}<kbd dir="ltr" aria-keyshortcuts={ariaKeys(keys, isMac)}>{binding.action === "open" ? shortcutLabel(keys, isMac) : keyLabel(keys, isMac)}</kbd></span>
+                      <span key={keys}>{i > 0 && ` ${keyText.or} `}<kbd dir="ltr" aria-keyshortcuts={binding.displayLabel ? undefined : ariaKeys(keys, isMac)}>{binding.displayLabel ?? (binding.action === "open" ? shortcutLabel(keys, isMac) : keyLabel(keys, isMac))}</kbd></span>
                     ))}</td>
                   </tr>
                 ))}

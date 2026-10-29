@@ -169,9 +169,10 @@ fn chosen_groups_keep_source_identity_counts_and_scopes_consistent() -> Result<(
                 .preview(
                     bridge.reserve_preview(),
                     vec![FileSelection {
-                        id: row.id.clone(),
-                        cite: row.cite.clone(),
+                        id: serde_json::from_value(row.id.clone())?,
+                        cite: serde_json::from_value(json!(row.cite))?,
                         locator: None,
+                        page_input: None,
                         form: None,
                     }],
                     KeyFormat::Pandoc,
@@ -290,7 +291,7 @@ fn empty_group_membership_is_installed_even_when_records_are_unchanged() -> Resu
         assert_eq!(library.source, Some(source));
         assert_eq!(
             library.source.as_ref().ok_or("source")?.setting(),
-            ibis_core::settings::LibrarySetting::Zotero(chosen.clone())
+            Some(ibis_core::settings::LibrarySetting::Zotero(chosen.clone()))
         );
         let status = crate::library::status::status(&library);
         assert_eq!(status.zotero_libraries, chosen.libraries());

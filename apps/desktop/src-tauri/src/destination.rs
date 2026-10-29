@@ -48,6 +48,8 @@ pub(crate) struct PickerDestination {
     pub(crate) remembered: Option<AppOutput>,
     /// The per-app file could not be read, so defaults apply.
     pub(crate) unreadable: bool,
+    /// The current paste policy permits an attempt; final delivery checks still apply.
+    pub(crate) can_paste: bool,
     /// The app cannot identify document syntax; ask until an output is remembered.
     pub(crate) output_question: Option<OutputQuestion>,
 }
@@ -247,10 +249,13 @@ pub(crate) fn picker_destination(
             automatic: None,
             remembered: None,
             unreadable: memory.unreadable(),
+            can_paste: false,
             output_question: None,
         };
     };
-    let style = settings::load(&settings_file.path).settings.citation_style;
+    let settings = settings::load(&settings_file.path).settings;
+    let can_paste = crate::paste::intends_paste(&app, settings.paste.unwrap_or(true));
+    let style = settings.citation_style;
     let (remembered, unreadable) = memory.get(&id);
     PickerDestination {
         app: Some(name),
@@ -258,6 +263,7 @@ pub(crate) fn picker_destination(
         automatic: automatic(&id, style),
         remembered,
         unreadable,
+        can_paste,
         output_question: lookup(&id).and_then(|app| app.output_question),
     }
 }

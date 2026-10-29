@@ -16,6 +16,8 @@ export const commands = {
 	 *  `library:changed`.
 	 */
 	useZotero: () => __TAURI_INVOKE<void>("use_zotero"),
+	/**  Samples are an explicit, temporary source, never a saved library preference. */
+	useSampleLibrary: (enabled: boolean) => __TAURI_INVOKE<null>("use_sample_library", { enabled }),
 	/**
 	 *  Find what setup can offer: whether Zotero is open, and `.bib` files in
 	 *  the documents, desktop and downloads folders.
@@ -97,7 +99,9 @@ export const commands = {
 	 */
 	quit: () => __TAURI_INVOKE<void>("quit"),
 	/**  Current state of the global shortcut. */
-	shortcutStatus: () => __TAURI_INVOKE<ShortcutStatus>("shortcut_status"),
+	shortcutStatus: () => __TAURI_INVOKE<ShortcutStatus_Serialize>("shortcut_status"),
+	/**  Only Settings may request the desktop's configuration UI. It never saves. */
+	configureShortcuts: () => __TAURI_INVOKE<null>("configure_shortcuts"),
 	/**
 	 *  After the picker has hidden: paste into the app it was opened from when
 	 *  that is safe (#27), then say "Pasted into …" or "Copied" and why. The
@@ -152,7 +156,7 @@ export const commands = {
 	 *  Open Ibis with `shortcut` from now on (`None`: the default), and remember it.
 	 *  Every window and the menu bar item show the change at once.
 	 */
-	setShortcut: (shortcut: string | null) => __TAURI_INVOKE<ShortcutStatus>("set_shortcut", { shortcut }),
+	setShortcut: (shortcut: string | null) => __TAURI_INVOKE<ShortcutStatus_Serialize>("set_shortcut", { shortcut }),
 };
 
 /* Types */
@@ -208,6 +212,11 @@ reason: string | null };
 /**  How much each result row shows (ADR 0020). */
 export type Density = "compact" | "comfortable" | "spacious";
 
+export type DesktopShortcut = {
+	configurable: boolean,
+	guidance: string,
+};
+
 export type FilePreview = {
 	ticket: string,
 	content_hash: string,
@@ -219,7 +228,10 @@ export type FilePreview = {
 export type FileSelection = {
 	id: unknown,
 	cite: string,
+	/**  A canonical locator captured from search; its value is never parsed again. */
 	locator: Locator | null,
+	/**  Raw Page editor text, mutually exclusive with a captured locator. */
+	page_input?: string | null,
 	form?: ReferenceForm | null,
 };
 
@@ -291,6 +303,8 @@ export type LibraryStatus = {
 	 *  `zotero` (the requested source) after a failed switch.
 	 */
 	snapshot_zotero: boolean,
+	/**  The searchable snapshot contains only bundled invented references. */
+	sample?: boolean,
 	/**
 	 *  An update of the searched library failed and its earlier references
 	 *  are still searched; not set when a switch to another library failed.
@@ -308,16 +322,14 @@ export type LibraryStatus = {
 	checked_at: number | null,
 };
 
+/**  Picker wire names over the engine's canonical locator vocabulary. */
 export type Locator = {
-	label: LocatorLabel,
-	/**  As typed by the user, e.g. "12", "24-26", "3, 7". */
+	label: LocatorTerm,
+	/**  Canonical value, including literal text preserved by the engine. */
 	value: string,
 };
 
-/**  Kind of locator ("p. 12", "chap. 3"). */
-export type LocatorLabel = "page" | "chapter" | "section" | "paragraph" | "figure" | "line" | "note" | "volume" | "verse";
-
-/**  A search with a locator split off its end. */
+/**  The engine's interpretation, shown so the person can search as typed. */
 export type LocatorQuery = {
 	/**  What remains to search for. */
 	search: string,
@@ -325,6 +337,12 @@ export type LocatorQuery = {
 	/**  The text read as the locator, exactly as typed. */
 	typed: string,
 };
+
+/**
+ *  CSL 1.0.2 input locator vocabulary, including the disambiguating `-locator` names.
+ *  https://github.com/citation-style-language/schema/blob/v1.0.2/schemas/input/csl-citation.json
+ */
+export type LocatorTerm = "act" | "appendix" | "article-locator" | "book" | "canon" | "chapter" | "column" | "elocation" | "equation" | "figure" | "folio" | "issue" | "line" | "note" | "opus" | "page" | "paragraph" | "part" | "rule" | "scene" | "section" | "sub-verbo" | "supplement" | "table" | "timestamp" | "title-locator" | "verse" | "version" | "volume";
 
 /**  Whether Ibis starts when the person logs in, as the system reports it. */
 export type LoginItem = {
@@ -398,6 +416,8 @@ export type PickerDestination = {
 	remembered: AppOutput | null,
 	/**  The per-app file could not be read, so defaults apply. */
 	unreadable: boolean,
+	/**  The current paste policy permits an attempt; final delivery checks still apply. */
+	can_paste: boolean,
 	/**  The app cannot identify document syntax; ask until an output is remembered. */
 	output_question: OutputQuestion | null,
 };
@@ -483,6 +503,8 @@ export type SearchReply_Serialize = {
 };
 
 export type SearchResult = {
+	/**  This row comes from the bundled invented library, including while a replacement search is pending. */
+	sample?: boolean,
 	/**  Revision captured with the index used for this result. */
 	revision: string,
 	/**  Identity of the record; selection and copying use this, not the key. */
@@ -535,10 +557,24 @@ export type ShortcutRefusal =
 "not-saved";
 
 /**  Whether the global shortcut is working, shown in the interface. */
-export type ShortcutStatus = {
+export type ShortcutStatus = ShortcutStatus_Serialize | ShortcutStatus_Deserialize;
+
+/**  Whether the global shortcut is working, shown in the interface. */
+export type ShortcutStatus_Deserialize = {
 	shortcut: string,
 	registered: boolean,
 	error: string | null,
+	/**  Present on Wayland, including when the portal is unavailable. */
+	desktop?: DesktopShortcut | null,
+};
+
+/**  Whether the global shortcut is working, shown in the interface. */
+export type ShortcutStatus_Serialize = {
+	shortcut: string,
+	registered: boolean,
+	error: string | null,
+	/**  Present on Wayland, including when the portal is unavailable. */
+	desktop?: DesktopShortcut | null,
 };
 
 /**  What first-run setup can offer. */

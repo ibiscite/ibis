@@ -82,7 +82,7 @@ pub(super) fn retry(library: &Library, source: Source) -> (Source, bool) {
 pub(super) fn zotero_to_check(library: &Library) -> Option<Source> {
     match library.requested.as_ref().or(library.source.as_ref())? {
         source @ Source::Zotero(_) => Some(source.clone()),
-        Source::File(_) => None,
+        Source::File(_) | Source::Samples(_) => None,
     }
 }
 

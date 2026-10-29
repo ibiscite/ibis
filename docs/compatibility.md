@@ -52,15 +52,35 @@ full picker smoke test through that fallback.
 
 ## Linux shortcuts and tray
 
-The shipped shortcut backend needs a reachable X11 server with XKB. If that
-check fails, the picker explains the problem; open Ibis from the application
-launcher. Launching it again brings the running picker forward.
+X11 shortcuts need a reachable X11 server with XKB. On Wayland Ibis instead
+uses the local XDG GlobalShortcuts portal, even when XWayland is available.
+It requests `open-ibis` ("Open Ibis"), preferring Ctrl+Shift+Y. Settings >
+Shortcuts shows the trigger reported by `ListShortcuts` and `ShortcutsChanged`.
+**Change…** opens `ConfigureShortcuts` on portal version 2; version 1 gives
+the desktop settings location. The trigger is never saved by Ibis.
 
-An XWayland connection may pass the X11 check in a Wayland session. That does
-not establish shortcut activation while a native Wayland app has focus.
-The GlobalShortcuts portal work in [#782](https://github.com/ibiscite/ibis/issues/782)
-is scheduled for 0.2 but has not shipped. No native GNOME/KDE Wayland shortcut
-test is claimed.
+Without a working portal, or after cancellation/session loss, Ibis explains
+the launcher and system-binding fallback, including exact Sway and Hyprland
+configuration lines. Restart Ibis to retry the portal; there is no hidden
+polling or automatic consent retry.
+Successful sessions with no usable trigger (including an empty description)
+also show the exact binding instructions. The portal session stays active for
+activation and configuration; a later reported trigger clears that guidance.
+
+Only these tested sessions are claimed. Candidates and hands-on evidence are
+tracked per desktop in [#1387](https://github.com/ibiscite/ibis/issues/1387).
+
+| Desktop/session | Actually tested | Remaining verification |
+|---|---|---|
+| Openbox/X11, Ubuntu 24.04 hosted runner | Existing Xvfb/Openbox `.deb` picker and extracted AppImage startup smoke | Physical desktop keyboard/focus behavior |
+| KDE Plasma Wayland (5.27+ candidate) | No real session tested | Record Plasma and portal versions; consent, activation from a native Wayland app, focus token, trigger changes, v1/v2 settings, restart |
+| GNOME Wayland (portal-gnome 48+ candidate) | No real session tested | Record GNOME and portal versions; same checks, including permission refusal |
+| Sway / wlr portal | No real session tested | Record versions; absent-portal explanation, copied config binding, toggle from a focused app |
+| Hyprland | No real session tested | Record versions and config format; portal capability or exact fallback binding, toggle and focus |
+
+Automated private-bus tests cover the portal protocol, version gating, consent,
+activation, desktop trigger changes and owner loss; they do not establish
+compositor behavior. Settings tests cover the recorder-free flow and failures.
 
 GNOME without a tray extension and some other desktops show no tray icon.
 The launcher and picker library controls still work. Use **More > Quit** to
@@ -71,7 +91,7 @@ also in **More**, and so are the update controls.
 
 **Nightly, until the next release:** `ibis toggle` starts Ibis if needed, shows a hidden picker, or hides one (even pinned).
 Ordinary launches show the picker. This uses the existing single-instance channel without network ports or extra permissions.
-On Wayland it still attempts the in-app shortcut; if registration fails, the picker explains the system binding.
+On Wayland it uses the portal; if that is unavailable, the picker and Settings explain the system binding.
 
 The developer CLI `ibis` is separate from the desktop download. It first finds `ibis-desktop` beside itself;
 otherwise it uses PATH on Linux, the installed **Ibis** app on macOS,
@@ -97,7 +117,7 @@ Choose an unused combination, for example Ctrl+Shift+Y:
 - **Hyprland 0.55+:** add `hl.bind("CTRL + SHIFT + Y", hl.dsp.exec_cmd("ibis toggle"))`
   to `~/.config/hypr/hyprland.lua`. For older hyprlang configurations, add
   `bind = CTRL SHIFT, Y, exec, ibis toggle` to `hyprland.conf`.
-  See [Hyprland's binding guide](https://wiki.hypr.land/Configuring/Basics/Binds/).
+  See [Hyprland's binding guide](https://wiki.hypr.land/configuring/core/binds/).
 
 Test from a terminal, then from your shortcut: closed app → visible picker → hidden picker → visible picker.
 Native Linux toggle smoke and real GNOME/KDE/Sway/Hyprland focus checks remain follow-ups; argument tests do not establish compositor behavior.
@@ -167,5 +187,5 @@ Only a completed run with passed `smoke.json` establishes that case. A test
 definition or a green build alone does not. These checks do not prove automatic
 insertion, all citation formats, screen-reader speech, mixed-DPI displays,
 sleep/wake, cloud folders, network drives or every editor. See
-[testing](../CONTRIBUTING.md) for assertions and measurement limits and the
+[testing](testing.md) for assertions and measurement limits and the
 [remaining manual checks](https://github.com/ibiscite/ibis/issues/79#issuecomment-6282579792).

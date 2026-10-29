@@ -28,7 +28,7 @@ test("a pasted list previews and copies every result in order, with a safe missi
   fireEvent.paste(box, { clipboardData: { getData: () => "b\na\nmissing" } });
   expect((box as HTMLInputElement).value).toBe("b\ta\tmissing");
   await screen.findByText("Pasted list");
-  expect(await screen.findByText("Copy 2 citations")).toBeTruthy();
+  expect(await screen.findByText("Copy 2 citations · Pandoc")).toBeTruthy();
   expect(await screen.findByText("Not in your library: <script>invented</script>")).toBeTruthy();
   expect(document.querySelector("script")).toBeNull();
   await waitFor(() => expect(screen.getByRole("region", { name: "Preview" }).textContent).toContain("@b; @a"));
@@ -1279,6 +1279,7 @@ test("Enter before the engine preview is ready copies the new receipt once it is
   const box = screen.getByLabelText("Search references");
   fireEvent.keyDown(box, { key: "ArrowDown" });
   fireEvent.keyDown(box, { key: "Enter" });
+  fireEvent.keyDown(box, { key: "Enter" });
   expect(copies).toEqual([]);
   await act(async () => { finish(receipt("(Beta, 2021)")); });
   await waitFor(() => expect(copies).toEqual(["(Beta, 2021)"]));
@@ -1767,6 +1768,124 @@ test.each([[30_000, true, "first"], [61_000, true, ""], [61_000, false, "first"]
       now.mockRestore();
     }
   });
+
+test.each(["before", "after"])("reopening from a result replaces the query when native focus arrives %s the show event", async (activation) => {
+  backend({ search: () => [result("a", "First")] });
+  const focused = vi.spyOn(document, "hasFocus").mockReturnValue(true);
+  try {
+    render(<App />);
+    const box = screen.getByLabelText<HTMLInputElement>("Search references");
+    fireEvent.change(box, { target: { value: "previous query" } });
+    const row = await screen.findByRole("option", { name: /First/ });
+    // Model the result that WebKit restores when the native window activates.
+    row.tabIndex = -1;
+    act(() => row.focus());
+    expect(document.activeElement).toBe(row);
+    await act(async () => { await emit("picker:hidden"); });
+    focused.mockReturnValue(false);
+    const activate = () => {
+      focused.mockReturnValue(true);
+      act(() => row.focus());
+      fireEvent.focus(window);
+    };
+    if (activation === "before") activate();
+    await act(async () => { await emit("picker:shown"); });
+    if (activation === "after") activate();
+
+    expect(document.activeElement).toBe(box);
+    const replacement = "new query";
+    const text = box.value.slice(0, box.selectionStart!) + replacement + box.value.slice(box.selectionEnd!);
+    fireEvent.input(document.activeElement!, { target: { value: text } });
+    expect(box.value).toBe(replacement);
+
+    // A later activation must neither steal control focus nor select typed text.
+    fireEvent.focus(window);
+    expect(box.selectionStart).toBe(replacement.length);
+    expect(box.selectionEnd).toBe(replacement.length);
+    act(() => row.focus());
+    fireEvent.focus(window);
+    expect(document.activeElement).toBe(row);
+  } finally {
+    focused.mockRestore();
+  }
+});
+
+test.each(["before", "after"])("an escaped query is replaced when native focus arrives %s restoration renders", async (activation) => {
+  backend({ search: () => [result("a", "First")] });
+  const focused = vi.spyOn(document, "hasFocus").mockReturnValue(true);
+  try {
+    render(<App />);
+    const box = screen.getByLabelText<HTMLInputElement>("Search references");
+    fireEvent.change(box, { target: { value: "previous query" } });
+    await screen.findByRole("option", { name: /First/ });
+    fireEvent.keyDown(box, { key: "Escape" });
+    fireEvent.keyDown(box, { key: "Escape" });
+    await act(async () => { await emit("picker:hidden"); });
+    focused.mockReturnValue(false);
+    const activate = () => {
+      focused.mockReturnValue(true);
+      fireEvent.focus(window);
+    };
+    await act(async () => {
+      await emit("picker:shown");
+      if (activation === "before") activate();
+    });
+    expect(box.value).toBe("previous query");
+    if (activation === "after") activate();
+
+    expect(document.activeElement).toBe(box);
+    const text = box.value.slice(0, box.selectionStart!) + "new query" + box.value.slice(box.selectionEnd!);
+    fireEvent.input(document.activeElement!, { target: { value: text } });
+    expect(box.value).toBe("new query");
+  } finally {
+    focused.mockRestore();
+  }
+});
+
+test.each([false, true])("typing before native activation keeps the new query and appends the next key (escaped: %s)", async (escaped) => {
+  backend({ search: () => [result("a", "First")] });
+  const focused = vi.spyOn(document, "hasFocus").mockReturnValue(false);
+  try {
+    render(<App />);
+    const box = screen.getByLabelText<HTMLInputElement>("Search references");
+    fireEvent.change(box, { target: { value: "previous query" } });
+    const row = await screen.findByRole("option", { name: /First/ });
+    row.tabIndex = -1;
+    if (escaped) {
+      fireEvent.keyDown(box, { key: "Escape" });
+      fireEvent.keyDown(box, { key: "Escape" });
+    }
+    await act(async () => { await emit("picker:hidden"); await emit("picker:shown"); });
+    fireEvent.input(box, { target: { value: "ab" } });
+    act(() => row.focus());
+    focused.mockReturnValue(true);
+    fireEvent.focus(window);
+
+    expect(document.activeElement).toBe(box);
+    const text = box.value.slice(0, box.selectionStart!) + "c" + box.value.slice(box.selectionEnd!);
+    fireEvent.input(document.activeElement!, { target: { value: text } });
+    expect(box.value).toBe("abc");
+  } finally {
+    focused.mockRestore();
+  }
+});
+
+test("hiding cancels a pending Search focus handoff", async () => {
+  backend({ search: () => [result("a", "First")] });
+  const focused = vi.spyOn(document, "hasFocus").mockReturnValue(false);
+  try {
+    render(<App />);
+    const row = await screen.findByRole("option", { name: /First/ });
+    row.tabIndex = -1;
+    await act(async () => { await emit("picker:shown"); });
+    await act(async () => { await emit("picker:hidden"); });
+    act(() => row.focus());
+    fireEvent.focus(window);
+    expect(document.activeElement).toBe(row);
+  } finally {
+    focused.mockRestore();
+  }
+});
 
 test("a saved citation style, density and text size come back at start", async () => {
   backend({
@@ -2862,7 +2981,9 @@ test.each(["click", "Enter", "Shift+Enter"])("a replacement snapshot blocks prio
   expect(screen.queryByRole("list", { name: "Selected references" })).toBeNull();
   expect(calls).not.toContain("hide_picker");
   await act(async () => { release([fresh]); });
-  fireEvent.click(await screen.findByText("Replacement title and key"), { detail: 2 });
+  const replacementRow = await screen.findByText("Replacement title and key");
+  // Enter waits for the replacement; stale pointer/Shift+Enter actions do not.
+  if (action !== "Enter") fireEvent.click(replacementRow, { detail: 2 });
   await waitFor(() => expect(copied).toHaveLength(1));
   expect(copied[0]).toMatchObject({ expectedRevision: "snapshot-2" });
 });
@@ -3090,7 +3211,7 @@ test.each(["selection ABA", "query ABA", "hide and reopen"])("copy completion ig
   expect(calls).not.toContain("show_copied_notice");
 });
 
-test.each(["success", "failure"])("an older copy cannot overwrite a newer copy's warning (%s)", async (oldOutcome) => {
+test.each(["success", "failure"])("double Enter while pinned starts one copy and permits a fresh attempt after %s", async (oldOutcome) => {
   const resolve: ((value: unknown) => void)[] = [];
   const reject: ((reason: unknown) => void)[] = [];
   backend({
@@ -3104,13 +3225,18 @@ test.each(["success", "failure"])("an older copy cannot overwrite a newer copy's
   fireEvent.keyDown(box, { key: "Enter" });
   await waitFor(() => expect(resolve).toHaveLength(1));
   fireEvent.keyDown(box, { key: "Enter" });
-  await waitFor(() => expect(resolve).toHaveLength(2));
-  await act(async () => { resolve[1]!({ text: "new copy", warnings: ["New warning"] }); });
-  await screen.findByText("New warning");
+  await act(async () => { await Promise.resolve(); });
+  expect(resolve).toHaveLength(1);
   await act(async () => {
     if (oldOutcome === "success") resolve[0]!({ text: "old copy", warnings: ["Old warning"] });
     else reject[0]!("old failure");
   });
+  if (oldOutcome === "success") await screen.findByText("Old warning");
+  else await screen.findByText("Nothing was copied. Try again, or use Reload.");
+  fireEvent.keyDown(box, { key: "Enter" });
+  await waitFor(() => expect(resolve).toHaveLength(2));
+  await act(async () => { resolve[1]!({ text: "new copy", warnings: ["New warning"] }); });
+  await screen.findByText("New warning");
   expect(screen.queryByText("New warning")).not.toBeNull();
   expect(screen.queryByText("Old warning")).toBeNull();
   expect(screen.queryByText("Nothing was copied. Try again, or use Reload.")).toBeNull();
@@ -3185,6 +3311,9 @@ test.each(["selection", "copy feedback"])("an obsolete stale copy recovers data 
   await waitFor(() => expect(attempts).toHaveLength(1));
   if (change === "selection") fireEvent.click(screen.getByText("Second revision 1"), { shiftKey: true });
   else {
+    // A different prepared citation may supersede an outstanding reply;
+    // repeated Enter on the unchanged citation is guarded separately.
+    fireEvent.click(screen.getByText("Second revision 1"), { shiftKey: true });
     fireEvent.keyDown(box, { key: "Enter" });
     await screen.findByText("Keep the newer warning");
   }

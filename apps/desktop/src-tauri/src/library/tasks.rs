@@ -372,7 +372,7 @@ fn open_one(app: AppHandle, open: OpenRequest) -> impl std::future::Future<Outpu
         }
         if installed.is_some() {
             let mut show_note = false;
-            if matches!(intent, OpenIntent::Remember) {
+            if let Some(chosen) = chosen.filter(|_| matches!(intent, OpenIntent::Remember)) {
                 // Saving and the note belong to this request, never a newer choice.
                 let accepted = update_notices(
                     &app.state(),
@@ -525,6 +525,7 @@ pub(crate) fn current_status(app: &AppHandle) -> LibraryStatus {
             note: None,
             settings_notice: None,
             snapshot_zotero: false,
+            sample: false,
             stale: false,
             updated_at: None,
             checked_at: None,

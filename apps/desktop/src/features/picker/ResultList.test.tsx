@@ -27,6 +27,12 @@ function list(active: number, onChoose = vi.fn(), onToggle = vi.fn()) {
     onMouseMove={() => undefined} onChoose={onChoose} onToggle={onToggle} />;
 }
 
+test.each<Density>(["compact", "comfortable", "spacious"])("%s sample rows keep their own label while a replacement search is pending", (density) => {
+  const { getByRole } = render(<ResultList results={[{ ...rows[0]!, sample: true }]} active={0} selected={new Map()} density={density}
+    libraryOf={() => null} onMouseMove={vi.fn()} onChoose={vi.fn()} onToggle={vi.fn()} />);
+  expect(getByRole("option").querySelector(".result-title")?.textContent).toBe("Sample · Title 0");
+});
+
 test.each<Density>(["compact", "comfortable", "spacious"])("%s rows reserve the trailing column for the year", (density) => {
   const record = { ...rows[0]!, title: "多言語の研究 · الذاكرة", key: "memory2020", year: null };
   const { container, getByRole } = render(<ResultList results={[record]} active={0} selected={new Map()} density={density}

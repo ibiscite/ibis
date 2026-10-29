@@ -46,6 +46,9 @@ pub(crate) struct LibraryStatus {
     /// Whether the searchable references are Zotero's, which can differ from
     /// `zotero` (the requested source) after a failed switch.
     pub(crate) snapshot_zotero: bool,
+    /// The searchable snapshot contains only bundled invented references.
+    #[specta(optional)]
+    pub(crate) sample: bool,
     /// An update of the searched library failed and its earlier references
     /// are still searched; not set when a switch to another library failed.
     pub(crate) stale: bool,
@@ -167,6 +170,7 @@ pub(crate) fn status(library: &Library) -> LibraryStatus {
         },
         settings_notice: library.settings_notice.clone(),
         snapshot_zotero: matches!(library.source, Some(Source::Zotero(_))),
+        sample: matches!(library.source, Some(Source::Samples(_))),
         stale: stale(library),
         updated_at: library.changed_at.and_then(epoch_millis),
         checked_at: library.checked_at.and_then(epoch_millis),
@@ -283,6 +287,7 @@ mod tests {
             "note",
             "settings_notice",
             "snapshot_zotero",
+            "sample",
             "stale",
             "updated_at",
             "checked_at",
@@ -296,6 +301,7 @@ mod tests {
         );
         assert_eq!(payload["note"], "the choice could not be saved");
         assert_eq!(payload["problem"], "missing");
+        assert_eq!(payload["sample"], false);
     }
 
     #[test]

@@ -16,6 +16,8 @@ pub(crate) mod engine_file;
 mod error;
 mod load;
 mod retry;
+#[cfg(test)]
+mod samples;
 mod search;
 mod source;
 mod state;
