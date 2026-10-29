@@ -32,11 +32,16 @@ optional extensions; none blocks the baseline plan or its release checks.
 - **Interface tests:** picker, Settings and shared controls exercise keys,
   selection, delayed replies, saved choices and accessibility structure in a
   simulated document. The [shared IPC fake](../apps/desktop/src/testing/app.ts)
-  keeps preview tickets/content hashes and preference state; its receipts
-  contain test-chosen output, not real formatting or delivery.
-  [PR #1407](https://github.com/ibiscite/ibis/pull/1407)'s version of the stateful
-  fake is not verified in this checkout; check it before adding its assertions
-  to this inventory.
+  keeps preview tickets/content hashes and preference state. The
+  [stateful delivery fake](../apps/desktop/src/testing/delivery.ts) models
+  clipboard ownership and sequence, one-use proofs, picker presentation and
+  replacement of the invented document's selection. Its
+  [15 consumer scenarios](../apps/desktop/src/App.delivery.test.tsx) manually
+  reorder search, preview, copy, delivery and receipt completions, asserting
+  document contents, exactly-once delivery and the production receipt renderer.
+  They cover late replies, hide/reopen, clipboard replacement and worker
+  failures. These simulate the interface contract; they do not exercise OS
+  clipboard/input/permission APIs, native deadlines or engine formatting.
 - **Linux native smoke:** [smoke-native.py](../scripts/smoke-native.py) drives
   the embedded app on X11 with one display and the default keyboard layout.
   It checks shortcut/focus, typing, exact Pandoc clipboard text, hide/reopen,
@@ -92,9 +97,66 @@ Windows 11 or native GNOME/KDE Wayland coverage.
 
 ## Evidence from every native or agent run
 
-Implement this common bundle in step 1; today's reports only cover parts of it.
-Emit it on success, failure, timeout and unavailable capability. Keep one
-versioned manifest beside bounded artifacts:
+Both existing `scripts/smoke-native.py` entry points now write one
+`OUTPUT/evidence-RUN_ID/manifest.json` per invocation, including failure,
+timeout, interruption and unavailable capability. Exit codes remain 0 (pass),
+1 (failure, including evidence I/O) and 2 (unavailable); unavailable never
+counts as passing coverage. A synthetic desktop setup assertion is a harness
+failure before any app action, never a product failure. Invalid replay input is
+refused before a run.
+
+The closed [version-1 schema](../scripts/native_evidence.schema.json) is checked
+on write and read, with contract tests in
+[test_native_evidence.py](../scripts/test_native_evidence.py) and the native
+harness's `--self-test`. The manifest is limited to 1 MiB and 4,000 events.
+Each run gets a new directory; existing bundles are never overwritten.
+Only this manifest belongs to the exportable bundle. Legacy `smoke.json` and
+startup logs remain separate diagnostics; do not include them when sharing a
+bundle. No screenshots, raw readback, desktop strings or external paths are
+attached by this adapter. Delete run directories with the corresponding test
+artifacts under the existing CI artifact retention policy.
+
+The manifest records the artifact SHA-256, source revision and tracked dirty
+patch hash, workspace app version, ELF target architecture and inferred
+debug/release profile. The harness hash covers its source, settings helper and
+schema, and identifies the fixture generator. It hashes the synthetic initial
+document/settings and every library fixture used by the selected scenario.
+OS version/build, WebKitGTK package version, locale, display count, pixels and
+physical dimensions are collected when available. Null build fields mean
+`not-observed`; null environment fields are listed in `unavailable` with the
+same reason. Keyboard/input method, citation language, display scale, text
+size, theme, contrast, motion and font configuration are currently unavailable.
+An absent build hash or environment value is never evidence of that coverage.
+
+Input, launch and fixture/settings changes have fixed action codes; native
+wait/check requests have source-line invariant IDs tied to the harness hash.
+Dispatch and completion/rejection/cancellation events carry immutable request
+IDs and relative times, with an explicit completion-order list. This is the
+**harness** request order. App IPC completion order is marked `not-observable`;
+this adapter cannot reproduce an app-internal race schedule. Results contain
+fixed reason codes and a failed invariant (`null` on pass), never exception
+text. `--seed` records an unsigned 32-bit seed; `deterministic-scenario` explains
+why the current scenarios do not consume it.
+
+Replay on the same isolated Linux desktop with the same artifact and harness:
+
+```sh
+/usr/bin/python3 scripts/smoke-native.py --app target/debug/ibis-desktop \
+  --output screenshots/replay --replay screenshots/run/evidence-RUN_ID/manifest.json
+```
+
+The manifest restores the scenario, channel, shortcut, performance option and
+seed. Replay validates the version, closed schema, build, fixtures and observed
+environment before native work. It reruns the real scenario and checks every
+action before dispatch and every completion against the recorded order;
+extra/missing events or a different result produce `replay-diverged`, never
+pass. Relative times are diagnostic, not replayed delays. Unsupported/older
+formats, malformed JSON and changed inputs receive a fixed refusal message.
+Unobserved environment values remain coverage gaps on replay.
+
+Later native/agent adapters extend this evidence to the full contract below;
+the current bundle does not certify these unobserved fields or attach the
+planned readback, minimized sequences and visual artifacts:
 
 - Run ID, scenario/invariant IDs and result: passed, product failure, harness
   failure or unavailable, with a reason and any missing capabilities.
