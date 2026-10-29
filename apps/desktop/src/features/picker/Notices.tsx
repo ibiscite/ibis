@@ -1,10 +1,10 @@
-import type { Copied, LibraryStatus, LoginItem, UpdateProgress } from "../../api";
+import type { Copied, Density, LibraryStatus, LoginItem, UpdateProgress } from "../../api";
 import { useRef } from "react";
 import { Progress } from "../../ui/Progress";
 import { Button } from "../../ui/Button";
 import { useScrollEdges } from "../../ui/ScrollArea";
 import { hasRetainedFreshnessProblem } from "../../LibraryStatusLine";
-import { libraryMessages, loginItemText, operationFailures, pickerText, updateText } from "../../messages";
+import { densityNames, libraryMessages, loginItemText, operationFailures, pickerText, updateText } from "../../messages";
 import { currentPlatform } from "../../platform";
 
 /** An action whose failure the picker reports in its notices. */
@@ -12,7 +12,8 @@ export type Operation = keyof typeof operationFailures;
 
 /** Problems and confirmations above the results: library and settings
  * problems, failed actions, search and copy errors, and what was copied. */
-export function Notices({ library, failures, startAtLogin, error, copyError, copied, showCopiedText, onDismissCopied, updateProgress, missing = [] }: {
+export function Notices({ library, failures, startAtLogin, error, copyError, copied, showCopiedText, onDismissCopied, updateProgress, missing = [], densityAnnouncement }: {
+  densityAnnouncement?: Density;
   updateProgress?: UpdateProgress | null;
   library: LibraryStatus | null | undefined;
   failures: Partial<Record<Operation, boolean>>;
@@ -26,7 +27,10 @@ export function Notices({ library, failures, startAtLogin, error, copyError, cop
 }) {
   const scroll = useRef<HTMLDivElement>(null);
   useScrollEdges(scroll);
-  return (
+  return <>
+    <p className="visually-hidden" role="status" aria-label={pickerText.viewChanges} aria-live="polite" aria-atomic="true">
+      {densityAnnouncement === undefined ? "" : pickerText.density(densityNames[densityAnnouncement])}
+    </p>
     <div ref={scroll} className="notices scroll-area">
       {updateProgress && (updateProgress.phase === "failed" ? <p role="alert">{updateText.failed}</p> :
         <Progress label={updateText[updateProgress.phase]} value={updateProgress.phase === "downloading" && updateProgress.total
@@ -63,5 +67,5 @@ export function Notices({ library, failures, startAtLogin, error, copyError, cop
         </div>
       )}
     </div>
-  );
+  </>;
 }

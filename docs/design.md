@@ -639,6 +639,9 @@ anything over 280 ms, anything that loops except a busy indicator.
 
 Every action has a key, discoverable on screen; focus, contrast and screen
 reader names follow **Selection and focus**, **Tokens** and **List and row**.
+User changes to Rows announce the applied view once in a persistent polite
+region; loads and save acknowledgements stay silent, and hiding retires the
+feedback.
 "Copied" is announced politely. From 0.3 every release passes the whole
 citation (search, choose, page, paste, back in the document) with VoiceOver
 and NVDA and with Chinese, Japanese and Korean input methods; Orca joins for

@@ -88,7 +88,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       void subscription?.then((stop) => stop?.()).catch(() => console.error("Update event cleanup failed."));
     };
   }, [api, setFailures]);
-  const preferences = usePickerPreferences(api, { styles: true, report, perform });
+  const preferences = usePickerPreferences(api, { styles: true, report, perform, presentation: state.visibility });
   const { density, largerText, searchMark, showPastePreview, togglePastePreview, changeDensity, toggleLargerText, toggleSearchMark, quitAfterSaving: quitPreferences } = preferences;
   const deliveryTarget = useDeliveryTarget(api);
   const destination = useDestination(deliveryTarget.api, { fallback: preferences.format, fallbackReady: preferences.available, chooseDefault: preferences.chooseFormat, report });
@@ -576,7 +576,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
         }}
       />
       <div className="picker-content">
-      <Notices updateProgress={updateProgress} library={library} failures={failures} startAtLogin={startAtLogin}
+      <Notices densityAnnouncement={preferences.densityAnnouncement} updateProgress={updateProgress} library={library} failures={failures} startAtLogin={startAtLogin}
         error={error} copyError={copyError} copied={copied} missing={list?.missing}
         showCopiedText={displayedOutput == null || typeof displayedOutput === "string" || displayedOutput.text !== copied?.text}
         onDismissCopied={() => send({ type: "dismiss" })} />

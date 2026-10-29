@@ -50,6 +50,8 @@ node scripts/pr-lint.mjs --title "fix: explain the change"
 
 2026-10-29: Settle synthetic native windows before launching Ibis; accessibility focus does not prove keyboard ownership.
 
+2026-10-29: Unchanged release notes can leave Release Please on old main; merge final main and check every workspace lock version before release.
+
 ## Brief for an implementing agent
 
 ```text
