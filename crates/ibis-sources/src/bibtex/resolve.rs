@@ -943,6 +943,112 @@ mod tests {
     }
 
     #[test]
+    fn canonical_fields_records_fingerprints_and_budget_cuts_stay_identical() {
+        use ibis_core::contract::{Fingerprint, LibraryId, LibraryObject, Snapshot};
+        use serde_json::json;
+        use std::collections::BTreeMap;
+
+        // Golden transcripts include exact canonical bytes, diagnostics, remaining
+        // work credits and the final records/fingerprints published to consumers.
+        // Pin them before changing allocation ownership; hashes keep the many
+        // partial-budget outcomes small without keeping a second resolver.
+        let cases = [
+            (
+                "plain",
+                "@article{plain,title={Synthetic Signals},author={Avery Researcher and Ann Morgan},year=2024,\
+                 journal={Invented Letters},pages={1--20},doi={10.1234/synthetic}}",
+                "b8be92d43a8d538588daa3c9980d7d864ae15c7414c6c4ce77c9373833b982cc",
+            ),
+            (
+                "escaped",
+                concat!(
+                    r"@book{escaped,title={Garc{\'\i}a \{literal\} \textbackslash{} ",
+                    "\u{E000}\u{E001}\u{E002}\u{E003}",
+                    r"},note={\i nt \item \j and \\{group\\}}}",
+                ),
+                "f1d5987d1850b8b056cf93e986b6040d4e0d7aeed6e2aeee365fcea9cc985011",
+            ),
+            (
+                "unicode-and-verbatim-url",
+                r"@book{unicode,title={২০২০ পর্যবেক্ষণ},year={۲۰۲۴},month=mar,day={৫},
+                  url={https://example.invalid/\textbackslash/a\{kept\}},urldate={２０２５-０２-０３}}",
+                "b072b65627381cb78ff0bc5fa3017ed76bd72f2b15283389f388dde25087af17",
+            ),
+            (
+                "epochs-and-shared-inheritance",
+                "@string{label=\"Early\"}\n@proceedings{parent,title=label,year=2024}\n\
+                 @xdata{shared,publisher={Invented Press},note={Shared}}\n\
+                 @string{label=\"Late\"}\n\
+                 @inproceedings{first,title=label,month=mar,xdata={shared},crossref={parent}}\n\
+                 @inproceedings{second,title={Other},xdata={shared},crossref={parent}}",
+                "5f3eddd89f3cb8202edec217f0f5ad62c6700d111448f8787170bae22bb753ff",
+            ),
+            (
+                "malformed-and-refused-fields",
+                "@proceedings(parent,title=\"x}, date = {1999-01-01}, author = {Injected Person}\",year=2024)\n\
+                 @inproceedings{safe,title={First},title={Safe},crossref={parent},note=undefined}\n\
+                 @book{broken,title={Unclosed\n@book{last,title={Still Visible}}",
+                "7bfbfce8c7ad8464116da90674c220707281fc0a672009b471115194137fd317",
+            ),
+        ];
+        let mut mismatches = Vec::new();
+        for (name, text, expected) in cases {
+            let mut macros = Vec::new();
+            let mut entries = Vec::new();
+            for block in split_blocks(text).0 {
+                if block.kind == "string" {
+                    macros.extend(parse_string(&block));
+                } else if block.complete
+                    && let Ok(mut entry) = parse_entry(&block)
+                {
+                    entry.macro_epoch = macros.len();
+                    entries.push(entry);
+                }
+            }
+            let mut transcript = Vec::new();
+            for credits in (0..=65_536).step_by(257).chain([usize::MAX]) {
+                let budget = Budget::new(credits);
+                let resolver = Resolver::new(macros.clone(), &entries, &budget);
+                let resolved: Vec<_> = entries
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, entry)| entry.kind != "xdata")
+                    .map(|(i, _)| {
+                        let result = resolver.resolve(i);
+                        json!({
+                            "source": result.source,
+                            "fields": result.fields.into_iter().collect::<BTreeMap<_, _>>(),
+                            "problems": result.problems,
+                            "remaining": budget.0.get(),
+                        })
+                    })
+                    .collect();
+                let (loaded, limited) = super::super::load_with_budget(
+                    &LibraryId::file(b"synthetic-resolver-regression.bib"),
+                    text,
+                    Budget::new(credits),
+                    None,
+                );
+                let records = serde_json::to_value(&loaded.records).unwrap();
+                let snapshot = Snapshot::new(loaded.records.into_iter().map(LibraryObject::Record).collect()).unwrap();
+                transcript.push(json!({
+                    "credits": credits,
+                    "resolved": resolved,
+                    "records": records,
+                    "fingerprints": snapshot.fingerprints(),
+                    "warnings": loaded.warnings,
+                    "limited": limited,
+                }));
+            }
+            let actual = Fingerprint::of_bytes(&serde_json::to_vec(&transcript).unwrap());
+            if actual.as_str() != expected {
+                mismatches.push(format!("{name}: {}", actual.as_str()));
+            }
+        }
+        assert!(mismatches.is_empty(), "{}", mismatches.join("\n"));
+    }
+
+    #[test]
     fn shared_parent_dag_fits_one_load_budget() {
         let mut text = String::from("@xdata{p0,publisher={Press}}\n");
         for i in 1..10 {
