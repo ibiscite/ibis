@@ -10,7 +10,7 @@ const deferred = <T,>() => {
   const promise = new Promise<T>((done) => { resolve = done; });
   return { promise, resolve };
 };
-const context = { styles: true, report: vi.fn(), perform: async (_operation: unknown, action: () => Promise<unknown>) => { try { await action(); } catch {} } };
+const context = { presentation: 0, styles: true, report: vi.fn(), perform: async (_operation: unknown, action: () => Promise<unknown>) => { try { await action(); } catch {} } };
 
 test("an older Settings notification read cannot restore the wrong global output", async () => {
   const first = deferred<PickerPreferences>();

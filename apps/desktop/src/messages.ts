@@ -230,6 +230,7 @@ export const pickerText = {
   checkAutomatically: "Check for updates automatically",
   density: (name: string) => `Rows: ${name}`,
   densityTitle: "Show less or more of each reference",
+  viewChanges: "View changes",
   largerText: "Larger text",
   searchMark: "Ibis mark in search",
   zoteroLibraries: "Zotero libraries",
