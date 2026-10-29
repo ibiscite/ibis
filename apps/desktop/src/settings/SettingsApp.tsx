@@ -253,7 +253,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
                     </Row>
                   )}
                   {preferences.paste && permission?.needed && (!permission.granted || guided) && (
-                    <PasteGuide name={name} permission={permission} onOpen={() => { setGuided(true); void api.openPastePermission(); }} />
+                    <PasteGuide name={name} permission={permission} onOpen={() => { setGuided(true); void api.openPastePermission(); }} onDrag={api.dragPasteApp} />
                   )}
                 </Group>
                 )}

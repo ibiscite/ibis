@@ -10,6 +10,12 @@
 
 use serde::Serialize;
 
+// AppKit's drag-source callbacks and image-contents setter require a scoped
+// Objective-C boundary; all other permission code keeps denying unsafe (0029).
+#[cfg(target_os = "macos")]
+#[allow(unsafe_code)]
+mod drag;
+
 /// Whether Ibis may paste, and where the person turns that on.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
 pub(crate) struct PastePermission {
@@ -52,6 +58,21 @@ pub(crate) fn open_paste_permission(app: tauri::AppHandle) {
     }
     #[cfg(not(target_os = "macos"))]
     let _ = app;
+}
+
+/// Drag only the running app bundle into the permission list.
+#[tauri::command]
+#[specta::specta]
+pub(crate) fn drag_paste_app(window: tauri::WebviewWindow) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        drag::start(&window).map_err(str::to_owned)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = window;
+        Err("App dragging is available only on macOS.".to_owned())
+    }
 }
 
 #[cfg(target_os = "macos")]

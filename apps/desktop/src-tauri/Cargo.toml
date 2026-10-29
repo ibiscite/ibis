@@ -43,14 +43,14 @@ x11rb = { version = "0.14.0", default-features = false, features = ["xkb"] }
 [target.'cfg(target_os = "macos")'.dependencies]
 tauri-nspanel = "=2.1.1"
 # Safe AppKit bindings for workspace, appearance, events and the clipboard.
-objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSWorkspace", "NSRunningApplication", "libc", "NSAccessibility", "NSColor", "NSColorSpace", "NSEvent", "NSPasteboard", "objc2-core-graphics"] }
+objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSWorkspace", "NSRunningApplication", "libc", "NSAccessibility", "NSColor", "NSColorSpace", "NSEvent", "NSPasteboard", "NSApplication", "NSView", "NSWindow", "NSDragging", "NSDraggingItem", "NSDraggingSession", "NSImage", "objc2-core-graphics"] }
 # Already locked through Tauri. Reads what a key types on the active layout, so
 # a shortcut letter follows the layout (#196), and posts ⌘V to the app the
 # picker was opened from (#27).
 objc2-core-graphics = { version = "0.3.2", default-features = false, features = ["std", "libc", "CGEvent", "CGEventSource", "CGEventTypes", "CGRemoteOperation"] }
 # Already locked through Tauri. Reads whether macOS opened Ibis as a login
 # item (#525), so the picker stays hidden then.
-objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSAppleEventManager", "NSAppleEventDescriptor", "NSData", "NSString", "NSThread", "objc2-core-services"] }
+objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSAppleEventManager", "NSAppleEventDescriptor", "NSData", "NSString", "NSThread", "NSArray", "NSBundle", "NSURL", "objc2-core-services"] }
 # Already locked through auto-launch: reads a login item waiting for the
 # person's approval, which auto-launch reports only as "off" (#530 review).
 smappservice-rs = "0.1.3"
@@ -62,7 +62,8 @@ tempfile = "3.27.0"
 tauri = { version = "2.12", features = ["test"] }
 
 # `forbid` cannot be narrowed by a module allowance. Match the workspace
-# policy, with unsafe allowed only in paste/macos/secure_input.rs (ADR 0029).
+# policy, with unsafe allowed only in paste/macos/secure_input.rs and
+# paste/permission/drag.rs (ADR 0029).
 [lints.rust]
 unsafe_code = "deny"
 

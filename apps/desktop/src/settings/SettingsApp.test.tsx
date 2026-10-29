@@ -52,6 +52,7 @@ function fakeApi(permission: Partial<PastePermission> = {}, preferences: Partial
     checkForUpdates: async () => undefined as never,
     pastePermission: async () => { state.reads += 1; return state.permission; },
     openPastePermission: async () => { state.opened += 1; return undefined as never; },
+    dragPasteApp: vi.fn(async () => undefined),
     finishPasteGuide: async () => { state.finished += 1; return true; },
     shortcutStatus: async () => state.shortcut,
     setShortcut: async (shortcut) => {
@@ -247,6 +248,23 @@ test("the paste guide names the list, opens it, notices the grant on its own and
   const reads = state.reads;
   await act(async () => { await vi.advanceTimersByTimeAsync(RECHECK_MS * 5); });
   expect(state.reads).toBeLessThanOrEqual(reads + 1);
+});
+
+test("a drag fallback notices a read-back grant on return without repeating automatic listing", async () => {
+  const { api, state } = fakeApi();
+  render(<SettingsApp api={api} initialPage="general" />);
+  const open = await screen.findByRole("button", { name: "Open System Settings" });
+  fireEvent.click(open);
+  fireEvent.dragStart(screen.getByRole("button", { name: "Drag Ibis Nightly to Device Control and Data Access" }));
+  await act(async () => undefined);
+  expect(api.dragPasteApp).toHaveBeenCalledExactlyOnceWith();
+  expect(state.opened).toBe(1);
+  expect(screen.queryByText("Ibis can paste now.")).toBeNull();
+  state.permission = { ...state.permission, granted: true };
+  fireEvent.focus(window);
+  expect(await screen.findByText("Ibis can paste now.")).toBeTruthy();
+  expect(screen.queryByRole("button", { name: /Drag Ibis/ })).toBeNull();
+  expect(state.finished).toBe(0);
 });
 
 test("the permission detour finishes only on return after a read-back grant", async () => {
