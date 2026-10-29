@@ -1,12 +1,9 @@
 //! The picker delegates acquisition, search, rendering and copy validation to the engine.
-use super::search::{Locator, SearchQuery, SearchReply, SearchResult};
+use super::search::{SearchQuery, SearchReply, SearchResult};
 use super::{CommandError, LibraryStatus};
 use ibis_core::{
-    cite::KeyFormat,
-    contract::{
-        CitationError, CitationForm, CitationItem, CitationRequest, CitationResult, Fingerprint, ItemOutcome, ItemRef,
-        KeySyntax, LibraryId, LibraryObject, LocatorTerm, Notice, OutputSpec,
-    },
+    cite::{KeyFormat, Locator},
+    contract::{CitationError, CitationRequest, CitationResult, ItemOutcome, LibraryObject, Notice},
     settings::{CitationStyle, ZoteroLibraries, ZoteroLibrary},
 };
 use ibis_engine::{
@@ -14,9 +11,7 @@ use ibis_engine::{
     request::{SearchRequest, ZoteroLibrary as EngineZoteroLibrary},
 };
 use serde::{Deserialize, Serialize};
-#[cfg(test)]
-use serde_json::Value;
-use serde_json::json;
+use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{
@@ -35,14 +30,9 @@ pub(crate) struct FileLibrary {
 #[derive(Deserialize, specta::Type)]
 pub(crate) struct FileSelection {
     #[specta(type = specta_typescript::Unknown)]
-    pub(crate) id: ItemRef,
-    #[specta(type = String)]
-    pub(crate) cite: Fingerprint,
-    /// A canonical locator captured from search; its value is never parsed again.
+    pub(crate) id: Value,
+    pub(crate) cite: String,
     pub(crate) locator: Option<Locator>,
-    /// Raw Page editor text, mutually exclusive with a captured locator.
-    #[specta(optional)]
-    pub(crate) page_input: Option<String>,
     #[specta(optional)]
     pub(crate) form: Option<ReferenceForm>,
 }
@@ -231,11 +221,12 @@ impl FileLibrary {
         scope: Option<Vec<String>>,
         cancel: &Cancellation,
     ) -> Result<SearchReply, String> {
+        let mut interpretation = None;
         if query.text.trim().is_empty() {
             return Ok(SearchReply {
                 revision: self.revision(),
                 results: vec![],
-                interpretation: None,
+                interpretation,
                 list: None,
             });
         }
@@ -260,19 +251,32 @@ impl FileLibrary {
                 })
                 .collect::<Vec<_>>()
         });
-        let libraries: Option<Vec<LibraryId>> = scope
-            .map(|ids| ids.iter().map(|id| LibraryId::new(id)).collect::<Result<_, _>>())
+        let libraries: Option<Vec<ibis_core::contract::LibraryId>> = scope
+            .map(|ids| serde_json::from_value(json!(ids)))
             .transpose()
             .map_err(|_| "Invalid library scope.".to_string())?;
-        let outcome = self.engine.search(
-            &SearchRequest {
-                interpret_locator: query.interpret_locators,
-                query: query.text.clone(),
-                limit: limit.min(200),
-                libraries,
-            },
-            cancel,
-        );
+        let run = |text: &str| {
+            self.engine.search(
+                &SearchRequest {
+                    interpret_locator: false,
+                    query: text.to_owned(),
+                    limit: limit.min(200),
+                    libraries: libraries.clone(),
+                },
+                cancel,
+            )
+        };
+        // A numeric key in a pasted list must not become a page locator.
+        let outcome: Result<_, ibis_core::contract::EngineError> = (|| {
+            let mut reply = run(&query.text)?;
+            if reply.list.is_none() && query.interpret_locators {
+                interpretation = ibis_core::locator_query::split(&query.text);
+                if let Some(interpreted) = &interpretation {
+                    reply = run(&interpreted.search)?;
+                }
+            }
+            Ok(reply)
+        })();
         let reply = match outcome {
             Ok(reply) => reply,
             // A newer search replaced this one; the interface ignores the empty reply.
@@ -311,7 +315,7 @@ impl FileLibrary {
         Ok(SearchReply {
             revision,
             results,
-            interpretation: reply.locator.map(Into::into),
+            interpretation,
             list: reply
                 .list
                 .map(|list| super::search::PastedList { missing: list.missing }),
@@ -366,83 +370,50 @@ impl FileLibrary {
             format
         };
         let output = if let Some(style) = style {
-            OutputSpec::Csl {
-                style: match style {
-                    CitationStyle::Apa => "apa",
-                    CitationStyle::ChicagoAuthorDate => "chicago-author-date",
-                    CitationStyle::HarvardCiteThemRight => "harvard-cite-them-right",
-                    CitationStyle::Ieee => "ieee",
-                    CitationStyle::ModernLanguageAssociation => "modern-language-association",
-                }
-                .into(),
-            }
+            json!({"kind":"csl","style":style})
         } else {
             let (syntax, command) = match format {
-                KeyFormat::Pandoc => (KeySyntax::Pandoc, None),
-                KeyFormat::Autocite => (KeySyntax::Biblatex, Some("autocite")),
-                KeyFormat::Parencite => (KeySyntax::Biblatex, Some("parencite")),
-                KeyFormat::Textcite => (KeySyntax::Biblatex, Some("textcite")),
-                KeyFormat::Cite => (KeySyntax::Latex, Some("cite")),
-                KeyFormat::Typst => (KeySyntax::Typst, None),
-                KeyFormat::Keys => (KeySyntax::Keys, None),
+                KeyFormat::Pandoc => ("pandoc", None),
+                KeyFormat::Autocite => ("biblatex", Some("autocite")),
+                KeyFormat::Parencite => ("biblatex", Some("parencite")),
+                KeyFormat::Textcite => ("biblatex", Some("textcite")),
+                KeyFormat::Cite => ("latex", Some("cite")),
+                KeyFormat::Typst => ("typst", None),
+                KeyFormat::Keys => ("keys", None),
             };
-            OutputSpec::Key {
-                syntax,
-                command: command.map(str::to_owned),
-            }
+            json!({"kind":"key","syntax":syntax,"command":command})
         };
         let items: Vec<_> = items
             .into_iter()
             .enumerate()
             .map(|(index, item)| {
-                let locator = match (item.locator, item.page_input) {
-                    (Some(_), Some(_)) => {
-                        return Err(CommandError::from(format!(
-                            "Reference {}: Page editor input and a captured locator cannot be combined.",
-                            index + 1
-                        )));
-                    }
-                    (locator, None) => locator.map(Into::into),
-                    (None, Some(input)) => Some(ibis_core::contract::Locator {
-                        term: LocatorTerm::Page,
-                        value: ibis_core::locator::page_value(&input).map_err(|error| {
-                            let hint = match error {
-                                ibis_core::locator::PageValueError::MissingValue => {
-                                    "Page needs a page or range. Enter one after the label, or clear Page."
-                                }
-                                ibis_core::locator::PageValueError::InvalidValue => {
-                                    "Page needs a valid page or range after its label. Correct it, or clear Page."
-                                }
-                            };
-                            CommandError::from(format!("Reference {}: {hint}", index + 1))
-                        })?,
-                    }),
-                };
-                Ok(CitationItem {
-                    item: item.id,
-                    expected_cite: Some(item.cite),
-                    form: (item.form == Some(ReferenceForm::Narrative)).then_some(CitationForm::Narrative),
-                    suppress_author: item.form == Some(ReferenceForm::AuthorOmitted),
-                    locator,
-                    prefix: vec![],
-                    suffix: vec![],
-                    annotation: None,
-                    expected_annotation_cite: None,
-                })
+                let locator = item
+                    .locator
+                    .map(|mut locator| -> Result<Value, CommandError> {
+                        if locator.label == ibis_core::cite::LocatorLabel::Page {
+                            locator.value = ibis_core::locator::page_value(&locator.value).map_err(|error| {
+                                let hint = match error {
+                                    ibis_core::locator::PageValueError::MissingValue => {
+                                        "Page needs a page or range. Enter one after the label, or clear Page."
+                                    }
+                                    ibis_core::locator::PageValueError::InvalidValue => {
+                                        "Page needs a valid page or range after its label. Correct it, or clear Page."
+                                    }
+                                };
+                                CommandError::from(format!("Reference {}: {hint}", index + 1))
+                            })?;
+                        }
+                        Ok(json!({"term":locator.label,"value":locator.value}))
+                    })
+                    .transpose()?;
+                Ok(json!({"item":item.id,"expected_cite":item.cite,
+                "form":(item.form == Some(ReferenceForm::Narrative)).then_some("narrative"),
+                "suppress_author":item.form == Some(ReferenceForm::AuthorOmitted),
+                "locator":locator}))
             })
             .collect::<Result<_, CommandError>>()?;
-        let request = CitationRequest {
-            items,
-            output,
-            form: if style == Some(CitationStyle::Ieee) {
-                CitationForm::BibliographyOnly
-            } else {
-                CitationForm::Normal
-            },
-            keep_order: style.is_none(),
-            input_language: None,
-            output_locale: None,
-        };
+        let request: CitationRequest = serde_json::from_value(json!({"items":items,"output":output,"form":if style == Some(CitationStyle::Ieee) { "bibliography-only" } else { "normal" },"keep_order":style.is_none()}))
+            .map_err(|_| CommandError::from("The selected references could not be read. Search again."))?;
         let citation = self
             .engine
             .prepare_citation(&request, &cancel)

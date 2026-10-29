@@ -52,22 +52,7 @@ fn picked(key: &str, options: &Value) -> Result<Value> {
 fn per_key_flags_match_the_picker_request_in_every_output() -> Result {
     let plain = |text: &str| json!([{"text":text,"italic":false,"bold":false,"script":"normal"}]);
     // Each key, the flags typed after it, and the options the picker attaches to that item.
-    let cases: [&[(&str, &[&str], Value)]; 8] = [
-        &[(
-            "taylor2026",
-            &["--locator", "pp. ١٢–١٥"],
-            json!({"locator":{"term":"page","value":"١٢–١٥"}}),
-        )],
-        &[(
-            "taylor2026",
-            &["--locator", "appendix B"],
-            json!({"locator":{"term":"appendix","value":"B"}}),
-        )],
-        &[(
-            "taylor2026",
-            &["--locator", "timestamp 1:02–1:05"],
-            json!({"locator":{"term":"timestamp","value":"1:02–1:05"}}),
-        )],
+    let cases: [&[(&str, &[&str], Value)]; 5] = [
         &[(
             "taylor2026",
             &["--locator", "p. 12"],

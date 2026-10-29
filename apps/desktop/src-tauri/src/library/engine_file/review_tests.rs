@@ -43,14 +43,10 @@ fn a_superseded_preview_stops_before_reading_its_page_and_form() -> Result<(), B
         .preview(
             older,
             vec![FileSelection {
-                id: ItemRef {
-                    library: LibraryId::file(b"synthetic"),
-                    key: "work".into(),
-                },
-                cite: Fingerprint::of_bytes(b"synthetic"),
+                id: Value::Null,
+                cite: String::new(),
                 form: Some(ReferenceForm::Narrative),
-                locator: None,
-                page_input: Some("pp.".into()),
+                locator: Some(serde_json::from_value(json!({"label":"page","value":"pp."}))?),
             }],
             KeyFormat::Pandoc,
             Some(CitationStyle::Apa),

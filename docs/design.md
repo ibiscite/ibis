@@ -404,9 +404,6 @@ it. On copy the shelf shows a closing beak and "Copied" at the line end.
   label must have a valid value: `pp.` is refused with a request to enter a
   page or range, or clear Page. It never becomes literal page text. Page values
   keep the shared parser's length limit. The field keeps the typed text.
-  Only Page edits are parsed as raw input. A locator captured from search is
-  already canonical: quoted text such as `S.12` or `pages of notes` keeps its
-  literal value through preview, form changes and copying.
   Controls and actionable formatting refusals
   remain visible with the paste preview hidden. Engine losses name the reference
   and field beside the preview; an unsupported form explains the refusal there
@@ -495,8 +492,7 @@ its locator; later searches keep prepared references unchanged. **Apply locator*
 updates only the highlighted, already added reference. A shared locator token
 names its type and value and offers an accessible remove action that keeps the
 reference. Both key and formatted previews/copies use these per-reference values.
-Interpretation uses the engine's shared parser and all 29 CSL locator types,
-including Unicode page numbers; the typed digits stay as written.
+The nine existing types are supported; timestamp interpretation remains planned.
 
 **Focus order.** Tab: search box (Tab picks the first tag or author suggestion
 while they are open), header pop-ups, the pin, the browsing tabs while visible

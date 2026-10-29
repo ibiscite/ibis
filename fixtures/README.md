@@ -20,7 +20,8 @@ Rules:
 
 `locators.json` is the trailing-locator fixture set for `ibis_core::locator`,
 which reads all 29 CSL locator types, non-Latin text and literal ambiguous or
-time inputs. The CLI and picker both use this canonical interpretation.
+time inputs. `locator-queries.json` serves the old nine-label parser until
+#1260 removes it.
 
 `bibtex/oversized-range-year.bib` preserves the minimized synthetic fuzz input
 from #111. The robustness tests also exercise invalid zero months in uncertain
