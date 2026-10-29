@@ -114,10 +114,10 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       setLibrary(status);
       setLibraryVersion((version) => version + 1);
       report("status", false);
-    }).catch(() => { if (statusReads.current === request) report("status"); });
+    }).catch(() => { if (statusReads.current === request) failStatus(); });
   };
   const { queryKey, results, current, interpretation, list, announcement, resultsQuery, error, pending: searchPending } =
-    useLibrarySearch({ search, query, interpretLocators, library, libraryVersion, setActive, refreshSnapshot });
+    useLibrarySearch({ search, query, interpretLocators, library, statusFailed: failures.status ?? false, libraryVersion, setActive, refreshSnapshot });
   // biome-ignore lint/correctness/useExhaustiveDependencies: new results are the trigger: the pointer must move again before it counts.
   useEffect(resetPointer, [results, resetPointer]);
   // The selection, otherwise the current pasted list or highlighted result.
@@ -165,16 +165,20 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   }
   const copyRequest = useRef(0);
   const lastSuccessfulCopy = useRef(0);
-  // Query and chooser scope do not change a citation already being delivered.
-  const copiesInFlight = useRef(new Set<{ choice: string; format: Choice; visibility: number; opening: number }>());
+  type CopyOwner = { context: typeof copyContext.current; output: ReturnType<typeof destination.copyToken>; visibility: number; shownAt: number };
+  type CopyFlight = { choice: string; format: Choice; opening: number; owner: CopyOwner };
+  const copiesInFlight = useRef(new Set<CopyFlight>());
+  // Only the most recent ready activation owns completion. A fresh Enter can
+  // renew an outstanding citation's owner without writing or delivering twice.
+  const activeCopy = useRef<CopyFlight | null>(null);
   const copyVisibility = useRef(0);
   const pickerShows = useRef(0);
-  const copyingCurrent = (choice = chosenKey) => {
+  const findCopy = () => {
     const opening = destination.copyToken().opening;
     for (const flight of copiesInFlight.current) {
-      if (flight.choice === choice && flight.format === format && flight.visibility === copyVisibility.current && flight.opening === opening) return true;
+      if (flight.choice === chosenKey && flight.format === format && flight.owner.visibility === copyVisibility.current && flight.opening === opening) return flight;
     }
-    return false;
+    return null;
   };
   // Setup failures belong to the setup screen; they go when a library is chosen.
   const setupDone = library !== undefined && library?.state !== "none";
@@ -184,8 +188,13 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   // A copy (Enter or a click) still waiting for its preview must never copy once the user has left.
   const [pendingCopy, setPendingCopy] = useState<{ choice: string | null; selection: typeof selected; queryKey: string; format: Choice | null; output: ReturnType<typeof destination.copyToken> } | null>(null);
   const requestCopy = (choice: string | null) => {
-    if (!copyingCurrent(choice ?? chosenKey) && hiddenAt.current === null) setPendingCopy({ choice, selection: selected, queryKey,
+    if (hiddenAt.current === null) setPendingCopy({ choice, selection: selected, queryKey,
       format: destination.ready && preferences.ready ? format : null, output: destination.copyToken() });
+  };
+  const failStatus = () => {
+    // Cancel at the failure event, even if recovery is batched into the same render.
+    setPendingCopy(null);
+    report("status");
   };
   const hide = () => {
     copyVisibility.current += 1;
@@ -288,7 +297,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     }).catch(() => subscriptionFailure("libraryEvents"));
     libraryStatus()
       .then((status) => { if (acceptInitialStatus) setLibrary(status); })
-      .catch(() => { if (acceptInitialStatus) { setLibrary(null); report("status"); } });
+      .catch(() => { if (acceptInitialStatus) { setLibrary(null); failStatus(); } });
     readLoginItem();
     destination.read();
     preferences.loadPreferences(() => mounted);
@@ -406,30 +415,13 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const contextRequest = useRef(0);
 
   // Copy the chosen references in the chosen format.
-  const executeCopy = async () => {
-    if (chosen.length === 0) return;
+  const executeCopy = async (flight: CopyFlight, ticket: string, hash: string) => {
     const request = ++copyRequest.current;
-    const context = copyContext.current;
-    const outputToken = destination.copyToken();
-    const visibility = copyVisibility.current;
-    const shownAt = pickerShows.current;
-    const ownsCompletion = () => request === copyRequest.current && context === copyContext.current && visibility === copyVisibility.current && destination.isCurrentCopy(outputToken);
-    setCopied(null);
-    setCopyError(null);
-    // The shelf already shows the actionable refusal, even with its text hidden.
-    if (shown === "failed") return;
-    if (shown === "stale" || !chosenRevision) {
-      setCopyError(pickerText.snapshotChanged);
-      refreshSnapshot();
-      return;
-    }
+    const ownsInteraction = () => activeCopy.current === flight && flight.owner.context === copyContext.current && flight.owner.shownAt === pickerShows.current;
+    const ownsCompletion = () => ownsInteraction() && flight.owner.visibility === copyVisibility.current && destination.isCurrentCopy(flight.owner.output);
     let outcome: Copied;
     try {
-      if (!shown || typeof shown === "string" || !shown.fileTicket || !shown.fileHash) {
-        setCopyError(shown === null ? pickerText.previewNotReady : pickerText.previewError);
-        return;
-      }
-      outcome = await copyFileCitation(shown.fileTicket, shown.fileHash);
+      outcome = await copyFileCitation(ticket, hash);
       outcome = { ...outcome, warnings: [...outcome.warnings, ...closestMatchWarnings(chosen)] };
     } catch (error) {
       const stale = nativeApi.isSnapshotChanged(error);
@@ -445,10 +437,11 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       setLastOutcome(copiedNoticeText.title);
     }
     const ownsFeedback = ownsCompletion();
-    if (!ownsFeedback) { destination.consumeOnce(outputToken); return; }
+    if (!ownsFeedback) { destination.consumeOnce(flight.owner.output); return; }
     setCopied(outcome);
     const complete = () => {
-      const nextFormat = destination.consumeOnce(outputToken);
+      const context = flight.owner.context;
+      const nextFormat = destination.consumeOnce(flight.owner.output);
       const clearedSelection = new Map<string, CitationReference>();
       copyContext.current = { ...context, format: nextFormat ?? context.format, selected: clearedSelection, activeChoice: latestDefaultChoice.current };
       setSelected(clearedSelection);
@@ -463,27 +456,46 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       // A return during delivery also keeps it and cancels this completion.
       permissionDetour.current = true;
       await perform("hide", async () => {
-        const current = () => request === copyRequest.current && shownAt === pickerShows.current && context === copyContext.current;
         let permissionRefused = false;
         try {
           await hidePicker();
-          if (!current()) return;
+          if (!ownsInteraction()) return;
           // The notice is extra; a failure to show it never undoes the copy.
           const delivered = await showCopiedNotice?.(outcome.text, outcome.delivery ?? null).catch(() => console.error(copiedNoticeText.noticeFailed));
           if (delivered && request === lastSuccessfulCopy.current) setLastOutcome(noticeTitle({ delivered, text: "" }));
           permissionRefused = !!delivered && delivered.outcome === "copied" && delivered.reason === "no-permission";
         } finally {
-          if (current() && !permissionRefused) complete();
+          if (ownsInteraction() && !permissionRefused) complete();
         }
       });
     } else complete();
   };
   const copy = async () => {
-    if (copyingCurrent()) return;
-    const flight = { choice: chosenKey, format, visibility: copyVisibility.current, opening: destination.copyToken().opening };
+    if (chosen.length === 0 || shown === "failed") return;
+    if (shown === "stale" || !chosenRevision) {
+      setCopyError(pickerText.snapshotChanged);
+      refreshSnapshot();
+      return;
+    }
+    if (!shown || typeof shown === "string" || !shown.fileTicket || !shown.fileHash) {
+      setCopyError(shown === null ? pickerText.previewNotReady : pickerText.previewError);
+      return;
+    }
+    // Every ready activation follows this path, including joins. Validation
+    // above prevents a refused preview from renewing an old copy's authority.
+    const owner = { context: copyContext.current, output: destination.copyToken(), visibility: copyVisibility.current, shownAt: pickerShows.current };
+    const flight = findCopy() ?? { choice: chosenKey, format, opening: owner.output.opening, owner };
+    flight.owner = owner;
+    activeCopy.current = flight;
+    if (copiesInFlight.current.has(flight)) return;
+    setCopied(null);
+    setCopyError(null);
     copiesInFlight.current.add(flight);
-    try { await executeCopy(); }
-    finally { copiesInFlight.current.delete(flight); }
+    try { await executeCopy(flight, shown.fileTicket, shown.fileHash); }
+    finally {
+      copiesInFlight.current.delete(flight);
+      if (activeCopy.current === flight) activeCopy.current = null;
+    }
   };
   // Enter, Copy or a click on a row copies what is chosen then (the row, or the
   // citation being built), once its preview is ready; anything changing first cancels it.

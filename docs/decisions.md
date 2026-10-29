@@ -110,6 +110,10 @@ add/remove activation cancels it, even with no highlighted result. Outstanding
 copies are guarded by citation, output and picker opening independently of the
 search query. More follows the newest successful copy; a later failed or
 unfinished attempt cannot discard its delivery receipt (#1401 review).
+Fresh activations share one ready-citation owner: they either start a copy
+or join its outstanding operation, renewing completion ownership without
+another clipboard write or delivery. Status-read failures end reconciliation
+and cancel queued Enter; recovery requires fresh activation (#1401 round 2).
 
 When the shortcut opens the picker with short text selected in the target app,
 that text becomes the search and the paste replaces it (macOS and Windows, on

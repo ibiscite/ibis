@@ -5,12 +5,14 @@ import type { LibraryStatus, LocatorQuery, PastedList, SearchResult } from "../.
 import { pickerText } from "../../messages";
 import { choiceKey } from "./choice";
 
-export function useLibrarySearch({ search, query, interpretLocators, library, libraryVersion, setActive, refreshSnapshot }: {
+export function useLibrarySearch({ search, query, interpretLocators, library, statusFailed, libraryVersion, setActive, refreshSnapshot }: {
   search: typeof nativeApi.search;
   query: string;
   interpretLocators: boolean;
   /** Undefined while loading; null means the status request itself failed. */
   library: LibraryStatus | null | undefined;
+  /** A failed status read ends a reconciliation wait; a later update needs fresh Enter. */
+  statusFailed: boolean;
   /** Changes whenever a library opens, so the current query is searched again. */
   libraryVersion: number;
   setActive: (index: number) => void;
@@ -90,7 +92,7 @@ export function useLibrarySearch({ search, query, interpretLocators, library, li
   // A reply ahead of status is not actionable yet, even though its request
   // finished. Keep Enter waiting through the status read and refreshed search.
   const reconciling = !error && Boolean(library?.has_snapshot) && resultsQuery === queryKey && resultsRevision !== library?.revision;
-  const pending = library === undefined || library?.state === "loading" || settled?.queryKey !== queryKey
-    || settled.library !== library || settled.version !== libraryVersion || reconciling;
+  const pending = !statusFailed && (library === undefined || library?.state === "loading" || settled?.queryKey !== queryKey
+    || settled.library !== library || settled.version !== libraryVersion || reconciling);
   return { queryKey, results, current, interpretation, list: current === results ? list : null, announcement, resultsQuery, error, pending };
 }

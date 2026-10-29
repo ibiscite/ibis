@@ -783,6 +783,11 @@ that owns its area in ROADMAP.md.
    does not retain citation text there. A failed or unfinished later copy
    attempt does not discard a successful copy's delivery receipt; a newer
    successful copy does.
+   A fresh Enter for the same prepared citation joins its outstanding copy
+   with the current context and scope, so that copy can finish with one
+   delivery and receipt. Every activation goes through the same readiness
+   checks before starting or joining a copy. A failed reconciliation status
+   read cancels waiting Enter; a later library update never replays it.
 4. Open in under 100 ms with the last snapshot; keys typed before the window
    appears are kept.
 5. Forgiving search: accents and transliteration folded, any word order, one

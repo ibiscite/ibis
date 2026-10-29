@@ -10,8 +10,9 @@ const box = () => screen.getByLabelText("Search references");
 const enter = async (shiftKey = false) => { await act(async () => { fireEvent.keyDown(box(), { key: "Enter", shiftKey }); }); };
 const deferred = <T,>() => {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((finish) => { resolve = finish; });
-  return { promise, resolve };
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((finish, fail) => { resolve = finish; reject = fail; });
+  return { promise, resolve, reject };
 };
 
 test("queued Enter survives results arriving before their library revision", async () => {
@@ -31,6 +32,38 @@ test("queued Enter survives results arriving before their library revision", asy
   expect(copies).toEqual([]);
   await act(async () => { status.resolve({ state: "loaded", has_snapshot: true, revision: "2", references: 1 }); });
   expect(copies).toMatchObject([{ expectedRevision: "2", items: [{ id: { key: "a" } }] }]);
+});
+
+test.each(["initial", "reconciliation"].flatMap((read) => ["later turn", "same turn"].map((recovery) => ({ read, recovery }))))("a failed $read status read cancels Enter before recovery in a $recovery", async ({ read, recovery }) => {
+  const found = deferred<unknown>(), status = deferred<unknown>();
+  const fresh = { ...result("a", "Fresh reference"), revision: "2" };
+  let reads = 0, searches = 0;
+  const calls = backend({
+    library_status: () => ++reads === 1 && read === "reconciliation" ? { state: "loaded", has_snapshot: true, revision: "1", references: 1 } : status.promise,
+    search: () => ++searches === 1 && read === "reconciliation" ? found.promise : [fresh],
+  });
+  await act(async () => { render(<App />); });
+  await enter();
+  if (read === "reconciliation") await act(async () => { found.resolve([fresh]); });
+  const recover = () => emit("library:changed", { state: "loaded", has_snapshot: true, revision: "2", references: 1 });
+  await act(async () => {
+    status.reject(new Error("invented status failure"));
+    if (recovery === "same turn") {
+      // Settle the mocked IPC rejection before recovery, with both updates
+      // still in one React batch so the failure flag never renders on its own.
+      for (let turn = 0; turn < 12; turn += 1) await Promise.resolve();
+      await recover();
+    }
+  });
+  if (recovery === "later turn") {
+    expect(screen.getByText("Ibis could not check your library. Choose the file again.")).toBeTruthy();
+    await act(async () => { await recover(); });
+  }
+  expect(calls).not.toContain("copy_file_citation");
+  expect(calls).not.toContain("show_copied_notice");
+  await enter();
+  expect(calls.filter((call) => call === "copy_file_citation")).toHaveLength(1);
+  expect(calls.filter((call) => call === "show_copied_notice")).toHaveLength(1);
 });
 
 test("Shift+Enter with no highlighted result cancels the queued copy", async () => {
@@ -82,14 +115,37 @@ test.each(["copy", "hide", "delivery"])("changing only the search cannot repeat 
   await act(async () => { paused.resolve(); });
   expect(copiesWhilePending).toBe(1);
   expect(calls.filter((call) => call === "copy_file_citation")).toHaveLength(1);
+  expect(calls.filter((call) => call === "show_copied_notice")).toHaveLength(1);
 });
 
-test("changing only chooser scope cannot repeat the prepared citation while hiding", async () => {
-  const hidden = deferred<void>();
+test("a fresh activation joins even when the native copy response arrives in the same turn", async () => {
+  const copied = deferred<unknown>();
+  const calls = backend({ search: () => [result("a", "Prepared reference")], copy_file_citation: () => copied.promise });
+  await act(async () => { render(<App />); });
+  await enter(true);
+  await enter();
+  await act(async () => { fireEvent.change(box(), { target: { value: "another search" } }); });
+  await act(async () => {
+    fireEvent.keyDown(box(), { key: "Enter" });
+    copied.resolve({ text: "@a", warnings: [] });
+  });
+  expect(calls.filter((call) => call === "copy_file_citation")).toHaveLength(1);
+  expect(calls.filter((call) => call === "show_copied_notice")).toHaveLength(1);
+});
+
+test.each(["copy", "hide", "delivery"])("a fresh Enter after changing only chooser scope joins the pending %s and delivers once", async (stage) => {
+  const paused = deferred<void>();
+  let copies = 0;
   const calls = backend({
     search: () => [result("a", "Prepared reference")],
     picker_destination: () => ({ app: "Example Writer", app_id: "example.writer", automatic: null, remembered: null, unreadable: false, can_paste: true }),
-    hide_picker: () => hidden.promise,
+    copy_file_citation: async (args) => {
+      const { preview } = prepared(args);
+      if (++copies === 1 && stage === "copy") await paused.promise;
+      return { text: preview.text, warnings: [] };
+    },
+    hide_picker: async () => { if (stage === "hide") await paused.promise; },
+    show_copied_notice: async () => { if (stage === "delivery") await paused.promise; return { outcome: "pasted", app: "Example Writer" }; },
   });
   await act(async () => { render(<App />); });
   await enter();
@@ -97,9 +153,10 @@ test("changing only chooser scope cannot repeat the prepared citation while hidi
   await act(async () => { fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Just this once" })); });
   await act(async () => { await vi.advanceTimersByTimeAsync(300); });
   await enter();
-  const copiesWhileHiding = calls.filter((call) => call === "copy_file_citation").length;
-  await act(async () => { hidden.resolve(); });
-  expect(copiesWhileHiding).toBe(1);
+  const copiesWhilePending = calls.filter((call) => call === "copy_file_citation").length;
+  await act(async () => { paused.resolve(); });
+  expect(copiesWhilePending).toBe(1);
+  expect(calls.filter((call) => call === "show_copied_notice")).toHaveLength(1);
 });
 
 test.each(["failed", "pending", "successful"])("a %s newer attempt preserves ownership of the last successful delivery", async (newer) => {
