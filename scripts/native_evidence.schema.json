@@ -1,0 +1,312 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Ibis native scenario evidence v1",
+  "$defs": {
+    "hash": {"type": "string", "pattern": "^(?:[0-9a-f]{64})$"},
+    "action": {
+      "enum": [
+        "key-escape",
+        "key-return",
+        "key-tab",
+        "key-space",
+        "key-down",
+        "key-select-all",
+        "key-menu",
+        "key-shortcut",
+        "text-query-0",
+        "text-query-1",
+        "text-query-2",
+        "text-query-3",
+        "text-query-last",
+        "text-damaged",
+        "text-no-match",
+        "text-typst",
+        "text-probe",
+        "text-probe-alternate",
+        "click-more",
+        "click-reload",
+        "click-quit",
+        "click-format",
+        "clipboard-sentinel",
+        "focus-editor",
+        "fixture-four",
+        "fixture-missing",
+        "fixture-empty",
+        "fixture-small",
+        "fixture-damaged",
+        "fixture-large",
+        "settings-live-edit",
+        "settings-restore",
+        "stop",
+        "launch-small",
+        "launch-damaged",
+        "launch-first-run",
+        "launch-relaunch",
+        "launch-second-instance",
+        "launch-100000-warmup",
+        "launch-100000-1",
+        "launch-100000-2",
+        "launch-100000-3"
+      ]
+    },
+    "request": {"type": "string", "pattern": "^(?:(?:wait|check)-[0-9]{1,5})$"}
+  },
+  "type": "object",
+  "properties": {
+    "schema_version": {"const": 1},
+    "run_id": {"type": "string", "pattern": "^(?:[0-9a-f]{32})$"},
+    "scenario": {"enum": ["native-smoke", "first-run-preferences"]},
+    "build": {
+      "type": "object",
+      "properties": {
+        "revision": {"anyOf": [{"type": "string", "pattern": "^(?:[0-9a-f]{40})$"}, {"type": "null"}]},
+        "dirty_patch_sha256": {"anyOf": [{"$ref": "#/$defs/hash"}, {"type": "null"}]},
+        "artifact_sha256": {"anyOf": [{"$ref": "#/$defs/hash"}, {"type": "null"}]},
+        "app_version": {
+          "anyOf": [
+            {"type": "string", "pattern": "^(?:[0-9]+(?:[.:-][0-9]+)*(?:-0ubuntu[0-9.]+)?)$", "maxLength": 64},
+            {"type": "null"}
+          ]
+        },
+        "architecture": {"enum": [null, "x86_64", "aarch64", "arm64", "AMD64"]},
+        "profile": {"enum": [null, "debug", "release"]}
+      },
+      "required": ["revision", "dirty_patch_sha256", "artifact_sha256", "app_version", "architecture", "profile"],
+      "additionalProperties": false
+    },
+    "harness_sha256": {"$ref": "#/$defs/hash"},
+    "fixtures": {
+      "type": "object",
+      "propertyNames": {"enum": ["small", "four", "empty", "large", "damaged", "initial-settings", "initial-document"]},
+      "additionalProperties": {"$ref": "#/$defs/hash"},
+      "required": ["small", "initial-settings", "initial-document"]
+    },
+    "environment": {
+      "type": "object",
+      "properties": {
+        "os": {"enum": ["linux", "macos", "windows", "other"]},
+        "os_version": {
+          "anyOf": [
+            {"type": "string", "pattern": "^(?:[0-9]+(?:[.:-][0-9]+)*(?:-0ubuntu[0-9.]+)?)$", "maxLength": 64},
+            {"type": "null"}
+          ]
+        },
+        "webview_version": {
+          "anyOf": [
+            {"type": "string", "pattern": "^(?:[0-9]+(?:[.:-][0-9]+)*(?:-0ubuntu[0-9.]+)?)$", "maxLength": 64},
+            {"type": "null"}
+          ]
+        },
+        "locale": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^(?:(?:C|POSIX|[a-z]{2,3}(?:_[A-Z]{2})?)(?:\\.(?:UTF-8|utf8|ISO8859-1))?)$"
+            },
+            {"type": "null"}
+          ]
+        },
+        "display_pixels": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {"type": "integer", "minimum": 1, "maximum": 100000},
+              "maxItems": 2,
+              "minItems": 2
+            },
+            {"type": "null"}
+          ]
+        },
+        "display_mm": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {"type": "integer", "minimum": 0, "maximum": 100000},
+              "maxItems": 2,
+              "minItems": 2
+            },
+            {"type": "null"}
+          ]
+        },
+        "display_count": {"anyOf": [{"type": "integer", "minimum": 1, "maximum": 64}, {"type": "null"}]},
+        "keyboard_layout": {"type": "null"},
+        "input_method": {"type": "null"},
+        "text_size": {"type": "null"},
+        "theme": {"type": "null"},
+        "contrast": {"type": "null"},
+        "motion": {"type": "null"},
+        "fonts": {"type": "null"},
+        "scale": {"type": "null"},
+        "unavailable": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "os_version",
+              "webview_version",
+              "locale",
+              "display_pixels",
+              "display_mm",
+              "display_count",
+              "keyboard_layout",
+              "input_method",
+              "text_size",
+              "theme",
+              "contrast",
+              "motion",
+              "fonts",
+              "scale",
+              "citation_language",
+              "os_build"
+            ]
+          },
+          "maxItems": 20,
+          "minItems": 0,
+          "uniqueItems": true
+        },
+        "citation_language": {"type": "null"},
+        "os_build": {
+          "anyOf": [
+            {"type": "string", "pattern": "^(?:[0-9]+(?:[.:-][0-9]+)*(?:-0ubuntu[0-9.]+)?)$", "maxLength": 64},
+            {"type": "null"}
+          ]
+        }
+      },
+      "required": [
+        "os",
+        "os_version",
+        "webview_version",
+        "locale",
+        "display_pixels",
+        "display_mm",
+        "display_count",
+        "keyboard_layout",
+        "input_method",
+        "text_size",
+        "theme",
+        "contrast",
+        "motion",
+        "fonts",
+        "scale",
+        "unavailable",
+        "citation_language",
+        "os_build"
+      ],
+      "additionalProperties": false
+    },
+    "environment_unavailable_reason": {"const": "not-observed"},
+    "options": {
+      "type": "object",
+      "properties": {
+        "identifier": {"enum": ["com.ibiscite.ibis", "com.ibiscite.ibis.nightly", "com.ibiscite.ibis.development"]},
+        "shortcut": {"type": "string", "pattern": "^(?:(?:(?:ctrl|shift|alt|super)\\+){1,3}(?:[a-z]|F[1-9]|F1[0-2]))$"},
+        "skip_performance": {"type": "boolean"},
+        "seed": {"type": "integer", "minimum": 0, "maximum": 4294967295}
+      },
+      "required": ["identifier", "shortcut", "skip_performance", "seed"],
+      "additionalProperties": false
+    },
+    "seed_reason": {"const": "deterministic-scenario"},
+    "events": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "integer", "minimum": 1, "maximum": 4000},
+          "kind": {"enum": ["action", "request"]},
+          "code": {"anyOf": [{"$ref": "#/$defs/action"}, {"$ref": "#/$defs/request"}]},
+          "phase": {"enum": ["dispatch", "complete", "reject", "cancel"]},
+          "at_ms": {"type": "number", "minimum": 0, "maximum": 86400000}
+        },
+        "required": ["id", "kind", "code", "phase", "at_ms"],
+        "additionalProperties": false
+      },
+      "maxItems": 4000,
+      "minItems": 0
+    },
+    "request_completion_order": {
+      "type": "array",
+      "items": {"type": "integer", "minimum": 1, "maximum": 4000},
+      "maxItems": 4000,
+      "minItems": 0
+    },
+    "app_request_order": {
+      "type": "object",
+      "properties": {"value": {"type": "null"}, "reason": {"const": "not-observable"}},
+      "required": ["value", "reason"],
+      "additionalProperties": false
+    },
+    "result": {
+      "type": "object",
+      "properties": {
+        "outcome": {"enum": ["pass", "fail", "unavailable"]},
+        "failure_kind": {"enum": [null, "product", "harness"]},
+        "reason": {
+          "enum": [
+            null,
+            "invariant-failed",
+            "native-capability-unavailable",
+            "replay-diverged",
+            "timeout",
+            "interrupted",
+            "native-io-failed",
+            "harness-failed"
+          ]
+        },
+        "failed_invariant": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {"$ref": "#/$defs/action"},
+                {"$ref": "#/$defs/request"},
+                {"enum": ["scenario", "replay-sequence", "cleanup"]}
+              ]
+            },
+            {"type": "null"}
+          ]
+        }
+      },
+      "required": ["outcome", "failure_kind", "reason", "failed_invariant"],
+      "additionalProperties": false
+    },
+    "missing_capabilities": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "native-session",
+          "app-build",
+          "linux-x11",
+          "native-driver",
+          "accessibility-driver",
+          "synthetic-editor",
+          "disposable-settings"
+        ]
+      },
+      "maxItems": 1,
+      "minItems": 0
+    },
+    "replay_command": {"const": "python3 scripts/smoke-native.py --app BUILD --output REPLAY --replay BUNDLE/manifest.json"},
+    "replay_of": {"anyOf": [{"type": "string", "pattern": "^(?:[0-9a-f]{32})$"}, {"type": "null"}]},
+    "build_unavailable_reason": {"const": "not-observed"}
+  },
+  "required": [
+    "schema_version",
+    "run_id",
+    "scenario",
+    "build",
+    "harness_sha256",
+    "fixtures",
+    "environment",
+    "environment_unavailable_reason",
+    "options",
+    "seed_reason",
+    "events",
+    "request_completion_order",
+    "app_request_order",
+    "result",
+    "missing_capabilities",
+    "replay_command",
+    "replay_of",
+    "build_unavailable_reason"
+  ],
+  "additionalProperties": false
+}

@@ -75,6 +75,48 @@ jobs:
           echo "::error::\"Only rerun the update test\" runs only on main and cannot be combined with publishing. Run it on main with publishing unchecked."
           exit 1
 
+  bibtex-fuzz:
+    name: Damaged BibTeX fuzzing (five minutes)
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-24.04
+    # Compilation and tool setup are outside the five-minute fuzzing budget.
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up nightly Rust
+        run: rustup toolchain install nightly --profile minimal
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          key: bibtex-fuzz
+
+      - name: Install cargo-fuzz
+        run: cargo +nightly install cargo-fuzz --version 0.13.1 --locked
+
+      - name: Test the seed corpus
+        run: cargo +nightly test -p ibis-fuzz --locked seed_corpus
+
+      - name: Build the fuzz target
+        run: cargo +nightly fuzz build damaged_bibtex --features fuzzing --target-dir target/fuzz
+
+      - name: Fuzz the real BibTeX loader for five minutes
+        timeout-minutes: 6
+        run: cargo +nightly fuzz run damaged_bibtex --features fuzzing --target-dir target/fuzz -- -max_total_time=300 -timeout=5 -max_len=65536 -rss_limit_mb=2048
+
+      - name: Keep fuzz failures
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: bibtex-fuzz-failures-${{ github.sha }}-${{ github.run_attempt }}
+          path: fuzz/artifacts/damaged_bibtex/
+          if-no-files-found: ignore
+          retention-days: 14
+
   zotero:
     name: Real Zotero
     if: ${{ !inputs.update_test }}
