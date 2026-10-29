@@ -4,7 +4,7 @@ import { useDestination } from "./useDestination";
 import type { PickerDestination } from "../../api";
 
 afterEach(cleanup);
-const browser: PickerDestination = { app: "Example Browser", app_id: "example.browser", automatic: null, remembered: null, unreadable: false, can_paste: false };
+const browser: PickerDestination = { app: "Example Browser", app_id: "example.browser", automatic: null, remembered: null, unreadable: false, can_paste: false, output_question: "browser" };
 const pending = <T,>() => {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((done) => { resolve = done; });
@@ -80,6 +80,38 @@ test("an old successful copy cannot consume a newer one-time output choice", asy
   expect(result.current.onceOnly).toBe(true);
 });
 
+test("remembering, Automatic and Forget control the question independently of the global fallback", async () => {
+  const settings = options();
+  const { result } = renderHook(() => useDestination({ pickerDestination: async () => browser,
+    rememberAppOutput: vi.fn(async () => null), forgetAppOutputs: vi.fn(async () => null) }, settings));
+  act(() => result.current.read());
+  await waitFor(() => expect(result.current.ready).toBe(true));
+  expect(result.current.shouldAsk).toBe(true);
+  await act(async () => result.current.choose("pandoc"));
+  expect(result.current.shouldAsk).toBe(false);
+  expect(result.current.scope).toBe("Pandoc remembered for this browser");
+  await act(async () => result.current.restoreAutomatic());
+  expect(result.current.shouldAsk).toBe(true);
+  expect(result.current.scope).toBeNull();
+  await act(async () => result.current.choose("cite"));
+  await act(async () => result.current.forgetAll?.());
+  expect(result.current.shouldAsk).toBe(true);
+  expect(settings.chooseDefault).not.toHaveBeenCalled();
+});
+
+test("a once-only pick announces its scope and consuming it brings the question back", async () => {
+  const { result } = renderHook(() => useDestination({ pickerDestination: async () => browser, rememberAppOutput: vi.fn() }, options()));
+  act(() => result.current.read());
+  await waitFor(() => expect(result.current.ready).toBe(true));
+  act(() => result.current.toggleOnce());
+  act(() => result.current.choose("style:apa"));
+  expect(result.current.scope).toBe("APA for this citation");
+  expect(result.current.shouldAsk).toBe(false);
+  act(() => result.current.consumeOnce(result.current.copyToken()));
+  expect(result.current.shouldAsk).toBe(true);
+  expect(result.current.scope).toBeNull();
+});
+
 test("returning from permission keeps the prepared output once while reading the changed destination", async () => {
   let destination = browser;
   const rememberAppOutput = vi.fn();
@@ -127,4 +159,40 @@ test("superseding destination reads preserve the permission return's output and 
   await act(async () => result.current.read(false));
   expect(result.current.format).toBe("pandoc");
   expect(result.current.isCurrentCopy(token)).toBe(false);
+});
+
+test("a preserved browser output answers the question through refreshes until that citation is consumed", async () => {
+  const returning = pending<PickerDestination>();
+  let destination = browser;
+  let reads = 0;
+  const rememberAppOutput = vi.fn();
+  const settings = options();
+  const { result } = renderHook(() => useDestination({
+    pickerDestination: () => ++reads === 2 ? returning.promise : Promise.resolve(destination),
+    rememberAppOutput,
+  }, settings));
+  await act(async () => result.current.read());
+  expect(result.current.shouldAsk).toBe(true);
+  act(() => result.current.toggleOnce());
+  act(() => result.current.choose("typst"));
+  const oldCopy = result.current.copyToken();
+  act(() => result.current.read(true, true));
+  const token = result.current.copyToken();
+  destination = { ...browser, app: "Another Browser", app_id: "example.another-browser" };
+  await act(async () => result.current.read(false));
+  await act(async () => returning.resolve(browser));
+  expect(result.current.app).toBe("Another Browser");
+  expect(result.current.format).toBe("typst");
+  expect(result.current.onceOnly).toBe(true);
+  expect(result.current.shouldAsk).toBe(false);
+  expect(result.current.isCurrentCopy(token)).toBe(true);
+  act(() => result.current.consumeOnce(oldCopy));
+  expect(result.current.shouldAsk).toBe(false);
+  act(() => result.current.consumeOnce(token));
+  expect(result.current.format).toBe("pandoc");
+  expect(result.current.onceOnly).toBe(false);
+  expect(result.current.shouldAsk).toBe(true);
+  expect(result.current.scope).toBeNull();
+  expect(rememberAppOutput).not.toHaveBeenCalled();
+  expect(settings.chooseDefault).not.toHaveBeenCalled();
 });

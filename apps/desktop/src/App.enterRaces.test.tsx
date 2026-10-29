@@ -138,7 +138,7 @@ test.each(["copy", "hide", "delivery"])("a fresh Enter after changing only choos
   let copies = 0;
   const calls = backend({
     search: () => [result("a", "Prepared reference")],
-    picker_destination: () => ({ app: "Example Writer", app_id: "example.writer", automatic: null, remembered: null, unreadable: false, can_paste: true }),
+    picker_destination: () => ({ app: "Example Writer", app_id: "example.writer", automatic: null, remembered: null, unreadable: false, can_paste: true, output_question: null }),
     copy_file_citation: async (args) => {
       const { preview } = prepared(args);
       if (++copies === 1 && stage === "copy") await paused.promise;
@@ -149,7 +149,7 @@ test.each(["copy", "hide", "delivery"])("a fresh Enter after changing only choos
   });
   await act(async () => { render(<App />); });
   await enter();
-  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Copy as Pandoc · Example Writer" })); });
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Copy as Pandoc key · Example Writer" })); });
   await act(async () => { fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Just this once" })); });
   await act(async () => { await vi.advanceTimersByTimeAsync(300); });
   await enter();

@@ -14,7 +14,7 @@ use std::sync::Mutex;
 
 use ibis_core::cite::KeyFormat;
 use ibis_core::contract::citation::{KeySyntax, OutputSpec};
-use ibis_core::destination::{AppId, lookup, output_for};
+use ibis_core::destination::{AppId, OutputQuestion, lookup, output_for};
 use ibis_core::settings::{self, CitationStyle};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
@@ -50,6 +50,8 @@ pub(crate) struct PickerDestination {
     pub(crate) unreadable: bool,
     /// The current paste policy permits an attempt; final delivery checks still apply.
     pub(crate) can_paste: bool,
+    /// The app cannot identify document syntax; ask until an output is remembered.
+    pub(crate) output_question: Option<OutputQuestion>,
 }
 
 /// The output an app's documents use, from the destination table through
@@ -248,6 +250,7 @@ pub(crate) fn picker_destination(
             remembered: None,
             unreadable: memory.unreadable(),
             can_paste: false,
+            output_question: None,
         };
     };
     let settings = settings::load(&settings_file.path).settings;
@@ -261,6 +264,7 @@ pub(crate) fn picker_destination(
         remembered,
         unreadable,
         can_paste,
+        output_question: lookup(&id).and_then(|app| app.output_question),
     }
 }
 

@@ -36,5 +36,6 @@ pub const APP_COMMANDS: &[&str] = &[
     "finish_paste_guide",
     "paste_permission",
     "open_paste_permission",
+    "drag_paste_app",
     "set_shortcut",
 ];

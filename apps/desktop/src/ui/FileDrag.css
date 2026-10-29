@@ -1,0 +1,2 @@
+.ui-file-drag[data-variant] { cursor: grab; flex: none; }
+.ui-file-drag img { width: var(--tile-size); height: var(--tile-size); pointer-events: none; }

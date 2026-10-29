@@ -91,6 +91,18 @@ test.each(["Escape", "Tab"])("%s closes just the menu and returns focus", async 
   expect(parentKeys).not.toHaveBeenCalled();
 });
 
+test.each(["dismiss", "action", "command"] as const)("the shared menu distinguishes an output-question %s", async (reason) => {
+  const onOpenChange = vi.fn();
+  render(<ToolbarMenu label="Copy as" value="Pandoc" sections={sections} selectedKey="pandoc" onAction={vi.fn()}
+    filterLabel="Filter formats" onOpenChange={onOpenChange}
+    onKeyCommand={(event) => event.key === "k" ? { run: vi.fn(), isCurrent: () => true } : undefined} />);
+  fireEvent.click(screen.getByRole("button", { name: "Copy as Pandoc" }));
+  const menu = await screen.findByRole("menu");
+  if (reason === "action") fireEvent.click(screen.getByRole("menuitemradio", { name: "Pandoc" }));
+  else fireEvent.keyDown(menu, { key: reason === "dismiss" ? "Escape" : "k" });
+  expect(onOpenChange).toHaveBeenLastCalledWith(false, reason);
+});
+
 test.each([false, true])("a format pick returns typing before its exit animation (filtered %s)", async (filtered) => {
   let release!: () => void;
   const finished = new Promise<void>((resolve) => { release = resolve; });

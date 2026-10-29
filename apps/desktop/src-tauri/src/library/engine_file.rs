@@ -23,7 +23,7 @@ static TICKETS: AtomicU64 = AtomicU64::new(1);
 pub(crate) struct FileLibrary {
     pub(super) engine: Engine,
     prepared: Mutex<Option<(String, PreparedCitation)>>,
-    latest_preview: AtomicU64,
+    latest_preview: Mutex<(u64, Cancellation)>,
     observing: AtomicBool,
 }
 #[derive(Deserialize, specta::Type)]
@@ -72,7 +72,7 @@ impl FileLibrary {
         Self {
             engine,
             prepared: Mutex::new(None),
-            latest_preview: AtomicU64::new(0),
+            latest_preview: Mutex::new((0, Cancellation::default())),
             observing: AtomicBool::new(false),
         }
     }
@@ -305,9 +305,32 @@ impl FileLibrary {
         })
     }
     pub(crate) fn reserve_preview(&self) -> u64 {
+        self.reserve_preview_with(Cancellation::default())
+    }
+    pub(crate) fn reserve_preview_with(&self, cancel: Cancellation) -> u64 {
+        let mut latest = self
+            .latest_preview
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let request = TICKETS.fetch_add(1, Ordering::Relaxed);
-        self.latest_preview.fetch_max(request, Ordering::SeqCst);
+        // A superseded command can acquire the library after its replacement.
+        // Give it an unpublished ticket without cancelling the current worker.
+        if cancel.is_cancelled() {
+            return request;
+        }
+        latest.1.cancel();
+        *latest = (request, cancel);
         request
+    }
+    fn preview_cancellation(&self, reservation: u64) -> Result<Cancellation, CommandError> {
+        let latest = self
+            .latest_preview
+            .lock()
+            .map_err(|_| CommandError::from("The preview is unavailable."))?;
+        if latest.0 != reservation {
+            return Err("A newer citation preview replaced this request.".into());
+        }
+        Ok(latest.1.clone())
     }
     pub(crate) fn preview(
         &self,
@@ -316,6 +339,9 @@ impl FileLibrary {
         format: KeyFormat,
         style: Option<CitationStyle>,
     ) -> Result<FilePreview, CommandError> {
+        // A late-starting worker stops before building a request. A running
+        // worker shares this token with the engine and QuickJS interrupt handler.
+        let cancel = self.preview_cancellation(reservation)?;
         // Narrative is the textcite member of the BibLaTeX output family.
         // Mixed command clusters remain outside the picker's small editor.
         let format = if items.len() == 1
@@ -373,7 +399,7 @@ impl FileLibrary {
             .map_err(|_| CommandError::from("The selected references could not be read. Search again."))?;
         let citation = self
             .engine
-            .prepare_citation(&request, &Cancellation::default())
+            .prepare_citation(&request, &cancel)
             .map_err(CommandError::from)?;
         let result = citation.result();
         if result.copy_content(request.items.len()).is_none() {
@@ -416,9 +442,9 @@ impl FileLibrary {
             .prepared
             .lock()
             .map_err(|_| CommandError::from("The preview is unavailable."))?;
-        if self.latest_preview.load(Ordering::SeqCst) != reservation {
-            return Err("A newer citation preview replaced this request.".into());
-        }
+        self.preview_cancellation(reservation)?
+            .check()
+            .map_err(CommandError::from)?;
         let result = citation.result();
         let preview = FilePreview {
             ticket: reservation.to_string(),

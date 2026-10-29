@@ -127,10 +127,18 @@ The workspace keeps `unsafe_code = "forbid"`. Native calls use maintained
 safe bindings where available. Decision 0006's Windows closed-reader module
 and `paste/macos/secure_input.rs` are scoped exceptions: their crates use
 `deny`, with an allow only on the native module and a safety comment on each
-block. Changes there need independent security-boundary review.
+block. `paste/permission/drag.rs` is also scoped to allow AppKit's drag-source
+protocol implementation, NSObject initialization and the image-contents setter:
+the generated bindings offer no safe source constructor or typed image setter.
+It uses the existing objc2 bindings, with no new dependency (2026-10-28, #1390).
+The Settings-only command accepts no file path; it publishes only
+`NSBundle.mainBundle.bundleURL` as a file URL from a live Settings mouse drag,
+refuses unbundled executables, and allows only copy even with modifier keys.
+Its stateless source stays on the main thread for the session's lifetime.
+Changes to these modules need independent security-boundary review.
 
-On macOS the boundary is just `IsSecureEventInputEnabled`, whose SDK result
-is a Boolean (`u8`). It is read on the main thread, as Carbon requires. The
+For paste safety on macOS, the boundary is just `IsSecureEventInputEnabled`,
+whose SDK result is a Boolean (`u8`). It is read on the main thread, as Carbon requires. The
 flag is system-wide and can be enabled by another app; it does not establish
 that the destination is a password field. An enabled flag copies with the
 `secure-input` reason: "Copied. Secure typing is on, possibly in another app.
@@ -170,6 +178,11 @@ worker adopts a later capture or clipboard baseline, and delivery expires
 generation, hidden picker, HWND and process after the password query and
 again after the injection lock and any key-release recovery waits. Windows
 never reads clipboard contents to prove ownership.
+
+On both systems, a notice carries a unique write token from the successful
+copy. Only a matching token can consume its one-use proof; a delayed earlier
+delivery leaves a newer proof available, even when the citation text or
+clipboard sequence is the same. Tokens never wrap; exhaustion only copies.
 
 UI Automation checks only the focused element's process and `IsPassword`.
 An enabled property copies with `secure-field`; unavailable or timed-out
@@ -266,9 +279,10 @@ VoiceOver and NVDA and with Chinese,
 Japanese and Korean input methods; Orca joins for 1.0. Interface text goes
 through the translation layer from 0.3, with German and one right-to-left
 language in 0.4. The speed and resource budgets in
-[architecture](architecture.md#desktop-app) are limits: engine and bundle
-checks fail pull request CI, and native latency and idle use are measured on
-the release machines before each release.
+[architecture](architecture.md#desktop-app) are limits: search and bundle
+checks fail pull request CI. Open/refresh fails Preview's nightly/release build
+because shared PR runners have too little timing margin. Native latency and idle
+use are measured on the release machines before each release.
 0.5 cites from Zotero's annotations and the PDFs people already open before
 any reader inside Ibis (maintainer, 2026-10-28).
 

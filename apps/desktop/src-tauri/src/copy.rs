@@ -7,7 +7,7 @@ use ibis_core::settings;
 use serde::Serialize;
 use tauri::{AppHandle, State};
 
-use crate::library::{CommandError, Library};
+use crate::library::{CommandError, Library, PreviewIntent, PreviewRequests};
 use crate::preferences::SettingsFile;
 
 #[derive(Serialize, specta::Type)]
@@ -15,7 +15,7 @@ pub(crate) struct Copied {
     pub(crate) text: String,
     /// What the chosen syntax could not express, and other problems the user should see.
     pub(crate) warnings: Vec<String>,
-    /// Windows receipt for this copy's immutable delivery ticket.
+    /// Unique write token for this copy's one-use paste proof.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[specta(optional)]
     pub(crate) delivery: Option<u32>,
@@ -42,8 +42,13 @@ pub(crate) async fn preview_file_citation(
     format: KeyFormat,
     style: Option<settings::CitationStyle>,
     expected_revision: String,
+    intent: PreviewIntent,
     library: State<'_, Mutex<Library>>,
+    requests: State<'_, PreviewRequests>,
 ) -> Result<crate::library::engine_file::FilePreview, CommandError> {
+    let cancel = requests
+        .start(intent)
+        .ok_or_else(|| CommandError::from("A newer citation preview replaced this request."))?;
     let file = {
         let library = library
             .lock()
@@ -57,7 +62,7 @@ pub(crate) async fn preview_file_citation(
             .clone()
             .ok_or_else(|| CommandError::from("The selected file is no longer open."))?
     };
-    let reservation = file.reserve_preview();
+    let reservation = file.reserve_preview_with(cancel);
     tauri::async_runtime::spawn_blocking(move || file.preview(reservation, items, format, style))
         .await
         .map_err(|_| CommandError::from("The preview is unavailable. Try again."))?
@@ -79,20 +84,21 @@ pub(crate) fn copy_file_citation(
         }
         library.file.clone().ok_or(CommandError::SnapshotChanged)?
     };
-    #[cfg(not(target_os = "windows"))]
-    {
-        file.copy(&ticket, &content_hash, |content| clipboard::write(&app, content))
-    }
     #[cfg(target_os = "windows")]
-    {
-        let target = crate::paste::copy_target(&app);
-        let mut delivery = None;
-        let mut copied = file.copy(&ticket, &content_hash, |content| {
+    let target = crate::paste::copy_target(&app);
+    let mut delivery = None;
+    let mut copied = file.copy(&ticket, &content_hash, |content| {
+        #[cfg(target_os = "windows")]
+        {
             let sequence = clipboard::write(&app, content)?;
             delivery = crate::paste::remember_copy(&app, target, sequence);
-            Ok(())
-        })?;
-        copied.delivery = delivery;
-        Ok(copied)
-    }
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            delivery = clipboard::write(&app, content)?;
+        }
+        Ok(())
+    })?;
+    copied.delivery = delivery;
+    Ok(copied)
 }

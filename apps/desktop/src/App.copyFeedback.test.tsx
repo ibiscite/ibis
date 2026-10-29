@@ -84,7 +84,7 @@ test.each([0, 2])("a permission detour keeps the citation past a minute through 
 
 test("a preferences event superseding the permission return keeps the prepared output for the next copy", async () => {
   let granted = false;
-  let destination: PickerDestination = { app: "Example Editor", app_id: "example.editor", automatic: null, remembered: { key: "typst" }, unreadable: false, can_paste: false };
+  let destination: PickerDestination = { app: "Example Editor", app_id: "example.editor", automatic: null, remembered: { key: "typst" }, unreadable: false, can_paste: false, output_question: null };
   let delayReturn = false;
   let finishReturn!: (value: PickerDestination) => void;
   const copies: unknown[] = [];
@@ -111,7 +111,7 @@ test("a preferences event superseding the permission return keeps the prepared o
   await act(async () => { await emit("preferences:changed"); });
   expect(calls.filter((call) => call === "picker_destination")).toHaveLength(3);
   await act(async () => { finishReturn({ ...destination, app: "Stale Editor", app_id: "example.stale" }); });
-  expect(screen.getByRole("button", { name: "Copy as Typst · Example Writer" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Copy as Typst key · Example Writer" })).toBeTruthy();
   expect(copies).toHaveLength(1);
   await copy();
   expect(copies).toHaveLength(2);
@@ -213,7 +213,7 @@ test("a clean copy hides the picker, then says Copied with the copied text", asy
   expect(calls.indexOf("hide_picker")).toBeLessThan(calls.indexOf("show_copied_notice"));
 });
 
-test("a Windows copy carries its delivery receipt through hiding to the notice", async () => {
+test("a copy carries its write token through hiding to the notice", async () => {
   let finishHide!: () => void;
   const notices: unknown[] = [];
   const calls = await openPicker({

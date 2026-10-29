@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Button } from "../ui/Button";
+import { FileDrag } from "../ui/FileDrag";
 import { settingsText } from "../messages";
 import type { PastePermission, SettingsApi } from "./api";
 import appIcon from "../../src-tauri/icons/128x128.png";
@@ -41,9 +42,13 @@ export function usePastePermission(api: Pick<SettingsApi, "pastePermission">, ac
 
 /** The steps to allow pasting: what macOS asks, where the switch is, and a
  * live answer once it is on. Clicking Open clears Ibis's stale switch first. */
-export function PasteGuide({ name, permission, onOpen }: { name: string; permission: PastePermission; onOpen: () => void }) {
+export function PasteGuide({ name, permission, onOpen, onDrag }: {
+  name: string; permission: PastePermission; onOpen: () => void; onDrag: () => Promise<void>;
+}) {
   const [opened, setOpened] = useState(false);
   const [slow, setSlow] = useState(false);
+  const [dragFailed, setDragFailed] = useState(false);
+  const open = () => { setOpened(true); setSlow(false); setDragFailed(false); onOpen(); };
   useEffect(() => {
     if (!opened || permission.granted) return;
     const timer = window.setTimeout(() => setSlow(true), STALE_HINT_MS);
@@ -64,11 +69,17 @@ export function PasteGuide({ name, permission, onOpen }: { name: string; permiss
         <p className="settings-description">{text.guideWhy}</p>
         <ol>{text.steps(name, permission.list).map((step) => <li key={step}>{step}</li>)}</ol>
         <div className="paste-guide-actions">
-          {!permission.granted && <Button variant="primary" onPress={() => { setOpened(true); setSlow(false); onOpen(); }}>{text.open}</Button>}
+          {!permission.granted && <>
+            <Button variant="primary" onPress={open}>{text.open}</Button>
+            <FileDrag icon={appIcon} label={text.drag(name, permission.list)} description={text.dragKeyboard} onPress={open}
+              onDrag={() => { setDragFailed(false); void onDrag().catch(() => setDragFailed(true)); }} />
+          </>}
           <p className="paste-guide-status" role="status" aria-live="polite" data-done={permission.granted || undefined}>
             {permission.granted ? text.granted : opened ? text.waiting : ""}
           </p>
         </div>
+        {!permission.granted && <p className="settings-description">{text.dragFallback}</p>}
+        {dragFailed && !permission.granted && <p className="settings-problem" role="alert">{text.dragFailed}</p>}
         {slow && !permission.granted && <p className="settings-description">{text.stale(name)}</p>}
       </div>
     </div>

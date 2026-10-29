@@ -733,7 +733,17 @@ A choice screen hides the result heading, the shelf and the Copy hint.
   once, and the pick becomes that app's default; it never identifies the
   document (Overleaf and Google Docs share it). Closing the chooser uses the
   global default for that paste and asks again next time; "Automatic" or
-  "Forget formats for apps" brings the question back. Ibis never reads or stores a document title or URL to choose an
+  "Forget formats for apps" brings the question back. Enter, the footer action
+  and a result's copy action all ask through the same chooser before copying.
+  Picking a format resumes that citation once, after the save finishes and its
+  exact preview is ready; a failed save uses the pick for this citation and
+  asks again next time. "Just this once" keeps the question open for a pick.
+  Changing the search or citation, hiding or reopening the picker, or switching
+  to another menu or dialog cancels the held action, including after dismissal
+  or a format pick while its preview or save is still pending. The question uses known app IDs;
+  unknown apps keep the global fallback. App capture currently works on macOS;
+  Windows and Linux keep their existing global output until capture is built.
+  Ibis never reads or stores a document title or URL to choose an
   output. No format question interrupts each citation. Setup steps finish
   themselves: when Zotero is not sharing, the screen shows where to turn it on and continues on
   its own once it is on; when Zotero is closed, Ibis reads the library anyway;
@@ -789,7 +799,11 @@ that owns its area in ROADMAP.md.
    checks before starting or joining a copy. A failed reconciliation status
    read cancels waiting Enter; a later library update never replays it.
 4. Open in under 100 ms with the last snapshot; keys typed before the window
-   appears are kept.
+   appears are kept. Typing replaces the engine's previous search and preview
+   work by cancelling it, including queued formatting. Hidden Ibis waits for
+   events; it does not poll for library notifications. Fixed speed/resource
+   limits and the release-machine measurement protocol are in
+   [architecture](architecture.md#native-release-measurements-1369).
 5. Forgiving search: accents and transliteration folded, any word order, one
    typo tolerated, initials, "et al." ignored, Chinese, Japanese and Korean
    names with or without spaces, Enter safe while an input method composes.
@@ -797,7 +811,11 @@ that owns its area in ROADMAP.md.
    built never vanishes.
 7. A format pick says its scope: "Pandoc remembered for this browser" or "APA
    for this citation". Output names say what lands: "Chicago · full note
-   text", "APA · text", "Pandoc key".
+   text", "APA · text", "Pandoc key". The chosen scope is visible in the
+   format button and announced; remembering is claimed only after a successful
+   save. Names describe the actual bundled output: today's Chicago author-date
+   style says "Chicago · author-date text", and IEEE says "IEEE · reference
+   entry". A full-note label waits for a full-note output.
 8. "Cited here recently": up to three rows at an empty query, per app, local
    only and forgettable. Choosing one picks the reference afresh; it never
    brings back an old page.
@@ -903,6 +921,13 @@ all other keys are saved as physical codes and stay at that position, including
 after a restart or layout change. Recorded modifiers are Control, Alt, Shift, Command, in that
 order. A shortcut needs Control, Alt/Option or Command; **⌘ + one key is
 refused** (Ctrl + one key elsewhere) because apps use it for their own commands.
+Picker commands, including the format chooser, pin and keyboard help, are also
+reserved: the opening shortcut cannot take them.
+On macOS, the check uses the active keyboard layout and preserves the recorder's
+logical letter or physical key intent; on AZERTY, ⇧⌘? on physical M belongs to
+keyboard help. Refusals name the command that owns the chord. Saved shortcuts
+pass the same validator at startup; a refused one uses the default with an
+explanation.
 On Windows, Ctrl+Alt with a printable key (also with Shift) is refused because
 it can consume AltGr typing; a Windows-key combination or a non-typing key is available instead.
 An unsafe saved shortcut falls back to the default at startup with an explanation.
@@ -922,6 +947,15 @@ opens by itself once per run, the first time a paste is refused, and lives in
 Settings › General › Pasting afterwards. Because macOS keys the permission to
 the code signature, opening the guide first clears Ibis's own entry when the
 permission is not working, so the list shows one fresh switch (#1292, #1242).
+Automatic listing stays first. Beside **Open System Settings**, the Ibis app
+icon is a file drag source, followed by one line: "If Ibis is not in the list,
+drag it there." It drags the running bundle's file URL, including a renamed,
+moved or Nightly copy, with only a copy operation; it never moves the app or
+changes the citation clipboard. The icon uses the shared `ui/FileDrag` and
+button states; clicking or pressing it opens System Settings as the keyboard
+alternative. An unbundled development executable cannot be dragged; a failed
+drag points to the list's **+** button. Neither starting nor completing a drag
+claims a grant: the same live permission read must confirm it (#1390).
 Only the guide opened after a refused paste returns to the picker on grant;
 an ordinary Settings visit stays open and confirms the grant in words. A
 background grant never brings Ibis forward: completion waits for the person
@@ -938,6 +972,8 @@ the system, never `settings.json` (`login_item.rs`, [PRIVACY.md](../PRIVACY.md))
 menus with the same commands, so desktops without a tray reach them; builds
 without an update key show neither. Both show only the saved choice, and clicks in
 either are saved in the order they were made.
+In Settings, a saved-choice event supersedes any older automatic-update read,
+including a failed read; returning focus may read the choice again.
 The tray click carries the absolute choice its item displayed, so a queued save
 repainting the check cannot change an earlier click's intent.
 On every OS, automatic update offers never show or focus the picker: while it

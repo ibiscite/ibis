@@ -16,6 +16,8 @@ use tauri::{AppHandle, Manager};
 mod capture;
 #[cfg(target_os = "macos")]
 mod macos;
+#[cfg(test)]
+mod notepad_test;
 pub(crate) mod permission;
 #[cfg(target_os = "windows")]
 mod windows;
@@ -41,6 +43,16 @@ const SETTLE: Duration = Duration::from_millis(50);
 #[cfg(any(target_os = "macos", test))]
 const POST_LIMIT: Duration = Duration::from_millis(250);
 
+/// Receipts identify writes, independently of citation text and native
+/// clipboard counters. Never wrap and let a stale notice claim a new proof.
+#[cfg(any(target_os = "macos", target_os = "windows", test))]
+fn write_token() -> Option<u32> {
+    static NEXT: Mutex<u32> = Mutex::new(0);
+    let mut token = NEXT.lock().ok()?;
+    *token = token.checked_add(1)?;
+    Some(*token)
+}
+
 /// The app the picker was last opened from.
 #[derive(Default)]
 pub(crate) struct LastTarget(Mutex<TargetState>);
@@ -63,6 +75,7 @@ struct TargetState {
 /// text is Ibis's citation, never read back from another clipboard owner.
 #[cfg(any(not(target_os = "windows"), test))]
 struct CopyProof {
+    token: u32,
     captured: Option<Captured>,
     text: String,
     #[cfg(any(target_os = "macos", test))]
@@ -96,23 +109,30 @@ impl LastTarget {
         &self,
         text: &str,
         write: impl FnOnce() -> Result<Option<isize>, String>,
-    ) -> Result<(), String> {
+    ) -> Result<Option<u32>, String> {
         let mut last = self.0.lock().map_err(|_| "The clipboard could not be written.")?;
         last.copied = None;
-        if let Some(change_count) = write()? {
+        let change_count = write()?;
+        if let Some((change_count, token)) = change_count.zip(write_token()) {
             last.copied = Some(CopyProof {
+                token,
                 captured: last.captured.clone(),
                 text: text.to_owned(),
                 change_count,
                 presentation: last.presentation,
                 written: Instant::now(),
             });
+            return Ok(Some(token));
         }
-        Ok(())
+        Ok(None)
     }
 
-    fn take_copy(&self, text: &str) -> Option<CopyProof> {
-        self.0.lock().ok()?.copied.take().filter(|proof| proof.text == text)
+    fn take_copy(&self, text: &str, token: Option<u32>) -> Option<CopyProof> {
+        self.0
+            .lock()
+            .ok()?
+            .copied
+            .take_if(|proof| Some(proof.token) == token && proof.text == text)
     }
 }
 
@@ -459,6 +479,7 @@ fn publish_capture<W>(kept: &mut Option<CopyTarget<W>>, next: CopyTarget<W>, cur
 
 #[cfg(any(target_os = "windows", test))]
 pub(crate) struct DeliveryTicket<W> {
+    token: u32,
     target: CopyTarget<W>,
     sequence: u32,
     written: Instant,
@@ -489,27 +510,35 @@ pub(crate) fn remember_copy(
 ) -> Option<u32> {
     let state = app.state::<LastTarget>();
     let mut last = state.0.lock().ok()?;
-    last.pending = target.zip(sequence).map(|(target, sequence)| DeliveryTicket {
-        target,
-        sequence,
-        written: Instant::now(),
+    remember_ticket(&mut last.pending, target, sequence)
+}
+
+#[cfg(any(target_os = "windows", test))]
+fn remember_ticket<W>(
+    pending: &mut Option<DeliveryTicket<W>>,
+    target: Option<CopyTarget<W>>,
+    sequence: Option<u32>,
+) -> Option<u32> {
+    *pending = target.zip(sequence).and_then(|(target, sequence)| {
+        Some(DeliveryTicket {
+            token: write_token()?,
+            target,
+            sequence,
+            written: Instant::now(),
+        })
     });
-    last.pending.as_ref().map(|ticket| ticket.sequence)
+    pending.as_ref().map(|ticket| ticket.token)
 }
 
 /// A stale notice must leave a newer copy's ticket alone.
 #[cfg(any(target_os = "windows", test))]
-fn take_ticket<W>(pending: &mut Option<DeliveryTicket<W>>, receipt: Option<u32>) -> Option<DeliveryTicket<W>> {
-    if pending.as_ref().map(|ticket| ticket.sequence) == receipt {
-        pending.take()
-    } else {
-        None
-    }
+fn take_ticket<W>(pending: &mut Option<DeliveryTicket<W>>, token: Option<u32>) -> Option<DeliveryTicket<W>> {
+    pending.take_if(|ticket| Some(ticket.token) == token)
 }
 
 #[cfg(target_os = "windows")]
-pub(crate) fn take_copy(app: &AppHandle, receipt: Option<u32>) -> Option<DeliveryTicket<windows::Window>> {
-    take_ticket(&mut app.state::<LastTarget>().0.lock().ok()?.pending, receipt)
+pub(crate) fn take_copy(app: &AppHandle, token: Option<u32>) -> Option<DeliveryTicket<windows::Window>> {
+    take_ticket(&mut app.state::<LastTarget>().0.lock().ok()?.pending, token)
 }
 
 /// Windows checks that can be exercised with fake HWNDs on every host.
@@ -835,8 +864,8 @@ fn display_name(
 
 /// Paste into the captured app when it is safe to; the notice then says what happened.
 #[cfg(not(target_os = "windows"))]
-pub(crate) fn deliver_copy(app: &AppHandle, text: &str) -> Delivered {
-    let proof = app.state::<LastTarget>().take_copy(text);
+pub(crate) fn deliver_copy(app: &AppHandle, text: &str, token: Option<u32>) -> Delivered {
+    let proof = app.state::<LastTarget>().take_copy(text, token);
     #[cfg(target_os = "macos")]
     let desk = macos::Mac::new(app);
     #[cfg(target_os = "linux")]
@@ -1057,6 +1086,7 @@ mod tests {
 
     fn proof() -> CopyProof {
         CopyProof {
+            token: 1,
             captured: Some(writer("org.example.writer")),
             text: TEXT.into(),
             change_count: COUNT,
@@ -1185,26 +1215,74 @@ mod tests {
     }
 
     #[test]
+    fn overlapping_copy_deliveries_leave_the_newer_proof_available() {
+        for text_a in ["[@first]", TEXT] {
+            let last = LastTarget::default();
+            let desk = Fake::new();
+            let mut captured = writer("org.example.writer");
+            // Exercise macOS policy on every test host, like the Windows fake.
+            captured.target.system = System::Macos;
+            if let Some(app) = &mut captured.target.app {
+                app.system = System::Macos;
+            }
+            last.begin_presentation(Some(captured));
+            let token_a = last
+                .write_copy(text_a, || Ok(Some(COUNT)))
+                .unwrap_or_else(|e| panic!("{e}"));
+            // A's worker is queued but has not taken its proof yet.
+            let delivery_a = || {
+                let proof = last.take_copy(text_a, token_a);
+                deliver(&desk, proof.as_ref(), true)
+            };
+            last.begin_presentation(None);
+            let token_b = last
+                .write_copy(TEXT, || Ok(Some(COUNT + 1)))
+                .unwrap_or_else(|e| panic!("{e}"));
+            assert_ne!(token_a, token_b);
+            desk.presentation.set(2);
+            desk.change_count.set(COUNT + 1);
+            let reason = if SYSTEM == System::Linux {
+                "unsupported-system"
+            } else {
+                "no-target"
+            };
+            assert_eq!(delivery_a(), copied(Some(reason)));
+            assert!(desk.posts.borrow().is_empty());
+            let proof_b = last.take_copy(TEXT, token_b);
+            assert_eq!(deliver(&desk, proof_b.as_ref(), true), pasted());
+            assert!(last.take_copy(TEXT, token_b).is_none());
+            assert_eq!(*desk.posts.borrow(), [42]);
+        }
+    }
+
+    #[test]
     fn only_our_write_supplies_a_snapshot_and_the_proof_is_consumed_once() {
         let last = LastTarget::default();
         {
             let mut state = last.0.lock().unwrap_or_else(|e| panic!("{e}"));
             state.captured = Some(writer("org.example.writer"));
         }
-        assert!(last.write_copy(TEXT, || Ok(Some(COUNT))).is_ok());
-        let ticket = last.take_copy(TEXT).unwrap_or_else(|| panic!("copy proof"));
+        let token = last
+            .write_copy(TEXT, || Ok(Some(COUNT)))
+            .unwrap_or_else(|e| panic!("{e}"));
+        let ticket = last.take_copy(TEXT, token).unwrap_or_else(|| panic!("copy proof"));
         assert_eq!(ticket.change_count, COUNT);
         assert_eq!(ticket.presentation, 0);
         assert_eq!(ticket.captured, Some(writer("org.example.writer")));
-        assert!(last.take_copy(TEXT).is_none());
-        assert!(last.write_copy(TEXT, || Ok(Some(COUNT))).is_ok());
-        assert!(last.take_copy("different citation").is_none());
-        assert!(last.take_copy(TEXT).is_none());
+        assert!(last.take_copy(TEXT, token).is_none());
+        let token = last
+            .write_copy(TEXT, || Ok(Some(COUNT)))
+            .unwrap_or_else(|e| panic!("{e}"));
+        assert!(last.take_copy("different citation", token).is_none());
+        assert!(last.take_copy(TEXT, None).is_none());
+        assert!(last.take_copy(TEXT, token).is_some());
         // A failed write or a concurrent replacement cannot reuse an old proof.
         for result in [Err("write failed".into()), Ok(None)] {
-            assert!(last.write_copy(TEXT, || Ok(Some(COUNT))).is_ok());
+            let token = last
+                .write_copy(TEXT, || Ok(Some(COUNT)))
+                .unwrap_or_else(|e| panic!("{e}"));
             let _ = last.write_copy(TEXT, || result);
-            assert!(last.take_copy(TEXT).is_none());
+            assert!(last.take_copy(TEXT, token).is_none());
         }
     }
 
@@ -1222,8 +1300,10 @@ mod tests {
     fn a_new_presentation_invalidates_delivery_even_when_it_keeps_the_same_target() {
         let last = LastTarget::default();
         last.begin_presentation(Some(writer("org.example.writer")));
-        assert!(last.write_copy(TEXT, || Ok(Some(COUNT))).is_ok());
-        let ticket = last.take_copy(TEXT).unwrap_or_else(|| panic!("copy proof"));
+        let token = last
+            .write_copy(TEXT, || Ok(Some(COUNT)))
+            .unwrap_or_else(|e| panic!("{e}"));
+        let ticket = last.take_copy(TEXT, token).unwrap_or_else(|| panic!("copy proof"));
         // Hide/blur can advance PickerGeneration repeatedly. This proof
         // stays current until the next presentation, independently of that.
         assert!(last.current(ticket.presentation));
@@ -1462,6 +1542,7 @@ mod windows_tests {
             app.system = System::Windows;
         }
         DeliveryTicket {
+            token: 17,
             target: CopyTarget {
                 captured: Some(captured),
                 window: Some(100),
@@ -1657,14 +1738,47 @@ mod windows_tests {
 
     #[test]
     fn a_notice_can_consume_only_its_own_copy_receipt_once() {
-        let mut pending = Some(DeliveryTicket {
-            sequence: 18,
-            ..ticket()
-        });
+        let mut pending = Some(DeliveryTicket { token: 18, ..ticket() });
         assert!(take_ticket(&mut pending, Some(17)).is_none());
         assert!(take_ticket(&mut pending, None).is_none());
         assert!(take_ticket(&mut pending, Some(18)).is_some());
         assert!(take_ticket(&mut pending, Some(18)).is_none());
+    }
+
+    #[test]
+    fn overlapping_copy_deliveries_leave_the_newer_windows_ticket_available() {
+        for text_a in ["[@first]", "[@synthetic]"] {
+            let desk = Fake::new("[@synthetic]");
+            let pending = RefCell::new(None);
+            let token_a = remember_ticket(&mut pending.borrow_mut(), Some(ticket().target), Some(17));
+            // Delay A's claim until after B has copied on a new presentation.
+            let delivery = |token, text| {
+                let frozen = take_ticket(&mut pending.borrow_mut(), token);
+                frozen
+                    .as_ref()
+                    .map_or_else(|| copied(None), |ticket| deliver_ticket(&desk, ticket, text, true))
+            };
+            let target_b = CopyTarget {
+                generation: 12,
+                ..ticket().target
+            };
+            // Even a repeated native sequence cannot alias a write token.
+            let token_b = remember_ticket(&mut pending.borrow_mut(), Some(target_b), Some(17));
+            assert_ne!(token_a, token_b);
+            desk.generation.set(13);
+            assert_eq!(delivery(token_a, text_a), copied(None));
+            assert!(desk.restores.borrow().is_empty());
+            assert!(desk.posts.borrow().is_empty());
+            assert_eq!(
+                delivery(token_b, "[@synthetic]"),
+                Delivered::Pasted {
+                    app: Some("Writer".into())
+                }
+            );
+            assert_eq!(delivery(token_b, "[@synthetic]"), copied(None));
+            assert_eq!(*desk.posts.borrow(), [(42, 0x09)]);
+            assert_eq!(desk.clipboard_reads.get(), 0);
+        }
     }
 
     #[test]

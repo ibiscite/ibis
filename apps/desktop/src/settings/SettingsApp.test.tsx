@@ -9,6 +9,7 @@ import { pageOf, SettingsApp } from "./SettingsApp";
 import { RECHECK_MS, STALE_HINT_MS } from "./PasteGuide";
 import type { PastePermission, SettingsApi } from "./api";
 import recordings from "../testing/shortcut-recordings.json";
+import pickerConflicts from "../testing/picker-shortcut-conflicts.json";
 
 afterEach(() => vi.useRealTimers());
 
@@ -33,6 +34,7 @@ function fakeApi(permission: Partial<PastePermission> = {}, preferences: Partial
     shortcut: { shortcut: DEFAULT_PICKER_SHORTCUT, registered: true, error: null } as ShortcutStatus,
     shortcuts: [] as ((status: ShortcutStatus) => void)[],
     shortcutChoices: [] as (string | null)[],
+    automatic: [] as ((on: boolean) => void)[],
   };
   const commit = async (next: Partial<PickerPreferences>) => {
     state.patches.push(next);
@@ -50,6 +52,7 @@ function fakeApi(permission: Partial<PastePermission> = {}, preferences: Partial
     checkForUpdates: async () => undefined as never,
     pastePermission: async () => { state.reads += 1; return state.permission; },
     openPastePermission: async () => { state.opened += 1; return undefined as never; },
+    dragPasteApp: vi.fn(async () => undefined),
     finishPasteGuide: async () => { state.finished += 1; return true; },
     shortcutStatus: async () => state.shortcut,
     setShortcut: async (shortcut) => {
@@ -61,7 +64,7 @@ function fakeApi(permission: Partial<PastePermission> = {}, preferences: Partial
     onShortcutStatus: async (handler) => { state.shortcuts.push(handler); return () => { state.shortcuts = state.shortcuts.filter((each) => each !== handler); }; },
     version: async () => "0.3.0",
     onPage: async (handler) => { state.pages.push(handler); return () => undefined; },
-    onUpdateChecks: async () => () => undefined,
+    onUpdateChecks: async (handler) => { state.automatic.push(handler); return () => { state.automatic = state.automatic.filter((each) => each !== handler); }; },
     onCloseRequested: async (handler) => { state.closes.push(handler); return () => undefined; },
   };
   return { api, state, commit };
@@ -73,6 +76,47 @@ test("pages are opened by name, and the paste guide is General's pasting group",
   expect(pageOf("shortcuts")).toEqual({ page: "shortcuts", focus: null });
   expect(pageOf("unknown")).toEqual({ page: "general", focus: null });
   expect(pageOf(null)).toEqual({ page: "general", focus: null });
+});
+
+test.each([
+  ["initial", "success"], ["initial", "failure"],
+  ["focus", "success"], ["focus", "failure"],
+])("an automatic-update event wins over an older %s read's %s", async (from, outcome) => {
+  const { api, state } = fakeApi({ granted: true });
+  const read = deferred<boolean>();
+  if (from === "initial") vi.spyOn(api, "updateChecks").mockReturnValueOnce(read.promise);
+  const { unmount } = render(<SettingsApp api={api} initialPage="about" />);
+  if (from === "focus") {
+    await screen.findByRole("switch", { name: settingsText.updates.automatic });
+    vi.spyOn(api, "updateChecks").mockReturnValueOnce(read.promise);
+    fireEvent.focus(window);
+  }
+  act(() => state.automatic[0]!(true));
+  const automatic = screen.getByRole("switch", { name: settingsText.updates.automatic }) as HTMLInputElement;
+  expect(automatic.checked).toBe(true);
+  await act(async () => { if (outcome === "success") read.resolve(false); else read.reject(); });
+  expect(screen.getByRole("switch", { name: settingsText.updates.automatic })).toBe(automatic);
+  expect(automatic.checked).toBe(true);
+  // A read started after the event can still observe a later saved choice.
+  vi.spyOn(api, "updateChecks").mockResolvedValueOnce(false);
+  fireEvent.focus(window);
+  await waitFor(() => expect(automatic.checked).toBe(false));
+  unmount();
+  await act(async () => { await Promise.resolve(); });
+  expect(state.automatic).toEqual([]);
+});
+
+test.each(["success", "failure"])("a newer automatic-update read wins over an older read's %s", async (outcome) => {
+  const { api } = fakeApi({ granted: true });
+  const old = deferred<boolean>(), latest = deferred<boolean>();
+  vi.spyOn(api, "updateChecks").mockReturnValueOnce(old.promise).mockReturnValueOnce(latest.promise);
+  render(<SettingsApp api={api} initialPage="about" />);
+  fireEvent.focus(window);
+  await act(async () => { latest.resolve(true); });
+  const automatic = screen.getByRole("switch", { name: settingsText.updates.automatic }) as HTMLInputElement;
+  await act(async () => { if (outcome === "success") old.resolve(false); else old.reject(); });
+  expect(screen.getByRole("switch", { name: settingsText.updates.automatic })).toBe(automatic);
+  expect(automatic.checked).toBe(true);
 });
 
 test("Settings opens at the top of General with every built page in a navigable, selected sidebar list", async () => {
@@ -204,6 +248,23 @@ test("the paste guide names the list, opens it, notices the grant on its own and
   const reads = state.reads;
   await act(async () => { await vi.advanceTimersByTimeAsync(RECHECK_MS * 5); });
   expect(state.reads).toBeLessThanOrEqual(reads + 1);
+});
+
+test("a drag fallback notices a read-back grant on return without repeating automatic listing", async () => {
+  const { api, state } = fakeApi();
+  render(<SettingsApp api={api} initialPage="general" />);
+  const open = await screen.findByRole("button", { name: "Open System Settings" });
+  fireEvent.click(open);
+  fireEvent.dragStart(screen.getByRole("button", { name: "Drag Ibis Nightly to Device Control and Data Access" }));
+  await act(async () => undefined);
+  expect(api.dragPasteApp).toHaveBeenCalledExactlyOnceWith();
+  expect(state.opened).toBe(1);
+  expect(screen.queryByText("Ibis can paste now.")).toBeNull();
+  state.permission = { ...state.permission, granted: true };
+  fireEvent.focus(window);
+  expect(await screen.findByText("Ibis can paste now.")).toBeTruthy();
+  expect(screen.queryByRole("button", { name: /Drag Ibis/ })).toBeNull();
+  expect(state.finished).toBe(0);
 });
 
 test("the permission detour finishes only on return after a read-back grant", async () => {
@@ -469,6 +530,19 @@ test("Shortcuts records a change, restores the default, and lists every picker k
   await waitFor(() => expect(recorder.textContent).toBe(label(DEFAULT_PICKER_SHORTCUT)));
   expect(state.shortcutChoices).toEqual(["Alt+Shift+K", null]);
   expect(screen.queryByRole("button", { name: "Use Default" })).toBeNull();
+});
+
+test.each(pickerConflicts)("a recorded $name refusal names its command and keeps the working shortcut", async ({ event, shortcut, command, label }) => {
+  const { api } = fakeApi({ granted: true });
+  vi.spyOn(api, "setShortcut").mockRejectedValueOnce({ "picker-shortcut": command });
+  render(<SettingsApp api={api} initialPage="shortcuts" />);
+  const recorder = await screen.findByRole("button", { name: /^Open Ibis:/ });
+  const original = recorder.textContent;
+  fireEvent.click(recorder);
+  fireEvent.keyDown(recorder, event);
+  expect((await screen.findByRole("alert")).textContent).toBe(`That shortcut is used for ${label}. Try another shortcut.`);
+  expect(api.setShortcut).toHaveBeenCalledWith(shortcut);
+  expect(recorder.textContent).toBe(original);
 });
 
 test.each(Object.entries(settingsText.shortcut.refusals))("the %s refusal explains the result and keeps the working shortcut", async (code, message) => {

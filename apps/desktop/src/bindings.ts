@@ -46,7 +46,7 @@ export const commands = {
 	 *  omitted/null searches all, an empty list searches none. It never reloads sources.
 	 */
 	search: (query: SearchQuery, limit: number, page: number, request: number, scope: string[] | null) => __TAURI_INVOKE<SearchReply_Serialize>("search", { query, limit, page, request, scope }),
-	previewFileCitation: (items: FileSelection[], format: KeyFormat, style: "apa" | "chicago-author-date" | "harvard-cite-them-right" | "ieee" | "modern-language-association" | null, expectedRevision: string) => __TAURI_INVOKE<FilePreview>("preview_file_citation", { items, format, style, expectedRevision }),
+	previewFileCitation: (items: FileSelection[], format: KeyFormat, style: "apa" | "chicago-author-date" | "harvard-cite-them-right" | "ieee" | "modern-language-association" | null, expectedRevision: string, intent: PreviewIntent) => __TAURI_INVOKE<FilePreview>("preview_file_citation", { items, format, style, expectedRevision, intent }),
 	copyFileCitation: (ticket: string, contentHash: string) => __TAURI_INVOKE<Copied_Serialize>("copy_file_citation", { ticket, contentHash }),
 	/**  The format the picker starts with: the last one chosen, or Pandoc. */
 	copyFormat: () => __TAURI_INVOKE<KeyFormat>("copy_format"),
@@ -146,6 +146,8 @@ export const commands = {
 	pastePermission: () => __TAURI_INVOKE<PastePermission>("paste_permission"),
 	/**  Clear a stale entry, ask macOS to list Ibis, then open the pane with the switch. */
 	openPastePermission: () => __TAURI_INVOKE<void>("open_paste_permission"),
+	/**  Drag only the running app bundle into the permission list. */
+	dragPasteApp: () => __TAURI_INVOKE<null>("drag_paste_app"),
 	/**
 	 *  Open Ibis with `shortcut` from now on (`None`: the default), and remember it.
 	 *  Every window and the menu bar item show the change at once.
@@ -181,7 +183,7 @@ export type Copied_Deserialize = {
 	text: string,
 	/**  What the chosen syntax could not express, and other problems the user should see. */
 	warnings: string[],
-	/**  Windows receipt for this copy's immutable delivery ticket. */
+	/**  Unique write token for this copy's one-use paste proof. */
 	delivery?: number | null,
 };
 
@@ -189,7 +191,7 @@ export type Copied_Serialize = {
 	text: string,
 	/**  What the chosen syntax could not express, and other problems the user should see. */
 	warnings: string[],
-	/**  Windows receipt for this copy's immutable delivery ticket. */
+	/**  Unique write token for this copy's one-use paste proof. */
 	delivery?: number | null,
 };
 
@@ -357,6 +359,9 @@ export type NoticeMessage = {
 	text: string,
 };
 
+/**  An app ID that cannot tell Ibis which output its document needs. */
+export type OutputQuestion = "browser" | "editor";
+
 /**  Where Settings opens. */
 export type Page = "general" |
 /**  General, scrolled to pasting and its permission. */
@@ -378,6 +383,9 @@ export type PastedList = {
 	missing: string[],
 };
 
+/**  Command identifiers shared with KEY_TABLE and the refusal's translated name. */
+export type PickerCommand = "format" | "pin" | "keys" | "more" | "preview" | "settings" | "quit";
+
 /**  What the picker needs to know about the app it was opened from. */
 export type PickerDestination = {
 	/**  The app's own name; `None` when no app was captured. */
@@ -392,6 +400,8 @@ export type PickerDestination = {
 	unreadable: boolean,
 	/**  The current paste policy permits an attempt; final delivery checks still apply. */
 	can_paste: boolean,
+	/**  The app cannot identify document syntax; ask until an output is remembered. */
+	output_question: OutputQuestion | null,
 };
 
 /**
@@ -437,6 +447,12 @@ export type PickerPreferencesPatch_Serialize = {
 export type PickerSave = {
 	preferences: PickerPreferences,
 	copy_format: KeyFormat,
+};
+
+export type PreviewIntent = {
+	page: number,
+	request: number,
+	cancel: boolean,
 };
 
 export type ReferenceForm = "normal" | "narrative" | "author-omitted";
@@ -509,6 +525,8 @@ export type ShortcutRefusal =
 "needs-modifier" |
 /**  ⌘ (Ctrl elsewhere) with one key is what apps use for their own commands. */
 "app-shortcut" |
+/**  The picker already uses this key combination for a command. */
+{ "picker-shortcut": PickerCommand } |
 /**  Windows uses Ctrl+Alt (also with Shift) to type with AltGr. */
 "alt-gr" |
 /**  Another app or the system already has it. */

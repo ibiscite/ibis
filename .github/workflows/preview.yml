@@ -206,6 +206,12 @@ jobs:
           RUSTFLAGS: -D warnings
         run: cargo test -p ibis-core -p ibis-sources --release --locked
 
+      - name: Enforce 100k open/refresh budgets (Linux, release)
+        if: runner.os == 'Linux'
+        env:
+          RUSTFLAGS: -D warnings
+        run: cargo test -p ibis-engine --locked --release --test refresh_budget -- open_refresh_budget --ignored --nocapture --test-threads=1
+
       - name: Test the declared minimum Rust version (Linux)
         if: runner.os == 'Linux'
         env:

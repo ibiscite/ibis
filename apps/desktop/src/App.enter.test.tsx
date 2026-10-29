@@ -119,7 +119,7 @@ test("a completed copy cannot be repeated while hidden; reopening requires fresh
 test.each([true, false])("the footer names action and output together (paste=%s)", async (canPaste) => {
   backend({
     search: () => [result("a", "First")],
-    picker_destination: () => ({ app: "Example Word", app_id: "example.word", automatic: { style: "apa" }, remembered: null, unreadable: false, can_paste: canPaste }),
+    picker_destination: () => ({ app: "Example Word", app_id: "example.word", automatic: { style: "apa" }, remembered: null, unreadable: false, can_paste: canPaste, output_question: null }),
   });
   await act(async () => { render(<App />); });
   expect(keys().getByRole("button", { name: canPaste ? "Paste into Example Word · APA" : "Copy as APA" })).toBeTruthy();

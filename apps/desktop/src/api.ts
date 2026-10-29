@@ -24,7 +24,6 @@ export const {
   fitPicker,
   quit,
   shortcutStatus,
-  previewFileCitation,
   copyFileCitation,
   copyFormat,
   pickerPreferences,
@@ -54,6 +53,22 @@ export function setPickerPreferences(preferences: Partial<PickerPreferences>, co
 // and the page is named because a reloaded page counts from the start again.
 const searchPage = crypto.getRandomValues(new Uint32Array(1))[0] ?? 0;
 let searchRequest = 0;
+let previewRequest = 0;
+
+export function previewFileCitation(
+  items: Parameters<typeof commands.previewFileCitation>[0],
+  format: KeyFormat,
+  style: Parameters<typeof commands.previewFileCitation>[2],
+  expectedRevision: string,
+  signal?: AbortSignal,
+) {
+  const intent = { page: searchPage, request: ++previewRequest, cancel: false };
+  const pending = commands.previewFileCitation(items, format, style, expectedRevision, intent);
+  const cancel = () => { void commands.previewFileCitation([], format, style, expectedRevision, { ...intent, cancel: true }).catch(() => {}); };
+  signal?.addEventListener("abort", cancel, { once: true });
+  if (signal?.aborted) cancel();
+  return pending.finally(() => signal?.removeEventListener("abort", cancel));
+}
 
 export function search(query: string, limit = 20, scope: string[] | null = null, interpretLocators = true) {
   searchRequest += 1;

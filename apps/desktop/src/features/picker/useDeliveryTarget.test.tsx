@@ -3,7 +3,7 @@ import { expect, test, vi } from "vitest";
 import type { PickerDestination } from "../../api";
 import { useDeliveryTarget } from "./useDeliveryTarget";
 
-const target = (can_paste: boolean): PickerDestination => ({ app: "Example Word", app_id: "example.word", automatic: null, remembered: null, unreadable: false, can_paste });
+const target = (can_paste: boolean): PickerDestination => ({ app: "Example Word", app_id: "example.word", automatic: null, remembered: null, unreadable: false, can_paste, output_question: null });
 
 test("observes existing reads only, and a late destination cannot replace the current action", async () => {
   const finish: ((value: PickerDestination) => void)[] = [];
