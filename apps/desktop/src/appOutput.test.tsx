@@ -286,7 +286,7 @@ test("a pasted list consumes a one-time format and hides after copying every res
   });
   await screen.findByText("Pasted list");
   await pick("Just this once", "menuitemcheckbox");
-  await pick("Typst");
+  await pick("Typst key");
   await waitFor(() => expect(previews.at(-1)).toMatchObject({ format: "typst", items: [{ id: { key: "b" } }, { id: { key: "a" } }] }));
   await copy(previews, copies);
   await waitFor(() => expect(formatShown()).toBe("\\cite · Example Browser"));
