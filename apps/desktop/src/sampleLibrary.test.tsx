@@ -9,7 +9,8 @@ import type { FilePreview } from "./bindings";
 afterEach(resetApp);
 
 const title = "Lantern gardens and the rhythm of imaginary cities";
-const apa = "(Vale, 2024)";
+const apa = "(Vale, 2024) [Sample]";
+const sampleKeys = "[@vale2024lanterns] [Sample]";
 const apaWarnings = ["Year suffixes require the whole document; Ibis leaves them out."];
 
 function press(row: HTMLElement) {
@@ -31,7 +32,9 @@ function setup(density: Density = "comfortable", formatted = true) {
   const copied = vi.fn((args: unknown) => ({ text: prepared(args).preview.text, warnings: prepared(args).preview.warnings }));
   const notice = vi.fn(() => ({ outcome: "copied", reason: "paste-disabled", app: null }));
   const preview = vi.fn(async ({ items }: { items: { id: { library: string } }[] }) =>
-    receipt(items[0]?.id.library === "samples" ? formatted ? apa : "[@vale2024lanterns]" : "(Fen, 2023)", null, formatted ? apaWarnings : []));
+    receipt(items[0]?.id.library === "samples" ? formatted ? apa : sampleKeys : "(Fen, 2023)",
+      formatted ? items[0]?.id.library === "samples" ? "(Vale, 2024)<span> [Sample]</span>" : "(Fen, 2023)" : null,
+      formatted ? apaWarnings : []));
   const calls = backend({
     library_status: status,
     use_sample_library: ({ enabled }) => switchTo(enabled ? "sample" : "none"),
@@ -56,7 +59,7 @@ async function chooseSamples() {
 
 test.each([true, false])("first citation: choose samples, search, Enter and receipt (formatted: %s)", async (formatted) => {
   const { calls, copied, notice } = setup("comfortable", formatted);
-  const text = formatted ? apa : "[@vale2024lanterns]";
+  const text = formatted ? apa : sampleKeys;
   await screen.findByRole("option", { name: /^Try sample references/ });
   expect(calls).not.toContain("use_sample_library");
   await chooseSamples();
@@ -79,6 +82,7 @@ test.each([true, false])("first citation: choose samples, search, Enter and rece
     expect(calls).toContain("hide_picker");
   }
   expect(copied).toHaveBeenCalledOnce();
+  expect(prepared(copied.mock.calls[0]?.[0]).preview.text).toContain("[Sample]");
   expect(calls).not.toContain("set_picker_preferences");
 });
 

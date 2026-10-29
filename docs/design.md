@@ -753,7 +753,12 @@ A choice screen hides the result heading, the shelf and the Copy hint.
   library preference. Its search hint names words in the samples. A
   **Use your own library** choice row returns to setup.
   Choosing a real source replaces samples; sample selections and copy notices
-  leave with them. Samples never join a real library. The
+  leave with them. Samples never join a real library. Every sample citation
+  ends with the visible text ` [Sample]`, including key outputs and every
+  clipboard representation (plain text, HTML and RTF). The marker belongs to
+  the prepared citation and its content hash: previews and receipts show the
+  same marked text that lands in the document. These are demo citations;
+  choosing a real library produces ordinary citations. The
   footer, receipt and announcement describe the action actually taken:
   "Paste into Word", "Copied. Press ⌘V to paste." (the right key per system)
   when pasting is off or unavailable, or "Copied" with the reason. The footer shows the library, Shortcuts and More.

@@ -23,6 +23,15 @@ fn loaded(source: Source) -> Library {
 }
 
 fn preview(file: &engine_file::FileLibrary, term: &str) -> engine_file::FilePreview {
+    preview_output(file, term, KeyFormat::Pandoc, Some(CitationStyle::Apa))
+}
+
+fn preview_output(
+    file: &engine_file::FileLibrary,
+    term: &str,
+    format: KeyFormat,
+    style: Option<CitationStyle>,
+) -> engine_file::FilePreview {
     let query =
         serde_json::from_value(json!({"text":term,"interpret_locators":false})).unwrap_or_else(|e| panic!("{e}"));
     let found = file
@@ -30,7 +39,6 @@ fn preview(file: &engine_file::FileLibrary, term: &str) -> engine_file::FilePrev
         .unwrap_or_else(|e| panic!("{e}"));
     assert_eq!(found.results.len(), 1);
     let row = &found.results[0];
-    assert!(row.sample);
     file.preview(
         file.reserve_preview(),
         vec![FileSelection {
@@ -39,14 +47,14 @@ fn preview(file: &engine_file::FileLibrary, term: &str) -> engine_file::FilePrev
             locator: None,
             form: None,
         }],
-        KeyFormat::Pandoc,
-        Some(CitationStyle::Apa),
+        format,
+        style,
     )
     .unwrap_or_else(|_| panic!("preview"))
 }
 
 #[test]
-fn bundled_samples_load_through_csl_json_and_copy_exact_apa() {
+fn bundled_samples_load_through_csl_json_and_copy_marked_apa() {
     let config: serde_json::Value =
         serde_json::from_str(include_str!("../../tauri.conf.json")).unwrap_or_else(|e| panic!("{e}"));
     assert!(
@@ -67,6 +75,13 @@ fn bundled_samples_load_through_csl_json_and_copy_exact_apa() {
     assert_eq!(status.snapshot_name, status.name);
     assert_eq!((status.references, status.warnings), (3, 0));
     let file = library.file.unwrap_or_else(|| panic!("engine"));
+    let query =
+        serde_json::from_value(json!({"text":"lantern","interpret_locators":false})).unwrap_or_else(|e| panic!("{e}"));
+    let rows = file
+        .search(&query, 10, None, &Cancellation::default())
+        .unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(rows.results.len(), 1);
+    assert!(rows.results[0].sample);
     assert_eq!(
         file.engine
             .libraries()
@@ -76,21 +91,95 @@ fn bundled_samples_load_through_csl_json_and_copy_exact_apa() {
         1
     );
     for (term, text) in [
-        ("lantern", "(Vale, 2024)"),
-        ("clockwork", "(Fen, 2023)"),
-        ("islands", "(Reed & Vale, 2025)"),
+        ("lantern", "(Vale, 2024) [Sample]"),
+        ("clockwork", "(Fen, 2023) [Sample]"),
+        ("islands", "(Reed & Vale, 2025) [Sample]"),
     ] {
         let receipt = preview(&file, term);
         assert_eq!(receipt.text, text);
         let copied = file
             .copy(&receipt.ticket, &receipt.content_hash, |content| {
                 assert_eq!(content.text, text);
+                assert!(content.html.is_some() && content.rtf.is_some());
+                for representation in [Some(content.text), content.html, content.rtf].into_iter().flatten() {
+                    assert!(representation.contains("[Sample]"));
+                }
                 Ok(())
             })
             .unwrap_or_else(|_| panic!("copy"));
         assert_eq!(copied.text, text);
         assert_eq!(copied.warnings, receipt.warnings);
     }
+}
+
+#[test]
+fn every_sample_style_and_key_output_keeps_its_marker_on_the_clipboard() {
+    let file = loaded(source()).file.unwrap_or_else(|| panic!("engine"));
+    for style in [
+        CitationStyle::Apa,
+        CitationStyle::ChicagoAuthorDate,
+        CitationStyle::HarvardCiteThemRight,
+        CitationStyle::Ieee,
+        CitationStyle::ModernLanguageAssociation,
+    ] {
+        let receipt = preview_output(&file, "lantern", KeyFormat::Pandoc, Some(style));
+        assert!(receipt.text.ends_with(" [Sample]"), "{style:?}");
+        file.copy(&receipt.ticket, &receipt.content_hash, |content| {
+            assert_eq!(content.text, receipt.text);
+            assert!(content.html.is_some() && content.rtf.is_some(), "{style:?}");
+            for representation in [Some(content.text), content.html, content.rtf].into_iter().flatten() {
+                assert!(representation.contains("[Sample]"), "{style:?}");
+            }
+            Ok(())
+        })
+        .unwrap_or_else(|_| panic!("copy {style:?}"));
+    }
+    for (format, expected) in [
+        (KeyFormat::Pandoc, "[@vale2024lanterns] [Sample]"),
+        (KeyFormat::Autocite, "\\autocite{vale2024lanterns} [Sample]"),
+        (KeyFormat::Parencite, "\\parencite{vale2024lanterns} [Sample]"),
+        (KeyFormat::Textcite, "\\textcite{vale2024lanterns} [Sample]"),
+        (KeyFormat::Cite, "\\cite{vale2024lanterns} [Sample]"),
+        (KeyFormat::Typst, "@vale2024lanterns [Sample]"),
+        (KeyFormat::Keys, "vale2024lanterns [Sample]"),
+    ] {
+        let receipt = preview_output(&file, "lantern", format, None);
+        assert_eq!(receipt.text, expected, "{format:?}");
+        file.copy(&receipt.ticket, &receipt.content_hash, |content| {
+            assert_eq!(content.text, expected);
+            for representation in [Some(content.text), content.html, content.rtf].into_iter().flatten() {
+                assert!(representation.contains("[Sample]"), "{format:?}");
+            }
+            Ok(())
+        })
+        .unwrap_or_else(|_| panic!("copy {format:?}"));
+    }
+}
+
+#[test]
+fn sample_provenance_changes_the_prepared_hash_and_normal_library_copies_stay_unmarked() {
+    let Source::Samples(path) = source() else {
+        panic!("sample source")
+    };
+    let normal = engine_file::FileLibrary::open(&path).unwrap_or_else(|e| panic!("{e}"));
+    let original = preview(&normal, "lantern");
+    assert_eq!(original.text, "(Vale, 2024)");
+    normal
+        .copy(&original.ticket, &original.content_hash, |content| {
+            for representation in [Some(content.text), content.html, content.rtf].into_iter().flatten() {
+                assert!(!representation.contains("[Sample]"));
+            }
+            Ok(())
+        })
+        .unwrap_or_else(|_| panic!("normal copy"));
+    let samples = loaded(source()).file.unwrap_or_else(|| panic!("sample engine"));
+    let marked = preview(&samples, "lantern");
+    assert_ne!(marked.content_hash, original.content_hash);
+    assert!(
+        samples
+            .copy(&marked.ticket, &original.content_hash, |_| panic!("unmarked preview"))
+            .is_err()
+    );
 }
 
 #[test]

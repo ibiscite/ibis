@@ -455,6 +455,11 @@ impl FileLibrary {
         record.citation_key().ok().flatten().map(str::to_owned)
     }
     fn publish_preview(&self, reservation: u64, citation: PreparedCitation) -> Result<FilePreview, CommandError> {
+        let citation = if self.sample {
+            citation.mark_sample().map_err(CommandError::from)?
+        } else {
+            citation
+        };
         let mut slot = self
             .prepared
             .lock()
