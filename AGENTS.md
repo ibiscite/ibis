@@ -46,6 +46,8 @@ node scripts/pr-lint.mjs --title "fix: explain the change"
 - Merge only with a green "CI result" on the exact head, by squash, never bypassing. Auto-merge sometimes does not fire: if a green pull request is still open, squash-merge it yourself. GitHub runs no pull request checks while a pull request has a merge conflict, so a head with no "CI result" usually needs `origin/main` merged in; never merge a head that has no CI run. If `main` turns red, revert the merge that broke it first, then fix.
 - After a merge, update the tracking issue's Now if it changed, then remove your own worktree and local branch for it. Lasting decisions go into `docs/decisions.md`.
 
+2026-10-29: Before final review and CI of a shared contract change, merge current `origin/main`; verify that reviewed head still contains it immediately before squash. Focus local Vitest checks with `pnpm -C apps/desktop exec vitest run FILE --maxWorkers=1` (`pnpm test --` runs the full suite).
+
 ## Brief for an implementing agent
 
 ```text
