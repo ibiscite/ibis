@@ -66,6 +66,40 @@ test("replacing, clearing and unmounting a selection aborts obsolete engine prev
   expect(signals[2]?.aborted).toBe(true);
 });
 
+test.each([
+  { edit: "page", details: { locator: { label: "page", value: "42–45" }, form: "normal" } },
+  { edit: "cleared page", details: { locator: null, form: "normal" } },
+  { edit: "narrative form", details: { locator: { label: "page", value: "12" }, form: "narrative" } },
+  { edit: "suppressed author", details: { locator: { label: "page", value: "12" }, form: "author-omitted" } },
+] as const)("a $edit edit aborts the old preview and keeps the new receipt after a late result", async ({ details }) => {
+  const pending: ((value: FilePreview) => void)[] = [];
+  const previewFileCitation = vi.fn<Preview>(() => new Promise((resolve) => pending.push(resolve)));
+  const chosen: CitationReference = { ...reference(), locator: { label: "page", value: "12" }, form: "normal" };
+  const refreshSnapshot = vi.fn();
+  const initial = options({ chosen: [chosen], previewFileCitation, refreshSnapshot });
+  const { result, rerender, unmount } = renderHook(useCitationOutput, { initialProps: initial });
+  const oldSignal = previewFileCitation.mock.calls[0]?.[4];
+  expect(oldSignal).toBeInstanceOf(AbortSignal);
+  expect(oldSignal?.aborted).toBe(false);
+
+  rerender({ ...initial, chosen: [{ ...chosen, ...details }] });
+  expect(oldSignal?.aborted).toBe(true);
+  expect(result.current.shown).toBeNull();
+  const signal = previewFileCitation.mock.calls[1]?.[4];
+  expect(signal).toBeInstanceOf(AbortSignal);
+  expect(signal?.aborted).toBe(false);
+  expect(previewFileCitation).toHaveBeenLastCalledWith(
+    [{ id: chosen.id, cite: chosen.cite, ...details }], "pandoc", null, "1", signal,
+  );
+
+  await act(async () => { pending[1]?.(preview("edited citation")); });
+  expect(result.current.shown).toMatchObject({ text: "edited citation", fileTicket: "synthetic-ticket" });
+  await act(async () => { pending[0]?.(preview("obsolete citation")); });
+  expect(result.current.shown).toMatchObject({ text: "edited citation", fileTicket: "synthetic-ticket" });
+  expect(refreshSnapshot).not.toHaveBeenCalled();
+  unmount();
+});
+
 test("a failed native preview keeps its actionable explanation without refreshing the snapshot", async () => {
   const previewFileCitation = vi.fn<Preview>().mockRejectedValue({ code: "failed", message: conflictMessage });
   const refreshSnapshot = vi.fn();

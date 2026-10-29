@@ -37,10 +37,10 @@ export function useCitationOutput({ chosen, library, libraryVersion, format, sty
   const shown = formatted?.key === previewKey ? formatted.result : null;
   // Why the preview failed, when the user can fix it.
   const previewProblem = shown === "failed" ? formatted?.problem : undefined;
-  // Hidden previews still prepare the receipt that Enter copies.
-  const displayedOutput = showPastePreview && chosen.length > 0 ? shown : undefined;
+  // Hiding citation text never hides the reason it cannot be copied.
+  const displayedOutput = chosen.length > 0 && (showPastePreview || shown === "failed") ? shown : undefined;
   // Format the preview again whenever the choice or the style changes.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: previewKey covers the choice, its locators, revision and the style or key format, so it is the only trigger.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: previewKey covers the choice, its locators, forms, revision and the style or key format, so it is the only trigger.
   useEffect(() => {
     if (chosen.length === 0 || !chosenRevision) return;
     if (stalePreview.current === retryKey) {
@@ -50,7 +50,7 @@ export function useCitationOutput({ chosen, library, libraryVersion, format, sty
     let live = true;
     const abort = new AbortController();
     const key = previewKey;
-    const made = previewFileCitation(chosen.map((r) => ({ id: r.id, cite: r.cite ?? "", locator: r.locator ?? null })), keyFormat ?? "pandoc", style, chosenRevision, abort.signal).then((result) => ({ markup: result.html ? parse(result.html) : [result.text], text: result.text, html: result.html ?? "", warnings: result.warnings, fileTicket: result.ticket, fileHash: result.content_hash }));
+    const made = previewFileCitation(chosen.map((r) => ({ id: r.id, cite: r.cite ?? "", locator: r.locator ?? null, ...(r.form ? { form: r.form } : {}) })), keyFormat ?? "pandoc", style, chosenRevision, abort.signal).then((result) => ({ markup: result.html ? parse(result.html) : [result.text], text: result.text, html: result.html ?? "", warnings: result.warnings, fileTicket: result.ticket, fileHash: result.content_hash }));
     made
       .then((result) => { if (live) setFormatted({ key, result }); })
       .catch((error) => { if (live) {

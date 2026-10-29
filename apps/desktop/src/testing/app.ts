@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, screen } from "@testing-library/react";
 import { clearMocks, mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { vi } from "vitest";
 import type * as api from "../api";
-import type { FilePreview, PreviewIntent } from "../bindings";
+import type { FilePreview, PreviewIntent, ReferenceForm } from "../bindings";
 
 export async function resetApp() {
   cleanup();
@@ -42,7 +42,7 @@ export function result(key: string, title: string, source = "refs.bib") {
 
 export type SyntheticId = { library: string; key: string };
 export type PreviewRequest = {
-  items: { id: SyntheticId; cite: string; locator: api.Locator | null }[];
+  items: { id: SyntheticId; cite: string; locator: api.Locator | null; form?: ReferenceForm }[];
   format: api.CopyFormat;
   style: string | null;
   expectedRevision: string;

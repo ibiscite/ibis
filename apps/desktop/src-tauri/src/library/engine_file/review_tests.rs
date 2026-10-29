@@ -35,7 +35,7 @@ fn replacing_or_invalidating_a_preview_cancels_its_engine_work() -> Result<(), B
 }
 
 #[test]
-fn a_superseded_preview_stops_before_reading_its_request() -> Result<(), Box<dyn std::error::Error>> {
+fn a_superseded_preview_stops_before_reading_its_page_and_form() -> Result<(), Box<dyn std::error::Error>> {
     let file = FileLibrary::from_engine(Engine::new().map_err(|_| "engine")?);
     let older = file.reserve_preview();
     file.reserve_preview();
@@ -45,7 +45,8 @@ fn a_superseded_preview_stops_before_reading_its_request() -> Result<(), Box<dyn
             vec![FileSelection {
                 id: Value::Null,
                 cite: String::new(),
-                locator: None,
+                form: Some(ReferenceForm::Narrative),
+                locator: Some(serde_json::from_value(json!({"label":"page","value":"pp."}))?),
             }],
             KeyFormat::Pandoc,
             Some(CitationStyle::Apa),
