@@ -1,4 +1,4 @@
-"""Run the ignored release measurement and report its peak RSS (macOS/Linux).
+"""Run the release budget gate and report its peak RSS (macOS/Linux).
 
 Uses only Python's standard library. Compilation runs in a separate process so
 the compiler's peak is excluded. Run from any directory; honors CARGO_TARGET_DIR.
@@ -14,7 +14,7 @@ if len(sys.argv) == 2:
     import resource
 
     result = subprocess.run(
-        [sys.argv[1], "--ignored", "--nocapture", "--test-threads=1"], check=False
+        [sys.argv[1], "open_refresh_budget", "--ignored", "--nocapture", "--test-threads=1"], check=False
     )
     usage = resource.getrusage(resource.RUSAGE_CHILDREN)
     divisor = 1024 * 1024 if sys.platform == "darwin" else 1024

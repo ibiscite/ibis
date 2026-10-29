@@ -15,6 +15,15 @@ use crate::contract::citation::{KeySyntax, OutputSpec};
 
 pub use table::{APPS, App};
 
+/// An app ID that cannot tell Ibis which output its document needs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[serde(rename_all = "kebab-case")]
+pub enum OutputQuestion {
+    Browser,
+    Editor,
+}
+
 /// The operating system an app ID belongs to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]

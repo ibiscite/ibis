@@ -142,24 +142,16 @@ pub(super) fn watch_current(app: &AppHandle) {
     publish_current(app);
     let handle = app.clone();
     std::thread::spawn(move || {
-        loop {
-            let changed = events.recv_timeout(std::time::Duration::from_millis(200));
-            let current = handle.state::<Mutex<Library>>().lock().ok().is_some_and(|mut library| {
-                if changed.is_ok() {
-                    engine_changed(&mut library, &file)
-                } else {
-                    library
-                        .file
-                        .as_ref()
-                        .is_some_and(|active| std::sync::Arc::ptr_eq(active, &file))
-                }
-            });
-            if !current || matches!(changed, Err(std::sync::mpsc::RecvTimeoutError::Disconnected)) {
+        while events.recv().is_ok() {
+            let current = handle
+                .state::<Mutex<Library>>()
+                .lock()
+                .ok()
+                .is_some_and(|mut library| engine_changed(&mut library, &file));
+            if !current {
                 break;
             }
-            if changed.is_ok() {
-                publish_current(&handle);
-            }
+            publish_current(&handle);
         }
     });
 }
@@ -173,6 +165,7 @@ fn observe_current(
     let mut library = library.lock().ok()?;
     let file = library.file.clone()?;
     let events = file.observe_once().ok()??;
+    library.observer = Some(events.close_handle());
     // Subscribe before reconciling: changes before subscription have no queued event.
     engine_changed(&mut library, &file);
     Some((file, events))

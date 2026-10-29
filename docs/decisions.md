@@ -152,6 +152,11 @@ generation, hidden picker, HWND and process after the password query and
 again after the injection lock and any key-release recovery waits. Windows
 never reads clipboard contents to prove ownership.
 
+On both systems, a notice carries a unique write token from the successful
+copy. Only a matching token can consume its one-use proof; a delayed earlier
+delivery leaves a newer proof available, even when the citation text or
+clipboard sequence is the same. Tokens never wrap; exhaustion only copies.
+
 UI Automation checks only the focused element's process and `IsPassword`.
 An enabled property copies with `secure-field`; unavailable or timed-out
 queries copy without that reason or macOS's `paste-unavailable` notice. The
@@ -247,9 +252,10 @@ VoiceOver and NVDA and with Chinese,
 Japanese and Korean input methods; Orca joins for 1.0. Interface text goes
 through the translation layer from 0.3, with German and one right-to-left
 language in 0.4. The speed and resource budgets in
-[architecture](architecture.md#desktop-app) are limits: engine and bundle
-checks fail pull request CI, and native latency and idle use are measured on
-the release machines before each release.
+[architecture](architecture.md#desktop-app) are limits: search and bundle
+checks fail pull request CI. Open/refresh fails Preview's nightly/release build
+because shared PR runners have too little timing margin. Native latency and idle
+use are measured on the release machines before each release.
 0.5 cites from Zotero's annotations and the PDFs people already open before
 any reader inside Ibis (maintainer, 2026-10-28).
 

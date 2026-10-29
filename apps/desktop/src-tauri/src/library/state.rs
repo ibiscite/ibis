@@ -17,6 +17,8 @@ use super::status::{LibraryStatus, status};
 pub(crate) struct Library {
     /// Shared so a search or copy can run without holding the library lock.
     pub(crate) file: Option<Arc<FileLibrary>>,
+    /// Disconnect the blocked notification worker when its library is replaced.
+    pub(super) observer: Option<ibis_engine::LibrarySubscriptionClose>,
     pub(crate) source: Option<Source>,
     /// The requested source, including before it has been read.
     pub(crate) requested: Option<Source>,
@@ -112,6 +114,14 @@ pub(super) fn install_result(
         && library.requested != library.source;
     match loaded {
         Ok(mut new) => {
+            if new
+                .file
+                .as_ref()
+                .zip(library.file.as_ref())
+                .is_some_and(|(new, old)| Arc::ptr_eq(new, old))
+            {
+                new.observer = library.observer.take();
+            }
             new.settings_notice = library.settings_notice.take();
             if new.source.is_some() && new.source == library.source {
                 new.changed_at = library.changed_at;

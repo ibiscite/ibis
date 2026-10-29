@@ -2,7 +2,7 @@
 //! a test checks that, and that no app appears twice. Add an app only with an
 //! ID taken from the app itself (its `CFBundleIdentifier`, or its executable).
 
-use super::{OutputClass, PasteSafety, System};
+use super::{OutputClass, OutputQuestion, PasteSafety, System};
 use crate::contract::citation::KeySyntax;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -14,6 +14,8 @@ pub struct App {
     /// `None` keeps the user's default output.
     pub output: Option<OutputClass>,
     pub safety: PasteSafety,
+    /// Ask for output on the first paste, until a choice is remembered.
+    pub output_question: Option<OutputQuestion>,
 }
 
 use OutputClass::{Formatted, Key};
@@ -33,6 +35,14 @@ const fn app(
         name,
         output,
         safety,
+        output_question: None,
+    }
+}
+
+const fn ask(system: System, id: &'static str, name: &'static str, kind: OutputQuestion) -> App {
+    App {
+        output_question: Some(kind),
+        ..app(system, id, name, None, Normal)
     }
 }
 
@@ -41,6 +51,53 @@ const BIBLATEX: Option<OutputClass> = Some(Key(KeySyntax::Biblatex));
 const FORMATTED: Option<OutputClass> = Some(Formatted);
 
 pub const APPS: &[App] = &[
+    // These IDs identify an app, never its current document or web page.
+    ask(Macos, "com.apple.safari", "Safari", OutputQuestion::Browser),
+    ask(Macos, "com.google.chrome", "Chrome", OutputQuestion::Browser),
+    ask(Macos, "org.chromium.chromium", "Chromium", OutputQuestion::Browser),
+    ask(Macos, "org.mozilla.firefox", "Firefox", OutputQuestion::Browser),
+    ask(Macos, "com.microsoft.edgemac", "Edge", OutputQuestion::Browser),
+    ask(Macos, "com.brave.browser", "Brave", OutputQuestion::Browser),
+    ask(Macos, "com.vivaldi.vivaldi", "Vivaldi", OutputQuestion::Browser),
+    ask(Macos, "company.thebrowser.browser", "Arc", OutputQuestion::Browser),
+    ask(Macos, "com.operasoftware.opera", "Opera", OutputQuestion::Browser),
+    ask(Windows, "chrome.exe", "Chrome", OutputQuestion::Browser),
+    ask(Windows, "chromium.exe", "Chromium", OutputQuestion::Browser),
+    ask(Windows, "firefox.exe", "Firefox", OutputQuestion::Browser),
+    ask(Windows, "msedge.exe", "Edge", OutputQuestion::Browser),
+    ask(Windows, "brave.exe", "Brave", OutputQuestion::Browser),
+    ask(Windows, "vivaldi.exe", "Vivaldi", OutputQuestion::Browser),
+    ask(Windows, "opera.exe", "Opera", OutputQuestion::Browser),
+    ask(
+        Macos,
+        "com.microsoft.vscode",
+        "Visual Studio Code",
+        OutputQuestion::Editor,
+    ),
+    ask(
+        Macos,
+        "com.microsoft.vscodeinsiders",
+        "Visual Studio Code Insiders",
+        OutputQuestion::Editor,
+    ),
+    ask(Macos, "com.visualstudio.code.oss", "Code OSS", OutputQuestion::Editor),
+    ask(Macos, "com.vscodium", "VSCodium", OutputQuestion::Editor),
+    ask(Macos, "com.todesktop.230313mzl4w4u92", "Cursor", OutputQuestion::Editor),
+    ask(Macos, "com.sublimetext.4", "Sublime Text", OutputQuestion::Editor),
+    ask(Macos, "dev.zed.zed", "Zed", OutputQuestion::Editor),
+    ask(Macos, "com.barebones.bbedit", "BBEdit", OutputQuestion::Editor),
+    ask(Macos, "com.macromates.textmate", "TextMate", OutputQuestion::Editor),
+    ask(Windows, "code.exe", "Visual Studio Code", OutputQuestion::Editor),
+    ask(
+        Windows,
+        "code - insiders.exe",
+        "Visual Studio Code Insiders",
+        OutputQuestion::Editor,
+    ),
+    ask(Windows, "vscodium.exe", "VSCodium", OutputQuestion::Editor),
+    ask(Windows, "cursor.exe", "Cursor", OutputQuestion::Editor),
+    ask(Windows, "sublime_text.exe", "Sublime Text", OutputQuestion::Editor),
+    ask(Windows, "notepad++.exe", "Notepad++", OutputQuestion::Editor),
     // Word processors and mail: formatted citations.
     app(Macos, "com.microsoft.word", "Microsoft Word", FORMATTED, Normal),
     app(Windows, "winword.exe", "Microsoft Word", FORMATTED, Normal),

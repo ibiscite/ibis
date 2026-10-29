@@ -167,7 +167,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     if (setupDone) setFailures(({ findSources: _found, openFound: _opened, ...rest }) => rest);
   }, [setupDone, setFailures]);
   // A copy (Enter or a click) still waiting for its preview must never copy once the user has left.
-  const [pendingCopy, setPendingCopy] = useState<{ choice: string; queryKey: string; format: Choice | null; output: ReturnType<typeof destination.copyToken> } | null>(null);
+  const [pendingCopy, setPendingCopy] = useState<{ choice: string; queryKey: string; format: Choice | null; output: ReturnType<typeof destination.copyToken>; question?: "open" | "answered" } | null>(null);
   const requestCopy = (choice: string) => setPendingCopy({ choice, queryKey,
     format: destination.ready && preferences.ready ? format : null, output: destination.copyToken() });
   const hide = () => {
@@ -183,9 +183,17 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     setActive(0);
   };
   const chooseFormat = (choice: Choice) => {
-    // A new format choice cancels the earlier copy waiting for its preview.
-    setPendingCopy(null);
     destination.choose(choice);
+    // Only the first-paste question carries its citation through a format pick.
+    // A normal format change still cancels an earlier Enter awaiting a preview.
+    setPendingCopy(pendingCopy?.question === "open" ? { ...pendingCopy, format: choice,
+      output: destination.copyToken(), question: "answered" } : null);
+  };
+  const questionScope = (action: () => void, keepOpen = false) => {
+    action();
+    if (pendingCopy?.question !== "open") return;
+    setPendingCopy({ ...pendingCopy, format: null, output: destination.copyToken(), question: keepOpen ? "open" : "answered" });
+    if (keepOpen) formatButtonRef.current?.click();
   };
 
   useEffect(() => {
@@ -490,10 +498,16 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       setPendingCopy(null);
       return;
     }
-    if (shown === null || !destination.ready || destination.saving || !preferences.ready) return;
+    if (!destination.ready || destination.saving || !preferences.ready) return;
+    if (!pendingCopy.question && destination.shouldAsk) {
+      setPendingCopy({ ...pendingCopy, question: "open" });
+      formatButtonRef.current?.click();
+      return;
+    }
+    if (pendingCopy.question === "open" || shown === null) return;
     setPendingCopy(null);
     void copy();
-  }, [pendingCopy, chosenKey, shown, queryKey, format, destination.ready, destination.saving, preferences.ready]);
+  }, [pendingCopy, chosenKey, shown, queryKey, format, destination.ready, destination.saving, destination.shouldAsk, preferences.ready]);
   // Nothing matched this search, so the empty state offers what to try next.
   const nothingMatched = Boolean(query) && resultsQuery === queryKey && results.length === 0 && !error;
   const { chosenLibraries, severalLibraries, isChosen, toggleLibrary, searchAllLibraries, groupName, offeredGroups, libraryOf, narrowed } =
@@ -508,6 +522,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     return shared && library ? pickerText.removeReferenceIn(r.key, library) : pickerText.removeReference(r.key);
   };
   const openMore = () => {
+    setPendingCopy(null);
     // React Aria records the invoker before mounting its modal focus scope.
     moreButton.current?.focus();
     setMenuOpen(true);
@@ -517,11 +532,13 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     if (refocus) moreButton.current?.focus();
   };
   const runFromMenu = (operation: Operation, action: () => Promise<unknown>) => {
+    setPendingCopy(null);
     closeMenu(false);
     input.current?.focus();
     void perform(operation, action);
   };
   const openKeys = () => {
+    setPendingCopy(null);
     closeMenu(false);
     const focused = document.activeElement;
     // A menu item is gone once the menu closes; the search box takes its place.
@@ -663,10 +680,16 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
         format={format}
         formatButtonRef={formatButtonRef}
         app={destination.app}
+        formatScope={destination.scope}
+        onFormatOpenChange={(open, reason) => {
+          if (open || pendingCopy?.question !== "open" || reason === "action") return;
+          // Dismissal uses the fallback for this attempt; application commands cancel it.
+          setPendingCopy(reason === "command" ? null : { ...pendingCopy, question: "answered" });
+        }}
         onceOnly={destination.onceOnly}
-        onToggleOnce={destination.toggleOnce}
-        onAutomatic={destination.restoreAutomatic}
-        onDefault={destination.useDefault}
+        onToggleOnce={() => questionScope(destination.toggleOnce, true)}
+        onAutomatic={() => questionScope(destination.restoreAutomatic)}
+        onDefault={() => questionScope(destination.useDefault)}
         formatDisabled={!destination.ready || destination.saving}
         showFormat={!libraryChoices && (library === null || Boolean(library?.has_snapshot))}
         styles

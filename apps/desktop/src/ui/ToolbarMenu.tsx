@@ -10,9 +10,10 @@ import "./ToolbarMenu.css";
 /** An item with `checked` is a toggle beside the single choice, such as "Just this once". */
 export type ToolbarMenuSection = { id: string; label: string; items: { id: string; label: string; sample?: string; prose?: boolean; disabled?: boolean; checked?: boolean; command?: boolean }[] };
 export type ToolbarMenuCommand = { run: () => void; isCurrent: () => boolean };
+export type MenuCloseReason = "action" | "dismiss" | "command";
 type Props = {
   buttonRef?: RefObject<HTMLButtonElement | null>; buttonShortcut?: string; disabled?: boolean; label: string; value: string; sections: ToolbarMenuSection[]; selectedKey: string;
-  isOpen?: boolean; onOpenChange?: (open: boolean) => void;
+  isOpen?: boolean; onOpenChange?: (open: boolean, reason?: MenuCloseReason) => void;
   filterLabel: string; onAction: (key: string) => void; returnFocusRef?: RefObject<HTMLElement | null>;
   /** Close and return focus before running an application command. */
   onKeyCommand?: (event: KeyboardEvent) => ToolbarMenuCommand | undefined;
@@ -76,7 +77,7 @@ export function ToolbarMenu({ buttonRef, buttonShortcut, disabled, label, value,
       // Selection hands typing back now. An exiting modal traps the next key
       // before the deferred focus return can reach Search.
       const previous = document.activeElement;
-      flushSync(() => { setSkipExit(true); setOpen(false); onOpenChange?.(false); });
+      flushSync(() => { setSkipExit(true); setOpen(false); onOpenChange?.(false, "action"); });
       const target = returnFocusRef?.current;
       const active = document.activeElement;
       if (target?.isConnected && (active === previous || active === document.body || active === button.current || active === target)) target.focus();
@@ -86,7 +87,7 @@ export function ToolbarMenu({ buttonRef, buttonShortcut, disabled, label, value,
       target: returnFocusRef.current, closing: popover.current, token: generation.current, command,
     };
     setOpen(next);
-    onOpenChange?.(next);
+    onOpenChange?.(next, next ? undefined : command ? "command" : "dismiss");
   }
   // aria-disabled keeps unavailable choices in the arrow-key order (ADR 0021).
   // Controlled selection and the action guard prevent picking them.

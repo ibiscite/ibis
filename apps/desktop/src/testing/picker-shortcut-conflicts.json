@@ -1,0 +1,34 @@
+[
+  {
+    "name": "format chooser",
+    "shortcut": "Shift+Command+F",
+    "event": { "key": "F", "code": "KeyF", "shiftKey": true, "metaKey": true },
+    "typed": { "3": ["f", "F"] },
+    "command": "format",
+    "label": "Choose Output Format"
+  },
+  {
+    "name": "pin",
+    "shortcut": "Shift+Command+P",
+    "event": { "key": "P", "code": "KeyP", "shiftKey": true, "metaKey": true },
+    "typed": { "35": ["p", "P"] },
+    "command": "pin",
+    "label": "Keep Window Open"
+  },
+  {
+    "name": "US shifted help",
+    "shortcut": "Shift+Command+Slash",
+    "event": { "key": "?", "code": "Slash", "shiftKey": true, "metaKey": true },
+    "typed": { "44": ["/", "?"] },
+    "command": "keys",
+    "label": "Keyboard Shortcuts"
+  },
+  {
+    "name": "AZERTY shifted help stays on physical M",
+    "shortcut": "Shift+Command+KeyM",
+    "event": { "key": "?", "code": "KeyM", "shiftKey": true, "metaKey": true },
+    "typed": { "46": [",", "?"], "41": ["m", "M"] },
+    "command": "keys",
+    "label": "Keyboard Shortcuts"
+  }
+]
