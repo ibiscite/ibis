@@ -42,9 +42,10 @@ fn preview_output(
     file.preview(
         file.reserve_preview(),
         vec![FileSelection {
-            id: row.id.clone(),
-            cite: row.cite.clone(),
+            id: serde_json::from_value(row.id.clone()).unwrap_or_else(|e| panic!("{e}")),
+            cite: serde_json::from_value(json!(row.cite)).unwrap_or_else(|e| panic!("{e}")),
             locator: None,
+            page_input: None,
             form: None,
         }],
         format,

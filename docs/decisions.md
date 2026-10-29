@@ -258,6 +258,10 @@ on what changed. An opt-in "Download quietly, install when I quit" downloads
 and verifies in the background and installs only on an explicit quit; asking
 first stays the default (maintainer, 2026-10-28).
 
+The maintainer approved publishing the current engineering closeout through
+Release Please as 0.2.1 after its PRs pass review and CI (2026-10-29).
+Stable deployment retains the maintainer's one-click GitHub approval.
+
 ## 0021 Interface foundation
 
 React Aria Components for interactive parts, pinned exactly, imported only by
