@@ -12,7 +12,9 @@ type PreferencesApi = Pick<typeof nativeApi, "copyFormat" | "pickerPreferences" 
 
 export function usePickerPreferences(
   { copyFormat, pickerPreferences, setPickerPreferences, quit }: PreferencesApi,
-  { styles, report, perform }: {
+  { styles, report, perform, presentation }: {
+    /** Immutable picker visibility identity; old feedback never enters a new presentation. */
+    presentation: number;
     /** Whether formatted citation styles can be offered. */
     styles: boolean;
     report: (operation: Operation, failed?: boolean) => void;
@@ -23,6 +25,7 @@ export function usePickerPreferences(
   const [available, setAvailable] = useState(false);
   const [format, setFormat] = useState<Choice>("pandoc");
   const [density, setDensity] = useState<Density>("comfortable");
+  const [densityFeedback, setDensityFeedback] = useState<{ presentation: number; density: Density } | null>(null);
   const [largerText, setLargerText] = useState(false);
   const [searchMark, setSearchMark] = useState(false);
   const [showPastePreview, setShowPastePreview] = useState(true);
@@ -40,6 +43,8 @@ export function usePickerPreferences(
   }, { readAfterWrites: true }));
   const applyView = useCallback((value: PickerPreferences) => {
     setDensity(value.density);
+    // A silent external view change retires its label so the next user choice can repeat it.
+    setDensityFeedback((current) => current?.density === value.density ? current : null);
     setLargerText(value.larger_text);
     setSearchMark(value.search_mark ?? false);
     previewVisibility.current = value.show_paste_preview;
@@ -77,6 +82,7 @@ export function usePickerPreferences(
   const changeDensity = () => {
     const next = DENSITIES[(DENSITIES.indexOf(density) + 1) % DENSITIES.length] ?? "comfortable";
     setDensity(next);
+    setDensityFeedback({ presentation, density: next });
     savePreferences({ density: next });
   };
   const toggleLargerText = () => {
@@ -105,5 +111,5 @@ export function usePickerPreferences(
    * mount effect, after the library status, so the calls keep their order. */
   const loadPreferences = (mounted: () => boolean) => { void queue.load(mounted); };
 
-  return { ready, available, format, density, largerText, searchMark, showPastePreview, chooseFormat, changeDensity, toggleLargerText, toggleSearchMark, togglePastePreview, quitAfterSaving, loadPreferences };
+  return { ready, available, format, density, densityAnnouncement: densityFeedback?.presentation === presentation ? densityFeedback.density : undefined, largerText, searchMark, showPastePreview, chooseFormat, changeDensity, toggleLargerText, toggleSearchMark, togglePastePreview, quitAfterSaving, loadPreferences };
 }
