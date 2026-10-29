@@ -27,6 +27,16 @@ test("interface-only changes retain web checks without native jobs", () => {
   }
 });
 
+test("generated bindings always run native contract checks, including renames", () => {
+  const bindings = "apps/desktop/src/bindings.ts";
+  for (const status of ["added", "modified", "removed"]) {
+    assert.deepEqual(pr([{ filename: bindings, status }]), full, status);
+  }
+  assert.deepEqual(pr([row("apps/desktop/src/renamed.ts", bindings)]), full);
+  assert.deepEqual(pr([row(bindings, "apps/desktop/src/old.ts")]), full);
+  assert.deepEqual(pr([row("apps/desktop/src/tokens.css")]), { native: false, web: true });
+});
+
 test("website-only changes keep web checks without native jobs", () => {
   for (const path of ["website/index.html", "website/site.js", "website/_headers"]) {
     assert.deepEqual(pr([row(path)]), { native: false, web: true }, path);
