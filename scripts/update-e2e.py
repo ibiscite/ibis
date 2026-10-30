@@ -828,7 +828,7 @@ $.AXUIElementCreateApplication = pid => { if (pid !== 42) throw Error('unowned a
 $.AXUIElementCopyAttributeValue = (item, name, result) => {
   if (scenario === 'unknown') return -1;
   const values = {'system:AXFocusedUIElement': 'focused', 'app:AXFocusedWindow': 'window',
-    'window:AXTitle': scenario === 'wrong-focus-title' ? 'Other' : 'Ibis'};
+    'window:AXTitle': scenario === 'wrong-focus-title' ? 'Other' : scenario === 'offer-focused' ? 'An update is available' : 'Ibis'};
   if (!(item + ':' + name in values)) throw Error('unexpected attribute');
   result[0] = values[item + ':' + name]; return 0;
 };
@@ -838,11 +838,12 @@ const Application = name => {
   if (name !== 'System Events') throw Error('unexpected application');
   return {processes: {whose: ({unixId}) => {
     if (unixId !== 42) throw Error('unowned process');
-    return () => [{windows: () => scenario === 'duplicate' ? [window, window] : [window]}];
+    return () => [{windows: () => scenario === 'duplicate' ? [window, window] :
+      scenario === 'offer-focused' ? [window, {name: () => 'An update is available', visible: () => true}] : [window]}];
   }}};
 };
 '''
-        for scenario in ("success", "hidden", "title", "duplicate", "foreign", "unknown", "owner-error", "wrong-focus-title"):
+        for scenario in ("success", "hidden", "title", "duplicate", "foreign", "unknown", "owner-error", "wrong-focus-title", "offer-focused"):
             with self.subTest(scenario=scenario):
                 result = subprocess.run([shutil.which("node"), "-e", model + MACOS_PICKER + "\nprocess.stdout.write(run(['42']));", scenario],
                                         capture_output=True, timeout=5)
@@ -850,7 +851,25 @@ const Application = name => {
                     self.assertNotEqual(result.returncode, 0)
                 else:
                     self.assertEqual(result.returncode, 0, result.stderr.decode("utf-8", errors="replace"))
-                    self.assertEqual(picker_result(result.stdout, {42}), 42 if scenario == "success" else None)
+                    expected = (42, "offer") if scenario == "offer-focused" else 42 if scenario == "success" else None
+                    self.assertEqual(picker_result(result.stdout, {42}), expected)
+
+    def test_linux_picker_accepts_an_immediate_owned_offer_without_accepting_foreign_or_duplicate_modals(self):
+        for scenario in ("offer", "foreign", "duplicate"):
+            def observe(command, **_kwargs):
+                args = command[1:]
+                values = {("search", "--onlyvisible", "--pid", "42"): "101\n102" + ("\n103" if scenario == "duplicate" else ""),
+                          ("getwindowname", "101"): "Ibis", ("getwindowname", "102"): "An update is available",
+                          ("getwindowname", "103"): "An update is available", ("getwindowfocus",): "102"}
+                value = values.get(tuple(args), "99" if scenario == "foreign" and args == ["getwindowpid", "102"] else "42")
+                return subprocess.CompletedProcess(command, 0, stdout=value.encode(), stderr=b"")
+            with self.subTest(scenario=scenario), patch("subprocess.run", side_effect=observe):
+                linux = Linux.__new__(Linux)
+                if scenario == "offer":
+                    self.assertEqual(linux.picker_ready({42}), (42, "offer"))
+                else:
+                    with self.assertRaises(AssertionError):
+                        linux.picker_ready({42})
 
     def test_picker_helper_refuses_unknown_or_unowned_focus(self):
         for payload in ('{}', '[]', '{"pid":true}', '{"pid":"42"}', '{"pid":99}', '{"pid":42,"extra":1}'):
@@ -904,6 +923,8 @@ const Application = name => {
                 install.instances.side_effect = lambda: {43} if state["pressed"] or (scenario == "replacement" and state["reopened"]) else {42}
                 def picker(pids):
                     events.append(("picker", set(pids)))
+                    if state["reopened"] and scenario == "immediate-offer":
+                        return 42, "offer"
                     return 42 if state["reopened"] and scenario != "unfocused" else None
                 install.picker_ready.side_effect = picker
                 def look(pids, press=None):
@@ -953,6 +974,13 @@ const Application = name => {
         self.assertEqual([value for event, value in events if event == "launch"], [["synthetic-owned-install"]] * 2)
         self.assertEqual([value for event, value in events if event == "press"], [{42}])
         self.assertEqual(report["settings_preserved"], {"library": True, "shortcut": True})
+
+    def test_update_accepts_an_owned_offer_already_focused_by_reopen(self):
+        result, report, events = self.update_consumer("immediate-offer")
+        self.assertEqual(result, 0, report)
+        self.assertEqual(report["reopen_focus"], "offer")
+        self.assertEqual([value for event, value in events if event == "press"], [{42}])
+        self.assertEqual(sum(event == "launch" for event, _ in events), 2)
 
     def test_update_never_activates_after_reopen_refusal_io_timeout_or_lost_owner(self):
         for scenario in ("refused", "io", "timeout", "unfocused", "replacement"):
@@ -1119,6 +1147,11 @@ if ($Scenario.StartsWith('picker-')) {
   'picker-unknown' {[IbisUpdateContract.Focus]::Handle=0}
   'picker-no-handle' {$window.NativeWindowHandle=0}
   'picker-empty' {[IbisUpdateContract.AutomationElement]::RootElement.Nodes=@()}
+  'picker-offer' {
+   $offer=[IbisUpdateContract.Node]::new(); $offer.Name='An update is available'; $offer.NativeWindowHandle=102
+   [IbisUpdateContract.AutomationElement]::RootElement.Nodes=@($window,$offer)
+   [IbisUpdateContract.Focus]::Handle=102
+  }
  }
 }
 $env:IBIS_PIDS='42'; $env:IBIS_PRESS='Install and Restart'
@@ -1167,7 +1200,7 @@ function Contract-Result($pressed,$how) {
             picker_helper = picker_helper.replace("System.Windows.Automation.", "IbisUpdateContract.")
             picker_helper = picker_helper.replace("[IbisUpdateFocus]", "[IbisUpdateContract.Focus]")
             script.write_text(model + picker_helper, encoding="utf-8")
-            for scenario in ("success", "hidden", "title", "duplicate", "foreign", "unfocused", "unknown", "no-handle", "empty"):
+            for scenario in ("success", "hidden", "title", "duplicate", "foreign", "unfocused", "unknown", "no-handle", "empty", "offer"):
                 with self.subTest(picker=scenario):
                     result = subprocess.run([shutil.which("pwsh"), "-NoProfile", "-File", str(script), "picker-" + scenario],
                                             capture_output=True, timeout=30)
@@ -1175,7 +1208,8 @@ function Contract-Result($pressed,$how) {
                         self.assertNotEqual(result.returncode, 0)
                     else:
                         self.assertEqual(result.returncode, 0, result.stderr.decode("utf-8", errors="replace"))
-                        self.assertEqual(picker_result(result.stdout, {42}), 42 if scenario == "success" else None)
+                        expected = (42, "offer") if scenario == "offer" else 42 if scenario == "success" else None
+                        self.assertEqual(picker_result(result.stdout, {42}), expected)
 
     def test_windows_activation_uncertainty_is_fatal_instead_of_pollable(self):
         windows = Windows.__new__(Windows)
