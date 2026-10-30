@@ -15,6 +15,17 @@ const IDS = [
   "general-paste-drag-failed", "general-paste-waiting", "general-paste-granted", "general-paste-return-failed", "general-paste-stale",
   "general-picker-title", "general-rows", "general-density-compact", "general-density-comfortable", "general-density-spacious",
   "general-larger-text", "general-preview", "general-preview-description", "general-search-mark", "general-search-mark-description",
+  "shortcuts-open", "shortcuts-description", "shortcuts-record", "shortcuts-use-default", "shortcuts-change", "shortcuts-not-assigned",
+  "shortcuts-configure-failed", "shortcuts-in-picker", "shortcuts-failed", "shortcuts-read-failed",
+  "shortcuts-refusal-invalid", "shortcuts-refusal-needs-modifier", "shortcuts-refusal-app-shortcut", "shortcuts-refusal-alt-gr",
+  "shortcuts-refusal-in-use", "shortcuts-refusal-unavailable", "shortcuts-refusal-not-saved",
+  "shortcuts-command-format", "shortcuts-command-pin", "shortcuts-command-keys", "shortcuts-command-more",
+  "shortcuts-command-preview", "shortcuts-command-settings", "shortcuts-command-quit", "shortcuts-picker-conflict",
+  "shortcuts-region-search", "shortcuts-region-picker", "shortcuts-region-menu", "shortcuts-region-system",
+  "shortcuts-action-preview", "shortcuts-action-copy", "shortcuts-action-add", "shortcuts-action-move", "shortcuts-action-escape",
+  "shortcuts-action-format", "shortcuts-action-more", "shortcuts-action-pin", "shortcuts-action-keys", "shortcuts-action-settings", "shortcuts-action-quit",
+  "shortcuts-action-menu-move", "shortcuts-action-menu-ends", "shortcuts-action-menu-choose", "shortcuts-action-menu-leave", "shortcuts-or",
+  "about-updates", "about-automatic", "about-automatic-description", "about-check", "about-version", "about-unavailable",
 ] as const;
 export type MessageId = typeof IDS[number];
 type Variables = Readonly<Record<string, string | number>>;
@@ -62,7 +73,7 @@ export function createInterfaceMessages(source: string, pseudo = false): Interfa
   // Errors remain fixed text and cannot disclose variables or source content.
   try {
     for (const platform of ["macos", "windows", "linux"]) {
-      for (const id of IDS) text(id, { platform, name: "Ibis", list: "Synthetic List" });
+      for (const id of IDS) text(id, { platform, name: "Ibis", list: "Synthetic List", version: "0.0.0", command: "Synthetic Command" });
     }
   } catch { throw invalid(); }
   return Object.freeze({ locale: INTERFACE_LOCALE, text });

@@ -1,5 +1,5 @@
 # Interface messages only. Citation language and text direction have separate owners.
-# General Settings is the first slice; the other panels still use messages.ts.
+# Settings interface copy; native guidance and key notation keep their owners.
 settings-pages = Settings pages
 settings-general = General
 settings-shortcuts = Shortcuts
@@ -61,3 +61,56 @@ general-preview = Show what will be pasted
 general-preview-description = The line above the footer
 general-search-mark = Ibis mark in search
 general-search-mark-description = In place of the magnifier
+
+shortcuts-open = Open Ibis
+shortcuts-description = Click the shortcut, then type a new one. Esc cancels.
+shortcuts-record = Type a shortcut…
+shortcuts-use-default = Use Default
+shortcuts-change = Change…
+shortcuts-not-assigned = Not assigned
+shortcuts-configure-failed = The desktop could not open its shortcut settings. Try again.
+shortcuts-in-picker = In the picker
+shortcuts-failed = Ibis could not change the shortcut. Try again.
+shortcuts-read-failed = Ibis could not check the shortcut. Try reopening Settings.
+shortcuts-refusal-invalid = Ibis cannot use that key combination. Try another shortcut.
+shortcuts-refusal-needs-modifier = Include Control, Alt or Command. Shift alone is not enough.
+shortcuts-refusal-app-shortcut = That shortcut is used for app commands. Add another modifier.
+shortcuts-refusal-alt-gr = Ctrl+Alt with a typing key is used for AltGr on Windows. Try another shortcut.
+shortcuts-refusal-in-use = Another app or the system may be using that shortcut. Try another.
+shortcuts-refusal-unavailable = Global shortcuts are unavailable on this desktop. Open Ibis from your application launcher.
+shortcuts-refusal-not-saved = The shortcut works now, but Ibis could not save it for next time. Try again.
+shortcuts-command-format = Choose Output Format
+shortcuts-command-pin = Keep Window Open
+shortcuts-command-keys = Keyboard Shortcuts
+shortcuts-command-more = More
+shortcuts-command-preview = Show What Will Be Pasted
+shortcuts-command-settings = Settings
+shortcuts-command-quit = Quit Ibis
+shortcuts-picker-conflict = That shortcut is used for { $command }. Try another shortcut.
+shortcuts-region-search = In the search box
+shortcuts-region-picker = Anywhere in Ibis
+shortcuts-region-menu = In a menu
+shortcuts-region-system = From any app
+shortcuts-action-preview = Show what will be pasted
+shortcuts-action-copy = Copy the highlighted reference, or the ones added to the citation, in the Copy as format (numeric styles such as IEEE copy the reference entry)
+shortcuts-action-add = Add the highlighted reference to the citation, or remove it
+shortcuts-action-move = Move through the results
+shortcuts-action-escape = Step back: close a menu, clear the search, then hide Ibis
+shortcuts-action-format = Choose the output format and where to remember it
+shortcuts-action-more = Open or close More
+shortcuts-action-pin = Keep Window Open, or stop keeping it open
+shortcuts-action-keys = Show this list (? works outside the search box)
+shortcuts-action-settings = Open Settings
+shortcuts-action-quit = Quit Ibis
+shortcuts-action-menu-move = Move through the menu
+shortcuts-action-menu-ends = Go to the first or last item
+shortcuts-action-menu-choose = Choose the item
+shortcuts-action-menu-leave = Leave the menu and return to the search
+shortcuts-or = or
+
+about-updates = Updates
+about-automatic = Check for updates automatically
+about-automatic-description = Reads a small update file from GitHub a few times a day
+about-check = Check now
+about-version = { $name } { $version }
+about-unavailable = This build does not update itself.

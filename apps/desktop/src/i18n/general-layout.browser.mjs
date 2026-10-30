@@ -9,11 +9,12 @@ const browser = await chromium.launch({ headless: true });
 let profiles = 0;
 try {
   for (const [profile, width, height, scale] of [["normal", 720, 560, 1], ["small", 480, 400, 1], ["Larger", 480, 400, 1.15]]) {
-    for (const granted of [false, true]) {
+    for (const panel of ["general-denied", "general-granted", "shortcuts", "about", "about-unavailable"]) {
+      const granted = panel === "general-granted";
       const page = await browser.newPage({ viewport: { width, height } });
       const errors = [];
       page.on("pageerror", (error) => errors.push(error.message));
-      await page.addInitScript(({ granted, scale }) => {
+      await page.addInitScript(({ granted, scale, panel }) => {
         let preferences = { citation_style: null, density: "comfortable", larger_text: false, show_paste_preview: true, search_mark: false, paste: true };
         let callbackId = 0;
         window.__TAURI_INTERNALS__ = {
@@ -28,8 +29,9 @@ try {
             }
             if (command === "login_item") return { name: "Synthetic App", enabled: false, problem: "refused" };
             if (command === "paste_permission") return { pastes: true, needed: true, granted, list: "Synthetic List" };
-            if (command === "update_checks") return false;
-            if (command === "shortcut_status") return { shortcut: "Ctrl+Shift+Y", registered: true, error: null };
+            if (command === "update_checks") return panel === "about-unavailable" ? null : false;
+            if (command === "shortcut_status") return { shortcut: "Ctrl+Shift+J", registered: true, error: null };
+            if (command === "set_shortcut") throw "in-use";
             if (command === "plugin:app|version") return "0.0.0";
             if (command === "plugin:event|listen") return ++callbackId;
             if (command === "plugin:event|unlisten") return;
@@ -37,9 +39,21 @@ try {
           },
         };
         document.addEventListener("DOMContentLoaded", () => { document.documentElement.style.fontSize = `${16 * scale}px`; });
-      }, { granted, scale });
+      }, { granted, scale, panel });
       await page.goto(new URL("settings.html", base).href);
       await page.locator("#search-mark").waitFor();
+      if (panel === "shortcuts") {
+        await page.locator(".settings-sidebar").getByRole("option").nth(1).click();
+        // Use Default shares this group; only the recorder has aria-pressed.
+        const recorder = page.locator("#open-ibis button[aria-pressed]");
+        await recorder.click();
+        await recorder.press("Alt+K");
+        await page.getByRole("alert").waitFor();
+        await recorder.click();
+      } else if (panel.startsWith("about")) {
+        await page.locator(".settings-sidebar").getByRole("option").nth(2).click();
+        await page.locator("#version-label").waitFor();
+      }
       const result = await page.evaluate(() => {
         const scan = () => {
           const failures = [];
@@ -52,7 +66,9 @@ try {
           while ((node = walker.nextNode())) {
             const value = node.textContent.trim();
             if (!value) continue;
-            if (!value.includes("⟦") && value !== "Synthetic App") failures.push(`untranslated: ${value}`);
+            // Chords keep their platform formatter; IPC app names remain literal.
+            const native = ["Synthetic App", "Ctrl+Shift+Y", "⇧⌘Y"];
+            if (!value.includes("⟦") && !native.includes(value) && !node.parentElement.closest("kbd")) failures.push(`untranslated: ${value}`);
             const card = node.parentElement.closest(".ui-settings-card, .ui-side-navigation-item");
             if (!card) continue;
             const bounds = card.getBoundingClientRect();
@@ -70,7 +86,8 @@ try {
           }
           // The page can reach its last control without moving the titlebar/sidebar.
           pane.scrollTop = pane.scrollHeight;
-          const control = document.querySelector('[aria-labelledby="search-mark"]');
+          const rows = pane.querySelectorAll(".ui-settings-row");
+          const control = rows[rows.length - 1];
           const bounds = control.getBoundingClientRect(), visible = pane.getBoundingClientRect();
           if (bounds.bottom > visible.bottom + 1 || bounds.top < visible.top - 1 || shell.getBoundingClientRect().top !== 0 || document.documentElement.scrollTop !== 0) failures.push("last control unreachable or shell moved");
           return failures;
@@ -88,13 +105,13 @@ try {
         const detectsClipping = scan().some((issue) => issue.startsWith("clipped ancestor:"));
         return { issues, detectsUntranslated, detectsClipping };
       });
-      assert.deepEqual(errors, [], `${profile}/${granted}: page errors`);
-      assert.deepEqual(result.issues, [], `${profile}/${granted}: labels must be translated, wrapped and reachable`);
+      assert.deepEqual(errors, [], `${profile}/${panel}: page errors`);
+      assert.deepEqual(result.issues, [], `${profile}/${panel}: labels must be translated, wrapped and reachable`);
       assert.equal(result.detectsUntranslated, true, "oracle detects untranslated labels");
       assert.equal(result.detectsClipping, true, "oracle detects clipped labels");
       await page.close();
       profiles += 1;
     }
   }
-  console.log(`General pseudolocale: ${profiles} browser profiles passed (normal/small/Larger, permission denied/granted).`);
+  console.log(`Settings pseudolocale: ${profiles} browser profiles passed (normal/small/Larger; General, Shortcuts and About).`);
 } finally { await browser.close(); }
