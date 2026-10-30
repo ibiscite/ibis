@@ -270,17 +270,50 @@ pub enum PrivateStorageError {
 
 impl PrivateDirectory {
     pub fn open(path: &Path) -> Result<Self, PrivateStorageError> {
+        use std::io::{Read, Write};
         let unavailable = |_| PrivateStorageError::Unavailable;
         let control = Control::new(Arc::new(|| false));
         let parent = platform::directory(path.parent().ok_or(PrivateStorageError::Unavailable)?, &control)
             .map_err(unavailable)?;
         let root = parent.join(path.file_name().ok_or(PrivateStorageError::Unavailable)?);
-        match std::fs::symlink_metadata(&root) {
-            Ok(_) => platform::secure(&root, &control).map_err(unavailable)?,
+        let fresh = match std::fs::symlink_metadata(&root) {
+            Ok(_) => {
+                platform::secure(&root, &control).map_err(unavailable)?;
+                false
+            }
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
                 platform::create_private(&root, &control).map_err(unavailable)?;
+                true
             }
             Err(_) => return Err(PrivateStorageError::Unavailable),
+        };
+        const OWNER: &[u8] = b"Ibis prepared source storage\n";
+        let marker_path = root.join(".owner");
+        if fresh {
+            let mut options = std::fs::OpenOptions::new();
+            options.write(true).create_new(true);
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::OpenOptionsExt;
+                options.mode(0o600);
+            }
+            let mut marker = options
+                .open(&marker_path)
+                .map_err(|_| PrivateStorageError::Unavailable)?;
+            marker
+                .write_all(OWNER)
+                .and_then(|_| marker.sync_all())
+                .map_err(|_| PrivateStorageError::Unavailable)?;
+        }
+        platform::secure_file(&marker_path, &control).map_err(unavailable)?;
+        let mut marker = Vec::new();
+        platform::open_source(&marker_path)
+            .map_err(unavailable)?
+            .take(64)
+            .read_to_end(&mut marker)
+            .map_err(|_| PrivateStorageError::Unavailable)?;
+        if marker != OWNER {
+            return Err(PrivateStorageError::Unavailable);
         }
         let mut options = std::fs::OpenOptions::new();
         options.read(true).write(true).create(true).truncate(false);
@@ -379,6 +412,27 @@ impl PrivateDirectory {
 #[cfg(test)]
 mod persistent_directory_tests {
     use super::*;
+    #[test]
+    fn a_foreign_private_directory_is_not_adopted_or_modified() {
+        let parent = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+        let directory = parent.path().join("foreign");
+        platform::create_private(&directory, &Control::new(Arc::new(|| false))).unwrap_or_else(|e| panic!("{e}"));
+        let sentinel = directory.join("generation-invented");
+        std::fs::write(&sentinel, b"IBISGEN1foreign").unwrap_or_else(|e| panic!("{e}"));
+        assert!(matches!(
+            PrivateDirectory::open(&directory),
+            Err(PrivateStorageError::Unavailable)
+        ));
+        assert_eq!(
+            std::fs::read_dir(&directory).unwrap_or_else(|e| panic!("{e}")).count(),
+            1
+        );
+        assert_eq!(
+            std::fs::read(sentinel).unwrap_or_else(|e| panic!("{e}")),
+            b"IBISGEN1foreign"
+        );
+    }
+
     #[test]
     fn lease_and_private_namespace_are_independent_of_disposable_copies() {
         let parent = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
