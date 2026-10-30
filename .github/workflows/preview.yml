@@ -77,7 +77,7 @@ jobs:
 
   bibtex-fuzz:
     name: Damaged BibTeX fuzzing (five minutes)
-    if: github.event_name == 'schedule'
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && !inputs.update_test)
     runs-on: ubuntu-24.04
     # Compilation and tool setup are outside the five-minute fuzzing budget.
     timeout-minutes: 20
@@ -96,7 +96,7 @@ jobs:
           key: bibtex-fuzz
 
       - name: Install cargo-fuzz
-        run: cargo +nightly install cargo-fuzz --version 0.13.1 --locked
+        run: cargo +stable install cargo-fuzz --version 0.13.1 --locked
 
       - name: Test the seed corpus
         run: cargo +nightly test -p ibis-fuzz --locked seed_corpus
@@ -1285,7 +1285,7 @@ jobs:
           PACKAGE: ${{ matrix.package }}
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends xvfb xauth python3-pyatspi at-spi2-core libfuse2t64 fonts-noto-core xdotool
+          sudo apt-get install -y --no-install-recommends xvfb xauth python3-pyatspi at-spi2-core libfuse2t64 fonts-noto-core xdotool openbox x11-utils
           # AppImages leave graphics drivers to the system. WebKit loads GLES dynamically, so ldd misses it.
           sudo apt-get install -y --no-install-recommends libegl1 libegl-mesa0 libgles2 libgl1 libgl1-mesa-dri libgbm1 libdrm2 libwayland-client0 libx11-xcb1
           /usr/bin/python3 scripts/update-e2e.py --self-test

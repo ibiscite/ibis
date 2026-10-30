@@ -374,3 +374,13 @@ test("only the Linux offline observer is elevated, and capture keeps failures", 
     if (sudo === 0) assert.match(log, new RegExp(`python ${system === "Linux" ? 1 : 0} scripts/check-offline.py --pid \\d+ --baseline screenshots/offline-${system}.json --seconds 60`));
   }
 });
+
+test("fuzz driver uses stable while the actual sanitizer campaign stays on nightly", () => {
+  const preview = readFileSync(new URL("../.github/workflows/preview.yml", import.meta.url), "utf8");
+  const fuzz = preview.split("\n  bibtex-fuzz:\n")[1].split("\n  zotero:\n")[0];
+  assert.match(fuzz, /cargo \+stable install cargo-fuzz --version 0\.13\.1 --locked/);
+  assert.doesNotMatch(fuzz, /cargo \+nightly install cargo-fuzz/);
+  assert.match(fuzz, /workflow_dispatch.*!inputs.update_test/);
+  assert.match(fuzz, /cargo \+nightly fuzz build damaged_bibtex --features fuzzing --target-dir target\/fuzz/);
+  assert.match(fuzz, /cargo \+nightly fuzz run damaged_bibtex --features fuzzing --target-dir target\/fuzz -- -max_total_time=300 -timeout=5 -max_len=65536 -rss_limit_mb=2048/);
+});
