@@ -56,6 +56,10 @@ node scripts/pr-lint.mjs --title "fix: explain the change"
 
 2026-10-29: Linux smoke must bind a unique managed window to its fixed fixture title and PID before testing hints; a visible same-process auxiliary is insufficient.
 
+2026-10-30: Verify platform binding signatures and inherent methods in locked source before treating compiler inference cascades as missing imports.
+
+2026-10-30: Predeclare baseline validity and a counterbalanced benchmark order; keep every result and reject comparisons with unexplained baseline excursions.
+
 ## Brief for an implementing agent
 
 ```text
