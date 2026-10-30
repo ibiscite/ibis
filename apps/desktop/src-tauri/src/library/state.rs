@@ -17,6 +17,7 @@ use super::status::{LibraryStatus, status};
 pub(crate) struct Library {
     /// Shared so a search or copy can run without holding the library lock.
     pub(crate) file: Option<Arc<FileLibrary>>,
+    pub(super) pending_file: Option<ibis_engine::PreparedFileLoad>,
     /// Disconnect the blocked notification worker when its library is replaced.
     pub(super) observer: Option<ibis_engine::LibrarySubscriptionClose>,
     pub(crate) source: Option<Source>,
@@ -65,10 +66,15 @@ impl Library {
 /// Counts requests to open a library, so a load that finishes after a newer
 /// request never replaces the newer library.
 #[derive(Default)]
-pub(crate) struct LoadRequests(pub(crate) AtomicU64, pub(super) Mutex<super::tasks::OpenQueue>);
+pub(crate) struct LoadRequests(
+    pub(crate) AtomicU64,
+    pub(super) Mutex<super::tasks::OpenQueue>,
+    pub(super) ibis_engine::FileCacheSession,
+);
 
 pub(super) fn dialog_path_error(library: &mut Library, requests: &LoadRequests) {
-    requests.0.fetch_add(1, Ordering::SeqCst);
+    let request = requests.0.fetch_add(1, Ordering::SeqCst) + 1;
+    requests.2.invalidate(request);
     library.opening = false;
     library.checking = false;
     library.error = Some(LoadError::NotLocal);
@@ -80,7 +86,8 @@ pub(super) fn leave_samples(library: &Mutex<Library>, requests: &LoadRequests) {
     if !matches!(library.source, Some(Source::Samples(_))) && !matches!(library.requested, Some(Source::Samples(_))) {
         return;
     }
-    requests.0.fetch_add(1, Ordering::SeqCst);
+    let request = requests.0.fetch_add(1, Ordering::SeqCst) + 1;
+    requests.2.invalidate(request);
     if let Some(file) = &library.file {
         file.invalidate();
     }
@@ -121,6 +128,17 @@ pub(super) fn install_result(
     if requests.0.load(Ordering::SeqCst) != request {
         return None;
     }
+    let loaded = loaded.and_then(|mut new| {
+        if let Some(pending) = new.pending_file.take() {
+            new.file
+                .as_ref()
+                .ok_or(LoadError::Stopped)?
+                .engine
+                .accept_file_load(pending)
+                .map_err(|error| super::engine_file::file_load_error(error, true))?;
+        }
+        Ok(new)
+    });
     // A source refresh is not a successful opening of the rejected choice.
     // Keep that choice visible while continuing to refresh its retained source.
     let failed_choice = automatic
@@ -130,6 +148,9 @@ pub(super) fn install_result(
         && library.requested != library.source;
     match loaded {
         Ok(mut new) => {
+            if matches!(new.source, Some(Source::Zotero(_))) {
+                requests.2.remove();
+            }
             if new
                 .file
                 .as_ref()
@@ -215,6 +236,7 @@ pub(super) fn record_open(
     source: Source,
 ) -> (u64, bool, LibraryStatus) {
     let request = requests.0.fetch_add(1, Ordering::SeqCst) + 1;
+    requests.2.invalidate(request);
     let reload = library.source.as_ref() == Some(&source);
     library.observe_revision(SystemTime::now());
     if let Some(file) = &library.file {
@@ -259,6 +281,54 @@ mod tests {
     use crate::library::load::{load_library, load_source};
     use crate::library::status::LibraryState;
     use crate::tray::library_line;
+
+    #[test]
+    #[allow(clippy::unwrap_used)]
+    fn cached_file_acceptance_publishes_only_the_current_app_request() {
+        let dir = tempfile::tempdir().unwrap();
+        let storage = dir.path().join("cache");
+        let path = dir.path().join("invented.bib");
+        std::fs::write(&path, "@book{demo,title={Synthetic stars}}").unwrap();
+        let library = Mutex::new(Library::default());
+        let requests = LoadRequests::default();
+        requests.2.configure(&storage);
+        let (a, _, _) = begin_open(&library, &requests, path.clone()).unwrap();
+        let prepare = |id, strict, previous| {
+            super::super::load::load_source_cached(
+                Source::File(path.clone()),
+                strict,
+                previous,
+                &ibis_engine::Cancellation::default(),
+                requests.2.operation(id),
+                || false,
+            )
+        };
+        let delayed = prepare(a, false, None);
+        let (b, _, _) = begin_open(&library, &requests, path.clone()).unwrap();
+        assert!(install_loaded(&library, &requests, a, delayed).is_none());
+        let has_manifest = || {
+            std::fs::read_dir(&storage)
+                .unwrap()
+                .any(|e| e.unwrap().path().extension().is_some_and(|e| e == "json"))
+        };
+        assert!(!has_manifest());
+        let accepted = install_loaded(&library, &requests, b, prepare(b, false, None)).unwrap();
+        assert_eq!(accepted.references, 1);
+        assert_eq!(accepted.warnings, 0);
+        assert!(accepted.error.is_none());
+        assert!(has_manifest());
+        let active = library.lock().unwrap().file.clone().unwrap();
+        std::fs::write(&path, "@book{unfinished,title={").unwrap();
+        let (c, _, _) = begin_open(&library, &requests, path.clone()).unwrap();
+        let failed = prepare(c, true, Some(active.clone()));
+        let retained = install_loaded(&library, &requests, c, failed).unwrap();
+        assert!(retained.kept_references && retained.stale);
+        assert_eq!(retained.error_reason, Some(SourceError::Incomplete.into()));
+        assert_eq!(
+            active.engine.libraries().unwrap().libraries[0].refresh_error,
+            Some(ibis_core::contract::ErrorCode::BadInput)
+        );
+    }
 
     #[test]
     fn opening_is_visible_before_loading_and_stale_completions_cannot_replace_it() {

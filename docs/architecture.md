@@ -131,6 +131,24 @@ complete item-version inventory/deletion reconciliation; older releases, Reload
 and discontinuity still reread fully. Better BibTeX keys refresh independently
 because item versions do not cover their changes. Do not invent a `since` path.
 
+The desktop's first consumer saves and reopens only warning-free, record-only `.bib` imports.
+Warnings, attachments and other suffixes use the ordinary loader; attachment paths are not stored.
+The configured source's canonical identity, strong digest and importer revision must match before
+one retained `PreparedLibrary::get` validates every object for the existing snapshot/index.
+Cache errors are misses. Full objects remain resident; #1251 and #1298 stay open.
+
+One process-lived native `FileCacheSession` owns the lease. Selection invalidates pending writers
+before work. Index construction and watcher registration finish in the background. Under the app's
+selection lock, final acceptance checks operation identity, swaps in the complete engine candidate
+and publishes its manifest. Removal invalidates work, removes the
+manifest and permits bounded cleanup after retained readers release it. Reload stores the second
+of two identical observations; watch failure leaves accepted files citable. Samples preserve the
+remembered file's cache. The prepared-citation/final-copy barrier is unchanged.
+
+Only native measurement qualifies launch speed and import/acceptance cost: five fresh-process runs
+at 10k and 100k, counterbalanced against a predeclared valid baseline, retaining every result. Separate
+hit/rebuild startup; report process-tree peak memory and refresh commit delay. Existing budgets hold.
+
 Background work owns the captured source selection and operation generation.
 Delayed A after B or close/reopen may update neither manifest nor engine state.
 Equal content still updates age, warnings, errors and readiness. Copy retains the

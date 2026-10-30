@@ -16,7 +16,9 @@ use std::{
     },
 };
 
+mod file_cache;
 mod sources;
+pub use file_cache::{FileCacheOperation, FileCacheSession, PreparedFileLoad};
 
 mod formatting;
 pub use formatting::Cancellation;

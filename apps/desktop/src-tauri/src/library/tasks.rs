@@ -17,7 +17,9 @@ use crate::preferences::SettingsFile;
 use crate::tray::{LibraryMenuItem, library_line};
 
 use super::error::LoadError;
-use super::load::{Loaded, load_source};
+#[cfg(test)]
+use super::load::load_source;
+use super::load::{Loaded, load_source_cached};
 use super::retry::{begin_check, begin_focus_retry, begin_zotero_retry, retry, zotero_choice, zotero_to_check};
 use super::source::Source;
 use super::state::{Library, LoadRequests, begin_open, dialog_path_error, install_automatic, install_loaded};
@@ -291,6 +293,11 @@ struct LoadPhases {
 }
 
 fn run_open(app: &AppHandle, request: u64, source: Source, reload: bool, intent: OpenIntent) {
+    if let Ok(path) = app.path().app_cache_dir() {
+        app.state::<LoadRequests>()
+            .2
+            .configure(&path.join("source-generations"));
+    }
     #[cfg(debug_assertions)]
     let started = std::time::Instant::now();
     if !matches!(intent, OpenIntent::Refresh) {
@@ -332,13 +339,14 @@ fn open_one(app: AppHandle, open: OpenRequest) -> impl std::future::Future<Outpu
             .flatten()
     });
     let force = reload && !matches!(intent, OpenIntent::Refresh);
+    let cache = app.state::<LoadRequests>().2.operation(request);
     async move {
         let chosen = source.setting();
         let loading_app = app.clone();
         let loaded = tauri::async_runtime::spawn_blocking(move || {
             #[cfg(debug_assertions)]
             let loading = std::time::Instant::now();
-            let loaded = load_source(source, force, previous_file, &cancel, || {
+            let loaded = load_source_cached(source, force, previous_file, &cancel, cache, || {
                 loading_app.state::<LoadRequests>().0.load(Ordering::SeqCst) != request
             });
             #[cfg(debug_assertions)]
@@ -369,6 +377,7 @@ fn open_one(app: AppHandle, open: OpenRequest) -> impl std::future::Future<Outpu
         {
             phases.install_ms = installing.elapsed().as_secs_f64() * 1000.0;
             phases.accepted = u8::from(installed.is_some());
+            phases.load_ok &= u8::from(installed.as_ref().is_none_or(|status| status.error.is_none()));
         }
         if installed.is_some() {
             let mut show_note = false;

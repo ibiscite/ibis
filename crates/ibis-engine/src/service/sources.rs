@@ -16,7 +16,7 @@ pub(super) struct Owners {
     zotero: Mutex<ZoteroSource>,
     zotero_port: Option<u16>,
     #[cfg(test)]
-    fail_watches: std::sync::atomic::AtomicBool,
+    pub(super) fail_watches: std::sync::atomic::AtomicBool,
 }
 impl Owners {
     pub(super) fn on_port(port: u16) -> Self {
@@ -36,7 +36,7 @@ struct Slot {
     path: PathBuf,
     loaded: Arc<LoadedLibrary>,
 }
-fn source_error(error: SourceError) -> EngineError {
+pub(super) fn source_error(error: SourceError) -> EngineError {
     super::error(match error {
         SourceError::TooLarge | SourceError::LoadLimit => ErrorCode::ResourceLimit,
         SourceError::NotRegular | SourceError::Unreadable | SourceError::Incomplete | SourceError::InvalidData => {
@@ -87,7 +87,7 @@ impl Engine {
                 return Err(error(ErrorCode::Cancelled));
             }
         }
-        let (mut loaded, observation) = if strict {
+        let (loaded, observation) = if strict {
             (
                 ibis_sources::reload_file_reusing(&path, self.snapshot()?.as_ref()).map_err(source_error)?,
                 None,
@@ -97,6 +97,17 @@ impl Engine {
             (loaded, Some(observation))
         };
         cancel.check()?;
+        self.install_file(path, loaded, observation, cancel)?;
+        drop(operation);
+        Ok(())
+    }
+    pub(super) fn install_file(
+        &self,
+        path: PathBuf,
+        mut loaded: LoadedLibrary,
+        observation: Option<ibis_sources::SourceSnapshot>,
+        cancel: &Cancellation,
+    ) -> Result<(), EngineError> {
         loaded.snapshot.reuse_unchanged(self.snapshot()?.as_ref());
         let mut registry = self.shared.sources.lock().map_err(|_| error(ErrorCode::Internal))?;
         let existing = registry
@@ -137,9 +148,9 @@ impl Engine {
         });
         let mut library_info = info(&loaded);
         library_info.watch_warning = watch_warning;
+        cancel.check()?;
         if let Err(error) = self.shared.install(library_info, &loaded.snapshot, previous) {
             drop(registry);
-            drop(operation);
             drop(watch);
             return Err(error);
         }
@@ -160,7 +171,6 @@ impl Engine {
                 None => watches.remove(&id),
             }
         };
-        drop(operation);
         drop(old);
         cancel.check()
     }
@@ -393,7 +403,13 @@ mod tests {
         let engine = Engine::new().unwrap();
         engine.resources.fail_watches.store(true, Ordering::Relaxed);
         let cancel = Cancellation::default();
-        engine.open_file(&path, &cancel).unwrap();
+        let cache = super::super::FileCacheSession::open(&dir.path().join("cache"));
+        cache.invalidate(1);
+        let prepared = engine
+            .prepare_file_load(&path, false, cache.operation(1), &cancel)
+            .unwrap();
+        let engine = prepared.engine().unwrap();
+        engine.accept_file_load(prepared).unwrap();
         let result = engine
             .dispatch(Method::Search, &json!({"query":"widgets"}), &cancel)
             .unwrap();
