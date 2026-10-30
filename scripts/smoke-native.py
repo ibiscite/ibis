@@ -100,9 +100,16 @@ def shows_count(snapshot, count):
 
 def retained_snapshot_fragments(snapshot):
     """Fixed predicates only, from one bounded native snapshot; never echo text."""
-    text = " ".join(strings(snapshot).split())
-    return {"not_updated": " · not updated" in text,
-            "four_references": " · 4 references" in text}
+    # Native traversal order is not reading order (Linux walks a LIFO stack).
+    # Match complete atomic wording or one composite text node, never invent a
+    # phrase by joining neighboring elements from different native boundaries.
+    values = [" ".join(str(node.get(key, "")).split())
+              for node in snapshot["nodes"] for key in ("name", "value")]
+    def contains(fragment):
+        return any(re.search(r"(?:^|^· | · )" + re.escape(fragment) + r"(?!\w)", value) is not None
+                   for value in values)
+    return {"not_updated": contains("not updated"),
+            "four_references": contains("4 references")}
 
 
 def missing_library_evidence(snapshot, name):
@@ -3455,6 +3462,22 @@ class ContractTests(unittest.TestCase):
                 self.assertEqual(diagnostic, {"not_updated": updated, "four_references": count})
                 self.assertTrue(all(type(value) is bool for value in diagnostic.values()))
                 self.assertNotIn("synthetic-private-sentinel", json.dumps(diagnostic))
+
+    def test_retained_snapshot_accepts_native_nodes_independent_of_sibling_order(self):
+        for nodes in [
+                [{"value": "not updated"}, {"value": " · "}, {"value": "synthetic.bib · 4 references"}],
+                [{"value": "4 references"}, {"value": " · "}, {"value": "not updated"}],
+                [{"value": "synthetic.bib · not updated. synthetic.bib · 4 references"}]]:
+            with self.subTest(nodes=nodes):
+                self.assertEqual(retained_snapshot_fragments({"nodes": nodes}),
+                                 {"not_updated": True, "four_references": True})
+        for nodes in [
+                [{"value": " · "}, {"value": "synthetic.bib · 4 references"}],
+                [{"value": "not updated"}, {"value": "synthetic.bib · 3 references"}],
+                [{"value": "not updatedish"}, {"value": "synthetic.bib · 4 references"}],
+                [{"value": "not"}, {"value": "updated"}, {"value": "4 references"}]]:
+            with self.subTest(nodes=nodes):
+                self.assertFalse(all(retained_snapshot_fragments({"nodes": nodes}).values()))
 
     def test_missing_library_accepts_isolated_separator_nodes_without_losing_requirements(self):
         name = "synthetic 引用.bib"
