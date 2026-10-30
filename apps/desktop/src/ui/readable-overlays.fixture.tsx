@@ -37,7 +37,7 @@ function Fixture() {
     <div className="fixture-body">
       <ul role="listbox" aria-label="Invented results">
         {Array.from({ length: 12 }, (_, i) => <Option key={i} role="option" aria-selected={false}>
-          <span className="result-body"><span className="result-line"><strong className="result-title">{longLabel}</strong></span>
+          <span className="result-body"><span className="result-line"><strong className="result-title">{longLabel}<span className="fixture-title-suffix"> · Invented study arm {i + 1}</span></strong></span>
             <span className="result-meta"><span className="result-byline"><span className="result-authors">Aster, Alder and Cypress</span><span className="result-separator"> · </span><span className="result-container">Invented Journal of Interfaces</span></span><span className="result-type">Article</span><span className="result-library">Invented collection</span></span></span><span className="result-year">2026</span>
         </Option>)}
       </ul>

@@ -90,7 +90,9 @@ export function useWholeRows(list: RefObject<HTMLElement | null>) {
         const top = node.getBoundingClientRect().top + node.clientTop;
         let end = 0;
         for (const row of node.querySelectorAll('[role^="menuitem"]')) {
-          const bottom = row.getBoundingClientRect().bottom - top + node.scrollTop;
+          // Rectangles already include the scroll offset. Fit the last whole
+          // row in this viewport without moving the user's scroll position.
+          const bottom = row.getBoundingClientRect().bottom - top;
           if (bottom <= height && bottom > end) end = bottom;
         }
         if (end > 0) node.style.maxHeight = `${Math.ceil(end)}px`;

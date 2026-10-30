@@ -9,11 +9,33 @@ afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
 const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
 const styles = readFileSync(new FileURL("../../styles.css", import.meta.url), "utf8");
+const optionStyles = readFileSync(new FileURL("../../ui/Option.css", import.meta.url), "utf8");
 
 const rows: SearchResult[] = Array.from({ length: 10 }, (_, i) => ({
   revision: "1", id: { source: "refs.bib", native_key: `k${i}` }, key: `k${i}`, title: `Title ${i}`, authors: "Author", year: 2020,
   matched: ["title"], partial: false, first_author: "Author", author_count: 1, container: null, item_type: "book",
 }));
+
+test.each([1, 1.15, 2])("at minimum width and %sx text, titles with a common prefix keep their distinguishing suffixes visible", (scale) => {
+  const prefix = "An invented study of patient readers and readable interfaces in small windows. ".repeat(4);
+  const records = ["Alder cohort", "Cypress cohort"].map((suffix, i) => ({ ...rows[i]!, title: `${prefix}${suffix}` }));
+  // jsdom cannot measure line wrapping. Apply the production CSS to guard
+  // against hiding the suffix; the browser scenario also checks its rectangle.
+  const view = render(<>
+    <style>{styles.replace(/@import[^;]+;/g, "") + optionStyles}</style>
+    <div style={{ width: 480, fontSize: `${scale * 100}%` }}>
+      <ResultList results={records} active={0} selected={new Map()} density="comfortable"
+        libraryOf={() => null} onMouseMove={vi.fn()} onChoose={vi.fn()} onToggle={vi.fn()} />
+    </div>
+  </>);
+  const titles = [...view.container.querySelectorAll<HTMLElement>(".result-title")];
+  expect(titles.map((title) => title.textContent)).toEqual(records.map((record) => record.title));
+  for (const title of titles) {
+    const style = getComputedStyle(title);
+    expect(style.getPropertyValue("-webkit-line-clamp")).toMatch(/^$|^none$/);
+    expect(["hidden", "clip"]).not.toContain(style.overflow);
+  }
+});
 
 test("metadata reflow measures the space left beside the year", () => {
   // A 464px spacious row with Web page, a key, library and No date has only
