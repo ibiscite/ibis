@@ -2,12 +2,14 @@
 import { copyFormatLabels } from "./messages";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { commands, type CommandError, type KeyFormat, type LibraryStatus, type PickerPreferences, type ShortcutStatus } from "./bindings";
+import { commands, type CommandError, type Copied as NativeCopied, type KeyFormat, type LibraryStatus, type PickerPreferences, type ShortcutStatus } from "./bindings";
 
 export type { Sources } from "./bindings";
 export type {
-  AppOutput, Copied, Density, LibraryStatus, Locator, LocatorQuery, LoginItem, LoginItemProblem, PastedList, PickerDestination, PickerPreferences, SearchQuery, SearchResult, ShortcutStatus, ZoteroGroup, ZoteroLibrary,
+  AppOutput, Density, LibraryStatus, Locator, LocatorQuery, LoginItem, LoginItemProblem, PastedList, PickerDestination, PickerPreferences, SearchQuery, SearchResult, ShortcutStatus, ZoteroGroup, ZoteroLibrary,
 } from "./bindings";
+export type Copied = NativeCopied & { paste_hint?: boolean };
+export type CopyReceipt = Awaited<ReturnType<typeof commands.showCopiedNotice>>;
 export type CopyFormat = KeyFormat;
 /** What the notice after a copy says: pasted into an app, or copied and why. */
 export type NoticeMessage = NonNullable<Awaited<ReturnType<typeof commands.copiedNotice>>>;
@@ -27,6 +29,7 @@ export const {
   shortcutStatus,
   copyFileCitation,
   copyFormat,
+  copyHint,
   pickerPreferences,
   pickerDestination,
   rememberAppOutput,

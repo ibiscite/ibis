@@ -35,6 +35,19 @@ async function toggleKeepOpen() {
   });
 }
 
+test("the first three plain copies teach manual paste, and reopening keeps the used hints", async () => {
+  let count = 0;
+  const calls = await openPicker({ copy_hint: () => ++count <= 3 });
+  await toggleKeepOpen();
+  for (let number = 1; number <= 4; number++) {
+    await copy();
+    const text = document.querySelector(".copy-notice p")?.textContent;
+    expect(text).toBe(number <= 3 ? "Copied. Press Ctrl+V to paste" : "Copied");
+    await act(async () => { await emit("picker:hidden"); await emit("picker:shown"); });
+  }
+  expect(calls.filter((command) => command === "copy_hint")).toHaveLength(4);
+});
+
 test.each([0, 2])("a permission detour keeps the citation past a minute through %i returns before the grant, waiting for a fresh Enter", async (returnsBeforeGrant) => {
   let granted = false;
   const copies: unknown[] = [];

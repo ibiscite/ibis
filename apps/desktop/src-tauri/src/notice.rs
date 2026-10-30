@@ -108,6 +108,29 @@ pub(crate) struct Notice {
 pub(crate) struct NoticeMessage {
     delivered: Delivered,
     text: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[specta(optional)]
+    paste_hint: Option<bool>,
+}
+
+/// Delivery meaning stays unchanged; feedback carries its own first-use fact.
+#[derive(Serialize, specta::Type)]
+pub(crate) struct CopyReceipt {
+    #[serde(flatten)]
+    delivered: Delivered,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[specta(optional)]
+    paste_hint: Option<bool>,
+}
+
+impl CopyReceipt {
+    fn new(delivered: Delivered, file: &crate::preferences::SettingsFile) -> Self {
+        let paste_hint = matches!(delivered, Delivered::Copied { reason: None }) && file.take_copy_hint();
+        Self {
+            delivered,
+            paste_hint: paste_hint.then_some(true),
+        }
+    }
 }
 
 /// The notice being shown, for a notice page that has just loaded and missed
@@ -127,33 +150,34 @@ pub(crate) fn copied_notice(notice: State<'_, Notice>) -> Option<NoticeMessage> 
 /// Returns the delivery outcome so a permission detour keeps the prepared shelf.
 #[tauri::command]
 #[specta::specta]
-pub(crate) async fn show_copied_notice(app: AppHandle, text: String, delivery: Option<u32>) -> Delivered {
+pub(crate) async fn show_copied_notice(app: AppHandle, text: String, delivery: Option<u32>) -> CopyReceipt {
     #[cfg(target_os = "windows")]
     let ticket = crate::paste::take_copy(&app, delivery);
     // A paste may wait up to a second for the app to come back to the front.
-    let delivered = {
+    let receipt = {
         let (app, text) = (app.clone(), text.clone());
         tauri::async_runtime::spawn_blocking(move || {
             #[cfg(target_os = "windows")]
-            {
-                crate::paste::deliver_copy(&app, &text, ticket)
-            }
+            let delivered = crate::paste::deliver_copy(&app, &text, ticket);
             #[cfg(not(target_os = "windows"))]
-            {
-                crate::paste::deliver_copy(&app, &text, delivery)
-            }
+            let delivered = crate::paste::deliver_copy(&app, &text, delivery);
+            CopyReceipt::new(delivered, &app.state::<crate::preferences::SettingsFile>())
         })
         .await
     }
-    .unwrap_or(Delivered::Copied { reason: None });
+    .unwrap_or(CopyReceipt {
+        delivered: Delivered::Copied { reason: None },
+        paste_hint: None,
+    });
     show(
         &app,
         NoticeMessage {
-            delivered: delivered.clone(),
+            delivered: receipt.delivered.clone(),
             text: summary(&text),
+            paste_hint: receipt.paste_hint,
         },
     );
-    delivered
+    receipt
 }
 
 fn show(app: &AppHandle, text: NoticeMessage) {
@@ -504,6 +528,46 @@ mod macos {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn first_three_plain_receipts_hint_and_refusals_or_pastes_never_consume_them() {
+        let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+        let file = crate::preferences::SettingsFile::new(directory.path().join("settings.json"));
+        for delivered in [
+            Delivered::Pasted {
+                app: Some("Example Writer".into()),
+            },
+            Delivered::Copied {
+                reason: Some("terminal".into()),
+            },
+            Delivered::Copied {
+                reason: Some("unsupported-system".into()),
+            },
+            Delivered::Copied {
+                reason: Some("paste-off".into()),
+            },
+        ] {
+            let receipt = CopyReceipt::new(delivered.clone(), &file);
+            assert_eq!(receipt.delivered, delivered);
+            assert_eq!(receipt.paste_hint, None);
+        }
+        for number in 1..=4 {
+            let receipt = CopyReceipt::new(Delivered::Copied { reason: None }, &file);
+            assert_eq!(receipt.paste_hint, (number <= 3).then_some(true));
+            let json = serde_json::to_value(&receipt).unwrap_or_else(|e| panic!("{e}"));
+            assert_eq!(json["outcome"], "copied");
+            assert_eq!(json.get("paste_hint").is_some(), number <= 3);
+            let notice = NoticeMessage {
+                delivered: receipt.delivered,
+                paste_hint: receipt.paste_hint,
+                text: "[@invented]".into(),
+            };
+            assert_eq!(
+                serde_json::to_value(&notice).unwrap_or_else(|e| panic!("{e}"))["paste_hint"],
+                json["paste_hint"]
+            );
+        }
+    }
 
     const fn rect(x: f64, y: f64, width: f64, height: f64) -> Area {
         Area { x, y, width, height }

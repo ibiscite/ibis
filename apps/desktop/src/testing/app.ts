@@ -83,6 +83,7 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
     show_copied_notice: () => null,
     set_pinned: () => null,
     copy_format: () => "pandoc",
+    copy_hint: () => false,
     preview_file_citation: ({ items, style }) => receipt(style ? "(Smith, 2020)" : items.map(({ id }) => `@${id.key}`).join("; ")),
     copy_file_citation: (args) => {
       const { preview } = prepared(args);

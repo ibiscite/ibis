@@ -153,6 +153,9 @@ pub struct Settings {
     /// means on; `false` only copies.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub paste: Option<bool>,
+    /// Plain-copy learning hints already used, capped at three. Not a preference.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub copy_hint_count: Option<u8>,
     /// Fields this build does not know, written by another version of Ibis
     /// or by hand. Kept as they are and written back on save.
     #[serde(flatten)]
@@ -173,6 +176,7 @@ impl Default for Settings {
             show_paste_preview: None,
             search_mark: None,
             paste: None,
+            copy_hint_count: None,
             unknown: serde_json::Map::new(),
         }
     }

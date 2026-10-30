@@ -5,6 +5,26 @@ import { afterCopy, DRAG_DISTANCE, leaveNotice, noticePlatform, noticeTitle, ren
 const copied = (text: string, reason: string | null = null): NoticeMessage => ({ delivered: { outcome: "copied", reason }, text });
 import noticeCapability from "../src-tauri/capabilities/notice.json";
 
+test.each([["macos", "⌘V"], ["windows", "Ctrl+V"], ["linux", "Ctrl+V"]] as const)("a first-copy receipt uses %s's paste key without counting on render", (platform, key) => {
+  const root = document.createElement("div"), show = renderNotice(root, platform);
+  const message = { ...copied("[@invented]"), paste_hint: true };
+  show(message); show(message);
+  expect(root.querySelector("strong")?.textContent).toBe(`Copied. Press ${key} to paste`);
+  show({ ...message, paste_hint: false });
+  expect(root.querySelector("strong")?.textContent).toBe("Copied");
+});
+
+test("a first-copy hint never replaces a refusal, Linux's explanation or a pasted result", () => {
+  const root = document.createElement("div"), show = renderNotice(root, "linux");
+  for (const [reason, title] of [["terminal", "Copied. Not pasted into a terminal"],
+    ["unsupported-system", "Copied. Paste it into your document"], ["paste-off", "Copied. Pasting is off"]]) {
+    show({ ...copied("[@invented]", reason), paste_hint: true });
+    expect(root.querySelector("strong")?.textContent).toBe(title);
+  }
+  show({ delivered: { outcome: "pasted", app: "Example Writer" }, text: "[@invented]", paste_hint: true });
+  expect(root.querySelector("strong")?.textContent).toBe("Pasted into Example Writer");
+});
+
 test("only a clean copy from an unpinned picker hides it and says Copied", () => {
   expect(afterCopy({ text: "[@a]", warnings: [] }, false)).toBe("hide-and-notify");
   expect(afterCopy({ text: "[@a]", warnings: [] }, true)).toBe("stay");
