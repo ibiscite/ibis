@@ -536,7 +536,6 @@ impl FileLibrary {
             text: citation.result().text.clone(),
             warnings: citation_warnings(citation.result()),
             delivery: None,
-            paste_hint: None,
         })
     }
 }

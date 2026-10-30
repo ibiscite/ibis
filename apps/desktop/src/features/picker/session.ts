@@ -161,12 +161,8 @@ export function reduceSession(s: SessionState, event: SessionEvent): [SessionSta
       const outcome = { ...event.outcome, warnings: [...event.outcome.warnings, ...f.warnings] };
       if (f.id > s.lastSuccessfulCopy) s = { ...s, lastSuccessfulCopy: f.id, lastOutcome: copiedNoticeText.title };
       if (!ownsCompletion(s, f, event.output)) return [finish(s, f), s.activeCopy === f.id && f.owner.session === s.session && sameOutput(f.owner.output, event.output) ? [{ type: "consume", output: f.owner.output }] : []];
-      const hiding = afterCopy(outcome, event.pinned) === "hide-and-notify";
-      const copied = hiding ? { ...outcome, paste_hint: false } : outcome;
-      s = { ...s, copied, escapedQuery: null,
-        lastOutcome: noticeTitle({ delivered: { outcome: "copied", reason: null }, text: "", paste_hint: !hiding && outcome.warnings.length === 0 && outcome.paste_hint }),
-        flights: s.flights.map((flight) => flight === f ? { ...f, phase: "hide", outcome } : flight) };
-      return hiding ? [{ ...s, permissionDetour: true }, [{ type: "hide", id: f.id, session: f.session }]] : complete(s);
+      s = { ...s, copied: outcome, escapedQuery: null, flights: s.flights.map((flight) => flight === f ? { ...f, phase: "hide", outcome } : flight) };
+      return afterCopy(outcome, event.pinned) === "hide-and-notify" ? [{ ...s, permissionDetour: true }, [{ type: "hide", id: f.id, session: f.session }]] : complete(s);
     }
     case "hid": {
       if (f.phase !== "hide") return [s, []];
@@ -176,14 +172,12 @@ export function reduceSession(s: SessionState, event: SessionEvent): [SessionSta
     }
     case "hide-failed": {
       if (f.phase !== "hide") return [s, []];
-      if (ownsInteraction(s, f)) s = { ...s, copied: f.outcome!,
-        lastOutcome: noticeTitle({ delivered: { outcome: "copied", reason: null }, text: "", paste_hint: f.outcome?.paste_hint }) };
       const [next, effects] = complete(s);
       return [next, ownsInteraction(s, f) ? [{ type: "hide-status", failed: true }, ...effects] : effects];
     }
     case "delivered": {
       if (f.phase !== "notice") return [s, []];
-      if (event.delivered && f.id === s.lastSuccessfulCopy) s = { ...s, lastOutcome: noticeTitle({ delivered: event.delivered, text: "", paste_hint: f.outcome?.paste_hint }) };
+      if (event.delivered && f.id === s.lastSuccessfulCopy) s = { ...s, lastOutcome: noticeTitle({ delivered: event.delivered, text: "" }) };
       return event.delivered?.outcome === "copied" && event.delivered.reason === "no-permission" ? [finish(s, f), []] : complete(s);
     }
   }

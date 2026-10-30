@@ -111,7 +111,7 @@ export const commands = {
 	 *  citation is on the clipboard either way.
 	 *  Returns the delivery outcome so a permission detour keeps the prepared shelf.
 	 */
-	showCopiedNotice: (text: string, delivery: number | null, pasteHint: boolean | null) => __TAURI_INVOKE<Delivered>("show_copied_notice", { text, delivery, pasteHint }),
+	showCopiedNotice: (text: string, delivery: number | null) => __TAURI_INVOKE<Delivered>("show_copied_notice", { text, delivery }),
 	/**
 	 *  The notice being shown, for a notice page that has just loaded and missed
 	 *  the event that announced it.
@@ -119,7 +119,6 @@ export const commands = {
 	copiedNotice: () => __TAURI_INVOKE<{
 	delivered: Delivered,
 	text: string,
-	paste_hint?: boolean | null,
 } | null>("copied_notice"),
 	/**  Initial command runs asynchronously; native mutations stay on the main thread. */
 	nativeAppearance: () => __TAURI_INVOKE<string>("native_appearance"),
@@ -190,8 +189,6 @@ export type Copied_Deserialize = {
 	warnings: string[],
 	/**  Unique write token for this copy's one-use paste proof. */
 	delivery?: number | null,
-	/**  Decided once from memory after a successful clipboard write. */
-	paste_hint?: boolean | null,
 };
 
 export type Copied_Serialize = {
@@ -200,8 +197,6 @@ export type Copied_Serialize = {
 	warnings: string[],
 	/**  Unique write token for this copy's one-use paste proof. */
 	delivery?: number | null,
-	/**  Decided once from memory after a successful clipboard write. */
-	paste_hint?: boolean | null,
 };
 
 /**  What happened to a copied citation, for the notice to word. */
@@ -377,26 +372,9 @@ export type MatchField = "citekey" | "title" | "author" | "year" | "doi" | "keyw
  *  What the notice says: whether the citation was pasted or only copied, and
  *  one line of it.
  */
-export type NoticeMessage = NoticeMessage_Serialize | NoticeMessage_Deserialize;
-
-/**
- *  What the notice says: whether the citation was pasted or only copied, and
- *  one line of it.
- */
-export type NoticeMessage_Deserialize = {
+export type NoticeMessage = {
 	delivered: Delivered,
 	text: string,
-	paste_hint?: boolean | null,
-};
-
-/**
- *  What the notice says: whether the citation was pasted or only copied, and
- *  one line of it.
- */
-export type NoticeMessage_Serialize = {
-	delivered: Delivered,
-	text: string,
-	paste_hint?: boolean | null,
 };
 
 /**  An app ID that cannot tell Ibis which output its document needs. */

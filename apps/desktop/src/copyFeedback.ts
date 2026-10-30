@@ -47,10 +47,10 @@ export type NoticePlatform = Platform;
 export const noticePlatform: (platform: string) => NoticePlatform = platformOf;
 
 /** The notice's heading: pasted into an app, or copied and why it was not pasted. */
-export function noticeTitle({ delivered, paste_hint }: NoticeMessage, platform = currentPlatform()): string {
+export function noticeTitle({ delivered }: NoticeMessage, platform = currentPlatform()): string {
   if (delivered.outcome === "pasted") return copiedNoticeText.pasted(delivered.app);
   if (delivered.reason) return copiedNoticeText.reasons[delivered.reason] || copiedNoticeText.title;
-  return paste_hint ? copiedNoticeText.hint(platform) : copiedNoticeText.title;
+  return copiedNoticeText.hint(platform);
 }
 
 /**

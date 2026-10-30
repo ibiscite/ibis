@@ -108,20 +108,6 @@ pub(crate) struct Notice {
 pub(crate) struct NoticeMessage {
     delivered: Delivered,
     text: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[specta(optional)]
-    paste_hint: Option<bool>,
-}
-
-impl NoticeMessage {
-    fn new(delivered: Delivered, text: &str, paste_hint: Option<bool>) -> Self {
-        let paste_hint = paste_hint.filter(|_| matches!(delivered, Delivered::Copied { reason: None }));
-        Self {
-            delivered,
-            text: summary(text),
-            paste_hint,
-        }
-    }
 }
 
 /// The notice being shown, for a notice page that has just loaded and missed
@@ -141,12 +127,7 @@ pub(crate) fn copied_notice(notice: State<'_, Notice>) -> Option<NoticeMessage> 
 /// Returns the delivery outcome so a permission detour keeps the prepared shelf.
 #[tauri::command]
 #[specta::specta]
-pub(crate) async fn show_copied_notice(
-    app: AppHandle,
-    text: String,
-    delivery: Option<u32>,
-    paste_hint: Option<bool>,
-) -> Delivered {
+pub(crate) async fn show_copied_notice(app: AppHandle, text: String, delivery: Option<u32>) -> Delivered {
     #[cfg(target_os = "windows")]
     let ticket = crate::paste::take_copy(&app, delivery);
     // A paste may wait up to a second for the app to come back to the front.
@@ -165,7 +146,13 @@ pub(crate) async fn show_copied_notice(
         .await
     }
     .unwrap_or(Delivered::Copied { reason: None });
-    show(&app, NoticeMessage::new(delivered.clone(), &text, paste_hint));
+    show(
+        &app,
+        NoticeMessage {
+            delivered: delivered.clone(),
+            text: summary(&text),
+        },
+    );
     delivered
 }
 
@@ -517,34 +504,6 @@ mod macos {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn receipts_use_the_copy_hint_without_storage_and_keep_refusals_or_pastes() {
-        for delivered in [
-            Delivered::Pasted {
-                app: Some("Example Writer".into()),
-            },
-            Delivered::Copied {
-                reason: Some("terminal".into()),
-            },
-            Delivered::Copied {
-                reason: Some("unsupported-system".into()),
-            },
-            Delivered::Copied {
-                reason: Some("paste-off".into()),
-            },
-        ] {
-            let notice = NoticeMessage::new(delivered.clone(), "[@invented]", Some(true));
-            assert_eq!(notice.delivered, delivered);
-            assert_eq!(notice.paste_hint, None);
-        }
-        for paste_hint in [Some(true), None] {
-            let notice = NoticeMessage::new(Delivered::Copied { reason: None }, "[@invented]", paste_hint);
-            assert_eq!(notice.paste_hint, paste_hint);
-            let json = serde_json::to_value(&notice).unwrap_or_else(|e| panic!("{e}"));
-            assert_eq!(json.get("paste_hint").is_some(), paste_hint.is_some());
-        }
-    }
 
     const fn rect(x: f64, y: f64, width: f64, height: f64) -> Area {
         Area { x, y, width, height }

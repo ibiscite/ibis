@@ -29,60 +29,6 @@ const deferred = <T,>() => {
   return { promise, resolve, reject };
 };
 
-test("the copy result carries the first three hints across close/reopen without another operation", async () => {
-  let count = 0;
-  const copyFileCitation = vi.fn(async () => ({ text: "canonical citation", warnings: [], paste_hint: ++count <= 3 }));
-  const s = setup({ pinned: () => true, copyFileCitation });
-  for (let i = 1; i <= 4; i++) {
-    s.ready(); s.enter(); s.enter();
-    await vi.waitFor(() => expect(s.controller.getSnapshot().copied?.paste_hint).toBe(i <= 3));
-    expect(s.controller.getSnapshot().lastOutcome).toBe(i <= 3 ? "Copied. Press Ctrl+V to paste" : "Copied");
-    s.controller.dispatch({ type: "hidden", now: 10 });
-    s.controller.dispatch({ type: "shown", now: 20 });
-  }
-  expect(copyFileCitation).toHaveBeenCalledTimes(4);
-  const reopened = setup({ pinned: () => true, copyFileCitation });
-  reopened.enter();
-  await vi.waitFor(() => expect(reopened.controller.getSnapshot().copied?.paste_hint).toBe(false));
-});
-
-test.each([
-  [null, "Copied. Press Ctrl+V to paste"],
-  ["terminal", "Copied. Not pasted into a terminal"],
-  ["unsupported-system", "Copied. Paste it into your document"],
-] as const)("a native receipt with reason %s keeps its meaning with the original copy hint", async (reason, title) => {
-  const s = setup({ copyFileCitation: vi.fn(async () => ({ text: "canonical citation", warnings: [], paste_hint: true })),
-    showCopiedNotice: vi.fn(async () => ({ outcome: "copied" as const, reason })) });
-  s.enter();
-  await vi.waitFor(() => expect(s.controller.getSnapshot().lastOutcome).toBe(title));
-  expect(s.ports.showCopiedNotice).toHaveBeenCalledExactlyOnceWith("canonical citation", null, true);
-});
-
-test("warnings keep their meaning even if a hint is supplied", async () => {
-  const s = setup({ pinned: () => true,
-    copyFileCitation: vi.fn(async () => ({ text: "canonical citation", warnings: ["Invented warning"], paste_hint: true })) });
-  s.enter();
-  await vi.waitFor(() => expect(s.controller.getSnapshot().copied?.warnings).toEqual(["Invented warning"]));
-  expect(s.controller.getSnapshot().lastOutcome).toBe("Copied");
-});
-
-test("delayed copy A cannot overwrite B's hint or start another feedback operation", async () => {
-  const old = deferred<Copied>();
-  const s = setup({ pinned: () => true, copyFileCitation: vi.fn().mockReturnValueOnce(old.promise)
-    .mockResolvedValue({ text: "new citation", warnings: [], paste_hint: false }) });
-  s.enter();
-  s.controller.dispatch({ type: "hidden", now: 10 });
-  s.controller.dispatch({ type: "shown", now: 20 });
-  s.ready(); s.enter();
-  await vi.waitFor(() => expect(s.controller.getSnapshot().copied?.paste_hint).toBe(false));
-  old.resolve({ text: "old citation", warnings: [], paste_hint: true });
-  await old.promise;
-  expect(s.ports.copyFileCitation).toHaveBeenCalledTimes(2);
-  expect(s.ports.showCopiedNotice).not.toHaveBeenCalled();
-  expect(s.controller.getSnapshot().copied?.text).toBe("new citation");
-  expect(s.controller.getSnapshot().lastOutcome).toBe("Copied");
-});
-
 test("the runner writes and delivers one canonical result despite repeated Enter", async () => {
   const pending = deferred<Copied>();
   const s = setup({ copyFileCitation: vi.fn(() => pending.promise) });
@@ -91,7 +37,7 @@ test("the runner writes and delivers one canonical result despite repeated Enter
   pending.resolve({ text: "canonical citation", warnings: [], delivery: 42 });
   await pending.promise;
   await Promise.resolve();
-  expect(s.ports.showCopiedNotice).toHaveBeenCalledExactlyOnceWith("canonical citation", 42, null);
+  expect(s.ports.showCopiedNotice).toHaveBeenCalledExactlyOnceWith("canonical citation", 42);
   await Promise.resolve();
   expect(s.controller.getSnapshot().lastOutcome).toBe("Pasted into Example Writer");
   expect(s.ports.consume).toHaveBeenCalledTimes(1);
@@ -112,7 +58,7 @@ test("an old copy response cannot consume a reopened session's new copy", async 
   fresh.resolve({ text: "fresh citation", warnings: [] });
   await fresh.promise;
   await Promise.resolve();
-  expect(s.ports.showCopiedNotice).toHaveBeenCalledExactlyOnceWith("fresh citation", null, null);
+  expect(s.ports.showCopiedNotice).toHaveBeenCalledExactlyOnceWith("fresh citation", null);
 });
 
 test("a delayed hide rejection cannot show an error in a reopened session", async () => {

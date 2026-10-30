@@ -7,15 +7,6 @@ const copied = { text: "[@example2026]", warnings: ["Missing year — 研究 ا�
 const props = { library: null, failures: {}, startAtLogin: null, error: null, copyError: null,
   copied, showCopiedText: true, onDismissCopied: vi.fn() };
 
-test("a plain copy shows its first-copy hint, while warnings keep their meaning", () => {
-  const confirmation = { text: "[@invented]", warnings: [], paste_hint: true };
-  const { rerender } = render(<Notices {...props} copied={confirmation} />);
-  expect(screen.getByRole("status", { name: "" }).textContent).toContain("Copied. Press Ctrl+V to paste");
-  rerender(<Notices {...props} copied={{ ...confirmation, warnings: copied.warnings }} />);
-  expect(screen.getByRole("status", { name: "" }).textContent).not.toContain("Press Ctrl+V");
-  expect(screen.getByLabelText("Copy warnings").textContent).toBe(copied.warnings[0]);
-});
-
 test.each(["Enter", " "])("warning dismissal uses shared states and activates once with %s", (key) => {
   const dismiss = vi.fn();
   render(<Notices {...props} onDismissCopied={dismiss} />);

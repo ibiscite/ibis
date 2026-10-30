@@ -35,43 +35,6 @@ async function toggleKeepOpen() {
   });
 }
 
-test("the first three plain copies teach manual paste, and reopening keeps the used hints", async () => {
-  let count = 0;
-  const calls = await openPicker({ copy_file_citation: (args) => ({
-    text: prepared(args).preview.text, warnings: [], paste_hint: ++count <= 3,
-  }) });
-  await toggleKeepOpen();
-  for (let number = 1; number <= 4; number++) {
-    await copy();
-    const text = document.querySelector(".copy-notice p")?.textContent;
-    expect(text).toBe(number <= 3 ? "Copied. Press Ctrl+V to paste" : "Copied");
-    await act(async () => { await emit("picker:hidden"); await emit("picker:shown"); });
-  }
-  expect(calls.filter((command) => command === "copy_file_citation")).toHaveLength(4);
-  expect(calls).not.toContain("copy_hint");
-});
-
-test.each(["confirmation expiry", "a later failed copy"])("More keeps the successful hint after %s without waiting for persistence", async (later) => {
-  let attempts = 0;
-  const calls = await openPicker({ copy_file_citation: () => {
-    if (++attempts > 1) throw new Error("invented failure");
-    return { text: "[@a]", warnings: [], paste_hint: true };
-  } });
-  await toggleKeepOpen();
-  await copy();
-  expect(document.querySelector(".copy-notice p")?.textContent).toContain("Copied. Press Ctrl+V to paste");
-  if (later === "confirmation expiry") {
-    await act(() => vi.advanceTimersByTimeAsync(3000));
-    expect(document.querySelector(".copy-notice")).toBeNull();
-  } else {
-    await copy();
-    expect(screen.getByText("Nothing was copied. Try again, or use Reload.")).toBeTruthy();
-  }
-  fireEvent.click(screen.getByRole("button", { name: /^More/ }));
-  expect(screen.getByText("Copied. Press Ctrl+V to paste")).toBeTruthy();
-  expect(calls).not.toContain("copy_hint");
-});
-
 test.each([0, 2])("a permission detour keeps the citation past a minute through %i returns before the grant, waiting for a fresh Enter", async (returnsBeforeGrant) => {
   let granted = false;
   const copies: unknown[] = [];
@@ -246,7 +209,7 @@ test("a clean copy hides the picker, then says Copied with the copied text", asy
   expect(notices).toEqual([]);
   expect(screen.getByText("Copied", { selector: ".copy-notice p" })).toBeTruthy();
   await act(async () => { finishHide(); });
-  expect(notices).toEqual([{ text: "[@a]", delivery: null, pasteHint: null }]);
+  expect(notices).toEqual([{ text: "[@a]", delivery: null }]);
   expect(calls.indexOf("hide_picker")).toBeLessThan(calls.indexOf("show_copied_notice"));
 });
 
@@ -262,7 +225,7 @@ test("a copy carries its write token through hiding to the notice", async () => 
   expect(calls).toContain("hide_picker");
   expect(notices).toEqual([]);
   await act(async () => { finishHide(); });
-  expect(notices).toEqual([{ text: "[@a]", delivery: 17, pasteHint: null }]);
+  expect(notices).toEqual([{ text: "[@a]", delivery: 17 }]);
   expect(calls.indexOf("hide_picker")).toBeLessThan(calls.indexOf("show_copied_notice"));
 });
 

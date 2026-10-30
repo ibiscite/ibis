@@ -20,22 +20,6 @@ function scenario() {
   return { send, view, complete, get state() { return state; }, get effects() { return effects; } };
 }
 
-test.each(["dismissal after 2.4 seconds", "a later failed copy"])("a successful hint is already in More before %s, without a persistence reply", (later) => {
-  const s = scenario();
-  s.send(s.view());
-  s.send({ type: "enter", choice: choiceKey([a]) });
-  s.complete(1, { pinned: true, outcome: { text: prepared.text, warnings: [], paste_hint: true } });
-  if (later === "dismissal after 2.4 seconds") {
-    s.send({ type: "dismiss", copied: s.state.copied! });
-  } else {
-    s.send(s.view());
-    s.send({ type: "enter", choice: choiceKey([a]) });
-    s.send({ type: "copy-failed", id: 2, session: 0, output: { opening: 0, choice: 0 }, message: "Invented failure", stale: false });
-  }
-  expect(s.state.lastOutcome).toBe("Copied. Press Ctrl+V to paste");
-  expect(s.effects.map(({ type }) => type)).not.toContain("copy-hint");
-});
-
 test("search, Enter and receipt use exactly one prepared engine ticket", () => {
   const s = scenario();
   s.send(s.view({ chosen: [], shown: null, searchPending: true }));

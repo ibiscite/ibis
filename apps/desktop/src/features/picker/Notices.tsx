@@ -4,7 +4,6 @@ import { Button } from "../../ui/Button";
 import { hasRetainedFreshnessProblem } from "../../LibraryStatusLine";
 import { densityNames, libraryMessages, loginItemText, operationFailures, pickerText, updateText } from "../../messages";
 import { currentPlatform } from "../../platform";
-import { noticeTitle } from "../../copyFeedback";
 
 /** An action whose failure the picker reports in its notices. */
 export type Operation = keyof typeof operationFailures;
@@ -47,7 +46,7 @@ export function Notices({ library, failures, startAtLogin, error, copyError, cop
       {copied && (
         <div role="status" className="copy-notice">
           <p>
-            {noticeTitle({ delivered: { outcome: "copied", reason: null }, text: "", paste_hint: copied.warnings.length === 0 && copied.paste_hint })}{showCopiedText && <> <code>{copied.text}</code></>}
+            {pickerText.copied}{showCopiedText && <> <code>{copied.text}</code></>}
           </p>
           {copied.warnings.length > 0 && (
             <>

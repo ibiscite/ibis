@@ -10,8 +10,6 @@ use tauri::{AppHandle, Emitter, State};
 
 use crate::library::Library;
 
-mod copy_hint;
-
 /// Settings errors can contain user-entered values or OS details. Only these
 /// fixed descriptions reach diagnostics or messages about failed saves.
 pub(crate) fn settings_problem(problem: &settings::SettingsError) -> &'static str {
@@ -84,17 +82,13 @@ pub(crate) struct SettingsFile {
     pub(crate) path: PathBuf,
     /// Held for each whole read, change and save, so two saves never interleave.
     writing: Arc<Mutex<()>>,
-    copy_hints: Arc<copy_hint::CopyHints>,
 }
 
 impl SettingsFile {
     pub(crate) fn new(path: PathBuf) -> Self {
-        let writing = Arc::new(Mutex::new(()));
-        let copy_hints = Arc::new(copy_hint::CopyHints::new(&path, writing.clone()));
         SettingsFile {
             path,
-            writing,
-            copy_hints,
+            writing: Arc::new(Mutex::new(())),
         }
     }
 
