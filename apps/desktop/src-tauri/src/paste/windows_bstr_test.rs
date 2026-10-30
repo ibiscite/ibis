@@ -46,7 +46,7 @@ pub(super) fn bstr_array_fixture() -> uiautomation::variants::Variant {
     let element = array
         .get_element::<BSTR>(0)
         .unwrap_or_else(|_| panic!("synthetic BSTR array element"));
-    assert_eq!(String::try_from(&element), Ok(String::new()));
+    assert_eq!(String::try_from(&element).ok(), Some(String::new()));
 
     let tag = VARENUM(VT_ARRAY.0 | VT_BSTR.0);
     // SafeArray::into marks its wrapper unowned. The initialized VARIANT is
