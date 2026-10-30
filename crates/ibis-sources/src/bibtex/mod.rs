@@ -24,7 +24,7 @@ mod resolve;
 use std::cell::Cell;
 use std::collections::HashSet;
 
-use biblatex::Bibliography;
+use biblatex::{Bibliography, Chunk, Entry, EntryType, RawBibliography, RawChunk, Spanned};
 
 use crate::{ParsedLibrary, SourceWarning, WarningCode};
 use ibis_core::contract::{LibraryId, Record, Snapshot};
@@ -232,16 +232,104 @@ fn load_entry(
         return Err(LOAD_LIMIT.into());
     }
     let mut problems = resolved.problems;
-    let bib = Bibliography::parse(&resolved.source).map_err(|e| format!("{}; skipped", e.kind))?;
-    let parsed = bib
-        .get(&entry.key)
-        .ok_or_else(|| "entry could not be read; skipped".to_string())?;
+    let raw = RawBibliography::parse(&resolved.source).map_err(|e| format!("{}; skipped", e.kind))?;
+    enum Parsed {
+        Flat(Entry),
+        Canonical(Bibliography),
+    }
+    let parsed = match flat_entry(&raw, &entry.key) {
+        Some(entry) => {
+            drop(raw);
+            Parsed::Flat(entry)
+        }
+        None => Parsed::Canonical(Bibliography::from_raw(raw).map_err(|e| format!("{}; skipped", e.kind))?),
+    };
+    let parsed = match &parsed {
+        Parsed::Flat(entry) => entry,
+        Parsed::Canonical(bib) => bib
+            .get(&entry.key)
+            .ok_or_else(|| "entry could not be read; skipped".to_string())?,
+    };
     let mut record = convert::convert(source, &entry.kind, parsed, &resolved.fields, &mut problems);
     if crate::urls::remove_private_urls(&mut record.csl) {
         problems.push("private URL omitted".into());
     }
     let file = resolved.fields.get("file").map(|value| convert::file_value(value));
     Ok((record, file, problems))
+}
+
+/// Reproduce only biblatex 0.12's ordinary ContentParser state. The upstream
+/// raw parser still owns syntax and spans; uncertain entries use from_raw.
+fn flat_entry(raw: &RawBibliography<'_>, key: &str) -> Option<Entry> {
+    if !raw.preamble.is_empty() || !raw.abbreviations.is_empty() {
+        return None;
+    }
+    let [raw] = raw.entries.as_slice() else {
+        return None;
+    };
+    let raw = &raw.v;
+    if raw.key.v != key
+        || raw.fields.iter().any(|pair| {
+            ["crossref", "xdata", "ids"]
+                .iter()
+                .any(|name| pair.key.v.eq_ignore_ascii_case(name))
+                || match pair.value.v.as_slice() {
+                    [literal] => match literal.v {
+                        RawChunk::Normal(value) => value.contains(['\\', '{', '}', '$']),
+                        RawChunk::Abbreviation(_) => true,
+                    },
+                    _ => true,
+                }
+        })
+    {
+        return None;
+    }
+    let kind = EntryType::new(raw.kind.v);
+    if kind == EntryType::XData {
+        return None;
+    }
+    let mut entry = Entry::new(raw.key.v.to_owned(), kind);
+    for pair in &raw.fields {
+        let [literal] = pair.value.v.as_slice() else {
+            return None;
+        };
+        let RawChunk::Normal(value) = literal.v else {
+            return None;
+        };
+        // Follow upstream's output-sized growth: a long whitespace-only input
+        // must not reserve its raw length for a one-character Normal chunk.
+        let mut normal = String::new();
+        let mut chars = value.chars().peekable();
+        while let Some(character) = chars.next() {
+            match character {
+                '-' => {
+                    let mut count = 1;
+                    while count < 3 && chars.next_if_eq(&'-').is_some() {
+                        count += 1;
+                    }
+                    normal.push(match count {
+                        2 => '–',
+                        3 => '—',
+                        _ => '-',
+                    });
+                }
+                character if character.is_whitespace() => {
+                    normal.push(' ');
+                    while chars.next_if(|character| character.is_whitespace()).is_some() {}
+                }
+                character => normal.push(character),
+            }
+        }
+        // Empty text is still one Normal chunk. The span covers the original
+        // bytes, even when whitespace or hyphens changed their encoded length.
+        // from_raw ASCII-lowercases and overwrites collisions in source order;
+        // Entry::set instead Unicode-lowercases, so it must not be used here.
+        entry.fields.insert(
+            pair.key.v.to_ascii_lowercase(),
+            vec![Spanned::new(Chunk::Normal(normal), literal.span.clone())],
+        );
+    }
+    Some(entry)
 }
 
 #[cfg(test)]
@@ -286,6 +374,36 @@ mod tests {
         ("abbreviation", "@string{x={Label}}@book{k,title=x}", "k"),
         ("syntax", "@book{k,title={Unterminated}", "k"),
     ];
+
+    #[test]
+    fn flat_entry_constructor_matches_exact_upstream_state() {
+        for (name, text, key) in FLAT_CASES {
+            let admitted = matches!(
+                *name,
+                "normal" | "unicode-whitespace-hyphens" | "empty" | "invalid-getters" | "case-collisions" | "encoded"
+            );
+            let Ok(raw) = RawBibliography::parse(text) else {
+                assert!(!admitted, "{name}");
+                continue;
+            };
+            let constructed = flat_entry(&raw, key);
+            assert_eq!(constructed.is_some(), admitted, "{name}");
+            if let Some(entry) = constructed {
+                let canonical = Bibliography::from_raw(raw).unwrap_or_else(|error| panic!("{name}: {error}"));
+                let expected = canonical
+                    .get(key)
+                    .unwrap_or_else(|| panic!("{name}: missing expected key"));
+                assert_eq!(&entry, expected, "{name}: exact AST including spans");
+                assert_eq!(entry.author(), expected.author(), "{name}: author getter");
+                assert_eq!(entry.editors(), expected.editors(), "{name}: editor getter");
+                assert_eq!(
+                    entry.date().map_err(|error| error.to_string()),
+                    expected.date().map_err(|error| error.to_string()),
+                    "{name}: date value and diagnostic offsets"
+                );
+            }
+        }
+    }
 
     #[test]
     fn flat_entry_canonical_ast_and_getter_oracle() {
@@ -384,6 +502,42 @@ mod tests {
     // cannot distinguish a caught parser panic from an ordinary Syntax warning.
     proptest! {
         #![proptest_config(ProptestConfig::with_cases(512))]
+
+        #[test]
+        fn flat_entry_constructor_preserves_random_normal_chunks(
+            parts in prop::collection::vec(
+                prop_oneof![
+                    any::<char>()
+                        .prop_filter("ordinary content state", |character| !matches!(character, '\\' | '{' | '}' | '$'))
+                        .prop_map(|character| character.to_string()),
+                    prop::sample::select(vec![
+                        " ", "\t", "\r\n", "\u{a0}", "-", "--", "---", "----",
+                        "\u{e000}", "\u{e001}", "\u{e002}", "\u{e003}",
+                    ]).prop_map(|part| part.to_string()),
+                ],
+                0..48,
+            ),
+        ) {
+            let value = parts.concat();
+            // Duplicate keys pin last-wins ASCII normalization and the last
+            // source span, independently of the normal-value implementation.
+            let text = format!("@article{{synthetic,TITLE={{{value}}},title={{{value}}},year={{bad}},editor={{Morgan, Ann}},editortype={{unknown}}}}");
+            let raw = RawBibliography::parse(&text)
+                .map_err(|error| proptest::test_runner::TestCaseError::fail(error.to_string()))?;
+            let entry = flat_entry(&raw, "synthetic")
+                .ok_or_else(|| proptest::test_runner::TestCaseError::fail("ordinary content was not admitted"))?;
+            let canonical = Bibliography::from_raw(raw)
+                .map_err(|error| proptest::test_runner::TestCaseError::fail(error.to_string()))?;
+            let expected = canonical.get("synthetic")
+                .ok_or_else(|| proptest::test_runner::TestCaseError::fail("canonical key missing"))?;
+            prop_assert_eq!(&entry, expected);
+            prop_assert_eq!(entry.author(), expected.author());
+            prop_assert_eq!(entry.editors(), expected.editors());
+            prop_assert_eq!(
+                entry.date().map_err(|error| error.to_string()),
+                expected.date().map_err(|error| error.to_string()),
+            );
+        }
 
         #[test]
         fn arbitrary_text_never_panics(text in any::<String>()) {
