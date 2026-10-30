@@ -634,7 +634,6 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
         {!busy && emptyState}
         {library?.sample && <SampleLibraryExit useSampleLibrary={api.useSampleLibrary} perform={perform} />}
       </div>
-      </div>
       {/* Keep the selection live region mounted when choices remove citation controls. */}
       <CitationShelf announce={selectionChanged} selected={showCitations ? selected : noSelection} removeLabel={removeLabel} onRemove={(r) => {
         toggle(r);
@@ -642,6 +641,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       }} onRemoveLocator={(r) => changeLocator(r, null)} highlightedReference={selected.size === 0 ? chosen[0] : undefined}
         onChangeReference={changeReference} style={style} keys={keyFormat !== null}
         shown={showCitations ? displayedOutput : undefined} problem={previewProblem} focusable={selected.size > 0} fallbackFocusRef={input} />
+      </div>
       <PickerFooter library={library} groupName={groupName}
         hints={{ enter: enterAction, shiftEnter: shiftEnterAction, escape: escapeAction }}
         altHeld={altHeld} actions={{ copy: copyChosen, add: toggleHighlighted, escape: escapeStep, keys: openKeys }}
