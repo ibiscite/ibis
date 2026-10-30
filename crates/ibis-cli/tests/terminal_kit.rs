@@ -344,6 +344,84 @@ fn a_non_utf8_source_path_is_reported_without_a_panic_or_path_disclosure() {
 
 #[cfg(unix)]
 #[test]
+fn fzf_recipe_requires_a_nonblank_search_before_reading_a_library() {
+    for args in [
+        vec!["/invented/unused.bib"],
+        vec!["/invented/unused.bib", ""],
+        vec!["/invented/unused.bib", " \t\r\n"],
+        vec!["/invented/unused.bib", "Invented", "extra"],
+        vec![],
+    ] {
+        let output = Command::new("bash")
+            .arg(concat!(env!("CARGO_MANIFEST_DIR"), "/recipes/ibis-fzf"))
+            .args(args)
+            .output()
+            .unwrap_or_else(|error| panic!("{error}"));
+        assert_eq!(output.status.code(), Some(2));
+        assert!(output.stdout.is_empty());
+        let message = String::from_utf8_lossy(&output.stderr);
+        assert!(message.contains("Usage: bash ibis-fzf"), "{message}");
+        assert!(message.contains("<search words>"), "{message}");
+        assert!(!message.contains("search failed"), "{message}");
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn fzf_recipe_filters_real_titles_and_preserves_the_selected_identity() {
+    for tool in ["fzf", "jq"] {
+        match Command::new(tool).arg("--version").output() {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                eprintln!("SKIP real fzf recipe regression: {tool} is not installed");
+                return;
+            }
+            Err(error) => panic!("cannot run {tool}: {error}"),
+            Ok(output) => assert!(output.status.success(), "{tool} --version failed"),
+        }
+    }
+    let dir = directory("real-fzf");
+    let library = dir.join("invented library.bib");
+    std::fs::write(
+        &library,
+        concat!(
+            "@book{firstpick, title={Invented comet}}\n",
+            "@book{secondpick, title={Invented lantern}}\n",
+        ),
+    )
+    .unwrap_or_else(|error| panic!("{error}"));
+    let binary_dir = std::path::Path::new(env!("CARGO_BIN_EXE_ibis"))
+        .parent()
+        .unwrap_or(&dir);
+    let command_path = std::env::join_paths(
+        std::iter::once(binary_dir.to_path_buf())
+            .chain(std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default())),
+    )
+    .unwrap_or_else(|error| panic!("{error}"));
+    for (filter, code, expected) in [
+        ("comet", 0, "[@firstpick]\n"),
+        ("lantern", 0, "[@secondpick]\n"),
+        ("no-such-title", 1, ""),
+    ] {
+        // Real fzf's --filter avoids a TTY while retaining the recipe's options.
+        // --nth operates on the fields transformed by --with-nth (fzf manual).
+        let output = Command::new("bash")
+            .arg(concat!(env!("CARGO_MANIFEST_DIR"), "/recipes/ibis-fzf"))
+            .arg(&library)
+            .arg("Invented")
+            .env("PATH", &command_path)
+            .env("FZF_DEFAULT_OPTS", format!("--filter={filter}"))
+            .env_remove("FZF_DEFAULT_OPTS_FILE")
+            .env_remove("FZF_DEFAULT_COMMAND")
+            .output()
+            .unwrap_or_else(|error| panic!("{error}"));
+        assert_eq!(output.status.code(), Some(code), "filter {filter}: {:?}", output.stderr);
+        assert_eq!(output.stdout, expected.as_bytes(), "filter {filter}");
+        assert!(output.stderr.is_empty(), "filter {filter}: {:?}", output.stderr);
+    }
+}
+
+#[cfg(unix)]
+#[test]
 fn fzf_recipe_cites_identities_and_refuses_a_changed_selection_or_failed_source() {
     use std::os::unix::fs::PermissionsExt;
     if Command::new("jq").arg("--version").output().is_err() {

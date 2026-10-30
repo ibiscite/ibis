@@ -12,8 +12,10 @@ With `ibis`, `jq`, `fzf` and Bash on PATH, run the included
 bash crates/ibis-cli/recipes/ibis-fzf references.bib 'garcia'
 ```
 
-The first argument is a BibTeX/BibLaTeX or CSL-JSON file; the optional second
-argument is the initial Ibis search. It searches through `ibis search --json`,
+The first argument is a BibTeX/BibLaTeX or CSL-JSON file; the required second
+argument is a nonblank initial Ibis search. Missing, empty or whitespace-only
+search words print usage and exit 2 before reading the library. An empty Ibis
+search does not list records. The recipe searches through `ibis search --json`,
 then lets fzf filter those results. Tab selects several references; Enter prints
 one Pandoc citation. Escape or a failed fzf invocation prints no citation.
 It returns at most 1,000 search hits: narrow the initial search for a larger
@@ -23,7 +25,10 @@ inspect them with `ibis libraries --file references.bib --json`.
 The hidden first column carries the complete picked object, including its
 `ItemRef` and cite fingerprint. The visible title marks invisible direction/C1
 controls with `[control]` and is JSON quoted to escape newlines and other
-terminal controls. The recipe builds a canonical request and calls
+terminal controls. As described in the [fzf manual](https://github.com/junegunn/fzf/blob/master/man/man1/fzf.1),
+`--with-nth '2..'` transforms the fields before searching; the default search
+covers that displayed title while the selected row retains its hidden identity.
+The recipe builds a canonical request and calls
 `ibis cite --request`; it never resolves a citation key itself. A changed,
 deleted or ambiguous selection is refused by the engine, with no citation on
 stdout. Change `output` in the recipe's request to
