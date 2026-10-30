@@ -1,4 +1,4 @@
-import { useId, type ReactNode } from "react";
+import { useEffect, useId, useRef, type ReactNode } from "react";
 import { ListBox, ListBoxItem } from "react-aria-components";
 import "./ChoiceList.css";
 import "./Option.css";
@@ -16,9 +16,9 @@ export type Choice = {
 };
 
 /** The choice screen pattern (docs/design.md, First run and choice screens
- * [C12]): a title and one line on the tile column's edge, then result-style
- * rows. Arrow keys move, Enter or a click chooses, and focus stays on the row. */
-export function ChoiceList({ title, line, choices, onChoose, footnote, autoFocus = false }: {
+ * [C12]): one centred group, with result-style rows or the welcome grid.
+ * React Aria owns spatial arrow navigation, activation and focus. */
+export function ChoiceList({ title, line, choices, onChoose, footnote, autoFocus = false, grid = false, mark, focusId }: {
   title: ReactNode;
   line?: ReactNode;
   choices: readonly Choice[];
@@ -26,13 +26,28 @@ export function ChoiceList({ title, line, choices, onChoose, footnote, autoFocus
   /** Quiet text below the rows. */
   footnote?: ReactNode;
   autoFocus?: boolean;
+  grid?: boolean;
+  mark?: ReactNode;
+  /** Restore the tile that opened a replaced choice screen. */
+  focusId?: string;
 }) {
   const heading = useId();
+  const list = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!focusId) return;
+    const frame = requestAnimationFrame(() => {
+      const row = [...(list.current?.querySelectorAll<HTMLElement>('[role="option"]') ?? [])]
+        .find((node) => node.dataset.key === focusId);
+      row?.focus();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [focusId]);
   return (
-    <section className="choice-screen" aria-labelledby={heading}>
+    <section className="choice-screen" data-grid={grid || undefined} aria-labelledby={heading}>
+      {mark}
       <h2 className="choice-title" id={heading} dir="auto">{title}</h2>
       {line && <p className="choice-line">{line}</p>}
-      <ListBox className="choice-list" aria-labelledby={heading} selectionMode="none" autoFocus={autoFocus ? "first" : undefined}
+      <ListBox ref={list} className="choice-list" layout={grid ? "grid" : "stack"} aria-labelledby={heading} selectionMode="none" autoFocus={autoFocus && !focusId ? "first" : undefined}
         onAction={(id) => onChoose(String(id))}>
         {choices.map((choice) => (
           <ListBoxItem key={choice.id} id={choice.id} textValue={choice.title} className="choice-row"
@@ -42,7 +57,7 @@ export function ChoiceList({ title, line, choices, onChoose, footnote, autoFocus
               <span className="result-title" dir="auto">{choice.title}</span>
               {choice.help && <span className="result-meta choice-help" dir="auto">{choice.help}</span>}
             </span>
-            {choice.tag && <span className="result-year choice-tag" dir="auto">{choice.tag}</span>}
+            {choice.tag && <span className="result-year choice-tag" dir="auto" title={choice.tag}>{choice.tag}</span>}
             <svg className="choice-chevron" aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 20 20"
               fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="m8 5 5 5-5 5" />
