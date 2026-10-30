@@ -200,3 +200,63 @@ test("public demo supports keyboard copy/paste and remains visible in narrow and
     }
   } finally { await browser.close(); }
 });
+
+test("picker header fits its container at 200% text and uses aligned themed gradient marks", { skip: !process.env.IBIS_WEBSITE_URL }, async () => {
+  const url = new URL(process.env.IBIS_WEBSITE_URL);
+  assert.equal(url.protocol, "http:"); assert.equal(url.hostname, "127.0.0.1");
+  const { chromium } = await import(process.env.IBIS_PLAYWRIGHT_MODULE || "playwright");
+  const browser = await chromium.launch({ executablePath: process.env.IBIS_CHROMIUM_EXECUTABLE });
+  try {
+    for (const fontSize of [16, 32]) for (const width of [320, 1180]) for (const colorScheme of ["light", "dark"]) for (const javaScriptEnabled of [false, true]) {
+      const page = await browser.newPage({ viewport: { width, height: 900 }, colorScheme, javaScriptEnabled, reducedMotion: "reduce" });
+      const session = await page.context().newCDPSession(page);
+      await session.send("Page.setFontSizes", { fontSizes: { standard: fontSize, fixed: fontSize } });
+      await page.goto(url.href + "#how");
+      if (javaScriptEnabled) await page.getByRole("combobox", { name: "Search the made-up library" }).waitFor();
+      const panel = page.locator("[data-picker] .picker-panel");
+      // Exercise a narrow container on desktop too: viewport media queries alone
+      // cannot protect a small picture inside the website's reading column.
+      if (width === 1180) await panel.evaluate((node, size) => { node.style.width = `${size}px`; }, fontSize === 32 ? 240 : 280);
+      const check = async (theme = colorScheme) => {
+        const layout = await panel.evaluate(node => {
+          const header = node.querySelector(".picker-search"), box = node.getBoundingClientRect(), band = header.getBoundingClientRect();
+          const visible = [...header.querySelectorAll("input, button, select, .picker-query, .picker-format, .picker-mark, .picker-mark img")]
+            .filter(child => child.getBoundingClientRect().width && child.getBoundingClientRect().height);
+          const clipped = visible.filter(child => {
+            const bounds = child.getBoundingClientRect();
+            return bounds.left < Math.max(box.left, band.left) - 1 || bounds.right > Math.min(box.right, band.right) + 1
+              || bounds.top < Math.max(box.top, band.top) - 1 || bounds.bottom > Math.min(box.bottom, band.bottom) + 1;
+          }).map(child => child.className || child.tagName);
+          const query = header.querySelector("input, .picker-query"), mark = visible.find(child => child.tagName === "IMG");
+          const tile = node.querySelector(".tile").getBoundingClientRect(), title = node.querySelector(".ref").getBoundingClientRect();
+          const image = mark?.getBoundingClientRect(), field = query.getBoundingClientRect();
+          return { clipped, headerOverflow: header.scrollWidth > header.clientWidth, rootSize: parseFloat(getComputedStyle(document.documentElement).fontSize),
+            queryWidth: field.width, querySize: parseFloat(getComputedStyle(query).fontSize), queryAlignment: field.left - title.left,
+            markSource: mark?.getAttribute("src"), markWidth: image?.width, markAlignment: image && (image.left + image.width / 2) - (tile.left + tile.width / 2),
+            mask: mark && getComputedStyle(mark.parentElement).maskImage };
+        });
+        const scenario = `${width}px viewport / ${fontSize}px font / ${colorScheme} / JS ${javaScriptEnabled}`;
+        assert.equal(layout.rootSize, fontSize, scenario);
+        assert.deepEqual(layout.clipped, [], `header controls must be entirely inside the panel: ${scenario}`);
+        assert.equal(layout.headerOverflow, false, `overflow:hidden cannot conceal header overflow: ${scenario}`);
+        assert.ok(layout.queryWidth >= 2 * layout.querySize, `the query must retain usable editing space: ${scenario}`);
+        assert.ok(Math.abs(layout.queryAlignment) <= 1, `query and result titles stay aligned: ${scenario}`);
+        assert.equal(layout.markSource, `assets/ibis-mark${theme === "dark" ? "-on-dark" : ""}.svg`, scenario);
+        assert.equal(layout.markWidth, fontSize * 1.5, `the search mark is 24 px at normal text size: ${scenario}`);
+        assert.ok(Math.abs(layout.markAlignment) <= 1, `the mark stays centred over the type tile: ${scenario}`);
+        assert.equal(layout.mask, "none", `the gradient must remain intact: ${scenario}`);
+      };
+      await check();
+      const override = colorScheme === "light" ? "dark" : "light";
+      await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, override);
+      await check(override);
+      await page.evaluate(() => { delete document.documentElement.dataset.theme; });
+      if (javaScriptEnabled) {
+        const input = page.getByRole("combobox", { name: "Search the made-up library" });
+        await input.fill(""); await check();
+        await input.fill("lantern"); await page.getByRole("combobox", { name: "Copy format" }).selectOption("parencite"); await check();
+      }
+      await page.close();
+    }
+  } finally { await browser.close(); }
+});

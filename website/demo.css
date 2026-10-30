@@ -1,15 +1,25 @@
 /* App pictures read the generated scope of the canonical desktop tokens.
    Only geometry without a token lives here (design.md C7/C10 and notice card). */
 .journey { max-width: 45rem; }
-.picker-panel { display: flex; flex-direction: column; width: 100%; max-width: 45rem; height: 30rem; padding: 0; overflow: hidden; border-radius: var(--r-win); background: var(--surface-window); color: var(--text); box-shadow: var(--shadow-card); font: var(--type-body-size)/var(--type-body-line) var(--font-family); }
-.picker-search { flex: none; display: flex; align-items: center; gap: var(--search-gap); min-height: calc(var(--search-bar-height) + var(--border-width)); padding: var(--inset); border-bottom: var(--border-width) solid var(--separator); }
-.picker-mark { flex: none; width: var(--tile-size); height: var(--tile-size); margin-inline-start: var(--row-pad); margin-inline-end: calc(var(--row-gap) - var(--search-gap)); background: var(--citation); mask: url("assets/ibis-mark-flat.svg") center / contain no-repeat; }
+.picker-panel { container: picker / inline-size; display: flex; flex-direction: column; width: 100%; max-width: 45rem; height: 30rem; padding: 0; overflow: hidden; border-radius: var(--r-win); background: var(--surface-window); color: var(--text); box-shadow: var(--shadow-card); font: var(--type-body-size)/var(--type-body-line) var(--font-family); }
+.picker-search { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: var(--search-gap); min-height: calc(var(--search-bar-height) + var(--border-width)); padding: var(--inset); border-bottom: var(--border-width) solid var(--separator); }
+/* Keep the query beside its mark; controls give it their own row before it
+   becomes too small to edit. The minimum is capped by the actual container. */
+.picker-field { display: flex; align-items: center; gap: var(--search-gap); flex: 1; min-width: min(100%, calc(var(--row-pad) + var(--tile-size) + var(--row-gap) + var(--search-min-width))); }
+.picker-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--search-gap); min-width: 0; max-width: 100%; margin-inline-start: auto; }
+@container picker (max-width: 28.75em) { .picker-field { flex-basis: 100%; } }
+/* C3: the 24 px brand drawing sits inside the existing tile column, keeping
+   its centre and the query's leading edge aligned with the result rows.
+   Reuse the page's light/dark brand-image classes, including local overrides. */
+.picker-mark { flex: none; display: grid; place-items: center; width: var(--tile-size); height: var(--tile-size); margin-inline-start: var(--row-pad); margin-inline-end: calc(var(--row-gap) - var(--search-gap)); }
+.picker-mark img { display: block; width: var(--space-6); height: var(--space-6); object-fit: contain; }
+.picker-mark .logo-dark { display: none; }
 .picker input, .picker-query { flex: 1; min-width: 0; width: 0; border: 0; padding: 0; background: var(--clear); color: var(--text); font: var(--search-size)/var(--search-line) var(--font-family); letter-spacing: var(--search-tracking); }
 .picker input:focus-visible { border-radius: var(--r-row); }
 .picker select, .picker button, .picker-static-control, .draft button { min-height: var(--control-min-size); padding: var(--space-1) var(--space-2); border: 0; border-radius: var(--r-control); background: var(--fill-control); color: var(--text); font: var(--type-meta-size)/var(--type-meta-line) var(--font-family); cursor: pointer; box-shadow: inset 0 0 0 var(--border-width) var(--stroke-control); }
 .picker-static-control { display: inline-flex; align-items: center; gap: var(--space-2); cursor: default; }
 /* Native select semantics, with one local chevron (including on iOS). */
-.picker-format { position: relative; display: inline-flex; flex: none; max-width: 45%; }
+.picker-format { position: relative; display: inline-flex; flex: none; min-width: 0; max-width: 100%; }
 .picker-format select { appearance: none; min-width: 0; width: 100%; padding-right: calc(var(--space-2) + 1.1em); }
 .picker-format svg { position: absolute; right: var(--space-2); top: 50%; width: 1em; height: 1em; translate: 0 -50%; fill: none; stroke: var(--muted); stroke-width: var(--icon-stroke); stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
 .picker input::-webkit-search-cancel-button { appearance: none; }

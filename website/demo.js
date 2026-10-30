@@ -46,11 +46,14 @@ export function setupDemo() {
   else hint.append(el("kbd", { textContent: keyLabel(DEFAULT_PICKER_SHORTCUT, mac) }), " opens this from anywhere on the page, as in the app. Click a row to choose; double-click to copy; click its tile to combine references. ", ...KEY_TABLE.filter(row => labels[row.action]).flatMap((row, index) => [index ? " · " : "", ...row.keys.flatMap((key, k) => [k ? " " : "", el("kbd", { textContent: keyLabel(key, mac) })]), ` ${labels[row.action]}`]));
   const decoration = className => { const node = el("span", { className }); node.setAttribute("aria-hidden", "true"); return node; };
   const mark = decoration("picker-mark"), beak = decoration("picker-beak"), closingBeak = decoration("picker-beak picker-beak-end");
+  mark.append(el("img", { className: "logo-light", src: "assets/ibis-mark.svg", alt: "", width: 24, height: 24 }),
+    el("img", { className: "logo-dark", src: "assets/ibis-mark-on-dark.svg", alt: "", width: 24, height: 24 }));
   const shelf = el("div", { className: "picker-shelf" }, beak, output, closingBeak, status);
   const heading = el("p", { className: "picker-meta" }, el("span", { textContent: "Best matches" }), count);
   const actions = el("div", { className: "picker-actions" }, add, copy);
   actions.setAttribute("role", "group"); actions.setAttribute("aria-label", "Keys");
-  const panel = el("div", { className: "picker-panel" }, el("div", { className: "picker-search" }, mark, input, clear, format),
+  const panel = el("div", { className: "picker-panel" }, el("div", { className: "picker-search" },
+    el("div", { className: "picker-field" }, mark, input), el("div", { className: "picker-controls" }, clear, format)),
     el("div", { className: "picker-middle" }, heading, list), shelf,
     el("div", { className: "picker-foot" }, el("span", { className: "picker-library", title: `Sample references · ${references.length} references` }, decoration("picker-dot"), el("span", {}, `Sample references · ${references.length} references`)), actions));
   panel.setAttribute("data-app-tokens", ""); panel.dataset.platform = "macos";

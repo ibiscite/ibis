@@ -30,7 +30,8 @@ test("public build copies canonical tokens and only allowlisted assets", async (
     assert.equal(await readFile(join(output, "picker-tokens.css"), "utf8"), scopePickerTokens(await readFile(join(output, "tokens.css"), "utf8")));
     const manifest = JSON.parse(await readFile(join(output, "assets/site.webmanifest"), "utf8"));
     for (const icon of manifest.icons) await readFile(join(output, "assets", icon.src));
-    for (const file of ["favicon.svg", "png/og-image.png"]) assert.deepEqual(await readFile(join(output, "assets", file)), await readFile(new URL(`../brand/exports/${file}`, import.meta.url)));
+    for (const file of ["favicon.svg", "png/og-image.png", "ibis-mark.svg", "ibis-mark-on-dark.svg"]) assert.deepEqual(await readFile(join(output, "assets", file)), await readFile(new URL(`../brand/exports/${file}`, import.meta.url)));
+    assert.ok(!(await readdir(join(output, "assets"))).includes("ibis-mark-flat.svg"), "the picker ships the themed gradient marks, not a recoloured silhouette");
     await rm(join(source, "index.html"));
     await assert.rejects(build(output, source));
     assert.equal(await readFile(join(output, "index.html"), "utf8"), "synthetic", "failed build preserves last good output");
@@ -90,6 +91,9 @@ test("built homepage keeps a visible picker example and its local interactive as
     assert.match(html, /class="picker-panel" data-app-tokens data-platform="macos"/);
     assert.match(html, /class="copied-notice notice-window" data-app-tokens/);
     assert.match(html, /class="picker-mark" aria-hidden="true"/);
+    for (const asset of ["ibis-mark.svg", "ibis-mark-on-dark.svg"]) {
+      assert.match(html, new RegExp(`<img[^>]+src="assets/${asset.replaceAll(".", "\\.")}"[^>]+alt=""`));
+    }
     const css = await readFile(join(dir, "demo.css"), "utf8");
     assert.doesNotMatch(css, /#[\da-f]{3,8}\b|(?:rgb|hsl|oklch)\(/i, "pictures never maintain their own colour values");
     assert.doesNotMatch(css, /prefers-color-scheme/, "app pictures inherit color-scheme through the shared role tokens");

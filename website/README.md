@@ -170,9 +170,12 @@ sentence's line height, so the page never jumps. An underlined blank marks the
 paste position; after copying it becomes a keyboard-accessible dashed scarlet
 "Paste" chip with the platform paste shortcut, then the copied key lands there,
 and copying again keeps the old citation until the next paste. The picture is
-the current 720 × 480 picker: Ibis search mark, one-line shelf, library status
+the current 720 × 480 picker: the canonical themed gradient Ibis search mark
+(24 px, centred on the tile column), one-line shelf, library status
 and a filled Copy action. At smaller widths its controls reflow within the same
-height; only results scroll. It follows the page's system appearance and any
+height; only results scroll. Below the narrow container breakpoint the query
+keeps its own row and Clear and Format wrap below it, including at 200% text.
+It follows the page's system appearance and any
 explicit local appearance choice. Copy feedback adds the closing beak and
 Copied capsule, with the notice card below in its own reserved frame. That card
 keeps the copied receipt through later searches and format changes. The picker stays visible after copying

@@ -9,7 +9,7 @@ const source = fileURLToPath(new URL(".", import.meta.url));
 const root = resolve(source, "..");
 const brand = join(root, "brand/exports");
 const PUBLIC = ["favicon.svg", "favicon.ico", "site.webmanifest", "ibis-quote-beak.svg",
-  "ibis-mark-flat.svg",
+  "ibis-mark.svg", "ibis-mark-on-dark.svg",
   "ibis-logo.svg", "ibis-logo-on-dark.svg", "ibis-logo-bird-animated.svg", "ibis-logo-bird-animated-on-dark.svg", "png/og-image.png",
   "png/apple-touch-icon.png", "png/icon-192.png", "png/icon-512.png", "png/icon-maskable-512.png"];
 
