@@ -45,17 +45,25 @@ impl From<PrivateStorageError> for StoreError {
 }
 
 /// Display metadata only; canonical citation data remains in the object section.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct SearchSummary {
-    pub id: ItemRef,
-    pub fingerprints: Fingerprints,
-    pub title: String,
-    #[serde(deserialize_with = "bounded_names")]
-    pub authors: Vec<String>,
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SearchSummary<'a> {
+    pub id: &'a ItemRef,
+    pub fingerprints: &'a Fingerprints,
+    pub title: &'a str,
+    pub authors: &'a [String],
     pub year: Option<i32>,
-    pub container: Option<String>,
-    pub item_type: String,
+    pub container: Option<&'a str>,
+    pub item_type: &'a str,
+}
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DisplayFields {
+    title: String,
+    #[serde(deserialize_with = "bounded_names")]
+    authors: Vec<String>,
+    year: Option<i32>,
+    container: Option<String>,
+    item_type: String,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -65,7 +73,7 @@ struct Row {
     fingerprints: Fingerprints,
     #[serde(deserialize_with = "bounded_names")]
     keys: Vec<String>,
-    summary: Option<SearchSummary>,
+    summary: Option<DisplayFields>,
     offset: u64,
     len: u64,
     hash: Fingerprint,
@@ -504,8 +512,18 @@ impl PreparedLibrary {
             .iter()
             .flat_map(|row| row.keys.iter().map(move |key| (key.as_str(), &row.id)))
     }
-    pub fn summaries(&self) -> impl Iterator<Item = &SearchSummary> {
-        self.index.rows.iter().filter_map(|row| row.summary.as_ref())
+    pub fn summaries(&self) -> impl Iterator<Item = SearchSummary<'_>> {
+        self.index.rows.iter().filter_map(|row| {
+            row.summary.as_ref().map(|display| SearchSummary {
+                id: &row.id,
+                fingerprints: &row.fingerprints,
+                title: &display.title,
+                authors: &display.authors,
+                year: display.year,
+                container: display.container.as_deref(),
+                item_type: &display.item_type,
+            })
+        })
     }
     pub fn get(&self, id: &ItemRef) -> Result<Option<SnapshotObject>, StoreError> {
         let Ok(position) = self.index.rows.binary_search_by(|row| row.id.cmp(id)) else {
@@ -552,10 +570,6 @@ fn validate_index(index: &Index, manifest: &Manifest) -> Result<(), StoreError> 
                 .offset
                 .checked_add(row.len)
                 .is_none_or(|end| end > manifest.index_start)
-            || row
-                .summary
-                .as_ref()
-                .is_some_and(|summary| summary.id != row.id || summary.fingerprints != row.fingerprints)
         {
             return Err(StoreError::Invalid);
         }
@@ -568,7 +582,7 @@ fn validate_index(index: &Index, manifest: &Manifest) -> Result<(), StoreError> 
     Ok(())
 }
 
-fn metadata(object: &SnapshotObject) -> (Vec<String>, Option<SearchSummary>) {
+fn metadata(object: &SnapshotObject) -> (Vec<String>, Option<DisplayFields>) {
     let LibraryObject::Record(record) = &object.object else {
         return (vec![], None);
     };
@@ -599,9 +613,7 @@ fn metadata(object: &SnapshotObject) -> (Vec<String>, Option<SearchSummary>) {
         .map(|key| key.value.clone())
         .chain(record.aliases.iter().cloned())
         .collect();
-    let summary = SearchSummary {
-        id: record.id.clone(),
-        fingerprints: object.fingerprints.clone(),
+    let summary = DisplayFields {
         title: text("title"),
         authors,
         year,

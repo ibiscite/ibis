@@ -72,7 +72,7 @@ fn streamed_objects_survive_input_drop_reopen_and_selected_reads() {
         .publish(writer.finish().unwrap_or_else(|e| panic!("{e}")))
         .unwrap_or_else(|e| panic!("{e}"));
     assert_eq!(
-        generation.summaries().map(|row| row.title.as_str()).collect::<Vec<_>>(),
+        generation.summaries().map(|row| row.title).collect::<Vec<_>>(),
         ["First", "Last"]
     );
     assert_eq!(get(&generation, "record:z"), expected);
@@ -252,13 +252,7 @@ fn forged_fingerprints_are_recomputed_when_a_selected_object_is_materialized() {
     file.write_all(&encoded).unwrap_or_else(|e| panic!("{e}"));
     drop(generation);
     rewrite_index(&store, |index| {
-        index.rows[0].fingerprints.cite = forged.clone();
-        index.rows[0]
-            .summary
-            .as_mut()
-            .unwrap_or_else(|| panic!("missing summary"))
-            .fingerprints
-            .cite = forged;
+        index.rows[0].fingerprints.cite = forged;
         index.rows[0].hash = Fingerprint::of_bytes(&encoded);
     });
     let generation = store
