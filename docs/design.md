@@ -210,8 +210,9 @@ regression test at normal and Larger text and at the minimum size.
 **Empty search: first time and every day** [C11]. Same frame, different
 content. While no library is chosen, the welcome screen (**First run**). For
 the first days with a library, the hint: the magnifier, "Type to find a
-reference", what to search by, and the Copy and Add keys, centred in the
-middle area. Once there is history, the middle area shows what people most
+reference" and what to search by, centred in the middle area as a choice
+screen without rows (same type and spacing). It lists no keys: the footer and
+the keys list teach them, and no key is shown in two places. Once there is history, the middle area shows what people most
 likely want: Cited here recently (up to three, for the app Ibis was opened
 from, #45) then Recently added (three, #1070), under their headings, and the
 hint shrinks to the search placeholder and the footer keys. These are ordinary
