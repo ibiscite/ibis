@@ -53,13 +53,15 @@ def native_session():
 # The short Copied notice is a second visible window of the app (#496); it is
 # never the picker, so picker visibility checks skip it.
 NOTICE_TITLE = "Ibis notice"
+PICKER_TITLE = "Ibis"
+EDITOR_TITLE = "Ibis synthetic editor"
 
 # Execution hang guard; C# compilation happens separately before timed calls.
 CONTRACT_TIMEOUT = 120
 
 
-def run(*args):
-    return subprocess.check_output(args, text=True, stderr=subprocess.PIPE, timeout=20).strip()
+def run(*args, timeout=20):
+    return subprocess.check_output(args, text=True, stderr=subprocess.PIPE, timeout=timeout).strip()
 
 
 def fixture(count=3):
@@ -638,6 +640,17 @@ def supporting_wm_window(xprop_line):
     return match.group(1) if match else None
 
 
+def managed_client_windows(xprop_line):
+    """EWMH managed clients, independently of the state being asserted."""
+    match = re.fullmatch(r"_NET_CLIENT_LIST\(WINDOW\): window id #\s*(.*)", xprop_line.strip())
+    if not match:
+        return None
+    values = match[1].split(", ") if match[1] else []
+    if len(values) > CENSUS_WINDOWS or any(not re.fullmatch(r"0x[0-9a-fA-F]{1,8}", value) for value in values):
+        return None
+    return {int(value, 16) for value in values}
+
+
 CENSUS_PIDS, CENSUS_WINDOWS, CENSUS_NODES = 32, 64, 4000
 CENSUS_MAP_STATES = ("IsUnMapped", "IsUnviewable", "IsViewable", "unknown")
 
@@ -873,7 +886,7 @@ class Linux:
         # instead of writing them. Desktops start their manager first; so must we.
         wait_for(self.window_manager_ready, "openbox manages the display")
         self.editor_input = tempfile.NamedTemporaryFile(prefix="ibis-synthetic-editor-")
-        self.editor = subprocess.Popen(["xterm", "-title", "Ibis synthetic editor", "-e",
+        self.editor = subprocess.Popen(["xterm", "-title", EDITOR_TITLE, "-e",
             sys.executable, "-c", SYNTHETIC_EDITOR_SCRIPT, self.editor_input.name],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         self.app = None
@@ -884,7 +897,7 @@ class Linux:
             if self.editor.poll() is not None:
                 raise Unavailable("Synthetic editor exited before app launch")
             try:
-                return self.window(self.editor.pid) is not None and self.editor_focused()
+                return self.window(self.editor.pid, EDITOR_TITLE) is not None and self.editor_focused()
             except subprocess.CalledProcessError:
                 return False
         try:
@@ -893,19 +906,38 @@ class Linux:
             self.close()
             raise
 
-    def window(self, pid):
+    def window(self, pid, title):
+        # Same-process GTK auxiliaries can be viewable without being the app's
+        # managed picker. Bind purpose and ownership before observing its hints.
+        deadline = time.monotonic() + 20
+        def query(*args):
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise subprocess.TimeoutExpired(args, 20)
+            return run(*args, timeout=remaining)
         try:
-            windows = run("xdotool", "search", "--onlyvisible", "--pid", str(pid)).splitlines()
-        except subprocess.CalledProcessError:
-            return None
-        for window in windows:
-            try:
-                if run("xdotool", "getwindowname", window) == NOTICE_TITLE:
+            windows = query("xdotool", "search", "--onlyvisible", "--pid", str(pid)).splitlines()
+            managed = managed_client_windows(query("xprop", "-root", "_NET_CLIENT_LIST"))
+            if managed is None or len(windows) > CENSUS_WINDOWS:
+                return None
+            candidates = set()
+            for window in windows:
+                if not re.fullmatch(r"[1-9][0-9]{0,9}", window):
+                    return None
+                if int(window) not in managed:
                     continue
-            except subprocess.CalledProcessError:
-                continue  # A window closed while being listed is not the picker.
+                if query("xdotool", "getwindowpid", window) == str(pid) and query("xdotool", "getwindowname", window) == title:
+                    candidates.add(window)
+            if len(candidates) != 1:
+                return None
+            window = candidates.pop()
+            # Refuse a destroyed/replaced candidate; the next observation
+            # re-enumerates, so a closed window never supplies cached identity.
+            if query("xdotool", "getwindowpid", window) != str(pid) or query("xdotool", "getwindowname", window) != title:
+                return None
             return window
-        return None
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError):
+            return None
 
     def snapshot(self):
         nodes = []
@@ -928,7 +960,7 @@ class Linux:
                 stack.extend(c for c in item if c)
             except self.accessibility_error:
                 continue
-        window = self.window(self.app.pid)
+        window = self.window(self.app.pid, PICKER_TITLE)
         try:
             active = run("xdotool", "getactivewindow")
         except subprocess.CalledProcessError:
@@ -937,7 +969,7 @@ class Linux:
 
     def picker_mapped(self):
         # --onlyvisible checks X11 map state, without querying or waiting for focus.
-        return self.window(self.app.pid) is not None
+        return self.window(self.app.pid, PICKER_TITLE) is not None
 
     def picker_has_input_focus(self):
         # Like the editor check, xdotool resolves a child without WM_CLASS to
@@ -1009,13 +1041,13 @@ class Linux:
             return False
 
     def focus_editor(self):
-        window = self.window(self.editor.pid)
+        window = self.window(self.editor.pid, EDITOR_TITLE)
         if not window:
             raise Unavailable("Synthetic terminal editor has no X11 window", "synthetic-editor")
         run("xdotool", "windowactivate", "--sync", window)
 
     def editor_active(self):
-        return self.window(self.editor.pid) == run("xdotool", "getactivewindow")
+        return self.window(self.editor.pid, EDITOR_TITLE) == run("xdotool", "getactivewindow")
 
     def editor_focused(self):
         return self.editor_active() and self.editor_has_input_focus()
@@ -1038,7 +1070,7 @@ class Linux:
             return False
 
     def skips_taskbar(self):
-        window = self.window(self.app.pid)
+        window = self.window(self.app.pid, PICKER_TITLE)
         # Window state atoms only, kept to explain a failure.
         self.last_window_state = f"{window}: {run('xprop', '-id', window, '_NET_WM_STATE')}" if window else "no visible window"
         return bool(window) and window_state_skips_taskbar(self.last_window_state.partition(": ")[2])
@@ -2500,7 +2532,7 @@ class ContractTests(unittest.TestCase):
         native.window = Mock(side_effect=[None, "123"])
         self.assertFalse(native.picker_mapped())
         self.assertTrue(native.picker_mapped())
-        self.assertEqual(native.window.call_args_list, [call(100), call(100)])
+        self.assertEqual(native.window.call_args_list, [call(100, PICKER_TITLE), call(100, PICKER_TITLE)])
 
     def test_a_window_manager_that_exits_is_reported_not_waited_for(self):
         native = Linux.__new__(Linux)
@@ -2760,18 +2792,104 @@ class ContractTests(unittest.TestCase):
                 self.visible = not (self.visible and self.key_window)
                 self.key_window = self.visible
 
-    def test_linux_picker_visibility_skips_the_copied_notice_window(self):
+    def linux_window_query(self, *, visible="1\n2\n3", managed="0x2, 0x3", names=None, owners=None, fail=None):
+        names = names or {"1": "", "2": "Ibis", "3": NOTICE_TITLE}
+        owners = owners or {"1": "42", "2": "42", "3": "42"}
+        def command(*args, timeout=20):
+            if fail and fail(args):
+                raise subprocess.CalledProcessError(1, args, stderr="private provider failure")
+            if args == ("xprop", "-root", "_NET_CLIENT_LIST"):
+                return "_NET_CLIENT_LIST(WINDOW): window id # " + managed
+            if args[:2] == ("xdotool", "search"):
+                return visible
+            if args[:2] == ("xdotool", "getwindowname"):
+                return names[args[2]]
+            if args[:2] == ("xdotool", "getwindowpid"):
+                return owners[args[2]]
+            self.fail("Unexpected native query: " + repr(args))
+        return command
+
+    def test_linux_window_ignores_auxiliary_and_notice_regardless_of_order(self):
         linux = Linux.__new__(Linux)
-        names = {"1": NOTICE_TITLE, "2": "Ibis"}
-        def fake(*args):
-            if args[1] == "search":
-                return "1\n2"
-            return names[args[2]]
-        with patch(f"{__name__}.run", side_effect=fake):
-            self.assertEqual(linux.window(42), "2")
-        names["2"] = NOTICE_TITLE
-        with patch(f"{__name__}.run", side_effect=fake):
-            self.assertIsNone(linux.window(42))
+        for visible in ("1\n2\n3", "3\n1\n2", "2\n3\n1"):
+            with self.subTest(visible=visible), patch(__name__ + ".run", side_effect=self.linux_window_query(visible=visible)):
+                self.assertEqual(linux.window(42, "Ibis"), "2")
+
+    def test_linux_window_refuses_wrong_owner_unmanaged_or_ambiguous_clients(self):
+        linux = Linux.__new__(Linux)
+        cases = [
+            {"owners": {"1": "42", "2": "99", "3": "42"}},
+            {"managed": "0x1, 0x3"},
+            {"names": {"1": "", "2": "Ibis", "3": "Ibis"}},
+            {"names": {"1": "", "2": "", "3": NOTICE_TITLE}},
+        ]
+        for case in cases:
+            with self.subTest(case=case), patch(__name__ + ".run", side_effect=self.linux_window_query(**case)):
+                self.assertIsNone(linux.window(42, "Ibis"))
+
+    def test_linux_window_refuses_io_uncertainty_and_does_not_cache_closed_identity(self):
+        linux = Linux.__new__(Linux)
+        for failed in (("xprop", "-root", "_NET_CLIENT_LIST"), ("xdotool", "getwindowname", "2"),
+                       ("xdotool", "getwindowpid", "2")):
+            with self.subTest(failed=failed), patch(__name__ + ".run", side_effect=self.linux_window_query(fail=lambda args: args == failed)):
+                self.assertIsNone(linux.window(42, "Ibis"))
+        with patch(__name__ + ".run", side_effect=self.linux_window_query()):
+            self.assertEqual(linux.window(42, "Ibis"), "2")
+        with patch(__name__ + ".run", side_effect=self.linux_window_query(visible="3", managed="0x3")):
+            self.assertIsNone(linux.window(42, "Ibis"))
+        with patch(__name__ + ".run", side_effect=self.linux_window_query(visible="4", managed="0x4", names={"4": "Ibis"}, owners={"4": "42"})):
+            self.assertEqual(linux.window(42, "Ibis"), "4")
+
+    def test_linux_window_title_is_explicit_for_synthetic_editor(self):
+        linux = Linux.__new__(Linux)
+        command = self.linux_window_query(names={"1": "", "2": "Ibis synthetic editor", "3": "Ibis"})
+        with patch(__name__ + ".run", side_effect=command):
+            self.assertEqual(linux.window(42, "Ibis synthetic editor"), "2")
+
+    def test_linux_managed_client_property_is_strict_and_bounded(self):
+        prefix = "_NET_CLIENT_LIST(WINDOW): window id # "
+        self.assertEqual(managed_client_windows(prefix + "0x2, 0x00000003"), {2, 3})
+        self.assertEqual(managed_client_windows(prefix), set())
+        for line in ("_NET_CLIENT_LIST: not found.", prefix + "0x2, private", prefix + "0x100000000",
+                     prefix + ", ".join(hex(n) for n in range(CENSUS_WINDOWS + 1))):
+            self.assertIsNone(managed_client_windows(line))
+
+    def test_linux_window_queries_share_one_deadline(self):
+        linux = Linux.__new__(Linux)
+        remaining = []
+        command = self.linux_window_query()
+        def bounded(*args, timeout):
+            remaining.append(timeout)
+            return command(*args, timeout=timeout)
+        with patch("time.monotonic", side_effect=[0, 0, 5, 10, 19, 20]), patch(__name__ + ".run", side_effect=bounded):
+            self.assertIsNone(linux.window(42, "Ibis"))
+        self.assertEqual(remaining, [20, 15, 10, 1])
+
+    def test_linux_window_refuses_replaced_owner_and_subprocess_timeout(self):
+        linux = Linux.__new__(Linux)
+        command = self.linux_window_query()
+        owners = iter(["42", "99"])
+        def replaced(*args, timeout):
+            if args == ("xdotool", "getwindowpid", "2"):
+                return next(owners)
+            return command(*args, timeout=timeout)
+        with patch(__name__ + ".run", side_effect=replaced):
+            self.assertIsNone(linux.window(42, "Ibis"))
+        for error in (subprocess.TimeoutExpired("synthetic", 20), OSError("private native failure")):
+            with self.subTest(error=type(error).__name__), patch(__name__ + ".run", side_effect=error):
+                self.assertIsNone(linux.window(42, "Ibis"))
+
+    def test_linux_window_selection_does_not_depend_on_the_expected_hints(self):
+        linux = Linux.__new__(Linux)
+        linux.app = Mock(pid=42)
+        command = self.linux_window_query()
+        def missing_hint(*args, timeout=20):
+            if args == ("xprop", "-id", "2", "_NET_WM_STATE"):
+                return "_NET_WM_STATE: not found."
+            return command(*args, timeout=timeout)
+        with patch(__name__ + ".run", side_effect=missing_hint):
+            self.assertFalse(linux.skips_taskbar())
+        self.assertEqual(linux.last_window_state, "2: _NET_WM_STATE: not found.")
 
     def linux_editor_startup(self, *, never_ready=False):
         events, state = [], {"mapped": never_ready, "focused": False}
@@ -2789,7 +2907,8 @@ class ContractTests(unittest.TestCase):
             self.assertTrue(state["mapped"] and state["focused"], "Ibis launched before its synthetic editor settled")
             events.append("app-launch")
             return Mock()
-        def mapped(_pid):
+        def mapped(_pid, title):
+            self.assertEqual(title, EDITOR_TITLE)
             events.append("editor-map-query")
             return "42" if state["mapped"] else None
         def focused():
