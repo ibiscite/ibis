@@ -2747,7 +2747,7 @@ test("? lists every key in a modal dialog, but a ? typed in the search is text",
   const groups = within(dialog).getAllByRole("rowgroup").slice(1).map((group) => within(group).getAllByRole("row").map((row) => [...row.children].map((cell) => cell.textContent)));
   expect(groups.map((group) => group[0])).toEqual([["In the search box"], ["Anywhere in Ibis"], ["In a menu"], ["From any app"]].slice(0, groups.length));
   const rows = groups.flatMap((group) => group.slice(1));
-  expect(groups[0]).toContainEqual(["Copy the highlighted reference, or the ones added to the citation, in the Copy as format (numeric styles such as IEEE copy the reference entry)", "Enter"]);
+  expect(groups[0]).toContainEqual(["Paste or copy the highlighted reference, or the ones added to the citation, as the footer says", "Enter"]);
   expect(groups[0]).toContainEqual(["Add the highlighted reference to the citation, or remove it", "Shift+Enter"]);
   expect(groups[1]).toContainEqual(["Open or close More", "Ctrl+K"]);
   expect(rows).toContainEqual(["Show this list (? works outside the search box)", "Ctrl+/ or ?"]);

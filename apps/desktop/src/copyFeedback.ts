@@ -2,7 +2,7 @@
 // Pure decisions, kept apart from the picker so they can be tested alone.
 import type { Copied, NoticeMessage } from "./api";
 import { copiedNoticeText } from "./messages";
-import { platformOf, type Platform } from "./platform";
+import { currentPlatform, platformOf, type Platform } from "./platform";
 
 /**
  * After a copy: hide the picker and say "Copied" in the small notice window,
@@ -47,9 +47,10 @@ export type NoticePlatform = Platform;
 export const noticePlatform: (platform: string) => NoticePlatform = platformOf;
 
 /** The notice's heading: pasted into an app, or copied and why it was not pasted. */
-export function noticeTitle({ delivered }: NoticeMessage): string {
+export function noticeTitle({ delivered }: NoticeMessage, platform = currentPlatform()): string {
   if (delivered.outcome === "pasted") return copiedNoticeText.pasted(delivered.app);
-  return (delivered.reason && copiedNoticeText.reasons[delivered.reason]) || copiedNoticeText.title;
+  if (delivered.reason) return copiedNoticeText.reasons[delivered.reason] || copiedNoticeText.title;
+  return copiedNoticeText.hint(platform);
 }
 
 /**
@@ -81,7 +82,7 @@ export function renderNotice(root: HTMLElement, platform: NoticePlatform): (mess
   code.dir = "auto";
   root.append(notice);
   return (message: NoticeMessage) => {
-    title.textContent = noticeTitle(message);
+    title.textContent = noticeTitle(message, platform);
     code.textContent = message.text;
     notice.dataset.outcome = message.delivered.outcome;
     notice.replaceChildren(source, mark, title, code);
