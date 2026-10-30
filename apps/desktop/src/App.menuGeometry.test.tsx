@@ -16,12 +16,13 @@ test("the citation shelf remains a separate non-scrolling band above the footer"
   expect(shelf.closest(".picker-content")).toBeNull();
 });
 
-test("a window reset offers Undo without taking focus, and a refused Undo stays retryable", async () => {
+test.each(["error", "refusal"])("a window reset offers Undo without taking focus, and a native %s stays retryable", async (failure) => {
   const restored: unknown[] = [];
   let fail = true;
   const calls = backend({ undo_window_position: ({ revision }) => {
     restored.push(revision);
-    if (fail) throw new Error("invented restore refusal");
+    if (fail && failure === "error") throw new Error("invented restore refusal");
+    if (fail) return false;
     return true;
   } });
   render(<App />);

@@ -35,6 +35,10 @@
 .shelf[data-folded] { --shelf-line: var(--shelf-folded-line); }
 .shelf .shelf-chips[hidden] { display: none; }
 .shelf-output > .ui-button { flex: none; }
+.shelf-output > .shelf-warnings { flex: 0 1 auto; min-width: var(--control-min-size); max-width: 40%; }
+.shelf-warnings .shelf-pill { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.shelf[data-folded] .shelf-warnings { width: var(--control-min-size); max-width: var(--control-min-size); padding-inline: 0; }
+.shelf[data-folded] .shelf-warnings > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .shelf-details-list { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
 .shelf-details-list .chip { flex: none; max-width: min(var(--chip-max-width), 100%); }
 .shelf-problem, .shelf-detail-title { margin: 0 0 var(--space-2); overflow-wrap: anywhere; }

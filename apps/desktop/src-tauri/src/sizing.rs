@@ -606,10 +606,9 @@ pub(crate) fn reset_position(app: &AppHandle) {
             if handle.state::<crate::picker::PickerGeneration>().current() == generation
                 && handle.state::<Sizing>().revision() == revision
                 && let Some(window) = handle.get_webview_window("main")
+                && prepare(&handle, &window, false, true)
             {
-                if prepare(&handle, &window, false, true) {
-                    crate::picker::show_picker(&handle);
-                }
+                crate::picker::show_picker(&handle);
             }
         }),
         NativeIssue::Resize,
@@ -706,13 +705,10 @@ fn restore_position(app: &AppHandle, revision: u64) -> Result<bool, String> {
     })();
     let mut state = sizing.shared.state.lock().map_err(|_| FAILED)?;
     state.applying = false;
-    let restored = match applied {
-        Ok(sample) => {
-            state.prepared(sample);
-            state.restore(revision, Instant::now())
-        }
-        Err(error) => return Err(error.into()),
-    };
+    // Clear the applying guard even when the native restore failed, so retry
+    // and subsequent geometry events still belong to the owner.
+    state.prepared(applied?);
+    let restored = state.restore(revision, Instant::now());
     drop(state);
     sizing.shared.wake.notify_all();
     emit_reset_undo(app);

@@ -5,7 +5,7 @@ import { useWindowResetUndo } from "./useWindowResetUndo";
 
 afterEach(cleanup);
 
-test("old reset reads, action completions and expiry cannot consume a newer ticket", async () => {
+test.each([true, false])("old reset reads, action completions (%s) and expiry cannot consume a newer ticket", async (restored) => {
   let changed!: (state: { revision: number; undo: number | null }) => void;
   let read!: (value: number | null) => void, finish!: (value: boolean) => void;
   const restore = vi.fn(() => new Promise<boolean>((resolve) => { finish = resolve; }));
@@ -24,7 +24,7 @@ test("old reset reads, action completions and expiry cannot consume a newer tick
   let pending!: Promise<void>;
   act(() => { pending = old.undo(); });
   act(() => changed({ revision: 3, undo: 3 }));
-  await act(async () => { finish(true); await pending; });
+  await act(async () => { finish(restored); await pending; });
   expect(screen.getByText("3")).toBeTruthy();
   act(() => old.expire());
   expect(dismiss).not.toHaveBeenCalled();

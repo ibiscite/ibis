@@ -587,6 +587,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       </div>}
       <Notices densityAnnouncement={preferences.densityAnnouncement} updateProgress={updateProgress} library={library} failures={failures} startAtLogin={startAtLogin}
         error={error} copyError={copyError} copied={copied} missing={list?.missing}
+        citationProblem={displayedOutput === "failed" ? previewProblem ?? pickerText.previewError : null}
         showCopiedText={displayedOutput == null || typeof displayedOutput === "string" || displayedOutput.text !== copied?.text}
         onDismissCopied={() => send({ type: "dismiss" })} />
       {usingLocator && <div className="notices">
@@ -650,7 +651,8 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
         input.current?.focus({ preventScroll: true });
       }} onRemoveLocator={(r) => changeLocator(r, null)} highlightedReference={selected.size === 0 ? chosen[0] : undefined}
         onChangeReference={changeReference} style={style} keys={keyFormat !== null}
-        shown={showCitations ? displayedOutput : undefined} problem={previewProblem} focusable={selected.size > 0} fallbackFocusRef={input} />
+        shown={showCitations ? displayedOutput : undefined} outputWarnings={shown && typeof shown === "object" ? shown.warnings : []}
+        problem={previewProblem} focusable={selected.size > 0} fallbackFocusRef={input} />
       <PickerFooter library={library} groupName={groupName}
         hints={{ enter: enterAction, shiftEnter: shiftEnterAction, escape: escapeAction }}
         altHeld={altHeld} actions={{ copy: copyChosen, add: toggleHighlighted, escape: escapeStep, keys: openKeys }}

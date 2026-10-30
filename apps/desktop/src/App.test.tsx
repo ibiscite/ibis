@@ -171,9 +171,10 @@ test("the shelf shows what Enter pastes in a key syntax, without copying, and le
   expect(calls).not.toContain("copy_file_citation");
 });
 
-test("a key another reference also has is named in the preview and when copying", async () => {
+test.each([true, false])("a duplicate-key refusal stays visible before Details and copying stays blocked (Preview=%s)", async (preview) => {
   const shared = { code: "shared_citation_key", key: "same" };
   const calls = backend({
+    picker_preferences: () => ({ show_paste_preview: preview }),
     search: () => [result("same", "First")],
     preview_file_citation: () => { throw shared; },
     copy_file_citation: () => { throw shared; },
@@ -181,9 +182,19 @@ test("a key another reference also has is named in the preview and when copying"
   render(<App />);
   const box = screen.getByLabelText("Search references");
   fireEvent.change(box, { target: { value: "first" } });
-  const output = await screen.findByRole("region", { name: "Preview" });
   const message = "More than one reference has the key same, so it can't be cited by key.";
-  await waitFor(() => expect(within(output).getByRole("alert").textContent).toContain(message));
+  const refusal = await screen.findByRole("alert");
+  expect(refusal.textContent).toContain(message);
+  expect(refusal.textContent).toContain("Give one of them a different key in Zotero or your .bib file.");
+  expect(refusal.closest(".notices")).toBeTruthy();
+  expect(screen.queryByRole("dialog")).toBeNull();
+  fireEvent.keyDown(box, { key: "Enter" });
+  expect(calls).not.toContain("copy_file_citation");
+  fireEvent.click(screen.getByRole("button", { name: "Details" }));
+  const details = screen.getByRole("dialog", { name: /^Citation details/ });
+  expect(within(details).getByRole("alert").textContent).toContain(message);
+  fireEvent.click(within(details).getByRole("button", { name: "Close" }));
+  act(() => box.focus());
   fireEvent.keyDown(box, { key: "Enter" });
   expect(calls).not.toContain("copy_file_citation");
   expect(screen.getAllByRole("alert").filter((alert) => alert.textContent?.includes(message))).toHaveLength(1);
@@ -2855,7 +2866,8 @@ test("the footer can wait for pending engine output and never offers failed outp
     fireEvent.keyDown(box, { key: "ArrowDown" });
     await waitFor(() => expect(screen.getByText("Formatting…")).toBeTruthy());
     await act(async () => release());
-    expect(await screen.findByText("Could not format citation.")).toBeTruthy();
+    await screen.findByRole("alert");
+    expect(within(screen.getByRole("region", { name: "Preview" })).getByText(/This citation could not be formatted/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Details" }));
     expect(within(screen.getByRole("dialog")).getByText(/could not be formatted/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
@@ -3677,8 +3689,17 @@ test("hiding output keeps chips and pending copy checks, and remembers the choic
     fireEvent.click(screen.getByRole("button", { name: /^More/ }));
     const choice = await screen.findByRole("menuitemcheckbox", { name: "Show what will be pasted" });
     await waitFor(() => expect(choice.getAttribute("aria-checked")).toBe("false"));
-    expect(document.querySelector(".shelf-output")).toBeNull();
-    fireEvent.click(choice);
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    expect(screen.queryByRole("region", { name: "Preview" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Edit citation" }));
+    const details = screen.getByRole("dialog", { name: "Citation details for First" });
+    expect(within(details).getByRole("textbox", { name: "Page" })).toBeTruthy();
+    expect(within(details).getByRole("radiogroup", { name: "Citation form" })).toBeTruthy();
+    fireEvent.click(within(details).getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("region", { name: "Preview" })).toBeNull();
+    expect(copies).toHaveBeenCalledOnce();
+    await chooseFromMore("Show what will be pasted", "menuitemcheckbox");
     fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
     await screen.findByRole("region", { name: "Preview" });
     await waitFor(() => expect(shown).toBe(true));

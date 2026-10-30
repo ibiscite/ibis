@@ -9,6 +9,28 @@ const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
+function mockResizeObservers() {
+  const observers: { callback: () => void; active: () => boolean }[] = [];
+  vi.stubGlobal("ResizeObserver", class implements ResizeObserver {
+    private nodes = new Set<Element>();
+    observe(node: Element) { this.nodes.add(node); }
+    unobserve(node: Element) { this.nodes.delete(node); }
+    disconnect() { this.nodes.clear(); }
+    constructor(callback: ResizeObserverCallback) {
+      observers.push({ active: () => this.nodes.size > 0, callback: () => {
+        if (!this.nodes.size) return;
+        const entries = [...this.nodes].map((target) => {
+          const contentRect = target.getBoundingClientRect();
+          const size = [{ blockSize: contentRect.height, inlineSize: contentRect.width }];
+          return { target, contentRect, borderBoxSize: size, contentBoxSize: size, devicePixelContentBoxSize: size };
+        });
+        callback(entries, this);
+      } });
+    }
+  });
+  return observers;
+}
+
 function record(key: string, first_author = "García", year: number | null = 2021): SearchResult {
   return {
     revision: "1", id: { source: "refs.bib", native_key: key }, key, title: `Title ${key}`, authors: first_author,
@@ -22,12 +44,62 @@ function chosen(records: SearchResult[]) {
 
 const shelf = (props: Partial<Parameters<typeof CitationShelf>[0]>) => (
   <CitationShelf announce={false} selected={new Map()} removeLabel={(r) => `Remove ${r.key}`} onRemove={() => undefined}
-    style={null} keys shown={undefined} focusable={false} {...props} />
+    style={null} keys shown={undefined} focusable={false}
+    outputWarnings={props.shown && typeof props.shown === "object" ? props.shown.warnings : []} {...props} />
 );
 
 test("chips read as author and year, and add the key only where two would read the same", () => {
   expect(chipLabels([record("a"), record("b", "Okafor", 2019), record("c", "", null)])).toEqual(["García 2021", "Okafor 2019", "c"]);
   expect(chipLabels([record("garcia2021a"), record("garcia2021b")])).toEqual(["García 2021 · garcia2021a", "García 2021 · garcia2021b"]);
+});
+
+test("the failed citation shows its actionable refusal beside the citation before Details opens", () => {
+  const reason = "Reference 1: Narrative cannot be expressed here. Choose Normal or another output.";
+  render(shelf({ shown: "failed", problem: reason }));
+  expect(within(screen.getByRole("region", { name: "Preview" })).getByText(reason)).toBeTruthy();
+  expect(screen.queryByRole("dialog")).toBeNull();
+});
+
+test("a reference opens an anchored menu on its own segment and Escape returns there", async () => {
+  render(shelf({ selected: chosen([record("a"), record("b")]), onChangeReference: vi.fn() }));
+  const edit = screen.getByRole("button", { name: "Edit García 2021 · b" });
+  act(() => edit.focus());
+  fireEvent.click(edit);
+  const details = screen.getByRole("dialog", { name: "Citation details for Title b" });
+  expect(details.closest(".details-menu")).not.toBeNull();
+  expect(document.querySelector(".overlay-backdrop")).toBeNull();
+  expect(edit.getAttribute("aria-expanded")).toBe("true");
+  expect(document.activeElement).toBe(within(details).getByRole("textbox", { name: "Page" }));
+  fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+  await act(async () => { await new Promise(requestAnimationFrame); });
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(document.activeElement).toBe(edit);
+});
+
+test.each([[1, true], [2, true], [1, false], [2, false]] as const)("folding at %s× text keeps warnings, reference entries and closest matches reachable (Preview=%s)", (scale, preview) => {
+  vi.stubGlobal("innerWidth", 480);
+  vi.stubGlobal("innerHeight", 360);
+  const computed = window.getComputedStyle;
+  vi.spyOn(window, "getComputedStyle").mockImplementation((element) => {
+    if (element !== document.documentElement) return computed(element);
+    const style = document.createElement("div").style;
+    style.fontSize = `${16 * scale}px`;
+    return style;
+  });
+  const reference = { ...record("near"), title: "Synthetic closest match", partial: true };
+  const warnings = ["Reference 1: Page is not included in this reference entry."];
+  render(shelf({ selected: chosen([reference]), style: "ieee", keys: false, outputWarnings: warnings,
+    shown: preview ? { markup: [], text: "Synthetic entry", html: "", warnings } : undefined }));
+  const control = screen.getByRole("button", { name: /2 warnings.*Reference entry.*Closest matches/ });
+  act(() => control.focus());
+  fireEvent.keyDown(control, { key: " ", code: "Space" });
+  fireEvent.keyUp(control, { key: " ", code: "Space" });
+  const details = screen.getByRole("dialog", { name: "Citation warnings" });
+  expect(within(details).getByText("Reference entry")).toBeTruthy();
+  expect(within(details).getByText("Closest matches")).toBeTruthy();
+  expect(within(details).getByText("Reference 1: Page is not included in this reference entry.")).toBeTruthy();
+  expect(within(details).getByText(/IEEE numbers depend on your whole document/)).toBeTruthy();
+  expect(within(details).getByText(/only some search words matched/)).toBeTruthy();
 });
 
 test("expanding chosen references opens an overlay instead of growing the shelf", async () => {
@@ -70,7 +142,7 @@ test("a long reference title stays available in the details scroller beside its 
   fireEvent.click(screen.getByRole("button", { name: "Edit citation" }));
   const dialog = screen.getByRole("dialog", { name: `Citation details for ${reference.title}` });
   expect(within(dialog).getByRole("heading").textContent).toBe(reference.title);
-  const scroll = dialog.querySelector<HTMLElement>(".overlay-scroll")!;
+  const scroll = dialog.querySelector<HTMLElement>(".details-menu-scroll")!;
   expect(within(scroll).getByText(reference.title)).toBeTruthy();
   expect(within(scroll).getByRole("textbox", { name: "Page" })).toBeTruthy();
 });
@@ -182,17 +254,7 @@ test.each(["Enter", " "])("%s expands, removes and folds exactly once from the k
 test("50 choices fit narrow and 200% text rows, keeping hidden source identities removable", () => {
   let scale = 1;
   let width = 344;
-  const observers: { callback: () => void; disconnect: ReturnType<typeof vi.fn> }[] = [];
-  vi.stubGlobal("ResizeObserver", class {
-    disconnect = vi.fn();
-    observe = vi.fn();
-    constructor(callback: () => void) {
-      let active = false;
-      this.observe = vi.fn(() => { active = true; });
-      this.disconnect = vi.fn(() => { active = false; });
-      observers.push({ callback: () => { if (active) callback(); }, disconnect: this.disconnect });
-    }
-  });
+  const observers = mockResizeObservers();
   vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(function (this: HTMLElement) { return this.classList.contains("shelf-chips") ? width : 0; });
   const computed = window.getComputedStyle;
   vi.spyOn(window, "getComputedStyle").mockImplementation((element) => {
@@ -263,7 +325,7 @@ test("50 choices fit narrow and 200% text rows, keeping hidden source identities
   act(() => { for (const observer of [...observers]) observer.callback(); });
   expect(document.activeElement).toBe(within(list()).getByRole("button", { name: "Show all 6 selected references" }));
   view.unmount();
-  expect(observers.every((observer) => observer.disconnect.mock.calls.length > 0)).toBe(true);
+  expect(observers.every((observer) => !observer.active())).toBe(true);
 });
 
 test("the output is one line in text colours: keys in monospace, failures and pending in words", () => {
@@ -275,7 +337,7 @@ test("the output is one line in text colours: keys in monospace, failures and pe
   expect(screen.getByRole("region", { name: "Preview" }).getAttribute("data-state")).toBe("pending");
   expect(within(screen.getByRole("region", { name: "Preview" })).getByRole("status").textContent).toBe("Formatting…");
   rerender(shelf({ keys: false, style: "apa", shown: "failed" }));
-  expect(screen.getByRole("alert").textContent).toBe("Could not format citation.");
+  expect(screen.getByText(/This citation could not be formatted/)).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "Details" }));
   expect(within(screen.getByRole("dialog")).getByText(/could not be formatted/)).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "Close" }));
@@ -288,12 +350,7 @@ test("the output is one line in text colours: keys in monospace, failures and pe
 
 test("proportional overflow digits cannot cycle the fitted count, and growth restores chips", () => {
   let width = 350;
-  const observers: (() => void)[] = [];
-  vi.stubGlobal("ResizeObserver", class {
-    constructor(callback: () => void) { observers.push(callback); }
-    observe = vi.fn();
-    disconnect = vi.fn();
-  });
+  const observers = mockResizeObservers();
   vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(function (this: HTMLElement) {
     return this.matches(".shelf-chips") ? width : 0;
   });
@@ -319,14 +376,14 @@ test("proportional overflow digits cannot cycle the fitted count, and growth res
   expect(visible()).toHaveLength(2);
   expect(more().textContent).toBe("+21");
   act(() => more().focus());
-  act(() => { for (const observer of [...observers]) observer(); });
+  act(() => { for (const observer of [...observers]) observer.callback(); });
   expect(document.activeElement).toBe(more());
   expect(visible()).toHaveLength(2);
   width = 1000;
-  act(() => { for (const observer of [...observers]) observer(); });
+  act(() => { for (const observer of [...observers]) observer.callback(); });
   expect(visible()).toHaveLength(6);
   width = 350;
-  act(() => { for (const observer of [...observers]) observer(); });
+  act(() => { for (const observer of [...observers]) observer.callback(); });
   expect(visible()).toHaveLength(2);
   fireEvent.click(more());
   expect(visible().map((button) => button.getAttribute("aria-label"))).toEqual(records.map((r) => `Remove ${r.key}`));

@@ -3,7 +3,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { App } from "../../App";
 import { pickerText } from "../../messages";
 import { backend, resetApp } from "../../testing/app";
-import { dismissMenu, isWholeNotice, isWholeShelf, layoutGeometry, noticeText, waitForLayout } from "./picker-layout-checks.mjs";
+import { dismissMenu, isAnchoredDetails, isWholeNotice, isWholeShelf, layoutGeometry, noticeText, waitForLayout } from "./picker-layout-checks.mjs";
 
 afterEach(async () => {
   await resetApp();
@@ -82,6 +82,21 @@ test("the shelf oracle rejects clipping, shrinking and placement inside the midd
   band.style.overflowY = "visible";
   document.querySelector(".picker-content").append(band);
   expect(isWholeShelf()).toBe(false);
+});
+
+test("the details oracle rejects a centred panel, clipped menu and unrelated corner token", () => {
+  let rect = new DOMRect(100, 100, 320, 180);
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(() => rect);
+  render(<div className="details-menu" data-placement="top" style={{ "--menu-radius": "12px", "--r-menu": "12px" }} />);
+  const anchor = { top: 286, bottom: 310, left: 100, right: 240 };
+  expect(isAnchoredDetails(anchor)).toBe(true);
+  rect = new DOMRect(100, 180, 320, 180);
+  expect(isAnchoredDetails(anchor)).toBe(false);
+  rect = new DOMRect(-2, 100, 320, 180);
+  expect(isAnchoredDetails(anchor)).toBe(false);
+  rect = new DOMRect(100, 100, 320, 180);
+  document.querySelector(".details-menu").style.setProperty("--menu-radius", "24px");
+  expect(isAnchoredDetails(anchor)).toBe(false);
 });
 
 test.each(["TimeoutError", "Error"])("a %s during a probe wait reports its case, check and numeric geometry only", async (name) => {

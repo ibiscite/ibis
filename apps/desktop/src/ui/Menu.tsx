@@ -21,9 +21,12 @@ export function useMenuPlacement(open: boolean, trigger: RefObject<HTMLElement |
  * return field. A wrapped picker can put its footer trigger below the window.
  * A menu opened from above the `[data-menu-floor]` region (the footer) also
  * ends above it, so it never covers the footer's actions. */
-export function useMenuBoundary(open: boolean, returnRef?: RefObject<HTMLElement | null>, trigger?: RefObject<HTMLElement | null>) {
+export function useMenuBoundary(open: boolean, returnRef?: RefObject<HTMLElement | null>, trigger?: RefObject<HTMLElement | null>, layoutKey?: string | number | boolean) {
   const [boundary, setBoundary] = useState<HTMLElement>();
   const [clearBottom, setClearBottom] = useState(0);
+  // React Aria observes sizes, not an anchor moving because its siblings
+  // folded. Renew the boundary without remounting the focused menu content.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: layoutKey explicitly invalidates placement after a surrounding layout change.
   useLayoutEffect(() => {
     if (!open) return;
     const node = document.createElement("div");
@@ -53,7 +56,7 @@ export function useMenuBoundary(open: boolean, returnRef?: RefObject<HTMLElement
       window.visualViewport?.removeEventListener("resize", update);
       node.remove();
     };
-  }, [open, returnRef, trigger]);
+  }, [open, returnRef, trigger, layoutKey]);
   const getTargetRect = useCallback((target: Element) => {
     const rect = target.getBoundingClientRect();
     if (!boundary?.isConnected) return rect;

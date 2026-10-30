@@ -1,7 +1,7 @@
 // Real built picker + invented IPC. Browser layout evidence, not native input/engine proof.
 // Serve `pnpm build` with `pnpm exec vite preview`; reuse an installed Playwright.
 import assert from "node:assert/strict";
-import { dismissMenu, isWholeNotice, isWholeShelf, noticeText, waitForLayout } from "./picker-layout-checks.mjs";
+import { dismissMenu, isAnchoredDetails, isWholeNotice, isWholeShelf, noticeText, waitForLayout } from "./picker-layout-checks.mjs";
 const { chromium } = await import(process.env.IBIS_PLAYWRIGHT_MODULE || "playwright");
 const base = new URL(process.argv[2] || "http://127.0.0.1:4173");
 assert.ok(["127.0.0.1", "localhost"].includes(base.hostname), "Use a loopback fixture server");
@@ -17,8 +17,8 @@ try {
   cases.push(...["loaded", "first-run", "recovery"].map((viewState) => ({ width: 480, larger: false, colorScheme: "light", scale: 2, viewState })));
   cases.push({ width: 480, larger: false, colorScheme: "light", scale: 2, shortcutNotice: true });
   cases.push(...[720, 480].flatMap((width) => [false, true].flatMap((larger) =>
-    ["expanded", "failed"].map((shelfDetails) => ({ width, larger, colorScheme: "light", scale: 1, shelfDetails })))));
-  cases.push(...["expanded", "failed"].map((shelfDetails) => ({ width: 480, larger: false, colorScheme: "light", scale: 2, shelfDetails })));
+    ["expanded", "failed", "warnings", "undo"].map((shelfDetails) => ({ width, larger, colorScheme: "light", scale: 1, shelfDetails })))));
+  cases.push(...["expanded", "failed", "warnings", "undo"].map((shelfDetails) => ({ width: 480, larger: false, colorScheme: "light", scale: 2, shelfDetails })));
   for (const { width, larger, colorScheme, scale, shelfDetails = null, startupNotice = false, largeNotice = false, pointerNotice = null, viewState = "loaded", shortcutNotice = false } of cases) {
     const small = width === 480;
     const height = small ? 360 : largeNotice || pointerNotice ? 480 : Math.round(480 * (larger ? 1.15 : 1));
@@ -33,12 +33,20 @@ try {
     page.setDefaultTimeout(5000);
     page.on("pageerror", (error) => errors.push(error.message));
     await page.exposeFunction("fixtureSizing", (command) => { resizes.push(command); });
-    await page.addInitScript(({ larger, scale, startupNotice, largeNotice, pointerNotice, viewState, shortcutNotice, shelfDetails, formatFailure }) => {
+    await page.addInitScript(({ larger, scale, startupNotice, largeNotice, pointerNotice, viewState, shortcutNotice, shelfDetails, formatFailure, entryWarning }) => {
       if (scale !== 1) document.addEventListener("DOMContentLoaded", () => { document.documentElement.style.fontSize = `${scale * 100}%`; });
       Object.defineProperty(navigator, "platform", { value: "MacIntel" });
       let callback = 0;
       const callbacks = new Map(), listeners = new Map();
-      const preferences = { citation_style: null, density: "comfortable", larger_text: larger, show_paste_preview: true, search_mark: true, paste: false };
+      let undoTicket = null, refuseUndo = true;
+      window.fixtureWindowReset = () => {
+        undoTicket = 7;
+        const event = "picker:window-reset";
+        const ids = [...listeners].filter(([, name]) => name === event).map(([id]) => id);
+        if (!ids.length) throw Error("Synthetic reset listener unavailable");
+        for (const id of ids) callbacks.get(id)?.({ event, id, payload: { revision: 7, undo: 7 } });
+      };
+      const preferences = { citation_style: shelfDetails === "warnings" ? "ieee" : null, density: "comfortable", larger_text: larger, show_paste_preview: true, search_mark: true, paste: false };
       const library = { state: "loaded", revision: "1", has_snapshot: true, zotero: false, name: "invented.bib", snapshot_name: "invented.bib", references: 14, warnings: 0, error: null, problem: null, note: null, settings_notice: startupNotice ? "Synthetic startup settings notice." : null };
       if (viewState === "first-run") Object.assign(library, { state: "none", has_snapshot: false, name: null, snapshot_name: null, references: 0 });
       if (viewState === "empty-library") library.references = 0;
@@ -73,21 +81,26 @@ try {
           if (command === "shortcut_status") return { shortcut: "CommandOrControl+Shift+Y", registered: true, error: shortcutNotice ? "Synthetic shortcut refusal" : null };
           if (command === "library_status") return library;
           if (command === "search" && args.query.text === "refuse") throw Error("synthetic search refusal");
-          if (command === "search") return { revision: "1", results: args.query.text && args.query.text !== "no-match" ? Array.from({ length: 14 }, (_, i) => ({ revision: "1", id: { library: "invented.bib", key: `synthetic${i}` }, cite: `synthetic-cite-${i}`, source: "invented.bib", key: `synthetic${i}`, title: shelfDetails === "failed" ? `Invented reference ${i}. ${"A synthetic long title. ".repeat(30)}`.trim() : `Invented reference ${i}`, authors: "Aster", first_author: "Aster", author_count: 1, year: 2026, container: null, item_type: "article-journal", partial: false, matched: ["title"] })) : [] };
+          if (command === "search") return { revision: "1", results: args.query.text && args.query.text !== "no-match" ? Array.from({ length: 14 }, (_, i) => ({ revision: "1", id: { library: "invented.bib", key: `synthetic${i}` }, cite: `synthetic-cite-${i}`, source: "invented.bib", key: `synthetic${i}`, title: shelfDetails === "failed" ? `Invented reference ${i}. ${"A synthetic long title. ".repeat(30)}`.trim() : `Invented reference ${i}`, authors: "Aster", first_author: "Aster", author_count: 1, year: 2026, container: null, item_type: "article-journal", partial: shelfDetails === "warnings" && i === 0, matched: ["title"] })) : [] };
           if (command === "preview_file_citation" && shelfDetails === "failed") throw { code: "failed", message: formatFailure };
-          if (command === "preview_file_citation") return { ticket: "synthetic-ticket", content_hash: "synthetic-hash", text: "[@synthetic0]", html: null, warnings: [] };
+          if (command === "preview_file_citation") return { ticket: "synthetic-ticket", content_hash: "synthetic-hash", text: shelfDetails === "warnings" ? "Aster, Invented reference, 2026." : "[@synthetic0]", html: null, warnings: shelfDetails === "warnings" ? [entryWarning] : [] };
           if (command === "copy_file_citation") return { text: "[@synthetic0]", warnings: largeNotice ? Array.from({ length: 16 }, (_, i) => `Invented copy warning ${i + 1}: check the reference metadata.`) : [] };
           if (command === "login_item") return { name: "Ibis", enabled: false, problem: null };
           if (command === "update_checks") return null;
           if (command === "update_available") return false;
           if (command === "set_pinned") return;
-          if (command === "read_window_position_undo") return null;
-          if (command === "dismiss_window_position_undo") return;
-          if (command === "undo_window_position") return false;
+          if (command === "read_window_position_undo") return undoTicket;
+          if (command === "dismiss_window_position_undo") { if (args.revision === undoTicket) undoTicket = null; return; }
+          if (command === "undo_window_position") {
+            if (args.revision !== undoTicket) return false;
+            if (refuseUndo) { refuseUndo = false; return false; }
+            undoTicket = null;
+            return true;
+          }
           throw Error(`Unexpected synthetic IPC: ${command}`);
         },
       };
-    }, { larger, scale, startupNotice, largeNotice, pointerNotice, viewState, shortcutNotice, shelfDetails, formatFailure: noticeText.formatting });
+    }, { larger, scale, startupNotice, largeNotice, pointerNotice, viewState, shortcutNotice, shelfDetails, formatFailure: noticeText.formatting, entryWarning: noticeText.entryWarning });
     await page.goto(base.href);
     await page.locator("main").waitFor();
     await waitForCheck("text-size-applied", (larger) => document.documentElement.dataset.textSize === (larger ? "larger" : "normal"), larger);
@@ -97,7 +110,7 @@ try {
       const main = document.querySelector("main"), bounds = main.getBoundingClientRect();
       const issues = [];
       if (document.documentElement.scrollHeight > innerHeight + 1 || document.documentElement.scrollTop || document.body.scrollTop || main.scrollTop) issues.push("window scrolls");
-      const active = document.querySelector(".overlay-dialog") ?? main;
+      const active = document.querySelector(".details-menu-body") ?? main;
       const scrollers = [...active.querySelectorAll("*")].filter((node) => /auto|scroll/.test(getComputedStyle(node).overflowY) && node.clientHeight > 0 && node.scrollHeight > node.clientHeight + 1);
       if (scrollers.length > 1) issues.push(`multiple scrollbars: ${scrollers.map((node) => `${node.className}:${node.clientHeight}/${node.scrollHeight}`).join(", ")}`);
       for (const button of main.querySelectorAll("footer button")) {
@@ -121,9 +134,9 @@ try {
           const rect = node.getBoundingClientRect(), frame = band.getBoundingClientRect();
           return rect.top >= frame.top - 1 && rect.bottom <= frame.bottom + 1 && rect.left >= frame.left - 1 && rect.right <= frame.right + 1;
         }
-        const owner = [node.closest(".overlay-scroll"), node.closest(".results-area"), node.closest(".picker-content")]
+        const owner = [node.closest(".details-menu-scroll"), node.closest(".results-area"), node.closest(".picker-content")]
           .find((part) => part && /auto|scroll/.test(getComputedStyle(part).overflowY));
-        const middle = (node.closest(".overlay-scroll") ?? node.closest(".picker-content")).getBoundingClientRect();
+        const middle = (node.closest(".details-menu-scroll") ?? node.closest(".picker-content")).getBoundingClientRect();
         const bounds = owner.getBoundingClientRect();
         const top = Math.max(middle.top, bounds.top), bottom = Math.min(middle.bottom, bounds.bottom);
         const rect = node.getBoundingClientRect();
@@ -201,37 +214,103 @@ try {
     await page.getByRole("option").last().waitFor();
     assert.deepEqual(await scan(), [], `${width}/${larger}/${colorScheme}: results`);
     assert.deepEqual(page.viewportSize(), frame, "typing results keeps the opening frame");
-    const openEditor = async () => {
-      await page.getByRole("button", { name: "Edit citation", exact: true }).click();
+    const anchoredMenu = async (anchor) => {
+      const rect = await anchor.evaluate((node) => {
+        const rect = node.getBoundingClientRect();
+        return { top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right };
+      });
+      await waitForCheck("details-menu-anchored-and-contained", isAnchoredDetails, rect);
+    };
+    const tabLoop = async (dialog, anotherControl = true) => {
+      const close = dialog.getByRole("button", { name: "Close", exact: true });
+      await close.press("Shift+Tab");
+      assert.equal(await close.evaluate((node) => node.closest('[role="dialog"]').contains(document.activeElement)), true, "Shift+Tab stays in the menu");
+      if (anotherControl) assert.equal(await close.evaluate((node) => node !== document.activeElement), true, "Shift+Tab wraps from Close to the last control");
+      await page.keyboard.press("Tab");
+      assert.equal(await close.evaluate((node) => document.activeElement === node), true, "Tab wraps back to Close");
+    };
+    const openEditor = async (segment = false) => {
+      const chip = page.locator("main > .shelf .shelf-chips > .chip").first();
+      const edit = chip.getByRole("button", { name: /^Edit/ });
+      const fromChip = segment && await edit.isVisible();
+      const anchor = fromChip ? chip : page.locator("main > .shelf .shelf-output");
+      if (fromChip) await edit.click();
+      else await page.getByRole("button", { name: "Edit citation", exact: true }).click();
       const dialog = page.getByRole("dialog", { name: /^Citation details/ });
       await dialog.waitFor();
       await page.getByLabel("Page", { exact: true }).waitFor();
+      await anchoredMenu(anchor);
+      await tabLoop(dialog);
+      await page.getByLabel("Page", { exact: true }).focus();
       return dialog;
     };
     const closeEditor = async (dialog) => {
       await dialog.getByRole("button", { name: "Close", exact: true }).click();
       await dialog.waitFor({ state: "detached" });
     };
+    if (shelfDetails === "undo") {
+      const band = await page.locator("main > .shelf").boundingBox();
+      await page.evaluate(() => window.fixtureWindowReset());
+      const undo = page.getByRole("button", { name: "Undo", exact: true });
+      await undo.waitFor();
+      assert.equal(await search.evaluate((node) => document.activeElement === node), true, "Reset's Undo notice leaves typing focus in Search");
+      await undo.click();
+      await page.getByRole("alert").and(page.getByText("Could not undo. Try again.", { exact: true })).waitFor();
+      assert.equal(await undo.isEnabled(), true, "a refused Undo stays visible and retryable");
+      await undo.click();
+      await undo.waitFor({ state: "detached" });
+      assert.equal(await search.evaluate((node) => document.activeElement === node), true, "successful retry returns focus to Search");
+      assert.deepEqual(await page.locator("main > .shelf").boundingBox(), band, "Undo feedback does not move the shelf");
+      assert.deepEqual(await scan(), [], "Undo feedback keeps fixed bands and one scroller");
+      assert.deepEqual(page.viewportSize(), frame, "Undo feedback keeps the fixture's frame");
+      assert.deepEqual(resizes, [], "no content-driven native sizing");
+      assert.deepEqual(errors, [], "no page errors");
+      await page.close(); profiles += 1; continue;
+    }
     if (shelfDetails) {
       let beforeShelf = await page.locator("main > .shelf").boundingBox();
       let dialog;
       if (shelfDetails === "expanded") {
         for (let i = 0; i < 9; i++) { if (i) await search.press("ArrowDown"); await search.press("Shift+Enter"); }
         beforeShelf = await page.locator("main > .shelf").boundingBox();
-        await page.getByRole("button", { name: "Show all 9 selected references", exact: true }).click();
+        const count = page.getByRole("button", { name: "Show all 9 selected references", exact: true, includeHidden: true });
+        await count.click();
         dialog = page.getByRole("dialog", { name: "Selected references", exact: true });
         await dialog.waitFor();
+        await anchoredMenu(count);
         const controls = dialog.getByRole("button", { name: /^Remove .* from the selection$/ });
         assert.equal(await controls.count(), 9, "every chosen reference is removable in the overlay");
         for (const control of await controls.all()) assert.equal(await reachable(control), true, "every remove target is reachable");
+      } else if (shelfDetails === "warnings") {
+        await search.press("Shift+Enter");
+        const warnings = page.getByRole("button", { name: /2 warnings.*Reference entry.*Closest matches/, includeHidden: true });
+        await warnings.waitFor();
+        beforeShelf = await page.locator("main > .shelf").boundingBox();
+        assert.equal(await reachable(warnings), true, "the warnings control stays reachable from the shelf");
+        await warnings.press("Space");
+        dialog = page.getByRole("dialog", { name: "Citation warnings", exact: true });
+        await dialog.waitFor();
+        await anchoredMenu(warnings);
+        for (const meaning of [dialog.getByRole("heading", { name: "Reference entry", exact: true }), dialog.getByRole("heading", { name: "Closest matches", exact: true }),
+          dialog.getByText(noticeText.entryWarning, { exact: true }), dialog.getByText(/IEEE numbers depend on your whole document/), dialog.getByText(/only some search words matched/)]) {
+          assert.equal(await reachable(meaning), true, "every warning, reference-entry explanation and closest-match provenance is reachable");
+        }
       } else {
-        await page.getByRole("alert").and(page.getByText("Could not format citation.", { exact: true })).waitFor();
+        const refusal = page.locator(".notices").getByRole("alert").and(page.getByText(noticeText.formatting, { exact: true }));
+        await refusal.waitFor();
+        assert.equal(await reachable(refusal), true, "the full refusal is readable before opening Details");
+        const shelfReason = page.locator("main > .shelf .shelf-output p");
+        await shelfReason.waitFor();
+        assert.equal(await shelfReason.textContent(), noticeText.formatting, "the reason appears beside the failed citation before Details opens");
+        assert.equal(await reachable(shelfReason), true, "the refusal line stays visible in the fixed shelf");
         await page.getByRole("button", { name: "Details", exact: true }).click();
         dialog = page.getByRole("dialog", { name: /^Citation details/ });
         await dialog.waitFor();
+        await anchoredMenu(page.locator("main > .shelf .shelf-output"));
         assert.equal(await reachable(dialog.locator(".shelf-detail-title")), true, "both ends of a long reference title are reachable");
         assert.equal(await reachable(dialog.getByText(noticeText.formatting, { exact: true })), true, "both ends of the full refusal are reachable");
       }
+      await tabLoop(dialog, shelfDetails !== "warnings");
       assert.deepEqual(await scan(), [], "details leave whole fixed bands and one active scroller");
       const shelf = await page.locator("main > .shelf").boundingBox();
       assert.deepEqual(shelf, beforeShelf, "opening details does not grow or move the shelf");
@@ -361,11 +440,16 @@ try {
     await search.press("Shift+Enter");
     await page.getByRole("region", { name: "Preview" }).waitFor();
     await page.setViewportSize({ width: 720, height: Math.max(height, 480) });
-    editor = await openEditor();
-    await page.getByLabel("Page", { exact: true }).focus();
+    editor = await openEditor(true);
+    await page.getByLabel("Page", { exact: true }).fill("12");
     await page.setViewportSize({ width: 480, height: 360 });
     await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     assert.deepEqual(await scan(), [], "resizing while editing keeps fixed bands and one active scroller");
+    const foldedAnchor = page.locator("main > .shelf .shelf-output > button[aria-label^='Show all']");
+    // A visible segment folds to the count; an editor opened from the whole
+    // citation stays on that citation. Both anchors stay inside the window.
+    const anchor = await foldedAnchor.getAttribute("aria-expanded") === "true" ? foldedAnchor : page.locator("main > .shelf .shelf-output");
+    await anchoredMenu(anchor);
     const heading = editor.getByRole("heading");
     assert.equal(await heading.evaluate((node) => {
       const title = node.getBoundingClientRect();
@@ -377,6 +461,7 @@ try {
     }), true, "the selected result also stays within the middle while editing");
     assert.equal(await reachable(page.getByLabel("Page", { exact: true })), true, "the editor remains reachable");
     assert.equal(await page.getByLabel("Page", { exact: true }).evaluate((node) => document.activeElement === node), true, "resizing preserves Page focus");
+    assert.equal(await page.getByLabel("Page", { exact: true }).inputValue(), "12", "folding preserves the person's edit");
     await closeEditor(editor);
     await page.setViewportSize({ width, height });
     assert.deepEqual(await scan(), [], `${width}/${larger}/${colorScheme}: shelf`);

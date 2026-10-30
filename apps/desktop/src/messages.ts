@@ -168,7 +168,7 @@ export const pickerText = {
   editCitation: "Edit citation",
   edit: "Edit",
   details: "Details",
-  previewFailedShort: "Could not format citation.",
+  citationWarnings: "Citation warnings",
   windowReset: "Window position reset.",
   undo: "Undo",
   undoFailed: "Could not undo. Try again.",

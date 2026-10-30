@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useRef, useState, type RefObject } from "react";
+import { useCallback, useId, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import type { SearchResult } from "../../api";
 import type { FormattedCitation } from "../../format/styles";
 import { copiesEntry } from "../../format/styles";
@@ -11,13 +11,14 @@ import { closestMatchWarnings } from "./rows";
 import { LocatorToken } from "../../ui/LocatorToken";
 import { Button } from "../../ui/Button";
 import { CitationDetails } from "../../ui/CitationDetails";
-import { OverlayDialog } from "../../ui/OverlayDialog";
+import { DetailsMenu } from "../../ui/DetailsMenu";
 import { beak } from "../../brand";
 import "./CitationShelf.css";
 
 /** The shelf shows at most this many chips; the rest fold into "+N"
  * (docs/design.md, "Shelf"). */
 export const SHELF_CHIPS = 6;
+type Panel = { kind: "references" | "reference" | "failure" | "warnings"; anchor: HTMLElement; presentation: number | undefined };
 
 /** "García 2021": the first author's family name and the year, or the key
  * when the record names neither. */
@@ -36,7 +37,7 @@ export function chipLabels(records: SearchResult[]): string[] {
 /** What Enter pastes, above the footer's Copy action (docs/design.md, "Shelf"):
  * a line of chips for the references chosen with Shift+Enter, then the exact
  * output on one line. Results above never move when a reference is added. */
-export function CitationShelf({ announce, selected, highlightedReference, onChangeReference, removeLabel, onRemove, onRemoveLocator, style, keys, shown, problem, focusable, fallbackFocusRef, presentation }: {
+export function CitationShelf({ announce, selected, highlightedReference, onChangeReference, removeLabel, onRemove, onRemoveLocator, style, keys, shown, outputWarnings, problem, focusable, fallbackFocusRef, presentation }: {
   presentation?: number;
   /** False until the selection first changes, so opening the picker is silent. */
   announce: boolean;
@@ -52,6 +53,8 @@ export function CitationShelf({ announce, selected, highlightedReference, onChan
   keys: boolean;
   /** What Enter would copy; null while it is being made, undefined when there is nothing to show. */
   shown: FormattedCitation | "failed" | "stale" | null | undefined;
+  /** Current engine warnings remain available when citation text is hidden. */
+  outputWarnings: readonly string[];
   /** Why the citation failed, when there is something the user can fix. */
   problem?: string;
   /** A built citation can be focused, to read it whole. */
@@ -80,20 +83,32 @@ export function CitationShelf({ announce, selected, highlightedReference, onChan
   }, [editRequest]);
   const labels = chipLabels(records);
   const partialWarnings = closestMatchWarnings(records);
-  const warnings = [...(shown && typeof shown === "object" ? shown.warnings : []), ...partialWarnings];
+  const warnings = [...outputWarnings, ...partialWarnings];
+  const entryNotice = style && copiesEntry(style) ? pickerText.entryOnly(STYLE_NAMES[style]) : null;
+  const statusLabel = [warnings.length > 0 && pickerText.warningCount(warnings.length), entryNotice && pickerText.entryOnlyShort,
+    partialWarnings.length > 0 && pickerText.closestMatches].filter(Boolean).join(" · ");
   const moreLabel = (count: number) => records.slice(records.length - count).some((r) => r.partial)
     ? `${pickerText.moreChosen(count)} · ${pickerText.closestMatches}` : pickerText.moreChosen(count);
-  const [panel, setPanel] = useState<"references" | "reference" | "failure" | null>(null);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: hiding or reopening retires the previous presentation's overlay.
-  useLayoutEffect(() => { setPanel(null); }, [presentation]);
-  useLayoutEffect(() => { if (panel === "references" && selected.size === 0) setPanel(null); }, [panel, selected.size]);
+  const [panel, setPanel] = useState<Panel | null>(null);
+  const menuId = useId();
   const [compact, setCompact] = useState(false);
   const band = useRef<HTMLDivElement>(null);
   const bandRef = useCallback((node: HTMLDivElement | null) => { band.current = node; return preserveFocus(node); }, [preserveFocus]);
+  const output = useRef<HTMLElement>(null);
+  const outputRef = useCallback((node: HTMLElement | null) => { output.current = node; return preserveFocus(node); }, [preserveFocus]);
   const summary = useRef<HTMLButtonElement>(null);
   const summaryRef = useCallback((node: HTMLButtonElement | null) => { summary.current = node; return preserveFocus(node); }, [preserveFocus]);
   const foldedFocus = useRef(false);
   const [visibleChips, setVisibleChips] = useState(SHELF_CHIPS);
+  useLayoutEffect(() => {
+    if (!panel) return;
+    if (panel.presentation !== presentation || panel.kind === "references" && selected.size === 0) { setPanel(null); return; }
+    if (panel.anchor.isConnected && !panel.anchor.closest("[hidden]")) return;
+    // Folding or removing the originating segment keeps its open menu attached
+    // to the visible citation/count, without remounting the focused editor.
+    const anchor = summary.current ?? output.current ?? band.current;
+    if (anchor && anchor !== panel.anchor) setPanel({ ...panel, anchor });
+  });
   const chips = useRef<HTMLUListElement>(null);
   const more = useRef<HTMLLIElement>(null);
   const sizes = useRef<HTMLLIElement>(null);
@@ -144,12 +159,19 @@ export function CitationShelf({ announce, selected, highlightedReference, onChan
     if (compact && foldedFocus.current) { foldedFocus.current = false; summary.current?.focus({ preventScroll: true }); }
   }, [compact]);
   const folded = Math.max(0, records.length - visibleChips);
-  const edit = (key: string | null) => { setEditing(key); setPanel("reference"); setEditRequest((request) => request + 1); };
+  const open = (kind: Panel["kind"], anchor: HTMLElement) => setPanel({ kind, anchor, presentation });
+  const edit = (key: string | null, trigger: HTMLElement, fromMenu = false) => {
+    setEditing(key);
+    setPanel((previous) => ({ kind: "reference", anchor: fromMenu && previous ? previous.anchor : trigger.closest<HTMLElement>(".chip") ?? output.current ?? trigger, presentation }));
+    setEditRequest((request) => request + 1);
+  };
   const chip = (r: CitationReference, i: number, overlay = false) => (
     <li key={keysOf[i]} ref={overlay ? undefined : preserveFocus} className="chip" title={r.key} data-partial={r.partial || undefined}
       hidden={!overlay && i >= visibleChips} onFocusCapture={() => setEditing(keysOf[i]!)}>
       {onChangeReference ? <Button variant="quiet" size="small" aria-label={citationDetailsText.edit(labels[i]!)}
-        aria-haspopup="dialog" onPress={() => edit(keysOf[i]!)}><bdi className="chip-label">{labels[i]}</bdi></Button>
+        aria-haspopup="dialog" aria-expanded={panel?.kind === "reference" && editing === keysOf[i]}
+        aria-controls={panel?.kind === "reference" && editing === keysOf[i] ? menuId : undefined}
+        onPress={(event) => edit(keysOf[i]!, event.target as HTMLElement, overlay)}><bdi className="chip-label">{labels[i]}</bdi></Button>
         : <bdi className="chip-label">{labels[i]}</bdi>}
       {r.partial && <span className="shelf-pill" title={pickerText.closestMatchWarning(r.title || r.key)}>
         <span aria-hidden="true">{pickerText.closestMatch}</span>
@@ -160,10 +182,10 @@ export function CitationShelf({ announce, selected, highlightedReference, onChan
       <Button variant="icon" size="small" className="chip-remove" onPress={() => onRemove(r)} aria-label={removeLabel(r)} />
     </li>
   );
-  const detailsTitle = panel === "references" ? pickerText.selectedReferences : edited
+  const detailsTitle = panel?.kind === "warnings" ? pickerText.citationWarnings : panel?.kind === "references" ? pickerText.selectedReferences : edited
     ? citationDetailsText.details(edited.title || edited.key) : pickerText.citationDetails;
   const fullProblem = problem ?? pickerText.previewError;
-  const showOutput = shown !== undefined || compact && records.length > 0 || records.length === 0 && edited && onChangeReference;
+  const showOutput = shown !== undefined || statusLabel || compact && records.length > 0 || records.length === 0 && edited && onChangeReference;
   return (
     <>
       <p className="visually-hidden" role="status" aria-label={pickerText.citationSelection} aria-live="polite" aria-atomic="true">
@@ -181,7 +203,8 @@ export function CitationShelf({ announce, selected, highlightedReference, onChan
               {records.slice(0, SHELF_CHIPS).map((r, i) => chip(r, i))}
               {folded > 0 && (
                 <li ref={moreRef} className="chip-more">
-                  <Button variant="quiet" size="small" aria-haspopup="dialog" aria-expanded={panel === "references"} onPress={() => setPanel("references")}
+                  <Button variant="quiet" size="small" aria-haspopup="dialog" aria-expanded={panel?.kind === "references"}
+                    aria-controls={panel?.kind === "references" ? menuId : undefined} onPress={(event) => open("references", event.target as HTMLElement)}
                     title={closestMatchWarnings(records.slice(visibleChips)).join(" ") || undefined}
                     aria-label={pickerText.allChosen(records.length)}>{moreLabel(folded)}</Button>
                 </li>
@@ -189,46 +212,56 @@ export function CitationShelf({ announce, selected, highlightedReference, onChan
             </ul>
           )}
           {showOutput && (
-            <section ref={preserveFocus} aria-label={shown !== undefined ? pickerText.preview : pickerText.citationDetails} className="shelf-output" data-keys={keys || undefined}
+            <section ref={outputRef} aria-label={shown !== undefined ? pickerText.preview : pickerText.citationDetails} className="shelf-output" data-keys={keys || undefined}
               data-state={shown === null || typeof shown === "string" ? (shown ?? "pending") : undefined}
               tabIndex={focusable && shown && typeof shown === "object" ? 0 : undefined}>
-              {compact && records.length > 0 && <Button ref={summaryRef} variant="quiet" size="small" aria-haspopup="dialog" aria-expanded={panel === "references"}
-                aria-label={pickerText.allChosen(records.length)} onPress={() => setPanel("references")}>{pickerText.moreChosen(records.length)}</Button>}
+              {compact && records.length > 0 && <Button ref={summaryRef} variant="quiet" size="small" aria-haspopup="dialog" aria-expanded={panel?.kind === "references" || panel?.anchor === summary.current}
+                aria-controls={panel?.kind === "references" || panel?.anchor === summary.current ? menuId : undefined}
+                aria-label={[pickerText.allChosen(records.length), partialWarnings.length > 0 && pickerText.closestMatches].filter(Boolean).join(" · ")}
+                onPress={(event) => open("references", event.target as HTMLElement)}>{pickerText.moreChosen(records.length)}</Button>}
               {shown !== undefined && <svg className="shelf-mark" viewBox={beak.viewBox} fill="currentColor" aria-hidden="true" focusable="false"
                 preserveAspectRatio="xMaxYMid meet" dangerouslySetInnerHTML={{ __html: beak.body }} />}
               {shown === null && <p role="status">{pickerText.previewPending}</p>}
-              {shown === "failed" && <p role="alert">{pickerText.previewFailedShort}</p>}
+              {/* Notices announces and expands the same refusal; its reason also
+                  stays beside the failed citation, including with text hidden. */}
+              {shown === "failed" && <p title={fullProblem}>{fullProblem}</p>}
               {shown === "stale" && <p role="status">{pickerText.shelfStale}</p>}
               {shown && typeof shown === "object" && <>
                 <bdi dir={keys ? "ltr" : "auto"} className="preview-text" title={shown.text}>
                   {shown.markup.length > 0 ? render(shown.markup) : shown.text}
                 </bdi>
-                {!compact && style && copiesEntry(style) && <span className="shelf-pill" title={pickerText.entryOnly(STYLE_NAMES[style])}>
-                  <span aria-hidden="true">{pickerText.entryOnlyShort}</span>
-                  <span className="visually-hidden">{pickerText.entryOnly(STYLE_NAMES[style])}</span>
-                </span>}
-                {!compact && warnings.length > 0 && <span className="shelf-pill" title={warnings.join("\n")}>
-                  <span aria-hidden="true">{pickerText.warningCount(warnings.length)}</span>
-                  <span className="visually-hidden">{warnings.join(" ")}</span>
-                </span>}
               </>}
-              {shown === "failed" ? <Button variant="quiet" size="small" aria-haspopup="dialog" onPress={() => setPanel("failure")}>{pickerText.details}</Button>
+              {statusLabel && <Button variant="quiet" size="small" className="shelf-warnings" aria-label={statusLabel} title={statusLabel}
+                aria-haspopup="dialog" aria-expanded={panel?.kind === "warnings"} aria-controls={panel?.kind === "warnings" ? menuId : undefined}
+                onPress={(event) => open("warnings", event.target as HTMLElement)}>
+                {compact ? <span aria-hidden="true">{warnings.length > 0 ? `! ${warnings.length}` : "i"}</span> : <>
+                  {entryNotice && <span className="shelf-pill" title={entryNotice}><span aria-hidden="true">{pickerText.entryOnlyShort}</span><span className="visually-hidden">{entryNotice}</span></span>}
+                  {warnings.length > 0 && <span className="shelf-pill" title={warnings.join("\n")}><span aria-hidden="true">{pickerText.warningCount(warnings.length)}</span><span className="visually-hidden">{warnings.join(" ")}</span></span>}
+                </>}
+              </Button>}
+              {shown === "failed" ? <Button variant="quiet" size="small" aria-haspopup="dialog" aria-expanded={panel?.kind === "failure"}
+                aria-controls={panel?.kind === "failure" ? menuId : undefined} onPress={(event) => open("failure", output.current ?? event.target as HTMLElement)}>{pickerText.details}</Button>
                 : edited && onChangeReference && <Button variant="quiet" size="small" aria-haspopup="dialog" aria-label={pickerText.editCitation}
-                  onPress={() => edit(keysOf[0] ?? null)}>{pickerText.edit}</Button>}
+                  aria-expanded={panel?.kind === "reference"} aria-controls={panel?.kind === "reference" ? menuId : undefined}
+                  onPress={(event) => edit(keysOf[0] ?? null, event.target as HTMLElement)}>{pickerText.edit}</Button>}
             </section>
           )}
         </div>
       )}
-      {panel && <OverlayDialog title={detailsTitle} heading={panel !== "references" && edited ? edited.title || edited.key : detailsTitle} onClose={() => setPanel(null)}>
-        {panel !== "references" && edited && <p className="shelf-detail-title">{edited.title || edited.key}</p>}
-        {panel === "references" && <ul className="shelf-details-list" aria-label={pickerText.selectedReferences}>{records.map((r, i) => chip(r, i, true))}</ul>}
+      {panel && <DetailsMenu id={menuId} anchor={panel.anchor} anchorLayout={compact} returnFocusRef={fallbackFocusRef} title={detailsTitle}
+        heading={panel.kind !== "references" && panel.kind !== "warnings" && edited ? edited.title || edited.key : detailsTitle} onClose={() => setPanel(null)}>
+        {panel.kind !== "references" && panel.kind !== "warnings" && edited && <p className="shelf-detail-title">{edited.title || edited.key}</p>}
+        {panel.kind === "references" && <ul className="shelf-details-list" aria-label={pickerText.selectedReferences}>{records.map((r, i) => chip(r, i, true))}</ul>}
         {shown === "failed" && <p role="alert" className="shelf-problem">{fullProblem}</p>}
-        {edited && onChangeReference && <CitationDetails key={idKey(edited.id)} pageRef={page} autoFocus={panel !== "references"} label={citationDetailsText.details(edited.title || edited.key)}
+        {panel.kind !== "warnings" && edited && onChangeReference && <CitationDetails key={idKey(edited.id)} pageRef={page} autoFocus={panel.kind !== "references"} label={citationDetailsText.details(edited.title || edited.key)}
           page={edited.locator?.label === "page" ? edited.locator.value : ""} form={edited.form ?? "normal"}
           onPageChange={(value) => onChangeReference(edited, { locator: value.trim() ? { label: "page", value, input: "page-editor" } : null })}
           onFormChange={(form) => onChangeReference(edited, { form })} />}
-        {warnings.map((warning) => <p key={warning}>{warning}</p>)}
-      </OverlayDialog>}
+        {panel.kind === "warnings" && entryNotice && <><h3>{pickerText.entryOnlyShort}</h3><p>{entryNotice}</p></>}
+        {panel.kind === "warnings" && outputWarnings.map((warning, index) => <p key={`output-${index}:${warning}`}>{warning}</p>)}
+        {panel.kind === "warnings" && partialWarnings.length > 0 && <h3>{pickerText.closestMatches}</h3>}
+        {(panel.kind === "warnings" ? partialWarnings : warnings).map((warning, index) => <p key={`warning-${index}:${warning}`}>{warning}</p>)}
+      </DetailsMenu>}
     </>
   );
 }
