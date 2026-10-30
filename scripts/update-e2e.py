@@ -68,17 +68,23 @@ UNINSTALL = r"Software\Microsoft\Windows\CurrentVersion\Uninstall"
 # probe holds only counts, error numbers or exception type names, and how a
 # press was made.
 WINDOWS_WINDOW_SCOPE = r"""
+function Stop-UpdateScope($scope, $stage) {
+  # Explicit scope assertions are terminal even if a later census is clean.
+  # Native UIA exceptions do not set this marker and may be observed again.
+  $scope.failure_stage = $stage
+  throw 'Update window scope assertion failed'
+}
 function Get-OwnedWindows($ids, $scope) {
   $owned = [System.Collections.Generic.List[object]]::new()
-  if ($ids.Count -gt 20) { throw 'Update process bound exceeded' }
+  if ($ids.Count -gt 20) { Stop-UpdateScope $scope 'picker-bounds' }
   foreach ($id in $ids) {
-    if ($id -notmatch '^[1-9][0-9]{0,9}$') { throw 'Invalid update process' }
+    if ($id -notmatch '^[1-9][0-9]{0,9}$') { Stop-UpdateScope $scope 'scope' }
     $scope.pids++
     $condition = [System.Windows.Automation.PropertyCondition]::new($A::ProcessIdProperty, [int]$id)
     $roots = @($A::RootElement.FindAll($S::Children, $condition))
-    if ($roots.Count -gt 20) { throw 'Update root window bound exceeded' }
+    if ($roots.Count -gt 20) { Stop-UpdateScope $scope 'picker-bounds' }
     foreach ($root in $roots) {
-      if ($root.Current.ProcessId -ne [int]$id) { throw 'Update root owner changed' }
+      if ($root.Current.ProcessId -ne [int]$id) { Stop-UpdateScope $scope 'picker-owner' }
       $scope.root_windows++
       $owned.Add($root)
       # Owned modal windows need not be desktop children. As on macOS, inspect
@@ -86,17 +92,17 @@ function Get-OwnedWindows($ids, $scope) {
       $windowType = [System.Windows.Automation.PropertyCondition]::new(
         $A::ControlTypeProperty, [System.Windows.Automation.ControlType]::Window)
       $nested = @($root.FindAll($S::Descendants, $windowType))
-      if ($nested.Count -gt 20) { throw 'Update nested window bound exceeded' }
+      if ($nested.Count -gt 20) { Stop-UpdateScope $scope 'picker-bounds' }
       foreach ($window in $nested) {
         if ($window.Current.ProcessId -ne [int]$id) {
-          if ($window.Current.Name -ceq 'An update is available') { throw 'Update offer owner differs from root' }
+          if ($window.Current.Name -ceq 'An update is available') { Stop-UpdateScope $scope 'picker-owner' }
           continue # A renderer window cannot supply the native updater action.
         }
         $scope.nested_windows++
         $owned.Add($window)
       }
       $scope.windows = $owned.Count
-      if ($scope.windows -gt 20) { throw 'Update window bound exceeded' }
+      if ($scope.windows -gt 20) { Stop-UpdateScope $scope 'picker-bounds' }
     }
   }
   $scope.tree_complete = $true
@@ -251,7 +257,11 @@ function run(argv) {
 # single-instance Show command, never a global shortcut or a foreign window.
 WINDOWS_PICKER = WINDOWS_WINDOW_SCOPE + r"""
 $ErrorActionPreference = 'Stop'
+$probe = @{stage='picker-frameworks'; code=$null; failed=$false; trusted=$null; windows=0; pickers=0; offers=0}
+$owner = $null; $focus = $null
+try {
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
+$probe.stage='picker-native-focus'
 Add-Type @'
 using System;
 using System.Runtime.InteropServices;
@@ -263,40 +273,53 @@ $A = [System.Windows.Automation.AutomationElement]
 $S = [System.Windows.Automation.TreeScope]
 $pickerWindows = @(); $offerWindows = @()
 $scope = @{pids=0; windows=0; root_windows=0; nested_windows=0; tree_complete=$false}
+$probe.stage='scope'
 $ids = @($env:IBIS_PIDS -split ',' | Where-Object { $_ } | Select-Object -Unique)
+$probe.stage='picker-windows'
 foreach ($window in @(Get-OwnedWindows $ids $scope)) {
   if ($window.Current.Name -ceq 'Ibis' -and !$window.Current.IsOffscreen) { $pickerWindows += $window }
   if ($window.Current.Name -ceq 'An update is available' -and !$window.Current.IsOffscreen) { $offerWindows += $window }
 }
+$probe.windows=$scope.windows; $probe.pickers=$pickerWindows.Count; $probe.offers=$offerWindows.Count
+$probe.stage='picker-unique'
 if ($pickerWindows.Count -gt 1 -or $offerWindows.Count -gt 1) { throw 'Picker or update offer is ambiguous' }
-$owner = $null; $focus = $null
 if ($pickerWindows.Count -eq 1) {
   $picker = $pickerWindows[0]
   $targets = @(@{window=$picker; kind='picker'})
   if ($offerWindows.Count -eq 1) {
-    if ($offerWindows[0].Current.ProcessId -ne $picker.Current.ProcessId) { throw 'Update offer owner differs from picker' }
+    if ($offerWindows[0].Current.ProcessId -ne $picker.Current.ProcessId) { Stop-UpdateScope $scope 'picker-owner' }
     $targets += @{window=$offerWindows[0]; kind='offer'}
   }
   foreach ($target in $targets) {
+    $probe.stage='picker-foreground'
     $handle = $target.window.Current.NativeWindowHandle
     if ($handle -ne 0 -and [IbisUpdateFocus]::GetForegroundWindow().ToInt64() -eq [long]$handle) {
       if ($target.kind -ceq 'picker') {
         # A foreground host can still expose no interactive Search control.
         # Observe only this unique owned main; never click/focus to repair it.
+        $probe.stage='picker-search'
         $items = @($picker.FindAll($S::Descendants, [System.Windows.Automation.Condition]::TrueCondition))
-        if ($items.Count -gt 4000) { throw 'Picker element bound exceeded' }
+        if ($items.Count -gt 4000) { Stop-UpdateScope $scope 'picker-bounds' }
         $search = @($items | Where-Object {
           $_.Current.Name -ceq 'Search references' -and
           $_.Current.ControlType.ProgrammaticName -cin @('ControlType.ComboBox', 'ControlType.Edit')
         })
+        $probe.stage='picker-search-unique'
         if ($search.Count -gt 1) { throw 'Picker Search is ambiguous' }
+        $probe.stage='picker-search'
         if ($search.Count -ne 1 -or !$search[0].Current.IsEnabled -or $search[0].Current.IsOffscreen -or !$search[0].Current.HasKeyboardFocus) { continue }
       }
       $owner = $target.window.Current.ProcessId; $focus = $target.kind
     }
   }
 }
-@{pid=$owner; focus=$focus} | ConvertTo-Json -Compress
+$probe.stage='complete'
+} catch {
+  $owner=$null; $focus=$null; $probe.failed=$true
+  if ($scope -and $scope.failure_stage) { $probe.stage=$scope.failure_stage }
+  $probe.code=$_.Exception.HResult
+}
+@{pid=$owner; focus=$focus; probe=$probe} | ConvertTo-Json -Compress
 """
 
 # Independent, read-only failure census. A native caption plus PID can tell a
@@ -388,8 +411,10 @@ function run(pids) {
       const pid = window.kCGWindowOwnerPID;
       if (!pids.includes(String(pid))) continue;
       if (++probe.windows > 20) throw Error('Picker window bound exceeded');
+      probe.stage = 'cg-window-title';
       const title = window.kCGWindowName;
       if (typeof title !== 'string') throw Error('Picker on-screen title unavailable');
+      probe.stage = 'cg-windows';
       if (title === 'Ibis') matches.push(pid);
       if (title === 'An update is available') offers.push(pid);
     }
@@ -439,6 +464,7 @@ function run(pids) {
 class PickerObservationFailure(AssertionError):
     def __init__(self, probe):
         self.probe = probe
+        self.retryable = probe["stage"] not in ("scope", "unique", "picker-owner", "picker-bounds", "picker-unique", "picker-search-unique") and probe.get("windows", 0) <= 20
         super().__init__(f"native picker observation unavailable ({probe['stage']}, code {probe.get('code')})")
 
 
@@ -448,8 +474,9 @@ def picker_result(stdout, pids):
         raise AssertionError("picker helper returned an unexpected answer")
     if "probe" in result:
         probe = result["probe"]
-        stages = {"scope", "frameworks", "cg-copy", "cg-bridge", "cg-decode", "cg-windows", "unique", "ax-system", "ax-owner",
+        stages = {"scope", "frameworks", "cg-copy", "cg-bridge", "cg-decode", "cg-windows", "cg-window-title", "unique", "ax-system", "ax-owner",
                   "ax-owner-read", "ax-app", "ax-title-decode", "complete"}
+        stages.update(("picker-frameworks", "picker-native-focus", "picker-windows", "picker-owner", "picker-bounds", "picker-unique", "picker-search", "picker-search-unique", "picker-foreground"))
         stages.update(f"ax-{kind}-{step}" for kind in ("focused", "window", "title") for step in ("copy", "read", "bridge"))
         if (not isinstance(probe, dict) or set(probe) != {"stage", "code", "failed", "trusted", "windows", "pickers", "offers"}
                 or type(probe["stage"]) is not str or probe["stage"] not in stages or type(probe["failed"]) is not bool
@@ -605,14 +632,30 @@ def app_executable(folder):
     return found[0]
 
 
-def wait_for(predicate, timeout, message, step=1.0):
+def wait_for(predicate, timeout, message, step=1.0, retry_observation=False):
     deadline = time.monotonic() + timeout
+    unavailable = None
     while time.monotonic() < deadline:
-        result = predicate()
-        if result:
+        try:
+            result = predicate()
+            unavailable = None
+        except PickerObservationFailure as error:
+            if not retry_observation or not error.retryable:
+                raise
+            unavailable, result = error, None
+        if result and time.monotonic() < deadline:
             return result
-        time.sleep(step)
-    raise AssertionError(message)
+        time.sleep(min(step, max(0, deadline - time.monotonic())))
+    if unavailable is not None:
+        raise unavailable
+    raise AssertionError(message() if callable(message) else message)
+
+
+def remaining(deadline, limit=10):
+    value = deadline - time.monotonic()
+    if value <= 0:
+        raise AssertionError("update qualification deadline expired")
+    return min(limit, value)
 
 
 def feed_version(url="https://github.com/ibiscite/ibis/releases/download/nightly/latest.json"):
@@ -655,8 +698,6 @@ class Linux:
     """The AppImage is copied into the test folder; the updater replaces that file."""
 
     def __init__(self, folder, args, library):
-        import pyatspi
-        self.atspi = pyatspi
         self.config = folder / "config"
         self.settings = seed_settings(self.config, library)
         self.appimage = folder / "Ibis Nightly.AppImage"
@@ -732,12 +773,12 @@ class Linux:
     def facts(self):
         return {"appimage_matches_new_package": self.updated(), "process_roles": linux_process_roles(self.instances())}
 
-    def picker_ready(self, pids):
+    def picker_ready(self, pids, *, timeout=10):
         # Native input focus resolves to the owning top-level via WM_CLASS;
         # AT-SPI focus alone is stale. The desktop must manage focus normally.
         self.picker_probe = probe = {"stage": "scope", "pids": len(pids), "windows": 0, "pickers": 0, "offers": 0,
                                      "visible_pickers": 0, "visible_offers": 0, "focus": "not-observed"}
-        deadline = time.monotonic() + 5
+        deadline = time.monotonic() + min(5, timeout)
         def query(*args, program="xdotool"):
             remaining = deadline - time.monotonic()
             if remaining <= 0:
@@ -821,17 +862,47 @@ class Linux:
         probe["stage"] = "complete"
         return pid, focus
 
-    def look(self, pids, press=None):
+    def look(self, pids, press=None, *, timeout=10):
+        # pyatspi caches children, but this harness does not run its event
+        # loop. Each bounded worker starts a fresh connection; a late GTK
+        # dialog cannot stay absent in the launch-time accessibility cache.
+        try:
+            result = subprocess.run([sys.executable, "-B", str(Path(__file__).resolve()), "--linux-look", press or "",
+                                     *map(str, sorted(pids))], capture_output=True, timeout=timeout)
+            answer = look_result(helper_stdout(result, "AT-SPI"))
+            pressed, _, probe = answer
+            counts = ("pids", "nodes", "windows", "offer_matches", "other_process_branches", "action_matches")
+            stages = {"observe", "offer-focus", "offer-window", "offer-action", "offer-window-owner", "offer-action-owner",
+                      "offer-descendant-owner", "application-owner", "invoke", "complete"}
+            if (not isinstance(probe, dict) or set(probe) != set(counts) | {"stage", "attempted", "failed"}
+                    or any(type(probe[key]) is not int or not 0 <= probe[key] <= 20001 for key in counts)
+                    or type(probe["attempted"]) is not bool or type(probe["failed"]) is not bool or probe["stage"] not in stages
+                    or probe["pids"] != len(pids)
+                    or (not probe["failed"] and (probe["stage"] != "complete" or probe["attempted"] != pressed))
+                    or (pressed and (not press or probe["offer_matches"] != 1 or probe["action_matches"] != 1
+                                     or any(probe[key] < 1 for key in ("pids", "windows", "nodes"))))):
+                raise ValueError("invalid AT-SPI helper facts")
+            if probe["failed"]:
+                raise LinuxActivationFailure(probe, probe["stage"])
+            return answer
+        except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
+            probe = helper_failure("linux", error)
+            raise LinuxActivationFailure(probe, probe["stage"]) from None
+
+    def look_local(self, pids, press=None, *, verify_focus):
         seen = []
         probe = {"pids": len(pids), "nodes": 0, "windows": 0, "offer_matches": 0,
-                 "other_process_branches": 0, "action_matches": 0, "attempted": False, "stage": "observe"}
+                 "other_process_branches": 0, "action_matches": 0, "attempted": False, "stage": "observe", "failed": False}
         window_roles = ("dialog", "alert", "frame", "window")
         def scan():
             visited, matches, offers = 0, [], []
             probe.update(nodes=0, windows=0, offer_matches=0, other_process_branches=0, action_matches=0, stage="observe")
-            for app in self.atspi.Registry.getDesktop(0):
+            desktop = self.atspi.Registry.getDesktop(0)
+            desktop.clear_cache()
+            for app in desktop:
                 if not app:
                     continue
+                app.clear_cache()
                 app_owner = app.get_process_id()
                 if app_owner not in pids:
                     continue
@@ -843,6 +914,7 @@ class Linux:
                     if visited > 20000:
                         raise AssertionError("update accessibility tree bound exceeded")
                     try:
+                        item.clear_cache()
                         role = item.getRoleName()
                         owner = item.get_process_id()
                         name = item.name
@@ -870,7 +942,7 @@ class Linux:
                         if press and offer is not None and role == "push button" and name == press:
                             matches.append((item, *offer))
                         if role in ("frame", "dialog", "alert", "push button", "label") and name and len(seen) < 200:
-                            seen.append(f"[{owner}] {role}: {name[:200]}")
+                            seen.append("named-item")
                         stack.extend((child, offer) for child in item if child)
                     except AssertionError:
                         raise
@@ -898,6 +970,11 @@ class Linux:
                 action = item.queryAction()
                 if action.nActions != 1:
                     raise LinuxActivationFailure(probe, "offer-action")
+                # The worker may have started after the parent's observation.
+                # Prove native focus again, then re-enumerate the held action.
+                probe["stage"] = "offer-focus"
+                if not verify_focus(owner):
+                    raise LinuxActivationFailure(probe, "offer-focus")
                 # Re-enumerate the app after resolving the pattern. The held
                 # objects must still be the unique window and its action; a
                 # late detach/reopen cannot lend the old action to a new scope.
@@ -946,7 +1023,7 @@ class MacOS:
         applications, expected = folder / "Applications", folder / "expected"
         for target, archive in ((applications, args.previous), (expected, args.expected)):
             target.mkdir()
-            subprocess.run(["tar", "-xzf", str(archive.resolve()), "-C", str(target)], check=True)
+            subprocess.run(["tar", "-xzf", str(archive.resolve()), "-C", str(target)], check=True, timeout=300)
         self.bundle = only_app(applications)
         executable, self.previous_version = bundle_executable(self.bundle)
         new_executable, self.expected_version = bundle_executable(only_app(expected))
@@ -956,7 +1033,7 @@ class MacOS:
         self.command = [str(executable)]
 
     def instances(self):
-        ps = subprocess.run(["ps", "-axww", "-o", "pid=,args="], capture_output=True, text=True, check=True)
+        ps = subprocess.run(["ps", "-axww", "-o", "pid=,args="], capture_output=True, text=True, check=True, timeout=10)
         return processes_under(ps.stdout, f"{self.bundle}/Contents/MacOS/")
 
     def installed(self):
@@ -974,11 +1051,11 @@ class MacOS:
         return {"previous_version": self.previous_version, "expected_version": self.expected_version,
                 "installed_version": self.installed()[1], "executable_matches_new_package": self.updated()}
 
-    def picker_ready(self, pids):
+    def picker_ready(self, pids, *, timeout=10):
         self.picker_probe = {"stage": "macos-helper", "code": None}
         try:
             result = subprocess.run(["osascript", "-l", "JavaScript", "-e", MACOS_PICKER, *map(str, pids)],
-                                    capture_output=True, timeout=10)
+                                    capture_output=True, timeout=timeout)
             stdout = helper_stdout(result, "macOS CG/AX picker")
             ready = picker_result(stdout, pids)
             self.picker_probe = json.loads(stdout).get("probe")
@@ -986,12 +1063,13 @@ class MacOS:
         except PickerObservationFailure as error:
             self.picker_probe = error.probe
             raise
-        except (OSError, ValueError, RuntimeError, subprocess.SubprocessError):
+        except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
+            self.picker_probe = helper_failure("macos", error)
             raise PickerObservationFailure(self.picker_probe) from None
 
-    def look(self, pids, press=None):
+    def look(self, pids, press=None, *, timeout=60):
         result = subprocess.run(["osascript", "-l", "JavaScript", "-e", MACOS_LOOK, press or "", *map(str, pids)],
-                                capture_output=True, timeout=60)
+                                capture_output=True, timeout=timeout)
         return look_result(helper_stdout(result, "System Events"))
 
     def close(self):
@@ -1037,7 +1115,7 @@ class Windows:
     def instances(self):
         out = powershell("ConvertTo-Json -Compress -InputObject @(Get-CimInstance Win32_Process | "
                          "Where-Object ExecutablePath -eq $env:IBIS_EXE | ForEach-Object { [int]$_.ProcessId })",
-                         IBIS_EXE=str(self.executable))
+                         timeout=10, IBIS_EXE=str(self.executable))
         return set(json.loads(out or "[]"))
 
     def installed_version(self):
@@ -1074,13 +1152,23 @@ class Windows:
             pass
         return {"unavailable": True}
 
-    def picker_ready(self, pids):
-        return picker_result(powershell(WINDOWS_PICKER, timeout=10, IBIS_PIDS=",".join(map(str, pids))), pids)
+    def picker_ready(self, pids, *, timeout=10):
+        try:
+            stdout = powershell(WINDOWS_PICKER, timeout=timeout, IBIS_PIDS=",".join(map(str, pids)))
+            ready = picker_result(stdout, pids)
+            self.picker_probe = json.loads(stdout).get("probe")
+            return ready
+        except PickerObservationFailure as error:
+            self.picker_probe = error.probe
+            raise
+        except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
+            self.picker_probe = helper_failure("windows", error)
+            raise PickerObservationFailure(self.picker_probe) from None
 
-    def look(self, pids, press=None):
+    def look(self, pids, press=None, *, timeout=120):
         probe = None
         try:
-            result = look_result(powershell(WINDOWS_LOOK, IBIS_PIDS=",".join(map(str, pids)), IBIS_PRESS=press or ""))
+            result = look_result(powershell(WINDOWS_LOOK, timeout=timeout, IBIS_PIDS=",".join(map(str, pids)), IBIS_PRESS=press or ""))
             pressed, _, probe = result
             if press:
                 flags = ("attempted", "blocked", "invoke_available", "enabled", "on_screen", "tree_complete")
@@ -1110,12 +1198,38 @@ class Windows:
         clean_settings(self.settings)
 
 
+class HelperProcessFailure(RuntimeError):
+    def __init__(self, name, result, stderr):
+        self.returncode = result.returncode
+        super().__init__(f"{name} helper failed: {stderr.strip()[-500:]}")
+
+
+def helper_failure(system, error):
+    # The old picker-helper/code None wrapper erased this distinction. Keep
+    # only fixed operation names and numeric status, never native stderr.
+    kind, code = "unavailable", None
+    if isinstance(error, subprocess.TimeoutExpired):
+        kind = "timeout"
+    elif isinstance(error, OSError):
+        kind = "launch"
+        number = getattr(error, "winerror", None)
+        if number is None:
+            number = error.errno
+        if type(number) is int and -2147483648 <= number <= 2147483647:
+            code = number
+    elif isinstance(error, HelperProcessFailure):
+        kind, code = "exit", error.returncode
+    elif isinstance(error, ValueError):
+        kind = "decode"
+    return {"stage": f"{system}-helper-{kind}", "code": code}
+
+
 def helper_stdout(result, name):
     """Decode in this thread: Windows text-pipe readers can lose decode errors."""
     stdout = result.stdout.decode("utf-8", errors="strict")
     stderr = result.stderr.decode("utf-8", errors="strict")
     if result.returncode:
-        raise RuntimeError(f"{name} helper failed: {stderr.strip()[-500:]}")
+        raise HelperProcessFailure(name, result, stderr)
     return stdout
 
 
@@ -1175,10 +1289,10 @@ def run(args):
                 report["steps"].append("previous nightly started")
                 launched_at = time.monotonic()
 
-                def observe_picker(pids, phase):
+                def observe_picker(pids, phase, deadline):
                     sample = {"phase": phase, "processes": len(pids), "ready": False, "focus": None}
                     try:
-                        ready = install.picker_ready(pids)
+                        ready = install.picker_ready(pids, timeout=remaining(deadline))
                         if ready is None:
                             return None
                         if not isinstance(ready, tuple) or len(ready) != 2:
@@ -1191,8 +1305,9 @@ def run(args):
                     except PickerObservationFailure as error:
                         sample["probe"] = error.probe
                         raise
-                    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError):
-                        raise PickerObservationFailure({"stage": "picker-helper", "code": None}) from None
+                    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
+                        sample["probe"] = helper_failure("picker", error)
+                        raise PickerObservationFailure(sample["probe"]) from None
                     finally:
                         probe = getattr(install, "picker_probe", None)
                         if isinstance(probe, dict) and "probe" not in sample:
@@ -1209,27 +1324,39 @@ def run(args):
                         else:
                             report["picker_observations_omitted"] = report.get("picker_observations_omitted", 0) + 1
 
-                wait_for(install.instances, PICKER_TIMEOUT, "the previous nightly did not start")
+                startup_deadline = time.monotonic() + PICKER_TIMEOUT
+                wait_for(install.instances, remaining(startup_deadline, PICKER_TIMEOUT), "the previous nightly did not start")
                 # Let first-launch registration settle, then issue Show exactly
                 # once through the same owned command. The child must exit;
                 # a second persistent instance is never a successful reopen.
-                time.sleep(5)
+                time.sleep(remaining(startup_deadline, 5))
                 initial = install.instances()
                 if not initial:
                     raise AssertionError("the previous nightly exited before its reopen")
                 # Observe without repairing focus or opening another window.
                 # This separates a missing startup picker from a reopen blur.
-                observe_picker(initial, "before-reopen")
+                # A valid absent answer is diagnostic. Only unavailable
+                # observations retry, within the original startup deadline.
+                def before_reopen():
+                    pids = initial & install.instances()
+                    if not pids:
+                        raise AssertionError("the previous nightly exited before its reopen")
+                    return True, observe_picker(pids, "before-reopen", startup_deadline)
+                wait_for(before_reopen, remaining(startup_deadline, PICKER_TIMEOUT),
+                         "the startup picker could not be observed", retry_observation=True)
                 reopen = subprocess.Popen(install.command, env=environment(os.environ, install.config),
                                           stdout=log, stderr=log, cwd=folder)
                 started.append(reopen)
                 if reopen.wait(timeout=15) != 0:
                     raise AssertionError("the previous nightly refused its single-instance reopen")
                 report["steps"].append("single-instance reopen exited successfully")
+                picker_deadline = time.monotonic() + PICKER_TIMEOUT
                 def picker_ready():
                     pids = initial & install.instances()
-                    return observe_picker(pids, "after-reopen")
-                picker, focus = wait_for(picker_ready, PICKER_TIMEOUT, "the previous nightly's owned picker was not visible with picker or update-offer focus")
+                    return observe_picker(pids, "after-reopen", picker_deadline)
+                picker, focus = wait_for(picker_ready, remaining(picker_deadline, PICKER_TIMEOUT),
+                                         "the previous nightly's owned picker was not visible with picker or update-offer focus",
+                                         retry_observation=True)
                 report["reopen_focus"] = focus
                 report["steps"].append("previous nightly reopened once with its owned picker visible and "
                                        + ("picker focused" if focus == "picker" else "owned update offer focused"))
@@ -1237,6 +1364,8 @@ def run(args):
                 # The processes running just before the press, so helper
                 # processes the old version starts later never count as new.
                 seen["old"] = set()
+                seen["native_offer"] = False
+                offer_deadline = time.monotonic() + OFFER_TIMEOUT
                 def offered():
                     seen["old"] = install.instances()
                     if picker not in seen["old"]:
@@ -1244,15 +1373,20 @@ def run(args):
                     # A late offer can move focus after reopen was proved.
                     # Accept its owned modal focus only while the picker is
                     # still visible. Never reopen or activate to repair it.
-                    if observe_picker({picker}, "before-activation") is None:
+                    ready = observe_picker({picker}, "before-activation", offer_deadline)
+                    if ready is None:
                         return False
+                    seen["native_offer"] |= ready[1] == "offer"
                     try:
-                        pressed, _, seen["probe"] = install.look({picker}, BUTTON)
+                        pressed, _, seen["probe"] = install.look({picker}, BUTTON, timeout=remaining(offer_deadline))
                         return pressed
                     except (RuntimeError, ValueError, subprocess.TimeoutExpired) as problem:
                         seen["helper"] = type(problem).__name__
                         raise AssertionError("update activation helper failed or its outcome is unknown") from None
-                wait_for(offered, OFFER_TIMEOUT, "the previous nightly never offered the update", step=2)
+                wait_for(offered, remaining(offer_deadline, OFFER_TIMEOUT),
+                         lambda: "the visible native update offer never exposed a unique owned accessibility action"
+                         if seen["native_offer"] else "the previous nightly never offered the update",
+                         step=2, retry_observation=True)
                 old = seen["old"]
                 report["steps"].append("update offered and Install and Restart pressed")
 
@@ -1516,8 +1650,9 @@ const results = JSON.parse(process.argv[1]).map(scenario => {
 });
 process.stdout.write(JSON.stringify(results));
 '''
+        # A cold Node start on Windows runners can legitimately exceed five seconds.
         result = subprocess.run([shutil.which("node"), "-e", model + MACOS_PICKER + driver, json.dumps(scenarios)],
-                                capture_output=True, timeout=5)
+                                capture_output=True, timeout=60)
         self.assertEqual(result.returncode, 0, result.stderr.decode("utf-8", errors="replace"))
         self.assertNotIn(b"synthetic-private-sentinel", result.stdout + result.stderr)
         results = json.loads(result.stdout)
@@ -1525,7 +1660,7 @@ process.stdout.write(JSON.stringify(results));
         errors = {"duplicate": ("unique", None),
                   "unknown": ("ax-focused-copy", -1),
                   "owner-error": ("ax-owner", -1),
-                  "cg-unknown": ("cg-windows", None),
+                  "cg-unknown": ("cg-window-title", None),
                   "cg-unavailable": ("cg-bridge", None),
                   "focused-wrong-type": ("ax-focused-bridge", None),
                   "window-wrong-type": ("ax-window-bridge", None),
@@ -1692,24 +1827,51 @@ process.stdout.write(JSON.stringify(results));
 
     def update_consumer(self, scenario, system="Linux"):
         events = []
-        state = {"reopened": False, "pressed": False, "offer": False}
+        state = {"reopened": False, "pressed": False, "offer": False, "picker_proved": False}
+        clock = {"now": 0.0}
+        observations = {}
         with tempfile.TemporaryDirectory() as temporary:
             def installed(folder, _args, library):
                 install = MagicMock(command=["synthetic-owned-install"], config=None)
                 install.settings = seed_settings(folder, library)
-                install.instances.side_effect = lambda: {43} if state["pressed"] or (scenario == "replacement" and state["reopened"]) else {42}
-                def picker(pids):
+                def processes():
+                    if state["pressed"]:
+                        if scenario == "not-restarted":
+                            return {42}
+                        if scenario == "exited-after-restart" and clock["now"] >= state["pressed_at"] + 5:
+                            return set()
+                        return {43}
+                    return {43} if scenario == "replacement" and state["reopened"] else {42}
+                install.instances.side_effect = processes
+                def picker(pids, **_kwargs):
                     events.append(("picker", set(pids)))
+                    phase = "initial" if not state["reopened"] else "offer" if state["picker_proved"] else "reopen"
+                    observations[phase] = observations.get(phase, 0) + 1
+                    if scenario in ("transient-" + phase, "persistent-" + phase) and (scenario.startswith("persistent-") or observations[phase] == 1):
+                        raise PickerObservationFailure({"stage": "cg-window-title", "code": None})
+                    if scenario == "lost-owner-after-observation" and phase == "offer":
+                        install.instances.return_value = set()
+                        install.instances.side_effect = None
+                        raise PickerObservationFailure({"stage": "cg-window-title", "code": None})
                     if scenario == "hidden-by-offer" or (scenario == "late-hidden" and state["offer"]):
                         return None
                     if scenario == "late-offer" and state["offer"]:
                         return 42, "offer"
-                    if state["reopened"] and scenario == "immediate-offer":
+                    if scenario == "native-offer-without-action" and state["reopened"]:
+                        state["picker_proved"] = True
                         return 42, "offer"
-                    return (42, "picker") if state["reopened"] and scenario != "unfocused" else None
+                    if state["reopened"] and scenario == "immediate-offer":
+                        state["picker_proved"] = True
+                        return 42, "offer"
+                    if state["reopened"] and scenario != "unfocused":
+                        state["picker_proved"] = True
+                        return 42, "picker"
+                    return None
                 install.picker_ready.side_effect = picker
-                def look(pids, press=None):
+                def look(pids, press=None, **_kwargs):
                     if press:
+                        if scenario == "native-offer-without-action":
+                            return False, [], None
                         if scenario in ("late-offer", "late-hidden") and not state["offer"]:
                             state["offer"] = True
                             events.append(("wait-offer", set(pids)))
@@ -1721,9 +1883,10 @@ process.stdout.write(JSON.stringify(results));
                         if scenario == "helper":
                             raise RuntimeError("synthetic uncertain helper")
                         state["pressed"] = True
+                        state["pressed_at"] = clock["now"]
                     return bool(press), ["synthetic-private-sentinel"] if not press else [], None
                 install.look.side_effect = look
-                install.updated.side_effect = lambda: state["pressed"]
+                install.updated.side_effect = lambda: state["pressed"] and scenario != "not-replaced"
                 install.facts.return_value = {}
                 return install
             def launch(command, **_kwargs):
@@ -1741,18 +1904,47 @@ process.stdout.write(JSON.stringify(results));
                     return 1 if scenario == "refused" else 0
                 child.wait.side_effect = waited
                 return child
-            def bounded(predicate, _timeout, message, **_kwargs):
-                for _ in range(3):
-                    value = predicate()
-                    if value:
-                        return value
-                raise AssertionError(message)
             with patch.dict(SYSTEMS, {system: installed}), patch("platform.system", return_value=system), \
-                    patch("subprocess.Popen", side_effect=launch), patch(__name__ + ".wait_for", side_effect=bounded), \
-                    patch("time.sleep"), patch("os.kill"), patch("builtins.print"), patch(__name__ + ".feed_version", return_value="synthetic"):
+                    patch("subprocess.Popen", side_effect=launch), patch("time.monotonic", side_effect=lambda: clock["now"]), \
+                    patch("time.sleep", side_effect=lambda step: clock.update(now=clock["now"] + step)), \
+                    patch("os.kill"), patch("builtins.print"), patch(__name__ + ".feed_version", return_value="synthetic"):
                 result = run(argparse.Namespace(output=Path(temporary)))
             report = json.loads((Path(temporary) / "update-e2e.json").read_text(encoding="utf-8"))
         return result, report, events
+
+    def test_transient_observations_retry_without_repeating_reopen_or_activation(self):
+        for system in ("Darwin", "Windows", "Linux"):
+            for phase in ("initial", "reopen", "offer"):
+                with self.subTest(system=system, phase=phase):
+                    result, report, events = self.update_consumer("transient-" + phase, system)
+                    self.assertEqual(result, 0, report)
+                    self.assertEqual(sum(event == "launch" for event, _ in events), 2)
+                    self.assertEqual([pids for event, pids in events if event == "press"], [{42}])
+                    self.assertEqual(report["settings_preserved"], {"library": True, "shortcut": True})
+
+    def test_persistent_observation_failure_keeps_fixed_cause_and_never_activates(self):
+        for phase in ("initial", "reopen", "offer"):
+            with self.subTest(phase=phase):
+                result, report, events = self.update_consumer("persistent-" + phase)
+                self.assertEqual(result, 1, report)
+                self.assertIn("native picker observation unavailable", report["error"])
+                self.assertEqual(report["last_picker_probe"], {"stage": "cg-window-title", "code": None})
+                self.assertFalse(any(event == "press" for event, _ in events))
+                self.assertEqual(sum(event == "launch" for event, _ in events), 1 if phase == "initial" else 2)
+                self.assertGreater(sum(sample["samples"] for sample in report["picker_observations"]), 1)
+
+    def test_observation_retry_cannot_borrow_an_owner_that_exited(self):
+        result, report, events = self.update_consumer("lost-owner-after-observation")
+        self.assertEqual(result, 1, report)
+        self.assertIn("exited before offering", report["error"])
+        self.assertFalse(any(event == "press" for event, _ in events))
+
+    def test_visible_native_offer_without_an_accessible_action_is_not_reported_as_never_offered(self):
+        result, report, events = self.update_consumer("native-offer-without-action")
+        self.assertEqual(result, 1, report)
+        self.assertIn("native update offer", report["error"])
+        self.assertNotIn("never offered", report["error"])
+        self.assertFalse(any(event == "press" for event, _ in events))
 
     def test_update_reopens_exact_install_once_before_single_owned_activation(self):
         result, report, events = self.update_consumer("success")
@@ -1803,6 +1995,17 @@ process.stdout.write(JSON.stringify(results));
                 self.assertEqual(sum(event == "launch" for event, _ in events), 2)
                 self.assertEqual(sum(event == "press" for event, _ in events), 1)
 
+    def test_update_still_requires_replacement_restart_and_the_fresh_process_to_stay_up(self):
+        for scenario, message in (("not-replaced", "not replaced"), ("not-restarted", "did not start"),
+                                  ("exited-after-restart", "exited right after")):
+            with self.subTest(scenario=scenario):
+                result, report, events = self.update_consumer(scenario)
+                self.assertEqual(result, 1, report)
+                self.assertIn(message, report["error"])
+                self.assertEqual(sum(event == "launch" for event, _ in events), 2)
+                self.assertEqual([pids for event, pids in events if event == "press"], [{42}])
+                self.assertNotIn("settings_preserved", report)
+
     class Accessible:
         def __init__(self, pid, role, name, children=()):
             self.pid, self.role, self.name, self.children = pid, role, name, children
@@ -1816,6 +2019,171 @@ process.stdout.write(JSON.stringify(results));
             return self.role
         def queryAction(self):
             return self.action
+        def clear_cache(self):
+            pass
+
+    def test_linux_late_offer_invalidates_cached_accessible_children_before_both_scans(self):
+        action = self.Accessible(42, "push button", BUTTON)
+        offer = self.Accessible(42, "dialog", "An update is available", [action])
+        app = self.Accessible(42, "application", "Ibis")
+        desktop = self.Accessible(0, "desktop", "", [app])
+        visible = False
+        reads = []
+        def fresh_app():
+            reads.append("app")
+            app.children = [offer] if visible else []
+        app.clear_cache = fresh_app
+        linux = Linux.__new__(Linux)
+        linux.atspi = MagicMock()
+        linux.atspi.Registry.getDesktop.return_value = desktop
+        self.assertFalse(linux.look_local({42}, BUTTON, verify_focus=lambda _owner: True)[0])
+        visible = True
+        self.assertTrue(linux.look_local({42}, BUTTON, verify_focus=lambda _owner: True)[0])
+        self.assertGreaterEqual(len(reads), 3)
+        action.action.doAction.assert_called_once_with(0)
+
+    def test_linux_accessibility_helpers_are_fresh_and_bounded_and_never_retry_a_press(self):
+        linux = Linux.__new__(Linux)
+        payload = json.dumps({"pressed": False, "seen": [], "probe": {
+            "pids": 1, "nodes": 0, "windows": 0, "offer_matches": 0, "other_process_branches": 0,
+            "action_matches": 0, "attempted": False, "stage": "complete", "failed": False}}).encode()
+        with patch("subprocess.run", return_value=subprocess.CompletedProcess([], 0, stdout=payload, stderr=b"")) as helper:
+            for _ in range(2):
+                self.assertFalse(linux.look({42}, BUTTON, timeout=3.25)[0])
+            self.assertEqual(helper.call_count, 2)
+            for call in helper.call_args_list:
+                self.assertEqual(call.kwargs["timeout"], 3.25)
+                self.assertEqual(call.args[0][-3:], ["--linux-look", BUTTON, "42"])
+        with patch("subprocess.run", side_effect=subprocess.TimeoutExpired("synthetic-private-sentinel", 3.25)) as helper:
+            with self.assertRaisesRegex(LinuxActivationFailure, "linux-helper-timeout") as failure:
+                linux.look({42}, BUTTON, timeout=3.25)
+            self.assertEqual(helper.call_count, 1)
+            self.assertNotIn("synthetic-private-sentinel", str(failure.exception))
+
+    def test_hung_linux_accessibility_process_is_terminated_without_a_second_invocation(self):
+        run_child = subprocess.run
+        def hung(_command, **kwargs):
+            return run_child([sys.executable, "-B", "-c", "import time; time.sleep(10)"], **kwargs)
+        with patch("subprocess.run", side_effect=hung) as helper:
+            with self.assertRaisesRegex(LinuxActivationFailure, "linux-helper-timeout"):
+                Linux.__new__(Linux).look({42}, BUTTON, timeout=.15)
+            helper.assert_called_once()
+
+    def test_linux_worker_rechecks_native_focus_after_helper_startup_before_invoking(self):
+        action = self.Accessible(42, "push button", BUTTON)
+        offer = self.Accessible(42, "dialog", "An update is available", [action])
+        native = Linux.__new__(Linux)
+        native.atspi = MagicMock()
+        native.atspi.Registry.getDesktop.return_value = self.Accessible(0, "desktop", "", [
+            self.Accessible(42, "application", "Ibis", [offer])])
+        with self.assertRaisesRegex(LinuxActivationFailure, "offer-focus"):
+            native.look_local({42}, BUTTON, verify_focus=lambda _owner: False)
+        action.action.doAction.assert_not_called()
+
+    def test_observation_retry_uses_one_deadline_and_rejects_late_success(self):
+        clock = {"now": 0.0}
+        attempts = []
+        def failed():
+            attempts.append(clock["now"])
+            clock["now"] += .6
+            raise PickerObservationFailure({"stage": "cg-window-title", "code": None})
+        with patch("time.monotonic", side_effect=lambda: clock["now"]), \
+                patch("time.sleep", side_effect=lambda step: clock.update(now=clock["now"] + step)):
+            with self.assertRaisesRegex(PickerObservationFailure, "cg-window-title"):
+                wait_for(failed, 3, "synthetic deadline", step=.25, retry_observation=True)
+            self.assertLessEqual(clock["now"], 3.6)
+            self.assertEqual(len(attempts), 4)
+            clock["now"] = 0
+            def late():
+                clock["now"] = 4
+                return 42, "picker"
+            with self.assertRaisesRegex(AssertionError, "synthetic deadline"):
+                wait_for(late, 3, "synthetic deadline", retry_observation=True)
+
+    def test_observation_retry_never_retries_ambiguous_windows_or_uses_old_failure_after_valid_absence(self):
+        for stage in ("unique", "picker-unique", "picker-search-unique"):
+            predicate = MagicMock(side_effect=PickerObservationFailure({"stage": stage, "code": None}))
+            with self.subTest(stage=stage), self.assertRaises(PickerObservationFailure):
+                wait_for(predicate, 1, "synthetic deadline", retry_observation=True)
+            predicate.assert_called_once_with()
+        clock = {"now": 0}
+        predicate = MagicMock(side_effect=[PickerObservationFailure({"stage": "cg-window-title", "code": None}), None])
+        with patch("time.monotonic", side_effect=lambda: clock["now"]), \
+                patch("time.sleep", side_effect=lambda step: clock.update(now=clock["now"] + step)):
+            with self.assertRaisesRegex(AssertionError, "synthetic absence"):
+                wait_for(predicate, 2, "synthetic absence", retry_observation=True)
+
+    def test_windows_scope_assertions_cannot_be_replaced_by_a_later_clean_observation(self):
+        for stage in ("picker-owner", "picker-bounds", "picker-windows", "picker-search"):
+            failed = json.dumps({"pid": None, "focus": None, "probe": {
+                "stage": stage, "code": -1, "failed": True, "trusted": None,
+                "windows": 0, "pickers": 0, "offers": 0}})
+            clean = '{"pid":42,"focus":"picker"}'
+            clock = {"now": 0}
+            with self.subTest(stage=stage), patch(__name__ + ".powershell", side_effect=[failed, clean]) as helper, \
+                    patch("time.monotonic", side_effect=lambda: clock["now"]), \
+                    patch("time.sleep", side_effect=lambda step: clock.update(now=clock["now"] + step)):
+                observe = lambda: Windows.__new__(Windows).picker_ready({42})
+                if stage in ("picker-owner", "picker-bounds"):
+                    with self.assertRaises(PickerObservationFailure) as failure:
+                        wait_for(observe, 3, "synthetic deadline", retry_observation=True)
+                    self.assertFalse(failure.exception.retryable)
+                    self.assertEqual(failure.exception.probe["stage"], stage)
+                    helper.assert_called_once()
+                    self.assertEqual(clock["now"], 0)
+                else:
+                    self.assertEqual(wait_for(observe, 3, "synthetic deadline", retry_observation=True), (42, "picker"))
+                    self.assertEqual(helper.call_count, 2)
+
+    def test_linux_helper_failure_keeps_sanitized_stage_and_code_without_retry(self):
+        outcomes = ((subprocess.CompletedProcess([], 23, stdout=b"", stderr=b"synthetic-private-sentinel"), "exit", 23),
+                    (FileNotFoundError(2, "synthetic-private-sentinel"), "launch", 2),
+                    (subprocess.TimeoutExpired("synthetic-private-sentinel", 3), "timeout", None))
+        for outcome, kind, code in outcomes:
+            with self.subTest(kind=kind), patch("subprocess.run") as helper:
+                if isinstance(outcome, Exception):
+                    helper.side_effect = outcome
+                else:
+                    helper.return_value = outcome
+                with self.assertRaises(LinuxActivationFailure) as failure:
+                    Linux.__new__(Linux).look({42}, BUTTON, timeout=3)
+                self.assertEqual(failure.exception.probe, {"stage": f"linux-helper-{kind}", "code": code})
+                self.assertNotIn("synthetic-private-sentinel", str(failure.exception) + json.dumps(failure.exception.probe))
+                helper.assert_called_once()
+
+    def test_linux_helper_rejects_partial_unknown_or_uncertain_facts_without_retrying(self):
+        good = {"pids": 1, "nodes": 5, "windows": 1, "offer_matches": 1, "other_process_branches": 0,
+                "action_matches": 1, "attempted": True, "stage": "complete", "failed": False}
+        for change in ({"attempted": False}, {"offer_matches": 2}, {"action_matches": 0}, {"pids": 2},
+                       {"windows": 0}, {"nodes": 0}, {"stage": "invoke"},
+                       {"windows": "synthetic-private-sentinel"}, {"failed": True, "stage": "invoke"},
+                       {"private": "synthetic-private-sentinel"}):
+            payload = json.dumps({"pressed": True, "seen": [], "probe": dict(good, **change)}).encode()
+            with self.subTest(change=change), patch("subprocess.run", return_value=subprocess.CompletedProcess([], 0, stdout=payload, stderr=b"")) as helper:
+                with self.assertRaises(LinuxActivationFailure) as failure:
+                    Linux.__new__(Linux).look({42}, BUTTON)
+                helper.assert_called_once()
+                self.assertNotIn("synthetic-private-sentinel", str(failure.exception))
+
+    def test_windows_picker_failure_preserves_fixed_helper_operation_and_exit_code(self):
+        windows = Windows.__new__(Windows)
+        outcomes = ((FileNotFoundError("synthetic-private-sentinel"), "windows-helper-launch", None),
+                    (FileNotFoundError(2, "synthetic-private-sentinel"), "windows-helper-launch", 2),
+                    (PermissionError(13, "synthetic-private-sentinel"), "windows-helper-launch", 13),
+                    (subprocess.TimeoutExpired("synthetic-private-sentinel", 10), "windows-helper-timeout", None),
+                    (subprocess.CompletedProcess([], 23, stdout=b"", stderr=b"synthetic-private-sentinel"), "windows-helper-exit", 23),
+                    (subprocess.CompletedProcess([], 0, stdout=b"synthetic-private-sentinel", stderr=b""), "windows-helper-decode", None))
+        for outcome, stage, code in outcomes:
+            with self.subTest(stage=stage), patch("subprocess.run") as helper:
+                if isinstance(outcome, Exception):
+                    helper.side_effect = outcome
+                else:
+                    helper.return_value = outcome
+                with self.assertRaises(PickerObservationFailure) as failure:
+                    windows.picker_ready({42})
+                self.assertEqual(failure.exception.probe, {"stage": stage, "code": code})
+                self.assertNotIn("synthetic-private-sentinel", str(failure.exception))
+                self.assertEqual(helper.call_count, 1)
 
     def test_linux_renderer_descendants_do_not_hide_a_late_native_offer(self):
         renderer_button = self.Accessible(43, "push button", "Shortcuts")
@@ -1823,12 +2191,12 @@ process.stdout.write(JSON.stringify(results));
         app = self.Accessible(42, "application", "Ibis", [picker])
         linux = Linux.__new__(Linux)
         linux.atspi = MagicMock()
-        linux.atspi.Registry.getDesktop.return_value = [app]
-        self.assertFalse(linux.look({42}, BUTTON)[0])
+        linux.atspi.Registry.getDesktop.return_value = self.Accessible(0, "desktop", "", [app])
+        self.assertFalse(linux.look_local({42}, BUTTON, verify_focus=lambda _owner: True)[0])
         renderer_button.action.doAction.assert_not_called()
         action = self.Accessible(42, "push button", BUTTON)
         app.children.append(self.Accessible(42, "dialog", "An update is available", [action]))
-        self.assertTrue(linux.look({42}, BUTTON)[0])
+        self.assertTrue(linux.look_local({42}, BUTTON, verify_focus=lambda _owner: True)[0])
         action.action.doAction.assert_called_once_with(0)
         renderer_button.action.doAction.assert_not_called()
 
@@ -1839,8 +2207,8 @@ process.stdout.write(JSON.stringify(results));
         app = self.Accessible(42, "application", "Ibis", [offer])
         linux = Linux.__new__(Linux)
         linux.atspi = MagicMock()
-        linux.atspi.Registry.getDesktop.return_value = [app]
-        self.assertFalse(linux.look({42}, BUTTON)[0])
+        linux.atspi.Registry.getDesktop.return_value = self.Accessible(0, "desktop", "", [app])
+        self.assertFalse(linux.look_local({42}, BUTTON, verify_focus=lambda _owner: True)[0])
         action.action.doAction.assert_not_called()
 
     def test_linux_duplicate_offer_windows_fail_even_with_only_one_action(self):
@@ -1849,9 +2217,9 @@ process.stdout.write(JSON.stringify(results));
                   for children in ([action], [])]
         linux = Linux.__new__(Linux)
         linux.atspi = MagicMock()
-        linux.atspi.Registry.getDesktop.return_value = [self.Accessible(42, "application", "Ibis", offers)]
+        linux.atspi.Registry.getDesktop.return_value = self.Accessible(0, "desktop", "", [self.Accessible(42, "application", "Ibis", offers)])
         with self.assertRaisesRegex(AssertionError, "offer.*ambiguous"):
-            linux.look({42}, BUTTON)
+            linux.look_local({42}, BUTTON, verify_focus=lambda _owner: True)
         action.action.doAction.assert_not_called()
 
     def test_linux_late_offer_window_owner_change_never_reaches_activation(self):
@@ -1865,9 +2233,9 @@ process.stdout.write(JSON.stringify(results));
         offer.get_process_id = owner
         linux = Linux.__new__(Linux)
         linux.atspi = MagicMock()
-        linux.atspi.Registry.getDesktop.return_value = [self.Accessible(42, "application", "Ibis", [offer])]
+        linux.atspi.Registry.getDesktop.return_value = self.Accessible(0, "desktop", "", [self.Accessible(42, "application", "Ibis", [offer])])
         with self.assertRaisesRegex(AssertionError, "offer-window"):
-            linux.look({42}, BUTTON)
+            linux.look_local({42}, BUTTON, verify_focus=lambda _owner: True)
         action.action.doAction.assert_not_called()
 
     def test_linux_appimage_helper_cannot_supply_a_native_offer_action(self):
@@ -1876,9 +2244,9 @@ process.stdout.write(JSON.stringify(results));
             offer = self.Accessible(window_owner, "dialog", "An update is available", [action])
             linux = Linux.__new__(Linux)
             linux.atspi = MagicMock()
-            linux.atspi.Registry.getDesktop.return_value = [self.Accessible(42, "application", "Ibis", [offer])]
+            linux.atspi.Registry.getDesktop.return_value = self.Accessible(0, "desktop", "", [self.Accessible(42, "application", "Ibis", [offer])])
             with self.subTest(window_owner=window_owner), self.assertRaisesRegex(AssertionError, "offer-(action|window)-owner"):
-                linux.look({42, 43}, BUTTON)
+                linux.look_local({42, 43}, BUTTON, verify_focus=lambda _owner: True)
             action.action.doAction.assert_not_called()
 
     def test_linux_late_detach_or_reopen_cannot_consume_the_old_window_action(self):
@@ -1898,9 +2266,9 @@ process.stdout.write(JSON.stringify(results));
             action.queryAction = moved
             linux = Linux.__new__(Linux)
             linux.atspi = MagicMock()
-            linux.atspi.Registry.getDesktop.return_value = [app]
+            linux.atspi.Registry.getDesktop.return_value = self.Accessible(0, "desktop", "", [app])
             with self.subTest(scenario=scenario), self.assertRaisesRegex(AssertionError, "offer-(window|action)"):
-                linux.look({42}, BUTTON)
+                linux.look_local({42}, BUTTON, verify_focus=lambda _owner: True)
             action.action.doAction.assert_not_called()
             new_action.action.doAction.assert_not_called()
 
@@ -1918,12 +2286,12 @@ process.stdout.write(JSON.stringify(results));
                 owned = self.Accessible(42, "application", "Ibis", [] if scenario == "foreign" else [offer])
                 linux = Linux.__new__(Linux)
                 linux.atspi = MagicMock()
-                linux.atspi.Registry.getDesktop.return_value = [foreign, owned]
+                linux.atspi.Registry.getDesktop.return_value = self.Accessible(0, "desktop", "", [foreign, owned])
                 if scenario in ("duplicate", "wrong-owner", "uncertain"):
                     with self.assertRaises(AssertionError):
-                        linux.look({42}, BUTTON)
+                        linux.look_local({42}, BUTTON, verify_focus=lambda _owner: True)
                 else:
-                    self.assertEqual(linux.look({42}, BUTTON)[0], scenario == "success")
+                    self.assertEqual(linux.look_local({42}, BUTTON, verify_focus=lambda _owner: True)[0], scenario == "success")
                 foreign_button.action.doAction.assert_not_called()
                 self.assertEqual(button.action.doAction.call_count, int(scenario in ("success", "uncertain")))
 
@@ -2020,7 +2388,7 @@ namespace IbisUpdateContract {
   private static int NextId=0; private int Identity=++NextId;
   public string Name="", Type="Pane", AutomationId=""; public int ProcessId=42; public bool IsEnabled=true, IsOffscreen=false;
   public int NativeWindowHandle=101;
-  public bool HasKeyboardFocus=true; public bool Supported=true, ThrowOnRead=false, Fail=false, ChangeOwnerOnActionScan=false; public int Invocations=0;
+  public bool HasKeyboardFocus=true; public bool Supported=true, ThrowOnRead=false, Fail=false, ChangeOwnerOnActionScan=false, FailFindAll=false; public int Invocations=0;
   private Node[] Children=new Node[0]; public Node Parent;
   public Node ChangeWindow; public string PatternMutation="";
   public Node[] Nodes {get {return Children;} set {Children=value; foreach(var node in value) node.Parent=this;}}
@@ -2028,6 +2396,7 @@ namespace IbisUpdateContract {
   public ControlType ControlType { get {return new IbisUpdateContract.ControlType(Type);} }
   public int[] GetRuntimeId() {return new int[]{Identity};}
   public Node[] FindAll(TreeScope scope,object condition) {
+   if(FailFindAll) throw new Exception("synthetic-private-sentinel");
    if(ChangeOwnerOnActionScan && condition==Condition.TrueCondition) {
     ProcessId=99; foreach(var node in Nodes) node.ProcessId=99;
    }
@@ -2127,6 +2496,17 @@ if ($Scenario.StartsWith('picker-')) {
   'picker-title' {$window.Name='Ibis suffix'}
   'picker-duplicate' {[IbisUpdateContract.AutomationElement]::RootElement.Nodes=@($window,$window)}
   'picker-foreign' {$window.ProcessId=99}
+  'picker-root-bound' {[IbisUpdateContract.AutomationElement]::RootElement.Nodes=@($window)*21}
+  'picker-nested-bound' {
+   $aux=[IbisUpdateContract.Node]::new(); $aux.Name='Other'; $aux.Type='Window'
+   $window.Nodes=@($aux)*21
+  }
+  'picker-total-bound' {
+   $aux=[IbisUpdateContract.Node]::new(); $aux.Name='Other'; $aux.Type='Window'
+   $window.Nodes=@($aux)*10
+   [IbisUpdateContract.AutomationElement]::RootElement.Nodes=@($window,$window)
+  }
+  'picker-native-error' {[IbisUpdateContract.AutomationElement]::RootElement.FailFindAll=$true}
   'picker-unfocused' {[IbisUpdateContract.Focus]::Handle=102}
   'picker-unknown' {[IbisUpdateContract.Focus]::Handle=0}
   'picker-no-handle' {$window.NativeWindowHandle=0}
@@ -2167,6 +2547,7 @@ if ($Scenario.StartsWith('picker-')) {
  }
 }
 $env:IBIS_PIDS='42'; $env:IBIS_PRESS='Install and Restart'
+if ($Scenario -ceq 'picker-process-bound') { $env:IBIS_PIDS=(1..21) -join ',' }
 function Contract-Result($pressed,$how) {
  $expected=$Scenario -in @('pane','button','standard','standard-localized','standard-rtl','nested')
  if($pressed -ne $expected -or $item.Invocations -ne [int]($expected -or $Scenario -in @('uncertain','standard-uncertain'))) {throw 'Unsafe or missing activation'}
@@ -2216,15 +2597,38 @@ function Contract-Result($pressed,$how) {
             for scenario in ("success", "hidden", "title", "duplicate", "foreign", "unfocused", "unknown", "no-handle", "empty",
                              "offer", "offer-duplicate", "offer-foreign", "offer-hidden", "edit", "loading", "search-title",
                              "search-role", "search-disabled", "search-hidden", "search-unfocused", "search-duplicate", "search-bound",
-                             "nested-offer", "nested-offer-foreign", "nested-offer-duplicate"):
+                             "nested-offer", "nested-offer-foreign", "nested-offer-duplicate", "process-bound", "root-bound",
+                             "nested-bound", "total-bound", "native-error"):
                 with self.subTest(picker=scenario):
                     result = subprocess.run([shutil.which("pwsh"), "-NoProfile", "-File", str(script), "picker-" + scenario],
                                             capture_output=True, timeout=30)
+                    self.assertEqual(result.returncode, 0, result.stderr.decode("utf-8", errors="replace"))
                     if scenario in ("duplicate", "foreign", "offer-duplicate", "offer-foreign", "search-duplicate", "search-bound",
-                                    "nested-offer-foreign", "nested-offer-duplicate"):
-                        self.assertNotEqual(result.returncode, 0)
+                                    "nested-offer-foreign", "nested-offer-duplicate", "process-bound", "root-bound",
+                                    "nested-bound", "total-bound", "native-error"):
+                        with self.assertRaises(PickerObservationFailure) as failure:
+                            picker_result(result.stdout, {42})
+                        transient = scenario == "native-error"
+                        self.assertEqual(failure.exception.retryable, transient)
+                        if scenario in ("foreign", "offer-foreign", "nested-offer-foreign"):
+                            self.assertEqual(failure.exception.probe["stage"], "picker-owner")
+                        if scenario.endswith("bound"):
+                            self.assertEqual(failure.exception.probe["stage"], "picker-bounds")
+                        # The offending window can disappear on the next poll.
+                        # Only a native read error may consume that clean answer.
+                        clock = {"now": 0}
+                        with patch(__name__ + ".powershell", side_effect=[result.stdout, '{"pid":42,"focus":"picker"}']) as helper, \
+                                patch("time.monotonic", side_effect=lambda: clock["now"]), \
+                                patch("time.sleep", side_effect=lambda step: clock.update(now=clock["now"] + step)):
+                            observe = lambda: Windows.__new__(Windows).picker_ready({42})
+                            if transient:
+                                self.assertEqual(wait_for(observe, 3, "synthetic deadline", retry_observation=True), (42, "picker"))
+                                self.assertEqual(helper.call_count, 2)
+                            else:
+                                with self.assertRaises(PickerObservationFailure):
+                                    wait_for(observe, 3, "synthetic deadline", retry_observation=True)
+                                helper.assert_called_once()
                     else:
-                        self.assertEqual(result.returncode, 0, result.stderr.decode("utf-8", errors="replace"))
                         expected = (42, "offer") if scenario in ("offer", "nested-offer") else (42, "picker") if scenario in ("success", "edit") else None
                         self.assertEqual(picker_result(result.stdout, {42}), expected)
 
@@ -2571,6 +2975,29 @@ function Contract-Result($pressed,$how) {
 def main():
     if sys.argv[1:] == ["--self-test"]:
         unittest.main(argv=[sys.argv[0]], verbosity=2)
+    if sys.argv[1:2] == ["--linux-look"]:
+        # Private subprocess boundary: a hung D-Bus call must not outlive the
+        # parent's offer deadline. Never serialize exception or window text.
+        values = sys.argv[3:]
+        if (platform.system() != "Linux" or len(sys.argv) < 3 or sys.argv[2] not in ("", BUTTON)
+                or not 1 <= len(values) <= 20 or any(not re.fullmatch(r"[1-9][0-9]{0,9}", value) for value in values)):
+            raise SystemExit(2)
+        native = Linux.__new__(Linux)
+        native.atspi = importlib.import_module("pyatspi")
+        pids = set(map(int, values))
+        def verify_focus(owner):
+            return native.picker_ready({owner}, timeout=5) in ((owner, "picker"), (owner, "offer"))
+        try:
+            pressed, seen, probe = native.look_local(pids, sys.argv[2] or None, verify_focus=verify_focus)
+        except Exception as error:
+            pressed, seen = False, []
+            probe = {"pids": len(pids), "nodes": 0, "windows": 0, "offer_matches": 0, "other_process_branches": 0,
+                     "action_matches": 0, "attempted": False, "stage": "observe"}
+            if isinstance(error, LinuxActivationFailure):
+                probe.update(error.probe)
+            probe["failed"] = True
+        print(json.dumps({"pressed": pressed, "seen": seen, "probe": probe}))
+        return
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--previous", type=Path, required=True, help="Package of the nightly being replaced")
     parser.add_argument("--expected", type=Path, required=True, help="Package of the new nightly")

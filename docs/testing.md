@@ -75,6 +75,42 @@ Run commands are in [AGENTS.md](../AGENTS.md); setup is in
 [CONTRIBUTING.md](../CONTRIBUTING.md). A test definition, screenshot or build
 result establishes only what its assertions and retained evidence show.
 
+## Installed update qualification
+
+`scripts/update-e2e.py` keeps one single-instance reopen, one owned native
+Install and Restart action, package replacement, a fresh process that stays
+up, and persisted library/shortcut checks. Read-only picker observations may
+retry inside the current deadline; ambiguity, lost ownership and uncertain
+activation fail without another reopen or invocation. Linux accessibility
+scans run in fresh, bounded subprocesses, recheck native focus after worker
+startup, and invalidate cached children before both scans. Native helper
+diagnostics retain fixed operation names and numeric errors/exit codes, never
+native exception text. A visible offer without an accessible action is reported
+separately from an offer that never appeared.
+
+Qualification run 41121775240 (the merged #1493 harness), in its supplied full
+job log:
+
+| Platform | Evidence and classification |
+|---|---|
+| macOS | Lines 139–155 show the first failed observation at 32.557 seconds, after successful reopen. `cg-windows`, two owned windows, and zero completed picker/offer counts identify the explicit missing-`kCGWindowName` assertion during CG enumeration, not an AX API status. A plain JavaScript `Error` has no `errorNumber`, hence `code: null` at line 160. Availability succeeded at lines 193–197. This is a harness observation failure; whether that missing title persists needs a native rerun. |
+| Windows | Lines 291–305 show failure in the first `before-reopen` call to `powershell(WINDOWS_PICKER, timeout=10)`. The old `observe_picker` catch replaced launch, timeout, decode and nonzero-exit errors alike with `picker-helper, code None`; the original exception cannot be recovered from this log. Lines 343–347 contain **zero** automatic-check outcomes, and lines 312–321 show a visible foreground picker with no offer. This establishes a harness diagnostics defect, not an available update withheld by the product. The underlying helper failure needs a rerun with the preserved operation/code. |
+| Linux | Lines 902–910 and 918–920 show a visible, focused native offer from 31.350 through 185.713 seconds (75 samples). Lines 930–934 nevertheless report zero AT-SPI offer/action matches; lines 957–961 record one successful availability result. Presentation succeeded. The long-lived accessibility client did not invalidate child caches or run its event loop; a failing-first cached-tree scenario reproduces the missed late dialog. Fresh scans address that harness defect. Cache staleness explains the observed mismatch, but the log cannot prove the cached GTK tree; confirm that diagnosis in a native rerun. |
+
+Product code remains unchanged: `updater.rs:200` logs availability **before**
+presentation. `updater/offer.rs:149` requires visibility **and** focus;
+`:184` withholds automatic presentation while either is absent or automatic
+checks were disabled, and `:187` also requires the chooser lease. Show/focus
+events request a fresh check (`:155`). The offer never waits for hide, and
+hiding would fail the gate. Linux's observed native offer rules that gate out
+as the cause of this run's missing accessibility action. Do not add a hide,
+another Show or an explicit update check to repair that evidence.
+
+Run the qualifier's `--self-test` and focused workflow/feed tests before a
+native rerun. The PowerShell provider contract requires `pwsh`; a skipped
+provider contract is not Windows evidence. Mocks do not certify the installed
+three-platform update path.
+
 ## Capability matrix
 
 `tested` requires passing evidence for the stated scope. `limited` means
