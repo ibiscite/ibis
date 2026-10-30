@@ -251,11 +251,15 @@ function run(pids) {
   };
   // A System Events UI window can reject visible() with -1728. The public
   // on-screen census proves visibility independently of the AX focus owner.
-  let windows;
+  let reference, object, windows;
   try {
-    windows = ObjC.deepUnwrap($.CGWindowListCopyWindowInfo(
-      $.kCGWindowListOptionOnScreenOnly | $.kCGWindowListExcludeDesktopElements, $.kCGNullWindowID));
-  } catch (_) { throw Error('Picker on-screen census unavailable'); }
+    reference = $.CGWindowListCopyWindowInfo(
+      $.kCGWindowListOptionOnScreenOnly | $.kCGWindowListExcludeDesktopElements, 0); // kCGNullWindowID is a C macro.
+  } catch (_) { throw Error('Picker on-screen copy unavailable'); }
+  try { object = ObjC.castRefToObject(reference); }
+  catch (_) { throw Error('Picker on-screen bridge unavailable'); }
+  try { windows = ObjC.deepUnwrap(object); }
+  catch (_) { throw Error('Picker on-screen decode unavailable'); }
   if (!Array.isArray(windows)) throw Error('Picker on-screen census unavailable');
   const matches = [], offers = [];
   let count = 0;
@@ -1048,7 +1052,8 @@ const ObjC = {import() {}, unwrap: value => value,
   deepUnwrap: value => { if (value && value.opaqueCFArray) throw Error('opaque CF array requires an explicit bridge'); return value; }};
 const Ref = () => [];
 const $ = name => name;
-$.kCGWindowListOptionOnScreenOnly = 1; $.kCGWindowListExcludeDesktopElements = 16; $.kCGNullWindowID = 0;
+$.kCGWindowListOptionOnScreenOnly = 1; $.kCGWindowListExcludeDesktopElements = 16;
+// kCGNullWindowID is a C macro and is absent from the real JXA bridge.
 $.CGWindowListCopyWindowInfo = (options, relative) => {
   if (options !== 17 || relative !== 0) throw Error('unexpected visibility scope');
   if (scenario === 'cg-unavailable') return null;
