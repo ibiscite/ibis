@@ -878,9 +878,9 @@ test("the generated search logo grows optically without moving query or result c
 
 test("short windows reserve header/footer controls and compact decoration without shrinking readable text", () => {
   const short = styles.slice(styles.indexOf("@media (max-height: 400px)"));
-  expect(short).toContain("height: var(--picker-height); min-height: 0; overflow: auto");
-  expect(short).toContain("main > .picker-content");
-  expect(short).toContain("min-height: var(--control-min-size)");
+  expect(short).toContain("height: var(--picker-height); min-height: 0; overflow: hidden");
+  expect(styles).toContain(".picker-content > .results-area { flex: none; min-height: 0; overflow: visible");
+  expect(styles).toContain("min-height: 0; overflow: auto; overscroll-behavior: contain; container-type: size");
   expect(short).not.toMatch(/font-size:|zoom:|transform:/);
   const compactTokens = tokens.slice(tokens.indexOf("@media (max-height: 400px)"));
   expect(compactTokens).toContain("--empty-icon-size: var(--icon-glyph-size)");

@@ -291,6 +291,16 @@ pub struct SnapshotObject {
     pub fingerprints: Fingerprints,
 }
 
+impl SnapshotObject {
+    /// Validate and fingerprint one streamed object with the snapshot's rules.
+    pub fn new(object: LibraryObject) -> Result<Self, ModelError> {
+        Snapshot::prepare(vec![object])?
+            .pop()
+            .map(Arc::unwrap_or_clone)
+            .ok_or(ModelError::InvalidObject)
+    }
+}
+
 /// No mutable object access is exposed. Refresh constructs a new value while
 /// existing picker sessions retain their original value.
 // Objects are shared, so combining libraries never copies or re-fingerprints them.
