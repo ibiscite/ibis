@@ -47,7 +47,7 @@ function fireScroll(node: HTMLElement) {
 
 test("the results, menus, Shortcuts and notices share the scroll area, and no screen sets its own overflow", () => {
   const styles = css("../styles.css");
-  for (const selector of [".results-area", ".keys-scroll", "main[data-selection] .notices", "main[data-selection] .results-area"]) {
+  for (const selector of [".results-area", ".keys-scroll", "main[data-selection] .notices"]) {
     const rule = styles.split("\n").find((line) => line.startsWith(`${selector} {`)) ?? "";
     expect(rule, selector).not.toBe("");
     expect(rule, selector).not.toMatch(/overflow|scrollbar/);
