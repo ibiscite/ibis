@@ -1074,7 +1074,7 @@ class Tests(unittest.TestCase):
     @unittest.skipUnless(shutil.which("node"), "Node is required for the macOS picker provider contract")
     def test_macos_picker_requires_owned_unique_visible_and_native_focused_window(self):
         model = r'''
-const scenario = process.argv[1];
+function check(scenario) {
 const ObjC = {import() {}, unwrap: value => { if (value.objectType !== 7) throw Error('not a string'); return value.value; },
   castRefToObject: value => {
     if (value && value.opaqueCFArray) return value.windows;
@@ -1125,17 +1125,40 @@ const Application = name => {
   }}};
 };
 '''
-        for scenario in ("success", "hidden", "title", "duplicate", "foreign", "unknown", "owner-error", "wrong-focus-title", "offer-focused", "unavailable-visible", "cg-foreign", "cg-unknown", "cg-unavailable",
-                         "focused-wrong-type", "window-wrong-type", "title-wrong-type"):
+        scenarios = ("success", "hidden", "title", "duplicate", "foreign", "unknown", "owner-error", "wrong-focus-title", "offer-focused", "unavailable-visible", "cg-foreign", "cg-unknown", "cg-unavailable",
+                     "focused-wrong-type", "window-wrong-type", "title-wrong-type")
+        # Pay Node startup once, including on slow Windows runners. Each call
+        # gets fresh mock state and runs the unchanged production script.
+        driver = r'''
+  return run(['42']);
+}
+const results = JSON.parse(process.argv[1]).map(scenario => {
+  try { return {value: check(scenario)}; }
+  catch (error) { return {error: error.message}; }
+});
+process.stdout.write(JSON.stringify(results));
+'''
+        result = subprocess.run([shutil.which("node"), "-e", model + MACOS_PICKER + driver, json.dumps(scenarios)],
+                                capture_output=True, timeout=5)
+        self.assertEqual(result.returncode, 0, result.stderr.decode("utf-8", errors="replace"))
+        results = json.loads(result.stdout)
+        self.assertEqual(len(results), len(scenarios))
+        errors = {"duplicate": "Picker or update offer is ambiguous",
+                  "unknown": "Picker AX AXFocusedUIElement unavailable (-1)",
+                  "owner-error": "Picker AX focused owner unavailable (-1)",
+                  "cg-unknown": "Picker on-screen title unavailable",
+                  "cg-unavailable": "Picker on-screen bridge unavailable",
+                  "focused-wrong-type": "Picker AX focused element has wrong type",
+                  "window-wrong-type": "Picker AX focused window has wrong type",
+                  "title-wrong-type": "Picker AX focused title incompatible"}
+        for scenario, outcome in zip(scenarios, results):
             with self.subTest(scenario=scenario):
-                result = subprocess.run([shutil.which("node"), "-e", model + MACOS_PICKER + "\nprocess.stdout.write(run(['42']));", scenario],
-                                        capture_output=True, timeout=5)
-                if scenario in ("duplicate", "unknown", "owner-error", "cg-unknown", "cg-unavailable", "focused-wrong-type", "window-wrong-type", "title-wrong-type"):
-                    self.assertNotEqual(result.returncode, 0)
+                if scenario in errors:
+                    self.assertEqual(outcome, {"error": errors[scenario]})
                 else:
-                    self.assertEqual(result.returncode, 0, result.stderr.decode("utf-8", errors="replace"))
+                    self.assertEqual(set(outcome), {"value"})
                     expected = (42, "offer") if scenario == "offer-focused" else (42, "picker") if scenario in ("success", "unavailable-visible") else None
-                    self.assertEqual(picker_result(result.stdout, {42}), expected)
+                    self.assertEqual(picker_result(outcome["value"], {42}), expected)
 
     def test_linux_picker_accepts_an_immediate_owned_offer_without_accepting_foreign_or_duplicate_modals(self):
         for scenario in ("offer", "foreign", "duplicate"):
