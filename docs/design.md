@@ -350,9 +350,12 @@ GNOME) and Fluent's thin bar on Windows, from `--scrollbar-width` and
 `--scrollbar-color`. The side inset sits inside the bar, so a classic bar never
 takes it. An edge with more content beyond it fades over `--scroll-fade-size`,
 so a list that ends on a whole row still shows there is more; the results list
-needs no fade, as a cut row already shows it. A fade yields to the whole
-active row (label, fill and shortcut), shrinking to the free space beyond it;
-true scroll ends have no fade. Keyboard/hover focus and reflow update this
+needs no fade, as a cut row already shows it. **Edges fade only while there
+is more** (maintainer, 2026-10-30): a 14 px fade appears at an edge only while
+content lies beyond it, like the soft scroll edge in Apple's own apps, so the
+first row at rest and the last row at the true end are always crisp. A fade
+yields to the whole active row (label, fill and shortcut), shrinking to the
+free space beyond it. Increase Contrast and Reduce Transparency show no fade. Keyboard/hover focus and reflow update this
 without taking scroll ownership from React Aria.
 
 **Tables** (the keyboard shortcuts list, Settings lists). Columns size to their
@@ -376,10 +379,12 @@ block, and in Settings the control moves below the label rather than
 squeezing it. Making a window or column wider is never the fix. Check every
 row, menu item and Settings row at normal, Larger and 200% text.
 
-**The Ibis mark in the picker.** The generated bird in its canonical scarlet.
-In the search box it uses the tile-sized box (its artwork fills about three
-quarters) with symmetric optical outsets, so the query and results stay
-aligned. At 40 px it leads the welcome screen. The empty-search hint shows the
+**The Ibis mark in the picker.** The bird from `brand/`, eye included, in the
+brand gradient for the theme (light `#CF4628`→`#B5331A`, dark
+`#FF7F5E`→`#F2552F`); never a plain recoloured silhouette. In the search box it
+is 24 px, 2 px outset on each side so the query and results stay aligned; its
+eye opens to at least 2 px across at small sizes so it still reads as a bird.
+At 40 px it leads the welcome and the opening screens. The empty-search hint shows the
 magnifier, the sign for "type", whichever search icon is chosen. The mark never
 appears on a control.
 
@@ -438,14 +443,14 @@ password field.
 use the choice screen [C12]. Otherwise one template, centred: a 48 px symbolic icon in
 `--text-tertiary`, a title (title type), one line of at most 40 characters
 (meta type, `--muted`, up to three rows), then one suggested action 16 px below;
-quieter text buttons for alternatives. No skeletons or illustrations; a spinner
-only after 400 ms, 48 px below the search band. The result heading appears only
+quieter text buttons for alternatives. No skeletons or illustrations; the opening screen
+only after 400 ms (**Opening a library**). The result heading appears only
 above rows.
 
 | Case | Title | Line | Below |
 |---|---|---|---|
 | No matches | No matching references | Try a surname, year or fewer words. | Clear search; quieter Search all libraries when some are left out |
-| Loading or reloading | Opening thesis.bib… / Reloading thesis.bib… | None | Nothing for 400 ms, then a spinner; retained rows stay |
+| Loading or reloading | Opening thesis.bib… / Reloading thesis.bib… | None | Nothing for 400 ms, then the opening screen; retained rows stay |
 
 **Shelf** [C7]. What Enter pastes, one 40 px line above the footer's Copy
 action: the beak mark hangs at the tile column's end and the citation starts on
@@ -465,7 +470,11 @@ Return or Space on a selected one) opens its menu: the reference's short name
 as a heading, **Page** with a field, then **Name in brackets**, **Name in the
 sentence** and **Year only**, each with a quiet example of what it pastes in
 the current style, then **Remove from citation ⌫**. With one reference the
-whole citation is its segment. Pages also come from typing (`garcia 2021 p12`
+whole citation is its segment. Removing needs no click into the menu
+(maintainer, 2026-10-30): a pointed segment shows a 16 px round × badge on its
+top-end corner, outside the text and the pill, so the key is never covered;
+clicking it removes the reference with an Undo notice. The badge never shows
+for keyboard focus or while the segment's menu is open (⌫ removes there). Pages also come from typing (`garcia 2021 p12`
 shows a page token beside search) and, from 0.5, the PDF pane's "Cite this
 page", where the Page field lives beside the page itself.
 
@@ -783,6 +792,18 @@ Rows are 2 px apart (`--row-spacing`) and are a list box: arrow keys move,
 Enter or a click chooses, and ↓ from search enters the list. The focused row
 fills as the active result row; one suggested row at most gets an accent tile.
 A choice screen hides the result heading, the shelf and the Copy hint.
+
+Choice screens are one calm group centred in the steady frame
+(maintainer, 2026-10-30): the title (17 px) and line centred, then the rows in
+a column at most 540 px wide. On the welcome screen the 40 px mark sits above
+the title. Space is shared above and below, never left as one empty band.
+
+**Opening a library.** Nothing for 400 ms, then the same centred group: the
+40 px mark, "Opening example.bib…", one quiet line ("Reading your library.
+Zotero can stay closed."), and a thin 160 px progress bar (determinate once the
+count is known). With Reduce Motion the bar is still and the mark does not
+breathe. Rows kept from before stay instead, with only the footer saying
+"Reloading…".
 
 - **No library:** "Where do your references live?": Zotero ("Found on this
   Mac/PC/computer" once looked for), BibTeX, BibLaTeX or CSL-JSON file, then "Look for
