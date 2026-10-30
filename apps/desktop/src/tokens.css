@@ -382,3 +382,37 @@
   }
 }
 /* END generated website palette */
+
+
+/* Settings roles and Mac selected-row accent shades (#1489). */
+:root {
+  --settings-search-highlight: color-mix(in srgb, var(--accent) 14%, var(--surface-grouped-card));
+  --settings-picture-width: 8rem; --settings-picture-height: 5rem;
+  --settings-search-picture-height: 1.75rem; --settings-picture-source-width: 40rem; --settings-picture-scale: .2;
+  --choice-accent: var(--settings-accent-blue);
+  --settings-accent-blue: #0064e1; --settings-accent-purple: #953d96;
+  --settings-accent-pink: #c8317d; --settings-accent-red: #c42b30;
+  --settings-accent-orange: #b25300; --settings-accent-yellow: #8a6a00;
+  --settings-accent-green: #3b7f25; --settings-accent-graphite: #6e6e73;
+}
+:root.settings-window[data-accent="system"] { --choice-accent: conic-gradient(var(--settings-accent-pink), var(--settings-accent-red), var(--settings-accent-orange), var(--settings-accent-yellow), var(--settings-accent-green), var(--settings-accent-blue), var(--settings-accent-purple), var(--settings-accent-pink)); }
+:root.settings-window[data-accent="blue"] { --choice-accent: var(--settings-accent-blue); }
+:root.settings-window[data-accent="purple"] { --choice-accent: var(--settings-accent-purple); }
+:root.settings-window[data-accent="pink"] { --choice-accent: var(--settings-accent-pink); }
+:root.settings-window[data-accent="red"] { --choice-accent: var(--settings-accent-red); }
+:root.settings-window[data-accent="orange"] { --choice-accent: var(--settings-accent-orange); }
+:root.settings-window[data-accent="yellow"] { --choice-accent: var(--settings-accent-yellow); }
+:root.settings-window[data-accent="green"] { --choice-accent: var(--settings-accent-green); }
+:root.settings-window[data-accent="graphite"] { --choice-accent: var(--settings-accent-graphite); }
+
+@media (prefers-contrast: no-preference) and (forced-colors: none) {
+  :root.settings-window[data-accent]:not([data-accent="system"]) {
+    --accent: var(--choice-accent); --selected-background: var(--choice-accent);
+    --selected-text: #fff; --text-on-accent: #fff;
+    --accent-text: light-dark(var(--choice-accent), color-mix(in srgb, var(--choice-accent), white 55%));
+    --focus-ring-color: var(--accent-text);
+  }
+}
+:root.settings-window[data-appearance="light"] { color-scheme: light; }
+:root.settings-window[data-appearance="dark"] { color-scheme: dark; }
+:root.settings-window[data-larger-text="true"] { font-size: calc(100% * var(--larger-text-scale)); }

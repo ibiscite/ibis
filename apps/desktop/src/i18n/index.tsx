@@ -2,19 +2,21 @@ import { FluentBundle, FluentResource } from "@fluent/bundle";
 import { parse } from "@fluent/syntax";
 import { createContext, type ReactNode, useContext } from "react";
 import english from "./en-US.ftl?raw";
+import { SETTINGS_IDS } from "./settings";
 
 /** Interface default only: never inferred from citation settings or navigator. */
 export const INTERFACE_LOCALE = "en-US";
 const IDS = [
-  "settings-pages", "settings-general", "settings-shortcuts", "settings-about", "settings-save-failed",
+  ...SETTINGS_IDS,
+  "settings-pages", "settings-general", "settings-shortcuts", "settings-about",
   "general-login-label", "general-login-description", "general-login-place", "general-login-when",
   "general-login-unsupported", "general-login-needs-approval", "general-login-refused", "general-login-unreadable",
   "general-paste-title", "general-paste-label", "general-paste-description", "general-paste-allowed", "general-paste-allowed-note",
   "general-paste-guide-title", "general-paste-guide-why", "general-paste-step-open", "general-paste-step-allow", "general-paste-step-return",
   "general-paste-pane", "general-paste-open", "general-paste-drag", "general-paste-drag-keyboard", "general-paste-drag-fallback",
   "general-paste-drag-failed", "general-paste-waiting", "general-paste-granted", "general-paste-return-failed", "general-paste-stale",
-  "general-picker-title", "general-rows", "general-density-compact", "general-density-comfortable", "general-density-spacious",
-  "general-larger-text", "general-preview", "general-preview-description", "general-search-mark", "general-search-mark-description",
+  "general-rows", "general-density-compact", "general-density-comfortable", "general-density-spacious",
+  "general-preview", "general-preview-description",
   "shortcuts-open", "shortcuts-description", "shortcuts-record", "shortcuts-use-default", "shortcuts-change", "shortcuts-not-assigned",
   "shortcuts-configure-failed", "shortcuts-in-picker", "shortcuts-failed", "shortcuts-read-failed",
   "shortcuts-refusal-invalid", "shortcuts-refusal-needs-modifier", "shortcuts-refusal-app-shortcut", "shortcuts-refusal-alt-gr",

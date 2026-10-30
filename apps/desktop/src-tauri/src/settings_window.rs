@@ -19,6 +19,9 @@ pub(crate) enum Page {
     General,
     /// General, scrolled to pasting and its permission.
     Paste,
+    Look,
+    Libraries,
+    Advanced,
     Shortcuts,
     Citations,
     About,
@@ -29,6 +32,9 @@ impl Page {
         match self {
             Page::General => "general",
             Page::Paste => "paste",
+            Page::Look => "look",
+            Page::Libraries => "libraries",
+            Page::Advanced => "advanced",
             Page::Shortcuts => "shortcuts",
             Page::Citations => "citations",
             Page::About => "about",
@@ -116,7 +122,10 @@ fn present(app: &AppHandle, page: Option<Page>) {
         present_existing(&window, page);
         return;
     }
-    let url = format!("settings.html?page={}", page.unwrap_or(Page::General).name());
+    let url = page.map_or_else(
+        || "settings.html".to_string(),
+        |page| format!("settings.html?page={}", page.name()),
+    );
     let mut builder = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App(url.into()))
         .title(TITLE)
         .inner_size(SIZE.0, SIZE.1)
@@ -149,12 +158,11 @@ fn present(app: &AppHandle, page: Option<Page>) {
     }
 }
 
-/// Reopening through the shortcut or tray also resets the existing page.
+/// An explicit page request selects it; an ordinary reopen keeps the current page.
 fn present_existing<R: tauri::Runtime>(window: &tauri::WebviewWindow<R>, page: Option<Page>) {
-    report(
-        window.emit_to(LABEL, "settings:page", page.unwrap_or(Page::General)),
-        NativeIssue::Window,
-    );
+    if let Some(page) = page {
+        report(window.emit_to(LABEL, "settings:page", page), NativeIssue::Window);
+    }
     report(window.unminimize(), NativeIssue::Unminimize);
     report(window.show(), NativeIssue::Show);
     report(window.set_focus(), NativeIssue::Focus);
@@ -227,7 +235,7 @@ mod tests {
     }
 
     #[test]
-    fn presenting_existing_settings_emits_general_without_a_page_and_keeps_explicit_requests() {
+    fn presenting_existing_settings_keeps_the_page_without_a_request_and_honours_explicit_requests() {
         use std::sync::mpsc;
         use std::time::Duration;
         use tauri::Listener;
@@ -242,14 +250,19 @@ mod tests {
         window.listen("settings:page", move |event| {
             let _ = sent.send(event.payload().to_string());
         });
+        present_existing(&window, None);
+        assert!(
+            events.try_recv().is_err(),
+            "ordinary reopen must keep the selected page"
+        );
         for (requested, expected) in [
-            (None, "general"),
+            (Some(Page::General), "general"),
             (Some(Page::About), "about"),
-            (None, "general"),
+            (Some(Page::General), "general"),
             (Some(Page::Paste), "paste"),
             (Some(Page::Shortcuts), "shortcuts"),
             (Some(Page::Citations), "citations"),
-            (None, "general"),
+            (Some(Page::General), "general"),
         ] {
             present_existing(&window, requested);
             let payload = events
@@ -264,6 +277,9 @@ mod tests {
         for (page, name) in [
             (Page::General, "general"),
             (Page::Paste, "paste"),
+            (Page::Look, "look"),
+            (Page::Libraries, "libraries"),
+            (Page::Advanced, "advanced"),
             (Page::Shortcuts, "shortcuts"),
             (Page::Citations, "citations"),
             (Page::About, "about"),

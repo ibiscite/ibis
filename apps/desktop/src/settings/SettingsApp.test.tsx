@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import axe from "axe-core";
 import { afterEach, expect, test, vi } from "vitest";
-import type { PickerPreferences, ShortcutStatus } from "../bindings";
+import type { KeyFormat, PickerPreferences, ShortcutStatus } from "../bindings";
 import { DEFAULT_PICKER_SHORTCUT, KEY_TABLE, keyLabel, shortcutLabel } from "../keys";
 import { keyText } from "../messages";
 import { currentPlatform } from "../platform";
@@ -13,7 +13,7 @@ import pickerConflicts from "../testing/picker-shortcut-conflicts.json";
 import english from "../i18n/en-US.ftl?raw";
 import { createInterfaceMessages, InterfaceMessagesProvider } from "../i18n";
 
-afterEach(() => vi.useRealTimers());
+afterEach(() => { vi.useRealTimers(); localStorage.clear(); });
 
 test.each(["macos", "windows", "linux"])("Shortcuts preserves every English name and key label on %s", async (platform) => {
   const previous = document.documentElement.dataset.system;
@@ -101,7 +101,8 @@ test("localized panel errors and native values keep their separate owners and st
   expect(await screen.findByRole("alert")).toHaveProperty("textContent", pseudo.text("shortcuts-configure-failed"));
   fireEvent.click(screen.getByRole("option", { name: pseudo.text("settings-about") }));
   expect(screen.getByText(pseudo.text("about-version", { name: hostile, version: hostile }))).toBeTruthy();
-  expect(screen.getByText(pseudo.text("about-unavailable"))).toBeTruthy();
+  expect(screen.getByText(pseudo.text("settings-read-failed"))).toBeTruthy();
+  expect(screen.queryByText(pseudo.text("about-unavailable"))).toBeNull();
   expect(document.querySelector("img, b")).toBeNull();
 });
 
@@ -127,21 +128,24 @@ function fakeApi(permission: Partial<PastePermission> = {}, preferences: Partial
     shortcuts: [] as ((status: ShortcutStatus) => void)[],
     shortcutChoices: [] as (string | null)[],
     configured: 0,
+    login: false,
+    updates: true,
+    preferenceEvents: [] as (() => void)[],
     automatic: [] as ((on: boolean) => void)[],
   };
-  const commit = async (next: Partial<PickerPreferences>) => {
+  const commit = async (next: Partial<PickerPreferences>, key: KeyFormat | null = null) => {
     state.patches.push(next);
-    state.preferences = { ...state.preferences, ...next };
+    state.preferences = { ...state.preferences, ...next, ...(key ? { copy_format: key } : {}) };
     state.saved.push({ ...state.preferences });
-    return { preferences: state.preferences, copy_format: "pandoc" as const };
+    return { preferences: state.preferences, copy_format: state.preferences.copy_format ?? "pandoc" };
   };
   const api: SettingsApi = {
     pickerPreferences: async () => state.preferences,
     setPickerPreferences: commit,
-    loginItem: async () => ({ name: "Ibis Nightly", enabled: false, problem: null }),
-    setLoginItem: async (enabled) => ({ name: "Ibis Nightly", enabled, problem: null }),
-    updateChecks: async () => true,
-    setUpdateChecks: async () => undefined as never,
+    loginItem: async () => ({ name: "Ibis Nightly", enabled: state.login, problem: null }),
+    setLoginItem: async (enabled) => { state.login = enabled; return { name: "Ibis Nightly", enabled, problem: null }; },
+    updateChecks: async () => state.updates,
+    setUpdateChecks: async (on) => { state.updates = on; for (const changed of state.automatic) changed(on); return undefined as never; },
     checkForUpdates: async () => undefined as never,
     pastePermission: async () => { state.reads += 1; return state.permission; },
     openPastePermission: async () => { state.opened += 1; return undefined as never; },
@@ -157,6 +161,7 @@ function fakeApi(permission: Partial<PastePermission> = {}, preferences: Partial
     },
     onShortcutStatus: async (handler) => { state.shortcuts.push(handler); return () => { state.shortcuts = state.shortcuts.filter((each) => each !== handler); }; },
     version: async () => "0.3.0",
+    onPreferencesChanged: async (changed) => { state.preferenceEvents.push(changed); return () => { state.preferenceEvents = state.preferenceEvents.filter((each) => each !== changed); }; },
     onPage: async (handler) => { state.pages.push(handler); return () => undefined; },
     onUpdateChecks: async (handler) => { state.automatic.push(handler); return () => { state.automatic = state.automatic.filter((each) => each !== handler); }; },
     onCloseRequested: async (handler) => { state.closes.push(handler); return () => undefined; },
@@ -167,24 +172,24 @@ function fakeApi(permission: Partial<PastePermission> = {}, preferences: Partial
 test("localized General keeps pending choices, refuses failed saves, and reopens saved state", async () => {
   const { api, state, commit } = fakeApi({ granted: true });
   const pseudo = createInterfaceMessages(english, true);
-  const label = pseudo.text("general-larger-text");
+  const label = pseudo.text("look-larger-text");
   const save = deferred<{ preferences: PickerPreferences; copy_format: "pandoc" }>();
   vi.spyOn(api, "setPickerPreferences").mockReturnValueOnce(save.promise).mockImplementation(commit);
-  const view = () => <InterfaceMessagesProvider messages={pseudo}><SettingsApp api={api} initialPage="general" /></InterfaceMessagesProvider>;
+  const view = () => <InterfaceMessagesProvider messages={pseudo}><SettingsApp api={api} initialPage="look" /></InterfaceMessagesProvider>;
   const mounted = render(view());
-  const choice = await screen.findByRole("switch", { name: label });
+  const choice = await screen.findByRole("radio", { name: label });
   fireEvent.click(choice);
   fireEvent.focus(window);
   await act(async () => undefined);
   expect((choice as HTMLInputElement).checked).toBe(true);
   await act(async () => save.reject());
-  expect(await screen.findByRole("alert")).toHaveProperty("textContent", pseudo.text("settings-save-failed"));
+  expect(await screen.findByRole("alert")).toHaveProperty("textContent", pseudo.text("settings-choice-failed"));
   await waitFor(() => expect((choice as HTMLInputElement).checked).toBe(false));
   fireEvent.click(choice);
   await act(async () => state.closes[0]!());
   mounted.unmount();
   render(view());
-  expect(await screen.findByRole("switch", { name: label })).toHaveProperty("checked", true);
+  expect(await screen.findByRole("radio", { name: label })).toHaveProperty("checked", true);
   expect(state.patches).toEqual([{ larger_text: true }]);
 });
 
@@ -193,14 +198,14 @@ test("localized General rejects delayed A after B without changing settings or l
   const old = deferred<PickerPreferences>(), latest = deferred<PickerPreferences>();
   vi.spyOn(api, "pickerPreferences").mockReturnValueOnce(old.promise).mockReturnValueOnce(latest.promise);
   const pseudo = createInterfaceMessages(english, true);
-  render(<InterfaceMessagesProvider messages={pseudo}><SettingsApp api={api} initialPage="general" /></InterfaceMessagesProvider>);
+  render(<InterfaceMessagesProvider messages={pseudo}><SettingsApp api={api} initialPage="look" /></InterfaceMessagesProvider>);
   fireEvent.focus(window);
   await act(async () => latest.resolve({ ...state.preferences, larger_text: true }));
-  const choice = screen.getByRole("switch", { name: pseudo.text("general-larger-text") });
+  const choice = screen.getByRole("radio", { name: pseudo.text("look-larger-text") });
   expect(choice).toHaveProperty("checked", true);
   await act(async () => old.resolve(state.preferences));
   expect(choice).toHaveProperty("checked", true);
-  expect(screen.getByRole("heading", { level: 1 })).toHaveProperty("textContent", pseudo.text("settings-general"));
+  expect(screen.getByRole("heading", { level: 1 })).toHaveProperty("textContent", pseudo.text("settings-look"));
   expect(state.patches).toEqual([]);
 });
 
@@ -336,7 +341,7 @@ test("Settings opens at the top of General with every built page in a navigable,
   const sidebar = screen.getByRole("navigation", { name: "Settings pages" });
   const list = within(sidebar).getByRole("listbox", { name: "Settings pages" });
   const items = within(list).getAllByRole("option");
-  expect(items.map((item) => item.textContent)).toEqual(["General", "Shortcuts", "About"]);
+  expect(items.map((item) => item.textContent)).toEqual(["General", "Look", "Libraries", "Citations", "Shortcuts", "Advanced", "About Ibis"]);
   const selected = () => within(list).getAllByRole("option", { selected: true });
   expect(selected().map((item) => item.textContent)).toEqual(["General"]);
   expect(selected()[0]!.getAttribute("aria-current")).toBe("page");
@@ -348,9 +353,9 @@ test("Settings opens at the top of General with every built page in a navigable,
   act(() => state.pages[0]!("general"));
   expect(main.scrollTop).toBe(0);
   main.scrollTop = 180;
-  fireEvent.click(within(list).getByRole("option", { name: "About" }));
-  expect(screen.getByRole("main", { name: "About" }).scrollTop).toBe(0);
-  expect(selected().map((item) => item.textContent)).toEqual(["About"]);
+  fireEvent.click(within(list).getByRole("option", { name: "About Ibis" }));
+  expect(screen.getByRole("main", { name: "About Ibis" }).scrollTop).toBe(0);
+  expect(selected().map((item) => item.textContent)).toEqual(["About Ibis"]);
   fireEvent.click(within(list).getByRole("option", { name: "General" }));
   expect(screen.getByRole("main", { name: "General" }).scrollTop).toBe(0);
   expect(selected().map((item) => item.textContent)).toEqual(["General"]);
@@ -359,15 +364,15 @@ test("Settings opens at the top of General with every built page in a navigable,
 test("sidebar arrows and Home/End move focus, select the page and reset its scroll", async () => {
   const { api } = fakeApi({ granted: true });
   render(<SettingsApp api={api} initialPage="general" />);
-  await screen.findByRole("switch", { name: "Larger text" });
+  await screen.findByRole("switch", { name: "Show in Menu Bar" });
   const general = screen.getByRole("option", { name: "General" });
-  const shortcuts = screen.getByRole("option", { name: "Shortcuts" });
-  const about = screen.getByRole("option", { name: "About" });
+  const shortcuts = screen.getByRole("option", { name: "Look" });
+  const about = screen.getByRole("option", { name: "About Ibis" });
   act(() => general.focus());
   for (const [key, target, name] of [
-    ["ArrowDown", shortcuts, "Shortcuts"], ["ArrowDown", about, "About"],
-    ["ArrowUp", shortcuts, "Shortcuts"], ["ArrowUp", general, "General"],
-    ["End", about, "About"], ["Home", general, "General"],
+    ["ArrowDown", shortcuts, "Look"], ["End", about, "About Ibis"],
+    ["Home", general, "General"], ["ArrowDown", shortcuts, "Look"],
+    ["End", about, "About Ibis"], ["Home", general, "General"],
   ] as const) {
     screen.getByRole("main").scrollTop = 120;
     fireEvent.keyDown(document.activeElement!, { key });
@@ -381,8 +386,8 @@ test("sidebar arrows and Home/End move focus, select the page and reset its scro
 test("clicking the current sidebar page once resets its scroll to the top", async () => {
   const { api } = fakeApi({ granted: true });
   render(<SettingsApp api={api} initialPage="general" />);
-  await screen.findByRole("switch", { name: "Larger text" });
-  for (const name of ["General", "Shortcuts", "About"]) {
+  await screen.findByRole("switch", { name: "Show in Menu Bar" });
+  for (const name of ["General", "Look", "Libraries", "Citations", "Shortcuts", "Advanced", "About Ibis"]) {
     const item = screen.getByRole("option", { name });
     fireEvent.click(item);
     const main = screen.getByRole("main", { name });
@@ -398,7 +403,7 @@ test("clicking the current sidebar page once resets its scroll to the top", asyn
 test("the title-bar drag region is outside the page scroller and sidebar list", async () => {
   const { api } = fakeApi();
   const { container } = render(<SettingsApp api={api} initialPage={null} />);
-  await screen.findByRole("switch", { name: "Larger text" });
+  await screen.findByRole("switch", { name: "Show in Menu Bar" });
   const titlebar = container.querySelector("[data-tauri-drag-region]")!;
   expect(titlebar.parentElement?.className).toBe("settings");
   expect(screen.getByRole("main").contains(titlebar)).toBe(false);
@@ -419,7 +424,7 @@ test("a paste deep link waits for permission data and scrolls only the page", as
   Object.defineProperty(Element.prototype, "scrollIntoView", { configurable: true, value: scrollAncestors });
   try {
     render(<SettingsApp api={api} initialPage="paste" />);
-    await screen.findByRole("switch", { name: "Larger text" });
+    await screen.findByRole("switch", { name: "Show in Menu Bar" });
     const main = screen.getByRole("main");
     expect(main.scrollTop).toBe(0);
     await act(async () => { permission.resolve({ pastes: true, needed: true, granted: false, list: "Accessibility" }); });
@@ -509,8 +514,8 @@ test.each(["saved", "stuck"])("returning from the guide drains a %s preference s
   const { api, state, commit } = fakeApi();
   const save = deferred<null>();
   vi.spyOn(api, "setPickerPreferences").mockImplementation(async (next) => { await save.promise; return commit(next); });
-  render(<SettingsApp api={api} initialPage="general" />);
-  const larger = await screen.findByRole("switch", { name: "Larger text" });
+  render(<SettingsApp api={api} initialPage="look" />);
+  const larger = await screen.findByRole("radio", { name: "Larger" });
   vi.useFakeTimers();
   fireEvent.click(larger);
   act(() => state.pages[0]!("paste"));
@@ -549,8 +554,8 @@ test("a permission already given shows one quiet line, and turning pasting off h
 
 test("systems where Ibis only copies show no pasting choices", async () => {
   const { api } = fakeApi({ pastes: false, needed: false, granted: true, list: "" });
-  render(<SettingsApp api={api} initialPage="general" />);
-  await screen.findByRole("switch", { name: "Larger text" });
+  render(<SettingsApp api={api} initialPage="look" />);
+  await screen.findByRole("radio", { name: "Larger" });
   expect(screen.queryByRole("switch", { name: "Paste into the app you came from" })).toBeNull();
   expect(screen.queryByText(/Privacy & Security/)).toBeNull();
 });
@@ -564,9 +569,9 @@ test("systems that paste without asking show the switch and no guide", async () 
 
 test("picker choices save at once, in order, keeping the others", async () => {
   const { api, state } = fakeApi({ granted: true });
-  render(<SettingsApp api={api} initialPage="general" />);
+  render(<SettingsApp api={api} initialPage="look" />);
   fireEvent.click(await screen.findByRole("radio", { name: "Spacious" }));
-  fireEvent.click(screen.getByRole("switch", { name: "Larger text" }));
+  fireEvent.click(screen.getByRole("radio", { name: "Larger" }));
   await waitFor(() => expect(state.saved).toHaveLength(2));
   expect(state.saved[0]).toMatchObject({ density: "spacious", larger_text: false, paste: true });
   expect(state.saved[1]).toMatchObject({ density: "spacious", larger_text: true, paste: true });
@@ -577,13 +582,13 @@ test.each(["success", "failure", "later edit"])("closing drains both queued choi
   const first = deferred<null>(), second = deferred<null>();
   const save = vi.spyOn(api, "setPickerPreferences").mockImplementationOnce(async (next) => { await first.promise; return commit(next); }).mockImplementationOnce(async (next) => { await second.promise; return commit(next); });
   const read = vi.spyOn(api, "pickerPreferences");
-  render(<SettingsApp api={api} initialPage="general" />);
+  render(<SettingsApp api={api} initialPage="look" />);
   fireEvent.click(await screen.findByRole("radio", { name: "Spacious" }));
-  if (outcome !== "later edit") fireEvent.click(screen.getByRole("switch", { name: "Larger text" }));
+  if (outcome !== "later edit") fireEvent.click(screen.getByRole("radio", { name: "Larger" }));
   await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
   const closed = vi.fn();
   const closing = state.closes[0]!().then(closed);
-  if (outcome === "later edit") fireEvent.click(screen.getByRole("switch", { name: "Larger text" }));
+  if (outcome === "later edit") fireEvent.click(screen.getByRole("radio", { name: "Larger" }));
   await act(async () => { await Promise.resolve(); });
   expect(closed).not.toHaveBeenCalled();
   await act(async () => { if (outcome === "failure") first.reject(); else first.resolve(null); });
@@ -598,8 +603,8 @@ test("a stuck save holds closing for at most two seconds", async () => {
   const { api, state, commit } = fakeApi({ granted: true });
   const save = deferred<null>();
   vi.spyOn(api, "setPickerPreferences").mockImplementation(async (next) => { await save.promise; return commit(next); });
-  render(<SettingsApp api={api} initialPage="general" />);
-  const larger = await screen.findByRole("switch", { name: "Larger text" });
+  render(<SettingsApp api={api} initialPage="look" />);
+  const larger = await screen.findByRole("radio", { name: "Larger" });
   vi.useFakeTimers();
   fireEvent.click(larger);
   const closed = vi.fn();
@@ -632,8 +637,8 @@ test.each(["before", "during", "during, resolved after saving"])("a focus read s
   const stale = { ...state.preferences };
   const read = deferred<PickerPreferences>(), save = deferred<null>();
   vi.spyOn(api, "setPickerPreferences").mockImplementationOnce(async (next) => { await save.promise; return commit(next); });
-  render(<SettingsApp api={api} initialPage="general" />);
-  const larger = await screen.findByRole("switch", { name: "Larger text" });
+  render(<SettingsApp api={api} initialPage="look" />);
+  const larger = await screen.findByRole("radio", { name: "Larger" });
   vi.spyOn(api, "pickerPreferences").mockReturnValueOnce(read.promise);
   if (when === "before") fireEvent.focus(window);
   fireEvent.click(larger);
@@ -651,8 +656,8 @@ test("a failure read cannot overwrite a newer edit", async () => {
   const saved = state.preferences;
   const save = deferred<null>(), read = deferred<PickerPreferences>();
   vi.spyOn(api, "setPickerPreferences").mockImplementationOnce(async (next) => { await save.promise; return commit(next); });
-  render(<SettingsApp api={api} initialPage="general" />);
-  const larger = await screen.findByRole("switch", { name: "Larger text" });
+  render(<SettingsApp api={api} initialPage="look" />);
+  const larger = await screen.findByRole("radio", { name: "Larger" });
   vi.spyOn(api, "pickerPreferences").mockReturnValueOnce(read.promise);
   fireEvent.click(larger);
   await act(async () => { save.reject(); });
@@ -665,10 +670,10 @@ test("a failure read cannot overwrite a newer edit", async () => {
 test("the sidebar switches pages, a page request from the app moves it, and the window has no axe violations", async () => {
   const { api, state } = fakeApi({ granted: true });
   const { container } = render(<SettingsApp api={api} initialPage="general" />);
-  await screen.findByRole("switch", { name: "Larger text" });
-  fireEvent.click(screen.getByRole("option", { name: "About" }));
+  await screen.findByRole("switch", { name: "Show in Menu Bar" });
+  fireEvent.click(screen.getByRole("option", { name: "About Ibis" }));
   expect(await screen.findByText("Ibis Nightly 0.3.0")).toBeTruthy();
-  expect(screen.getByRole("option", { name: "About" }).getAttribute("aria-current")).toBe("page");
+  expect(screen.getByRole("option", { name: "About Ibis" }).getAttribute("aria-current")).toBe("page");
   act(() => state.pages[0]!("paste"));
   expect(await screen.findByRole("switch", { name: "Paste into the app you came from" })).toBeTruthy();
   const found = await axe.run(container);
@@ -677,8 +682,8 @@ test("the sidebar switches pages, a page request from the app moves it, and the 
 
 test("a Settings field patch keeps an output chosen in the other window", async () => {
   const { api, state } = fakeApi({ granted: true }, { citation_style: "apa" });
-  render(<SettingsApp api={api} initialPage="general" />);
-  const larger = await screen.findByRole("switch", { name: "Larger text" });
+  render(<SettingsApp api={api} initialPage="look" />);
+  const larger = await screen.findByRole("radio", { name: "Larger" });
   state.preferences = { ...state.preferences, citation_style: "ieee" };
   fireEvent.click(larger);
   await waitFor(() => expect(state.patches).toEqual([{ larger_text: true }]));
@@ -687,8 +692,8 @@ test("a Settings field patch keeps an output chosen in the other window", async 
 
 test("the latest focus read wins even when no local edit occurred", async () => {
   const { api, state } = fakeApi({ granted: true });
-  render(<SettingsApp api={api} initialPage="general" />);
-  const larger = await screen.findByRole("switch", { name: "Larger text" });
+  render(<SettingsApp api={api} initialPage="look" />);
+  const larger = await screen.findByRole("radio", { name: "Larger" });
   const old = deferred<PickerPreferences>(), latest = deferred<PickerPreferences>();
   vi.spyOn(api, "pickerPreferences").mockReturnValueOnce(old.promise).mockReturnValueOnce(latest.promise);
   fireEvent.focus(window);
@@ -708,10 +713,10 @@ test("a later equal-valued switch intent is retried when its own save fails", as
     if (request === 3) throw new Error("synthetic third-save failure");
     return commit(patch);
   });
-  render(<SettingsApp api={api} initialPage="general" />);
-  const larger = await screen.findByRole("switch", { name: "Larger text" });
+  render(<SettingsApp api={api} initialPage="look" />);
+  const larger = await screen.findByRole("radio", { name: "Larger" });
   fireEvent.click(larger);
-  fireEvent.click(larger);
+  fireEvent.click(screen.getByRole("radio", { name: "Default" }));
   fireEvent.click(larger);
   // Queue another field before the third write fails; it must carry the still-unsaved intent.
   fireEvent.click(screen.getByRole("radio", { name: "Spacious" }));
@@ -728,6 +733,7 @@ test("Shortcuts records a change, restores the default, and lists every picker k
   const label = (shortcut: string) => shortcutLabel(shortcut, currentPlatform() === "macos");
   expect(recorder.textContent).toBe(label(DEFAULT_PICKER_SHORTCUT));
   expect(screen.queryByRole("button", { name: "Use Default" })).toBeNull();
+  fireEvent.click(screen.getByText("In the picker", { selector: "summary" }));
   const list = screen.getByRole("region", { name: "In the picker" });
   for (const binding of KEY_TABLE) expect(within(list).getByText(keyText.actions[binding.action])).toBeTruthy();
   expect(within(list).queryAllByRole("button")).toEqual([]);
@@ -897,4 +903,216 @@ test("a physical default-position key still offers the logical default", async (
   await screen.findByRole("button", { name: /^Open Ibis:/ });
   fireEvent.click(screen.getByRole("button", { name: "Use Default" }));
   await waitFor(() => expect(state.shortcutChoices).toEqual([null]));
+});
+
+
+test("seven pages and search find common words, reveal and briefly tint their cause", async () => {
+  const { api } = fakeApi({ granted: true });
+  render(<SettingsApp api={api} initialPage="general" />);
+  expect(screen.getAllByRole("option").map((x) => x.textContent)).toEqual(["General", "Look", "Libraries", "Citations", "Shortcuts", "Advanced", "About Ibis"]);
+  const search = screen.getByRole("searchbox", { name: "Search Settings" });
+  fireEvent.change(search, { target: { value: "dark" } });
+  fireEvent.click(await screen.findByRole("button", { name: "Appearance" }));
+  expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Look");
+  expect(document.getElementById("appearance")!.closest(".ui-settings-row")!.hasAttribute("data-highlighted")).toBe(true);
+  await new Promise((resolve) => setTimeout(resolve, 2100));
+  expect(document.getElementById("appearance")!.closest(".ui-settings-row")!.hasAttribute("data-highlighted")).toBe(false);
+});
+
+test("unavailable rows announce Coming soon and never save invented choices", async () => {
+  const { api, state } = fakeApi({ granted: true });
+  render(<SettingsApp api={api} initialPage="look" />);
+  const size = await screen.findByRole("radiogroup", { name: "Window size" });
+  for (const radio of within(size).getAllByRole("radio")) {
+    expect(radio).toHaveProperty("disabled", true);
+    fireEvent.click(radio);
+  }
+  expect(size.getAttribute("aria-describedby")).toBe("window-size-description");
+  expect(document.getElementById("window-size-description")!.textContent).toBe("Coming soon");
+  expect(state.patches).toEqual([]);
+});
+
+test("Look serializes older A before B, so B stays selected and survives reopening", async () => {
+  const { api, state, commit } = fakeApi({ granted: true });
+  const slow = deferred<void>();
+  const write = vi.spyOn(api, "setPickerPreferences").mockImplementationOnce(async (next) => { await slow.promise; return commit(next); });
+  const mounted = render(<SettingsApp api={api} initialPage="look" />);
+  fireEvent.click(within(await screen.findByRole("radiogroup", { name: "Rows" })).getByRole("radio", { name: "Compact" }));
+  fireEvent.click(screen.getByRole("radio", { name: "Spacious" }));
+  await act(async () => undefined);
+  expect(write).toHaveBeenCalledTimes(1);
+  expect(screen.getByRole("radio", { name: "Spacious" })).toHaveProperty("checked", true);
+  await act(async () => slow.resolve());
+  await act(async () => state.closes[0]!());
+  expect(state.preferences.density).toBe("spacious");
+  mounted.unmount();
+  render(<SettingsApp api={api} initialPage={null} />);
+  expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Look");
+  expect((await screen.findByRole("radio", { name: "Spacious" }))).toHaveProperty("checked", true);
+});
+
+test.each(["read-only", "failed I/O"])("%s restores the saved choice even if recovery also fails, beside its cause", async () => {
+  const { api } = fakeApi({ granted: true });
+  const mounted = render(<SettingsApp api={api} initialPage="look" />);
+  const choice = await screen.findByRole("radio", { name: "Spacious" });
+  vi.spyOn(api, "setPickerPreferences").mockRejectedValueOnce(new Error("synthetic private OS detail"));
+  vi.spyOn(api, "pickerPreferences").mockRejectedValueOnce(new Error("synthetic read failure"));
+  fireEvent.click(choice);
+  const problem = await screen.findByRole("alert");
+  await waitFor(() => expect(screen.getByRole("radio", { name: "Comfortable" })).toHaveProperty("checked", true));
+  expect(problem.closest(".ui-settings-row")?.querySelector("#rows")).toBeTruthy();
+  expect(problem.textContent).not.toContain("synthetic");
+  fireEvent.click(screen.getByRole("option", { name: "General" }));
+  expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("General");
+  mounted.unmount();
+});
+
+
+test("a picker preference event updates open Settings without focus, and Settings sends only its chosen field", async () => {
+  const { api, state } = fakeApi({ granted: true });
+  const { unmount } = render(<SettingsApp api={api} initialPage="look" />);
+  await screen.findByRole("radio", { name: "Spacious" });
+  state.preferences = { ...state.preferences, density: "compact", show_paste_preview: false };
+  await act(async () => { for (const changed of state.preferenceEvents) changed(); });
+  expect(screen.getByRole("radio", { name: "Compact" })).toHaveProperty("checked", true);
+  fireEvent.click(screen.getByRole("radio", { name: "Spacious" }));
+  await act(async () => state.closes[0]!());
+  expect(state.preferences).toMatchObject({ density: "spacious", show_paste_preview: false });
+  expect(state.patches).toEqual([{ density: "spacious" }]);
+  unmount();
+  await act(async () => undefined);
+  expect(state.preferenceEvents).toEqual([]);
+});
+
+test("Appearance, nine accents, both search icons, both text sizes and preview persist separately", async () => {
+  const { api, state } = fakeApi({ granted: true });
+  const mounted = render(<SettingsApp api={api} initialPage="look" />);
+  const accents = within(await screen.findByRole("radiogroup", { name: "Accent" })).getAllByRole("radio");
+  expect(accents).toHaveLength(9);
+  fireEvent.click(screen.getByRole("radio", { name: "Dark" }));
+  fireEvent.click(screen.getByRole("radio", { name: "Purple" }));
+  fireEvent.click(screen.getByRole("radio", { name: "Ibis mark" }));
+  fireEvent.click(screen.getByRole("radio", { name: "Larger" }));
+  fireEvent.click(screen.getByRole("switch", { name: "Show what will be pasted" }));
+  await act(async () => state.closes[0]!());
+  expect(state.preferences).toMatchObject({ appearance: "dark", accent: "purple", search_mark: true, larger_text: true, show_paste_preview: false });
+  expect(state.patches.at(0)).toEqual({ appearance: "dark" });
+  expect(state.patches.at(1)).toEqual({ accent: "purple" });
+  mounted.unmount();
+  render(<SettingsApp api={api} initialPage={null} />);
+  expect(await screen.findByRole("radio", { name: "Purple" })).toHaveProperty("checked", true);
+  expect(document.documentElement.dataset.appearance).toBe("dark");
+  fireEvent.click(screen.getByRole("radio", { name: "System" }));
+  fireEvent.click(screen.getByRole("radio", { name: "Follow the Mac" }));
+  fireEvent.click(screen.getByRole("radio", { name: "Magnifier" }));
+  fireEvent.click(screen.getByRole("radio", { name: "Default" }));
+  await act(async () => state.closes.at(-1)!());
+  expect(state.preferences).toMatchObject({ appearance: "system", accent: "system", search_mark: false, larger_text: false });
+});
+
+test("a failed initial preference read explains uncertainty and leaves navigation usable", async () => {
+  const { api, state } = fakeApi();
+  vi.spyOn(api, "pickerPreferences").mockRejectedValueOnce(new Error("private OS data"));
+  render(<SettingsApp api={api} initialPage="look" />);
+  expect(await screen.findByRole("alert")).toHaveProperty("textContent", "Ibis could not read your settings; reopen Settings to try again.");
+  expect(screen.queryByRole("radiogroup")).toBeNull();
+  fireEvent.click(screen.getByRole("option", { name: "General" }));
+  expect(screen.getByRole("heading", { level: 1 })).toHaveProperty("textContent", "General");
+  expect(state.patches).toEqual([]);
+});
+
+test("native login and automatic update choices persist, and a refused update explains its cause", async () => {
+  const { api, state } = fakeApi({ granted: true });
+  const mounted = render(<SettingsApp api={api} initialPage="general" />);
+  const login = await screen.findByRole("switch", { name: /Open at Login|Start when|Start on Login/ });
+  fireEvent.click(login);
+  await act(async () => state.closes[0]!());
+  expect(login).toHaveProperty("checked", true);
+  fireEvent.click(screen.getByRole("option", { name: "About Ibis" }));
+  const automatic = await screen.findByRole("switch", { name: "Check for updates automatically" });
+  fireEvent.click(automatic);
+  await waitFor(() => expect(state.updates).toBe(false));
+  vi.spyOn(api, "setUpdateChecks").mockImplementationOnce(async () => { for (const changed of state.automatic) changed(false); return undefined as never; });
+  fireEvent.click(automatic);
+  expect(await screen.findByRole("alert")).toHaveProperty("textContent", "Ibis could not save this choice; the saved value is shown.");
+  expect(automatic).toHaveProperty("checked", false);
+  mounted.unmount();
+  render(<SettingsApp api={api} initialPage="general" />);
+  expect(await screen.findByRole("switch", { name: /Open at Login|Start when|Start on Login/ })).toHaveProperty("checked", true);
+});
+
+test("Look picture radios have keyboard selection, inert real components and no axe violations", async () => {
+  const { api } = fakeApi({ granted: true });
+  const { container } = render(<SettingsApp api={api} initialPage="look" />);
+  const rows = await screen.findByRole("radiogroup", { name: "Rows" });
+  const selected = within(rows).getByRole("radio", { name: "Comfortable" });
+  act(() => selected.focus());
+  fireEvent.keyDown(selected, { key: "ArrowRight" });
+  expect(within(rows).getByRole("radio", { name: "Spacious" })).toHaveProperty("checked", true);
+  const previews = container.querySelectorAll(".ui-picker-picture-content > div");
+  expect(previews.length).toBeGreaterThan(0);
+  for (const host of previews) {
+    expect(host.hasAttribute("inert")).toBe(true);
+    expect(host.shadowRoot?.querySelector(".search-bar input")).toBeTruthy();
+  }
+  expect((await axe.run(container)).violations.map((x) => x.id)).toEqual([]);
+});
+
+
+test("the default citation format saves the exact key or style and restores a refused choice", async () => {
+  const { api, state } = fakeApi({ granted: true });
+  const mounted = render(<SettingsApp api={api} initialPage="citations" />);
+  const format = await screen.findByRole("combobox", { name: "Default format" });
+  fireEvent.change(format, { target: { value: "typst" } });
+  await act(async () => state.closes[0]!());
+  expect(state.preferences).toMatchObject({ copy_format: "typst", citation_style: null });
+  fireEvent.change(format, { target: { value: "style:apa" } });
+  await act(async () => state.closes[0]!());
+  expect(state.preferences.citation_style).toBe("apa");
+  vi.spyOn(api, "setPickerPreferences").mockRejectedValueOnce(new Error("synthetic refusal"));
+  fireEvent.change(format, { target: { value: "cite" } });
+  await screen.findByRole("alert");
+  expect(format).toHaveProperty("value", "style:apa");
+  mounted.unmount();
+  render(<SettingsApp api={api} initialPage={null} />);
+  expect(await screen.findByRole("combobox", { name: "Default format" })).toHaveProperty("value", "style:apa");
+});
+
+
+test("restoring the default shortcut offers Undo that restores the previous saved chord", async () => {
+  const { api, state } = fakeApi();
+  state.shortcut = { shortcut: "Alt+K", registered: true, error: null };
+  render(<SettingsApp api={api} initialPage="shortcuts" />);
+  fireEvent.click(await screen.findByRole("button", { name: "Use Default" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Undo" }));
+  await act(async () => state.closes[0]!());
+  expect(state.shortcut.shortcut).toBe("Alt+K");
+  expect(state.shortcutChoices).toEqual([null, "Alt+K"]);
+  expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
+});
+
+
+test("a read-only refusal names the file constraint beside the restored control", async () => {
+  const { api } = fakeApi({ granted: true });
+  render(<SettingsApp api={api} initialPage="look" />);
+  const choice = await screen.findByRole("radio", { name: "Spacious" });
+  vi.spyOn(api, "setPickerPreferences").mockRejectedValueOnce("settings-read-only");
+  fireEvent.click(choice);
+  const problem = await screen.findByRole("alert");
+  expect(problem).toHaveProperty("textContent", "The settings file is read-only; the saved value is shown.");
+  expect(problem.closest(".ui-settings-row")?.querySelector("#rows")).toBeTruthy();
+  expect(screen.getByRole("radio", { name: "Comfortable" })).toHaveProperty("checked", true);
+});
+
+
+test("a failed update read retains the saved switch and explains the uncertainty beside it", async () => {
+  const { api } = fakeApi();
+  render(<SettingsApp api={api} initialPage="about" />);
+  const automatic = await screen.findByRole("switch", { name: "Check for updates automatically" });
+  vi.spyOn(api, "updateChecks").mockRejectedValueOnce(new Error("synthetic I/O"));
+  fireEvent.focus(window);
+  const problem = await screen.findByRole("alert");
+  expect(screen.getByRole("switch", { name: "Check for updates automatically" })).toBe(automatic);
+  expect(automatic).toHaveProperty("checked", true);
+  expect(problem.closest(".ui-settings-row")?.querySelector("#automatic")).toBeTruthy();
 });

@@ -118,3 +118,18 @@ test("permission instructions and actions share the card's leading edge at every
   expect(style(shell, ".paste-guide-text").getPropertyValue("min-width")).toBe("0px");
   expect(style(shell, ".paste-guide ol").getPropertyValue("padding-inline-start")).toBe("var(--space-5)");
 });
+
+test("every fixed Settings accent keeps white text at 4.5:1 and stays distinct from citation scarlet", () => {
+  const expected = ["0064e1", "953d96", "c8317d", "c42b30", "b25300", "8a6a00", "3b7f25", "6e6e73"];
+  const shades = [...tokens.matchAll(/--settings-accent-[a-z]+:\s*#([0-9a-f]{6})/g)].map((match) => match[1]!);
+  expect(shades).toEqual(expected);
+  for (const shade of shades) {
+    const linear = shade.match(/../g)!.map((channel) => {
+      const value = Number.parseInt(channel, 16) / 255;
+      return value <= .04045 ? value / 12.92 : ((value + .055) / 1.055) ** 2.4;
+    });
+    const luminance = linear[0]! * .2126 + linear[1]! * .7152 + linear[2]! * .0722;
+    expect(1.05 / (luminance + .05), shade).toBeGreaterThanOrEqual(4.5);
+    expect(["c23a1c", "ff7a5c", "d2401f"]).not.toContain(shade);
+  }
+});

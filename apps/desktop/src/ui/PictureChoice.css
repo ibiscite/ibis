@@ -1,0 +1,30 @@
+.ui-picture-choices { display: flex; flex-wrap: wrap; align-items: start; gap: var(--space-2); min-width: 0; max-width: 100%; }
+.ui-picture-choice {
+  display: flex; flex-direction: column; align-items: center; gap: var(--space-1); padding: var(--space-2);
+  min-width: var(--control-min-size); min-height: var(--control-min-size); max-width: 100%; box-sizing: border-box;
+  border-radius: var(--r-control); color: var(--text); background: var(--clear); outline: none;
+  font-size: var(--type-meta-size); text-align: center; overflow-wrap: anywhere;
+}
+.ui-picture-choice[data-selected] { background: var(--selected-background); color: var(--selected-text); }
+.ui-picture-choice[data-focus-visible] { outline: var(--focus-ring-width) solid var(--focus-ring-color); outline-offset: var(--focus-ring-offset); }
+.ui-picture-choice[data-disabled] { color: var(--muted); }
+.ui-picture-choice[data-disabled][data-selected] { background: var(--fill-control); color: var(--text); }
+.ui-picture-choices[data-dots] { gap: 0; }
+.ui-picture-choices[data-dots] .ui-picture-choice { padding: var(--space-1); justify-content: center; border-radius: var(--r-full); }
+.ui-accent-dot { width: var(--space-5); height: var(--space-5); border-radius: var(--r-full); background: var(--choice-accent); box-shadow: inset 0 0 0 var(--border-width) var(--separator); }
+.ui-visually-hidden { position: absolute; width: var(--hidden-size); height: var(--hidden-size); overflow: hidden; clip-path: var(--hidden-clip); white-space: nowrap; }
+@media (prefers-contrast: more), (forced-colors: active) {
+  .ui-picture-choice { border: var(--border-width) solid CanvasText; }
+  .ui-picture-choice[data-selected] { background: Highlight; color: HighlightText; }
+  .ui-picture-choice[data-focus-visible] { outline-color: CanvasText; }
+}
+
+.ui-accent-dot[data-accent="system"] { background: conic-gradient(var(--settings-accent-pink), var(--settings-accent-red), var(--settings-accent-orange), var(--settings-accent-yellow), var(--settings-accent-green), var(--settings-accent-blue), var(--settings-accent-purple), var(--settings-accent-pink)); }
+.ui-accent-dot[data-accent="blue"] { background: var(--settings-accent-blue); }
+.ui-accent-dot[data-accent="purple"] { background: var(--settings-accent-purple); }
+.ui-accent-dot[data-accent="pink"] { background: var(--settings-accent-pink); }
+.ui-accent-dot[data-accent="red"] { background: var(--settings-accent-red); }
+.ui-accent-dot[data-accent="orange"] { background: var(--settings-accent-orange); }
+.ui-accent-dot[data-accent="yellow"] { background: var(--settings-accent-yellow); }
+.ui-accent-dot[data-accent="green"] { background: var(--settings-accent-green); }
+.ui-accent-dot[data-accent="graphite"] { background: var(--settings-accent-graphite); }

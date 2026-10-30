@@ -24,6 +24,7 @@ export const settingsApi = {
   onShortcutStatus: (handler: (status: ShortcutStatus) => void): Promise<UnlistenFn> => listen<ShortcutStatus>("shortcut:status", (event) => handler(event.payload)),
   version: getVersion,
   /** Settings is asked to show a page, such as the paste guide after a refused paste. */
+  onPreferencesChanged: (handler: () => void): Promise<UnlistenFn> => listen("preferences:changed", handler),
   onPage: (handler: (page: string) => void): Promise<UnlistenFn> => listen<string>("settings:page", (event) => handler(event.payload)),
   /** The saved automatic update choice, after a change from any menu. */
   onUpdateChecks: (handler: (on: boolean) => void): Promise<UnlistenFn> => listen<boolean>("update:automatic", (event) => handler(event.payload)),

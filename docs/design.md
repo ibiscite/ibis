@@ -1112,8 +1112,16 @@ control at the end, at least `--settings-row-height` (48 px) or
 `--surface-grouped-card` over `--surface-grouped` [D17]. Controls are the
 shared `Switch` (38 × 22), `Segmented` and shortcut recorder in `ui/`. Changes
 apply at once and reach an open picker; preference resets offer Undo. Built so
-far: General (login, pasting, picker look), Shortcuts (open Ibis and the picker's
-key list) and About (version, updates); Libraries and Citations follow (#776).
+far: seven searchable pages, with General (opening-shortcut link, login and
+pasting), Look (real picker pictures, rows, Ibis mark or magnifier,
+Default/Larger text and paste preview), Shortcuts (opening shortcut and an
+expandable key list and Undo for restoring the default), Citations (default
+key syntax or style) and About Ibis (version and update checks). Appearance
+and Accent are saved and apply in Settings; the picker still needs to consume
+those choices. Largest text, None, window presets including Compact, menu-bar
+visibility, welcome replay and the remaining Libraries, Citations and Advanced
+actions appear disabled with Coming soon. Settings remembers its page when closed;
+an explicit page request still selects that page and resets its scroller.
 
 **One Settings design** (maintainer, 2026-10-30). There is one Settings
 window; every drawing and board uses it, and it is kept in step with the app as
