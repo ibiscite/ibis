@@ -8,12 +8,15 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
+    "build:pseudo": "tsc --noEmit && vite build --mode pseudolocale",
     "typecheck": "tsc --noEmit",
     "lint": "biome lint",
     "test": "vitest run",
     "tauri": "tauri"
   },
   "dependencies": {
+    "@fluent/bundle": "0.19.1",
+    "@fluent/syntax": "0.19.0",
     "@tauri-apps/api": "2.12.4",
     "react": "19.3.1",
     "react-aria": "3.53.1",

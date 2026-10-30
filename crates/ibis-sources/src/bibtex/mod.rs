@@ -95,7 +95,7 @@ pub(crate) fn load_with_budget(
     }
 
     let mut macros = Vec::new();
-    let mut entries: Vec<RawEntry> = Vec::new();
+    let mut entries: Vec<RawEntry<'_>> = Vec::new();
     let mut raw_texts: Vec<&str> = Vec::new();
     let mut seen = HashSet::new();
     for block in &blocks {
@@ -208,9 +208,9 @@ pub(crate) fn has_incomplete_blocks(text: &str) -> bool {
 /// Resolve, parse and convert one entry.
 fn load_entry(
     source: &LibraryId,
-    resolver: &Resolver,
+    resolver: &Resolver<'_, '_>,
     i: usize,
-    entry: &RawEntry,
+    entry: &RawEntry<'_>,
     raw: &str,
 ) -> Result<(Record, Option<String>, Vec<String>), String> {
     let resolved = resolver.resolve(i);

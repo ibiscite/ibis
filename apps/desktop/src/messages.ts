@@ -516,43 +516,7 @@ export const updateText = {
 // The Settings window (#776, docs/design.md "Settings").
 export const settingsText = {
   windowTitle: "Ibis Settings",
-  pages: "Settings pages",
-  general: "General",
-  shortcuts: "Shortcuts",
-  about: "About",
-  groups: { paste: "Pasting", picker: "Picker", updates: "Updates" },
-  paste: {
-    label: "Paste into the app you came from",
-    description: "Enter pastes the citation where you were typing. Off, Enter only copies it.",
-    allowed: (list: string) => `Allowed in Privacy & Security › ${list}`,
-    allowedNote: "Ibis presses ⌘V once, only in the app you opened it from.",
-    guideTitle: "Allow Ibis to paste for you",
-    guideWhy: "To paste, allow Ibis in macOS; it only presses ⌘V in the app you came from and never reads what you type.",
-    steps: (name: string, list: string) => [
-      "Click Open System Settings.",
-      `In Privacy & Security › ${list}, turn on ${name}.`,
-      "Come back. Ibis notices on its own.",
-    ],
-    open: "Open System Settings",
-    drag: (name: string, list: string) => `Drag ${name} to ${list}`,
-    dragKeyboard: "Press to open System Settings.",
-    dragFallback: "If Ibis is not in the list, drag it there.",
-    dragFailed: "Couldn't drag this copy of Ibis. Use the + button in System Settings to add it.",
-    waiting: "Waiting for your OK…",
-    granted: "Ibis can paste now.",
-    returnFailed: "Couldn't return to your citation. Open Ibis with your shortcut to continue.",
-    stale: (name: string) => `Already on, but still waiting? An update gave ${name} a new identity. Open System Settings again: Ibis clears the old switch so you can turn on the new one.`,
-    copyInstead: "Just copy",
-  },
-  picker: {
-    rows: "Rows",
-    largerText: "Larger text",
-    searchMark: "Ibis mark in search",
-    searchMarkDescription: "In place of the magnifier",
-    preview: "Show what will be pasted",
-    previewDescription: "The line above the footer",
-  },
-  login: { description: "Keeps the shortcut ready after you restart" },
+  groups: { updates: "Updates" },
   shortcut: {
     open: "Open Ibis",
     description: "Click the shortcut, then type a new one. Esc cancels.",
@@ -591,7 +555,6 @@ export const settingsText = {
     version: (name: string, version: string) => `${name} ${version}`,
     unavailable: "This build does not update itself.",
   },
-  failed: "Ibis could not save that. Try again.",
 } as const;
 
 /** Native refusals carry only known codes and command identifiers. */
