@@ -19,27 +19,13 @@ function renderKeys(format, keys) {
     return `\\${format}${keys.length > 1 ? "s" : ""}${keys.map(key => `{${key}}`).join("")}`;
   return "";
 }
-// Notice candidates preserve the copied format and count whole references,
-// including the case where only the remaining count fits in two lines.
-export function noticeCandidates(format, keys) {
-  const candidates = [];
-  for (let shown = keys.length; shown >= 0; shown--) {
-    const remaining = keys.length - shown;
-    const citation = shown ? `${renderKeys(format, keys.slice(0, shown))} [Sample]` : "";
-    candidates.push(shown ? `${citation}${remaining ? ` +${remaining} more` : ""}` : `+${remaining} more [Sample]`);
-  }
-  return candidates;
-}
 export function createDemo() {
   const state = { query: "lantern", selected: 0, format: "pandoc", added: [], copied: null, pasted: null, open: true, preview: true };
   const found = () => {
     const words = state.query.toLowerCase().split(/\p{White_Space}+/u).filter(Boolean);
     return references.filter(ref => words.every(word => `${ref.authors} ${ref.title} ${ref.year} ${ref.key} ${ref.where}`.toLowerCase().includes(word)));
   };
-  const output = () => {
-    const text = renderKeys(state.format, state.added.length ? state.added : [found()[state.selected]?.key].filter(Boolean));
-    return text ? `${text} [Sample]` : "";
-  };
+  const output = () => renderKeys(state.format, state.added.length ? state.added : [found()[state.selected]?.key].filter(Boolean));
   const setQuery = query => { state.query = query; state.selected = 0; };
   return { state, found, output, setQuery,
     add(key) {

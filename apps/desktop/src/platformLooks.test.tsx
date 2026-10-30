@@ -210,9 +210,10 @@ test("menus and dialogs consume their shared elevation and separate shape roles"
   const native = readFileSync(new FileURL("./nativeAppearance.css", import.meta.url), "utf8");
   expect(rules(menus, ".menu-popover")).toMatch(/box-shadow:\s*var\(--shadow-overlay\)/);
   expect(menus).not.toMatch(/--menu-shadow\s*:/);
-  const dialog = rules(styles, ".keys-dialog");
-  expect(dialog).toMatch(/border-radius:\s*var\(--r-dialog\)/);
-  expect(dialog).toMatch(/box-shadow:\s*var\(--shadow-dialog\)/);
+  const sheet = readFileSync(new FileURL("./ui/KeysSheet.css", import.meta.url), "utf8");
+  const dialog = rules(sheet, ".keys-dialog.ui-sheet");
+  expect(dialog).toMatch(/border-radius:\s*var\(--r-menu\)/);
+  expect(dialog).toMatch(/box-shadow:\s*var\(--shadow-overlay\)/);
   expect(rules(styles, ".keys-backdrop")).toMatch(/background:\s*var\(--scrim\)/);
   expect(native).not.toMatch(/:is\(\.menu-popover,\s*\.keys-dialog\)\s*\{[^}]*border-radius:/);
 });
@@ -709,6 +710,31 @@ function tokenScopes(blocks: TokenBlock[]) {
   return scopes;
 }
 
+test.each(["normal", "more", "forced", "transparency"])("overlay text keeps 4.5:1 in both themes in %s mode over busy colours", (mode) => {
+  const root = tokenScopes(tokenBlocks(appSheets, "macos", mode, true, true)).get("root")!;
+  const value = (name: string) => resolveToken(`var(${name})`, root)!;
+  const themed = (colour: string, theme: number) => {
+    const pair = colour.match(/light-dark\((#[\da-f]{6}),\s*(#[\da-f]{6})\)/i);
+    if (pair) return hex(pair[theme + 1]!);
+    if (colour === "Canvas") return hex(theme ? "#000000" : "#ffffff");
+    if (colour === "CanvasText") return hex(theme ? "#ffffff" : "#000000");
+    throw new Error(`Unexpected colour role: ${colour}`);
+  };
+  for (const role of ["--surface-overlay", "--surface-sheet"]) {
+    const surface = value(role);
+    const mix = surface.match(/^color-mix\(in srgb,\s*(.+) (\d+)%,\s*transparent\)$/);
+    const alpha = mix ? Number(mix[2]) / 100 : 1;
+    expect(alpha, `${role}: ${surface}`).toBe(mode === "normal" ? role === "--surface-overlay" ? .92 : .96 : 1);
+    for (const theme of [0, 1]) for (const backdrop of ["#000000", "#ffffff", "#ff0000", "#00ff00", "#0000ff"]) {
+      const fill = themed(mix?.[1] ?? surface, theme);
+      const rendered = fill.map((channel, i) => channel * alpha + hex(backdrop)[i]! * (1 - alpha));
+      for (const text of ["--text", "--muted"]) {
+        expect(ratio(themed(value(text), theme), rendered), `${role}/${text}/${theme}/${backdrop}`).toBeGreaterThanOrEqual(4.5);
+      }
+    }
+  }
+});
+
 // Each mode is independently checked, keeping the exhaustive audit below the
 // per-test CPU budget even while other jsdom workers render the picker.
 test.each(["macos", "windows", "linux"].flatMap((platform) =>
@@ -815,8 +841,8 @@ function opticalSpacing(block: TokenBlock, name: string, value: string) {
   if (name === "--lead-gap") return same("calc((var(--tile-size) - var(--icon-glyph-size)) / 2 + var(--row-gap))");
   // Centre the 24 px fill in a 32/44 px target: the coarse inset is 10 px.
   if (block.selector === ".shelf .shelf-chips[data-expanded]" && name === "padding-block") return same("calc((var(--chip-hit-size) - var(--chip-height)) / 2)");
-  const borderCompensation = [".search-bar", '[role="option"]', '[role="option"][data-active]', ".key-caps kbd", ".library-bar", ".more > button"].includes(block.selector);
-  if (borderCompensation && /^0?calc\(var\(--(?:inset|row-pad|space-1)\)[+-]var\(--(?:border-width|contrast-border-width)\)\)(var\(--space-1\))?$/.test(normalized(value))) return true;
+  const borderCompensation = [".search-bar", '[role="option"]', '[role="option"][data-active]', '.ui-option[role="option"], .choice-row[role="option"]', ".key-caps kbd", ".library-bar", ".more > button"].includes(block.selector);
+  if (borderCompensation && /^0?calc\(var\(--(?:inset|row-pad|space-1|space-2)\)[+-]var\(--(?:border-width|contrast-border-width)\)\)(var\(--space-1\))?$/.test(normalized(value))) return true;
   if (block.selector.includes("#search") && name === "padding-inline-start" && same("calc(var(--lead) + var(--search-icon-width) + var(--lead-gap) - var(--border-width))")) return true;
   const native: Record<string, string[]> = {
     // Native menu metrics (docs/design.md, Menus): one inset on the frame's
@@ -857,19 +883,24 @@ test("spacing audits resolve aliases and calc without exempting arbitrary one-pi
 });
 
 
-test("the generated search logo grows optically without moving query or result columns", () => {
-  expect(tokens).toMatch(/--search-mark-size: var\(--tile-size\);/);
+test("the 24 px search logo keeps a two-pixel outset without moving query or result columns", () => {
+  const logoCss = readFileSync(new FileURL("./ui/IbisMark.css", import.meta.url), "utf8");
+  expect(logoCss).not.toContain(".search-bar");
+  expect(tokens).toMatch(/--search-mark-size: 1\.5rem;/);
   expect(tokens).toMatch(/--search-mark-outset: calc\(\(var\(--search-mark-size\) - var\(--search-icon-width\)\) \/ 2\);/);
   const logo = rules(styles, ".search-bar > svg.search-mark");
-  expect(logo).toMatch(/width: var\(--search-mark-size\);/);
+  expect(logo).toMatch(/width: var\(--search-mark-size\)/);
   expect(logo).toMatch(/margin-inline: calc\(var\(--lead\) - var\(--search-mark-outset\)\) calc\(var\(--lead-gap\) - var\(--search-gap\) - var\(--search-mark-outset\)\)/);
-  expect(logo).toMatch(/color: var\(--citation\)/);
-  expect(tokens).toMatch(/--citation: light-dark\(#c23a1c, #ff7a5c\)/i);
-  for (const scale of [1, 1.15, 2, 2.3]) {
-    const g = geometry(), icon = g["--icon-glyph-size"]! * scale, mark = g["--tile-size"]! * scale;
+  const scope = tokenScopes(tokenBlocks({ tokens })).get("root")!;
+  const size = gridPixels(resolveToken("var(--search-mark-size)", scope)!)!;
+  const outsetSize = gridPixels(resolveToken("var(--search-mark-outset)", scope)!)!;
+  expect(size).toBe(24);
+  expect(outsetSize).toBe(2);
+  for (const scale of [1, 1.15, 2]) {
+    const g = geometry(), icon = g["--icon-glyph-size"]! * scale, mark = size * scale;
     const lead = (g["--row-pad"]! + (g["--tile-size"]! - g["--icon-glyph-size"]!) / 2) * scale;
     const gap = ((g["--tile-size"]! - g["--icon-glyph-size"]!) / 2 + g["--row-gap"]!) * scale;
-    const outset = (mark - icon) / 2;
+    const outset = outsetSize * scale;
     expect(lead - outset + mark + gap - outset).toBeCloseTo(lead + icon + gap);
     expect(mark).toBeLessThanOrEqual(g["--field-h"]! * scale);
   }

@@ -1,5 +1,5 @@
 import { expect, test, vi, afterEach } from "vitest";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { emit } from "@tauri-apps/api/event";
 import { StrictMode } from "react";
 import { App } from "./App";
@@ -7,6 +7,80 @@ import * as api from "./api";
 import { backend, resetApp } from "./testing/app";
 
 afterEach(resetApp);
+
+const noLibrary = { state: "none", has_snapshot: false, zotero: false, name: null, snapshot_name: null, references: 0, warnings: 0, error: null, problem: null, note: null };
+const welcome = async () => (await screen.findByRole("heading", { name: "Where do your references live?" })).closest("section")!;
+
+test.each([false, true])("welcome plainly names a missing Wayland shortcut, follows changed triggers, and returns to none (initial registered: %s)", async (registered) => {
+  const guidance = "Bind ibis toggle in your desktop's keyboard settings.";
+  backend({ library_status: () => noLibrary, shortcut_status: () => ({ shortcut: "", registered, error: null,
+    desktop: { configurable: true, guidance } }) });
+  render(<App />);
+  const group = within(await welcome());
+  expect(await group.findByText(/No shortcut is set\./)).toBeTruthy();
+  expect(group.getByText(/No shortcut is set\./).textContent).toContain(guidance);
+  expect(group.queryByText(/After this, open Ibis from any app with/)).toBeNull();
+  for (const trigger of ["Super + Space", "Strg + Umschalt + Y"]) {
+    await act(async () => { await emit("shortcut:status", { shortcut: trigger, registered: true, error: null,
+      desktop: { configurable: true, guidance: "Your desktop manages this shortcut." } }); });
+    expect(group.getByText(`After this, open Ibis from any app with ${trigger}.`)).toBeTruthy();
+    expect(group.queryByText(/No shortcut is set\./)).toBeNull();
+  }
+  await act(async () => { await emit("shortcut:status", { shortcut: "", registered: false, error: "Your desktop did not report a shortcut.",
+    desktop: { configurable: true, guidance } }); });
+  expect(group.getByText(/No shortcut is set\./).textContent).toContain(guidance);
+  expect(group.queryByText(/After this, open Ibis from any app with/)).toBeNull();
+});
+
+test("welcome uses the current registered shortcut, including live changes and desktop trigger text", async () => {
+  backend({ library_status: () => noLibrary, shortcut_status: () => ({ shortcut: "Alt+K", registered: true, error: null }) });
+  render(<App />);
+  const group = within(await welcome());
+  expect(await group.findByText("After this, open Ibis from any app with Alt+K.")).toBeTruthy();
+  expect(group.queryByText(/Ctrl\+Shift\+Y|⇧⌘Y/)).toBeNull();
+  await act(async () => { await emit("shortcut:status", { shortcut: "Alt+J", registered: true, error: null }); });
+  expect(group.getByText("After this, open Ibis from any app with Alt+J.")).toBeTruthy();
+  expect(group.queryByText(/Alt\+K/)).toBeNull();
+  const desktopTrigger = "Strg + Umschalt + Y";
+  await act(async () => { await emit("shortcut:status", { shortcut: desktopTrigger, registered: true, error: null, desktop: { configurable: true, guidance: "Your desktop manages this shortcut." } }); });
+  expect(group.getByText(`After this, open Ibis from any app with ${desktopTrigger}.`)).toBeTruthy();
+});
+
+test.each([false, true])("unregistered welcome shortcut shows unavailable guidance and no promise (desktop: %s)", async (desktop) => {
+  const guidance = "Bind ibis toggle in your desktop's keyboard settings.";
+  backend({ library_status: () => noLibrary, shortcut_status: () => ({ shortcut: "Alt+K", registered: false, error: "Another app owns the shortcut",
+    desktop: desktop ? { configurable: false, guidance } : null }) });
+  render(<App />);
+  const group = within(await welcome());
+  expect(await group.findByText(desktop ? guidance : /shortcut is unavailable.*menu bar or tray/)).toBeTruthy();
+  expect(group.queryByText(/After this, open Ibis from any app with/)).toBeNull();
+  await act(async () => { await emit("shortcut:status", { shortcut: "Alt+K", registered: true, error: null }); });
+  expect(group.getByText("After this, open Ibis from any app with Alt+K.")).toBeTruthy();
+  expect(group.queryByText(desktop ? guidance : /shortcut is unavailable/)).toBeNull();
+});
+
+test("welcome makes no shortcut promise while status is pending or its read fails", async () => {
+  let refuse!: (error: Error) => void;
+  backend({ library_status: () => noLibrary, shortcut_status: () => new Promise((_, reject) => { refuse = reject; }) });
+  render(<App />);
+  const group = within(await welcome());
+  expect(group.queryByText(/After this, open Ibis from any app with/)).toBeNull();
+  await act(async () => refuse(new Error("synthetic shortcut read failure")));
+  expect(await screen.findByText("Ibis could not check the shortcut. Open Ibis from the menu bar or tray.")).toBeTruthy();
+  expect(group.queryByText(/After this, open Ibis from any app with/)).toBeNull();
+});
+
+test("a delayed shortcut read cannot replace the welcome's newer registered status", async () => {
+  let finish!: (status: api.ShortcutStatus) => void;
+  backend({ library_status: () => noLibrary, shortcut_status: () => new Promise<api.ShortcutStatus>((resolve) => { finish = resolve; }) });
+  render(<App />);
+  const group = within(await welcome());
+  await act(async () => { await emit("shortcut:status", { shortcut: "Alt+K", registered: true, error: null }); });
+  expect(group.getByText("After this, open Ibis from any app with Alt+K.")).toBeTruthy();
+  await act(async () => finish({ shortcut: "Control+Shift+Y", registered: true, error: null }));
+  expect(group.getByText("After this, open Ibis from any app with Alt+K.")).toBeTruthy();
+  expect(group.queryByText(/Ctrl\+Shift\+Y/)).toBeNull();
+});
 
 test("the keys list preserves the desktop's trigger text without inventing an accelerator", async () => {
   const label = "Strg + Umschalt + Y";

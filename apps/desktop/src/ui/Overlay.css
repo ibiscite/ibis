@@ -1,0 +1,12 @@
+/* Shared overlay roles outrank the older native skin's combined menu/sheet
+   fill. Native success and accessibility preferences are resolved by tokens;
+   no overlay chooses a material independently of the picker panel. */
+.ui-overlay,
+:root[data-platform][data-native-appearance]:not(.notice-window) .ui-overlay {
+  background: var(--surface-overlay); color: var(--text);
+  -webkit-backdrop-filter: var(--overlay-backdrop-filter); backdrop-filter: var(--overlay-backdrop-filter);
+}
+.ui-overlay.ui-sheet,
+:root[data-platform][data-native-appearance]:not(.notice-window) .ui-overlay.ui-sheet {
+  background: var(--surface-sheet);
+}
