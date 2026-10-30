@@ -1,7 +1,7 @@
 // Real built picker + invented IPC. Browser layout evidence, not native input/engine proof.
 // Serve `pnpm build` with `pnpm exec vite preview`; reuse an installed Playwright.
 import assert from "node:assert/strict";
-import { dismissMenu, isAnchoredDetails, isWholeNotice, isWholeShelf, noticeText, waitForLayout } from "./picker-layout-checks.mjs";
+import { dismissMenu, isAnchoredDetails, isWholeNotice, isWholeShelf, noticeText, shelfControl, waitForLayout } from "./picker-layout-checks.mjs";
 const { chromium } = await import(process.env.IBIS_PLAYWRIGHT_MODULE || "playwright");
 const base = new URL(process.argv[2] || "http://127.0.0.1:4173");
 assert.ok(["127.0.0.1", "localhost"].includes(base.hostname), "Use a loopback fixture server");
@@ -235,7 +235,7 @@ try {
       const fromChip = segment && await edit.isVisible();
       const anchor = fromChip ? chip : page.locator("main > .shelf .shelf-output");
       if (fromChip) await edit.click();
-      else await page.getByRole("button", { name: "Edit citation", exact: true }).click();
+      else await shelfControl(page, "Edit citation").click();
       const dialog = page.getByRole("dialog", { name: /^Citation details/ });
       await dialog.waitFor();
       await page.getByLabel("Page", { exact: true }).waitFor();
@@ -273,7 +273,7 @@ try {
       if (shelfDetails === "expanded") {
         for (let i = 0; i < 9; i++) { if (i) await search.press("ArrowDown"); await search.press("Shift+Enter"); }
         beforeShelf = await page.locator("main > .shelf").boundingBox();
-        const count = page.getByRole("button", { name: "Show all 9 selected references", exact: true, includeHidden: true });
+        const count = shelfControl(page, "Show all 9 selected references");
         await count.click();
         dialog = page.getByRole("dialog", { name: "Selected references", exact: true });
         await dialog.waitFor();
@@ -283,7 +283,7 @@ try {
         for (const control of await controls.all()) assert.equal(await reachable(control), true, "every remove target is reachable");
       } else if (shelfDetails === "warnings") {
         await search.press("Shift+Enter");
-        const warnings = page.getByRole("button", { name: /2 warnings.*Reference entry.*Closest matches/, includeHidden: true });
+        const warnings = shelfControl(page, /2 warnings.*Reference entry.*Closest matches/);
         await warnings.waitFor();
         beforeShelf = await page.locator("main > .shelf").boundingBox();
         assert.equal(await reachable(warnings), true, "the warnings control stays reachable from the shelf");
@@ -303,7 +303,7 @@ try {
         await shelfReason.waitFor();
         assert.equal(await shelfReason.textContent(), noticeText.formatting, "the reason appears beside the failed citation before Details opens");
         assert.equal(await reachable(shelfReason), true, "the refusal line stays visible in the fixed shelf");
-        await page.getByRole("button", { name: "Details", exact: true }).click();
+        await shelfControl(page, "Details").click();
         dialog = page.getByRole("dialog", { name: /^Citation details/ });
         await dialog.waitFor();
         await anchoredMenu(page.locator("main > .shelf .shelf-output"));
@@ -445,7 +445,7 @@ try {
     await page.setViewportSize({ width: 480, height: 360 });
     await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     assert.deepEqual(await scan(), [], "resizing while editing keeps fixed bands and one active scroller");
-    const foldedAnchor = page.locator("main > .shelf .shelf-output > button[aria-label^='Show all']");
+    const foldedAnchor = shelfControl(page, /^Show all /);
     // A visible segment folds to the count; an editor opened from the whole
     // citation stays on that citation. Both anchors stay inside the window.
     const anchor = await foldedAnchor.getAttribute("aria-expanded") === "true" ? foldedAnchor : page.locator("main > .shelf .shelf-output");

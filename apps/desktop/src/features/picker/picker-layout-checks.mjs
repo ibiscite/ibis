@@ -13,6 +13,13 @@ export async function dismissMenu(menu, keyTarget = menu) {
   await menu.waitFor({ state: "detached" });
 }
 
+export function shelfControl(page, name) {
+  // Folding retains hidden chip controls. An open menu also marks its visible
+  // background aria-hidden, so distinguish rendered controls from both states.
+  return page.getByRole("button", { name, exact: true, includeHidden: true })
+    .and(page.locator("main > .shelf button:visible"));
+}
+
 // Keep this function self-contained: Playwright serializes it into the page.
 export function isWholeNotice(text) {
   const node = [...document.querySelectorAll('.notices [role="alert"]')].find((node) => node.textContent === text);

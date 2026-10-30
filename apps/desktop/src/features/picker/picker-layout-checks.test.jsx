@@ -1,14 +1,62 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, queryAllByRole, render, screen, within } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { App } from "../../App";
+import { CitationShelf } from "./CitationShelf";
 import { pickerText } from "../../messages";
 import { backend, resetApp } from "../../testing/app";
-import { dismissMenu, isAnchoredDetails, isWholeNotice, isWholeShelf, layoutGeometry, noticeText, waitForLayout } from "./picker-layout-checks.mjs";
+import { dismissMenu, isAnchoredDetails, isWholeNotice, isWholeShelf, layoutGeometry, noticeText, shelfControl, waitForLayout } from "./picker-layout-checks.mjs";
 
 afterEach(async () => {
   await resetApp();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   document.documentElement.removeAttribute("data-text-size");
+});
+
+test.each([[720, 480, 1], [480, 360, 1], [480, 360, 2]])("the probe selects one rendered Show all control at %s×%s/%s× text, including with its menu open", async (width, height, scale) => {
+  vi.stubGlobal("innerWidth", width); vi.stubGlobal("innerHeight", height);
+  const computed = window.getComputedStyle;
+  vi.spyOn(window, "getComputedStyle").mockImplementation((node) => {
+    const style = computed(node);
+    if (node === document.documentElement) Object.defineProperty(style, "fontSize", { value: `${16 * scale}px` });
+    return style;
+  });
+  const records = Array.from({ length: 9 }, (_, i) => ({
+    revision: "1", id: { source: "invented.bib", native_key: `reference${i}` }, key: `reference${i}`, title: `Invented reference ${i}`,
+    authors: "Aster", first_author: "Aster", author_count: 1, year: 2026, container: null, item_type: "book", partial: false, matched: ["title"],
+  }));
+  render(<main><CitationShelf announce={false} selected={new Map(records.map((r) => [r.key, r]))} removeLabel={(r) => `Remove ${r.key} from the selection`}
+    onRemove={() => {}} style={null} keys focusable={false} outputWarnings={[]} shown={{ markup: [], text: "Synthetic citation", html: "", warnings: [] }} /><footer /></main>);
+  const band = document.querySelector("main > .shelf");
+  const name = "Show all 9 selected references";
+  const trigger = within(band).getByRole("button", { name, exact: true });
+  // Model just the Locator intersection and CSS visibility used by this probe.
+  // jsdom has no boxes; hidden/display/visibility exclude retained controls,
+  // while aria-hidden deliberately does not change physical visibility.
+  const locator = (read) => ({ get nodes() { return read(); }, and: (other) => locator(() => read().filter((node) => other.nodes.includes(node))) });
+  const page = {
+    getByRole: (role, { includeHidden, ...options }) => locator(() => queryAllByRole(document.body, role, { ...options, hidden: includeHidden })),
+    locator: (selector) => locator(() => [...document.querySelectorAll(selector.replaceAll(":visible", ""))].filter((node) => {
+      if (!selector.includes(":visible")) return true;
+      for (let part = node; part; part = part.parentElement) {
+        const style = getComputedStyle(part);
+        if (part.hidden || style.display === "none" || style.visibility === "hidden") return false;
+      }
+      return true;
+    })),
+  };
+  const control = shelfControl(page, name), foldedAnchor = shelfControl(page, /^Show all /);
+  expect(control.nodes).toEqual([trigger]);
+  expect(foldedAnchor.nodes).toEqual([trigger]);
+  fireEvent.click(trigger);
+  const dialog = screen.getByRole("dialog", { name: "Selected references", exact: true });
+  expect(within(dialog).getAllByRole("button", { name: /^Remove .* from the selection$/ })).toHaveLength(9);
+  expect(band.closest('[aria-hidden="true"]')).not.toBeNull();
+  expect(control.nodes).toEqual([trigger]);
+  expect(foldedAnchor.nodes).toEqual([trigger]);
+  fireEvent.keyDown(dialog, { key: "Escape" });
+  await act(async () => { await new Promise(requestAnimationFrame); });
+  expect(within(band).getByRole("button", { name, exact: true })).toBe(trigger);
 });
 
 test.each([false, true])("the probe waits for menu exit before the next action (filter=%s)", async (filtered) => {

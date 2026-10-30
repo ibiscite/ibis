@@ -248,7 +248,7 @@ export function CitationShelf({ announce, selected, highlightedReference, onChan
           )}
         </div>
       )}
-      {panel && <DetailsMenu id={menuId} anchor={panel.anchor} anchorLayout={compact} returnFocusRef={fallbackFocusRef} title={detailsTitle}
+      {panel && <DetailsMenu id={menuId} anchor={panel.anchor} returnFocusRef={fallbackFocusRef} title={detailsTitle}
         heading={panel.kind !== "references" && panel.kind !== "warnings" && edited ? edited.title || edited.key : detailsTitle} onClose={() => setPanel(null)}>
         {panel.kind !== "references" && panel.kind !== "warnings" && edited && <p className="shelf-detail-title">{edited.title || edited.key}</p>}
         {panel.kind === "references" && <ul className="shelf-details-list" aria-label={pickerText.selectedReferences}>{records.map((r, i) => chip(r, i, true))}</ul>}

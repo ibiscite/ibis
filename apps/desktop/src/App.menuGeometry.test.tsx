@@ -18,12 +18,14 @@ test("the citation shelf remains a separate non-scrolling band above the footer"
 
 test.each(["error", "refusal"])("a window reset offers Undo without taking focus, and a native %s stays retryable", async (failure) => {
   const restored: unknown[] = [];
+  const replies: (() => void)[] = [];
   let fail = true;
-  const calls = backend({ undo_window_position: ({ revision }) => {
+  const calls = backend({ undo_window_position: async ({ revision }) => {
     restored.push(revision);
-    if (fail && failure === "error") throw new Error("invented restore refusal");
-    if (fail) return false;
-    return true;
+    const refused = fail;
+    await new Promise<void>((resolve) => replies.push(resolve));
+    if (refused && failure === "error") throw new Error("invented restore refusal");
+    return !refused;
   } });
   render(<App />);
   await screen.findByText("Type to find a reference");
@@ -32,11 +34,28 @@ test.each(["error", "refusal"])("a window reset offers Undo without taking focus
   await act(async () => { await emit("picker:window-reset", { revision: 7, undo: 7 }); });
   expect(screen.getByText("Window position reset.").getAttribute("role")).toBe("status");
   expect(document.activeElement).toBe(search);
-  fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+  const pressUndo = async () => {
+    const undo = screen.getByRole<HTMLButtonElement>("button", { name: "Undo" });
+    act(() => undo.focus());
+    fireEvent.click(undo);
+    await waitFor(() => expect(undo.disabled || undo.getAttribute("aria-disabled") === "true").toBe(true));
+    // Chromium blurs a focused native button when it becomes disabled;
+    // jsdom needs that browser step expressed explicitly.
+    if (undo.disabled) act(() => {
+      document.body.tabIndex = -1;
+      document.body.focus();
+      document.body.removeAttribute("tabindex");
+    });
+  };
+  await pressUndo();
+  await act(async () => { replies[0]!(); });
   expect((await screen.findByRole("alert")).textContent).toBe("Could not undo. Try again.");
+  expect(screen.getByRole("button", { name: "Undo" }).getAttribute("aria-disabled")).not.toBe("true");
   fail = false;
-  fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+  await pressUndo();
+  await act(async () => { replies[1]!(); });
   await waitFor(() => expect(screen.queryByRole("button", { name: "Undo" })).toBeNull());
+  expect(document.activeElement === search).toBe(true);
   expect(restored).toEqual([7, 7]);
   expect(calls).not.toContain("fit_picker");
 });

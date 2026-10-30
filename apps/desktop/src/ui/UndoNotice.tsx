@@ -30,7 +30,8 @@ export function UndoNotice({ message, onUndo, onExpire, paused = false, fallback
   return <div ref={notice} className="undo-notice" onPointerEnter={() => setHovered(true)} onPointerLeave={() => setHovered(false)}
     onFocusCapture={() => setFocused(true)} onBlurCapture={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocused(false); }}>
     <span role={error ? "alert" : "status"}>{error ? pickerText.undoFailed : message}</span>
-    <Button variant="quiet" size="small" isDisabled={pending} onPress={() => {
+    {/* Retain native focus while waiting, so dismissal can return it to Search. */}
+    <Button variant="quiet" size="small" isPending={pending} onPress={() => {
       setPending(true); setError(false);
       void onUndo().catch(() => { if (mounted.current) setError(true); }).finally(() => { if (mounted.current) setPending(false); });
     }}>{pickerText.undo}</Button>

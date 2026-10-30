@@ -1,4 +1,4 @@
-import { Children, createContext, isValidElement, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type ComponentPropsWithRef, type PointerEvent, type ReactElement, type ReactNode, type Ref, type RefObject } from "react";
+import { Children, createContext, isValidElement, useCallback, useContext, useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type ComponentPropsWithRef, type PointerEvent, type ReactElement, type ReactNode, type Ref, type RefObject } from "react";
 import { composing as isComposing } from "../composition";
 import { flushSync } from "react-dom";
 import { mergeProps, setInteractionModality } from "react-aria";
@@ -21,42 +21,103 @@ export function useMenuPlacement(open: boolean, trigger: RefObject<HTMLElement |
  * return field. A wrapped picker can put its footer trigger below the window.
  * A menu opened from above the `[data-menu-floor]` region (the footer) also
  * ends above it, so it never covers the footer's actions. */
-export function useMenuBoundary(open: boolean, returnRef?: RefObject<HTMLElement | null>, trigger?: RefObject<HTMLElement | null>, layoutKey?: string | number | boolean) {
+export function useMenuBoundary(open: boolean, returnRef?: RefObject<HTMLElement | null>, trigger?: RefObject<HTMLElement | null>, options?: {
+  overlayRef: RefObject<HTMLElement | null>; scrollRef: RefObject<HTMLElement | null>; onAnchorUnavailable: () => void;
+}) {
   const [boundary, setBoundary] = useState<HTMLElement>();
   const [clearBottom, setClearBottom] = useState(0);
-  // React Aria observes sizes, not an anchor moving because its siblings
-  // folded. Renew the boundary without remounting the focused menu content.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: layoutKey explicitly invalidates placement after a surrounding layout change.
+  const { overlayRef, scrollRef } = options ?? {};
+  const unavailable = useEffectEvent(() => options?.onAnchorUnavailable());
   useLayoutEffect(() => {
     if (!open) return;
-    const node = document.createElement("div");
-    node.dataset.menuBoundary = "";
-    node.setAttribute("aria-hidden", "true");
-    Object.assign(node.style, { position: "fixed", inset: "0", pointerEvents: "none" });
+    let current = true, frame = 0, signature = "";
+    let node: HTMLElement | null = null;
     const floor = document.querySelector<HTMLElement>("[data-menu-floor]");
     const above = floor && trigger?.current && !floor.contains(trigger.current) ? floor : null;
-    const update = () => {
+    const layout = trigger?.current?.closest("main") ?? trigger?.current?.parentElement;
+    const update = (validate = false) => {
+      if (!current) return;
       const bottom = Math.max(0, returnRef?.current?.getBoundingClientRect().bottom ?? 0);
-      node.style.top = `${bottom}px`;
       // Never above the top edge, even in a window too short for both.
-      if (above) node.style.bottom = window.innerHeight <= 400 ? "0px" : `${Math.max(0, window.innerHeight - Math.max(bottom, above.getBoundingClientRect().top))}px`;
+      const end = above && window.innerHeight > 400 ? Math.max(bottom, above.getBoundingClientRect().top) : window.innerHeight;
+      const anchor = trigger?.current;
+      const rect = anchor?.getBoundingClientRect();
+      if (validate && overlayRef && anchor && (!anchor.isConnected || anchor.closest("[hidden]"))) { unavailable(); return; }
+      if (validate && overlayRef && scrollRef && anchor && rect && rect.width > 0 && rect.height > 0) {
+        // A details menu must retain a visible cause. Do not invent an anchor
+        // at the window edge after its segment leaves a scrolling viewport.
+        let top = Math.max(0, rect.top), left = Math.max(0, rect.left);
+        let right = Math.min(innerWidth, rect.right), endVisible = Math.min(innerHeight, rect.bottom);
+        for (let parent = anchor.parentElement; parent; parent = parent.parentElement) {
+          const style = getComputedStyle(parent), bounds = parent.getBoundingClientRect();
+          if (/auto|scroll|hidden|clip/.test(style.overflowY) && bounds.height > 0) { top = Math.max(top, bounds.top); endVisible = Math.min(endVisible, bounds.bottom); }
+          if (/auto|scroll|hidden|clip/.test(style.overflowX) && bounds.width > 0) { left = Math.max(left, bounds.left); right = Math.min(right, bounds.right); }
+        }
+        const overlay = overlayRef.current, scroll = scrollRef.current;
+        const box = overlay?.getBoundingClientRect(), port = scroll?.getBoundingClientRect();
+        // Keep the fixed heading and at least one whole focus target usable;
+        // everything else can scroll in the menu. Initial zero geometry waits
+        // for layout rather than dismissing before the first measurement.
+        let minimum = 0;
+        if (overlay && scroll && box && port && box.height > 0) {
+          const style = getComputedStyle(overlay);
+          const control = scroll.querySelector<HTMLElement>('input, button, [tabindex="0"]') ?? overlay.querySelector<HTMLElement>("button");
+          const row = control?.getBoundingClientRect().height ?? 0;
+          minimum = Math.max(0, port.top - box.top) + (parseFloat(style.paddingBottom) || 0) + (parseFloat(style.borderBottomWidth) || 0) + Math.min(scroll.scrollHeight, row);
+        }
+        const space = Math.max(rect.top - bottom, end - rect.bottom) - 8 - 6;
+        if (right <= left || endVisible <= top || space <= 0 || space < minimum) { unavailable(); return; }
+      }
+      const next = [innerWidth, innerHeight, bottom, end, rect?.x, rect?.y, rect?.width, rect?.height].join(",");
+      if (next === signature) return;
+      signature = next;
+      const previous = node;
+      node = document.createElement("div");
+      node.dataset.menuBoundary = "";
+      node.setAttribute("aria-hidden", "true");
+      Object.assign(node.style, { position: "fixed", inset: "0", top: `${bottom}px`, bottom: `${Math.max(0, innerHeight - end)}px`, pointerEvents: "none" });
+      document.body.append(node);
+      // React Aria observes target size, not position-only layout changes.
+      // A fresh boundary asks that same fitting owner to recompute placement
+      // and its height cap, without remounting the focused menu content.
+      setBoundary(node);
       setClearBottom(bottom);
+      previous?.remove();
     };
     update();
-    document.body.append(node);
-    setBoundary(node);
-    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(update);
+    const schedule = () => {
+      if (!current || frame) return;
+      frame = requestAnimationFrame(() => { frame = 0; update(true); });
+    };
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(schedule);
     if (returnRef?.current) observer?.observe(returnRef.current);
     if (above) observer?.observe(above);
-    window.addEventListener("resize", update);
-    window.visualViewport?.addEventListener("resize", update);
+    if (trigger?.current) observer?.observe(trigger.current);
+    if (overlayRef?.current) observer?.observe(overlayRef.current);
+    if (scrollRef?.current) observer?.observe(scrollRef.current);
+    // A neighbour can move a fixed-size anchor: header wrapping, middle-area
+    // settling, shelf folding and a footer growing all belong to this owner.
+    if (layout) {
+      observer?.observe(layout);
+      for (const child of layout.children) observer?.observe(child);
+    }
+    const changed = new MutationObserver(schedule);
+    if (layout) changed.observe(layout, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["class", "style", "hidden", "data-folded"] });
+    window.addEventListener("resize", schedule);
+    window.visualViewport?.addEventListener("resize", schedule);
+    document.addEventListener("scroll", schedule, true);
+    schedule();
     return () => {
+      current = false;
+      cancelAnimationFrame(frame);
       observer?.disconnect();
-      window.removeEventListener("resize", update);
-      window.visualViewport?.removeEventListener("resize", update);
-      node.remove();
+      changed.disconnect();
+      window.removeEventListener("resize", schedule);
+      window.visualViewport?.removeEventListener("resize", schedule);
+      document.removeEventListener("scroll", schedule, true);
+      node?.remove();
     };
-  }, [open, returnRef, trigger, layoutKey]);
+  }, [open, returnRef, trigger, overlayRef, scrollRef]);
   const getTargetRect = useCallback((target: Element) => {
     const rect = target.getBoundingClientRect();
     if (!boundary?.isConnected) return rect;

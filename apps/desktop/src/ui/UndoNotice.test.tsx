@@ -1,8 +1,43 @@
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
+import { useRef, useState } from "react";
 import { UndoNotice } from "./UndoNotice";
 
 afterEach(() => { cleanup(); vi.useRealTimers(); });
+
+test.each([false, true])("pending Undo keeps focus, blocks repeats and respects a newer focus choice (%s)", async (moveFocus) => {
+  let finish!: () => void;
+  const undo = vi.fn(() => new Promise<void>((resolve) => { finish = resolve; }));
+  function Picker() {
+    const search = useRef<HTMLInputElement>(null);
+    const [visible, setVisible] = useState(true);
+    return <><input ref={search} aria-label="Search" /><input aria-label="Page" />
+      {visible && <UndoNotice message="Window position reset." onUndo={async () => { await undo(); setVisible(false); }} onExpire={() => setVisible(false)} fallbackFocusRef={search} />}
+    </>;
+  }
+  render(<Picker />);
+  const button = screen.getByRole<HTMLButtonElement>("button", { name: "Undo" });
+  act(() => button.focus());
+  fireEvent.click(button);
+  await waitFor(() => expect(button.disabled || button.getAttribute("aria-disabled") === "true").toBe(true));
+  // Disabling a focused button leaves body focused in Chromium. jsdom even
+  // ignores blur() once it is disabled, so model the browser destination.
+  if (button.disabled) act(() => {
+    document.body.tabIndex = -1;
+    document.body.focus();
+    document.body.removeAttribute("tabindex");
+  });
+  expect(document.activeElement === button).toBe(true);
+  expect(button.getAttribute("aria-disabled")).toBe("true");
+  fireEvent.click(button);
+  fireEvent.keyDown(button, { key: "Enter", code: "Enter" });
+  fireEvent.keyUp(button, { key: "Enter", code: "Enter" });
+  expect(undo).toHaveBeenCalledTimes(1);
+  if (moveFocus) act(() => screen.getByRole("textbox", { name: "Page" }).focus());
+  await act(async () => { finish(); });
+  expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
+  expect(document.activeElement).toBe(screen.getByRole("textbox", { name: moveFocus ? "Page" : "Search" }));
+});
 
 test("Undo expires after eight visible seconds and pauses on hover and focus", () => {
   vi.useFakeTimers();
