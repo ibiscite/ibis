@@ -151,7 +151,7 @@ test("pull request CI gates search and picker size; Preview gates open and refre
   assert.ok(engine.indexOf("Enforce 100k search budget") > engine.indexOf("run: cargo test --locked"));
   const preview = readFileSync(new URL("../.github/workflows/preview.yml", import.meta.url), "utf8");
   const build = preview.split("\n  build:\n")[1].split("\n  sign-macos:\n")[0];
-  assert.match(build, /- name: Enforce 100k open\/refresh budgets \(Linux, release\)\n        if: runner.os == 'Linux'\n        env:\n          RUSTFLAGS: -D warnings\n        run: cargo test -p ibis-engine --locked --release --test refresh_budget -- open_refresh_budget --ignored --nocapture --test-threads=1/);
+  assert.match(build, /- name: Report or enforce 100k open\/refresh budgets \(Linux, release\)[\s\S]*?run: node scripts\/preview-budgets.mjs/);
   for (const build of [workflow.match(/\n  changes:\n([\s\S]*?)\n  test:/)[1], workflow.match(/\n  web:\n([\s\S]*?)\n  desktop:/)[1]]) {
     assert.match(build, /node ..\/..\/scripts\/picker-budget.mjs dist/);
   }
