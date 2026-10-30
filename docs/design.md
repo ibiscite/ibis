@@ -8,7 +8,9 @@ General, Shortcuts and About. The Settings
 window's remaining pages wait in #776; scope is
 in [ROADMAP.md](../ROADMAP.md) and progress in the issues. Tags such as [C9]
 (design canvas) and [D7] (token foundations) are cited by code and tests; keep
-each beside its rule.
+each beside its rule. This page, `tokens.css` and the components in
+`apps/desktop/src/ui/` are the single source of truth for design; the design
+canvas mirrors them (see **How the design changes**).
 
 ## Principles
 
@@ -60,7 +62,7 @@ them before any later delivery; it sends no new paste while they remain blocked.
 
 | Role | Tokens | Rule |
 |---|---|---|
-| Surfaces [D4] | `--surface-window` < `--surface` < `--surface-raised` < `--surface-overlay`; `--surface-field`, `--scrim` | Base, content sheet, band/cards/shelf, menus and dialogs. |
+| Surfaces [D4] | `--surface-window` < `--surface` < `--surface-raised` < `--surface-overlay`; `--surface-field`, `--scrim` | Base, content sheet, band/cards/shelf, menus and dialogs. On the macOS glass panel the levels share one material (`--surface`) and layers separate by fills and hairlines. |
 | Text [D5] | `--text`, `--muted`, `--text-tertiary`, `--text-disabled` | `--muted` always 4.5:1; tertiary only for glyphs and hints at rest (3:1), never sentences. |
 | Accent [D6] | `--accent`, `--accent-text`, `--text-on-accent` | Always the system accent; Ibis offers no override. Selected rows and the menu highlight use `--selected-text`, the platform's own selected-text colour (white), as native lists do; never black. `--text-on-accent` (primary button, tiles on the accent) is picked per accent to reach 4.5:1. |
 | Selection [D7] | `--row-active-*`, `--row-inactive-background`, `--selected-*` | See **Selection and focus**. |
@@ -133,7 +135,9 @@ keeps S to the edge, top and bottom.
 **Two columns** [C3]. Icons, the search glyph, the status dot and type tiles
 centre on the 32 px tile column; text starts on the title column: row titles,
 the search query, the status text and the shelf citation. The search glyph sits
-6 px inside the tile column on each side and is always the magnifier.
+6 px inside the tile column on each side. It is the magnifier by default;
+More › Show Ibis mark swaps in the scarlet mark at tile size on the same centre
+(the logo, [C14]), a person's choice and never a state.
 
 ```
 --lead     = row-pad + (tile − icon) / 2       field padding before the icon
@@ -175,6 +179,15 @@ readable text, Larger text and actionable targets retain their sizes. Header
 and footer stay outside the middle scroller. At extreme text growth the outer
 window remains scrollable rather than clipping controls.
 
+**Nothing clipped, one scroller** (maintainer, 2026-10-30). The window's height
+is measured from its content after fonts and the text size apply, so no state
+is ever cut off: the empty-search hint, a notice line, the shelf and the footer
+always show whole, with S below the footer actions. At normal and Larger text
+there is no window-level scroll bar and never two scroll bars at once; only the
+results list or an open menu scrolls, and only while its content overflows. A
+scroll bar on content that fits, or a hint cut at the window edge, is a bug in
+the sizing rule, fixed with a regression test at normal and Larger text.
+
 **Compact start** [C11]. With an empty query the picker shows its hint (the
 search icon, "Type to find a reference", what to search by, and the Copy and
 Add keys), and the window is just tall enough for it, with even space above
@@ -190,15 +203,15 @@ concentric, and an inner corner never goes below the per-OS floor:
 --r-mi   = max(--r-min, --r-menu − --menu-pad) menu items
 ```
 
-| Token | macOS | Windows 11 | Linux (GNOME) |
-|---|---|---|---|
-| `--r-win` | 16 (every version; the native panel mask) | 8 | 15 (libadwaita 1.8) |
-| `--r-min` | 6 | 4 | 6 |
-| `--r-row` | 8 | 4 | 7 |
-| `--r-tile` | 6 | 4 | 6 |
-| `--r-control` | 8 | 4 | 6 |
-| `--r-menu` · `--menu-pad` · `--r-mi` | 12 · 6 · 6 | 8 · 4 · 4 | 12 · 6 · 6 |
-| Citation segment pill | 6 | 6 | 6 |
+| Token | Value |
+|---|---|
+| `--r-win` | 16 (every macOS version; the native panel mask) |
+| `--r-min` | 6 |
+| `--r-row` | 8 |
+| `--r-tile` | 6 |
+| `--r-control` | 8 |
+| `--r-menu` · `--menu-pad` · `--r-mi` | 12 · 6 · 6 |
+| Citation segment pill | 6 |
 
 Key caps use `--r-key`, Settings cards `--r-card`, switches, toasts and capsules
 `--r-full`.
@@ -213,6 +226,14 @@ pane cap at 6 rem. Strokes at Windows 125 % and 150 % are inset shadows.
 Each `src/ui/` component wraps one React Aria component (decision 0021), owns one CSS
 file that reads role tokens only, and has a test per look.
 Screens never restyle a shared component.
+
+**Shared components** (`apps/desktop/src/ui/`): Button, Switch, Segmented,
+Option (a list row with virtual focus), Menu and ToolbarMenu (the format
+pop-up), ChoiceList (choice screens [C12]), ChipGroup and LocatorToken (shelf
+references and their details), CitationDetails (the per-reference editor),
+KeyCaps, ScrollArea, Progress, ShortcutRecorder, SettingsGroup, SideNavigation
+and FileDrag. A screen needing a control not listed here adds it to `src/ui/`
+with its rule on this page first.
 
 **States.** Hover (`--fill-*-hover`, only under `@media (hover: hover)`) never
 moves or resizes anything; pressed has no scale on Windows and GNOME. Disabled
@@ -606,28 +627,23 @@ and visible labels match accessible names.
 
 ## Per platform
 
-| | macOS | Windows 11 | Linux (GNOME) |
-|---|---|---|---|
-| Material [C13] | One glass sheet for the whole panel (Liquid Glass; popover vibrancy fallback) under a veil of the surface colour; menus on glass | Desktop Acrylic (build 22621+), content directly on it; footer band with a top divider | Opaque `window_bg`, no blur; footer band with a divider |
-| Accent fallback [C14] (light / dark) | #007AFF / #0A84FF | #005FB8 / #60CDFF | #3584E4 / #78AEED |
-| Selected row [C4] | Accent fill, paired selected-content text | Accent fill (#005FB8 light, the deeper #0067C0 dark) with white text | Full accent with its paired text |
-| Search box | Frameless, large | Text box whose underline turns accent on focus | Framed entry |
-| Format pop-up | Borderless pop-up, ⌃⌄, 28 px in a 32 px target, capsule | ComboBox, chevron | Drop-down, `pan-down-symbolic`, bold label |
-| Shortcut labels | ⌘ ⌥ ⇧ ⌃ joined (⌘K) | Ctrl Alt Shift, one cap each | Ctrl Super Shift, "+" between |
-| Switch | 38 × 22 | 40 × 20, outlined when off | 46 × 26 |
+**One macOS design for now** (maintainer, 2026-10-26). Every system gets the
+macOS design below; one code path, with a per-system value only where the
+system demands it for correctness.
 
-**One macOS design for now** (maintainer, 2026-10-26, #326). Build and test
-the macOS column only; the Windows and GNOME columns below are the target for
-later and are not built or extended until per-platform design work starts.
-Keep platform differences simple: one code path, with a per-system value only
-where the system demands it (keys, fonts, window handling).
+| | Rule |
+|---|---|
+| Material [C13] | One glass sheet for the whole panel (Liquid Glass; popover vibrancy fallback) under a veil of the surface colour; menus on glass. Elsewhere, an opaque surface. |
+| Accent [C14] | The system accent where the webview reads it, else the `--accent` fallback in `tokens.css`, chosen so white text keeps 4.5:1. |
+| Selected row [C4] | Accent fill with white selected text. |
+| Search box | Frameless, large. |
+| Format pop-up | Borderless pop-up, ⌃⌄, 28 px in a 32 px target, capsule. |
+| Switch | 38 × 22. |
+| Follows the system | Modifier keys and their key-cap labels (`KeyCaps`: ⌘K joined on macOS; Ctrl K one cap per key on Windows; Ctrl + K on Linux), the UI font, accessibility settings and window handling. |
 
-**Look freeze until 1.0** (maintainer, 2026-10-25, #326). What has shipped
-stays and is kept working, but is not extended. Rules on this page that are not
-built yet for a platform are deferred: materials, native accent injection and
-depth [C13, C14], versioned macOS radii and GNOME icon weight. Their issues are
-in the Later milestone. New interface work uses the shared look and the
-fallbacks above.
+**Look freeze until 1.0** (maintainer, 2026-10-25). What has shipped stays and
+is kept working, but is not extended. Native accent injection, versioned
+radii and per-platform depth wait in the Later milestone.
 
 - **Materials** [C13]. Never glass on glass or CSS blur posing as the desktop.
   The macOS veil is the surface at 75%, so the glass shows light and colour from
@@ -635,12 +651,13 @@ fallbacks above.
   Over the macOS veil, citation and status colours go one step deeper to keep
   4.5:1; fills, hairlines and key caps are translucent; the window edge is a
   1 px hairline, never a white rim. Ibis sets no blur or opacity of its own.
-  Windows: unknown versions, transparency off and battery saver are opaque;
-  Mica only for long-lived windows such as Settings. Reduced transparency and
-  contrast modes make every layer solid.
-- **Accent** [C14]. The system accent, injected natively where the webview
-  cannot read it (Windows; GNOME through the portal), else the fallbacks above.
-  macOS uses WebKit's paired selected-content background and text.
+  Reduced transparency and contrast modes make every layer solid.
+
+**Per-platform designs later.** When Windows and GNOME designs return, start
+from these recorded choices: Windows Acrylic with a footer band, Fluent radii
+(window 8, control 4) and a deeper selected row in dark mode (#0067C0, white
+text); GNOME opaque `window_bg`, libadwaita radii (window 15, row 7) and menu
+checks after the label. Until then they are not built or extended.
 
 ## Motion
 
@@ -1081,7 +1098,13 @@ scheduled.
   screen.
 - A visual bug is fixed in the rule or component that allowed it, with a check
   (a regression test) so it cannot return.
-- The maintainer's design canvas is the visual reference. Its decisions are
-  written here, in place, with a [C] tag; the stale text they replace is
-  deleted in the same change, never left as a "superseded" layer.
+- The repository is the single source of truth: this page, `tokens.css` and
+  `src/ui/`. The maintainer's design canvas mirrors them for visual review and
+  is brought up to date after a design change merges; where the two differ,
+  the repository wins and the canvas is fixed. A choice explored on the canvas
+  counts only once it is written here, in place, with a [C] tag; the stale
+  text it replaces is deleted in the same change, never left as a
+  "superseded" layer.
+- Code that does not yet match this page is listed in one design-system issue
+  and fixed in the code; the rule changes only when the maintainer changes it.
 - Values marked as measured need native evidence on each platform (#774).
