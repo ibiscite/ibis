@@ -43,13 +43,15 @@ try {
       await page.goto(new URL("settings.html", base).href);
       await page.locator("#search-mark").waitFor();
       if (panel === "shortcuts") {
-        await page.getByRole("option").nth(1).click();
-        await page.locator("#open-ibis button").click();
-        await page.locator("#open-ibis button").press("Alt+K");
+        await page.locator(".settings-sidebar").getByRole("option").nth(1).click();
+        // Use Default shares this group; only the recorder has aria-pressed.
+        const recorder = page.locator("#open-ibis button[aria-pressed]");
+        await recorder.click();
+        await recorder.press("Alt+K");
         await page.getByRole("alert").waitFor();
-        await page.locator("#open-ibis button").click();
+        await recorder.click();
       } else if (panel.startsWith("about")) {
-        await page.getByRole("option").nth(2).click();
+        await page.locator(".settings-sidebar").getByRole("option").nth(2).click();
         await page.locator("#version-label").waitFor();
       }
       const result = await page.evaluate(() => {
