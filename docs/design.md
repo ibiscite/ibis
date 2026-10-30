@@ -483,7 +483,8 @@ libraries, check times and problems. **One place for each status**
 library state lives, and nothing is ever inserted above the results, so a
 problem never pushes the list down. The status is a button: it opens the
 **library menu** (the library with its count and age, a Reload button, the
-Zotero libraries as toggle chips when there are several, Choose Library…,
+Zotero libraries as toggle chips when there are several, Choose Library… ⇧⌘O
+(the Mac's "Open…": pick a .bib file or a Zotero library),
 Reload Library). **Open the source** (maintainer, 2026-10-30): ⌘O (Ctrl+O)
 works on every screen and opens where the references come from: the selected
 reference in Zotero (Zotero's own `zotero://select` link, starting Zotero if
@@ -653,6 +654,7 @@ an explicitly stored custom shortcut is never replaced.
 | Right-click a row | Opens More for that row |
 | Esc | Steps back one layer: menu or dialog, preview, then clears the search and filters (the shelf stays), then hides. No extra clear key: ⌘⌫ also clears typed text, as in any Mac text field |
 | ⌘O / Ctrl+O | Opens the source: the selected reference in Zotero, or the .bib file |
+| ⇧⌘O / Ctrl+Shift+O | Choose Library…: open another .bib file or Zotero library |
 | ↑ ↓ (focus stays in search) | Move the selected row (`aria-activedescendant`) |
 | ⌘K / Ctrl+K | More, the one door to every other action, each with its shortcut |
 | ⌘/ / Ctrl+/, or `?` outside a text field | The keyboard shortcuts list |
