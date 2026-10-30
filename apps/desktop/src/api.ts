@@ -53,6 +53,11 @@ export function onWindowSizeSaved(handler: (saved: boolean) => void): Promise<Un
   });
 }
 
+export const { readWindowPositionUndo, undoWindowPosition, dismissWindowPositionUndo } = commands;
+export function onWindowReset(handler: (state: { revision: number; undo: number | null }) => void): Promise<UnlistenFn> {
+  return listen<{ revision: number; undo: number | null }>("picker:window-reset", ({ payload }) => handler(payload));
+}
+
 /** UI edits omit unchanged fields; null is meaningful only for citation_style. */
 export function setPickerPreferences(preferences: Partial<PickerPreferences>, copyFormat: CopyFormat | null) {
   return commands.setPickerPreferences(preferences, copyFormat);

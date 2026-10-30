@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
-import { backend, prepared, receipt, resetApp, result } from "./testing/app";
+import { closeCitationDetails, backend, prepared, receipt, resetApp, result } from "./testing/app";
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(resetApp);
@@ -93,11 +93,15 @@ test("an empty search keeps the prepared citation, page and Enter available", as
     copy_file_citation: (args) => { const citation = prepared(args); copied.push(citation.request); return { text: citation.preview.text, warnings: [] }; },
   });
   await act(async () => { render(<App />); });
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Edit citation" })); });
   await act(async () => { fireEvent.change(screen.getByRole("textbox", { name: "Page" }), { target: { value: "12" } }); });
+  await act(async () => { closeCitationDetails(); });
   await act(async () => { fireEvent.change(searchBox(), { target: { value: "no matches" } }); });
   expect(screen.getByRole("list", { name: "Selected references" })).toBeTruthy();
   expect(screen.getByRole("button", { name: "Remove a from the selection" })).toBeTruthy();
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Edit citation" })); });
   expect((screen.getByRole("textbox", { name: "Page" }) as HTMLInputElement).value).toBe("12");
+  await act(async () => { closeCitationDetails(); });
   expect(keys().getByRole("button", { name: /Copy/ })).toBeTruthy();
   await enter();
   expect(copied).toMatchObject([{ items: [{ id: { key: "a" }, locator: null, page_input: "12" }] }]);

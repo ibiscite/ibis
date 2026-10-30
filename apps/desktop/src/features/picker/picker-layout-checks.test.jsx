@@ -3,7 +3,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { App } from "../../App";
 import { pickerText } from "../../messages";
 import { backend, resetApp } from "../../testing/app";
-import { dismissMenu, isWholeNotice, layoutGeometry, noticeText, waitForLayout } from "./picker-layout-checks.mjs";
+import { dismissMenu, isWholeNotice, isWholeShelf, layoutGeometry, noticeText, waitForLayout } from "./picker-layout-checks.mjs";
 
 afterEach(async () => {
   await resetApp();
@@ -58,6 +58,30 @@ test.each([false, true])("a failed search notice stays reachable in a steady fra
   expect(isWholeNotice(noticeText.failedSearch)).toBe(false);
   clipTop = 0; visibleHeight = 0;
   expect(isWholeNotice(noticeText.failedSearch)).toBe(false);
+});
+
+test("the shelf oracle rejects clipping, shrinking and placement inside the middle scroller", () => {
+  let bounds = new DOMRect(0, 320, 480, 40);
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function () {
+    if (this.matches(".search-bar")) return new DOMRect(0, 0, 480, 80);
+    if (this.matches("footer")) return new DOMRect(0, 360, 480, 40);
+    return bounds;
+  });
+  render(<main><header className="search-bar" /><div className="picker-content" /><div className="shelf" style={{ flexShrink: 0, overflowY: "visible" }} /><footer /></main>);
+  const band = document.querySelector(".shelf");
+  expect(isWholeShelf()).toBe(true);
+  bounds = new DOMRect(0, 320, 480, 42);
+  expect(isWholeShelf()).toBe(false);
+  bounds = new DOMRect(-2, 320, 480, 40);
+  expect(isWholeShelf()).toBe(false);
+  bounds = new DOMRect(0, 320, 480, 40);
+  band.style.flexShrink = "1";
+  expect(isWholeShelf()).toBe(false);
+  band.style.flexShrink = "0"; band.style.overflowY = "auto";
+  expect(isWholeShelf()).toBe(false);
+  band.style.overflowY = "visible";
+  document.querySelector(".picker-content").append(band);
+  expect(isWholeShelf()).toBe(false);
 });
 
 test.each(["TimeoutError", "Error"])("a %s during a probe wait reports its case, check and numeric geometry only", async (name) => {

@@ -13,6 +13,9 @@ fn synthetic_sample(display: String, frame: PickerWindow) -> Sample {
 }
 
 impl Sizing {
+    fn forget(&self, display: &str) -> Option<Save> {
+        self.shared.state.lock().ok()?.forget(display, Instant::now())
+    }
     fn record(&self, display: String, live: PickerWindow) -> Option<Save> {
         let mut state = self.shared.state.lock().ok()?;
         let revision = state.revision;
@@ -127,6 +130,38 @@ fn sizing_first_show_includes_native_chrome_when_clamping_an_oversized_saved_fra
     assert_eq!((shown.width, shown.height), (984, 661));
     assert!(f64::from(shown.x) + f64::from(shown.width) + 16.0 <= 1000.0);
     assert!(f64::from(shown.y) + f64::from(shown.height) + 39.0 <= 700.0);
+}
+
+#[test]
+fn sizing_failed_undo_save_keeps_the_restored_frame_and_rejects_the_old_reset_write() {
+    let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
+    let path = directory.path().join("settings.json");
+    std::fs::create_dir(&path).unwrap_or_else(|error| panic!("{error}"));
+    let file = SettingsFile::new(path);
+    let sizing = Sizing::default();
+    sizing.record("display-a".into(), dragged(840, 600));
+    let (reset, restored) = {
+        let mut state = sizing.shared.state.lock().unwrap_or_else(|error| panic!("{error}"));
+        let previous = state.last.clone().unwrap_or_else(|| panic!("missing synthetic frame"));
+        let revision = state
+            .reset("display-a", previous, Instant::now())
+            .unwrap_or_else(|| panic!("reset refused"));
+        let reset = state
+            .pending_save
+            .clone()
+            .unwrap_or_else(|| panic!("missing reset save"));
+        assert!(state.restore(revision, Instant::now()));
+        (
+            reset,
+            state
+                .pending_save
+                .clone()
+                .unwrap_or_else(|| panic!("missing Undo save")),
+        )
+    };
+    assert_eq!(sizing.persist(&file, reset), None);
+    assert_eq!(sizing.persist(&file, restored), Some(false));
+    assert_eq!(sizing.remembered("display-a"), Some(dragged(840, 600)));
 }
 
 #[test]

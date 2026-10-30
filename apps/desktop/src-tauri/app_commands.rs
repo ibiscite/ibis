@@ -39,4 +39,7 @@ pub const APP_COMMANDS: &[&str] = &[
     "open_paste_permission",
     "drag_paste_app",
     "set_shortcut",
+    "read_window_position_undo",
+    "undo_window_position",
+    "dismiss_window_position_undo",
 ];

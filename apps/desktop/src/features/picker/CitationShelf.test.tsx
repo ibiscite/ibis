@@ -30,6 +30,51 @@ test("chips read as author and year, and add the key only where two would read t
   expect(chipLabels([record("garcia2021a"), record("garcia2021b")])).toEqual(["García 2021 · garcia2021a", "García 2021 · garcia2021b"]);
 });
 
+test("expanding chosen references opens an overlay instead of growing the shelf", async () => {
+  render(shelf({ selected: chosen(Array.from({ length: 9 }, (_, i) => record(`k${i}`))) }));
+  const band = document.querySelector(".shelf")!;
+  fireEvent.click(screen.getByRole("button", { name: "Show all 9 selected references" }));
+  const overlay = await screen.findByRole("dialog", { name: "Selected references" });
+  expect(band.contains(overlay)).toBe(false);
+  expect(band.querySelector("[data-expanded]")).toBeNull();
+  expect(within(overlay).getAllByRole("button", { name: /^Remove/ })).toHaveLength(9);
+});
+
+test.each([1, 2])("at the minimum frame and %s× text, every folded reference stays removable in the overlay", (scale) => {
+  vi.stubGlobal("innerWidth", 480);
+  vi.stubGlobal("innerHeight", 360);
+  const computed = window.getComputedStyle;
+  vi.spyOn(window, "getComputedStyle").mockImplementation((element) => {
+    if (element !== document.documentElement) return computed(element);
+    const style = document.createElement("div").style;
+    style.fontSize = `${16 * scale}px`;
+    return style;
+  });
+  const records = Array.from({ length: 9 }, (_, i) => record(`k${i}`));
+  const remove = vi.fn();
+  render(shelf({ selected: chosen(records), onRemove: remove, shown: { markup: [], text: "Synthetic citation", html: "", warnings: [] } }));
+  const band = document.querySelector(".shelf")!;
+  expect(band.hasAttribute("data-folded")).toBe(true);
+  expect(screen.queryByRole("list", { name: "Selected references" })).toBeNull();
+  expect(screen.getByRole("region", { name: "Preview" }).textContent).toContain("Synthetic citation");
+  fireEvent.click(screen.getByRole("button", { name: "Show all 9 selected references" }));
+  const dialog = screen.getByRole("dialog", { name: "Selected references" });
+  expect(band.contains(dialog)).toBe(false);
+  for (const r of records) fireEvent.click(within(dialog).getByRole("button", { name: `Remove ${r.key}` }));
+  expect(remove.mock.calls.map(([r]) => r)).toEqual(records);
+});
+
+test("a long reference title stays available in the details scroller beside its editor", () => {
+  const reference = { ...record("a"), title: "A synthetic title with many words. ".repeat(30).trim() };
+  render(shelf({ highlightedReference: reference, onChangeReference: vi.fn() }));
+  fireEvent.click(screen.getByRole("button", { name: "Edit citation" }));
+  const dialog = screen.getByRole("dialog", { name: `Citation details for ${reference.title}` });
+  expect(within(dialog).getByRole("heading").textContent).toBe(reference.title);
+  const scroll = dialog.querySelector<HTMLElement>(".overlay-scroll")!;
+  expect(within(scroll).getByText(reference.title)).toBeTruthy();
+  expect(within(scroll).getByRole("textbox", { name: "Page" })).toBeTruthy();
+});
+
 test("closest-match chips and announcements keep provenance with the preview hidden", () => {
   const partial = { ...record("partial"), title: "Synthetic near match", partial: true };
   const { rerender } = render(shelf({ announce: true, selected: chosen([record("exact"), partial]) }));
@@ -75,30 +120,30 @@ test("marked chips fold without squeezing the warning or cycling when hidden, th
     return { width: this.matches(".chip-fit-measure > button") ? 120 : this.hasAttribute("data-partial") && !this.hidden ? 192 : 0 } as DOMRect;
   });
   render(shelf({ selected: chosen([record("a"), record("b"), { ...record("near"), partial: true }]) }));
-  const list = screen.getByRole("list", { name: "Selected references" });
-  expect(within(list).getAllByRole("button", { name: /^Remove/ })).toHaveLength(1);
-  expect(within(list).getByRole("button", { name: "Show all 3 selected references" }).textContent).toContain("Closest matches");
+  const list = () => screen.getByRole("list", { name: "Selected references" });
+  expect(within(list()).getAllByRole("button", { name: /^Remove/ })).toHaveLength(1);
+  expect(within(list()).getByRole("button", { name: "Show all 3 selected references" }).textContent).toContain("Closest matches");
   width = 650;
   fireEvent(window, new Event("resize"));
-  expect(within(list).getAllByRole("button", { name: /^Remove/ })).toHaveLength(3);
-  expect(within(list).getByText("Closest match")).toBeTruthy();
+  expect(within(list()).getAllByRole("button", { name: /^Remove/ })).toHaveLength(3);
+  expect(within(list()).getByText("Closest match")).toBeTruthy();
 });
 
 test("six chips show, the rest fold into +N, and +N shows every chip so each can be removed", () => {
   const records = Array.from({ length: 9 }, (_, i) => record(`k${i}`, `Author${i}`));
   const onRemove = vi.fn();
   render(shelf({ selected: chosen(records), onRemove }));
-  const list = screen.getByRole("list", { name: "Selected references" });
-  expect(within(list).getAllByRole("button", { name: /^Remove/ })).toHaveLength(6);
-  const more = within(list).getByRole("button", { name: "Show all 9 selected references" });
+  const list = () => screen.getByRole("list", { name: "Selected references" });
+  expect(within(list()).getAllByRole("button", { name: /^Remove/ })).toHaveLength(6);
+  const more = within(list()).getByRole("button", { name: "Show all 9 selected references" });
   expect(more.textContent).toBe("+3");
   expect(more.getAttribute("aria-expanded")).toBe("false");
   fireEvent.click(more);
-  expect(within(list).getAllByRole("button", { name: /^Remove/ })).toHaveLength(9);
-  fireEvent.click(within(list).getByRole("button", { name: "Remove k8" }));
+  expect(within(list()).getAllByRole("button", { name: /^Remove/ })).toHaveLength(9);
+  fireEvent.click(within(list()).getByRole("button", { name: "Remove k8" }));
   expect(onRemove).toHaveBeenCalledWith(records[8]);
   // Each chip names its whole key to the pointer.
-  expect(within(list).getByText("Author8 2021").closest("li")?.getAttribute("title")).toBe("k8");
+  expect(within(list()).getByText("Author8 2021").closest("li")?.getAttribute("title")).toBe("k8");
 });
 
 test("shelf controls share Button states and their measuring copies stay inaccessible", () => {
@@ -130,7 +175,7 @@ test.each(["Enter", " "])("%s expands, removes and folds exactly once from the k
   expect(screen.getAllByRole("button", { name: /^Remove/ })).toHaveLength(9);
   press(screen.getByRole("button", { name: "Remove k8" }));
   expect(onRemove).toHaveBeenCalledExactlyOnceWith(records[8]);
-  press(screen.getByRole("button", { name: "Show fewer selected references" }));
+  press(screen.getByRole("button", { name: "Close" }));
   expect(screen.getAllByRole("button", { name: /^Remove/ })).toHaveLength(6);
 });
 
@@ -171,52 +216,52 @@ test("50 choices fit narrow and 200% text rows, keeping hidden source identities
     } });
   }
   const view = render(<Picker />);
-  const list = screen.getByRole("list", { name: "Selected references" });
-  const removeButtons = () => within(list).getAllByRole("button", { name: /^Remove/ });
+  const list = () => screen.getByRole("list", { name: "Selected references" });
+  const removeButtons = () => within(list()).getAllByRole("button", { name: /^Remove/ });
   expect(removeButtons()).toHaveLength(3);
-  expect(within(list).getByRole("button", { name: "Show all 50 selected references" }).textContent).toBe("+47");
+  expect(within(list()).getByRole("button", { name: "Show all 50 selected references" }).textContent).toBe("+47");
   scale = 2; width = 328;
   act(() => { for (const observer of [...observers]) observer.callback(); });
   expect(removeButtons()).toHaveLength(1);
-  const more = within(list).getByRole("button", { name: "Show all 50 selected references" });
+  const more = within(list()).getByRole("button", { name: "Show all 50 selected references" });
   expect(more.textContent).toBe("+49");
   fireEvent.click(more);
   expect(removeButtons().map((button) => button.getAttribute("aria-label"))).toEqual(records.map((r) => `Remove ${r.id.source}/${r.id.native_key}`));
-  fireEvent.click(within(list).getByRole("button", { name: "Remove second.bib/entry49" }));
+  fireEvent.click(within(list()).getByRole("button", { name: "Remove second.bib/entry49" }));
   expect(onRemove).toHaveBeenCalledWith(records[49]);
   expect(removeButtons()).toHaveLength(49);
-  expect(within(list).getByRole("button", { name: "Remove first.bib/entry24" })).toBeTruthy();
-  fireEvent.click(within(list).getByRole("button", { name: "Show fewer selected references" }));
-  expect(within(list).getByRole("button", { name: "Show all 49 selected references" }).textContent).toBe("+48");
+  expect(within(list()).getByRole("button", { name: "Remove first.bib/entry24" })).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Close" }));
+  expect(within(list()).getByRole("button", { name: "Show all 49 selected references" }).textContent).toBe("+48");
   scale = 1; width = 1000;
   act(() => { for (const observer of [...observers]) observer.callback(); });
   expect(removeButtons()).toHaveLength(6);
-  expect(within(list).getByRole("button", { name: "Show all 49 selected references" }).textContent).toBe("+43");
+  expect(within(list()).getByRole("button", { name: "Show all 49 selected references" }).textContent).toBe("+43");
   act(() => removeButtons()[5]!.focus());
   width = 344;
   act(() => { for (const observer of [...observers]) observer.callback(); });
   expect(removeButtons()).toHaveLength(3);
-  expect(document.activeElement).toBe(within(list).getByRole("button", { name: "Show all 49 selected references" }));
+  expect(document.activeElement).toBe(within(list()).getByRole("button", { name: "Show all 49 selected references" }));
   width = 1000;
   act(() => { for (const observer of [...observers]) observer.callback(); });
-  fireEvent.click(within(list).getByRole("button", { name: "Show all 49 selected references" }));
+  fireEvent.click(within(list()).getByRole("button", { name: "Show all 49 selected references" }));
   scale = 2; width = 328;
   act(() => { for (const observer of [...observers]) observer.callback(); });
   // Retained chips keep their DOM identity. Avoid recomputing accessible names
   // and visibility for every remaining button after each of 43 removals.
   const tail = removeButtons().slice(6).reverse();
   for (const button of tail) fireEvent.click(button);
-  expect(list.hasAttribute("data-expanded")).toBe(true);
-  fireEvent.click(within(list).getByRole("button", { name: "Show fewer selected references" }));
+  expect(list().className === "shelf-details-list").toBe(true);
+  fireEvent.click(screen.getByRole("button", { name: "Close" }));
   expect(removeButtons()).toHaveLength(1);
-  expect(within(list).getByRole("button", { name: "Show all 6 selected references" }).textContent).toBe("+5");
+  expect(within(list()).getByRole("button", { name: "Show all 6 selected references" }).textContent).toBe("+5");
   scale = 1; width = 1000;
   act(() => { for (const observer of [...observers]) observer.callback(); });
-  expect(within(list).queryByRole("button", { name: "Show all 6 selected references" })).toBeNull();
+  expect(within(list()).queryByRole("button", { name: "Show all 6 selected references" })).toBeNull();
   act(() => removeButtons()[5]!.focus());
   width = 344;
   act(() => { for (const observer of [...observers]) observer.callback(); });
-  expect(document.activeElement).toBe(within(list).getByRole("button", { name: "Show all 6 selected references" }));
+  expect(document.activeElement).toBe(within(list()).getByRole("button", { name: "Show all 6 selected references" }));
   view.unmount();
   expect(observers.every((observer) => observer.disconnect.mock.calls.length > 0)).toBe(true);
 });
@@ -230,7 +275,10 @@ test("the output is one line in text colours: keys in monospace, failures and pe
   expect(screen.getByRole("region", { name: "Preview" }).getAttribute("data-state")).toBe("pending");
   expect(within(screen.getByRole("region", { name: "Preview" })).getByRole("status").textContent).toBe("Formatting…");
   rerender(shelf({ keys: false, style: "apa", shown: "failed" }));
-  expect(screen.getByRole("alert").textContent).toMatch(/could not be formatted/);
+  expect(screen.getByRole("alert").textContent).toBe("Could not format citation.");
+  fireEvent.click(screen.getByRole("button", { name: "Details" }));
+  expect(within(screen.getByRole("dialog")).getByText(/could not be formatted/)).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Close" }));
   rerender(shelf({ keys: false, style: "ieee", shown: { markup: [], text: "A. Garcia, “Synthetic,” 2021.", html: "", warnings: ["Missing year"] } }));
   expect(screen.getByText("Reference entry")).toBeTruthy();
   expect(screen.getByText("IEEE numbers depend on your whole document, so Ibis copies the reference entry instead.")).toBeTruthy();
@@ -265,12 +313,12 @@ test("proportional overflow digits cannot cycle the fitted count, and growth res
   });
   const records = Array.from({ length: 23 }, (_, i) => record(`k${i}`, `Author${i}`));
   render(shelf({ selected: chosen(records) }));
-  const list = screen.getByRole("list", { name: "Selected references" });
-  const visible = () => within(list).getAllByRole("button", { name: /^Remove/ });
-  const more = () => within(list).getByRole("button", { name: "Show all 23 selected references" });
+  const list = () => screen.getByRole("list", { name: "Selected references" });
+  const visible = () => within(list()).getAllByRole("button", { name: /^Remove/ });
+  const more = () => within(list()).getByRole("button", { name: "Show all 23 selected references" });
   expect(visible()).toHaveLength(2);
   expect(more().textContent).toBe("+21");
-  more().focus();
+  act(() => more().focus());
   act(() => { for (const observer of [...observers]) observer(); });
   expect(document.activeElement).toBe(more());
   expect(visible()).toHaveLength(2);

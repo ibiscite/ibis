@@ -1,10 +1,44 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
 import * as api from "./api";
 import { backend, resetApp, result } from "./testing/app";
 
 afterEach(async () => { await resetApp(); vi.restoreAllMocks(); });
+
+test("the citation shelf remains a separate non-scrolling band above the footer", async () => {
+  backend({ search: () => [result("a", "Invented work")] });
+  render(<App />);
+  const preview = await screen.findByRole("region", { name: "Preview" });
+  const shelf = preview.closest(".shelf")!;
+  expect(shelf.parentElement?.tagName).toBe("MAIN");
+  expect(shelf.closest(".picker-content")).toBeNull();
+});
+
+test("a window reset offers Undo without taking focus, and a refused Undo stays retryable", async () => {
+  const restored: unknown[] = [];
+  let fail = true;
+  const calls = backend({ undo_window_position: ({ revision }) => {
+    restored.push(revision);
+    if (fail) throw new Error("invented restore refusal");
+    return true;
+  } });
+  render(<App />);
+  await screen.findByText("Type to find a reference");
+  const search = screen.getByLabelText("Search references");
+  act(() => search.focus());
+  await act(async () => { await emit("picker:window-reset", { revision: 7, undo: 7 }); });
+  expect(screen.getByText("Window position reset.").getAttribute("role")).toBe("status");
+  expect(document.activeElement).toBe(search);
+  fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+  expect((await screen.findByRole("alert")).textContent).toBe("Could not undo. Try again.");
+  fail = false;
+  fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+  await waitFor(() => expect(screen.queryByRole("button", { name: "Undo" })).toBeNull());
+  expect(restored).toEqual([7, 7]);
+  expect(calls).not.toContain("fit_picker");
+});
 
 test("More is closed while its exit overlaps the probe's keys-sheet and Copy as steps", async () => {
   backend({ search: () => [] });
@@ -155,6 +189,7 @@ test("resizing while editing keeps the selected title readable without moving Pa
   await screen.findByRole("option", { name: /First invented work/ });
   const search = screen.getByRole("combobox");
   fireEvent.keyDown(search, { key: "Enter", shiftKey: true });
+  fireEvent.click(screen.getByRole("button", { name: "Edit citation" }));
   const page = screen.getByLabelText("Page", { exact: true });
   act(() => page.focus());
   const middle = document.querySelector<HTMLElement>(".picker-content")!;

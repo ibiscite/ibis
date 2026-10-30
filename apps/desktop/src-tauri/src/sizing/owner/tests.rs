@@ -169,6 +169,66 @@ fn sizing_an_old_dpi_suggestion_cannot_consume_a_new_drag_at_the_already_accepte
 }
 
 #[test]
+fn sizing_reset_undo_restores_the_visible_frame_and_only_the_removed_display_setting() {
+    let mut native = Native::new();
+    native.drag(840, 600);
+    let previous = native.live.clone();
+    let saved = native.owner.windows["a"];
+    native.owner.windows.insert("b".into(), frame(900, 640));
+    let revision = native
+        .owner
+        .reset("a", previous.clone(), native.now)
+        .unwrap_or_else(|| panic!("reset refused"));
+    assert!(!native.owner.windows.contains_key("a"));
+    let undo = native
+        .owner
+        .undo_for(revision)
+        .unwrap_or_else(|| panic!("reset has no Undo"));
+    assert_eq!(undo.previous.frame, previous.frame);
+    assert!(native.owner.restore(revision, native.now));
+    assert_eq!(native.owner.windows["a"], saved);
+    assert_eq!(native.owner.windows["b"], frame(900, 640));
+    assert!(!native.owner.restore(revision, native.now));
+}
+
+#[test]
+fn sizing_later_drag_reset_and_expiry_each_retire_only_their_own_undo() {
+    let mut native = Native::new();
+    native.drag(840, 600);
+    let a = native
+        .owner
+        .reset("a", native.live.clone(), native.now)
+        .unwrap_or_else(|| panic!("reset refused"));
+    let b = native
+        .owner
+        .reset("a", native.live.clone(), native.now)
+        .unwrap_or_else(|| panic!("reset refused"));
+    assert!(!native.owner.restore(a, native.now));
+    native.owner.dismiss_undo(a);
+    assert!(native.owner.undo_for(b).is_some());
+    native.owner.dismiss_undo(b);
+    assert!(!native.owner.restore(b, native.now));
+    let c = native
+        .owner
+        .reset("a", native.live.clone(), native.now)
+        .unwrap_or_else(|| panic!("reset refused"));
+    native.drag(900, 640);
+    assert!(!native.owner.restore(c, native.now));
+    assert_eq!(native.owner.windows["a"].width, 900);
+}
+
+#[test]
+fn sizing_undo_of_a_default_preserves_the_absence_of_a_custom_size() {
+    let mut native = Native::new();
+    let revision = native
+        .owner
+        .reset("a", native.live.clone(), native.now)
+        .unwrap_or_else(|| panic!("reset refused"));
+    assert!(native.owner.restore(revision, native.now));
+    assert!(!native.owner.windows.contains_key("a"));
+}
+
+#[test]
 fn sizing_an_automatic_work_area_clamp_keeps_the_custom_size_for_a_later_larger_display() {
     let mut native = Native::new();
     native.drag(900, 640);

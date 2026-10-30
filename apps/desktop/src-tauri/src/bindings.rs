@@ -41,7 +41,10 @@ pub(crate) fn commands() -> tauri_specta::Builder<tauri::Wry> {
             crate::paste::permission::paste_permission,
             crate::paste::permission::open_paste_permission,
             crate::paste::permission::drag_paste_app,
-            crate::shortcut_setting::set_shortcut
+            crate::shortcut_setting::set_shortcut,
+            crate::sizing::read_window_position_undo,
+            crate::sizing::undo_window_position,
+            crate::sizing::dismiss_window_position_undo
         ])
         // Match Tauri's existing Promise rejection behavior.
         .error_handling(tauri_specta::ErrorHandlingMode::Throw)

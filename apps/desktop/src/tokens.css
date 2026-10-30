@@ -186,6 +186,7 @@
   /* The citation shelf (docs/design.md, "Shelf"): two 40 px lines, 24 px chips
      with a quieter fill than the card under them. */
   --shelf-line: 2.5rem;
+  --shelf-folded-line: max(40px, var(--control-min-size));
   --shelf-fill: var(--tile-background);
   --chip-count-only-width: 460px;
   --chip-height: 1.5rem;

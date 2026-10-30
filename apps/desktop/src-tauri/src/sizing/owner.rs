@@ -35,6 +35,14 @@ pub(super) struct Save {
     pub due: Instant,
 }
 
+#[derive(Clone, Debug)]
+pub(super) struct Undo {
+    pub revision: u64,
+    pub previous: Sample,
+    display: String,
+    saved: Option<PickerWindow>,
+}
+
 #[derive(Default)]
 pub(super) struct Owner {
     pub windows: BTreeMap<String, PickerWindow>,
@@ -51,6 +59,7 @@ pub(super) struct Owner {
     pub stopping: bool,
     pub finished: bool,
     pub started: bool,
+    pub undo: Option<Undo>,
 }
 
 pub(super) fn content_room(inner: (f64, f64), outer: (f64, f64), work: (f64, f64)) -> Option<(f64, f64)> {
@@ -168,6 +177,7 @@ impl Owner {
     }
 
     pub fn queue_save(&mut self, now: Instant) {
+        self.undo = None;
         self.revision += 1;
         self.pending_save = Some(Save {
             revision: self.revision,
@@ -183,6 +193,47 @@ impl Owner {
         self.windows.remove(display);
         self.queue_save(now);
         self.pending_save.clone()
+    }
+
+    pub fn reset(&mut self, display: &str, previous: Sample, now: Instant) -> Option<u64> {
+        let saved = self.windows.get(display).copied();
+        let revision = self.forget(display, now)?.revision;
+        self.undo = Some(Undo {
+            revision,
+            previous,
+            display: display.into(),
+            saved,
+        });
+        Some(revision)
+    }
+
+    pub fn undo_for(&self, revision: u64) -> Option<Undo> {
+        self.undo
+            .as_ref()
+            .filter(|undo| !self.stopping && undo.revision == revision && self.revision == revision)
+            .cloned()
+    }
+
+    pub fn restore(&mut self, revision: u64, now: Instant) -> bool {
+        let Some(undo) = self.undo_for(revision) else {
+            return false;
+        };
+        match undo.saved {
+            Some(frame) => {
+                self.windows.insert(undo.display, frame);
+            }
+            None => {
+                self.windows.remove(&undo.display);
+            }
+        }
+        self.queue_save(now);
+        true
+    }
+
+    pub fn dismiss_undo(&mut self, revision: u64) {
+        if self.undo.as_ref().is_some_and(|undo| undo.revision == revision) {
+            self.undo = None;
+        }
     }
 
     pub fn take_save(&mut self, now: Instant) -> Option<Save> {

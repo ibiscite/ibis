@@ -152,6 +152,9 @@ export const commands = {
 	 *  Every window and the menu bar item show the change at once.
 	 */
 	setShortcut: (shortcut: string | null) => __TAURI_INVOKE<ShortcutStatus_Serialize>("set_shortcut", { shortcut }),
+	readWindowPositionUndo: () => __TAURI_INVOKE<number | null>("read_window_position_undo"),
+	undoWindowPosition: (revision: number) => __TAURI_INVOKE<boolean>("undo_window_position", { revision }),
+	dismissWindowPositionUndo: (revision: number) => __TAURI_INVOKE<void>("dismiss_window_position_undo", { revision }),
 };
 
 /* Types */

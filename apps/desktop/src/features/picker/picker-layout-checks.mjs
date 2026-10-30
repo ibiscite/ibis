@@ -2,6 +2,7 @@
 export const noticeText = {
   startup: "Synthetic startup settings notice.",
   failedSearch: "Ibis could not search your library. Use Reload, then try again.",
+  formatting: "The invented reference needs a page or another citation form. ".repeat(20).trim(),
 };
 
 // A closed React Aria menu stays mounted during its exit animation. Await
@@ -17,6 +18,17 @@ export function isWholeNotice(text) {
   if (!node) return false;
   const rect = node.getBoundingClientRect(), port = node.closest(".picker-content").getBoundingClientRect();
   return rect.height > 0 && rect.top >= port.top - 1 && rect.bottom <= port.bottom + 1;
+}
+
+export function isWholeShelf() {
+  const shelf = document.querySelector("main > .shelf");
+  if (!shelf) return document.querySelector("main .shelf") === null;
+  const rect = shelf.getBoundingClientRect();
+  const header = document.querySelector(".search-bar").getBoundingClientRect();
+  const footer = document.querySelector("footer").getBoundingClientRect();
+  return rect.height > 0 && rect.top >= header.bottom - 1 && rect.bottom <= footer.top + 1 &&
+    rect.left >= 0 && rect.right <= innerWidth + 1 && footer.bottom <= innerHeight + 1 &&
+    getComputedStyle(shelf).flexShrink === "0" && !/auto|scroll/.test(getComputedStyle(shelf).overflowY);
 }
 
 // Only fixed keys and numeric geometry may cross out of the page on failure.

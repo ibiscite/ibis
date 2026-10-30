@@ -7,8 +7,6 @@
 /* Keep the existing warning pill readable; fold chips before squeezing it. */
 .shelf .chip[data-partial] { flex: none; }
 .shelf .shelf-chips { height: max(var(--shelf-line), var(--chip-hit-size)); column-gap: max(var(--space-1), calc(var(--chip-hit-size) - var(--chip-height))); }
-/* Three complete target rows, with no neighboring remove areas overlapping. */
-.shelf .shelf-chips[data-expanded] { height: auto; max-height: calc(3 * var(--chip-hit-size)); row-gap: calc(var(--chip-hit-size) - var(--chip-height)); padding-block: calc((var(--chip-hit-size) - var(--chip-height)) / 2); }
 .shelf .chip-remove.ui-button[data-variant] { flex: none; width: var(--chip-height); min-width: var(--chip-height); height: var(--chip-height); min-height: var(--chip-height); padding: 0; border-width: 0; border-radius: var(--chip-radius); --focus-ring-offset: -2px; }
 .chip-remove::before { content: ""; position: absolute; inset: 0; background: currentColor; -webkit-mask: var(--clear-glyph) center / var(--icon-size) no-repeat; mask: var(--clear-glyph) center / var(--icon-size) no-repeat; }
 .chip-more .ui-button { min-width: 0; min-height: var(--chip-height); padding: 0 var(--space-2); border-width: 0; border-radius: var(--chip-radius); font-size: var(--type-label-size); }
@@ -31,3 +29,12 @@
    line a gap apart, and the full text stays in the tooltip. */
 .shelf-output .preview-text .csl-entry { display: inline; }
 .shelf-output .preview-text .csl-entry + .csl-entry { margin-inline-start: var(--space-4); }
+
+/* Keep the existing two-line shelf. Tight frames fold chips behind their count
+   control; neither expansion, the editor nor a long refusal grows this band. */
+.shelf[data-folded] { --shelf-line: var(--shelf-folded-line); }
+.shelf .shelf-chips[hidden] { display: none; }
+.shelf-output > .ui-button { flex: none; }
+.shelf-details-list { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+.shelf-details-list .chip { flex: none; max-width: min(var(--chip-max-width), 100%); }
+.shelf-problem, .shelf-detail-title { margin: 0 0 var(--space-2); overflow-wrap: anywhere; }

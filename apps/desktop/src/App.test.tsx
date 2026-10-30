@@ -767,15 +767,17 @@ test.each([7, 9, 10])("%i long-key selections retain order across queries and fi
     const rows = within(screen.getByRole("listbox", { name: "Results" })).getAllByRole("option");
     for (const row of rows) fireEvent.click(row, { ctrlKey: true });
   }
-  const tray = screen.getByRole("list", { name: "Selected references" });
+  let tray = screen.getByRole("list", { name: "Selected references" });
   // The shelf shows six chips and folds the rest into "+N", which shows them all.
   expect(chipKeys(tray)).toHaveLength(6);
   fireEvent.click(within(tray).getByRole("button", { name: `Show all ${count} selected references` }));
+  tray = within(screen.getByRole("dialog", { name: "Selected references" })).getByRole("list", { name: "Selected references" });
   expect(chipKeys(tray)).toHaveLength(count);
   const removed = [0, Math.floor(count / 2), count - 1];
   for (const i of removed) fireEvent.click(within(tray).getByRole("button", { name: `Remove ${records[i]!.key} from the selection` }));
   const expected = records.filter((_, i) => !removed.includes(i));
   expect(chipKeys(tray)).toEqual(expected.map((record) => record.key));
+  fireEvent.click(screen.getByRole("button", { name: "Close" }));
   act(() => box.focus());
   await act(async () => { fireEvent.keyDown(box, { key: "Enter" }); });
   expect(copies).toHaveLength(1);
@@ -2853,7 +2855,10 @@ test("the footer can wait for pending engine output and never offers failed outp
     fireEvent.keyDown(box, { key: "ArrowDown" });
     await waitFor(() => expect(screen.getByText("Formatting…")).toBeTruthy());
     await act(async () => release());
-    expect(await screen.findByText(/could not be formatted/)).toBeTruthy();
+    expect(await screen.findByText("Could not format citation.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Details" }));
+    expect(within(screen.getByRole("dialog")).getByText(/could not be formatted/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
     expect(footerKeys()).not.toContain("Enter");
   } finally {
     vi.unstubAllGlobals();

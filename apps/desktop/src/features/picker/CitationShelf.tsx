@@ -11,6 +11,7 @@ import { closestMatchWarnings } from "./rows";
 import { LocatorToken } from "../../ui/LocatorToken";
 import { Button } from "../../ui/Button";
 import { CitationDetails } from "../../ui/CitationDetails";
+import { OverlayDialog } from "../../ui/OverlayDialog";
 import { beak } from "../../brand";
 import "./CitationShelf.css";
 
@@ -35,7 +36,8 @@ export function chipLabels(records: SearchResult[]): string[] {
 /** What Enter pastes, above the footer's Copy action (docs/design.md, "Shelf"):
  * a line of chips for the references chosen with Shift+Enter, then the exact
  * output on one line. Results above never move when a reference is added. */
-export function CitationShelf({ announce, selected, highlightedReference, onChangeReference, removeLabel, onRemove, onRemoveLocator, style, keys, shown, problem, focusable, fallbackFocusRef }: {
+export function CitationShelf({ announce, selected, highlightedReference, onChangeReference, removeLabel, onRemove, onRemoveLocator, style, keys, shown, problem, focusable, fallbackFocusRef, presentation }: {
+  presentation?: number;
   /** False until the selection first changes, so opening the picker is silent. */
   announce: boolean;
   selected: Map<string, CitationReference>;
@@ -81,9 +83,16 @@ export function CitationShelf({ announce, selected, highlightedReference, onChan
   const warnings = [...(shown && typeof shown === "object" ? shown.warnings : []), ...partialWarnings];
   const moreLabel = (count: number) => records.slice(records.length - count).some((r) => r.partial)
     ? `${pickerText.moreChosen(count)} · ${pickerText.closestMatches}` : pickerText.moreChosen(count);
-  // More than SHELF_CHIPS fold into "+N", which shows every chip on a few
-  // scrolling lines, so each chosen reference can always be removed here.
-  const [expanded, setExpanded] = useState(false);
+  const [panel, setPanel] = useState<"references" | "reference" | "failure" | null>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: hiding or reopening retires the previous presentation's overlay.
+  useLayoutEffect(() => { setPanel(null); }, [presentation]);
+  useLayoutEffect(() => { if (panel === "references" && selected.size === 0) setPanel(null); }, [panel, selected.size]);
+  const [compact, setCompact] = useState(false);
+  const band = useRef<HTMLDivElement>(null);
+  const bandRef = useCallback((node: HTMLDivElement | null) => { band.current = node; return preserveFocus(node); }, [preserveFocus]);
+  const summary = useRef<HTMLButtonElement>(null);
+  const summaryRef = useCallback((node: HTMLButtonElement | null) => { summary.current = node; return preserveFocus(node); }, [preserveFocus]);
+  const foldedFocus = useRef(false);
   const [visibleChips, setVisibleChips] = useState(SHELF_CHIPS);
   const chips = useRef<HTMLUListElement>(null);
   const more = useRef<HTMLLIElement>(null);
@@ -95,9 +104,13 @@ export function CitationShelf({ announce, selected, highlightedReference, onChan
   }, [preserveFocus]);
   // biome-ignore lint/correctness/useExhaustiveDependencies: each of these changes which chips render, so the fit is measured again.
   useLayoutEffect(() => {
-    const list = chips.current;
-    if (!list) return;
     const fit = () => {
+      const textSize = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+      const nextCompact = window.innerHeight <= 24 * textSize || window.innerWidth <= 30 * textSize;
+      if (nextCompact && !compact && chips.current?.contains(document.activeElement)) foldedFocus.current = true;
+      setCompact(nextCompact);
+      const list = chips.current;
+      if (!list) return;
       const first = list.querySelector<HTMLElement>(".chip");
       if (!first || list.clientWidth <= 0) return;
       const style = getComputedStyle(list);
@@ -115,99 +128,107 @@ export function CitationShelf({ announce, selected, highlightedReference, onChan
         // At most seven labels cover zero through six visible chips.
         const overflow = Math.max(0, ...[...(sizes.current?.children ?? [])].map((node) => node.getBoundingClientRect().width));
         next = Math.max(0, Math.min(capacity, Math.floor((available - overflow) / (minimum + gap))));
-        if (!expanded && [...list.querySelectorAll(".chip")].slice(next).some((chip) => chip.contains(document.activeElement))) button?.focus();
+        if ([...list.querySelectorAll(".chip")].slice(next).some((chip) => chip.contains(document.activeElement))) button?.focus();
       }
       setVisibleChips(next);
     };
     fit();
     const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(fit);
-    observer?.observe(list);
+    if (band.current) observer?.observe(band.current);
+    if (chips.current) observer?.observe(chips.current);
     for (const node of sizes.current?.children ?? []) observer?.observe(node);
     window.addEventListener("resize", fit);
     return () => { observer?.disconnect(); window.removeEventListener("resize", fit); };
-  }, [selected, expanded, visibleChips]);
-  if (expanded && selected.size === 0) setExpanded(false);
+  }, [selected, compact, visibleChips]);
+  useLayoutEffect(() => {
+    if (compact && foldedFocus.current) { foldedFocus.current = false; summary.current?.focus({ preventScroll: true }); }
+  }, [compact]);
   const folded = Math.max(0, records.length - visibleChips);
-  // Keep the first chips measurable even if none fit; hidden chips are neither
-  // exposed nor focusable. Expanding still renders every record in source order.
-  const shownChips = expanded ? records : records.slice(0, SHELF_CHIPS);
+  const edit = (key: string | null) => { setEditing(key); setPanel("reference"); setEditRequest((request) => request + 1); };
+  const chip = (r: CitationReference, i: number, overlay = false) => (
+    <li key={keysOf[i]} ref={overlay ? undefined : preserveFocus} className="chip" title={r.key} data-partial={r.partial || undefined}
+      hidden={!overlay && i >= visibleChips} onFocusCapture={() => setEditing(keysOf[i]!)}>
+      {onChangeReference ? <Button variant="quiet" size="small" aria-label={citationDetailsText.edit(labels[i]!)}
+        aria-haspopup="dialog" onPress={() => edit(keysOf[i]!)}><bdi className="chip-label">{labels[i]}</bdi></Button>
+        : <bdi className="chip-label">{labels[i]}</bdi>}
+      {r.partial && <span className="shelf-pill" title={pickerText.closestMatchWarning(r.title || r.key)}>
+        <span aria-hidden="true">{pickerText.closestMatch}</span>
+        <span className="visually-hidden">{pickerText.closestMatchWarning(r.title || r.key)}</span>
+      </span>}
+      {r.locator && onRemoveLocator && <LocatorToken text={`${r.locator.label} ${r.locator.value}`}
+        removeLabel={pickerText.removeLocator(r.locator.label, r.locator.value, r.key)} onRemove={() => onRemoveLocator(r)} />}
+      <Button variant="icon" size="small" className="chip-remove" onPress={() => onRemove(r)} aria-label={removeLabel(r)} />
+    </li>
+  );
+  const detailsTitle = panel === "references" ? pickerText.selectedReferences : edited
+    ? citationDetailsText.details(edited.title || edited.key) : pickerText.citationDetails;
+  const fullProblem = problem ?? pickerText.previewError;
+  const showOutput = shown !== undefined || compact && records.length > 0 || records.length === 0 && edited && onChangeReference;
   return (
     <>
       <p className="visually-hidden" role="status" aria-label={pickerText.citationSelection} aria-live="polite" aria-atomic="true">
         {announce ? [pickerText.selectionCount(selected.size), ...partialWarnings].join(" ") : ""}
       </p>
       {(records.length > 0 || shown !== undefined || edited) && (
-        <div className="shelf" ref={preserveFocus}>
+        <div className="shelf" data-folded={compact || undefined} ref={bandRef}>
           {records.length > 0 && (
-            <ul ref={chips} className="shelf-chips" aria-label={pickerText.selectedReferences} data-expanded={(folded > 0 && expanded) || undefined}>
+            <ul ref={chips} className="shelf-chips" hidden={compact} aria-label={pickerText.selectedReferences}>
               <li ref={sizes} className="chip-more chip-fit-measure" aria-hidden="true" inert>
                 {Array.from({ length: Math.min(records.length, SHELF_CHIPS + 1) }, (_, i) => (
                   <Button key={i} variant="quiet" size="small" excludeFromTabOrder>{moreLabel(records.length - i)}</Button>
                 ))}
               </li>
-              {shownChips.map((r, i) => (
-                <li key={keysOf[i]} ref={preserveFocus} className="chip" title={r.key} data-partial={r.partial || undefined} hidden={!expanded && i >= visibleChips}
-                  onFocusCapture={() => setEditing(keysOf[i]!)}>
-                  {onChangeReference ? <Button variant="quiet" size="small" aria-label={citationDetailsText.edit(labels[i]!)}
-                    aria-pressed={edited === r} onPress={() => { setEditing(keysOf[i]!); setEditRequest((request) => request + 1); }}><bdi className="chip-label">{labels[i]}</bdi></Button>
-                    : <bdi className="chip-label">{labels[i]}</bdi>}
-                  {r.partial && <span className="shelf-pill" title={pickerText.closestMatchWarning(r.title || r.key)}>
-                    <span aria-hidden="true">{pickerText.closestMatch}</span>
-                    <span className="visually-hidden">{pickerText.closestMatchWarning(r.title || r.key)}</span>
-                  </span>}
-                  {r.locator && onRemoveLocator && <LocatorToken text={`${r.locator.label} ${r.locator.value}`}
-                    removeLabel={pickerText.removeLocator(r.locator.label, r.locator.value, r.key)} onRemove={() => onRemoveLocator(r)} />}
-                  <Button variant="icon" size="small" className="chip-remove" onPress={() => onRemove(r)} aria-label={removeLabel(r)} />
-                </li>
-              ))}
+              {records.slice(0, SHELF_CHIPS).map((r, i) => chip(r, i))}
               {folded > 0 && (
                 <li ref={moreRef} className="chip-more">
-                  <Button variant="quiet" size="small" aria-expanded={expanded} onPress={() => setExpanded(!expanded)}
-                    title={!expanded ? closestMatchWarnings(records.slice(visibleChips)).join(" ") || undefined : undefined}
-                    aria-label={expanded ? pickerText.fewerChosen : pickerText.allChosen(records.length)}>
-                    {expanded ? pickerText.fewerChosenShort : moreLabel(folded)}
-                  </Button>
+                  <Button variant="quiet" size="small" aria-haspopup="dialog" aria-expanded={panel === "references"} onPress={() => setPanel("references")}
+                    title={closestMatchWarnings(records.slice(visibleChips)).join(" ") || undefined}
+                    aria-label={pickerText.allChosen(records.length)}>{moreLabel(folded)}</Button>
                 </li>
               )}
             </ul>
           )}
-          {edited && onChangeReference && <CitationDetails key={idKey(edited.id)} pageRef={page} label={citationDetailsText.details(edited.title || edited.key)}
-            page={edited.locator?.label === "page" ? edited.locator.value : ""} form={edited.form ?? "normal"}
-            onPageChange={(value) => onChangeReference(edited, { locator: value.trim() ? { label: "page", value, input: "page-editor" } : null })}
-            onFormChange={(form) => onChangeReference(edited, { form })} />}
-          {shown !== undefined && (
-            <section ref={preserveFocus} aria-label={pickerText.preview} className="shelf-output" data-keys={keys || undefined}
+          {showOutput && (
+            <section ref={preserveFocus} aria-label={shown !== undefined ? pickerText.preview : pickerText.citationDetails} className="shelf-output" data-keys={keys || undefined}
               data-state={shown === null || typeof shown === "string" ? (shown ?? "pending") : undefined}
               tabIndex={focusable && shown && typeof shown === "object" ? 0 : undefined}>
-              {/* Static generated artwork, never user or library markup. */}
-              <svg className="shelf-mark" viewBox={beak.viewBox} fill="currentColor" aria-hidden="true" focusable="false"
-                preserveAspectRatio="xMaxYMid meet" dangerouslySetInnerHTML={{ __html: beak.body }} />
+              {compact && records.length > 0 && <Button ref={summaryRef} variant="quiet" size="small" aria-haspopup="dialog" aria-expanded={panel === "references"}
+                aria-label={pickerText.allChosen(records.length)} onPress={() => setPanel("references")}>{pickerText.moreChosen(records.length)}</Button>}
+              {shown !== undefined && <svg className="shelf-mark" viewBox={beak.viewBox} fill="currentColor" aria-hidden="true" focusable="false"
+                preserveAspectRatio="xMaxYMid meet" dangerouslySetInnerHTML={{ __html: beak.body }} />}
               {shown === null && <p role="status">{pickerText.previewPending}</p>}
-              {shown === "failed" && <p role="alert">{problem ?? pickerText.previewError}</p>}
+              {shown === "failed" && <p role="alert">{pickerText.previewFailedShort}</p>}
               {shown === "stale" && <p role="status">{pickerText.shelfStale}</p>}
-              {shown && typeof shown === "object" && (
-                <>
-                  <bdi dir={keys ? "ltr" : "auto"} className="preview-text" title={shown.text}>
-                    {shown.markup.length > 0 ? render(shown.markup) : shown.text}
-                  </bdi>
-                  {style && copiesEntry(style) && (
-                    <span className="shelf-pill" title={pickerText.entryOnly(STYLE_NAMES[style])}>
-                      <span aria-hidden="true">{pickerText.entryOnlyShort}</span>
-                      <span className="visually-hidden">{pickerText.entryOnly(STYLE_NAMES[style])}</span>
-                    </span>
-                  )}
-                  {warnings.length > 0 && (
-                    <span className="shelf-pill" title={warnings.join("\n")}>
-                      <span aria-hidden="true">{pickerText.warningCount(warnings.length)}</span>
-                      <span className="visually-hidden">{warnings.join(" ")}</span>
-                    </span>
-                  )}
-                </>
-              )}
+              {shown && typeof shown === "object" && <>
+                <bdi dir={keys ? "ltr" : "auto"} className="preview-text" title={shown.text}>
+                  {shown.markup.length > 0 ? render(shown.markup) : shown.text}
+                </bdi>
+                {!compact && style && copiesEntry(style) && <span className="shelf-pill" title={pickerText.entryOnly(STYLE_NAMES[style])}>
+                  <span aria-hidden="true">{pickerText.entryOnlyShort}</span>
+                  <span className="visually-hidden">{pickerText.entryOnly(STYLE_NAMES[style])}</span>
+                </span>}
+                {!compact && warnings.length > 0 && <span className="shelf-pill" title={warnings.join("\n")}>
+                  <span aria-hidden="true">{pickerText.warningCount(warnings.length)}</span>
+                  <span className="visually-hidden">{warnings.join(" ")}</span>
+                </span>}
+              </>}
+              {shown === "failed" ? <Button variant="quiet" size="small" aria-haspopup="dialog" onPress={() => setPanel("failure")}>{pickerText.details}</Button>
+                : edited && onChangeReference && <Button variant="quiet" size="small" aria-haspopup="dialog" aria-label={pickerText.editCitation}
+                  onPress={() => edit(keysOf[0] ?? null)}>{pickerText.edit}</Button>}
             </section>
           )}
         </div>
       )}
+      {panel && <OverlayDialog title={detailsTitle} heading={panel !== "references" && edited ? edited.title || edited.key : detailsTitle} onClose={() => setPanel(null)}>
+        {panel !== "references" && edited && <p className="shelf-detail-title">{edited.title || edited.key}</p>}
+        {panel === "references" && <ul className="shelf-details-list" aria-label={pickerText.selectedReferences}>{records.map((r, i) => chip(r, i, true))}</ul>}
+        {shown === "failed" && <p role="alert" className="shelf-problem">{fullProblem}</p>}
+        {edited && onChangeReference && <CitationDetails key={idKey(edited.id)} pageRef={page} autoFocus={panel !== "references"} label={citationDetailsText.details(edited.title || edited.key)}
+          page={edited.locator?.label === "page" ? edited.locator.value : ""} form={edited.form ?? "normal"}
+          onPageChange={(value) => onChangeReference(edited, { locator: value.trim() ? { label: "page", value, input: "page-editor" } : null })}
+          onFormChange={(form) => onChangeReference(edited, { form })} />}
+        {warnings.map((warning) => <p key={warning}>{warning}</p>)}
+      </OverlayDialog>}
     </>
   );
 }

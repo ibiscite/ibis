@@ -42,6 +42,9 @@
     "allow-set-update-checks",
     "allow-check-for-updates",
     "allow-update-available",
-    "allow-open-settings"
+    "allow-open-settings",
+    "allow-read-window-position-undo",
+    "allow-undo-window-position",
+    "allow-dismiss-window-position-undo"
   ]
 }

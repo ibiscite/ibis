@@ -89,13 +89,6 @@ impl Sizing {
     fn revision(&self) -> u64 {
         self.shared.state.lock().map_or(0, |state| state.revision)
     }
-
-    fn forget(&self, display: &str) -> Option<Save> {
-        let mut state = self.shared.state.lock().ok()?;
-        let save = state.forget(display, Instant::now());
-        self.shared.wake.notify_all();
-        save
-    }
 }
 
 impl Shared {
@@ -332,6 +325,16 @@ fn live_frame(metrics: &Metrics, monitor: &Monitor) -> PickerWindow {
     }
 }
 
+fn observed(metrics: &Metrics, monitor: &Monitor) -> Option<Sample> {
+    if metrics.scale != monitor.scale_factor() {
+        return None;
+    }
+    Some(Sample {
+        display: display(monitor, metrics)?,
+        frame: live_frame(metrics, monitor),
+    })
+}
+
 #[cfg(any(target_os = "macos", test))]
 fn appkit_top_left(current: (f64, f64), native: placement::Area, target: (f64, f64)) -> (f64, f64) {
     (
@@ -363,6 +366,26 @@ pub(crate) fn prepare(app: &AppHandle, window: &WebviewWindow, first_show: bool,
         return false;
     };
     let room = display.room;
+    let reset_key = display.key.clone();
+    let previous = if reset {
+        let before = checked(window.current_monitor(), NativeIssue::Monitor)
+            .flatten()
+            .and_then(|current| observed(&metrics, &current));
+        let Ok(mut state) = sizing.shared.state.lock() else {
+            return false;
+        };
+        if let Some(before) = before {
+            state.observe(before, Instant::now(), false);
+        }
+        // A disconnected screen or a pending DPI turn still has a last accepted
+        // frame. Reset must remain available to recover that off-screen window.
+        let Some(previous) = state.last.clone() else {
+            return false;
+        };
+        Some(previous)
+    } else {
+        None
+    };
     let mut frame = plan(saved, larger, room);
     // Explicitly positioned debug previews retain their place too.
     if saved.is_none() && keep_position && !reset {
@@ -384,11 +407,17 @@ pub(crate) fn prepare(app: &AppHandle, window: &WebviewWindow, first_show: bool,
     if let Ok(mut state) = sizing.shared.state.lock() {
         if applied.is_some() {
             state.prepared(Sample { display, frame });
+            if let Some(previous) = previous {
+                state.reset(&reset_key, previous, Instant::now());
+            }
         }
         state.applying = false;
     }
-    if reset && applied.is_some() {
-        sizing.forget(&display_key(&monitor));
+    if reset {
+        // The preceding sample may have accepted a drag even if applying the
+        // reset failed. Its save and any retired Undo still need delivery.
+        emit_reset_undo(app);
+        sizing.shared.wake.notify_all();
     }
     applied.is_some()
 }
@@ -517,20 +546,14 @@ fn sample(app: &AppHandle, window: &WebviewWindow, settled: bool) {
     let Some(metrics) = metrics(window) else {
         return;
     };
-    // A scale and client size from different native turns are not a sample.
-    if metrics.scale != monitor.scale_factor() {
-        return;
-    }
-    let Some(display) = display(&monitor, &metrics) else {
+    let Some(sample) = observed(&metrics, &monitor) else {
         return;
     };
-    let frame = live_frame(&metrics, &monitor);
-    let constraints = sizing
-        .shared
-        .state
-        .lock()
-        .ok()
-        .and_then(|mut state| state.observe(Sample { display, frame }, Instant::now(), settled));
+    let (constraints, undo_changed) = sizing.shared.state.lock().map_or((None, false), |mut state| {
+        let previous = state.undo.as_ref().map(|undo| undo.revision);
+        let constraints = state.observe(sample, Instant::now(), settled);
+        (constraints, previous != state.undo.as_ref().map(|undo| undo.revision))
+    });
     if let Some(display) = constraints
         && apply_constraints(app, window, display.room).is_some()
         && let Ok(mut state) = sizing.shared.state.lock()
@@ -538,6 +561,9 @@ fn sample(app: &AppHandle, window: &WebviewWindow, settled: bool) {
         state.constraints = Some(display);
     }
     sizing.shared.wake.notify_all();
+    if undo_changed {
+        emit_reset_undo(app);
+    }
 }
 
 /// Windows sends ScaleFactorChanged inside WM_DPICHANGED, before SetWindowPos.
@@ -581,11 +607,116 @@ pub(crate) fn reset_position(app: &AppHandle) {
                 && handle.state::<Sizing>().revision() == revision
                 && let Some(window) = handle.get_webview_window("main")
             {
-                prepare(&handle, &window, false, true);
+                if prepare(&handle, &window, false, true) {
+                    crate::picker::show_picker(&handle);
+                }
             }
         }),
         NativeIssue::Resize,
     );
+}
+
+fn emit_reset_undo(app: &AppHandle) {
+    let sizing = app.state::<Sizing>();
+    let payload = sizing.shared.state.lock().ok().map(|state| {
+        serde_json::json!({
+            "revision": state.revision, "undo": state.undo.as_ref().map(|undo| undo.revision)
+        })
+    });
+    if let Some(payload) = payload {
+        report(
+            app.emit_to("main", "picker:window-reset", payload),
+            NativeIssue::PickerEvent,
+        );
+    }
+}
+
+#[tauri::command]
+#[specta::specta]
+pub(crate) fn read_window_position_undo(sizing: tauri::State<'_, Sizing>) -> Option<u64> {
+    let state = sizing.shared.state.lock().ok()?;
+    state.undo_for(state.revision).map(|undo| undo.revision)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub(crate) fn dismiss_window_position_undo(app: AppHandle, revision: u64) {
+    if let Ok(mut state) = app.state::<Sizing>().shared.state.lock() {
+        state.dismiss_undo(revision);
+    }
+    emit_reset_undo(&app);
+}
+
+#[tauri::command]
+#[specta::specta]
+pub(crate) async fn undo_window_position(app: AppHandle, revision: u64) -> Result<bool, String> {
+    let generation = app.state::<crate::picker::PickerGeneration>().current();
+    let (sent, mut received) = tauri::async_runtime::channel(1);
+    let handle = app.clone();
+    app.run_on_main_thread(move || {
+        let result = if handle.state::<crate::picker::PickerGeneration>().current() == generation {
+            restore_position(&handle, revision)
+        } else {
+            Ok(false)
+        };
+        let _ = sent.try_send(result);
+    })
+    .map_err(|_| "Ibis could not restore the window position. Try again.".to_string())?;
+    received
+        .recv()
+        .await
+        .unwrap_or_else(|| Err("Ibis could not restore the window position. Try again.".into()))
+}
+
+fn restore_position(app: &AppHandle, revision: u64) -> Result<bool, String> {
+    const FAILED: &str = "Ibis could not restore the window position. Try again.";
+    let window = app.get_webview_window("main").ok_or(FAILED)?;
+    // Accept an edge drag whose native event arrived before this action, even
+    // if MainEventsCleared has not sampled it yet. It retires the old Undo.
+    sample(app, &window, false);
+    let sizing = app.state::<Sizing>();
+    let undo = {
+        let mut state = sizing.shared.state.lock().map_err(|_| FAILED)?;
+        let Some(undo) = state.undo_for(revision) else {
+            return Ok(false);
+        };
+        state.applying = true;
+        undo
+    };
+    let applied = (|| {
+        let monitors = checked(app.available_monitors(), NativeIssue::Monitor).ok_or(FAILED)?;
+        let monitor = monitors
+            .into_iter()
+            .find(|monitor| display_key(monitor) == undo.previous.display.key)
+            .or_else(|| checked(window.current_monitor(), NativeIssue::Monitor).flatten())
+            .ok_or(FAILED)?;
+        let metrics = metrics(&window).ok_or(FAILED)?;
+        let display = display(&monitor, &metrics).ok_or(FAILED)?;
+        let mut frame = plan(
+            Some(PickerWindow {
+                custom_size: true,
+                ..undo.previous.frame
+            }),
+            false,
+            display.room,
+        );
+        frame.custom_size = undo.previous.frame.custom_size;
+        apply_frame(app, &window, &monitor, frame, display.room).ok_or(FAILED)?;
+        Ok::<_, &str>(Sample { display, frame })
+    })();
+    let mut state = sizing.shared.state.lock().map_err(|_| FAILED)?;
+    state.applying = false;
+    let restored = match applied {
+        Ok(sample) => {
+            state.prepared(sample);
+            state.restore(revision, Instant::now())
+        }
+        Err(error) => return Err(error.into()),
+    };
+    drop(state);
+    sizing.shared.wake.notify_all();
+    emit_reset_undo(app);
+    Ok(restored)
 }
 
 #[cfg(test)]
