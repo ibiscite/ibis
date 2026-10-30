@@ -89,11 +89,14 @@ pub(super) fn load_source_cached(
         .engine()
         .map(|engine| std::sync::Arc::new(super::engine_file::FileLibrary::from_engine(engine)))
         .unwrap_or(file);
+    let cached = pending.cache_hit();
     Ok(Loaded::New(Box::new(Library {
-        source: Some(Source::File(path)),
+        source: Some(Source::File(path.clone())),
+        requested: cached.then_some(Source::File(path)),
+        opening: cached,
         file: Some(file),
         pending_file: Some(pending),
-        checked_at: Some(std::time::SystemTime::now()),
+        checked_at: (!cached).then(std::time::SystemTime::now),
         ..Library::default()
     })))
 }

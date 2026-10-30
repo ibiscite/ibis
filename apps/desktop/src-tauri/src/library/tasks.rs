@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use std::sync::Mutex;
 use std::sync::atomic::Ordering;
 
-use ibis_core::settings::{ZoteroLibraries, ZoteroLibrary};
+use ibis_core::settings::{LibrarySetting, ZoteroLibraries, ZoteroLibrary};
 #[cfg(debug_assertions)]
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
@@ -129,7 +129,8 @@ pub(super) fn engine_changed(library: &mut Library, file: &std::sync::Arc<super:
     }
     let now = std::time::SystemTime::now();
     let updated = library.observe_revision(now);
-    if updated || healthy {
+    // Only a verified install establishes a check time; cached engine events cannot.
+    if library.checked_at.is_some() && (updated || healthy) {
         library.checked_at = Some(now);
     }
     true
@@ -227,6 +228,10 @@ impl LoadRequests {
 }
 
 impl OpenIntent {
+    fn saves_choice(self, source: &Source, chosen: &LibrarySetting) -> bool {
+        matches!(self, Self::Remember) || (matches!(self, Self::Read) && source.setting().as_ref() != Some(chosen))
+    }
+
     fn retry(reload: bool) -> Self {
         if reload { Self::Refresh } else { Self::Remember }
     }
@@ -342,7 +347,6 @@ fn open_one(app: AppHandle, open: OpenRequest) -> impl std::future::Future<Outpu
     let refresh_source = source.clone();
     let cache = app.state::<LoadRequests>().2.operation(request);
     async move {
-        let chosen = source.setting();
         let loading_app = app.clone();
         let loaded = tauri::async_runtime::spawn_blocking(move || {
             #[cfg(debug_assertions)]
@@ -364,6 +368,7 @@ fn open_one(app: AppHandle, open: OpenRequest) -> impl std::future::Future<Outpu
         let (loaded, load_ms) = loaded.unwrap_or((Err(LoadError::Stopped), 0.0));
         #[cfg(not(debug_assertions))]
         let loaded = loaded.unwrap_or(Err(LoadError::Stopped));
+        let chosen = remembered_choice(&refresh_source, &loaded);
         #[cfg(debug_assertions)]
         let mut phases = LoadPhases {
             load_ms,
@@ -383,7 +388,7 @@ fn open_one(app: AppHandle, open: OpenRequest) -> impl std::future::Future<Outpu
         }
         if installed.is_some() {
             let mut show_note = false;
-            if let Some(chosen) = chosen.filter(|_| matches!(intent, OpenIntent::Remember)) {
+            if let Some(chosen) = chosen.filter(|chosen| intent.saves_choice(&refresh_source, chosen)) {
                 // Saving and the note belong to this request, never a newer choice.
                 let accepted = update_notices(
                     &app.state(),
@@ -394,11 +399,14 @@ fn open_one(app: AppHandle, open: OpenRequest) -> impl std::future::Future<Outpu
                         // Check again under the settings lock: a newer choice
                         // then saves after this one, never before it.
                         let saved = app.state::<SettingsFile>().update(|s| {
-                            if app.state::<LoadRequests>().0.load(Ordering::SeqCst) == request {
+                            if app.state::<LoadRequests>().0.load(Ordering::SeqCst) == request
+                                && (matches!(intent, OpenIntent::Remember) || s.library == refresh_source.setting())
+                            {
                                 s.library = Some(chosen);
                             }
                         });
                         if let Err(e) = saved {
+                            retire_unsaved_cache(&app.state(), &app.state(), request);
                             library.choice_save_warning =
                                 Some(format!("the library opened but could not be saved for next time: {e}"));
                             show_note = true;
@@ -436,6 +444,28 @@ fn open_one(app: AppHandle, open: OpenRequest) -> impl std::future::Future<Outpu
             }
         }
     }
+}
+
+fn retire_unsaved_cache(library: &Mutex<Library>, requests: &LoadRequests, request: u64) {
+    let Ok(_selection) = library.lock() else { return };
+    if requests.0.load(Ordering::SeqCst) == request {
+        requests.2.disable();
+    }
+}
+
+pub(super) fn remembered_choice(source: &Source, loaded: &Result<Loaded, LoadError>) -> Option<LibrarySetting> {
+    if let Ok(Loaded::New(new)) = loaded
+        && let Some(path) = new
+            .pending_file
+            .as_ref()
+            .and_then(ibis_engine::PreparedFileLoad::source_path)
+        && path
+            .extension()
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("bib"))
+    {
+        return Some(LibrarySetting::Bibtex(path.to_path_buf()));
+    }
+    source.setting()
 }
 
 // Extensions recognised by ibis-sources (including CSL-JSON's alternate suffix).

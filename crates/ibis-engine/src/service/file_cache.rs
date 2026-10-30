@@ -5,6 +5,7 @@ use ibis_sources::{
     generation::{GenerationStore, StagedGeneration},
 };
 use std::{
+    collections::BTreeSet,
     path::{Path, PathBuf},
     sync::OnceLock,
 };
@@ -13,7 +14,8 @@ use std::{
 struct CacheState {
     current: Option<u64>,
     closed: bool,
-    configured: Option<LibraryId>,
+    disabled: bool,
+    configured: BTreeSet<LibraryId>,
 }
 #[derive(Default)]
 struct CacheInner {
@@ -31,7 +33,7 @@ pub struct FileCacheOperation {
     generation: u64,
 }
 pub struct PreparedFileLoad {
-    candidate: Result<(Engine, LibraryId), EngineError>,
+    candidate: Result<(Engine, LibraryId, PathBuf), EngineError>,
     operation: FileCacheOperation,
     staged: Option<StagedGeneration>,
     cancel: Cancellation,
@@ -40,7 +42,11 @@ pub struct PreparedFileLoad {
 impl PreparedFileLoad {
     /// The candidate is private until the caller accepts its captured selection.
     pub fn engine(&self) -> Option<Engine> {
-        self.candidate.as_ref().ok().map(|(engine, _)| engine.clone())
+        self.candidate.as_ref().ok().map(|(engine, _, _)| engine.clone())
+    }
+    /// Persist this captured canonical identity, never a later path observation.
+    pub fn source_path(&self) -> Option<&Path> {
+        self.candidate.as_ref().ok().map(|(_, _, path)| path.as_path())
     }
     pub fn cache_hit(&self) -> bool {
         self.hit
@@ -70,11 +76,23 @@ impl FileCacheSession {
         }
     }
     pub fn remove(&self) {
+        self.retire(false);
+    }
+    /// A failed choice save cannot leave a cache whose identity will be lost.
+    /// Keep current work alive so background source verification still completes.
+    pub fn disable(&self) {
+        self.retire(true);
+    }
+    fn retire(&self, disable: bool) {
         let mut state = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
-        state.current = None;
+        if disable {
+            state.disabled = true;
+        } else {
+            state.current = None;
+        }
         if let Some(store) = self.inner.store.get().and_then(Option::as_ref) {
             let _ = store.invalidate();
-            if let Some(library) = state.configured.take() {
+            for library in std::mem::take(&mut state.configured) {
                 let _ = store.remove_library(&library);
             }
         }
@@ -96,17 +114,25 @@ impl FileCacheOperation {
     /// Capture selection before startup work, including before hydration begins.
     pub fn select_file(&self, path: &Path) -> Result<Option<PathBuf>, EngineError> {
         let source = std::fs::canonicalize(path).ok();
-        if let Some(source) = &source {
-            let library = LibraryId::file(source.as_os_str().as_encoded_bytes());
-            self.current(|state, store| {
-                if let Some(previous) = state.configured.replace(library.clone()).filter(|id| *id != library)
-                    && let Some(store) = store
-                {
-                    let _ = store.remove_library(&previous);
+        // Retain the persisted identity as well as a possibly retargeted path.
+        let identities: BTreeSet<_> = source
+            .as_deref()
+            .into_iter()
+            .chain(path.is_absolute().then_some(path))
+            .map(|path| LibraryId::file(path.as_os_str().as_encoded_bytes()))
+            .collect();
+        self.current(|state, store| {
+            if source.is_some()
+                && let Some(store) = store
+            {
+                for previous in state.configured.difference(&identities) {
+                    let _ = store.remove_library(previous);
                 }
-                Ok(())
-            })?;
-        }
+                state.configured.clear();
+            }
+            state.configured.extend(identities);
+            Ok(())
+        })?;
         Ok(source)
     }
     fn current<T>(
@@ -118,7 +144,12 @@ impl FileCacheOperation {
         if state.closed || state.current != Some(self.generation) {
             return Err(error(ErrorCode::Cancelled));
         }
-        apply(&mut state, owner.store.get().and_then(Option::as_ref))
+        let store = if state.disabled {
+            None
+        } else {
+            owner.store.get().and_then(Option::as_ref)
+        };
+        apply(&mut state, store)
     }
 }
 impl Engine {
@@ -160,7 +191,7 @@ impl Engine {
                     candidate.shared.begin_read(Some(library.clone()))?;
                     operation.current(|_, _| cancel.check())?;
                     return Ok(PreparedFileLoad {
-                        candidate: Ok((candidate, library)),
+                        candidate: Ok((candidate, library, source)),
                         operation,
                         staged: None,
                         cancel: cancel.clone(),
@@ -203,12 +234,13 @@ impl Engine {
         });
         cancel.check()?;
         let library = loaded.library.clone();
+        let source = observation.source_path().to_path_buf();
         let mut candidate = Engine::from_snapshot(Arc::new(loaded.snapshot.clone()));
         candidate.watch_files = self.watch_files;
         candidate.install_file(path, loaded, Some(observation), cancel)?;
         operation.current(|_, _| cancel.check())?;
         Ok(PreparedFileLoad {
-            candidate: Ok((candidate, library)),
+            candidate: Ok((candidate, library, source)),
             operation,
             staged,
             cancel: cancel.clone(),
@@ -220,7 +252,7 @@ impl Engine {
     pub fn accept_file_load(&self, load: PreparedFileLoad) -> Result<(), EngineError> {
         load.operation.current(|state, store| {
             load.cancel.check()?;
-            let (candidate, library) = match load.candidate {
+            let (candidate, library, _) = match load.candidate {
                 Ok(candidate) => candidate,
                 Err(failure) => {
                     for id in self.state()?.libraries.keys() {
@@ -237,11 +269,12 @@ impl Engine {
                 if let Some(staged) = load.staged {
                     let _ = store.publish(staged);
                 }
-                if let Some(previous) = state.configured.as_ref().filter(|id| **id != library) {
+                for previous in state.configured.iter().filter(|id| **id != library) {
                     let _ = store.remove_library(previous);
                 }
             }
-            state.configured = Some(library);
+            state.configured.clear();
+            state.configured.insert(library);
             if !load.hit {
                 state.current = None;
             }

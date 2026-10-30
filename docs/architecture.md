@@ -136,12 +136,18 @@ The desktop saves only warning-free, record-only `.bib` imports. Bounded objects
 one retained `PreparedLibrary::get` may serve search immediately; stored observations, checksums
 and fingerprints never grant readiness. Every reopen silently parses current source bytes, then
 accepts the verified objects and diagnostics through the normal path, replacing any differences.
-The existing source-generation gate, shared with Zotero, refuses citation and copy until then,
-using the existing message. Cached bytes never seed a watcher that could skip that parse.
+Cached search publishes `Reloading`, with no new `checked_at` until verification succeeds;
+failed verification retains searchable references and diagnostics without claiming a fresh check.
+The existing source-generation gate, shared with Zotero, refuses citation and copy until then;
+the desktop uses its existing library-loading message. Cached bytes never seed a watcher that could skip that parse.
 Attachments are not persisted. Full objects remain resident; #1251 and #1298 stay open.
 
-One process-lived `FileCacheSession` owns the lease. It records source identity before hydration,
-independently of acceptance, so removal retires even an unfinished startup load's manifest and
+One process-lived `FileCacheSession` owns the lease. Remembered `.bib` settings keep the canonical
+path captured by preparation. The session records that identity before hydration, even when the
+file has moved or disappeared, and retains a retargeted path's old and current identities.
+Startup normalizes only the matching saved choice; refresh never saves a choice.
+Failed choice saves retire cached bytes and disable storage for the session, while source verification continues.
+Removal retires even an unfinished startup load's manifest and
 allows bounded cleanup after readers release its payload. Selection and close invalidate work;
 final acceptance serializes manifest and app publication. Parsing, indexing and watcher setup
 remain in the background. Samples preserve the remembered cache; explicit Reload keeps two identical observations.

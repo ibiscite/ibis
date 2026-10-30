@@ -4,6 +4,9 @@ use crate::generation::{GenerationStore, GenerationWriter, PreparedLibrary, Stor
 use ibis_core::contract::Fingerprint;
 
 impl SourceSnapshot {
+    pub fn source_path(&self) -> &Path {
+        &self.source
+    }
     pub fn read(path: &Path) -> Result<Self, SourceError> {
         let source = canonical_path(path).map_err(|_| SourceError::Unavailable)?;
         let text = read_library_file(&source)?;

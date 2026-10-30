@@ -75,55 +75,79 @@ fn rewrite_cache(storage: &Path, change: impl FnOnce(&mut Value, &mut Value, &mu
 
 #[test]
 fn regression_forged_observation_never_grants_citation_readiness() {
-    let (_dir, path, storage) = fixture();
-    let cache = FileCacheSession::open(&storage);
-    let mut reader = engine();
-    accept(&mut reader, &cache, &path, 1);
-    let current = BIB.replace("stars", "moons");
-    let modified = std::fs::metadata(&path).unwrap().modified().unwrap();
-    std::fs::write(&path, &current).unwrap();
-    let file = std::fs::File::options().write(true).open(&path).unwrap();
-    file.set_modified(modified).unwrap();
-    rewrite_cache(&storage, |_, index, _| {
-        index["observation"] = json!(Fingerprint::of_bytes(current.as_bytes()))
-    });
-    cache.invalidate(2);
-    let pending = prepare(&reader, &cache, &path, false, 2).unwrap();
-    assert!(pending.cache_hit());
-    let unready = pending.engine().unwrap();
-    assert!(
-        call(&unready, Method::Search, json!({"query":"synthetic"}))
-            .to_string()
-            .contains("Synthetic stars")
-    );
-    let request = serde_json::from_value(json!({"items":[{"item":unready.snapshot().unwrap().objects()[0].object.id()}],"output":{"kind":"key","syntax":"pandoc","command":null}})).unwrap();
-    expect_error(
-        unready.prepare_citation(&request, &Cancellation::default()),
-        SourceUnavailable,
-    );
-    let keys = serde_json::from_value(
-        json!({"keys":[{"key":"alpha"}],"output":{"kind":"key","syntax":"pandoc","command":null}}),
-    )
-    .unwrap();
-    expect_error(unready.cite_keys(&keys, &Cancellation::default()), SourceUnavailable);
-    unready.accept_file_load(pending).unwrap();
-    std::fs::write(&path, format!("{current}@book{{unfinished,")).unwrap();
-    let fresh = prepare(&unready, &cache, &path, false, 2).unwrap();
-    assert!(!fresh.cache_hit());
-    let verified = fresh.engine().unwrap();
-    verified.accept_file_load(fresh).unwrap();
-    assert!(visible(&verified).to_string().contains("Synthetic moons"));
-    assert_eq!(verified.libraries().unwrap().libraries[0].warnings_total, 1);
-    expect_error(
-        unready.prepare_citation(&request, &Cancellation::default()),
-        SourceUnavailable,
-    );
+    for failed_save in [false, true] {
+        let (_dir, path, storage) = fixture();
+        let cache = FileCacheSession::open(&storage);
+        let mut reader = engine();
+        accept(&mut reader, &cache, &path, 1);
+        let current = BIB.replace("stars", "moons");
+        let modified = std::fs::metadata(&path).unwrap().modified().unwrap();
+        std::fs::write(&path, &current).unwrap();
+        let file = std::fs::File::options().write(true).open(&path).unwrap();
+        file.set_modified(modified).unwrap();
+        rewrite_cache(&storage, |_, index, _| {
+            index["observation"] = json!(Fingerprint::of_bytes(current.as_bytes()))
+        });
+        cache.invalidate(2);
+        let pending = prepare(&reader, &cache, &path, false, 2).unwrap();
+        assert!(pending.cache_hit());
+        let unready = pending.engine().unwrap();
+        assert!(
+            call(&unready, Method::Search, json!({"query":"synthetic"}))
+                .to_string()
+                .contains("Synthetic stars")
+        );
+        let request = serde_json::from_value(json!({"items":[{"item":unready.snapshot().unwrap().objects()[0].object.id()}],"output":{"kind":"key","syntax":"pandoc","command":null}})).unwrap();
+        expect_error(
+            unready.prepare_citation(&request, &Cancellation::default()),
+            SourceUnavailable,
+        );
+        let keys = serde_json::from_value(
+            json!({"keys":[{"key":"alpha"}],"output":{"kind":"key","syntax":"pandoc","command":null}}),
+        )
+        .unwrap();
+        expect_error(unready.cite_keys(&keys, &Cancellation::default()), SourceUnavailable);
+        unready.accept_file_load(pending).unwrap();
+        let manifest_path = manifest(&storage);
+        if failed_save {
+            cache.disable();
+            assert!(!manifest_path.exists(), "an unsaved identity must not leave a cache");
+        }
+        std::fs::write(&path, format!("{current}@book{{unfinished,")).unwrap();
+        let fresh = prepare(&unready, &cache, &path, false, 2).unwrap();
+        assert!(!fresh.cache_hit());
+        let verified = fresh.engine().unwrap();
+        verified.accept_file_load(fresh).unwrap();
+        if failed_save {
+            assert!(
+                !manifest_path.exists(),
+                "verification must stay uncached after a failed save"
+            );
+        }
+        assert!(visible(&verified).to_string().contains("Synthetic moons"));
+        assert_eq!(verified.libraries().unwrap().libraries[0].warnings_total, 1);
+        if failed_save {
+            std::fs::write(&path, &current).unwrap();
+            let mut eligible = verified.clone();
+            assert!(!accept(&mut eligible, &cache, &path, 3));
+            assert!(visible(&eligible).to_string().contains("Synthetic moons"));
+            assert!(
+                !manifest_path.exists(),
+                "even eligible verified imports must stay uncached"
+            );
+        }
+        expect_error(
+            unready.prepare_citation(&request, &Cancellation::default()),
+            SourceUnavailable,
+        );
+    }
 }
 
 #[test]
 fn regression_removal_during_startup_hydration_retires_the_configured_source() {
-    for hydrate in [false, true] {
+    for startup in ["before-hydration", "hydrated", "moved", "deleted", "retargeted"] {
         let (_dir, path, storage) = fixture();
+        let path = path.canonicalize().unwrap(); // The remembered source identity survives unavailability.
         {
             let cache = FileCacheSession::open(&storage);
             accept(&mut engine(), &cache, &path, 1);
@@ -131,17 +155,37 @@ fn regression_removal_during_startup_hydration_retires_the_configured_source() {
         let manifest_path = manifest(&storage);
         let manifest: Value = serde_json::from_slice(&std::fs::read(&manifest_path).unwrap()).unwrap();
         let payload = storage.join(manifest["file"].as_str().unwrap());
-        let cache = FileCacheSession::open(&storage);
+        match startup {
+            "moved" => std::fs::rename(&path, path.with_file_name("retired.bib")).unwrap(),
+            "deleted" => std::fs::remove_file(&path).unwrap(),
+            #[cfg(unix)]
+            "retargeted" => {
+                let target = path.with_file_name("target.bib");
+                std::fs::write(&target, BIB).unwrap();
+                std::fs::remove_file(&path).unwrap();
+                std::os::unix::fs::symlink(target, &path).unwrap();
+            }
+            _ => (),
+        }
+        let cache = FileCacheSession::default();
         cache.invalidate(1);
         cache.operation(1).select_file(&path).unwrap();
-        let pending = hydrate.then(|| prepare(&engine(), &cache, &path, false, 1).unwrap());
+        cache.configure(&storage); // Startup captures selection before the app cache directory is opened.
+        let pending = (startup == "hydrated").then(|| prepare(&engine(), &cache, &path, false, 1).unwrap());
         assert!(pending.as_ref().is_none_or(ibis_engine::PreparedFileLoad::cache_hit));
+        if matches!(startup, "moved" | "deleted") {
+            expect_error(prepare(&engine(), &cache, &path, false, 1), SourceUnavailable);
+        }
         cache.remove(); // Choosing Zotero before the startup load can be accepted.
-        assert!(!manifest_path.exists());
-        assert!(!payload.exists());
+        assert!(!manifest_path.exists(), "{startup}");
+        assert!(!payload.exists(), "{startup}");
         if let Some(pending) = pending {
             expect_error(pending.engine().unwrap().accept_file_load(pending), Cancelled);
         }
+        if startup == "retargeted" {
+            std::fs::remove_file(&path).unwrap();
+        }
+        std::fs::write(&path, BIB).unwrap();
         assert!(!accept(&mut engine(), &cache, &path, 2));
         let moved = path.with_file_name("moved.bib");
         std::fs::rename(&path, &moved).unwrap();
