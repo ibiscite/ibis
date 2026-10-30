@@ -64,6 +64,9 @@ for a local Windows Ibis project; existing release gates remain.
   engine search in PR CI and open/refresh in nightly/release builds; PR builds
   also gate picker asset size. The native resource validator exists, but
   requires measurements from named release machines.
+- [Release download counts](../.github/workflows/release-counts.yml) snapshots
+  public `stable` asset counters weekly into `stats:counts.csv`; script tests
+  cover append-only publication, weekly deduplication and API/ref failures.
 
 Run commands are in [AGENTS.md](../AGENTS.md); setup is in
 [CONTRIBUTING.md](../CONTRIBUTING.md). A test definition, screenshot or build

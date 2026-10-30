@@ -87,6 +87,14 @@ Ibis may serve Better BibTeX-compatible Cite as You Write to editor plugins:
 `127.0.0.1` only, on its own port, refusing any request with a browser
 `Origin`, and off until switched on in Settings (maintainer, 2026-10-27).
 
+2026-10-30 (maintainer-approved): A weekly GitHub workflow reads only the rolling
+`stable` release's public asset names, aggregate download counters and version
+from `latest.json` (or the release title), appending UTC-dated snapshots to
+`counts.csv` on the orphan `stats` branch. These support rough download/update
+estimates, not counts of people or active installs; replacements reset counters
+and downloads between snapshots can be lost. No telemetry, identifiers, app
+changes or server: nothing leaves the app.
+
 ## 0009 Insertion
 
 Every insertion ends in exactly one visible state: pasted, or copied with a
