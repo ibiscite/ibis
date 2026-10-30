@@ -644,6 +644,116 @@ def run(args):
 
 
 class Tests(unittest.TestCase):
+    def update_consumer(self, scenario):
+        events = []
+        state = {"reopened": False, "pressed": False}
+        with tempfile.TemporaryDirectory() as temporary:
+            def installed(folder, _args, library):
+                install = MagicMock(command=["synthetic-owned-install"], config=None)
+                install.settings = seed_settings(folder, library)
+                install.instances.side_effect = lambda: {43} if state["pressed"] or (scenario == "replacement" and state["reopened"]) else {42}
+                def picker(pids):
+                    events.append(("picker", set(pids)))
+                    return 42 if state["reopened"] and scenario != "unfocused" else None
+                install.picker_ready.side_effect = picker
+                def look(pids, press=None):
+                    if press:
+                        events.append(("press", set(pids)))
+                        self.assertTrue(state["reopened"], "update polled before its picker was reopened")
+                        if scenario == "activation":
+                            raise WindowsActivationFailure({"attempted": True})
+                        state["pressed"] = True
+                    return bool(press), [], None
+                install.look.side_effect = look
+                install.updated.side_effect = lambda: state["pressed"]
+                install.facts.return_value = {}
+                return install
+            def launch(command, **_kwargs):
+                events.append(("launch", list(command)))
+                child = MagicMock()
+                child.poll.return_value = 0
+                def waited(timeout):
+                    events.append(("reopen-exit", timeout))
+                    if scenario == "io":
+                        raise OSError("synthetic reopen failure")
+                    if scenario == "timeout":
+                        raise subprocess.TimeoutExpired(command, timeout)
+                    state["reopened"] = True
+                    return 1 if scenario == "refused" else 0
+                child.wait.side_effect = waited
+                return child
+            def bounded(predicate, _timeout, message, **_kwargs):
+                for _ in range(3):
+                    value = predicate()
+                    if value:
+                        return value
+                raise AssertionError(message)
+            with patch.dict(SYSTEMS, {"Linux": installed}), patch("platform.system", return_value="Linux"), \
+                    patch("subprocess.Popen", side_effect=launch), patch(__name__ + ".wait_for", side_effect=bounded), \
+                    patch("time.sleep"), patch("os.kill"), patch("builtins.print"), patch(__name__ + ".feed_version", return_value="synthetic"):
+                result = run(argparse.Namespace(output=Path(temporary)))
+            report = json.loads((Path(temporary) / "update-e2e.json").read_text(encoding="utf-8"))
+        return result, report, events
+
+    def test_update_reopens_exact_install_once_before_single_owned_activation(self):
+        result, report, events = self.update_consumer("success")
+        self.assertEqual(result, 0, report)
+        self.assertEqual([value for event, value in events if event == "launch"], [["synthetic-owned-install"]] * 2)
+        self.assertEqual([value for event, value in events if event == "press"], [{42}])
+        self.assertEqual(report["settings_preserved"], {"library": True, "shortcut": True})
+
+    def test_update_never_activates_after_reopen_refusal_io_timeout_or_lost_owner(self):
+        for scenario in ("refused", "io", "timeout", "unfocused", "replacement"):
+            with self.subTest(scenario=scenario):
+                result, report, events = self.update_consumer(scenario)
+                self.assertEqual(result, 1, report)
+                self.assertEqual(sum(event == "launch" for event, _ in events), 2)
+                self.assertFalse(any(event == "press" for event, _ in events))
+                self.assertNotIn("settings_preserved", report)
+
+    def test_update_never_retries_an_uncertain_activation_after_reopen(self):
+        result, report, events = self.update_consumer("activation")
+        self.assertEqual(result, 1, report)
+        self.assertEqual(sum(event == "launch" for event, _ in events), 2)
+        self.assertEqual(sum(event == "press" for event, _ in events), 1)
+
+    class Accessible:
+        def __init__(self, pid, role, name, children=()):
+            self.pid, self.role, self.name, self.children = pid, role, name, children
+            self.action = MagicMock(nActions=1)
+            self.action.doAction.return_value = True
+        def __iter__(self):
+            return iter(self.children)
+        def get_process_id(self):
+            return self.pid
+        def getRoleName(self):
+            return self.role
+        def queryAction(self):
+            return self.action
+
+    def test_linux_update_action_is_unique_and_owned_before_any_invocation(self):
+        for scenario in ("success", "foreign", "duplicate", "wrong-owner", "uncertain"):
+            with self.subTest(scenario=scenario):
+                button = self.Accessible(42, "push button", BUTTON)
+                if scenario == "wrong-owner":
+                    button.pid = 99
+                if scenario == "uncertain":
+                    button.action.doAction.side_effect = RuntimeError("synthetic uncertain activation")
+                offer = self.Accessible(42, "dialog", "An update is available", [button] * (2 if scenario == "duplicate" else 1))
+                foreign_button = self.Accessible(99, "push button", BUTTON)
+                foreign = self.Accessible(99, "application", "Foreign", [foreign_button])
+                owned = self.Accessible(42, "application", "Ibis", [] if scenario == "foreign" else [offer])
+                linux = Linux.__new__(Linux)
+                linux.atspi = MagicMock()
+                linux.atspi.Registry.getDesktop.return_value = [foreign, owned]
+                if scenario in ("duplicate", "wrong-owner", "uncertain"):
+                    with self.assertRaises(AssertionError):
+                        linux.look({42}, BUTTON)
+                else:
+                    self.assertEqual(linux.look({42}, BUTTON)[0], scenario == "success")
+                foreign_button.action.doAction.assert_not_called()
+                self.assertEqual(button.action.doAction.call_count, int(scenario in ("success", "uncertain")))
+
     @staticmethod
     def windows_probe(pressed=False):
         return {"attempted": pressed, "blocked": False, "pids": 1, "windows": int(pressed), "elements": int(pressed),
