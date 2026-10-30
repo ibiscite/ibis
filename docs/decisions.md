@@ -311,6 +311,8 @@ use are measured on the release machines before each release.
 0.5 cites from Zotero's annotations and the PDFs people already open before
 any reader inside Ibis (maintainer, 2026-10-28).
 
+2026-10-30: Open/refresh timings report after packaging on main and 0.2.x; the unchanged 3 s limits block release tags from 0.3, as the maintainer clarified.
+
 ## 0027 Process until 1.0 (with 0011, 0015 and 0017)
 
 Agents have standing engineering and merge authority and work by
