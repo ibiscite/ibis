@@ -9,7 +9,8 @@ The seeded synthetic library and shortcut must remain in its settings.
 
 - Linux: the AppImage, under a virtual display, pressed through AT-SPI.
 - Windows: the setup executable, pressed through UI Automation; the updater
-  runs the new setup executable, which starts the app again.
+  runs the new setup executable, which starts the app again. The isolated test
+  forces renderer accessibility; normal screen-reader startup is not qualified.
 - macOS: the .app from its update archive, pressed through System Events; the
   updater replaces the .app and reopens it through LaunchServices.
 
@@ -349,6 +350,10 @@ def claim_settings(config, library):
 
 def environment(inherited, config):
     env = dict(inherited)
+    if platform.system() == "Windows":
+        # Precise observer mode: an inherited disable flag overrides force in
+        # WebView2. Product browser arguments stay in the app configuration.
+        env["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] = "--force-renderer-accessibility"
     if config is not None:
         env.update(XDG_CONFIG_HOME=str(config), NO_AT_BRIDGE="0", GTK_MODULES="gail:atk-bridge")
     for name in ("APPIMAGE", "APPDIR", "IBIS_GALLERY", "IBIS_GALLERY_STATE", "IBIS_LIBRARY"):
@@ -836,6 +841,8 @@ SYSTEMS = {"Linux": Linux, "Darwin": MacOS, "Windows": Windows}
 
 def run(args):
     report = {"status": "failed", "system": platform.system(), "steps": []}
+    if report["system"] == "Windows":
+        report["observer_mode"] = "forced-renderer-accessibility"
     started = []
     log = None
     install = None
