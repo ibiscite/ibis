@@ -10,11 +10,11 @@ test("public build copies canonical tokens and only allowlisted assets", async (
   try {
     const source = join(dir, "source"), output = join(dir, "public");
     await mkdir(source); await mkdir(output);
-    for (const name of ["index.html", "404.html", "style.css", "site.js", "_headers", "robots.txt", "sitemap.xml"]) await writeFile(join(source, name), "synthetic");
+    for (const name of ["index.html", "404.html", "style.css", "site.js", "_headers", "demo.js", "demo.css", "demo-model.mjs", "robots.txt", "sitemap.xml"]) await writeFile(join(source, name), "synthetic");
     await writeFile(join(source, "private.txt"), "must not publish");
     await writeFile(join(output, "stale.txt"), "stale");
     await build(output, source);
-    assert.deepEqual((await readdir(output)).sort(), ["404.html", "_headers", "assets", "index.html", "robots.txt", "site.js", "sitemap.xml", "style.css", "tokens.css"]);
+    assert.deepEqual((await readdir(output)).sort(), ["404.html", "_headers", "assets", "demo-model.mjs", "demo.css", "demo.js", "icon-paths.js", "index.html", "keys.js", "robots.txt", "site.js", "sitemap.xml", "style.css", "tokens.css"]);
     assert.equal(await readFile(join(output, "tokens.css"), "utf8"), await readFile(new URL("../apps/desktop/src/tokens.css", import.meta.url), "utf8"));
     const manifest = JSON.parse(await readFile(join(output, "assets/site.webmanifest"), "utf8"));
     for (const icon of manifest.icons) await readFile(join(output, "assets", icon.src));
@@ -63,5 +63,20 @@ test("search discovery publishes only the canonical homepage without tracking", 
     assert.match(html, /itemprop="operatingSystem" content="Windows, macOS, Linux"/);
     assert.doesNotMatch(html, /aggregateRating|ratingValue|googletagmanager|google-analytics|clarity\.ms|cloudflareinsights/);
     assert.ok([...html.matchAll(/<script[^>]+src="([^"]+)"/g)].every(([, src]) => !src.includes(":")), "scripts remain local");
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test("built homepage keeps a visible picker example and its local interactive assets", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "ibis-demo-build-"));
+  try {
+    await build(dir);
+    const html = await readFile(join(dir, "index.html"), "utf8");
+    assert.ok(/<figure[^>]*data-picker/.test(html), "the public build must show the picker in the second step");
+    assert.match(html, /Try it with made-up references/);
+    assert.match(html, /Copy as Pandoc/);
+    for (const name of ["demo.js", "demo.css", "demo-model.mjs", "keys.js", "icon-paths.js"]) {
+      assert.ok((await readFile(join(dir, name), "utf8")).length > 0, name);
+    }
+    assert.match(await readFile(join(dir, "site.js"), "utf8"), /import\("\.\/demo\.js"\)/);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });

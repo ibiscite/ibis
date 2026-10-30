@@ -153,7 +153,7 @@ system share glyph), which opens the browser share sheet or copies the link; no
 third-party share buttons, star counts or badges. The logo aligns with the text
 beside it by its ink, not its export clear space.
 
-**Demo.** It mirrors the shipped app: a change to what it shows (the picker,
+**Demo.** Keep a visible picker example in the public build, including without JavaScript. Its core behavior must match at least the latest released app. The current bounded example demonstrates key-citation search, selection, combining, copy and in-page paste; it does not duplicate the engine’s locator parser or formatted-citation policy. It mirrors the shipped app: a change to what it shows (the picker,
 its keys, styles or paste) updates it in the same pull request, and it grows as
 the app gains features worth showing. It uses invented references, says Ibis
 does not build the document bibliography, follows **Interaction** and takes its

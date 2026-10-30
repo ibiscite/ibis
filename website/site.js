@@ -115,6 +115,10 @@ document.addEventListener("DOMContentLoaded", () => {
   if (!document.querySelector(".index nav")) return; // Plain pages such as 404 need only the appearance applied above.
   appearance(); platforms(); navigation(); share(); chips();
   console.info("Curious how this page works? Ibis is open source: https://github.com/ibiscite/ibis");
+  let lastMove = performance.now();
+  const markMove = () => { lastMove = performance.now(); };
+  window.addEventListener("scroll", markMove, { passive: true }); window.addEventListener("hashchange", markMove);
+  document.addEventListener("click", event => { if (event.target.closest?.('a[href^="#"]')) markMove(); });
   if (!matchMedia("(prefers-reduced-motion: reduce)").matches && "IntersectionObserver" in window) {
     const observer = new IntersectionObserver(entries => {
       for (const entry of entries) if (entry.isIntersecting) { entry.target.classList.add("reveal"); observer.unobserve(entry.target); }
@@ -126,5 +130,12 @@ document.addEventListener("DOMContentLoaded", () => {
     if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     for (const image of event.currentTarget.querySelectorAll("img")) image.src = image.src.split("#")[0] + `#again-${++replay}`;
   });
-
+  import("./demo.js").then(async ({ setupDemo }) => {
+    const quiet = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--motion-panel"));
+    await new Promise(resolve => {
+      const wait = () => { if (performance.now() - lastMove < quiet) requestAnimationFrame(wait); else resolve(); };
+      requestAnimationFrame(wait);
+    });
+    setupDemo();
+  }).catch(() => { /* The static illustration remains available. */ });
 });
