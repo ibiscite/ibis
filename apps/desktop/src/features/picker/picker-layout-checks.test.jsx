@@ -3,12 +3,33 @@ import { afterEach, expect, test, vi } from "vitest";
 import { App } from "../../App";
 import { pickerText } from "../../messages";
 import { backend, resetApp } from "../../testing/app";
-import { isWholeNotice, layoutGeometry, noticeText, waitForLayout } from "./picker-layout-checks.mjs";
+import { dismissMenu, isWholeNotice, layoutGeometry, noticeText, waitForLayout } from "./picker-layout-checks.mjs";
 
 afterEach(async () => {
   await resetApp();
   vi.restoreAllMocks();
   document.documentElement.removeAttribute("data-text-size");
+});
+
+test.each([false, true])("the probe waits for menu exit before the next action (filter=%s)", async (filtered) => {
+  let finishExit;
+  const detached = new Promise((resolve) => { finishExit = resolve; });
+  const menu = { press: vi.fn().mockResolvedValue(undefined), waitFor: vi.fn(() => detached) };
+  const filter = { press: vi.fn().mockResolvedValue(undefined) };
+  const nextAction = vi.fn();
+  const sequence = (async () => {
+    await dismissMenu(menu, filtered ? filter : undefined);
+    nextAction();
+  })();
+  // Escape has closed the trigger; the animated menu is still on screen.
+  await Promise.resolve();
+  expect((filtered ? filter : menu).press).toHaveBeenCalledExactlyOnceWith("Escape");
+  expect(menu.waitFor).toHaveBeenCalledExactlyOnceWith({ state: "detached" });
+  expect(nextAction).not.toHaveBeenCalled();
+  finishExit();
+  await sequence;
+  expect(nextAction).toHaveBeenCalledOnce();
+  if (filtered) expect(menu.press).not.toHaveBeenCalled();
 });
 
 test.each([false, true])("a failed search notice stays reachable in a steady frame (Larger=%s)", async (larger) => {

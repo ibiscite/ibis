@@ -19,7 +19,7 @@ import { CitationShelf } from "./features/picker/CitationShelf";
 import { ResultList } from "./features/picker/ResultList";
 import { closestMatchWarnings } from "./features/picker/rows";
 import { EmptyState } from "./features/picker/EmptyState";
-import { usePickerScroll } from "./features/picker/usePickerScroll";
+import { PickerScroll } from "./features/picker/PickerScroll";
 import { PickerFooter } from "./features/picker/PickerFooter";
 import { PickerMenu } from "./features/picker/PickerMenu";
 import { useOperations } from "./features/picker/useOperations";
@@ -462,8 +462,6 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       } />
   ) : null);
 
-  const main = useRef<HTMLElement>(null);
-  usePickerScroll(main);
   useEffect(() => {
     let current = true;
     const subscription = onWindowSizeSaved?.((saved) => { if (current) report("windowSize", !saved); });
@@ -472,7 +470,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   }, [onWindowSizeSaved, report]);
 
   return (
-    <main ref={main}
+    <main
       data-selection={showCitations && selected.size > 0 || undefined}
       onFocus={(e) => setSearchFocused(e.target === input.current)}
       onBlur={() => setSearchFocused(false)}
@@ -576,7 +574,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
           };
         }}
       />
-      <div className="picker-content scroll-area">
+      <PickerScroll>
       {shortcut?.error && <div className="notices">
         <p role="status">
           {pickerText.shortcutError(shortcut.registered, shortcut.shortcut, shortcut.error)}
@@ -648,7 +646,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       }} onRemoveLocator={(r) => changeLocator(r, null)} highlightedReference={selected.size === 0 ? chosen[0] : undefined}
         onChangeReference={changeReference} style={style} keys={keyFormat !== null}
         shown={showCitations ? displayedOutput : undefined} problem={previewProblem} focusable={selected.size > 0} fallbackFocusRef={input} />
-      </div>
+      </PickerScroll>
       <PickerFooter library={library} groupName={groupName}
         hints={{ enter: enterAction, shiftEnter: shiftEnterAction, escape: escapeAction }}
         altHeld={altHeld} actions={{ copy: copyChosen, add: toggleHighlighted, escape: escapeStep, keys: openKeys }}

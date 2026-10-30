@@ -6,6 +6,48 @@ import { backend, resetApp, result } from "./testing/app";
 
 afterEach(async () => { await resetApp(); vi.restoreAllMocks(); });
 
+test("More is closed while its exit overlaps the probe's keys-sheet and Copy as steps", async () => {
+  backend({ search: () => [] });
+  render(<App />);
+  await screen.findByText("Type to find a reference");
+  const more = screen.getByRole("button", { name: "More" });
+  const search = screen.getByRole("combobox");
+  fireEvent.click(more);
+  const moreMenu = await screen.findByRole("menu", { name: "More" });
+  const popover = moreMenu.closest(".menu-popover")!;
+  let finishExit!: () => void;
+  const finished = new Promise<void>((resolve) => { finishExit = resolve; });
+  Object.defineProperty(popover, "getAnimations", { value: () => popover.hasAttribute("data-exiting")
+    ? [{ playState: "running", finished }] : [] });
+  try {
+    fireEvent.keyDown(moreMenu, { key: "End" });
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("menuitem", { name: /^Quit/ })));
+    fireEvent.keyDown(document.activeElement!, { key: "Home" });
+    fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+    expect(more.getAttribute("aria-expanded")).toBe("false");
+    expect(popover.hasAttribute("data-exiting")).toBe(true);
+    // Playwright focuses its search locator before sending the shortcut.
+    act(() => search.focus());
+    fireEvent.keyDown(search, { key: "/", ctrlKey: true });
+    const keys = await screen.findByRole("dialog", { name: "Keyboard shortcuts" });
+    fireEvent.keyDown(keys, { key: "Escape" });
+    const format = screen.getByRole("button", { name: /^Copy as/ });
+    fireEvent.click(format);
+    const formatMenu = await screen.findByRole("menu", { name: /^Copy as/ });
+    // The browser can still find the closing DOM with an unqualified locator.
+    // Presence during exit does not mean both menu triggers are open.
+    expect(document.querySelectorAll('[role="menu"]')).toHaveLength(2);
+    expect(more.getAttribute("aria-expanded")).toBe("false");
+    expect(popover.hasAttribute("data-exiting")).toBe(true);
+    expect(format.getAttribute("aria-expanded")).toBe("true");
+    await act(async () => { finishExit(); });
+    await waitFor(() => expect(moreMenu.isConnected).toBe(false));
+    expect(formatMenu.isConnected).toBe(true);
+  } finally {
+    await act(async () => { finishExit(); });
+  }
+});
+
 test.each([false, true])("empty, controls, results, selection, no matches and keys never measure or resize (Larger=%s)", async (larger) => {
   const calls = backend({
     picker_preferences: () => ({ citation_style: null, density: "comfortable", larger_text: larger, show_paste_preview: true, search_mark: false, paste: false }),
@@ -46,6 +88,65 @@ test("a failed size save is visible and a later successful save clears it withou
   act(() => saved(true));
   expect(screen.queryByRole("alert")).toBeNull();
   expect(calls).not.toContain("fit_picker");
+});
+
+test("clearing a settings notice keeps the pointer's newer place even before its scroll event", async () => {
+  const library: api.LibraryStatus = {
+    state: "loaded", revision: "1", has_snapshot: true, zotero: false, zotero_libraries: [],
+    name: "invented.bib", snapshot_name: "invented.bib", references: 14, source_counts: {},
+    warnings: 0, error: null, problem: null, note: null, settings_notice: null,
+    snapshot_zotero: false, stale: false, updated_at: null, checked_at: null,
+  };
+  const found = Array.from({ length: 14 }, (_, i) => result(`synthetic${i}`, `Invented reference ${i}`));
+  backend({ library_status: () => library, search: ({ query }) => query.text ? found : [] });
+  let changed!: (status: api.LibraryStatus) => void;
+  const hasNotice = (node: HTMLElement) => !!node.closest("main")?.querySelector(".notices [role=alert]");
+  const computed = window.getComputedStyle;
+  vi.spyOn(window, "getComputedStyle").mockImplementation((node) => {
+    if (!node.matches(".results-area, .picker-content")) return computed(node);
+    const style = document.createElement("div").style;
+    style.overflowY = node.matches(".results-area") && hasNotice(node as HTMLElement) ? "visible" : "auto";
+    return style;
+  });
+  const scrollTop = Object.getOwnPropertyDescriptor(Element.prototype, "scrollTop")!;
+  vi.spyOn(HTMLElement.prototype, "scrollTop", "get").mockImplementation(function (this: HTMLElement) {
+    if (this.matches(".results-area") && hasNotice(this) || this.matches(".picker-content") && !hasNotice(this)) scrollTop.set!.call(this, 0);
+    return scrollTop.get!.call(this);
+  });
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+    if (this.matches(".notices")) return new DOMRect(0, 53, 720, hasNotice(this) ? 42 : 0);
+    if (this.matches("[role=option]")) {
+      const middle = this.closest(".picker-content")!;
+      const area = middle.querySelector<HTMLElement>(".results-area")!;
+      return new DOMRect(8, 89 + Number(this.id.slice(7)) * 60 + (hasNotice(this) ? 42 : 0) - area.scrollTop - middle.scrollTop, 704, 58);
+    }
+    return new DOMRect();
+  });
+  render(<App api={{ ...api, onLibraryChanged: async (handler) => { changed = handler; return () => {}; } }} />);
+  await screen.findByText("Type to find a reference");
+  const search = screen.getByRole<HTMLInputElement>("combobox");
+  fireEvent.change(search, { target: { value: "invented" } });
+  const row = await screen.findByRole("option", { name: /Invented reference 8/ });
+  const area = document.querySelector<HTMLElement>(".results-area")!;
+  const middle = document.querySelector<HTMLElement>(".picker-content")!;
+  area.scrollTop = 380; fireEvent.scroll(area);
+  fireEvent.click(row, { detail: 1 });
+  search.setSelectionRange(2, 5);
+  expect(row.getBoundingClientRect().top).toBe(189);
+  await act(async () => changed({ ...library, settings_notice: "Synthetic asynchronous settings notice." }));
+  expect(row.getBoundingClientRect().top).toBe(189);
+  middle.scrollTop += 60;
+  expect(row.getBoundingClientRect().top).toBe(129);
+  await act(async () => changed(library));
+  // The unchanged asynchronous search/preview replies must preserve this too.
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(row.getAttribute("aria-selected")).toBe("true");
+  expect(row.getBoundingClientRect().top).toBe(129);
+  expect([area.scrollTop, middle.scrollTop]).toEqual([440, 0]);
+  expect(document.activeElement).toBe(search);
+  expect([search.selectionStart, search.selectionEnd]).toEqual([2, 5]);
+  fireEvent.scroll(middle);
+  expect(row.getBoundingClientRect().top).toBe(129);
 });
 
 test("resizing while editing keeps the selected title readable without moving Page focus", async () => {

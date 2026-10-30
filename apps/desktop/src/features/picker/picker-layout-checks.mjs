@@ -4,6 +4,13 @@ export const noticeText = {
   failedSearch: "Ibis could not search your library. Use Reload, then try again.",
 };
 
+// A closed React Aria menu stays mounted during its exit animation. Await
+// removal before another overlay or picker action can take keyboard input.
+export async function dismissMenu(menu, keyTarget = menu) {
+  await keyTarget.press("Escape");
+  await menu.waitFor({ state: "detached" });
+}
+
 // Keep this function self-contained: Playwright serializes it into the page.
 export function isWholeNotice(text) {
   const node = [...document.querySelectorAll('.notices [role="alert"]')].find((node) => node.textContent === text);

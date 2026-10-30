@@ -294,7 +294,7 @@ export function Menu({ label, id, trigger, triggerRef, triggerClassName, trigger
     onOpenChange(false);
   };
   return <MenuTrigger isOpen={isOpen} onOpenChange={(open) => { fromTrigger.current = open; onOpenChange(open); }}>
-    <Button variant="quiet" size="small" ref={(node) => {
+    <Button variant="quiet" size="small" aria-label={label} ref={(node) => {
       button.current = node;
       if (typeof triggerRef === "function") triggerRef(node);
       else if (triggerRef) triggerRef.current = node;

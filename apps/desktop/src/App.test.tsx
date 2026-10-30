@@ -3815,6 +3815,9 @@ test.each(["keyboard", "fallback", "other focus", "pointer", "oversized"])("foot
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
     if (this.matches(".results-area, .picker-content")) return new DOMRect(0, 56, 720, height);
     if (this.id === "result-19") return new DOMRect(0, rowTop - (document.querySelector(".results-area")?.scrollTop ?? 0), 704, rowHeight);
+    // Tall rows reveal their title; it shares the row's position and can itself
+    // fill the short viewport. JSDOM otherwise reports an empty box at y=0.
+    if (this.matches("#result-19 .result-title")) return new DOMRect(0, rowTop - (document.querySelector(".results-area")?.scrollTop ?? 0), 704, mode === "oversized" ? 80 : 20);
     return rect.call(this);
   });
   const computed = window.getComputedStyle;

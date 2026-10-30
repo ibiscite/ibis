@@ -1,7 +1,7 @@
 // Real built picker + invented IPC. Browser layout evidence, not native input/engine proof.
 // Serve `pnpm build` with `pnpm exec vite preview`; reuse an installed Playwright.
 import assert from "node:assert/strict";
-import { isWholeNotice, noticeText, waitForLayout } from "./picker-layout-checks.mjs";
+import { dismissMenu, isWholeNotice, noticeText, waitForLayout } from "./picker-layout-checks.mjs";
 const { chromium } = await import(process.env.IBIS_PLAYWRIGHT_MODULE || "playwright");
 const base = new URL(process.argv[2] || "http://127.0.0.1:4173");
 assert.ok(["127.0.0.1", "localhost"].includes(base.hostname), "Use a loopback fixture server");
@@ -23,6 +23,10 @@ try {
     const caseLabel = `${width}/${larger ? "larger" : "normal"}/${colorScheme}/scale-${scale}/${shortcutNotice ? "shortcut-notice" : startupNotice ? "startup-notice" : largeNotice ? "large-notice" : pointerNotice ? `pointer-${pointerNotice}` : viewState}`;
     const waitForCheck = (check, predicate, arg) => waitForLayout(page, caseLabel, check, predicate, arg);
     const errors = [], resizes = [];
+    // Exit must finish even if a modal temporarily hides the old menu from ARIA.
+    const moreMenu = page.getByRole("menu", { name: "More", exact: true, includeHidden: true });
+    const formatMenu = page.getByRole("menu", { name: /^Copy as/, includeHidden: true });
+    const keysDialog = page.getByRole("dialog", { name: "Keyboard shortcuts", exact: true });
     page.setDefaultTimeout(5000);
     page.on("pageerror", (error) => errors.push(error.message));
     await page.exposeFunction("fixtureSizing", (command) => { resizes.push(command); });
@@ -125,9 +129,9 @@ try {
         for (const choice of await page.getByRole("option").all()) assert.equal(await reachable(choice), true, `${caseLabel}: every setup/recovery choice reachable`);
       }
       assert.deepEqual(await scan(), [], `${caseLabel}: whole search/footer and one scroller`);
-      await page.getByRole("button", { name: /^More/ }).click();
-      await page.getByRole("menu").waitFor();
-      await page.keyboard.press("Escape");
+      await page.getByRole("button", { name: "More", exact: true }).click();
+      await moreMenu.waitFor();
+      await dismissMenu(moreMenu);
       assert.deepEqual(page.viewportSize(), { width, height }, "choice/loading menus keep the opening frame");
       assert.deepEqual(resizes, [], "no native size requests from content");
       assert.deepEqual(errors, [], "no page errors");
@@ -148,23 +152,23 @@ try {
     };
     if (startupNotice) await wholeNotice("startup-notice-whole", noticeText.startup);
     const frame = page.viewportSize(), before = resizes.length;
-    await page.getByRole("button", { name: /^More/ }).click();
-    await page.getByRole("menu").waitFor();
-    await page.keyboard.press("End");
-    await page.getByRole("menuitem", { name: /^Quit/ }).waitFor({ state: "visible" });
-    await page.keyboard.press("Home");
-    await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: "More", exact: true }).click();
+    await moreMenu.waitFor();
+    await moreMenu.press("End");
+    await moreMenu.getByRole("menuitem", { name: /^Quit/ }).waitFor({ state: "visible" });
+    await moreMenu.press("Home");
+    await dismissMenu(moreMenu);
     assert.deepEqual(page.viewportSize(), frame, "More/Escape preserve frame");
     assert.equal(resizes.length, before, "menus never request native sizing");
     const search = page.getByLabel("Search references", { exact: true });
     await search.press("Meta+/");
-    await page.getByRole("dialog", { name: "Keyboard shortcuts" }).waitFor();
+    await keysDialog.waitFor();
     assert.deepEqual(page.viewportSize(), frame, "the keys sheet keeps the opening frame");
-    await page.keyboard.press("Escape");
-    await page.getByRole("dialog", { name: "Keyboard shortcuts" }).waitFor({ state: "detached" });
+    await keysDialog.press("Escape");
+    await keysDialog.waitFor({ state: "detached" });
     await page.getByRole("button", { name: /^Copy as/ }).click();
-    await page.getByRole("menu").waitFor();
-    await page.keyboard.press("Escape");
+    await formatMenu.waitFor();
+    await dismissMenu(formatMenu, page.getByRole("searchbox", { name: "Filter formats", exact: true }));
     assert.deepEqual(page.viewportSize(), frame, "the format pop-up keeps the opening frame");
     if (!small) {
       await search.fill("refuse");

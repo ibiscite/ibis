@@ -56,6 +56,14 @@ function mount() {
   return { onAction, toggle, trigger: screen.getByRole("button", { name: "Actions" }), search: screen.getByRole<HTMLInputElement>("textbox") };
 }
 
+test("a menu trigger keeps its name when a narrow footer folds its visible label", () => {
+  render(<Menu label="More" isOpen={false} onOpenChange={vi.fn()}
+    trigger={<><span style={{ display: "none" }}>More</span><span aria-hidden="true">⌘K</span></>}>
+    <MenuSection id="actions" label="Actions"><MenuItem id="open" label="Open" onAction={vi.fn()} /></MenuSection>
+  </Menu>);
+  expect(screen.getByRole("button", { name: "More" }).getAttribute("aria-expanded")).toBe("false");
+});
+
 test.each(["macos", "windows", "linux"])("%s: a pointer opens with nothing highlighted, a shortcut highlights the first item, axe passes", async (platform) => {
   document.documentElement.dataset.platform = platform;
   const { trigger, search } = mount();
