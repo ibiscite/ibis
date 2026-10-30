@@ -854,9 +854,18 @@ class Tests(unittest.TestCase):
     def test_macos_picker_requires_owned_unique_visible_and_native_focused_window(self):
         model = r'''
 const scenario = process.argv[1];
-const ObjC = {import() {}, unwrap: value => value};
+const ObjC = {import() {}, unwrap: value => value, deepUnwrap: value => value};
 const Ref = () => [];
 const $ = name => name;
+$.kCGWindowListOptionOnScreenOnly = 1; $.kCGWindowListExcludeDesktopElements = 16; $.kCGNullWindowID = 0;
+$.CGWindowListCopyWindowInfo = (options, relative) => {
+  if (options !== 17 || relative !== 0) throw Error('unexpected visibility scope');
+  if (scenario === 'cg-unavailable') return null;
+  const main = {kCGWindowOwnerPID: scenario === 'cg-foreign' ? 99 : 42,
+    kCGWindowName: scenario === 'cg-unknown' ? undefined : scenario === 'title' ? 'Ibis suffix' : 'Ibis'};
+  return scenario === 'hidden' ? [] : scenario === 'duplicate' ? [main, main] :
+    scenario === 'offer-focused' ? [main, {kCGWindowOwnerPID: 42, kCGWindowName: 'An update is available'}] : [main];
+};
 $.AXUIElementCreateSystemWide = () => 'system';
 $.AXUIElementCreateApplication = pid => { if (pid !== 42) throw Error('unowned app'); return 'app'; };
 $.AXUIElementCopyAttributeValue = (item, name, result) => {
@@ -867,7 +876,7 @@ $.AXUIElementCopyAttributeValue = (item, name, result) => {
   result[0] = values[item + ':' + name]; return 0;
 };
 $.AXUIElementGetPid = (item, result) => { result[0] = scenario === 'foreign' ? 99 : 42; return scenario === 'owner-error' ? -1 : 0; };
-const window = {name: () => scenario === 'title' ? 'Ibis suffix' : 'Ibis', visible: () => scenario !== 'hidden'};
+const window = {name: () => scenario === 'title' ? 'Ibis suffix' : 'Ibis', visible: () => { if (scenario === 'unavailable-visible') throw Object.assign(Error("Can't get object"), {errorNumber: -1728}); return scenario !== 'hidden'; }};
 const Application = name => {
   if (name !== 'System Events') throw Error('unexpected application');
   return {processes: {whose: ({unixId}) => {
@@ -877,15 +886,15 @@ const Application = name => {
   }}};
 };
 '''
-        for scenario in ("success", "hidden", "title", "duplicate", "foreign", "unknown", "owner-error", "wrong-focus-title", "offer-focused"):
+        for scenario in ("success", "hidden", "title", "duplicate", "foreign", "unknown", "owner-error", "wrong-focus-title", "offer-focused", "unavailable-visible", "cg-foreign", "cg-unknown", "cg-unavailable"):
             with self.subTest(scenario=scenario):
                 result = subprocess.run([shutil.which("node"), "-e", model + MACOS_PICKER + "\nprocess.stdout.write(run(['42']));", scenario],
                                         capture_output=True, timeout=5)
-                if scenario in ("duplicate", "unknown", "owner-error"):
+                if scenario in ("duplicate", "unknown", "owner-error", "cg-unknown", "cg-unavailable"):
                     self.assertNotEqual(result.returncode, 0)
                 else:
                     self.assertEqual(result.returncode, 0, result.stderr.decode("utf-8", errors="replace"))
-                    expected = (42, "offer") if scenario == "offer-focused" else (42, "picker") if scenario == "success" else None
+                    expected = (42, "offer") if scenario == "offer-focused" else (42, "picker") if scenario in ("success", "unavailable-visible") else None
                     self.assertEqual(picker_result(result.stdout, {42}), expected)
 
     def test_linux_picker_accepts_an_immediate_owned_offer_without_accepting_foreign_or_duplicate_modals(self):
