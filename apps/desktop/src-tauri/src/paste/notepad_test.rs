@@ -25,6 +25,7 @@ pub(crate) enum EditorKind {
 
 /// Retain the positive classification selected with this immutable identity.
 /// Neither the descriptor nor the identity is included in diagnostics.
+#[derive(Clone)]
 pub(crate) struct CapturedEditor {
     pub identity: EditorIdentity,
     pub kind: EditorKind,
@@ -67,6 +68,7 @@ pub(crate) struct Failure {
     pub phase: Option<QualificationPhase>,
     pub text_pattern_available: Option<bool>,
     pub native_handle_present: Option<bool>,
+    pub legacy_pattern_available: Option<bool>,
 }
 
 impl Failure {
@@ -80,6 +82,7 @@ impl Failure {
             phase: None,
             text_pattern_available: None,
             native_handle_present: None,
+            legacy_pattern_available: None,
         }
     }
 
@@ -102,11 +105,58 @@ impl Failure {
             ..self
         }
     }
+
+    pub fn with_legacy(self, available: Option<bool>) -> Self {
+        Self {
+            legacy_pattern_available: available,
+            ..self
+        }
+    }
 }
 
 pub(crate) struct Reading {
     pub editor: EditorIdentity,
     pub text: String,
+}
+
+/// The adapter and consumer scenarios use the same per-kind dispatch.
+pub(crate) fn read_document(
+    kind: EditorKind,
+    modern: impl FnOnce() -> Result<String, Failure>,
+    classic: impl FnOnce() -> Result<String, Failure>,
+) -> Result<String, Failure> {
+    match kind {
+        EditorKind::ModernDocument => modern(),
+        EditorKind::ClassicRootEdit => classic(),
+    }
+}
+
+/// UIA can substitute an empty default for an unsupported raw property. The
+/// actual, positively supported MSAA getter must agree before it is accepted.
+pub(crate) fn legacy_value(
+    available: Option<bool>,
+    text_role: bool,
+    protected: bool,
+    raw: impl FnOnce() -> Result<String, Failure>,
+    actual: impl FnOnce() -> Result<String, Failure>,
+) -> Result<String, Failure> {
+    (|| {
+        if available != Some(true) {
+            return Err(Failure::new(Stage::Pattern));
+        }
+        if protected {
+            return Err(Failure::new(Stage::Password));
+        }
+        if !text_role {
+            return Err(Failure::new(Stage::Editor));
+        }
+        let raw = raw()?;
+        if raw != actual()? {
+            return Err(Failure::new(Stage::Read));
+        }
+        Ok(raw)
+    })()
+    .map_err(|failure| failure.with_legacy(available))
 }
 
 #[derive(Clone, Copy)]
@@ -791,6 +841,298 @@ mod tests {
         drop(release);
         done.recv_timeout(Duration::from_secs(1))
             .unwrap_or_else(|_| panic!("synthetic diagnostic query must finish"));
+    }
+
+    #[test]
+    fn classic_reader_changes_the_actual_document_and_never_asks_for_modern_text() {
+        let owner = select_document(&[Candidate {
+            kind: Some(CandidateKind::ClassicRootEdit),
+            editor: Some(editor(1)),
+        }])
+        .unwrap_or_else(|_| panic!("positive synthetic document"));
+        let document = std::cell::RefCell::new(String::new());
+        let sends = Cell::new(0);
+        let outcome = qualify_paste(
+            &owner,
+            "synthetic citation",
+            Duration::ZERO,
+            |identity| {
+                let text = read_document(
+                    owner.kind,
+                    || Err(Failure::new(Stage::Pattern)),
+                    || {
+                        legacy_value(
+                            Some(true),
+                            true,
+                            false,
+                            || Ok(document.borrow().clone()),
+                            || Ok(document.borrow().clone()),
+                        )
+                    },
+                )?;
+                Ok(Reading {
+                    editor: identity.clone(),
+                    text,
+                })
+            },
+            || Ok(()),
+            |ready| {
+                if !ready() {
+                    return false;
+                }
+                sends.set(sends.get() + 1);
+                *document.borrow_mut() = "synthetic citation".into();
+                true
+            },
+        );
+        assert_eq!(outcome, Ok(()));
+        assert_eq!(&*document.borrow(), "synthetic citation");
+        assert_eq!(sends.get(), 1);
+    }
+
+    #[test]
+    fn a_reader_error_never_changes_the_captured_reader() {
+        let failure = Failure::new(Stage::Read);
+        assert_eq!(
+            read_document(
+                EditorKind::ModernDocument,
+                || Err(failure),
+                || panic!("no Legacy fallback")
+            ),
+            Err(failure)
+        );
+        assert_eq!(
+            read_document(
+                EditorKind::ClassicRootEdit,
+                || panic!("no modern fallback"),
+                || Err(failure)
+            ),
+            Err(failure)
+        );
+    }
+
+    #[test]
+    fn legacy_support_and_actual_getter_must_corroborate_the_exact_property() {
+        for (available, text_role, protected) in [
+            (None, true, false),
+            (Some(false), true, false),
+            (Some(true), false, false),
+            (Some(true), true, true),
+        ] {
+            let failure = legacy_value(
+                available,
+                text_role,
+                protected,
+                || panic!("unsupported value must not be read"),
+                || panic!("unsupported getter must not be read"),
+            )
+            .err()
+            .unwrap_or_else(|| panic!("uncertain support must refuse without reading text"));
+            assert_eq!(failure.legacy_pattern_available, available);
+        }
+        for value in ["", " ", "synthetic\r\nnext ", "é 🪶", "a\0b"] {
+            assert_eq!(
+                legacy_value(Some(true), true, false, || Ok(value.into()), || Ok(value.into())),
+                Ok(value.into())
+            );
+        }
+        let failure = Failure {
+            code: Some(5),
+            ..Failure::new(Stage::Read)
+        };
+        assert_eq!(
+            legacy_value(
+                Some(true),
+                true,
+                false,
+                || Err(failure),
+                || panic!("failed property must refuse")
+            ),
+            Err(failure.with_legacy(Some(true)))
+        );
+        assert_eq!(
+            legacy_value(Some(true), true, false, || Ok(String::new()), || Err(failure)),
+            Err(failure.with_legacy(Some(true)))
+        );
+        assert!(
+            legacy_value(
+                Some(true),
+                true,
+                false,
+                || Ok(String::new()),
+                || Ok("synthetic nonempty document".into())
+            )
+            .is_err(),
+            "a default empty property cannot stand in for actual text"
+        );
+    }
+
+    #[test]
+    fn classic_reader_failures_keep_phase_and_actual_zero_zero_one_send_outcomes() {
+        #[derive(Clone, Copy)]
+        enum Fault {
+            Capability,
+            Acquisition,
+            Property,
+            Getter,
+            Mismatch,
+            Replacement,
+        }
+        for fault in [
+            Fault::Capability,
+            Fault::Acquisition,
+            Fault::Property,
+            Fault::Getter,
+            Fault::Mismatch,
+            Fault::Replacement,
+        ] {
+            for fail_at in 0..3 {
+                let owner = CapturedEditor {
+                    identity: editor(1),
+                    kind: EditorKind::ClassicRootEdit,
+                };
+                let document = std::cell::RefCell::new(String::new());
+                let reads = Cell::new(0);
+                let sends = Cell::new(0);
+                let outcome = qualify_paste(
+                    &owner,
+                    "synthetic citation",
+                    Duration::ZERO,
+                    |identity| {
+                        let failing = reads.get() == fail_at;
+                        reads.set(reads.get() + 1);
+                        let text = read_document(
+                            owner.kind,
+                            || panic!("classic errors never choose another reader"),
+                            || {
+                                if failing && matches!(fault, Fault::Acquisition) {
+                                    return Err(Failure::new(Stage::Pattern).with_legacy(Some(true)));
+                                }
+                                legacy_value(
+                                    if failing && matches!(fault, Fault::Capability) {
+                                        None
+                                    } else {
+                                        Some(true)
+                                    },
+                                    true,
+                                    false,
+                                    || {
+                                        if failing && matches!(fault, Fault::Property) {
+                                            Err(Failure::new(Stage::Read))
+                                        } else {
+                                            Ok(document.borrow().clone())
+                                        }
+                                    },
+                                    || {
+                                        if failing && matches!(fault, Fault::Getter) {
+                                            Err(Failure::new(Stage::Read))
+                                        } else if failing && matches!(fault, Fault::Mismatch) {
+                                            Ok("synthetic different value".into())
+                                        } else {
+                                            Ok(document.borrow().clone())
+                                        }
+                                    },
+                                )
+                            },
+                        )?;
+                        Ok(Reading {
+                            editor: if failing && matches!(fault, Fault::Replacement) {
+                                editor(2)
+                            } else {
+                                identity.clone()
+                            },
+                            text,
+                        })
+                    },
+                    || Ok(()),
+                    |ready| {
+                        if !ready() {
+                            return false;
+                        }
+                        sends.set(sends.get() + 1);
+                        *document.borrow_mut() = "synthetic citation".into();
+                        true
+                    },
+                );
+                let failure = outcome
+                    .err()
+                    .unwrap_or_else(|| panic!("a failed reader cannot qualify input"));
+                assert_eq!(
+                    failure.stage,
+                    if matches!(fault, Fault::Capability | Fault::Acquisition) {
+                        Stage::Pattern
+                    } else if matches!(fault, Fault::Replacement) {
+                        Stage::Identity
+                    } else {
+                        Stage::Read
+                    }
+                );
+                assert_eq!(
+                    failure.legacy_pattern_available,
+                    if matches!(
+                        fault,
+                        Fault::Acquisition | Fault::Property | Fault::Getter | Fault::Mismatch
+                    ) {
+                        Some(true)
+                    } else {
+                        None
+                    }
+                );
+                assert_eq!(failure.editor_kind, Some(EditorKind::ClassicRootEdit));
+                assert_eq!(
+                    failure.phase,
+                    Some(
+                        [
+                            QualificationPhase::InitialEmpty,
+                            QualificationPhase::BeforeSend,
+                            QualificationPhase::Readback
+                        ][fail_at]
+                    )
+                );
+                assert_eq!(sends.get(), usize::from(fail_at == 2));
+                assert_eq!(
+                    &*document.borrow(),
+                    if fail_at == 2 { "synthetic citation" } else { "" }
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn reopening_classic_document_cannot_accept_a_late_read_from_the_old_capture() {
+        let owner = CapturedEditor {
+            identity: editor(2),
+            kind: EditorKind::ClassicRootEdit,
+        };
+        let current_document = std::cell::RefCell::new("synthetic new document".to_owned());
+        let sends = Cell::new(0);
+        let outcome = qualify_paste(
+            &owner,
+            "synthetic citation",
+            Duration::ZERO,
+            |_| {
+                Ok(Reading {
+                    editor: editor(1),
+                    text: read_document(
+                        owner.kind,
+                        || panic!("no modern fallback"),
+                        || legacy_value(Some(true), true, false, || Ok(String::new()), || Ok(String::new())),
+                    )?,
+                })
+            },
+            || Ok(()),
+            |ready| {
+                if !ready() {
+                    return false;
+                }
+                sends.set(sends.get() + 1);
+                *current_document.borrow_mut() = "synthetic citation".into();
+                true
+            },
+        );
+        assert_eq!(outcome.map_err(|failure| failure.stage), Err(Stage::Identity));
+        assert_eq!(&*current_document.borrow(), "synthetic new document");
+        assert_eq!(sends.get(), 0);
     }
 
     #[test]
