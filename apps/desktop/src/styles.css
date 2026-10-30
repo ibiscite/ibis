@@ -316,3 +316,10 @@ main[data-selection] .notices { flex: none; max-height: 6rem; }
   main > .picker-content .results-area { flex: none; min-height: 0; overflow: visible; }
   main[data-compact] > footer { margin-block-start: 0; }
 }
+
+/* At extreme text growth the fixed edges can exceed the whole viewport.
+   Keep the same DOM and give every control one reachable page instead. */
+main[data-scroll-page] { overflow: auto; }
+main[data-scroll-page] > .picker-content { flex: none; overflow: visible; container-type: normal; }
+main[data-scroll-page] .results-area, main[data-scroll-page] .shelf, main[data-scroll-page] .notices { flex: none; max-height: none; overflow: visible; }
+main[data-scroll-page] .shelf-chips[data-expanded] { max-height: none; overflow: visible; }

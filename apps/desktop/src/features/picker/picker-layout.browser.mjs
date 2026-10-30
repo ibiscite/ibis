@@ -7,7 +7,9 @@ assert.ok(["127.0.0.1", "localhost"].includes(base.hostname), "Use a loopback fi
 const browser = await chromium.launch({ headless: true });
 let profiles = 0;
 try {
-  for (const width of [720, 360]) for (const larger of [false, true]) for (const colorScheme of ["light", "dark"]) {
+  const cases = [720, 360].flatMap((width) => [false, true].flatMap((larger) => ["light", "dark"].map((colorScheme) => ({ width, larger, colorScheme, scale: 1 }))));
+  cases.push({ width: 360, larger: false, colorScheme: "light", scale: 3 });
+  for (const { width, larger, colorScheme, scale } of cases) {
     const small = width === 360, limit = small ? 320 : 800;
     const page = await browser.newPage({ viewport: { width, height: small ? 320 : 109 }, colorScheme });
     const errors = [], fits = [];
@@ -17,7 +19,8 @@ try {
       fits.push(height);
       await page.setViewportSize({ width, height: Math.min(limit, Math.max(page.viewportSize().height, height ?? 480)) });
     });
-    await page.addInitScript(({ larger }) => {
+    await page.addInitScript(({ larger, scale }) => {
+      if (scale !== 1) document.addEventListener("DOMContentLoaded", () => { document.documentElement.style.fontSize = `${scale * 100}%`; });
       Object.defineProperty(navigator, "platform", { value: "MacIntel" });
       let callback = 0;
       const preferences = { citation_style: null, density: "comfortable", larger_text: larger, show_paste_preview: true, search_mark: true, paste: false };
@@ -45,11 +48,25 @@ try {
           throw Error(`Unexpected synthetic IPC: ${command}`);
         },
       };
-    }, { larger });
+    }, { larger, scale });
     await page.goto(base.href);
     await page.getByText("Type to find a reference", { exact: true }).waitFor();
     await page.waitForFunction((larger) => document.documentElement.dataset.textSize === (larger ? "larger" : "normal"), larger);
     await page.evaluate(() => document.fonts.ready);
+    if (scale === 3) {
+      await page.mouse.move(width - 5, 20);
+      await page.mouse.wheel(0, 2000);
+      await page.waitForFunction(() => document.querySelector("main").scrollTop > 0);
+      assert.equal(await page.getByRole("button", { name: /^More/ }).evaluate((node) => { const rect = node.getBoundingClientRect(); return rect.top >= 0 && rect.bottom <= innerHeight + 1; }), true, "real wheel input reaches extreme-text footer");
+      for (const control of [page.getByLabel("Search references", { exact: true }), page.getByRole("button", { name: /^More/ })]) {
+        await control.scrollIntoViewIfNeeded();
+        assert.equal(await control.evaluate((node) => { const rect = node.getBoundingClientRect(); return rect.top >= 0 && rect.bottom <= innerHeight + 1; }), true, "extreme text can reveal each fixed-edge control");
+      }
+      const owners = await page.evaluate(() => [document.querySelector("main"), ...document.querySelectorAll("main *")].filter((node) => /auto|scroll/.test(getComputedStyle(node).overflowY) && node.clientHeight > 0 && node.scrollHeight > node.clientHeight + 1).length);
+      assert.equal(owners, 1, "extreme text has one full-page scroll owner");
+      assert.deepEqual(errors, [], "no page errors");
+      await page.close(); profiles += 1; continue;
+    }
     const scan = () => page.evaluate(() => {
       const main = document.querySelector("main"), bounds = main.getBoundingClientRect();
       const issues = [];
@@ -100,5 +117,5 @@ try {
     assert.deepEqual(errors, [], "no page errors");
     await page.close(); profiles += 1;
   }
-  console.log(`Picker layout: ${profiles} browser profiles passed (normal/small, normal/Larger, light/dark).`);
+  console.log(`Picker layout: ${profiles} browser profiles passed (normal/small, normal/Larger, light/dark + extreme-text fallback).`);
 } finally { await browser.close(); }

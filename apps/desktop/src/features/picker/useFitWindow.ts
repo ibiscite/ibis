@@ -28,7 +28,19 @@ export function useFitWindow(main: RefObject<HTMLElement | null>, compact: boole
   const measure = useRef(() => {});
   measure.current = () => {
     const node = main.current;
-    if (!node || !fit) return;
+    if (!node) return;
+    if (node.clientHeight > 0) {
+      const middle = node.querySelector(":scope > .picker-content");
+      const edges = [...node.children].filter((part) => part !== middle).reduce((height, part) => {
+        const style = getComputedStyle(part);
+        // The compact footer's auto margin is spare room, not a fixed edge.
+        const margin = part.tagName === "FOOTER" ? 0 : (parseFloat(style.marginBlockStart) || 0) + (parseFloat(style.marginBlockEnd) || 0);
+        return height + (part as HTMLElement).offsetHeight + margin;
+      }, 0);
+      const control = node.querySelector<HTMLElement>(".search-bar input")?.offsetHeight ?? 0;
+      node.toggleAttribute("data-scroll-page", edges + control > node.clientHeight);
+    }
+    if (!fit) return;
     const dialog = document.querySelector("[role='dialog']:not(.menu-popover)") !== null;
     const height = compact && !dialog ? contentHeight(node) : null;
     const key = `${height}`;

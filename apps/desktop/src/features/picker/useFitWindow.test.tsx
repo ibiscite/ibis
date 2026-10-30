@@ -9,7 +9,7 @@ afterEach(() => { if (originalFonts) Object.defineProperty(document, "fonts", or
 function Picker({ compact, fit, rows, spare = 0, onShown, scroll = false }: { scroll?: boolean; compact: boolean; fit: FitPicker; rows: number; spare?: number; onShown?: (handler: () => void) => Promise<() => void> }) {
   const main = useRef<HTMLElement>(null);
   useFitWindow(main, compact, fit, onShown);
-  return <main ref={main}><div className="picker-content" style={{ overflowY: scroll ? "auto" : undefined }}><div className="results-area">{Array.from({ length: rows }, (_, i) => <p key={i}>row</p>)}</div></div><footer style={{ marginBlockStart: `${spare}px` }} /></main>;
+  return <main ref={main}><header className="search-bar"><input id="search" aria-label="Synthetic search" /></header><div className="picker-content" style={{ overflowY: scroll ? "auto" : undefined }}><div className="results-area">{Array.from({ length: rows }, (_, i) => <p key={i}>row</p>)}</div></div><footer style={{ marginBlockStart: `${spare}px` }} /></main>;
 }
 
 test("compact content asks for its own height, results for the results height, once each", () => {
@@ -144,4 +144,21 @@ test("measuring content restores the visible frame and does not remember unused 
   const view = render(<Picker compact fit={fit} rows={0} />);
   expect(fit).toHaveBeenLastCalledWith(173, expect.any(Boolean));
   expect(view.container.querySelector("main")!.style.cssText).toBe("");
+});
+
+
+test("extreme text uses one reachable page when fixed edges cannot leave a readable middle control", () => {
+  let header = 397, footer = 187;
+  vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(320);
+  vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (this: HTMLElement) {
+    return this.tagName === "HEADER" ? header : this.tagName === "FOOTER" ? footer : this.tagName === "INPUT" ? 32 : 320;
+  });
+  const fit = vi.fn<FitPicker>(() => Promise.resolve());
+  const view = render(<Picker compact={false} fit={fit} rows={2} />);
+  const main = view.container.querySelector("main")!;
+  expect(main.hasAttribute("data-scroll-page")).toBe(true);
+  header = 57; footer = 40;
+  view.rerender(<Picker compact={false} fit={fit} rows={2} />);
+  expect(main.hasAttribute("data-scroll-page")).toBe(false);
+  expect(fit).toHaveBeenCalledTimes(1);
 });
