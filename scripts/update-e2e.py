@@ -1193,7 +1193,7 @@ const Application = name => {
                     self.assertEqual(linux.picker_ready({42}), (42, "picker") if scenario == "success" else None)
             self.assertTrue(all(args[0] in ("search", "getwindowpid", "getwindowname", "getwindowfocus") for args in queries))
 
-    def update_consumer(self, scenario):
+    def update_consumer(self, scenario, system="Linux"):
         events = []
         state = {"reopened": False, "pressed": False}
         with tempfile.TemporaryDirectory() as temporary:
@@ -1223,6 +1223,7 @@ const Application = name => {
                 return install
             def launch(command, **_kwargs):
                 events.append(("launch", list(command)))
+                events.append(("environment", _kwargs["env"]))
                 child = MagicMock()
                 child.poll.return_value = 0
                 def waited(timeout):
@@ -1241,7 +1242,7 @@ const Application = name => {
                     if value:
                         return value
                 raise AssertionError(message)
-            with patch.dict(SYSTEMS, {"Linux": installed}), patch("platform.system", return_value="Linux"), \
+            with patch.dict(SYSTEMS, {system: installed}), patch("platform.system", return_value=system), \
                     patch("subprocess.Popen", side_effect=launch), patch(__name__ + ".wait_for", side_effect=bounded), \
                     patch("time.sleep"), patch("os.kill"), patch("builtins.print"), patch(__name__ + ".feed_version", return_value="synthetic"):
                 result = run(argparse.Namespace(output=Path(temporary)))
@@ -1683,14 +1684,40 @@ function Contract-Result($pressed,$how) {
                     plistlib.dump({"CFBundleExecutable": "ibis-desktop", "CFBundleShortVersionString": version}, file)
                 self.assertEqual(mac.updated(), updated)
 
+    def test_windows_observer_has_precise_isolated_arguments_without_inherited_disables(self):
+        key = "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"
+        for inherited_args in (None, "--disable-renderer-accessibility --no-sandbox", "synthetic-private-sentinel" * 10000):
+            inherited = {"PATH": "/synthetic/bin"}
+            if inherited_args is not None:
+                inherited[key] = inherited_args
+            before = dict(inherited)
+            with self.subTest(inherited=inherited_args is not None), patch("platform.system", return_value="Windows"):
+                env = environment(inherited, None)
+                self.assertEqual(env[key], "--force-renderer-accessibility")
+                self.assertEqual(env["PATH"], inherited["PATH"])
+                self.assertNotIn("IBIS_LIBRARY", env)
+                self.assertEqual(inherited, before)
+
+    def test_windows_observer_mode_reaches_both_owned_launches_and_is_reported(self):
+        result, report, events = self.update_consumer("success", "Windows")
+        self.assertEqual(result, 0, report)
+        self.assertEqual(report["observer_mode"], "forced-renderer-accessibility")
+        envs = [value for event, value in events if event == "environment"]
+        self.assertEqual(len(envs), 2)
+        self.assertTrue(all(env["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] == "--force-renderer-accessibility" for env in envs))
+        self.assertEqual([value for event, value in events if event == "press"], [{42}])
+        self.assertEqual(report["settings_preserved"], {"library": True, "shortcut": True})
+
     def test_environment_drops_an_outer_appimage(self):
         env = environment({"APPIMAGE": "/outer", "PATH": "/bin"}, Path("/c"))
         self.assertNotIn("APPIMAGE", env)
         self.assertEqual((env["XDG_CONFIG_HOME"], env["PATH"]), (str(Path("/c")), "/bin"))
 
     def test_environment_without_a_config_folder_uses_the_persisted_library(self):
-        env = environment({"PATH": "/bin", "IBIS_GALLERY": "1", "IBIS_LIBRARY": "/synthetic outer.bib"}, None)
-        self.assertEqual(env, {"PATH": "/bin"})
+        for system in ("Darwin", "Linux"):
+            with self.subTest(system=system), patch("platform.system", return_value=system):
+                env = environment({"PATH": "/bin", "IBIS_GALLERY": "1", "IBIS_LIBRARY": "/synthetic outer.bib"}, None)
+                self.assertEqual(env, {"PATH": "/bin"})
 
     @unittest.skipIf(os.name == "nt", "AppImages and /proc exist only on Linux")
     def test_instances_match_the_exact_appimage_path(self):
