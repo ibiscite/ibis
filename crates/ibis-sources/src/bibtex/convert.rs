@@ -37,7 +37,7 @@ pub(crate) fn convert(
             .get(field)
             .map(|c| {
                 let mut found = BTreeSet::new();
-                let plain = clean(&strip_tex(&c.format_verbatim(), &mut found));
+                let plain = clean_owned(strip_tex(&c.format_verbatim(), &mut found));
                 if found.is_empty() {
                     plain
                 } else {
@@ -195,10 +195,10 @@ pub(crate) fn convert(
         }
     }
 
-    let mut variables = BTreeMap::new();
-    let mut set = |csl: &str, fields: &[&str]| {
+    let mut csl = BTreeMap::new();
+    let mut set = |variable: &str, fields: &[&str]| {
         if let Some(value) = fields.iter().find_map(|f| text(f)) {
-            variables.insert(csl.to_string(), value);
+            csl.insert(variable.to_string(), Value::String(value));
         }
     };
     set("volume", &["volume"]);
@@ -240,25 +240,25 @@ pub(crate) fn convert(
                 eprints.push(format!("arXiv:{id}"));
             }
             "pubmed" => {
-                variables.entry("PMID".to_string()).or_insert(eprint);
+                csl.entry("PMID".to_string()).or_insert(Value::String(eprint));
             }
             _ => {}
         }
     }
     if let Some(short_title) = short_title {
-        variables.insert("title-short".to_string(), short_title);
+        csl.insert("title-short".to_string(), Value::String(short_title));
     }
     if let Some(volume_title) = volume_title {
-        variables.insert("volume-title".to_string(), volume_title);
+        csl.insert("volume-title".to_string(), Value::String(volume_title));
     }
-    let genre = variables.get("genre").map(String::as_str).or(match kind {
+    let genre = csl.get("genre").and_then(Value::as_str).or(match kind {
         "phdthesis" => Some("phdthesis"),
         "mastersthesis" => Some("mathesis"),
         "techreport" => Some("techreport"),
         _ => None,
     });
     if let Some(readable) = genre.and_then(readable_genre) {
-        variables.insert("genre".to_string(), readable.to_string());
+        csl.insert("genre".to_string(), Value::String(readable.to_string()));
     }
 
     let issued = issued(entry, problems);
@@ -284,10 +284,6 @@ pub(crate) fn convert(
         problems.push(format!("TeX command {list} is not understood; it is kept as written"));
     }
 
-    let mut csl: BTreeMap<String, Value> = variables
-        .into_iter()
-        .map(|(key, value)| (key, Value::String(value)))
-        .collect();
     csl.insert("type".into(), json!(item_type));
     csl.insert("id".into(), json!(entry.key));
     csl.insert("citation-key".into(), json!(entry.key));
@@ -299,7 +295,7 @@ pub(crate) fn convert(
             "URL",
             entry
                 .get("url")
-                .map(|c| clean(&c.format_verbatim()))
+                .map(|c| clean_owned(c.format_verbatim()))
                 .filter(|s| !s.is_empty()),
         ),
         ("abstract", abstract_text),
@@ -405,8 +401,8 @@ fn names(people: Vec<biblatex::Person>, raw: Option<&str>) -> Vec<Name> {
         .into_iter()
         .enumerate()
         .map(|(i, p)| {
-            let given = clean(&p.given_name);
-            let family = clean(&p.name);
+            let given = clean_owned(p.given_name);
+            let family = clean_owned(p.name);
             if family == OTHERS && given.is_empty() && p.prefix.is_empty() {
                 return Name::literal(OTHERS);
             }
@@ -417,7 +413,7 @@ fn names(people: Vec<biblatex::Person>, raw: Option<&str>) -> Vec<Name> {
             let some = |s: String| (!s.is_empty()).then_some(s);
             // An explicit BibLaTeX `useprefix=true` makes the prefix part of
             // the surname; CSL must retain it when rendering or sorting names.
-            let particle = some(clean(&p.prefix));
+            let particle = some(clean_owned(p.prefix));
             let (dropping_particle, non_dropping_particle) = if p.use_prefix == Some(true) {
                 (None, particle)
             } else {
@@ -428,7 +424,7 @@ fn names(people: Vec<biblatex::Person>, raw: Option<&str>) -> Vec<Name> {
                 given: some(given),
                 dropping_particle,
                 non_dropping_particle,
-                suffix: some(clean(&p.suffix)),
+                suffix: some(clean_owned(p.suffix)),
                 ..Name::default()
             }
         })
@@ -738,7 +734,7 @@ fn describe(date: PartialDate) -> String {
 fn language_tag(entry: &Entry, problems: &mut Vec<String>) -> Option<String> {
     let raw = ["langid", "language"]
         .iter()
-        .find_map(|f| entry.get(f).map(|c| clean(&c.format_verbatim())))
+        .find_map(|f| entry.get(f).map(|c| clean_owned(c.format_verbatim())))
         .filter(|s| !s.is_empty())?;
     let lower = raw.to_ascii_lowercase();
     if let Some(tag) = babel_to_bcp47(&lower) {
@@ -1312,7 +1308,7 @@ fn render(pieces: &[Piece]) -> String {
         }
     }
     let out = out.replace("<span class=\"nocase\"></span>", "");
-    clean(&out)
+    clean_owned(out)
 }
 
 // ---------- Small helpers ----------
@@ -1362,6 +1358,31 @@ fn clean(s: &str) -> String {
         }
     }
     out
+}
+
+/// Reuse a temporary only when its bytes already have exactly `clean`'s form.
+/// Shrinking also discards spare capacity left by the upstream parser.
+fn clean_owned(mut text: String) -> String {
+    let mut space = true;
+    let unchanged = text.chars().all(|c| {
+        if matches!(c, ESCAPE | LEFT_BRACE | RIGHT_BRACE | BACKSLASH) {
+            return false;
+        }
+        if c.is_whitespace() {
+            let keep = c == ' ' && !space;
+            space = true;
+            keep
+        } else {
+            space = false;
+            true
+        }
+    }) && (!space || text.is_empty());
+    if unchanged {
+        text.shrink_to_fit();
+        text
+    } else {
+        clean(&text)
+    }
 }
 
 /// English text for the BibLaTeX type keys that describe theses and reports.
@@ -1438,6 +1459,44 @@ mod tests {
         let result = clean(&whitespace_heavy);
         assert_eq!(result, "signal");
         assert!(result.capacity() < 32, "retained discarded whitespace");
+    }
+
+    #[test]
+    fn owned_cleaning_matches_borrowed_bytes_and_discards_spare_storage() {
+        let tokens = [
+            "Signal".to_string(),
+            " ".to_string(),
+            "\t".to_string(),
+            "\u{2003}".to_string(),
+            "বাংলা".to_string(),
+            ESCAPE.to_string(),
+            LEFT_BRACE.to_string(),
+            RIGHT_BRACE.to_string(),
+            BACKSLASH.to_string(),
+        ];
+        for first in &tokens {
+            for second in &tokens {
+                for third in &tokens {
+                    let text = format!("{first}{second}{third}");
+                    let expected = clean(&text);
+                    let actual = clean_owned(text);
+                    assert_eq!(actual, expected);
+                    assert!(actual.capacity() <= expected.capacity(), "retained extra storage");
+                }
+            }
+        }
+        for contents in [
+            "Signal".to_string(),
+            String::new(),
+            format!("{}signal{}", " ".repeat(32_000), "\n".repeat(32_000)),
+        ] {
+            let mut text = String::with_capacity(128 * 1024);
+            text.push_str(&contents);
+            let expected = clean(&text);
+            let actual = clean_owned(text);
+            assert_eq!(actual, expected);
+            assert!(actual.capacity() < 32, "retained oversized temporary capacity");
+        }
     }
 
     #[test]
