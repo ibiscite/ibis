@@ -142,8 +142,7 @@ explained for a new visitor, and nothing planned shown as shipped. Short,
 direct sentences, the maintainer's "I" for personal experience, plain
 invitations to share a workflow or report a problem; no popularity claims,
 promised dates, accent-bar callouts or disclosure controls. "Early preview",
-naming the released version from `.release-please-manifest.json` and linked to
-its notes, sits near the logo, and limitations come before downloads. Copying
+linking to the public release list so an unpublished draft cannot create a broken link, sits near the logo, and limitations come before downloads. Copying
 and pasting keys is described first, with APA, Chicago, Harvard, IEEE and MLA
 after the example; setup stays short. Each section after the first opens with
 one larger lead sentence. Why opens with the beak quote mark and is signed with
