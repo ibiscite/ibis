@@ -194,7 +194,7 @@ public static class IbisUpdateFocus {
 '@
 $A = [System.Windows.Automation.AutomationElement]
 $S = [System.Windows.Automation.TreeScope]
-$pickerWindows = @(); $count = 0
+$pickerWindows = @(); $offerWindows = @(); $count = 0
 foreach ($id in @($env:IBIS_PIDS -split ',' | Where-Object { $_ } | Select-Object -Unique)) {
   if ($id -notmatch '^[1-9][0-9]{0,9}$' -or ++$count -gt 20) { throw 'Invalid picker scope' }
   $condition = [System.Windows.Automation.PropertyCondition]::new($A::ProcessIdProperty, [int]$id)
@@ -203,18 +203,26 @@ foreach ($id in @($env:IBIS_PIDS -split ',' | Where-Object { $_ } | Select-Objec
   foreach ($window in $windows) {
     if ($window.Current.ProcessId -ne [int]$id) { throw 'Picker owner changed' }
     if ($window.Current.Name -ceq 'Ibis' -and !$window.Current.IsOffscreen) { $pickerWindows += $window }
+    if ($window.Current.Name -ceq 'An update is available' -and !$window.Current.IsOffscreen) { $offerWindows += $window }
   }
 }
-if ($pickerWindows.Count -gt 1) { throw 'Picker is ambiguous' }
-$owner = $null
+if ($pickerWindows.Count -gt 1 -or $offerWindows.Count -gt 1) { throw 'Picker or update offer is ambiguous' }
+$owner = $null; $focus = $null
 if ($pickerWindows.Count -eq 1) {
-  $window = $pickerWindows[0]
-  $handle = $window.Current.NativeWindowHandle
-  if ($handle -ne 0 -and [IbisUpdateFocus]::GetForegroundWindow().ToInt64() -eq [long]$handle) {
-    $owner = $window.Current.ProcessId
+  $picker = $pickerWindows[0]
+  $targets = @(@{window=$picker; kind='picker'})
+  if ($offerWindows.Count -eq 1) {
+    if ($offerWindows[0].Current.ProcessId -ne $picker.Current.ProcessId) { throw 'Update offer owner differs from picker' }
+    $targets += @{window=$offerWindows[0]; kind='offer'}
+  }
+  foreach ($target in $targets) {
+    $handle = $target.window.Current.NativeWindowHandle
+    if ($handle -ne 0 -and [IbisUpdateFocus]::GetForegroundWindow().ToInt64() -eq [long]$handle) {
+      $owner = $target.window.Current.ProcessId; $focus = $target.kind
+    }
   }
 }
-@{pid=$owner} | ConvertTo-Json -Compress
+@{pid=$owner; focus=$focus} | ConvertTo-Json -Compress
 """
 
 MACOS_PICKER = r"""
@@ -227,36 +235,43 @@ function run(pids) {
     return result[0];
   };
   const events = Application('System Events');
-  const matches = [];
+  const matches = [], offers = [];
   for (const pid of pids) {
     for (const app of events.processes.whose({ unixId: Number(pid) })()) {
       const windows = app.windows();
       if (windows.length > 20) throw Error('Picker window bound exceeded');
       for (const window of windows) {
         if (window.name() === 'Ibis' && window.visible()) matches.push(Number(pid));
+        if (window.name() === 'An update is available' && window.visible()) offers.push(Number(pid));
       }
     }
   }
-  if (matches.length > 1) throw Error('Picker is ambiguous');
-  if (matches.length === 0) return JSON.stringify({pid: null});
+  if (matches.length > 1 || offers.length > 1) throw Error('Picker or update offer is ambiguous');
+  const answer = focus => JSON.stringify({pid: focus ? matches[0] : null, focus});
+  if (matches.length === 0) return answer(null);
+  if (offers.length === 1 && offers[0] !== matches[0]) throw Error('Update offer owner differs from picker');
   const focused = attr($.AXUIElementCreateSystemWide(), 'AXFocusedUIElement');
   const owner = Ref();
   if ($.AXUIElementGetPid(focused, owner) !== 0) throw Error('Picker owner unavailable');
-  if (Number(owner[0]) !== matches[0]) return JSON.stringify({pid: null});
+  if (Number(owner[0]) !== matches[0]) return answer(null);
   const window = attr($.AXUIElementCreateApplication(matches[0]), 'AXFocusedWindow');
-  return JSON.stringify({pid: ObjC.unwrap(attr(window, 'AXTitle')) === 'Ibis' ? matches[0] : null});
+  const title = ObjC.unwrap(attr(window, 'AXTitle'));
+  return answer(title === 'Ibis' ? 'picker' : title === 'An update is available' && offers.length === 1 ? 'offer' : null);
 }
 """
 
 
 def picker_result(stdout, pids):
     result = json.loads(stdout)
-    if not isinstance(result, dict) or set(result) != {"pid"}:
+    if not isinstance(result, dict) or set(result) != {"pid", "focus"}:
         raise AssertionError("picker helper returned an unexpected answer")
     owner = result["pid"]
-    if owner is not None and (type(owner) is not int or owner not in pids):
+    focus = result["focus"]
+    if owner is None and focus is None:
+        return None
+    if type(owner) is not int or owner not in pids or focus not in ("picker", "offer"):
         raise AssertionError("picker helper returned an unowned process")
-    return owner
+    return owner, focus
 
 
 def digest(path):
@@ -433,7 +448,7 @@ class Linux:
             if result.returncode == 1 and args[0] == "search" and not result.stdout and not result.stderr:
                 return ""
             return helper_stdout(result, "X11 picker").strip()
-        windows, count = set(), 0
+        windows, offers, count = set(), set(), 0
         if len(pids) > 20:
             raise AssertionError("picker process bound exceeded")
         for pid in pids:
@@ -443,20 +458,32 @@ class Linux:
                     raise AssertionError("picker window bound exceeded")
                 if query("getwindowpid", window) != str(pid):
                     raise AssertionError("picker window owner changed")
-                if query("getwindowname", window) == "Ibis":
+                name = query("getwindowname", window)
+                if name == "Ibis":
                     windows.add((pid, window))
-        if len(windows) > 1:
-            raise AssertionError("picker is ambiguous")
+                elif name == "An update is available":
+                    offers.add((pid, window))
+        if len(windows) > 1 or len(offers) > 1:
+            raise AssertionError("picker or update offer is ambiguous")
         if not windows:
             return None
         pid, window = windows.pop()
+        targets = {window: ("picker", "Ibis")}
+        if offers:
+            offer_pid, offer = offers.pop()
+            if offer_pid != pid:
+                raise AssertionError("update offer owner differs from picker")
+            targets[offer] = ("offer", "An update is available")
         focused = query("getwindowfocus")
-        if focused != window or query("getwindowpid", focused) != str(pid):
+        if focused not in targets:
             return None
         # A closed/replaced window cannot lend its earlier focus to a retry.
         if query("getwindowname", window) != "Ibis" or query("getwindowpid", window) != str(pid):
             raise AssertionError("picker window changed during focus observation")
-        return pid
+        focus, title = targets[focused]
+        if query("getwindowname", focused) != title or query("getwindowpid", focused) != str(pid):
+            raise AssertionError("focused window changed during observation")
+        return pid, focus
 
     def look(self, pids, press=None):
         seen, visited, matches = [], 0, []
@@ -732,12 +759,19 @@ def run(args):
                     raise AssertionError("the previous nightly refused its single-instance reopen")
                 def picker_ready():
                     pids = initial & install.instances()
-                    owner = install.picker_ready(pids)
-                    if owner is not None and (type(owner) is not int or owner not in pids):
+                    ready = install.picker_ready(pids)
+                    if ready is None:
+                        return None
+                    if not isinstance(ready, tuple) or len(ready) != 2:
+                        raise AssertionError("the reopened picker returned invalid focus facts")
+                    owner, focus = ready
+                    if type(owner) is not int or owner not in pids or focus not in ("picker", "offer"):
                         raise AssertionError("the reopened picker has no original process owner")
-                    return owner
-                picker = wait_for(picker_ready, PICKER_TIMEOUT, "the previous nightly's owned picker was not visible and focused")
-                report["steps"].append("previous nightly reopened once with its owned picker visible and focused")
+                    return ready
+                picker, focus = wait_for(picker_ready, PICKER_TIMEOUT, "the previous nightly's owned picker was not visible with picker or update-offer focus")
+                report["reopen_focus"] = focus
+                report["steps"].append("previous nightly reopened once with its owned picker visible and "
+                                       + ("picker focused" if focus == "picker" else "owned update offer focused"))
 
                 # The processes running just before the press, so helper
                 # processes the old version starts later never count as new.
@@ -851,7 +885,7 @@ const Application = name => {
                     self.assertNotEqual(result.returncode, 0)
                 else:
                     self.assertEqual(result.returncode, 0, result.stderr.decode("utf-8", errors="replace"))
-                    expected = (42, "offer") if scenario == "offer-focused" else 42 if scenario == "success" else None
+                    expected = (42, "offer") if scenario == "offer-focused" else (42, "picker") if scenario == "success" else None
                     self.assertEqual(picker_result(result.stdout, {42}), expected)
 
     def test_linux_picker_accepts_an_immediate_owned_offer_without_accepting_foreign_or_duplicate_modals(self):
@@ -875,8 +909,12 @@ const Application = name => {
         for payload in ('{}', '[]', '{"pid":true}', '{"pid":"42"}', '{"pid":99}', '{"pid":42,"extra":1}'):
             with self.subTest(payload=payload), self.assertRaises(AssertionError):
                 picker_result(payload, {42})
-        self.assertIsNone(picker_result('{"pid":null}', {42}))
-        self.assertEqual(picker_result('{"pid":42}', {42}), 42)
+        self.assertIsNone(picker_result('{"pid":null,"focus":null}', {42}))
+        self.assertEqual(picker_result('{"pid":42,"focus":"picker"}', {42}), (42, "picker"))
+        self.assertEqual(picker_result('{"pid":42,"focus":"offer"}', {42}), (42, "offer"))
+        for focus in (None, True, "unknown"):
+            with self.subTest(focus=focus), self.assertRaises(AssertionError):
+                picker_result(json.dumps({"pid": 42, "focus": focus}), {42})
 
     def test_linux_picker_requires_unique_owned_visible_main_and_native_input_focus(self):
         for scenario in ("success", "absent", "foreign", "duplicate", "wrong-title", "unfocused", "unknown", "closed", "replaced"):
@@ -910,7 +948,7 @@ const Application = name => {
                     with self.assertRaises((AssertionError, subprocess.TimeoutExpired)):
                         linux.picker_ready({42})
                 else:
-                    self.assertEqual(linux.picker_ready({42}), 42 if scenario == "success" else None)
+                    self.assertEqual(linux.picker_ready({42}), (42, "picker") if scenario == "success" else None)
             self.assertTrue(all(args[0] in ("search", "getwindowpid", "getwindowname", "getwindowfocus") for args in queries))
 
     def update_consumer(self, scenario):
@@ -925,7 +963,7 @@ const Application = name => {
                     events.append(("picker", set(pids)))
                     if state["reopened"] and scenario == "immediate-offer":
                         return 42, "offer"
-                    return 42 if state["reopened"] and scenario != "unfocused" else None
+                    return (42, "picker") if state["reopened"] and scenario != "unfocused" else None
                 install.picker_ready.side_effect = picker
                 def look(pids, press=None):
                     if press:
@@ -1152,6 +1190,21 @@ if ($Scenario.StartsWith('picker-')) {
    [IbisUpdateContract.AutomationElement]::RootElement.Nodes=@($window,$offer)
    [IbisUpdateContract.Focus]::Handle=102
   }
+  'picker-offer-duplicate' {
+   $offer=[IbisUpdateContract.Node]::new(); $offer.Name='An update is available'; $offer.NativeWindowHandle=102
+   [IbisUpdateContract.AutomationElement]::RootElement.Nodes=@($window,$offer,$offer)
+   [IbisUpdateContract.Focus]::Handle=102
+  }
+  'picker-offer-foreign' {
+   $offer=[IbisUpdateContract.Node]::new(); $offer.Name='An update is available'; $offer.NativeWindowHandle=102; $offer.ProcessId=99
+   [IbisUpdateContract.AutomationElement]::RootElement.Nodes=@($window,$offer)
+   [IbisUpdateContract.Focus]::Handle=102
+  }
+  'picker-offer-hidden' {
+   $offer=[IbisUpdateContract.Node]::new(); $offer.Name='An update is available'; $offer.NativeWindowHandle=102; $offer.IsOffscreen=$true
+   [IbisUpdateContract.AutomationElement]::RootElement.Nodes=@($window,$offer)
+   [IbisUpdateContract.Focus]::Handle=102
+  }
  }
 }
 $env:IBIS_PIDS='42'; $env:IBIS_PRESS='Install and Restart'
@@ -1200,15 +1253,16 @@ function Contract-Result($pressed,$how) {
             picker_helper = picker_helper.replace("System.Windows.Automation.", "IbisUpdateContract.")
             picker_helper = picker_helper.replace("[IbisUpdateFocus]", "[IbisUpdateContract.Focus]")
             script.write_text(model + picker_helper, encoding="utf-8")
-            for scenario in ("success", "hidden", "title", "duplicate", "foreign", "unfocused", "unknown", "no-handle", "empty", "offer"):
+            for scenario in ("success", "hidden", "title", "duplicate", "foreign", "unfocused", "unknown", "no-handle", "empty",
+                             "offer", "offer-duplicate", "offer-foreign", "offer-hidden"):
                 with self.subTest(picker=scenario):
                     result = subprocess.run([shutil.which("pwsh"), "-NoProfile", "-File", str(script), "picker-" + scenario],
                                             capture_output=True, timeout=30)
-                    if scenario in ("duplicate", "foreign"):
+                    if scenario in ("duplicate", "foreign", "offer-duplicate", "offer-foreign"):
                         self.assertNotEqual(result.returncode, 0)
                     else:
                         self.assertEqual(result.returncode, 0, result.stderr.decode("utf-8", errors="replace"))
-                        expected = (42, "offer") if scenario == "offer" else 42 if scenario == "success" else None
+                        expected = (42, "offer") if scenario == "offer" else (42, "picker") if scenario == "success" else None
                         self.assertEqual(picker_result(result.stdout, {42}), expected)
 
     def test_windows_activation_uncertainty_is_fatal_instead_of_pollable(self):
@@ -1230,7 +1284,7 @@ function Contract-Result($pressed,$how) {
         windows = Windows.__new__(Windows)
         windows.command, windows.config = ["synthetic"], None
         windows.instances, windows.facts, windows.close = MagicMock(return_value={42}), MagicMock(return_value={}), MagicMock()
-        windows.picker_ready = MagicMock(return_value=42)
+        windows.picker_ready = MagicMock(return_value=(42, "picker"))
         def two_polls(predicate, _timeout, message, **_kwargs):
             for _ in range(2):
                 value = predicate()
@@ -1281,7 +1335,7 @@ function Contract-Result($pressed,$how) {
                         return True
                     app = MagicMock(command=["synthetic"], config=None, settings=settings)
                     app.instances.side_effect = lambda: {43} if state["replaced"] else {42}
-                    app.picker_ready.return_value = 42
+                    app.picker_ready.return_value = (42, "picker")
                     app.look.return_value = (True, [], None)
                     app.updated.side_effect = replaced
                     app.facts.return_value = {}
