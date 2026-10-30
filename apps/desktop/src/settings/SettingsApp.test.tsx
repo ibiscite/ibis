@@ -10,6 +10,8 @@ import { RECHECK_MS, STALE_HINT_MS } from "./PasteGuide";
 import type { PastePermission, SettingsApi } from "./api";
 import recordings from "../testing/shortcut-recordings.json";
 import pickerConflicts from "../testing/picker-shortcut-conflicts.json";
+import english from "../i18n/en-US.ftl?raw";
+import { createInterfaceMessages, InterfaceMessagesProvider } from "../i18n";
 
 afterEach(() => vi.useRealTimers());
 
@@ -71,6 +73,46 @@ function fakeApi(permission: Partial<PastePermission> = {}, preferences: Partial
   };
   return { api, state, commit };
 }
+
+test("localized General keeps pending choices, refuses failed saves, and reopens saved state", async () => {
+  const { api, state, commit } = fakeApi({ granted: true });
+  const pseudo = createInterfaceMessages(english, true);
+  const label = pseudo.text("general-larger-text");
+  const save = deferred<{ preferences: PickerPreferences; copy_format: "pandoc" }>();
+  vi.spyOn(api, "setPickerPreferences").mockReturnValueOnce(save.promise).mockImplementation(commit);
+  const view = () => <InterfaceMessagesProvider messages={pseudo}><SettingsApp api={api} initialPage="general" /></InterfaceMessagesProvider>;
+  const mounted = render(view());
+  const choice = await screen.findByRole("switch", { name: label });
+  fireEvent.click(choice);
+  fireEvent.focus(window);
+  await act(async () => undefined);
+  expect((choice as HTMLInputElement).checked).toBe(true);
+  await act(async () => save.reject());
+  expect(await screen.findByRole("alert")).toHaveProperty("textContent", pseudo.text("settings-save-failed"));
+  await waitFor(() => expect((choice as HTMLInputElement).checked).toBe(false));
+  fireEvent.click(choice);
+  await act(async () => state.closes[0]!());
+  mounted.unmount();
+  render(view());
+  expect(await screen.findByRole("switch", { name: label })).toHaveProperty("checked", true);
+  expect(state.patches).toEqual([{ larger_text: true }]);
+});
+
+test("localized General rejects delayed A after B without changing settings or locale", async () => {
+  const { api, state } = fakeApi({ granted: true });
+  const old = deferred<PickerPreferences>(), latest = deferred<PickerPreferences>();
+  vi.spyOn(api, "pickerPreferences").mockReturnValueOnce(old.promise).mockReturnValueOnce(latest.promise);
+  const pseudo = createInterfaceMessages(english, true);
+  render(<InterfaceMessagesProvider messages={pseudo}><SettingsApp api={api} initialPage="general" /></InterfaceMessagesProvider>);
+  fireEvent.focus(window);
+  await act(async () => latest.resolve({ ...state.preferences, larger_text: true }));
+  const choice = screen.getByRole("switch", { name: pseudo.text("general-larger-text") });
+  expect(choice).toHaveProperty("checked", true);
+  await act(async () => old.resolve(state.preferences));
+  expect(choice).toHaveProperty("checked", true);
+  expect(screen.getByRole("heading", { level: 1 })).toHaveProperty("textContent", pseudo.text("settings-general"));
+  expect(state.patches).toEqual([]);
+});
 
 test("pages are opened by name, and the paste guide is General's pasting group", () => {
   expect(pageOf("paste")).toEqual({ page: "general", focus: "paste" });

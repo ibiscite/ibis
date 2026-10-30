@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Density, LoginItem, PickerPreferences, ShortcutStatus } from "../bindings";
+import type { Density, LoginItem, LoginItemProblem, PickerPreferences, ShortcutStatus } from "../bindings";
 import { DEFAULT_PICKER_SHORTCUT, KEY_TABLE, keyLabel, shortcutLabel } from "../keys";
-import { densityNames, keyText, loginItemText, settingsText, shortcutRefusalText } from "../messages";
+import { keyText, settingsText, shortcutRefusalText } from "../messages";
+import { type MessageId, useInterfaceMessages } from "../i18n";
 import { PreferencePatchQueue } from "../preferencePatchQueue";
 import { currentPlatform } from "../platform";
 import { Button } from "../ui/Button";
@@ -17,6 +18,10 @@ import "./Settings.css";
 type Page = "general" | "shortcuts" | "about";
 const PAGES: readonly Page[] = ["general", "shortcuts", "about"];
 const DENSITIES: readonly Density[] = ["compact", "comfortable", "spacious"];
+const LOGIN_PROBLEMS = {
+  unsupported: "general-login-unsupported", needs_approval: "general-login-needs-approval",
+  refused: "general-login-refused", unreadable: "general-login-unreadable",
+} as const satisfies Record<LoginItemProblem, MessageId>;
 
 /** A page asked for by name; "paste" is General, scrolled to pasting. */
 export function pageOf(name: string | null): { page: Page; focus: "paste" | null } {
@@ -32,6 +37,7 @@ function DoneMark() {
 /** The Settings window: a sidebar of pages, each a stack of titled groups of
  * rows (docs/design.md, "Settings"). Every change applies at once. */
 export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPage: string | null }) {
+  const { text } = useInterfaceMessages();
   const platform = currentPlatform();
   const start = pageOf(initialPage);
   const [page, setPage] = useState<Page>(start.page);
@@ -181,19 +187,19 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   return (
     <div className="settings">
       <div className="settings-titlebar" data-tauri-drag-region />
-      <nav className="settings-sidebar" aria-label={settingsText.pages}>
-        <SideNavigation label={settingsText.pages} value={page} options={PAGES.map((value) => ({ value, label: settingsText[value] }))}
+      <nav className="settings-sidebar" aria-label={text("settings-pages")}>
+        <SideNavigation label={text("settings-pages")} value={page} options={PAGES.map((value) => ({ value, label: text(`settings-${value}`) }))}
           onChange={(next) => { setDetour(false); setPage(next); setFocus("top"); }} />
       </nav>
       <main ref={pageRef} className="settings-page" aria-labelledby="settings-page-title">
-        <h1 id="settings-page-title" className="settings-page-title">{settingsText[page]}</h1>
-        {failed && <p className="settings-problem" role="alert">{settingsText.failed}</p>}
-        {detour && returnFailed && <p className="settings-problem" role="alert">{settingsText.paste.returnFailed}</p>}
+        <h1 id="settings-page-title" className="settings-page-title">{text(`settings-${page}`)}</h1>
+        {failed && <p className="settings-problem" role="alert">{text("settings-save-failed")}</p>}
+        {detour && returnFailed && <p className="settings-problem" role="alert">{text("general-paste-return-failed")}</p>}
         {page === "general" && (
           <>
             {login && !(login.problem === "unsupported") && (
               <Group id="startup">
-                <Row id="login" label={loginItemText.label(platform)} description={login.problem ? loginItemText.problem(login.problem, platform, name) : settingsText.login.description}>
+                <Row id="login" label={text("general-login-label", { platform })} description={login.problem ? text(LOGIN_PROBLEMS[login.problem], { platform, name }) : text("general-login-description")}>
                   <Switch aria-labelledby="login" aria-describedby="login-description" isSelected={login.enabled}
                     onChange={(on) => { api.setLoginItem(on).then(setLogin).catch(() => setFailed(true)); }} />
                 </Row>
@@ -203,13 +209,13 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
               <>
                 {/* Only systems where Ibis pastes ask for a permission first. */}
                 {permission?.pastes && (
-                <Group id="paste" title={settingsText.groups.paste}>
-                  <Row id="paste-label" label={settingsText.paste.label} description={settingsText.paste.description}>
+                <Group id="paste" title={text("general-paste-title")}>
+                  <Row id="paste-label" label={text("general-paste-label")} description={text("general-paste-description")}>
                     <Switch aria-labelledby="paste-label" aria-describedby="paste-label-description" isSelected={preferences.paste}
                       onChange={(on) => change({ paste: on })} />
                   </Row>
                   {preferences.paste && permission?.needed && permission.granted && !guided && (
-                    <Row id="paste-allowed" label={settingsText.paste.allowed(permission.list)} description={settingsText.paste.allowedNote}>
+                    <Row id="paste-allowed" label={text("general-paste-allowed", { list: permission.list })} description={text("general-paste-allowed-note")}>
                       <DoneMark />
                     </Row>
                   )}
@@ -218,20 +224,20 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
                   )}
                 </Group>
                 )}
-                <Group id="picker" title={settingsText.groups.picker}>
-                  <Row id="rows" label={settingsText.picker.rows}>
-                    <Segmented label={settingsText.picker.rows} value={preferences.density}
-                      options={DENSITIES.map((density) => ({ value: density, label: densityNames[density] }))}
+                <Group id="picker" title={text("general-picker-title")}>
+                  <Row id="rows" label={text("general-rows")}>
+                    <Segmented label={text("general-rows")} value={preferences.density}
+                      options={DENSITIES.map((density) => ({ value: density, label: text(`general-density-${density}`) }))}
                       onChange={(density) => change({ density })} />
                   </Row>
-                  <Row id="larger-text" label={settingsText.picker.largerText}>
+                  <Row id="larger-text" label={text("general-larger-text")}>
                     <Switch aria-labelledby="larger-text" isSelected={preferences.larger_text} onChange={(on) => change({ larger_text: on })} />
                   </Row>
-                  <Row id="preview" label={settingsText.picker.preview} description={settingsText.picker.previewDescription}>
+                  <Row id="preview" label={text("general-preview")} description={text("general-preview-description")}>
                     <Switch aria-labelledby="preview" aria-describedby="preview-description" isSelected={preferences.show_paste_preview}
                       onChange={(on) => change({ show_paste_preview: on })} />
                   </Row>
-                  <Row id="search-mark" label={settingsText.picker.searchMark} description={settingsText.picker.searchMarkDescription}>
+                  <Row id="search-mark" label={text("general-search-mark")} description={text("general-search-mark-description")}>
                     <Switch aria-labelledby="search-mark" aria-describedby="search-mark-description" isSelected={preferences.search_mark}
                       onChange={(on) => change({ search_mark: on })} />
                   </Row>

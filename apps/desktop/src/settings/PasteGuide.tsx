@@ -1,11 +1,10 @@
 import { useEffect, useState } from "react";
 import { Button } from "../ui/Button";
 import { FileDrag } from "../ui/FileDrag";
-import { settingsText } from "../messages";
+import { useInterfaceMessages } from "../i18n";
 import type { PastePermission, SettingsApi } from "./api";
 import appIcon from "../../src-tauri/icons/128x128.png";
 
-const text = settingsText.paste;
 /** How often to look again while waiting for the person in System Settings. */
 export const RECHECK_MS = 1_000;
 /** After this long without the permission, say how to clear a stale switch. */
@@ -45,6 +44,7 @@ export function usePastePermission(api: Pick<SettingsApi, "pastePermission">, ac
 export function PasteGuide({ name, permission, onOpen, onDrag }: {
   name: string; permission: PastePermission; onOpen: () => void; onDrag: () => Promise<void>;
 }) {
+  const { text } = useInterfaceMessages();
   const [opened, setOpened] = useState(false);
   const [slow, setSlow] = useState(false);
   const [dragFailed, setDragFailed] = useState(false);
@@ -62,25 +62,26 @@ export function PasteGuide({ name, permission, onOpen, onDrag }: {
           <span className="paste-guide-name">{name}</span>
           <span className="paste-guide-switch" data-on={permission.granted || undefined}><span /></span>
         </div>
-        <div className="paste-guide-pane">{`Privacy & Security › ${permission.list}`}</div>
+        <div className="paste-guide-pane">{text("general-paste-pane", { list: permission.list })}</div>
       </div>
       <div className="paste-guide-text">
-        <h3>{text.guideTitle}</h3>
-        <p className="settings-description">{text.guideWhy}</p>
-        <ol>{text.steps(name, permission.list).map((step) => <li key={step}>{step}</li>)}</ol>
+        <h3>{text("general-paste-guide-title")}</h3>
+        <p className="settings-description">{text("general-paste-guide-why")}</p>
+        <ol>{(["general-paste-step-open", "general-paste-step-allow", "general-paste-step-return"] as const)
+          .map((id) => <li key={id}>{text(id, { name, list: permission.list })}</li>)}</ol>
         <div className="paste-guide-actions">
           {!permission.granted && <>
-            <Button variant="primary" onPress={open}>{text.open}</Button>
-            <FileDrag icon={appIcon} label={text.drag(name, permission.list)} description={text.dragKeyboard} onPress={open}
+            <Button variant="primary" onPress={open}>{text("general-paste-open")}</Button>
+            <FileDrag icon={appIcon} label={text("general-paste-drag", { name, list: permission.list })} description={text("general-paste-drag-keyboard")} onPress={open}
               onDrag={() => { setDragFailed(false); void onDrag().catch(() => setDragFailed(true)); }} />
           </>}
           <p className="paste-guide-status" role="status" aria-live="polite" data-done={permission.granted || undefined}>
-            {permission.granted ? text.granted : opened ? text.waiting : ""}
+            {permission.granted ? text("general-paste-granted") : opened ? text("general-paste-waiting") : ""}
           </p>
         </div>
-        {!permission.granted && <p className="settings-description">{text.dragFallback}</p>}
-        {dragFailed && !permission.granted && <p className="settings-problem" role="alert">{text.dragFailed}</p>}
-        {slow && !permission.granted && <p className="settings-description">{text.stale(name)}</p>}
+        {!permission.granted && <p className="settings-description">{text("general-paste-drag-fallback")}</p>}
+        {dragFailed && !permission.granted && <p className="settings-problem" role="alert">{text("general-paste-drag-failed")}</p>}
+        {slow && !permission.granted && <p className="settings-description">{text("general-paste-stale", { name })}</p>}
       </div>
     </div>
   );
