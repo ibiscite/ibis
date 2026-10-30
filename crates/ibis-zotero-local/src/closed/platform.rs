@@ -376,13 +376,20 @@ fn drive_path(path: &Path) -> bool {
 mod windows;
 
 #[cfg(all(test, unix))]
-mod tests {
+pub(super) mod tests {
     use super::*;
     use crate::closed::tests::control;
     use std::sync::Arc;
 
     fn synthetic_helper(root: &Path) -> Command {
-        let mut command = Command::new(std::env::current_exe().unwrap_or_else(|_| panic!("synthetic executable")));
+        helper_command(
+            &std::env::current_exe().unwrap_or_else(|error| fixture_error("executable", error)),
+            root,
+        )
+    }
+
+    fn helper_command(executable: &Path, root: &Path) -> Command {
+        let mut command = Command::new(executable);
         command
             .args([
                 "--exact",
@@ -392,6 +399,72 @@ mod tests {
             ])
             .env("IBIS_TEST_CLOSED_NATIVE_ROOT", root);
         command
+    }
+
+    fn fixture_error(stage: &str, error: std::io::Error) -> ! {
+        panic!(
+            "synthetic process {stage}: kind={:?}, errno={:?}",
+            error.kind(),
+            error.raw_os_error()
+        );
+    }
+
+    pub(in crate::closed) struct NamedProcess {
+        child: std::process::Child,
+        executable: PathBuf,
+        _root: tempfile::TempDir,
+    }
+
+    impl NamedProcess {
+        pub(in crate::closed) fn start(name: &str) -> Self {
+            let source = std::env::current_exe().unwrap_or_else(|error| fixture_error("executable", error));
+            // Reuse the running inode: no executable write descriptor can be
+            // inherited by a concurrent fork. Keep the alias on the same FS.
+            let root = tempfile::tempdir_in(source.parent().unwrap_or_else(|| panic!("synthetic executable parent")))
+                .unwrap_or_else(|error| fixture_error("directory", error));
+            let executable = root.path().join(name);
+            std::fs::hard_link(&source, &executable).unwrap_or_else(|error| fixture_error("link", error));
+            let child = helper_command(&executable, root.path())
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+                .unwrap_or_else(|error| fixture_error("spawn", error));
+            Self {
+                child,
+                executable,
+                _root: root,
+            }
+        }
+
+        pub(in crate::closed) fn snapshot(&self) -> Vec<u8> {
+            let own = std::process::id();
+            let child = self.child.id().to_string();
+            // Never enumerate unrelated processes for the fixture-name oracle.
+            let bytes = output(
+                Command::new("/bin/ps").args(["-ww", "-p", &format!("{own},{child}"), "-o", "pid=,comm="]),
+                &control(),
+            )
+            .unwrap_or_else(|_| panic!("synthetic process snapshot"));
+            let text = std::str::from_utf8(&bytes).unwrap_or_else(|_| panic!("synthetic process encoding"));
+            let observed = text
+                .lines()
+                .filter_map(|line| line.trim().split_once(char::is_whitespace))
+                .find_map(|(pid, name)| (pid == child).then_some(name))
+                .and_then(|name| Path::new(name.trim()).file_name());
+            assert!(
+                observed == self.executable.file_name(),
+                "synthetic child must have the exact native process name"
+            );
+            bytes
+        }
+    }
+
+    impl Drop for NamedProcess {
+        fn drop(&mut self) {
+            let _ = self.child.kill();
+            let _ = self.child.wait();
+        }
     }
 
     #[test]
@@ -504,25 +577,18 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn a_synthetic_zotero_mcp_executable_is_not_the_zotero_process() {
-        let root = tempfile::tempdir().unwrap_or_else(|_| panic!("synthetic process directory"));
-        let executable = root.path().join("zotero-mcp");
-        std::fs::copy("/bin/sleep", &executable).unwrap_or_else(|_| panic!("synthetic executable"));
-        let mut child = Command::new(executable)
-            .arg("10")
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .unwrap_or_else(|_| panic!("synthetic process"));
-        let own = std::process::id();
-        // Inspect only our test and its invented helper, never other processes.
-        let bytes = output(
-            Command::new("/bin/ps").args(["-ww", "-p", &format!("{own},{}", child.id()), "-o", "pid=,comm="]),
-            &control(),
+        use std::os::unix::fs::MetadataExt;
+
+        let child = NamedProcess::start("zotero-mcp");
+        let running = std::fs::metadata(std::env::current_exe().unwrap_or_else(|_| panic!("synthetic executable")))
+            .unwrap_or_else(|_| panic!("synthetic executable metadata"));
+        let helper = std::fs::metadata(&child.executable).unwrap_or_else(|_| panic!("synthetic helper metadata"));
+        assert!(
+            (running.dev(), running.ino()) == (helper.dev(), helper.ino()),
+            "the helper must reuse the running executable, without opening a new executable for writing"
         );
-        let _ = child.kill();
-        let _ = child.wait();
-        assert_eq!(bytes.and_then(|bytes| process_list(&bytes, own)), Ok(()));
+        let own = std::process::id();
+        assert_eq!(process_list(&child.snapshot(), own), Ok(()));
     }
 }
 

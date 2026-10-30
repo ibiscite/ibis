@@ -456,26 +456,9 @@ fn source_replacement_and_restored_mtime_changes_are_detected() {
 #[cfg(unix)]
 #[test]
 fn native_process_guard_refuses_a_synthetic_zotero_named_process() {
-    use std::process::{Command, Stdio};
-    let executable_dir = scratch();
-    let executable = executable_dir.path().join("zotero");
-    std::fs::copy("/bin/sleep", &executable).unwrap_or_else(|_| panic!("synthetic executable"));
-    let mut child = Command::new(&executable)
-        .arg("10")
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .unwrap_or_else(|_| panic!("synthetic process"));
-    let until = std::time::Instant::now() + std::time::Duration::from_secs(5);
-    let observed = loop {
-        let result = platform::closed(&control());
-        if result == Err(ClosedError::Running) || std::time::Instant::now() >= until {
-            break result;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(10));
-    };
-    let _ = child.kill();
-    let _ = child.wait();
+    let child = platform::tests::NamedProcess::start("zotero");
+    let _ = child.snapshot();
+    let observed = platform::closed(&control());
+    drop(child);
     assert_eq!(observed, Err(ClosedError::Running));
 }
