@@ -3057,6 +3057,45 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(native.events, [("Escape", True), ("editor", False), ("ctrl+super+r", False)])
         self.assertTrue(native.visible)
 
+    def test_escape_waits_through_withdrawal_uncertainty_for_positive_hidden_evidence(self):
+        visible = {"visible": True, "nodes": [{"name": "Search references", "value": "synthetic"}]}
+        hidden = {"visible": False, "nodes": []}
+        native = Mock()
+        snapshot = Mock(side_effect=[visible, visible, WindowObservationFailure(), hidden])
+        with patch("time.sleep"):
+            escape_to_hide(native, snapshot, "synthetic picker hidden")
+        self.assertEqual(snapshot.call_count, 4)
+        native.key.assert_called_once_with("Escape")
+
+    def test_persistent_post_escape_uncertainty_exhausts_one_deadline_without_another_action(self):
+        visible = {"visible": True, "nodes": [{"name": "Search references", "value": "synthetic"}]}
+        native, clock = Mock(), self.CopyClock()
+        reads = 0
+        def snapshot():
+            nonlocal reads
+            reads += 1
+            if reads <= 2:
+                return visible
+            raise WindowObservationFailure()
+        def sleep(seconds):
+            clock.elapsed += seconds
+        with patch("time.monotonic", clock.monotonic), patch("time.sleep", side_effect=sleep), \
+                self.assertRaisesRegex(AssertionError, "Timed out.*visibility"):
+            escape_to_hide(native, snapshot, "synthetic picker hidden")
+        self.assertEqual(clock.elapsed, ESCAPE_STEP_TIMEOUT)
+        native.key.assert_called_once_with("Escape")
+
+    def test_pre_key_uncertainty_and_non_window_failures_still_refuse(self):
+        visible = {"visible": True, "nodes": [{"name": "Search references", "value": "synthetic"}]}
+        cleared = {"visible": True, "nodes": [{"name": "Search references", "value": ""}]}
+        for observations, error, actions in (([visible, WindowObservationFailure()], WindowObservationFailure, 0),
+                ([visible, visible, cleared, WindowObservationFailure()], WindowObservationFailure, 1),
+                ([visible, visible, RuntimeError("synthetic failure")], RuntimeError, 1)):
+            native = Mock()
+            with self.subTest(actions=actions, error=error.__name__), self.assertRaises(error):
+                escape_to_hide(native, Mock(side_effect=observations), "synthetic picker hidden")
+            self.assertEqual(native.key.call_count, actions)
+
     def test_escape_clears_a_search_before_it_hides(self):
         state = {"visible": True, "value": "query"}
         native = Mock()
