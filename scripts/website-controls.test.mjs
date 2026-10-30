@@ -260,3 +260,153 @@ test("picker header fits its container at 200% text and uses aligned themed grad
     }
   } finally { await browser.close(); }
 });
+
+async function combineDemoReferences(page) {
+  const input = page.getByRole("combobox", { name: "Search the made-up library" });
+  await input.waitFor(); await input.fill("");
+  for (let index = 0; index < 3; index++) {
+    await input.press("Shift+Enter");
+    if (index < 2) await input.press("ArrowDown");
+  }
+  await page.getByRole("combobox", { name: "Copy format" }).selectOption("parencite");
+  await input.press("Enter");
+}
+
+// Let the receipt's observer and queued fit finish after a width change.
+// Static pictures need only the forced layout in the assertions below.
+const settlePicture = (page, interactive) => interactive
+  ? page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+  : Promise.resolve();
+
+test("copied shelf and footer fit one row at 240 px and 200% text", { skip: !process.env.IBIS_WEBSITE_URL }, async () => {
+  const url = new URL(process.env.IBIS_WEBSITE_URL);
+  assert.equal(url.protocol, "http:"); assert.equal(url.hostname, "127.0.0.1");
+  const { chromium } = await import(process.env.IBIS_PLAYWRIGHT_MODULE || "playwright");
+  const browser = await chromium.launch({ executablePath: process.env.IBIS_CHROMIUM_EXECUTABLE });
+  try {
+    for (const fontSize of [16, 32]) for (const colorScheme of ["light", "dark"]) for (const javaScriptEnabled of [false, true]) for (const hasTouch of [false, true]) {
+      const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, colorScheme, javaScriptEnabled, hasTouch, reducedMotion: "reduce" });
+      const session = await page.context().newCDPSession(page);
+      await session.send("Page.setFontSizes", { fontSizes: { standard: fontSize, fixed: fontSize } });
+      await page.goto(url.href + "#how");
+      if (javaScriptEnabled) await combineDemoReferences(page);
+      const panel = page.locator("[data-picker] .picker-panel");
+      for (const width of [720, 480, 240]) {
+        await panel.evaluate((node, size) => { node.style.width = `${size}px`; }, width);
+        await settlePicture(page, javaScriptEnabled);
+        const layout = await panel.evaluate(node => {
+          const shelf = node.querySelector(".picker-shelf"), foot = node.querySelector(".picker-foot"), citation = shelf.querySelector("code"), capsule = shelf.querySelector(".picker-status");
+          const bounds = element => { const rect = element.getBoundingClientRect(); return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, width: rect.width, height: rect.height }; };
+          const elements = [...shelf.querySelectorAll(".picker-beak, code, .picker-status"), ...foot.querySelectorAll(".picker-library, button, .picker-static-control")];
+          const clipped = elements.filter(element => {
+            const rect = bounds(element), parent = bounds(element.closest(".picker-shelf, .picker-foot"));
+            return rect.width && (rect.left < parent.left - 1 || rect.right > parent.right + 1 || rect.top < parent.top - 1 || rect.bottom > parent.bottom + 1);
+          }).map(element => element.className || element.tagName);
+          const actions = [...foot.querySelectorAll("button, .picker-static-control")];
+          const statusText = foot.querySelector(".picker-library > span:last-child");
+          return { clipped, shelfOverflow: shelf.scrollWidth > shelf.clientWidth, footOverflow: foot.scrollWidth > foot.clientWidth,
+            capsuleWhole: capsule.scrollWidth <= capsule.clientWidth && getComputedStyle(capsule).whiteSpace === "nowrap",
+            citationWidth: bounds(citation).width, citationEllipsis: getComputedStyle(citation).textOverflow, citationClipped: citation.scrollWidth > citation.clientWidth,
+            actionRows: actions.map(action => bounds(action).top),
+            labels: [...foot.querySelectorAll(".picker-action-label")].map(label => bounds(label).width),
+            keysVisible: actions.every(action => [...action.querySelectorAll("kbd")].some(key => bounds(key).width > 0)),
+            statusShortened: statusText.clientWidth < statusText.scrollWidth,
+            actionNames: actions.map(action => action.getAttribute("aria-label") || action.textContent) };
+        });
+        const scenario = `${width}px / ${fontSize}px font / ${colorScheme} / JS ${javaScriptEnabled} / touch ${hasTouch}`;
+        assert.deepEqual(layout.clipped, [], scenario);
+        assert.equal(layout.shelfOverflow, false, `the shelf must fit internally: ${scenario}`);
+        assert.equal(layout.footOverflow, false, `the footer must fit internally: ${scenario}`);
+        assert.equal(layout.capsuleWhole, true, `Copied stays whole: ${scenario}`);
+        assert.ok(layout.citationWidth > 0, `the citation retains room for its ellipsis: ${scenario}`);
+        assert.equal(layout.citationEllipsis, "ellipsis", scenario);
+        assert.ok(layout.actionRows.every(top => Math.abs(top - layout.actionRows[0]) < 1), `actions stay on one row: ${scenario}`);
+        assert.equal(layout.keysVisible, true, `keys stay visible on touch as well: ${scenario}`);
+        assert.ok(layout.actionNames.some(name => /Copy.*as/.test(name)), `compact actions keep their accessible names: ${scenario}`);
+        if (width === 240) {
+          assert.equal(layout.citationClipped, true, scenario);
+          assert.ok(layout.labels.every(size => size <= 1), `narrow actions show keys only: ${scenario}`);
+        }
+        if (width === 480 && fontSize === 16 && javaScriptEnabled) {
+          assert.ok(layout.labels.every(size => size > 1), `labels stay until the status has shortened: ${scenario}`);
+          assert.equal(layout.statusShortened, true, scenario);
+        }
+      }
+      await page.close();
+    }
+  } finally { await browser.close(); }
+});
+
+test("Copied notice fits at most two citation lines and keeps the frozen receipt", { skip: !process.env.IBIS_WEBSITE_URL }, async () => {
+  const url = new URL(process.env.IBIS_WEBSITE_URL);
+  assert.equal(url.protocol, "http:"); assert.equal(url.hostname, "127.0.0.1");
+  const { chromium } = await import(process.env.IBIS_PLAYWRIGHT_MODULE || "playwright");
+  const browser = await chromium.launch({ executablePath: process.env.IBIS_CHROMIUM_EXECUTABLE });
+  try {
+    for (const fontSize of [16, 32]) for (const javaScriptEnabled of [false, true]) {
+      const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, javaScriptEnabled, reducedMotion: "reduce" });
+      const session = await page.context().newCDPSession(page);
+      await session.send("Page.setFontSizes", { fontSizes: { standard: fontSize, fixed: fontSize } });
+      await page.goto(url.href + "#how");
+      if (javaScriptEnabled) await combineDemoReferences(page);
+      const receipt = page.locator(".picker-receipt"), citation = page.locator(".copied-notice code");
+      const original = await citation.getAttribute("title");
+      assert.match(original, /\[Sample\]/);
+      if (javaScriptEnabled) {
+        await page.getByRole("combobox", { name: "Search the made-up library" }).fill("not in this invented library");
+        await page.getByRole("combobox", { name: "Copy format" }).selectOption("typst");
+      }
+      for (const width of [560, 240, 560]) {
+        await receipt.evaluate((node, size) => { node.style.width = `${size}px`; }, width);
+        await settlePicture(page, javaScriptEnabled);
+        const measured = await citation.evaluate(node => {
+          const visible = [...node.children].find(child => getComputedStyle(child).display !== "none");
+          const rect = visible?.getBoundingClientRect();
+          return { height: rect?.height, width: rect?.width, line: parseFloat(getComputedStyle(node).lineHeight),
+            text: visible?.textContent, full: node.title, box: node.getBoundingClientRect().height, overflow: visible && visible.scrollWidth > visible.clientWidth };
+        });
+        assert.ok(measured.height > 0 && measured.height <= measured.line * 2 + 1, "the visible citation itself fits; a clipping parent cannot hide a third line");
+        assert.ok(measured.box <= measured.line * 2 + 1);
+        assert.equal(measured.overflow, false);
+        assert.equal(measured.full, original, "later searches and formats never rewrite a copied receipt");
+        assert.equal(await citation.getAttribute("aria-description"), original, "the full copied value remains accessible when visually summarised");
+        assert.match(measured.text, /\[Sample\]/);
+        if (width === 240 && fontSize === 32) assert.match(measured.text, javaScriptEnabled ? /\+3 more/ : /\+1 more/, "the count includes every omitted reference");
+        if (width === 560 && fontSize === 16) assert.doesNotMatch(measured.text, /\+\d+ more/, "widening restores the full receipt when it fits");
+      }
+      await page.close();
+    }
+  } finally { await browser.close(); }
+});
+
+test("RTL mirrors both citation beaks and preserves the Ibis logo and LTR keys", { skip: !process.env.IBIS_WEBSITE_URL }, async () => {
+  const url = new URL(process.env.IBIS_WEBSITE_URL);
+  assert.equal(url.protocol, "http:"); assert.equal(url.hostname, "127.0.0.1");
+  const { chromium } = await import(process.env.IBIS_PLAYWRIGHT_MODULE || "playwright");
+  const browser = await chromium.launch({ executablePath: process.env.IBIS_CHROMIUM_EXECUTABLE });
+  try {
+    for (const javaScriptEnabled of [false, true]) {
+      const page = await browser.newPage({ viewport: { width: 1180, height: 900 }, javaScriptEnabled, reducedMotion: "reduce" });
+      await page.goto(url.href + "#how");
+      if (javaScriptEnabled) await combineDemoReferences(page);
+      for (const dir of ["ltr", "rtl", "ltr"]) {
+        await page.locator("[data-picker]").evaluate((node, direction) => { node.dir = direction; }, dir);
+        const visual = await page.locator("[data-picker]").evaluate(node => {
+          const style = element => { const css = getComputedStyle(element); return { scale: css.scale, rotate: css.rotate, transform: css.transform }; };
+          const beaks = [...node.querySelectorAll(".picker-beak")];
+          return { beaks: beaks.map(style), logo: style(node.querySelector(".picker-mark")), images: [...node.querySelectorAll(".picker-mark img")].map(style),
+            direction: getComputedStyle(node.querySelector(".picker-shelf code")).direction,
+            order: beaks.map(beak => beak.getBoundingClientRect().left) };
+        });
+        assert.equal(visual.beaks.length, 2);
+        assert.ok(visual.beaks.every(beak => beak.scale === (dir === "rtl" ? "-1 1" : "none")));
+        assert.equal(visual.beaks[1].rotate, "180deg");
+        assert.deepEqual(visual.logo, { scale: "none", rotate: "none", transform: "none" });
+        assert.ok(visual.images.every(image => image.scale === "none" && image.rotate === "none" && image.transform === "none"));
+        assert.equal(visual.direction, "ltr");
+        assert.equal(visual.order[0] > visual.order[1], dir === "rtl", "the mirrored pair follows the logical citation order");
+      }
+      await page.close();
+    }
+  } finally { await browser.close(); }
+});
