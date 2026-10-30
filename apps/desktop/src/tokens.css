@@ -91,7 +91,7 @@
   --status-stop: CanvasText;
 }
 
-/* Every colour role passes 4.5:1 on the surface in both themes. */
+/* Text roles pass 4.5:1; the Look glyph uses its shared opaque edge for 3:1. */
 @supports (color: light-dark(white, black)) {
   :root {
     --citation: light-dark(#c23a1c, #ff7a5c);
@@ -280,8 +280,8 @@
       /* A hairline, as on a native panel: no white rim or glow (prototype round six). */
       --glass-edge: light-dark(rgb(0 0 0 / 10%), rgb(255 255 255 / 10%));
     }
-    /* Over the veiled material, colour roles one step deeper (lighter in dark
-       mode) keep 4.5:1; the opaque surface keeps Ibis scarlet as it is. */
+    /* Over the veiled material, text roles keep 4.5:1. The fixed Look glyph
+       has an opaque edge; the opaque surface keeps Ibis scarlet as it is. */
     :root[data-platform="macos"][data-native-appearance="vibrancy"]:not(.notice-window),
     :root[data-platform="macos"][data-native-appearance="liquid-glass"]:not(.notice-window) {
       --citation: light-dark(#982d16, #ff9d87);

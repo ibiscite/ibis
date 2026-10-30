@@ -7,4 +7,6 @@
 .library-status-controls[data-health="stop"] .library-name, .library-status-controls[data-health="look"] .library-name { color: var(--text); }
 .library-status-controls .library-status { min-width: 0; }
 .library-status-controls .library-inline-action { flex: none; }
+/* The fixed amber needs an opaque adjacent surface to retain 3:1 over glass. */
+.status-dot[data-health="look"] { outline: var(--border-width) solid var(--surface); }
 .library-action-error { flex-basis: 100%; margin: 0; color: var(--text); font-size: var(--type-meta-size); }

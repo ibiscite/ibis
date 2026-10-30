@@ -89,6 +89,9 @@ def strings(snapshot):
     return "\n".join(str(n.get(k, "")) for n in snapshot["nodes"] for k in ("name", "value"))
 
 
+BIDI_ISOLATES = str.maketrans("", "", "\u2066\u2067\u2068\u2069")
+
+
 def shows_count(snapshot, count):
     """Whether the footer's count, such as "3 references", reaches the accessibility tree.
 
@@ -99,12 +102,12 @@ def shows_count(snapshot, count):
     return count in strings(snapshot)
 
 
-def retained_snapshot_fragments(snapshot):
+def retained_snapshot_fragments(snapshot, name=None):
     """Fixed predicates only, from one bounded native snapshot; never echo text."""
     # Native traversal order is not reading order (Linux walks a LIFO stack).
     # Match complete atomic wording or one composite text node, never invent a
     # phrase by joining neighboring elements from different native boundaries.
-    values = [" ".join(str(node.get(key, "")).split())
+    values = [" ".join(str(node.get(key, "")).translate(BIDI_ISOLATES).split())
               for node in snapshot["nodes"] for key in ("name", "value")]
     def contains(fragment, ending=r"(?!\w)"):
         return any(re.search(r"(?:^|^· | · )" + re.escape(fragment) + ending, value) is not None
@@ -112,21 +115,22 @@ def retained_snapshot_fragments(snapshot):
     # The count is a complete clause: either its own node/summary, or followed
     # by the spoken detail's check time or failure. A word boundary alone would
     # also accept "4 references missing; 3 references retained".
-    count_ending = r"(?=$|\. (?:checked |The library could not be opened: |the file could not be read$|Zotero could not be reached$))"
-    return {"not_updated": contains("not updated"),
+    count_ending = r"(?=$|\. (?:last read |checked |The library could not be opened: |the file could not be read$|Zotero could not be reached$))"
+    return {"problem_shown": contains("not updated") or contains("moved") or
+            (name is not None and contains(f"{name} moved")),
             "four_references": contains("4 references", count_ending)}
 
 
 def missing_library_evidence(snapshot, name):
-    text = strings(snapshot)
+    text = strings(snapshot).translate(BIDI_ISOLATES)
     # Bidi isolates can expose the separator and state as separate native
     # text nodes. Their boundaries are whitespace, not missing status words.
-    retained = retained_snapshot_fragments(snapshot)
+    retained = retained_snapshot_fragments(snapshot, name)
     return {key: fragment if type(fragment) is bool else fragment in text for key, fragment in {
         "failed_source_named": f"The library could not be opened: {name}",
         "retention_explained": "the library file is unavailable; keeping the last loaded references",
         "recovery_action": "Choose it again or reconnect the drive.",
-        # The footer says the library was not updated; its detail, read by
+        # The footer says the library moved or was not updated; its detail, read by
         # screen readers, keeps the retained count. Names are isolated (U+2068/9).
         "retained_snapshot": all(retained.values()),
     }.items()}
@@ -134,16 +138,18 @@ def missing_library_evidence(snapshot, name):
 
 
 
-# Library actions live in the picker's More menu (Ctrl/Cmd+K), not the footer.
+# Library actions live in the footer's Library menu; application actions in More.
 TREE_SETTLE_SECONDS = 10
-MENU_ACTIONS = {"Choose library…", "Use Zotero", "Reload", "Quit Ibis"}
+MENU_ACTIONS = {"Choose Library…": "Library", "Use Zotero": "Library",
+                "Reload Library": "Library", "Quit Ibis": "More"}
 
 
 def menu_action(native, name):
-    """Open More, then press the named menu item, as a user would."""
+    """Open the owning menu, then press the named item, as a user would."""
     if name not in MENU_ACTIONS:
-        raise ValueError(f"{name!r} is not a More menu action")
-    native.click("More")
+        raise ValueError(f"{name!r} is not a picker menu action")
+    trigger = MENU_ACTIONS[name]
+    native.click(trigger)
     # The accessibility tree can lag the menu opening; wait for the item.
     def pressed():
         try:
@@ -153,7 +159,7 @@ def menu_action(native, name):
             if isinstance(native, Linux) and isinstance(error, native.accessibility_error):
                 raise
             return False
-    wait_for(pressed, f"{name} appears in the More menu", timeout=5)
+    wait_for(pressed, f"{name} appears in the {trigger} menu", timeout=5)
 
 
 def named(snapshot, name):
@@ -179,10 +185,10 @@ def menu_escape_focus(native, snapshot, shortcut, report):
                                    "space_reopened", "search_unchanged", "tab_search_typed", "search_restored")}
     report["menu_escape_focus"] = facts
     native.key(shortcut)
-    wait_for(lambda: bool(named(snapshot(), "Reload")), "shortcut opens More", timeout=5)
+    wait_for(lambda: bool(named(snapshot(), "Keyboard shortcuts")), "shortcut opens More", timeout=5)
     facts["shortcut_opened"] = True
     native.key("Escape")
-    wait_for(lambda: not named(snapshot(), "Reload"), "Escape closes More", timeout=5)
+    wait_for(lambda: not named(snapshot(), "Keyboard shortcuts"), "Escape closes More", timeout=5)
     facts["escape_closed"] = True
     def restored():
         current = snapshot()
@@ -193,18 +199,18 @@ def menu_escape_focus(native, snapshot, shortcut, report):
     native.key("space")
     def reopened():
         current = snapshot()
-        facts["space_reopened"] = bool(named(current, "Reload"))
+        facts["space_reopened"] = bool(named(current, "Keyboard shortcuts"))
         # A successful modal open hides Search from the accessibility tree.
         if not facts["space_reopened"]:
             facts["search_unchanged"] = facts["search_unchanged"] and values(current) == original
         return facts["space_reopened"]
     wait_for(reopened, "Space reopens More after Escape", timeout=5)
     native.key("Tab")
-    wait_for(lambda: not named(snapshot(), "Reload"), "Tab closes More", timeout=5)
+    wait_for(lambda: not named(snapshot(), "Keyboard shortcuts"), "Tab closes More", timeout=5)
 
     def picker():
         current = snapshot()  # The caller also verifies the owned app is alive.
-        assert current["visible"] and current["foreground"] and not named(current, "Reload"), "Native picker unavailable after Tab"
+        assert current["visible"] and current["foreground"] and not named(current, "Keyboard shortcuts"), "Native picker unavailable after Tab"
         return current
 
     def available():
@@ -1693,15 +1699,15 @@ def smoke_main(args):
                 with recording("action", "fixture-missing"):
                     library.unlink()
                 try:
-                    menu_action(native, "Reload")
+                    menu_action(native, "Reload Library")
                 finally:
                     pass
-                retained_fragments = {"not_updated": False, "four_references": False}
+                retained_fragments = {"problem_shown": False, "four_references": False}
                 def explained():
                     nonlocal retained_fragments
                     current = snapshot()
                     report["missing_library_evidence"] = missing_library_evidence(current, library.name)
-                    retained_fragments = retained_snapshot_fragments(current)
+                    retained_fragments = retained_snapshot_fragments(current, library.name)
                     return all(report["missing_library_evidence"].values())
                 try:
                     wait_for(explained, "missing library explains recovery and retained reference count")
@@ -1714,11 +1720,11 @@ def smoke_main(args):
             def recover():
                 with recording("action", "fixture-empty"):
                     library.write_text("", encoding="utf-8")
-                menu_action(native, "Reload")
+                menu_action(native, "Reload Library")
                 wait_for(lambda: " · no references" in strings(snapshot()), "empty library count")
                 with recording("action", "fixture-small"):
                     library.write_text(fixture(), encoding="utf-8")
-                menu_action(native, "Reload")
+                menu_action(native, "Reload Library")
                 wait_for(lambda: shows_count(snapshot(), "3 references"), "reload recovers after error")
             check("empty library and recovery after error", recover)
             stop()
@@ -1932,14 +1938,15 @@ class ContractTests(unittest.TestCase):
 
     def test_linux_menu_action_does_not_retry_uncertain_activation(self):
         native, desktop, owned, target, foreign = self.linux_click_fixture()
-        more = self.CensusNode(name="More")
-        more.queryAction = Mock(return_value=Mock(nActions=1, doAction=Mock(return_value=True)))
-        owned.children.append(more)
+        target.name = "Reload Library"
+        library_menu = self.CensusNode(name="Library")
+        library_menu.queryAction = Mock(return_value=Mock(nActions=1, doAction=Mock(return_value=True)))
+        owned.children.append(library_menu)
         owned.childCount += 1
         target.queryAction.return_value.doAction.side_effect = native.accessibility_error("uncertain activation")
         with self.assertRaises(native.accessibility_error):
-            menu_action(native, "Reload")
-        more.queryAction.return_value.doAction.assert_called_once_with(0)
+            menu_action(native, "Reload Library")
+        library_menu.queryAction.return_value.doAction.assert_called_once_with(0)
         target.queryAction.return_value.doAction.assert_called_once_with(0)
         foreign.queryAction.assert_not_called()
 
@@ -3413,18 +3420,21 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(report, {})
 
 
-    def test_menu_actions_open_more_first(self):
+    def test_menu_actions_open_their_owning_menu_first(self):
         native = Mock()
-        menu_action(native, "Reload")
-        self.assertEqual(native.click.call_args_list, [call("More"), call("Reload")])
+        for label, trigger in (("Reload Library", "Library"), ("Choose Library…", "Library"),
+                               ("Use Zotero", "Library"), ("Quit Ibis", "More")):
+            native.click.reset_mock()
+            menu_action(native, label)
+            self.assertEqual(native.click.call_args_list, [call(trigger), call(label)])
         with self.assertRaises(ValueError):
             menu_action(native, "Search references")
         for error in (AssertionError(), RuntimeError(), subprocess.CalledProcessError(1, "synthetic")):
             native.click.reset_mock()
             native.click.side_effect = [None, error, None]
             with patch("time.sleep"):
-                menu_action(native, "Reload")
-            self.assertEqual(native.click.call_args_list, [call("More"), call("Reload"), call("Reload")])
+                menu_action(native, "Reload Library")
+            self.assertEqual(native.click.call_args_list, [call("Library"), call("Reload Library"), call("Reload Library")])
 
     class MenuKeyboardModel:
         """Native keys own the input; accessibility can focus its active option."""
@@ -3453,7 +3463,7 @@ class ContractTests(unittest.TestCase):
                      "Darwin": ("AXTextField", "AXRow")}
             search_role, result_role = roles[self.platform]
             current = {"visible": True, "foreground": True, "nodes": (
-                [{"name": "Reload", "role": "menu item", "focused": True}] if self.menu else [
+                [{"name": "Keyboard shortcuts", "role": "menu item", "focused": True}] if self.menu else [
                     {"name": "More", "role": "button", "focused": self.more},
                     {"name": "Search references", "role": search_role, "value": self.value,
                      "focused": self.search and self.platform == "Darwin"},
@@ -3578,6 +3588,17 @@ class ContractTests(unittest.TestCase):
         current["nodes"][0]["name"] = message[:100]
         self.assertFalse(missing_library_evidence(current, name)["recovery_action"])
 
+    def test_missing_library_accepts_current_moved_status_and_isolated_last_read_detail(self):
+        name = "synthetic 引用.bib"
+        detail = (f"\u2068{name}\u2069 · 4 references. \u2068last read 2 hours ago, 12:00 PM\u2069 · "
+                  f"The library could not be opened: \u2068{name}\u2069. "
+                  "the library file is unavailable; keeping the last loaded references. "
+                  "Choose it again or reconnect the drive.")
+        current = {"nodes": [{"value": f"{name} moved"}, {"value": detail}]}
+        self.assertTrue(all(missing_library_evidence(current, name).values()))
+        current["nodes"][0]["value"] = "movedish"
+        self.assertFalse(missing_library_evidence(current, name)["retained_snapshot"])
+
     def test_retained_snapshot_diagnostics_separate_fragments_without_echoing_input(self):
         cases = [(" · not updated", True, False), (" · 4 references", False, True),
                  (" · not updated · 4 references", True, True),
@@ -3586,7 +3607,7 @@ class ContractTests(unittest.TestCase):
             with self.subTest(text=text):
                 diagnostic = retained_snapshot_fragments({"nodes": [{"name": "Synthetic test app"}, {"value": text},
                     {"value": "synthetic-private-sentinel"}]})
-                self.assertEqual(diagnostic, {"not_updated": updated, "four_references": count})
+                self.assertEqual(diagnostic, {"problem_shown": updated, "four_references": count})
                 self.assertTrue(all(type(value) is bool for value in diagnostic.values()))
                 self.assertNotIn("synthetic-private-sentinel", json.dumps(diagnostic))
 
@@ -3601,7 +3622,7 @@ class ContractTests(unittest.TestCase):
                 [{"value": "synthetic.bib · not updated. synthetic.bib · 4 references"}]]:
             with self.subTest(nodes=nodes):
                 self.assertEqual(retained_snapshot_fragments({"nodes": nodes}),
-                                 {"not_updated": True, "four_references": True})
+                                 {"problem_shown": True, "four_references": True})
         for nodes in [
                 [{"value": " · "}, {"value": "synthetic.bib · 4 references"}],
                 [{"value": "not updated"}, {"value": "synthetic.bib · 3 references"}],
