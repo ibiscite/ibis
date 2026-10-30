@@ -1,4 +1,4 @@
-import { DEFAULT_PICKER_SHORTCUT, KEY_TABLE, keysFor, keyLabel, commandKey, matchesAccelerator } from "./keys.js";
+import { DEFAULT_PICKER_SHORTCUT, KEY_TABLE, keysFor, keyLabel, keyCapLabels, commandKey, matchesAccelerator } from "./keys.js";
 import { typePaths } from "./icon-paths.js";
 import { createDemo, references, formats } from "./demo-model.mjs";
 const el = (tag, props = {}, ...children) => { const node = Object.assign(document.createElement(tag), props); node.append(...children); return node; };
@@ -14,7 +14,7 @@ export function setupDemo() {
   const figure = document.querySelector("[data-picker]"), result = document.querySelector("[data-result]");
   if (!figure || !result) return;
   const section = figure.closest("section"), anchorBottom = section.getBoundingClientRect().bottom;
-  const model = createDemo(), state = model.state, mac = document.documentElement.dataset.platform === "macos";
+  const model = createDemo(), state = model.state, platform = document.documentElement.dataset.platform ?? "linux", mac = platform === "macos";
   const sentence = result.firstChild.textContent.trim();
   result.tabIndex = -1;
   const input = el("input", { type: "search", value: state.query, placeholder: "Search references", autocomplete: "off" });
@@ -28,10 +28,26 @@ export function setupDemo() {
   const list = el("ul", { id: "demo-results", className: "picker-results" });
   list.setAttribute("role", "listbox"); list.setAttribute("aria-label", "Best matches");
   const count = el("span"), output = el("code"), status = el("span", { className: "picker-status" });
-  const receipt = figure.querySelector(".copied-notice"), receiptOutput = receipt.querySelector("code");
+  output.dir = "ltr";
   // Keep the live region mounted so the first copy is announced.
   const announce = el("span", { className: "demo-status" }); announce.setAttribute("role", "status"); status.setAttribute("aria-hidden", "true");
   const copy = el("button", { type: "button", className: "picker-primary", textContent: "Copy" }), add = el("button", { type: "button", textContent: "Add" });
+  function keyCaps(accelerator) {
+    const caps = el("span", { className: "key-caps" }); caps.setAttribute("aria-hidden", "true");
+    for (const [index, label] of keyCapLabels(accelerator, mac).entries()) {
+      const cap = el("span", { className: "key-cap" });
+      if (index > 0 && platform === "linux") cap.append(el("span", { className: "key-plus", textContent: "+" }));
+      cap.append(el("kbd", { textContent: label })); caps.append(cap);
+    }
+    return caps;
+  }
+  function actionLabel(button, label, command) {
+    const accelerator = keysFor(command);
+    button.setAttribute("aria-label", label);
+    button.setAttribute("aria-keyshortcuts", accelerator);
+    button.title = `${label} (${keyLabel(accelerator, mac)})`;
+    button.replaceChildren(el("span", { className: "picker-action-label", textContent: label }), keyCaps(accelerator));
+  }
   const paste = el("button", { type: "button", className: "paste-slot" }, "Paste ", el("kbd", { textContent: keyLabel("CmdOrCtrl+V", mac) }));
   paste.setAttribute("aria-label", "Paste the copied citation into the sentence");
   const reopen = el("button", { type: "button", textContent: "Open the picker again", hidden: true });
@@ -48,14 +64,15 @@ export function setupDemo() {
   const mark = decoration("picker-mark"), beak = decoration("picker-beak"), closingBeak = decoration("picker-beak picker-beak-end");
   mark.append(el("img", { className: "logo-light", src: "assets/ibis-mark.svg", alt: "", width: 24, height: 24 }),
     el("img", { className: "logo-dark", src: "assets/ibis-mark-on-dark.svg", alt: "", width: 24, height: 24 }));
-  const shelf = el("div", { className: "picker-shelf" }, beak, output, closingBeak, status);
+  const citation = el("div", { className: "picker-citation" }, beak, output, closingBeak);
+  const shelf = el("div", { className: "picker-shelf" }, citation, status);
   const heading = el("p", { className: "picker-meta" }, el("span", { textContent: "Best matches" }), count);
   const actions = el("div", { className: "picker-actions" }, add, copy);
   actions.setAttribute("role", "group"); actions.setAttribute("aria-label", "Keys");
   const panel = el("div", { className: "picker-panel" }, el("div", { className: "picker-search" },
     el("div", { className: "picker-field" }, mark, input), el("div", { className: "picker-controls" }, clear, format)),
     el("div", { className: "picker-middle" }, heading, list), shelf,
-    el("div", { className: "picker-foot" }, el("span", { className: "picker-library", title: `Sample references · ${references.length} references` }, decoration("picker-dot"), el("span", {}, `Sample references · ${references.length} references`)), actions));
+    el("div", { className: "picker-foot" }, el("span", { className: "picker-library", title: `Sample references · ${references.length}` }, decoration("picker-dot"), el("span", {}, `Sample references · ${references.length}`)), actions));
   panel.setAttribute("data-app-tokens", ""); panel.dataset.platform = "macos";
   // C12 source choices require an actually empty or missing library. This
   // fixed invented library stays loaded; an unmatched query keeps search
@@ -68,7 +85,7 @@ export function setupDemo() {
   const rows = new Map(references.map((ref, index) => {
     const tile = el("button", { type: "button", className: "tile", tabIndex: -1 }, icon(ref.kind));
     const row = el("div", { id: `demo-ref-${index}`, className: "pick", title: `${ref.title} · ${ref.authors} · ${ref.year} · ${ref.key}` }, tile,
-      el("span", { className: "ref" }, el("strong", { textContent: `Sample · ${ref.title}` }), el("span", { className: "sub", textContent: `${ref.authors} · ${ref.where}` })), el("span", { className: "ref-year", textContent: String(ref.year) }));
+      el("span", { className: "ref" }, el("strong", { textContent: ref.title }), el("span", { className: "sub", textContent: `${ref.authors} · ${ref.where}` })), el("span", { className: "ref-year", textContent: String(ref.year) }));
     row.setAttribute("role", "option");
     // Match the app's pointer ownership: a click leaves its row under the
     // pointer. Rendering is synchronous here; only the keyboard handler below
@@ -90,7 +107,7 @@ export function setupDemo() {
       row.classList.toggle("is-selected", selected); row.setAttribute("aria-selected", String(selected));
       const added = state.added.includes(ref.key); tile.classList.toggle("is-added", added); tile.replaceChildren(added ? "✓" : icon(ref.kind));
       tile.setAttribute("aria-label", `${added ? "Remove" : "Add"} ${ref.title}${added ? " from" : " to"} citation`); tile.setAttribute("aria-pressed", String(added));
-      row.setAttribute("aria-label", `Sample · ${ref.title}, ${ref.authors}, ${ref.year}, ${ref.where}, ${ref.key}${added ? ", added to citation" : ""}`);
+      row.setAttribute("aria-label", `${ref.title}, ${ref.authors}, ${ref.year}, ${ref.where}, ${ref.key}${added ? ", added to citation" : ""}`);
     }
     empty.hidden = found.length > 0;
     list.hidden = !found.length;
@@ -102,10 +119,9 @@ export function setupDemo() {
     shelf.toggleAttribute("data-copied", !!status.textContent);
     const feedback = state.copied ? `${state.pasted === state.copied ? "Pasted" : "Copied"} ${state.copied}` : "";
     if (announce.textContent !== feedback) announce.textContent = feedback;
-    receipt.hidden = !state.copied;
-    output.hidden = beak.hidden = !state.preview; shelf.hidden = !value || (!state.preview && !status.textContent);
-    copy.disabled = !value; copy.replaceChildren(`Copy ${state.added.length > 1 ? `${state.added.length} ` : ""}as ${formats[state.format]} `, el("kbd", { textContent: keyLabel(keysFor("copy"), mac) }));
-    add.disabled = !current; add.textContent = current && state.added.includes(current.key) ? "Remove" : "Add";
+    citation.hidden = !state.preview; shelf.hidden = !value || (!state.preview && !status.textContent);
+    copy.disabled = !value; actionLabel(copy, `Copy ${state.added.length > 1 ? `${state.added.length} ` : ""}as ${formats[state.format]}`, "copy");
+    add.disabled = !current; actionLabel(add, current && state.added.includes(current.key) ? "Remove" : "Add", "add");
     const pasted = state.pasted ? [" ", el("code", { className: "key", textContent: state.pasted })] : [];
     const waiting = state.copied && state.copied !== state.pasted ? [" ", paste] : [];
     const blank = !state.copied ? [" ", el("span", { className: "paste-gap", ariaHidden: "true", textContent: "\u00a0" })] : [];
@@ -113,12 +129,6 @@ export function setupDemo() {
   }
   function performCopy() {
     if (!model.copy()) return;
-    // The card owns the copy receipt, never the next search or format choice.
-    // Long clusters show their first citation and the remaining count in words.
-    const summary = createDemo(); summary.state.format = state.format;
-    summary.setQuery(state.added[0] || model.found()[state.selected].key);
-    receiptOutput.textContent = state.added.length > 1 ? `${summary.output()} +${state.added.length - 1} more` : state.copied;
-    receiptOutput.title = state.copied;
     render(); if (paste.isConnected) paste.focus();
   }
   function performPaste() { model.paste(); render(); result.focus({ preventScroll: true }); }

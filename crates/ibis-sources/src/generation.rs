@@ -242,6 +242,25 @@ impl GenerationStore {
         self.inner.state.lock().map_err(|_| StoreError::Unavailable)?.closed = true;
         Ok(())
     }
+    /// Invalidate before new work, even if that work later fails to stage.
+    pub fn invalidate(&self) -> Result<(), StoreError> {
+        let mut state = self.inner.state.lock().map_err(|_| StoreError::Unavailable)?;
+        state.operations.clear();
+        Ok(())
+    }
+    /// Retire only this configured source; retained readers keep their payload.
+    pub fn remove_library(&self, library: &LibraryId) -> Result<(), StoreError> {
+        let mut state = self.inner.state.lock().map_err(|_| StoreError::Unavailable)?;
+        if state.closed {
+            return Err(StoreError::Closed);
+        }
+        state.operations.remove(library);
+        let name = manifest_name(library);
+        if self.inner.directory.open_file(&name)?.is_some() {
+            self.inner.remove(&self.inner.directory.path().join(name))?;
+        }
+        self.inner.collect(&mut state)
+    }
     pub fn begin(&self, library: LibraryId, observation: Fingerprint) -> Result<GenerationWriter, StoreError> {
         let mut state = self.inner.state.lock().map_err(|_| StoreError::Unavailable)?;
         if state.closed {

@@ -36,7 +36,7 @@ struct Slot {
     path: PathBuf,
     loaded: Arc<LoadedLibrary>,
 }
-fn source_error(error: SourceError) -> EngineError {
+pub(super) fn source_error(error: SourceError) -> EngineError {
     super::error(match error {
         SourceError::TooLarge | SourceError::LoadLimit => ErrorCode::ResourceLimit,
         SourceError::NotRegular | SourceError::Unreadable | SourceError::Incomplete | SourceError::InvalidData => {
@@ -87,7 +87,7 @@ impl Engine {
                 return Err(error(ErrorCode::Cancelled));
             }
         }
-        let (mut loaded, observation) = if strict {
+        let (loaded, observation) = if strict {
             (
                 ibis_sources::reload_file_reusing(&path, self.snapshot()?.as_ref()).map_err(source_error)?,
                 None,
@@ -97,6 +97,17 @@ impl Engine {
             (loaded, Some(observation))
         };
         cancel.check()?;
+        self.install_file(path, loaded, observation, cancel)?;
+        drop(operation);
+        Ok(())
+    }
+    pub(super) fn install_file(
+        &self,
+        path: PathBuf,
+        mut loaded: LoadedLibrary,
+        observation: Option<ibis_sources::SourceSnapshot>,
+        cancel: &Cancellation,
+    ) -> Result<(), EngineError> {
         loaded.snapshot.reuse_unchanged(self.snapshot()?.as_ref());
         let mut registry = self.shared.sources.lock().map_err(|_| error(ErrorCode::Internal))?;
         let existing = registry
@@ -137,9 +148,9 @@ impl Engine {
         });
         let mut library_info = info(&loaded);
         library_info.watch_warning = watch_warning;
+        cancel.check()?;
         if let Err(error) = self.shared.install(library_info, &loaded.snapshot, previous) {
             drop(registry);
-            drop(operation);
             drop(watch);
             return Err(error);
         }
@@ -160,7 +171,6 @@ impl Engine {
                 None => watches.remove(&id),
             }
         };
-        drop(operation);
         drop(old);
         cancel.check()
     }
@@ -262,12 +272,12 @@ impl Engine {
             }
             None => None,
         };
-        let reload = reload || !self.state()?.zotero_ready;
+        let reload = reload || self.state()?.readiness.get(&None).is_some_and(|entry| !entry.1);
         let mut guard_error = None;
         let mut began = false;
         let mut on_full = || {
             if !began {
-                if let Err(failure) = self.shared.begin_zotero_read() {
+                if let Err(failure) = self.shared.begin_read(None) {
                     guard_error = Some(failure);
                     return Err(LiveError::Cancelled);
                 }
@@ -323,7 +333,7 @@ impl Engine {
                 // already began, and the copy guard does not tell them apart.
                 if code != ErrorCode::Cancelled {
                     if !began {
-                        self.shared.begin_zotero_read()?;
+                        self.shared.begin_read(None)?;
                     }
                     // A new choice that fails says nothing about the old one.
                     if chosen.is_none() {

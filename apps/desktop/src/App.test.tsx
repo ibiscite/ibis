@@ -1149,15 +1149,15 @@ test("opening a chosen library shows its name and searches only when ready", asy
   await waitFor(() => expect(calls).toContain("search"));
 });
 
-test("a reload keeps the previous library searchable and announces the reload", async () => {
+test("a reload keeps the previous library searchable without adding an opening screen", async () => {
   backend({
     library_status: () => ({ state: "reloading", has_snapshot: true, zotero: false, name: "refs.bib", snapshot_name: "refs.bib", references: 1, warnings: 0, error: null, problem: null, note: null }),
     search: () => [result("kept", "Kept reference")],
   });
   render(<App />);
-  const progress = await screen.findByRole("progressbar", { name: "Reloading refs.bib…" });
   await screen.findByText("Kept reference");
-  expect(progress.compareDocumentPosition(screen.getByRole("listbox")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 450)); });
+  expect(screen.queryByRole("progressbar")).toBeNull();
   expect(document.querySelector(".results-heading")).toBeNull();
 });
 
@@ -2131,7 +2131,8 @@ test("first-run setup lists found .bib files by name and folder, and opens one b
     open_found_library: (args) => { opened.push(args); return null; },
   });
   render(<App />);
-  pressRow(await screen.findByRole("option", { name: /^Look for libraries on this computer/ }));
+  pressRow(await screen.findByRole("option", { name: /^Find them on this computer/ }));
+  pressRow(await screen.findByRole("option", { name: /^Choose a found library/ }));
   await screen.findByRole("option", { name: /^thesis\.bib/ });
   const found = [...document.querySelectorAll<HTMLElement>("[data-key^='found-']")];
   expect(found.map((row) => row.querySelector(".choice-tag")?.textContent)).toEqual(["PhD", "Downloads"]);
@@ -2153,10 +2154,10 @@ test("a refused choice from an older list looks again and shows the new list", a
     open_found_library: () => { throw new Error("That file is no longer offered"); },
   });
   render(<App />);
-  pressRow(await screen.findByRole("option", { name: /^Look for libraries on this computer/ }));
-  pressRow(await screen.findByRole("option", { name: /^v1\.bib/ }));
-  expect(await screen.findByRole("option", { name: /^v2\.bib/ })).toBeTruthy();
-  expect(screen.queryByRole("option", { name: /^v1\.bib/ })).toBeNull();
+  pressRow(await screen.findByRole("option", { name: /^Find them on this computer/ }));
+  pressRow(await screen.findByRole("option", { name: /^Use v1\.bib/ }));
+  expect(await screen.findByRole("option", { name: /^Use v2\.bib/ })).toBeTruthy();
+  expect(screen.queryByRole("option", { name: /^Use v1\.bib/ })).toBeNull();
   expect(screen.getByText("That file could not be opened from the list. Pick it again from the new list.")).toBeTruthy();
 });
 
@@ -2166,7 +2167,7 @@ test("when looking for libraries fails, setup still offers the file chooser and 
     find_sources: () => { throw new Error("synthetic failure"); },
   });
   render(<App />);
-  pressRow(await screen.findByRole("option", { name: /^Look for libraries on this computer/ }));
+  pressRow(await screen.findByRole("option", { name: /^Find them on this computer/ }));
   expect(await screen.findByText("Ibis could not look for libraries on this computer. Choose a file instead.")).toBeTruthy();
   expect(choiceRow(FILE_ROW).getAttribute("aria-disabled")).toBeNull();
   expect(choiceRow(/^Zotero/).getAttribute("aria-disabled")).toBeNull();
@@ -2181,7 +2182,7 @@ test("setup failures go away once a library is chosen", async () => {
     find_sources: () => { throw new Error("synthetic failure"); },
   });
   render(<App />);
-  pressRow(await screen.findByRole("option", { name: /^Look for libraries on this computer/ }));
+  pressRow(await screen.findByRole("option", { name: /^Find them on this computer/ }));
   const failure = "Ibis could not look for libraries on this computer. Choose a file instead.";
   await screen.findByText(failure);
   status = { ...NO_LIBRARY, state: "loaded", has_snapshot: true, name: "refs.bib", snapshot_name: "refs.bib", references: 1 };
@@ -2189,20 +2190,17 @@ test("setup failures go away once a library is chosen", async () => {
   await waitFor(() => expect(screen.queryByText(failure)).toBeNull());
 });
 
-test("setup says what it found, says when it found nothing, and Look again keeps focus", async () => {
-  let answer: unknown = { zotero: "available", list: 1, files: [{ name: "refs.bib", folder: "" }], cut_short: false };
+test("setup replaces Find with its discovered file and leaves a usable focused tile", async () => {
+  const answer = { zotero: "available", list: 1, files: [{ name: "refs.bib", folder: "Documents" }], cut_short: false };
   backend({ library_status: () => NO_LIBRARY, find_sources: () => answer });
   render(<App />);
-  pressRow(await screen.findByRole("option", { name: /^Look for libraries on this computer/ }));
-  await waitFor(() => expect(choiceRow(/^Look again/).textContent).toContain("Zotero is open. 1 .bib file found."));
+  pressRow(await screen.findByRole("option", { name: /^Find them on this computer/ }));
+  const file = await screen.findByRole("option", { name: /^Use refs\.bib/ });
+  expect(file.textContent).toContain("Found in Documents");
   expect(choiceRow(/^Zotero/).textContent).toContain("Found on this");
-  expect(choiceRow(/^refs\.bib/)).toBeTruthy();
-  answer = { zotero: "absent", list: 2, files: [], cut_short: false };
-  const again = choiceRow(/^Look again/);
-  pressRow(again);
-  await waitFor(() => expect(choiceRow(/^Look again/).textContent).toContain("No Zotero or .bib files found nearby. Choose the file yourself."));
-  expect(document.activeElement).toBe(choiceRow(/^Look again/));
-  expect(document.querySelector("[data-key^='found-']")).toBeNull();
+  expect(screen.queryByRole("option", { name: /^Look again/ })).toBeNull();
+  expect(screen.getAllByRole("option")).toHaveLength(4);
+  expect(document.activeElement).toBe(file);
 });
 
 function zoteroStatus(libraries: unknown[]) {
@@ -2420,7 +2418,7 @@ test("two Zotero libraries turned on before the first is reported are both kept,
 test("when Zotero refuses other apps and no files are found, setup explains Zotero without saying nothing was found", async () => {
   backend({ library_status: () => NO_LIBRARY, find_sources: () => ({ zotero: "access_off", list: 1, files: [], cut_short: false }) });
   render(<App />);
-  pressRow(await screen.findByRole("option", { name: /^Look for libraries on this computer/ }));
+  pressRow(await screen.findByRole("option", { name: /^Find them on this computer/ }));
   expect(await screen.findByText(/To read your references, in Zotero/)).toBeTruthy();
   expect(screen.queryByText(/No Zotero or .bib files found/)).toBeNull();
 });
@@ -2758,13 +2756,13 @@ test("? lists every key in a modal dialog, but a ? typed in the search is text",
   expect(document.activeElement).toBe(close);
   // Each group's heading names where its keys work; each row is action, then keys.
   const groups = within(dialog).getAllByRole("rowgroup").slice(1).map((group) => within(group).getAllByRole("row").map((row) => [...row.children].map((cell) => cell.textContent)));
-  expect(groups.map((group) => group[0])).toEqual([["In the search box"], ["Anywhere in Ibis"], ["In a menu"], ["From any app"]].slice(0, groups.length));
+  expect(groups.map((group) => group[0])).toEqual([["In the search box"], ["Anywhere in Ibis"], ["From any app"]].slice(0, groups.length));
   const rows = groups.flatMap((group) => group.slice(1));
   expect(groups[0]).toContainEqual(["Paste or copy the highlighted reference, or the ones added to the citation, as the footer says", "Enter"]);
   expect(groups[0]).toContainEqual(["Add the highlighted reference to the citation, or remove it", "Shift+Enter"]);
   expect(groups[1]).toContainEqual(["Open or close More", "Ctrl+K"]);
   expect(rows).toContainEqual(["Show this list (? works outside the search box)", "Ctrl+/ or ?"]);
-  expect(groups[2]).toContainEqual(["Go to the first or last item", "Home or End"]);
+  expect(rows.some(([action]) => action === "Go to the first or last item")).toBe(false);
   // The global shortcut, labelled for this platform, is listed once it works.
   await waitFor(() => expect(within(dialog).getAllByRole("row").at(-1)?.textContent).toBe("Open IbisCtrl+Shift+Y"));
   // Focus stays in the dialog, and the picker's keys wait until it closes.

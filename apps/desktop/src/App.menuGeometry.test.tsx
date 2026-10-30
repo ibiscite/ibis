@@ -247,3 +247,19 @@ test("startup shortcut notices belong to the middle scroller beside other notice
   expect(notice.closest(".picker-content")).not.toBeNull();
   expect(notice.closest(".notices")).not.toBeNull();
 });
+
+test.each([false, true])("desktop shortcut guidance appears once and its notice stays in the middle scroller (welcome=%s)", async (welcome) => {
+  const guidance = "Use the desktop shortcut controls for Ibis.";
+  backend({
+    shortcut_status: () => ({ shortcut: "Alt+Y", registered: false, error: "Synthetic desktop shortcut refusal", desktop: { configurable: true, guidance } }),
+    library_status: () => ({ state: welcome ? "none" : "loaded", has_snapshot: !welcome, zotero: false, name: welcome ? null : "invented.bib",
+      snapshot_name: welcome ? null : "invented.bib", references: welcome ? 0 : 1, warnings: 0, error: null, problem: null, note: null }),
+  });
+  render(<App />);
+  if (welcome) await screen.findByRole("listbox", { name: "Where do your references live?" });
+  const notice = await screen.findByText(/Synthetic desktop shortcut refusal/);
+  expect(screen.getAllByText(guidance, { exact: false })).toHaveLength(1);
+  expect(notice.textContent?.includes(guidance)).toBe(!welcome);
+  expect(notice.closest(".notices")?.closest(".picker-content")).not.toBeNull();
+  expect(document.querySelector("main")?.firstElementChild).toBe(document.querySelector(".search-bar"));
+});

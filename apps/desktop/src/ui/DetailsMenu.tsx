@@ -39,7 +39,7 @@ export function DetailsMenu({ id, anchor, returnFocusRef, title, heading = title
   // band. If its cause leaves view or even one control cannot fit, dismiss it
   // with edits kept and Search focused, rather than detaching or clipping it.
   const boundary = useMenuBoundary(true, undefined, trigger, { overlayRef: frame, scrollRef: scroll, onAnchorUnavailable: () => close(false) });
-  return <Popover ref={frame} className="menu-popover details-menu" trigger="DetailsMenu" triggerRef={trigger} isOpen
+  return <Popover ref={frame} className="menu-popover details-menu ui-overlay" trigger="DetailsMenu" triggerRef={trigger} isOpen
     placement={placement} offset={6} containerPadding={8} scrollRef={scroll} shouldSkipAnimation {...boundary}
     style={{ zIndex: "var(--z-overlay)" }} onOpenChange={(open) => { if (!open) close(); }}>
       <div className="details-menu-events" onKeyDown={(event) => {

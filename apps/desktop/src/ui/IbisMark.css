@@ -1,0 +1,10 @@
+/* Normal modes keep the generated brand colours and orientation, including RTL. */
+.ibis-mark { display: block; flex: none; transform: none; forced-color-adjust: none; }
+@media (prefers-contrast: more), (forced-colors: active) {
+  /* Repaint the rendered bird, keeping the generated eye mask black and white.
+     Remove depth and its shaded-eye duplicate so the silhouette is flat. */
+  .ibis-mark > g [fill]:not([fill="none"]) { fill: CanvasText; }
+  .ibis-mark > g [stroke]:not([stroke="none"]) { stroke: CanvasText; }
+  .ibis-mark > g [filter] { filter: none; }
+  .ibis-mark .eyeshade { display: none; }
+}

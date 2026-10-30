@@ -244,6 +244,7 @@ test("Tab wraps both ways inside the anchored details menu while picker shortcut
   fireEvent.click(screen.getByRole("button", { name: "Reference segment" }));
   const close = screen.getByRole("button", { name: "Close" });
   const last = screen.getByRole("button", { name: "Last action" });
+  expect(screen.getByRole("dialog", { name: "Citation details" }).closest(".ui-overlay")).not.toBeNull();
   await act(async () => { close.focus(); });
   for (const composition of [{ isComposing: true }, { keyCode: 229 }]) {
     fireEvent.keyDown(close, { key: "Tab", shiftKey: true, ...composition });
