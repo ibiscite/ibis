@@ -1451,7 +1451,7 @@ class Tests(unittest.TestCase):
     @unittest.skipUnless(shutil.which("node"), "Node is required for the macOS picker provider contract")
     def test_macos_picker_requires_owned_unique_visible_and_native_focused_window(self):
         model = r'''
-const scenario = process.argv[1];
+function check(scenario) {
 let censusReads = 0;
 const ObjC = {import(name) {
   if (scenario === 'helper-missing' && name === 'CoreGraphics') throw Object.assign(Error('synthetic-private-sentinel'), {errorNumber: -1728});
@@ -1503,30 +1503,50 @@ $.AXUIElementGetPid = (item, result) => {
 };
 const Application = () => { throw Error('Picker readiness must use CG/AX, without System Events'); };
 '''
-        for scenario in ("success", "hidden", "title", "duplicate", "foreign", "unknown", "owner-error", "wrong-focus-title", "offer-focused", "unavailable-visible", "cg-foreign", "cg-unknown", "cg-unavailable",
-                         "focused-wrong-type", "window-wrong-type", "title-wrong-type", "helper-missing", "object-absent", "offer-hides-picker", "close-reopen"):
+        scenarios = ("success", "hidden", "title", "duplicate", "foreign", "unknown", "owner-error", "wrong-focus-title", "offer-focused", "unavailable-visible", "cg-foreign", "cg-unknown", "cg-unavailable",
+                     "focused-wrong-type", "window-wrong-type", "title-wrong-type", "helper-missing", "object-absent", "offer-hides-picker", "close-reopen")
+        # Pay Node startup once, including on slow Windows runners. Each scenario
+        # gets fresh mock state and runs the unchanged production script.
+        driver = r'''
+  return scenario === 'close-reopen' ? [run(['42']), run(['42']), run(['42'])] : run(['42']);
+}
+const results = JSON.parse(process.argv[1]).map(scenario => {
+  try { return {value: check(scenario)}; }
+  catch (error) { return {error: error.message}; }
+});
+process.stdout.write(JSON.stringify(results));
+'''
+        result = subprocess.run([shutil.which("node"), "-e", model + MACOS_PICKER + driver, json.dumps(scenarios)],
+                                capture_output=True, timeout=5)
+        self.assertEqual(result.returncode, 0, result.stderr.decode("utf-8", errors="replace"))
+        self.assertNotIn(b"synthetic-private-sentinel", result.stdout + result.stderr)
+        results = json.loads(result.stdout)
+        self.assertEqual(len(results), len(scenarios))
+        errors = {"duplicate": ("unique", None),
+                  "unknown": ("ax-focused-copy", -1),
+                  "owner-error": ("ax-owner", -1),
+                  "cg-unknown": ("cg-windows", None),
+                  "cg-unavailable": ("cg-bridge", None),
+                  "focused-wrong-type": ("ax-focused-bridge", None),
+                  "window-wrong-type": ("ax-window-bridge", None),
+                  "title-wrong-type": ("ax-title-bridge", None),
+                  "helper-missing": ("frameworks", -1728),
+                  "object-absent": ("ax-focused-read", -1728)}
+        for scenario, outcome in zip(scenarios, results):
             with self.subTest(scenario=scenario):
-                invocation = "JSON.stringify([run(['42']), run(['42']), run(['42'])])" if scenario == "close-reopen" else "run(['42'])"
-                result = subprocess.run([shutil.which("node"), "-e", model + MACOS_PICKER + "\nprocess.stdout.write(" + invocation + ");", scenario],
-                                        capture_output=True, timeout=5)
-                if scenario in ("helper-missing", "object-absent"):
-                    self.assertEqual(result.returncode, 0, "native failures need a fixed-label answer")
-                    with self.assertRaisesRegex(AssertionError, "frameworks|ax-focused-read") as failure:
-                        picker_result(result.stdout, {42})
+                self.assertEqual(set(outcome), {"value"})
+                if scenario in errors:
+                    with self.assertRaises(PickerObservationFailure) as failure:
+                        picker_result(outcome["value"], {42})
+                    stage, code = errors[scenario]
+                    self.assertEqual(str(failure.exception), f"native picker observation unavailable ({stage}, code {code})")
                     self.assertNotIn("synthetic-private-sentinel", str(failure.exception))
-                    self.assertNotIn(b"synthetic-private-sentinel", result.stdout + result.stderr)
                 elif scenario == "close-reopen":
-                    self.assertEqual(result.returncode, 0)
-                    self.assertEqual([picker_result(answer, {42}) for answer in json.loads(result.stdout)],
+                    self.assertEqual([picker_result(answer, {42}) for answer in outcome["value"]],
                                      [(42, "picker"), None, (42, "picker")])
-                elif scenario in ("duplicate", "unknown", "owner-error", "cg-unknown", "cg-unavailable", "focused-wrong-type", "window-wrong-type", "title-wrong-type"):
-                    self.assertEqual(result.returncode, 0)
-                    with self.assertRaises(AssertionError):
-                        picker_result(result.stdout, {42})
                 else:
-                    self.assertEqual(result.returncode, 0, result.stderr.decode("utf-8", errors="replace"))
                     expected = (42, "offer") if scenario == "offer-focused" else (42, "picker") if scenario in ("success", "unavailable-visible") else None
-                    self.assertEqual(picker_result(result.stdout, {42}), expected)
+                    self.assertEqual(picker_result(outcome["value"], {42}), expected)
 
     def test_linux_picker_accepts_an_immediate_owned_offer_without_accepting_foreign_or_duplicate_modals(self):
         for scenario in ("offer", "foreign", "duplicate"):
