@@ -9,7 +9,7 @@ import { budgetTest } from "./preview-budgets.mjs";
 test("the approved release boundary reports before 0.3 and enforces every later tag", () => {
   for (const ref of ["refs/heads/main", "refs/heads/fix/preview", "refs/tags/v0.1.1", "refs/tags/v0.2.0", "refs/tags/v0.2.99"]) assert.equal(budgetTest(ref), "open_refresh_report", ref);
   for (const ref of ["refs/tags/v0.3.0", "refs/tags/v0.3.0-rc.1", "refs/tags/v0.10.0", "refs/tags/v1.0.0", "refs/tags/v12.0.0"]) assert.equal(budgetTest(ref), "open_refresh_budget", ref);
-  for (const ref of ["", "v0.2.1", "refs/tags/v0.02.1", "refs/tags/vgarbage", "refs/tags/v0.2.1\nprivate", "refs/tags/nightly"]) assert.throws(() => budgetTest(ref), /Invalid build ref/, ref);
+  for (const ref of ["", "v0.2.1", "refs/tags/v0.02.1", "refs/tags/vgarbage", "refs/tags/v0.2.1\nprivate", "refs/tags/nightly", "refs/tags/v0.2.1-.", "refs/tags/v0.2.1-01", "refs/tags/v0.2.1-a..b"]) assert.throws(() => budgetTest(ref), /Invalid build ref/, ref);
 });
 
 test("real command failures stay fatal in report mode and numbers reach the job summary", { skip: process.platform === "win32" }, (t) => {

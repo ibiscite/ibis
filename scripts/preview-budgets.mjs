@@ -5,8 +5,8 @@ import { pathToFileURL } from "node:url";
 
 export function budgetTest(ref) {
   if (/^refs\/heads\/[^\s]+$/.test(ref)) return "open_refresh_report";
-  const version = /^refs\/tags\/v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?$/.exec(ref);
-  if (!version) throw new Error("Invalid build ref");
+  const version = /^refs\/tags\/v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/.exec(ref);
+  if (!version || version[4]?.split(".").some((part) => /^0\d+$/.test(part))) throw new Error("Invalid build ref");
   return BigInt(version[1]) > 0n || BigInt(version[2]) >= 3n ? "open_refresh_budget" : "open_refresh_report";
 }
 
