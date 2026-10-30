@@ -37,15 +37,6 @@ try {
     </style></head><body><div id="fixture"></div></body></html>`);
     await page.addScriptTag({ content: script });
     await page.getByRole("button", { name: "Keys", exact: true }).waitFor();
-    assert.deepEqual(await page.locator(".result-title").evaluateAll((titles) => titles.flatMap((title) => {
-      const box = title.getBoundingClientRect(), row = title.closest(".ui-option"), bounds = row.getBoundingClientRect(), style = getComputedStyle(row);
-      const suffix = title.querySelector(".fixture-title-suffix"), range = document.createRange();
-      range.selectNodeContents(suffix);
-      const suffixRects = [...range.getClientRects()];
-      return title.scrollHeight > title.clientHeight + 1 || !suffixRects.length || suffixRects.some((rect) =>
-        rect.top < box.top - 1 || rect.bottom > box.bottom + 1 || rect.left < bounds.left + parseFloat(style.paddingLeft) - 1 || rect.right > bounds.right - parseFloat(style.paddingRight) + 1
-      ) ? ["distinguishing title suffix is clipped"] : [];
-    })), [], `${colorScheme}/${preference}/${scale} full titles remain distinguishable at minimum width`);
     // Long data and descriptions grow vertically, inside their existing pads.
     assert.deepEqual(await page.locator('.ui-option, .ui-settings-row').evaluateAll((rows) => rows.flatMap((row) => {
       const box = row.getBoundingClientRect(), style = getComputedStyle(row), issues = [];

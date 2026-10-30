@@ -3,8 +3,9 @@
 .ui-option[role="option"], .choice-row[role="option"] {
   min-inline-size: 0; max-inline-size: 100%; padding-block: calc(var(--space-2) - var(--border-width));
 }
-/* Full details cannot be opened yet, so even titles sharing a long prefix
-   must stay distinguishable. Their rows grow to show the whole title. */
+.ui-option .result-title {
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
+}
 .ui-option .result-meta { flex-wrap: nowrap; }
 .ui-option .result-byline, .ui-option .result-library { min-width: 0; }
 .ui-option .result-authors { flex: 0 10 auto; }

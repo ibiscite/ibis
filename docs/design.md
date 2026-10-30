@@ -425,7 +425,7 @@ grows to fit it with the same padding on every side: text never touches or
 crosses a row's fill, a card's edge or a control. Wrapped lines start where
 the first line starts, the trailing control or year stays centred on the
 block, and in Settings the control moves below the label rather than
-squeezing it. In results, show the whole title until full details can be opened, without
+squeezing it. In results, a title wraps to at most two lines and then ends in
 an ellipsis; the byline stays one line and shortens authors first ("Okonkwo,
 Haddad et al."), then the journal; the year never shrinks and sits level with
 the title's first line (centred with it in one-line Compact rows). **Hover card** (maintainer, 2026-10-30): resting the

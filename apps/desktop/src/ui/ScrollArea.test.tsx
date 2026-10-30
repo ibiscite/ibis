@@ -100,10 +100,38 @@ test("the fade is valid at either edge and every system shares the native scroll
   const tokens = css("../tokens.css");
   expect(tokens).toMatch(/--scrollbar-width: auto; --scrollbar-color: auto; --scroll-fade-size: 14px;/);
   expect(tokens).not.toMatch(/--scrollbar-width: thin/);
-  for (const preference of ["prefers-contrast: more", "prefers-reduced-transparency: reduce", "forced-colors: active"]) {
-    const fallback = area.slice(area.indexOf(`(${preference})`));
-    expect(fallback).toMatch(/-webkit-mask-image: none; mask-image: none/);
-  }
+});
+
+test.each(["normal", "prefers-contrast: more", "prefers-reduced-transparency: reduce", "forced-colors: active"])(
+  "with both scroll edges marked, %s selects the correct mask for each browser property", (preference) => {
+  const view = render(<div className="scroll-area" data-more-above data-more-below />);
+  const node = view.container.firstElementChild!;
+  const sheet = document.createElement("style");
+  sheet.textContent = css("./ScrollArea.css");
+  document.head.append(sheet);
+  try {
+    // jsdom does not evaluate media queries. Select the real applicable rules
+    // and compare their specificity before source order. ScrollArea's selectors
+    // use only classes and attributes, which each contribute one to specificity.
+    const active = [...sheet.sheet!.cssRules].flatMap((rule) => {
+      if (rule.type !== CSSRule.MEDIA_RULE) return [rule];
+      const media = rule as CSSMediaRule;
+      return media.conditionText.split(",").some((query) => query.trim() === `(${preference})`) ? [...media.cssRules] : [];
+    }).filter((rule): rule is CSSStyleRule => rule.type === CSSRule.STYLE_RULE);
+    const matching = active.flatMap((rule) => rule.selectorText.split(",").map((selector) => selector.trim())
+      .filter((selector) => node.matches(selector)).map((selector) => {
+        expect(selector).toMatch(/^\.scroll-area(?:\[[\w-]+\])*$/);
+        return { style: rule.style, specificity: (selector.match(/\.[\w-]+|\[[\w-]+\]/g) ?? []).length };
+      }));
+    for (const property of ["-webkit-mask-image", "mask-image"]) {
+      const winner = matching.filter(({ style }) => style.getPropertyValue(property))
+        .sort((a, b) => a.specificity - b.specificity).at(-1);
+      expect(winner, property).toBeTruthy();
+      const value = winner!.style.getPropertyValue(property);
+      if (preference === "normal") expect(value).toMatch(/^linear-gradient\(/);
+      else expect(value, `${preference}: ${property}`).toBe("none");
+    }
+  } finally { sheet.remove(); }
 });
 
 
