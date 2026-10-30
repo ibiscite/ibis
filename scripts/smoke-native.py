@@ -40,6 +40,13 @@ class NativeSetupFailure(RuntimeError):
     """A synthetic desktop precondition failed before Ibis was launched."""
 
 
+class WindowObservationFailure(RuntimeError):
+    """Window identity is unknown; it is never positive evidence of hiding."""
+
+    def __init__(self):
+        super().__init__("X11 window identity could not be established.")
+
+
 def native_session():
     try:
         native = Linux()
@@ -916,28 +923,46 @@ class Linux:
                 raise subprocess.TimeoutExpired(args, 20)
             return run(*args, timeout=remaining)
         try:
-            windows = query("xdotool", "search", "--onlyvisible", "--pid", str(pid)).splitlines()
+            try:
+                windows = query("xdotool", "search", "--onlyvisible", "--pid", str(pid)).splitlines()
+            except subprocess.CalledProcessError as error:
+                # xdotool documents exit 1 for a completed search with no match.
+                # A failed command/display query with diagnostics is uncertainty.
+                if error.returncode == 1 and not (error.output or "").strip() and not (error.stderr or "").strip():
+                    return None
+                raise
+            if not windows:
+                return None
             managed = managed_client_windows(query("xprop", "-root", "_NET_CLIENT_LIST"))
             if managed is None or len(windows) > CENSUS_WINDOWS:
-                return None
+                raise WindowObservationFailure()
             candidates = set()
             for window in windows:
                 if not re.fullmatch(r"[1-9][0-9]{0,9}", window):
-                    return None
+                    raise WindowObservationFailure()
+                if query("xdotool", "getwindowpid", window) != str(pid):
+                    raise WindowObservationFailure()
+                name = query("xdotool", "getwindowname", window)
                 if int(window) not in managed:
+                    if name == title:
+                        raise WindowObservationFailure()
                     continue
-                if query("xdotool", "getwindowpid", window) == str(pid) and query("xdotool", "getwindowname", window) == title:
+                if name == title:
                     candidates.add(window)
-            if len(candidates) != 1:
+                elif name != NOTICE_TITLE:
+                    raise WindowObservationFailure()
+            if not candidates:
                 return None
+            if len(candidates) != 1:
+                raise WindowObservationFailure()
             window = candidates.pop()
             # Refuse a destroyed/replaced candidate; the next observation
             # re-enumerates, so a closed window never supplies cached identity.
             if query("xdotool", "getwindowpid", window) != str(pid) or query("xdotool", "getwindowname", window) != title:
-                return None
+                raise WindowObservationFailure()
             return window
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError):
-            return None
+            raise WindowObservationFailure() from None
 
     def snapshot(self):
         nodes = []
@@ -1107,8 +1132,13 @@ def wait_for(predicate, description, timeout=20, *, interval=.1):
     with recording("request", f"wait-{sys._getframe(1).f_lineno}"):
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
-            if predicate():
-                return
+            try:
+                if predicate():
+                    return
+            except WindowObservationFailure:
+                # Mapping/withdrawal can race a query. Unknown is not a positive
+                # condition, including when the caller is waiting for hiding.
+                pass
             time.sleep(interval)
         raise AssertionError(f"Timed out: {description}")
 
@@ -2822,17 +2852,19 @@ class ContractTests(unittest.TestCase):
             {"managed": "0x1, 0x3"},
             {"names": {"1": "", "2": "Ibis", "3": "Ibis"}},
             {"names": {"1": "", "2": "", "3": NOTICE_TITLE}},
+            {"visible": "2", "managed": "0x3", "names": {"2": "Ibis"}},
+            {"visible": "2", "managed": "0x2", "names": {"2": "Unexpected title"}},
         ]
         for case in cases:
-            with self.subTest(case=case), patch(__name__ + ".run", side_effect=self.linux_window_query(**case)):
-                self.assertIsNone(linux.window(42, "Ibis"))
+            with self.subTest(case=case), patch(__name__ + ".run", side_effect=self.linux_window_query(**case)), self.assertRaises(WindowObservationFailure):
+                linux.window(42, "Ibis")
 
     def test_linux_window_refuses_io_uncertainty_and_does_not_cache_closed_identity(self):
         linux = Linux.__new__(Linux)
         for failed in (("xprop", "-root", "_NET_CLIENT_LIST"), ("xdotool", "getwindowname", "2"),
                        ("xdotool", "getwindowpid", "2")):
-            with self.subTest(failed=failed), patch(__name__ + ".run", side_effect=self.linux_window_query(fail=lambda args: args == failed)):
-                self.assertIsNone(linux.window(42, "Ibis"))
+            with self.subTest(failed=failed), patch(__name__ + ".run", side_effect=self.linux_window_query(fail=lambda args: args == failed)), self.assertRaises(WindowObservationFailure):
+                linux.window(42, "Ibis")
         with patch(__name__ + ".run", side_effect=self.linux_window_query()):
             self.assertEqual(linux.window(42, "Ibis"), "2")
         with patch(__name__ + ".run", side_effect=self.linux_window_query(visible="3", managed="0x3")):
@@ -2840,9 +2872,50 @@ class ContractTests(unittest.TestCase):
         with patch(__name__ + ".run", side_effect=self.linux_window_query(visible="4", managed="0x4", names={"4": "Ibis"}, owners={"4": "42"})):
             self.assertEqual(linux.window(42, "Ibis"), "4")
 
+    def test_linux_unknown_window_cannot_satisfy_the_real_escape_hidden_check(self):
+        linux = Linux.__new__(Linux)
+        linux.app = Mock(pid=42)
+        linux.atspi = Mock()
+        linux.atspi.Registry.getDesktop.return_value = []
+        linux.key = Mock()  # Escape does not hide either live managed client.
+        command = self.linux_window_query(names={"1": "", "2": "Ibis", "3": "Ibis"})
+        def active(*args, timeout=20):
+            if args == ("xdotool", "getactivewindow"):
+                return "2"
+            return command(*args, timeout=timeout)
+        with patch(__name__ + ".run", side_effect=active), self.assertRaises(WindowObservationFailure):
+            escape_to_hide(linux, linux.snapshot, "ambiguous picker must not count as hidden")
+        linux.key.assert_not_called()
+
+    def test_linux_completed_absence_is_distinct_from_uncertain_search(self):
+        linux = Linux.__new__(Linux)
+        for error in (subprocess.CalledProcessError(1, "synthetic", output="", stderr=""), None):
+            with patch(__name__ + ".run", side_effect=error, return_value=""):
+                self.assertIsNone(linux.window(42, "Ibis"))
+        for error in (subprocess.CalledProcessError(1, "synthetic", output="", stderr="private display failure"),
+                      subprocess.CalledProcessError(2, "synthetic", output="", stderr="")):
+            with patch(__name__ + ".run", side_effect=error), self.assertRaises(WindowObservationFailure) as caught:
+                linux.window(42, "Ibis")
+            self.assertNotIn("private", str(caught.exception))
+
+    def test_linux_unknown_visibility_waits_for_evidence_without_passing_hide(self):
+        clock = self.CopyClock()
+        clock.step = 0
+        def sleep(interval):
+            clock.elapsed += interval
+        unknown = WindowObservationFailure()
+        with patch("time.monotonic", clock.monotonic), patch("time.sleep", side_effect=sleep):
+            probe = Mock(side_effect=[unknown, True])
+            wait_for(probe, "observed after mapping", timeout=1)
+            self.assertEqual(probe.call_count, 2)
+            probe = Mock(side_effect=unknown)
+            with self.assertRaisesRegex(AssertionError, "Timed out: hiding remains unproved"):
+                wait_for(probe, "hiding remains unproved", timeout=.2)
+            self.assertGreaterEqual(probe.call_count, 1)
+
     def test_linux_window_title_is_explicit_for_synthetic_editor(self):
         linux = Linux.__new__(Linux)
-        command = self.linux_window_query(names={"1": "", "2": "Ibis synthetic editor", "3": "Ibis"})
+        command = self.linux_window_query(names={"1": "", "2": "Ibis synthetic editor", "3": NOTICE_TITLE})
         with patch(__name__ + ".run", side_effect=command):
             self.assertEqual(linux.window(42, "Ibis synthetic editor"), "2")
 
@@ -2861,8 +2934,8 @@ class ContractTests(unittest.TestCase):
         def bounded(*args, timeout):
             remaining.append(timeout)
             return command(*args, timeout=timeout)
-        with patch("time.monotonic", side_effect=[0, 0, 5, 10, 19, 20]), patch(__name__ + ".run", side_effect=bounded):
-            self.assertIsNone(linux.window(42, "Ibis"))
+        with patch("time.monotonic", side_effect=[0, 0, 5, 10, 19, 20]), patch(__name__ + ".run", side_effect=bounded), self.assertRaises(WindowObservationFailure):
+            linux.window(42, "Ibis")
         self.assertEqual(remaining, [20, 15, 10, 1])
 
     def test_linux_window_refuses_replaced_owner_and_subprocess_timeout(self):
@@ -2873,11 +2946,11 @@ class ContractTests(unittest.TestCase):
             if args == ("xdotool", "getwindowpid", "2"):
                 return next(owners)
             return command(*args, timeout=timeout)
-        with patch(__name__ + ".run", side_effect=replaced):
-            self.assertIsNone(linux.window(42, "Ibis"))
+        with patch(__name__ + ".run", side_effect=replaced), self.assertRaises(WindowObservationFailure):
+            linux.window(42, "Ibis")
         for error in (subprocess.TimeoutExpired("synthetic", 20), OSError("private native failure")):
-            with self.subTest(error=type(error).__name__), patch(__name__ + ".run", side_effect=error):
-                self.assertIsNone(linux.window(42, "Ibis"))
+            with self.subTest(error=type(error).__name__), patch(__name__ + ".run", side_effect=error), self.assertRaises(WindowObservationFailure):
+                linux.window(42, "Ibis")
 
     def test_linux_window_selection_does_not_depend_on_the_expected_hints(self):
         linux = Linux.__new__(Linux)
