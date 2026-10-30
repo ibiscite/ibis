@@ -2032,11 +2032,13 @@ version = "0.2.1"
 dependencies = [
  "auto-launch",
  "clipboard-win",
+ "dunce",
  "gtk",
  "ibis",
  "ibis-core",
  "ibis-engine",
  "ibis-zotero-local",
+ "image",
  "objc2-app-kit",
  "objc2-core-graphics",
  "objc2-foundation",

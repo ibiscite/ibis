@@ -1,34 +1,45 @@
 import type { RefObject } from "react";
 import type { LibraryStatus, ZoteroLibrary } from "../../api";
+import type { SystemIcon } from "../../bindings";
 import { LibraryDetail, LibraryStatusLine, zoteroLibraryNames } from "../../LibraryStatusLine";
 import { libraryMessages, pickerText } from "../../messages";
-import { Button } from "../../ui/Button";
+import { SourceAction, type SourceActionProps } from "../../ui/SourceAction";
+import { keyLabel, keysFor } from "../../keys";
+import { isMac } from "../../platform";
 import { MenuItem, MenuSection } from "../../ui/Menu";
 
 export type LibraryScope = { offered: ZoteroLibrary[]; isChosen: (choice: ZoteroLibrary) => boolean; chosenCount: number;
   name: (choice: ZoteroLibrary) => string; toggle: (choice: ZoteroLibrary) => void };
 
-export function PickerLibraryStatus({ library, groupName, isOpen, onOpenChange, searchRef, zotero, actions, failure }: {
+export function PickerLibraryStatus({ library, groupName, isOpen, onOpenChange, searchRef, zotero, actions, failure, sourceFailure, sourceAction, statusIcon }: {
   library: LibraryStatus | null | undefined; groupName: (id: number) => string;
   isOpen: boolean; onOpenChange: (open: boolean) => void; searchRef: RefObject<HTMLElement | null>;
   zotero: LibraryScope | null;
-  actions: { choose: () => void; reload: () => void; openZotero: () => void; useZotero: () => void };
+  actions: { choose: () => void; find: () => void; reload: () => void; openZotero: () => void; useZotero: () => void };
+  sourceAction: SourceActionProps;
   failure?: string | null;
+  sourceFailure: boolean;
+  statusIcon: SystemIcon | null;
 }) {
   const detail = libraryMessages.detail(library, Date.now(), (status) => zoteroLibraryNames(status, groupName));
   // The engine's problem code chooses the action. A closed Zotero with a
   // usable fresh snapshot has no problem and offers no interruption.
-  const fix = library?.error || library?.stale ? library?.problem === "missing" && !library.zotero
-    ? { label: pickerText.findSource, run: actions.choose }
-    : library?.zotero ? { label: pickerText.openZotero, run: actions.openZotero }
-    : { label: pickerText.reload, run: actions.reload } : null;
+  const libraryAction = { ...sourceAction, icon: statusIcon, file: !(library?.snapshot_zotero ?? library?.zotero) };
+  const failedChoice = library?.has_snapshot && library.error && !library.stale;
+  const fix: SourceActionProps | null = sourceFailure ? sourceAction : failedChoice
+    ? { ...libraryAction, label: pickerText.chooseLibraryMenu, keys: keysFor("chooseSource"), open: actions.choose }
+    : library?.error || library?.stale
+    ? !library.zotero && (library.problem === "missing" || !sourceAction.file)
+      ? { ...libraryAction, label: pickerText.findSourceFile(library.name), keys: library.stale && sourceAction.file ? sourceAction.keys : undefined, open: actions.find }
+      : library?.zotero ? { ...libraryAction, label: pickerText.openZotero, open: actions.openZotero }
+      : sourceAction : failure ? { ...sourceAction, label: pickerText.chooseLibraryMenu, keys: keysFor("chooseSource"), open: actions.choose } : null;
   return <LibraryStatusLine library={library} groupName={groupName} failure={failure}
-    action={fix && <Button variant="quiet" size="small" className="library-inline-action" onPress={fix.run}>{fix.label}</Button>}
+    action={fix && <SourceAction {...fix} />}
     menu={{ label: pickerText.libraryRegion, id: "library-menu",
       isOpen, onOpenChange, tabFocusRef: searchRef, placement: "top end", children: <>
         <MenuSection id="library-detail" label={detail.filter(Boolean).join(". ")} header={<LibraryDetail lines={detail} />}>
           {library?.name && <MenuItem id="reload" label={pickerText.reloadLibrary} onAction={actions.reload} />}
-          <MenuItem id="choose" label={pickerText.chooseLibraryMenu} onAction={actions.choose} />
+          <MenuItem id="choose" label={pickerText.chooseLibraryMenu} keys={keyLabel(keysFor("chooseSource"), isMac)} onAction={actions.choose} />
           {!library?.zotero && <MenuItem id="zotero" label={pickerText.useZotero} onAction={actions.useZotero} />}
         </MenuSection>
         {zotero && zotero.offered.length > 1 && <MenuSection id="library-scope" label={pickerText.zoteroLibraries} layout="chips">

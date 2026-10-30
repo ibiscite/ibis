@@ -1,6 +1,6 @@
 import * as nativeApi from "./api";
 import { keyText, libraryMessages, operationFailures as FAILURE_MESSAGES, pickerText } from "./messages";
-import { KEY_TABLE, type KeyBinding } from "./keys";
+import { KEY_TABLE, keysFor, type KeyBinding } from "./keys";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { LibrarySetup, SampleLibraryExit } from "./LibrarySetup";
 import { focusChoices } from "./ui/ChoiceList";
@@ -12,7 +12,7 @@ import { isMac } from "./platform";
 import { choiceKey, idKey, styleOf, type Choice, type CitationReference } from "./features/picker/choice";
 import { enterLabel } from "./features/picker/enterLabel";
 import { useDeliveryTarget } from "./features/picker/useDeliveryTarget";
-import { composing, isFormatShortcut, isKeysShortcut, isMenuShortcut, isPinShortcut, isPreviewShortcut, isQuitShortcut, isSettingsShortcut, isSourceShortcut } from "./features/picker/shortcuts";
+import { composing, isFormatShortcut, isKeysShortcut, isMenuShortcut, isPinShortcut, isPreviewShortcut, isQuitShortcut, isSettingsShortcut, isSourceShortcut, isChooseSourceShortcut } from "./features/picker/shortcuts";
 import { PickerHeader } from "./features/picker/PickerHeader";
 import { Notices, libraryOperations, type Operation } from "./features/picker/Notices";
 import { CitationShelf } from "./features/picker/CitationShelf";
@@ -22,6 +22,7 @@ import { EmptyState } from "./features/picker/EmptyState";
 import { useFitWindow } from "./features/picker/useFitWindow";
 import { PickerLibraryStatus } from "./features/picker/PickerLibraryStatus";
 import { useLibraryStatus } from "./features/picker/useLibraryStatus";
+import { SourceIcon, type SourceActionProps } from "./ui/SourceAction";
 import { useSourceOpen } from "./features/picker/useSourceOpen";
 import { PickerFooter } from "./features/picker/PickerFooter";
 import { PickerMenu } from "./features/picker/PickerMenu";
@@ -51,7 +52,7 @@ const noSelection = new Map<string, CitationReference>();
 export type PickerApi = Pick<typeof nativeApi,
   "chooseLibrary" | "useZotero" | "libraryStatus" | "reloadLibrary" | "previewFileCitation" | "copyFileCitation" | "copyFormat" | "pickerPreferences" | "setPickerPreferences" |
   "hidePicker" | "pickerVisible" | "setPinned" | "onLibraryChanged" | "onPickerShown" | "onPickerHidden" | "quit" | "search" | "shortcutStatus"> &
-  Partial<Pick<typeof nativeApi, "openLibrarySource" | "useSampleLibrary" | "useZoteroLibraries" | "zoteroGroups" | "pickerDestination" | "rememberAppOutput" | "forgetAppOutputs" | "fitPicker" | "findSources" | "openFoundLibrary" | "rowContext" | "showCopiedNotice" | "loginItem" | "setLoginItem" | "onUpdateProgress" | "updateChecks" | "setUpdateChecks" | "onUpdateChecks" | "updateAvailable" | "onUpdateAvailable" | "checkForUpdates" | "onShortcutStatus" | "openSettings" | "onPreferencesChanged">>;
+  Partial<Pick<typeof nativeApi, "openLibrarySource" | "librarySource" | "useSampleLibrary" | "useZoteroLibraries" | "zoteroGroups" | "pickerDestination" | "rememberAppOutput" | "forgetAppOutputs" | "fitPicker" | "findSources" | "openFoundLibrary" | "rowContext" | "showCopiedNotice" | "loginItem" | "setLoginItem" | "onUpdateProgress" | "updateChecks" | "setUpdateChecks" | "onUpdateChecks" | "updateAvailable" | "onUpdateAvailable" | "checkForUpdates" | "onShortcutStatus" | "openSettings" | "onPreferencesChanged">>;
 
 export type PickerPreview = { query?: string; copied?: Copied };
 
@@ -104,10 +105,10 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const quitAfterSaving = () => destination.quitAfterSaving(quitPreferences);
   const style = styleOf(format);
   const { library, libraryVersion, refreshSnapshot } = useLibraryStatus(api, report, cancelCopy);
-  const sourceOpen = useSourceOpen(api.openLibrarySource, library, state.visibility);
+  const [choosingLibrary, setChoosingLibrary] = useState(false);
   const busy = library?.state === "loading" || library?.state === "reloading";
   const blocked = library?.state === "error" && !library.has_snapshot;
-  const libraryChoices = library?.state === "none" || blocked || library?.state === "loaded" && library.has_snapshot && library.references === 0;
+  const libraryChoices = choosingLibrary || library?.state === "none" || blocked || library?.state === "loaded" && library.has_snapshot && library.references === 0;
   const showCitations = !libraryChoices;
   const { queryKey, results, current, interpretation, list, announcement, resultsQuery, error, pending: searchPending } =
     useLibrarySearch({ search, query, interpretLocators, library, statusFailed: failures.status ?? false, libraryVersion, sessionId: state.session, isCurrentSession, setActive, refreshSnapshot });
@@ -151,6 +152,11 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
         output: destination.copyToken() } });
   });
   // Setup failures belong to the setup screen; they go when a library is chosen.
+  const choosingFrom = useRef(library);
+  useEffect(() => {
+    if (choosingLibrary && library !== choosingFrom.current) setChoosingLibrary(false);
+    choosingFrom.current = library;
+  }, [library, choosingLibrary]);
   const setupDone = library !== undefined && library?.state !== "none";
   useEffect(() => {
     if (setupDone) setFailures(({ findSources: _found, openFound: _opened, ...rest }) => rest);
@@ -390,17 +396,29 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     input.current?.focus();
     void perform(operation, action);
   };
-  const openSource = (zoteroOnly = false) => {
+  const sourceItem = !libraryChoices ? current[active]?.id ?? (selected.size === 1 ? [...selected.values()][0]?.id : null) ?? null : null;
+  const sourceOpen = useSourceOpen(api, library, state.visibility, sourceItem, sourceItem === null, refreshSnapshot);
+  const chooseSources = () => { cancelCopy(); closeMenu(false); setKeysOpen(false); setChoosingLibrary(true); };
+  const chooseFile = () => runFromMenu("choose", chooseLibrary);
+  const missingSelected = sourceItem !== null && library?.stale && library.problem === "missing" && !library.zotero;
+  const openSource = (appOnly = false, reveal = altHeld) => {
     cancelCopy();
     closeMenu(false);
     setKeysOpen(false);
     if (formatButtonRef.current?.getAttribute("aria-expanded") === "true") formatButtonRef.current.click();
-    const item = !libraryChoices ? current[active]?.id ?? null : null;
-    sourceOpen.run(zoteroOnly ? null : item, zoteroOnly);
+    if (missingSelected && !appOnly) { chooseFile(); return; }
+    if (sourceOpen.failure && !sourceOpen.failure.changed && !appOnly) {
+      if (sourceOpen.failure.kind === "file") chooseFile();
+      else chooseSources();
+    } else sourceOpen.run(reveal, appOnly);
   };
-  const sourceLabel = library && !library.sample && (library.name || library.has_snapshot)
-    ? (library.has_snapshot ? library.snapshot_zotero : library.zotero) ? pickerText.showInZotero
-      : pickerText.openSource(library.has_snapshot ? library.snapshot_name : library.name) : null;
+  const source = sourceOpen.source;
+  const sourceLabel = missingSelected ? pickerText.findSourceFile(library?.name ?? null) : sourceOpen.failure && !sourceOpen.failure.changed ? sourceOpen.failure.kind === "file" ? pickerText.findSourceFile(source.name) : pickerText.chooseLibraryMenu
+    : source.kind === "zotero" ? sourceItem ? pickerText.showInZotero : pickerText.openZotero
+    : altHeld ? pickerText.showSourceFolder(isMac) : pickerText.openSource(source.name);
+  const sourceAction: SourceActionProps = { label: sourceLabel, keys: keysFor(altHeld && source.kind === "file" ? "revealSource" : "source"), icon: source.icon,
+    file: source.kind === "file", open: () => openSource() };
+  const sourceChoice = { ...sourceAction, icon: <SourceIcon icon={source.icon} file={source.kind === "file"} /> };
   const openKeys = () => {
     cancelCopy();
     closeMenu(false);
@@ -435,6 +453,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     cancelCopy();
     // Escape steps back one layer, retaining the chosen references.
     if (menuOpen) closeMenu(true);
+    else if (choosingLibrary) setChoosingLibrary(false);
     else if (query) {
       send({ type: "escape-search" });
       input.current?.focus();
@@ -444,9 +463,9 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     toggle(highlighted);
     input.current?.focus();
   };
-  const emptyState = (library !== undefined && (libraryChoices || busy || results.length === 0 && !error && (!library?.error || blocked)) ? (
+  const emptyState = choosingLibrary ? <LibrarySetup api={setupApi} perform={perform} autoFocus /> : (library !== undefined && (libraryChoices || busy || results.length === 0 && !error && (!library?.error || blocked)) ? (
     <EmptyState library={library} query={query} narrowed={narrowed}
-      source={sourceLabel && api.openLibrarySource ? { label: sourceLabel, open: () => openSource() } : undefined}
+      source={api.openLibrarySource ? sourceChoice : undefined}
       onChooseLibrary={() => void perform("choose", chooseLibrary)}
       onClearSearch={() => { setQuery(""); input.current?.focus(); }}
       onSearchAll={searchAllLibraries}
@@ -469,10 +488,14 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       onBlur={() => setSearchFocused(false)}
       onKeyDownCapture={(e) => {
         pointer.resetHover();
-        if (!composing(e) && isSourceShortcut(e)) {
+        if (composing(e)) return;
+        if (isChooseSourceShortcut(e)) {
+          e.preventDefault(); e.stopPropagation();
+          if (!e.repeat) chooseSources();
+        } else if (isSourceShortcut(e)) {
           e.preventDefault();
           e.stopPropagation();
-          if (!e.repeat) openSource();
+          if (!e.repeat) openSource(false, e.altKey);
         }
       }}
       onScrollCapture={pointer.resetHover}
@@ -649,21 +672,22 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       <PickerFooter library={library} groupName={groupName}
         status={<PickerLibraryStatus library={library} groupName={groupName} isOpen={libraryMenuOpen}
           onOpenChange={(open) => { if (open) { cancelCopy(); setMenuOpen(false); } setLibraryMenuOpen(open); }}
-          searchRef={input}
+          searchRef={input} sourceAction={sourceAction} sourceFailure={sourceOpen.failure !== null}
+          statusIcon={source.status_icon ?? null}
           zotero={library?.zotero && chooseZoteroLibraries ? {
             offered: ["user" as const, ...offeredGroups.map((group) => ({ group }))], isChosen, chosenCount: chosenLibraries.length,
             name: (choice) => typeof choice === "object" ? groupName(choice.group) : pickerText.myLibrary, toggle: toggleLibrary,
           } : null}
-          actions={{ choose: () => runFromMenu("choose", chooseLibrary), reload: () => runFromMenu("reload", reloadLibrary),
-            useZotero: () => runFromMenu("zotero", useZotero), openZotero: () => openSource(true) }}
-          failure={sourceOpen.failure ?? [...libraryOperations].filter((operation) => failures[operation]).map((operation) => FAILURE_MESSAGES[operation]).join(" ")} />}
+          actions={{ choose: chooseSources, find: chooseFile, reload: () => runFromMenu("reload", reloadLibrary),
+            useZotero: () => runFromMenu("zotero", useZotero), openZotero: () => openSource(source.kind !== "zotero") }}
+          failure={sourceOpen.failure?.message ?? [...libraryOperations].filter((operation) => failures[operation]).map((operation) => FAILURE_MESSAGES[operation]).join(" ")} />}
 
         hints={{ enter: enterAction, shiftEnter: shiftEnterAction, escape: escapeAction }}
-        altHeld={altHeld} actions={{ copy: copyChosen, add: toggleHighlighted, escape: escapeStep, keys: openKeys }}
+        altHeld={altHeld} actions={{ copy: copyChosen, add: toggleHighlighted, escape: escapeStep }}
         more={
           <PickerMenu isOpen={menuOpen} onOpenChange={(open) => (open ? openMore() : closeMenu(false))}
             buttonRef={moreButton} searchRef={input} libraryDetail={libraryDetail}
-            source={sourceLabel && api.openLibrarySource ? { label: sourceLabel, open: () => openSource() } : undefined}
+            source={api.openLibrarySource ? sourceAction : undefined}
             lastOutcome={lastOutcome}
             density={density} largerText={largerText} searchMark={searchMark} showPastePreview={showPastePreview} pinned={pinned}
             startAtLogin={loginItemOffered && startAtLogin ? { item: startAtLogin, toggle: toggleStartAtLogin } : null}

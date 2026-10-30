@@ -65,7 +65,7 @@ function Recovery({ library, onFind, onReload, setup, source }: {
   const choices: Choice[] = problem === "missing" && !library.zotero
     ? [{ id: "find", title: setupText.find(name), help: setupText.findFileHelp, icon: <ChoiceIcon name="find" />, suggested: true }, another]
     : [{ ...tryAgain, suggested: true }, another];
-  if (source) choices.push({ id: "source", title: source.label, icon: <ChoiceIcon name={library.zotero ? "library" : "file"} />,
+  if (source) choices.push({ id: "source", title: source.label, icon: source.icon ?? <ChoiceIcon name={library.zotero ? "library" : "file"} />,
     keys: keysFor("source") });
   return (
     <div className="empty-state">

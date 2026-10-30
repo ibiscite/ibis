@@ -3,6 +3,7 @@
 import { act, cleanup, fireEvent, screen } from "@testing-library/react";
 import { clearMocks, mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { vi } from "vitest";
+import { listen } from "@tauri-apps/api/event";
 import type * as api from "../api";
 import type { FilePreview, FileSelection, PreviewIntent } from "../bindings";
 
@@ -88,6 +89,7 @@ export type Handler = (args: Record<string, unknown> & PreviewRequest & { query:
 /** Mock the Rust commands; returns the list of commands called. */
 export function backend(overrides: Record<string, Handler> = {}): string[] {
   const calls: string[] = [];
+  let lastLibrary: Partial<api.LibraryStatus> = {};
   let preferences = { citation_style: null, density: "comfortable", larger_text: false, show_paste_preview: true, search_mark: false, paste: true } as api.PickerPreferences;
   let copyFormat: api.CopyFormat = "pandoc";
   receipts.clear();
@@ -116,6 +118,7 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
     update_checks: () => null,
     update_available: () => false,
     find_sources: () => ({ zotero: "absent", list: 1, files: [], cut_short: false }),
+    library_source: ({ zoteroOnly }) => ({ kind: zoteroOnly || (lastLibrary.snapshot_zotero ?? lastLibrary.zotero) ? "zotero" : "file", name: zoteroOnly ? "Zotero" : lastLibrary.snapshot_name ?? lastLibrary.name ?? "library", icon: null, status_icon: null }),
     library_status: () => ({ state: "loaded", has_snapshot: true, zotero: false, name: "refs.bib", snapshot_name: "refs.bib", references: 1, warnings: 0, error: null, problem: null, note: null }),
   };
   mockWindows("main");
@@ -140,11 +143,12 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
         receipts.set(result.ticket, { request: args as PreviewRequest, preview: result });
         return result;
       });
-      if (cmd === "library_status") return Promise.resolve(value).then((status) => ({ revision: "1", ...status as object }));
+      if (cmd === "library_status") return Promise.resolve(value).then((status) => { lastLibrary = status as api.LibraryStatus; return { revision: "1", ...status as object }; });
       if (cmd === "search") return Promise.resolve(value).then((reply) => Array.isArray(reply) ? { revision: reply[0]?.revision ?? "1", results: reply } : reply);
       return value;
     },
     { shouldMockEvents: true },
   );
+  void listen<api.LibraryStatus>("library:changed", (event) => { lastLibrary = event.payload; });
   return calls;
 }

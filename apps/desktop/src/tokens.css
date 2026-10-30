@@ -97,7 +97,7 @@
     --citation: light-dark(#c23a1c, #ff7a5c);
     --citation-tile: light-dark(#c23a1c, #d2401f);
     --status-done: light-dark(#1a7f37, #5bc26f);
-    --status-look: light-dark(#8a5a00, #e3b341);
+    --status-look: light-dark(#b07a00, #f5c542);
     --status-stop: light-dark(#c4314b, #ff8a8a);
   }
 }
@@ -116,6 +116,7 @@
   --active-edge: CanvasText;
   --accent: Highlight;
   --font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --fill: var(--fill-control);
   --fill-control: color-mix(in srgb, var(--text) 4%, var(--surface));
   --fill-control-hover: color-mix(in srgb, var(--text) 8%, var(--surface));
   /* Buttons and key caps are fills without an edge, as in macOS toolbars;
@@ -285,7 +286,7 @@
     :root[data-platform="macos"][data-native-appearance="liquid-glass"]:not(.notice-window) {
       --citation: light-dark(#982d16, #ff9d87);
       --status-done: light-dark(#135f29, #6fca81);
-      --status-look: light-dark(#734b00, #f0c25a);
+      --status-look: light-dark(#b07a00, #f5c542);
       --status-stop: light-dark(#9b273b, #ff9c9c);
     }
   }

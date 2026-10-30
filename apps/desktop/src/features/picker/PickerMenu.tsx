@@ -4,6 +4,8 @@ import { keyLabel, keysFor } from "../../keys";
 import { LibraryDetail } from "../../LibraryStatusLine";
 import { densityNames, keyText, loginItemText, pickerText } from "../../messages";
 import { currentPlatform, isMac } from "../../platform";
+import { SourceIcon } from "../../ui/SourceAction";
+import type { SourceActionProps } from "../../ui/SourceAction";
 import { MenuDetail } from "../../ui/Menu";
 import { MenuItem, MenuSection, MenuSeparator, MoreMenu } from "./MoreMenu";
 
@@ -12,7 +14,7 @@ const label = (accelerator: string) => keyLabel(accelerator, isMac);
 /** More: the source action and library detail, view settings, starting at
  * login, updates, the keys overlay and Quit. Library choices have their own menu. */
 export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, libraryDetail, lastOutcome, density, largerText, searchMark, showPastePreview, pinned, startAtLogin, updates, actions, source }: {
-  source?: { label: string; open: () => void };
+  source?: SourceActionProps;
   isOpen: boolean; onOpenChange: (open: boolean) => void;
   buttonRef: Ref<HTMLButtonElement>; searchRef: RefObject<HTMLElement | null>;
   /** Where the references come from and how fresh they are. */
@@ -38,7 +40,7 @@ export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library
           as the group's name when the menu is reached by keyboard. */}
       <MenuSection id="library" label={[lastOutcome && pickerText.lastOutcome(lastOutcome), libraryDetail?.filter(Boolean).join(". ")].filter(Boolean).join(". ")}
         header={lastOutcome || libraryDetail ? <>{lastOutcome && <MenuDetail title={lastOutcome} />}{libraryDetail && <LibraryDetail lines={libraryDetail} />}</> : undefined}>
-        {source && <MenuItem id="source" label={source.label} keys={label(keysFor("source"))} onAction={source.open} />}
+        {source && <MenuItem id="source" label={source.label} icon={<SourceIcon icon={source.icon} file={source.file} />} keys={source.keys ? label(source.keys) : undefined} onAction={source.open} />}
       </MenuSection>
       <MenuSeparator />
       <MenuSection id="view">

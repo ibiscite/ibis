@@ -65,6 +65,8 @@ const panelEnglish = {
   "shortcuts-region-picker": "Anywhere in Ibis",
   "shortcuts-region-menu": "In a menu",
   "shortcuts-region-system": "From any app",
+  "shortcuts-action-choose-source": "Choose a library",
+  "shortcuts-action-reveal-source": "Show the source in its folder",
   "shortcuts-action-source": "Open the source",
   "shortcuts-action-preview": "Show what will be pasted",
   "shortcuts-action-copy": "Paste or copy the highlighted reference, or the ones added to the citation, as the footer says",

@@ -40,7 +40,9 @@ export const commands = {
 	/**  The library as it is now, for the interface when it starts. */
 	libraryStatus: () => __TAURI_INVOKE<LibraryStatus>("library_status"),
 	/**  Open the searched source or launch Zotero for a reported Zotero problem. */
-	openLibrarySource: (item: unknown | null, expectedRevision: string, zoteroOnly: boolean) => __TAURI_INVOKE<null>("open_library_source", { item, expectedRevision, zoteroOnly }),
+	openLibrarySource: (item: unknown | null, expectedRevision: string, zoteroOnly: boolean, reveal: boolean) => __TAURI_INVOKE<null>("open_library_source", { item, expectedRevision, zoteroOnly, reveal }),
+	/**  Resolve the selected source and its system icon, never exposing its path. */
+	librarySource: (item: unknown | null, expectedRevision: string, zoteroOnly: boolean, withStatusIcon: boolean) => __TAURI_INVOKE<SourcePresentation>("library_source", { item, expectedRevision, zoteroOnly, withStatusIcon }),
 	/**
 	 *  Search the open library. An empty query returns no results. Async so it
 	 *  runs off the main thread. `page` identifies the interface page and
@@ -581,6 +583,16 @@ export type ShortcutStatus_Serialize = {
 
 export type SourceItem = unknown;
 
+export type SourceKind = "zotero" | "file";
+
+export type SourcePresentation = {
+	kind: SourceKind,
+	name: string,
+	icon: SystemIcon | null,
+	/**  The searched library may differ from the selected/default source. */
+	status_icon: SystemIcon | null,
+};
+
 /**  What first-run setup can offer. */
 export type Sources = {
 	zotero: ZoteroPresence,
@@ -592,6 +604,11 @@ export type Sources = {
 	 *  found than are listed.
 	 */
 	cut_short: boolean,
+};
+
+export type SystemIcon = {
+	mime: string,
+	bytes: number[],
 };
 
 /**  A Zotero group library the user can choose. */

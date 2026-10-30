@@ -14,7 +14,7 @@ type SetupApi = {
   openFoundLibrary?: (list: number, index: number) => Promise<unknown>;
 };
 
-export type SourceChoice = { label: string; open: () => void };
+export type SourceChoice = { label: string; open: () => void; icon?: ReactNode };
 export type EmptyLibraryChoices = { title: ReactNode; zotero: boolean; source?: SourceChoice };
 
 type Action = "choose" | "zotero" | "findSources" | "openFound" | "samples";
@@ -56,7 +56,7 @@ export function LibrarySetup({ api, perform, autoFocus = false, empty }: {
     : sources ? setupText.found(files.length, zotero === "available") : setupText.findHelp;
 
   const choices: Choice[] = [
-    ...(empty?.source ? [{ id: "source", title: empty.source.label, icon: <ChoiceIcon name={empty.zotero ? "library" : "file"} />,
+    ...(empty?.source ? [{ id: "source", title: empty.source.label, icon: empty.source.icon ?? <ChoiceIcon name={empty.zotero ? "library" : "file"} />,
       keys: keysFor("source") }] : []),
     { id: "zotero", title: setupText.zotero, help: setupText.zoteroHelp, icon: <ChoiceIcon name="library" />,
       tag: zotero === "available" || empty?.zotero ? setupText.foundOn(currentPlatform()) : undefined },

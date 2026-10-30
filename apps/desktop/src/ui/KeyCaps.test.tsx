@@ -30,25 +30,26 @@ test("implicit key caps retain actual system modifiers under the shared macOS lo
 test("footer and More pair actual system keys with their accessible shortcuts", () => {
   vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
   const footer = () => <PickerFooter library={null} groupName={() => ""} hints={{ enter: "Copy", shiftEnter: "Add", escape: "Hide" }} altHeld={false}
-    actions={{ copy: vi.fn(), add: vi.fn(), escape: vi.fn(), keys: vi.fn() }}
+    actions={{ copy: vi.fn(), add: vi.fn(), escape: vi.fn() }}
     more={<MoreMenu isOpen={false} onOpenChange={vi.fn()} buttonRef={{ current: null }} searchRef={{ current: null }} keys="CmdOrCtrl+K">{null}</MoreMenu>} />;
   setPlatform("Win32");
   const { container, rerender } = render(footer());
-  const check = (shortcut: string, more: string, keyCaps: string[], moreCaps: string[]) => {
-    const shortcuts = container.querySelector<HTMLButtonElement>('.shortcuts-hint')!;
+  const check = (more: string, moreCaps: string[], copyCap: string) => {
+    const copy = container.querySelector<HTMLButtonElement>('.footer-action')!;
     const trigger = container.querySelector<HTMLButtonElement>('.more > button')!;
-    expect(shortcuts.getAttribute("aria-keyshortcuts")).toBe(shortcut);
-    expect(caps(shortcuts)).toEqual(keyCaps);
+    expect(copy.getAttribute("aria-keyshortcuts")).toBe("Enter");
+    expect(container.querySelector(".shortcuts-hint")).toBeNull();
+    expect(caps(copy)).toEqual([copyCap]);
     expect(trigger.getAttribute("aria-keyshortcuts")).toBe(more);
     expect(caps(trigger)).toEqual(moreCaps);
   };
-  check("Control+/", "Control+K", ["Ctrl", "/"], ["Ctrl", "K"]);
+  check("Control+K", ["Ctrl", "K"], "Enter");
   setPlatform("MacIntel");
   rerender(footer());
-  check("Meta+/", "Meta+K", ["⌘/"], ["⌘K"]);
+  check("Meta+K", ["⌘K"], "↵");
   setPlatform("Linux x86_64");
   rerender(footer());
-  check("Control+/", "Control+K", ["Ctrl", "/"], ["Ctrl", "K"]);
+  check("Control+K", ["Ctrl", "K"], "Enter");
 });
 
 test("macOS joins the glyphs in one cap, as its menus write them", () => {

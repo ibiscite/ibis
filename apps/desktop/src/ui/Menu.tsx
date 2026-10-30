@@ -147,7 +147,7 @@ export function MenuDetail({ title, detail }: { title: string; detail?: string |
 }
 
 type ItemProps = {
-  id: string; label: string; title?: string; keys?: string;
+  id: string; label: string; title?: string; keys?: string; icon?: ReactNode;
   /** A toggle: shows a check and is a menuitemcheckbox. */
   checked?: boolean;
   /** Stays focusable and is announced as unavailable, but does nothing (ADR 0021). */
@@ -163,7 +163,7 @@ export function MenuCheck({ checked }: { checked: boolean }) {
 }
 
 /** An action row: label, optional shortcut and a check for toggles. */
-export function MenuItem({ id, label, title, keys, checked, disabled, onAction }: ItemProps) {
+export function MenuItem({ id, label, title, keys, checked, disabled, onAction, icon }: ItemProps) {
   const requestActionFocus = useContext(ActionFocusContext);
   return <AriaMenuItem id={id} className="menu-item" textValue={label}
     // A toggle keeps the menu open, as before, so several can be changed at once.
@@ -176,6 +176,7 @@ export function MenuItem({ id, label, title, keys, checked, disabled, onAction }
     render={(props) => <MenuRow {...props as ComponentPropsWithRef<"div">} itemId={id} title={title} aria-disabled={disabled || undefined} />}>
     {({ isSelected }) => <>
       {checked !== undefined && <MenuCheck checked={isSelected} />}
+      {icon}
       <bdi className="menu-label" dir="auto">{label}</bdi>
       {keys && <span className="menu-keys" aria-hidden="true"><bdi dir="ltr">{keys}</bdi></span>}
     </>}

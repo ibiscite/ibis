@@ -53,7 +53,7 @@ function useMinuteTick() {
  * The footer's library item: a dot, the source and count, and an age only when
  * it matters (just updated, or an older copy kept after a failure). The full
  * detail is the tooltip; the live region holds no clock, so it is not repeated
- * every minute.
+ * every age tick.
  */
 export function LibraryStatusLine({ library, groupName, menu, action, failure }: {
   library: LibraryStatus | null | undefined; groupName: (id: number) => string;

@@ -3,7 +3,7 @@ import type { KeyAction, KeyRegion } from "../keys";
 import type { MessageId } from ".";
 
 export const SHORTCUT_ACTIONS = {
-  source: "shortcuts-action-source", open: "shortcuts-open", preview: "shortcuts-action-preview", copy: "shortcuts-action-copy",
+  chooseSource: "shortcuts-action-choose-source", revealSource: "shortcuts-action-reveal-source", source: "shortcuts-action-source", open: "shortcuts-open", preview: "shortcuts-action-preview", copy: "shortcuts-action-copy",
   add: "shortcuts-action-add", move: "shortcuts-action-move", escape: "shortcuts-action-escape",
   format: "shortcuts-action-format", more: "shortcuts-action-more", pin: "shortcuts-action-pin",
   keys: "shortcuts-action-keys", settings: "shortcuts-action-settings", quit: "shortcuts-action-quit",

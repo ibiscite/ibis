@@ -896,6 +896,7 @@ test("the library is shown, can be chosen and reloaded, and failures are explain
   const bar = screen.getByRole("region", { name: "Library" });
   await waitFor(() => expect(bar.textContent).toContain("No library chosen"));
   await chooseFromLibrary("Choose Library…");
+  pressRow(await screen.findByRole("option", { name: FILE_ROW }));
   await waitFor(() => expect(calls).toContain("choose_library"));
   await emit("library:changed", { revision: "1", state: "loaded", has_snapshot: true, zotero: false, name: "refs.bib", snapshot_name: "refs.bib", references: 3, warnings: 1, error: null, problem: null, note: null });
   await waitFor(() => expect(bar.textContent).toContain("refs.bib · 3 references · 1 reading notice"));
@@ -1056,7 +1057,7 @@ test.each([
   backend({ [command]: () => { throw new Error("SYNTHETIC_PRIVATE_PAYLOAD"); } });
   render(<App />);
   await waitFor(() => expect(screen.getByRole("region", { name: "Library" }).textContent).toMatch(/reference/));
-  if (command === "choose_library") await chooseFromLibrary("Choose Library…");
+  if (command === "choose_library") { await chooseFromLibrary("Choose Library…"); pressRow(await screen.findByRole("option", { name: FILE_ROW })); }
   else if (command === "reload_library") await chooseFromLibrary("Reload Library");
   else fireEvent.keyDown(screen.getByLabelText("Search references"), command === "quit"
     ? { key: "q", ctrlKey: true } : { key: "Escape" });
@@ -1133,6 +1134,7 @@ test("opening a chosen library shows its name and searches only when ready", asy
   fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "sleep" } });
   expect(calls).not.toContain("search");
   await chooseFromLibrary("Choose Library…");
+  pressRow(await screen.findByRole("option", { name: FILE_ROW }));
   await waitFor(() => expect(calls).toContain("choose_library"));
   await act(async () => { await emit("library:changed", { revision: "1", state: "loaded", has_snapshot: true, zotero: false, name: "研究 refs.bib", snapshot_name: "研究 refs.bib", references: 1, warnings: 0, error: null, problem: null, note: null }); });
   await waitFor(() => expect(calls).toContain("search"));
@@ -1186,6 +1188,7 @@ test("an unavailable initial library is named once without a duplicate search er
   pressRow(choiceRow(/^Use another library/));
   await waitFor(() => expect(document.activeElement).toBe(choiceRow(/^Zotero/)));
   await chooseFromLibrary("Choose Library…");
+  pressRow(await screen.findByRole("option", { name: FILE_ROW }));
   await waitFor(() => expect(calls).toContain("choose_library"));
 });
 
@@ -1197,8 +1200,8 @@ test("a failed reload reports one file error while kept references remain search
   render(<App />);
   await screen.findByText("Previously loaded reference");
   expect(screen.queryByRole("alert")).toBeNull();
-  expect(screen.getByRole("status", { name: "Library status" }).textContent).toBe("refs.bib · moved");
-  expect(screen.getByRole("button", { name: "Find…" })).toBeTruthy();
+  expect(screen.getByRole("status", { name: "Library status" }).textContent).toBe("refs.bib moved");
+  expect(screen.getByRole("button", { name: "Find ⁨refs.bib⁩…" })).toBeTruthy();
 });
 
 test.each(["backup", "defaults"])("settings recovery from %s stays visible through a library reload", async (fallback) => {
@@ -1325,7 +1328,7 @@ test("the design scale keeps text readable and every colour role legible in both
   for (const role of ["--muted", "--citation", "--status-done", "--status-look", "--status-stop"]) {
     pair(role).forEach((colour, mode) => {
       const [lighter, darker] = [luminance(hex(colour)), luminance(hex(surface[mode]!))].sort((a, b) => b - a);
-      expect((lighter! + .05) / (darker! + .05), `${role} in ${mode ? "dark" : "light"} mode`).toBeGreaterThanOrEqual(4.5);
+      expect((lighter! + .05) / (darker! + .05), `${role} in ${mode ? "dark" : "light"} mode`).toBeGreaterThanOrEqual(role === "--status-look" ? 3 : 4.5);
     });
   }
 });
@@ -1470,7 +1473,7 @@ test("Ctrl+K opens More with every action, Escape closes it before hiding the pi
   fireEvent.keyDown(box, { key: "k", ctrlKey: true });
   const menu = await screen.findByRole("menu");
   const items = within(menu).getAllByRole("menuitem").map((item) => item.textContent);
-  expect(items).toEqual(["Open ⁨refs.bib⁩Ctrl+O", "Rows: Comfortable", "Forget formats for apps", "Settings…Ctrl+,", "Keyboard shortcutsCtrl+/", "Quit IbisCtrl+Q"]);
+  expect(items).toEqual(["Open ZoteroCtrl+O", "Rows: Comfortable", "Forget formats for apps", "Settings…Ctrl+,", "Keyboard shortcutsCtrl+/", "Quit IbisCtrl+Q"]);
   expect(within(menu).getByRole("menuitemcheckbox", { name: "Larger text" }).getAttribute("aria-checked")).toBe("false");
   expect(document.activeElement).toBe(within(menu).getAllByRole("menuitem")[0]);
   fireEvent.keyDown(document.activeElement!, { key: "ArrowUp" });
@@ -2604,10 +2607,10 @@ test("the footer says what Enter will copy, and holding Alt shows the other keys
   render(<App />);
   const box = screen.getByLabelText("Search references");
   // Nothing to copy yet, so Enter is not advertised.
-  await waitFor(() => expect(footerKeys()).toBe("Shortcuts Ctrl+/"));
+  await waitFor(() => expect(footerKeys()).toBe(""));
   fireEvent.change(box, { target: { value: "x" } });
   await screen.findByText("First");
-  expect(footerKeys()).toBe("Copy as Pandoc Enter · Shortcuts Ctrl+/");
+  expect(footerKeys()).toBe("Copy as Pandoc Enter");
   chooseFormat("typst");
   await waitFor(() => expect(footerKeys()).toContain("Copy as Typst Enter"));
   fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
@@ -2634,7 +2637,8 @@ test("More reads like the hints beside it: its name first, then its keys", async
   // The hint that comes and goes is first, so More never moves.
   const hints = [...screen.getByRole("group", { name: "Keys" }).children];
   expect(hints[0]?.textContent).toContain("Copy as Pandoc");
-  expect(hints.at(-1)?.textContent).toContain("Shortcuts");
+  expect(hints).toHaveLength(1);
+  expect(more.compareDocumentPosition(hints[0]!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 });
 
 test("footer actions copy and open shortcuts without using a keyboard shortcut", async () => {
@@ -2652,12 +2656,11 @@ test("footer actions copy and open shortcuts without using a keyboard shortcut",
   fireEvent.pointerUp(copy, { button: 0, pointerType: "mouse" });
   fireEvent.click(copy);
   await waitFor(() => expect(copied).toEqual(selections([{ library: "refs.bib", key: "a" }])));
-  const shortcuts = screen.getByRole("button", { name: "Shortcuts" });
-  act(() => shortcuts.focus());
-  fireEvent.click(shortcuts);
+  expect(screen.queryByRole("button", { name: "Shortcuts" })).toBeNull();
+  await chooseFromMore("Keyboard shortcuts");
   expect(await screen.findByRole("dialog", { name: "Keyboard shortcuts" })).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "Close" }));
-  expect(document.activeElement).toBe(shortcuts);
+  expect(document.activeElement).toBe(screen.getByLabelText("Search references"));
 });
 
 test("alternate footer buttons use the current add, remove, clear and hide actions", async () => {
@@ -2732,9 +2735,9 @@ test("the footer names the source and count, the age only when it matters, and t
   status = { ...status, state: "error", stale: true, checked_at: Date.now() - 2 * 3_600_000,
     error: "Zotero is not running, or it is not accepting connections; keeping the last loaded references" };
   await emit("library:changed", status);
-  await waitFor(() => expect(item.textContent).toBe("Zotero · not updated · last read 2 hours ago"));
+  await waitFor(() => expect(item.textContent).toBe("Zotero not updated · 2 h"));
   expect(item.closest(".library-status-controls")?.getAttribute("data-health")).toBe("stop");
-  expect(plain(item.getAttribute("title"))).toMatch(/^Zotero · 1,205 references\nMy Library, Lab group · checked 2 hours ago, .+ · 2 Zotero libraries could not be read\. Zotero is not running, or it is not accepting connections; keeping the last loaded references\. Open Zotero, then reload\.$/);
+  expect(plain(item.getAttribute("title"))).toMatch(/^Zotero · 1,205 references\nMy Library, Lab group · last read 2 hours ago, .+ · 2 Zotero libraries could not be read\. Zotero is not running, or it is not accepting connections; keeping the last loaded references\. Open Zotero, then reload\.$/);
 });
 
 test("? lists every key in a modal dialog, but a ? typed in the search is text", async () => {

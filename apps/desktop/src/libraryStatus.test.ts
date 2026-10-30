@@ -36,7 +36,7 @@ test.each<[string, LibraryStatus | null | undefined, string, ReturnType<typeof l
   ["a watched file", file(), "thesis.bib · 1,204 references", "done"],
   ["reading notices", file({ warnings: 2 }), "thesis.bib · 1,204 references · 2 reading notices", "look"],
   ["empty", zotero({ references: 0 }), "Zotero · no references", "look"],
-  ["Zotero closed, copy kept", zotero({ state: "error", error: kept, stale: true, checked_at: now - 2 * hour }), "Zotero · not updated · last read 2 hours ago", "stop"],
+  ["Zotero closed, copy kept", zotero({ state: "error", error: kept, stale: true, checked_at: now - 2 * hour }), "Zotero not updated · 2 h", "stop"],
   ["never opened", zotero({ state: "error", has_snapshot: false, snapshot_name: null, references: 0, error: "Zotero is not running" }), "Zotero · not opened", "stop"],
   ["failed switch between files", file({ state: "error", name: "missing.bib", error: "The library file is unavailable; keeping the last loaded references" }), "thesis.bib · 1,204 references · ⁨missing.bib⁩ not opened", "stop"],
   ["failed switch from a file to Zotero", file({ state: "error", zotero: true, zotero_libraries: ["user"], name: "Zotero library", error: "Zotero is not running" }), "thesis.bib · 1,204 references · ⁨Zotero⁩ not opened", "stop"],
@@ -77,7 +77,7 @@ test("the detail is a short line, then libraries, check time and any problem", (
     ["Zotero · 1,204 references", `My Library, Group 41, Group 9 · checked 3 hours ago, ${clockAt(3)}`]);
   expect(detail(file({ warnings: 1 }))).toEqual(["thesis.bib · 1,204 references · 1 reading notice", `checked 3 hours ago, ${clockAt(3)}`]);
   expect(detail(zotero({ state: "error", error: kept, stale: true, checked_at: now - 2 * hour }))).toEqual(
-    ["Zotero · 1,204 references", `My Library · checked 2 hours ago, ${clockAt(2)} · Zotero library could not be read. ${kept}. Open Zotero, then reload.`]);
+    ["Zotero · 1,204 references", `My Library · last read 2 hours ago, ${clockAt(2)} · Zotero library could not be read. ${kept}. Open Zotero, then reload.`]);
   expect(detail(file({ state: "error", name: "missing.bib", error: "The library file is unavailable" }))).toEqual(
     ["thesis.bib · 1,204 references · missing.bib not opened", `checked 3 hours ago, ${clockAt(3)} · missing.bib could not be opened`]);
   expect(detail(file({ state: "error", zotero: true, zotero_libraries: ["user"], name: "Zotero library", error: "Zotero is not running" }))).toEqual(
@@ -126,9 +126,9 @@ test("screen readers can read the detail, including the count kept after a faile
     library: file({ state: "error", stale: true, error: "The library file is unavailable; keeping the last loaded references", references: 4, checked_at: Date.now() - 3 * hour }),
     groupName: String,
   }));
-  expect(container.querySelector(".library-status")?.textContent).toMatch(/^thesis\.bib · not updated · last read /);
+  expect(container.querySelector(".library-status")?.textContent).toMatch(/^thesis\.bib not updated · /);
   expect(strip(container.querySelector(".library-detail")?.textContent ?? null)).toMatch(
-    /^thesis\.bib · 4 references\. checked .+ ago, .+ · The library could not be opened: thesis\.bib\. The library file is unavailable; keeping the last loaded references\. Choose it again or reconnect the drive\.$/);
+    /^thesis\.bib · 4 references\. last read .+ ago, .+ · The library could not be opened: thesis\.bib\. The library file is unavailable; keeping the last loaded references\. Choose it again or reconnect the drive\.$/);
 });
 
 test("every footer text sits in an element WebKitGTK exposes, not a plain span beside one", () => {
@@ -179,26 +179,26 @@ test("native hide removes the age timer; reopen catches up without repeating the
       library: zotero({ state: "error", stale: true, error: kept, checked_at: now - 2 * 60_000 }), groupName: String,
     }));
     const live = screen.getByRole("status", { name: "Library status" });
-    const changes: MutationRecord[] = [];
-    const observer = new MutationObserver((records) => changes.push(...records));
+    const changes: (string | null)[] = [];
+    const observer = new MutationObserver(() => changes.push(live.textContent));
     observer.observe(live, { childList: true, subtree: true, characterData: true });
     expect(vi.getTimerCount()).toBe(1);
     await act(async () => { vi.advanceTimersByTime(30_000); });
-    expect(container.querySelector(".library-age")?.textContent).toContain("last read 3 minutes ago");
+    expect(container.querySelector(".library-age")?.textContent).toContain("3 min");
     expect(changes).toHaveLength(0);
     await act(async () => { document.documentElement.dataset.pickerHidden = ""; });
     expect(vi.getTimerCount()).toBe(0);
     await act(async () => { vi.advanceTimersByTime(180_000); });
-    expect(container.querySelector(".library-age")?.textContent).toContain("last read 3 minutes ago");
+    expect(container.querySelector(".library-age")?.textContent).toContain("3 min");
     await act(async () => { delete document.documentElement.dataset.pickerHidden; });
-    expect(container.querySelector(".library-age")?.textContent).toContain("last read 6 minutes ago");
+    expect(container.querySelector(".library-age")?.textContent).toContain("6 min");
     expect(vi.getTimerCount()).toBe(1);
     expect(changes).toHaveLength(0);
     await act(async () => { rerender(createElement(LibraryStatusLine, { library: zotero(), groupName: String })); });
-    expect(changes).toHaveLength(1);
+    expect(changes).toEqual(["Zotero · 1,204 references"]);
     expect(live.textContent).toBe("Zotero · 1,204 references");
     await act(async () => { vi.advanceTimersByTime(30_000); });
-    expect(changes).toHaveLength(1);
+    expect(changes).toEqual(["Zotero · 1,204 references"]);
     observer.disconnect();
     unmount();
     expect(vi.getTimerCount()).toBe(0);
@@ -249,7 +249,7 @@ test("the visible age is hidden from screen readers, which read the detail inste
     groupName: String,
   }));
   const heard = strip(kept.container.querySelector(".library-detail")?.textContent ?? null) ?? "";
-  expect(heard.match(/checked 2 hours ago/g)).toHaveLength(1);
+  expect(heard.match(/last read 2 hours ago/g)).toHaveLength(1);
 });
 
 test("the status dot sits at the footer edge, 12 px before the text and centred on its x-height", () => {

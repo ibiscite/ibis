@@ -21,6 +21,7 @@ export const {
   reloadLibrary,
   libraryStatus,
   openLibrarySource,
+  librarySource,
   hidePicker,
   setPinned,
   fitPicker,

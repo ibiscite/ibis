@@ -37,14 +37,14 @@ test("a stale snapshot has one footer problem and action, and a successful read 
   backend({ library_status: () => current, open_library_source: opened, search: () => [{ ...result("a", "Invented reference"), revision: current.revision }] });
   render(<App />);
   await screen.findByText("Invented reference");
-  expect(status().textContent).toBe("Zotero · not updated");
+  expect(status().textContent).toBe("Zotero not updated");
   expect(status().closest("button")).toBeNull();
-  expect(footer().textContent).toContain("last read 2 hours ago");
+  expect(footer().textContent).toContain("2 h");
   expect(document.querySelector(".status-dot")?.getAttribute("data-health")).toBe("stop");
   expect(document.querySelector(".notices")?.textContent).toBe("");
   fireEvent.click(within(footer()).getByRole("button", { name: "Open Zotero" }));
   await waitFor(() => expect(opened).toHaveBeenCalledOnce());
-  expect(opened.mock.calls[0]).toEqual([{ item: null, expectedRevision: "1", zoteroOnly: true }]);
+  expect(opened.mock.calls[0]).toEqual([{ item: result("a", "Invented reference").id, expectedRevision: "1", zoteroOnly: false, reveal: false }]);
   expect(status().textContent).toContain("not updated");
   current = library({ revision: "2", checked_at: Date.now() });
   await act(async () => { await emit("library:changed", current); });
@@ -60,9 +60,9 @@ test("a moved file keeps its usable references and offers Find once in the foote
     search: () => [result("a", "Retained reference")], choose_library: choose });
   render(<App />);
   await screen.findByText("Retained reference");
-  expect(status().textContent).toBe("thesis.bib · moved");
+  expect(status().textContent).toBe("thesis.bib moved");
   expect(document.querySelector(".notices")?.textContent).toBe("");
-  fireEvent.click(within(footer()).getByRole("button", { name: "Find…" }));
+  fireEvent.click(within(footer()).getByRole("button", { name: "Find ⁨thesis.bib⁩…" }));
   await waitFor(() => expect(choose).toHaveBeenCalledOnce());
 });
 
@@ -95,7 +95,7 @@ test("Command-O opens the searched source and More lists it first", async () => 
   await screen.findByText("Selected invented reference");
   openKey();
   await waitFor(() => expect(opened).toHaveBeenCalledOnce());
-  expect(opened.mock.calls[0]).toEqual([{ item: picked.id, expectedRevision: "1", zoteroOnly: false }]);
+  expect(opened.mock.calls[0]).toEqual([{ item: picked.id, expectedRevision: "1", zoteroOnly: false, reveal: false }]);
   fireEvent.click(screen.getByRole("button", { name: "More" }));
   const menu = await screen.findByRole("menu");
   expect(within(menu).getAllByRole("menuitem")[0]?.textContent).toContain("Show in Zotero");
@@ -106,7 +106,7 @@ test("Command-O works on a recovery screen and a missing source refuses with a v
   backend({ library_status: () => library({ state: "error", has_snapshot: false, problem: "zotero_closed", error: "Zotero is closed" }), open_library_source: opened });
   render(<App />);
   await screen.findByText("Zotero isn't open");
-  const sourceRow = screen.getByRole("option", { name: "Show in Zotero" });
+  const sourceRow = screen.getByRole("option", { name: "Open Zotero" });
   expect(sourceRow.textContent).toContain("Ctrl+O");
   expect(status().getAttribute("aria-live")).toBe("off");
   openKey();
@@ -117,9 +117,9 @@ test("Command-O works on a recovery screen and a missing source refuses with a v
 test("Command-O opens a file from every picker overlay, without passing a file path", async () => {
   const opened = vi.fn(() => null);
   backend({ library_status: () => library({ zotero: false, snapshot_zotero: false, name: "مراجع.bib", snapshot_name: "مراجع.bib" }),
-    open_library_source: opened });
+    open_library_source: opened, search: () => [result("a", "Invented file reference")] });
   render(<App />);
-  await waitFor(() => expect(status().textContent).toContain("مراجع.bib"));
+  await screen.findByText("Invented file reference");
   fireEvent.click(screen.getByRole("button", { name: "More" }));
   const menu = await screen.findByRole("menu");
   expect(within(menu).getAllByRole("menuitem")[0]?.textContent).toBe("Open ⁨مراجع.bib⁩Ctrl+O");
@@ -130,7 +130,7 @@ test("Command-O opens a file from every picker overlay, without passing a file p
   fireEvent.keyDown(await screen.findByRole("dialog"), { key: "o", ctrlKey: true });
   await waitFor(() => expect(opened).toHaveBeenCalledTimes(2));
   expect(screen.queryByRole("dialog")).toBeNull();
-  expect(opened.mock.calls).toEqual(Array(2).fill([{ item: null, expectedRevision: "1", zoteroOnly: false }]));
+  expect(opened.mock.calls).toEqual(Array(2).fill([{ item: result("a", "Invented file reference").id, expectedRevision: "1", zoteroOnly: false, reveal: false }]));
 });
 
 test("an older failed open cannot overwrite a later successful open or a reopened picker", async () => {
@@ -161,7 +161,7 @@ test("source opening waits for composition and ignores repeated or differently m
   render(<App />);
   await waitFor(() => expect(status().textContent).toContain("12 references"));
   const box = screen.getByLabelText("Search references");
-  for (const modifiers of [{ repeat: true }, { shiftKey: true }, { altKey: true }, { isComposing: true }]) {
+  for (const modifiers of [{ repeat: true }, { isComposing: true }]) {
     fireEvent.keyDown(box, { key: "o", ctrlKey: true, ...modifiers });
   }
   expect(opened).not.toHaveBeenCalled();

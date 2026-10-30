@@ -142,6 +142,9 @@ export const pickerText = {
   openZotero: "Open Zotero",
   showInZotero: "Show in Zotero",
   findSource: "Find…",
+  findSourceFile: (name: string | null) => name ? `Find ${isolate(name)}…` : "Find…",
+  sourceChanged: "The library changed; select the reference again.",
+  showSourceFolder: (mac: boolean) => mac ? "Show in Finder" : "Show in folder",
   openSource: (name: string | null) => `Open ${isolate(name ?? "library")}`,
   sourceOpenFailed: (zotero: boolean) => zotero ? "Zotero could not open. Try again." : "The source file could not open. Try again.",
   searchLabel: "Search references",
@@ -269,6 +272,8 @@ export const keyText = {
   },
   actions: {
     source: "Open the source",
+    chooseSource: "Choose a library",
+    revealSource: "Show the source in its folder",
     preview: "Show what will be pasted",
     copy: "Paste or copy the highlighted reference, or the ones added to the citation, as the footer says",
     add: "Add the highlighted reference to the citation, or remove it",
@@ -322,7 +327,7 @@ export const libraryMessages = {
     if (!status.has_snapshot) return [requestedLabel(status), " · not opened"];
     // After a failed switch the previous library is still the one searched: describe it.
     const source = snapshotLabel(status);
-    if (status.stale) return [source, status.problem === "missing" && !status.snapshot_zotero ? " · moved" : " · not updated"];
+    if (status.stale) return [source, status.problem === "missing" && !status.snapshot_zotero ? " moved" : " not updated"];
     return [source, ` · ${status.references === 0 ? "no references" : count(status.references, "reference")}` +
       (status.warnings > 0 ? ` · ${count(status.warnings, "reading notice")}` : "") +
       (status.error ? ` · ${isolate(requestedLabel(status))} ${status.problem === "missing" ? "moved" : "not opened"}` : "")];
@@ -338,7 +343,7 @@ export const libraryMessages = {
     if (!status?.has_snapshot) return null;
     if (status.state === "reloading") return "reloading…";
     const { updated, checked } = times(status);
-    if (status.stale) return checked === null ? null : `last read ${ago(checked, now)}`;
+    if (status.stale) return checked === null ? null : shortAge(checked, now);
     if (status.error || updated === null || now - updated > recentUpdate) return null;
     return `updated ${ago(updated, now)}`;
   },
@@ -352,7 +357,7 @@ export const libraryMessages = {
     const { checked } = times(status);
     const parts = [
       zoteroSnapshot(status) && !(status.error && !status.stale) ? libraryNames(status) : null,
-      checked === null ? null : isolate(`checked ${ago(checked, now)}, ${clock(checked, now)}`),
+      checked === null ? null : isolate(`${status.stale ? "last read" : "checked"} ${ago(checked, now)}, ${clock(checked, now)}`),
       status.stale && status.error ? libraryMessages.openError(status.name, status.error, status.zotero)
         : status.stale ? (zoteroSnapshot(status) ? "Zotero could not be reached" : "the file could not be read")
         : status.error ? `${isolate(status.zotero ? "Zotero" : status.name ?? "the chosen library")} could not be opened` : null,
@@ -400,6 +405,14 @@ function times(status: LibraryStatus) {
 }
 
 /** Short relative times, then a date with the year when different. Never in the future. */
+function shortAge(at: number, now: number) {
+  const seconds = Math.max(0, (now - at) / 1000);
+  if (seconds < 45) return "now";
+  if (seconds < 3600) return `${Math.max(1, Math.round(seconds / 60))} min`;
+  if (seconds < 86400) return `${Math.round(seconds / 3600)} h`;
+  return `${Math.round(seconds / 86400)} d`;
+}
+
 export function ago(at: number, now: number) {
   const seconds = Math.max(0, (now - at) / 1000);
   if (seconds < 45) return "just now";

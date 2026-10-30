@@ -52,5 +52,10 @@ export function isFormatShortcut(e: React.KeyboardEvent, mac = isMac): boolean {
 }
 
 export function isSourceShortcut(e: React.KeyboardEvent, mac = isMac): boolean {
-  return matchesAccelerator(e, keysFor("source"), mac);
+  if (e.getModifierState("AltGraph")) return false;
+  return matchesAccelerator(e, e.altKey ? "Alt+CmdOrCtrl+O" : keysFor("source"), mac);
+}
+
+export function isChooseSourceShortcut(e: React.KeyboardEvent, mac = isMac): boolean {
+  return matchesAccelerator(e, keysFor("chooseSource"), mac);
 }

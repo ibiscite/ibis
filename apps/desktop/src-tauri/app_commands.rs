@@ -10,6 +10,7 @@ pub const APP_COMMANDS: &[&str] = &[
     "zotero_groups",
     "library_status",
     "open_library_source",
+    "library_source",
     "search",
     "preview_file_citation",
     "copy_file_citation",

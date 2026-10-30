@@ -23,7 +23,7 @@ test("empty-library choices use arrows and Enter, keep focus after cancelling an
   const search = screen.getByLabelText("Search references");
   act(() => search.focus());
   fireEvent.keyDown(search, { key: "ArrowDown", code: "ArrowDown" });
-  const source = choiceRow(/^Open ⁨empty.bib/);
+  const source = choiceRow(/^Open Zotero/);
   expect(document.activeElement).toBe(source);
   expect(source.getAttribute("aria-keyshortcuts")).toBe("Control+O");
   fireEvent.keyDown(source, { key: "ArrowDown", code: "ArrowDown" });
