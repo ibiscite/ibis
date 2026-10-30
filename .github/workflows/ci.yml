@@ -294,6 +294,10 @@ jobs:
           # Embed the built interface; a plain debug build uses localhost:5173.
           cargo build -p ibis-desktop --locked --features tauri/custom-protocol
 
+      - name: Paste into Notepad (Windows)
+        if: env.NATIVE == 'true' && runner.os == 'Windows'
+        run: cargo test -p ibis-desktop --locked one_ctrl_v_pastes_the_clipboard_into_the_app_in_front -- --ignored --nocapture
+
       - name: Lint and test the core and scripts (macOS and Windows)
         if: env.NATIVE == 'true' && runner.os != 'Linux'
         run: |

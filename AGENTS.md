@@ -60,6 +60,8 @@ node scripts/pr-lint.mjs --title "fix: explain the change"
 
 2026-10-30: Predeclare baseline validity and a counterbalanced benchmark order; keep every result and reject comparisons with unexplained baseline excursions.
 
+2026-10-30: Provision child worktrees from a live checkout before delegation; an archived chat working directory cannot serve as their source.
+
 ## Brief for an implementing agent
 
 ```text

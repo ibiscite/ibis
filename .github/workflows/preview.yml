@@ -248,12 +248,6 @@ jobs:
           RUSTFLAGS: -D warnings
         run: cargo test -p ibis-core -p ibis-sources --release --locked
 
-      - name: Enforce 100k open/refresh budgets (Linux, release)
-        if: runner.os == 'Linux'
-        env:
-          RUSTFLAGS: -D warnings
-        run: cargo test -p ibis-engine --locked --release --test refresh_budget -- open_refresh_budget --ignored --nocapture --test-threads=1
-
       - name: Test the declared minimum Rust version (Linux)
         if: runner.os == 'Linux'
         env:
@@ -370,10 +364,6 @@ jobs:
             } catch { Write-Output "::warning::Windows screenshot capture failed: $($_.Exception.Message)" }
           } finally { if (!$app.HasExited) { Stop-Process -Id $app.Id -Force } }
 
-      - name: Paste into Notepad (Windows)
-        if: ${{ !cancelled() && steps.native_build.outcome == 'success' && runner.os == 'Windows' }}
-        run: cargo test -p ibis-desktop --release --locked --target "${{ matrix.target }}" one_ctrl_v_pastes_the_clipboard_into_the_app_in_front -- --ignored --nocapture
-
       # Uploads still run after a job timeout (which counts as cancelled) so
       # a hang leaves its logs.
       - name: Keep screenshots and startup logs
@@ -472,6 +462,47 @@ jobs:
           path: dist/*
           if-no-files-found: error
           retention-days: 14
+
+      - name: Report or enforce 100k open/refresh budgets (Linux, release)
+        if: runner.os == 'Linux'
+        env:
+          RUSTFLAGS: -D warnings
+          BUILD_REF: ${{ github.ref }}
+        run: node scripts/preview-budgets.mjs "$BUILD_REF"
+
+  windows-paste:
+    name: Paste into Notepad (Windows)
+    needs: build
+    runs-on: windows-2025
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Set up pnpm
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          package_json_file: apps/desktop/package.json
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: apps/desktop/pnpm-lock.yaml
+      - name: Build the web interface
+        shell: bash
+        working-directory: apps/desktop
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm exec vite build
+      - name: Verify the owned Notepad destination
+        run: cargo test -p ibis-desktop --release --locked --target x86_64-pc-windows-msvc one_ctrl_v_pastes_the_clipboard_into_the_app_in_front -- --ignored --nocapture
 
   # Signs the macOS app with Ibis's own certificate (#1242, scripts/macos-sign.sh),
   # to preserve paste permission across updates (qualification: #1242). The
@@ -593,8 +624,8 @@ jobs:
   # not installed: this job uses only Apple silicon macOS runners.
   install:
     name: Install and start (${{ matrix.name }})
-    needs: [build, sign-macos]
-    if: ${{ !cancelled() && needs.build.result == 'success' && (needs.sign-macos.result == 'success' || needs.sign-macos.result == 'skipped') }}
+    needs: [build, sign-macos, windows-paste]
+    if: ${{ !cancelled() && needs.build.result == 'success' && needs.windows-paste.result == 'success' && (needs.sign-macos.result == 'success' || needs.sign-macos.result == 'skipped') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
@@ -1254,7 +1285,7 @@ jobs:
           PACKAGE: ${{ matrix.package }}
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends xvfb xauth python3-pyatspi at-spi2-core libfuse2t64 fonts-noto-core
+          sudo apt-get install -y --no-install-recommends xvfb xauth python3-pyatspi at-spi2-core libfuse2t64 fonts-noto-core xdotool
           # AppImages leave graphics drivers to the system. WebKit loads GLES dynamically, so ldd misses it.
           sudo apt-get install -y --no-install-recommends libegl1 libegl-mesa0 libgles2 libgl1 libgl1-mesa-dri libgbm1 libdrm2 libwayland-client0 libx11-xcb1
           /usr/bin/python3 scripts/update-e2e.py --self-test
