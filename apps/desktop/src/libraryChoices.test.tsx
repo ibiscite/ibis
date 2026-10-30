@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
@@ -12,6 +12,37 @@ function pressRow(row: HTMLElement) {
   fireEvent.keyDown(row, { key: "Enter", code: "Enter" });
   fireEvent.keyUp(row, { key: "Enter", code: "Enter" });
 }
+
+test.each(["success", "refusal"])("a found-file request A completing with %s after B fails keeps B's failure visible", async (outcome) => {
+  let finishA!: () => void;
+  const first = new Promise<void>((resolve, reject) => {
+    finishA = outcome === "success" ? resolve : () => reject(new Error("synthetic delayed refusal A"));
+  });
+  let list = 0;
+  const findSources = vi.fn(() => ({ zotero: "absent", list: ++list, files: [{ name: "example.bib", folder: "Documents" }], cut_short: false }));
+  const open = vi.fn().mockReturnValueOnce(first).mockRejectedValueOnce(new Error("synthetic current refusal B")).mockResolvedValue(undefined);
+  backend({
+    library_status: () => ({ state: "none", has_snapshot: false, zotero: false, name: null, snapshot_name: null, references: 0, warnings: 0, error: null, problem: null, note: null }),
+    find_sources: findSources,
+    open_found_library: open,
+  });
+  render(<App />);
+  pressRow(await screen.findByRole("option", { name: /^Find them on this computer/ }));
+  const file = await screen.findByRole("option", { name: /^Use example\.bib/ });
+  pressRow(file);
+  pressRow(file);
+  const failure = "That file could not be opened from the list. Pick it again from the new list.";
+  const alert = await screen.findByText(failure);
+  expect(alert.getAttribute("role")).toBe("alert");
+  await waitFor(() => expect(findSources).toHaveBeenCalledTimes(2));
+  await act(async () => finishA());
+  expect(screen.getByText(failure)).toBe(alert);
+  expect(findSources).toHaveBeenCalledTimes(2);
+  expect(open).toHaveBeenCalledTimes(2);
+  pressRow(choiceRow(/^Use example\.bib/));
+  await waitFor(() => expect(screen.queryByText(failure)).toBeNull());
+  expect(open).toHaveBeenCalledTimes(3);
+});
 
 test("empty-library choices use arrows and Enter, keep focus after cancelling and hide citation controls", async () => {
   const calls = backend({

@@ -8,6 +8,11 @@ const tokens = read("tokens.css");
 const native = read("nativeAppearance.css");
 const libraryStatus = read("ui/LibraryStatus.css");
 
+test("readable overlays use the panel surface at 92% for menus and 96% for sheets", () => {
+  expect(tokens).toMatch(/--surface-overlay:\s*color-mix\(in srgb, var\(--surface\) 92%, transparent\)/);
+  expect(tokens).toMatch(/--surface-sheet:\s*color-mix\(in srgb, var\(--surface\) 96%, transparent\)/);
+});
+
 function cssRules(source: string): CSSRule[] {
   const sheet = document.createElement("style");
   sheet.textContent = source;
@@ -253,20 +258,24 @@ test.each([
   ]);
   const sheet = document.createElement("style");
   // These are the production import order and real component selectors.
-  const source = native + read("styles.css").replace(/@import[^;]+;/g, "") + read("ui/Menu.css");
-  sheet.textContent = overlayRules(source, preferences).replace(/var\(--surface\)/g, "rgb(252, 252, 253)");
+  // Also put the old native skin last: shared roles must win independent of
+  // import order. JSDOM cannot evaluate these colour functions/custom props.
+  const source = read("ui/Overlay.css") + read("styles.css").replace(/@import[^;]+;/g, "") + read("ui/Menu.css") + read("ui/KeysSheet.css") + native;
+  const solid = preference !== "normal" || mode !== "vibrancy" && mode !== "liquid-glass";
+  sheet.textContent = overlayRules(source, preferences)
+    .replace(/var\(--surface(?:-overlay|-sheet)?\)/g, "rgb(252, 252, 253)")
+    .replace(/var\(--overlay-backdrop-filter\)/g, solid ? "none" : "blur(30px) saturate(180%)");
   document.head.append(sheet);
   document.documentElement.dataset.platform = "macos";
   document.documentElement.dataset.system = platform;
   if (mode) document.documentElement.dataset.nativeAppearance = mode;
-  document.body.innerHTML = '<div class="menu-popover">Menu</div><div class="keys-dialog">Shortcuts</div>';
+  document.body.innerHTML = '<div class="menu-popover ui-overlay">Menu</div><div class="keys-dialog ui-overlay ui-sheet">Shortcuts</div>';
   try {
-    const solid = preference !== "normal" || mode !== "vibrancy" && mode !== "liquid-glass";
     for (const element of document.body.children) {
       const style = getComputedStyle(element);
+      expect(style.backgroundColor).toBe("rgb(252, 252, 253)");
       if (solid) {
         expect(style.getPropertyValue("backdrop-filter")).toBe("none");
-        expect(style.backgroundColor).toBe("rgb(252, 252, 253)");
       } else {
         expect(style.getPropertyValue("backdrop-filter")).toBe("blur(30px) saturate(180%)");
       }

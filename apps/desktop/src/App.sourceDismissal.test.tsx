@@ -132,3 +132,61 @@ test("a selection command from a dismissed chooser cannot dismiss a reopened cho
   expect(fileRow()).toBe(file);
   expect(document.activeElement).toBe(file);
 });
+
+test("Choose Library uses the welcome shortcut guidance and Escape restores Search", async () => {
+  backend({ library_status: () => library });
+  render(<App />);
+  await waitFor(() => expect(screen.getByRole("status", { name: "Library status" }).textContent).toContain("thesis.bib"));
+  act(() => search().focus());
+  chooseSources();
+  await screen.findByRole("option", { name: /^Zotero/ });
+  expect(screen.getByText("After this, open Ibis from any app with Ctrl+Shift+Y.")).toBeTruthy();
+  press("Escape");
+  expect(document.querySelector(".library-welcome")).toBeNull();
+  expect(document.activeElement).toBe(search());
+});
+
+test("a source-open failure from the welcome keys sheet returns to visible More and keeps recovery usable", async () => {
+  const open = vi.fn(() => { throw { code: "failed" }; });
+  backend({ library_status: () => ({ ...library, state: "none", has_snapshot: false, name: null, snapshot_name: null, references: 0 }),
+    open_library_source: open });
+  render(<App />);
+  const initial = await screen.findByRole("option", { name: /^Zotero/ });
+  const more = screen.getByRole("button", { name: "More" });
+  act(() => more.focus());
+  press("/", { ctrlKey: true });
+  expect(await screen.findByRole("dialog", { name: "Keyboard shortcuts" })).toBeTruthy();
+  commandO();
+  await waitFor(() => expect(open).toHaveBeenCalledOnce());
+  await screen.findByRole("alert");
+  expect(document.activeElement).toBe(more);
+  commandO();
+  await waitFor(() => expect(initial.isConnected).toBe(false));
+  expect(document.querySelector(".library-welcome")).toBeTruthy();
+  expect(open).toHaveBeenCalledOnce();
+});
+
+test("a stale found-file completion cannot clear the explicit chooser's newer refusal", async () => {
+  let finishA!: () => void;
+  let list = 0;
+  const found = () => ({ zotero: "absent", list: ++list, cut_short: false, files: [{ name: "example.bib", folder: "Documents" }] });
+  const select = vi.fn().mockImplementationOnce(() => new Promise<void>((resolve) => { finishA = resolve; }))
+    .mockRejectedValueOnce({ code: "failed" });
+  const find = vi.fn(found);
+  backend({ library_status: () => library, find_sources: find, open_found_library: select });
+  render(<App />);
+  await waitFor(() => expect(screen.getByRole("status", { name: "Library status" }).textContent).toContain("thesis.bib"));
+  act(() => search().focus());
+  chooseSources();
+  fireEvent.click(await screen.findByRole("option", { name: /^Find them on this computer/ }));
+  const file = await screen.findByRole("option", { name: /^Use example\.bib/ });
+  fireEvent.click(file);
+  fireEvent.click(file);
+  const text = "That file could not be opened from the list. Pick it again from the new list.";
+  const failure = await screen.findByText(text);
+  await waitFor(() => expect(find).toHaveBeenCalledTimes(2));
+  await act(async () => { finishA(); });
+  expect(screen.getByText(text)).toBe(failure);
+  expect(await screen.findByRole("option", { name: /^Use example\.bib/ })).toBeTruthy();
+  expect(select).toHaveBeenCalledTimes(2);
+});

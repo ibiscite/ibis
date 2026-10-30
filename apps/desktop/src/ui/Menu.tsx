@@ -7,6 +7,7 @@ import { Button } from "./Button";
 import { markScrollEdges } from "./ScrollArea";
 import { useMenuLifecycle } from "./useMenuLifecycle";
 import "./Menu.css";
+import "./Overlay.css";
 
 /** Align to the rendered trailing edge even when the browser locale differs. */
 export function useMenuPlacement(open: boolean, trigger: RefObject<HTMLElement | null>, placement: "top end" | "bottom end") {
@@ -89,6 +90,8 @@ export function useWholeRows(list: RefObject<HTMLElement | null>) {
         const top = node.getBoundingClientRect().top + node.clientTop;
         let end = 0;
         for (const row of node.querySelectorAll('[role^="menuitem"]')) {
+          // Rectangles already include the scroll offset. Fit the last whole
+          // row in this viewport without moving the user's scroll position.
           const bottom = row.getBoundingClientRect().bottom - top;
           if (bottom <= height && bottom > end) end = bottom;
         }
@@ -301,7 +304,7 @@ export function Menu({ label, id, trigger, triggerRef, triggerClassName, trigger
       else if (triggerRef) triggerRef.current = node;
     }} className={triggerClassName}
       render={(props) => <button {...props as ComponentPropsWithRef<"button">} title={triggerTitle} aria-label={triggerLabel} aria-keyshortcuts={triggerKeys} />}>{trigger}</Button>
-    <Popover ref={popoverRef} className="menu-popover" placement={renderedPlacement} offset={6} containerPadding={8} shouldSkipAnimation={skipExit} {...boundary}>
+    <Popover ref={popoverRef} className="menu-popover ui-overlay" placement={renderedPlacement} offset={6} containerPadding={8} shouldSkipAnimation={skipExit} {...boundary}>
       <div className="menu-frame" onKeyDownCapture={(event) => {
         if (isComposing(event)) { event.stopPropagation(); return; }
         const to = event.key === "Escape" ? button.current : event.key === "Tab" ? tabFocusRef?.current : undefined;
