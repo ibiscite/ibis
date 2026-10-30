@@ -62,6 +62,13 @@ export function keyLabel(accelerator: string, mac: boolean): string {
   }), mac);
 }
 
+/** One label per cap: joined glyphs on macOS, separate keys elsewhere. */
+export function keyCapLabels(accelerator: string, mac: boolean): string[] {
+  const label = keyLabel(accelerator, mac);
+  // keyLabel joins with "+" off macOS; a lone or trailing "+" is the key itself.
+  return mac ? [label] : label === "+" ? ["+"] : label.split(/\+(?!$)/);
+}
+
 /** The aria-keyshortcuts value for an accelerator. */
 export function ariaKeys(accelerator: string, mac: boolean): string {
   return accelerator.split(/\+(?!$)/).map((part) =>
