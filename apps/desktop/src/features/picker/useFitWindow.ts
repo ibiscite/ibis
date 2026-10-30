@@ -6,16 +6,35 @@ function contentHeight(node: HTMLElement) {
   // Measure natural layout synchronously, then restore the visible frame before
   // paint. A short viewport must not become its own requested content height.
   const previous = node.style.cssText;
+  const middle = node.querySelector<HTMLElement>(":scope > .picker-content");
+  const previousMiddle = middle?.style.cssText ?? "";
+  const scrolled = [node, ...node.querySelectorAll<HTMLElement>("*")]
+    .filter((part) => part.scrollTop || part.scrollLeft)
+    .map((part) => ({ part, top: part.scrollTop, left: part.scrollLeft }));
   try {
     node.style.height = "auto";
     node.style.minHeight = "0";
+    // Size containment makes an auto-height middle empty. Its children must
+    // contribute their natural height before we read the picker's geometry.
+    if (middle) {
+      middle.style.containerType = "normal";
+      middle.style.flex = "none";
+    }
     const footer = node.querySelector(":scope > footer");
     const spare = footer ? parseFloat(getComputedStyle(footer).marginBlockStart) || 0 : 0;
-    const middle = node.querySelector<HTMLElement>(":scope > .picker-content");
     const overflow = middle && /auto|scroll|hidden|clip/.test(getComputedStyle(middle).overflowY)
       ? Math.max(0, middle.scrollHeight - middle.clientHeight) : 0;
     return Math.ceil(Math.max(node.offsetHeight, node.scrollHeight) + overflow - spare);
-  } finally { node.style.cssText = previous; }
+  } finally {
+    if (middle) middle.style.cssText = previousMiddle;
+    node.style.cssText = previous;
+    // Expanding the live scrollport can clamp its offsets. Restore only after
+    // the bounded layout is back, without moving focus or the text selection.
+    for (const { part, top, left } of scrolled) {
+      part.scrollTop = top;
+      part.scrollLeft = left;
+    }
+  }
 }
 
 /** Size follows content (docs/design.md, C10). While `compact`, ask for the

@@ -8,8 +8,9 @@ const browser = await chromium.launch({ headless: true });
 let profiles = 0;
 try {
   const cases = [720, 360].flatMap((width) => [false, true].flatMap((larger) => ["light", "dark"].map((colorScheme) => ({ width, larger, colorScheme, scale: 1 }))));
+  cases.push(...[false, true].map((larger) => ({ width: 720, larger, colorScheme: "light", scale: 1, startupNotice: true })));
   cases.push({ width: 360, larger: false, colorScheme: "light", scale: 3 });
-  for (const { width, larger, colorScheme, scale } of cases) {
+  for (const { width, larger, colorScheme, scale, startupNotice = false } of cases) {
     const small = width === 360, limit = small ? 320 : 800;
     const page = await browser.newPage({ viewport: { width, height: small ? 320 : 109 }, colorScheme });
     const errors = [], fits = [];
@@ -19,7 +20,7 @@ try {
       fits.push(height);
       await page.setViewportSize({ width, height: Math.min(limit, Math.max(page.viewportSize().height, height ?? 480)) });
     });
-    await page.addInitScript(({ larger, scale }) => {
+    await page.addInitScript(({ larger, scale, startupNotice }) => {
       if (scale !== 1) document.addEventListener("DOMContentLoaded", () => { document.documentElement.style.fontSize = `${scale * 100}%`; });
       Object.defineProperty(navigator, "platform", { value: "MacIntel" });
       let callback = 0;
@@ -38,7 +39,7 @@ try {
           if (command === "copy_format") return "pandoc";
           if (command === "picker_destination") return { app: null, app_id: null, automatic: null, remembered: null, unreadable: false, can_paste: false, output_question: null };
           if (command === "shortcut_status") return { shortcut: "CommandOrControl+Shift+Y", registered: true, error: null };
-          if (command === "library_status") return { state: "loaded", revision: "1", has_snapshot: true, zotero: false, name: "invented.bib", snapshot_name: "invented.bib", references: 14, warnings: 0, error: null, problem: null, note: null };
+          if (command === "library_status") return { state: "loaded", revision: "1", has_snapshot: true, zotero: false, name: "invented.bib", snapshot_name: "invented.bib", references: 14, warnings: 0, error: null, problem: null, note: null, settings_notice: startupNotice ? "Synthetic startup settings notice." : null };
           if (command === "search" && args.query.text === "refuse") throw Error("synthetic search refusal");
           if (command === "search") return { revision: "1", results: args.query.text ? Array.from({ length: 14 }, (_, i) => ({ revision: "1", id: { library: "invented.bib", key: `synthetic${i}` }, cite: `synthetic-cite-${i}`, source: "invented.bib", key: `synthetic${i}`, title: `Invented reference ${i}`, authors: "Aster", first_author: "Aster", author_count: 1, year: 2026, container: null, item_type: "article-journal", partial: false, matched: ["title"] })) : [] };
           if (command === "preview_file_citation") return { ticket: "synthetic-ticket", content_hash: "synthetic-hash", text: "[@synthetic0]", html: null, warnings: [] };
@@ -48,7 +49,7 @@ try {
           throw Error(`Unexpected synthetic IPC: ${command}`);
         },
       };
-    }, { larger, scale });
+    }, { larger, scale, startupNotice });
     await page.goto(base.href);
     await page.getByText("Type to find a reference", { exact: true }).waitFor();
     await page.waitForFunction((larger) => document.documentElement.dataset.textSize === (larger ? "larger" : "normal"), larger);
@@ -64,6 +65,14 @@ try {
       }
       const owners = await page.evaluate(() => [document.querySelector("main"), ...document.querySelectorAll("main *")].filter((node) => /auto|scroll/.test(getComputedStyle(node).overflowY) && node.clientHeight > 0 && node.scrollHeight > node.clientHeight + 1).length);
       assert.equal(owners, 1, "extreme text has one full-page scroll owner");
+      const offset = await page.locator("main").evaluate((node) => node.scrollTop);
+      const frame = page.viewportSize(), before = fits.length;
+      await page.getByRole("button", { name: /^More/ }).click();
+      await page.getByRole("menu").waitFor();
+      await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      assert.equal(await page.locator("main").evaluate((node) => node.scrollTop), offset, "opening More preserves the scrolled footer during measurement");
+      assert.deepEqual(page.viewportSize(), frame, "extreme-text More preserves frame");
+      assert.equal(fits.length, before, "extreme-text More does not request a different fit");
       assert.deepEqual(errors, [], "no page errors");
       await page.close(); profiles += 1; continue;
     }
@@ -83,6 +92,19 @@ try {
     });
     assert.deepEqual(await scan(), [], `${width}/${larger}/${colorScheme}: compact`);
     if (!small) assert.ok(page.viewportSize().height > 109, "clipped initial viewport must grow to content");
+    const wholeNotice = async (text) => {
+      const notice = page.getByRole("alert").filter({ hasText: text }).first();
+      await notice.waitFor();
+      await page.waitForFunction((text) => {
+        const node = [...document.querySelectorAll('.notices [role="alert"]')].find((node) => node.textContent.includes(text));
+        if (!node) return false;
+        const rect = node.getBoundingClientRect(), port = node.closest(".picker-content").getBoundingClientRect();
+        return rect.height > 0 && rect.top >= port.top - 1 && rect.bottom <= port.bottom + 1;
+      }, text);
+      assert.equal(await notice.evaluate((node) => /auto|scroll/.test(getComputedStyle(node.closest(".notices")).overflowY)), false, "notices use the middle scroll owner");
+      assert.deepEqual(await scan(), [], "whole compact notice keeps search/footer and one scroller");
+    };
+    if (startupNotice) await wholeNotice("Synthetic startup settings notice.");
     const frame = page.viewportSize(), before = fits.length;
     await page.getByRole("button", { name: /^More/ }).click();
     await page.getByRole("menu").waitFor();
@@ -93,6 +115,13 @@ try {
     assert.deepEqual(page.viewportSize(), frame, "More/Escape preserve frame");
     assert.equal(fits.length, before, "menus do not request a different fit");
     const search = page.getByLabel("Search references", { exact: true });
+    if (!small) {
+      await search.fill("refuse");
+      await wholeNotice("Search");
+      assert.equal(await page.locator("main").evaluate((node) => node.hasAttribute("data-compact")), true, "failed search stays compact");
+      await search.fill("");
+      await page.getByText("Type to find a reference", { exact: true }).waitFor();
+    }
     await search.fill("invented");
     await page.getByRole("option").last().waitFor();
     assert.deepEqual(await scan(), [], `${width}/${larger}/${colorScheme}: results`);
@@ -129,5 +158,5 @@ try {
     assert.deepEqual(errors, [], "no page errors");
     await page.close(); profiles += 1;
   }
-  console.log(`Picker layout: ${profiles} browser profiles passed (normal/small, normal/Larger, light/dark + extreme-text fallback).`);
+  console.log(`Picker layout: ${profiles} browser profiles passed (normal/small, normal/Larger, light/dark, compact notices + extreme-text More).`);
 } finally { await browser.close(); }

@@ -178,6 +178,9 @@ only decorative empty-state spacing, illustration and key hints compact;
 readable text, Larger text and actionable targets retain their sizes. Header
 and footer stay outside the middle scroller. At extreme text growth the outer
 window remains scrollable rather than clipping controls.
+Intrinsic measurement removes middle-region size containment and preserves
+scroll offsets, focus and selection. Notices keep their natural height and
+scroll with the middle region, including when they appear while compact.
 
 **Nothing clipped, one scroller** (maintainer, 2026-10-30). The window's height
 is measured from its content after fonts and the text size apply, so no state

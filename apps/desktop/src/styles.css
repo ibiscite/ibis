@@ -223,9 +223,11 @@ kbd { font: inherit; font-size: var(--hint-size); font-weight: 500; display: inl
   /* Let the line break after the separator rather than inside a word. */
   .result-separator { white-space: pre-wrap; }
 }
-/* One stable middle region owns results and shelf. When space is tight they
+/* One stable middle region owns notices, results and shelf. When space is tight they
    scroll together; the search and footer never join that scrollport. */
 .picker-content { position: relative; display: flex; flex: 1; flex-direction: column; min-height: 0; overflow: auto; overscroll-behavior: contain; container-type: size; }
+/* Notices keep their full content height and scroll with the middle region. */
+.picker-content > .notices { flex: none; }
 /* Size follows content (C10): the window fits this height; once it has grown
    it keeps its height while open, and the footer stays at the bottom. */
 main[data-compact] { min-height: 0; }
@@ -233,7 +235,6 @@ main[data-compact] .results-area { flex: none; min-height: 0; overflow: visible;
 main[data-compact] > footer { margin-block-start: auto; }
 main[data-selection] { height: var(--picker-height); min-height: 0; overflow: hidden; }
 main[data-selection] > .search-bar, main[data-selection] > footer { flex: none; }
-main[data-selection] .notices { flex: none; max-height: 6rem; }
 /* Below room for the shelf and useful result rows, remove the nested results
    viewport. Page/Form and the exact preview remain reachable in this same DOM. */
 @container (max-height: 16rem) {

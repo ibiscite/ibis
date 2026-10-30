@@ -45,9 +45,9 @@ function fireScroll(node: HTMLElement) {
   act(() => { node.dispatchEvent(new Event("scroll")); });
 }
 
-test("the results, menus, Shortcuts and notices share the scroll area, and no screen sets its own overflow", () => {
+test("results, menus and Shortcuts share the scroll area; picker notices belong to the middle scroller", () => {
   const styles = css("../styles.css");
-  for (const selector of [".results-area", ".keys-scroll", "main[data-selection] .notices"]) {
+  for (const selector of [".results-area", ".keys-scroll", ".picker-content > .notices"]) {
     const rule = styles.split("\n").find((line) => line.startsWith(`${selector} {`)) ?? "";
     expect(rule, selector).not.toBe("");
     expect(rule, selector).not.toMatch(/overflow|scrollbar/);
@@ -56,7 +56,10 @@ test("the results, menus, Shortcuts and notices share the scroll area, and no sc
   const keys = render(<KeysDialog bindings={[{ region: "picker", action: "pin", keys: ["CmdOrCtrl+Shift+P"] }]} isMac onClose={vi.fn()} />);
   expect(keys.container.querySelector(".keys-scroll")?.classList.contains("scroll-area")).toBe(true);
   const notices = render(<Notices library={null} failures={{}} startAtLogin={null} error="Search failed" copyError={null} copied={null} showCopiedText={false} onDismissCopied={vi.fn()} />);
-  expect(notices.container.querySelector(".notices")?.classList.contains("scroll-area")).toBe(true);
+  expect(notices.container.querySelector(".notices")?.classList.contains("scroll-area")).toBe(false);
+  const noticeRule = styles.split("\n").find((line) => line.startsWith(".picker-content > .notices {")) ?? "";
+  expect(noticeRule).toMatch(/flex: none/);
+  expect(noticeRule).not.toMatch(/max-height/);
 });
 
 test("the fade is valid at either edge and every system shares the native scrollbar", () => {

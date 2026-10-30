@@ -6,11 +6,66 @@ import { useFitWindow, type FitPicker } from "./useFitWindow";
 const originalFonts = Object.getOwnPropertyDescriptor(document, "fonts");
 afterEach(() => { if (originalFonts) Object.defineProperty(document, "fonts", originalFonts); else Reflect.deleteProperty(document, "fonts"); document.documentElement.removeAttribute("data-text-size"); cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); document.querySelectorAll(".menu-popover, [role=dialog]").forEach((node) => node.remove()); });
 
-function Picker({ compact, fit, rows, spare = 0, onShown, scroll = false }: { scroll?: boolean; compact: boolean; fit: FitPicker; rows: number; spare?: number; onShown?: (handler: () => void) => Promise<() => void> }) {
+function Picker({ compact, fit, rows, spare = 0, onShown, scroll = false, notice }: { notice?: string; scroll?: boolean; compact: boolean; fit: FitPicker; rows: number; spare?: number; onShown?: (handler: () => void) => Promise<() => void> }) {
   const main = useRef<HTMLElement>(null);
   useFitWindow(main, compact, fit, onShown);
-  return <main ref={main}><header className="search-bar"><input id="search" aria-label="Synthetic search" /></header><div className="picker-content" style={{ overflowY: scroll ? "auto" : undefined }}><div className="results-area">{Array.from({ length: rows }, (_, i) => <p key={i}>row</p>)}</div></div><footer style={{ marginBlockStart: `${spare}px` }} /></main>;
+  return <main ref={main}><header className="search-bar"><input id="search" aria-label="Synthetic search" /></header><div className="picker-content" style={{ containerType: "size", overflowY: scroll ? "auto" : undefined }}>{notice && <div className="notices"><p role="alert">{notice}</p></div>}<div className="results-area">{Array.from({ length: rows }, (_, i) => <p key={i}>row</p>)}</div></div><footer style={{ marginBlockStart: `${spare}px` }} /></main>;
 }
+
+test.each([32, 64].flatMap((noticeHeight) => ["startup", "appearing"].map((when) => ({ noticeHeight, when }))))("a $when compact notice contributes its full $noticeHeight px beyond a size-contained middle", ({ noticeHeight, when }) => {
+  // Model the reported layout boundary: size containment hides a shrinking
+  // notice from the middle's scrollHeight, despite its own nonzero content.
+  // jsdom has no flex layout; the browser probe checks the real CSS geometry.
+  const middleHeight = (node: HTMLElement) => {
+    const middle = node.querySelector<HTMLElement>(".picker-content")!;
+    return getComputedStyle(middle).containerType === "size" ? 0 : middle.querySelector(".notices") ? noticeHeight : 0;
+  };
+  vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (this: HTMLElement) {
+    return this.tagName === "MAIN" ? 109 + middleHeight(this) : 0;
+  });
+  vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockImplementation(function (this: HTMLElement) {
+    return this.tagName === "MAIN" ? 109 + middleHeight(this) : this.classList.contains("notices") ? noticeHeight : 0;
+  });
+  const fit = vi.fn<FitPicker>(() => Promise.resolve());
+  const view = render(<Picker compact fit={fit} rows={0} scroll notice={when === "startup" ? "Synthetic settings notice" : undefined} />);
+  if (when === "appearing") {
+    expect(fit).toHaveBeenLastCalledWith(109, expect.any(Boolean));
+    view.rerender(<Picker compact fit={fit} rows={0} scroll notice="Synthetic settings notice" />);
+  }
+  expect(fit).toHaveBeenLastCalledWith(109 + noticeHeight, expect.any(Boolean));
+  expect(view.container.querySelector<HTMLElement>(".picker-content")!.style.containerType).toBe("size");
+});
+
+test("remeasuring for More preserves scrolled footer, nested offsets, focus and selection", async () => {
+  // A browser clamps scroll offsets when the measured auto-height frame grows
+  // to its natural height. Restoring cssText alone cannot restore those offsets.
+  vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (this: HTMLElement) {
+    if (this.tagName === "MAIN" && this.style.height === "auto") {
+      this.scrollTop = this.scrollLeft = 0;
+      const middle = this.querySelector<HTMLElement>(".picker-content")!;
+      middle.scrollTop = middle.scrollLeft = 0;
+    }
+    return this.tagName === "MAIN" ? 900 : 0;
+  });
+  const fit = vi.fn<FitPicker>(() => Promise.resolve());
+  const view = render(<Picker compact fit={fit} rows={0} />);
+  const main = view.container.querySelector("main")!;
+  const middle = view.container.querySelector<HTMLElement>(".picker-content")!;
+  const input = view.container.querySelector("input")!;
+  input.value = "invented";
+  input.focus(); input.setSelectionRange(2, 5);
+  main.scrollTop = 580; main.scrollLeft = 4;
+  middle.scrollTop = 60; middle.scrollLeft = 8;
+  const menu = document.createElement("div");
+  menu.className = "menu-popover"; menu.setAttribute("role", "dialog");
+  await act(async () => { document.body.append(menu); });
+  expect([main.scrollTop, main.scrollLeft, middle.scrollTop, middle.scrollLeft]).toEqual([580, 4, 60, 8]);
+  expect(document.activeElement).toBe(input);
+  expect([input.selectionStart, input.selectionEnd]).toEqual([2, 5]);
+  expect(fit).toHaveBeenCalledTimes(1);
+  await act(async () => { menu.remove(); });
+  expect(main.scrollTop).toBe(580);
+});
 
 test("compact content asks for its own height, results for the results height, once each", () => {
   const fit = vi.fn<FitPicker>(() => Promise.resolve());
