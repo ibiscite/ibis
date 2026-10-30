@@ -54,8 +54,12 @@ material correctness; it does not choose a different layout. The copied
 notice uses the same 560×100-point frame near the top centre on every OS,
 including its 16-point shadow margin; the frame ignores the pointer. The
 notice never clips its words: a citation that would be cut short moves to a
-second line. A green check means pasted; copied without a paste shows the
-same mark in `--muted` with the reason in words.
+second line. The notice is one card (maintainer, 2026-10-30): radius 18, 8 px
+inset, a 36 px tile of radius 10, then the title ("Pasted into Word", 14/18
+semibold) and at most two lines of the citation (12/16 mono), ending "+4 more"
+when longer. Pasted shows a `--status-done` tile with a `--surface` check;
+copied without a paste shows a `--fill` tile with a `--muted` check and the
+reason in words.
 If Windows cannot release the keys Ibis injected, the notice says "Copied.
 Press and release Ctrl and V". Ibis retains the unsent releases and retries
 them before any later delivery; it sends no new paste while they remain blocked.
@@ -70,7 +74,7 @@ them before any later delivery; it sends no new paste while they remain blocked.
 | Fills | `--fill-control(-hover/-pressed)`, `--fill-subtle-*`, `--fill-primary-*`, `--fill-disabled` | Pressed is darker on macOS and GNOME, lighter on Windows. |
 | Strokes | `--separator`, `--stroke-control`, `--stroke-field`, `--stroke-overlay`, `--line`, `--border-width`, `--contrast-border-width` | Never a coloured border on a control. On macOS a hairline or a shadow, never both with a fill. |
 | Citation [D9] | `--citation`, `--citation-tile`, `--on-citation` | Scarlet; see **Colour roles**. |
-| Status [D10] | `--status-done`, `--status-look`, `--status-stop`, `--status-info` | Ibis-owned hues, always with words or an icon. Stop is a rose kept apart from scarlet and from Fluent's and Adwaita's red. Info is `--accent-text`. |
+| Status [D10] | `--status-done`, `--status-look`, `--status-stop`, `--status-info` | Ibis-owned hues, always with words or an icon. Look is a golden amber, `#b07a00` light and `#f5c542` dark (maintainer asked for lighter, 2026-10-30), at least 3:1 as a glyph. Stop is a rose kept apart from scarlet and from Fluent's and Adwaita's red. Info is `--accent-text`. |
 | Progress | `--progress-track`, `--progress-fill`, `--progress-border`, `--progress-border-width` | Accent fill on a quiet track; contrast modes use Canvas with CanvasText fill and edge. |
 | Elevation [D11] | `--shadow-card`, `--shadow-raised`, `--shadow-overlay`, `--shadow-dialog`, `--shadow-toast` | One overlay shadow for every menu. None in contrast modes, none on rows, chips or inside an overlay; on Linux only cards, overlays and dialogs. In dark mode fills and hairlines separate layers first. |
 | Space [D12] | `--space-1…10`, `--inset`, `--row-pad`, `--row-gap`, `--row-spacing` | 4 px grid; 2 px only as an optical nudge or between rows. |
@@ -88,9 +92,9 @@ progress, badge, counter, selection, focus ring, error, Stop status, Settings
 control or the shortcut recorder. Brand scarlet itself (no app token) is for the
 logo, app icon, website and store art. On an accent-filled row the added tile
 becomes a `--text-on-accent` tile with a scarlet check, so a red or orange
-accent never meets scarlet fill on fill. Ibis follows the system's light or
-dark appearance and offers no appearance, accent, brand colour, per-element
-colours, fonts, radius, spacing, custom CSS or themes of its own.
+accent never meets scarlet fill on fill. Ibis offers Appearance (System, Light,
+Dark; System by default, maintainer 2026-10-30) and never an accent, brand
+colour, per-element colours, fonts, radius, spacing, custom CSS or themes.
 
 **Contrast.** Text, placeholder, footer and key-cap labels: 4.5:1 against
 rendered pixels on every look and theme, the 22 px query included; over the
@@ -167,7 +171,9 @@ Densities (decision 0020): Compact 40 px (one line), Comfortable 58 px (the defa
 two lines) and Spacious 76 px (three lines). Density changes rows only, never
 controls, targets, type or the header. The citation key is not shown in rows
 (it stays in the accessible name and tooltip); the year (or "No date") is
-trailing and vertically centred.
+trailing and vertically centred, except in Spacious, where the third line
+reads "Article · 2021" and the title gets the full width (maintainer,
+2026-10-30).
 
 **One steady window** [C10] (maintainer, 2026-10-30). The picker keeps one
 size the whole time it is open, in every state: first run, empty search,
@@ -204,9 +210,12 @@ the first days with a library, the hint: the magnifier, "Type to find a
 reference", what to search by, and the Copy and Add keys, centred in the
 middle area. Once there is history, the middle area shows what people most
 likely want: Cited here recently (up to three, for the app Ibis was opened
-from, #45) then Recently added (three, #1070), as compact rows under their
-headings, and the hint shrinks to the search placeholder and the footer keys.
-Typing replaces these rows in place.
+from, #45) then Recently added (three, #1070), under their headings, and the
+hint shrinks to the search placeholder and the footer keys. These are ordinary
+result rows (maintainer, 2026-10-30): same density, selection, Copy, add and
+⌘-click; only the headings say they are not a search. Arrow keys move through
+both groups as one list. The Compact bar shows Cited here recently only, as
+Compact rows. Typing replaces these rows in place.
 
 **Corners** [C15][D3]. Fixed CSS px at every text size; nested shapes are
 concentric, and an inner corner never goes below the per-OS floor.
@@ -413,9 +422,11 @@ page, report, other) never reuse an attachment drawing. Platform icons only
 where the platform owns the meaning.
 
 **Footer and status** [C8]. Status dot and text at the leading edge, then
-"Paste into Word · APA ↵" or "Copy N as <format> ↵" (the primary hint,
-text colour), "Shortcuts ⌘/" and
-"More ⌘K" (secondary). Every hint is label first, then keys: 8 px between them,
+"Shortcuts ⌘/" and "More ⌘K" (quiet), then, last, "Paste into Word · APA ↵"
+or "Copy N as <format> ↵": the one primary action, filled with the accent
+with an `--on-accent` label and key cap, because mouse users copy far more
+often than they open anything else (maintainer, 2026-10-30; a Mac puts the
+default button last). Every hint is label first, then keys: 8 px between them,
 16 px between hints, label type on one baseline. Actions are quiet 24 px fills,
 radius `--r-tile`, with 32 px targets; they invoke the same guarded actions as
 the keys and sit in one group named "Keys". With Alt held: "Add to citation ⇧↵",
@@ -444,7 +455,14 @@ library state lives, and nothing is ever inserted above the results, so a
 problem never pushes the list down. The status is a button: it opens the
 **library menu** (the library with its count and age, a Reload button, the
 Zotero libraries as toggle chips when there are several, Choose Library…,
-Reload Library). A problem shows there in a few words with a qualified age and
+Reload Library). **Open the source** (maintainer, 2026-10-30): ⌘O (Ctrl+O)
+works on every screen and opens where the references come from: the selected
+reference in Zotero (Zotero's own `zotero://select` link, starting Zotero if
+it is closed), or the .bib file in its default app. More lists it first as
+"Show in Zotero" or "Open thesis.bib"; a problem's inline action and a choice
+screen's row use the same words and show ⌘O. Ibis shows the system's own icon
+for the source app or file at runtime and never ships another app's logo.
+A problem shows there in a few words with a qualified age and
 one inline action: "Zotero not updated · last read 2 h ago · Open Zotero"
 (Open Zotero launches the app), "thesis.bib moved · Find…". "Last read" is the
 last successful read. Background work (reading a large library, downloading an
@@ -455,7 +473,7 @@ While references are usable nothing else interrupts. Names and ages are isolated
 age ticks every 30 s outside the live region.
 
 **Notices.** "Copied" or "Inserted" shows after the picker hides, in a window
-that never takes focus: the same pill near the top centre on every system. In-window toasts ("Removed · Undo") last 8 s and pause
+that never takes focus: the same card near the top centre on every system. In-window toasts ("Removed · Undo") last 8 s and pause
 on hover and focus. Errors are one sentence beside their cause, never a modal.
 On macOS, system-wide Secure Event Input only copies and says "Copied. Secure
 typing is on, possibly in another app. Press ⌘V to paste." An unavailable or
@@ -486,8 +504,12 @@ references the citation itself holds them as segments (no chips line): each
 reserves 1 px on each side; under the pointer it becomes a soft pill (radius 6),
 so nothing moves, no control ever covers its text and neighbours are never
 covered (also for zero-width separators). From the keyboard ← → select a
-segment as an accent-filled token and Delete removes it. On copy the shelf
-shows a closing beak and "Copied" at the line end.
+segment as an accent-filled token and Delete removes it. On copy
+(maintainer, 2026-10-30) the shelf shows a closing beak that is the opening
+one turned 180°, the same size and the same 12 px from the citation, so the
+pair is symmetric; a capsule "Copied" (24 px, radius 12, `--status-done` on
+14% of itself) with a check that draws in 200 ms; and a 9% green wash over the
+shelf for 160 ms. Reduce Motion shows the end state.
 
 **One line, details on demand** (maintainer, 2026-10-30). The shelf is always
 one line: no Page field or form choices beneath it. Clicking a segment (or
@@ -496,8 +518,9 @@ as a heading, **Page** with a field, then **Name in brackets**, **Name in the
 sentence** and **Year only**, each with a quiet example of what it pastes in
 the current style, then **Remove from citation ⌫**. With one reference the
 whole citation is its segment. Removing needs no click into the menu
-(maintainer, 2026-10-30): a pointed segment shows a 16 px round × badge on its
-top-end corner, outside the text and the pill, so the key is never covered;
+(maintainer, 2026-10-30): a pointed segment shows a 16 px round × badge in a
+24 px target on its top-end corner, outside the text and the pill, so the key
+is never covered;
 clicking it removes the reference with an Undo notice. The badge never shows
 for keyboard focus or while the segment's menu is open (⌫ removes there). Pages also come from typing (`garcia 2021 p12`
 shows a page token beside search) and, from 0.5, the PDF pane's "Cite this
@@ -725,10 +748,12 @@ radii and per-platform depth wait in the Later milestone.
 - **Materials** [C13]. Never glass on glass or CSS blur posing as the desktop.
   The macOS veil is the surface at 75%, so the glass shows light and colour from
   behind but never readable shapes under the list. **Readable overlays**
-  (maintainer, 2026-10-30): menus, the keys sheet, dialogs and the shelf's
-  reference menu are layers for reading, so they sit on `--surface-overlay`
-  opaque enough that nothing behind them shows as shapes or text (as macOS
-  menus and sheets do); only the panel itself shows the desktop's colour.
+  (maintainer, 2026-10-30, revised the same day): menus, the keys sheet,
+  dialogs and the shelf's reference menu use the panel's own glass, never a
+  flat opaque block, but denser (92% for menus, 96% for sheets, with the
+  panel's blur) so the rows behind them read as soft colour, never as shapes
+  or words competing with the text in front. Reduced transparency makes them
+  opaque. The keys sheet hugs its content in two columns of groups.
   Over the macOS veil, citation and status colours go one step deeper to keep
   4.5:1; fills, hairlines and key caps are translucent; the window edge is a
   1 px hairline, never a white rim. Ibis sets no blur or opacity of its own.
@@ -827,8 +852,9 @@ fills as the active result row; one suggested row at most gets an accent tile.
 A choice screen hides the result heading, the shelf and the Copy hint.
 
 Choice screens are one calm group centred in the steady frame
-(maintainer, 2026-10-30): the title (17 px) and line centred, then the rows in
-a column at most 540 px wide. On the welcome screen the 40 px mark sits above
+(maintainer, 2026-10-30): the title (17 px) and line centred, 6 px apart, then
+24 px to the rows in a column at most 540 px wide, rows 4 px apart, any note
+16 px below them. On the welcome screen the 40 px mark sits above
 the title. Space is shared above and below, never left as one empty band.
 
 **Opening a library.** Nothing for 400 ms, then the same centred group: the
@@ -1037,14 +1063,14 @@ key list) and About (version, updates); Libraries and Citations follow (#776).
 window; every drawing and board uses it, and it is kept in step with the app as
 both change. The Rows and Search icon pictures are the real picker drawn small
 (sample references, the current appearance), never a separate sketch, so they
-can't drift from it. Ibis has no light or dark setting of its own: it follows
-the system appearance, as Apple's guidelines ask, and Look links to the system
-setting. The website shows the app as it currently is.
+can't drift from it. Look opens with Appearance: System, Light and Dark as
+pictures of the picker (System split diagonally), System by default. The
+website shows the app as it currently is.
 
 **Pages for everyone** (2026-10-30). Most people never open Settings, so
 defaults carry the product (principle 9). Seven pages, each with one job, in this
 order: **General** (the opening shortcut, Open at Login, Show in Menu Bar,
-pasting), **Look** (rows, text size, window size, search icon, show what will
+pasting), **Look** (appearance, rows, text size, window size, search icon, show what will
 be pasted; each visual choice a row of small pictures), **Libraries**
 (each source with its status in words, which Zotero libraries, Add Library…,
 Remove with Undo), **Citations** (default format, formats remembered per app
