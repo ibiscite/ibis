@@ -99,18 +99,36 @@ def shows_count(snapshot, count):
     return count in strings(snapshot)
 
 
+def retained_snapshot_fragments(snapshot):
+    """Fixed predicates only, from one bounded native snapshot; never echo text."""
+    # Native traversal order is not reading order (Linux walks a LIFO stack).
+    # Match complete atomic wording or one composite text node, never invent a
+    # phrase by joining neighboring elements from different native boundaries.
+    values = [" ".join(str(node.get(key, "")).split())
+              for node in snapshot["nodes"] for key in ("name", "value")]
+    def contains(fragment, ending=r"(?!\w)"):
+        return any(re.search(r"(?:^|^· | · )" + re.escape(fragment) + ending, value) is not None
+                   for value in values)
+    # The count is a complete clause: either its own node/summary, or followed
+    # by the spoken detail's check time or failure. A word boundary alone would
+    # also accept "4 references missing; 3 references retained".
+    count_ending = r"(?=$|\. (?:checked |The library could not be opened: |the file could not be read$|Zotero could not be reached$))"
+    return {"not_updated": contains("not updated"),
+            "four_references": contains("4 references", count_ending)}
+
+
 def missing_library_evidence(snapshot, name):
     text = strings(snapshot)
     # Bidi isolates can expose the separator and state as separate native
     # text nodes. Their boundaries are whitespace, not missing status words.
-    summary_text = " ".join(text.split())
+    retained = retained_snapshot_fragments(snapshot)
     return {key: fragment if type(fragment) is bool else fragment in text for key, fragment in {
         "failed_source_named": f"The library could not be opened: {name}",
         "retention_explained": "the library file is unavailable; keeping the last loaded references",
         "recovery_action": "Choose it again or reconnect the drive.",
         # The footer says the library was not updated; its detail, read by
         # screen readers, keeps the retained count. Names are isolated (U+2068/9).
-        "retained_snapshot": " · not updated" in summary_text and " · 4 references" in summary_text,
+        "retained_snapshot": all(retained.values()),
     }.items()}
 
 
@@ -1678,13 +1696,18 @@ def smoke_main(args):
                     menu_action(native, "Reload")
                 finally:
                     pass
+                retained_fragments = {"not_updated": False, "four_references": False}
                 def explained():
-                    report["missing_library_evidence"] = missing_library_evidence(snapshot(), library.name)
+                    nonlocal retained_fragments
+                    current = snapshot()
+                    report["missing_library_evidence"] = missing_library_evidence(current, library.name)
+                    retained_fragments = retained_snapshot_fragments(current)
                     return all(report["missing_library_evidence"].values())
                 try:
                     wait_for(explained, "missing library explains recovery and retained reference count")
                 except AssertionError:
                     print("MISSING LIBRARY EVIDENCE " + json.dumps(report.get("missing_library_evidence", {})), flush=True)
+                    print("MISSING LIBRARY RETAINED FRAGMENTS " + json.dumps(retained_fragments), flush=True)
                     raise
             check("missing library shows an error", missing)
 
@@ -3555,6 +3578,38 @@ class ContractTests(unittest.TestCase):
         current["nodes"][0]["name"] = message[:100]
         self.assertFalse(missing_library_evidence(current, name)["recovery_action"])
 
+    def test_retained_snapshot_diagnostics_separate_fragments_without_echoing_input(self):
+        cases = [(" · not updated", True, False), (" · 4 references", False, True),
+                 (" · not updated · 4 references", True, True),
+                 (" · not updated · 3 references", True, False)]
+        for text, updated, count in cases:
+            with self.subTest(text=text):
+                diagnostic = retained_snapshot_fragments({"nodes": [{"name": "Synthetic test app"}, {"value": text},
+                    {"value": "synthetic-private-sentinel"}]})
+                self.assertEqual(diagnostic, {"not_updated": updated, "four_references": count})
+                self.assertTrue(all(type(value) is bool for value in diagnostic.values()))
+                self.assertNotIn("synthetic-private-sentinel", json.dumps(diagnostic))
+
+    def test_retained_snapshot_accepts_native_nodes_independent_of_sibling_order(self):
+        for nodes in [
+                [{"value": "not updated"}, {"value": " · "}, {"value": "synthetic.bib · 4 references"}],
+                [{"value": "4 references"}, {"value": " · "}, {"value": "not updated"}],
+                [{"value": "not updated"}, {"value": "synthetic.bib · 4 references. checked just now, 12:00 PM"}],
+                [{"value": "synthetic.bib · 4 references. the file could not be read"}, {"value": "not updated"}],
+                [{"value": "not updated"}, {"value": "Zotero · 4 references. Zotero could not be reached"}],
+                [{"value": "synthetic.bib · 4 references. The library could not be opened: synthetic.bib."}, {"value": "not updated"}],
+                [{"value": "synthetic.bib · not updated. synthetic.bib · 4 references"}]]:
+            with self.subTest(nodes=nodes):
+                self.assertEqual(retained_snapshot_fragments({"nodes": nodes}),
+                                 {"not_updated": True, "four_references": True})
+        for nodes in [
+                [{"value": " · "}, {"value": "synthetic.bib · 4 references"}],
+                [{"value": "not updated"}, {"value": "synthetic.bib · 3 references"}],
+                [{"value": "not updatedish"}, {"value": "synthetic.bib · 4 references"}],
+                [{"value": "not"}, {"value": "updated"}, {"value": "4 references"}]]:
+            with self.subTest(nodes=nodes):
+                self.assertFalse(all(retained_snapshot_fragments({"nodes": nodes}).values()))
+
     def test_missing_library_accepts_isolated_separator_nodes_without_losing_requirements(self):
         name = "synthetic 引用.bib"
         message = (f"The library could not be opened: {name}. "
@@ -3570,6 +3625,23 @@ class ContractTests(unittest.TestCase):
         self.assertFalse(missing_library_evidence(current, name)["retained_snapshot"])
         current["nodes"][0]["name"] = message[:100]
         self.assertFalse(missing_library_evidence(current, name)["recovery_action"])
+
+    def test_missing_library_rejects_counts_that_only_prefix_other_wording(self):
+        name = "synthetic.bib"
+        message = (f"The library could not be opened: {name}. "
+                   "the library file is unavailable; keeping the last loaded references. "
+                   "Choose it again or reconnect the drive.")
+        for count in ("4 references missing; 3 references retained", "4 references missing",
+                      "4 references retained", "4 references · unrelated status",
+                      "4 references. unrelated status", "4 references. checkedness"):
+            with self.subTest(count=count):
+                current = {"nodes": [{"name": message}, {"value": "not updated"},
+                                     {"value": f"{name} · {count}"}]}
+                evidence = missing_library_evidence(current, name)
+                self.assertTrue(evidence["failed_source_named"])
+                self.assertTrue(evidence["retention_explained"])
+                self.assertTrue(evidence["recovery_action"])
+                self.assertFalse(evidence["retained_snapshot"])
 
 
     def test_picker_open_p95_is_nearest_rank_over_all_twenty_opens(self):

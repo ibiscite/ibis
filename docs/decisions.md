@@ -87,6 +87,17 @@ Ibis may serve Better BibTeX-compatible Cite as You Write to editor plugins:
 `127.0.0.1` only, on its own port, refusing any request with a browser
 `Origin`, and off until switched on in Settings (maintainer, 2026-10-27).
 
+2026-10-30 (maintainer-approved): A weekly GitHub workflow reads only the rolling
+`stable` release's public asset names, aggregate download counters and asset
+`updated_at` timestamps, appending rows of UTC date, asset name, `download_count`
+and `updated_at` to `counts.csv` on the orphan `stats` branch. The asset timestamp
+identifies the upload for each counter; no version is inferred or `latest.json`
+downloaded. Timestamp order cannot establish publication completeness, so it
+does not gate snapshots. These support rough download/update estimates, not
+counts of people or active installs; replacements reset counters and downloads
+between snapshots can be lost. No telemetry, identifiers, app changes or server:
+nothing leaves the app.
+
 ## 0009 Insertion
 
 Every insertion ends in exactly one visible state: pasted, or copied with a
