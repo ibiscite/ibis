@@ -266,11 +266,16 @@ fn press(key: co::VK, up: bool) -> w::HwKbMouse {
 }
 
 #[cfg(test)]
+#[allow(unsafe_code)]
+#[path = "windows_bstr_test.rs"]
+mod exact_bstr;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::paste::notepad_test::{
-        Candidate, CandidateKind, CapturedEditor, EditorIdentity, Failure, Reading, Session, Stage, activate,
-        qualify_paste, select_document, wait_for,
+        Candidate, CandidateKind, CapturedEditor, EditorIdentity, EditorKind, Failure, Reading, Session, Stage,
+        activate, legacy_value, qualify_paste, read_document, select_document, wait_for,
     };
     use std::process::Command;
 
@@ -292,6 +297,136 @@ mod tests {
         let process = uia(field.get_process_id(), Stage::Identity)?;
         let runtime = uia(field.get_runtime_id(), Stage::Identity)?;
         EditorIdentity::new(process, runtime).ok_or(Failure::new(Stage::Identity))
+    }
+
+    #[derive(Clone)]
+    struct ClassicWindow {
+        root: EditorIdentity,
+        root_window: isize,
+        editor_window: isize,
+    }
+
+    #[derive(Clone)]
+    struct NativeEditor {
+        captured: CapturedEditor,
+        classic: Option<ClassicWindow>,
+    }
+
+    fn native_handle(field: &uiautomation::UIElement) -> Result<isize, Failure> {
+        let handle = uia(field.get_native_window_handle(), Stage::Identity)?;
+        if handle.is_invalid() {
+            return Err(Failure::new(Stage::Identity));
+        }
+        let handle: &windows::Win32::Foundation::HANDLE = handle.as_ref();
+        Ok(handle.0 as isize)
+    }
+
+    /// Reacquire native handles safely from the owned foreground window, never
+    /// reconstruct a handle from the captured integer. Only fixed errors leave.
+    fn validate_classic(
+        automation: &uiautomation::UIAutomation,
+        field: &uiautomation::UIElement,
+        binding: &ClassicWindow,
+        owner: &EditorIdentity,
+    ) -> Result<(), Failure> {
+        use uiautomation::types::ControlType;
+        if identity(field)? != *owner
+            || native_handle(field)? != binding.editor_window
+            || uia(field.get_classname(), Stage::Editor)? != "Edit"
+            || uia(field.get_control_type(), Stage::Editor)? != ControlType::Edit
+            || uia(field.is_offscreen(), Stage::Editor)?
+            || !uia(field.is_enabled(), Stage::Editor)?
+        {
+            return Err(Failure::new(Stage::Identity));
+        }
+        if uia(field.is_password(), Stage::Password)? {
+            return Err(Failure::new(Stage::Password));
+        }
+        let walker = uia(automation.create_tree_walker(), Stage::Editor)?;
+        let parent = uia(walker.get_parent(field), Stage::Identity)?;
+        if identity(&parent)? != binding.root || native_handle(&parent)? != binding.root_window {
+            return Err(Failure::new(Stage::Identity));
+        }
+        let root = w::HWND::GetForegroundWindow().ok_or(Failure::new(Stage::Foreground))?;
+        if root.ptr() as isize != binding.root_window
+            || root.GetWindowThreadProcessId().1 != owner.process
+            || !root.IsWindow()
+        {
+            return Err(Failure::new(Stage::Identity));
+        }
+        let mut result = Err(Failure::new(Stage::Identity));
+        root.EnumChildWindows(|child| {
+            if child.ptr() as isize == binding.editor_window {
+                result = (|| {
+                    if !child.IsWindow()
+                        || !child.IsWindowVisible()
+                        || !child.IsWindowEnabled()
+                        || child.GetWindowThreadProcessId().1 != owner.process
+                        || win(child.GetParent(), Stage::Identity)?.ptr() != root.ptr()
+                        || !win(child.GetClassName(), Stage::Editor)?.eq_ignore_ascii_case("Edit")
+                    {
+                        return Err(Failure::new(Stage::Identity));
+                    }
+                    let mut info = w::WINDOWINFO::default();
+                    win(child.GetWindowInfo(&mut info), Stage::Password)?;
+                    if info.dwStyle.raw() & co::ES::PASSWORD.raw() != 0 {
+                        return Err(Failure::new(Stage::Password));
+                    }
+                    Ok(())
+                })();
+            }
+            true
+        });
+        result
+    }
+
+    fn strict_legacy_property(value: uiautomation::variants::Variant) -> Result<String, Failure> {
+        super::exact_bstr::owned_text(value.as_ref())
+    }
+
+    fn strict_legacy_capability(value: uiautomation::variants::Variant) -> Result<Option<bool>, Failure> {
+        use uiautomation::variants::Value;
+        if value.get_type() != windows::Win32::System::Variant::VT_BOOL {
+            return Ok(None);
+        }
+        Ok(match uia(value.get_value(), Stage::Pattern)? {
+            Value::BOOL(available) => Some(available),
+            _ => None,
+        })
+    }
+
+    fn classic_text(field: &uiautomation::UIElement) -> Result<String, Failure> {
+        use uiautomation::{patterns::UILegacyIAccessiblePattern, types::UIProperty};
+        let available = strict_legacy_capability(uia(
+            field.get_property_value(UIProperty::IsLegacyIAccessiblePatternAvailable),
+            Stage::Pattern,
+        )?)?;
+        (|| {
+            if available != Some(true) {
+                return Err(Failure::new(Stage::Pattern));
+            }
+            let pattern = uia(field.get_pattern::<UILegacyIAccessiblePattern>(), Stage::Pattern)?;
+            let text_role =
+                uia(pattern.get_role(), Stage::Editor)? == windows::Win32::UI::Accessibility::ROLE_SYSTEM_TEXT;
+            let protected = uia(pattern.get_state(), Stage::Password)?
+                & windows::Win32::UI::WindowsAndMessaging::STATE_SYSTEM_PROTECTED
+                != 0;
+            legacy_value(
+                available,
+                text_role,
+                protected,
+                || {
+                    strict_legacy_property(uia(
+                        field.get_property_value(UIProperty::LegacyIAccessibleValue),
+                        Stage::Read,
+                    )?)
+                },
+                // A successful real getter corroborates the raw property;
+                // unsupported-property defaults can never establish emptiness.
+                || uia(pattern.get_value(), Stage::Read),
+            )
+        })()
+        .map_err(|failure| failure.with_legacy(available))
     }
 
     /// A packaged Notepad can hand off to an existing process. Match its class
@@ -331,18 +466,19 @@ mod tests {
     fn focused_text(
         worker: &QueryWorker,
         diagnostics: &QueryWorker,
-        owner: &EditorIdentity,
+        editor: &NativeEditor,
     ) -> Result<Reading, Failure> {
         let deadline = std::time::Instant::now() + Duration::from_secs(1);
-        let query_owner = owner.clone();
+        let query_editor = editor.clone();
         let result = worker
             .run(
                 deadline.saturating_duration_since(std::time::Instant::now()),
                 move || {
                     let automation = uia(uiautomation::UIAutomation::new(), Stage::Automation)?;
                     let field = uia(automation.get_focused_element(), Stage::Focus)?;
+                    let query_owner = &query_editor.captured.identity;
                     let current = identity(&field)?;
-                    if current != query_owner {
+                    if current != *query_owner {
                         return Err(Failure {
                             focused: Some(false),
                             ..Failure::new(Stage::Identity)
@@ -356,18 +492,30 @@ mod tests {
                     }
                     // Reject another field before reading any of its text. Keep
                     // COM objects on this query thread; only values leave it.
-                    let pattern = uia(
-                        field.get_pattern::<uiautomation::patterns::UITextPattern>(),
-                        Stage::Pattern,
+                    if let Some(binding) = &query_editor.classic {
+                        validate_classic(&automation, &field, binding, query_owner)?;
+                    }
+                    let text = read_document(
+                        query_editor.captured.kind,
+                        || {
+                            let pattern = uia(
+                                field.get_pattern::<uiautomation::patterns::UITextPattern>(),
+                                Stage::Pattern,
+                            )?;
+                            let range = uia(pattern.get_document_range(), Stage::Range)?;
+                            uia(range.get_text(-1), Stage::Read)
+                        },
+                        || classic_text(&field),
                     )?;
-                    let range = uia(pattern.get_document_range(), Stage::Range)?;
-                    let text = uia(range.get_text(-1), Stage::Read)?;
                     let after = uia(automation.get_focused_element(), Stage::Focus)?;
-                    if identity(&after)? != query_owner {
+                    if identity(&after)? != *query_owner {
                         return Err(Failure {
                             focused: Some(false),
                             ..Failure::new(Stage::Identity)
                         });
+                    }
+                    if let Some(binding) = &query_editor.classic {
+                        validate_classic(&automation, &after, binding, query_owner)?;
                     }
                     Ok(Reading { editor: current, text })
                 },
@@ -382,7 +530,7 @@ mod tests {
         // primary pattern error even if the diagnostic worker is busy or hangs.
         // Its retained permit cannot block the next primary qualification read.
         let remaining = deadline.saturating_duration_since(std::time::Instant::now());
-        let owner = owner.clone();
+        let owner = editor.captured.identity.clone();
         let capabilities = (!remaining.is_zero())
             .then(|| {
                 diagnostics.run(remaining, move || {
@@ -426,7 +574,7 @@ mod tests {
 
     /// Recover the editor explicitly: ALT can arrive after asynchronous
     /// activation and select Notepad's menu instead of its document.
-    fn focus_document(worker: &QueryWorker, hwnd: isize, pid: u32) -> Result<CapturedEditor, Failure> {
+    fn focus_document(worker: &QueryWorker, hwnd: isize, pid: u32) -> Result<NativeEditor, Failure> {
         worker
             .run(Duration::from_secs(1), move || {
                 let automation = uia(uiautomation::UIAutomation::new(), Stage::Automation)?;
@@ -495,6 +643,19 @@ mod tests {
                 if owner.identity.process != pid {
                     return Err(Failure::new(Stage::Identity));
                 }
+                let classic = if owner.kind == EditorKind::ClassicRootEdit {
+                    let root_identity = identity(&root)?;
+                    if root_identity.process != pid {
+                        return Err(Failure::new(Stage::Identity));
+                    }
+                    Some(ClassicWindow {
+                        root: root_identity,
+                        root_window: hwnd,
+                        editor_window: native_handle(editor)?,
+                    })
+                } else {
+                    None
+                };
                 uia(editor.set_focus(), Stage::Focus)?;
                 let focused = uia(automation.get_focused_element(), Stage::Focus)?;
                 if !uia(automation.compare_elements(editor, &focused), Stage::Focus)?
@@ -505,7 +666,13 @@ mod tests {
                         ..Failure::new(Stage::Focus)
                     });
                 }
-                Ok(owner)
+                if let Some(binding) = &classic {
+                    validate_classic(&automation, &focused, binding, &owner.identity)?;
+                }
+                Ok(NativeEditor {
+                    captured: owner,
+                    classic,
+                })
             })
             .ok_or(Failure::new(Stage::Query))?
     }
@@ -528,6 +695,44 @@ mod tests {
         let own = w::HPROCESS::GetCurrentProcess();
         assert!(integrity(&own).is_some_and(|level| level >= 0x2000));
         assert!(!above_ibis(&own));
+    }
+
+    #[test]
+    fn legacy_bstr_keeps_exact_utf16_content_and_refuses_invalid_or_non_bstr_values() {
+        use uiautomation::variants::{Value, Variant};
+        use windows::{Win32::System::Variant::VARIANT, core::BSTR};
+
+        for text in ["", " ", "synthetic\r\nnext ", "é 🪶", "a\0b"] {
+            let variant = Variant::from(VARIANT::from(BSTR::from(text)));
+            assert_eq!(strict_legacy_property(variant), Ok(text.into()));
+        }
+        for units in [&[0xd800][..], &[0xdc00][..], &[0x61, 0xd800, 0x62][..]] {
+            let variant = Variant::from(VARIANT::from(BSTR::from_wide(units)));
+            assert!(
+                strict_legacy_property(variant).is_err(),
+                "never replace malformed UTF16"
+            );
+        }
+        for value in [
+            Value::EMPTY,
+            Value::NULL,
+            Value::BOOL(false),
+            Value::I4(0),
+            Value::ArrayString(vec!["synthetic".into()]),
+        ] {
+            assert!(
+                strict_legacy_property(Variant::from(value)).is_err(),
+                "never coerce another variant type"
+            );
+        }
+        assert!(strict_legacy_property(Variant::from(Value::STRING("x".repeat(4097)))).is_err());
+        assert_eq!(strict_legacy_capability(Variant::from(true)), Ok(Some(true)));
+        assert_eq!(strict_legacy_capability(Variant::from(false)), Ok(Some(false)));
+        assert_eq!(strict_legacy_capability(Variant::from("true")), Ok(None));
+        assert_eq!(
+            strict_legacy_capability(Variant::from(Value::ArrayBool(vec![true]))),
+            Ok(None)
+        );
     }
 
     /// The whole Windows path on a real desktop: capture the app in front, see
@@ -719,12 +924,12 @@ mod tests {
         }
         let editor = editor.unwrap_or_else(|| panic!("{:?}", Failure::new(Stage::Identity)));
         qualify_paste(
-            &editor,
+            &editor.captured,
             text,
             Duration::from_secs(5),
-            |identity| {
+            |_| {
                 owned()?;
-                let reading = focused_text(&worker, &diagnostics, identity).map_err(|failure| Failure {
+                let reading = focused_text(&worker, &diagnostics, &editor).map_err(|failure| Failure {
                     owned: Some(true),
                     ..failure
                 });

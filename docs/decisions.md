@@ -144,6 +144,16 @@ refuses unbundled executables, and allows only copy even with modifier keys.
 Its stateless source stays on the main thread for the session's lifetime.
 Changes to these modules need independent security-boundary review.
 
+The Windows-only qualification module `paste/windows_bstr_test.rs` is a
+cfg(test) exception (2026-10-30, #1452). Safe wrappers either decode lossily or
+truncate embedded NUL through PROPVARIANT conversion (actual Windows proof in
+#1446). After an exact owned VT_BSTR tag check, it borrows only that active
+member while its immutable VARIANT owner lives, checks the SDK byte count
+against the bounded UTF16 length, and returns strictly decoded owned text.
+It never moves/frees the borrowed BSTR or exposes a reference; odd binary byte
+counts and malformed UTF16 refuse. The SDK-owned odd-byte fixture uses the
+same scoped module. No production allowance or native-input policy changes.
+
 For paste safety on macOS, the boundary is just `IsSecureEventInputEnabled`,
 whose SDK result is a Boolean (`u8`). It is read on the main thread, as Carbon requires. The
 flag is system-wide and can be enabled by another app; it does not establish
