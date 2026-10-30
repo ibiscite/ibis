@@ -342,11 +342,15 @@ Checks sit where each system puts them: on macOS and Windows a menu with any
 choice or toggle keeps a leading check column for every row, so labels share one
 start and shortcuts line up at the end; on GNOME the check follows the label.
 More's toggles are `menuitemcheckbox` items; a menu without them starts at its
-labels. **More holds actions, not preferences** (2026-10-30): Keep Window Open
-and Show What Will Be Pasted (both have keys), then Keyboard Shortcuts,
+labels. **More holds actions, not preferences** (2026-10-30): Show in Zotero
+or Open thesis.bib (⌘O); then Rows as a small three-part control (1 line,
+2 lines, 3 lines), the one look you change while working; Keep Window Open
+and Show What Will Be Pasted (both have keys); then Keyboard Shortcuts (⌘/),
 Settings… and Quit Ibis. Library choices live in the library menu behind the
-footer status. Rows, text
-size, starting at login and update checks live only in Settings. Sections keep
+footer status. Text size follows ⌘+ and ⌘− as in any Mac app; starting at
+login, Forget formats and update checks live in Settings (Check for Updates
+also in the menu bar menu). Each thing appears in one place: Keyboard
+Shortcuts lives in More, not the footer. Sections keep
 one order in every Ibis menu: what it is about, what you can do, Ibis itself.
 Item labels name the result in plain words; a quiet example of the output may
 follow at the end, as in the format menu. The format menu's filter field aligns with the item
@@ -421,8 +425,12 @@ block, and in Settings the control moves below the label rather than
 squeezing it. In results, a title wraps to at most two lines and then ends in
 an ellipsis; the byline stays one line and shortens authors first ("Okonkwo,
 Haddad et al."), then the journal; the year never shrinks and sits level with
-the title's first line. The full title and byline are in the tooltip and the
-reference's details. Making a window or column wider is never the fix. Check every
+the title's first line (centred with it in one-line Compact rows). **Hover card** (maintainer, 2026-10-30): resting the
+pointer half a second on a row whose text is cut shows a card beside it, on
+the menus' denser glass and at most 320 px wide, with the full title, all
+authors, journal, year and type. It never takes focus, leaves with the
+pointer, and never appears for rows that fit. From the keyboard, ⌘Y (Quick
+Look's key) opens Peek, the same details, for the selected row. Making a window or column wider is never the fix. Check every
 row, menu item and Settings row at normal, Larger and 200% text.
 
 **The Ibis mark in the picker.** The bird from `brand/`, eye included, in the
@@ -430,7 +438,7 @@ brand gradient for the theme (light `#CF4628`→`#B5331A`, dark
 `#FF7F5E`→`#F2552F`); never a plain recoloured silhouette. In the search box it
 is 24 px, 2 px outset on each side so the query and results stay aligned; its
 eye opens to at least 2 px across at small sizes so it still reads as a bird.
-At 40 px it leads the welcome and the opening screens. The empty-search hint shows the
+At 56 px it leads the welcome, at 40 px the opening screen. The empty-search hint shows the
 magnifier, the sign for "type", whichever search icon is chosen. The mark never
 appears on a control.
 
@@ -441,7 +449,7 @@ page, report, other) never reuse an attachment drawing. Platform icons only
 where the platform owns the meaning.
 
 **Footer and status** [C8]. Status dot and text at the leading edge, then
-"Shortcuts ⌘/" and "More ⌘K" (quiet), then, last, "Paste into Word · APA ↵"
+"More ⌘K" (quiet), then, last, "Paste into Word · APA ↵"
 or "Copy N as <format> ↵": the one primary action, filled with the accent
 with an `--on-accent` label and key cap, because mouse users copy far more
 often than they open anything else (maintainer, 2026-10-30; a Mac puts the
@@ -450,8 +458,8 @@ default button last). Every hint is label first, then keys: 8 px between them,
 radius `--r-tile`, with 32 px targets; they invoke the same guarded actions as
 the keys and sit in one group named "Keys". With Alt held: "Add to citation ⇧↵",
 the Escape step ("Clear search Esc" or "Hide Esc"), then More. When the footer
-does not fit, drop Shortcuts first (More lists it), then shorten the status,
-then wrap. The status dot is `--status-dot-size`, at the footer's leading edge
+does not fit, shorten the status first, then drop the hint labels to keys
+only. The status dot is `--status-dot-size`, at the footer's leading edge
 (in line with the tiles' edge) and centred on the text's x-height; the status
 text follows 12 px after it, as system status bars place an indicator.
 
@@ -648,7 +656,7 @@ an explicitly stored custom shortcut is never replaced.
 | ⌘/ / Ctrl+/, or `?` outside a text field | The keyboard shortcuts list |
 | ⇧⌘P / Ctrl+Shift+P | Keep window open (the pin) [C6] |
 | ⌘I / Ctrl+I | Show or hide what will be pasted |
-| Peek control on the focused row, or its key | Shows the reference's full details; arrow and text-editing keys in search keep their usual meaning |
+| ⌘Y / Ctrl+Y, or the Peek control on the focused row | Shows the reference's full details; arrow and text-editing keys in search keep their usual meaning |
 | Typing outside a text field | Types into search |
 
 **Pin** [C6]. A neutral icon button at the header's end, always visible. On:
@@ -781,7 +789,8 @@ radii and per-platform depth wait in the Later milestone.
   flat opaque block, but denser (92% for menus, 96% for sheets, with the
   panel's blur) so the rows behind them read as soft colour, never as shapes
   or words competing with the text in front. Reduced transparency makes them
-  opaque. The keys sheet hugs its content in two columns of groups.
+  opaque. The keys sheet hugs its content in two columns of groups and sits
+centred in the window, since no single control owns it.
   Over the macOS veil, citation and status colours go one step deeper to keep
   4.5:1; fills, hairlines and key caps are translucent; the window edge is a
   1 px hairline, never a white rim. Ibis sets no blur or opacity of its own.
@@ -882,18 +891,20 @@ A choice screen hides the result heading, the shelf and the Copy hint.
 Choice screens are one calm group centred in the steady frame
 (maintainer, 2026-10-30): the title (17 px) and line centred, 6 px apart, then
 24 px to the rows in a column at most 540 px wide, rows 4 px apart, any note
-16 px below them. On the welcome screen the 40 px mark sits above
+16 px below them. On the welcome screen the mark sits above
 the title. Space is shared above and below, never left as one empty band.
 
 **The welcome screen teaches the basics** (maintainer, 2026-10-30: first
 impressions matter). Its line says what Ibis does and promises safety ("Ibis
 finds a reference and pastes its citation where you're typing. It only reads
 your library, never changes it."), and its note says how to come back ("After
-this, open Ibis from any app with ⇧⌘Y."). The four starts (Zotero, a .bib
+this, open Ibis from any app with ⇧⌘Y."). The welcome is the whole window: with nothing to search yet there is
+no search header (the footer stays, Escape hides). A 56 px mark and a 20 px
+title lead. The four starts (Zotero, a .bib
 file, Find them on this computer, Try sample references) are a 2 × 2 grid of
 tiles, 8 px apart and at most 600 px wide, each a tile icon, a title and one
 short line on a quiet fill, so the whole group fits the Medium window with
-at least 32 px clear above the mark. Arrow keys move in two dimensions. Once
+room above and below. Arrow keys move in two dimensions. Once
 found, a library replaces the Find tile ("Use example.bib", "Found in
 Documents"). A choice screen with two or three rows stays a list.
 
@@ -937,7 +948,7 @@ breathe. Rows kept from before stay instead, with only the footer saying
   never asks "What do you write in?". The format pop-up beside search names
   the exact output and the captured app, such as `\cite · Browser` or
   `APA · Word`; a long value ends with an ellipsis but keeps its full accessible
-  name. ⇧⌘F (Ctrl+Shift+F elsewhere) opens the chooser from search. A format
+  name. ⇧⌘F (Ctrl+Shift+F elsewhere) opens the chooser from anywhere in the picker and closes it again; Escape or a pick returns to search with the query kept. Tab keeps its usual meaning. Items read as plain names with the output as a quiet example ("BibLaTeX brackets   \parencite{key}"), never three rows with the same name; the menu stays 300 px wide and ends on a whole row. A format
   pick is remembered for that app. "Just this once" makes the
   next pick apply to one successful copy, then restores the app's output;
   reopening also clears it. "Automatic" removes only that app's remembered
