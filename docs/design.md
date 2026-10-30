@@ -1316,6 +1316,8 @@ in the [icon source notes](../apps/desktop/src-tauri/icons/source/README.md).
 ## Website
 
 The website's design rules live in [website/README.md](../website/README.md#design).
+The demo footer uses the app's system key-cap labels and tokens at every width;
+shortening action labels never changes key notation or cap size.
 
 ## Coming features
 

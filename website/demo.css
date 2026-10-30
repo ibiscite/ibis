@@ -55,14 +55,17 @@
 .picker-foot button::before { content: ""; position: absolute; inset: calc(-1 * var(--space-1)) 0; }
 .picker-actions { flex: none; display: flex; justify-content: flex-end; align-items: center; gap: var(--footer-gap); margin-inline-start: auto; }
 .picker-actions :is(button, .picker-static-control) { flex: none; display: inline-flex; align-items: center; gap: var(--space-2); min-width: var(--control-min-size); white-space: nowrap; }
-.picker-actions kbd { direction: ltr; unicode-bidi: isolate; white-space: nowrap; }
-.picker-actions .picker-key-compact { display: none; }
+/* Match KeyCaps and the app's filled, label-type kbd at every width. */
+.picker-actions .key-caps, .picker-actions .key-cap { display: inline-flex; align-items: center; gap: var(--space-1); }
+.picker-actions .key-caps { direction: ltr; unicode-bidi: isolate; white-space: nowrap; }
+.picker-actions .key-plus { color: var(--muted); }
+.picker-actions kbd { display: inline-block; min-width: var(--key-cap); height: var(--key-cap); margin: 0; padding: 0 calc(var(--space-1) + var(--border-width)); border: var(--border-width) solid var(--stroke-control); border-radius: var(--r-key); background: var(--fill-control); box-shadow: none; text-align: center; font: var(--type-label-size)/calc(var(--key-cap) - 2 * var(--border-width)) var(--font-family); font-weight: 500; }
 .picker-library { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--row-gap); }
 .picker-library > span:last-child { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .picker-dot { flex: none; width: var(--status-dot-size); height: var(--status-dot-size); border-radius: var(--r-full); background: var(--status-done); }
 .picker .picker-primary { background: var(--accent); color: var(--text-on-accent); }
 .picker-primary kbd { background: var(--fill-on-color-hover); color: inherit; box-shadow: none; border-radius: var(--r-key); }
-.picker-foot kbd, .demo-hint kbd { font-size: .95em; }
+.demo-hint kbd { font-size: .95em; }
 .picker-shelf .picker-status { flex: none; display: inline-flex; align-items: center; gap: var(--space-1); height: var(--chip-height); padding-inline: var(--space-2); border-radius: var(--r-full); background: color-mix(in srgb, var(--status-done) 14%, transparent); color: var(--status-done); font: var(--type-strong-weight) var(--type-label-size)/var(--type-label-line) var(--font-family); white-space: nowrap; }
 .picker-status:empty { display: none; }
 .picker-status:not(:empty)::before { content: "✓"; }
@@ -114,8 +117,6 @@
   .picker-actions { gap: var(--space-1); }
   .picker-actions :is(button, .picker-static-control) { padding-inline: var(--space-1); }
   .picker-action-label { position: absolute; width: var(--hidden-size); height: var(--hidden-size); overflow: hidden; clip-path: var(--hidden-clip); white-space: nowrap; }
-  .picker-actions .picker-key { display: none; }
-  .picker-actions .picker-key-compact { display: inline-block; }
 }
 @container picker (max-width: 16em) {
   .picker-foot { padding-inline: var(--inset); gap: var(--space-1); }
