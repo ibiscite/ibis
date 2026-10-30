@@ -275,7 +275,8 @@ labels. The format menu's filter field aligns with the item
 labels; menus with more than seven items get one. Format opens 4 px below its
 pop-up, aligned to its trailing edge; header menus open `bottom end`, footer
 menus `top end`, flipping then shifting within 8 px of the window; a menu opened
-above the footer ends at least 8 px above it. A menu that scrolls ends on a
+above the footer ends at least 8 px above it in normal windows; at heights
+up to 400px it can use the full viewport so the filter cannot starve its list. A menu that scrolls ends on a
 whole row and fades at an edge with more rows beyond it; its side inset sits on the scrolling list, so a scroll bar never
 takes it. Any pointer movement over an item highlights it, also after arrow
 keys. Menus size to their full action labels up to the viewport boundary; at

@@ -36,7 +36,7 @@ export function useMenuBoundary(open: boolean, returnRef?: RefObject<HTMLElement
       const bottom = Math.max(0, returnRef?.current?.getBoundingClientRect().bottom ?? 0);
       node.style.top = `${bottom}px`;
       // Never above the top edge, even in a window too short for both.
-      if (above) node.style.bottom = `${Math.max(0, window.innerHeight - Math.max(bottom, above.getBoundingClientRect().top))}px`;
+      if (above) node.style.bottom = window.innerHeight <= 400 ? "0px" : `${Math.max(0, window.innerHeight - Math.max(bottom, above.getBoundingClientRect().top))}px`;
       setClearBottom(bottom);
     };
     update();

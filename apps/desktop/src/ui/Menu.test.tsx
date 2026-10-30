@@ -512,3 +512,15 @@ test("focus, row resize and reopening update safe fades without an old opening o
   expect(list.scrollTop).toBe(70);
   act(() => hook.result.current(null)); frame.remove(); next.remove();
 });
+
+
+test("a short viewport does not sacrifice the output list to footer clearance", () => {
+  vi.stubGlobal("innerHeight", 320);
+  const footer = document.createElement("footer"), trigger = document.createElement("button");
+  footer.dataset.menuFloor = ""; document.body.append(trigger, footer);
+  vi.spyOn(footer, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 132, 360, 188));
+  const triggerRef = { current: trigger };
+  const hook = renderHook(() => useMenuBoundary(true, undefined, triggerRef));
+  expect(hook.result.current.boundaryElement?.style.bottom).toBe("0px");
+  hook.unmount(); footer.remove(); trigger.remove();
+});
