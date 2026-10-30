@@ -17,6 +17,7 @@ struct CacheState {
     disabled: bool,
     configured: BTreeSet<LibraryId>,
 }
+
 #[derive(Default)]
 struct CacheInner {
     state: Mutex<CacheState>,
@@ -200,10 +201,11 @@ impl Engine {
                 }
             }
         }
+        let previous = self.snapshot()?;
         let read = if strict {
-            SourceSnapshot::reload(&path, self.snapshot()?.as_ref())
+            SourceSnapshot::reload(&path, previous.as_ref())
         } else {
-            SourceSnapshot::read(&path).and_then(|observation| Ok((observation.load()?, observation)))
+            SourceSnapshot::read(&path).and_then(|observation| Ok((observation.load_reusing(&previous)?, observation)))
         };
         let (loaded, observation) = match read {
             Ok(loaded) => loaded,
@@ -280,5 +282,58 @@ impl Engine {
             }
             Ok(())
         })
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn verified_cached_records_remain_citable_when_watching_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("source");
+        std::fs::create_dir(&source).unwrap();
+        let path = source.join("synthetic.bib");
+        std::fs::write(&path, "@book{synthetic,title={Synthetic signals}}\n").unwrap();
+        let cache = FileCacheSession::open(&dir.path().join("cache"));
+        cache.invalidate(1);
+        let cancel = Cancellation::default();
+        let reader = Engine::new().unwrap().without_file_watches();
+        let load = reader
+            .prepare_file_load(&path, false, cache.operation(1), &cancel)
+            .unwrap();
+        let reader = load.engine().unwrap();
+        reader.accept_file_load(load).unwrap();
+        cache.invalidate(2);
+        let hit = reader
+            .prepare_file_load(&path, false, cache.operation(2), &cancel)
+            .unwrap();
+        assert!(hit.cache_hit());
+        let mut cached = hit.engine().unwrap();
+        cached.accept_file_load(hit).unwrap();
+        let observation = SourceSnapshot::read(&path).unwrap();
+        let verified = observation.load_reusing(cached.snapshot().unwrap().as_ref()).unwrap();
+        cached.watch_files = true;
+        std::fs::rename(source, dir.path().join("moved")).unwrap();
+        cached.install_file(path, verified, Some(observation), &cancel).unwrap();
+        assert_eq!(
+            cached.libraries().unwrap().libraries[0].watch_warning,
+            Some(WatchWarning::LiveRefreshOff)
+        );
+        let request = serde_json::from_value(json!({
+            "keys":[{"key":"synthetic"}],"output":{"kind":"key","syntax":"pandoc","command":null}
+        }))
+        .unwrap();
+        assert_eq!(
+            cached
+                .cite_keys(&request, &cancel)
+                .unwrap()
+                .copy_content(1)
+                .unwrap()
+                .text,
+            "[@synthetic]"
+        );
     }
 }
