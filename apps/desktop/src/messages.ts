@@ -262,7 +262,7 @@ export const keyText = {
   },
   actions: {
     preview: "Show what will be pasted",
-    copy: "Copy the highlighted reference, or the ones added to the citation, in the Copy as format (numeric styles such as IEEE copy the reference entry)",
+    copy: "Paste or copy the highlighted reference, or the ones added to the citation, as the footer says",
     add: "Add the highlighted reference to the citation, or remove it",
     move: "Move through the results",
     escape: "Step back: close a menu, clear the search, then hide Ibis",
@@ -475,6 +475,7 @@ const itemTypeWords: Record<string, string> = {
 // app the picker was opened from (#27), or copied and why it was not pasted.
 export const copiedNoticeText = {
   title: "Copied",
+  hint: (platform: Platform) => `Copied. Press ${platform === "macos" ? "⌘V" : "Ctrl+V"} to paste`,
   pasted: (app: string | null) => (app ? `Pasted into ${app}` : "Pasted"),
   /** Keyed by the destination's copy reason codes; any other reason says "Copied". */
   reasons: {

@@ -65,7 +65,7 @@ const panelEnglish = {
   "shortcuts-region-menu": "In a menu",
   "shortcuts-region-system": "From any app",
   "shortcuts-action-preview": "Show what will be pasted",
-  "shortcuts-action-copy": "Copy the highlighted reference, or the ones added to the citation, in the Copy as format (numeric styles such as IEEE copy the reference entry)",
+  "shortcuts-action-copy": "Paste or copy the highlighted reference, or the ones added to the citation, as the footer says",
   "shortcuts-action-add": "Add the highlighted reference to the citation, or remove it",
   "shortcuts-action-move": "Move through the results",
   "shortcuts-action-escape": "Step back: close a menu, clear the search, then hide Ibis",

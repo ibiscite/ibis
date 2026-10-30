@@ -5,6 +5,27 @@ import { afterCopy, DRAG_DISTANCE, leaveNotice, noticePlatform, noticeTitle, ren
 const copied = (text: string, reason: string | null = null): NoticeMessage => ({ delivered: { outcome: "copied", reason }, text });
 import noticeCapability from "../src-tauri/capabilities/notice.json";
 
+test.each([["macos", "⌘V"], ["windows", "Ctrl+V"], ["linux", "Ctrl+V"]] as const)("plain-copy receipts always use %s's paste key, including after reopening", (platform, key) => {
+  const root = document.createElement("div"), show = renderNotice(root, platform);
+  for (let copy = 0; copy < 4; copy++) {
+    show(copied(`[@invented${copy}]`));
+    expect(root.querySelector("strong")?.textContent).toBe(`Copied. Press ${key} to paste`);
+  }
+  renderNotice(root, platform)(copied("[@reopened]"));
+  expect(root.querySelector("strong")?.textContent).toBe(`Copied. Press ${key} to paste`);
+});
+
+test("the paste key never replaces a refusal, Linux's explanation or a pasted result", () => {
+  const root = document.createElement("div"), show = renderNotice(root, "linux");
+  for (const [reason, title] of [["terminal", "Copied. Not pasted into a terminal"],
+    ["unsupported-system", "Copied. Paste it into your document"], ["paste-off", "Copied. Pasting is off"]]) {
+    show(copied("[@invented]", reason));
+    expect(root.querySelector("strong")?.textContent).toBe(title);
+  }
+  show({ delivered: { outcome: "pasted", app: "Example Writer" }, text: "[@invented]" });
+  expect(root.querySelector("strong")?.textContent).toBe("Pasted into Example Writer");
+});
+
 test("only a clean copy from an unpinned picker hides it and says Copied", () => {
   expect(afterCopy({ text: "[@a]", warnings: [] }, false)).toBe("hide-and-notify");
   expect(afterCopy({ text: "[@a]", warnings: [] }, true)).toBe("stay");
@@ -63,8 +84,8 @@ test("the notice is a polite status that shows text as text and replays when sho
   expect(notice.querySelectorAll("code")).toHaveLength(1);
   const windows = document.createElement("div");
   renderNotice(windows, "windows")(copied("[@a]"));
-  expect(windows.querySelector("strong")?.textContent).toBe("Copied");
-  expect(windows.textContent).not.toContain("Ctrl+V");
+  expect(windows.querySelector("strong")?.textContent).toBe("Copied. Press Ctrl+V to paste");
+  expect(windows.textContent).not.toContain("⌘V");
 });
 
 test("the notice says where the citation was pasted, or why it was only copied", () => {
@@ -76,7 +97,8 @@ test("the notice says where the citation was pasted, or why it was only copied",
   expect(noticeTitle(copied("[@a]", "paste-off"))).toBe("Copied. Pasting is off");
   expect(noticeTitle(copied("[@a]", "unsupported-system"))).toBe("Copied. Paste it into your document");
   expect(noticeTitle(copied("[@a]", "no-target"))).toBe("Copied. No app to paste into");
-  for (const reason of [null, "unknown-future-code"]) expect(noticeTitle(copied("[@a]", reason))).toBe("Copied");
+  expect(noticeTitle(copied("[@a]"), "macos")).toBe("Copied. Press ⌘V to paste");
+  expect(noticeTitle(copied("[@a]", "unknown-future-code"))).toBe("Copied");
 });
 
 test.each(["macos", "windows", "linux"] as const)("%s receipt updates announce the result without moving document focus", (platform) => {
