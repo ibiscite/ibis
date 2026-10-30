@@ -4,9 +4,13 @@
 import { fileURLToPath } from "node:url";
 
 const ref = "refs/heads/stats";
-const header = "date,version,asset_name,download_count\n";
+const header = "date,version,asset_name,download_count,updated_at\n";
 const hash = (value) => typeof value === "string" && value.length === 40 && /^[a-f0-9]{40}$/.test(value);
 const positive = (value) => Number.isSafeInteger(value) && value > 0;
+const assetName = (value) => typeof value === "string" && value.length > 0
+  && !/^[=+\-@\p{Cc}]/u.test(value) && !value.includes("\0");
+const timestamp = (value) => typeof value === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(value)
+  && new Date(value).toJSON() === value.replace("Z", ".000Z");
 const version = (value) => typeof value === "string" && !/\s/.test(value)
   && /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(value);
 const require = (condition, message) => { if (!condition) throw new Error(message); };
@@ -42,8 +46,8 @@ function parseCsv(text) {
   }
   require(state === "start" && row.length === 0, "Incomplete CSV row.");
   for (const fields of rows) {
-    require(fields.length === 4 && /^\d{4}-\d{2}-\d{2}$/.test(fields[0]) && version(fields[1])
-      && fields[2].length > 0 && !fields[2].includes("\0") && /^\d+$/.test(fields[3])
+    require(fields.length === 5 && /^\d{4}-\d{2}-\d{2}$/.test(fields[0]) && version(fields[1])
+      && assetName(fields[2]) && /^\d+$/.test(fields[3]) && timestamp(fields[4])
       && Number.isSafeInteger(Number(fields[3])) && String(Number(fields[3])) === fields[3], "Invalid counts.csv row.");
     week(fields[0]);
   }
@@ -89,8 +93,9 @@ export async function recordCounts({ repository, token, now = new Date(), fetchI
     const batch = await api("GET", `releases/${release.id}/assets?per_page=100&page=${page}`);
     require(Array.isArray(batch) && batch.length <= 100, "Invalid release assets response.");
     for (const asset of batch) {
-      require(positive(asset?.id) && typeof asset.name === "string" && asset.name.length > 0
-        && !asset.name.includes("\0") && Number.isSafeInteger(asset.download_count) && asset.download_count >= 0
+      require(assetName(asset?.name), "Unsafe or invalid release asset name.");
+      require(positive(asset.id) && timestamp(asset.updated_at)
+        && Number.isSafeInteger(asset.download_count) && asset.download_count >= 0
         && !ids.has(asset.id) && !names.has(asset.name), "Invalid or duplicate release asset.");
       ids.add(asset.id); names.add(asset.name); assets.push(asset);
     }
@@ -98,6 +103,9 @@ export async function recordCounts({ repository, token, now = new Date(), fetchI
   }
   require(assets.length > 0, "Stable release has no assets.");
   const latest = assets.find((asset) => asset.name === "latest.json");
+  // Packages are replaced first; latest.json marks a completed publication.
+  require(!latest || assets.every((asset) => Date.parse(asset.updated_at) <= Date.parse(latest.updated_at)),
+    "Stable release is mid-publication; retry after latest.json is updated.");
   const releaseVersion = latest
     ? (await api("GET", `releases/assets/${latest.id}`, undefined, { asset: true }))?.version
     : /^Ibis v?(\S+)$/.exec(release.name ?? "")?.[1];
@@ -128,7 +136,7 @@ export async function recordCounts({ repository, token, now = new Date(), fetchI
   const weeks = rows.map(([date]) => week(date));
   require(weeks.every((past) => past <= currentWeek), "Refusing a snapshot older than recorded history.");
   if (weeks.includes(currentWeek)) return "This UTC week is already recorded.";
-  const appended = assets.map((asset) => [date, releaseVersion, asset.name, String(asset.download_count)].map(quote).join(",") + "\n").join("");
+  const appended = assets.map((asset) => [date, releaseVersion, asset.name, String(asset.download_count), asset.updated_at].map(quote).join(",") + "\n").join("");
 
   // Objects alone do not publish anything. Only the last request moves the
   // fixed ref, without force; a racing append fails instead of losing rows.

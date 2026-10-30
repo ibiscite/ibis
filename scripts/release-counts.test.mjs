@@ -6,10 +6,12 @@ import { fileURLToPath } from "node:url";
 import { classify } from "./ci-paths.mjs";
 import { recordCounts } from "./release-counts.mjs";
 
-const header = "date,version,asset_name,download_count\n";
+const header = "date,version,asset_name,download_count,updated_at\n";
 const sha = (n) => n.toString(16).padStart(40, "0");
 const monday = "2026-10-26T01:15:00Z";
 const nextMonday = "2026-11-02T01:15:00Z";
+const packageUpdated = "2026-10-25T20:00:00Z";
+const manifestUpdated = "2026-10-25T20:01:00Z";
 
 // In-memory Git objects and atomic ref updates; no network or local Git.
 function github({ csv = null, manifest = true } = {}) {
@@ -18,9 +20,9 @@ function github({ csv = null, manifest = true } = {}) {
     csv,
     release: { id: 12, tag_name: "stable", name: "Ibis 0.2.0", draft: false },
     assets: [
-      { id: 20, name: "Ibis-synthetic.dmg", download_count: 40 },
-      { id: 21, name: "Ibis-synthetic.app.tar.gz", download_count: 9 },
-      ...(manifest ? [{ id: 22, name: "latest.json", download_count: 3 }] : []),
+      { id: 20, name: "Ibis-synthetic.dmg", download_count: 40, updated_at: packageUpdated },
+      { id: 21, name: "Ibis-synthetic.app.tar.gz", download_count: 9, updated_at: packageUpdated },
+      ...(manifest ? [{ id: 22, name: "latest.json", download_count: 3, updated_at: manifestUpdated }] : []),
     ],
     feed: { version: "0.2.0" },
     calls: [],
@@ -108,12 +110,27 @@ test("first run creates an orphan stats branch with a UTC row for every stable a
   const { state, run } = github();
   await run("2026-10-25T21:15:00-04:00");
   assert.equal(state.csv, header + [
-    "2026-10-26,0.2.0,Ibis-synthetic.dmg,40",
-    "2026-10-26,0.2.0,Ibis-synthetic.app.tar.gz,9",
-    "2026-10-26,0.2.0,latest.json,3",
+    `2026-10-26,0.2.0,Ibis-synthetic.dmg,40,${packageUpdated}`,
+    `2026-10-26,0.2.0,Ibis-synthetic.app.tar.gz,9,${packageUpdated}`,
+    `2026-10-26,0.2.0,latest.json,3,${manifestUpdated}`,
     "",
   ].join("\n"));
   assert.equal(state.calls.at(-1).path, "git/refs");
+});
+
+test("formula or control-leading asset names refuse visibly before any write", async () => {
+  const names = ["=1+1", "+1+1", "-1+1", "@SUM(1,1)", ...Array.from({ length: 32 }, (_, i) => `${String.fromCharCode(i)}Ibis.dmg`), "\x7fIbis.dmg", "\x85Ibis.dmg", "\x9fIbis.dmg"];
+  for (const csv of [null, header]) {
+    for (const name of names) {
+      const { state, run } = github({ csv });
+      const previousHead = state.head;
+      state.assets[1].name = name;
+      await assert.rejects(run(), /unsafe.*asset name/i);
+      assert.equal(state.csv, csv);
+      assert.equal(state.head, previousHead);
+      assert.ok(state.calls.every(({ method }) => method === "GET"));
+    }
+  }
 });
 
 test("malformed release, assets or latest.json refuse without any write", async () => {
@@ -129,6 +146,10 @@ test("malformed release, assets or latest.json refuse without any write", async 
     (s) => { s.assets[0].name = ""; },
     (s) => { s.assets[0].name = s.assets[1].name; },
     (s) => { s.assets[0].id = s.assets[1].id; },
+    (s) => { delete s.assets[0].updated_at; },
+    (s) => { s.assets[0].updated_at = "not a timestamp"; },
+    (s) => { s.assets[0].updated_at = 123; },
+    (s) => { s.assets[2].updated_at = null; },
     (s) => { s.feed = { version: "stable" }; },
     (s) => { s.feed = null; },
   ]) {
@@ -161,18 +182,31 @@ test("a rerun anywhere in the same Monday-to-Sunday UTC week is a no-op", async 
   assert.ok(state.calls.every(({ method }) => method === "GET"));
   await run(nextMonday);
   assert.ok(state.csv.startsWith(previous));
-  assert.ok(state.csv.includes("2026-11-02,0.2.0,Ibis-synthetic.dmg,55\n"));
+  assert.ok(state.csv.includes(`2026-11-02,0.2.0,Ibis-synthetic.dmg,55,${packageUpdated}\n`));
 });
 
-test("asset replacement keeps a lower counter verbatim the following week", async () => {
-  const { state, run } = github();
-  await run();
-  const previous = state.csv;
-  state.assets[0].download_count = 2;
-  state.feed.version = "0.2.1";
-  await run(nextMonday);
-  assert.ok(state.csv.startsWith(previous));
-  assert.ok(state.csv.includes("2026-11-02,0.2.1,Ibis-synthetic.dmg,2\n"));
+test("packages replaced before latest.json refuse without writes; a completed publication can retry", async () => {
+  for (const index of [0, 1]) {
+    const { state, run } = github();
+    await run();
+    const previous = state.csv;
+    const previousHead = state.head;
+    state.calls = [];
+    const replacement = { ...state.assets[index], id: 30, download_count: 2, updated_at: "2026-11-01T23:58:00Z" };
+    state.assets[index] = replacement;
+    await assert.rejects(run(nextMonday), /mid-publication.*retry/i);
+    assert.equal(state.csv, previous);
+    assert.equal(state.head, previousHead);
+    assert.ok(state.calls.every(({ method }) => method === "GET"));
+
+    state.assets[2].updated_at = replacement.updated_at;
+    state.feed.version = "0.2.1";
+    await run(nextMonday);
+    assert.ok(state.csv.startsWith(previous));
+    assert.ok(state.csv.includes(`2026-11-02,0.2.1,${replacement.name},2,${replacement.updated_at}\n`));
+    assert.ok(state.csv.includes(`2026-11-02,0.2.1,latest.json,3,${replacement.updated_at}\n`));
+    assert.ok(!state.csv.includes("2026-11-02,0.2.0,"));
+  }
 });
 
 test("commas, quotes, CR and newlines in raw asset names round-trip through weekly deduplication", async () => {
@@ -180,7 +214,7 @@ test("commas, quotes, CR and newlines in raw asset names round-trip through week
   state.assets[0].name = 'Ibis,"synthetic"\r\npackage.dmg';
   await run();
   const previous = state.csv;
-  assert.ok(previous.includes('2026-10-26,0.2.0,"Ibis,""synthetic""\r\npackage.dmg",40\n'));
+  assert.ok(previous.includes(`2026-10-26,0.2.0,"Ibis,""synthetic""\r\npackage.dmg",40,${packageUpdated}\n`));
   await run();
   assert.equal(state.csv, previous);
   await run(nextMonday);
@@ -200,10 +234,10 @@ test("without latest.json a numbered release title supplies the version", async 
 
 test("all asset pages are recorded", async () => {
   const { state, run } = github({ manifest: false });
-  state.assets = Array.from({ length: 101 }, (_, i) => ({ id: 1000 + i, name: `synthetic-${i}.dmg`, download_count: i }));
+  state.assets = Array.from({ length: 101 }, (_, i) => ({ id: 1000 + i, name: `synthetic-${i}.dmg`, download_count: i, updated_at: packageUpdated }));
   await run();
   assert.equal(state.csv.split("\n").length, 103);
-  assert.ok(state.csv.includes("synthetic-100.dmg,100\n"));
+  assert.ok(state.csv.includes(`synthetic-100.dmg,100,${packageUpdated}\n`));
 });
 
 test("ref confusion, unrelated trees and damaged CSV are refused before writes", async () => {
@@ -219,7 +253,7 @@ test("ref confusion, unrelated trees and damaged CSV are refused before writes",
     assert.equal(state.csv, header);
     assert.ok(state.calls.every(({ method }) => method === "GET"));
   }
-  for (const csv of ["", "wrong,header\n", header + "2026-02-30,0.2.0,file.dmg,1\n", header + '2026-10-19,0.2.0,"broken,1\n', header + "2026-10-19,0.2.0,file.dmg,-1\n", header + '2026-10-19,0.2.0,file.dmg,"1\n"\n', header + "2026-10-19,0.2.0,file.dmg,1"]) {
+  for (const csv of ["", "wrong,header\n", header + `2026-02-30,0.2.0,file.dmg,1,${packageUpdated}\n`, header + '2026-10-19,0.2.0,"broken,1\n', header + `2026-10-19,0.2.0,file.dmg,-1,${packageUpdated}\n`, header + `2026-10-19,0.2.0,file.dmg,"1\n",${packageUpdated}\n`, header + `2026-10-19,0.2.0,file.dmg,1,${packageUpdated}`, header + "2026-10-19,0.2.0,file.dmg,1,invalid\n", header + `2026-10-19,0.2.0,+1+1,1,${packageUpdated}\n`]) {
     const { state, run } = github({ csv });
     await assert.rejects(run());
     assert.equal(state.csv, csv);
