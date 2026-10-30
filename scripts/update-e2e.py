@@ -220,7 +220,7 @@ if ($pickerWindows.Count -eq 1) {
     $handle = $target.window.Current.NativeWindowHandle
     if ($handle -ne 0 -and [IbisUpdateFocus]::GetForegroundWindow().ToInt64() -eq [long]$handle) {
       if ($target.kind -ceq 'picker') {
-        # A foreground host with an empty WebView is not an interactive picker.
+        # A foreground host can still expose no interactive Search control.
         # Observe only this unique owned main; never click/focus to repair it.
         $items = @($picker.FindAll($S::Descendants, [System.Windows.Automation.Condition]::TrueCondition))
         if ($items.Count -gt 4000) { throw 'Picker element bound exceeded' }
@@ -240,12 +240,15 @@ if ($pickerWindows.Count -eq 1) {
 
 MACOS_PICKER = r"""
 ObjC.import('ApplicationServices');
+ObjC.import('CoreFoundation');
 ObjC.import('CoreGraphics');
 function run(pids) {
   if (pids.length > 20 || pids.some(pid => !/^[1-9][0-9]{0,9}$/.test(pid))) throw Error('Invalid picker scope');
   const attr = (item, name) => {
     const result = Ref();
-    const status = $.AXUIElementCopyAttributeValue(item, $(name), result);
+    let status;
+    try { status = $.AXUIElementCopyAttributeValue(item, $(name), result); }
+    catch (_) { throw Error(`Picker AX copy ${name} incompatible`); }
     if (status !== 0) throw Error(`Picker AX ${name} unavailable (${status})`);
     return result[0];
   };
@@ -276,12 +279,30 @@ function run(pids) {
   const answer = focus => JSON.stringify({pid: focus ? matches[0] : null, focus});
   if (matches.length === 0) return answer(null);
   if (offers.length === 1 && offers[0] !== matches[0]) throw Error('Update offer owner differs from picker');
-  const focused = attr($.AXUIElementCreateSystemWide(), 'AXFocusedUIElement');
+  // The SDK declares AXUIElementRef CF_BRIDGED_TYPE(id). AXCopy returns a
+  // generic CFTypeRef; bridge it, then check its real CF type before reuse.
+  const typed = (value, kind, stage) => {
+    let object, actual, expected;
+    try {
+      object = ObjC.castRefToObject(value);
+      if (!object) throw Error('missing object');
+      actual = Number($.CFGetTypeID(object));
+      expected = Number(kind === 'element' ? $.AXUIElementGetTypeID() : $.CFStringGetTypeID());
+    } catch (_) { throw Error(`Picker AX ${stage} bridge unavailable`); }
+    if (!Number.isInteger(actual) || actual <= 0 || actual !== expected) throw Error(`Picker AX ${stage} has wrong type`);
+    return object;
+  };
+  const focused = typed(attr($.AXUIElementCreateSystemWide(), 'AXFocusedUIElement'), 'element', 'focused element');
   const owner = Ref();
-  if ($.AXUIElementGetPid(focused, owner) !== 0) throw Error('Picker owner unavailable');
+  let status;
+  try { status = $.AXUIElementGetPid(focused, owner); }
+  catch (_) { throw Error('Picker AX focused owner incompatible'); }
+  if (status !== 0) throw Error(`Picker AX focused owner unavailable (${status})`);
   if (Number(owner[0]) !== matches[0]) return answer(null);
-  const window = attr($.AXUIElementCreateApplication(matches[0]), 'AXFocusedWindow');
-  const title = ObjC.unwrap(attr(window, 'AXTitle'));
+  const window = typed(attr($.AXUIElementCreateApplication(matches[0]), 'AXFocusedWindow'), 'element', 'focused window');
+  let title;
+  try { title = ObjC.unwrap(typed(attr(window, 'AXTitle'), 'string', 'focused title')); }
+  catch (_) { throw Error('Picker AX focused title incompatible'); }
   return answer(title === 'Ibis' ? 'picker' : title === 'An update is available' && offers.length === 1 ? 'offer' : null);
 }
 """
@@ -1047,8 +1068,12 @@ class Tests(unittest.TestCase):
     def test_macos_picker_requires_owned_unique_visible_and_native_focused_window(self):
         model = r'''
 const scenario = process.argv[1];
-const ObjC = {import() {}, unwrap: value => value,
-  castRefToObject: value => { if (!value || !value.opaqueCFArray) throw Error('invalid CF array'); return value.windows; },
+const ObjC = {import() {}, unwrap: value => { if (value.objectType !== 7) throw Error('not a string'); return value.value; },
+  castRefToObject: value => {
+    if (value && value.opaqueCFArray) return value.windows;
+    if (value && value.cfType) return {objectType: value.cfType, value: value.value};
+    throw Error('not a native reference');
+  },
   deepUnwrap: value => { if (value && value.opaqueCFArray) throw Error('opaque CF array requires an explicit bridge'); return value; }};
 const Ref = () => [];
 const $ = name => name;
@@ -1062,16 +1087,27 @@ $.CGWindowListCopyWindowInfo = (options, relative) => {
   return {opaqueCFArray: true, windows: scenario === 'hidden' ? [] : scenario === 'duplicate' ? [main, main] :
     scenario === 'offer-focused' ? [main, {kCGWindowOwnerPID: 42, kCGWindowName: 'An update is available'}] : [main]};
 };
+$.CFGetTypeID = value => value.objectType || 18;
+$.AXUIElementGetTypeID = () => 81; $.CFStringGetTypeID = () => 7;
 $.AXUIElementCreateSystemWide = () => 'system';
 $.AXUIElementCreateApplication = pid => { if (pid !== 42) throw Error('unowned app'); return 'app'; };
 $.AXUIElementCopyAttributeValue = (item, name, result) => {
   if (scenario === 'unknown') return -1;
+  if (typeof item !== 'string') {
+    if (item.objectType !== 81) throw Error('Ref has incompatible type');
+    item = item.value;
+  }
   const values = {'system:AXFocusedUIElement': 'focused', 'app:AXFocusedWindow': 'window',
     'window:AXTitle': scenario === 'wrong-focus-title' ? 'Other' : scenario === 'offer-focused' ? 'An update is available' : 'Ibis'};
   if (!(item + ':' + name in values)) throw Error('unexpected attribute');
-  result[0] = values[item + ':' + name]; return 0;
+  const wrong = (name === 'AXFocusedUIElement' && scenario === 'focused-wrong-type') ||
+    (name === 'AXFocusedWindow' && scenario === 'window-wrong-type') || (name === 'AXTitle' && scenario === 'title-wrong-type');
+  result[0] = {cfType: (name === 'AXTitle') !== wrong ? 7 : 81, value: values[item + ':' + name]}; return 0;
 };
-$.AXUIElementGetPid = (item, result) => { result[0] = scenario === 'foreign' ? 99 : 42; return scenario === 'owner-error' ? -1 : 0; };
+$.AXUIElementGetPid = (item, result) => {
+  if (item.objectType !== 81) throw Error('Ref has incompatible type');
+  result[0] = scenario === 'foreign' ? 99 : 42; return scenario === 'owner-error' ? -1 : 0;
+};
 const window = {name: () => scenario === 'title' ? 'Ibis suffix' : 'Ibis', visible: () => { if (scenario === 'unavailable-visible') throw Object.assign(Error("Can't get object"), {errorNumber: -1728}); return scenario !== 'hidden'; }};
 const Application = name => {
   if (name !== 'System Events') throw Error('unexpected application');
@@ -1082,11 +1118,12 @@ const Application = name => {
   }}};
 };
 '''
-        for scenario in ("success", "hidden", "title", "duplicate", "foreign", "unknown", "owner-error", "wrong-focus-title", "offer-focused", "unavailable-visible", "cg-foreign", "cg-unknown", "cg-unavailable"):
+        for scenario in ("success", "hidden", "title", "duplicate", "foreign", "unknown", "owner-error", "wrong-focus-title", "offer-focused", "unavailable-visible", "cg-foreign", "cg-unknown", "cg-unavailable",
+                         "focused-wrong-type", "window-wrong-type", "title-wrong-type"):
             with self.subTest(scenario=scenario):
                 result = subprocess.run([shutil.which("node"), "-e", model + MACOS_PICKER + "\nprocess.stdout.write(run(['42']));", scenario],
                                         capture_output=True, timeout=5)
-                if scenario in ("duplicate", "unknown", "owner-error", "cg-unknown", "cg-unavailable"):
+                if scenario in ("duplicate", "unknown", "owner-error", "cg-unknown", "cg-unavailable", "focused-wrong-type", "window-wrong-type", "title-wrong-type"):
                     self.assertNotEqual(result.returncode, 0)
                 else:
                     self.assertEqual(result.returncode, 0, result.stderr.decode("utf-8", errors="replace"))
