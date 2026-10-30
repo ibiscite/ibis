@@ -29,3 +29,8 @@ opt-level = 2
 
 [profile.dev.package.ibis-core]
 opt-level = 2
+
+# Optimize across crate boundaries in shipped builds; keep portable CPU defaults
+# and unwind behavior so the parser panic guard remains effective.
+[profile.release]
+lto = "thin"
