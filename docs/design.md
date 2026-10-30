@@ -343,8 +343,10 @@ choice or toggle keeps a leading check column for every row, so labels share one
 start and shortcuts line up at the end; on GNOME the check follows the label.
 More's toggles are `menuitemcheckbox` items; a menu without them starts at its
 labels. **More holds actions, not preferences** (2026-10-30): Show in Zotero
-or Open thesis.bib (⌘O); then Rows as a small three-part control (1 line,
-2 lines, 3 lines), the one look you change while working; Keep Window Open
+or Open thesis.bib (⌘O); then Rows › (showing the current density, opening a
+submenu of Compact, Comfortable and Spacious with "1 line", "2 lines", "3
+lines" as their quiet examples), the one look you change while working; Keep
+Window Open
 and Show What Will Be Pasted (both have keys); then Keyboard Shortcuts (⌘/),
 Settings… and Quit Ibis. Library choices live in the library menu behind the
 footer status. Text size follows ⌘+ and ⌘− as in any Mac app; starting at
@@ -789,8 +791,9 @@ radii and per-platform depth wait in the Later milestone.
   flat opaque block, but denser (92% for menus, 96% for sheets, with the
   panel's blur) so the rows behind them read as soft colour, never as shapes
   or words competing with the text in front. Reduced transparency makes them
-  opaque. The keys sheet hugs its content in two columns of groups and sits
-centred in the window, since no single control owns it.
+  opaque. The keys list is the same overlay as a menu (radius `--r-menu`, the
+same glass, edge and shadow), at most 600 px wide, in two columns of groups,
+centred in the window since no single control owns it.
   Over the macOS veil, citation and status colours go one step deeper to keep
   4.5:1; fills, hairlines and key caps are translucent; the window edge is a
   1 px hairline, never a white rim. Ibis sets no blur or opacity of its own.
