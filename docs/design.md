@@ -984,16 +984,21 @@ breathe. Rows kept from before stay instead, with only the footer saying
   themselves: when Zotero is not sharing, the screen shows where to turn it on and continues on
   its own once it is on; when Zotero is closed, Ibis reads the library anyway;
   with several Zotero profiles, Ibis asks which one; with no library at all,
-  built-in sample references let people try Ibis, labelled "Sample" on every
-  row and in the footer. The explicit **Try sample references** choice uses
-  three bundled invented CSL-JSON references for this run; it never saves a
+  built-in sample references let people try Ibis, marked once, by the footer
+  status "Sample references"; rows carry no extra label. The explicit
+  **Try sample references** choice uses three bundled invented CSL-JSON
+  references for this run; it never saves a
   library preference. The website demo and help screenshots use this same set
   from `apps/desktop/src-tauri/resources/samples.csljson`: lantern gardens,
   clockwork clouds and the invented sea. The practice task is identical on
   every surface: Search for “lantern”, choose the lantern gardens reference, then press Enter. A
-  **Use your own library** choice row returns to setup.
+  **Use your own library** choice row returns to setup. Per maintainer feedback
+  on 2026-10-30, website demo rows show plain titles, including static copy and
+  accessible labels. The website demo copies only inside its own page, so its
+  citations carry no [Sample] suffix. Confirm each action once, in one place:
+  the shelf's Copied capsule, never a second notice for the same copy.
   Choosing a real source replaces samples; sample selections and copy notices
-  leave with them. Samples never join a real library. Every sample citation
+  leave with them. Samples never join a real library. Every desktop sample citation
   ends with the visible text ` [Sample]`, including key outputs and every
   clipboard representation (plain text, HTML and RTF). The marker belongs to
   the prepared citation and its content hash: previews and receipts show the
