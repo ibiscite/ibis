@@ -5,8 +5,8 @@
   border-radius: var(--r-control); color: var(--text); background: var(--clear); outline: none;
   font-size: var(--type-meta-size); text-align: center; overflow-wrap: anywhere;
 }
-.ui-picture-choice[data-selected] { background: var(--selected-background); color: var(--selected-text); }
-.ui-picture-choice[data-focus-visible] { outline: var(--focus-ring-width) solid var(--focus-ring-color); outline-offset: var(--focus-ring-offset); }
+.ui-picture-choice[data-selected] { background: var(--choice-selected-background); color: var(--choice-selected-text); font-weight: var(--type-strong-weight); }
+.ui-picture-choice[data-focus-visible] { outline: var(--focus-ring-width) solid var(--focus-ring-color); outline-offset: calc(-1 * (var(--focus-ring-width) + var(--focus-ring-offset))); }
 .ui-picture-choice[data-disabled] { color: var(--muted); }
 .ui-picture-choice[data-disabled][data-selected] { background: var(--fill-control); color: var(--text); }
 .ui-picture-choices[data-dots] { gap: 0; }
@@ -28,3 +28,7 @@
 .ui-accent-dot[data-accent="yellow"] { background: var(--settings-accent-yellow); }
 .ui-accent-dot[data-accent="green"] { background: var(--settings-accent-green); }
 .ui-accent-dot[data-accent="graphite"] { background: var(--settings-accent-graphite); }
+
+@media (pointer: coarse) {
+  .ui-picture-choice { min-width: var(--touch-target); min-height: var(--touch-target); }
+}

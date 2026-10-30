@@ -36,6 +36,7 @@
   .toolbar-menu-filter input:focus-visible { outline: var(--focus-ring-width) solid var(--focus-ring-color); outline-offset: var(--focus-ring-offset); }
 }
 @media (pointer: coarse) {
+  .toolbar-menu-filter input { min-height: var(--touch-target); }
   .toolbar-menu-control, .toolbar-menu-control .toolbar-menu-button,
   :root[data-platform="macos"] .toolbar-menu-button { min-width: 2.75rem; min-height: 2.75rem; }
   :root[data-platform="macos"] .toolbar-menu-button::after { inset: 0; }

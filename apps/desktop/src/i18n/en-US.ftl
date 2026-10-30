@@ -128,12 +128,12 @@ general-menu-bar = Show in Menu Bar
 general-menu-bar-description = When hidden, your shortcut still opens Ibis; open Ibis from Applications to return to Settings.
 general-welcome = Show the welcome again
 look-appearance = Appearance
-look-appearance-description = Saved for Ibis; applies in Settings now, picker support coming soon.
+look-appearance-description = Follow the system, or choose Light or Dark for Ibis.
 look-system = System
 look-light = Light
 look-dark = Dark
 look-accent = Accent
-look-accent-description = For Ibis only; applies in Settings now, picker support coming soon.
+look-accent-description = Applies inside Ibis only.
 look-accent-system = Follow the Mac
 look-accent-blue = Blue
 look-accent-purple = Purple
@@ -200,3 +200,9 @@ settings-shortcut-restored = Default shortcut restored
 general-menu-bar-unavailable = { settings-coming-soon }. { general-menu-bar-description }
 
 settings-read-only = The settings file is read-only; the saved value is shown.
+
+citations-key-formats = Citation keys
+citations-style-formats = Citation styles
+citations-filter-formats = Filter formats
+look-sample-title-2 = Paths through the orchard
+look-sample-title-3 = A map of quiet places

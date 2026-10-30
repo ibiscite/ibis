@@ -5,6 +5,7 @@ import { Segmented } from "../ui/Segmented";
 import { SettingsGroup as Group, SettingsRow as Row } from "../ui/SettingsGroup";
 import { Switch } from "../ui/Switch";
 import { PickerPicture } from "./PickerPicture";
+import { rowDetails } from "./rows";
 
 const ACCENTS: readonly Accent[] = ["system", "blue", "purple", "pink", "red", "orange", "yellow", "green", "graphite"];
 const APPEARANCES: readonly Appearance[] = ["system", "light", "dark"];
@@ -15,22 +16,22 @@ export function LookPage({ preferences: p, change, feedback }: {
   const { text } = useInterfaceMessages();
   const appearance = p.appearance ?? "system", accent = p.accent ?? "system";
   return <Group id="look-choices">
-    <Row id="appearance" label={text("look-appearance")} description={text("look-appearance-description")} {...feedback("appearance")}>
+    <Row id="appearance" {...rowDetails("appearance", text)} {...feedback("appearance")}>
       <PictureChoice label={text("look-appearance")} description="appearance-description" value={appearance}
         options={APPEARANCES.map((value) => ({ value, label: text(`look-${value}`), picture: <PickerPicture density={p.density} icon={p.search_mark ? "ibis" : "magnifier"} appearance={value === "system" ? "light" : value} split={value === "system"} /> }))}
         onChange={(appearance) => change({ appearance })} />
     </Row>
-    <Row id="accent" label={text("look-accent")} description={text("look-accent-description")} {...feedback("accent")}>
+    <Row id="accent" {...rowDetails("accent", text)} {...feedback("accent")}>
       <PictureChoice dots label={text("look-accent")} description="accent-description" value={accent}
         options={ACCENTS.map((value) => ({ value, label: text(`look-accent-${value}`), picture: <span className="ui-accent-dot" data-accent={value} /> }))}
         onChange={(accent) => change({ accent })} />
     </Row>
     <Row id="rows" label={text("general-rows")} {...feedback("rows")}>
       <PictureChoice label={text("general-rows")} value={p.density}
-        options={(["compact", "comfortable", "spacious"] as const).map((value) => ({ value, label: text(`general-density-${value}`), picture: <PickerPicture density={value} icon={p.search_mark ? "ibis" : "magnifier"} /> }))}
+        options={(["compact", "comfortable", "spacious"] as const).map((value) => ({ value, label: text(`general-density-${value}`), picture: <PickerPicture rowsOnly density={value} icon={p.search_mark ? "ibis" : "magnifier"} /> }))}
         onChange={(density) => change({ density })} />
     </Row>
-    <Row id="window-size" label={text("look-window-size")} description={text("settings-coming-soon")} {...feedback("window-size")}>
+    <Row id="window-size" {...rowDetails("window-size", text)} {...feedback("window-size")}>
       <PictureChoice label={text("look-window-size")} description="window-size-description" value="" isDisabled
         options={(["small", "medium", "large", "compact-window", "custom"] as const).map((value) => ({ value, label: text(`look-${value}`) }))} onChange={() => undefined} />
     </Row>

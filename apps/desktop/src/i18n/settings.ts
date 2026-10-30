@@ -42,6 +42,8 @@ export function shortcutRefusalMessage(refusal: unknown): ShortcutProblem {
 }
 
 export const SETTINGS_IDS = [
+  "citations-key-formats", "citations-style-formats", "citations-filter-formats",
+  "look-sample-title-2", "look-sample-title-3",
   "settings-read-only",
   "general-menu-bar-unavailable",
   "settings-undo", "settings-shortcut-restored",

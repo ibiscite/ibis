@@ -947,7 +947,8 @@ test("Look serializes older A before B, so B stays selected and survives reopeni
   expect(state.preferences.density).toBe("spacious");
   mounted.unmount();
   render(<SettingsApp api={api} initialPage={null} />);
-  expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Look");
+  expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("General");
+  fireEvent.click(screen.getByRole("option", { name: "Look" }));
   expect((await screen.findByRole("radio", { name: "Spacious" }))).toHaveProperty("checked", true);
 });
 
@@ -1000,6 +1001,8 @@ test("Appearance, nine accents, both search icons, both text sizes and preview p
   expect(state.patches.at(1)).toEqual({ accent: "purple" });
   mounted.unmount();
   render(<SettingsApp api={api} initialPage={null} />);
+  expect(screen.getByRole("heading", { level: 1 })).toHaveProperty("textContent", "General");
+  fireEvent.click(screen.getByRole("option", { name: "Look" }));
   expect(await screen.findByRole("radio", { name: "Purple" })).toHaveProperty("checked", true);
   expect(document.documentElement.dataset.appearance).toBe("dark");
   fireEvent.click(screen.getByRole("radio", { name: "System" }));
@@ -1053,29 +1056,35 @@ test("Look picture radios have keyboard selection, inert real components and no 
   expect(previews.length).toBeGreaterThan(0);
   for (const host of previews) {
     expect(host.hasAttribute("inert")).toBe(true);
-    expect(host.shadowRoot?.querySelector(".search-bar input")).toBeTruthy();
+    expect(host.shadowRoot?.querySelector(".search-bar input, #results")).toBeTruthy();
   }
   expect((await axe.run(container)).violations.map((x) => x.id)).toEqual([]);
 });
 
 
-test("the default citation format saves the exact key or style and restores a refused choice", async () => {
+test("the Ibis default-format menu saves key or style, restores refusals, and reopens on General", async () => {
   const { api, state } = fakeApi({ granted: true });
   const mounted = render(<SettingsApp api={api} initialPage="citations" />);
-  const format = await screen.findByRole("combobox", { name: "Default format" });
-  fireEvent.change(format, { target: { value: "typst" } });
-  await act(async () => state.closes[0]!());
+  const choose = async (name: string) => {
+    fireEvent.click(await screen.findByRole("button", { name: /^Default format / }));
+    expect(await screen.findByRole("menu")).toBeTruthy();
+    fireEvent.click(screen.getByRole("menuitemradio", { name }));
+    await act(async () => state.closes.at(-1)!());
+  };
+  await choose("Typst");
   expect(state.preferences).toMatchObject({ copy_format: "typst", citation_style: null });
-  fireEvent.change(format, { target: { value: "style:apa" } });
-  await act(async () => state.closes[0]!());
+  await choose("APA (7th edition)");
   expect(state.preferences.citation_style).toBe("apa");
   vi.spyOn(api, "setPickerPreferences").mockRejectedValueOnce(new Error("synthetic refusal"));
-  fireEvent.change(format, { target: { value: "cite" } });
+  await choose("LaTeX \\cite");
   await screen.findByRole("alert");
-  expect(format).toHaveProperty("value", "style:apa");
+  expect(screen.getByRole("button", { name: "Default format APA (7th edition)" })).toBeTruthy();
+  expect(document.querySelector("select")).toBeNull();
   mounted.unmount();
   render(<SettingsApp api={api} initialPage={null} />);
-  expect(await screen.findByRole("combobox", { name: "Default format" })).toHaveProperty("value", "style:apa");
+  expect(screen.getByRole("heading", { level: 1 })).toHaveProperty("textContent", "General");
+  fireEvent.click(screen.getByRole("option", { name: "Citations" }));
+  expect(await screen.findByRole("button", { name: "Default format APA (7th edition)" })).toBeTruthy();
 });
 
 
@@ -1115,4 +1124,17 @@ test("a failed update read retains the saved switch and explains the uncertainty
   expect(screen.getByRole("switch", { name: "Check for updates automatically" })).toBe(automatic);
   expect(automatic).toHaveProperty("checked", true);
   expect(problem.closest(".ui-settings-row")?.querySelector("#automatic")).toBeTruthy();
+});
+
+
+test.each([
+  ["no remembered format", "Default format", "Citations", "default-format"],
+  ["Follow the system", "Appearance", "Look", "appearance"],
+])("search includes the displayed description %s and reveals its row", async (query, label, page, id) => {
+  const { api } = fakeApi({ granted: true });
+  render(<SettingsApp api={api} initialPage="general" />);
+  fireEvent.change(screen.getByRole("searchbox", { name: "Search Settings" }), { target: { value: query } });
+  fireEvent.click(await screen.findByRole("button", { name: label }));
+  expect(screen.getByRole("heading", { level: 1 })).toHaveProperty("textContent", page);
+  await waitFor(() => expect(document.getElementById(id)?.closest(".ui-settings-row")?.hasAttribute("data-highlighted")).toBe(true));
 });

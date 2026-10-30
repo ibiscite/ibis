@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { CitationStyle, KeyFormat, LoginItem, LoginItemProblem, PickerPreferences, ShortcutStatus } from "../bindings";
+import type { KeyFormat, LoginItem, LoginItemProblem, PickerPreferences, ShortcutStatus } from "../bindings";
 import { DEFAULT_PICKER_SHORTCUT, KEY_TABLE, keyLabel, shortcutLabel } from "../keys";
 import { type MessageId, useInterfaceMessages } from "../i18n";
 import { SHORTCUT_ACTIONS, SHORTCUT_COMMANDS, SHORTCUT_REGIONS, type ShortcutProblem, shortcutRefusalMessage } from "../i18n/settings";
@@ -9,13 +9,14 @@ import { Button } from "../ui/Button";
 import { SettingsGroup as Group, SettingsRow as Row } from "../ui/SettingsGroup";
 import { ShortcutRecorder } from "../ui/ShortcutRecorder";
 import { SideNavigation } from "../ui/SideNavigation";
-import { Select } from "../ui/Select";
+import { useAppearance } from "../ui/appearance";
+import { DefaultFormat } from "./DefaultFormat";
 import { Switch } from "../ui/Switch";
 import { PasteGuide, usePastePermission } from "./PasteGuide";
 import type { SettingsApi } from "./api";
 import "./Settings.css";
 
-import { PAGES, ROWS, type Page, rememberedPage, rememberPage } from "./rows";
+import { PAGES, ROWS, rowDetails, type Page } from "./rows";
 import { LookPage } from "./LookPage";
 const LOGIN_PROBLEMS = {
   unsupported: "general-login-unsupported", needs_approval: "general-login-needs-approval",
@@ -38,7 +39,7 @@ function DoneMark() {
 export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPage: string | null }) {
   const { text } = useInterfaceMessages();
   const platform = currentPlatform();
-  const start = pageOf(initialPage ?? rememberedPage());
+  const start = pageOf(initialPage);
   const [page, setPage] = useState<Page>(start.page);
   const [focus, setFocus] = useState<"top" | "paste" | null>(start.focus ?? "top");
   const pageRef = useRef<HTMLElement>(null);
@@ -62,7 +63,6 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   const [query, setQuery] = useState("");
   const [highlighted, setHighlighted] = useState<string | null>(null);
   const highlightOperation = useRef(0);
-  useEffect(() => { rememberPage(page); }, [page]);
   useEffect(() => { live.current = true; return () => { live.current = false; }; }, []);
   const [shortcut, setShortcut] = useState<ShortcutStatus | null>(null);
   const [shortcutProblem, setShortcutProblem] = useState<ShortcutProblem | null>(null);
@@ -111,13 +111,12 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
       });
     }
   }), [queue]);
+  useAppearance(preferences);
   useEffect(() => {
     const root = document.documentElement;
-    root.dataset.appearance = preferences?.appearance ?? "system";
-    root.dataset.accent = preferences?.accent ?? "system";
     root.dataset.largerText = String(preferences?.larger_text ?? false);
-    return () => { delete root.dataset.appearance; delete root.dataset.accent; delete root.dataset.largerText; };
-  }, [preferences]);
+    return () => { delete root.dataset.largerText; };
+  }, [preferences?.larger_text]);
   const permission = usePastePermission(api, page === "general", preferences?.paste === true);
 
   useEffect(() => {
@@ -274,8 +273,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     if (target) pageRef.current.scrollTop += target.getBoundingClientRect().top - pageRef.current.getBoundingClientRect().top;
   }, [highlighted, page, preferences]);
   const unavailable = (id: string) => {
-    const row = ROWS.find((row) => row.id === id)!;
-    return <Row key={id} id={id} label={text(row.label)} description={text("settings-coming-soon")} {...feedback(id)}>
+    return <Row key={id} id={id} {...rowDetails(id, text)} {...feedback(id)}>
       <Button isDisabled aria-labelledby={id} aria-describedby={`${id}-description`}>{text("settings-coming-soon")}</Button>
     </Row>;
   };
@@ -323,7 +321,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
                 </Row>
             </Group>
             <Group id="menu-bar-group">
-              <Row id="menu-bar" label={text("general-menu-bar")} description={text("general-menu-bar-unavailable")} {...feedback("menu-bar")}>
+              <Row id="menu-bar" {...rowDetails("menu-bar", text)} {...feedback("menu-bar")}>
                 <Switch aria-labelledby="menu-bar" aria-describedby="menu-bar-description" isSelected isDisabled />
               </Row>
             </Group>
@@ -356,16 +354,8 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
           {ROWS.filter((row) => row.page === page).map((row) => unavailable(row.id))}
         </Group>}
         {page === "citations" && <Group id="citation-choices">
-          {preferences && <Row id="default-format" label={text("citations-default")} description={text("citations-default-description")} {...feedback("default-format")}>
-            <Select aria-labelledby="default-format" aria-describedby="default-format-description" value={preferences.citation_style ? `style:${preferences.citation_style}` : preferences.copy_format ?? "pandoc"}
-              onChange={(event) => {
-                const value = event.target.value;
-                if (value.startsWith("style:")) change({ citation_style: value.slice(6) as CitationStyle });
-                else change({ citation_style: null }, value as KeyFormat);
-              }}>
-              {(["pandoc", "autocite", "parencite", "textcite", "cite", "typst", "keys"] as const).map((format) => <option key={format} value={format}>{text(`citations-format-${format}`)}</option>)}
-              {(["apa", "chicago-author-date", "harvard-cite-them-right", "ieee", "modern-language-association"] as const).map((style) => <option key={style} value={`style:${style}`}>{text(`citations-format-${style}`)}</option>)}
-            </Select>
+          {preferences && <Row id="default-format" {...rowDetails("default-format", text)} {...feedback("default-format")}>
+            <DefaultFormat preferences={preferences} change={change} />
           </Row>}
           {ROWS.filter((row) => row.page === "citations" && row.id !== "default-format").map((row) => unavailable(row.id))}
         </Group>}

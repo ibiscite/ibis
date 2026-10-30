@@ -122,10 +122,7 @@ fn present(app: &AppHandle, page: Option<Page>) {
         present_existing(&window, page);
         return;
     }
-    let url = page.map_or_else(
-        || "settings.html".to_string(),
-        |page| format!("settings.html?page={}", page.name()),
-    );
+    let url = format!("settings.html?page={}", page.unwrap_or(Page::General).name());
     let mut builder = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App(url.into()))
         .title(TITLE)
         .inner_size(SIZE.0, SIZE.1)
@@ -158,11 +155,12 @@ fn present(app: &AppHandle, page: Option<Page>) {
     }
 }
 
-/// An explicit page request selects it; an ordinary reopen keeps the current page.
+/// Every presentation has a page; ordinary Settings opens on General at the top.
 fn present_existing<R: tauri::Runtime>(window: &tauri::WebviewWindow<R>, page: Option<Page>) {
-    if let Some(page) = page {
-        report(window.emit_to(LABEL, "settings:page", page), NativeIssue::Window);
-    }
+    report(
+        window.emit_to(LABEL, "settings:page", page.unwrap_or(Page::General)),
+        NativeIssue::Window,
+    );
     report(window.unminimize(), NativeIssue::Unminimize);
     report(window.show(), NativeIssue::Show);
     report(window.set_focus(), NativeIssue::Focus);
@@ -235,7 +233,7 @@ mod tests {
     }
 
     #[test]
-    fn presenting_existing_settings_keeps_the_page_without_a_request_and_honours_explicit_requests() {
+    fn presenting_existing_settings_resets_general_without_a_request_and_honours_explicit_requests() {
         use std::sync::mpsc;
         use std::time::Duration;
         use tauri::Listener;
@@ -250,15 +248,11 @@ mod tests {
         window.listen("settings:page", move |event| {
             let _ = sent.send(event.payload().to_string());
         });
-        present_existing(&window, None);
-        assert!(
-            events.try_recv().is_err(),
-            "ordinary reopen must keep the selected page"
-        );
+
         for (requested, expected) in [
-            (Some(Page::General), "general"),
+            (None, "general"),
             (Some(Page::About), "about"),
-            (Some(Page::General), "general"),
+            (None, "general"),
             (Some(Page::Paste), "paste"),
             (Some(Page::Shortcuts), "shortcuts"),
             (Some(Page::Citations), "citations"),

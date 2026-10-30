@@ -7,6 +7,7 @@ import { focusChoices } from "./ui/ChoiceList";
 import { zoteroLibraryNames } from "./LibraryStatusLine";
 import { usePointerSelection } from "./pointerSelection";
 import { Button } from "./ui/Button";
+import { usePickerAppearance } from "./ui/appearance";
 import { KeysDialog } from "./features/picker/KeysDialog";
 import { isMac } from "./platform";
 import { choiceKey, idKey, styleOf, type Choice, type CitationReference } from "./features/picker/choice";
@@ -54,7 +55,8 @@ export type PickerApi = Pick<typeof nativeApi,
 export type PickerPreview = { query?: string; copied?: Copied };
 
 // The picker: search, choose one or more references, copy them as a citation.
-export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: PickerPreview } = {}) {
+export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; preview?: PickerPreview } = {}) {
+  const api = usePickerAppearance(sourceApi);
   const { chooseLibrary, useZotero, libraryStatus, reloadLibrary,
     hidePicker, pickerVisible, setPinned, onLibraryChanged, onPickerShown, onPickerHidden, search, shortcutStatus, previewFileCitation, copyFileCitation,
     useZoteroLibraries: chooseZoteroLibraries, zoteroGroups } = api;

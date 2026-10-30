@@ -133,3 +133,20 @@ test("every fixed Settings accent keeps white text at 4.5:1 and stays distinct f
     expect(["c23a1c", "ff7a5c", "d2401f"]).not.toContain(shade);
   }
 });
+
+test("picture choices use a quiet selected surface and an inward keyboard-only ring", () => {
+  const choices = read("../ui/PictureChoice.css");
+  expect(style(choices, ".ui-picture-choice[data-selected]").getPropertyValue("background")).toBe("var(--choice-selected-background)");
+  expect(style(choices, ".ui-picture-choice[data-selected]").getPropertyValue("color")).toBe("var(--choice-selected-text)");
+  expect(style(choices, ".ui-picture-choice[data-focus-visible]").getPropertyValue("outline-offset")).toBe("calc(-1 * (var(--focus-ring-width) + var(--focus-ring-offset)))");
+  expect(style(groups, ".ui-picker-picture").getPropertyValue("max-width")).toBe("100%");
+  expect(style(groups, ".ui-picker-picture").getPropertyValue("aspect-ratio")).toBe("var(--settings-picture-aspect)");
+  const media = (source: string) => {
+    const sheet = document.createElement("style"); sheet.textContent = source; document.head.append(sheet);
+    const rule = [...sheet.sheet!.cssRules].find((rule) => rule.type === CSSRule.MEDIA_RULE && (rule as CSSMediaRule).conditionText === "(pointer: coarse)") as CSSMediaRule;
+    sheet.remove(); return [...rule.cssRules] as CSSStyleRule[];
+  };
+  expect(media(choices).find((rule) => rule.selectorText === ".ui-picture-choice")?.style.getPropertyValue("min-height")).toBe("var(--touch-target)");
+  expect(media(groups).find((rule) => rule.selectorText === ".ui-settings-search input")?.style.getPropertyValue("min-height")).toBe("var(--touch-target)");
+  expect(media(read("../ui/ToolbarMenu.css")).find((rule) => rule.selectorText === ".toolbar-menu-filter input")?.style.getPropertyValue("min-height")).toBe("var(--touch-target)");
+});

@@ -310,11 +310,15 @@ forced colours; it never resembles a partially completed download.
 | Switch | No change | Accent track | Ring |
 | Search box | None | None | None: the caret (Windows: its accent underline) |
 
-- **Selection is a fill** [D7]. Every OS: the full accent with paired text (a
-  tint reaches only about 1.2:1 beside other rows), no side pill. On the
+- **Selection is a fill** [D7]. Result rows use the full accent with paired
+  text on every OS (a tint reaches only about 1.2:1 beside other rows), no side
+  pill. On the
   selected row an added tile is the paired text colour with a scarlet check
   [D9]. A kept-open picker without focus uses `--row-inactive-background`. Menu highlight: accent on macOS, a subtle fill on
-  Windows and GNOME.
+  Windows and GNOME. Picture radios use a soft accent tint with normal text
+  (`--choice-selected-background` and `--choice-selected-text`), not the full
+  result-row fill. Their selection stays visible without resembling keyboard
+  focus; the full accent primary action remains one per view.
 - **Focus ring only on keyboard focus** [D8] (`:focus-visible`), never after a
   click, and **drawn inside the item it marks**, so no scroll area clips it and
   it never covers a neighbour. macOS 2 px accent with a 1 px gap; Windows 2 px
@@ -1116,12 +1120,12 @@ far: seven searchable pages, with General (opening-shortcut link, login and
 pasting), Look (real picker pictures, rows, Ibis mark or magnifier,
 Default/Larger text and paste preview), Shortcuts (opening shortcut and an
 expandable key list and Undo for restoring the default), Citations (default
-key syntax or style) and About Ibis (version and update checks). Appearance
-and Accent are saved and apply in Settings; the picker still needs to consume
-those choices. Largest text, None, window presets including Compact, menu-bar
-visibility, welcome replay and the remaining Libraries, Citations and Advanced
-actions appear disabled with Coming soon. Settings remembers its page when closed;
-an explicit page request still selects that page and resets its scroller.
+key syntax or style through the shared Ibis menu) and About Ibis (version and
+update checks). Appearance and Accent apply in both Settings and the picker
+through the same root-level roles. Largest text, None, window presets including
+Compact, menu-bar visibility, welcome replay and the remaining Libraries, Citations and Advanced
+actions appear disabled with Coming soon. Ordinary Settings presentations open
+General at the top; explicit page requests select that page and reset its scroller.
 
 **One Settings design** (maintainer, 2026-10-30). There is one Settings
 window; every drawing and board uses it, and it is kept in step with the app as
@@ -1130,7 +1134,12 @@ both change. The Rows and Search icon pictures are the real picker drawn small
 can't drift from it. Look opens with Appearance: System, Light and Dark as
 pictures of the picker (System split diagonally), System by default, then
 Accent as colour dots, Follow the Mac by default. The
-website shows the app as it currently is.
+website shows the app as it currently is. Each Appearance picture owns the
+labelled theme for its body and controls; System is split across the whole
+picture diagonally. Rows and Search icon use a crop of the real components at
+about 60%, with readable sample titles, rather than shrinking the whole window.
+The crop and its contents shrink together within the available row padding at
+minimum width and 200% text.
 
 **Pages for everyone** (2026-10-30). Most people never open Settings, so
 defaults carry the product (principle 9). Seven pages, each with one job, in this
