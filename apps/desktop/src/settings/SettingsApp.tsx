@@ -14,6 +14,7 @@ import { DefaultFormat } from "./DefaultFormat";
 import { Switch } from "../ui/Switch";
 import { PasteGuide, usePastePermission } from "./PasteGuide";
 import type { SettingsApi } from "./api";
+import "../ui/SettingsLayout.css";
 import "./Settings.css";
 
 import { PAGES, ROWS, rowDetails, type Page } from "./rows";
@@ -303,7 +304,8 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
         {page === "general" && (
           <>
             <Group id="general-shortcut">
-              <Row id="general-open-shortcut" label={text("shortcuts-open")} description={shortcut?.shortcut ? shortcutLabel(shortcut.shortcut, mac) : text("shortcuts-description")} {...feedback("open-shortcut")}>
+              <Row id="general-open-shortcut" label={text("shortcuts-open")} description={shortcut?.desktop?.guidance ?? (shortcut?.shortcut ? shortcutLabel(shortcut.shortcut, mac) : text("shortcuts-description"))} {...feedback("open-shortcut")}>
+                {shortcut?.desktop && <span role="status">{shortcut.shortcut || text("shortcuts-not-assigned")}</span>}
                 <Button onPress={() => selectPage("shortcuts")}>{text("shortcuts-change")}</Button>
               </Row>
             </Group>

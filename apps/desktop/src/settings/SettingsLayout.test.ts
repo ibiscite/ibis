@@ -4,7 +4,7 @@ import { expect, test, vi } from "vitest";
 const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
 const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
 const read = (path: string) => readFileSync(new FileURL(path, import.meta.url), "utf8");
-const shell = read("./Settings.css");
+const shell = read("../ui/SettingsLayout.css") + read("./Settings.css");
 const groups = read("../ui/SettingsGroup.css");
 const buttons = read("../ui/Button.css");
 const switches = read("../ui/Switch.css");
@@ -34,7 +34,9 @@ test("Settings fills the viewport, with bounded page and navigation scrollers be
   expect(roots.getPropertyValue("overflow")).toBe("hidden");
   expect(roots.getPropertyValue("margin")).toBe("0px");
   const frame = style(shell, ".settings");
-  expect(frame.getPropertyValue("height")).toBe("100dvh");
+  // Percentage heights keep the whole root → body → mount → shell chain in
+  // the same coordinate space when browser zoom or text scaling changes it.
+  expect(frame.getPropertyValue("height")).toBe("100%");
   expect(frame.getPropertyValue("display")).toBe("grid");
   expect(frame.getPropertyValue("grid-template-columns")).toBe("var(--settings-sidebar-width) minmax(0, 1fr)");
   expect(frame.getPropertyValue("grid-template-rows")).toBe("var(--titlebar-height) minmax(0, 1fr)");
@@ -138,7 +140,25 @@ test("picture choices use a quiet selected surface and an inward keyboard-only r
   const choices = read("../ui/PictureChoice.css");
   expect(style(choices, ".ui-picture-choice[data-selected]").getPropertyValue("background")).toBe("var(--choice-selected-background)");
   expect(style(choices, ".ui-picture-choice[data-selected]").getPropertyValue("color")).toBe("var(--choice-selected-text)");
+  const selectionRing = "inset 0 0 0 var(--choice-selection-ring-width) var(--accent)";
+  expect(style(choices, ".ui-picture-choice[data-selected]").getPropertyValue("box-shadow")).toBe(selectionRing);
+  expect(tokens).toMatch(/--choice-selection-ring-width:\s*2px/);
   expect(style(choices, ".ui-picture-choice[data-focus-visible]").getPropertyValue("outline-offset")).toBe("calc(-1 * (var(--focus-ring-width) + var(--focus-ring-offset)))");
+  expect(style(choices, ".ui-picture-choice[data-selected][data-focus-visible]").getPropertyValue("outline-offset")).toBe("calc(-1 * (var(--choice-selection-ring-width) + var(--focus-ring-width) + var(--focus-ring-offset)))");
+  const sheet = document.createElement("style");
+  sheet.textContent = choices;
+  const picture = document.createElement("div");
+  picture.className = "ui-picture-choice";
+  picture.dataset.selected = "true";
+  document.head.append(sheet); document.body.append(picture);
+  try {
+    expect(getComputedStyle(picture).boxShadow).toBe(selectionRing);
+    expect(getComputedStyle(picture).outline).toBe("none");
+    picture.dataset.focusVisible = "true";
+    expect(getComputedStyle(picture).boxShadow).toBe(selectionRing);
+    expect(getComputedStyle(picture).outline).toBe("var(--focus-ring-width) solid var(--focus-ring-color)");
+    expect(getComputedStyle(picture).outlineOffset).toBe("calc(-1 * (var(--choice-selection-ring-width) + var(--focus-ring-width) + var(--focus-ring-offset)))");
+  } finally { picture.remove(); sheet.remove(); }
   expect(style(groups, ".ui-picker-picture").getPropertyValue("max-width")).toBe("100%");
   expect(style(groups, ".ui-picker-picture").getPropertyValue("aspect-ratio")).toBe("var(--settings-picture-aspect)");
   const media = (source: string) => {
@@ -148,5 +168,7 @@ test("picture choices use a quiet selected surface and an inward keyboard-only r
   };
   expect(media(choices).find((rule) => rule.selectorText === ".ui-picture-choice")?.style.getPropertyValue("min-height")).toBe("var(--touch-target)");
   expect(media(groups).find((rule) => rule.selectorText === ".ui-settings-search input")?.style.getPropertyValue("min-height")).toBe("var(--touch-target)");
+  expect(media(groups).find((rule) => rule.selectorText === ".ui-settings-key-list summary")?.style.getPropertyValue("min-height")).toBe("var(--touch-target)");
+  expect(style(groups, ".ui-settings-key-list summary").getPropertyValue("box-sizing")).toBe("border-box");
   expect(media(read("../ui/ToolbarMenu.css")).find((rule) => rule.selectorText === ".toolbar-menu-filter input")?.style.getPropertyValue("min-height")).toBe("var(--touch-target)");
 });

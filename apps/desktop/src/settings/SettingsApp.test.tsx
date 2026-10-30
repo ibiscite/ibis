@@ -243,6 +243,21 @@ test.each([1, 2])("Wayland portal v%s shows the desktop trigger, never a recorde
   expect(result.violations).toEqual([]);
 });
 
+test.each(["Strg + Umschalt + Y", "Alt + F9", ""])("General preserves the desktop's trigger and guidance (%j)", async (trigger) => {
+  const { api, state } = fakeApi();
+  const guidance = "Your desktop manages this shortcut. Bind ibis toggle in Keyboard Settings.";
+  state.shortcut = { shortcut: trigger, registered: !!trigger, error: null, desktop: { configurable: true, guidance } };
+  render(<SettingsApp api={api} initialPage="general" />);
+  const row = document.getElementById("general-open-shortcut")!.closest(".ui-settings-row")!;
+  expect(await within(row as HTMLElement).findByText(trigger || "Not assigned")).toBeTruthy();
+  expect(within(row as HTMLElement).getByText(guidance)).toBeTruthy();
+  expect(within(row as HTMLElement).queryByText("Click the shortcut, then type a new one. Esc cancels.")).toBeNull();
+  fireEvent.click(within(row as HTMLElement).getByRole("button", { name: "Change…" }));
+  expect(await screen.findByRole("heading", { level: 1, name: "Shortcuts" })).toBeTruthy();
+  expect(screen.queryByRole("button", { name: /^Open Ibis:/ })).toBeNull();
+  expect(state.shortcutChoices).toEqual([]);
+});
+
 test("portal configuration prevents repeated requests, reports failure and allows retry", async () => {
   const { api, state } = fakeApi();
   state.shortcut = { shortcut: "Ctrl+Shift+Y", registered: true, error: null, desktop: { configurable: true, guidance: "Desktop settings" } };

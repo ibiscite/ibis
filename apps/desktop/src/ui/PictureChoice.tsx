@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { Radio, RadioGroup } from "react-aria-components";
 import "./PictureChoice.css";
 
-/** Shared picture radios: selection is a surface; keyboard focus is a separate cue. */
+/** Shared picture radios: tinted selection and its ring persist; keyboard focus draws farther inward. */
 export function PictureChoice<T extends string>({ label, description, value, options, onChange, dots = false, isDisabled = false }: {
   label: string; description?: string; value: T; dots?: boolean; isDisabled?: boolean;
   options: readonly { value: T; label: string; picture?: ReactNode; isDisabled?: boolean }[];

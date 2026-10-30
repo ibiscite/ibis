@@ -374,29 +374,6 @@
     --empty-icon-size: var(--icon-glyph-size); --empty-icon-gap: var(--space-1); --empty-keys-display: none; }
 }
 
-/* BEGIN generated website palette: brand/build.py */
-:root {
-  --website-bg: Canvas;
-  --website-surface: Canvas;
-  --website-line: GrayText;
-  --website-text: CanvasText;
-  --website-muted: CanvasText;
-  --website-accent-soft: Canvas;
-}
-@supports (color: light-dark(white, black)) {
-  @media (forced-colors: none) {
-    :root {
-      --website-bg: light-dark(#FFFFFF, #111111);
-      --website-surface: light-dark(#F5F5F5, #1C1C1C);
-      --website-line: light-dark(#E5E5E5, #2E2E2E);
-      --website-text: light-dark(#171717, #F2F2F2);
-      --website-muted: light-dark(#525252, #B5B5B5);
-      --website-accent-soft: light-dark(rgb(194 58 28 / .08), rgb(255 122 92 / .13));
-    }
-  }
-}
-/* END generated website palette */
-
 
 /* Settings roles and Mac selected-row accent shades (#1489). */
 :root {
@@ -407,6 +384,7 @@
   --settings-picture-crop-scale: .6; --settings-snapshot-scale: var(--settings-picture-scale);
   --choice-selected-background: color-mix(in srgb, var(--accent) 12%, var(--surface));
   --choice-selected-text: var(--text);
+  --choice-selection-ring-width: 2px;
   --choice-accent: var(--settings-accent-blue);
   --settings-accent-blue: #0064e1; --settings-accent-purple: #953d96;
   --settings-accent-pink: #c8317d; --settings-accent-red: #c42b30;
@@ -448,3 +426,26 @@
     }
   }
 }
+
+/* BEGIN generated website palette: brand/build.py */
+:root {
+  --website-bg: Canvas;
+  --website-surface: Canvas;
+  --website-line: GrayText;
+  --website-text: CanvasText;
+  --website-muted: CanvasText;
+  --website-accent-soft: Canvas;
+}
+@supports (color: light-dark(white, black)) {
+  @media (forced-colors: none) {
+    :root {
+      --website-bg: light-dark(#FFFFFF, #111111);
+      --website-surface: light-dark(#F5F5F5, #1C1C1C);
+      --website-line: light-dark(#E5E5E5, #2E2E2E);
+      --website-text: light-dark(#171717, #F2F2F2);
+      --website-muted: light-dark(#525252, #B5B5B5);
+      --website-accent-soft: light-dark(rgb(194 58 28 / .08), rgb(255 122 92 / .13));
+    }
+  }
+}
+/* END generated website palette */

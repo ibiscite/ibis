@@ -33,8 +33,8 @@ canvas mirrors them (see **How the design changes**).
 7. **Calm motion.** Movement only explains where something came from, and it
    switches off when the system asks for reduced motion.
 8. **No glow, no edge rings.** Selection is a fill, never an outline. No
-   coloured borders, outer glows or bright rims. A focus ring appears only when
-   the keyboard moved focus.
+   coloured borders, outer glows or bright rims, except the selected picture
+   choices described in [D7]. A focus ring appears only when the keyboard moved focus.
 9. **Great defaults, then choice.** Every setting starts from one default that
    works for most people on every platform, so most never open Settings.
    Customising is there for those who want it, never required. No setting
@@ -315,10 +315,12 @@ forced colours; it never resembles a partially completed download.
   pill. On the
   selected row an added tile is the paired text colour with a scarlet check
   [D9]. A kept-open picker without focus uses `--row-inactive-background`. Menu highlight: accent on macOS, a subtle fill on
-  Windows and GNOME. Picture radios use a soft accent tint with normal text
-  (`--choice-selected-background` and `--choice-selected-text`), not the full
-  result-row fill. Their selection stays visible without resembling keyboard
-  focus; the full accent primary action remains one per view.
+  Windows and GNOME. Selected picture choices use a soft accent tint plus a
+  2 px accent ring, with normal text (`--choice-selected-background`,
+  `--choice-selected-text` and `--choice-selection-ring-width`). This selection
+  mark stays visible at rest. The separate keyboard focus ring draws farther
+  inward, with a gap from the selection ring, only on keyboard focus. Rows keep
+  their full accent fill; the full accent primary action remains one per view.
 - **Focus ring only on keyboard focus** [D8] (`:focus-visible`), never after a
   click, and **drawn inside the item it marks**, so no scroll area clips it and
   it never covers a neighbour. macOS 2 px accent with a 1 px gap; Windows 2 px
@@ -1126,6 +1128,9 @@ through the same root-level roles. Largest text, None, window presets including
 Compact, menu-bar visibility, welcome replay and the remaining Libraries, Citations and Advanced
 actions appear disabled with Coming soon. Ordinary Settings presentations open
 General at the top; explicit page requests select that page and reset its scroller.
+The shared shell uses the root's full height at Default, Larger and 200% text.
+General shows desktop-owned shortcut triggers verbatim, or Not assigned, with
+the desktop's guidance.
 
 **One Settings design** (maintainer, 2026-10-30). There is one Settings
 window; every drawing and board uses it, and it is kept in step with the app as
