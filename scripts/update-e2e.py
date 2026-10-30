@@ -68,17 +68,23 @@ UNINSTALL = r"Software\Microsoft\Windows\CurrentVersion\Uninstall"
 # probe holds only counts, error numbers or exception type names, and how a
 # press was made.
 WINDOWS_WINDOW_SCOPE = r"""
+function Stop-UpdateScope($scope, $stage) {
+  # Explicit scope assertions are terminal even if a later census is clean.
+  # Native UIA exceptions do not set this marker and may be observed again.
+  $scope.failure_stage = $stage
+  throw 'Update window scope assertion failed'
+}
 function Get-OwnedWindows($ids, $scope) {
   $owned = [System.Collections.Generic.List[object]]::new()
-  if ($ids.Count -gt 20) { throw 'Update process bound exceeded' }
+  if ($ids.Count -gt 20) { Stop-UpdateScope $scope 'picker-bounds' }
   foreach ($id in $ids) {
-    if ($id -notmatch '^[1-9][0-9]{0,9}$') { throw 'Invalid update process' }
+    if ($id -notmatch '^[1-9][0-9]{0,9}$') { Stop-UpdateScope $scope 'scope' }
     $scope.pids++
     $condition = [System.Windows.Automation.PropertyCondition]::new($A::ProcessIdProperty, [int]$id)
     $roots = @($A::RootElement.FindAll($S::Children, $condition))
-    if ($roots.Count -gt 20) { throw 'Update root window bound exceeded' }
+    if ($roots.Count -gt 20) { Stop-UpdateScope $scope 'picker-bounds' }
     foreach ($root in $roots) {
-      if ($root.Current.ProcessId -ne [int]$id) { throw 'Update root owner changed' }
+      if ($root.Current.ProcessId -ne [int]$id) { Stop-UpdateScope $scope 'picker-owner' }
       $scope.root_windows++
       $owned.Add($root)
       # Owned modal windows need not be desktop children. As on macOS, inspect
@@ -86,17 +92,17 @@ function Get-OwnedWindows($ids, $scope) {
       $windowType = [System.Windows.Automation.PropertyCondition]::new(
         $A::ControlTypeProperty, [System.Windows.Automation.ControlType]::Window)
       $nested = @($root.FindAll($S::Descendants, $windowType))
-      if ($nested.Count -gt 20) { throw 'Update nested window bound exceeded' }
+      if ($nested.Count -gt 20) { Stop-UpdateScope $scope 'picker-bounds' }
       foreach ($window in $nested) {
         if ($window.Current.ProcessId -ne [int]$id) {
-          if ($window.Current.Name -ceq 'An update is available') { throw 'Update offer owner differs from root' }
+          if ($window.Current.Name -ceq 'An update is available') { Stop-UpdateScope $scope 'picker-owner' }
           continue # A renderer window cannot supply the native updater action.
         }
         $scope.nested_windows++
         $owned.Add($window)
       }
       $scope.windows = $owned.Count
-      if ($scope.windows -gt 20) { throw 'Update window bound exceeded' }
+      if ($scope.windows -gt 20) { Stop-UpdateScope $scope 'picker-bounds' }
     }
   }
   $scope.tree_complete = $true
@@ -281,7 +287,7 @@ if ($pickerWindows.Count -eq 1) {
   $picker = $pickerWindows[0]
   $targets = @(@{window=$picker; kind='picker'})
   if ($offerWindows.Count -eq 1) {
-    if ($offerWindows[0].Current.ProcessId -ne $picker.Current.ProcessId) { throw 'Update offer owner differs from picker' }
+    if ($offerWindows[0].Current.ProcessId -ne $picker.Current.ProcessId) { Stop-UpdateScope $scope 'picker-owner' }
     $targets += @{window=$offerWindows[0]; kind='offer'}
   }
   foreach ($target in $targets) {
@@ -293,7 +299,7 @@ if ($pickerWindows.Count -eq 1) {
         # Observe only this unique owned main; never click/focus to repair it.
         $probe.stage='picker-search'
         $items = @($picker.FindAll($S::Descendants, [System.Windows.Automation.Condition]::TrueCondition))
-        if ($items.Count -gt 4000) { throw 'Picker element bound exceeded' }
+        if ($items.Count -gt 4000) { Stop-UpdateScope $scope 'picker-bounds' }
         $search = @($items | Where-Object {
           $_.Current.Name -ceq 'Search references' -and
           $_.Current.ControlType.ProgrammaticName -cin @('ControlType.ComboBox', 'ControlType.Edit')
@@ -310,6 +316,7 @@ if ($pickerWindows.Count -eq 1) {
 $probe.stage='complete'
 } catch {
   $owner=$null; $focus=$null; $probe.failed=$true
+  if ($scope -and $scope.failure_stage) { $probe.stage=$scope.failure_stage }
   $probe.code=$_.Exception.HResult
 }
 @{pid=$owner; focus=$focus; probe=$probe} | ConvertTo-Json -Compress
@@ -457,7 +464,7 @@ function run(pids) {
 class PickerObservationFailure(AssertionError):
     def __init__(self, probe):
         self.probe = probe
-        self.retryable = probe["stage"] not in ("scope", "unique", "picker-unique", "picker-search-unique") and probe.get("windows", 0) <= 20
+        self.retryable = probe["stage"] not in ("scope", "unique", "picker-owner", "picker-bounds", "picker-unique", "picker-search-unique") and probe.get("windows", 0) <= 20
         super().__init__(f"native picker observation unavailable ({probe['stage']}, code {probe.get('code')})")
 
 
@@ -469,7 +476,7 @@ def picker_result(stdout, pids):
         probe = result["probe"]
         stages = {"scope", "frameworks", "cg-copy", "cg-bridge", "cg-decode", "cg-windows", "cg-window-title", "unique", "ax-system", "ax-owner",
                   "ax-owner-read", "ax-app", "ax-title-decode", "complete"}
-        stages.update(("picker-frameworks", "picker-native-focus", "picker-windows", "picker-unique", "picker-search", "picker-search-unique", "picker-foreground"))
+        stages.update(("picker-frameworks", "picker-native-focus", "picker-windows", "picker-owner", "picker-bounds", "picker-unique", "picker-search", "picker-search-unique", "picker-foreground"))
         stages.update(f"ax-{kind}-{step}" for kind in ("focused", "window", "title") for step in ("copy", "read", "bridge"))
         if (not isinstance(probe, dict) or set(probe) != {"stage", "code", "failed", "trusted", "windows", "pickers", "offers"}
                 or type(probe["stage"]) is not str or probe["stage"] not in stages or type(probe["failed"]) is not bool
@@ -879,7 +886,8 @@ class Linux:
                 raise LinuxActivationFailure(probe, probe["stage"])
             return answer
         except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
-            raise LinuxActivationFailure({}, helper_failure("linux", error)["stage"]) from None
+            probe = helper_failure("linux", error)
+            raise LinuxActivationFailure(probe, probe["stage"]) from None
 
     def look_local(self, pids, press=None, *, verify_focus):
         seen = []
@@ -2104,6 +2112,44 @@ process.stdout.write(JSON.stringify(results));
             with self.assertRaisesRegex(AssertionError, "synthetic absence"):
                 wait_for(predicate, 2, "synthetic absence", retry_observation=True)
 
+    def test_windows_scope_assertions_cannot_be_replaced_by_a_later_clean_observation(self):
+        for stage in ("picker-owner", "picker-bounds", "picker-windows", "picker-search"):
+            failed = json.dumps({"pid": None, "focus": None, "probe": {
+                "stage": stage, "code": -1, "failed": True, "trusted": None,
+                "windows": 0, "pickers": 0, "offers": 0}})
+            clean = '{"pid":42,"focus":"picker"}'
+            clock = {"now": 0}
+            with self.subTest(stage=stage), patch(__name__ + ".powershell", side_effect=[failed, clean]) as helper, \
+                    patch("time.monotonic", side_effect=lambda: clock["now"]), \
+                    patch("time.sleep", side_effect=lambda step: clock.update(now=clock["now"] + step)):
+                observe = lambda: Windows.__new__(Windows).picker_ready({42})
+                if stage in ("picker-owner", "picker-bounds"):
+                    with self.assertRaises(PickerObservationFailure) as failure:
+                        wait_for(observe, 3, "synthetic deadline", retry_observation=True)
+                    self.assertFalse(failure.exception.retryable)
+                    self.assertEqual(failure.exception.probe["stage"], stage)
+                    helper.assert_called_once()
+                    self.assertEqual(clock["now"], 0)
+                else:
+                    self.assertEqual(wait_for(observe, 3, "synthetic deadline", retry_observation=True), (42, "picker"))
+                    self.assertEqual(helper.call_count, 2)
+
+    def test_linux_helper_failure_keeps_sanitized_stage_and_code_without_retry(self):
+        outcomes = ((subprocess.CompletedProcess([], 23, stdout=b"", stderr=b"synthetic-private-sentinel"), "exit", 23),
+                    (FileNotFoundError(2, "synthetic-private-sentinel"), "launch", 2),
+                    (subprocess.TimeoutExpired("synthetic-private-sentinel", 3), "timeout", None))
+        for outcome, kind, code in outcomes:
+            with self.subTest(kind=kind), patch("subprocess.run") as helper:
+                if isinstance(outcome, Exception):
+                    helper.side_effect = outcome
+                else:
+                    helper.return_value = outcome
+                with self.assertRaises(LinuxActivationFailure) as failure:
+                    Linux.__new__(Linux).look({42}, BUTTON, timeout=3)
+                self.assertEqual(failure.exception.probe, {"stage": f"linux-helper-{kind}", "code": code})
+                self.assertNotIn("synthetic-private-sentinel", str(failure.exception) + json.dumps(failure.exception.probe))
+                helper.assert_called_once()
+
     def test_linux_helper_rejects_partial_unknown_or_uncertain_facts_without_retrying(self):
         good = {"pids": 1, "nodes": 5, "windows": 1, "offer_matches": 1, "other_process_branches": 0,
                 "action_matches": 1, "attempted": True, "stage": "complete", "failed": False}
@@ -2341,7 +2387,7 @@ namespace IbisUpdateContract {
   private static int NextId=0; private int Identity=++NextId;
   public string Name="", Type="Pane", AutomationId=""; public int ProcessId=42; public bool IsEnabled=true, IsOffscreen=false;
   public int NativeWindowHandle=101;
-  public bool HasKeyboardFocus=true; public bool Supported=true, ThrowOnRead=false, Fail=false, ChangeOwnerOnActionScan=false; public int Invocations=0;
+  public bool HasKeyboardFocus=true; public bool Supported=true, ThrowOnRead=false, Fail=false, ChangeOwnerOnActionScan=false, FailFindAll=false; public int Invocations=0;
   private Node[] Children=new Node[0]; public Node Parent;
   public Node ChangeWindow; public string PatternMutation="";
   public Node[] Nodes {get {return Children;} set {Children=value; foreach(var node in value) node.Parent=this;}}
@@ -2349,6 +2395,7 @@ namespace IbisUpdateContract {
   public ControlType ControlType { get {return new IbisUpdateContract.ControlType(Type);} }
   public int[] GetRuntimeId() {return new int[]{Identity};}
   public Node[] FindAll(TreeScope scope,object condition) {
+   if(FailFindAll) throw new Exception("synthetic-private-sentinel");
    if(ChangeOwnerOnActionScan && condition==Condition.TrueCondition) {
     ProcessId=99; foreach(var node in Nodes) node.ProcessId=99;
    }
@@ -2448,6 +2495,17 @@ if ($Scenario.StartsWith('picker-')) {
   'picker-title' {$window.Name='Ibis suffix'}
   'picker-duplicate' {[IbisUpdateContract.AutomationElement]::RootElement.Nodes=@($window,$window)}
   'picker-foreign' {$window.ProcessId=99}
+  'picker-root-bound' {[IbisUpdateContract.AutomationElement]::RootElement.Nodes=@($window)*21}
+  'picker-nested-bound' {
+   $aux=[IbisUpdateContract.Node]::new(); $aux.Name='Other'; $aux.Type='Window'
+   $window.Nodes=@($aux)*21
+  }
+  'picker-total-bound' {
+   $aux=[IbisUpdateContract.Node]::new(); $aux.Name='Other'; $aux.Type='Window'
+   $window.Nodes=@($aux)*10
+   [IbisUpdateContract.AutomationElement]::RootElement.Nodes=@($window,$window)
+  }
+  'picker-native-error' {[IbisUpdateContract.AutomationElement]::RootElement.FailFindAll=$true}
   'picker-unfocused' {[IbisUpdateContract.Focus]::Handle=102}
   'picker-unknown' {[IbisUpdateContract.Focus]::Handle=0}
   'picker-no-handle' {$window.NativeWindowHandle=0}
@@ -2488,6 +2546,7 @@ if ($Scenario.StartsWith('picker-')) {
  }
 }
 $env:IBIS_PIDS='42'; $env:IBIS_PRESS='Install and Restart'
+if ($Scenario -ceq 'picker-process-bound') { $env:IBIS_PIDS=(1..21) -join ',' }
 function Contract-Result($pressed,$how) {
  $expected=$Scenario -in @('pane','button','standard','standard-localized','standard-rtl','nested')
  if($pressed -ne $expected -or $item.Invocations -ne [int]($expected -or $Scenario -in @('uncertain','standard-uncertain'))) {throw 'Unsafe or missing activation'}
@@ -2537,15 +2596,37 @@ function Contract-Result($pressed,$how) {
             for scenario in ("success", "hidden", "title", "duplicate", "foreign", "unfocused", "unknown", "no-handle", "empty",
                              "offer", "offer-duplicate", "offer-foreign", "offer-hidden", "edit", "loading", "search-title",
                              "search-role", "search-disabled", "search-hidden", "search-unfocused", "search-duplicate", "search-bound",
-                             "nested-offer", "nested-offer-foreign", "nested-offer-duplicate"):
+                             "nested-offer", "nested-offer-foreign", "nested-offer-duplicate", "process-bound", "root-bound",
+                             "nested-bound", "total-bound", "native-error"):
                 with self.subTest(picker=scenario):
                     result = subprocess.run([shutil.which("pwsh"), "-NoProfile", "-File", str(script), "picker-" + scenario],
                                             capture_output=True, timeout=30)
                     self.assertEqual(result.returncode, 0, result.stderr.decode("utf-8", errors="replace"))
                     if scenario in ("duplicate", "foreign", "offer-duplicate", "offer-foreign", "search-duplicate", "search-bound",
-                                    "nested-offer-foreign", "nested-offer-duplicate"):
-                        with self.assertRaises(PickerObservationFailure):
+                                    "nested-offer-foreign", "nested-offer-duplicate", "process-bound", "root-bound",
+                                    "nested-bound", "total-bound", "native-error"):
+                        with self.assertRaises(PickerObservationFailure) as failure:
                             picker_result(result.stdout, {42})
+                        transient = scenario == "native-error"
+                        self.assertEqual(failure.exception.retryable, transient)
+                        if scenario in ("foreign", "offer-foreign", "nested-offer-foreign"):
+                            self.assertEqual(failure.exception.probe["stage"], "picker-owner")
+                        if scenario.endswith("bound"):
+                            self.assertEqual(failure.exception.probe["stage"], "picker-bounds")
+                        # The offending window can disappear on the next poll.
+                        # Only a native read error may consume that clean answer.
+                        clock = {"now": 0}
+                        with patch(__name__ + ".powershell", side_effect=[result.stdout, '{"pid":42,"focus":"picker"}']) as helper, \
+                                patch("time.monotonic", side_effect=lambda: clock["now"]), \
+                                patch("time.sleep", side_effect=lambda step: clock.update(now=clock["now"] + step)):
+                            observe = lambda: Windows.__new__(Windows).picker_ready({42})
+                            if transient:
+                                self.assertEqual(wait_for(observe, 3, "synthetic deadline", retry_observation=True), (42, "picker"))
+                                self.assertEqual(helper.call_count, 2)
+                            else:
+                                with self.assertRaises(PickerObservationFailure):
+                                    wait_for(observe, 3, "synthetic deadline", retry_observation=True)
+                                helper.assert_called_once()
                     else:
                         expected = (42, "offer") if scenario in ("offer", "nested-offer") else (42, "picker") if scenario in ("success", "edit") else None
                         self.assertEqual(picker_result(result.stdout, {42}), expected)
