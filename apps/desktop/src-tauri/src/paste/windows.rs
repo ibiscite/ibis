@@ -269,8 +269,8 @@ fn press(key: co::VK, up: bool) -> w::HwKbMouse {
 mod tests {
     use super::*;
     use crate::paste::notepad_test::{
-        Candidate, CandidateKind, EditorIdentity, Failure, Reading, Session, Stage, activate, qualify_paste,
-        select_document, wait_for,
+        Candidate, CandidateKind, CapturedEditor, EditorIdentity, Failure, Reading, Session, Stage, activate,
+        qualify_paste, select_document, wait_for,
     };
     use std::process::Command;
 
@@ -328,43 +328,86 @@ mod tests {
     }
 
     /// The caller deadline also bounds a busy Notepad UI Automation provider.
-    fn focused_text(worker: &QueryWorker, owner: &EditorIdentity) -> Result<Reading, Failure> {
+    fn focused_text(
+        worker: &QueryWorker,
+        diagnostics: &QueryWorker,
+        owner: &EditorIdentity,
+    ) -> Result<Reading, Failure> {
+        let deadline = std::time::Instant::now() + Duration::from_secs(1);
+        let query_owner = owner.clone();
+        let result = worker
+            .run(
+                deadline.saturating_duration_since(std::time::Instant::now()),
+                move || {
+                    let automation = uia(uiautomation::UIAutomation::new(), Stage::Automation)?;
+                    let field = uia(automation.get_focused_element(), Stage::Focus)?;
+                    let current = identity(&field)?;
+                    if current != query_owner {
+                        return Err(Failure {
+                            focused: Some(false),
+                            ..Failure::new(Stage::Identity)
+                        });
+                    }
+                    if uia(field.is_password(), Stage::Password)? {
+                        return Err(Failure {
+                            focused: Some(true),
+                            ..Failure::new(Stage::Password)
+                        });
+                    }
+                    // Reject another field before reading any of its text. Keep
+                    // COM objects on this query thread; only values leave it.
+                    let pattern = uia(
+                        field.get_pattern::<uiautomation::patterns::UITextPattern>(),
+                        Stage::Pattern,
+                    )?;
+                    let range = uia(pattern.get_document_range(), Stage::Range)?;
+                    let text = uia(range.get_text(-1), Stage::Read)?;
+                    let after = uia(automation.get_focused_element(), Stage::Focus)?;
+                    if identity(&after)? != query_owner {
+                        return Err(Failure {
+                            focused: Some(false),
+                            ..Failure::new(Stage::Identity)
+                        });
+                    }
+                    Ok(Reading { editor: current, text })
+                },
+            )
+            .ok_or(Failure::new(Stage::Query))?;
+        let failure = match result {
+            Ok(reading) => return Ok(reading),
+            Err(failure) if failure.stage == Stage::Pattern => failure,
+            Err(failure) => return Err(failure),
+        };
+        // Optional probes share the original query deadline. Retain the
+        // primary pattern error even if the diagnostic worker is busy or hangs.
+        // Its retained permit cannot block the next primary qualification read.
+        let remaining = deadline.saturating_duration_since(std::time::Instant::now());
         let owner = owner.clone();
-        worker
-            .run(Duration::from_secs(1), move || {
-                let automation = uia(uiautomation::UIAutomation::new(), Stage::Automation)?;
-                let field = uia(automation.get_focused_element(), Stage::Focus)?;
-                let current = identity(&field)?;
-                if current != owner {
-                    return Err(Failure {
-                        focused: Some(false),
-                        ..Failure::new(Stage::Identity)
-                    });
-                }
-                if uia(field.is_password(), Stage::Password)? {
-                    return Err(Failure {
-                        focused: Some(true),
-                        ..Failure::new(Stage::Password)
-                    });
-                }
-                // Reject another field before reading any of its text. Keep
-                // COM objects on this query thread; only values leave it.
-                let pattern = uia(
-                    field.get_pattern::<uiautomation::patterns::UITextPattern>(),
-                    Stage::Pattern,
-                )?;
-                let range = uia(pattern.get_document_range(), Stage::Range)?;
-                let text = uia(range.get_text(-1), Stage::Read)?;
-                let after = uia(automation.get_focused_element(), Stage::Focus)?;
-                if identity(&after)? != owner {
-                    return Err(Failure {
-                        focused: Some(false),
-                        ..Failure::new(Stage::Identity)
-                    });
-                }
-                Ok(Reading { editor: current, text })
+        let capabilities = (!remaining.is_zero())
+            .then(|| {
+                diagnostics.run(remaining, move || {
+                    use uiautomation::{types::UIProperty, variants::Value};
+                    let automation = uiautomation::UIAutomation::new().ok()?;
+                    let field = automation.get_focused_element().ok()?;
+                    if identity(&field).ok()? != owner || field.is_password().ok()? {
+                        return None;
+                    }
+                    let pattern = field
+                        .get_property_value(UIProperty::IsTextPatternAvailable)
+                        .ok()
+                        .and_then(|value| value.get_value().ok())
+                        .and_then(|value| match value {
+                            Value::BOOL(available) => Some(available),
+                            _ => None,
+                        });
+                    let handle = field.get_native_window_handle().ok().map(|handle| !handle.is_invalid());
+                    let after = automation.get_focused_element().ok()?;
+                    (identity(&after).ok()? == owner).then_some((pattern, handle))
+                })
             })
-            .ok_or(Failure::new(Stage::Query))?
+            .flatten()
+            .flatten();
+        Err(failure.with_capabilities(capabilities))
     }
 
     fn tap(key: co::VK) {
@@ -383,7 +426,7 @@ mod tests {
 
     /// Recover the editor explicitly: ALT can arrive after asynchronous
     /// activation and select Notepad's menu instead of its document.
-    fn focus_document(worker: &QueryWorker, hwnd: isize, pid: u32) -> Result<EditorIdentity, Failure> {
+    fn focus_document(worker: &QueryWorker, hwnd: isize, pid: u32) -> Result<CapturedEditor, Failure> {
         worker
             .run(Duration::from_secs(1), move || {
                 let automation = uia(uiautomation::UIAutomation::new(), Stage::Automation)?;
@@ -446,15 +489,17 @@ mod tests {
                 let owner = select_document(&candidates)?;
                 let selected = candidates
                     .iter()
-                    .position(|candidate| candidate.editor.as_ref() == Some(&owner))
+                    .position(|candidate| candidate.editor.as_ref() == Some(&owner.identity))
                     .ok_or(Failure::new(Stage::Editor))?;
                 let editor = &fields[selected];
-                if owner.process != pid {
+                if owner.identity.process != pid {
                     return Err(Failure::new(Stage::Identity));
                 }
                 uia(editor.set_focus(), Stage::Focus)?;
                 let focused = uia(automation.get_focused_element(), Stage::Focus)?;
-                if !uia(automation.compare_elements(editor, &focused), Stage::Focus)? || identity(&focused)? != owner {
+                if !uia(automation.compare_elements(editor, &focused), Stage::Focus)?
+                    || identity(&focused)? != owner.identity
+                {
                     return Err(Failure {
                         focused: Some(false),
                         ..Failure::new(Stage::Focus)
@@ -593,6 +638,7 @@ mod tests {
         };
         let in_front = || owned().is_ok();
         let worker = QueryWorker::default();
+        let diagnostics = QueryWorker::default();
         let hwnd = window.ptr() as isize;
         let mut editor = None;
         if !activate(
@@ -678,7 +724,7 @@ mod tests {
             Duration::from_secs(5),
             |identity| {
                 owned()?;
-                let reading = focused_text(&worker, identity).map_err(|failure| Failure {
+                let reading = focused_text(&worker, &diagnostics, identity).map_err(|failure| Failure {
                     owned: Some(true),
                     ..failure
                 });
