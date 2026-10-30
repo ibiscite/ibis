@@ -105,6 +105,16 @@ one writer/cleaner; a second process operates uncached. Create a unique generati
 flush its complete contents, atomically replace and flush the manifest, then
 publish. Failed I/O retains the accepted generation; no reader observes a partial
 write. Clean only owned files after their generation readers release them.
+Writers retain weak session authority and a per-source operation identity; check
+that identity under the reservation/write lock before charging bytes or writing.
+Reserve the aggregate 1 GiB and 512 directory-entry budgets before payload,
+index and manifest writes or temporary-file creation, including publication's
+scratch slot. Cancellation, failure and drop release the operation's stage and
+reservation. Under the exclusive lease, reclaim verified abandoned stages while
+preserving live stages and generation readers. Reclaim before rejecting an
+oversized store, inspecting at most 1,025 entries per pass; incomplete traversal
+or an unknown manifest forbids generation deletion. Storage failure remains a
+cache miss and never grants source readiness.
 
 Treat stored bytes as untrusted: bound file/section/object sizes and counts,
 validate UTF-8, offsets, ordering and identities before indexing, and checksum

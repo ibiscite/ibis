@@ -23,6 +23,444 @@ fn open() -> (tempfile::TempDir, GenerationStore) {
     (directory, store)
 }
 
+fn set_limits(store: &mut GenerationStore, files: usize, bytes: u64) {
+    Arc::get_mut(&mut store.inner)
+        .unwrap_or_else(|| panic!("unexpected authority owner"))
+        .limits = StoreLimits { files, bytes };
+}
+
+fn disk_usage(store: &GenerationStore) -> (usize, u64) {
+    std::fs::read_dir(store.inner.directory.path())
+        .unwrap_or_else(|e| panic!("{e}"))
+        .map(|entry| {
+            entry
+                .and_then(|entry| entry.metadata())
+                .unwrap_or_else(|e| panic!("{e}"))
+                .len()
+        })
+        .fold((0, 0), |(files, bytes), len| (files + 1, bytes + len))
+}
+
+fn in_library(mut object: LibraryObject, library: &LibraryId) -> LibraryObject {
+    let LibraryObject::Record(record) = &mut object else {
+        panic!("wrong fixture kind")
+    };
+    record.id.library = library.clone();
+    object
+}
+
+fn abandoned_file(store: &GenerationStore, prefix: &str, size: u64) -> PathBuf {
+    let mut file = tempfile::Builder::new()
+        .prefix(prefix)
+        .tempfile_in(store.inner.directory.path())
+        .unwrap_or_else(|e| panic!("{e}"));
+    file.write_all(MAGIC).unwrap_or_else(|e| panic!("{e}"));
+    file.as_file().set_len(size).unwrap_or_else(|e| panic!("{e}"));
+    let (file, path) = file.keep().unwrap_or_else(|e| panic!("{e}"));
+    drop(file);
+    path
+}
+
+#[test]
+fn abandoned_crash_stages_are_reclaimed_after_restart() {
+    let (directory, store) = open();
+    let writers: Vec<_> = (0..5)
+        .map(|source| {
+            store
+                .begin(LibraryId::file(&[source]), Fingerprint::of_bytes(b"crashed import"))
+                .unwrap_or_else(|e| panic!("{e}"))
+        })
+        .collect();
+    let mut abandoned = vec![];
+    for mut writer in writers {
+        writer
+            .stage
+            .file()
+            .unwrap_or_else(|e| panic!("{e}"))
+            .as_file()
+            .set_len(4096)
+            .unwrap_or_else(|e| panic!("{e}"));
+        let (file, path) = writer
+            .stage
+            .file
+            .take()
+            .unwrap_or_else(|| panic!("missing stage"))
+            .keep()
+            .unwrap_or_else(|e| panic!("{e}"));
+        drop(file); // Simulate process death: no temporary-file destructor runs.
+        abandoned.push(path);
+    }
+    drop(store);
+    let mut reopened = GenerationStore::open(&directory.path().join("generations")).unwrap_or_else(|e| panic!("{e}"));
+    set_limits(&mut reopened, 16, 16 * 1024);
+    let accepted = reopened
+        .publish(stage(&reopened, "Recovered after crash"))
+        .unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(title(&get(&accepted, "record:one")), "Recovered after crash");
+    assert!(abandoned.iter().all(|path| !path.exists()));
+}
+
+#[test]
+fn concurrent_payload_writers_reserve_the_aggregate_byte_budget() {
+    let (_directory, mut store) = open();
+    let mut first = item("record:one", "Accepted");
+    if let LibraryObject::Record(record) = &mut first {
+        record.csl.insert("abstract".into(), json!("x".repeat(4096)));
+    }
+    let mut second = first.clone();
+    let second_library = LibraryId::file(b"another invented source");
+    if let LibraryObject::Record(record) = &mut second {
+        record.id.library = second_library.clone();
+    }
+    let payload = encoded(
+        &SnapshotObject::new(first.clone()).unwrap_or_else(|e| panic!("{e}")),
+        MAX_OBJECT,
+    )
+    .unwrap_or_else(|e| panic!("{e}"))
+    .len() as u64;
+    let limit = disk_usage(&store).1 + 2 * MAGIC.len() as u64 + 2 * payload - 1;
+    set_limits(&mut store, 16, limit);
+    let mut a = store
+        .begin(library(), Fingerprint::of_bytes(b"first"))
+        .unwrap_or_else(|e| panic!("{e}"));
+    let mut b = store
+        .begin(second_library.clone(), Fingerprint::of_bytes(b"second"))
+        .unwrap_or_else(|e| panic!("{e}"));
+    a.push(first).unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(b.push(second), Err(StoreError::Limit));
+    assert!(disk_usage(&store).1 <= limit);
+    assert!(
+        store
+            .open_library(&second_library)
+            .unwrap_or_else(|e| panic!("{e}"))
+            .is_none()
+    );
+    let accepted = store
+        .publish(a.finish().unwrap_or_else(|e| panic!("{e}")))
+        .unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(title(&get(&accepted, "record:one")), "Accepted");
+}
+
+#[test]
+fn an_oversized_directory_recovers_when_generation_readers_release() {
+    for restart in [false, true] {
+        let (directory, mut store) = open();
+        let mut readers = vec![];
+        for _ in 0..5 {
+            readers.push(
+                store
+                    .publish(stage(&store, "Retained"))
+                    .unwrap_or_else(|e| panic!("{e}")),
+            );
+        }
+        assert_eq!(disk_usage(&store).0, 9);
+        // Reproduce the on-disk state left by the old eight-file admission check.
+        set_limits(&mut store, 8, 64 * 1024);
+        assert!(matches!(
+            store.begin(library(), Fingerprint::of_bytes(b"readers still held")),
+            Err(StoreError::Limit)
+        ));
+        assert!(readers.iter().all(|reader| reader.path.exists()));
+        drop(readers);
+        if restart {
+            drop(store);
+            store = GenerationStore::open(&directory.path().join("generations")).unwrap_or_else(|e| panic!("{e}"));
+            set_limits(&mut store, 8, 64 * 1024);
+        }
+        let accepted = store
+            .publish(stage(&store, "Recovered at file limit"))
+            .unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(title(&get(&accepted, "record:one")), "Recovered at file limit");
+        assert!(disk_usage(&store).0 <= 8);
+    }
+}
+
+#[test]
+fn concurrent_indexes_reserve_the_aggregate_byte_budget() {
+    let (_directory, mut store) = open();
+    let text = "x".repeat(1024);
+    let probe = stage(&store, &text);
+    let limit =
+        disk_usage(&store).1 - probe.index_start - probe.index_len + 2 * (probe.index_start + probe.index_len) - 1;
+    drop(probe);
+    set_limits(&mut store, 16, limit);
+    let other = LibraryId::file(b"another invented source");
+    let mut a = store
+        .begin(library(), Fingerprint::of_bytes(b"a"))
+        .unwrap_or_else(|e| panic!("{e}"));
+    let mut b = store
+        .begin(other.clone(), Fingerprint::of_bytes(b"b"))
+        .unwrap_or_else(|e| panic!("{e}"));
+    a.push(item("record:one", &text)).unwrap_or_else(|e| panic!("{e}"));
+    b.push(in_library(item("record:one", &text), &other))
+        .unwrap_or_else(|e| panic!("{e}"));
+    let a = a.finish().unwrap_or_else(|e| panic!("{e}"));
+    assert!(matches!(b.finish(), Err(StoreError::Limit)));
+    assert!(disk_usage(&store).1 <= limit);
+    assert!(store.open_library(&other).unwrap_or_else(|e| panic!("{e}")).is_none());
+    let accepted = store.publish(a).unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(title(&get(&accepted, "record:one")), text);
+}
+
+#[test]
+fn manifest_bytes_are_reserved_before_replacing_the_accepted_generation() {
+    let (_directory, mut store) = open();
+    let old = store
+        .publish(stage(&store, "Accepted"))
+        .unwrap_or_else(|e| panic!("{e}"));
+    let manifest = store.inner.directory.path().join(manifest_name(&library()));
+    let previous = std::fs::read(&manifest).unwrap_or_else(|e| panic!("{e}"));
+    let probe = stage(&store, "Candidate");
+    let limit = disk_usage(&store).1;
+    drop(probe);
+    set_limits(&mut store, 16, limit);
+    let candidate = stage(&store, "Candidate");
+    assert_eq!(disk_usage(&store).1, limit);
+    assert!(matches!(store.publish(candidate), Err(StoreError::Limit)));
+    assert_eq!(std::fs::read(&manifest).unwrap_or_else(|e| panic!("{e}")), previous);
+    assert_eq!(title(&get(&old, "record:one")), "Accepted");
+    let reopened = store
+        .open_library(&library())
+        .unwrap_or_else(|e| panic!("{e}"))
+        .unwrap_or_else(|| panic!("cache miss"));
+    assert_eq!(get(&old, "record:one"), get(&reopened, "record:one"));
+    assert!(
+        store
+            .inner
+            .state
+            .lock()
+            .unwrap_or_else(|e| panic!("{e}"))
+            .stages
+            .is_empty()
+    );
+}
+
+#[test]
+fn file_slots_are_reserved_for_stages_and_publication_scratch() {
+    let (_directory, mut store) = open();
+    let base = disk_usage(&store).0;
+    let limit = base + 3;
+    set_limits(&mut store, limit, 64 * 1024);
+    let a = stage(&store, "Retired A");
+    let b = stage(&store, "Accepted B");
+    let other = LibraryId::file(b"another invented source");
+    let c = store
+        .begin(other, Fingerprint::of_bytes(b"c"))
+        .unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(disk_usage(&store).0, limit);
+    assert!(matches!(
+        store.begin(library(), Fingerprint::of_bytes(b"full")),
+        Err(StoreError::Limit)
+    ));
+    assert_eq!(disk_usage(&store).0, limit);
+    // B is current, but cannot create its publication scratch at the cap.
+    assert!(matches!(store.publish(b), Err(StoreError::Limit)));
+    assert!(a.stage.file().unwrap_or_else(|e| panic!("{e}")).path().exists());
+    assert!(c.stage.file().unwrap_or_else(|e| panic!("{e}")).path().exists());
+    drop(a);
+    drop(c);
+    let accepted = store
+        .publish(stage(&store, "Recovered B"))
+        .unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(title(&get(&accepted, "record:one")), "Recovered B");
+    assert!(disk_usage(&store).0 <= limit);
+}
+
+#[test]
+fn payload_and_index_io_failures_release_reservations_while_failed_handles_survive() {
+    for fail_index in [false, true] {
+        let (_directory, mut store) = open();
+        set_limits(&mut store, 8, 16 * 1024);
+        let accepted = store
+            .publish(stage(&store, "Accepted"))
+            .unwrap_or_else(|e| panic!("{e}"));
+        let baseline = disk_usage(&store);
+        let mut writer = store
+            .begin(library(), Fingerprint::of_bytes(b"failed I/O"))
+            .unwrap_or_else(|e| panic!("{e}"));
+        if fail_index {
+            writer
+                .push(item("record:one", "Failed index"))
+                .unwrap_or_else(|e| panic!("{e}"));
+        }
+        // Fail after reserving the complete write and writing only its prefix.
+        store.inner.fail_write.store(true, std::sync::atomic::Ordering::Relaxed);
+        let failed_writer = if fail_index {
+            assert!(matches!(writer.finish(), Err(StoreError::Unavailable)));
+            None
+        } else {
+            assert_eq!(
+                writer.push(item("record:one", "Failed payload")),
+                Err(StoreError::Unavailable)
+            );
+            assert_eq!(disk_usage(&store), baseline);
+            Some(writer)
+        };
+        store
+            .inner
+            .fail_write
+            .store(false, std::sync::atomic::Ordering::Relaxed);
+        assert_eq!(disk_usage(&store), baseline);
+        assert!(
+            store
+                .inner
+                .state
+                .lock()
+                .unwrap_or_else(|e| panic!("{e}"))
+                .stages
+                .is_empty()
+        );
+        let current = store
+            .publish(stage(&store, "After I/O failure"))
+            .unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(title(&get(&current, "record:one")), "After I/O failure");
+        assert_eq!(title(&get(&accepted, "record:one")), "Accepted");
+        if let Some(writer) = failed_writer {
+            assert!(matches!(writer.finish(), Err(StoreError::Invalid)));
+        }
+    }
+}
+
+#[test]
+fn failed_reserved_header_and_dropped_stages_release_file_slots() {
+    let (_directory, mut store) = open();
+    let base = disk_usage(&store);
+    set_limits(&mut store, base.0 + 2, 4096);
+    store.inner.fail_write.store(true, std::sync::atomic::Ordering::Relaxed);
+    assert!(matches!(
+        store.begin(library(), Fingerprint::of_bytes(b"failed header")),
+        Err(StoreError::Unavailable)
+    ));
+    assert_eq!(disk_usage(&store), base);
+    store
+        .inner
+        .fail_write
+        .store(false, std::sync::atomic::Ordering::Relaxed);
+    let writer = store
+        .begin(library(), Fingerprint::of_bytes(b"cancelled writer"))
+        .unwrap_or_else(|e| panic!("{e}"));
+    drop(writer);
+    assert_eq!(disk_usage(&store), base);
+    let staged = stage(&store, "Cancelled stage");
+    drop(staged);
+    assert_eq!(disk_usage(&store), base);
+    let accepted = store
+        .publish(stage(&store, "Accepted"))
+        .unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(title(&get(&accepted, "record:one")), "Accepted");
+}
+
+#[test]
+fn failed_reclamation_is_a_cache_miss_and_recovers_on_retry() {
+    let (_directory, mut store) = open();
+    set_limits(&mut store, 8, 4096);
+    let abandoned = abandoned_file(&store, "stage-", 8192);
+    store
+        .inner
+        .fail_reclaim
+        .store(true, std::sync::atomic::Ordering::Relaxed);
+    assert!(matches!(
+        store.begin(library(), Fingerprint::of_bytes(b"refused")),
+        Err(StoreError::Unavailable)
+    ));
+    assert!(abandoned.exists());
+    assert!(
+        store
+            .open_library(&library())
+            .unwrap_or_else(|e| panic!("{e}"))
+            .is_none()
+    );
+    assert!(
+        store
+            .inner
+            .state
+            .lock()
+            .unwrap_or_else(|e| panic!("{e}"))
+            .stages
+            .is_empty()
+    );
+    store
+        .inner
+        .fail_reclaim
+        .store(false, std::sync::atomic::Ordering::Relaxed);
+    let accepted = store
+        .publish(stage(&store, "Recovered"))
+        .unwrap_or_else(|e| panic!("{e}"));
+    assert!(!abandoned.exists());
+    assert_eq!(title(&get(&accepted, "record:one")), "Recovered");
+}
+
+#[test]
+fn stale_and_closed_handles_cannot_reserve_or_collect_other_files() {
+    for closed in [false, true] {
+        let (_directory, store) = open();
+        let mut a = store
+            .begin(library(), Fingerprint::of_bytes(b"late A"))
+            .unwrap_or_else(|e| panic!("{e}"));
+        a.push(item("record:one", "Late A")).unwrap_or_else(|e| panic!("{e}"));
+        let old_path = a.stage.file().unwrap_or_else(|e| panic!("{e}")).path().to_path_buf();
+        let b = store
+            .publish(stage(&store, "Accepted B"))
+            .unwrap_or_else(|e| panic!("{e}"));
+        assert!(old_path.exists(), "a superseded live writer still owns its stage");
+        let orphan = abandoned_file(&store, "generation-", MAGIC.len() as u64);
+        let other = LibraryId::file(b"another invented source");
+        let live = store
+            .begin(other, Fingerprint::of_bytes(b"still live"))
+            .unwrap_or_else(|e| panic!("{e}"));
+        assert!(!orphan.exists());
+        let orphan = abandoned_file(&store, "generation-", MAGIC.len() as u64);
+        let live_path = live.stage.file().unwrap_or_else(|e| panic!("{e}")).path().to_path_buf();
+        if closed {
+            store.close().unwrap_or_else(|e| panic!("{e}"));
+        }
+        let expected = if closed { StoreError::Closed } else { StoreError::Stale };
+        assert!(matches!(a.finish(), Err(error) if error == expected));
+        assert!(orphan.exists(), "retired operations cannot trigger reclamation");
+        assert!(live_path.exists());
+        assert!(!old_path.exists(), "only the retired handle's own stage is released");
+        assert_eq!(title(&get(&b, "record:one")), "Accepted B");
+    }
+}
+
+#[test]
+fn hostile_directory_beyond_the_scan_bound_does_not_delete_generations() {
+    let (_directory, mut store) = open();
+    set_limits(&mut store, 8, 64 * 1024);
+    let accepted = store
+        .publish(stage(&store, "Accepted"))
+        .unwrap_or_else(|e| panic!("{e}"));
+    let orphans: Vec<_> = (0..32)
+        .map(|_| abandoned_file(&store, "generation-", MAGIC.len() as u64))
+        .collect();
+    assert!(matches!(
+        store.begin(library(), Fingerprint::of_bytes(b"hostile")),
+        Err(StoreError::Limit)
+    ));
+    assert!(orphans.iter().all(|path| path.exists()));
+    assert!(accepted.path.exists());
+    assert_eq!(title(&get(&accepted, "record:one")), "Accepted");
+}
+
+#[test]
+fn partial_headers_and_manifest_stages_recover_but_unowned_bytes_are_preserved() {
+    let (_directory, store) = open();
+    let stages: Vec<_> = [0, 3, MAGIC.len() as u64]
+        .into_iter()
+        .map(|size| abandoned_file(&store, "stage-", size))
+        .collect();
+    let manifest_stage = abandoned_file(&store, "manifest-stage-", 0);
+    let foreign = abandoned_file(&store, "stage-", MAGIC.len() as u64);
+    std::fs::write(&foreign, b"NOTIBIS!").unwrap_or_else(|e| panic!("{e}"));
+    let accepted = store
+        .publish(stage(&store, "Recovered"))
+        .unwrap_or_else(|e| panic!("{e}"));
+    assert!(stages.iter().all(|path| !path.exists()));
+    assert!(!manifest_stage.exists());
+    assert!(foreign.exists());
+    assert_eq!(title(&get(&accepted, "record:one")), "Recovered");
+}
+
 fn stage(store: &GenerationStore, title: &str) -> StagedGeneration {
     let mut writer = store
         .begin(library(), Fingerprint::of_bytes(title.as_bytes()))
@@ -122,7 +560,8 @@ fn delayed_a_cannot_replace_b_and_old_readers_keep_their_generation() {
 
 #[test]
 fn failed_manifest_publication_retains_the_accepted_generation() {
-    let (_directory, store) = open();
+    let (_directory, mut store) = open();
+    set_limits(&mut store, 8, 16 * 1024);
     let old = store
         .publish(stage(&store, "Accepted"))
         .unwrap_or_else(|e| panic!("{e}"));
@@ -137,6 +576,14 @@ fn failed_manifest_publication_retains_the_accepted_generation() {
         .unwrap_or_else(|e| panic!("{e}"))
         .unwrap_or_else(|| panic!("cache miss"));
     assert_eq!(get(&old, "record:one"), get(&reopened, "record:one"));
+    store
+        .inner
+        .fail_manifest
+        .store(false, std::sync::atomic::Ordering::Relaxed);
+    let recovered = store
+        .publish(stage(&store, "After failed manifest"))
+        .unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(title(&get(&recovered, "record:one")), "After failed manifest");
 }
 
 #[test]

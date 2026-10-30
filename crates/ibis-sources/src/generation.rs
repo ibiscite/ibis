@@ -22,6 +22,20 @@ const MAX_MANIFEST: u64 = 8 * 1024;
 const MAX_FILES: usize = 512;
 const MAX_STORE: u64 = 1024 * 1024 * 1024;
 
+#[derive(Clone, Copy)]
+struct StoreLimits {
+    files: usize,
+    bytes: u64,
+}
+impl Default for StoreLimits {
+    fn default() -> Self {
+        Self {
+            files: MAX_FILES,
+            bytes: MAX_STORE,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 pub enum StoreError {
     #[error("prepared storage is unavailable")]
@@ -106,12 +120,39 @@ struct State {
     next: u64,
     operations: BTreeMap<LibraryId, u64>,
     readers: Vec<Weak<PreparedLibrary>>,
+    stages: BTreeMap<u64, StageReservation>,
+    usage: Option<Usage>,
+}
+#[derive(Clone, Copy, Default)]
+struct Usage {
+    files: usize,
+    bytes: u64,
+}
+impl Usage {
+    fn plus(self, other: Self) -> Result<Self, StoreError> {
+        Ok(Self {
+            files: self.files.checked_add(other.files).ok_or(StoreError::Limit)?,
+            bytes: self.bytes.checked_add(other.bytes).ok_or(StoreError::Limit)?,
+        })
+    }
+    fn fits(self, limits: StoreLimits) -> bool {
+        self.files <= limits.files && self.bytes <= limits.bytes
+    }
+}
+struct StageReservation {
+    path: PathBuf,
+    bytes: u64,
 }
 struct Inner {
     directory: Arc<PrivateDirectory>,
     state: Mutex<State>,
+    limits: StoreLimits,
     #[cfg(test)]
     fail_manifest: std::sync::atomic::AtomicBool,
+    #[cfg(test)]
+    fail_write: std::sync::atomic::AtomicBool,
+    #[cfg(test)]
+    fail_reclaim: std::sync::atomic::AtomicBool,
 }
 
 /// One publication authority/session. Writers hold only a weak reference to it.
@@ -119,9 +160,7 @@ pub struct GenerationStore {
     inner: Arc<Inner>,
 }
 pub struct GenerationWriter {
-    owner: Weak<Inner>,
-    operation: u64,
-    file: NamedTempFile,
+    stage: OwnedStage,
     index: Index,
     ids: BTreeSet<ItemRef>,
     metadata_slots: usize,
@@ -129,13 +168,19 @@ pub struct GenerationWriter {
     failed: bool,
 }
 pub struct StagedGeneration {
-    owner: Weak<Inner>,
-    operation: u64,
-    file: NamedTempFile,
+    stage: OwnedStage,
     index: Index,
     index_start: u64,
     index_len: u64,
     index_hash: Fingerprint,
+}
+// The file and its reservation move together from writer to staged generation.
+// Only this handle may release its stage; collection preserves every live handle,
+// including handles whose publication operation has since been superseded.
+struct OwnedStage {
+    owner: Weak<Inner>,
+    operation: u64,
+    file: Option<NamedTempFile>,
 }
 /// Readers hold immutable metadata and a generation-specific file, not an authority.
 pub struct PreparedLibrary {
@@ -153,6 +198,11 @@ fn manifest_name(library: &LibraryId) -> String {
 }
 fn generation_name(name: &str) -> bool {
     name.starts_with("generation-") && name.len() <= 80 && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
+}
+fn stage_name(name: &str) -> bool {
+    (name.starts_with("stage-") || name.starts_with("manifest-stage-"))
+        && name.len() <= 80
+        && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
 }
 fn authority(owner: &Weak<Inner>, library: &LibraryId, operation: u64) -> Result<Arc<Inner>, StoreError> {
     let inner = owner.upgrade().ok_or(StoreError::Closed)?;
@@ -178,8 +228,13 @@ impl GenerationStore {
             inner: Arc::new(Inner {
                 directory: Arc::new(PrivateDirectory::open(path)?),
                 state: Mutex::new(State::default()),
+                limits: StoreLimits::default(),
                 #[cfg(test)]
                 fail_manifest: std::sync::atomic::AtomicBool::new(false),
+                #[cfg(test)]
+                fail_write: std::sync::atomic::AtomicBool::new(false),
+                #[cfg(test)]
+                fail_reclaim: std::sync::atomic::AtomicBool::new(false),
             }),
         })
     }
@@ -195,21 +250,36 @@ impl GenerationStore {
         if !state.operations.contains_key(&library) && state.operations.len() >= 64 {
             return Err(StoreError::Limit);
         }
-        self.inner.directory.verify()?;
-        self.collect(&mut state)?;
+        self.inner.collect(&mut state)?;
         state.next = state.next.checked_add(1).ok_or(StoreError::Limit)?;
         let operation = state.next;
-        state.operations.insert(library.clone(), operation);
-        let mut file = tempfile::Builder::new()
+        self.inner.reserve(&mut state, Usage { files: 1, bytes: 0 })?;
+        let file = tempfile::Builder::new()
             .prefix("stage-")
+            .disable_cleanup(true)
             .tempfile_in(self.inner.directory.path())
-            .map_err(|_| StoreError::Unavailable)?;
-        self.inner.directory.verify_file(file.path())?;
-        file.write_all(MAGIC).map_err(|_| StoreError::Unavailable)?;
-        Ok(GenerationWriter {
+            .map_err(|_| {
+                state.usage = None;
+                StoreError::Unavailable
+            })?;
+        state.stages.insert(
+            operation,
+            StageReservation {
+                path: file.path().to_path_buf(),
+                bytes: 0,
+            },
+        );
+        state.operations.insert(library.clone(), operation);
+        let mut stage = OwnedStage {
             owner: Arc::downgrade(&self.inner),
             operation,
-            file,
+            file: Some(file),
+        };
+        drop(state);
+        self.inner.directory.verify_file(stage.file()?.path())?;
+        stage.write(&library, MAGIC, false)?;
+        Ok(GenerationWriter {
+            stage,
             index: Index {
                 format: FORMAT,
                 library,
@@ -223,15 +293,16 @@ impl GenerationStore {
         })
     }
 
-    pub fn publish(&self, staged: StagedGeneration) -> Result<Arc<PreparedLibrary>, StoreError> {
-        if !Weak::ptr_eq(&staged.owner, &Arc::downgrade(&self.inner)) {
+    pub fn publish(&self, mut staged: StagedGeneration) -> Result<Arc<PreparedLibrary>, StoreError> {
+        if !Weak::ptr_eq(&staged.stage.owner, &Arc::downgrade(&self.inner)) {
             return Err(StoreError::Stale);
         }
         let mut state = self.inner.state.lock().map_err(|_| StoreError::Unavailable)?;
-        active(&state, &staged.index.library, staged.operation)?;
-        self.inner.directory.verify_file(staged.file.path())?;
+        active(&state, &staged.index.library, staged.stage.operation)?;
+        self.inner.directory.verify_file(staged.stage.file()?.path())?;
         let suffix = staged
-            .file
+            .stage
+            .file()?
             .path()
             .file_name()
             .and_then(|name| name.to_str())
@@ -242,10 +313,6 @@ impl GenerationStore {
             return Err(StoreError::Invalid);
         }
         let path = self.inner.directory.path().join(&name);
-        let file = staged
-            .file
-            .persist_noclobber(&path)
-            .map_err(|_| StoreError::Unavailable)?;
         let manifest = Manifest {
             format: FORMAT,
             library: staged.index.library.clone(),
@@ -254,7 +321,35 @@ impl GenerationStore {
             index_len: staged.index_len,
             index_hash: staged.index_hash,
         };
-        let result = self.write_manifest(&manifest);
+        let bytes = encoded(&manifest, MAX_MANIFEST)?;
+        // One scratch slot covers both persist_noclobber's possible link/unlink
+        // fallback and the later manifest temporary. Replacing an existing
+        // manifest still needs room for its complete replacement before commit.
+        self.inner.reserve(
+            &mut state,
+            Usage {
+                files: 1,
+                bytes: bytes.len() as u64,
+            },
+        )?;
+        state.usage = None; // Any I/O failure below is remeasured before another reservation.
+        let temporary = staged.stage.file.take().ok_or(StoreError::Invalid)?;
+        let file = match temporary.persist_noclobber(&path) {
+            Ok(file) => file,
+            Err(error) => {
+                staged.stage.file = Some(error.file);
+                return Err(StoreError::Unavailable);
+            }
+        };
+        state.stages.remove(&staged.stage.operation);
+        // The link/unlink fallback must have removed the old stage name before
+        // its scratch slot can be reused by the manifest temporary.
+        let result = self
+            .inner
+            .directory
+            .verify_file(&path)
+            .map_err(StoreError::from)
+            .and_then(|_| self.write_manifest(&manifest, &bytes));
         if let Err(error) = result {
             // This unique file has never been published or handed to a reader.
             drop(file);
@@ -273,7 +368,7 @@ impl GenerationStore {
         Ok(generation)
     }
 
-    fn write_manifest(&self, manifest: &Manifest) -> Result<(), StoreError> {
+    fn write_manifest(&self, manifest: &Manifest, bytes: &[u8]) -> Result<(), StoreError> {
         #[cfg(test)]
         if self.inner.fail_manifest.load(std::sync::atomic::Ordering::Relaxed) {
             return Err(StoreError::Unavailable);
@@ -281,14 +376,13 @@ impl GenerationStore {
         let name = manifest_name(&manifest.library);
         // Refuse links, directories or unsafe files before replacing our manifest.
         self.inner.directory.open_file(&name)?;
-        let bytes = encoded(manifest, MAX_MANIFEST)?;
         let mut temporary = tempfile::Builder::new()
             .prefix("manifest-stage-")
             .tempfile_in(self.inner.directory.path())
             .map_err(|_| StoreError::Unavailable)?;
         self.inner.directory.verify_file(temporary.path())?;
         temporary
-            .write_all(&bytes)
+            .write_all(bytes)
             .and_then(|_| temporary.as_file().sync_all())
             .map_err(|_| StoreError::Unavailable)?;
         self.inner.directory.verify()?;
@@ -357,9 +451,33 @@ impl GenerationStore {
         state.readers.push(Arc::downgrade(&generation));
         Ok(Some(generation))
     }
+}
 
-    /// Reclaim only our verified unreferenced generations; active stages are private.
+impl Inner {
+    // Caller holds the session lock and has checked its operation (or is begin).
+    // Successful reservations remain charged until their file is removed or the
+    // next bounded collection measures it. No file write runs outside this lock.
+    fn reserve(&self, state: &mut State, extra: Usage) -> Result<(), StoreError> {
+        if state.usage.is_none() {
+            self.collect(state)?;
+        }
+        let mut total = state.usage.ok_or(StoreError::Unavailable)?.plus(extra)?;
+        if !total.fits(self.limits) {
+            self.collect(state)?;
+            total = state.usage.ok_or(StoreError::Unavailable)?.plus(extra)?;
+        }
+        if !total.fits(self.limits) {
+            return Err(StoreError::Limit);
+        }
+        state.usage = Some(total);
+        Ok(())
+    }
+
+    /// Bound traversal even when over capacity. Never delete a generation without
+    /// seeing every manifest, but abandoned stages need no manifest references.
     fn collect(&self, state: &mut State) -> Result<(), StoreError> {
+        state.usage = None;
+        self.directory.verify()?;
         state.readers.retain(|reader| reader.strong_count() != 0);
         let mut retained: BTreeSet<PathBuf> = state
             .readers
@@ -367,63 +485,167 @@ impl GenerationStore {
             .filter_map(Weak::upgrade)
             .map(|reader| reader.path.clone())
             .collect();
-        let entries: Vec<_> = std::fs::read_dir(self.inner.directory.path())
+        let scan_limit = self.limits.files.saturating_mul(2);
+        let entries: Vec<_> = std::fs::read_dir(self.directory.path())
             .map_err(|_| StoreError::Unavailable)?
-            .take(MAX_FILES + 1)
+            .take(scan_limit.saturating_add(1))
             .collect::<Result<_, _>>()
             .map_err(|_| StoreError::Unavailable)?;
-        if entries.len() > MAX_FILES {
-            return Err(StoreError::Limit);
-        }
         // An unrecognized manifest prevents cleanup: it may belong to a newer store.
-        let mut cleanup = true;
+        let complete = entries.len() <= scan_limit;
+        let mut cleanup = complete;
         for entry in &entries {
             let name = entry.file_name();
             let name = name.to_string_lossy();
             if name.starts_with("manifest-") && name.ends_with(".json") {
                 let parsed = self
-                    .inner
                     .directory
                     .open_file(&name)?
                     .map(|file| read_bounded(file, MAX_MANIFEST))
                     .transpose()?
                     .and_then(|bytes| serde_json::from_slice::<Manifest>(&bytes).ok());
                 if let Some(manifest) = parsed.filter(|m| m.format == FORMAT && generation_name(&m.file)) {
-                    retained.insert(self.inner.directory.path().join(manifest.file));
+                    retained.insert(self.directory.path().join(manifest.file));
                 } else {
                     cleanup = false;
                 }
             }
         }
-        let mut bytes = 0u64;
+        let mut usage = Usage::default();
+        let mut seen_stages = BTreeSet::new();
         for entry in entries {
             let path = entry.path();
             let name = entry.file_name();
             let name = name.to_string_lossy();
-            if cleanup
-                && generation_name(&name)
-                && !retained.contains(&path)
-                && let Some(mut file) = self.inner.directory.open_file(&name)?
+            let live_stage = state.stages.iter_mut().find(|(_, stage)| stage.path == path);
+            if let Some((operation, stage)) = live_stage {
+                // Include capacity already reserved for a not-yet-complete write.
+                stage.bytes = stage.bytes.max(
+                    std::fs::symlink_metadata(&path)
+                        .map_err(|_| StoreError::Unavailable)?
+                        .len(),
+                );
+                usage = usage.plus(Usage {
+                    files: 1,
+                    bytes: stage.bytes,
+                })?;
+                seen_stages.insert(*operation);
+                continue;
+            }
+            let abandoned = stage_name(&name);
+            if (abandoned || (cleanup && generation_name(&name) && !retained.contains(&path)))
+                && let Some(mut file) = self.directory.open_file(&name)?
             {
                 let mut magic = [0; 8];
-                if file.read_exact(&mut magic).is_ok() && &magic == MAGIC {
+                let size = file.metadata().map_err(|_| StoreError::Unavailable)?.len();
+                let len = size.min(MAGIC.len() as u64) as usize;
+                file.read_exact(&mut magic[..len])
+                    .map_err(|_| StoreError::Unavailable)?;
+                // A crash can precede or interrupt the header. Manifest stages
+                // have no header/readers and are private to the held lease.
+                let owned = if name.starts_with("manifest-stage-") {
+                    size <= MAX_MANIFEST
+                } else if abandoned {
+                    magic[..len] == MAGIC[..len]
+                } else {
+                    len == MAGIC.len() && &magic == MAGIC
+                };
+                if owned {
                     drop(file);
-                    std::fs::remove_file(&path).map_err(|_| StoreError::Unavailable)?;
+                    self.remove(&path)?;
                     continue;
                 }
             }
-            bytes = bytes
-                .checked_add(
-                    std::fs::symlink_metadata(entry.path())
-                        .map_err(|_| StoreError::Unavailable)?
-                        .len(),
-                )
-                .ok_or(StoreError::Limit)?;
+            usage = usage.plus(Usage {
+                files: 1,
+                bytes: std::fs::symlink_metadata(&path)
+                    .map_err(|_| StoreError::Unavailable)?
+                    .len(),
+            })?;
         }
-        if bytes > MAX_STORE {
+        if !complete {
+            state.usage = None;
+            return Err(StoreError::Limit);
+        }
+        for (operation, stage) in &state.stages {
+            if !seen_stages.contains(operation) {
+                usage = usage.plus(Usage {
+                    files: 1,
+                    bytes: stage.bytes,
+                })?;
+            }
+        }
+        state.usage = Some(usage);
+        if !usage.fits(self.limits) {
             return Err(StoreError::Limit);
         }
         Ok(())
+    }
+
+    fn remove(&self, path: &Path) -> Result<(), StoreError> {
+        self.directory.verify_file(path)?;
+        #[cfg(test)]
+        if self.fail_reclaim.load(std::sync::atomic::Ordering::Relaxed) {
+            return Err(StoreError::Unavailable);
+        }
+        std::fs::remove_file(path).map_err(|_| StoreError::Unavailable)
+    }
+}
+
+impl OwnedStage {
+    fn file(&self) -> Result<&NamedTempFile, StoreError> {
+        self.file.as_ref().ok_or(StoreError::Invalid)
+    }
+
+    fn write(&mut self, library: &LibraryId, bytes: &[u8], sync: bool) -> Result<(), StoreError> {
+        let inner = self.owner.upgrade().ok_or(StoreError::Closed)?;
+        let mut state = inner.state.lock().map_err(|_| StoreError::Unavailable)?;
+        active(&state, library, self.operation)?;
+        inner.reserve(
+            &mut state,
+            Usage {
+                files: 0,
+                bytes: bytes.len() as u64,
+            },
+        )?;
+        let reservation = state.stages.get_mut(&self.operation).ok_or(StoreError::Invalid)?;
+        reservation.bytes = reservation
+            .bytes
+            .checked_add(bytes.len() as u64)
+            .ok_or(StoreError::Limit)?;
+        let file = self.file.as_mut().ok_or(StoreError::Invalid)?;
+        #[cfg(test)]
+        if inner.fail_write.load(std::sync::atomic::Ordering::Relaxed) {
+            file.write_all(&bytes[..bytes.len().min(3)])
+                .map_err(|_| StoreError::Unavailable)?;
+            return Err(StoreError::Unavailable);
+        }
+        file.write_all(bytes).map_err(|_| StoreError::Unavailable)?;
+        if sync {
+            file.as_file().sync_all().map_err(|_| StoreError::Unavailable)?;
+        }
+        Ok(())
+    }
+
+    fn cancel(&mut self) {
+        let Some(file) = self.file.take() else { return };
+        // Do not keep a dead authority/lease alive. Its next session will reclaim
+        // the abandoned file. Cleanup here only releases this handle's own stage;
+        // stale/closed handles never run collection or change other reservations.
+        if let Some(inner) = self.owner.upgrade()
+            && let Ok(mut state) = inner.state.lock()
+        {
+            state.stages.remove(&self.operation);
+            state.usage = None;
+            if inner.directory.verify_file(file.path()).is_ok() {
+                let _ = file.close();
+            }
+        }
+    }
+}
+impl Drop for OwnedStage {
+    fn drop(&mut self) {
+        self.cancel();
     }
 }
 
@@ -431,12 +653,15 @@ impl GenerationWriter {
     pub fn push(&mut self, object: LibraryObject) -> Result<(), StoreError> {
         let result = self.push_inner(object);
         self.failed |= result.is_err();
+        if result.is_err() {
+            self.stage.cancel();
+        }
         result
     }
     fn push_inner(&mut self, object: LibraryObject) -> Result<(), StoreError> {
         // Validate recursive payloads before any rejection can drop them.
         let object = SnapshotObject::new(object).map_err(|_| StoreError::Invalid)?;
-        authority(&self.owner, &self.index.library, self.operation)?;
+        authority(&self.stage.owner, &self.index.library, self.stage.operation)?;
         if self.failed
             || self.index.rows.len() >= crate::MAX_LIBRARY_RECORDS
             || object.object.id().library != self.index.library
@@ -465,7 +690,7 @@ impl GenerationWriter {
         };
         charge_metadata(&mut self.metadata_slots, &row)?;
         self.index.rows.push(row);
-        self.file.write_all(&bytes).map_err(|_| StoreError::Unavailable)?;
+        self.stage.write(&self.index.library, &bytes, false)?;
         self.bytes = end;
         Ok(())
     }
@@ -473,7 +698,7 @@ impl GenerationWriter {
         if self.failed {
             return Err(StoreError::Invalid);
         }
-        authority(&self.owner, &self.index.library, self.operation)?;
+        authority(&self.stage.owner, &self.index.library, self.stage.operation)?;
         self.index.rows.sort_by(|a, b| a.id.cmp(&b.id));
         let bytes = encoded(&self.index, MAX_INDEX)?;
         if self
@@ -483,15 +708,10 @@ impl GenerationWriter {
         {
             return Err(StoreError::Limit);
         }
-        self.file
-            .write_all(&bytes)
-            .and_then(|_| self.file.as_file().sync_all())
-            .map_err(|_| StoreError::Unavailable)?;
-        authority(&self.owner, &self.index.library, self.operation)?;
+        self.stage.write(&self.index.library, &bytes, true)?;
+        authority(&self.stage.owner, &self.index.library, self.stage.operation)?;
         Ok(StagedGeneration {
-            owner: self.owner,
-            operation: self.operation,
-            file: self.file,
+            stage: self.stage,
             index: self.index,
             index_start: self.bytes,
             index_len: bytes.len() as u64,
