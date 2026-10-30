@@ -120,15 +120,32 @@ test("public demo supports keyboard copy/paste and remains visible in narrow and
   const { chromium } = await import(process.env.IBIS_PLAYWRIGHT_MODULE || "playwright");
   const browser = await chromium.launch({ executablePath: process.env.IBIS_CHROMIUM_EXECUTABLE });
   try {
+    const surfaces = new Map();
     for (const width of [320, 390, 1180]) for (const colorScheme of ["light", "dark"]) {
       const page = await browser.newPage({ viewport: { width, height: 850 }, colorScheme, reducedMotion: "reduce" });
       const errors = []; page.on("pageerror", error => errors.push(error.message));
       await page.goto(url.href + "#how");
       const input = page.getByRole("combobox", { name: "Search the made-up library" });
       await input.waitFor();
+      const panel = page.locator("[data-picker] .picker-panel");
+      const frame = await panel.boundingBox();
+      assert.equal(frame.height, 480, "the picker opens in its steady 480 px frame");
+      const appearance = await panel.evaluate(node => ({ scheme: getComputedStyle(node).colorScheme, surface: getComputedStyle(node).backgroundColor }));
+      assert.equal(appearance.scheme, "light dark");
+      assert.notEqual(appearance.surface, "rgba(0, 0, 0, 0)");
+      if (colorScheme === "light") surfaces.set(width, appearance.surface);
+      else assert.notEqual(appearance.surface, surfaces.get(width), "system appearance changes the app surface");
+      assert.equal(await page.locator(".picker-mark").isVisible(), true);
+      const modifier = await page.evaluate(() => document.documentElement.dataset.platform === "macos" ? "Meta" : "Control");
       assert.equal(await input.inputValue(), "lantern");
       await input.fill("");
       assert.equal(await page.locator('.picker [role="option"]:visible').count(), 3);
+      await input.press("ArrowDown");
+      assert.match(await page.locator('[role="option"][aria-selected="true"]').innerText(), /clockwork clouds/);
+      assert.equal(await input.getAttribute("aria-activedescendant"), await page.locator('[role="option"][aria-selected="true"]').getAttribute("id"));
+      await input.press("Shift+Enter");
+      assert.match(await page.locator(".picker-shelf code").innerText(), /fen2023clouds/);
+      await input.press("Shift+Enter");
       await input.fill("lantern");
       assert.equal(await page.locator('.picker [role="option"]:visible').count(), 1);
       assert.match(await page.locator('.picker [role="option"]:visible').innerText(), /Sample · Lantern gardens/);
@@ -137,12 +154,25 @@ test("public demo supports keyboard copy/paste and remains visible in narrow and
       assert.equal(await format.evaluate(node => node === document.activeElement), true, "changing the native format select preserves its keyboard focus");
       await format.selectOption("pandoc");
       await input.press("Enter");
+      assert.equal(await page.locator(".copied-notice").isVisible(), true);
+      assert.match(await page.locator(".copied-notice").innerText(), /Copied[\s\S]*vale2024lanterns/);
+      assert.equal(await page.locator(".picker-beak-end").isVisible(), true);
+      assert.equal((await panel.boundingBox()).height, frame.height, "copy feedback cannot resize the picker");
       const paste = page.getByRole("button", { name: "Paste the copied citation into the sentence" });
-      await paste.click();
+      await paste.press(`${modifier}+V`);
       assert.match(await page.locator("[data-result]").innerText(), /\[@vale2024lanterns\] \[Sample\]/);
       await input.fill("no invented reference matches this");
       assert.equal(await page.locator(".picker-foot button").last().isDisabled(), true);
       assert.match(await page.locator("[data-result]").innerText(), /\[@vale2024lanterns\] \[Sample\]/);
+      assert.match(await page.locator(".picker-empty").innerText(), /No matching references/);
+      assert.equal(await input.getAttribute("aria-activedescendant"), null);
+      assert.equal(await input.getAttribute("aria-expanded"), "false");
+      assert.equal(await page.locator(".picker-results").isVisible(), false, "the empty-state action lives outside the listbox");
+      assert.equal(await page.locator(".picker-shelf").isVisible(), false, "no matches without a prepared citation has no shelf");
+      assert.equal((await panel.boundingBox()).height, frame.height, "no matches cannot resize the picker");
+      await input.press("Escape"); await input.press("Escape"); await input.press("Escape");
+      await page.getByRole("button", { name: "Open the picker again" }).click();
+      assert.equal((await panel.boundingBox()).height, frame.height, "reopening keeps the frame");
       for (const location of await page.locator(".intro, .platform:visible").all()) {
         const privacy = location.locator("[data-download-privacy]");
         assert.equal(await privacy.isVisible(), true);
@@ -157,12 +187,76 @@ test("public demo supports keyboard copy/paste and remains visible in narrow and
       assert.deepEqual(errors, []);
       await page.close();
     }
-    const staticPage = await browser.newPage({ javaScriptEnabled: false, viewport: { width: 390, height: 850 } });
-    await staticPage.goto(url.href + "#how");
-    assert.equal(await staticPage.locator("[data-picker] .picker-panel").isVisible(), true);
-    assert.match(await staticPage.locator("[data-picker]").innerText(), /Copy as Pandoc/);
-    assert.match(await staticPage.locator("[data-picker]").innerText(), /\[@vale2024lanterns\] \[Sample\]/);
-    assert.equal(await staticPage.locator("[data-download-privacy]:visible").count(), 4);
-    await staticPage.close();
+    for (const colorScheme of ["light", "dark"]) {
+      const staticPage = await browser.newPage({ javaScriptEnabled: false, viewport: { width: 320, height: 850 }, colorScheme });
+      await staticPage.goto(url.href + "#how");
+      assert.equal(await staticPage.locator("[data-picker] .picker-panel").isVisible(), true);
+      assert.match(await staticPage.locator("[data-picker]").innerText(), /Copy as Pandoc/);
+      assert.match(await staticPage.locator("[data-picker]").innerText(), /\[@vale2024lanterns\] \[Sample\]/);
+      assert.equal(await staticPage.locator(".copied-notice").isVisible(), true);
+      assert.equal(await staticPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+      assert.equal(await staticPage.locator("[data-download-privacy]:visible").count(), 4);
+      await staticPage.close();
+    }
+  } finally { await browser.close(); }
+});
+
+test("picker header fits its container at 200% text and uses aligned themed gradient marks", { skip: !process.env.IBIS_WEBSITE_URL }, async () => {
+  const url = new URL(process.env.IBIS_WEBSITE_URL);
+  assert.equal(url.protocol, "http:"); assert.equal(url.hostname, "127.0.0.1");
+  const { chromium } = await import(process.env.IBIS_PLAYWRIGHT_MODULE || "playwright");
+  const browser = await chromium.launch({ executablePath: process.env.IBIS_CHROMIUM_EXECUTABLE });
+  try {
+    for (const fontSize of [16, 32]) for (const width of [320, 1180]) for (const colorScheme of ["light", "dark"]) for (const javaScriptEnabled of [false, true]) {
+      const page = await browser.newPage({ viewport: { width, height: 900 }, colorScheme, javaScriptEnabled, reducedMotion: "reduce" });
+      const session = await page.context().newCDPSession(page);
+      await session.send("Page.setFontSizes", { fontSizes: { standard: fontSize, fixed: fontSize } });
+      await page.goto(url.href + "#how");
+      if (javaScriptEnabled) await page.getByRole("combobox", { name: "Search the made-up library" }).waitFor();
+      const panel = page.locator("[data-picker] .picker-panel");
+      // Exercise a narrow container on desktop too: viewport media queries alone
+      // cannot protect a small picture inside the website's reading column.
+      if (width === 1180) await panel.evaluate((node, size) => { node.style.width = `${size}px`; }, fontSize === 32 ? 240 : 280);
+      const check = async (theme = colorScheme) => {
+        const layout = await panel.evaluate(node => {
+          const header = node.querySelector(".picker-search"), box = node.getBoundingClientRect(), band = header.getBoundingClientRect();
+          const visible = [...header.querySelectorAll("input, button, select, .picker-query, .picker-format, .picker-mark, .picker-mark img")]
+            .filter(child => child.getBoundingClientRect().width && child.getBoundingClientRect().height);
+          const clipped = visible.filter(child => {
+            const bounds = child.getBoundingClientRect();
+            return bounds.left < Math.max(box.left, band.left) - 1 || bounds.right > Math.min(box.right, band.right) + 1
+              || bounds.top < Math.max(box.top, band.top) - 1 || bounds.bottom > Math.min(box.bottom, band.bottom) + 1;
+          }).map(child => child.className || child.tagName);
+          const query = header.querySelector("input, .picker-query"), mark = visible.find(child => child.tagName === "IMG");
+          const tile = node.querySelector(".tile").getBoundingClientRect(), title = node.querySelector(".ref").getBoundingClientRect();
+          const image = mark?.getBoundingClientRect(), field = query.getBoundingClientRect();
+          return { clipped, headerOverflow: header.scrollWidth > header.clientWidth, rootSize: parseFloat(getComputedStyle(document.documentElement).fontSize),
+            queryWidth: field.width, querySize: parseFloat(getComputedStyle(query).fontSize), queryAlignment: field.left - title.left,
+            markSource: mark?.getAttribute("src"), markWidth: image?.width, markAlignment: image && (image.left + image.width / 2) - (tile.left + tile.width / 2),
+            mask: mark && getComputedStyle(mark.parentElement).maskImage };
+        });
+        const scenario = `${width}px viewport / ${fontSize}px font / ${colorScheme} / JS ${javaScriptEnabled}`;
+        assert.equal(layout.rootSize, fontSize, scenario);
+        assert.deepEqual(layout.clipped, [], `header controls must be entirely inside the panel: ${scenario}`);
+        assert.equal(layout.headerOverflow, false, `overflow:hidden cannot conceal header overflow: ${scenario}`);
+        assert.ok(layout.queryWidth >= 2 * layout.querySize, `the query must retain usable editing space: ${scenario}`);
+        assert.ok(Math.abs(layout.queryAlignment) <= 1, `query and result titles stay aligned: ${scenario}`);
+        assert.equal(layout.markSource, `assets/ibis-mark${theme === "dark" ? "-on-dark" : ""}.svg`, scenario);
+        assert.equal(layout.markWidth, fontSize * 1.5, `the search mark is 24 px at normal text size: ${scenario}`);
+        assert.ok(Math.abs(layout.markAlignment) <= 1, `the mark stays centred over the type tile: ${scenario}`);
+        assert.equal(layout.mask, "none", `the gradient must remain intact: ${scenario}`);
+      };
+      await check();
+      const override = colorScheme === "light" ? "dark" : "light";
+      await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, override);
+      await check(override);
+      await page.evaluate(() => { delete document.documentElement.dataset.theme; });
+      if (javaScriptEnabled) {
+        const input = page.getByRole("combobox", { name: "Search the made-up library" });
+        await input.fill(""); await check();
+        await input.fill("lantern"); await page.getByRole("combobox", { name: "Copy format" }).selectOption("parencite"); await check();
+      }
+      await page.close();
+    }
   } finally { await browser.close(); }
 });

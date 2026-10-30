@@ -3,7 +3,18 @@ import { mkdtemp, readFile, readdir, rm, writeFile, mkdir } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { build } from "../website/build.mjs";
+import { build, scopePickerTokens } from "../website/build.mjs";
+
+test("picker token changes reach the website without a second palette", async () => {
+  const tokens = await readFile(new URL("../apps/desktop/src/tokens.css", import.meta.url), "utf8");
+  const scoped = scopePickerTokens(tokens);
+  assert.equal(scoped.replaceAll(":where([data-app-tokens])", ":root"), tokens);
+  const changed = tokens.replace("--row-comfortable: 3.625rem", "--row-comfortable: 4.5rem");
+  assert.notEqual(changed, tokens);
+  assert.match(scopePickerTokens(changed), /--row-comfortable: 4.5rem/);
+  assert.match(scoped, /:where\(\[data-app-tokens\]\):not\(\.notice-window\)/);
+  assert.match(scoped, /@media \(forced-colors: active\)/);
+});
 
 test("public build copies canonical tokens and only allowlisted assets", async () => {
   const dir = await mkdtemp(join(tmpdir(), "ibis-website-"));
@@ -14,11 +25,13 @@ test("public build copies canonical tokens and only allowlisted assets", async (
     await writeFile(join(source, "private.txt"), "must not publish");
     await writeFile(join(output, "stale.txt"), "stale");
     await build(output, source);
-    assert.deepEqual((await readdir(output)).sort(), ["404.html", "_headers", "assets", "demo-model.mjs", "demo.css", "demo.js", "icon-paths.js", "index.html", "keys.js", "robots.txt", "site.js", "sitemap.xml", "style.css", "tokens.css"]);
+    assert.deepEqual((await readdir(output)).sort(), ["404.html", "_headers", "assets", "demo-model.mjs", "demo.css", "demo.js", "icon-paths.js", "index.html", "keys.js", "picker-tokens.css", "robots.txt", "site.js", "sitemap.xml", "style.css", "tokens.css"]);
     assert.equal(await readFile(join(output, "tokens.css"), "utf8"), await readFile(new URL("../apps/desktop/src/tokens.css", import.meta.url), "utf8"));
+    assert.equal(await readFile(join(output, "picker-tokens.css"), "utf8"), scopePickerTokens(await readFile(join(output, "tokens.css"), "utf8")));
     const manifest = JSON.parse(await readFile(join(output, "assets/site.webmanifest"), "utf8"));
     for (const icon of manifest.icons) await readFile(join(output, "assets", icon.src));
-    for (const file of ["favicon.svg", "png/og-image.png"]) assert.deepEqual(await readFile(join(output, "assets", file)), await readFile(new URL(`../brand/exports/${file}`, import.meta.url)));
+    for (const file of ["favicon.svg", "png/og-image.png", "ibis-mark.svg", "ibis-mark-on-dark.svg"]) assert.deepEqual(await readFile(join(output, "assets", file)), await readFile(new URL(`../brand/exports/${file}`, import.meta.url)));
+    assert.ok(!(await readdir(join(output, "assets"))).includes("ibis-mark-flat.svg"), "the picker ships the themed gradient marks, not a recoloured silhouette");
     await rm(join(source, "index.html"));
     await assert.rejects(build(output, source));
     assert.equal(await readFile(join(output, "index.html"), "utf8"), "synthetic", "failed build preserves last good output");
@@ -74,6 +87,17 @@ test("built homepage keeps a visible picker example and its local interactive as
     assert.ok(/<figure[^>]*data-picker/.test(html), "the public build must show the picker in the second step");
     assert.match(html, /Try it with made-up references/);
     assert.match(html, /Copy as Pandoc/);
+    assert.match(html, /<link rel="stylesheet" href="picker-tokens.css">/);
+    assert.match(html, /class="picker-panel" data-app-tokens data-platform="macos"/);
+    assert.match(html, /class="copied-notice notice-window" data-app-tokens/);
+    assert.match(html, /class="picker-mark" aria-hidden="true"/);
+    for (const asset of ["ibis-mark.svg", "ibis-mark-on-dark.svg"]) {
+      assert.match(html, new RegExp(`<img[^>]+src="assets/${asset.replaceAll(".", "\\.")}"[^>]+alt=""`));
+    }
+    const css = await readFile(join(dir, "demo.css"), "utf8");
+    assert.doesNotMatch(css, /#[\da-f]{3,8}\b|(?:rgb|hsl|oklch)\(/i, "pictures never maintain their own colour values");
+    assert.doesNotMatch(css, /prefers-color-scheme/, "app pictures inherit color-scheme through the shared role tokens");
+    for (const [, asset] of css.matchAll(/url\("(assets\/[^"\s]+)"\)/g)) await readFile(join(dir, asset));
     for (const name of ["demo.js", "demo.css", "demo-model.mjs", "keys.js", "icon-paths.js"]) {
       assert.ok((await readFile(join(dir, name), "utf8")).length > 0, name);
     }
