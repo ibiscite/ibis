@@ -45,9 +45,9 @@ function fireScroll(node: HTMLElement) {
   act(() => { node.dispatchEvent(new Event("scroll")); });
 }
 
-test("the results, menus, Shortcuts and notices share the scroll area, and no screen sets its own overflow", () => {
+test("results, menus and Shortcuts share the scroll area; picker notices belong to the middle scroller", () => {
   const styles = css("../styles.css");
-  for (const selector of [".results-area", ".keys-scroll", "main[data-selection] .notices", "main[data-selection] .results-area"]) {
+  for (const selector of [".results-area", ".keys-scroll", ".picker-content > .notices"]) {
     const rule = styles.split("\n").find((line) => line.startsWith(`${selector} {`)) ?? "";
     expect(rule, selector).not.toBe("");
     expect(rule, selector).not.toMatch(/overflow|scrollbar/);
@@ -56,7 +56,36 @@ test("the results, menus, Shortcuts and notices share the scroll area, and no sc
   const keys = render(<KeysDialog bindings={[{ region: "picker", action: "pin", keys: ["CmdOrCtrl+Shift+P"] }]} isMac onClose={vi.fn()} />);
   expect(keys.container.querySelector(".keys-scroll")?.classList.contains("scroll-area")).toBe(true);
   const notices = render(<Notices library={null} failures={{}} startAtLogin={null} error="Search failed" copyError={null} copied={null} showCopiedText={false} onDismissCopied={vi.fn()} />);
-  expect(notices.container.querySelector(".notices")?.classList.contains("scroll-area")).toBe(true);
+  expect(notices.container.querySelector(".notices")?.classList.contains("scroll-area")).toBe(false);
+  const noticeRule = styles.split("\n").find((line) => line.startsWith(".picker-content > .notices {")) ?? "";
+  expect(noticeRule).toMatch(/flex: none/);
+  expect(noticeRule).not.toMatch(/max-height/);
+});
+
+test("nonempty notices hand results to the middle scroller independently of the middle's height", () => {
+  // jsdom checks the notice-dependent ownership rule; picker-layout.browser.mjs
+  // checks actual overflow with a large notice, selected references and results.
+  const styles = css("../styles.css");
+  const props = { library: null, failures: {}, startAtLogin: null, error: null, copyError: null,
+    showCopiedText: false, onDismissCopied: vi.fn() };
+  const warnings = Array.from({ length: 16 }, (_, i) => `Invented copy warning ${i + 1}`);
+  const picker = (copied: { text: string; warnings: string[] } | null) => <main data-selection><div className="picker-content scroll-area">
+    <Notices {...props} copied={copied} /><div className="results-area scroll-area" /><div className="shelf" />
+  </div></main>;
+  const view = render(picker({ text: "[@synthetic0]", warnings }));
+  const results = view.container.querySelector(".results-area")!;
+  const noticeRules = () => [...styles.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+    .filter(([, head]) => {
+      const selector = head!.replace(/\/\*[^]*?\*\//g, "").trim();
+      return selector.includes(".notices") && results.matches(selector);
+    }).map(([, , body]) => body).join(";");
+  const fallback = document.createElement("div").style;
+  fallback.cssText = noticeRules();
+  expect(fallback.flex).toBe("0 0 auto");
+  expect(parseFloat(fallback.minHeight)).toBe(0);
+  expect(fallback.overflow).toBe("visible");
+  view.rerender(picker(null));
+  expect(noticeRules()).toBe("");
 });
 
 test("the fade is valid at either edge and every system shares the native scrollbar", () => {
