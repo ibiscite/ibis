@@ -310,7 +310,10 @@ jobs:
         run: |
           /usr/bin/python3 scripts/smoke-native.py --self-test
           /usr/bin/python3 scripts/check-offline.test.py
-          IBIS_GTK_CONTROL_TEST=1 xvfb-run -a -s '-screen 0 1280x800x24' dbus-run-session -- /usr/bin/python3 scripts/update-gtk-probe.test.py
+          # Each layout owns a new server: an exited WM can leave root properties behind.
+          for layout in old new missing; do
+            IBIS_GTK_CONTROL_TEST=1 xvfb-run -a -s '-screen 0 1280x800x24' dbus-run-session -- /usr/bin/python3 scripts/update-gtk-probe.test.py --layout "$layout"
+          done
           xvfb-run -a -s '-screen 0 1280x800x24' dbus-run-session -- cargo test -p ibis-desktop --locked gtk_offer_keyboard_return_declines_and_tab_space_deliberately_installs -- --ignored --test-threads=1
           xvfb-run -a -s '-screen 0 1280x800x24' cargo test -p ibis-desktop --locked x11_server_focus_stays_with_editor_during_keyboard_grab -- --ignored --nocapture
           xvfb-run -a -s '-screen 0 1280x800x24' cargo test -p ibis-desktop --locked a_full_screen_active_window_is_detected_from_window_manager_hints -- --ignored --nocapture

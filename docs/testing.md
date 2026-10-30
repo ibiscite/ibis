@@ -157,7 +157,13 @@ invalid ownership, ambiguous Install controls and exhausted navigation fail
 before Space. At most six Tabs navigate to a verified Install; Space is sent
 once and never retried. The Linux native CI step runs
 `update-gtk-probe.test.py` with `IBIS_GTK_CONTROL_TEST=1` under Xvfb/dbus: real GTK
-dialogs exercise both button orders and refusal when Install is absent. The
+dialogs exercise both button orders and refusal when Install is absent. Each
+`--layout old|new|missing` invocation gets its own Xvfb server and D-Bus session;
+an exited window manager's root properties cannot carry into the next case.
+The real qualification still refuses a desktop with an existing window manager.
+Fixtures write bounded result files and wait for their own PID to exit, so
+accessibility services retaining inherited stdio cannot extend an EOF wait.
+A process regression covers that inherited-pipe failure without requiring GTK. The
 AppImage rerun remains necessary to verify loading against its bundled GTK.
 
 ## Capability matrix

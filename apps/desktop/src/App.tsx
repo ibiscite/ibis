@@ -145,6 +145,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     visibility.observe(document.documentElement, { attributes: true, attributeFilter: ["data-picker-hidden"] });
     return () => { visibility.disconnect(); monitor.stop(); updateInput.current = null; };
   }, [api.updatePickerActivity]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: each interaction transition invalidates the old idle ticket, including close/reopen; the monitor reads current blocking state through a ref.
   useEffect(() => { updateInput.current?.activity(); }, [query, pendingCopy, menuOpen, formatOpen, keysOpen, selected.size, state.activeCopy, state.visibility]);
   // Where focus goes back to when the keys overlay closes.
   const keysReturn = useRef<HTMLElement | null>(null);

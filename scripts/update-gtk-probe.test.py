@@ -4,10 +4,41 @@ import importlib
 import os
 from pathlib import Path
 import platform
+import signal
 import subprocess
 import sys
 import tempfile
 import unittest
+
+
+def fixture_output(child, output, timeout=3):
+    child.wait(timeout=timeout)
+    with output.open("rb") as source:
+        return source.read(64)
+
+
+@unittest.skipUnless(os.name == "posix", "requires an owned POSIX process group")
+class FixtureCompletionTests(unittest.TestCase):
+    def test_finished_fixture_does_not_wait_for_inherited_stdio(self):
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as temporary:
+            output = Path(temporary) / "fixture.stdout"
+            # A service retains the pipes after the actual fixture has exited.
+            code = ("import subprocess, sys; from pathlib import Path; "
+                    "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)']); "
+                    "Path(sys.argv[1]).write_bytes(b'install\\n')")
+            child = subprocess.Popen([sys.executable, "-c", code, str(output)], start_new_session=True,
+                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            try:
+                self.assertEqual(fixture_output(child, output, timeout=1), b"install\n")
+                self.assertEqual(child.returncode, 0)
+            finally:
+                try:
+                    os.killpg(child.pid, signal.SIGTERM)
+                except ProcessLookupError:
+                    pass
+                child.wait(timeout=3)
+                child.stdout.close()
+                child.stderr.close()
 
 
 def fixture(layout):
@@ -39,9 +70,12 @@ def fixture(layout):
 @unittest.skipUnless(platform.system() == "Linux" and os.environ.get("IBIS_GTK_CONTROL_TEST") == "1",
                      "requires IBIS_GTK_CONTROL_TEST=1 and an isolated GTK/X11 display")
 class NativeControlTests(unittest.TestCase):
+    layouts = ()
+
     def test_old_and_new_orders_install_once_and_missing_install_refuses(self):
+        self.assertTrue(self.layouts, "run each layout on a fresh X display with --layout old|new|missing")
         native = importlib.import_module("update-e2e")
-        for layout in ("old", "new", "missing"):
+        for layout in self.layouts:
             with self.subTest(layout=layout), tempfile.TemporaryDirectory(dir=Path.cwd()) as temporary:
                 folder = Path(temporary)
                 previous, expected, library = (folder / name for name in ("previous", "expected", "synthetic.bib"))
@@ -50,29 +84,31 @@ class NativeControlTests(unittest.TestCase):
                 library.write_text("@article{synthetic, title={Synthetic}}")
                 driver = native.Linux(folder, argparse.Namespace(previous=previous, expected=expected), library)
                 child = None
+                output = folder / "fixture.stdout"
                 try:
-                    child = subprocess.Popen([sys.executable, __file__, "--fixture", layout],
-                                             env=native.environment(os.environ, driver.config),
-                                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    # Activated accessibility services can inherit fixture FDs.
+                    # Wait for this PID, not EOF from those descendants' pipes.
+                    with output.open("wb") as stdout, (folder / "fixture.stderr").open("wb") as stderr:
+                        child = subprocess.Popen([sys.executable, __file__, "--fixture", layout],
+                                                 env=native.environment(os.environ, driver.config),
+                                                 stdout=stdout, stderr=stderr)
                     native.wait_for(lambda: driver.picker_ready({child.pid}) == (child.pid, "offer"),
                                     5, "synthetic offer did not acquire native focus", step=.05)
                     if layout == "missing":
                         with self.assertRaises(native.LinuxActivationFailure):
                             driver.look({child.pid}, native.BUTTON, timeout=3)
                         child.terminate()
-                        stdout, _ = child.communicate(timeout=3)
-                        self.assertEqual(stdout, b"")
+                        self.assertEqual(fixture_output(child, output), b"")
                     else:
                         pressed, _, probe = driver.look({child.pid}, native.BUTTON, timeout=3)
                         self.assertTrue(pressed)
                         self.assertTrue(probe["attempted"])
-                        stdout, _ = child.communicate(timeout=3)
-                        self.assertEqual(stdout, b"install\n")
+                        self.assertEqual(fixture_output(child, output), b"install\n")
                         self.assertEqual(child.returncode, 0)
                 finally:
                     if child is not None and child.poll() is None:
                         child.kill()
-                        child.communicate(timeout=3)
+                        child.wait(timeout=3)
                     driver.close()
 
 
@@ -80,4 +116,9 @@ if __name__ == "__main__":
     if len(sys.argv) == 3 and sys.argv[1] == "--fixture":
         fixture(sys.argv[2])
     else:
+        if len(sys.argv) == 3 and sys.argv[1] == "--layout":
+            if sys.argv[2] not in ("old", "new", "missing"):
+                raise SystemExit("unknown GTK control layout")
+            NativeControlTests.layouts = (sys.argv[2],)
+            sys.argv = sys.argv[:1]
         unittest.main()
