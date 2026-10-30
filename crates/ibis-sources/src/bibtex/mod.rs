@@ -46,10 +46,20 @@ fn take_caught_parser_panics() -> usize {
 }
 
 /// One sticky counter for actual work, including empty operations and byte copies.
+#[cfg(not(test))]
 pub(crate) struct Budget(Cell<Option<usize>>);
+// Unit tests retain an observer of this same counter after the real loader
+// consumes its Budget. Production storage and charging are unchanged.
+#[cfg(test)]
+pub(crate) struct Budget(std::rc::Rc<Cell<Option<usize>>>);
 impl Budget {
+    #[cfg(not(test))]
     pub(crate) fn new(credits: usize) -> Self {
         Self(Cell::new(Some(credits)))
+    }
+    #[cfg(test)]
+    pub(crate) fn new(credits: usize) -> Self {
+        Self(std::rc::Rc::new(Cell::new(Some(credits))))
     }
     pub(crate) fn for_input(bytes: usize) -> Self {
         Self::new((64 * 1024 * 1024usize).saturating_add(bytes.saturating_mul(128)))
@@ -238,6 +248,137 @@ fn load_entry(
 mod tests {
     use super::*;
     use proptest::prelude::*;
+
+    const FLAT_CASES: &[(&str, &str, &str)] = &[
+        (
+            "normal",
+            "@article{synthetic,title={Synthetic signals},author={Researcher, Avery and Morgan, Ann},year={2024},journal={Invented Letters},pages={1--20},doi={10.1000/synthetic},volume={3},number={2}}",
+            "synthetic",
+        ),
+        (
+            "unicode-whitespace-hyphens",
+            "@WWW{ключ,title={ \tA\u{a0}B\n },note={- -- --- ---- ----- ------ -------},author={García, Ana and others},year={2024}}",
+            "ключ",
+        ),
+        ("empty", "@misc{empty,title={},author={},year={}}", "empty"),
+        (
+            "invalid-getters",
+            "@article{Ω,title={Invented},editor={Morgan, Ann},editortype={unknown},year={bad},month={13},day={0},pages={x-y}}",
+            "Ω",
+        ),
+        (
+            "case-collisions",
+            "@conference{key,TITLE={Earlier},title={Later},İD={A},id={B}}",
+            "key",
+        ),
+        ("encoded", "@book{k,title={\u{e000}\u{e001}\u{e002}\u{e003}}}", "k"),
+        ("protected", "@book{k,title={The {NASA} Example}}", "k"),
+        ("tex", r"@book{k,title={Garc{\'\i}a \unknown{kept}}}", "k"),
+        ("math", "@book{k,title={$x+y$}}", "k"),
+        ("literal-url", "@book{k,url={https://example.invalid/$literal}}", "k"),
+        ("bare-month", "@book{k,year={2024},month=mar}", "k"),
+        ("crossref", "@book{k,title={Child},crossref={missing}}", "k"),
+        ("xdata-link", "@book{k,title={Child},xdata={missing}}", "k"),
+        ("ids", "@book{k,title={Alias},ids={other}}", "k"),
+        ("xdata-helper", "@XDATA{helper,title={Hidden}}", "helper"),
+        ("wrong-key", "@book{k,title={Value}}", "other"),
+        ("multiple", "@book{a,title={First}}@book{b,title={Second}}", "a"),
+        ("abbreviation", "@string{x={Label}}@book{k,title=x}", "k"),
+        ("syntax", "@book{k,title={Unterminated}", "k"),
+    ];
+
+    #[test]
+    fn flat_entry_canonical_ast_and_getter_oracle() {
+        use ibis_core::contract::Fingerprint;
+        use serde_json::json;
+
+        // Freeze the upstream result before introducing a constructed-entry
+        // path. Entry's Debug covers every field, chunk variant and exact span.
+        let observations: Vec<_> = FLAT_CASES
+            .iter()
+            .map(|(name, text, key)| match Bibliography::parse(text) {
+                Ok(bib) => match bib.get(key) {
+                    Some(entry) => json!({
+                        "name": name,
+                        "entry": format!("{entry:?}"),
+                        "authors": format!("{:?}", entry.author()),
+                        "editors": format!("{:?}", entry.editors()),
+                        "date": format!("{:?}", entry.date()),
+                        "date_error": entry.date().err().map(|error| error.to_string()),
+                        "pages": format!("{:?}", entry.pages()),
+                    }),
+                    None => json!({ "name": name, "missing": true }),
+                },
+                Err(error) => json!({ "name": name, "error": format!("{error:?}") }),
+            })
+            .collect();
+        let fingerprint =
+            Fingerprint::of_bytes(&serde_json::to_vec(&observations).unwrap_or_else(|error| panic!("{error}")));
+        assert_eq!(
+            fingerprint.as_str(),
+            "04011c1d8f3879f5ed1ab53a9af1130cbf5895e01f6474aba4f9f716e5ce2a6a"
+        );
+    }
+
+    const FLAT_TRANSCRIPT: &str = concat!(
+        "@string{label={Early}}\n",
+        "@article{plain,title={After},author={Researcher, Avery and Morgan, Ann and others},year={2024},journal={Invented Letters},pages={1--20},doi={10.1000/synthetic}}\n",
+        "@book{empty,title={},year={}}\n",
+        "@book{unicode,title={ A\u{a0}B },note={---- ----- ------},year={bad},month={13}}\n",
+        "@book{encoded,title={\u{e000}\u{e001}\u{e002}\u{e003}},url={https://127.0.0.1/synthetic},file={synthetic-paper.pdf}}\n",
+        "@book{tex,title={Garc{\\'\\i}a \\unknown{kept}},date={2024-13-01}}\n",
+        "@xdata{shared,publisher=label}\n",
+        "@string{label={Late}}\n",
+        "@book{child,title=label,xdata={shared},crossref={plain},month=mar}\n",
+        "@book{broken,title={Unclosed\n@book{last,title={Still Visible}}\n",
+    );
+
+    #[test]
+    fn flat_entry_loader_credit_and_fingerprint_oracle() {
+        use ibis_core::contract::{Fingerprint, LibraryObject};
+        use serde_json::json;
+
+        let source = LibraryId::file(b"synthetic-flat-entry.bib");
+        let old = load_str(&source, &FLAT_TRANSCRIPT.replace("After", "Before"));
+        let previous = Snapshot::new(old.records.into_iter().map(LibraryObject::Record).collect())
+            .unwrap_or_else(|error| panic!("{error}"));
+        let mut observations = Vec::new();
+        for reuse in [false, true] {
+            for credits in (0..=65_536).step_by(257).chain([usize::MAX]) {
+                let budget = Budget::new(credits);
+                let remaining = std::rc::Rc::clone(&budget.0);
+                take_caught_parser_panics();
+                // Observe the real loader's final counter, not a second model of
+                // its post-conversion problem charges or publication decisions.
+                let (loaded, limited) = load_with_budget(&source, FLAT_TRANSCRIPT, budget, reuse.then_some(&previous));
+                assert_eq!(take_caught_parser_panics(), 0);
+                let records = serde_json::to_value(&loaded.records).unwrap_or_else(|error| panic!("{error}"));
+                let snapshot = Snapshot::new_reusing(
+                    loaded.records.into_iter().map(LibraryObject::Record).collect(),
+                    &previous,
+                    &loaded.reused,
+                )
+                .unwrap_or_else(|error| panic!("{error}"));
+                observations.push(json!({
+                    "reuse": reuse,
+                    "credits": credits,
+                    "remaining": remaining.get(),
+                    "records": records,
+                    "reused": loaded.reused,
+                    "warnings": loaded.warnings,
+                    "attachments": loaded.attachments,
+                    "fingerprints": snapshot.fingerprints(),
+                    "limited": limited,
+                }));
+            }
+        }
+        let fingerprint =
+            Fingerprint::of_bytes(&serde_json::to_vec(&observations).unwrap_or_else(|error| panic!("{error}")));
+        assert_eq!(
+            fingerprint.as_str(),
+            "10bd40de402f0f64e19653136febb3fbcf703559c2998dca76d4aedfa8e3917c"
+        );
+    }
 
     // These properties live beside the private panic hook: integration tests
     // cannot distinguish a caught parser panic from an ordinary Syntax warning.
