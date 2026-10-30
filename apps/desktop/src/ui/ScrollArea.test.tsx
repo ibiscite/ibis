@@ -98,8 +98,12 @@ test("the fade is valid at either edge and every system shares the native scroll
     expect(rule).not.toMatch(/var\(--[\w-]+, 0\)/);
   }
   const tokens = css("../tokens.css");
-  expect(tokens).toMatch(/--scrollbar-width: auto; --scrollbar-color: auto; --scroll-fade-size: var\(--space-4\);/);
+  expect(tokens).toMatch(/--scrollbar-width: auto; --scrollbar-color: auto; --scroll-fade-size: 14px;/);
   expect(tokens).not.toMatch(/--scrollbar-width: thin/);
+  for (const preference of ["prefers-contrast: more", "prefers-reduced-transparency: reduce", "forced-colors: active"]) {
+    const fallback = area.slice(area.indexOf(`(${preference})`));
+    expect(fallback).toMatch(/-webkit-mask-image: none; mask-image: none/);
+  }
 });
 
 
@@ -129,4 +133,25 @@ test("fades yield to the entire active row without changing the user's scroll po
   box.scrollTop = 200; markScrollEdges(box);
   expect(box.hasAttribute("data-more-below")).toBe(false);
   box.remove();
+});
+
+test("text reflow inside an unchanged viewport refreshes its edges, and late resizes after close cannot update them", () => {
+  const callbacks: (() => void)[] = [], observed: Element[] = [];
+  vi.stubGlobal("ResizeObserver", class {
+    constructor(callback: () => void) { callbacks.push(callback); }
+    observe(node: Element) { observed.push(node); }
+    disconnect() {}
+  });
+  const view = render(<Box />), box = view.getByTestId("box");
+  let contentHeight = 100;
+  Object.defineProperty(box, "clientHeight", { value: 100 });
+  Object.defineProperty(box, "scrollHeight", { get: () => contentHeight });
+  expect(observed).toContain(box.firstElementChild);
+  contentHeight = 300;
+  act(() => callbacks[0]!());
+  expect(box.hasAttribute("data-more-below")).toBe(true);
+  view.unmount();
+  box.removeAttribute("data-more-below");
+  act(() => callbacks[0]!());
+  expect(box.hasAttribute("data-more-below")).toBe(false);
 });

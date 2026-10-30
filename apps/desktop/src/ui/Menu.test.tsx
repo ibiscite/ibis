@@ -453,7 +453,7 @@ test("rows keep equal insets, fit intrinsic labels to the viewport and wrap at i
   const toolbar = readFileSync(new FileURL("./ToolbarMenu.css", import.meta.url), "utf8");
   // The filter text and section headings start where the labels do.
   expect(toolbar.match(/padding-inline: var\(--menu-label-start\) var\(--menu-item-pad\)/g)).toHaveLength(2);
-  expect(toolbar).toMatch(/\.toolbar-menu-popover \{[^}]*width: max-content;[^}]*min-width: min\(16\.5rem,/);
+  expect(toolbar).toMatch(/\.toolbar-menu-popover \{[^}]*width: min\(300px, calc\(100vw - 16px\)\); min-width: 0;/);
   expect(toolbar).toMatch(/\.toolbar-menu-sample \{[^}]*min-width: 0;[^}]*white-space: normal;/);
   expect(`${menuCss}${toolbar}`.match(/\b(10|18|34)px\b/g)).toEqual(["10px", "18px"]);
 });
@@ -523,4 +523,28 @@ test("a short viewport does not sacrifice the output list to footer clearance", 
   const hook = renderHook(() => useMenuBoundary(true, undefined, triggerRef));
   expect(hook.result.current.boundaryElement?.style.bottom).toBe("0px");
   hook.unmount(); footer.remove(); trigger.remove();
+});
+
+test("refitting a scrolled menu measures whole rows in content coordinates", () => {
+  const frame = document.createElement("div"), list = document.createElement("div");
+  frame.append(list); document.body.append(frame);
+  list.scrollTop = 70;
+  vi.spyOn(list, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 100, 300, 100));
+  Object.defineProperty(list, "clientHeight", { value: 100 });
+  Object.defineProperty(list, "scrollHeight", { value: 280 });
+  for (let i = 0; i < 10; i++) {
+    const row = document.createElement("div"); row.setAttribute("role", "menuitem"); list.append(row);
+    vi.spyOn(row, "getBoundingClientRect").mockImplementation(() => new DOMRect(0, 100 + i * 28 - list.scrollTop, 300, 28));
+  }
+  const hook = renderHook(() => useWholeRows({ current: list }));
+  act(() => hook.result.current(frame));
+  expect(list.style.maxHeight).toBe("84px");
+  expect(list.scrollTop).toBe(70);
+  act(() => hook.result.current(null)); frame.remove();
+});
+
+test("wrapped menu labels retain vertical padding and scalable minimum heights", () => {
+  expect(menuCss).toMatch(/\.menu-item \{[^}]*padding-block: var\(--space-1\)/);
+  expect(menuCss).toMatch(/--menu-item-height: 1\.75rem/);
+  expect(menuCss).toMatch(/font: var\(--metadata-size\) \/ var\(--metadata-line-height\)/);
 });
