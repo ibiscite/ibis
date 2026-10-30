@@ -453,7 +453,7 @@ test("rows keep equal insets, fit intrinsic labels to the viewport and wrap at i
   const toolbar = readFileSync(new FileURL("./ToolbarMenu.css", import.meta.url), "utf8");
   // The filter text and section headings start where the labels do.
   expect(toolbar.match(/padding-inline: var\(--menu-label-start\) var\(--menu-item-pad\)/g)).toHaveLength(2);
-  expect(toolbar).toMatch(/\.toolbar-menu-popover \{[^}]*width: max-content;[^}]*min-width: min\(16\.5rem,/);
+  expect(toolbar).toMatch(/\.toolbar-menu-popover \{[^}]*width: min\(300px, calc\(100vw - 16px\)\); min-width: 0;/);
   expect(toolbar).toMatch(/\.toolbar-menu-sample \{[^}]*min-width: 0;[^}]*white-space: normal;/);
   expect(`${menuCss}${toolbar}`.match(/\b(10|18|34)px\b/g)).toEqual(["10px", "18px"]);
 });
@@ -523,4 +523,45 @@ test("a short viewport does not sacrifice the output list to footer clearance", 
   const hook = renderHook(() => useMenuBoundary(true, undefined, triggerRef));
   expect(hook.result.current.boundaryElement?.style.bottom).toBe("0px");
   hook.unmount(); footer.remove(); trigger.remove();
+});
+
+test.each([
+  ["uniform", Array.from({ length: 10 }, () => 28)],
+  ["wrapped", [28, 56, 28, 56, 28, 56, 28]],
+] as const)("refitting a scrolled %s menu keeps its last visible row whole and preserves the scroll position", async (_name, heights) => {
+  const frame = document.createElement("div"), list = document.createElement("div");
+  frame.append(list); document.body.append(frame);
+  let availableHeight = 140, rowTop = 0;
+  Object.defineProperty(list, "clientHeight", { get: () => Math.min(availableHeight, parseFloat(list.style.maxHeight) || Infinity) });
+  Object.defineProperty(list, "scrollHeight", { value: heights.reduce((total, height) => total + height, 0) });
+  vi.spyOn(list, "getBoundingClientRect").mockImplementation(() => new DOMRect(0, 100, 300, list.clientHeight));
+  for (const height of heights) {
+    const top = rowTop;
+    const row = document.createElement("div"); row.setAttribute("role", "menuitem"); list.append(row);
+    vi.spyOn(row, "getBoundingClientRect").mockImplementation(() => new DOMRect(0, 100 + top - list.scrollTop, 300, height));
+    rowTop += height;
+  }
+  const hook = renderHook(() => useWholeRows({ current: list }));
+  act(() => hook.result.current(frame));
+  list.scrollTop = 70;
+  fireEvent.scroll(list);
+  availableHeight = 100;
+  await act(async () => { frame.style.maxHeight = "114px"; });
+  // Row rectangles already include scrollTop: the last whole visible row ends
+  // 98px below this viewport's top. An 84px cap cuts through that row.
+  expect(list.style.maxHeight).toBe("98px");
+  const viewportBottom = list.getBoundingClientRect().bottom;
+  expect([...list.children].some((row) => row.getBoundingClientRect().bottom === viewportBottom)).toBe(true);
+  expect(list.scrollTop).toBe(70);
+  availableHeight = 128;
+  await act(async () => { frame.style.maxHeight = "142px"; });
+  expect(list.style.maxHeight).toBe("126px");
+  expect(list.scrollTop).toBe(70);
+  act(() => hook.result.current(null)); frame.remove();
+});
+
+test("wrapped menu labels retain vertical padding and scalable minimum heights", () => {
+  expect(menuCss).toMatch(/\.menu-item \{[^}]*padding-block: var\(--space-1\)/);
+  expect(menuCss).toMatch(/--menu-item-height: 1\.75rem/);
+  expect(menuCss).toMatch(/font: var\(--metadata-size\) \/ var\(--metadata-line-height\)/);
 });

@@ -19,7 +19,7 @@
 .toolbar-menu-button .popup-indicator-macos { width: var(--space-2); height: var(--space-3); }
 .toolbar-menu-button .popup-indicator-windows { width: var(--space-3); height: var(--space-3); stroke-width: var(--border-width); }
 /* Keep a useful minimum while filtering; longer labels may use the viewport. */
-.toolbar-menu-popover { width: max-content; min-width: min(16.5rem, calc(100vw - 16px)); }
+.toolbar-menu-popover { width: min(300px, calc(100vw - 16px)); min-width: 0; }
 .toolbar-menu-filter { flex: none; }
 .toolbar-menu-heading { color: var(--muted); font-size: var(--hint-size); font-weight: 600; padding-block: 8px 4px; padding-inline: var(--menu-label-start) var(--menu-item-pad); }
 .toolbar-menu .menu-section + .menu-section::before { content: ""; flex: none; height: 1px; margin: 4px var(--menu-item-pad); background: var(--separator); }
