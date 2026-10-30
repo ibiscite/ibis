@@ -227,24 +227,33 @@ if ($pickerWindows.Count -eq 1) {
 
 MACOS_PICKER = r"""
 ObjC.import('ApplicationServices');
+ObjC.import('CoreGraphics');
 function run(pids) {
   if (pids.length > 20 || pids.some(pid => !/^[1-9][0-9]{0,9}$/.test(pid))) throw Error('Invalid picker scope');
   const attr = (item, name) => {
     const result = Ref();
-    if ($.AXUIElementCopyAttributeValue(item, $(name), result) !== 0) throw Error('Picker focus unavailable');
+    const status = $.AXUIElementCopyAttributeValue(item, $(name), result);
+    if (status !== 0) throw Error(`Picker AX ${name} unavailable (${status})`);
     return result[0];
   };
-  const events = Application('System Events');
+  // A System Events UI window can reject visible() with -1728. The public
+  // on-screen census proves visibility independently of the AX focus owner.
+  let windows;
+  try {
+    windows = ObjC.deepUnwrap($.CGWindowListCopyWindowInfo(
+      $.kCGWindowListOptionOnScreenOnly | $.kCGWindowListExcludeDesktopElements, $.kCGNullWindowID));
+  } catch (_) { throw Error('Picker on-screen census unavailable'); }
+  if (!Array.isArray(windows)) throw Error('Picker on-screen census unavailable');
   const matches = [], offers = [];
-  for (const pid of pids) {
-    for (const app of events.processes.whose({ unixId: Number(pid) })()) {
-      const windows = app.windows();
-      if (windows.length > 20) throw Error('Picker window bound exceeded');
-      for (const window of windows) {
-        if (window.name() === 'Ibis' && window.visible()) matches.push(Number(pid));
-        if (window.name() === 'An update is available' && window.visible()) offers.push(Number(pid));
-      }
-    }
+  let count = 0;
+  for (const window of windows) {
+    const pid = window.kCGWindowOwnerPID;
+    if (!pids.includes(String(pid))) continue;
+    if (++count > 20) throw Error('Picker window bound exceeded');
+    const title = window.kCGWindowName;
+    if (typeof title !== 'string') throw Error('Picker on-screen title unavailable');
+    if (title === 'Ibis') matches.push(pid);
+    if (title === 'An update is available') offers.push(pid);
   }
   if (matches.length > 1 || offers.length > 1) throw Error('Picker or update offer is ambiguous');
   const answer = focus => JSON.stringify({pid: focus ? matches[0] : null, focus});
@@ -437,8 +446,8 @@ class Linux:
         return {"appimage_matches_new_package": self.updated()}
 
     def picker_ready(self, pids):
-        # The update lane's Xvfb has no WM. Native input focus still resolves
-        # to the owning top-level via WM_CLASS; AT-SPI focus alone is stale.
+        # Native input focus resolves to the owning top-level via WM_CLASS;
+        # AT-SPI focus alone is stale. The desktop must manage focus normally.
         deadline = time.monotonic() + 5
         def query(*args):
             remaining = deadline - time.monotonic()
