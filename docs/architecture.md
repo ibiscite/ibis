@@ -124,30 +124,32 @@ attachment locations remain engine-private, absent from summaries and diagnostic
 
 A file observation binds its canonical identity and strong content digest;
 size/mtime are hints, and reload keeps two identical observations. A cached file
-becomes citable only after its source matches; an accepted file snapshot remains
-usable if watching fails. Cached Zotero is searchable but unready for citation
+becomes citable only after a fresh parse of current source bytes; stored
+observations, checksums and fingerprints grant no source or citation readiness.
+An accepted, freshly parsed file snapshot remains usable if watching fails. Cached Zotero is searchable but unready for citation
 until a coherent read. Preserve Zotero 10's server identity, monotonic counter and
 complete item-version inventory/deletion reconciliation; older releases, Reload
 and discontinuity still reread fully. Better BibTeX keys refresh independently
 because item versions do not cover their changes. Do not invent a `since` path.
 
-The desktop's first consumer saves and reopens only warning-free, record-only `.bib` imports.
-Warnings, attachments and other suffixes use the ordinary loader; attachment paths are not stored.
-The configured source's canonical identity, strong digest and importer revision must match before
-one retained `PreparedLibrary::get` validates every object for the existing snapshot/index.
-Cache errors are misses. Full objects remain resident; #1251 and #1298 stay open.
+The desktop saves only warning-free, record-only `.bib` imports. Bounded objects reopened through
+one retained `PreparedLibrary::get` may serve search immediately; stored observations, checksums
+and fingerprints never grant readiness. Every reopen silently parses current source bytes, then
+accepts the verified objects and diagnostics through the normal path, replacing any differences.
+The existing source-generation gate, shared with Zotero, refuses citation and copy until then,
+using the existing message. Cached bytes never seed a watcher that could skip that parse.
+Attachments are not persisted. Full objects remain resident; #1251 and #1298 stay open.
 
-One process-lived native `FileCacheSession` owns the lease. Selection invalidates pending writers
-before work. Index construction and watcher registration finish in the background. Under the app's
-selection lock, final acceptance checks operation identity, swaps in the complete engine candidate
-and publishes its manifest. Removal invalidates work, removes the
-manifest and permits bounded cleanup after retained readers release it. Reload stores the second
-of two identical observations; watch failure leaves accepted files citable. Samples preserve the
-remembered file's cache. The prepared-citation/final-copy barrier is unchanged.
+One process-lived `FileCacheSession` owns the lease. It records source identity before hydration,
+independently of acceptance, so removal retires even an unfinished startup load's manifest and
+allows bounded cleanup after readers release its payload. Selection and close invalidate work;
+final acceptance serializes manifest and app publication. Parsing, indexing and watcher setup
+remain in the background. Samples preserve the remembered cache; explicit Reload keeps two identical observations.
 
-Only native measurement qualifies launch speed and import/acceptance cost: five fresh-process runs
-at 10k and 100k, counterbalanced against a predeclared valid baseline, retaining every result. Separate
-hit/rebuild startup; report process-tree peak memory and refresh commit delay. Existing budgets hold.
+Only native measurement qualifies time to first search and added import/refresh cost: five fresh
+process runs each at 10k/100k, counterbalanced against a valid baseline, retaining every result.
+Separate cached search from verified citation readiness and rebuild startup; report process-tree
+peak memory and refresh commit delay. Existing budgets hold.
 
 Background work owns the captured source selection and operation generation.
 Delayed A after B or close/reopen may update neither manifest nor engine state.

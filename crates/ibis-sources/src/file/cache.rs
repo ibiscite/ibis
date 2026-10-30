@@ -1,4 +1,4 @@
-//! Only warning-free, record-only .bib imports can bypass the parser.
+//! Saved record-only .bib objects serve search; only a fresh parse grants readiness.
 use super::*;
 use crate::generation::{GenerationStore, GenerationWriter, PreparedLibrary, StoreError};
 use ibis_core::contract::Fingerprint;
@@ -37,28 +37,8 @@ impl SourceSnapshot {
             .extension()
             .is_some_and(|extension| extension.eq_ignore_ascii_case("bib"))
     }
-    fn fingerprint(&self) -> Fingerprint {
-        // Bump this revision whenever file import/attachment semantics change.
-        let library = self.library();
-        let digest = Fingerprint::of_bytes(self.text.as_bytes());
-        Fingerprint::of_bytes(format!("ibis-bib-import-1:{}:{}", library.as_str(), digest.as_str()).as_bytes())
-    }
-    pub fn cached_generation(&self, store: &GenerationStore) -> Result<Option<Arc<PreparedLibrary>>, StoreError> {
-        if !self.eligible() {
-            return Ok(None);
-        }
-        Ok(store
-            .open_library(&self.library())?
-            .filter(|generation| generation.observation() == &self.fingerprint()))
-    }
-    /// One retained generation supplies every validated object; never publish a prefix.
-    pub fn hydrate(&self, generation: &PreparedLibrary) -> Result<LoadedLibrary, StoreError> {
-        if !self.eligible()
-            || generation.library() != &self.library()
-            || generation.observation() != &self.fingerprint()
-        {
-            return Err(StoreError::Invalid);
-        }
+    /// Stored observations and fingerprints never prove what the source contains.
+    pub fn hydrate(generation: &PreparedLibrary) -> Result<LoadedLibrary, StoreError> {
         let objects = generation
             .object_fingerprints()
             .map(|(id, _)| {
@@ -70,7 +50,7 @@ impl SourceSnapshot {
             })
             .collect::<Result<Vec<_>, _>>()?;
         Ok(LoadedLibrary {
-            library: self.library(),
+            library: generation.library().clone(),
             snapshot: Snapshot::new(objects).map_err(|_| StoreError::Invalid)?,
             warnings: vec![],
             attachment_paths: Default::default(),
@@ -96,6 +76,8 @@ impl SourceSnapshot {
         {
             return Ok(None);
         }
-        store.begin(loaded.library.clone(), self.fingerprint()).map(Some)
+        store
+            .begin(loaded.library.clone(), Fingerprint::of_bytes(self.text.as_bytes()))
+            .map(Some)
     }
 }

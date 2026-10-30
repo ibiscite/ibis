@@ -4,13 +4,16 @@ use ibis_sources::{
     SourceSnapshot,
     generation::{GenerationStore, StagedGeneration},
 };
-use std::{path::Path, sync::OnceLock};
+use std::{
+    path::{Path, PathBuf},
+    sync::OnceLock,
+};
 
 #[derive(Default)]
 struct CacheState {
     current: Option<u64>,
     closed: bool,
-    accepted: Option<LibraryId>,
+    configured: Option<LibraryId>,
 }
 #[derive(Default)]
 struct CacheInner {
@@ -71,7 +74,7 @@ impl FileCacheSession {
         state.current = None;
         if let Some(store) = self.inner.store.get().and_then(Option::as_ref) {
             let _ = store.invalidate();
-            if let Some(library) = state.accepted.take() {
+            if let Some(library) = state.configured.take() {
                 let _ = store.remove_library(&library);
             }
         }
@@ -90,6 +93,22 @@ impl Drop for FileCacheSession {
     }
 }
 impl FileCacheOperation {
+    /// Capture selection before startup work, including before hydration begins.
+    pub fn select_file(&self, path: &Path) -> Result<Option<PathBuf>, EngineError> {
+        let source = std::fs::canonicalize(path).ok();
+        if let Some(source) = &source {
+            let library = LibraryId::file(source.as_os_str().as_encoded_bytes());
+            self.current(|state, store| {
+                if let Some(previous) = state.configured.replace(library.clone()).filter(|id| *id != library)
+                    && let Some(store) = store
+                {
+                    let _ = store.remove_library(&previous);
+                }
+                Ok(())
+            })?;
+        }
+        Ok(source)
+    }
     fn current<T>(
         &self,
         apply: impl FnOnce(&mut CacheState, Option<&GenerationStore>) -> Result<T, EngineError>,
@@ -115,42 +134,64 @@ impl Engine {
         cancel.check()?;
         operation.current(|_, _| Ok(()))?;
         let path = std::path::absolute(path).map_err(|_| error(ErrorCode::BadInput))?;
-        let (loaded, observation, hit) = if strict {
-            let (loaded, observation) = match SourceSnapshot::reload(&path, self.snapshot()?.as_ref()) {
-                Ok(loaded) => loaded,
-                Err(failure) => {
+        let verifying = self
+            .state()?
+            .readiness
+            .iter()
+            .any(|(source, entry)| source.is_some() && !entry.1);
+        if let Some(source) = operation.select_file(&path)? {
+            let library = LibraryId::file(source.as_os_str().as_encoded_bytes());
+            if !strict
+                && !verifying
+                && source
+                    .extension()
+                    .is_some_and(|extension| extension.eq_ignore_ascii_case("bib"))
+            {
+                let generation = operation
+                    .current(|_, store| Ok(store.and_then(|store| store.open_library(&library).ok().flatten())))?;
+                if let Some(loaded) = generation
+                    .as_ref()
+                    .and_then(|generation| SourceSnapshot::hydrate(generation).ok())
+                {
+                    let mut candidate = Engine::from_snapshot(Arc::new(loaded.snapshot.clone()));
+                    candidate.watch_files = self.watch_files;
+                    let info = LibraryInfo::clean(library.clone(), loaded.snapshot.objects().len());
+                    candidate.shared.install(info, &loaded.snapshot, None)?;
+                    candidate.shared.begin_read(Some(library.clone()))?;
+                    operation.current(|_, _| cancel.check())?;
                     return Ok(PreparedFileLoad {
-                        candidate: Err(sources::source_error(failure)),
+                        candidate: Ok((candidate, library)),
                         operation,
                         staged: None,
                         cancel: cancel.clone(),
-                        hit: false,
+                        hit: true,
                     });
                 }
-            };
-            (loaded, observation, false)
+            }
+        }
+        let read = if strict {
+            SourceSnapshot::reload(&path, self.snapshot()?.as_ref())
         } else {
-            let observation = SourceSnapshot::read(&path).map_err(sources::source_error)?;
-            let generation = operation
-                .current(|_, store| Ok(store.and_then(|store| observation.cached_generation(store).ok().flatten())))?;
-            let cached = generation
-                .as_ref()
-                .and_then(|generation| observation.hydrate(generation).ok());
-            let hit = cached.is_some();
-            let loaded = match cached {
-                Some(loaded) => loaded,
-                None => observation.load().map_err(sources::source_error)?,
-            };
-            (loaded, observation, hit)
+            SourceSnapshot::read(&path).and_then(|observation| Ok((observation.load()?, observation)))
+        };
+        let (loaded, observation) = match read {
+            Ok(loaded) => loaded,
+            Err(failure) if strict || verifying => {
+                return Ok(PreparedFileLoad {
+                    candidate: Err(sources::source_error(failure)),
+                    operation,
+                    staged: None,
+                    cancel: cancel.clone(),
+                    hit: false,
+                });
+            }
+            Err(failure) => return Err(sources::source_error(failure)),
         };
         cancel.check()?;
         // Allocate the writer while selection ownership is locked; invalidation
         // then prevents even a delayed first payload from charging or writing.
-        let writer = operation.current(|_, store| {
-            Ok(store
-                .filter(|_| !hit)
-                .and_then(|store| observation.writer(store, &loaded).ok().flatten()))
-        })?;
+        let writer = operation
+            .current(|_, store| Ok(store.and_then(|store| observation.writer(store, &loaded).ok().flatten())))?;
         let staged = writer.and_then(|mut writer| {
             for object in loaded.snapshot.objects() {
                 if cancel.is_cancelled() {
@@ -164,11 +205,6 @@ impl Engine {
         let library = loaded.library.clone();
         let mut candidate = Engine::from_snapshot(Arc::new(loaded.snapshot.clone()));
         candidate.watch_files = self.watch_files;
-        #[cfg(test)]
-        candidate
-            .resources
-            .fail_watches
-            .store(self.resources.fail_watches.load(Ordering::Relaxed), Ordering::Relaxed);
         candidate.install_file(path, loaded, Some(observation), cancel)?;
         operation.current(|_, _| cancel.check())?;
         Ok(PreparedFileLoad {
@@ -176,7 +212,7 @@ impl Engine {
             operation,
             staged,
             cancel: cancel.clone(),
-            hit,
+            hit: false,
         })
     }
     /// Caller holds its source-selection guard, before entering the existing
@@ -201,12 +237,14 @@ impl Engine {
                 if let Some(staged) = load.staged {
                     let _ = store.publish(staged);
                 }
-                if let Some(previous) = state.accepted.as_ref().filter(|id| **id != library) {
+                if let Some(previous) = state.configured.as_ref().filter(|id| **id != library) {
                     let _ = store.remove_library(previous);
                 }
             }
-            state.accepted = Some(library);
-            state.current = None;
+            state.configured = Some(library);
+            if !load.hit {
+                state.current = None;
+            }
             Ok(())
         })
     }

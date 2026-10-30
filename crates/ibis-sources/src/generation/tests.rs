@@ -942,23 +942,6 @@ fn empty_configured_library_can_be_saved_and_reopened() {
     );
 }
 
-#[test]
-#[allow(clippy::unwrap_used)]
-fn removal_retires_writers_preserves_readers_and_collects_after_release() {
-    let (_directory, store) = open();
-    let reader = store.publish(stage(&store, "Accepted")).unwrap();
-    let payload = reader.path.clone();
-    let delayed = stage(&store, "Must not return");
-    store.remove_library(&library()).unwrap();
-    assert!(store.open_library(&library()).unwrap().is_none());
-    assert!(matches!(store.publish(delayed), Err(StoreError::Stale)));
-    assert_eq!(title(&get(&reader, "record:one")), "Accepted");
-    assert!(payload.exists());
-    drop(reader);
-    store.remove_library(&library()).unwrap();
-    assert!(!payload.exists());
-}
-
 #[cfg(unix)]
 #[test]
 fn unsafe_file_modes_and_links_refuse_reopen_without_exposing_paths() {

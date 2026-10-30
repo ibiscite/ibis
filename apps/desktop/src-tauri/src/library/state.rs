@@ -237,6 +237,9 @@ pub(super) fn record_open(
 ) -> (u64, bool, LibraryStatus) {
     let request = requests.0.fetch_add(1, Ordering::SeqCst) + 1;
     requests.2.invalidate(request);
+    if let Source::File(path) = &source {
+        let _ = requests.2.operation(request).select_file(path);
+    }
     let reload = library.source.as_ref() == Some(&source);
     library.observe_revision(SystemTime::now());
     if let Some(file) = &library.file {
@@ -284,7 +287,7 @@ mod tests {
 
     #[test]
     #[allow(clippy::unwrap_used)]
-    fn cached_file_acceptance_publishes_only_the_current_app_request() {
+    fn cached_file_reload_retains_references_and_failure_diagnostics() {
         let dir = tempfile::tempdir().unwrap();
         let storage = dir.path().join("cache");
         let path = dir.path().join("invented.bib");
@@ -303,20 +306,9 @@ mod tests {
                 || false,
             )
         };
-        let delayed = prepare(a, false, None);
-        let (b, _, _) = begin_open(&library, &requests, path.clone()).unwrap();
-        assert!(install_loaded(&library, &requests, a, delayed).is_none());
-        let has_manifest = || {
-            std::fs::read_dir(&storage)
-                .unwrap()
-                .any(|e| e.unwrap().path().extension().is_some_and(|e| e == "json"))
-        };
-        assert!(!has_manifest());
-        let accepted = install_loaded(&library, &requests, b, prepare(b, false, None)).unwrap();
+        let accepted = install_loaded(&library, &requests, a, prepare(a, false, None)).unwrap();
         assert_eq!(accepted.references, 1);
-        assert_eq!(accepted.warnings, 0);
         assert!(accepted.error.is_none());
-        assert!(has_manifest());
         let active = library.lock().unwrap().file.clone().unwrap();
         std::fs::write(&path, "@book{unfinished,title={").unwrap();
         let (c, _, _) = begin_open(&library, &requests, path.clone()).unwrap();

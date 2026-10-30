@@ -16,7 +16,7 @@ pub(super) struct Owners {
     zotero: Mutex<ZoteroSource>,
     zotero_port: Option<u16>,
     #[cfg(test)]
-    pub(super) fail_watches: std::sync::atomic::AtomicBool,
+    fail_watches: std::sync::atomic::AtomicBool,
 }
 impl Owners {
     pub(super) fn on_port(port: u16) -> Self {
@@ -272,12 +272,12 @@ impl Engine {
             }
             None => None,
         };
-        let reload = reload || !self.state()?.zotero_ready;
+        let reload = reload || self.state()?.readiness.get(&None).is_some_and(|entry| !entry.1);
         let mut guard_error = None;
         let mut began = false;
         let mut on_full = || {
             if !began {
-                if let Err(failure) = self.shared.begin_zotero_read() {
+                if let Err(failure) = self.shared.begin_read(None) {
                     guard_error = Some(failure);
                     return Err(LiveError::Cancelled);
                 }
@@ -333,7 +333,7 @@ impl Engine {
                 // already began, and the copy guard does not tell them apart.
                 if code != ErrorCode::Cancelled {
                     if !began {
-                        self.shared.begin_zotero_read()?;
+                        self.shared.begin_read(None)?;
                     }
                     // A new choice that fails says nothing about the old one.
                     if chosen.is_none() {
@@ -403,13 +403,7 @@ mod tests {
         let engine = Engine::new().unwrap();
         engine.resources.fail_watches.store(true, Ordering::Relaxed);
         let cancel = Cancellation::default();
-        let cache = super::super::FileCacheSession::open(&dir.path().join("cache"));
-        cache.invalidate(1);
-        let prepared = engine
-            .prepare_file_load(&path, false, cache.operation(1), &cancel)
-            .unwrap();
-        let engine = prepared.engine().unwrap();
-        engine.accept_file_load(prepared).unwrap();
+        engine.open_file(&path, &cancel).unwrap();
         let result = engine
             .dispatch(Method::Search, &json!({"query":"widgets"}), &cancel)
             .unwrap();

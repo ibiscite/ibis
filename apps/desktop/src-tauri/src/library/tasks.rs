@@ -339,6 +339,7 @@ fn open_one(app: AppHandle, open: OpenRequest) -> impl std::future::Future<Outpu
             .flatten()
     });
     let force = reload && !matches!(intent, OpenIntent::Refresh);
+    let refresh_source = source.clone();
     let cache = app.state::<LoadRequests>().2.operation(request);
     async move {
         let chosen = source.setting();
@@ -370,6 +371,7 @@ fn open_one(app: AppHandle, open: OpenRequest) -> impl std::future::Future<Outpu
             load_ok: u8::from(loaded.is_ok()),
             ..LoadPhases::default()
         };
+        let cached = matches!(&loaded, Ok(Loaded::New(new)) if new.pending_file.as_ref().is_some_and(ibis_engine::PreparedFileLoad::cache_hit));
         #[cfg(debug_assertions)]
         let installing = std::time::Instant::now();
         let installed = intent.install(&app.state(), &app.state(), request, loaded);
@@ -421,6 +423,9 @@ fn open_one(app: AppHandle, open: OpenRequest) -> impl std::future::Future<Outpu
             }
             // Reattach even after a failed choice so the retained source keeps updating.
             watch_current(&app);
+            if cached {
+                run_open(&app, request, refresh_source, true, OpenIntent::Refresh);
+            }
         }
         #[cfg(debug_assertions)]
         {
