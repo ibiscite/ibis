@@ -44,6 +44,40 @@ function contentHeight(node: HTMLElement) {
 export function useFitWindow(main: RefObject<HTMLElement | null>, compact: boolean, fit: FitPicker | undefined, onShown?: (handler: () => void) => Promise<() => void>) {
   const sent = useRef<string | null>(null);
   const request = useRef(0);
+  const preservePlace = useRef(() => {});
+  useLayoutEffect(() => {
+    const node = main.current;
+    if (!node) return;
+    let current = true;
+    let anchor: { row: HTMLElement; owner: HTMLElement; top: number; noticeHeight: number } | null = null;
+    const update = () => {
+      if (!current || main.current !== node || !node.isConnected) return;
+      const area = node.querySelector<HTMLElement>(".results-area");
+      // The first row anchors the whole unchanged list, even when offscreen.
+      // Keep its DOM identity: an earlier search cannot move replacement rows.
+      const row = area?.querySelector<HTMLElement>('[role="option"]');
+      const owner = [area, area?.parentElement, node].find((part) => part && /auto|scroll/.test(getComputedStyle(part).overflowY));
+      if (!row || !owner) { anchor = null; return; }
+      const noticeHeight = node.querySelector(".notices")?.getBoundingClientRect().height ?? 0;
+      if (anchor?.row === row && (anchor.owner !== owner || anchor.noticeHeight !== noticeHeight)) {
+        // CSS can clamp the former owner's offset as soon as notices change.
+        // Transfer the visual position before paint, independently of selection.
+        if (anchor.owner !== owner) anchor.owner.scrollTop = 0;
+        owner.scrollTop += row.getBoundingClientRect().top - anchor.top;
+      }
+      anchor = { row, owner, top: row.getBoundingClientRect().top, noticeHeight };
+    };
+    const scrolled = (event: Event) => {
+      if (event.target === anchor?.owner) update();
+    };
+    preservePlace.current = update;
+    node.addEventListener("scroll", scrolled, true);
+    return () => {
+      current = false;
+      node.removeEventListener("scroll", scrolled, true);
+      if (preservePlace.current === update) preservePlace.current = () => {};
+    };
+  }, [main]);
   const measure = useRef(() => {});
   measure.current = () => {
     const node = main.current;
@@ -59,6 +93,7 @@ export function useFitWindow(main: RefObject<HTMLElement | null>, compact: boole
       const control = node.querySelector<HTMLElement>(".search-bar input")?.offsetHeight ?? 0;
       node.toggleAttribute("data-scroll-page", edges + control > node.clientHeight);
     }
+    preservePlace.current();
     if (!fit) return;
     const dialog = document.querySelector("[role='dialog']:not(.menu-popover)") !== null;
     const height = compact && !dialog ? contentHeight(node) : null;

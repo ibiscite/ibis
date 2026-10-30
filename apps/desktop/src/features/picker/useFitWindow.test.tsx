@@ -1,4 +1,4 @@
-import { act, cleanup, render } from "@testing-library/react";
+import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { StrictMode, useRef } from "react";
 import { afterEach, expect, test, vi } from "vitest";
 import { useFitWindow, type FitPicker } from "./useFitWindow";
@@ -6,11 +6,68 @@ import { useFitWindow, type FitPicker } from "./useFitWindow";
 const originalFonts = Object.getOwnPropertyDescriptor(document, "fonts");
 afterEach(() => { if (originalFonts) Object.defineProperty(document, "fonts", originalFonts); else Reflect.deleteProperty(document, "fonts"); document.documentElement.removeAttribute("data-text-size"); cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); document.querySelectorAll(".menu-popover, [role=dialog]").forEach((node) => node.remove()); });
 
-function Picker({ compact, fit, rows, spare = 0, onShown, scroll = false, notice }: { notice?: string; scroll?: boolean; compact: boolean; fit: FitPicker; rows: number; spare?: number; onShown?: (handler: () => void) => Promise<() => void> }) {
+function Picker({ compact, fit, rows, spare = 0, onShown, scroll = false, notice, generation = 0 }: { notice?: string; scroll?: boolean; compact: boolean; fit: FitPicker; rows: number; spare?: number; onShown?: (handler: () => void) => Promise<() => void>; generation?: number }) {
   const main = useRef<HTMLElement>(null);
   useFitWindow(main, compact, fit, onShown);
-  return <main ref={main}><header className="search-bar"><input id="search" aria-label="Synthetic search" /></header><div className="picker-content" style={{ containerType: "size", overflowY: scroll ? "auto" : undefined }}>{notice && <div className="notices"><p role="alert">{notice}</p></div>}<div className="results-area">{Array.from({ length: rows }, (_, i) => <p key={i}>row</p>)}</div></div><footer style={{ marginBlockStart: `${spare}px` }} /></main>;
+  return <main ref={main}><header className="search-bar"><input id="search" aria-label="Synthetic search" /></header><div className="picker-content" style={{ containerType: "size", overflowY: scroll ? "auto" : undefined }}>{notice && <div className="notices"><p role="alert">{notice}</p></div>}<div className="results-area">{Array.from({ length: rows }, (_, i) => <p role="option" id={`result-${i}`} key={`${generation}/${i}`}>row</p>)}</div></div><footer style={{ marginBlockStart: `${spare}px` }} /></main>;
 }
+
+test.each([false, true])("notice appear and clear preserve only the current browsing anchor (replacement=%s)", (replacement) => {
+  // Model the reported 720x480 layout: row 8 is at y=189 after scrolling 380px,
+  // and would jump to y=611 when a 42px notice disables results scrolling.
+  // The browser probe establishes the real CSS geometry and pointer selection.
+  const scrollTop = Object.getOwnPropertyDescriptor(Element.prototype, "scrollTop")!;
+  const hasNotice = (node: HTMLElement) => !!node.closest("main")?.querySelector(".notices");
+  const noticeHeight = (node: HTMLElement) => hasNotice(node) ? node.closest("main")!.querySelector(".notices")!.textContent?.startsWith("Expanded") ? 84 : 42 : 0;
+  const computed = window.getComputedStyle;
+  vi.spyOn(window, "getComputedStyle").mockImplementation((node) => {
+    if (!node.matches(".results-area, .picker-content")) return computed(node);
+    const style = document.createElement("div").style;
+    style.overflowY = node.matches(".results-area") && hasNotice(node as HTMLElement) ? "visible" : "auto";
+    return style;
+  });
+  vi.spyOn(HTMLElement.prototype, "scrollTop", "get").mockImplementation(function (this: HTMLElement) {
+    // Browsers clamp an offset when its element stops being a scrollport.
+    if (this.matches(".results-area") && hasNotice(this) || this.matches(".picker-content") && !hasNotice(this)) scrollTop.set!.call(this, 0);
+    return scrollTop.get!.call(this);
+  });
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+    if (this.matches(".notices")) return new DOMRect(0, 53, 720, noticeHeight(this));
+    if (this.matches("[role=option]")) {
+      const main = this.closest("main")!;
+      const results = main.querySelector<HTMLElement>(".results-area")!;
+      const middle = main.querySelector<HTMLElement>(".picker-content")!;
+      return new DOMRect(8, 89 + Number(this.id.slice(7)) * 60 + noticeHeight(this) - results.scrollTop - middle.scrollTop, 704, 58);
+    }
+    return new DOMRect();
+  });
+  const fit = vi.fn<FitPicker>(() => Promise.resolve());
+  const view = render(<Picker compact={false} fit={fit} rows={14} scroll />);
+  const results = view.container.querySelector<HTMLElement>(".results-area")!;
+  const middle = view.container.querySelector<HTMLElement>(".picker-content")!;
+  const row = view.container.querySelector<HTMLElement>("#result-8")!;
+  results.scrollTop = 380; fireEvent.scroll(results);
+  expect(row.getBoundingClientRect().top).toBe(189);
+  view.rerender(<Picker compact={false} fit={fit} rows={14} scroll notice="Synthetic update progress" generation={replacement ? 1 : 0} />);
+  if (replacement) {
+    expect(row.isConnected).toBe(false);
+    expect(view.container.querySelector("#result-0")!.getBoundingClientRect().top).toBe(131);
+    expect([results.scrollTop, middle.scrollTop]).toEqual([0, 0]);
+    return;
+  }
+  expect(row.getBoundingClientRect().top).toBe(189);
+  expect([results.scrollTop, middle.scrollTop]).toEqual([0, 422]);
+  view.rerender(<Picker compact={false} fit={fit} rows={14} scroll notice="Expanded synthetic update progress" />);
+  expect(row.getBoundingClientRect().top).toBe(189);
+  expect([results.scrollTop, middle.scrollTop]).toEqual([0, 464]);
+  // Browse elsewhere while the notice is present; clearing must retain that
+  // newer place rather than restoring the pre-notice offset.
+  middle.scrollTop += 60; fireEvent.scroll(middle);
+  expect(row.getBoundingClientRect().top).toBe(129);
+  view.rerender(<Picker compact={false} fit={fit} rows={14} scroll />);
+  expect(row.getBoundingClientRect().top).toBe(129);
+  expect([results.scrollTop, middle.scrollTop]).toEqual([440, 0]);
+});
 
 test.each([32, 64].flatMap((noticeHeight) => ["startup", "appearing"].map((when) => ({ noticeHeight, when }))))("a $when compact notice contributes its full $noticeHeight px beyond a size-contained middle", ({ noticeHeight, when }) => {
   // Model the reported layout boundary: size containment hides a shrinking
@@ -239,7 +296,13 @@ test.each([88, 120])("growing from %spx leaves fallback without needing a conten
   act(() => { if (observed.has(main)) notify(); });
   expect(main.hasAttribute("data-scroll-page")).toBe(false);
   expect(fit).toHaveBeenCalledTimes(1);
+  const retired = notify;
   view.unmount();
-  act(() => notify()); // a queued callback after disconnect has no owner.
-  expect(fit).toHaveBeenCalledTimes(1);
+  const reopened = render(<Picker compact={false} fit={fit} rows={14} />);
+  const results = reopened.container.querySelector<HTMLElement>(".results-area")!;
+  results.scrollTop = 380; fireEvent.scroll(results);
+  const calls = fit.mock.calls.length;
+  act(() => retired()); // a queued callback after disconnect has no owner.
+  expect(results.scrollTop).toBe(380);
+  expect(fit).toHaveBeenCalledTimes(calls);
 });

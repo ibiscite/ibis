@@ -11,11 +11,12 @@ try {
   const cases = [720, 360].flatMap((width) => [false, true].flatMap((larger) => ["light", "dark"].map((colorScheme) => ({ width, larger, colorScheme, scale: 1 }))));
   cases.push(...[false, true].map((larger) => ({ width: 720, larger, colorScheme: "light", scale: 1, startupNotice: true })));
   cases.push(...[false, true].map((larger) => ({ width: 720, larger, colorScheme: "light", scale: 1, largeNotice: true })));
+  cases.push(...[false, true].flatMap((larger) => ["progress", "settings"].map((pointerNotice) => ({ width: 720, larger, colorScheme: "light", scale: 1, pointerNotice }))));
   cases.push({ width: 360, larger: false, colorScheme: "light", scale: 3 });
-  for (const { width, larger, colorScheme, scale, startupNotice = false, largeNotice = false } of cases) {
-    const small = width === 360, limit = largeNotice ? 480 : small ? 320 : 800;
+  for (const { width, larger, colorScheme, scale, startupNotice = false, largeNotice = false, pointerNotice = null } of cases) {
+    const small = width === 360, limit = largeNotice || pointerNotice ? 480 : small ? 320 : 800;
     const page = await browser.newPage({ viewport: { width, height: small ? 320 : 109 }, colorScheme });
-    const caseLabel = `${width}/${larger ? "larger" : "normal"}/${colorScheme}/scale-${scale}/${startupNotice ? "startup-notice" : largeNotice ? "large-notice" : "default"}`;
+    const caseLabel = `${width}/${larger ? "larger" : "normal"}/${colorScheme}/scale-${scale}/${startupNotice ? "startup-notice" : largeNotice ? "large-notice" : pointerNotice ? `pointer-${pointerNotice}` : "default"}`;
     const waitForCheck = (check, predicate, arg) => waitForLayout(page, caseLabel, check, predicate, arg);
     const errors = [], fits = [];
     page.setDefaultTimeout(5000);
@@ -24,17 +25,29 @@ try {
       fits.push(height);
       await page.setViewportSize({ width, height: Math.min(limit, Math.max(page.viewportSize().height, height ?? 480)) });
     });
-    await page.addInitScript(({ larger, scale, startupNotice, largeNotice }) => {
+    await page.addInitScript(({ larger, scale, startupNotice, largeNotice, pointerNotice }) => {
       if (scale !== 1) document.addEventListener("DOMContentLoaded", () => { document.documentElement.style.fontSize = `${scale * 100}%`; });
       Object.defineProperty(navigator, "platform", { value: "MacIntel" });
       let callback = 0;
+      const callbacks = new Map(), listeners = new Map();
       const preferences = { citation_style: null, density: "comfortable", larger_text: larger, show_paste_preview: true, search_mark: true, paste: false };
+      const library = { state: "loaded", revision: "1", has_snapshot: true, zotero: false, name: "invented.bib", snapshot_name: "invented.bib", references: 14, warnings: 0, error: null, problem: null, note: null, settings_notice: startupNotice ? "Synthetic startup settings notice." : null };
+      window.fixtureNotice = (shown) => {
+        const event = pointerNotice === "progress" ? "update:progress" : "library:changed";
+        const ids = [...listeners].filter(([, name]) => name === event).map(([id]) => id);
+        if (!ids.length) throw Error("Synthetic notice listener unavailable");
+        const payload = pointerNotice === "progress"
+          ? { attempt: 1, revision: 1, received: 25, total: 100, phase: "downloading" }
+          : { ...library, settings_notice: shown ? "Synthetic asynchronous settings notice." : null };
+        for (const id of ids) callbacks.get(id)?.({ event, id, payload });
+      };
+      window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: (_event, id) => listeners.delete(id) };
       window.__TAURI_INTERNALS__ = {
         metadata: { currentWindow: { label: "main" }, currentWebview: { label: "main" } },
-        transformCallback: () => ++callback, unregisterCallback: () => {},
+        transformCallback: (handler) => { const id = ++callback; callbacks.set(id, handler); return id; }, unregisterCallback: (id) => callbacks.delete(id),
         invoke: async (command, args) => {
           if (command === "fit_picker") return window.fixtureFit(args.height);
-          if (command === "plugin:event|listen") return ++callback;
+          if (command === "plugin:event|listen") { listeners.set(args.handler, args.event); return args.handler; }
           if (command === "plugin:event|unlisten") return;
           if (command === "plugin:window|is_visible") return true;
           if (command === "native_appearance") return "opaque";
@@ -43,7 +56,7 @@ try {
           if (command === "copy_format") return "pandoc";
           if (command === "picker_destination") return { app: null, app_id: null, automatic: null, remembered: null, unreadable: false, can_paste: false, output_question: null };
           if (command === "shortcut_status") return { shortcut: "CommandOrControl+Shift+Y", registered: true, error: null };
-          if (command === "library_status") return { state: "loaded", revision: "1", has_snapshot: true, zotero: false, name: "invented.bib", snapshot_name: "invented.bib", references: 14, warnings: 0, error: null, problem: null, note: null, settings_notice: startupNotice ? "Synthetic startup settings notice." : null };
+          if (command === "library_status") return library;
           if (command === "search" && args.query.text === "refuse") throw Error("synthetic search refusal");
           if (command === "search") return { revision: "1", results: args.query.text ? Array.from({ length: 14 }, (_, i) => ({ revision: "1", id: { library: "invented.bib", key: `synthetic${i}` }, cite: `synthetic-cite-${i}`, source: "invented.bib", key: `synthetic${i}`, title: `Invented reference ${i}`, authors: "Aster", first_author: "Aster", author_count: 1, year: 2026, container: null, item_type: "article-journal", partial: false, matched: ["title"] })) : [] };
           if (command === "preview_file_citation") return { ticket: "synthetic-ticket", content_hash: "synthetic-hash", text: "[@synthetic0]", html: null, warnings: [] };
@@ -54,7 +67,7 @@ try {
           throw Error(`Unexpected synthetic IPC: ${command}`);
         },
       };
-    }, { larger, scale, startupNotice, largeNotice });
+    }, { larger, scale, startupNotice, largeNotice, pointerNotice });
     await page.goto(base.href);
     await page.getByText("Type to find a reference", { exact: true }).waitFor();
     await waitForCheck("text-size-applied", (larger) => document.documentElement.dataset.textSize === (larger ? "larger" : "normal"), larger);
@@ -128,6 +141,56 @@ try {
     await search.fill("invented");
     await page.getByRole("option").last().waitFor();
     assert.deepEqual(await scan(), [], `${width}/${larger}/${colorScheme}: results`);
+    if (pointerNotice) {
+      await waitForCheck("pointer-frame-480", () => innerHeight === 480);
+      await page.getByRole("region", { name: "Preview" }).waitFor();
+      await page.locator(".results-area").evaluate((node) => { node.scrollTop = 380; });
+      await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      const row = page.locator("#result-8");
+      await row.getByText("Invented reference 8", { exact: true }).click();
+      await search.evaluate((node) => { node.focus({ preventScroll: true }); node.setSelectionRange(2, 5); });
+      await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      assert.equal(await page.locator(".results-area").evaluate((node) => node.scrollTop), 380, "pointer browsing retains offset 380");
+      let top = await row.evaluate((node) => node.getBoundingClientRect().top);
+      if (!larger) assert.equal(top, 189, "reported reference 8 begins at y=189");
+      const anchored = (top) => {
+        const row = document.querySelector("#result-8"), rect = row.getBoundingClientRect();
+        const port = row.closest(".picker-content").getBoundingClientRect();
+        const search = document.querySelector("#search");
+        return row.getAttribute("aria-selected") === "true" && Math.abs(rect.top - top) <= 1 && rect.top >= port.top - 1 && rect.bottom <= port.bottom + 1 &&
+          document.activeElement === search && search.selectionStart === 2 && search.selectionEnd === 5;
+      };
+      const owners = () => page.evaluate(() => [document.querySelector("main"), document.querySelector(".picker-content"), document.querySelector(".results-area")]
+        .flatMap((node, index) => /auto|scroll/.test(getComputedStyle(node).overflowY) && node.clientHeight > 0 && node.scrollHeight > node.clientHeight + 1 ? [index] : []));
+      await page.evaluate(() => window.fixtureNotice(true));
+      await waitForCheck("pointer-notice-appeared", () => document.querySelector(".notices").childElementCount > 0);
+      await waitForCheck("pointer-notice-appear-anchor", anchored, top);
+      assert.deepEqual(await owners(), [1], "notice uses only the middle scroller");
+      assert.deepEqual(await scan(), [], "pointer notice keeps search/footer whole and one scroller");
+      // Progress has no clear event. Settings notices exercise the real appear /
+      // clear path, including browsing to a newer place before they clear.
+      if (pointerNotice === "settings") {
+        await page.locator(".picker-content").evaluate((node) => { node.scrollTop += 60; });
+        top -= 60;
+        await waitForCheck("pointer-notice-browsed", anchored, top);
+        await page.evaluate(() => window.fixtureNotice(false));
+        await waitForCheck("pointer-notice-cleared", () => document.querySelector(".notices").childElementCount === 0);
+        await waitForCheck("pointer-notice-clear-anchor", anchored, top);
+        assert.deepEqual(await owners(), [2], "clearing restores only the results scroller");
+        assert.deepEqual(await scan(), [], "cleared notice keeps search/footer whole and one scroller");
+      }
+      for (let i = 0; i < 5; i++) await search.press("ArrowDown");
+      await waitForCheck("pointer-keyboard-takeover-reveals", () => {
+        const row = document.querySelector("#result-13"), rect = row.getBoundingClientRect();
+        const area = row.closest(".results-area"), middle = area.parentElement;
+        const owner = /auto|scroll/.test(getComputedStyle(area).overflowY) ? area : middle;
+        const port = owner.getBoundingClientRect();
+        return row.getAttribute("aria-selected") === "true" && rect.top >= port.top - 1 && rect.bottom <= port.bottom + 1;
+      });
+      assert.deepEqual(await scan(), [], "keyboard reveal keeps search/footer whole and one scroller");
+      assert.deepEqual(errors, [], "no page errors");
+      await page.close(); profiles += 1; continue;
+    }
     if (largeNotice) {
       await page.getByRole("region", { name: "Preview" }).getByText("[@synthetic0]", { exact: true }).waitFor();
       await search.press("Enter");
@@ -210,5 +273,5 @@ try {
     assert.deepEqual(errors, [], "no page errors");
     await page.close(); profiles += 1;
   }
-  console.log(`Picker layout: ${profiles} browser profiles passed (normal/small, normal/Larger, light/dark, compact/large notices + extreme-text More).`);
+  console.log(`Picker layout: ${profiles} browser profiles passed (normal/small, normal/Larger, light/dark, compact/large/pointer notices + extreme-text More).`);
 } finally { await browser.close(); }

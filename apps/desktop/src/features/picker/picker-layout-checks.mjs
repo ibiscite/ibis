@@ -24,6 +24,7 @@ export function layoutGeometry() {
     root: box(document.documentElement), body: box(document.body),
     main: box(document.querySelector("main")), search: box(document.querySelector(".search-bar")),
     middle: box(document.querySelector(".picker-content")), results: box(document.querySelector(".results-area")),
+    active: box(document.querySelector('[role="option"][aria-selected="true"]')),
     shelf: box(document.querySelector(".shelf")), footer: box(document.querySelector("footer")),
     notices: [...document.querySelectorAll(".notices")].map(box),
     alerts: [...document.querySelectorAll('.notices [role="alert"]')].map(box),

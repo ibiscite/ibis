@@ -183,6 +183,9 @@ scroll offsets, focus and selection. Notices keep their natural height and
 scroll with the middle region, including when they appear while compact.
 With a nonempty notice, results use the middle scroller at every height, so an
 arbitrarily tall notice and the shelf cannot leave a second results viewport.
+When a notice appears, changes height or clears, preserve the viewport's place
+in unchanged results, including while browsing with the pointer. Transfer that
+anchor when the scroll owner changes; keyboard navigation still reveals its row.
 
 **Nothing clipped, one scroller** (maintainer, 2026-10-30). The window's height
 is measured from its content after fonts and the text size apply, so no state
