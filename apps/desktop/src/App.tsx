@@ -106,6 +106,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const style = styleOf(format);
   const { library, libraryVersion, refreshSnapshot } = useLibraryStatus(api, report, cancelCopy);
   const [choosingLibrary, setChoosingLibrary] = useState(false);
+  const chooserRequest = useRef<object | null>(null);
   const busy = library?.state === "loading" || library?.state === "reloading";
   const blocked = library?.state === "error" && !library.has_snapshot;
   const libraryChoices = choosingLibrary || library?.state === "none" || blocked || library?.state === "loaded" && library.has_snapshot && library.references === 0;
@@ -152,11 +153,6 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
         output: destination.copyToken() } });
   });
   // Setup failures belong to the setup screen; they go when a library is chosen.
-  const choosingFrom = useRef(library);
-  useEffect(() => {
-    if (choosingLibrary && library !== choosingFrom.current) setChoosingLibrary(false);
-    choosingFrom.current = library;
-  }, [library, choosingLibrary]);
   const setupDone = library !== undefined && library?.state !== "none";
   useEffect(() => {
     if (setupDone) setFailures(({ findSources: _found, openFound: _opened, ...rest }) => rest);
@@ -398,14 +394,36 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   };
   const sourceItem = !libraryChoices ? current[active]?.id ?? (selected.size === 1 ? [...selected.values()][0]?.id : null) ?? null : null;
   const sourceOpen = useSourceOpen(api, library, state.visibility, sourceItem, sourceItem === null, refreshSnapshot);
-  const chooseSources = () => { cancelCopy(); closeMenu(false); setKeysOpen(false); setChoosingLibrary(true); };
+  const chooseSources = () => {
+    cancelCopy(); closeMenu(false); setKeysOpen(false);
+    chooserRequest.current = {};
+    setChoosingLibrary(true);
+  };
+  const dismissChooser = () => {
+    chooserRequest.current = null;
+    setChoosingLibrary(false);
+    input.current?.focus();
+  };
+  const performSourceChoice: typeof perform = (operation, action) => {
+    if (operation === "findSources") return perform(operation, action);
+    const request = {};
+    const visibility = session.getSnapshot().visibility;
+    chooserRequest.current = request;
+    return perform(operation, async () => {
+      await action();
+      // Only this chooser's latest accepted selection can dismiss it. Watcher
+      // statuses and completions from a dismissed presentation have no claim.
+      if (chooserRequest.current === request && input.current?.isConnected &&
+        visibility === session.getSnapshot().visibility && session.getSnapshot().hiddenAt === null) dismissChooser();
+    });
+  };
   const chooseFile = () => runFromMenu("choose", chooseLibrary);
   const missingSelected = sourceItem !== null && library?.stale && library.problem === "missing" && !library.zotero;
   const openSource = (appOnly = false, reveal = altHeld) => {
     cancelCopy();
     closeMenu(false);
     setKeysOpen(false);
-    if (formatButtonRef.current?.getAttribute("aria-expanded") === "true") formatButtonRef.current.click();
+    input.current?.focus();
     if (missingSelected && !appOnly) { chooseFile(); return; }
     if (sourceOpen.failure && !sourceOpen.failure.changed && !appOnly) {
       if (sourceOpen.failure.kind === "file") chooseFile();
@@ -453,7 +471,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     cancelCopy();
     // Escape steps back one layer, retaining the chosen references.
     if (menuOpen) closeMenu(true);
-    else if (choosingLibrary) setChoosingLibrary(false);
+    else if (choosingLibrary) dismissChooser();
     else if (query) {
       send({ type: "escape-search" });
       input.current?.focus();
@@ -463,7 +481,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     toggle(highlighted);
     input.current?.focus();
   };
-  const emptyState = choosingLibrary ? <LibrarySetup api={setupApi} perform={perform} autoFocus /> : (library !== undefined && (libraryChoices || busy || results.length === 0 && !error && (!library?.error || blocked)) ? (
+  const emptyState = choosingLibrary ? <LibrarySetup api={setupApi} perform={performSourceChoice} autoFocus /> : (library !== undefined && (libraryChoices || busy || results.length === 0 && !error && (!library?.error || blocked)) ? (
     <EmptyState library={library} query={query} narrowed={narrowed}
       source={api.openLibrarySource ? sourceChoice : undefined}
       onChooseLibrary={() => void perform("choose", chooseLibrary)}
@@ -489,6 +507,10 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       onKeyDownCapture={(e) => {
         pointer.resetHover();
         if (composing(e)) return;
+        // Format owns its modal exit and restores Search before running a
+        // command. Let its capture handler consume these keys first.
+        if (e.target instanceof Element && (e.target.closest(".toolbar-menu-popover") ||
+          formatButtonRef.current?.contains(e.target) && formatButtonRef.current.getAttribute("aria-expanded") === "true")) return;
         if (isChooseSourceShortcut(e)) {
           e.preventDefault(); e.stopPropagation();
           if (!e.repeat) chooseSources();
@@ -598,6 +620,8 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
               else if (command === "pin") togglePin();
               else if (command === "preview") togglePastePreview();
               else if (command === "quit") void perform("quit", quitAfterSaving);
+              else if (command === "chooseSource") chooseSources();
+              else if (command === "source" || command === "revealSource") openSource(false, command === "revealSource");
             },
           };
         }}
