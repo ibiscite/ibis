@@ -218,6 +218,18 @@ if ($pickerWindows.Count -eq 1) {
   foreach ($target in $targets) {
     $handle = $target.window.Current.NativeWindowHandle
     if ($handle -ne 0 -and [IbisUpdateFocus]::GetForegroundWindow().ToInt64() -eq [long]$handle) {
+      if ($target.kind -ceq 'picker') {
+        # A foreground host with an empty WebView is not an interactive picker.
+        # Observe only this unique owned main; never click/focus to repair it.
+        $items = @($picker.FindAll($S::Descendants, [System.Windows.Automation.Condition]::TrueCondition))
+        if ($items.Count -gt 4000) { throw 'Picker element bound exceeded' }
+        $search = @($items | Where-Object {
+          $_.Current.Name -ceq 'Search references' -and
+          $_.Current.ControlType.ProgrammaticName -cin @('ControlType.ComboBox', 'ControlType.Edit')
+        })
+        if ($search.Count -gt 1) { throw 'Picker Search is ambiguous' }
+        if ($search.Count -ne 1 -or !$search[0].Current.IsEnabled -or $search[0].Current.IsOffscreen -or !$search[0].Current.HasKeyboardFocus) { continue }
+      }
       $owner = $target.window.Current.ProcessId; $focus = $target.kind
     }
   }
@@ -1215,6 +1227,7 @@ if ($Scenario.StartsWith('picker-')) {
   'picker-no-handle' {$window.NativeWindowHandle=0}
   'picker-empty' {[IbisUpdateContract.AutomationElement]::RootElement.Nodes=@()}
   'picker-offer' {
+   $window.Nodes=@() # A real immediate modal can hide Search from UIA.
    $offer=[IbisUpdateContract.Node]::new(); $offer.Name='An update is available'; $offer.NativeWindowHandle=102
    [IbisUpdateContract.AutomationElement]::RootElement.Nodes=@($window,$offer)
    [IbisUpdateContract.Focus]::Handle=102
