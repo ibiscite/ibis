@@ -440,18 +440,21 @@ test("any pointer movement over an item highlights it, also after arrow keys", a
   expect(menu.isConnected).toBe(true);
 });
 
-test("rows keep equal insets beside a scroll bar, labels never wrap, and metrics come from tokens", () => {
+test("rows keep equal insets, fit intrinsic labels to the viewport and wrap at its limit", () => {
   const popover = menuCss.slice(menuCss.indexOf(".menu-popover {\n  box-sizing"));
   expect(popover.slice(0, popover.indexOf("}"))).toMatch(/padding-block: var\(--menu-padding\);/);
   expect(popover.slice(0, popover.indexOf("}"))).not.toMatch(/[^-]padding: /);
   expect(menuCss).toMatch(/\.menu-popover \[role="menu"\] \{[^}]*padding-inline: var\(--menu-padding\);/);
   expect(menuCss).toMatch(/\.menu-popover > :not\(\[role="menu"\]\) \{ margin-inline: var\(--menu-padding\); \}/);
-  expect(menuCss).toMatch(/\.menu-label \{[^}]*overflow: hidden; text-overflow: ellipsis; white-space: nowrap; \}/);
+  expect(menuCss).toMatch(/\.menu-popover \{[^}]*width: max-content;/);
+  expect(menuCss).toMatch(/\.menu-label \{[^}]*white-space: normal;/);
+  expect(menuCss).not.toMatch(/\.menu-label \{[^}]*text-overflow: ellipsis/);
   expect(menuCss).toMatch(/--menu-label-start: calc\(var\(--menu-item-pad\) \+ var\(--menu-check-width\) \+ var\(--menu-item-gap\)\);/);
   const toolbar = readFileSync(new FileURL("./ToolbarMenu.css", import.meta.url), "utf8");
   // The filter text and section headings start where the labels do.
   expect(toolbar.match(/padding-inline: var\(--menu-label-start\) var\(--menu-item-pad\)/g)).toHaveLength(2);
-  expect(toolbar).toMatch(/\.toolbar-menu-popover \{ width: 16\.5rem; \}/);
+  expect(toolbar).toMatch(/\.toolbar-menu-popover \{[^}]*width: max-content;[^}]*min-width: min\(16\.5rem,/);
+  expect(toolbar).toMatch(/\.toolbar-menu-sample \{[^}]*min-width: 0;[^}]*white-space: normal;/);
   expect(`${menuCss}${toolbar}`.match(/\b(10|18|34)px\b/g)).toEqual(["10px", "18px"]);
 });
 
@@ -459,4 +462,65 @@ test("the shortcuts table breaks actions only between words and keeps keys on on
   expect(styles).not.toMatch(/\.keys-scroll[^{]*\{[^}]*overflow-wrap: anywhere/);
   expect(styles).toMatch(/\.keys-scroll th, \.keys-scroll td \{[^}]*overflow-wrap: break-word;/);
   expect(styles).toMatch(/\.keys-scroll td \{[^}]*text-align: end; white-space: nowrap; \}/);
+});
+
+
+test("whole-row fitting preserves variable-height wrapped action rows", () => {
+  const frame = document.createElement("div"), list = document.createElement("div");
+  frame.append(list); document.body.append(frame);
+  const geometry = [[0, 28], [28, 56.4], [84.4, 56]];
+  for (const [top, height] of geometry) {
+    const row = document.createElement("div"); row.setAttribute("role", "menuitem"); list.append(row);
+    vi.spyOn(row, "getBoundingClientRect").mockReturnValue(new DOMRect(0, top, 200, height));
+  }
+  Object.defineProperty(list, "clientHeight", { value: 90 });
+  Object.defineProperty(list, "scrollHeight", { value: 140 });
+  const hook = renderHook(() => useWholeRows({ current: list }));
+  act(() => hook.result.current(frame));
+  expect(list.style.maxHeight).toBe("85px");
+  act(() => hook.result.current(null)); frame.remove();
+});
+
+
+test("focus, row resize and reopening update safe fades without an old opening or manual scroll taking over", async () => {
+  const callbacks: (() => void)[] = [];
+  vi.stubGlobal("ResizeObserver", class { constructor(callback: () => void) { callbacks.push(callback); } observe() {} disconnect() {} });
+  const frame = document.createElement("div"), list = document.createElement("div"), row = document.createElement("div");
+  row.setAttribute("role", "menuitem"); row.dataset.focused = "true";
+  list.append(row); frame.append(list); document.body.append(frame);
+  Object.defineProperty(list, "clientHeight", { value: 100 });
+  Object.defineProperty(list, "scrollHeight", { value: 300 });
+  vi.spyOn(list, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 200, 100));
+  let top = 60;
+  vi.spyOn(row, "getBoundingClientRect").mockImplementation(() => new DOMRect(0, top, 200, 40));
+  const ref = { current: list }, hook = renderHook(() => useWholeRows(ref));
+  act(() => hook.result.current(frame));
+  expect(list.style.getPropertyValue("--scroll-fade-below-space")).toBe("0px");
+  top = 0;
+  await act(async () => { row.setAttribute("data-focused", ""); });
+  expect(list.style.getPropertyValue("--scroll-fade-above-space")).toBe("0px");
+  list.scrollTop = 70; fireEvent.scroll(list);
+  expect(list.scrollTop).toBe(70);
+  const oldResize = callbacks[0]!;
+  const next = document.createElement("div"); document.body.append(next);
+  act(() => { hook.result.current(null); next.append(list); hook.result.current(next); });
+  top = 30;
+  act(() => oldResize());
+  expect(list.style.getPropertyValue("--scroll-fade-above-space")).toBe("0px");
+  act(() => callbacks.at(-1)!());
+  expect(list.style.getPropertyValue("--scroll-fade-above-space")).toBe("30px");
+  expect(list.scrollTop).toBe(70);
+  act(() => hook.result.current(null)); frame.remove(); next.remove();
+});
+
+
+test("a short viewport does not sacrifice the output list to footer clearance", () => {
+  vi.stubGlobal("innerHeight", 320);
+  const footer = document.createElement("footer"), trigger = document.createElement("button");
+  footer.dataset.menuFloor = ""; document.body.append(trigger, footer);
+  vi.spyOn(footer, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 132, 360, 188));
+  const triggerRef = { current: trigger };
+  const hook = renderHook(() => useMenuBoundary(true, undefined, triggerRef));
+  expect(hook.result.current.boundaryElement?.style.bottom).toBe("0px");
+  hook.unmount(); footer.remove(); trigger.remove();
 });

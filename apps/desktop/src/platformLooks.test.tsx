@@ -855,3 +855,34 @@ test("spacing audits resolve aliases and calc without exempting arbitrary one-pi
   }
   expect(opticalSpacing({ file: "fixture", selector: ".other", scope: "root", values: [] }, "padding", "1px")).toBeFalsy();
 });
+
+
+test("the generated search logo grows optically without moving query or result columns", () => {
+  expect(tokens).toMatch(/--search-mark-size: var\(--tile-size\);/);
+  expect(tokens).toMatch(/--search-mark-outset: calc\(\(var\(--search-mark-size\) - var\(--search-icon-width\)\) \/ 2\);/);
+  const logo = rules(styles, ".search-bar > svg.search-mark");
+  expect(logo).toMatch(/width: var\(--search-mark-size\);/);
+  expect(logo).toMatch(/margin-inline: calc\(var\(--lead\) - var\(--search-mark-outset\)\) calc\(var\(--lead-gap\) - var\(--search-gap\) - var\(--search-mark-outset\)\)/);
+  expect(logo).toMatch(/color: var\(--citation\)/);
+  expect(tokens).toMatch(/--citation: light-dark\(#c23a1c, #ff7a5c\)/i);
+  for (const scale of [1, 1.15, 2, 2.3]) {
+    const g = geometry(), icon = g["--icon-glyph-size"]! * scale, mark = g["--tile-size"]! * scale;
+    const lead = (g["--row-pad"]! + (g["--tile-size"]! - g["--icon-glyph-size"]!) / 2) * scale;
+    const gap = ((g["--tile-size"]! - g["--icon-glyph-size"]!) / 2 + g["--row-gap"]!) * scale;
+    const outset = (mark - icon) / 2;
+    expect(lead - outset + mark + gap - outset).toBeCloseTo(lead + icon + gap);
+    expect(mark).toBeLessThanOrEqual(g["--field-h"]! * scale);
+  }
+});
+
+
+test("short windows reserve header/footer controls and compact decoration without shrinking readable text", () => {
+  const short = styles.slice(styles.indexOf("@media (max-height: 400px)"));
+  expect(short).toContain("height: var(--picker-height); min-height: 0; overflow: auto");
+  expect(short).toContain("main > .picker-content");
+  expect(short).toContain("min-height: var(--control-min-size)");
+  expect(short).not.toMatch(/font-size:|zoom:|transform:/);
+  const compactTokens = tokens.slice(tokens.indexOf("@media (max-height: 400px)"));
+  expect(compactTokens).toContain("--empty-icon-size: var(--icon-glyph-size)");
+  expect(compactTokens).toContain("--empty-keys-display: none");
+});

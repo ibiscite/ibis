@@ -166,8 +166,14 @@ trailing and vertically centred.
 **Size follows content** [C10]. Every state is as tall as its content: search
 and footer alone, one hint line, Recently added, or a list of choices. Results
 grow the window in 220 ms with the top edge fixed, up to the remembered height;
-it never shrinks while open and starts compact next time. Reduced motion: no
-animation. Width: 720 px by default, 360 px minimum.
+it never shrinks while open and starts compact next time. More and output
+menus stay inside the current picker frame with bounded scrolling; only
+content changes and explicit dialogs request more room. Reduced motion: no
+animation. Width: 720 px by default, 360 px minimum. At heights up to 400px,
+only decorative empty-state spacing, illustration and key hints compact;
+readable text, Larger text and actionable targets retain their sizes. Header
+and footer stay outside the middle scroller. At extreme text growth the outer
+window remains scrollable rather than clipping controls.
 
 **Compact start** [C11]. With an empty query the picker shows its hint (the
 search icon, "Type to find a reference", what to search by, and the Copy and
@@ -269,12 +275,15 @@ labels. The format menu's filter field aligns with the item
 labels; menus with more than seven items get one. Format opens 4 px below its
 pop-up, aligned to its trailing edge; header menus open `bottom end`, footer
 menus `top end`, flipping then shifting within 8 px of the window; a menu opened
-above the footer ends at least 8 px above it. A menu that scrolls ends on a
+above the footer ends at least 8 px above it in normal windows; at heights
+up to 400px it can use the full viewport so the filter cannot starve its list. A menu that scrolls ends on a
 whole row and fades at an edge with more rows beyond it; its side inset sits on the scrolling list, so a scroll bar never
 takes it. Any pointer movement over an item highlights it, also after arrow
-keys. Labels never wrap: the menu widens, then the label ends with an
-ellipsis. A shortcut in
-a menu is plain trailing text in native modifier order (⇧⌘C), never a key cap.
+keys. Menus size to their full action labels up to the viewport boundary; at
+narrow widths and Larger or 200% text, labels wrap instead of disappearing
+behind an ellipsis, while checks, whole shortcuts and pointer targets remain
+intact. A shortcut in a menu is plain trailing text in native modifier order
+(⇧⌘C), never a key cap.
 Check each menu side by side with a real one on every platform.
 
 **Buttons.** Primary: `--accent` with `--text-on-accent`, one per view.
@@ -303,19 +312,27 @@ GNOME) and Fluent's thin bar on Windows, from `--scrollbar-width` and
 `--scrollbar-color`. The side inset sits inside the bar, so a classic bar never
 takes it. An edge with more content beyond it fades over `--scroll-fade-size`,
 so a list that ends on a whole row still shows there is more; the results list
-needs no fade, as a cut row already shows it.
+needs no fade, as a cut row already shows it. A fade yields to the whole
+active row (label, fill and shortcut), shrinking to the free space beyond it;
+true scroll ends have no fade. Keyboard/hover focus and reflow update this
+without taking scroll ownership from React Aria.
 
 **Tables** (the keyboard shortcuts list, Settings lists). Columns size to their
 content and never break a word; a table that does not fit scrolls or drops a
 column, it does not hyphenate.
 
-**Labels and long strings.** Labels on actions and menu items never wrap,
-also at Larger text: the layout widens, or the label truncates with a tooltip.
+**Labels and long strings.** Menu action labels remain readable by widening
+then wrapping at the viewport limit. Outside menus, action labels stay on one
+line: the layout widens, or the label truncates with a tooltip.
 Settings rows and segmented choices follow the wrapping rule in **Settings**.
 Data truncates with a tooltip; file names shorten in the middle and
 keep their extension. Budget +35 % for German and Greek. RTL uses logical
 properties (tile, year and chevron mirror; key caps keep platform order);
 mixed-direction strings are isolated and citation keys stay LTR.
+
+**Search logo.** The generated bird keeps its canonical scarlet colour and
+uses the tile-sized box (its artwork fills about three quarters); symmetric
+optical outsets preserve query/result alignment and the compact header.
 
 **Icons.** Ibis's own drawings on every platform: 20 px grid, 1.5 px rounded
 stroke (1.6 px macOS, 1 px Windows, 16 px symbolic `ibis-…-symbolic` on GNOME);

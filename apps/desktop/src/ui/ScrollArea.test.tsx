@@ -3,12 +3,12 @@ import { useRef } from "react";
 import { afterEach, expect, test, vi } from "vitest";
 import { KeysDialog } from "../features/picker/KeysDialog";
 import { Notices } from "../features/picker/Notices";
-import { useScrollEdges } from "./ScrollArea";
+import { markScrollEdges, useScrollEdges } from "./ScrollArea";
 const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
 const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
 const css = (file: string) => readFileSync(new FileURL(file, import.meta.url), "utf8");
 
-afterEach(cleanup);
+afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 function Box() {
   const ref = useRef<HTMLDivElement>(null);
@@ -61,7 +61,7 @@ test("the results, menus, Shortcuts and notices share the scroll area, and no sc
 
 test("the fade is valid at either edge and every system shares the native scrollbar", () => {
   const area = css("./ScrollArea.css");
-  expect(area).toMatch(/\.scroll-area \{ overflow: auto; scrollbar-width: var\(--scrollbar-width\); scrollbar-color: var\(--scrollbar-color\); \}/);
+  expect(area).toMatch(/\.scroll-area \{ overflow: auto; scrollbar-width: var\(--scrollbar-width\); scrollbar-color: var\(--scrollbar-color\);/);
   for (const edge of ["\\[data-more-above\\]", "\\[data-more-below\\]", "\\[data-more-above\\]\\[data-more-below\\]"]) {
     const rule = area.match(new RegExp(`\\.scroll-area${edge} \\{([^}]*)\\}`))?.[1] ?? "";
     expect(rule).toMatch(/-webkit-mask-image: linear-gradient\(/);
@@ -71,4 +71,33 @@ test("the fade is valid at either edge and every system shares the native scroll
   const tokens = css("../tokens.css");
   expect(tokens).toMatch(/--scrollbar-width: auto; --scrollbar-color: auto; --scroll-fade-size: var\(--space-4\);/);
   expect(tokens).not.toMatch(/--scrollbar-width: thin/);
+});
+
+
+test("fades yield to the entire active row without changing the user's scroll position", () => {
+  const box = document.createElement("div"), row = document.createElement("div");
+  box.append(row); document.body.append(box); row.dataset.focused = "true";
+  Object.defineProperty(box, "clientHeight", { value: 100 });
+  Object.defineProperty(box, "scrollHeight", { value: 300 });
+  vi.spyOn(box, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 200, 100));
+  let top = 60, height = 40;
+  vi.spyOn(row, "getBoundingClientRect").mockImplementation(() => new DOMRect(0, top, 200, height));
+  box.scrollTop = 50;
+  markScrollEdges(box);
+  expect(box.style.getPropertyValue("--scroll-fade-below-space")).toBe("0px");
+  expect(box.style.getPropertyValue("--scroll-fade-above-space")).toBe("60px");
+  top = 0; height = 28; markScrollEdges(box);
+  expect(box.style.getPropertyValue("--scroll-fade-above-space")).toBe("0px");
+  expect(box.style.getPropertyValue("--scroll-fade-below-space")).toBe("72px");
+  top = -10; height = 120; markScrollEdges(box);
+  expect(box.style.getPropertyValue("--scroll-fade-above-space")).toBe("0px");
+  expect(box.style.getPropertyValue("--scroll-fade-below-space")).toBe("0px");
+  expect(box.scrollTop).toBe(50);
+  row.removeAttribute("data-focused"); markScrollEdges(box);
+  expect(box.style.getPropertyValue("--scroll-fade-below-space")).toBe("");
+  box.scrollTop = 0; markScrollEdges(box);
+  expect(box.hasAttribute("data-more-above")).toBe(false);
+  box.scrollTop = 200; markScrollEdges(box);
+  expect(box.hasAttribute("data-more-below")).toBe(false);
+  box.remove();
 });

@@ -143,6 +143,8 @@
      inset + lead + icon + lead-gap = inset + row-pad + tile + row-gap. */
   --search-gap: var(--space-1);
   --search-icon-width: var(--icon-glyph-size);
+  --search-mark-size: var(--tile-size);
+  --search-mark-outset: calc((var(--search-mark-size) - var(--search-icon-width)) / 2);
   --lead: calc(var(--row-pad) + (var(--tile-size) - var(--icon-glyph-size)) / 2);
   --lead-gap: calc((var(--tile-size) - var(--icon-glyph-size)) / 2 + var(--row-gap));
   --search-min-width: 12rem;
@@ -168,6 +170,10 @@
   --metadata-gap: var(--space-1);
   --meta-part-max-width: 30%; /* library badge and Compact first author */
   --empty-padding: 2rem 1rem;
+  --empty-template-padding: calc(3 * var(--space-4) - var(--inset));
+  --empty-icon-size: calc(3 * var(--space-4));
+  --empty-icon-gap: var(--space-3);
+  --empty-keys-display: flex;
   --notice-padding: 0 calc(var(--inset) + var(--row-pad));
   --notice-margin: var(--space-3) 0;
   --progress-track: var(--fill-control); --progress-fill: var(--accent-text); --progress-border: var(--clear); --progress-border-width: 0px;
@@ -347,6 +353,12 @@
   :root { --surface-grouped: Canvas; --surface-grouped-card: Canvas; --surface-sidebar: Canvas; }
 }
 @media (forced-colors: active) { :root { --fill-on-color-hover: var(--clear); --fill-on-color-pressed: var(--clear); } }
+
+/* Short windows compact decoration, never text or actionable targets. */
+@media (max-height: 400px) {
+  :root { --empty-padding: var(--space-2) var(--space-4); --empty-template-padding: var(--space-2);
+    --empty-icon-size: var(--icon-glyph-size); --empty-icon-gap: var(--space-1); --empty-keys-display: none; }
+}
 
 /* BEGIN generated website palette: brand/build.py */
 :root {

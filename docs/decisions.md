@@ -310,3 +310,10 @@ for the maintainer's one-click approval. A plan or answer the maintainer
 approves is recorded the same day in these files, the issues and the tracking
 issue; nothing lives only in a chat, a tool's memory or a local file
 (maintainer, 2026-10-28).
+
+
+2026-10-29: The maintainer authorizes incremental merging and shipping of
+completed fixes, including the picker fade, logo and compact-window work,
+after required review, CI and budget gates pass; stable deployment keeps its
+one-click approval. The website demo is critical and stays functionally
+aligned with the released app; Settings #776 remains future polish.

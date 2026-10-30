@@ -11,8 +11,7 @@ test("website headline and planned features come from the canonical sources", as
   assert.ok(html.includes(`<h1>${brand.words.tagline}</h1>`), "site lead matches README and brand");
   assert.match(html, /formatted citations in APA, Chicago, Harvard and MLA, and IEEE reference entries/);
   assert.doesNotMatch(html, /\{\{\w+\}\}/);
-  const version = JSON.parse(await readFile(new URL("../.release-please-manifest.json", import.meta.url), "utf8"))["."];
-  assert.ok(html.includes(`Early preview · <a href="https://github.com/ibiscite/ibis/releases/tag/v${version}">${version}</a>`), "the sidebar names the released version");
+  assert.ok(html.includes('Early preview · <a href="https://github.com/ibiscite/ibis/releases">Release notes</a>'), "public release link must work while the next version is an unpublished draft");
   const design = await readFile(new URL("../docs/design.md", import.meta.url), "utf8");
   const highlights = [...html.matchAll(/<li><strong>([^<]+)<\/strong>/g)];
   assert.equal(highlights.length, 3);

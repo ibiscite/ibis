@@ -81,7 +81,7 @@ test("resizing into a tablet or phone restores all platform downloads", () => {
 test("desktop sidebar remains clickable over every scrolled section", { skip: !process.env.IBIS_WEBSITE_URL }, async () => {
   const url = new URL(process.env.IBIS_WEBSITE_URL);
   assert.equal(url.protocol, "http:"); assert.equal(url.hostname, "127.0.0.1");
-  const { chromium } = await import("playwright");
+  const { chromium } = await import(process.env.IBIS_PLAYWRIGHT_MODULE || "playwright");
   const browser = await chromium.launch({ executablePath: process.env.IBIS_CHROMIUM_EXECUTABLE });
   try {
     for (const width of [1180, 1440]) for (const colorScheme of ["light", "dark"]) {
@@ -111,5 +111,41 @@ test("desktop sidebar remains clickable over every scrolled section", { skip: !p
       await page.waitForFunction(() => location.hash === "#how");
       await page.close();
     }
+  } finally { await browser.close(); }
+});
+
+test("public demo supports keyboard copy/paste and remains visible in narrow and static layouts", { skip: !process.env.IBIS_WEBSITE_URL }, async () => {
+  const url = new URL(process.env.IBIS_WEBSITE_URL);
+  assert.equal(url.protocol, "http:"); assert.equal(url.hostname, "127.0.0.1");
+  const { chromium } = await import(process.env.IBIS_PLAYWRIGHT_MODULE || "playwright");
+  const browser = await chromium.launch({ executablePath: process.env.IBIS_CHROMIUM_EXECUTABLE });
+  try {
+    for (const width of [390, 1180]) for (const colorScheme of ["light", "dark"]) {
+      const page = await browser.newPage({ viewport: { width, height: 850 }, colorScheme, reducedMotion: "reduce" });
+      const errors = []; page.on("pageerror", error => errors.push(error.message));
+      await page.goto(url.href + "#how");
+      const input = page.getByRole("combobox", { name: "Search the made-up library" });
+      await input.waitFor(); await input.fill("rivera");
+      assert.equal(await page.locator('.picker [role="option"]:visible').count(), 1);
+      const format = page.getByRole("combobox", { name: "Copy format" });
+      await format.focus(); await format.selectOption("cite");
+      assert.equal(await format.evaluate(node => node === document.activeElement), true, "changing the native format select preserves its keyboard focus");
+      await format.selectOption("pandoc");
+      await input.press("Enter");
+      const paste = page.getByRole("button", { name: "Paste the copied citation into the sentence" });
+      await paste.click();
+      assert.match(await page.locator("[data-result]").innerText(), /\[@rivera2025\]/);
+      await input.fill("no invented reference matches this");
+      assert.equal(await page.locator(".picker-foot button").last().isDisabled(), true);
+      assert.match(await page.locator("[data-result]").innerText(), /\[@rivera2025\]/);
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true, "page never overflows sideways");
+      assert.deepEqual(errors, []);
+      await page.close();
+    }
+    const staticPage = await browser.newPage({ javaScriptEnabled: false, viewport: { width: 390, height: 850 } });
+    await staticPage.goto(url.href + "#how");
+    assert.equal(await staticPage.locator("[data-picker] .picker-panel").isVisible(), true);
+    assert.match(await staticPage.locator("[data-picker]").innerText(), /Copy as Pandoc/);
+    await staticPage.close();
   } finally { await browser.close(); }
 });

@@ -36,7 +36,7 @@ export function useMenuBoundary(open: boolean, returnRef?: RefObject<HTMLElement
       const bottom = Math.max(0, returnRef?.current?.getBoundingClientRect().bottom ?? 0);
       node.style.top = `${bottom}px`;
       // Never above the top edge, even in a window too short for both.
-      if (above) node.style.bottom = `${Math.max(0, window.innerHeight - Math.max(bottom, above.getBoundingClientRect().top))}px`;
+      if (above) node.style.bottom = window.innerHeight <= 400 ? "0px" : `${Math.max(0, window.innerHeight - Math.max(bottom, above.getBoundingClientRect().top))}px`;
       setClearBottom(bottom);
     };
     update();
@@ -76,10 +76,12 @@ export function useWholeRows(list: RefObject<HTMLElement | null>) {
     stop.current?.();
     stop.current = null;
     if (!frame) return;
-    // The list is a scroll area; its edges with rows beyond them fade.
-    const edges = () => { if (list.current) markScrollEdges(list.current); };
+    let current = true;
+    const ownedList = () => current && list.current && frame.contains(list.current) ? list.current : null;
+    // React Aria owns scrolling; fade updates never move the user's viewport.
+    const edges = () => { const node = ownedList(); if (node) markScrollEdges(node); };
     const fit = () => {
-      const node = list.current;
+      const node = ownedList();
       if (!node) return;
       node.style.maxHeight = "";
       const height = node.clientHeight;
@@ -90,20 +92,24 @@ export function useWholeRows(list: RefObject<HTMLElement | null>) {
           const bottom = row.getBoundingClientRect().bottom - top;
           if (bottom <= height && bottom > end) end = bottom;
         }
-        if (end > 0) node.style.maxHeight = `${Math.floor(end)}px`;
+        if (end > 0) node.style.maxHeight = `${Math.ceil(end)}px`;
       }
+      for (const row of node.querySelectorAll('[role^="menuitem"]')) geometry?.observe(row);
       edges();
     };
+    const geometry = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(fit);
+    geometry?.observe(frame);
+    if (list.current) geometry?.observe(list.current);
     // The frame's own style (React Aria's max-height) and the rows, never the
     // list's style or edges, which fit() itself sets.
     const resized = new MutationObserver(fit);
-    const rows = new MutationObserver(fit);
+    const rows = new MutationObserver((records) => { if (records.some((record) => record.type !== "attributes")) fit(); else edges(); });
     resized.observe(frame, { attributes: true, attributeFilter: ["style"] });
-    rows.observe(frame, { childList: true, subtree: true });
+    rows.observe(frame, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["data-focused"] });
     // Scrolling does not bubble; the capture sees the list's, also once it is remounted.
     frame.addEventListener("scroll", edges, true);
     fit();
-    stop.current = () => { resized.disconnect(); rows.disconnect(); frame.removeEventListener("scroll", edges, true); };
+    stop.current = () => { current = false; geometry?.disconnect(); resized.disconnect(); rows.disconnect(); frame.removeEventListener("scroll", edges, true); };
   }, [list]);
 }
 

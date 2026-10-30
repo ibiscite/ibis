@@ -461,7 +461,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
 
   // Size follows content (C10): only results, a citation and overlays need the results height.
   const main = useRef<HTMLElement>(null);
-  const compact = !keysOpen && !menuOpen && (!showCitations || selected.size === 0 && !(query && results.length > 0));
+  const compact = !keysOpen && (!showCitations || selected.size === 0 && !(query && results.length > 0));
   useFitWindow(main, compact, fitPicker, fitPicker ? onPickerShown : undefined);
 
   return (
@@ -575,7 +575,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
           };
         }}
       />
-      <div className="picker-content">
+      <div className="picker-content scroll-area">
       <Notices densityAnnouncement={preferences.densityAnnouncement} updateProgress={updateProgress} library={library} failures={failures} startAtLogin={startAtLogin}
         error={error} copyError={copyError} copied={copied} missing={list?.missing}
         showCopiedText={displayedOutput == null || typeof displayedOutput === "string" || displayedOutput.text !== copied?.text}
