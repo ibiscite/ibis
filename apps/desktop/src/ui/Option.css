@@ -1,0 +1,14 @@
+/* Row heights are minima. Wrapping grows the block without spending its
+   padding or widening the picker (Wrapped text keeps its padding, C4). */
+.ui-option[role="option"], .choice-row[role="option"] {
+  min-inline-size: 0; max-inline-size: 100%; padding-block: calc(var(--space-2) - var(--border-width));
+}
+.ui-option .result-title {
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
+}
+.ui-option .result-meta { flex-wrap: nowrap; }
+.ui-option .result-byline, .ui-option .result-library { min-width: 0; }
+.ui-option .result-authors { flex: 0 10 auto; }
+.ui-option .result-type { flex: 0 1 auto; min-width: 0; }
+.ui-option .result-year { align-self: flex-start; margin-block-start: calc((var(--type-title-line) - var(--type-meta-line)) / 2); }
+:root[data-density="compact"] .ui-option .result-year { align-self: center; margin-block-start: 0; }

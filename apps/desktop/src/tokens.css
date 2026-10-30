@@ -60,7 +60,7 @@
   --status-dot-size: .5rem;
   /* Scroll areas (ui/ScrollArea.css): the system's own bars, and the depth of
      the fade at an edge with more content beyond it. */
-  --scrollbar-width: auto; --scrollbar-color: auto; --scroll-fade-size: var(--space-4);
+  --scrollbar-width: auto; --scrollbar-color: auto; --scroll-fade-size: 14px;
   --menu-min-width: 14rem;
   --r-dialog: var(--r-win);
   --scrim: rgb(0 0 0 / 30%);
@@ -143,7 +143,8 @@
      inset + lead + icon + lead-gap = inset + row-pad + tile + row-gap. */
   --search-gap: var(--space-1);
   --search-icon-width: var(--icon-glyph-size);
-  --search-mark-size: var(--tile-size);
+  /* 24 px bird, centred over the 20 px glyph with a 2 px outset. */
+  --search-mark-size: 1.5rem;
   --search-mark-outset: calc((var(--search-mark-size) - var(--search-icon-width)) / 2);
   --lead: calc(var(--row-pad) + (var(--tile-size) - var(--icon-glyph-size)) / 2);
   --lead-gap: calc((var(--tile-size) - var(--icon-glyph-size)) / 2 + var(--row-gap));
@@ -315,7 +316,8 @@
    Keep aliases one-way, from semantic roles to their inputs. */
 :root {
   --surface-window: var(--surface); --surface-raised: var(--surface);
-  --surface-overlay: var(--surface); --surface-field: var(--field-background);
+  --surface-overlay: var(--surface); --surface-sheet: var(--surface); --overlay-backdrop-filter: none;
+  --surface-field: var(--field-background);
   --fill-on-color-hover: rgb(0 0 0 / 8%); --fill-on-color-pressed: rgb(0 0 0 / 16%);
   --fill-primary-hover: color-mix(in srgb, var(--accent) 92%, var(--text));
   --fill-primary-pressed: color-mix(in srgb, var(--accent) 84%, var(--text));
@@ -341,6 +343,19 @@
   --settings-group-width: 40rem;
   --settings-row-height: 3rem;
   --settings-described-row-height: 3.5rem;
+}
+/* Readable overlays [C13]: only a successfully applied panel material can
+   supply glass. Preferences, unsupported blur and native failure stay solid.
+   These roles never alter the window's own material or its 75% veil. */
+@supports (color: light-dark(white, black)) and ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  @media (prefers-contrast: no-preference) and (forced-colors: none) and (prefers-reduced-transparency: no-preference) {
+    :root[data-platform="macos"][data-native-appearance="vibrancy"]:not(.notice-window),
+    :root[data-platform="macos"][data-native-appearance="liquid-glass"]:not(.notice-window) {
+      --surface-overlay: color-mix(in srgb, var(--surface) 92%, transparent);
+      --surface-sheet: color-mix(in srgb, var(--surface) 96%, transparent);
+      --overlay-backdrop-filter: blur(30px) saturate(180%);
+    }
+  }
 }
 @supports (color: light-dark(white, black)) {
   :root {

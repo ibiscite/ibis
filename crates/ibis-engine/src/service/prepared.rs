@@ -2,13 +2,13 @@
 use super::{Cancellation, Engine, Shared, error};
 use ibis_core::contract::*;
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     sync::{Arc, Weak},
 };
 
 pub struct PreparedCitation {
     origin: Weak<Shared>,
-    zotero_generation: Option<u64>,
+    generations: BTreeMap<Option<LibraryId>, u64>,
     snapshot: Arc<Snapshot>,
     request: CitationRequest,
     result: CitationResult,
@@ -96,30 +96,32 @@ impl Engine {
     ) -> Result<PreparedCitation, EngineError> {
         cancel.check()?;
         let state = self.state()?;
-        let uses_zotero = request
+        let generations = request
             .items
             .iter()
-            .any(|pick| ibis_sources::zotero_source::is_zotero(&pick.item.library));
-        if uses_zotero && !state.zotero_ready {
-            return Err(error(ErrorCode::SourceUnavailable));
-        }
-        let zotero_generation = uses_zotero.then_some(state.zotero_generation);
+            .map(|pick| {
+                let source = super::read_source(&pick.item.library);
+                let (generation, ready) = state.readiness.get(&source).copied().unwrap_or((0, true));
+                if !ready {
+                    return Err(error(ErrorCode::SourceUnavailable));
+                }
+                Ok((source, generation))
+            })
+            .collect::<Result<_, _>>()?;
         let snapshot = state.index.snapshot().clone();
         let result = self.cite_snapshot(&snapshot, request, cancel)?;
-        if let Some(generation) = zotero_generation {
-            let latest = self.state()?;
-            if !latest.zotero_ready || latest.zotero_generation != generation {
-                return Err(error(ErrorCode::SourceUnavailable));
-            }
-        }
-        Ok(PreparedCitation {
-            zotero_generation,
+        let prepared = PreparedCitation {
+            generations,
             origin: Arc::downgrade(&self.shared),
             snapshot,
             request: request.clone(),
             result,
             sample: false,
-        })
+        };
+        prepared
+            .validate_source(self.state()?.as_ref())
+            .map_err(|_| error(ErrorCode::SourceUnavailable))?;
+        Ok(prepared)
     }
     /// Caller holds its native source/intent guard; callback must not reenter the
     /// engine. Validation/rendering never hold the publication barrier.
@@ -164,11 +166,12 @@ impl Engine {
 }
 impl PreparedCitation {
     fn validate_source(&self, state: &super::State) -> Result<(), CitationCommitError> {
-        if let Some(generation) = self.zotero_generation {
-            if !state.zotero_ready {
+        for (source, expected) in &self.generations {
+            let (generation, ready) = state.readiness.get(source).copied().unwrap_or((0, true));
+            if !ready {
                 return Err(error(ErrorCode::SourceUnavailable).into());
             }
-            if state.zotero_generation != generation {
+            if generation != *expected {
                 return Err(CitationCommitError::PreviewChanged);
             }
         }

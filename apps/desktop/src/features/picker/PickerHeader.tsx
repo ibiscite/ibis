@@ -1,5 +1,5 @@
 import type React from "react";
-import { mark as ibisMark } from "../../brand";
+import { IbisMark } from "../../ui/IbisMark";
 import { Button, ToggleButton } from "../../ui/Button";
 import { composing } from "./shortcuts";
 import { pickerText } from "../../messages";
@@ -43,7 +43,7 @@ export function PickerHeader({ inputRef, query, onQueryChange, onSearchKeyDown, 
 }) {
   return (
     <header className="search-bar" data-tauri-drag-region title={pickerText.dragSearchBar}>
-      {mark ? <svg className="search-mark" aria-hidden="true" viewBox={ibisMark.viewBox} fill="currentColor" dangerouslySetInnerHTML={{ __html: ibisMark.body }} />
+      {mark ? <IbisMark className="search-mark" size="search" />
         : <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor">
           <circle cx="10.5" cy="10.5" r="6.5" />
           <path d="m16 16 5 5" />
