@@ -148,7 +148,7 @@ test("public demo supports keyboard copy/paste and remains visible in narrow and
       await input.press("Shift+Enter");
       await input.fill("lantern");
       assert.equal(await page.locator('.picker [role="option"]:visible').count(), 1);
-      assert.match(await page.locator('.picker [role="option"]:visible').innerText(), /Sample · Lantern gardens/);
+      assert.equal(await page.locator('.picker [role="option"]:visible .ref strong').innerText(), "Lantern gardens and the rhythm of imaginary cities");
       const format = page.getByRole("combobox", { name: "Copy format" });
       await format.focus(); await format.selectOption("cite");
       assert.equal(await format.evaluate(node => node === document.activeElement), true, "changing the native format select preserves its keyboard focus");
@@ -160,10 +160,10 @@ test("public demo supports keyboard copy/paste and remains visible in narrow and
       assert.equal((await panel.boundingBox()).height, frame.height, "copy feedback cannot resize the picker");
       const paste = page.getByRole("button", { name: "Paste the copied citation into the sentence" });
       await paste.press(`${modifier}+V`);
-      assert.match(await page.locator("[data-result]").innerText(), /\[@vale2024lanterns\] \[Sample\]/);
+      assert.equal(await page.locator("[data-result] code").innerText(), "[@vale2024lanterns]");
       await input.fill("no invented reference matches this");
       assert.equal(await page.locator(".picker-foot button").last().isDisabled(), true);
-      assert.match(await page.locator("[data-result]").innerText(), /\[@vale2024lanterns\] \[Sample\]/);
+      assert.equal(await page.locator("[data-result] code").innerText(), "[@vale2024lanterns]");
       assert.match(await page.locator(".picker-empty").innerText(), /No matching references/);
       assert.equal(await input.getAttribute("aria-activedescendant"), null);
       assert.equal(await input.getAttribute("aria-expanded"), "false");
@@ -192,7 +192,7 @@ test("public demo supports keyboard copy/paste and remains visible in narrow and
       await staticPage.goto(url.href + "#how");
       assert.equal(await staticPage.locator("[data-picker] .picker-panel").isVisible(), true);
       assert.match(await staticPage.locator("[data-picker]").innerText(), /Copy as Pandoc/);
-      assert.match(await staticPage.locator("[data-picker]").innerText(), /\[@vale2024lanterns\] \[Sample\]/);
+      assert.equal(await staticPage.locator(".picker-shelf code").innerText(), "[@vale2024lanterns]");
       assert.equal(await staticPage.locator(".copied-notice").isVisible(), true);
       assert.equal(await staticPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
       assert.equal(await staticPage.locator("[data-download-privacy]:visible").count(), 4);
@@ -351,7 +351,8 @@ test("Copied notice fits at most two citation lines and keeps the frozen receipt
       if (javaScriptEnabled) await combineDemoReferences(page);
       const receipt = page.locator(".picker-receipt"), citation = page.locator(".copied-notice code");
       const original = await citation.getAttribute("title");
-      assert.match(original, /\[Sample\]/);
+      assert.equal(original, javaScriptEnabled ? "\\parencites{vale2024lanterns}{fen2023clouds}{reed2025maps}" : "[@vale2024lanterns]");
+      const summaries = javaScriptEnabled ? [original, "\\parencites{vale2024lanterns}{fen2023clouds} +1 more", "\\parencite{vale2024lanterns} +2 more", "+3 more"] : [original, "+1 more"];
       if (javaScriptEnabled) {
         await page.getByRole("combobox", { name: "Search the made-up library" }).fill("not in this invented library");
         await page.getByRole("combobox", { name: "Copy format" }).selectOption("typst");
@@ -370,7 +371,7 @@ test("Copied notice fits at most two citation lines and keeps the frozen receipt
         assert.equal(measured.overflow, false);
         assert.equal(measured.full, original, "later searches and formats never rewrite a copied receipt");
         assert.equal(await citation.getAttribute("aria-description"), original, "the full copied value remains accessible when visually summarised");
-        assert.match(measured.text, /\[Sample\]/);
+        assert.ok(summaries.includes(measured.text), "the visible receipt preserves the copied references and counts omissions");
         if (width === 240 && fontSize === 32) assert.match(measured.text, javaScriptEnabled ? /\+3 more/ : /\+1 more/, "the count includes every omitted reference");
         if (width === 560 && fontSize === 16) assert.doesNotMatch(measured.text, /\+\d+ more/, "widening restores the full receipt when it fits");
       }

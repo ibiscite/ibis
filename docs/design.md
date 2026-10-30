@@ -991,9 +991,12 @@ breathe. Rows kept from before stay instead, with only the footer saying
   from `apps/desktop/src-tauri/resources/samples.csljson`: lantern gardens,
   clockwork clouds and the invented sea. The practice task is identical on
   every surface: Search for “lantern”, choose the lantern gardens reference, then press Enter. A
-  **Use your own library** choice row returns to setup.
+  **Use your own library** choice row returns to setup. Per maintainer feedback
+  on 2026-10-30, website demo rows show plain titles and citations have no sample
+  suffix, including static copy, accessible labels and receipts. Desktop sample
+  behaviour stays unchanged.
   Choosing a real source replaces samples; sample selections and copy notices
-  leave with them. Samples never join a real library. Every sample citation
+  leave with them. Samples never join a real library. Every desktop sample citation
   ends with the visible text ` [Sample]`, including key outputs and every
   clipboard representation (plain text, HTML and RTF). The marker belongs to
   the prepared citation and its content hash: previews and receipts show the

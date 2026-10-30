@@ -88,7 +88,7 @@ export function setupDemo() {
   const rows = new Map(references.map((ref, index) => {
     const tile = el("button", { type: "button", className: "tile", tabIndex: -1 }, icon(ref.kind));
     const row = el("div", { id: `demo-ref-${index}`, className: "pick", title: `${ref.title} · ${ref.authors} · ${ref.year} · ${ref.key}` }, tile,
-      el("span", { className: "ref" }, el("strong", { textContent: `Sample · ${ref.title}` }), el("span", { className: "sub", textContent: `${ref.authors} · ${ref.where}` })), el("span", { className: "ref-year", textContent: String(ref.year) }));
+      el("span", { className: "ref" }, el("strong", { textContent: ref.title }), el("span", { className: "sub", textContent: `${ref.authors} · ${ref.where}` })), el("span", { className: "ref-year", textContent: String(ref.year) }));
     row.setAttribute("role", "option");
     // Match the app's pointer ownership: a click leaves its row under the
     // pointer. Rendering is synchronous here; only the keyboard handler below
@@ -110,7 +110,7 @@ export function setupDemo() {
       row.classList.toggle("is-selected", selected); row.setAttribute("aria-selected", String(selected));
       const added = state.added.includes(ref.key); tile.classList.toggle("is-added", added); tile.replaceChildren(added ? "✓" : icon(ref.kind));
       tile.setAttribute("aria-label", `${added ? "Remove" : "Add"} ${ref.title}${added ? " from" : " to"} citation`); tile.setAttribute("aria-pressed", String(added));
-      row.setAttribute("aria-label", `Sample · ${ref.title}, ${ref.authors}, ${ref.year}, ${ref.where}, ${ref.key}${added ? ", added to citation" : ""}`);
+      row.setAttribute("aria-label", `${ref.title}, ${ref.authors}, ${ref.year}, ${ref.where}, ${ref.key}${added ? ", added to citation" : ""}`);
     }
     empty.hidden = found.length > 0;
     list.hidden = !found.length;

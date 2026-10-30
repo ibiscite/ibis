@@ -25,8 +25,8 @@ export function noticeCandidates(format, keys) {
   const candidates = [];
   for (let shown = keys.length; shown >= 0; shown--) {
     const remaining = keys.length - shown;
-    const citation = shown ? `${renderKeys(format, keys.slice(0, shown))} [Sample]` : "";
-    candidates.push(shown ? `${citation}${remaining ? ` +${remaining} more` : ""}` : `+${remaining} more [Sample]`);
+    const citation = renderKeys(format, keys.slice(0, shown));
+    candidates.push(shown ? `${citation}${remaining ? ` +${remaining} more` : ""}` : `+${remaining} more`);
   }
   return candidates;
 }
@@ -36,10 +36,7 @@ export function createDemo() {
     const words = state.query.toLowerCase().split(/\p{White_Space}+/u).filter(Boolean);
     return references.filter(ref => words.every(word => `${ref.authors} ${ref.title} ${ref.year} ${ref.key} ${ref.where}`.toLowerCase().includes(word)));
   };
-  const output = () => {
-    const text = renderKeys(state.format, state.added.length ? state.added : [found()[state.selected]?.key].filter(Boolean));
-    return text ? `${text} [Sample]` : "";
-  };
+  const output = () => renderKeys(state.format, state.added.length ? state.added : [found()[state.selected]?.key].filter(Boolean));
   const setQuery = query => { state.query = query; state.selected = 0; };
   return { state, found, output, setQuery,
     add(key) {
