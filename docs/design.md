@@ -88,9 +88,9 @@ progress, badge, counter, selection, focus ring, error, Stop status, Settings
 control or the shortcut recorder. Brand scarlet itself (no app token) is for the
 logo, app icon, website and store art. On an accent-filled row the added tile
 becomes a `--text-on-accent` tile with a scarlet check, so a red or orange
-accent never meets scarlet fill on fill. Ibis offers Appearance (System, Light,
-Dark) and never an accent, brand colour, per-element colours, fonts, radius,
-spacing, custom CSS or themes.
+accent never meets scarlet fill on fill. Ibis follows the system's light or
+dark appearance and offers no appearance, accent, brand colour, per-element
+colours, fonts, radius, spacing, custom CSS or themes of its own.
 
 **Contrast.** Text, placeholder, footer and key-cap labels: 4.5:1 against
 rendered pixels on every look and theme, the 22 px query included; over the
