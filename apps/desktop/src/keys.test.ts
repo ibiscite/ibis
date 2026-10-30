@@ -3,6 +3,11 @@ import { ariaKeys, DEFAULT_PICKER_SHORTCUT, KEY_TABLE, keyLabel, keysFor, matche
 import { keyText } from "./messages";
 import pickerCommands from "./testing/picker-command-shortcuts.json";
 
+test("Enter's description follows the footer in both delivery modes", () => {
+  expect(keysFor("copy")).toBe("Enter");
+  expect(keyText.actions.copy).toBe("Paste or copy the highlighted reference, or the ones added to the citation, as the footer says");
+});
+
 test("key labels follow the platform", () => {
   expect(["CmdOrCtrl+K", "Shift+Enter", "CmdOrCtrl+/", "Escape", "ArrowDown", "?"].map((keys) => keyLabel(keys, true)))
     .toEqual(["⌘K", "⇧↵", "⌘/", "Esc", "↓", "?"]);
