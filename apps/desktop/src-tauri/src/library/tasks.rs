@@ -229,7 +229,12 @@ impl LoadRequests {
 
 impl OpenIntent {
     fn saves_choice(self, source: &Source, chosen: &LibrarySetting) -> bool {
-        matches!(self, Self::Remember) || (matches!(self, Self::Read) && source.setting().as_ref() != Some(chosen))
+        let changed = match (source, chosen) {
+            // Path equality ignores `.`; persisted cache identity hashes the exact path bytes.
+            (Source::File(previous), LibrarySetting::Bibtex(next)) => previous.as_os_str() != next.as_os_str(),
+            _ => source.setting().as_ref() != Some(chosen),
+        };
+        matches!(self, Self::Remember) || (matches!(self, Self::Read) && changed)
     }
 
     fn retry(reload: bool) -> Self {

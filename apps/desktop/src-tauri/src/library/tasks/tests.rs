@@ -5,10 +5,13 @@ use super::*;
 fn remembered_choice_uses_the_read_identity_even_if_the_selected_path_disappears()
 -> Result<(), Box<dyn std::error::Error>> {
     let directory = tempfile::tempdir()?;
-    let path = directory.path().join("invented.bib");
+    let root = directory.path().canonicalize()?;
+    let path = root.join("invented.bib");
     std::fs::write(&path, "@misc{invented}")?;
     let canonical = path.canonicalize()?;
-    let source = Source::File(directory.path().join(".").join("invented.bib"));
+    // Keep Unix's dot-only difference; Windows needs a non-verbatim input to preserve `.`.
+    let selected_root = if cfg!(windows) { directory.path() } else { &root };
+    let source = Source::File(selected_root.join(".").join("invented.bib"));
     let library = Mutex::new(Library::default());
     let requests = LoadRequests::default();
     requests.2.configure(&directory.path().join("cache"));
@@ -23,11 +26,22 @@ fn remembered_choice_uses_the_read_identity_even_if_the_selected_path_disappears
     );
     std::fs::remove_file(&path)?;
     let chosen = remembered_choice(&source, &loaded).ok_or("prepared source choice")?;
-    assert_eq!(chosen, LibrarySetting::Bibtex(canonical));
+    let LibrarySetting::Bibtex(chosen_path) = &chosen else {
+        return Err("prepared file identity".into());
+    };
+    assert_eq!(chosen_path.as_os_str(), canonical.as_os_str());
+    #[cfg(not(windows))]
+    assert_eq!(
+        source.setting(),
+        Some(chosen.clone()),
+        "PathBuf equality hides the different spelling"
+    );
     assert!(
         OpenIntent::Read.saves_choice(&source, &chosen),
         "startup must retain the prepared identity"
     );
+    assert!(OpenIntent::Remember.saves_choice(&source, &chosen));
+    assert!(!OpenIntent::Read.saves_choice(&Source::File(canonical), &chosen));
     assert!(!OpenIntent::Refresh.saves_choice(&source, &chosen));
     std::fs::write(&path, "@misc{invented}")?;
     OpenIntent::Read
