@@ -24,7 +24,7 @@ test.each([["MacIntel", "macos"], ["Win32", "windows"], ["Linux x86_64", "linux"
   expect(document.documentElement.dataset.platform).toBe("macos");
   expect(document.documentElement.dataset.system).toBe(system);
   expect(document.documentElement.dataset.surface).toBe("opaque");
-  expect(document.querySelector(".copied-notice strong")?.textContent).toBe("Copied");
+  expect(document.querySelector(".copied-notice strong")?.textContent).toBe(`Copied. Press ${system === "macos" ? "⌘V" : "Ctrl+V"} to paste`);
   expect(native.listen.mock.calls.map(([name]) => name)).toEqual(["notice:leave", "notice:show"]);
   expect(native.copiedNotice).toHaveBeenCalledOnce();
   expect(native.copiedNotice.mock.invocationCallOrder[0]).toBeGreaterThan(native.listen.mock.invocationCallOrder[1]!);
