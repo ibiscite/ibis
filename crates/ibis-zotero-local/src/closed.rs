@@ -252,6 +252,170 @@ impl Control {
     }
 }
 
+/// A persistent private namespace, independent of disposable Zotero copies.
+/// Paths and native errors are never included in Debug or diagnostics.
+pub struct PrivateDirectory {
+    root: PathBuf,
+    identity: std::fs::Metadata,
+    _lease: std::fs::File,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum PrivateStorageError {
+    #[error("private storage is unavailable")]
+    Unavailable,
+    #[error("private storage is already in use")]
+    Busy,
+}
+
+impl PrivateDirectory {
+    pub fn open(path: &Path) -> Result<Self, PrivateStorageError> {
+        let unavailable = |_| PrivateStorageError::Unavailable;
+        let control = Control::new(Arc::new(|| false));
+        let parent = platform::directory(path.parent().ok_or(PrivateStorageError::Unavailable)?, &control)
+            .map_err(unavailable)?;
+        let root = parent.join(path.file_name().ok_or(PrivateStorageError::Unavailable)?);
+        match std::fs::symlink_metadata(&root) {
+            Ok(_) => platform::secure(&root, &control).map_err(unavailable)?,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                platform::create_private(&root, &control).map_err(unavailable)?;
+            }
+            Err(_) => return Err(PrivateStorageError::Unavailable),
+        }
+        let mut options = std::fs::OpenOptions::new();
+        options.read(true).write(true).create(true).truncate(false);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options
+                .mode(0o600)
+                .custom_flags(nix::libc::O_NOFOLLOW | nix::libc::O_NONBLOCK);
+        }
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::OpenOptionsExt;
+            options.share_mode(7).custom_flags(0x0020_0000);
+        }
+        let lock_path = root.join(".lease");
+        let lease = options.open(&lock_path).map_err(|_| PrivateStorageError::Unavailable)?;
+        platform::secure_file(&lock_path, &control).map_err(unavailable)?;
+        let named = std::fs::symlink_metadata(&lock_path).map_err(|_| PrivateStorageError::Unavailable)?;
+        if !platform::same(&named, &lease.metadata().map_err(|_| PrivateStorageError::Unavailable)?) {
+            return Err(PrivateStorageError::Unavailable);
+        }
+        lease.try_lock().map_err(|_| PrivateStorageError::Busy)?;
+        platform::exclude_backups(&root, &control).map_err(unavailable)?;
+        let identity = std::fs::symlink_metadata(&root).map_err(|_| PrivateStorageError::Unavailable)?;
+        Ok(Self {
+            root,
+            identity,
+            _lease: lease,
+        })
+    }
+
+    /// Only private-storage code should use this path; it must never serialize.
+    pub fn path(&self) -> &Path {
+        &self.root
+    }
+
+    pub fn verify(&self) -> Result<(), PrivateStorageError> {
+        platform::secure(&self.root, &Control::new(Arc::new(|| false)))
+            .map_err(|_| PrivateStorageError::Unavailable)?;
+        let current = std::fs::symlink_metadata(&self.root).map_err(|_| PrivateStorageError::Unavailable)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::MetadataExt;
+            if current.dev() != self.identity.dev() || current.ino() != self.identity.ino() {
+                return Err(PrivateStorageError::Unavailable);
+            }
+        }
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::MetadataExt;
+            if current.creation_time() != self.identity.creation_time()
+                || current.file_attributes() != self.identity.file_attributes()
+            {
+                return Err(PrivateStorageError::Unavailable);
+            }
+        }
+        Ok(())
+    }
+
+    pub fn verify_file(&self, path: &Path) -> Result<(), PrivateStorageError> {
+        self.verify()?;
+        if path.parent() != Some(self.path()) {
+            return Err(PrivateStorageError::Unavailable);
+        }
+        platform::secure_file(path, &Control::new(Arc::new(|| false))).map_err(|_| PrivateStorageError::Unavailable)
+    }
+
+    pub fn open_file(&self, name: &str) -> Result<Option<std::fs::File>, PrivateStorageError> {
+        if name.is_empty()
+            || name.len() > 128
+            || name == "."
+            || name == ".."
+            || !name
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.'))
+        {
+            return Err(PrivateStorageError::Unavailable);
+        }
+        self.verify()?;
+        let path = self.root.join(name);
+        let named = match std::fs::symlink_metadata(&path) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(_) => return Err(PrivateStorageError::Unavailable),
+        };
+        self.verify_file(&path)?;
+        let file = platform::open_source(&path).map_err(|_| PrivateStorageError::Unavailable)?;
+        if !platform::same(&named, &file.metadata().map_err(|_| PrivateStorageError::Unavailable)?) {
+            return Err(PrivateStorageError::Unavailable);
+        }
+        Ok(Some(file))
+    }
+}
+
+#[cfg(test)]
+mod persistent_directory_tests {
+    use super::*;
+    #[test]
+    fn lease_and_private_namespace_are_independent_of_disposable_copies() {
+        let parent = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+        let path = parent.path().join("generations");
+        let directory = PrivateDirectory::open(&path).unwrap_or_else(|e| panic!("{e}"));
+        assert!(matches!(PrivateDirectory::open(&path), Err(PrivateStorageError::Busy)));
+        assert!(directory.open_file("../outside").is_err());
+        assert!(
+            directory
+                .open_file("absent")
+                .unwrap_or_else(|e| panic!("{e}"))
+                .is_none()
+        );
+        drop(directory);
+        assert!(PrivateDirectory::open(&path).is_ok());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_linked_namespace_is_refused_without_touching_its_destination() {
+        let parent = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+        let destination = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+        let path = parent.path().join("generations");
+        std::os::unix::fs::symlink(destination.path(), &path).unwrap_or_else(|e| panic!("{e}"));
+        assert!(matches!(
+            PrivateDirectory::open(&path),
+            Err(PrivateStorageError::Unavailable)
+        ));
+        assert_eq!(
+            std::fs::read_dir(destination.path())
+                .unwrap_or_else(|e| panic!("{e}"))
+                .count(),
+            0
+        );
+    }
+}
+
 /// A path heuristic warning, not a claim to detect every sync client.
 pub fn cloud_synced(data: &Path) -> bool {
     let parts: Vec<_> = data

@@ -298,6 +298,35 @@ pub(super) fn secure(path: &Path, control: &Control) -> Result<(), ClosedError> 
     Ok(())
 }
 
+/// Persistent cache files require the same privacy checks as their directory.
+pub(super) fn secure_file(path: &Path, control: &Control) -> Result<(), ClosedError> {
+    control.check()?;
+    let metadata = std::fs::symlink_metadata(path).map_err(|_| ClosedError::PrivateStorage)?;
+    if !metadata.is_file() || metadata.file_type().is_symlink() || !resident(&metadata) {
+        return Err(ClosedError::PrivateStorage);
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        if metadata.uid() != rustix::process::geteuid().as_raw()
+            || metadata.mode() & 0o777 != 0o600
+            || metadata.nlink() != 1
+        {
+            return Err(ClosedError::PrivateStorage);
+        }
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let report = output(Command::new("/bin/ls").args(["-lde", "-b"]).arg(path), control)?;
+        if report.split(|b| *b == b'\n').filter(|line| !line.is_empty()).count() != 1 {
+            return Err(ClosedError::PrivateStorage);
+        }
+    }
+    #[cfg(windows)]
+    windows::verify(path, false, control).map_err(|e| e.context(ClosedError::PrivateStorage))?;
+    Ok(())
+}
+
 pub(super) fn exclude_backups(path: &Path, control: &Control) -> Result<(), ClosedError> {
     control.check()?;
     // Standard cachedir signature: recognized by Unix backup tools. macOS also
