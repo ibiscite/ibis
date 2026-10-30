@@ -273,7 +273,6 @@ mod tests {
         activate, legacy_value, qualify_paste, read_document, select_document, wait_for,
     };
     use std::process::Command;
-    use winsafe::prelude::Handle;
 
     fn uia<T>(result: uiautomation::errors::Result<T>, stage: Stage) -> Result<T, Failure> {
         result.map_err(|error| Failure {
