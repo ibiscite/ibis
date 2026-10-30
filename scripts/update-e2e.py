@@ -1146,10 +1146,10 @@ namespace IbisUpdateContract {
  public class Node {
   public string Name="", Type="Pane", AutomationId=""; public int ProcessId=42; public bool IsEnabled=true, IsOffscreen=false;
   public int NativeWindowHandle=101;
-  public bool Supported=true, ThrowOnRead=false, Fail=false; public int Invocations=0;
+  public bool HasKeyboardFocus=true; public bool Supported=true, ThrowOnRead=false, Fail=false; public int Invocations=0;
   public Node[] Nodes=new Node[0];
   public Node Current { get {if(ThrowOnRead && Invocations>0) throw new Exception("synthetic stale element"); return this;} }
-  public ControlType ControlType { get {return Type=="Button" ? IbisUpdateContract.ControlType.Button : IbisUpdateContract.ControlType.Pane;} }
+  public ControlType ControlType { get {return new IbisUpdateContract.ControlType(Type);} }
   public Node[] FindAll(TreeScope scope,object condition) {return Nodes;}
   public Node FindFirst(TreeScope scope,object condition) {return Nodes.Length>0 ? Nodes[0] : null;}
   public bool TryGetCurrentPattern(object pattern,ref object value) {value=Supported && pattern==InvokePattern.Pattern ? this : null; return value!=null;}
@@ -1194,8 +1194,19 @@ switch($Scenario) {
 }
 if ($Scenario.StartsWith('picker-')) {
  $window.Name='Ibis'
+ $search=[IbisUpdateContract.Node]::new(); $search.Name='Search references'; $search.Type='ComboBox'
+ $window.Nodes=@($search)
  switch($Scenario) {
   'picker-hidden' {$window.IsOffscreen=$true}
+  'picker-edit' {$search.Type='Edit'}
+  'picker-loading' {$window.Nodes=@()}
+  'picker-search-title' {$search.Name='Search references suffix'}
+  'picker-search-role' {$search.Type='Pane'}
+  'picker-search-disabled' {$search.IsEnabled=$false}
+  'picker-search-hidden' {$search.IsOffscreen=$true}
+  'picker-search-unfocused' {$search.HasKeyboardFocus=$false}
+  'picker-search-duplicate' {$window.Nodes=@($search,$search)}
+  'picker-search-bound' {$window.Nodes=@($search)*4001}
   'picker-title' {$window.Name='Ibis suffix'}
   'picker-duplicate' {[IbisUpdateContract.AutomationElement]::RootElement.Nodes=@($window,$window)}
   'picker-foreign' {$window.ProcessId=99}
@@ -1272,15 +1283,16 @@ function Contract-Result($pressed,$how) {
             picker_helper = picker_helper.replace("[IbisUpdateFocus]", "[IbisUpdateContract.Focus]")
             script.write_text(model + picker_helper, encoding="utf-8")
             for scenario in ("success", "hidden", "title", "duplicate", "foreign", "unfocused", "unknown", "no-handle", "empty",
-                             "offer", "offer-duplicate", "offer-foreign", "offer-hidden"):
+                             "offer", "offer-duplicate", "offer-foreign", "offer-hidden", "edit", "loading", "search-title",
+                             "search-role", "search-disabled", "search-hidden", "search-unfocused", "search-duplicate", "search-bound"):
                 with self.subTest(picker=scenario):
                     result = subprocess.run([shutil.which("pwsh"), "-NoProfile", "-File", str(script), "picker-" + scenario],
                                             capture_output=True, timeout=30)
-                    if scenario in ("duplicate", "foreign", "offer-duplicate", "offer-foreign"):
+                    if scenario in ("duplicate", "foreign", "offer-duplicate", "offer-foreign", "search-duplicate", "search-bound"):
                         self.assertNotEqual(result.returncode, 0)
                     else:
                         self.assertEqual(result.returncode, 0, result.stderr.decode("utf-8", errors="replace"))
-                        expected = (42, "offer") if scenario == "offer" else (42, "picker") if scenario == "success" else None
+                        expected = (42, "offer") if scenario == "offer" else (42, "picker") if scenario in ("success", "edit") else None
                         self.assertEqual(picker_result(result.stdout, {42}), expected)
 
     def test_windows_activation_uncertainty_is_fatal_instead_of_pollable(self):
