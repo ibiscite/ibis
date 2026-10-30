@@ -239,11 +239,24 @@ def escape_to_hide(native, snapshot, description):
                 return
             native.key("Escape")
             deadline = time.monotonic() + ESCAPE_STEP_TIMEOUT
+            unknown = False
             while time.monotonic() < deadline:
-                last.update(snapshot())
-                if not last["visible"] or (press == 0 and not has_search_text(last)):
+                try:
+                    last.update(snapshot())
+                except WindowObservationFailure:
+                    # Withdrawal can race the read. Keep this action's deadline
+                    # and require positive hiding evidence before returning.
+                    unknown = True
+                    time.sleep(min(.1, max(0, deadline - time.monotonic())))
+                    continue
+                unknown = False
+                if not last["visible"]:
+                    return
+                if press == 0 and not has_search_text(last):
                     break
                 time.sleep(0.1)
+            if unknown:
+                raise AssertionError("Timed out: picker visibility unavailable after Escape")
     else:
         native.key("Escape")
     def hidden():
