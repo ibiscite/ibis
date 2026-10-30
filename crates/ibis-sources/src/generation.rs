@@ -287,6 +287,7 @@ impl GenerationStore {
             .write_all(&bytes)
             .and_then(|_| temporary.as_file().sync_all())
             .map_err(|_| StoreError::Unavailable)?;
+        self.inner.directory.verify()?;
         temporary
             .persist(self.inner.directory.path().join(name))
             .map_err(|_| StoreError::Unavailable)?;

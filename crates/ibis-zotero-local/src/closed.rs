@@ -257,7 +257,7 @@ impl Control {
 pub struct PrivateDirectory {
     root: PathBuf,
     identity: std::fs::Metadata,
-    _lease: std::fs::File,
+    lease: std::fs::File,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
@@ -339,11 +339,9 @@ impl PrivateDirectory {
         lease.try_lock().map_err(|_| PrivateStorageError::Busy)?;
         platform::exclude_backups(&root, &control).map_err(unavailable)?;
         let identity = std::fs::symlink_metadata(&root).map_err(|_| PrivateStorageError::Unavailable)?;
-        Ok(Self {
-            root,
-            identity,
-            _lease: lease,
-        })
+        let directory = Self { root, identity, lease };
+        directory.verify()?;
+        Ok(directory)
     }
 
     /// Only private-storage code should use this path; it must never serialize.
@@ -352,8 +350,18 @@ impl PrivateDirectory {
     }
 
     pub fn verify(&self) -> Result<(), PrivateStorageError> {
-        platform::secure(&self.root, &Control::new(Arc::new(|| false)))
-            .map_err(|_| PrivateStorageError::Unavailable)?;
+        let control = Control::new(Arc::new(|| false));
+        platform::secure(&self.root, &control).map_err(|_| PrivateStorageError::Unavailable)?;
+        let lease_path = self.root.join(".lease");
+        platform::secure_file(&lease_path, &control).map_err(|_| PrivateStorageError::Unavailable)?;
+        let named = std::fs::symlink_metadata(&lease_path).map_err(|_| PrivateStorageError::Unavailable)?;
+        if !platform::same(
+            &named,
+            &self.lease.metadata().map_err(|_| PrivateStorageError::Unavailable)?,
+        ) {
+            return Err(PrivateStorageError::Unavailable);
+        }
+        // Read identities after the native privacy checks, which can yield.
         let current = std::fs::symlink_metadata(&self.root).map_err(|_| PrivateStorageError::Unavailable)?;
         #[cfg(unix)]
         {
@@ -448,6 +456,25 @@ mod persistent_directory_tests {
         );
         drop(directory);
         assert!(PrivateDirectory::open(&path).is_ok());
+    }
+
+    #[test]
+    fn a_missing_or_replaced_named_lease_retires_its_previous_owner() {
+        for replace in [false, true] {
+            let parent = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+            let path = parent.path().join("generations");
+            let first = PrivateDirectory::open(&path).unwrap_or_else(|e| panic!("{e}"));
+            let lease = path.join(".lease");
+            // Keep the old handle open while replacing its directory entry.
+            std::fs::rename(&lease, path.join("retired-lease")).unwrap_or_else(|e| panic!("{e}"));
+            let second = replace.then(|| PrivateDirectory::open(&path).unwrap_or_else(|e| panic!("{e}")));
+            assert!(matches!(first.verify(), Err(PrivateStorageError::Unavailable)));
+            assert!(matches!(
+                first.open_file("absent"),
+                Err(PrivateStorageError::Unavailable)
+            ));
+            drop(second);
+        }
     }
 
     #[cfg(unix)]

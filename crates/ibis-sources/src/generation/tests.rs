@@ -190,6 +190,31 @@ fn cache_lease_contention_refuses_a_second_writer() {
     assert!(GenerationStore::open(&directory.path().join("generations")).is_ok());
 }
 
+#[test]
+fn a_replaced_lease_refuses_old_publication_and_cleanup() {
+    let (directory, store) = open();
+    let accepted = store
+        .publish(stage(&store, "Accepted"))
+        .unwrap_or_else(|e| panic!("{e}"));
+    let delayed = stage(&store, "Retired");
+    let root = directory.path().join("generations");
+    let orphan = root.join("generation-orphan");
+    std::fs::write(&orphan, MAGIC).unwrap_or_else(|e| panic!("{e}"));
+    std::fs::rename(root.join(".lease"), root.join("retired-lease")).unwrap_or_else(|e| panic!("{e}"));
+    let current = GenerationStore::open(&root).unwrap_or_else(|e| panic!("{e}"));
+    assert!(matches!(store.publish(delayed), Err(StoreError::Unavailable)));
+    assert!(matches!(
+        store.begin(library(), Fingerprint::of_bytes(b"retired")),
+        Err(StoreError::Unavailable)
+    ));
+    assert!(orphan.exists());
+    let reopened = current
+        .open_library(&library())
+        .unwrap_or_else(|e| panic!("{e}"))
+        .unwrap_or_else(|| panic!("cache miss"));
+    assert_eq!(get(&accepted, "record:one"), get(&reopened, "record:one"));
+}
+
 fn rewrite_index(store: &GenerationStore, change: impl FnOnce(&mut Index)) {
     let path = store.inner.directory.path().join(manifest_name(&library()));
     let mut manifest: Manifest = serde_json::from_slice(&std::fs::read(&path).unwrap_or_else(|e| panic!("{e}")))
