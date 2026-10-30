@@ -188,7 +188,7 @@ test.each(["before paste", "before response"])("reopening %s preserves the new c
   expect(harness.document.pastes).toHaveLength(when === "before paste" ? 0 : 1);
   expect(harness.copy.calls).toHaveLength(1);
   expect(harness.delivery.calls).toHaveLength(1);
-  expectReceipt(harness, when === "before paste" ? "Copied" : "Pasted into Example Writer", "[@a]");
+  expectReceipt(harness, when === "before paste" ? "Copied. Press ⌘V to paste" : "Pasted into Example Writer", "[@a]");
 });
 
 test.each(["different text", "identical text"])("an old notice cannot steal a newer copy's proof (%s)", async (variant) => {
@@ -207,7 +207,7 @@ test.each(["different text", "identical text"])("an old notice cannot steal a ne
   await act(async () => { harness.notice.pending[0]!.complete(); });
   expect(harness.document.text).toBe("Draft: [citation].");
   expect(harness.document.pastes).toEqual([]);
-  expectReceipt(harness, "Copied", "[@a]");
+  expectReceipt(harness, "Copied. Press ⌘V to paste", "[@a]");
   await finishDelivery(harness);
   expect(harness.document.text).toBe(`Draft: ${text}.`);
   expect(harness.document.pastes.map(({ delivery }) => delivery)).toEqual([2]);
@@ -227,7 +227,7 @@ test.each(["different text", "identical text"])("another clipboard owner's write
   expect(harness.clipboard).toMatchObject({ text, owner: "external", sequence: 2 });
   expect(harness.document.text).toBe("Draft: [citation].");
   expect(harness.document.pastes).toEqual([]);
-  expectReceipt(harness, "Copied", "[@a]");
+  expectReceipt(harness, "Copied. Press ⌘V to paste", "[@a]");
 });
 
 test.each(["preview", "copy"] as const)("a failed %s leaves the document and clipboard unchanged and gives no success receipt", async (stage) => {
