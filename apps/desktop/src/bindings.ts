@@ -39,6 +39,8 @@ export const commands = {
 	zoteroGroups: () => __TAURI_INVOKE<ZoteroGroup[]>("zotero_groups"),
 	/**  The library as it is now, for the interface when it starts. */
 	libraryStatus: () => __TAURI_INVOKE<LibraryStatus>("library_status"),
+	/**  Open the searched source or launch Zotero for a reported Zotero problem. */
+	openLibrarySource: (item: unknown | null, expectedRevision: string, zoteroOnly: boolean) => __TAURI_INVOKE<null>("open_library_source", { item, expectedRevision, zoteroOnly }),
 	/**
 	 *  Search the open library. An empty query returns no results. Async so it
 	 *  runs off the main thread. `page` identifies the interface page and
@@ -402,7 +404,7 @@ export type PastedList = {
 };
 
 /**  Command identifiers shared with KEY_TABLE and the refusal's translated name. */
-export type PickerCommand = "format" | "pin" | "keys" | "more" | "preview" | "settings" | "quit";
+export type PickerCommand = "format" | "pin" | "keys" | "more" | "preview" | "source" | "settings" | "quit";
 
 /**  What the picker needs to know about the app it was opened from. */
 export type PickerDestination = {
@@ -576,6 +578,8 @@ export type ShortcutStatus_Serialize = {
 	/**  Present on Wayland, including when the portal is unavailable. */
 	desktop?: DesktopShortcut | null,
 };
+
+export type SourceItem = unknown;
 
 /**  What first-run setup can offer. */
 export type Sources = {

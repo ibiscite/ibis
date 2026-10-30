@@ -25,6 +25,7 @@ pub(crate) enum PickerCommand {
     Keys,
     More,
     Preview,
+    Source,
     Settings,
     Quit,
 }
@@ -37,6 +38,7 @@ impl std::fmt::Display for PickerCommand {
             Self::Keys => "Keyboard Shortcuts",
             Self::More => "More",
             Self::Preview => "Show What Will Be Pasted",
+            Self::Source => "Open the Source",
             Self::Settings => "Settings",
             Self::Quit => "Quit Ibis",
         })
@@ -180,6 +182,9 @@ fn picker_command(shortcut: Shortcut, character: Option<char>) -> Option<PickerC
     } else {
         if letter('k', Code::KeyK) {
             return Some(PickerCommand::More);
+        }
+        if letter('o', Code::KeyO) {
+            return Some(PickerCommand::Source);
         }
         if letter('q', Code::KeyQ) {
             return Some(PickerCommand::Quit);

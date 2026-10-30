@@ -34,6 +34,22 @@ export async function chooseFromMore(name: string, role: "menuitem" | "menuitemc
   fireEvent.click(item);
 }
 
+export function libraryButton(): HTMLButtonElement {
+  return document.querySelector<HTMLButtonElement>(".library-status-trigger")!;
+}
+
+/** Open the footer's library menu, leaving another menu first if needed. */
+export async function chooseFromLibrary(name: string, role: "menuitem" | "menuitemcheckbox" = "menuitem") {
+  if (!document.getElementById("library-menu")) {
+    const other = screen.queryByRole("menu");
+    if (other) fireEvent.keyDown(other, { key: "Escape" });
+    fireEvent.click(libraryButton());
+  }
+  const item = await screen.findByRole(role, { name });
+  act(() => item.focus());
+  fireEvent.click(item);
+}
+
 export function result(key: string, title: string, source = "refs.bib") {
   return {
     revision: "1", id: { library: source, key }, cite: `synthetic-cite-${key}`, source, key, title, authors: "Smith", year: 2020, matched: ["title" as const],

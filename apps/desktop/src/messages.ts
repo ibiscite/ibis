@@ -139,6 +139,11 @@ export const densityNames = {
 } as const;
 
 export const pickerText = {
+  openZotero: "Open Zotero",
+  showInZotero: "Show in Zotero",
+  findSource: "Find…",
+  openSource: (name: string | null) => `Open ${isolate(name ?? "library")}`,
+  sourceOpenFailed: (zotero: boolean) => zotero ? "Zotero could not open. Try again." : "The source file could not open. Try again.",
   searchLabel: "Search references",
   searchPlaceholder: "Search references…",
   dragSearchBar: "Drag the search bar edge to move the picker",
@@ -222,6 +227,8 @@ export const pickerText = {
   libraryStatus: "Library status",
   reload: "Reload",
   reloadTitle: "Reload library",
+  reloadLibrary: "Reload Library",
+  chooseLibraryMenu: "Choose Library…",
   copyAs: "Copy as",
   quitLabel: "Quit Ibis",
   settings: "Settings…",
@@ -261,6 +268,7 @@ export const keyText = {
     system: "From any app",
   },
   actions: {
+    source: "Open the source",
     preview: "Show what will be pasted",
     copy: "Paste or copy the highlighted reference, or the ones added to the citation, as the footer says",
     add: "Add the highlighted reference to the citation, or remove it",
@@ -296,8 +304,8 @@ export const libraryMessages = {
   reloading: (name: string | null) => `Reloading ${name ?? "library"}…`,
   openError: (name: string | null, reason: string, zotero = false) => {
     const sentence = /[.!?]$/.test(reason) ? reason : `${reason}.`;
-    if (zotero) return `${name ?? "Zotero"} could not be read. ${sentence} Open Zotero, then reload.`;
-    return `The library could not be opened: ${name ?? "the chosen file"}. ${sentence} Choose it again or reconnect the drive.`;
+    if (zotero) return `${isolate(name ?? "Zotero")} could not be read. ${sentence} Open Zotero, then reload.`;
+    return `The library could not be opened: ${isolate(name ?? "the chosen file")}. ${sentence} Choose it again or reconnect the drive.`;
   },
   emptyTitle: (name: string | null) => `No references in ${name ?? "this library"}`,
   emptyHint: (zotero = false) => zotero
@@ -314,23 +322,23 @@ export const libraryMessages = {
     if (!status.has_snapshot) return [requestedLabel(status), " · not opened"];
     // After a failed switch the previous library is still the one searched: describe it.
     const source = snapshotLabel(status);
-    if (status.stale) return [source, " · not updated"];
-    if (status.references === 0) return [source, " · no references"];
-    return [source, ` · ${count(status.references, "reference")}` +
-      (status.warnings > 0 ? ` · ${count(status.warnings, "reading notice")}` : "")];
+    if (status.stale) return [source, status.problem === "missing" && !status.snapshot_zotero ? " · moved" : " · not updated"];
+    return [source, ` · ${status.references === 0 ? "no references" : count(status.references, "reference")}` +
+      (status.warnings > 0 ? ` · ${count(status.warnings, "reading notice")}` : "") +
+      (status.error ? ` · ${isolate(requestedLabel(status))} ${status.problem === "missing" ? "moved" : "not opened"}` : "")];
   },
   summary: (status: LibraryStatus | null | undefined) => {
     const [source, state] = libraryMessages.summaryParts(status);
     return (source ?? "") + state;
   },
   /** The quiet age after the summary, or null when the age does not matter:
-   * "updated" only after a real change, "checked" for an old copy. */
+   * "updated" only after a real change, "last read" for an old copy. */
   age: (status: LibraryStatus | null | undefined, now: number) => {
     if (status?.state === "loading") return "opening…";
     if (!status?.has_snapshot) return null;
     if (status.state === "reloading") return "reloading…";
     const { updated, checked } = times(status);
-    if (status.stale) return checked === null ? null : `checked ${ago(checked, now)}`;
+    if (status.stale) return checked === null ? null : `last read ${ago(checked, now)}`;
     if (status.error || updated === null || now - updated > recentUpdate) return null;
     return `updated ${ago(updated, now)}`;
   },
@@ -344,7 +352,7 @@ export const libraryMessages = {
     const { checked } = times(status);
     const parts = [
       zoteroSnapshot(status) && !(status.error && !status.stale) ? libraryNames(status) : null,
-      checked === null ? null : `checked ${ago(checked, now)}, ${clock(checked, now)}`,
+      checked === null ? null : isolate(`checked ${ago(checked, now)}, ${clock(checked, now)}`),
       status.stale && status.error ? libraryMessages.openError(status.name, status.error, status.zotero)
         : status.stale ? (zoteroSnapshot(status) ? "Zotero could not be reached" : "the file could not be read")
         : status.error ? `${isolate(status.zotero ? "Zotero" : status.name ?? "the chosen library")} could not be opened` : null,

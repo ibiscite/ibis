@@ -1,0 +1,10 @@
+/* Shared library status controls use the footer's existing geometry and roles. */
+.library-status-controls { flex: 1; min-width: min(var(--library-min-width), 100%); display: flex; align-items: center; gap: var(--space-1); }
+[data-status-compact] > .library-status-controls { min-width: calc(var(--tile-size) + var(--row-gap)); }
+.library-status-target { flex: 1; min-width: 0; position: relative; isolation: isolate; }
+.library-status-target > .library-status { position: relative; z-index: var(--z-chrome); pointer-events: none; }
+.ui-button.library-status-trigger { position: absolute; inset: 0; width: 100%; padding-inline: 0; border-radius: var(--r-tile); color: var(--muted); }
+.library-status-controls[data-health="stop"] .library-name, .library-status-controls[data-health="look"] .library-name { color: var(--text); }
+.library-status-controls .library-status { min-width: 0; }
+.library-status-controls .library-inline-action { flex: none; }
+.library-action-error { flex-basis: 100%; margin: 0; color: var(--text); font-size: var(--type-meta-size); }

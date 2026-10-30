@@ -50,3 +50,7 @@ export function isSettingsShortcut(e: React.KeyboardEvent, mac = isMac): boolean
 export function isFormatShortcut(e: React.KeyboardEvent, mac = isMac): boolean {
   return matchesAccelerator(e, keysFor("format"), mac);
 }
+
+export function isSourceShortcut(e: React.KeyboardEvent, mac = isMac): boolean {
+  return matchesAccelerator(e, keysFor("source"), mac);
+}

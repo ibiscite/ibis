@@ -1,15 +1,14 @@
 import type { Copied, Density, LibraryStatus, LoginItem, UpdateProgress } from "../../api";
 import { Progress } from "../../ui/Progress";
 import { Button } from "../../ui/Button";
-import { hasRetainedFreshnessProblem } from "../../LibraryStatusLine";
-import { densityNames, libraryMessages, loginItemText, operationFailures, pickerText, updateText } from "../../messages";
+import { densityNames, loginItemText, operationFailures, pickerText, updateText } from "../../messages";
 import { currentPlatform } from "../../platform";
 
 /** An action whose failure the picker reports in its notices. */
 export type Operation = keyof typeof operationFailures;
 
-/** Problems and confirmations above the results: library and settings
- * problems, failed actions, search and copy errors, and what was copied. */
+/** Settings problems, failed actions, search and copy errors, and what was
+ * copied. Library failures belong to the footer's controls. */
 export function Notices({ library, failures, startAtLogin, error, copyError, copied, showCopiedText, onDismissCopied, updateProgress, missing = [], densityAnnouncement }: {
   densityAnnouncement?: Density;
   updateProgress?: UpdateProgress | null;
@@ -32,9 +31,7 @@ export function Notices({ library, failures, startAtLogin, error, copyError, cop
         <Progress label={updateText[updateProgress.phase]} value={updateProgress.phase === "downloading" && updateProgress.total
           ? Math.min(100, 100 * updateProgress.received / updateProgress.total) : undefined} />)}
       {library?.settings_notice && <p role="alert">{library.settings_notice}</p>}
-      {/* A library that could not be opened at all gets the recovery screen instead. */}
-      {library?.error && !(library.state === "error" && !library.has_snapshot) && !hasRetainedFreshnessProblem(library) && <p role="alert">{libraryMessages.openError(library.name, library.error, library.zotero)}</p>}
-      {(Object.keys(failures) as Operation[]).filter((operation) => failures[operation]).map((operation) => (
+      {(Object.keys(failures) as Operation[]).filter((operation) => failures[operation] && !libraryOperations.has(operation)).map((operation) => (
         <p role="alert" key={operation}>{operationFailures[operation]}</p>
       ))}
       {startAtLogin?.problem && startAtLogin.problem !== "unsupported" && (
@@ -65,3 +62,6 @@ export function Notices({ library, failures, startAtLogin, error, copyError, cop
     </div>
   </>;
 }
+
+/** Library failures stay beside the footer's library controls. */
+export const libraryOperations = new Set<Operation>(["status", "libraryEvents", "choose", "reload", "zotero", "zoteroGroups"]);

@@ -14,7 +14,7 @@ export type KeyHints = { enter: string | null; shiftEnter: string | null; escape
 
 /** The footer: library status, what Enter (or, with Alt held, the other keys)
  * does now, and the More button with its menu. */
-export function PickerFooter({ library, groupName, hints, altHeld, actions, more }: {
+export function PickerFooter({ library, groupName, hints, altHeld, actions, more, status }: {
   library: LibraryStatus | null | undefined;
   groupName: (id: number) => string;
   hints: KeyHints;
@@ -23,6 +23,7 @@ export function PickerFooter({ library, groupName, hints, altHeld, actions, more
   actions: { copy: () => void; add: () => void; escape: () => void; keys: () => void };
   /** The More button and its menu. */
   more: React.ReactNode;
+  status?: React.ReactNode;
 }) {
   const bar = useRef<HTMLElement>(null);
   const hintsRow = useRef<HTMLElement>(null);
@@ -74,7 +75,7 @@ export function PickerFooter({ library, groupName, hints, altHeld, actions, more
     <footer data-menu-floor>
       <section ref={bar} aria-label={pickerText.libraryRegion} className="library-bar" data-shortcuts-folded={fit.shortcuts || undefined} data-status-compact={fit.status || undefined}>
         <span className="footer-fit-measure" aria-hidden="true" inert><span ref={statusSize} className="footer-status-size" /></span>
-        <LibraryStatusLine library={library} groupName={groupName} />
+        {status ?? <LibraryStatusLine library={library} groupName={groupName} />}
         <small ref={hintsRow} data-optional-only={!altHeld && !hints.enter || undefined} className="enter-hints" aria-label={keyText.footer} role="group">
           {altHeld ? <>
             {hints.shiftEnter && <FooterAction label={hints.shiftEnter} keys={keysFor("add")} onAction={actions.add} />}

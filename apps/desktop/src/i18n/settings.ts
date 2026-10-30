@@ -3,7 +3,7 @@ import type { KeyAction, KeyRegion } from "../keys";
 import type { MessageId } from ".";
 
 export const SHORTCUT_ACTIONS = {
-  open: "shortcuts-open", preview: "shortcuts-action-preview", copy: "shortcuts-action-copy",
+  source: "shortcuts-action-source", open: "shortcuts-open", preview: "shortcuts-action-preview", copy: "shortcuts-action-copy",
   add: "shortcuts-action-add", move: "shortcuts-action-move", escape: "shortcuts-action-escape",
   format: "shortcuts-action-format", more: "shortcuts-action-more", pin: "shortcuts-action-pin",
   keys: "shortcuts-action-keys", settings: "shortcuts-action-settings", quit: "shortcuts-action-quit",
@@ -16,7 +16,7 @@ export const SHORTCUT_REGIONS = {
 } as const satisfies Record<KeyRegion, MessageId>;
 export const SHORTCUT_COMMANDS = {
   format: "shortcuts-command-format", pin: "shortcuts-command-pin", keys: "shortcuts-command-keys",
-  more: "shortcuts-command-more", preview: "shortcuts-command-preview",
+  source: "shortcuts-command-source", more: "shortcuts-command-more", preview: "shortcuts-command-preview",
   settings: "shortcuts-command-settings", quit: "shortcuts-command-quit",
 } as const satisfies Record<PickerCommand, MessageId>;
 const REFUSALS = {

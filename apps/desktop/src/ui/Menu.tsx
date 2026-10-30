@@ -176,7 +176,7 @@ export function MenuItem({ id, label, title, keys, checked, disabled, onAction }
     render={(props) => <MenuRow {...props as ComponentPropsWithRef<"div">} itemId={id} title={title} aria-disabled={disabled || undefined} />}>
     {({ isSelected }) => <>
       {checked !== undefined && <MenuCheck checked={isSelected} />}
-      <span className="menu-label">{label}</span>
+      <bdi className="menu-label" dir="auto">{label}</bdi>
       {keys && <span className="menu-keys" aria-hidden="true"><bdi dir="ltr">{keys}</bdi></span>}
     </>}
   </AriaMenuItem>;
@@ -187,10 +187,10 @@ export function MenuItem({ id, label, title, keys, checked, disabled, onAction }
  * checked keys come from the items themselves. `header` is a visual line
  * above the items that names the group when no `label` is given.
  */
-export function MenuSection({ id, label, header, children }: { id: string; label?: string; header?: ReactNode; children: ReactNode }) {
+export function MenuSection({ id, label, header, children, layout }: { id: string; label?: string; header?: ReactNode; children: ReactNode; layout?: "chips" }) {
   const items = Children.toArray(children).filter(isValidElement) as ReactElement<ItemProps>[];
   const checkable = items.some((item) => item.props.checked !== undefined);
-  return <AriaMenuSection id={id} aria-label={label} className="menu-section"
+  return <AriaMenuSection id={id} aria-label={label} className={`menu-section${layout === "chips" ? " menu-section-chips" : ""}`}
     selectionMode={checkable ? "multiple" : undefined}
     selectedKeys={checkable ? items.filter((item) => item.props.checked).map((item) => item.props.id) : undefined}>
     {header && <Header className="menu-header">{label && <span className="visually-hidden">{label}</span>}<div aria-hidden="true">{header}</div></Header>}
@@ -206,7 +206,7 @@ type MenuProps = {
   /** The menu's accessible name. */
   label: string; id?: string;
   /** The trigger button's content and attributes. */
-  trigger: ReactNode; triggerRef?: Ref<HTMLButtonElement>; triggerClassName?: string; triggerTitle?: string; triggerKeys?: string;
+  trigger: ReactNode; triggerRef?: Ref<HTMLButtonElement>; triggerClassName?: string; triggerTitle?: string; triggerKeys?: string; triggerLabel?: string;
   isOpen: boolean; onOpenChange: (open: boolean) => void;
   /** Where Tab goes: leaving the menu returns there so keys keep working. */
   tabFocusRef?: RefObject<HTMLElement | null>;
@@ -221,7 +221,7 @@ type MenuProps = {
  * opened from the keyboard, including a shortcut that sets `isOpen`, the first
  * item is highlighted, as in native menus.
  */
-export function Menu({ label, id, trigger, triggerRef, triggerClassName, triggerTitle, triggerKeys, isOpen, onOpenChange, tabFocusRef, placement = "bottom end", children }: MenuProps) {
+export function Menu({ label, id, trigger, triggerRef, triggerClassName, triggerTitle, triggerKeys, triggerLabel, isOpen, onOpenChange, tabFocusRef, placement = "bottom end", children }: MenuProps) {
   const fromTrigger = useRef(false);
   const button = useRef<HTMLButtonElement | null>(null);
   const boundary = useMenuBoundary(isOpen, tabFocusRef, button);
@@ -299,7 +299,7 @@ export function Menu({ label, id, trigger, triggerRef, triggerClassName, trigger
       if (typeof triggerRef === "function") triggerRef(node);
       else if (triggerRef) triggerRef.current = node;
     }} className={triggerClassName}
-      render={(props) => <button {...props as ComponentPropsWithRef<"button">} title={triggerTitle} aria-keyshortcuts={triggerKeys} />}>{trigger}</Button>
+      render={(props) => <button {...props as ComponentPropsWithRef<"button">} title={triggerTitle} aria-label={triggerLabel} aria-keyshortcuts={triggerKeys} />}>{trigger}</Button>
     <Popover ref={popoverRef} className="menu-popover" placement={renderedPlacement} offset={6} containerPadding={8} shouldSkipAnimation={skipExit} {...boundary}>
       <div className="menu-frame" onKeyDownCapture={(event) => {
         if (isComposing(event)) { event.stopPropagation(); return; }
@@ -309,7 +309,8 @@ export function Menu({ label, id, trigger, triggerRef, triggerClassName, trigger
         event.stopPropagation();
         leave(to, event.key === "Tab");
       }} onKeyUpCapture={(event) => { if (isComposing(event)) event.stopPropagation(); }}>
-        <AriaMenu key={opening} ref={listRef} id={id} className="menu scroll-area" aria-label={label} autoFocus={fromTrigger.current ? undefined : "first"}>
+        <AriaMenu key={opening} ref={listRef} id={id} className="menu scroll-area" aria-label={label} autoFocus={fromTrigger.current ? undefined : "first"}
+          render={(props) => <div {...props as ComponentPropsWithRef<"div">} aria-label={label} aria-labelledby={undefined} />}>
           <ActionFocusContext.Provider value={() => { pendingFocus.current = tabFocusRef?.current ?? null; }}>
             {children}
           </ActionFocusContext.Provider>
