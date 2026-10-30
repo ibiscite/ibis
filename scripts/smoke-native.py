@@ -6,7 +6,7 @@ capability. Only synthetic test text is recorded, never the accessibility tree o
 clipboard contents. See ../CONTRIBUTING.md before running on a personal desktop.
 """
 import argparse
-from contextlib import redirect_stderr, redirect_stdout
+from contextlib import contextmanager, redirect_stderr, redirect_stdout
 import io
 import json
 import math
@@ -43,8 +43,9 @@ class NativeSetupFailure(RuntimeError):
 class WindowObservationFailure(RuntimeError):
     """Window identity is unknown; it is never positive evidence of hiding."""
 
-    def __init__(self):
-        super().__init__("X11 window identity could not be established.")
+    def __init__(self, branch="unspecified"):
+        self.branch = branch
+        super().__init__(f"X11 window identity could not be established ({branch}).")
 
 
 def native_session():
@@ -930,52 +931,79 @@ class Linux:
         # Same-process GTK auxiliaries can be viewable without being the app's
         # managed picker. Bind purpose and ownership before observing its hints.
         deadline = time.monotonic() + 20
-        def query(*args):
+        def query(branch, *args):
             remaining = deadline - time.monotonic()
             if remaining <= 0:
-                raise subprocess.TimeoutExpired(args, 20)
-            return run(*args, timeout=remaining)
-        try:
+                raise WindowObservationFailure("query-deadline")
             try:
-                windows = query("xdotool", "search", "--onlyvisible", "--pid", str(pid)).splitlines()
+                return run(*args, timeout=remaining)
             except subprocess.CalledProcessError as error:
                 # xdotool documents exit 1 for a completed search with no match.
                 # A failed command/display query with diagnostics is uncertainty.
-                if error.returncode == 1 and not (error.output or "").strip() and not (error.stderr or "").strip():
-                    return None
-                raise
+                if branch == "search-query" and error.returncode == 1 and not (error.output or "").strip() and not (error.stderr or "").strip():
+                    return ""
+                raise WindowObservationFailure(branch) from None
+            except (subprocess.TimeoutExpired, OSError):
+                raise WindowObservationFailure(branch) from None
+
+        def observe():
+            windows = query("search-query", "xdotool", "search", "--onlyvisible", "--pid", str(pid)).splitlines()
             if not windows:
                 return None
-            managed = managed_client_windows(query("xprop", "-root", "_NET_CLIENT_LIST"))
-            if managed is None or len(windows) > CENSUS_WINDOWS:
-                raise WindowObservationFailure()
+            managed = managed_client_windows(query("managed-query", "xprop", "-root", "_NET_CLIENT_LIST"))
+            if managed is None:
+                raise WindowObservationFailure("managed-property")
+            if len(windows) > CENSUS_WINDOWS:
+                raise WindowObservationFailure("window-bound")
             candidates = set()
             for window in windows:
                 if not re.fullmatch(r"[1-9][0-9]{0,9}", window):
-                    raise WindowObservationFailure()
-                if query("xdotool", "getwindowpid", window) != str(pid):
-                    raise WindowObservationFailure()
-                name = query("xdotool", "getwindowname", window)
+                    raise WindowObservationFailure("window-id")
+                if query("owner-query", "xdotool", "getwindowpid", window) != str(pid):
+                    raise WindowObservationFailure("owner-mismatch")
+                name = query("title-query", "xdotool", "getwindowname", window)
                 if int(window) not in managed:
                     if name == title:
-                        raise WindowObservationFailure()
+                        raise WindowObservationFailure("title-not-managed")
                     continue
                 if name == title:
                     candidates.add(window)
                 elif name != NOTICE_TITLE:
-                    raise WindowObservationFailure()
+                    raise WindowObservationFailure("unexpected-managed-title")
             if not candidates:
                 return None
             if len(candidates) != 1:
-                raise WindowObservationFailure()
+                raise WindowObservationFailure("ambiguous-candidates")
             window = candidates.pop()
             # Refuse a destroyed/replaced candidate; the next observation
             # re-enumerates, so a closed window never supplies cached identity.
-            if query("xdotool", "getwindowpid", window) != str(pid) or query("xdotool", "getwindowname", window) != title:
-                raise WindowObservationFailure()
+            if query("candidate-owner-query", "xdotool", "getwindowpid", window) != str(pid):
+                raise WindowObservationFailure("candidate-owner-changed")
+            if query("candidate-title-query", "xdotool", "getwindowname", window) != title:
+                raise WindowObservationFailure("candidate-title-changed")
             return window
-        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError):
-            raise WindowObservationFailure() from None
+
+        # X search, WM membership and properties are separate server reads.
+        # Mapping/withdrawal may cross them even for a direct snapshot caller.
+        # Retry the whole observation within its original budget, never treat
+        # an uncertain read as absence or carry a candidate into the next read.
+        reported = set()
+        while True:
+            try:
+                return observe()
+            except WindowObservationFailure as error:
+                if error.branch not in reported:
+                    print("LINUX WINDOW REOBSERVE " + error.branch, file=sys.stderr, flush=True)
+                    reported.add(error.branch)
+                remaining = deadline - time.monotonic()
+                if remaining > 0:
+                    time.sleep(min(.1, remaining))
+                if time.monotonic() >= deadline:
+                    # Fixed labels only: never include titles, XIDs or stderr.
+                    # Print here as a polling caller may replace the exception
+                    # with its own timeout, losing the failed branch again.
+                    print("LINUX WINDOW OBSERVATION FAILURE " + error.branch, file=sys.stderr, flush=True)
+                    raise
 
     def snapshot(self):
         nodes = []
@@ -2858,6 +2886,96 @@ class ContractTests(unittest.TestCase):
             with self.subTest(visible=visible), patch(__name__ + ".run", side_effect=self.linux_window_query(visible=visible)):
                 self.assertEqual(linux.window(42, "Ibis"), "2")
 
+    def linux_window_transition(self, first, second):
+        # A new search starts a new observation, never completes the old one.
+        searches = []
+        def command(*args, timeout=20):
+            if args[:2] == ("xdotool", "search"):
+                searches.append(args)
+            return (first if len(searches) == 1 else second)(*args, timeout=timeout)
+        return command, searches
+
+    @contextmanager
+    def linux_window_deadline(self):
+        clock = self.CopyClock()
+        with patch("time.monotonic", clock.monotonic), patch("time.sleep", clock.sleep):
+            yield clock
+
+    def test_linux_window_reobserves_not_yet_managed_title_without_using_stale_identity(self):
+        linux = Linux.__new__(Linux)
+        linux.app = Mock(pid=42)
+        linux.atspi = Mock()
+        linux.atspi.Registry.getDesktop.return_value = []
+        first = self.linux_window_query(visible="2", managed="0x3", names={"2": PICKER_TITLE})
+        second = self.linux_window_query(visible="4", managed="0x4", names={"4": PICKER_TITLE}, owners={"4": "42"})
+        command, searches = self.linux_window_transition(first, second)
+        def active(*args, timeout=20):
+            if args == ("xdotool", "getactivewindow"):
+                return "4"
+            return command(*args, timeout=timeout)
+        with self.linux_window_deadline() as clock, patch(__name__ + ".run", side_effect=active) as queries:
+            current = linux.snapshot()  # A direct caller, outside wait_for.
+        self.assertTrue(current["visible"] and current["foreground"])
+        self.assertEqual(len(searches), 2)
+        self.assertEqual(clock.elapsed, 10)
+        self.assertEqual([entry.kwargs["timeout"] for entry in queries.call_args_list
+                          if entry.args[:2] == ("xdotool", "search")], [20, 10])
+
+    def test_linux_window_reobserves_an_auxiliary_title_changing_during_mapping(self):
+        linux = Linux.__new__(Linux)
+        first = self.linux_window_query(names={"1": "", "2": "Synthetic mapping title", "3": NOTICE_TITLE})
+        command, searches = self.linux_window_transition(first, self.linux_window_query())
+        with patch(__name__ + ".run", side_effect=command), patch("time.sleep"):
+            self.assertEqual(linux.window(42, PICKER_TITLE), "2")
+        self.assertEqual(len(searches), 2)
+
+    def test_linux_window_reenumerates_after_close_and_reopen_between_queries(self):
+        linux = Linux.__new__(Linux)
+        for point in ("owner", "title", "recheck-owner", "recheck-title", "changed-title"):
+            calls = {"getwindowpid": 0, "getwindowname": 0}
+            original = self.linux_window_query(visible="2", managed="0x2")
+            def closed(*args, timeout=20):
+                if args[:2] in (("xdotool", "getwindowpid"), ("xdotool", "getwindowname")):
+                    calls[args[1]] += 1
+                    operation = "getwindowpid" if point.endswith("owner") else "getwindowname"
+                    if point != "changed-title" and args[1] == operation and calls[operation] == (2 if point.startswith("recheck") else 1):
+                        raise subprocess.CalledProcessError(1, args, stderr="Synthetic destroyed window")
+                    if point == "changed-title" and args[1] == "getwindowname" and calls[args[1]] == 2:
+                        return "Synthetic changed title"
+                return original(*args, timeout=timeout)
+            reopened = self.linux_window_query(visible="4", managed="0x4", names={"4": PICKER_TITLE}, owners={"4": "42"})
+            command, searches = self.linux_window_transition(closed, reopened)
+            with self.subTest(point=point), self.linux_window_deadline(), patch(__name__ + ".run", side_effect=command):
+                self.assertEqual(linux.window(42, PICKER_TITLE), "4")
+                self.assertEqual(len(searches), 2)
+
+    def test_linux_window_persistent_mismatch_names_the_branch_without_desktop_text(self):
+        linux = Linux.__new__(Linux)
+        clock = self.CopyClock()
+        command = self.linux_window_query(visible="2", managed="0x2", names={"2": "PRIVATE_TITLE"})
+        with patch("time.monotonic", clock.monotonic), patch("time.sleep", clock.sleep), \
+             patch(__name__ + ".run", side_effect=command) as queries, \
+             patch("sys.stderr", new_callable=io.StringIO) as output, self.assertRaises(WindowObservationFailure):
+            linux.window(42, PICKER_TITLE)
+        self.assertEqual(clock.elapsed, 20)
+        self.assertEqual(sum(args[0][:2] == ("xdotool", "search") for args in queries.call_args_list), 2)
+        self.assertIn("LINUX WINDOW OBSERVATION FAILURE unexpected-managed-title", output.getvalue())
+        self.assertNotIn("PRIVATE", output.getvalue())
+
+    def test_linux_window_failed_queries_name_fixed_branches(self):
+        linux = Linux.__new__(Linux)
+        for failed, branch in ((("xdotool", "search", "--onlyvisible", "--pid", "42"), "search-query"),
+                (("xprop", "-root", "_NET_CLIENT_LIST"), "managed-query"),
+                (("xdotool", "getwindowpid", "2"), "owner-query"),
+                (("xdotool", "getwindowname", "2"), "title-query")):
+            clock = self.CopyClock()
+            with self.subTest(branch=branch), patch("time.monotonic", clock.monotonic), patch("time.sleep", clock.sleep), \
+                 patch(__name__ + ".run", side_effect=self.linux_window_query(fail=lambda args: args == failed)), \
+                 patch("sys.stderr", new_callable=io.StringIO) as output, self.assertRaises(WindowObservationFailure):
+                linux.window(42, PICKER_TITLE)
+            self.assertIn("LINUX WINDOW OBSERVATION FAILURE " + branch, output.getvalue())
+            self.assertNotIn("private", output.getvalue())
+
     def test_linux_window_refuses_wrong_owner_unmanaged_or_ambiguous_clients(self):
         linux = Linux.__new__(Linux)
         cases = [
@@ -2869,14 +2987,16 @@ class ContractTests(unittest.TestCase):
             {"visible": "2", "managed": "0x2", "names": {"2": "Unexpected title"}},
         ]
         for case in cases:
-            with self.subTest(case=case), patch(__name__ + ".run", side_effect=self.linux_window_query(**case)), self.assertRaises(WindowObservationFailure):
+            with self.subTest(case=case), self.linux_window_deadline(), \
+                 patch(__name__ + ".run", side_effect=self.linux_window_query(**case)), self.assertRaises(WindowObservationFailure):
                 linux.window(42, "Ibis")
 
     def test_linux_window_refuses_io_uncertainty_and_does_not_cache_closed_identity(self):
         linux = Linux.__new__(Linux)
         for failed in (("xprop", "-root", "_NET_CLIENT_LIST"), ("xdotool", "getwindowname", "2"),
                        ("xdotool", "getwindowpid", "2")):
-            with self.subTest(failed=failed), patch(__name__ + ".run", side_effect=self.linux_window_query(fail=lambda args: args == failed)), self.assertRaises(WindowObservationFailure):
+            with self.subTest(failed=failed), self.linux_window_deadline(), \
+                 patch(__name__ + ".run", side_effect=self.linux_window_query(fail=lambda args: args == failed)), self.assertRaises(WindowObservationFailure):
                 linux.window(42, "Ibis")
         with patch(__name__ + ".run", side_effect=self.linux_window_query()):
             self.assertEqual(linux.window(42, "Ibis"), "2")
@@ -2896,7 +3016,7 @@ class ContractTests(unittest.TestCase):
             if args == ("xdotool", "getactivewindow"):
                 return "2"
             return command(*args, timeout=timeout)
-        with patch(__name__ + ".run", side_effect=active), self.assertRaises(WindowObservationFailure):
+        with self.linux_window_deadline(), patch(__name__ + ".run", side_effect=active), self.assertRaises(WindowObservationFailure):
             escape_to_hide(linux, linux.snapshot, "ambiguous picker must not count as hidden")
         linux.key.assert_not_called()
 
@@ -2907,7 +3027,7 @@ class ContractTests(unittest.TestCase):
                 self.assertIsNone(linux.window(42, "Ibis"))
         for error in (subprocess.CalledProcessError(1, "synthetic", output="", stderr="private display failure"),
                       subprocess.CalledProcessError(2, "synthetic", output="", stderr="")):
-            with patch(__name__ + ".run", side_effect=error), self.assertRaises(WindowObservationFailure) as caught:
+            with self.linux_window_deadline(), patch(__name__ + ".run", side_effect=error), self.assertRaises(WindowObservationFailure) as caught:
                 linux.window(42, "Ibis")
             self.assertNotIn("private", str(caught.exception))
 
@@ -2947,22 +3067,25 @@ class ContractTests(unittest.TestCase):
         def bounded(*args, timeout):
             remaining.append(timeout)
             return command(*args, timeout=timeout)
-        with patch("time.monotonic", side_effect=[0, 0, 5, 10, 19, 20]), patch(__name__ + ".run", side_effect=bounded), self.assertRaises(WindowObservationFailure):
+        clock = iter([0, 0, 5, 10, 19])
+        with patch("time.monotonic", side_effect=lambda: next(clock, 20)), \
+             patch(__name__ + ".run", side_effect=bounded), self.assertRaises(WindowObservationFailure):
             linux.window(42, "Ibis")
         self.assertEqual(remaining, [20, 15, 10, 1])
 
     def test_linux_window_refuses_replaced_owner_and_subprocess_timeout(self):
         linux = Linux.__new__(Linux)
         command = self.linux_window_query()
-        owners = iter(["42", "99"])
+        owners = iter(["42"])
         def replaced(*args, timeout):
             if args == ("xdotool", "getwindowpid", "2"):
-                return next(owners)
+                return next(owners, "99")
             return command(*args, timeout=timeout)
-        with patch(__name__ + ".run", side_effect=replaced), self.assertRaises(WindowObservationFailure):
+        with self.linux_window_deadline(), patch(__name__ + ".run", side_effect=replaced), self.assertRaises(WindowObservationFailure):
             linux.window(42, "Ibis")
         for error in (subprocess.TimeoutExpired("synthetic", 20), OSError("private native failure")):
-            with self.subTest(error=type(error).__name__), patch(__name__ + ".run", side_effect=error), self.assertRaises(WindowObservationFailure):
+            with self.subTest(error=type(error).__name__), self.linux_window_deadline(), \
+                 patch(__name__ + ".run", side_effect=error), self.assertRaises(WindowObservationFailure):
                 linux.window(42, "Ibis")
 
     def test_linux_window_selection_does_not_depend_on_the_expected_hints(self):
