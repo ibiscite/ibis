@@ -11,6 +11,27 @@ afterEach(resetApp);
 const noLibrary = { state: "none", has_snapshot: false, zotero: false, name: null, snapshot_name: null, references: 0, warnings: 0, error: null, problem: null, note: null };
 const welcome = async () => (await screen.findByRole("heading", { name: "Where do your references live?" })).closest("section")!;
 
+test.each([false, true])("welcome plainly names a missing Wayland shortcut, follows changed triggers, and returns to none (initial registered: %s)", async (registered) => {
+  const guidance = "Bind ibis toggle in your desktop's keyboard settings.";
+  backend({ library_status: () => noLibrary, shortcut_status: () => ({ shortcut: "", registered, error: null,
+    desktop: { configurable: true, guidance } }) });
+  render(<App />);
+  const group = within(await welcome());
+  expect(await group.findByText(/No shortcut is set\./)).toBeTruthy();
+  expect(group.getByText(/No shortcut is set\./).textContent).toContain(guidance);
+  expect(group.queryByText(/After this, open Ibis from any app with/)).toBeNull();
+  for (const trigger of ["Super + Space", "Strg + Umschalt + Y"]) {
+    await act(async () => { await emit("shortcut:status", { shortcut: trigger, registered: true, error: null,
+      desktop: { configurable: true, guidance: "Your desktop manages this shortcut." } }); });
+    expect(group.getByText(`After this, open Ibis from any app with ${trigger}.`)).toBeTruthy();
+    expect(group.queryByText(/No shortcut is set\./)).toBeNull();
+  }
+  await act(async () => { await emit("shortcut:status", { shortcut: "", registered: false, error: "Your desktop did not report a shortcut.",
+    desktop: { configurable: true, guidance } }); });
+  expect(group.getByText(/No shortcut is set\./).textContent).toContain(guidance);
+  expect(group.queryByText(/After this, open Ibis from any app with/)).toBeNull();
+});
+
 test("welcome uses the current registered shortcut, including live changes and desktop trigger text", async () => {
   backend({ library_status: () => noLibrary, shortcut_status: () => ({ shortcut: "Alt+K", registered: true, error: null }) });
   render(<App />);

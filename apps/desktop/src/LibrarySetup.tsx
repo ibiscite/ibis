@@ -25,7 +25,7 @@ type Action = "choose" | "zotero" | "findSources" | "openFound" | "samples";
  * nearby. Only names are shown; nothing is read until one is picked (#998). */
 export function LibrarySetup({ api, perform, autoFocus = false, empty, shortcut, onWelcomeChange }: {
   api: SetupApi;
-  perform: (action: Action, run: () => Promise<unknown>) => Promise<void>;
+  perform: (action: Action, run: () => Promise<unknown>, isCurrent?: () => boolean) => Promise<void>;
   /** Focus the first row on mount, when the row that led here is gone. */
   autoFocus?: boolean;
   empty?: EmptyLibraryChoices;
@@ -56,9 +56,8 @@ export function LibrarySetup({ api, perform, autoFocus = false, empty, shortcut,
     setSources(undefined);
     void perform("findSources", () => findSources().then(
       (found) => { if (current) setSources(found); },
-      // A search replaced or left behind is nobody's failure.
-      (error: unknown) => { if (current) { setSources(null); throw error; } },
-    ));
+      (error: unknown) => { if (current) setSources(null); throw error; },
+    ), () => current);
     return () => { current = false; };
   }, [findSources, search]);
 
@@ -88,12 +87,16 @@ export function LibrarySetup({ api, perform, autoFocus = false, empty, shortcut,
   const openFile = (index: number) => {
     if (!sources || !openFoundLibrary) return;
     const attempt = ++intent.current;
+    const isCurrent = () => attempt === intent.current;
+    let refused = false;
     void perform("openFound", () => openFoundLibrary(sources.list, index).catch((error: unknown) => {
-      if (attempt !== intent.current) return;
-      // Only the current choice may replace its refused source list.
-      lookAgain();
+      refused = true;
       throw error;
-    }));
+    }), isCurrent).then(() => {
+      // Report this attempt before its rescan takes a new identity. An older
+      // completion may neither clear a newer failure nor replace its list.
+      if (refused && isCurrent()) lookAgain();
+    });
   };
   const choose = (id: string) => {
     intent.current += 1;
@@ -110,9 +113,11 @@ export function LibrarySetup({ api, perform, autoFocus = false, empty, shortcut,
     else if (id.startsWith("found-")) openFile(Number(id.slice("found-".length)));
   };
   const notes = [zotero === "access_off" && setupText.zoteroAccessOff, sources?.cut_short && setupText.cutShort].filter(Boolean);
-  const shortcutNote = shortcut?.registered
+  const hasShortcut = Boolean(shortcut?.shortcut.trim());
+  const shortcutNote = !shortcut ? undefined : shortcut.registered && hasShortcut
     ? setupText.returnHint(shortcut.desktop ? shortcut.shortcut : shortcutLabel(shortcut.shortcut, currentPlatform() === "macos"))
-    : shortcut ? shortcut.desktop?.guidance || setupText.shortcutUnavailable : undefined;
+    : hasShortcut ? shortcut.desktop?.guidance || setupText.shortcutUnavailable
+    : `${setupText.noShortcut} ${shortcut.desktop?.guidance || setupText.openWithoutShortcut}`;
   const foundChoices: Choice[] = files.map((file, index) => ({
     id: `found-${index}`, title: file.name, tag: file.folder || undefined, icon: <ChoiceIcon name="file" />,
   }));
