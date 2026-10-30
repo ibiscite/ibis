@@ -183,7 +183,11 @@ header, shelf and footer keep their sizes; the middle area holds the state,
 starts S below the header divider and is the only thing that scrolls.
 Steady, not rigid: Settings › Look › **Window size** offers Small
 (640 × 400), Medium (720 × 480, the default) and Large (840 × 600) as
-pictures, and any dragged size shows as Custom.
+pictures, and any dragged size shows as Custom. **Compact** (maintainer,
+2026-10-30, option C) is the fourth picture: the picker opens as a short bar
+(search, up to three recent citations, footer) and grows once to Medium on the
+first key, menu or choice screen, then never shrinks while open. Medium stays
+the default so a new person never sees the window move.
 
 **Nothing clipped, one scroller** (maintainer, 2026-10-30). No state is ever
 cut off: the empty-search hint, a notice line, the shelf and the footer always
@@ -205,7 +209,15 @@ headings, and the hint shrinks to the search placeholder and the footer keys.
 Typing replaces these rows in place.
 
 **Corners** [C15][D3]. Fixed CSS px at every text size; nested shapes are
-concentric, and an inner corner never goes below the per-OS floor:
+concentric, and an inner corner never goes below the per-OS floor.
+**Equal gaps, derived radii** (maintainer, 2026-10-30): where a shape sits
+near its container's edge, the gap is the same on every side it shares with
+that edge, and its radius is the container's radius minus that gap. Window 16
+→ 8 px inset → footer action and shelf 8 → 4 px gap → key cap 4. The footer is
+44 px so its actions sit 8 px from the window's bottom and side, like the
+shelf. A shape farther from the edge than its container's radius keeps its own
+radius. Check every new nested pair (key caps in hints, chips in menus, fields
+in rows) against this before adding it:
 
 ```
 --r-row  = max(--r-min, --r-win  − 8px)        rows, search field, shelf card
@@ -302,10 +314,10 @@ Checks sit where each system puts them: on macOS and Windows a menu with any
 choice or toggle keeps a leading check column for every row, so labels share one
 start and shortcuts line up at the end; on GNOME the check follows the label.
 More's toggles are `menuitemcheckbox` items; a menu without them starts at its
-labels. **More holds actions, not preferences** (2026-10-30): the library
-section (the library, Choose Library…, Reload Library, which Zotero libraries
-when there are several), Keep Window Open and Show What Will Be Pasted (both
-have keys), then Keyboard Shortcuts, Settings… and Quit Ibis. Rows, text
+labels. **More holds actions, not preferences** (2026-10-30): Keep Window Open
+and Show What Will Be Pasted (both have keys), then Keyboard Shortcuts,
+Settings… and Quit Ibis. Library choices live in the library menu behind the
+footer status. Rows, text
 size, starting at login and update checks live only in Settings. Sections keep
 one order in every Ibis menu: what it is about, what you can do, Ibis itself.
 Item labels name the result in plain words; a quiet example of the output may
@@ -368,7 +380,9 @@ line: the layout widens, or the label truncates with a tooltip.
 Settings rows and segmented choices follow the wrapping rule in **Settings**.
 Data truncates with a tooltip; file names shorten in the middle and
 keep their extension. Budget +35 % for German and Greek. RTL uses logical
-properties (tile, year and chevron mirror; key caps keep platform order);
+properties (tile, year and chevron mirror; key caps keep platform order;
+the beak quote mirrors because it is punctuation, while the Ibis mark is a
+logo and never flips, wherever it sits);
 mixed-direction strings are isolated and citation keys stay LTR.
 **Wrapped text keeps its padding** (maintainer, 2026-10-30). When text takes
 two or more lines (Larger text, long titles, translations), its container
@@ -376,7 +390,11 @@ grows to fit it with the same padding on every side: text never touches or
 crosses a row's fill, a card's edge or a control. Wrapped lines start where
 the first line starts, the trailing control or year stays centred on the
 block, and in Settings the control moves below the label rather than
-squeezing it. Making a window or column wider is never the fix. Check every
+squeezing it. In results, a title wraps to at most two lines and then ends in
+an ellipsis; the byline stays one line and shortens authors first ("Okonkwo,
+Haddad et al."), then the journal; the year never shrinks and sits level with
+the title's first line. The full title and byline are in the tooltip and the
+reference's details. Making a window or column wider is never the fix. Check every
 row, menu item and Settings row at normal, Larger and 200% text.
 
 **The Ibis mark in the picker.** The bird from `brand/`, eye included, in the
@@ -421,11 +439,18 @@ text follows 12 px after it, as system status bars place an indicator.
 "Updated" means the references changed; "checked" means Ibis read them. The
 footer always names the library searched; its tooltip and the top of More add
 libraries, check times and problems. **One place for each status**
-(maintainer, 2026-10-30): the footer is where library state lives. A notice
-above the results appears only when the person can do something about it,
-and the footer then does not repeat it in other words. It says what happened
-in a few words with its age and one action: "Zotero not updated · 2 hours ago
-· Open Zotero" (Open Zotero launches the app), "thesis.bib moved · Find…".
+(maintainer, 2026-10-30): the footer's leading status is the only place
+library state lives, and nothing is ever inserted above the results, so a
+problem never pushes the list down. The status is a button: it opens the
+**library menu** (the library with its count and age, a Reload button, the
+Zotero libraries as toggle chips when there are several, Choose Library…,
+Reload Library). A problem shows there in a few words with a qualified age and
+one inline action: "Zotero not updated · last read 2 h ago · Open Zotero"
+(Open Zotero launches the app), "thesis.bib moved · Find…". "Last read" is the
+last successful read. Background work (reading a large library, downloading an
+update) shows as a small progress ring before the words, never a bar across
+the window. When nothing usable is left, the middle area shows the choice
+screen instead.
 While references are usable nothing else interrupts. Names and ages are isolated for RTL; the
 age ticks every 30 s outside the live region.
 
