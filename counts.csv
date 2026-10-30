@@ -1,0 +1,15 @@
+date,asset_name,download_count,updated_at
+2026-10-30,Ibis-Linux.AppImage,8,2026-10-20T16:03:05Z
+2026-10-30,Ibis-Linux.deb,7,2026-10-20T16:03:03Z
+2026-10-30,Ibis-Linux.rpm,0,2026-10-20T16:03:03Z
+2026-10-30,Ibis-macOS-Apple-silicon.app.tar.gz,0,2026-10-20T16:03:04Z
+2026-10-30,Ibis-macOS-Apple-silicon.dmg,12,2026-10-20T16:03:05Z
+2026-10-30,Ibis-macOS-Intel.app.tar.gz,0,2026-10-20T16:03:05Z
+2026-10-30,Ibis-macOS-Intel.dmg,11,2026-10-20T16:03:05Z
+2026-10-30,Ibis-Windows-setup.exe,8,2026-10-20T16:03:03Z
+2026-10-30,Ibis-Windows.msi,0,2026-10-20T16:03:03Z
+2026-10-30,latest.json,13,2026-10-20T16:03:07Z
+2026-10-30,SHA256SUMS-aarch64-apple-darwin.txt,0,2026-10-20T16:03:05Z
+2026-10-30,SHA256SUMS-x86_64-apple-darwin.txt,0,2026-10-20T16:03:06Z
+2026-10-30,SHA256SUMS-x86_64-pc-windows-msvc.txt,0,2026-10-20T16:03:05Z
+2026-10-30,SHA256SUMS-x86_64-unknown-linux-gnu.txt,0,2026-10-20T16:03:06Z
