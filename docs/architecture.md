@@ -66,6 +66,86 @@ queries; malformed or oversized values are ignored before arXiv/DOI equivalence.
 - **BibTeX/BibLaTeX:** each entry is parsed independently, so a broken entry produces a warning with its line while the rest loads; work is bounded so hostile files cannot hang the engine. Long-lived clients watch files and only replace them after two identical reads. A watch failure keeps the successfully read snapshot usable and reports the fixed `live-refresh-off` warning; manual Reload remains available. One-shot CLI calls install no watches.
 - **CSL-JSON:** `citation-key`, then `id`, is the key. An `id` only proves a match against a bibliography made from that same file, which the item's details say.
 
+### Saved source generations (#1298, first storage slice #1468)
+
+Adopt #1298's revised immutable flat-file design. One `Arc<PreparedLibrary>`
+owns one source generation: opaque library identity, source observation, content
+fingerprints, compact search rows, key/alias ownership and checked object offsets.
+Readers retain that generation; an index never reads objects from another one.
+Only configured sources are reopened. Unknown store formats are cache misses;
+before 1.0 they are rebuilt without migrations. Use bounded ordinary file I/O,
+with no new dependency, unsafe memory mapping, SQLite or hidden polling.
+
+Search returns a typed `SearchSummary`: item identity, cite/full fingerprints,
+title, creator/date/container display fields and bounded availability metadata.
+It is not a truncated `Record` carrying the complete object's fingerprints.
+The same engine contract serves the picker, CLI and protocol clients. Search
+uses prepared contiguous text and offset tables; abstracts remain a separate
+last-pass section. Global search passes, identifier fallback after scope,
+deterministic ordering and the limit-prefix property stay exact across sources.
+
+`show`, citation and export materialize only their requested canonical objects.
+A citation also loads its annotation/attachment/parent closure; every CSL field
+may affect a style, so selected citation data is never reduced to display fields.
+Prepared citations retain that small object set and generation references.
+Replace every full-library owner: the search index, engine registry slots,
+watcher model, `ZoteroSource.current`, live-reader payloads and formatter caches.
+Keeping any full `Snapshot` behind the compact index defeats the memory goal.
+
+Import and refresh stream each validated object through canonical fingerprinting,
+search preparation and the generation writer, then release its CSL tree. Retain
+only compact identity, ownership and ordering metadata; preserve existing parser,
+value, warning, work-budget and fingerprint semantics. The initial storage slice
+must support this sink without requiring a full-library JSON snapshot first.
+
+The cache directory is owner-only, verified for ownership, ACLs and links before
+payloads are written and on reopen, and excluded from backups where supported.
+Reuse the closed-reader private-storage contracts. An exclusive lease permits
+one writer/cleaner; a second process operates uncached. Create a unique generation,
+flush its complete contents, atomically replace and flush the manifest, then
+publish. Failed I/O retains the accepted generation; no reader observes a partial
+write. Clean only owned files after their generation readers release them.
+Writers retain weak session authority and a per-source operation identity; check
+that identity under the reservation/write lock before charging bytes or writing.
+Reserve the aggregate 1 GiB and 512 directory-entry budgets before payload,
+index and manifest writes or temporary-file creation, including publication's
+scratch slot. Cancellation, failure and drop release the operation's stage and
+reservation. Under the exclusive lease, reclaim verified abandoned stages while
+preserving live stages and generation readers. Reclaim before rejecting an
+oversized store, inspecting at most 1,025 entries per pass; incomplete traversal
+or an unknown manifest forbids generation deletion. Storage failure remains a
+cache miss and never grants source readiness.
+
+Treat stored bytes as untrusted: bound file/section/object sizes and counts,
+validate UTF-8, offsets, ordering and identities before indexing, and checksum
+index sections. On materialization, validate canonical objects and recompute their
+fingerprints; a stored fingerprint alone is never trusted. Source paths and
+attachment locations remain engine-private, absent from summaries and diagnostics.
+
+A file observation binds its canonical identity and strong content digest;
+size/mtime are hints, and reload keeps two identical observations. A cached file
+becomes citable only after its source matches; an accepted file snapshot remains
+usable if watching fails. Cached Zotero is searchable but unready for citation
+until a coherent read. Preserve Zotero 10's server identity, monotonic counter and
+complete item-version inventory/deletion reconciliation; older releases, Reload
+and discontinuity still reread fully. Better BibTeX keys refresh independently
+because item versions do not cover their changes. Do not invent a `since` path.
+
+Background work owns the captured source selection and operation generation.
+Delayed A after B or close/reopen may update neither manifest nor engine state.
+Equal content still updates age, warnings, errors and readiness. Copy retains the
+existing final barrier: current source readiness/generation, selected fingerprints,
+annotation relationships, exact global key ownership and preview hash must agree.
+
+Scenarios precede code: reopen/search/show/cite parity, corrupt-cache refusal,
+failed writes, lease contention, stale completion and close/reopen. Qualify the
+integrated app with at least five fresh-process runs at 10k and 100k, preserving
+every result and reporting startup and process-tree memory medians. Target 100k
+<3 s/<400 MB and instant cached 10k results. Report cache-hit startup separately
+from first import/rebuild; neither storage tests nor cached results qualify the
+other. #1298 stays open until the app uses compact generations and lazy objects
+and meets these targets, with existing search/copy correctness still enforced.
+
 ## Citations (ibis-core, ibis-csl)
 
 - **Request:** ordered items (the same reference may appear twice); a citation form (normal, narrative, author only, year only, full, bibliography only) and "keep my order"; per item a typed locator (one of the 29 CSL 1.0.2 locator terms), rich-text prefix and suffix (italic, bold, sub, superscript), author suppression, and the annotation it came from if any; an output spec or named preset; an input language for parsing typed locators and an output locale.
