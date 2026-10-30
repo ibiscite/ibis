@@ -124,12 +124,38 @@ attachment locations remain engine-private, absent from summaries and diagnostic
 
 A file observation binds its canonical identity and strong content digest;
 size/mtime are hints, and reload keeps two identical observations. A cached file
-becomes citable only after its source matches; an accepted file snapshot remains
-usable if watching fails. Cached Zotero is searchable but unready for citation
+becomes citable only after a fresh parse of current source bytes; stored
+observations, checksums and fingerprints grant no source or citation readiness.
+An accepted, freshly parsed file snapshot remains usable if watching fails. Cached Zotero is searchable but unready for citation
 until a coherent read. Preserve Zotero 10's server identity, monotonic counter and
 complete item-version inventory/deletion reconciliation; older releases, Reload
 and discontinuity still reread fully. Better BibTeX keys refresh independently
 because item versions do not cover their changes. Do not invent a `since` path.
+
+The desktop saves only warning-free, record-only `.bib` imports. Bounded objects reopened through
+one retained `PreparedLibrary::get` may serve search immediately; stored observations, checksums
+and fingerprints never grant readiness. Every reopen silently parses current source bytes, then
+accepts the verified objects and diagnostics through the normal path, replacing any differences.
+Cached search publishes `Reloading`, with no new `checked_at` until verification succeeds;
+failed verification retains searchable references and diagnostics without claiming a fresh check.
+The existing source-generation gate, shared with Zotero, refuses citation and copy until then;
+the desktop uses its existing library-loading message. Cached bytes never seed a watcher that could skip that parse.
+Attachments are not persisted. Full objects remain resident; #1251 and #1298 stay open.
+
+One process-lived `FileCacheSession` owns the lease. Remembered `.bib` settings keep the canonical
+path captured by preparation. The session records that identity before hydration, even when the
+file has moved or disappeared, and retains a retargeted path's old and current identities.
+Startup normalizes only the matching saved choice; refresh never saves a choice.
+Failed choice saves retire cached bytes and disable storage for the session, while source verification continues.
+Removal retires even an unfinished startup load's manifest and
+allows bounded cleanup after readers release its payload. Selection and close invalidate work;
+final acceptance serializes manifest and app publication. Parsing, indexing and watcher setup
+remain in the background. Samples preserve the remembered cache; explicit Reload keeps two identical observations.
+
+Only native measurement qualifies time to first search and added import/refresh cost: five fresh
+process runs each at 10k/100k, counterbalanced against a valid baseline, retaining every result.
+Separate cached search from verified citation readiness and rebuild startup; report process-tree
+peak memory and refresh commit delay. Existing budgets hold.
 
 Background work owns the captured source selection and operation generation.
 Delayed A after B or close/reopen may update neither manifest nor engine state.
