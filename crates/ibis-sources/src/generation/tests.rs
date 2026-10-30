@@ -403,6 +403,78 @@ fn oversized_metadata_sequences_are_refused_during_decode() {
     }
 }
 
+const METADATA_SLOT_LIMIT: usize = 1_000_000;
+
+fn dense_item(position: usize, slots: usize) -> LibraryObject {
+    let mut object = item(&format!("record:{position:05}"), "Dense");
+    if let LibraryObject::Record(record) = &mut object {
+        record.aliases = vec![String::new(); slots.min(256)];
+        record.csl.insert(
+            "author".into(),
+            json!(vec![json!({"literal":""}); slots.saturating_sub(256)]),
+        );
+    }
+    object
+}
+
+#[test]
+fn aggregate_metadata_writer_boundary_reopens_and_overflow_preserves_the_manifest() {
+    let (_directory, store) = open();
+    let build = |slots: usize| {
+        let mut writer = store
+            .begin(library(), Fingerprint::of_bytes(b"dense source"))
+            .unwrap_or_else(|e| panic!("{e}"));
+        for position in 0..slots.div_ceil(512) {
+            writer
+                .push(dense_item(position, (slots - position * 512).min(512)))
+                .unwrap_or_else(|e| panic!("{e}"));
+        }
+        writer
+    };
+    let accepted = store
+        .publish(build(METADATA_SLOT_LIMIT).finish().unwrap_or_else(|e| panic!("{e}")))
+        .unwrap_or_else(|e| panic!("{e}"));
+    let reopened = store
+        .open_library(&library())
+        .unwrap_or_else(|e| panic!("{e}"))
+        .unwrap_or_else(|| panic!("cache miss"));
+    assert_eq!(reopened.summaries().count(), METADATA_SLOT_LIMIT.div_ceil(512));
+    assert_eq!(get(&accepted, "record:00000"), get(&reopened, "record:00000"));
+    let manifest = store.inner.directory.path().join(manifest_name(&library()));
+    let previous = std::fs::read(&manifest).unwrap_or_else(|e| panic!("{e}"));
+    let mut rejected = build(METADATA_SLOT_LIMIT);
+    assert!(matches!(rejected.push(dense_item(99999, 1)), Err(StoreError::Limit)));
+    assert!(matches!(rejected.finish(), Err(StoreError::Invalid)));
+    assert_eq!(std::fs::read(manifest).unwrap_or_else(|e| panic!("{e}")), previous);
+}
+
+#[test]
+fn aggregate_metadata_decoder_refuses_many_individually_bounded_rows() {
+    let (_directory, store) = open();
+    drop(
+        store
+            .publish(stage(&store, &"x".repeat(4096)))
+            .unwrap_or_else(|e| panic!("{e}")),
+    );
+    rewrite_index(&store, |index| {
+        let mut template = index.rows[0].clone();
+        template.keys = vec![String::new(); 256];
+        let summary = template.summary.as_mut().unwrap_or_else(|| panic!("missing summary"));
+        summary.title.clear();
+        summary.authors = vec![String::new(); 256];
+        index.rows = (0..=METADATA_SLOT_LIMIT / 512)
+            .map(|position| {
+                let mut row = template.clone();
+                row.id.key = format!("record:{position:05}");
+                row.offset = MAGIC.len() as u64 + position as u64;
+                row.len = 1;
+                row
+            })
+            .collect();
+    });
+    assert!(matches!(store.open_library(&library()), Err(StoreError::Invalid)));
+}
+
 #[test]
 fn empty_configured_library_can_be_saved_and_reopened() {
     let (_directory, store) = open();

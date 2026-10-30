@@ -15,6 +15,8 @@ const FORMAT: u32 = 1;
 const MAGIC: &[u8; 8] = b"IBISGEN1";
 const MAX_OBJECT: u64 = 2 * 1024 * 1024;
 const MAX_INDEX: u64 = 64 * 1024 * 1024;
+// Bound decoded String slots separately from their serialized byte lengths.
+const MAX_METADATA_SLOTS: usize = 1_000_000;
 const MAX_GENERATION: u64 = 256 * 1024 * 1024;
 const MAX_MANIFEST: u64 = 8 * 1024;
 const MAX_FILES: usize = 512;
@@ -122,6 +124,7 @@ pub struct GenerationWriter {
     file: NamedTempFile,
     index: Index,
     ids: BTreeSet<ItemRef>,
+    metadata_slots: usize,
     bytes: u64,
     failed: bool,
 }
@@ -214,6 +217,7 @@ impl GenerationStore {
                 rows: vec![],
             },
             ids: BTreeSet::new(),
+            metadata_slots: 0,
             bytes: MAGIC.len() as u64,
             failed: false,
         })
@@ -450,7 +454,7 @@ impl GenerationWriter {
         if keys.len() > 256 || summary.as_ref().is_some_and(|summary| summary.authors.len() > 256) {
             return Err(StoreError::Limit);
         }
-        self.index.rows.push(Row {
+        let row = Row {
             id: object.object.id().clone(),
             fingerprints: object.fingerprints.clone(),
             keys,
@@ -458,7 +462,9 @@ impl GenerationWriter {
             offset: self.bytes,
             len: bytes.len() as u64,
             hash: Fingerprint::of_bytes(&bytes),
-        });
+        };
+        charge_metadata(&mut self.metadata_slots, &row)?;
+        self.index.rows.push(row);
         self.file.write_all(&bytes).map_err(|_| StoreError::Unavailable)?;
         self.bytes = end;
         Ok(())
@@ -631,28 +637,47 @@ fn bounded_names<'de, D: serde::Deserializer<'de>>(input: D) -> Result<Vec<Strin
     bounded_sequence(input, 256)
 }
 fn bounded_rows<'de, D: serde::Deserializer<'de>>(input: D) -> Result<Vec<Row>, D::Error> {
-    bounded_sequence(input, crate::MAX_LIBRARY_RECORDS)
+    let mut slots = 0;
+    bounded_sequence_checked(input, crate::MAX_LIBRARY_RECORDS, |row| {
+        charge_metadata(&mut slots, row).is_ok()
+    })
+}
+fn charge_metadata(slots: &mut usize, row: &Row) -> Result<(), StoreError> {
+    *slots = slots
+        .checked_add(row.keys.len())
+        .and_then(|total| total.checked_add(row.summary.as_ref().map_or(0, |summary| summary.authors.len())))
+        .filter(|total| *total <= MAX_METADATA_SLOTS)
+        .ok_or(StoreError::Limit)?;
+    Ok(())
 }
 fn bounded_sequence<'de, D: serde::Deserializer<'de>, T: Deserialize<'de>>(
     input: D,
     limit: usize,
 ) -> Result<Vec<T>, D::Error> {
-    struct Visitor<T> {
+    bounded_sequence_checked(input, limit, |_| true)
+}
+fn bounded_sequence_checked<'de, D: serde::Deserializer<'de>, T: Deserialize<'de>>(
+    input: D,
+    limit: usize,
+    check: impl FnMut(&T) -> bool,
+) -> Result<Vec<T>, D::Error> {
+    struct Visitor<T, F> {
         limit: usize,
+        check: F,
         marker: std::marker::PhantomData<T>,
     }
-    impl<'de, T: Deserialize<'de>> serde::de::Visitor<'de> for Visitor<T> {
+    impl<'de, T: Deserialize<'de>, F: FnMut(&T) -> bool> serde::de::Visitor<'de> for Visitor<T, F> {
         type Value = Vec<T>;
         fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             formatter.write_str("bounded prepared metadata")
         }
-        fn visit_seq<A: serde::de::SeqAccess<'de>>(self, mut sequence: A) -> Result<Vec<T>, A::Error> {
+        fn visit_seq<A: serde::de::SeqAccess<'de>>(mut self, mut sequence: A) -> Result<Vec<T>, A::Error> {
             if sequence.size_hint().is_some_and(|size| size > self.limit) {
                 return Err(serde::de::Error::custom("prepared metadata limit"));
             }
             let mut values = Vec::new();
             while let Some(value) = sequence.next_element()? {
-                if values.len() == self.limit {
+                if values.len() == self.limit || !(self.check)(&value) {
                     return Err(serde::de::Error::custom("prepared metadata limit"));
                 }
                 values.push(value);
@@ -662,6 +687,7 @@ fn bounded_sequence<'de, D: serde::Deserializer<'de>, T: Deserialize<'de>>(
     }
     input.deserialize_seq(Visitor {
         limit,
+        check,
         marker: std::marker::PhantomData,
     })
 }
