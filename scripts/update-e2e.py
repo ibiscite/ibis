@@ -871,6 +871,95 @@ def run(args):
 
 
 class Tests(unittest.TestCase):
+    def linux_desktop(self, scenario):
+        events = []
+        clock = {"now": 0.0}
+        manager = MagicMock(pid=77)
+        manager.poll.return_value = None
+        def stopped(*_args, **_kwargs):
+            manager.poll.return_value = 0
+            return 0
+        manager.wait.side_effect = stopped
+        root_reads = 0
+        absent = "_NET_SUPPORTING_WM_CHECK:  no such atom on any window."
+        support = "_NET_SUPPORTING_WM_CHECK(WINDOW): window id # 0x20011f"
+        def query(command, **kwargs):
+            nonlocal root_reads
+            self.assertGreater(kwargs["timeout"], 0)
+            self.assertLessEqual(kwargs["timeout"], PICKER_TIMEOUT)
+            self.assertTrue(kwargs["capture_output"])
+            events.append(tuple(command))
+            args = tuple(command[1:])
+            if args == ("-root", "_NET_SUPPORTING_WM_CHECK"):
+                root_reads += 1
+                value = support if scenario == "existing" or root_reads > 2 else absent
+                if scenario == "never-ready": value = absent
+                if scenario == "malformed": value = "synthetic-private-sentinel"
+            elif args == ("-id", "0x20011f", "_NET_SUPPORTING_WM_CHECK"):
+                value = support.replace("0x20011f", "0x999") if scenario == "identity" else support
+            elif args == ("-root", "_OPENBOX_PID"):
+                value = "_OPENBOX_PID(CARDINAL) = " + ("99" if scenario == "foreign" else "77")
+            else:
+                self.fail("unexpected desktop action")
+            if scenario == "query-error" or (scenario == "late-query-error" and root_reads > 2):
+                return subprocess.CompletedProcess(command, 1, stdout=b"", stderr=b"synthetic-private-sentinel")
+            if scenario == "query-timeout":
+                raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+            return subprocess.CompletedProcess(command, 0, stdout=value.encode(), stderr=b"")
+        def launch(command, **_kwargs):
+            events.append(tuple(command))
+            self.assertEqual(command, ["openbox", "--sm-disable"])
+            if scenario == "start-error": raise OSError("synthetic start error")
+            if scenario == "exited": manager.poll.return_value = 1
+            return manager
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = Path(temporary)
+            previous, expected, library = (folder / name for name in ("previous", "expected", "synthetic.bib"))
+            previous.write_bytes(b"synthetic previous"); expected.write_bytes(b"synthetic next")
+            library.write_text("@article{synthetic, title={Synthetic}}")
+            args = argparse.Namespace(previous=previous, expected=expected)
+            with patch.dict(sys.modules, {"pyatspi": MagicMock()}), patch("subprocess.Popen", side_effect=launch), \
+                    patch("subprocess.run", side_effect=query), patch("time.monotonic", side_effect=lambda: clock["now"]), \
+                    patch("time.sleep", side_effect=lambda _step: clock.update(now=clock["now"] + 1)):
+                if scenario == "success":
+                    native = Linux(folder, args, library)
+                    self.assertIs(native.wm, manager)
+                    self.assertEqual(native.wm_window, "0x20011f")
+                    self.assertEqual(events[0], ("xprop", "-root", "_NET_SUPPORTING_WM_CHECK"))
+                    self.assertEqual(events[1], ("openbox", "--sm-disable"))
+                    manager.terminate.assert_not_called()
+                    native.close(); native.close()
+                    manager.terminate.assert_called_once_with()
+                    manager.wait.assert_called_once_with(timeout=5)
+                else:
+                    with self.assertRaises((AssertionError, OSError, RuntimeError, subprocess.TimeoutExpired)) as failure:
+                        Linux(folder, args, library)
+                    self.assertNotIn("synthetic-private-sentinel", str(failure.exception))
+                    started = ("openbox", "--sm-disable") in events and scenario != "start-error"
+                    self.assertEqual(manager.terminate.call_count, int(started and scenario != "exited"))
+                    self.assertLessEqual(clock["now"], PICKER_TIMEOUT)
+        return events
+
+    def test_linux_establishes_owned_window_manager_before_app_launch_and_cleans_it_once(self):
+        self.linux_desktop("success")
+
+    def test_linux_refuses_existing_unknown_failed_or_unready_desktop_before_app_actions(self):
+        for scenario in ("existing", "malformed", "query-error", "query-timeout", "start-error", "exited",
+                         "identity", "foreign", "never-ready", "late-query-error"):
+            with self.subTest(scenario=scenario):
+                self.linux_desktop(scenario)
+
+    def test_linux_late_cleanup_of_old_desktop_never_stops_reopened_owner(self):
+        first, second = Linux.__new__(Linux), Linux.__new__(Linux)
+        first.wm, second.wm = MagicMock(pid=77), MagicMock(pid=88)
+        old, current = first.wm, second.wm
+        old.poll.return_value = current.poll.return_value = None
+        first.close(); first.close()
+        old.terminate.assert_called_once_with()
+        current.terminate.assert_not_called()
+        second.close()
+        current.terminate.assert_called_once_with()
+
     @unittest.skipUnless(shutil.which("node"), "Node is required for the macOS picker provider contract")
     def test_macos_picker_requires_owned_unique_visible_and_native_focused_window(self):
         model = r'''
