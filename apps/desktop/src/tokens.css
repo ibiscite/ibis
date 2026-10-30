@@ -143,7 +143,8 @@
      inset + lead + icon + lead-gap = inset + row-pad + tile + row-gap. */
   --search-gap: var(--space-1);
   --search-icon-width: var(--icon-glyph-size);
-  --search-mark-size: var(--tile-size);
+  /* 24 px bird, centred over the 20 px glyph with a 2 px outset. */
+  --search-mark-size: 1.5rem;
   --search-mark-outset: calc((var(--search-mark-size) - var(--search-icon-width)) / 2);
   --lead: calc(var(--row-pad) + (var(--tile-size) - var(--icon-glyph-size)) / 2);
   --lead-gap: calc((var(--tile-size) - var(--icon-glyph-size)) / 2 + var(--row-gap));

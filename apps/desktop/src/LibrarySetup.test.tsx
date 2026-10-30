@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import axe from "axe-core";
 import { LibrarySetup } from "./LibrarySetup";
 
-afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+afterEach(() => { cleanup(); vi.restoreAllMocks(); delete document.documentElement.dataset.system; });
 const perform = async (_action: string, run: () => Promise<unknown>) => { await run(); };
 const option = (name: RegExp) => screen.getByRole("option", { name });
 const findOption = (name: RegExp) => screen.findByRole("option", { name });
@@ -54,7 +54,8 @@ test("first run teaches the basics, focuses Zotero and moves through four tiles 
   });
   const chooseLibrary = vi.fn(async () => undefined), useSampleLibrary = vi.fn(async () => undefined);
   const findSources = vi.fn(async () => ({ zotero: "absent" as const, list: 1, files: [], cut_short: false }));
-  const { container } = render(<LibrarySetup api={{ chooseLibrary, useZotero: async () => undefined, findSources, useSampleLibrary }} perform={perform} />);
+  const { container } = render(<LibrarySetup api={{ chooseLibrary, useZotero: async () => undefined, findSources, useSampleLibrary }} perform={perform}
+    shortcut={{ shortcut: "Control+Shift+Y", registered: true, error: null }} />);
   expect(screen.getByText("Ibis finds a reference and pastes its citation where you're typing. It only reads your library, never changes it.")).toBeTruthy();
   expect(screen.getByText(/After this, open Ibis from any app with/)).toBeTruthy();
   expect(container.querySelector('.welcome-mark[aria-hidden="true"]')).toBeTruthy();
@@ -88,6 +89,13 @@ test("one found library replaces Find, keeps its focus, and leaves samples reach
   expect(document.activeElement).toBe(option(/^Try sample references/));
   press(file);
   expect(openFoundLibrary).toHaveBeenCalledExactlyOnceWith(7, 0);
+});
+
+test.each(["macos", "windows", "linux"])("welcome formats the current shortcut for %s", (system) => {
+  document.documentElement.dataset.system = system;
+  render(<LibrarySetup api={{ chooseLibrary: async () => undefined, useZotero: async () => undefined }} perform={perform}
+    shortcut={{ shortcut: "Alt+K", registered: true, error: null }} />);
+  expect(screen.getByText(`After this, open Ibis from any app with ${system === "macos" ? "⌥K" : "Alt+K"}.`)).toBeTruthy();
 });
 
 test("several found libraries open a short list and return to the same tile", async () => {

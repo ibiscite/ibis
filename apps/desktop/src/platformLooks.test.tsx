@@ -859,14 +859,22 @@ test("spacing audits resolve aliases and calc without exempting arbitrary one-pi
 
 test("the 24 px search logo keeps a two-pixel outset without moving query or result columns", () => {
   const logoCss = readFileSync(new FileURL("./ui/IbisMark.css", import.meta.url), "utf8");
-  const logo = rules(logoCss, ".search-bar > svg.ibis-mark.search-mark");
-  expect(logo).toMatch(/width: 1\.5rem/);
-  expect(logo).toMatch(/margin-inline: calc\(var\(--lead\) - \.125rem\) calc\(var\(--lead-gap\) - var\(--search-gap\) - \.125rem\)/);
+  expect(logoCss).not.toContain(".search-bar");
+  expect(tokens).toMatch(/--search-mark-size: 1\.5rem;/);
+  expect(tokens).toMatch(/--search-mark-outset: calc\(\(var\(--search-mark-size\) - var\(--search-icon-width\)\) \/ 2\);/);
+  const logo = rules(styles, ".search-bar > svg.search-mark");
+  expect(logo).toMatch(/width: var\(--search-mark-size\)/);
+  expect(logo).toMatch(/margin-inline: calc\(var\(--lead\) - var\(--search-mark-outset\)\) calc\(var\(--lead-gap\) - var\(--search-gap\) - var\(--search-mark-outset\)\)/);
+  const scope = tokenScopes(tokenBlocks({ tokens })).get("root")!;
+  const size = gridPixels(resolveToken("var(--search-mark-size)", scope)!)!;
+  const outsetSize = gridPixels(resolveToken("var(--search-mark-outset)", scope)!)!;
+  expect(size).toBe(24);
+  expect(outsetSize).toBe(2);
   for (const scale of [1, 1.15, 2]) {
-    const g = geometry(), icon = g["--icon-glyph-size"]! * scale, mark = 24 * scale;
+    const g = geometry(), icon = g["--icon-glyph-size"]! * scale, mark = size * scale;
     const lead = (g["--row-pad"]! + (g["--tile-size"]! - g["--icon-glyph-size"]!) / 2) * scale;
     const gap = ((g["--tile-size"]! - g["--icon-glyph-size"]!) / 2 + g["--row-gap"]!) * scale;
-    const outset = 2 * scale;
+    const outset = outsetSize * scale;
     expect(lead - outset + mark + gap - outset).toBeCloseTo(lead + icon + gap);
     expect(mark).toBeLessThanOrEqual(g["--field-h"]! * scale);
   }

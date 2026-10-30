@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import type { Sources } from "./bindings";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import type { ShortcutStatus, Sources } from "./bindings";
 import { ChoiceIcon } from "./icons";
 import { setupText } from "./messages";
 import { currentPlatform } from "./platform";
-import { DEFAULT_PICKER_SHORTCUT, shortcutLabel } from "./keys";
+import { shortcutLabel } from "./keys";
 import { ChoiceList, type Choice } from "./ui/ChoiceList";
 import { IbisMark } from "./ui/IbisMark";
 import "./LibrarySetup.css";
@@ -23,14 +23,23 @@ type Action = "choose" | "zotero" | "findSources" | "openFound" | "samples";
 /** First run, and the screen while no library is chosen: Zotero, a
  * library file through the system chooser, and, only when asked, libraries found
  * nearby. Only names are shown; nothing is read until one is picked (#998). */
-export function LibrarySetup({ api, perform, autoFocus = false, empty }: {
+export function LibrarySetup({ api, perform, autoFocus = false, empty, shortcut, onWelcomeChange }: {
   api: SetupApi;
   perform: (action: Action, run: () => Promise<unknown>) => Promise<void>;
   /** Focus the first row on mount, when the row that led here is gone. */
   autoFocus?: boolean;
   empty?: EmptyLibraryChoices;
+  /** The picker's current status; setup never reads or guesses a shortcut. */
+  shortcut?: ShortcutStatus | null;
+  /** Search is hidden in welcome, including when reached through recovery. */
+  onWelcomeChange?: (shown: boolean) => void;
 }) {
   const { chooseLibrary, useZotero, useSampleLibrary: changeSamples, findSources, openFoundLibrary } = api;
+  const welcome = !empty;
+  useLayoutEffect(() => {
+    onWelcomeChange?.(welcome);
+    return () => onWelcomeChange?.(false);
+  }, [welcome, onWelcomeChange]);
   // Undefined while looking; null before an explicit search or after failure.
   const [sources, setSources] = useState<Sources | null | undefined>(null);
   const [search, setSearch] = useState(0);
@@ -101,6 +110,9 @@ export function LibrarySetup({ api, perform, autoFocus = false, empty }: {
     else if (id.startsWith("found-")) openFile(Number(id.slice("found-".length)));
   };
   const notes = [zotero === "access_off" && setupText.zoteroAccessOff, sources?.cut_short && setupText.cutShort].filter(Boolean);
+  const shortcutNote = shortcut?.registered
+    ? setupText.returnHint(shortcut.desktop ? shortcut.shortcut : shortcutLabel(shortcut.shortcut, currentPlatform() === "macos"))
+    : shortcut ? shortcut.desktop?.guidance || setupText.shortcutUnavailable : undefined;
   const foundChoices: Choice[] = files.map((file, index) => ({
     id: `found-${index}`, title: file.name, tag: file.folder || undefined, icon: <ChoiceIcon name="file" />,
   }));
@@ -112,10 +124,10 @@ export function LibrarySetup({ api, perform, autoFocus = false, empty }: {
         : <ChoiceList key="starts" title={empty?.title ?? setupText.sourcesTitle} line={empty ? setupText.emptyLine : setupText.sourcesLine}
           choices={choices} onChoose={choose} autoFocus={autoFocus || !empty} grid={!empty && choices.length === 4} focusId={focusTile ? "find" : undefined}
           mark={!empty && <IbisMark className="welcome-mark" size="welcome" />}
-          footnote={empty ? setupText.dropFile : <>
+          footnote={empty ? setupText.dropFile : notes.length > 0 || shortcutNote ? <>
             {notes.length > 0 && <span className="welcome-note">{notes.join(" ")}</span>}
-            <span className="welcome-note">{setupText.returnHint(shortcutLabel(DEFAULT_PICKER_SHORTCUT, currentPlatform() === "macos"))}</span>
-          </>} />}
+            {shortcutNote && <span className="welcome-note">{shortcutNote}</span>}
+          </> : undefined} />}
       {/* Search progress and outcome, announced once; the row shows the same words. */}
       {findSources && search > 0 && <p className="visually-hidden" role="status">{outcome}</p>}
     </div>

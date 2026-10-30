@@ -87,6 +87,7 @@ export const setupText = {
   sourcesTitle: "Where do your references live?",
   sourcesLine: "Ibis finds a reference and pastes its citation where you're typing. It only reads your library, never changes it.",
   returnHint: (shortcut: string) => `After this, open Ibis from any app with ${shortcut}.`,
+  shortcutUnavailable: "The shortcut is unavailable. Open Ibis from the menu bar or tray.",
   openingLine: "Reading your library. Zotero can stay closed.",
   samples: "Try sample references",
   samplesHelp: "Three invented references",

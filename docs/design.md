@@ -904,8 +904,14 @@ the title. Space is shared above and below, never left as one empty band.
 impressions matter). Its line says what Ibis does and promises safety ("Ibis
 finds a reference and pastes its citation where you're typing. It only reads
 your library, never changes it."), and its note says how to come back ("After
-this, open Ibis from any app with ⇧⌘Y."). The welcome is the whole window: with nothing to search yet there is
-no search header (the footer stays, Escape hides). A 56 px mark and a 20 px
+this, open Ibis from any app with ⇧⌘Y." by default). It names the current
+registered shortcut in the platform's notation or the desktop's exact trigger
+text. An unregistered shortcut shows its unavailable guidance instead; a pending or
+failed status read never promises a shortcut. The welcome is the whole window:
+with nothing to search yet there is no search header. The footer stays;
+Escape dismisses any visible menu or sheet, then hides Ibis even when a query
+is retained from samples or another library. Dismissed sheets return focus to a
+visible control, never the hidden search box. A 56 px mark and a 20 px
 title lead. The four starts (Zotero, a .bib
 file, Find them on this computer, Try sample references) are a 2 × 2 grid of
 tiles, 8 px apart and at most 600 px wide, each a tile icon, a title and one
