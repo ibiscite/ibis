@@ -21,6 +21,7 @@
   <meta property="og:image:alt" content="Ibis. {{headline}} Early preview.">
   <meta name="twitter:card" content="summary_large_image">
   <link rel="stylesheet" href="tokens.css">
+  <link rel="stylesheet" href="picker-tokens.css">
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="demo.css">
   <script src="site.js"></script>
@@ -82,11 +83,20 @@
         <p class="action flow-copy">Press Enter. Ibis copies the key.</p></div>
         <figure class="picker" data-picker>
           <figcaption>Try it with made-up references, the same three as the app’s “Try sample references”. Sample citations end in [Sample]. Copying and pasting here stay inside this page; the app copies to your clipboard and pastes when available.</figcaption>
-          <div class="picker-panel">
-            <p>Search: <strong>lantern</strong></p>
-            <p>Sample · Lantern gardens and the rhythm of imaginary cities<br><small>Vale · 2024 · Journal of Invented Landscapes</small></p>
-            <p>Copy as Pandoc: <code>[@vale2024lanterns] [Sample]</code></p>
+          <div class="picker-panel" data-app-tokens data-platform="macos">
+            <div class="picker-search"><span class="picker-mark" aria-hidden="true"></span><span class="picker-query">lantern</span><span class="picker-format picker-static-control">Pandoc⌄</span></div>
+            <div class="picker-middle"><p class="picker-meta"><span>Best matches</span><span>1 result</span></p>
+              <ul class="picker-results"><li><div class="pick is-selected" title="Vale · 2024 · Journal of Invented Landscapes">
+                <span class="tile" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="M5 2.5h7l3 3v12H5z"/><path d="M8 8.5h4.5M8 11.5h4.5M8 14.5h3"/></svg></span>
+                <span class="ref"><strong>Sample · Lantern gardens and the rhythm of imaginary cities</strong><span class="sub">Vale · Journal of Invented Landscapes</span></span><span class="ref-year">2024</span>
+              </div></li></ul>
+            </div>
+            <div class="picker-shelf"><span class="picker-beak" aria-hidden="true"></span><code>[@vale2024lanterns] [Sample]</code></div>
+            <div class="picker-foot"><span class="picker-library"><span class="picker-dot" aria-hidden="true"></span><span>Sample references · 3 references</span></span><span class="picker-static-control picker-primary">Copy as Pandoc <kbd>↵</kbd></span></div>
           </div>
+          <div class="picker-receipt"><div class="copied-notice notice-window" data-app-tokens data-platform="macos">
+            <span class="copied-notice-mark" aria-hidden="true">✓</span><div><strong>Copied. Paste into the sentence below.</strong><code>[@vale2024lanterns] [Sample]</code></div>
+          </div></div>
         </figure></li>
       <li><p class="action flow-copy">You paste it. Pandoc, LaTeX or Typst builds the reference list.</p>
         <p class="draft" data-result>Lantern gardens follow the rhythm of imaginary cities <code class="key">[@vale2024lanterns] [Sample]</code>.</p></li>

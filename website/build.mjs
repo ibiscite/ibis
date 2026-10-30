@@ -9,8 +9,14 @@ const source = fileURLToPath(new URL(".", import.meta.url));
 const root = resolve(source, "..");
 const brand = join(root, "brand/exports");
 const PUBLIC = ["favicon.svg", "favicon.ico", "site.webmanifest", "ibis-quote-beak.svg",
+  "ibis-mark-flat.svg",
   "ibis-logo.svg", "ibis-logo-on-dark.svg", "ibis-logo-bird-animated.svg", "ibis-logo-bird-animated-on-dark.svg", "png/og-image.png",
   "png/apple-touch-icon.png", "png/icon-192.png", "png/icon-512.png", "png/icon-maskable-512.png"];
+
+// Re-declare the canonical roles at the picture boundary: .site's prose roles
+// must not leak into the app. Keep every declaration, condition and selector
+// suffix (including contrast and notice-window) in its original cascade order.
+export const scopePickerTokens = css => css.replaceAll(":root", ":where([data-app-tokens])");
 
 // Build completely before replacing the owned output. The optional source is a test fixture.
 export async function build(output = join(source, "dist"), input = source) {
@@ -23,6 +29,7 @@ export async function build(output = join(source, "dist"), input = source) {
     for (const file of ["index.html", "404.html", "style.css", "site.js", "_headers", "demo.js", "demo.css", "demo-model.mjs", "robots.txt", "sitemap.xml"]) await copyFile(join(input, file), join(stage, file));
     await writeFile(join(stage, "index.html"), await content(await readFile(join(stage, "index.html"), "utf8")));
     await copyFile(join(root, "apps/desktop/src/tokens.css"), join(stage, "tokens.css"));
+    await writeFile(join(stage, "picker-tokens.css"), scopePickerTokens(await readFile(join(stage, "tokens.css"), "utf8")));
     for (const name of ["keys", "icon-paths"]) {
       const shared = stripTypeScriptTypes(await readFile(join(root, `apps/desktop/src/${name}.ts`), "utf8"));
       await writeFile(join(stage, `${name}.js`), shared);

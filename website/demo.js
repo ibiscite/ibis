@@ -28,9 +28,10 @@ export function setupDemo() {
   const list = el("ul", { id: "demo-results", className: "picker-results" });
   list.setAttribute("role", "listbox"); list.setAttribute("aria-label", "Best matches");
   const count = el("span"), output = el("code"), status = el("span", { className: "picker-status" });
+  const receipt = figure.querySelector(".copied-notice"), receiptOutput = receipt.querySelector("code");
   // Keep the live region mounted so the first copy is announced.
   const announce = el("span", { className: "demo-status" }); announce.setAttribute("role", "status"); status.setAttribute("aria-hidden", "true");
-  const copy = el("button", { type: "button", textContent: "Copy" }), add = el("button", { type: "button", textContent: "Add" });
+  const copy = el("button", { type: "button", className: "picker-primary", textContent: "Copy" }), add = el("button", { type: "button", textContent: "Add" });
   const paste = el("button", { type: "button", className: "paste-slot" }, "Paste ", el("kbd", { textContent: keyLabel("CmdOrCtrl+V", mac) }));
   paste.setAttribute("aria-label", "Paste the copied citation into the sentence");
   const reopen = el("button", { type: "button", textContent: "Open the picker again", hidden: true });
@@ -43,20 +44,28 @@ export function setupDemo() {
   const opens = event => matchesAccelerator(event, DEFAULT_PICKER_SHORTCUT, mac);
   if (touch) hint.textContent = "Tap a row to choose it, or its tile to combine references, then Copy.";
   else hint.append(el("kbd", { textContent: keyLabel(DEFAULT_PICKER_SHORTCUT, mac) }), " opens this from anywhere on the page, as in the app. Click a row to choose; double-click to copy; click its tile to combine references. ", ...KEY_TABLE.filter(row => labels[row.action]).flatMap((row, index) => [index ? " · " : "", ...row.keys.flatMap((key, k) => [k ? " " : "", el("kbd", { textContent: keyLabel(key, mac) })]), ` ${labels[row.action]}`]));
-  const beak = el("img", { src: "assets/ibis-quote-beak.svg", alt: "", width: 22, height: 19 });
-  const shelf = el("div", { className: "picker-shelf" }, beak, output, status);
-  const panel = el("div", { className: "picker-panel" }, el("div", { className: "picker-search" }, input, clear, format),
-    el("p", { className: "picker-meta" }, "Best matches", count), list, shelf,
-    el("div", { className: "picker-foot" }, el("span", {}, `Sample references · ${references.length} references`), add, copy));
+  const decoration = className => { const node = el("span", { className }); node.setAttribute("aria-hidden", "true"); return node; };
+  const mark = decoration("picker-mark"), beak = decoration("picker-beak"), closingBeak = decoration("picker-beak picker-beak-end");
+  const shelf = el("div", { className: "picker-shelf" }, beak, output, closingBeak, status);
+  const heading = el("p", { className: "picker-meta" }, el("span", { textContent: "Best matches" }), count);
+  const actions = el("div", { className: "picker-actions" }, add, copy);
+  actions.setAttribute("role", "group"); actions.setAttribute("aria-label", "Keys");
+  const panel = el("div", { className: "picker-panel" }, el("div", { className: "picker-search" }, mark, input, clear, format),
+    el("div", { className: "picker-middle" }, heading, list), shelf,
+    el("div", { className: "picker-foot" }, el("span", { className: "picker-library", title: `Sample references · ${references.length} references` }, decoration("picker-dot"), el("span", {}, `Sample references · ${references.length} references`)), actions));
+  panel.setAttribute("data-app-tokens", ""); panel.dataset.platform = "macos";
   // C12 source choices require an actually empty or missing library. This
   // fixed invented library stays loaded; an unmatched query keeps search
   // feedback and any references already chosen, as in the app (#949).
-  const empty = el("li", { textContent: "Nothing matches. Try an author, title, year or journal.", className: "picker-empty" });
-  empty.setAttribute("role", "none"); list.append(empty);
+  const clearEmpty = el("button", { type: "button", textContent: "Clear search" });
+  const empty = el("div", { className: "picker-empty" }, el("strong", { textContent: "No matching references" }),
+    el("p", { textContent: "Try a surname, year or fewer words." }), clearEmpty);
+  empty.insertAdjacentHTML("afterbegin", '<svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="20" cy="20" r="12"/><path d="m29 29 12 12"/></svg>');
+  panel.querySelector(".picker-middle").append(empty);
   const rows = new Map(references.map((ref, index) => {
     const tile = el("button", { type: "button", className: "tile", tabIndex: -1 }, icon(ref.kind));
     const row = el("div", { id: `demo-ref-${index}`, className: "pick", title: `${ref.title} · ${ref.authors} · ${ref.year} · ${ref.key}` }, tile,
-      el("span", { className: "ref" }, el("strong", { textContent: `Sample · ${ref.title}` }), el("span", { className: "sub", textContent: `${ref.authors} · ${ref.where}` })), el("span", { textContent: String(ref.year) }));
+      el("span", { className: "ref" }, el("strong", { textContent: `Sample · ${ref.title}` }), el("span", { className: "sub", textContent: `${ref.authors} · ${ref.where}` })), el("span", { className: "ref-year", textContent: String(ref.year) }));
     row.setAttribute("role", "option");
     // Match the app's pointer ownership: a click leaves its row under the
     // pointer. Rendering is synchronous here; only the keyboard handler below
@@ -71,31 +80,48 @@ export function setupDemo() {
     const current = found[state.selected], value = model.output();
     input.value = state.query; panel.hidden = !state.open; reopen.hidden = state.open;
     clear.hidden = !state.query;
-    input.setAttribute("aria-expanded", String(state.open));
+    input.setAttribute("aria-expanded", String(state.open && found.length > 0));
     count.textContent = `${found.length} ${found.length === 1 ? "result" : "results"}`;
     for (const { row, item, tile, ref } of rows.values()) {
       item.hidden = !found.includes(ref); const selected = ref === current;
       row.classList.toggle("is-selected", selected); row.setAttribute("aria-selected", String(selected));
       const added = state.added.includes(ref.key); tile.classList.toggle("is-added", added); tile.replaceChildren(added ? "✓" : icon(ref.kind));
       tile.setAttribute("aria-label", `${added ? "Remove" : "Add"} ${ref.title}${added ? " from" : " to"} citation`); tile.setAttribute("aria-pressed", String(added));
-      row.setAttribute("aria-label", `Sample · ${ref.title}, ${ref.authors}, ${ref.year}, ${ref.where}${added ? ", added to citation" : ""}`);
+      row.setAttribute("aria-label", `Sample · ${ref.title}, ${ref.authors}, ${ref.year}, ${ref.where}, ${ref.key}${added ? ", added to citation" : ""}`);
     }
     empty.hidden = found.length > 0;
+    list.hidden = !found.length;
+    heading.hidden = !found.length;
     if (current) input.setAttribute("aria-activedescendant", rows.get(current.key).row.id); else input.removeAttribute("aria-activedescendant");
-    output.textContent = value || "—"; status.textContent = value && value === state.copied ? (state.pasted === value ? "Pasted" : "Copied") : "";
-    announce.textContent = status.textContent;
-    output.hidden = beak.hidden = !state.preview; shelf.hidden = !state.preview && !status.textContent;
-    copy.disabled = !value; copy.replaceChildren(`Copy as ${formats[state.format]} `, el("kbd", { textContent: keyLabel(keysFor("copy"), mac) }));
+    output.textContent = value || "—"; output.title = value;
+    status.textContent = value && value === state.copied ? "Copied" : "";
+    closingBeak.hidden = !state.preview || !status.textContent;
+    shelf.toggleAttribute("data-copied", !!status.textContent);
+    const feedback = state.copied ? `${state.pasted === state.copied ? "Pasted" : "Copied"} ${state.copied}` : "";
+    if (announce.textContent !== feedback) announce.textContent = feedback;
+    receipt.hidden = !state.copied;
+    output.hidden = beak.hidden = !state.preview; shelf.hidden = !value || (!state.preview && !status.textContent);
+    copy.disabled = !value; copy.replaceChildren(`Copy ${state.added.length > 1 ? `${state.added.length} ` : ""}as ${formats[state.format]} `, el("kbd", { textContent: keyLabel(keysFor("copy"), mac) }));
     add.disabled = !current; add.textContent = current && state.added.includes(current.key) ? "Remove" : "Add";
     const pasted = state.pasted ? [" ", el("code", { className: "key", textContent: state.pasted })] : [];
     const waiting = state.copied && state.copied !== state.pasted ? [" ", paste] : [];
     const blank = !state.copied ? [" ", el("span", { className: "paste-gap", ariaHidden: "true", textContent: "\u00a0" })] : [];
     result.replaceChildren(sentence, ...pasted, ...waiting, ...blank, ".");
   }
-  function performCopy() { if (model.copy()) { render(); if (paste.isConnected) paste.focus(); } }
+  function performCopy() {
+    if (!model.copy()) return;
+    // The card owns the copy receipt, never the next search or format choice.
+    // Long clusters show their first citation and the remaining count in words.
+    const summary = createDemo(); summary.state.format = state.format;
+    summary.setQuery(state.added[0] || model.found()[state.selected].key);
+    receiptOutput.textContent = state.added.length > 1 ? `${summary.output()} +${state.added.length - 1} more` : state.copied;
+    receiptOutput.title = state.copied;
+    render(); if (paste.isConnected) paste.focus();
+  }
   function performPaste() { model.paste(); render(); result.focus({ preventScroll: true }); }
   input.addEventListener("input", () => { model.setQuery(input.value); render(); list.scrollTop = 0; });
   clear.addEventListener("click", () => { model.setQuery(""); render(); list.scrollTop = 0; input.focus(); });
+  clearEmpty.addEventListener("click", () => { model.setQuery(""); render(); list.scrollTop = 0; input.focus(); });
   select.addEventListener("change", () => { state.format = select.value; render(); });
   copy.addEventListener("click", performCopy);
   add.addEventListener("click", () => { const ref = model.found()[state.selected]; if (ref) model.add(ref.key); render(); });

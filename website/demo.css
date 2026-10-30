@@ -1,69 +1,103 @@
-/* The simulated picker reads the same role tokens as the desktop window. */
-.picker-panel { padding: 0; overflow: hidden; }
-.picker-search { display: flex; align-items: center; gap: var(--space-2); padding: var(--inset); border-bottom: var(--border-width) solid var(--separator); }
-.picker input { flex: 1; min-width: 0; border: 0; padding: var(--space-2); background: var(--clear); color: var(--text); font: var(--search-size)/var(--search-line) var(--font-family); }
+/* App pictures read the generated scope of the canonical desktop tokens.
+   Only geometry without a token lives here (design.md C7/C10 and notice card). */
+.journey { max-width: 45rem; }
+.picker-panel { display: flex; flex-direction: column; width: 100%; max-width: 45rem; height: 30rem; padding: 0; overflow: hidden; border-radius: var(--r-win); background: var(--surface-window); color: var(--text); box-shadow: var(--shadow-card); font: var(--type-body-size)/var(--type-body-line) var(--font-family); }
+.picker-search { flex: none; display: flex; align-items: center; gap: var(--search-gap); min-height: calc(var(--search-bar-height) + var(--border-width)); padding: var(--inset); border-bottom: var(--border-width) solid var(--separator); }
+.picker-mark { flex: none; width: var(--tile-size); height: var(--tile-size); margin-inline-start: var(--row-pad); margin-inline-end: calc(var(--row-gap) - var(--search-gap)); background: var(--citation); mask: url("assets/ibis-mark-flat.svg") center / contain no-repeat; }
+.picker input, .picker-query { flex: 1; min-width: 0; width: 0; border: 0; padding: 0; background: var(--clear); color: var(--text); font: var(--search-size)/var(--search-line) var(--font-family); letter-spacing: var(--search-tracking); }
 .picker input:focus-visible { border-radius: var(--r-row); }
-.picker select, .picker button, .draft button { min-height: var(--control-min-size); padding: var(--space-1) var(--space-2); border: var(--border-width) solid var(--stroke-control); border-radius: var(--r-control); background: var(--fill-control); color: var(--text); font: var(--type-meta-size)/var(--type-meta-line) var(--font-family); cursor: pointer; }
-/* A drawn chevron, so the select keeps the buttons' height in every browser (iOS ignores it on native selects). */
-.picker-format { position: relative; display: inline-flex; flex: none; }
-.picker-format select { appearance: none; padding-right: calc(var(--space-2) + 1.1em); }
+.picker select, .picker button, .picker-static-control, .draft button { min-height: var(--control-min-size); padding: var(--space-1) var(--space-2); border: 0; border-radius: var(--r-control); background: var(--fill-control); color: var(--text); font: var(--type-meta-size)/var(--type-meta-line) var(--font-family); cursor: pointer; box-shadow: inset 0 0 0 var(--border-width) var(--stroke-control); }
+.picker-static-control { display: inline-flex; align-items: center; gap: var(--space-2); cursor: default; }
+/* Native select semantics, with one local chevron (including on iOS). */
+.picker-format { position: relative; display: inline-flex; flex: none; max-width: 45%; }
+.picker-format select { appearance: none; min-width: 0; width: 100%; padding-right: calc(var(--space-2) + 1.1em); }
 .picker-format svg { position: absolute; right: var(--space-2); top: 50%; width: 1em; height: 1em; translate: 0 -50%; fill: none; stroke: var(--muted); stroke-width: var(--icon-stroke); stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
 .picker input::-webkit-search-cancel-button { appearance: none; }
-.picker .picker-clear { display: grid; place-items: center; flex: none; width: var(--control-min-size); padding: 0; line-height: 1; border: 0; background: none; color: var(--text); font-size: var(--type-heading-size); }
-.picker button:disabled { color: var(--text-disabled); cursor: default; }
-.picker-meta { margin: 0; display: flex; justify-content: space-between; padding: var(--space-2) var(--row-pad); color: var(--muted); font-size: var(--type-label-size); }
-.picker-results { grid-template-columns: minmax(0, 1fr); list-style: none; display: grid; gap: var(--row-spacing); padding: 0 var(--inset) var(--inset); margin: 0; height: 18rem; align-content: start; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.picker .picker-clear { display: grid; place-items: center; flex: none; width: var(--control-min-size); padding: 0; border: 0; background: none; box-shadow: none; color: var(--muted); font-size: var(--type-heading-size); }
+.picker button:disabled { color: var(--text-disabled); background: var(--fill-disabled); cursor: default; }
+.picker-middle { flex: 1; min-height: 0; display: flex; flex-direction: column; padding-block: var(--inset); }
+.picker-meta { flex: none; margin: 0; display: flex; justify-content: space-between; gap: var(--space-2); padding: var(--heading-padding); margin-inline: var(--inset); color: var(--muted); font-size: var(--heading-size); }
+.picker-results { list-style: none; display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--row-spacing); padding: 0 var(--inset); margin: 0; flex: 1; min-height: 0; align-content: start; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
 .pick { position: relative; display: flex; align-items: center; gap: var(--row-gap); min-height: var(--row-comfortable); padding: var(--space-2) var(--row-pad); border-radius: var(--r-row); color: var(--text); cursor: pointer; }
 .pick.is-selected { background: var(--row-active-background); color: var(--row-active-text); }
-.pick .tile { position: relative; flex: none; display: grid; place-items: center; width: var(--tile-size); height: var(--tile-size); padding: 0; border: 0; border-radius: var(--r-tile); background: var(--tile-background); color: var(--muted); }
-.pick .tile:not(.is-added):hover svg { visibility: hidden; }
-.pick .tile:not(.is-added):hover::after { content: "+"; position: absolute; inset: 0; display: grid; place-items: center; font-size: var(--type-heading-size); }
+.pick .tile { position: relative; flex: none; display: grid; place-items: center; width: var(--tile-size); height: var(--tile-size); min-height: 0; padding: 0; border: 0; box-shadow: none; border-radius: var(--r-tile); background: var(--tile-background); color: var(--muted); }
 .pick.is-selected .tile { background: var(--tile-active-background); color: inherit; }
 .pick .tile.is-added { background: var(--citation-tile); color: var(--on-citation); }
+.pick.is-selected .tile.is-added { background: var(--row-active-text); color: var(--citation-tile); }
 .tile svg { width: var(--icon-glyph-size); height: var(--icon-glyph-size); fill: none; stroke: currentColor; stroke-width: var(--icon-stroke); stroke-linecap: round; stroke-linejoin: round; }
 .ref { flex: 1; min-width: 0; }
 .ref strong, .ref .sub { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.ref strong { font-size: var(--type-title-size); }
-.ref .sub { font-size: var(--type-meta-size); color: var(--muted); }
+.ref strong { font-size: var(--title-size); line-height: var(--title-line-height); font-weight: var(--title-weight); letter-spacing: var(--title-tracking); }
+.ref .sub { font-size: var(--metadata-size); line-height: var(--metadata-line-height); color: var(--muted); }
 .is-selected .sub { color: var(--row-active-muted); }
-.picker-shelf { display: flex; align-items: center; gap: var(--space-2); margin: 0 var(--inset); min-height: var(--shelf-line); padding: var(--space-2) var(--row-pad); background: var(--shelf-fill); border-radius: var(--r-row); overflow-wrap: anywhere; }
-.picker-shelf code { min-width: 0; flex: 1; white-space: pre-wrap; overflow-wrap: anywhere; background: none; padding: 0; font-size: var(--type-citation-size); color: var(--citation); }
-.picker-foot { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); padding: var(--inset); color: var(--muted); font-size: var(--type-meta-size); }
-.picker-foot > span { flex: 1 1 12rem; }
+.ref-year { flex: none; font-size: var(--type-meta-size); font-variant-numeric: tabular-nums; }
+.picker-shelf { flex: none; display: flex; align-items: center; gap: var(--row-gap); margin: 0 var(--inset); height: var(--shelf-line); padding-inline: var(--row-pad); background: var(--shelf-fill); border-radius: var(--r-row); }
+.picker-beak { flex: none; width: var(--tile-size); height: var(--space-5); background: var(--citation); mask: url("assets/ibis-quote-beak.svg") right / auto 100% no-repeat; }
+.picker-beak-end { rotate: 180deg; }
+.picker-shelf code { min-width: 0; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: none; padding: 0; border-radius: 0; font: var(--type-citation-size)/var(--type-meta-line) var(--font-mono); color: var(--text); }
+.picker-foot { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: var(--footer-gap); min-height: max(var(--footer-height), calc(var(--key-cap) + 2 * var(--space-1) + 2 * var(--inset))); padding: var(--inset); padding-inline-start: calc(var(--inset) + var(--row-pad)); color: var(--muted); font-size: var(--footer-size); }
+.picker-foot :is(button, .picker-static-control) { position: relative; min-height: calc(var(--key-cap) + 2 * var(--space-1)); }
+.picker-foot button::before { content: ""; position: absolute; inset: calc(-1 * var(--space-1)) 0; }
+.picker-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: var(--footer-gap); min-width: 0; max-width: 100%; margin-inline-start: auto; }
+.picker-actions button { max-width: 100%; }
+.picker-library { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--row-gap); }
+.picker-library > span:last-child { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.picker-dot { flex: none; width: var(--status-dot-size); height: var(--status-dot-size); border-radius: var(--r-full); background: var(--status-done); }
+.picker .picker-primary { background: var(--accent); color: var(--text-on-accent); }
+.picker-primary kbd { background: var(--fill-on-color-hover); color: inherit; box-shadow: none; border-radius: var(--r-key); }
+.picker-foot kbd, .demo-hint kbd { font-size: .95em; }
+.picker-shelf .picker-status { flex: none; display: inline-flex; align-items: center; gap: var(--space-1); height: var(--chip-height); padding-inline: var(--space-2); border-radius: var(--r-full); background: color-mix(in srgb, var(--status-done) 14%, transparent); color: var(--status-done); font: var(--type-strong-weight) var(--type-label-size)/var(--type-label-line) var(--font-family); }
+.picker-status:empty { display: none; }
+.picker-status:not(:empty)::before { content: "✓"; }
 .demo-hint { display: block; margin-top: var(--space-2); color: var(--muted); font: var(--type-meta-size)/1.5 var(--font-family); }
-.picker-shelf .picker-status { flex: none; margin-left: auto; color: var(--citation); font: var(--type-strong-weight) var(--type-meta-size)/1 var(--font-family); }
 .demo-status { position: absolute; width: var(--hidden-size); height: var(--hidden-size); overflow: hidden; clip-path: var(--hidden-clip); white-space: nowrap; }
-.picker-empty { padding: var(--space-4); }
-@media (hover: hover) { .pick:not(.is-selected):hover { background: var(--fill-subtle-hover); } .picker button:not(.tile):not(.picker-clear):not(:disabled):hover, .draft button:hover { background: var(--fill-control-hover); } }
-.picker button:not(.tile):not(.picker-clear):active, .draft button:active { background: var(--fill-control-pressed); }
-@media (pointer: coarse) { .picker button:not(.tile):not(.picker-clear), .picker select { min-height: var(--website-button-height); } .picker button:not(.tile) { position: relative; } .picker button:not(.tile)::after { content: ""; position: absolute; inset: calc((var(--website-button-height) - var(--touch-target)) / 2) 0; } .platform-switch button { padding-block: .6em; margin-block: -.35em; } }
+.picker-empty { flex: 1; min-height: 0; overflow-y: auto; display: grid; align-content: center; justify-items: center; text-align: center; padding: var(--empty-padding); color: var(--muted); font-size: var(--type-meta-size); }
+.picker-empty strong { color: var(--text); font-size: var(--type-title-size); }
+.picker-empty p { margin: var(--space-2) 0 var(--space-4); }
+.picker-empty svg { width: var(--empty-icon-size); height: var(--empty-icon-size); margin-bottom: var(--empty-icon-gap); fill: none; stroke: var(--text-tertiary); stroke-width: var(--icon-stroke); }
+/* The native notice has a 560 × 100 frame, including its 16 px shadow margin.
+   Reserve that space so the demo doesn't shift after copy. Let text grow on phones. */
+.picker-receipt { min-height: 100px; max-width: 560px; margin-inline: auto; padding: 16px; }
+.copied-notice { display: flex; align-items: flex-start; gap: var(--space-2); padding: var(--inset); border-radius: 18px; background: var(--surface); color: var(--text); box-shadow: var(--shadow-toast); font: var(--type-body-size)/var(--type-meta-line) var(--font-family); pointer-events: none; }
+.copied-notice-mark { flex: none; display: grid; place-items: center; width: var(--field-h); height: var(--field-h); border-radius: 10px; background: var(--fill-control); color: var(--muted); }
+.copied-notice > div { flex: 1; min-width: 0; }
+.copied-notice strong { display: block; font: var(--type-strong-weight) var(--type-body-size)/var(--type-meta-line) var(--font-family); }
+.copied-notice code { display: block; white-space: pre-wrap; overflow-wrap: anywhere; margin-top: var(--space-1); padding: 0; border-radius: 0; background: none; color: var(--citation); font: var(--type-label-size)/var(--type-label-line) var(--font-mono); }
 .platform-switch { color: var(--muted); font: var(--type-title-size)/1.5 var(--font-family); }
 .platform-switch button { min-height: 0; padding: .25em 0; border: 0; background: var(--clear); color: var(--citation); font: inherit; text-decoration: underline; cursor: pointer; }
-
-.pick.is-selected .tile.is-added { background: var(--row-active-text); color: var(--citation-tile); }
-
-@media (forced-colors: active) {
-  .pick.is-selected { forced-color-adjust: none; background: Highlight; color: HighlightText; }
-  .pick.is-selected .sub, .pick.is-selected .tile { color: HighlightText; }
-}
-
-.picker-shelf img { flex: none; }
 .draft code { display: inline; white-space: normal; overflow-wrap: anywhere; }
 .paste-gap { display: inline-block; min-width: 7rem; line-height: 1; border-bottom: var(--focus-ring-width) dashed var(--citation); }
-.draft .paste-slot { display: inline-flex; align-items: center; gap: var(--space-1); vertical-align: .1em; min-height: 0; padding: .1em .5em; border: var(--border-width) dashed var(--citation); border-radius: var(--website-chip-radius); background: var(--website-accent-soft); color: var(--citation); font: var(--type-meta-size)/1.4 var(--font-family); }
-.draft .paste-slot kbd { background: none; box-shadow: none; padding: 0; opacity: .8; }
-.picker-foot kbd, .demo-hint kbd { font-size: .95em; }
-@media (hover: hover) { .draft .paste-slot:hover { background: var(--website-accent-soft); border-style: solid; } }
-@media (hover: none) { .picker-foot kbd, .draft .paste-slot kbd { display: none; } }
-@media (max-width: 39.99rem) { .picker-results { height: 12rem; } .picker-foot > span { flex-basis: 100%; } .picker-foot button:first-of-type { margin-left: auto; } }
-@media (pointer: coarse) { .pick .tile { min-height: var(--touch-target); width: var(--touch-target); } }
-/* The slot keeps the sentence's line height, so pasting never moves the page; its touch area reaches past it. */
-.draft .paste-slot { position: relative; } .draft .paste-slot::after { content: ""; position: absolute; inset: calc(-1 * var(--space-2)) 0; }
-@media (prefers-reduced-motion: no-preference) { .draft .paste-slot { transition: scale var(--motion-feedback) var(--ease-out); } .draft .paste-slot:active { scale: var(--website-press); } }
-/* Small confirmations: a tick lands with the Copied or Pasted word, and on touch a row gives under the finger. */
-.picker-shelf .picker-status:not(:empty)::before { content: "✓"; margin-right: var(--space-1); }
-@media (prefers-reduced-motion: no-preference) {
-  .picker-shelf .picker-status:not(:empty) { animation: receipt var(--motion-panel) var(--ease-out); }
-  @media (pointer: coarse) { .pick { transition: scale var(--motion-feedback) var(--ease-out); } .pick:active { scale: .985; } }
+.draft .paste-slot { position: relative; display: inline-flex; align-items: center; gap: var(--space-1); vertical-align: .1em; min-height: 0; padding: .1em .5em; border: var(--border-width) dashed var(--citation); border-radius: var(--website-chip-radius); background: var(--website-accent-soft); color: var(--citation); font: var(--type-meta-size)/1.4 var(--font-family); }
+.draft .paste-slot::after { content: ""; position: absolute; inset: calc(-1 * var(--space-2)) 0; }
+.draft .paste-slot kbd { background: none; box-shadow: none; padding: 0; }
+@media (hover: hover) {
+  .pick:not(.is-selected):hover { background: var(--fill-subtle-hover); }
+  .pick .tile:not(.is-added):hover svg { visibility: hidden; }
+  .pick .tile:not(.is-added):hover::after { content: "+"; position: absolute; inset: 0; display: grid; place-items: center; font-size: var(--type-heading-size); }
+  .picker button:not(.tile):not(.picker-clear):not(.picker-primary):not(:disabled):hover, .draft button:hover { background: var(--fill-control-hover); }
+  .picker .picker-primary:not(:disabled):hover { background: var(--fill-primary-hover); }
+  .draft .paste-slot:hover { background: var(--website-accent-soft); border-style: solid; }
 }
-
+.picker button:not(.tile):not(.picker-clear):not(:disabled):active, .draft button:active { background: var(--fill-control-pressed); }
+.picker .picker-primary:not(:disabled):active { background: var(--fill-primary-pressed); }
+@media (max-width: 39.99rem) { .picker-library { flex-basis: 100%; } .picker-receipt { min-height: calc(100px + var(--space-5)); } }
+@media (pointer: coarse) {
+  .picker button, .picker select, .picker-foot button { min-height: var(--touch-target); }
+  .pick .tile { min-height: var(--tile-size); }
+  .pick .tile::before { content: ""; position: absolute; inset: calc((var(--tile-size) - var(--touch-target)) / 2); }
+  .platform-switch button { padding-block: .6em; margin-block: -.35em; }
+}
+@media (hover: none) { .picker-foot kbd, .draft .paste-slot kbd { display: none; } }
+@media (prefers-reduced-motion: no-preference) {
+  .draft .paste-slot { transition: scale var(--motion-feedback) var(--ease-out); }
+  .draft .paste-slot:active { scale: var(--website-press); }
+  .picker-status:not(:empty), .copied-notice { animation: receipt var(--motion-panel) var(--ease-out); }
+  /* The brief's 160 ms wash sits halfway between the shared feedback/panel timings. */
+  .picker-shelf[data-copied] { animation: shelf-copied calc((var(--motion-feedback) + var(--motion-panel)) / 2) var(--ease-out); }
+}
+@keyframes shelf-copied { from { background: color-mix(in srgb, var(--status-done) 9%, var(--shelf-fill)); } }
+@media (forced-colors: active) {
+  .pick.is-selected, .picker .picker-primary { forced-color-adjust: none; background: Highlight; color: HighlightText; }
+  .pick.is-selected .sub, .pick.is-selected .tile { color: HighlightText; }
+  .picker-panel, .picker-shelf, .copied-notice { outline: var(--border-width) solid CanvasText; outline-offset: calc(-1 * var(--border-width)); }
+}

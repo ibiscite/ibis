@@ -120,15 +120,32 @@ test("public demo supports keyboard copy/paste and remains visible in narrow and
   const { chromium } = await import(process.env.IBIS_PLAYWRIGHT_MODULE || "playwright");
   const browser = await chromium.launch({ executablePath: process.env.IBIS_CHROMIUM_EXECUTABLE });
   try {
+    const surfaces = new Map();
     for (const width of [320, 390, 1180]) for (const colorScheme of ["light", "dark"]) {
       const page = await browser.newPage({ viewport: { width, height: 850 }, colorScheme, reducedMotion: "reduce" });
       const errors = []; page.on("pageerror", error => errors.push(error.message));
       await page.goto(url.href + "#how");
       const input = page.getByRole("combobox", { name: "Search the made-up library" });
       await input.waitFor();
+      const panel = page.locator("[data-picker] .picker-panel");
+      const frame = await panel.boundingBox();
+      assert.equal(frame.height, 480, "the picker opens in its steady 480 px frame");
+      const appearance = await panel.evaluate(node => ({ scheme: getComputedStyle(node).colorScheme, surface: getComputedStyle(node).backgroundColor }));
+      assert.equal(appearance.scheme, "light dark");
+      assert.notEqual(appearance.surface, "rgba(0, 0, 0, 0)");
+      if (colorScheme === "light") surfaces.set(width, appearance.surface);
+      else assert.notEqual(appearance.surface, surfaces.get(width), "system appearance changes the app surface");
+      assert.equal(await page.locator(".picker-mark").isVisible(), true);
+      const modifier = await page.evaluate(() => document.documentElement.dataset.platform === "macos" ? "Meta" : "Control");
       assert.equal(await input.inputValue(), "lantern");
       await input.fill("");
       assert.equal(await page.locator('.picker [role="option"]:visible').count(), 3);
+      await input.press("ArrowDown");
+      assert.match(await page.locator('[role="option"][aria-selected="true"]').innerText(), /clockwork clouds/);
+      assert.equal(await input.getAttribute("aria-activedescendant"), await page.locator('[role="option"][aria-selected="true"]').getAttribute("id"));
+      await input.press("Shift+Enter");
+      assert.match(await page.locator(".picker-shelf code").innerText(), /fen2023clouds/);
+      await input.press("Shift+Enter");
       await input.fill("lantern");
       assert.equal(await page.locator('.picker [role="option"]:visible').count(), 1);
       assert.match(await page.locator('.picker [role="option"]:visible').innerText(), /Sample · Lantern gardens/);
@@ -137,12 +154,25 @@ test("public demo supports keyboard copy/paste and remains visible in narrow and
       assert.equal(await format.evaluate(node => node === document.activeElement), true, "changing the native format select preserves its keyboard focus");
       await format.selectOption("pandoc");
       await input.press("Enter");
+      assert.equal(await page.locator(".copied-notice").isVisible(), true);
+      assert.match(await page.locator(".copied-notice").innerText(), /Copied[\s\S]*vale2024lanterns/);
+      assert.equal(await page.locator(".picker-beak-end").isVisible(), true);
+      assert.equal((await panel.boundingBox()).height, frame.height, "copy feedback cannot resize the picker");
       const paste = page.getByRole("button", { name: "Paste the copied citation into the sentence" });
-      await paste.click();
+      await paste.press(`${modifier}+V`);
       assert.match(await page.locator("[data-result]").innerText(), /\[@vale2024lanterns\] \[Sample\]/);
       await input.fill("no invented reference matches this");
       assert.equal(await page.locator(".picker-foot button").last().isDisabled(), true);
       assert.match(await page.locator("[data-result]").innerText(), /\[@vale2024lanterns\] \[Sample\]/);
+      assert.match(await page.locator(".picker-empty").innerText(), /No matching references/);
+      assert.equal(await input.getAttribute("aria-activedescendant"), null);
+      assert.equal(await input.getAttribute("aria-expanded"), "false");
+      assert.equal(await page.locator(".picker-results").isVisible(), false, "the empty-state action lives outside the listbox");
+      assert.equal(await page.locator(".picker-shelf").isVisible(), false, "no matches without a prepared citation has no shelf");
+      assert.equal((await panel.boundingBox()).height, frame.height, "no matches cannot resize the picker");
+      await input.press("Escape"); await input.press("Escape"); await input.press("Escape");
+      await page.getByRole("button", { name: "Open the picker again" }).click();
+      assert.equal((await panel.boundingBox()).height, frame.height, "reopening keeps the frame");
       for (const location of await page.locator(".intro, .platform:visible").all()) {
         const privacy = location.locator("[data-download-privacy]");
         assert.equal(await privacy.isVisible(), true);
@@ -157,12 +187,16 @@ test("public demo supports keyboard copy/paste and remains visible in narrow and
       assert.deepEqual(errors, []);
       await page.close();
     }
-    const staticPage = await browser.newPage({ javaScriptEnabled: false, viewport: { width: 390, height: 850 } });
-    await staticPage.goto(url.href + "#how");
-    assert.equal(await staticPage.locator("[data-picker] .picker-panel").isVisible(), true);
-    assert.match(await staticPage.locator("[data-picker]").innerText(), /Copy as Pandoc/);
-    assert.match(await staticPage.locator("[data-picker]").innerText(), /\[@vale2024lanterns\] \[Sample\]/);
-    assert.equal(await staticPage.locator("[data-download-privacy]:visible").count(), 4);
-    await staticPage.close();
+    for (const colorScheme of ["light", "dark"]) {
+      const staticPage = await browser.newPage({ javaScriptEnabled: false, viewport: { width: 320, height: 850 }, colorScheme });
+      await staticPage.goto(url.href + "#how");
+      assert.equal(await staticPage.locator("[data-picker] .picker-panel").isVisible(), true);
+      assert.match(await staticPage.locator("[data-picker]").innerText(), /Copy as Pandoc/);
+      assert.match(await staticPage.locator("[data-picker]").innerText(), /\[@vale2024lanterns\] \[Sample\]/);
+      assert.equal(await staticPage.locator(".copied-notice").isVisible(), true);
+      assert.equal(await staticPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+      assert.equal(await staticPage.locator("[data-download-privacy]:visible").count(), 4);
+      await staticPage.close();
+    }
   } finally { await browser.close(); }
 });

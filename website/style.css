@@ -65,8 +65,6 @@ section { padding-block: var(--website-section-pad); }
 .caret { display: inline-block; width: var(--focus-ring-width); height: 1.05em; margin-inline-start: var(--space-1); vertical-align: -.15em; background: var(--citation); }
 .picker { margin: 0; font: var(--type-body-size)/1.4 var(--font-family); }
 .picker figcaption { margin-bottom: var(--space-3); }
-.picker-panel { padding: var(--space-4); border: var(--border-width) solid var(--separator); border-radius: var(--r-win); background: var(--surface); box-shadow: var(--website-shadow); }
-.picker-panel p:last-child { margin-bottom: 0; }
 .fn-mark { margin: -.4em -.2em -.4em -.15em; padding: .4em .25em; text-decoration: none; color: var(--citation); font: var(--type-strong-weight) .75em/0 var(--font-family); vertical-align: .55em; }
 .footnote { max-width: 34rem; margin-top: var(--space-8); font: var(--type-title-size)/1.55 var(--font-family); color: var(--muted); }
 .citation-key, .footnote > span { color: var(--citation); font-weight: var(--type-strong-weight); }
