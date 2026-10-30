@@ -1,6 +1,7 @@
 import { useId, type ReactNode } from "react";
 import { ListBox, ListBoxItem } from "react-aria-components";
 import "./ChoiceList.css";
+import "./Option.css";
 
 /** One row of a choice screen: a tile, a title, one help line and an optional trailing tag. */
 export type Choice = {

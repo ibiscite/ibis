@@ -119,7 +119,7 @@ export function ToolbarMenu({ buttonRef, buttonShortcut, disabled, label, value,
     onKeyDown={(event) => { if ((open || popover.current) && !event.ctrlKey && !event.metaKey) event.stopPropagation(); }}>
     <MenuTrigger isOpen={open} onOpenChange={changeOpen}>
       <Button ref={button} aria-keyshortcuts={buttonShortcut} isDisabled={disabled} className="toolbar-menu-button" aria-label={`${label} ${value}`}><span className="toolbar-menu-value">{value}</span><PopupIndicator /></Button>
-      <Popover ref={popoverRef} className="menu-popover toolbar-menu-popover" placement={renderedPlacement} offset={4} containerPadding={8} shouldSkipAnimation={skipExit} {...boundary}>
+      <Popover ref={popoverRef} className="menu-popover toolbar-menu-popover ui-overlay" placement={renderedPlacement} offset={4} containerPadding={8} shouldSkipAnimation={skipExit} {...boundary}>
         {filtered ? <Autocomplete key={opening} filter={contains}><SearchField className="toolbar-menu-filter" aria-label={filterLabel} autoFocus><Input placeholder={filterLabel} /></SearchField>{menu}</Autocomplete> : menu}
       </Popover>
     </MenuTrigger>

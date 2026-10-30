@@ -29,9 +29,20 @@ export function useScrollEdges(ref: RefObject<HTMLElement | null>) {
     let current = true;
     const mark = () => { if (current) markScrollEdges(node); };
     const resized = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(mark);
-    resized?.observe(node);
+    const observeContent = () => {
+      if (!current) return;
+      resized?.disconnect();
+      resized?.observe(node);
+      // A font/reflow change can grow the content while the bounded viewport
+      // stays exactly the same size (for example the keys sheet at 200%).
+      for (const child of node.children) resized?.observe(child);
+    };
+    observeContent();
     // Content only: the marks are attributes, so setting them never re-runs this.
-    const content = new MutationObserver(mark);
+    const content = new MutationObserver((records) => {
+      if (records.some((record) => record.type === "childList")) observeContent();
+      mark();
+    });
     content.observe(node, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["data-focused"] });
     node.addEventListener("scroll", mark, { passive: true });
     node.addEventListener("focusin", mark);

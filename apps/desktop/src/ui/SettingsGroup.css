@@ -18,7 +18,8 @@
 }
 .ui-settings-row[data-described] { min-height: var(--settings-described-row-height); }
 .ui-settings-row + .ui-settings-row { box-shadow: inset 0 var(--border-width) 0 var(--separator); }
-.ui-settings-row-text { display: flex; flex-direction: column; flex: 1 1 8rem; min-width: 0; overflow-wrap: anywhere; }
+.ui-settings-row-text { display: flex; flex-direction: column; flex: 1 1 14rem; min-width: 0; overflow-wrap: anywhere; }
+.ui-settings-row > :not(.ui-settings-row-text) { max-inline-size: 100%; }
 .ui-settings-description { color: var(--muted); font-size: var(--type-meta-size); line-height: var(--type-meta-line); }
 @media (prefers-contrast: more), (forced-colors: active) { .ui-settings-card { border: var(--border-width) solid CanvasText; } }
 
