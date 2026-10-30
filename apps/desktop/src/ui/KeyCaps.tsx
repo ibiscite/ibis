@@ -1,4 +1,4 @@
-import { keyLabel } from "../keys";
+import { keyCapLabels } from "../keys";
 import { currentPlatform, type Platform } from "../platform";
 import "./KeyCaps.css";
 
@@ -11,10 +11,7 @@ export function KeyCaps({ accelerator, platform = currentPlatform(), hidden }: {
   /** Hidden from screen readers where the control already names its keys. */
   hidden?: boolean;
 }) {
-  const mac = platform === "macos";
-  const label = keyLabel(accelerator, mac);
-  // keyLabel joins with "+" off macOS; a lone or trailing "+" is the key itself.
-  const parts = mac ? [label] : label === "+" ? ["+"] : label.split(/\+(?!$)/);
+  const parts = keyCapLabels(accelerator, platform === "macos");
   return <span className="key-caps" aria-hidden={hidden || undefined}>
     {parts.map((part, i) => <span key={i} className="key-cap">
       {i > 0 && platform === "linux" && <span className="key-plus">+</span>}<kbd>{part}</kbd>
