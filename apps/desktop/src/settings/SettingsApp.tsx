@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Density, LoginItem, LoginItemProblem, PickerPreferences, ShortcutStatus } from "../bindings";
 import { DEFAULT_PICKER_SHORTCUT, KEY_TABLE, keyLabel, shortcutLabel } from "../keys";
-import { keyText, settingsText, shortcutRefusalText } from "../messages";
 import { type MessageId, useInterfaceMessages } from "../i18n";
+import { SHORTCUT_ACTIONS, SHORTCUT_COMMANDS, SHORTCUT_REGIONS, type ShortcutProblem, shortcutRefusalMessage } from "../i18n/settings";
 import { PreferencePatchQueue } from "../preferencePatchQueue";
 import { currentPlatform } from "../platform";
 import { Button } from "../ui/Button";
@@ -49,7 +49,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   const [version, setVersion] = useState("");
   const [failed, setFailed] = useState(false);
   const [shortcut, setShortcut] = useState<ShortcutStatus | null>(null);
-  const [shortcutProblem, setShortcutProblem] = useState<string | null>(null);
+  const [shortcutProblem, setShortcutProblem] = useState<ShortcutProblem | null>(null);
   const [shortcutSaving, setShortcutSaving] = useState(false);
   const shortcutBusy = useRef(false);
   const shortcutReads = useRef(0);
@@ -95,10 +95,10 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
       api.shortcutStatus().then((next) => {
         if (active && request === shortcutReads.current) {
           setShortcut(next);
-          setShortcutProblem((problem) => problem === settingsText.shortcut.readFailed ? null : problem);
+          setShortcutProblem((problem) => problem?.id === "shortcuts-read-failed" ? null : problem);
         }
       }).catch(() => {
-        if (active && request === shortcutReads.current) setShortcutProblem(settingsText.shortcut.readFailed);
+        if (active && request === shortcutReads.current) setShortcutProblem({ id: "shortcuts-read-failed" });
       });
     };
     const readAll = () => {
@@ -120,7 +120,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
       shortcutReads.current += 1;
       if (active) setShortcut(next);
     });
-    void shortcuts.catch(() => { if (active) setShortcutProblem(settingsText.shortcut.readFailed); }).then(() => { if (active) readShortcut(); });
+    void shortcuts.catch(() => { if (active) setShortcutProblem({ id: "shortcuts-read-failed" }); }).then(() => { if (active) readShortcut(); });
     const page = api.onPage((name) => { const next = pageOf(name); setDetour(name === "paste"); setPage(next.page); setFocus(next.focus ?? "top"); });
     const automatic = api.onUpdateChecks((next) => {
       if (!active) return;
@@ -166,7 +166,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     void queue.enqueue(() => api.setShortcut(next))
       .then((status) => { if (request === shortcutReads.current) setShortcut(status); })
       .catch((refusal: unknown) => {
-        setShortcutProblem(shortcutRefusalText(refusal));
+        setShortcutProblem(shortcutRefusalMessage(refusal));
       })
       .finally(() => { shortcutBusy.current = false; setShortcutSaving(false); });
   };
@@ -175,7 +175,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     shortcutBusy.current = true;
     setShortcutSaving(true);
     setShortcutProblem(null);
-    void api.configureShortcuts().catch(() => setShortcutProblem(settingsText.shortcut.configureFailed))
+    void api.configureShortcuts().catch(() => setShortcutProblem({ id: "shortcuts-configure-failed" }))
       .finally(() => { shortcutBusy.current = false; setShortcutSaving(false); });
   };
   const name = login?.name ?? "Ibis";
@@ -249,25 +249,26 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
         {page === "shortcuts" && (
           <>
             <Group id="open-ibis">
-              <Row id="open-shortcut" label={settingsText.shortcut.open} description={shortcut?.desktop?.guidance ?? (shortcut ? settingsText.shortcut.description : undefined)}>
+              <Row id="open-shortcut" label={text("shortcuts-open")} description={shortcut?.desktop?.guidance ?? (shortcut ? text("shortcuts-description") : undefined)}>
                 {shortcut?.desktop ? <>
-                  <span role="status">{shortcut.shortcut || settingsText.shortcut.notAssigned}</span>
-                  {shortcut.desktop.configurable && <Button isDisabled={shortcutSaving} onPress={configureShortcut}>{settingsText.shortcut.change}</Button>}
-                </> : shortcut && <ShortcutRecorder shortcut={shortcut.shortcut} label={settingsText.shortcut.open}
-                  prompt={settingsText.shortcut.record} isDisabled={shortcutSaving} onRecord={changeShortcut} />}
+                  <span role="status">{shortcut.shortcut || text("shortcuts-not-assigned")}</span>
+                  {shortcut.desktop.configurable && <Button isDisabled={shortcutSaving} onPress={configureShortcut}>{text("shortcuts-change")}</Button>}
+                </> : shortcut && <ShortcutRecorder shortcut={shortcut.shortcut} label={text("shortcuts-open")}
+                  prompt={text("shortcuts-record")} isDisabled={shortcutSaving} onRecord={changeShortcut} />}
               </Row>
               {shortcut && !shortcut.desktop && !isDefault && (
                 <Row id="default-shortcut" label={defaultLabel}>
-                  <Button isDisabled={shortcutSaving} onPress={() => changeShortcut(null)}>{settingsText.shortcut.useDefault}</Button>
+                  <Button isDisabled={shortcutSaving} onPress={() => changeShortcut(null)}>{text("shortcuts-use-default")}</Button>
                 </Row>
               )}
             </Group>
-            {shortcutProblem && <p className="settings-problem" role="alert">{shortcutProblem}</p>}
+            {shortcutProblem && <p className="settings-problem" role="alert">{text(shortcutProblem.id,
+              shortcutProblem.command ? { command: text(SHORTCUT_COMMANDS[shortcutProblem.command]) } : undefined)}</p>}
             {shortcut?.error && <p className="settings-problem" role="status">{shortcut.error}</p>}
-            <Group id="picker-shortcuts" title={settingsText.shortcut.inPicker}>
+            <Group id="picker-shortcuts" title={text("shortcuts-in-picker")}>
               {KEY_TABLE.map((binding) => (
-                <Row key={binding.action} id={`key-${binding.action}`} label={keyText.actions[binding.action]} description={keyText.regions[binding.region]}>
-                  <kbd>{binding.keys.map((keys) => keyLabel(keys, mac)).join(` ${keyText.or} `)}</kbd>
+                <Row key={binding.action} id={`key-${binding.action}`} label={text(SHORTCUT_ACTIONS[binding.action])} description={text(SHORTCUT_REGIONS[binding.region])}>
+                  <kbd>{binding.keys.map((keys) => keyLabel(keys, mac)).join(` ${text("shortcuts-or")} `)}</kbd>
                 </Row>
               ))}
             </Group>
@@ -276,14 +277,14 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
         {page === "about" && (
           <>
             <Group id="version">
-              <Row id="version-label" label={settingsText.updates.version(name, version)}
-                description={updates === null ? settingsText.updates.unavailable : undefined}>
-                {updates !== null && <Button onPress={() => { void api.checkForUpdates(); }}>{settingsText.updates.check}</Button>}
+              <Row id="version-label" label={text("about-version", { name, version })}
+                description={updates === null ? text("about-unavailable") : undefined}>
+                {updates !== null && <Button onPress={() => { void api.checkForUpdates(); }}>{text("about-check")}</Button>}
               </Row>
             </Group>
             {updates !== null && (
-              <Group id="updates" title={settingsText.groups.updates}>
-                <Row id="automatic" label={settingsText.updates.automatic} description={settingsText.updates.automaticDescription}>
+              <Group id="updates" title={text("about-updates")}>
+                <Row id="automatic" label={text("about-automatic")} description={text("about-automatic-description")}>
                   <Switch aria-labelledby="automatic" aria-describedby="automatic-description" isSelected={updates}
                     onChange={(on) => { setUpdates(on); void api.setUpdateChecks(on); }} />
                 </Row>

@@ -2,8 +2,8 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import axe from "axe-core";
 import { afterEach, expect, test, vi } from "vitest";
 import type { PickerPreferences, ShortcutStatus } from "../bindings";
-import { DEFAULT_PICKER_SHORTCUT, KEY_TABLE, shortcutLabel } from "../keys";
-import { keyText, settingsText } from "../messages";
+import { DEFAULT_PICKER_SHORTCUT, KEY_TABLE, keyLabel, shortcutLabel } from "../keys";
+import { keyText } from "../messages";
 import { currentPlatform } from "../platform";
 import { pageOf, SettingsApp } from "./SettingsApp";
 import { RECHECK_MS, STALE_HINT_MS } from "./PasteGuide";
@@ -14,6 +14,96 @@ import english from "../i18n/en-US.ftl?raw";
 import { createInterfaceMessages, InterfaceMessagesProvider } from "../i18n";
 
 afterEach(() => vi.useRealTimers());
+
+test.each(["macos", "windows", "linux"])("Shortcuts preserves every English name and key label on %s", async (platform) => {
+  const previous = document.documentElement.dataset.system;
+  document.documentElement.dataset.system = platform;
+  try {
+    const { api } = fakeApi();
+    render(<SettingsApp api={api} initialPage="shortcuts" />);
+    const label = shortcutLabel(DEFAULT_PICKER_SHORTCUT, platform === "macos");
+    expect(await screen.findByRole("button", { name: `Open Ibis: ${label}` })).toHaveProperty("textContent", label);
+    for (const binding of KEY_TABLE) {
+      const row = document.getElementById(`key-${binding.action}`)!.closest(".ui-settings-row")!;
+      expect(row.querySelector(".ui-settings-row-text")?.textContent).toBe(keyText.actions[binding.action] + keyText.regions[binding.region]);
+      expect(row.querySelector("kbd")?.textContent).toBe(binding.keys.map((keys) => keyLabel(keys, platform === "macos")).join(" or "));
+    }
+  } finally {
+    if (previous === undefined) delete document.documentElement.dataset.system;
+    else document.documentElement.dataset.system = previous;
+  }
+});
+
+test("localized Shortcuts keeps exact key labels, refuses registration, and reopens the saved shortcut", async () => {
+  const { api, state } = fakeApi();
+  const pseudo = createInterfaceMessages(english, true);
+  const view = () => <InterfaceMessagesProvider messages={pseudo}><SettingsApp api={api} initialPage="shortcuts" /></InterfaceMessagesProvider>;
+  const mounted = render(view());
+  const recorder = await screen.findByRole("button", { name: `${pseudo.text("shortcuts-open")}: ${shortcutLabel(DEFAULT_PICKER_SHORTCUT, currentPlatform() === "macos")}` });
+  const keys = [...document.querySelectorAll("kbd")].map((key) => key.textContent);
+  expect(keys).toContain(currentPlatform() === "macos" ? "⌘K" : "Ctrl+K");
+  for (const row of document.querySelectorAll("#picker-shortcuts .ui-settings-row-text")) expect(row.textContent).toContain("⟦");
+  vi.spyOn(api, "setShortcut").mockRejectedValueOnce("in-use");
+  fireEvent.click(recorder);
+  expect(recorder.textContent).toBe(pseudo.text("shortcuts-record"));
+  expect(recorder.getAttribute("aria-label")).toBe(`${pseudo.text("shortcuts-open")}: ${recorder.textContent}`);
+  fireEvent.keyDown(recorder, { key: "k", code: "KeyK", altKey: true });
+  expect(await screen.findByRole("alert")).toHaveProperty("textContent", pseudo.text("shortcuts-refusal-in-use"));
+  expect(recorder.textContent).toBe(shortcutLabel(DEFAULT_PICKER_SHORTCUT, currentPlatform() === "macos"));
+  fireEvent.click(recorder);
+  fireEvent.keyDown(recorder, { key: "j", code: "KeyJ", altKey: true });
+  await waitFor(() => expect(recorder.textContent).toBe(shortcutLabel("Alt+J", currentPlatform() === "macos")));
+  await act(async () => state.closes[0]!());
+  mounted.unmount();
+  render(view());
+  expect(await screen.findByRole("button", { name: `${pseudo.text("shortcuts-open")}: ${shortcutLabel("Alt+J", currentPlatform() === "macos")}` })).toBeTruthy();
+  expect(screen.getByRole("button", { name: pseudo.text("shortcuts-use-default") })).toBeTruthy();
+  expect(state.shortcutChoices).toEqual(["Alt+J"]);
+});
+
+test.each(["success", "failure"])("localized About keeps newer updates after an older read's %s and reopening", async (outcome) => {
+  const { api, state } = fakeApi();
+  const old = deferred<boolean>(), latest = deferred<boolean>();
+  vi.spyOn(api, "updateChecks").mockReturnValueOnce(old.promise).mockReturnValueOnce(latest.promise);
+  vi.spyOn(api, "setUpdateChecks").mockImplementation(async (on) => { for (const handler of state.automatic) handler(on); return undefined as never; });
+  const pseudo = createInterfaceMessages(english, true);
+  const view = () => <InterfaceMessagesProvider messages={pseudo}><SettingsApp api={api} initialPage="about" /></InterfaceMessagesProvider>;
+  const mounted = render(view());
+  fireEvent.focus(window);
+  await act(async () => latest.resolve(true));
+  const automatic = screen.getByRole("switch", { name: pseudo.text("about-automatic") });
+  await act(async () => { if (outcome === "success") old.resolve(false); else old.reject(); });
+  expect(automatic).toHaveProperty("checked", true);
+  expect(screen.getByText(pseudo.text("about-version", { name: "Ibis Nightly", version: "0.3.0" }))).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: pseudo.text("about-check") }));
+  fireEvent.click(automatic);
+  expect(api.setUpdateChecks).toHaveBeenCalledWith(false);
+  await act(async () => state.closes[0]!());
+  mounted.unmount();
+  vi.spyOn(api, "updateChecks").mockResolvedValueOnce(false);
+  render(view());
+  expect(await screen.findByRole("switch", { name: pseudo.text("about-automatic") })).toHaveProperty("checked", false);
+});
+
+test("localized panel errors and native values keep their separate owners and stay literal", async () => {
+  const { api, state } = fakeApi();
+  const hostile = '<img src=x onerror="throw 1"> { $secret } & <b>native</b>';
+  state.shortcut = { shortcut: "", registered: false, error: hostile, desktop: { configurable: true, guidance: hostile } };
+  vi.spyOn(api, "configureShortcuts").mockRejectedValueOnce(new Error(hostile));
+  vi.spyOn(api, "loginItem").mockResolvedValue({ name: hostile, enabled: false, problem: null });
+  vi.spyOn(api, "version").mockResolvedValue(hostile);
+  vi.spyOn(api, "updateChecks").mockRejectedValueOnce(new Error(hostile));
+  const pseudo = createInterfaceMessages(english, true);
+  render(<InterfaceMessagesProvider messages={pseudo}><SettingsApp api={api} initialPage="shortcuts" /></InterfaceMessagesProvider>);
+  expect(await screen.findByText(pseudo.text("shortcuts-not-assigned"))).toBeTruthy();
+  expect(screen.getAllByText(hostile)).toHaveLength(2);
+  fireEvent.click(screen.getByRole("button", { name: pseudo.text("shortcuts-change") }));
+  expect(await screen.findByRole("alert")).toHaveProperty("textContent", pseudo.text("shortcuts-configure-failed"));
+  fireEvent.click(screen.getByRole("option", { name: pseudo.text("settings-about") }));
+  expect(screen.getByText(pseudo.text("about-version", { name: hostile, version: hostile }))).toBeTruthy();
+  expect(screen.getByText(pseudo.text("about-unavailable"))).toBeTruthy();
+  expect(document.querySelector("img, b")).toBeNull();
+});
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -160,7 +250,7 @@ test("portal configuration prevents repeated requests, reports failure and allow
   expect(configure).toHaveBeenCalledTimes(1);
   expect(change.hasAttribute("disabled")).toBe(true);
   await act(async () => pending.reject());
-  expect(await screen.findByRole("alert")).toHaveProperty("textContent", settingsText.shortcut.configureFailed);
+  expect(await screen.findByRole("alert")).toHaveProperty("textContent", "The desktop could not open its shortcut settings. Try again.");
   fireEvent.click(change);
   await waitFor(() => expect(state.configured).toBe(1));
   expect(state.shortcutChoices).toEqual([]);
@@ -207,15 +297,15 @@ test.each([
   if (from === "initial") vi.spyOn(api, "updateChecks").mockReturnValueOnce(read.promise);
   const { unmount } = render(<SettingsApp api={api} initialPage="about" />);
   if (from === "focus") {
-    await screen.findByRole("switch", { name: settingsText.updates.automatic });
+    await screen.findByRole("switch", { name: "Check for updates automatically" });
     vi.spyOn(api, "updateChecks").mockReturnValueOnce(read.promise);
     fireEvent.focus(window);
   }
   act(() => state.automatic[0]!(true));
-  const automatic = screen.getByRole("switch", { name: settingsText.updates.automatic }) as HTMLInputElement;
+  const automatic = screen.getByRole("switch", { name: "Check for updates automatically" }) as HTMLInputElement;
   expect(automatic.checked).toBe(true);
   await act(async () => { if (outcome === "success") read.resolve(false); else read.reject(); });
-  expect(screen.getByRole("switch", { name: settingsText.updates.automatic })).toBe(automatic);
+  expect(screen.getByRole("switch", { name: "Check for updates automatically" })).toBe(automatic);
   expect(automatic.checked).toBe(true);
   // A read started after the event can still observe a later saved choice.
   vi.spyOn(api, "updateChecks").mockResolvedValueOnce(false);
@@ -233,9 +323,9 @@ test.each(["success", "failure"])("a newer automatic-update read wins over an ol
   render(<SettingsApp api={api} initialPage="about" />);
   fireEvent.focus(window);
   await act(async () => { latest.resolve(true); });
-  const automatic = screen.getByRole("switch", { name: settingsText.updates.automatic }) as HTMLInputElement;
+  const automatic = screen.getByRole("switch", { name: "Check for updates automatically" }) as HTMLInputElement;
   await act(async () => { if (outcome === "success") old.resolve(false); else old.reject(); });
-  expect(screen.getByRole("switch", { name: settingsText.updates.automatic })).toBe(automatic);
+  expect(screen.getByRole("switch", { name: "Check for updates automatically" })).toBe(automatic);
   expect(automatic.checked).toBe(true);
 });
 
@@ -665,7 +755,15 @@ test.each(pickerConflicts)("a recorded $name refusal names its command and keeps
   expect(recorder.textContent).toBe(original);
 });
 
-test.each(Object.entries(settingsText.shortcut.refusals))("the %s refusal explains the result and keeps the working shortcut", async (code, message) => {
+test.each([
+  ["invalid", "Ibis cannot use that key combination. Try another shortcut."],
+  ["needs-modifier", "Include Control, Alt or Command. Shift alone is not enough."],
+  ["app-shortcut", "That shortcut is used for app commands. Add another modifier."],
+  ["alt-gr", "Ctrl+Alt with a typing key is used for AltGr on Windows. Try another shortcut."],
+  ["in-use", "Another app or the system may be using that shortcut. Try another."],
+  ["unavailable", "Global shortcuts are unavailable on this desktop. Open Ibis from your application launcher."],
+  ["not-saved", "The shortcut works now, but Ibis could not save it for next time. Try again."],
+])("the %s refusal explains the result and keeps the working shortcut", async (code, message) => {
   const { api, state } = fakeApi({ granted: true });
   vi.spyOn(api, "setShortcut").mockImplementationOnce(async () => {
     if (code === "not-saved") {
@@ -728,7 +826,7 @@ test("a failed shortcut read is explained", async () => {
   const { api } = fakeApi({ granted: true });
   vi.spyOn(api, "shortcutStatus").mockRejectedValueOnce(new Error("unavailable"));
   render(<SettingsApp api={api} initialPage="shortcuts" />);
-  expect((await screen.findByRole("alert")).textContent).toBe(settingsText.shortcut.readFailed);
+  expect((await screen.findByRole("alert")).textContent).toBe("Ibis could not check the shortcut. Try reopening Settings.");
 });
 
 test("Shortcuts has no axe violations while idle, recording, or showing a refusal", async () => {
@@ -744,10 +842,11 @@ test("Shortcuts has no axe violations while idle, recording, or showing a refusa
   expect((await axe.run(container)).violations.map((v) => v.id)).toEqual([]);
 });
 
-test("a focus read started before recording cannot restore the old shortcut", async () => {
+test.each([false, true])("a focus read started before recording cannot restore the old shortcut (pseudo %s)", async (pseudolocale) => {
   const { api, state } = fakeApi({ granted: true });
-  render(<SettingsApp api={api} initialPage="shortcuts" />);
-  const recorder = await screen.findByRole("button", { name: /^Open Ibis:/ });
+  const messages = createInterfaceMessages(english, pseudolocale);
+  render(<InterfaceMessagesProvider messages={messages}><SettingsApp api={api} initialPage="shortcuts" /></InterfaceMessagesProvider>);
+  const recorder = await screen.findByRole("button", { name: `${messages.text("shortcuts-open")}: ${shortcutLabel(DEFAULT_PICKER_SHORTCUT, currentPlatform() === "macos")}` });
   const read = deferred<ShortcutStatus>();
   const old = state.shortcut;
   vi.spyOn(api, "shortcutStatus").mockReturnValueOnce(read.promise);
@@ -757,6 +856,19 @@ test("a focus read started before recording cannot restore the old shortcut", as
   await waitFor(() => expect(state.shortcutChoices).toEqual(["Alt+K"]));
   await act(async () => { read.resolve(old); });
   expect(recorder.textContent).toBe(shortcutLabel("Alt+K", currentPlatform() === "macos"));
+});
+
+test.each(["toString", '<b>{ $secret }</b>', { "picker-shortcut": "constructor" }, null])("unknown shortcut refusals keep the exact generic message (%j)", async (refusal) => {
+  const { api } = fakeApi();
+  vi.spyOn(api, "setShortcut").mockRejectedValueOnce(refusal);
+  render(<SettingsApp api={api} initialPage="shortcuts" />);
+  const recorder = await screen.findByRole("button", { name: /^Open Ibis:/ });
+  const original = recorder.textContent;
+  fireEvent.click(recorder);
+  fireEvent.keyDown(recorder, { key: "k", code: "KeyK", altKey: true });
+  expect(await screen.findByRole("alert")).toHaveProperty("textContent", "Ibis could not change the shortcut. Try again.");
+  expect(recorder.textContent).toBe(original);
+  expect(document.querySelector("b")).toBeNull();
 });
 
 test("default aliases and modifier order do not show Use Default", async () => {
