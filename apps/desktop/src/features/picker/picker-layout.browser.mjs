@@ -153,7 +153,8 @@ try {
       });
     };
     if (viewState !== "loaded") {
-      if (viewState === "loading") await page.locator(".empty-loading").waitFor();
+      // The delayed opening screen exposes its library name on the progress bar.
+      if (viewState === "loading") await page.getByRole("progressbar", { name: "Opening invented.bib…", exact: true }).waitFor();
       else {
         await page.getByRole("option").last().waitFor();
         for (const choice of await page.getByRole("option").all()) assert.equal(await reachable(choice), true, `${caseLabel}: every setup/recovery choice reachable`);
