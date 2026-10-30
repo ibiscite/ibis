@@ -143,16 +143,22 @@ fn assert_original_ranking(engine: &Engine, cancel: &Cancellation) {
 #[test]
 #[ignore = "100k search gate; PR CI runs explicitly in release mode"]
 fn search_budget() {
-    measure(false);
+    measure(false, false);
 }
 
 #[test]
 #[ignore = "100k open/refresh gate; Preview runs explicitly in release mode"]
 fn open_refresh_budget() {
-    measure(true);
+    measure(true, true);
 }
 
-fn measure(enforce_open_refresh: bool) {
+#[test]
+#[ignore = "100k timing report; Preview selects it before 0.3"]
+fn open_refresh_report() {
+    measure(true, false);
+}
+
+fn measure(include_refresh: bool, enforce_open_refresh: bool) {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("synthetic.bib");
     std::fs::write(&path, library(usize::MAX)).unwrap();
@@ -229,7 +235,7 @@ fn measure(enforce_open_refresh: bool) {
         search_p95 <= Duration::from_millis(20),
         "100k search p95 {search_p95:?} exceeds 20 ms"
     );
-    if !enforce_open_refresh {
+    if !include_refresh {
         return;
     }
 
@@ -292,6 +298,8 @@ fn measure(enforce_open_refresh: bool) {
         commits.len(),
         search_p95.as_millis(),
     );
-    assert!(open < Duration::from_secs(3), "100k open {open:?} exceeds 3 s");
-    assert!(refresh < Duration::from_secs(3), "100k refresh {refresh:?} exceeds 3 s");
+    if enforce_open_refresh {
+        assert!(open < Duration::from_secs(3), "100k open {open:?} exceeds 3 s");
+        assert!(refresh < Duration::from_secs(3), "100k refresh {refresh:?} exceeds 3 s");
+    }
 }
