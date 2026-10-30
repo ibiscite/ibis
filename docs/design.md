@@ -135,9 +135,9 @@ keeps S to the edge, top and bottom.
 **Two columns** [C3]. Icons, the search glyph, the status dot and type tiles
 centre on the 32 px tile column; text starts on the title column: row titles,
 the search query, the status text and the shelf citation. The search glyph sits
-6 px inside the tile column on each side. It is the magnifier by default;
-More › Show Ibis mark swaps in the scarlet mark at tile size on the same centre
-(the logo, [C14]), a person's choice and never a state.
+6 px inside the tile column on each side. It is always the magnifier, the
+sign everyone reads as "type here" (maintainer, 2026-10-30). The Ibis mark
+appears on the welcome screen and in the empty-search hint instead [C14].
 
 ```
 --lead     = row-pad + (tile − icon) / 2       field padding before the icon
@@ -167,32 +167,37 @@ controls, targets, type or the header. The citation key is not shown in rows
 (it stays in the accessible name and tooltip); the year (or "No date") is
 trailing and vertically centred.
 
-**Size follows content** [C10]. Every state is as tall as its content: search
-and footer alone, one hint line, Recently added, or a list of choices. Results
-grow the window in 220 ms with the top edge fixed, up to the remembered height;
-it never shrinks while open and starts compact next time. More and output
-menus stay inside the current picker frame with bounded scrolling; only
-content changes and explicit dialogs request more room. Reduced motion: no
-animation. Width: 720 px by default, 360 px minimum. At heights up to 400px,
-only decorative empty-state spacing, illustration and key hints compact;
-readable text, Larger text and actionable targets retain their sizes. Header
-and footer stay outside the middle scroller. At extreme text growth the outer
-window remains scrollable rather than clipping controls.
+**One steady window** [C10] (maintainer, 2026-10-30). The picker keeps one
+size the whole time it is open, in every state: first run, empty search,
+loading, results, no matches, recovery, menus and the keys sheet. Typing,
+clicking a header control, opening a menu, adding a reference or a notice
+never resizes or moves the window; nothing measures content to choose a
+height. The size is set before the window is shown, so nothing can be cut off
+while it catches up, and there is no resize animation. Default 720 × 480,
+minimum 480 × 360. Dragging an edge sets the size for that display, kept
+across launches; Ibis never changes it. Larger text multiplies the height by
+`--larger-text-scale`, capped at the display's work area. Inside the frame the
+header, shelf and footer keep their sizes; the middle area holds the state,
+starts S below the header divider and is the only thing that scrolls.
 
-**Nothing clipped, one scroller** (maintainer, 2026-10-30). The window's height
-is measured from its content after fonts and the text size apply, so no state
-is ever cut off: the empty-search hint, a notice line, the shelf and the footer
-always show whole, with S below the footer actions. At normal and Larger text
-there is no window-level scroll bar and never two scroll bars at once; only the
-results list or an open menu scrolls, and only while its content overflows. A
-scroll bar on content that fits, or a hint cut at the window edge, is a bug in
-the sizing rule, fixed with a regression test at normal and Larger text.
+**Nothing clipped, one scroller** (maintainer, 2026-10-30). No state is ever
+cut off: the empty-search hint, a notice line, the shelf and the footer always
+show whole, with S below the footer actions. There is no window-level scroll
+bar and never two scroll bars at once; only the middle area or an open menu
+scrolls, and only while its content overflows. Content taller than the middle
+area (a small window, 200% text) scrolls there, never under the header or
+footer. A clipped hint or a second scroll bar is a bug, fixed with a
+regression test at normal and Larger text and at the minimum size.
 
-**Compact start** [C11]. With an empty query the picker shows its hint (the
-search icon, "Type to find a reference", what to search by, and the Copy and
-Add keys), and the window is just tall enough for it, with even space above
-and below. Recently added (three compact rows, #1070) joins it once the
-library records added dates.
+**Empty search: first time and every day** [C11]. Same frame, different
+content. While no library is chosen, the welcome screen (**First run**). For
+the first days with a library, the hint: the Ibis mark, "Type to find a
+reference", what to search by, and the Copy and Add keys, centred in the
+middle area. Once there is history, the middle area shows what people most
+likely want: Cited here recently (up to three, for the app Ibis was opened
+from, #45) then Recently added (three, #1070), as compact rows under their
+headings, and the hint shrinks to the search placeholder and the footer keys.
+Typing replaces these rows in place.
 
 **Corners** [C15][D3]. Fixed CSS px at every text size; nested shapes are
 concentric, and an inner corner never goes below the per-OS floor:
@@ -292,7 +297,14 @@ Checks sit where each system puts them: on macOS and Windows a menu with any
 choice or toggle keeps a leading check column for every row, so labels share one
 start and shortcuts line up at the end; on GNOME the check follows the label.
 More's toggles are `menuitemcheckbox` items; a menu without them starts at its
-labels. The format menu's filter field aligns with the item
+labels. **More holds actions, not preferences** (2026-10-30): the library
+section (the library, Choose Library…, Reload Library, which Zotero libraries
+when there are several), Keep Window Open and Show What Will Be Pasted (both
+have keys), then Keyboard Shortcuts, Settings… and Quit Ibis. Rows, text
+size, starting at login and update checks live only in Settings. Sections keep
+one order in every Ibis menu: what it is about, what you can do, Ibis itself.
+Item labels name the result in plain words; a quiet example of the output may
+follow at the end, as in the format menu. The format menu's filter field aligns with the item
 labels; menus with more than seven items get one. Format opens 4 px below its
 pop-up, aligned to its trailing edge; header menus open `bottom end`, footer
 menus `top end`, flipping then shifting within 8 px of the window; a menu opened
@@ -351,9 +363,10 @@ keep their extension. Budget +35 % for German and Greek. RTL uses logical
 properties (tile, year and chevron mirror; key caps keep platform order);
 mixed-direction strings are isolated and citation keys stay LTR.
 
-**Search logo.** The generated bird keeps its canonical scarlet colour and
-uses the tile-sized box (its artwork fills about three quarters); symmetric
-optical outsets preserve query/result alignment and the compact header.
+**The Ibis mark in the picker.** The generated bird in its canonical scarlet,
+40 px, leads the welcome screen and the empty-search hint, where a second
+magnifier would only repeat the search box. It never replaces the search
+glyph and never appears on a control.
 
 **Icons.** Ibis's own drawings on every platform: 20 px grid, 1.5 px rounded
 stroke (1.6 px macOS, 1 px Windows, 16 px symbolic `ibis-…-symbolic` on GNOME);
@@ -466,7 +479,7 @@ it. On copy the shelf shows a closing beak and "Copied" at the line end.
   it again…". Warnings: a trailing pill ("1 warning"; "Reference entry" for a numeric
   style, which copies the entry because its number depends on the document).
 - **Show what will be pasted.** On by default (`show_paste_preview`, decision 0020),
-  ⌘I / Ctrl+I, in More until Settings exists. Off hides only the line and
+  ⌘I / Ctrl+I, in More and Settings › General. Off hides only the line and
   closes the wide pane; the chosen references and copy readiness stay. If the
   output had focus, Search receives it first. Formatting refusals stay visible
   until corrected, including refusals received while the output is hidden.
@@ -687,7 +700,9 @@ without hover.
 ## Window behaviour
 
 - **Opening.** On the focused window's display, at the last position there,
-  with a 120 ms fade and focus in search. A search from under a minute ago
+  with a 120 ms fade and focus in search. The first time on a display it
+  opens centred, with its top in the upper third, never under the notch or
+  the menu bar. A search from under a minute ago
   returns selected (memory only), including a search cleared by Escape before
   hiding, even if native activation arrives after the query returns.
   Reopening from a focused result or another control still starts typing in
@@ -696,8 +711,11 @@ without hover.
   untouched previous query is selected. On X11, keys sent before the picker
   is mapped and has input focus go to the previously focused window. Ibis does
   not capture those keys with a global keyboard grab. The at-cursor form opens under the caret.
-- **Moving.** Drag the empty header, never the list; snap to the centre line and
-  upper third within 18 px (Alt places freely); remembered per display.
+- **Moving and resizing.** Drag the empty header, never the list; snap to the
+  centre line and upper third within 18 px (Option or Alt places freely). Drag
+  an edge to resize [C10]. Place and size are remembered per display. **Reset
+  Window Position** in the menu bar menu and Settings › Advanced restores the
+  default place and size.
 - **Clicking outside** hides Ibis and the click reaches its target, unless
   pinned or while a page number, picker dialog, file chooser, drag or sign-in
   is in progress.
@@ -745,7 +763,7 @@ A choice screen hides the result heading, the shelf and the Copy hint.
   "Found on this Mac/PC/computer". Below: "You can drop a file here too."
   A search with no matches keeps its search actions; a failed refresh keeps
   its searchable snapshot and failure notice. No shelf or Copy is shown on
-  these choice screens, and the window fits the content. An empty first
+  these choice screens; they lay out inside the steady frame [C10]. An empty first
   library offers recovery before asking where the person writes.
   When a focused citation control disappears, the shelf returns focus to
   Search and keeps its selection announcement mounted; unrelated focus stays.
@@ -926,7 +944,32 @@ shared `Switch` (38 × 22), `Segmented` and shortcut recorder in `ui/`. Changes
 apply at once and reach an open picker; preference resets offer Undo. Built so
 far: General (login, pasting, picker look), Shortcuts (open Ibis and the picker's
 key list) and About (version, updates); Libraries and Citations follow (#776).
-The picker's More keeps its quick toggles until then.
+
+**Pages for everyone** (2026-10-30). Most people never open Settings, so
+defaults carry the product (principle 9). Six pages, each with one job, in this
+order: **General** (the opening shortcut, Open at Login, Show in Menu Bar,
+pasting, then Look: rows, text size, show what will be pasted), **Libraries**
+(each source with its status in words, which Zotero libraries, Add Library…,
+Remove with Undo), **Citations** (default format, formats remembered per app
+with Forget, styles in the format menu), **Shortcuts**, then, after a gap,
+**Advanced** and **About Ibis**. General stays at seven rows or fewer. Labels
+are plain words; a one-line description only where a label could be misread.
+Visual choices show pictures: each row density is a small drawing of rows,
+text size a segmented Default, Larger, Largest. Advanced is a page, not a
+mode: Reset Window Position, the settings file (Open, Show in Finder; checked
+when saved, errors explained on this page), installing the `ibis` command,
+copying a problem report, and Reset All Settings with Undo; nothing on it is
+needed for everyday use. A search field heads the sidebar: it matches labels,
+descriptions and common words ("dark", "startup", "paste"), opens the page and
+tints the matching row for two seconds. A setting lives in one place; the
+picker keeps only actions with their own keys.
+
+**Show in Menu Bar** is on by default. Turned off, the shortcut still opens
+the picker, and opening Ibis from Applications (or Start, or the app grid)
+opens Settings; the switch's description says so. The menu bar icon is a
+16-point one-colour bird the system tints, from `brand/`, and opens a menu,
+never a popover: Open Ibis (with its shortcut), the library line, Reset Window
+Position, Settings…, Check for Updates…, Quit Ibis.
 
 The shell fills the viewport at every window size: a two-column grid with a
 reserved `--titlebar-height` row above the content. The sidebar background
@@ -978,6 +1021,15 @@ already-saved output choice. Out-of-order reads never replace newer choices.
 When a row's text and control do not fit side by side, the control wraps below
 and its choices or labels wrap within the card, including at the minimum
 window width and larger system text sizes.
+
+**Shortcuts page and keys sheet** (2026-10-30). The opening shortcut comes
+first as its own card: the Ibis mark, "Open Ibis from any app" with one line
+on where it works, the shortcut in key caps and **Change…**. Then the picker's
+keys in short titled groups (While searching, Anywhere in Ibis), each row an
+action in plain words ("Paste the citation", "Add another reference") with its
+keys as `KeyCaps` at the end, never key names as text. Standard menu keys
+(arrows, Home, End, Tab) are left out of the list. The picker's ⌘/ sheet shows
+the same groups.
 
 **Shortcuts.** On Wayland the desktop owns the opening shortcut. There is no
 recorder or **Use Default**: show the desktop's trigger text verbatim, or
@@ -1044,12 +1096,13 @@ the one-second checks, keeping the capability read on return.
 Zotero's sharing line explains reading references; the macOS guide's line
 explains pasting. These are separate grants, never instructions to give both.
 
-Until the remaining pages exist, those settings live in More and the tray menu. **Start Ibis when you log
+**Start Ibis when you log
 in** is off until turned on (App Review 2.4.5(iii)), uses each system's words
 ("Open at Login", "Start when you sign in", "Start on Login"), and is read from
 the system, never `settings.json` (`login_item.rs`, [PRIVACY.md](../PRIVACY.md)).
-**Check for updates…** and **Check for updates automatically** sit in both
-menus with the same commands, so desktops without a tray reach them; builds
+**Check for updates…** sits in the menu bar or tray menu and in Settings ›
+About with **Check for updates automatically**, using the same commands;
+desktops without a tray reach them through More › Settings…. Builds
 without an update key show neither. Both show only the saved choice, and clicks in
 either are saved in the order they were made.
 In Settings, a saved-choice event supersedes any older automatic-update read,
@@ -1057,7 +1110,7 @@ including a failed read; returning focus may read the choice again.
 The tray click carries the absolute choice its item displayed, so a queued save
 repainting the check cannot change an earlier click's intent.
 On every OS, automatic update offers never show or focus the picker: while it
-is hidden or unfocused, the tray and More quietly say **Update available…**.
+is hidden or unfocused, the tray menu and Settings › About quietly say **Update available…**.
 Opening the picker re-checks before offering the latest update; waiting holds
 no check lock or installer metadata. Turning automatic checks off keeps the
 label but leaves further checks to an explicit command. An explicit update
