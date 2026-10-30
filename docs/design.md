@@ -780,10 +780,18 @@ without hover.
   is mapped and has input focus go to the previously focused window. Ibis does
   not capture those keys with a global keyboard grab. The at-cursor form opens under the caret.
 - **Moving and resizing.** Drag the empty header, never the list; snap to the
-  centre line and upper third within 18 px (Option or Alt places freely). Drag
-  an edge to resize [C10]. Place and size are remembered per display. **Reset
-  Window Position** in the menu bar menu and Settings › Advanced restores the
-  default place and size.
+  centre line, the upper third and the four corners within 18 px (Option or Alt
+  places freely). Drag an edge to resize [C10]. Place and size are remembered per
+  display. **Reset Window Position** in the menu bar menu and Settings › Advanced
+  restores the default place and size.
+- **Corners** (maintainer, 2026-10-30). Settings › Advanced › **Where Ibis
+  opens** is one small picture of the screen with five places: Centre (the
+  default above) and the four corners. A corner sits 16 px from the work area:
+  below the menu bar, above the Dock, in from the screen edge, the same gap on
+  both sides. Picking a place and dragging to it set the same remembered place,
+  so Reset Window Position undoes either. In a bottom corner the full window
+  opens, never the Compact bar, because the bar would grow upward and move the
+  search box.
 - **Clicking outside** hides Ibis and the click reaches its target, unless
   pinned or while a page number, picker dialog, file chooser, drag or sign-in
   is in progress.
@@ -1025,6 +1033,14 @@ apply at once and reach an open picker; preference resets offer Undo. Built so
 far: General (login, pasting, picker look), Shortcuts (open Ibis and the picker's
 key list) and About (version, updates); Libraries and Citations follow (#776).
 
+**One Settings design** (maintainer, 2026-10-30). There is one Settings
+window; every drawing and board uses it, and it is kept in step with the app as
+both change. The Rows and Search icon pictures are the real picker drawn small
+(sample references, the current appearance), never a separate sketch, so they
+can't drift from it. Ibis has no light or dark setting of its own: it follows
+the system appearance, as Apple's guidelines ask, and Look links to the system
+setting. The website shows the app as it currently is.
+
 **Pages for everyone** (2026-10-30). Most people never open Settings, so
 defaults carry the product (principle 9). Seven pages, each with one job, in this
 order: **General** (the opening shortcut, Open at Login, Show in Menu Bar,
@@ -1033,13 +1049,13 @@ be pasted; each visual choice a row of small pictures), **Libraries**
 (each source with its status in words, which Zotero libraries, Add Library…,
 Remove with Undo), **Citations** (default format, formats remembered per app
 with Forget, styles in the format menu), **Shortcuts**, then, after a gap,
-**Advanced** and **About Ibis**. No page opens with more than seven rows. Labels
+**Advanced** and **About Ibis**. No page opens with more than eight rows. Labels
 are plain words; a one-line description only where a label could be misread.
 Visual choices show pictures: each row density is a small drawing of rows,
 each window size a small frame, each search icon itself; text size is a
 segmented Default, Larger, Largest. A choice is picked by clicking its
 picture, never by a menu item that cycles values. Advanced is a page, not a
-mode: Reset Window Position, the settings file (Open, Show in Finder; checked
+mode: Where Ibis opens, Reset Window Position, the settings file (Open, Show in Finder; checked
 when saved, errors explained on this page), installing the `ibis` command,
 copying a problem report, and Reset All Settings with Undo; nothing on it is
 needed for everyday use. A search field heads the sidebar: it matches labels,
