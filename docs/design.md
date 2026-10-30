@@ -169,7 +169,11 @@ grow the window in 220 ms with the top edge fixed, up to the remembered height;
 it never shrinks while open and starts compact next time. More and output
 menus stay inside the current picker frame with bounded scrolling; only
 content changes and explicit dialogs request more room. Reduced motion: no
-animation. Width: 720 px by default, 360 px minimum.
+animation. Width: 720 px by default, 360 px minimum. At heights up to 400px,
+only decorative empty-state spacing, illustration and key hints compact;
+readable text, Larger text and actionable targets retain their sizes. Header
+and footer stay outside the middle scroller. At extreme text growth the outer
+window remains scrollable rather than clipping controls.
 
 **Compact start** [C11]. With an empty query the picker shows its hint (the
 search icon, "Type to find a reference", what to search by, and the Copy and

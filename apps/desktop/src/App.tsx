@@ -575,7 +575,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
           };
         }}
       />
-      <div className="picker-content">
+      <div className="picker-content scroll-area">
       <Notices densityAnnouncement={preferences.densityAnnouncement} updateProgress={updateProgress} library={library} failures={failures} startAtLogin={startAtLogin}
         error={error} copyError={copyError} copied={copied} missing={list?.missing}
         showCopiedText={displayedOutput == null || typeof displayedOutput === "string" || displayedOutput.text !== copied?.text}

@@ -318,3 +318,13 @@ main[data-selection] .results-area { flex: 1 0 var(--results-min-height); }
   .shelf, .chip { border: var(--border-width) solid CanvasText; }
   .shelf { border-inline: 0; outline: var(--border-width) solid CanvasText; outline-offset: calc(-1 * var(--border-width)); }
 }
+
+/* Keep controls outside the short window's middle scroller. If the edges
+   themselves exceed the viewport at extreme text sizes, main can still scroll. */
+@media (max-height: 400px) {
+  main, main[data-compact], main[data-selection] { height: var(--picker-height); min-height: 0; overflow: auto; }
+  main > .search-bar, main > footer { flex: none; }
+  main > .picker-content { display: block; flex: 1 1 auto; min-height: var(--control-min-size); }
+  main > .picker-content .results-area { flex: none; min-height: 0; overflow: visible; }
+  main[data-compact] > footer { margin-block-start: 0; }
+}
