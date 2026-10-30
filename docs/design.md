@@ -1300,7 +1300,9 @@ command checks and presents its result immediately, opening the picker when need
 On Windows, this gate checks the exact picker HWND in the foreground, including
 when its child WebView2 has keyboard focus. Another Ibis window does not qualify.
 Automatic offers also wait while input is non-empty, a key or pointer is held,
-composition or copying is in progress, or a picker overlay is open. For a pending
+composition or copying is in progress, or a picker overlay (including the format
+chooser) is open. Opening and closing the format chooser invalidate the previous
+idle ticket; closing starts a fresh idle period. For a pending
 update, an empty, focused picker idle for 1.5 seconds requests a fresh check. Hide and reopen
 invalidate old idle reports; no timer runs while hidden. No query text crosses
 this readiness boundary. Every platform defaults to **Later**: Return, Space

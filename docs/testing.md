@@ -127,13 +127,13 @@ locally, without changing dependencies:
 |---|---|
 | `rfd 0.16.0`, `backend/win_cid/message_dialog.rs` | TaskDialog uses `nDefaultButton: 0`. Standard Yes/No defaults to Yes. Custom actions preserve vector order: custom Yes=1004, No=1008, Cancel=1001. Ibis now puts Later first, Install second and Cancel third. The qualifier invokes Install or sends one bounded `BM_CLICK` to the verified owned native Button ID 1008; it never presses the default. |
 | `rfd 0.16.0`, `backend/macos/message_dialog.rs`; locked AppKit `NSAlert::addButtonWithTitle` documentation | Buttons are added in argument order. The first gets Return; the Cancel title gets Escape. Later is first, Install second, Cancel third. AXPress continues to target only the exact owned Install action. |
-| `rfd 0.16.0`, `backend/gtk3/message_dialog.rs` | Adds custom buttons in argument order but never calls `gtk_dialog_set_default_response`. Ibis owns this small GTK dialog instead, explicitly assigning both the default and initial focus to Later. Only Accept installs; Escape/close cancel. The qualifier selects the next button with Tab, rechecks the same owned, focused XID, then sends one Space. |
+| `rfd 0.16.0`, `backend/gtk3/message_dialog.rs` | Adds custom buttons in argument order but never calls `gtk_dialog_set_default_response`. Ibis owns this small GTK dialog instead, explicitly assigning both the default and initial focus to Later. Only Accept installs; Escape/close cancel. The qualifier observes the actual focused Install control, rechecks the same owned, focused XID, then sends one Space. It supports both the previous nightly’s Install-first order and the new Later-first order. |
 | `tauri-plugin-dialog 2.8.3`, `desktop.rs` and `MessageDialogBuilder::show` | `show(bool)` treats the first custom label as affirmative. The Linux adapter also maps native cancellation to the custom cancel label, including close. Simply reversing a two-button dialog could therefore map Escape/close to Install. Ibis uses `show_with_result` and matches only the exact Install label; a separate Cancel slot remains safe. |
 
 The shared input monitor captures real keyboard/input/composition events before
 picker handlers. One 1.5-second idle timer belongs to its latest interaction;
 non-empty input, held keys/pointers, overlays, copies and hidden/unfocused state
-block it. Only the matching native activity ticket permits a fresh check. Native
+block it. The format chooser is tracked separately from More; both its open and close transitions invalidate the old idle ticket. Only the matching native activity ticket permits a fresh check. Native
 presentation checks that gate again; the safe default covers IPC/native focus
 races. No text or installer metadata is retained in the readiness state.
 
@@ -146,6 +146,19 @@ uses GTK's actual Return/focused-control activation bindings; run it with an
 isolated display. The existing Linux native CI step runs it under Xvfb before
 the picker smoke. Source inspection and mocks do not replace installed native
 keyboard qualification on each platform.
+
+The Linux qualifier builds `scripts/update-gtk-probe.c` as a private GTK module
+and loads it only in its owned test processes. It resolves the AppImage’s GTK
+symbols, reads the visible offer’s actual button label, response membership and
+focus, and publishes only bounded numeric facts on that exact X11 window. It
+never changes focus, defaults, responses or input. This avoids the documented
+AT-SPI omission. Missing observations share the existing action deadline;
+invalid ownership, ambiguous Install controls and exhausted navigation fail
+before Space. At most six Tabs navigate to a verified Install; Space is sent
+once and never retried. The Linux native CI step runs
+`update-gtk-probe.test.py` with `IBIS_GTK_CONTROL_TEST=1` under Xvfb/dbus: real GTK
+dialogs exercise both button orders and refusal when Install is absent. The
+AppImage rerun remains necessary to verify loading against its bundled GTK.
 
 ## Capability matrix
 

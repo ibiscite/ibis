@@ -474,6 +474,9 @@ def environment(inherited, config):
         env["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] = "--force-renderer-accessibility"
     if config is not None:
         env.update(XDG_CONFIG_HOME=str(config), NO_AT_BRIDGE="0", GTK_MODULES="gail:atk-bridge")
+        probe = config / "update-gtk-probe.so"
+        if probe.is_file():
+            env["GTK_MODULES"] += ":" + str(probe.resolve())
     for name in ("APPIMAGE", "APPDIR", "IBIS_GALLERY", "IBIS_GALLERY_STATE", "IBIS_LIBRARY"):
         env.pop(name, None)
     return env
@@ -660,12 +663,39 @@ class Linux:
             self.wm = subprocess.Popen(["openbox", "--sm-disable"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             wait_for(lambda: self.window_manager_ready(deadline), max(0, deadline - time.monotonic()),
                      "the owned Linux window manager did not become ready", step=.1)
+            self.prepare_control_probe()
         except BaseException:
             try:
                 self.close()
             except (OSError, subprocess.SubprocessError):
                 print("owned Linux window manager cleanup failed", file=sys.stderr)
             raise
+
+    def prepare_control_probe(self):
+        try:
+            result = subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-shared", "-fPIC",
+                                     str(Path(__file__).with_name("update-gtk-probe.c")), "-ldl", "-o",
+                                     str(self.config / "update-gtk-probe.so")], capture_output=True, timeout=30)
+            helper_stdout(result, "GTK control observer build")
+        except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
+            raise LinuxActivationFailure(helper_failure("linux", error), "gtk-probe-build") from None
+
+    def install_control(self, scope, deadline):
+        try:
+            result = subprocess.run(["xprop", "-id", scope[2], "_IBIS_UPDATE_INSTALL_CONTROL"],
+                                    capture_output=True, timeout=remaining(deadline), env=dict(os.environ, LC_ALL="C"))
+            text = helper_stdout(result, "GTK control observer")
+            match = re.fullmatch(r"_IBIS_UPDATE_INSTALL_CONTROL\(CARDINAL\) = ([0-9]+(?:, [0-9]+){6})\s*", text)
+            if not match:
+                return None  # Module is not loaded or has not observed this dialog yet.
+            version, pid, installs, focused, ordinal, serial, valid = map(int, match[1].split(", "))
+            if version != 1 or pid != scope[0] or installs != 1 or valid != 1:
+                raise LinuxActivationFailure({"attempted": False}, "install-control-scope")
+            if focused not in (0, 1, 2) or not 0 <= ordinal <= 128 or not 0 < serial <= 0xffffffff:
+                raise LinuxActivationFailure({"attempted": False}, "install-control-scope")
+            return focused == 1, ordinal, serial
+        except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
+            raise LinuxActivationFailure(helper_failure("linux", error), "install-control-observation") from None
 
     def x11_property(self, deadline, *args):
         remaining = deadline - time.monotonic()
@@ -813,7 +843,8 @@ class Linux:
     def look(self, pids, press=None, *, timeout=10):
         # rfd's GTK dialog exists as a managed X11 client even when AT-SPI
         # exposes no dialog at all. The oracle is the native window and owner,
-        # followed by replacement/restart, not an accessibility provider.
+        # followed by GTK focused-control identity and replacement/restart,
+        # not an accessibility provider or a presumed button order.
         if press not in (None, BUTTON):
             raise AssertionError("unexpected Linux update action")
         deadline = time.monotonic() + timeout
@@ -837,12 +868,40 @@ class Linux:
             except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
                 probe.update(helper_failure("linux", error))
                 raise LinuxActivationFailure(probe, probe["stage"]) from None
-        # The native GTK offer explicitly focuses Later. Select its next
-        # control, Install, then activate that control once. Return is safe
-        # cancellation now and is never used as an installation action.
-        key("Tab", False)
+        # Old rfd offers put Install first; the safe-default offer puts Later
+        # first. Observe the actual GTK focus, not a presumed tab position.
+        previous, tabs = None, 0
+        while True:
+            if time.monotonic() >= deadline:
+                raise LinuxActivationFailure(probe, "install-control-unavailable")
+            control = self.install_control(scope, deadline)
+            if self.picker_ready(pids, timeout=remaining(deadline)) != ready or self.native_scope != scope:
+                raise LinuxActivationFailure(probe, "offer-recheck")
+            if control is None or (previous is not None and (control[2] == previous[2] or control[1] == previous[1])):
+                time.sleep(min(.05, remaining(deadline)))
+                continue
+            if control[0]:
+                break
+            if tabs >= 6:
+                raise LinuxActivationFailure(probe, "install-control-unavailable")
+            previous = control
+            key("Tab", False)
+            tabs += 1
+        # Prove the in-process observer is still live, even if Install was
+        # already focused in the old layout. A stale property cannot consent.
+        confirmed = self.install_control(scope, deadline)
+        while confirmed is not None and confirmed[2] == control[2]:
+            if time.monotonic() >= deadline:
+                raise LinuxActivationFailure(probe, "install-control-unavailable")
+            time.sleep(min(.05, remaining(deadline)))
+            confirmed = self.install_control(scope, deadline)
+        if confirmed is None or confirmed[:2] != control[:2]:
+            raise LinuxActivationFailure(probe, "install-control-changed")
         if self.picker_ready(pids, timeout=remaining(deadline)) != ready or self.native_scope != scope:
             raise LinuxActivationFailure(probe, "offer-recheck")
+        final = self.install_control(scope, deadline)
+        if final is None or final[:2] != confirmed[:2]:
+            raise LinuxActivationFailure(probe, "install-control-changed")
         key("space", True)
         return True, [], dict(probe, stage="complete", pressed_by="x11-install-space")
 
@@ -1146,6 +1205,8 @@ def run(args):
         report["observer_mode"] = "forced-renderer-accessibility"
     if report["system"] == "Darwin":
         report["macos_provider_sha256"] = digest(Path(__file__).with_name("update-macos.js"))
+    if report["system"] == "Linux":
+        report["linux_control_provider_sha256"] = digest(Path(__file__).with_name("update-gtk-probe.c"))
     started = []
     log = None
     install = None
@@ -1364,13 +1425,28 @@ class Tests(unittest.TestCase):
 
     def linux_native_offer(self, scenario):
         native = Linux.__new__(Linux)
-        events, reads = [], 0
+        events, reads, tabs, controls = [], 0, 0, 0
         def query(command, **kwargs):
-            nonlocal reads
+            nonlocal reads, tabs, controls
             self.assertGreater(kwargs["timeout"], 0)
             events.append(tuple(command))
+            if command == ["xprop", "-id", "102", "_IBIS_UPDATE_INSTALL_CONTROL"]:
+                controls += 1
+                focused = 1 if scenario == "old-layout" or tabs else 2
+                if scenario == "changed-control" and controls > 2:
+                    focused = 2
+                if scenario == "missing-control":
+                    return subprocess.CompletedProcess(command, 0, stdout=b"_IBIS_UPDATE_INSTALL_CONTROL: not found.", stderr=b"")
+                if scenario == "wrong-control":
+                    focused = 2
+                pid = 99 if scenario == "foreign-control" else 42
+                installs = 2 if scenario == "duplicate-control" else 1
+                facts = f"_IBIS_UPDATE_INSTALL_CONTROL(CARDINAL) = 1, {pid}, {installs}, {focused}, {tabs + 1}, {controls}, 1"
+                return subprocess.CompletedProcess(command, 0, stdout=facts.encode(), stderr=b"")
             args = tuple(command[1:])
             if args in (("key", "--window", "102", "--clearmodifiers", "Tab"), ("key", "--window", "102", "--clearmodifiers", "space")):
+                if args[-1] == "Tab":
+                    tabs += 1
                 if scenario == "selection-timeout" and args[-1] == "Tab":
                     raise subprocess.TimeoutExpired(command, 1)
                 if scenario == "uncertain" and args[-1] == "space":
@@ -1394,7 +1470,7 @@ class Tests(unittest.TestCase):
                       ("getwindowname", "101"): "Ibis",
                       ("getwindowname", "102"): "Other" if late and scenario == "renamed" else "An update is available",
                       ("getwindowname", "103"): "An update is available",
-                      ("getwindowfocus",): "999" if scenario == "unfocused" or (late and scenario == "focus-lost") or (reads > 2 and scenario == "selection-focus-lost") else offered_id if offer else "101"}
+                      ("getwindowfocus",): "999" if scenario == "unfocused" or (late and scenario == "focus-lost") or (reads > 3 and scenario == "selection-focus-lost") else offered_id if offer else "101"}
             if args[0] == "getwindowpid":
                 value = "99" if args[-1] == offered_id and (scenario == "foreign" or (late and scenario == "owner-changed")) else "42"
             else:
@@ -1408,13 +1484,28 @@ class Tests(unittest.TestCase):
                 result = error
         return result, events
 
-    def test_linux_native_offer_without_atspi_activates_the_exact_window_once(self):
+    def test_linux_native_offer_verifies_install_in_the_exact_window_once_without_atspi(self):
         result, events = self.linux_native_offer("success")
         self.assertNotIsInstance(result, Exception)
         self.assertTrue(result[0])
         self.assertEqual([event for event in events if event[1] == "key"],
                          [("xdotool", "key", "--window", "102", "--clearmodifiers", "Tab"),
                           ("xdotool", "key", "--window", "102", "--clearmodifiers", "space")])
+
+    def test_linux_old_layout_verifies_install_without_tabbing_to_later(self):
+        result, events = self.linux_native_offer("old-layout")
+        self.assertNotIsInstance(result, Exception)
+        self.assertTrue(result[0])
+        self.assertEqual([event[-1] for event in events if event[1] == "key"], ["space"])
+        self.assertTrue(any(event == ("xprop", "-id", "102", "_IBIS_UPDATE_INSTALL_CONTROL") for event in events))
+
+    def test_linux_never_activates_an_unverified_or_wrong_control(self):
+        for scenario in ("missing-control", "wrong-control", "foreign-control", "duplicate-control", "changed-control"):
+            with self.subTest(scenario=scenario):
+                result, events = self.linux_native_offer(scenario)
+                self.assertIsInstance(result, LinuxActivationFailure)
+                self.assertFalse(any(event[1] == "key" and event[-1] in ("space", "Return") for event in events))
+                self.assertLessEqual(sum(event[1] == "key" for event in events), 6)
 
     def test_linux_native_offer_refuses_absence_ambiguity_and_stale_or_foreign_window(self):
         for scenario in ("absent", "hidden", "unfocused", "duplicate", "foreign", "io", "reopened", "renamed", "focus-lost", "owner-changed"):
@@ -1508,7 +1599,7 @@ class Tests(unittest.TestCase):
             previous.write_bytes(b"synthetic previous"); expected.write_bytes(b"synthetic next")
             library.write_text("@article{synthetic, title={Synthetic}}")
             args = argparse.Namespace(previous=previous, expected=expected)
-            with patch.dict(sys.modules, {"pyatspi": MagicMock()}), patch("subprocess.Popen", side_effect=launch), \
+            with patch.object(Linux, "prepare_control_probe"), patch("subprocess.Popen", side_effect=launch), \
                     patch("subprocess.run", side_effect=query), patch("time.monotonic", side_effect=lambda: clock["now"]), \
                     patch("time.sleep", side_effect=lambda _step: clock.update(now=clock["now"] + 1)):
                 if scenario == "success":

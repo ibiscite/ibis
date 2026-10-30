@@ -126,12 +126,13 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const formatButtonRef = useRef<HTMLButtonElement>(null);
   const moreButton = useRef<HTMLButtonElement>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [formatOpen, setFormatOpen] = useState(false);
   const { startAtLogin, readLoginItem, toggleStartAtLogin, offered: loginItemOffered } = useLoginItem({ loginItem, setLoginItem, perform, menuOpen });
   const updateMenu = useUpdateChecks({ updateChecks, setUpdateChecks, onUpdateChecks, updateAvailable, onUpdateAvailable, perform, report });
   const { pinned, currentPin, togglePin } = usePin({ setPinned, perform });
   const [keysOpen, setKeysOpen] = useState(false);
   const updateInputBlocked = useRef(false);
-  updateInputBlocked.current = Boolean(query || pendingCopy || menuOpen || keysOpen || selected.size || state.activeCopy !== null);
+  updateInputBlocked.current = Boolean(query || pendingCopy || menuOpen || formatOpen || keysOpen || selected.size || state.activeCopy !== null);
   const updateInput = useRef<ReturnType<typeof monitorUpdateOfferInput> | null>(null);
   useEffect(() => {
     if (!api.updatePickerActivity) return;
@@ -144,7 +145,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     visibility.observe(document.documentElement, { attributes: true, attributeFilter: ["data-picker-hidden"] });
     return () => { visibility.disconnect(); monitor.stop(); updateInput.current = null; };
   }, [api.updatePickerActivity]);
-  useEffect(() => { updateInput.current?.activity(); }, [query, pendingCopy, menuOpen, keysOpen, selected.size, state.activeCopy, state.visibility]);
+  useEffect(() => { updateInput.current?.activity(); }, [query, pendingCopy, menuOpen, formatOpen, keysOpen, selected.size, state.activeCopy, state.visibility]);
   // Where focus goes back to when the keys overlay closes.
   const keysReturn = useRef<HTMLElement | null>(null);
   // While Alt (⌥) is held, the footer shows the other keys instead of Enter.
@@ -565,6 +566,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
         app={destination.app}
         formatScope={destination.scope}
         onFormatOpenChange={(open, reason) => {
+          setFormatOpen(open);
           if (open || pendingCopy?.question !== "open" || reason === "action") return;
           // Dismissal uses the fallback for this attempt; application commands cancel it.
           send({ type: "question", answer: reason === "command" ? "cancel" : "answered" });

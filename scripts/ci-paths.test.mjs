@@ -389,5 +389,6 @@ test('Linux native CI exercises update consent keyboard bindings under its isola
   const workflow = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
   const native = workflow.split('- name: Exercise the native picker (Linux)')[1].split('\n      # Keep native smoke')[0];
   assert.match(native, /xvfb-run[^\n]+dbus-run-session -- cargo test -p ibis-desktop --locked gtk_offer_keyboard_return_declines_and_tab_space_deliberately_installs -- --ignored --test-threads=1/);
+  assert.match(native, /IBIS_GTK_CONTROL_TEST=1 xvfb-run[^\n]+dbus-run-session -- \/usr\/bin\/python3 scripts\/update-gtk-probe\.test\.py/);
   assert.ok(native.indexOf('gtk_offer_keyboard_return') < native.indexOf('--app target/debug/ibis-desktop'));
 });
