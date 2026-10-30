@@ -1,6 +1,7 @@
 // Real built picker + invented IPC. Browser layout evidence, not native input/engine proof.
 // Serve `pnpm build` with `pnpm exec vite preview`; reuse an installed Playwright.
 import assert from "node:assert/strict";
+import { isWholeNotice, noticeText, waitForLayout } from "./picker-layout-checks.mjs";
 const { chromium } = await import(process.env.IBIS_PLAYWRIGHT_MODULE || "playwright");
 const base = new URL(process.argv[2] || "http://127.0.0.1:4173");
 assert.ok(["127.0.0.1", "localhost"].includes(base.hostname), "Use a loopback fixture server");
@@ -14,6 +15,8 @@ try {
   for (const { width, larger, colorScheme, scale, startupNotice = false, largeNotice = false } of cases) {
     const small = width === 360, limit = largeNotice ? 480 : small ? 320 : 800;
     const page = await browser.newPage({ viewport: { width, height: small ? 320 : 109 }, colorScheme });
+    const caseLabel = `${width}/${larger ? "larger" : "normal"}/${colorScheme}/scale-${scale}/${startupNotice ? "startup-notice" : largeNotice ? "large-notice" : "default"}`;
+    const waitForCheck = (check, predicate, arg) => waitForLayout(page, caseLabel, check, predicate, arg);
     const errors = [], fits = [];
     page.setDefaultTimeout(5000);
     page.on("pageerror", (error) => errors.push(error.message));
@@ -54,12 +57,12 @@ try {
     }, { larger, scale, startupNotice, largeNotice });
     await page.goto(base.href);
     await page.getByText("Type to find a reference", { exact: true }).waitFor();
-    await page.waitForFunction((larger) => document.documentElement.dataset.textSize === (larger ? "larger" : "normal"), larger);
+    await waitForCheck("text-size-applied", (larger) => document.documentElement.dataset.textSize === (larger ? "larger" : "normal"), larger);
     await page.evaluate(() => document.fonts.ready);
     if (scale === 3) {
       await page.mouse.move(width - 5, 20);
       await page.mouse.wheel(0, 2000);
-      await page.waitForFunction(() => document.querySelector("main").scrollTop > 0);
+      await waitForCheck("extreme-wheel-scroll", () => document.querySelector("main").scrollTop > 0);
       assert.equal(await page.getByRole("button", { name: /^More/ }).evaluate((node) => { const rect = node.getBoundingClientRect(); return rect.top >= 0 && rect.bottom <= innerHeight + 1; }), true, "real wheel input reaches extreme-text footer");
       for (const control of [page.getByLabel("Search references", { exact: true }), page.getByRole("button", { name: /^More/ })]) {
         await control.scrollIntoViewIfNeeded();
@@ -96,19 +99,15 @@ try {
     });
     assert.deepEqual(await scan(), [], `${width}/${larger}/${colorScheme}: compact`);
     if (!small) assert.ok(page.viewportSize().height > 109, "clipped initial viewport must grow to content");
-    const wholeNotice = async (text) => {
-      const notice = page.getByRole("alert").filter({ hasText: text }).first();
-      await notice.waitFor();
-      await page.waitForFunction((text) => {
-        const node = [...document.querySelectorAll('.notices [role="alert"]')].find((node) => node.textContent.includes(text));
-        if (!node) return false;
-        const rect = node.getBoundingClientRect(), port = node.closest(".picker-content").getBoundingClientRect();
-        return rect.height > 0 && rect.top >= port.top - 1 && rect.bottom <= port.bottom + 1;
-      }, text);
+    const wholeNotice = async (check, text) => {
+      // Both the locator and geometry oracle must select the exact same notice.
+      const notice = page.getByRole("alert").and(page.getByText(text, { exact: true })).first();
+      await waitForCheck(check, isWholeNotice, text);
+      assert.equal(await notice.isVisible(), true, `${caseLabel}: ${check} visible`);
       assert.equal(await notice.evaluate((node) => /auto|scroll/.test(getComputedStyle(node.closest(".notices")).overflowY)), false, "notices use the middle scroll owner");
       assert.deepEqual(await scan(), [], "whole compact notice keeps search/footer and one scroller");
     };
-    if (startupNotice) await wholeNotice("Synthetic startup settings notice.");
+    if (startupNotice) await wholeNotice("startup-notice-whole", noticeText.startup);
     const frame = page.viewportSize(), before = fits.length;
     await page.getByRole("button", { name: /^More/ }).click();
     await page.getByRole("menu").waitFor();
@@ -121,7 +120,7 @@ try {
     const search = page.getByLabel("Search references", { exact: true });
     if (!small) {
       await search.fill("refuse");
-      await wholeNotice("Search");
+      await wholeNotice("failed-search-notice-whole", noticeText.failedSearch);
       assert.equal(await page.locator("main").evaluate((node) => node.hasAttribute("data-compact")), true, "failed search stays compact");
       await search.fill("");
       await page.getByText("Type to find a reference", { exact: true }).waitFor();
@@ -137,7 +136,7 @@ try {
       await search.press("Shift+Enter");
       await search.press("ArrowDown");
       await search.press("Shift+Enter");
-      await page.waitForFunction(() => document.querySelectorAll('.shelf-chips > .chip').length === 2);
+      await waitForCheck("large-notice-two-selected", () => document.querySelectorAll('.shelf-chips > .chip').length === 2);
       assert.deepEqual(page.viewportSize(), { width: 720, height: 480 }, "large-notice fixture uses the reported frame");
       assert.ok(await page.locator(".notices").evaluate((node) => node.getBoundingClientRect().height >= 300), "warnings consume at least 300px");
       assert.ok(await page.locator(".picker-content").evaluate((node) => node.clientHeight > 16 * parseFloat(getComputedStyle(document.documentElement).fontSize)), "middle exceeds the old 16rem fallback");
@@ -152,7 +151,7 @@ try {
       assert.deepEqual(await owners(), ["picker-content scroll-area"], "large notices and results share the middle scroller");
       for (const height of [88, 480, 800, 480]) {
         await page.setViewportSize({ width, height });
-        await page.waitForFunction((extreme) => document.querySelector("main").hasAttribute("data-scroll-page") === extreme, height === 88);
+        await waitForCheck("large-notice-page-scroll", (extreme) => document.querySelector("main").hasAttribute("data-scroll-page") === extreme, height === 88);
         await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
         assert.deepEqual(await selection(), chosen, "layout changes preserve focus, query range and selected references");
         if (height !== 88) {
@@ -180,13 +179,13 @@ try {
     }
     if (small) {
       await page.getByRole("region", { name: "Preview" }).getByText("[@synthetic0]", { exact: true }).waitFor();
-      await page.waitForFunction(() => document.querySelector('[aria-label="Search results"]').textContent.trim().length > 0);
+      await waitForCheck("results-announced", () => document.querySelector('[aria-label="Search results"]').textContent.trim().length > 0);
       for (const height of [88, 120]) {
         await page.setViewportSize({ width, height });
-        await page.waitForFunction(() => document.querySelector("main").hasAttribute("data-scroll-page"));
+        await waitForCheck("small-viewport-page-scroll", () => document.querySelector("main").hasAttribute("data-scroll-page"));
         await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
         await page.setViewportSize({ width, height: 320 });
-        await page.waitForFunction(() => !document.querySelector("main").hasAttribute("data-scroll-page"));
+        await waitForCheck("restored-viewport-middle-scroll", () => !document.querySelector("main").hasAttribute("data-scroll-page"));
         assert.deepEqual(await scan(), [], `${height}px to 320px recovers bounded middle and whole footer without rerender`);
       }
     }
@@ -203,7 +202,7 @@ try {
     await page.getByRole("region", { name: "Preview" }).waitFor();
     assert.deepEqual(await scan(), [], `${width}/${larger}/${colorScheme}: shelf`);
     await search.fill("refuse");
-    await page.getByRole("alert").filter({ hasText: "Search" }).first().waitFor();
+    await page.getByRole("alert").and(page.getByText(noticeText.failedSearch, { exact: true })).first().waitFor();
     assert.deepEqual(await scan(), [], `${width}/${larger}/${colorScheme}: failed search retains footer and one scroller`);
     // Consumer oracle must reject a genuinely clipped frame, not only read CSS.
     await page.evaluate(() => { document.querySelector("main").style.height = "1px"; });
