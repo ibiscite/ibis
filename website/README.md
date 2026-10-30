@@ -10,7 +10,12 @@ python3 -m http.server 8097 --bind 127.0.0.1 --directory website/dist
 ```
 
 The build copies the shared app tokens and allowlisted brand
-exports into `website/dist`. Check with `node --test scripts/website*.test.mjs`.
+exports into `website/dist`. It also generates `picker-tokens.css` from that
+same file, replacing only `:root` with the picture's `[data-app-tokens]` scope.
+Every declaration and conditional stays in order, including dark, contrast and
+notice rules; the page's prose colours cannot override the app pictures.
+There is no maintained second palette. Check with
+`node --test scripts/website*.test.mjs`.
 
 The optional sidebar browser check in `scripts/website-controls.test.mjs` uses an
 existing Playwright runtime when `IBIS_WEBSITE_URL` points to the loopback preview.
@@ -164,8 +169,16 @@ result list keeps one height while filtering and the paste slot keeps the
 sentence's line height, so the page never jumps. An underlined blank marks the
 paste position; after copying it becomes a keyboard-accessible dashed scarlet
 "Paste" chip with the platform paste shortcut, then the copied key lands there,
-and copying again keeps the old citation until the next paste. Copy and paste
-feedback sits beside the shelf output. The picker stays visible after copying
+and copying again keeps the old citation until the next paste. The picture is
+the current 720 × 480 picker: the canonical themed gradient Ibis search mark
+(24 px, centred on the tile column), one-line shelf, library status
+and a filled Copy action. At smaller widths its controls reflow within the same
+height; only results scroll. Below the narrow container breakpoint the query
+keeps its own row and Clear and Format wrap below it, including at 200% text.
+It follows the page's system appearance and any
+explicit local appearance choice. Copy feedback adds the closing beak and
+Copied capsule, with the notice card below in its own reserved frame. That card
+keeps the copied receipt through later searches and format changes. The picker stays visible after copying
 and pasting so visitors can try another reference; Escape still closes and
 reopens it.
 
