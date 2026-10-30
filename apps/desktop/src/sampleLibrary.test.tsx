@@ -5,12 +5,15 @@ import { App } from "./App";
 import { backend, prepared, receipt, resetApp, result } from "./testing/app";
 import type { Density } from "./api";
 import type { FilePreview } from "./bindings";
+import samples from "../src-tauri/resources/samples.csljson?raw";
 
 afterEach(resetApp);
 
-const title = "Lantern gardens and the rhythm of imaginary cities";
+const bundledSamples = JSON.parse(samples);
+const lantern = bundledSamples[0];
+const title = lantern.title;
 const apa = "(Vale, 2024) [Sample]";
-const sampleKeys = "[@vale2024lanterns] [Sample]";
+const sampleKeys = `[@${lantern["citation-key"]}] [Sample]`;
 const apaWarnings = ["Year suffixes require the whole document; Ibis leaves them out."];
 
 function press(row: HTMLElement) {
@@ -25,7 +28,7 @@ function setup(density: Density = "comfortable", formatted = true) {
     revision: mode, state: mode === "none" ? "none" : "loaded", has_snapshot: mode !== "none",
     name: mode === "sample" ? "Sample references" : mode === "real" ? "invented.bib" : null,
     snapshot_name: mode === "sample" ? "Sample references" : mode === "real" ? "invented.bib" : null,
-    references: mode === "sample" ? 3 : mode === "real" ? 1 : 0, sample: mode === "sample",
+    references: mode === "sample" ? bundledSamples.length : mode === "real" ? 1 : 0, sample: mode === "sample",
     zotero: false, warnings: 0, error: null, problem: null, note: null,
   });
   const switchTo = async (next: typeof mode) => { mode = next; await emit("library:changed", status()); };
@@ -41,7 +44,7 @@ function setup(density: Density = "comfortable", formatted = true) {
     choose_library: () => null,
     picker_preferences: () => ({ citation_style: formatted ? "apa" : null, density, show_paste_preview: true }),
     search: ({ query }) => ({ revision: mode, results: mode === "none" || !query.text ? [] : [{
-      ...result(mode === "sample" ? "vale2024lanterns" : "own", mode === "sample" ? title : "My invented reference", mode === "sample" ? "samples" : "real"),
+      ...result(mode === "sample" ? lantern["citation-key"] : "own", mode === "sample" ? title : "My invented reference", mode === "sample" ? "samples" : "real"),
       revision: mode, sample: mode === "sample",
     }] }),
     preview_file_citation: preview,
@@ -63,7 +66,7 @@ test.each([true, false])("first citation: choose samples, search, Enter and rece
   await screen.findByRole("option", { name: /^Try sample references/ });
   expect(calls).not.toContain("use_sample_library");
   await chooseSamples();
-  expect(screen.getByText("Try lantern, clouds or islands.")).toBeTruthy();
+  expect(screen.getByText("Search for “lantern”, choose the lantern gardens reference, then press Enter.")).toBeTruthy();
   const input = screen.getByRole("combobox");
   expect(document.activeElement).toBe(input);
   fireEvent.change(input, { target: { value: "lantern" } });

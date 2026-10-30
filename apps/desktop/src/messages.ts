@@ -90,7 +90,7 @@ export const setupText = {
   samplesHelp: "Three invented references, kept separate from your library",
   sampleLabel: "Sample",
   sampleTitle: "Sample references",
-  sampleSearchHelp: "Try lantern, clouds or islands.",
+  sampleSearchHelp: "Search for “lantern”, choose the lantern gardens reference, then press Enter.",
   ownLibrary: "Use your own library",
   ownLibraryHelp: "Choose Zotero or a library file instead of samples",
   emptyLine: "Choose a library with references.",

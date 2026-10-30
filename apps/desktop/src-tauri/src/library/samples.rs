@@ -56,6 +56,15 @@ fn preview_output(
 
 #[test]
 fn bundled_samples_load_through_csl_json_and_copy_marked_apa() {
+    let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+    let broken = directory.path().join("malformed.csljson");
+    std::fs::write(&broken, "[{\"id\":").unwrap_or_else(|e| panic!("{e}"));
+    for path in [broken, directory.path().join("missing.csljson")] {
+        assert!(
+            load_source(Source::Samples(path), false, None, &Cancellation::default(), || false).is_err(),
+            "malformed or unreadable samples cannot become a loaded sample library"
+        );
+    }
     let config: serde_json::Value =
         serde_json::from_str(include_str!("../../tauri.conf.json")).unwrap_or_else(|e| panic!("{e}"));
     assert!(

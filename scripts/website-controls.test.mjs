@@ -120,13 +120,18 @@ test("public demo supports keyboard copy/paste and remains visible in narrow and
   const { chromium } = await import(process.env.IBIS_PLAYWRIGHT_MODULE || "playwright");
   const browser = await chromium.launch({ executablePath: process.env.IBIS_CHROMIUM_EXECUTABLE });
   try {
-    for (const width of [390, 1180]) for (const colorScheme of ["light", "dark"]) {
+    for (const width of [320, 390, 1180]) for (const colorScheme of ["light", "dark"]) {
       const page = await browser.newPage({ viewport: { width, height: 850 }, colorScheme, reducedMotion: "reduce" });
       const errors = []; page.on("pageerror", error => errors.push(error.message));
       await page.goto(url.href + "#how");
       const input = page.getByRole("combobox", { name: "Search the made-up library" });
-      await input.waitFor(); await input.fill("rivera");
+      await input.waitFor();
+      assert.equal(await input.inputValue(), "lantern");
+      await input.fill("");
+      assert.equal(await page.locator('.picker [role="option"]:visible').count(), 3);
+      await input.fill("lantern");
       assert.equal(await page.locator('.picker [role="option"]:visible').count(), 1);
+      assert.match(await page.locator('.picker [role="option"]:visible').innerText(), /Sample · Lantern gardens/);
       const format = page.getByRole("combobox", { name: "Copy format" });
       await format.focus(); await format.selectOption("cite");
       assert.equal(await format.evaluate(node => node === document.activeElement), true, "changing the native format select preserves its keyboard focus");
@@ -134,10 +139,20 @@ test("public demo supports keyboard copy/paste and remains visible in narrow and
       await input.press("Enter");
       const paste = page.getByRole("button", { name: "Paste the copied citation into the sentence" });
       await paste.click();
-      assert.match(await page.locator("[data-result]").innerText(), /\[@rivera2025\]/);
+      assert.match(await page.locator("[data-result]").innerText(), /\[@vale2024lanterns\] \[Sample\]/);
       await input.fill("no invented reference matches this");
       assert.equal(await page.locator(".picker-foot button").last().isDisabled(), true);
-      assert.match(await page.locator("[data-result]").innerText(), /\[@rivera2025\]/);
+      assert.match(await page.locator("[data-result]").innerText(), /\[@vale2024lanterns\] \[Sample\]/);
+      for (const location of await page.locator(".intro, .platform:visible").all()) {
+        const privacy = location.locator("[data-download-privacy]");
+        assert.equal(await privacy.isVisible(), true);
+        assert.match(await privacy.innerText(), /No account, no uploads, no telemetry; sources read without changes/);
+        assert.equal(await privacy.getByRole("link", { name: "Privacy", exact: true }).getAttribute("href"), "https://github.com/ibiscite/ibis/blob/main/PRIVACY.md");
+        assert.equal(await privacy.evaluate(node => node.scrollWidth <= node.clientWidth), true, "privacy sentence wraps at small widths");
+      }
+      await page.reload();
+      assert.equal(await input.inputValue(), "lantern");
+      assert.equal(await page.getByRole("button", { name: "Paste the copied citation into the sentence" }).count(), 0);
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true, "page never overflows sideways");
       assert.deepEqual(errors, []);
       await page.close();
@@ -146,6 +161,8 @@ test("public demo supports keyboard copy/paste and remains visible in narrow and
     await staticPage.goto(url.href + "#how");
     assert.equal(await staticPage.locator("[data-picker] .picker-panel").isVisible(), true);
     assert.match(await staticPage.locator("[data-picker]").innerText(), /Copy as Pandoc/);
+    assert.match(await staticPage.locator("[data-picker]").innerText(), /\[@vale2024lanterns\] \[Sample\]/);
+    assert.equal(await staticPage.locator("[data-download-privacy]:visible").count(), 4);
     await staticPage.close();
   } finally { await browser.close(); }
 });

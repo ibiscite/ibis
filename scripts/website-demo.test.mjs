@@ -1,40 +1,72 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { test } from "node:test";
-import { createDemo } from "../website/demo-model.mjs";
+import { createDemo, references } from "../website/demo-model.mjs";
 
-test("key demo searches fields, selects and combines known references in order", () => {
+test("the website uses exactly the desktop's bundled invented references", async () => {
+  const samples = JSON.parse(await readFile(new URL("../apps/desktop/src-tauri/resources/samples.csljson", import.meta.url), "utf8"));
+  assert.equal(samples.length, 3);
+  assert.deepEqual(references, samples.map(sample => ({
+    key: sample["citation-key"], kind: sample.type === "book" ? "book" : "article",
+    authors: sample.author.map(author => author.family).join(", "),
+    year: sample.issued["date-parts"][0][0], title: sample.title,
+    where: sample["container-title"] || sample.publisher,
+  })));
+});
+
+test("key demo searches fields, selects and combines known samples in order", () => {
   const demo = createDemo();
-  assert.equal(demo.output(), "[@okafor2023]");
-  demo.setQuery("okafor ecology 2023");
+  assert.equal(demo.output(), "[@vale2024lanterns] [Sample]");
+  demo.setQuery("vale landscapes 2024");
   assert.equal(demo.found().length, 1);
-  demo.add("okafor2021"); demo.add("okafor2023"); demo.add("unknown");
-  assert.equal(demo.output(), "[@okafor2021; @okafor2023]");
-  for (const [format, expected] of Object.entries({ pandoc: "[@okafor2021; @okafor2023]", cite: "\\cite{okafor2021,okafor2023}", autocite: "\\autocites{okafor2021}{okafor2023}", parencite: "\\parencites{okafor2021}{okafor2023}", textcite: "\\textcites{okafor2021}{okafor2023}", typst: "@okafor2021 @okafor2023", keys: "okafor2021, okafor2023" })) {
-    demo.state.format = format; assert.equal(demo.output(), expected, format);
+  demo.add("fen2023clouds"); demo.add("vale2024lanterns"); demo.add("unknown");
+  for (const [format, expected] of Object.entries({ pandoc: "[@fen2023clouds; @vale2024lanterns]", cite: "\\cite{fen2023clouds,vale2024lanterns}", autocite: "\\autocites{fen2023clouds}{vale2024lanterns}", parencite: "\\parencites{fen2023clouds}{vale2024lanterns}", textcite: "\\textcites{fen2023clouds}{vale2024lanterns}", typst: "@fen2023clouds @vale2024lanterns", keys: "fen2023clouds, vale2024lanterns" })) {
+    demo.state.format = format; assert.equal(demo.output(), `${expected} [Sample]`, format);
   }
+});
+
+test("empty and no-match searches preserve a prepared citation; no selection refuses copy", () => {
+  const demo = createDemo();
+  demo.setQuery("");
+  assert.equal(demo.found().length, 3);
+  demo.add("vale2024lanterns");
+  demo.setQuery("no invented reference matches this");
+  assert.deepEqual(demo.found(), []);
+  assert.equal(demo.output(), "[@vale2024lanterns] [Sample]");
+  assert.equal(demo.copy(), true);
+  demo.add("vale2024lanterns");
+  assert.equal(demo.output(), "");
+  assert.equal(demo.copy(), false);
+  assert.equal(demo.state.copied, "[@vale2024lanterns] [Sample]");
 });
 
 test("copied receipt survives later edits and failed copy; paste uses that receipt", () => {
   const demo = createDemo();
   assert.equal(demo.copy(), true);
-  demo.setQuery("rivera"); demo.state.format = "cite";
-  demo.paste(); assert.equal(demo.state.pasted, "[@okafor2023]");
+  demo.setQuery("clouds"); demo.state.format = "cite";
+  demo.paste(); assert.equal(demo.state.pasted, "[@vale2024lanterns] [Sample]");
   assert.equal(demo.copy(), true);
-  assert.equal(demo.state.pasted, "[@okafor2023]");
-  demo.paste(); assert.equal(demo.state.pasted, "\\cite{rivera2025}");
+  assert.equal(demo.state.pasted, "[@vale2024lanterns] [Sample]");
+  demo.paste(); assert.equal(demo.state.pasted, "\\cite{fen2023clouds} [Sample]");
   demo.setQuery("not present ".repeat(10000));
   assert.equal(demo.copy(), false);
-  demo.paste(); assert.equal(demo.state.pasted, "\\cite{rivera2025}");
+  demo.paste(); assert.equal(demo.state.pasted, "\\cite{fen2023clouds} [Sample]");
 });
 
-test("close and reopen preserves explicit choices; unknown format refuses output", () => {
-  const demo = createDemo(); demo.add("okafor2023"); demo.copy();
+test("close and reopen preserves choices; reload starts the same practice task afresh", () => {
+  const demo = createDemo(); demo.add("vale2024lanterns"); demo.copy();
   demo.back(); demo.back(); demo.back();
   assert.equal(demo.state.open, false);
   demo.state.open = true;
-  assert.deepEqual(demo.state.added, ["okafor2023"]);
-  assert.equal(demo.state.copied, "[@okafor2023]");
+  assert.deepEqual(demo.state.added, ["vale2024lanterns"]);
+  assert.equal(demo.state.copied, "[@vale2024lanterns] [Sample]");
   demo.state.format = "unknown";
   assert.equal(demo.copy(), false);
-  assert.equal(demo.state.copied, "[@okafor2023]");
+  assert.equal(demo.state.copied, "[@vale2024lanterns] [Sample]");
+  const reloaded = createDemo();
+  assert.equal(reloaded.state.query, "lantern");
+  assert.deepEqual(reloaded.state.added, []);
+  assert.equal(reloaded.state.copied, null);
+  assert.equal(reloaded.state.pasted, null);
+  assert.equal(reloaded.output(), "[@vale2024lanterns] [Sample]");
 });

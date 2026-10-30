@@ -169,6 +169,28 @@ feedback sits beside the shelf output. The picker stays visible after copying
 and pasting so visitors can try another reference; Escape still closes and
 reopens it.
 
+Use the existing three references in
+`apps/desktop/src-tauri/resources/samples.csljson` for the demo, first-run
+samples and help screenshots. The website tests compare every displayed
+reference field with that file. Keep the visible `Sample` row labels and
+` [Sample]` citation suffix, as in the app. The shared practice task is:
+
+Search for “lantern”, choose the lantern gardens reference, then press Enter.
+
+For #1375, the combined device session still needs genuine help screenshots
+of first-run **Try sample references**, that practice task in the empty search,
+the lantern search result and preview, and the copy/paste receipt and destination
+with ` [Sample]` visible. Use this bundled set on macOS, Windows and Linux;
+capture the actual platform outcome. No help screenshots are stored here and
+none were regenerated in the sandbox. Do not substitute rendered mockups.
+
+Beside the introductory download button and each platform’s downloads, show:
+“No account, no uploads, no telemetry; sources read without changes.” Link
+to `PRIVACY.md`; keep the sentence wrapping naturally on small screens.
+This describes Ibis’s data flows, with the runtime, clipboard, updates and
+agent caveats in the policy; it does not promise that the operating system
+or another app never uses the network.
+
 **Behaviour.** Offer the visitor's platform first and keep the others
 reachable; phones and tablets see all platforms. Downloads keep the fixed
 GitHub `stable` URLs. Explanation, setup, downloads and navigation work without
