@@ -1,5 +1,5 @@
 /* App pictures read the generated scope of the canonical desktop tokens.
-   Only geometry without a token lives here (design.md C7/C10 and notice card). */
+   Only geometry without a token lives here (design.md C7/C10). */
 .journey { max-width: 45rem; }
 .picker-panel { container: picker / inline-size; display: flex; flex-direction: column; width: 100%; max-width: 45rem; height: 30rem; padding: 0; overflow: hidden; border-radius: var(--r-win); background: var(--surface-window); color: var(--text); box-shadow: var(--shadow-card); font: var(--type-body-size)/var(--type-body-line) var(--font-family); }
 .picker-search { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: var(--search-gap); min-height: calc(var(--search-bar-height) + var(--border-width)); padding: var(--inset); border-bottom: var(--border-width) solid var(--separator); }
@@ -75,25 +75,6 @@
 .picker-empty strong { color: var(--text); font-size: var(--type-title-size); }
 .picker-empty p { margin: var(--space-2) 0 var(--space-4); }
 .picker-empty svg { width: var(--empty-icon-size); height: var(--empty-icon-size); margin-bottom: var(--empty-icon-gap); fill: none; stroke: var(--text-tertiary); stroke-width: var(--icon-stroke); }
-/* The native notice has a 560 × 100 frame, including its 16 px shadow margin.
-   Reserve that space so the demo doesn't shift after copy. Let text grow on phones. */
-.picker-receipt { min-height: 100px; max-width: 560px; margin-inline: auto; padding: 16px; }
-.copied-notice { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--space-2); padding: var(--inset); border-radius: 18px; background: var(--surface); color: var(--text); box-shadow: var(--shadow-toast); font: var(--type-body-size)/var(--type-meta-line) var(--font-family); pointer-events: none; }
-.copied-notice-mark { flex: none; display: grid; place-items: center; width: var(--field-h); height: var(--field-h); border-radius: 10px; background: var(--fill-control); color: var(--muted); }
-.copied-notice > div { flex: 1; min-width: min(100%, calc(var(--type-label-size) * 8)); }
-.copied-notice strong { display: block; font: var(--type-strong-weight) var(--type-body-size)/var(--type-meta-line) var(--font-family); }
-.copied-notice code { container: notice-citation / inline-size; display: block; max-block-size: calc(2 * var(--type-label-line)); overflow: hidden; white-space: pre-wrap; overflow-wrap: anywhere; margin-top: var(--space-1); padding: 0; border-radius: 0; background: none; color: var(--citation); font: var(--type-label-size)/var(--type-label-line) var(--font-mono); }
-.notice-citation-full { display: block; }
-.notice-citation-summary { display: none; }
-/* The no-JS picture contains one known citation. Below fifteen mono columns
-   its whole-reference summary fits two lines without clipping a word. */
-@container notice-citation (max-width: 15ch) {
-  .notice-citation-full { display: none; }
-  .notice-citation-summary { display: block; }
-}
-/* The interactive card measures candidates from its immutable copy receipt. */
-.copied-notice[data-interactive] .notice-citation-full { display: block; }
-.copied-notice[data-interactive] .notice-citation-summary { display: none; }
 .platform-switch { color: var(--muted); font: var(--type-title-size)/1.5 var(--font-family); }
 .platform-switch button { min-height: 0; padding: .25em 0; border: 0; background: var(--clear); color: var(--citation); font: inherit; text-decoration: underline; cursor: pointer; }
 .draft code { display: inline; white-space: normal; overflow-wrap: anywhere; }
@@ -123,7 +104,6 @@
   .picker-library { gap: 0; }
   .picker-library > span:last-child { position: absolute; width: var(--hidden-size); height: var(--hidden-size); overflow: hidden; clip-path: var(--hidden-clip); white-space: nowrap; }
 }
-@media (max-width: 39.99rem) { .picker-receipt { min-height: calc(100px + var(--space-5)); } }
 @media (pointer: coarse) {
   .picker button, .picker select, .picker-foot button { min-height: var(--touch-target); }
   .picker-actions :is(button, .picker-static-control) { min-width: var(--touch-target); }
@@ -135,7 +115,7 @@
 @media (prefers-reduced-motion: no-preference) {
   .draft .paste-slot { transition: scale var(--motion-feedback) var(--ease-out); }
   .draft .paste-slot:active { scale: var(--website-press); }
-  .picker-status:not(:empty), .copied-notice { animation: receipt var(--motion-panel) var(--ease-out); }
+  .picker-status:not(:empty) { animation: receipt var(--motion-panel) var(--ease-out); }
   /* The brief's 160 ms wash sits halfway between the shared feedback/panel timings. */
   .picker-shelf[data-copied] { animation: shelf-copied calc((var(--motion-feedback) + var(--motion-panel)) / 2) var(--ease-out); }
 }
@@ -143,5 +123,5 @@
 @media (forced-colors: active) {
   .pick.is-selected, .picker .picker-primary { forced-color-adjust: none; background: Highlight; color: HighlightText; }
   .pick.is-selected .sub, .pick.is-selected .tile { color: HighlightText; }
-  .picker-panel, .picker-shelf, .copied-notice { outline: var(--border-width) solid CanvasText; outline-offset: calc(-1 * var(--border-width)); }
+  .picker-panel, .picker-shelf { outline: var(--border-width) solid CanvasText; outline-offset: calc(-1 * var(--border-width)); }
 }

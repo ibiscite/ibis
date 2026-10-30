@@ -117,6 +117,54 @@ test("Use your own library returns to normal choices, clears sample selection, a
   expect(calls).not.toContain("copy_file_citation");
 });
 
+test.each(["none", "More", "keys", "keys from More"] as const)("welcome Escape dismisses %s then hides without clearing the retained sample query", async (overlay) => {
+  const { calls } = setup();
+  await chooseSamples();
+  const input = screen.getByRole<HTMLInputElement>("combobox");
+  fireEvent.change(input, { target: { value: "lantern" } });
+  await screen.findByRole("option", { name: new RegExp(title) });
+  press(screen.getByRole("option", { name: /^Use your own library/ }));
+  const zotero = await screen.findByRole("option", { name: /^Zotero/ });
+  act(() => zotero.focus());
+  expect(input.value).toBe("lantern");
+  if (overlay !== "none") {
+    const opener = screen.getByRole("button", { name: overlay === "keys" ? "Shortcuts" : /^More/ });
+    act(() => opener.focus());
+    fireEvent.click(opener);
+    if (overlay === "keys from More") {
+      const item = await screen.findByRole("menuitem", { name: "Keyboard shortcuts" });
+      act(() => item.focus());
+      fireEvent.click(item);
+    }
+    const layer = await screen.findByRole(overlay === "More" ? "menu" : "dialog");
+    fireEvent.keyDown(layer, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole(overlay === "More" ? "menu" : "dialog")).toBeNull());
+    expect(calls).not.toContain("hide_picker");
+    expect(input.value).toBe("lantern");
+    if (overlay === "keys from More") await waitFor(() => expect(document.activeElement).toBe(opener));
+  }
+  fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+  await waitFor(() => expect(calls.filter((call) => call === "hide_picker")).toHaveLength(1));
+  expect(input.value).toBe("lantern");
+  await act(async () => { await emit("picker:hidden"); await emit("picker:shown"); });
+  fireEvent.keyDown(zotero, { key: "Escape" });
+  await waitFor(() => expect(calls.filter((call) => call === "hide_picker")).toHaveLength(2));
+});
+
+test("welcome footer Escape offers Hide Ibis even while a sample query is retained", async () => {
+  const { calls } = setup();
+  await chooseSamples();
+  fireEvent.change(screen.getByRole("combobox"), { target: { value: "lantern" } });
+  await screen.findByRole("option", { name: new RegExp(title) });
+  press(screen.getByRole("option", { name: /^Use your own library/ }));
+  const zotero = await screen.findByRole("option", { name: /^Zotero/ });
+  fireEvent.keyDown(zotero, { key: "Alt", altKey: true });
+  const footer = within(document.querySelector("footer")!);
+  expect(footer.queryByRole("button", { name: "Clear search" })).toBeNull();
+  fireEvent.click(footer.getByRole("button", { name: "Hide Ibis" }));
+  await waitFor(() => expect(calls).toContain("hide_picker"));
+});
+
 test("a real source replaces samples even when selected sample references were on the shelf", async () => {
   const { switchTo, copied, preview } = setup();
   await chooseSamples();

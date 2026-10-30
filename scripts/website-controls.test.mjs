@@ -148,22 +148,24 @@ test("public demo supports keyboard copy/paste and remains visible in narrow and
       await input.press("Shift+Enter");
       await input.fill("lantern");
       assert.equal(await page.locator('.picker [role="option"]:visible').count(), 1);
-      assert.match(await page.locator('.picker [role="option"]:visible').innerText(), /Sample · Lantern gardens/);
+      assert.equal(await page.locator('.picker [role="option"]:visible .ref strong').innerText(), "Lantern gardens and the rhythm of imaginary cities");
       const format = page.getByRole("combobox", { name: "Copy format" });
       await format.focus(); await format.selectOption("cite");
       assert.equal(await format.evaluate(node => node === document.activeElement), true, "changing the native format select preserves its keyboard focus");
       await format.selectOption("pandoc");
       await input.press("Enter");
-      assert.equal(await page.locator(".copied-notice").isVisible(), true);
-      assert.match(await page.locator(".copied-notice").innerText(), /Copied[\s\S]*vale2024lanterns/);
+      assert.equal(await page.locator(".picker-status").count(), 1);
+      assert.equal(await page.locator(".picker-status").innerText(), "Copied");
+      assert.equal(await page.locator(".copied-notice, .picker-receipt").count(), 0);
+      assert.equal(await page.locator(".picker-library").textContent(), "Sample references · 3");
       assert.equal(await page.locator(".picker-beak-end").isVisible(), true);
       assert.equal((await panel.boundingBox()).height, frame.height, "copy feedback cannot resize the picker");
       const paste = page.getByRole("button", { name: "Paste the copied citation into the sentence" });
       await paste.press(`${modifier}+V`);
-      assert.match(await page.locator("[data-result]").innerText(), /\[@vale2024lanterns\] \[Sample\]/);
+      assert.equal(await page.locator("[data-result] code").innerText(), "[@vale2024lanterns]");
       await input.fill("no invented reference matches this");
       assert.equal(await page.locator(".picker-foot button").last().isDisabled(), true);
-      assert.match(await page.locator("[data-result]").innerText(), /\[@vale2024lanterns\] \[Sample\]/);
+      assert.equal(await page.locator("[data-result] code").innerText(), "[@vale2024lanterns]");
       assert.match(await page.locator(".picker-empty").innerText(), /No matching references/);
       assert.equal(await input.getAttribute("aria-activedescendant"), null);
       assert.equal(await input.getAttribute("aria-expanded"), "false");
@@ -192,8 +194,10 @@ test("public demo supports keyboard copy/paste and remains visible in narrow and
       await staticPage.goto(url.href + "#how");
       assert.equal(await staticPage.locator("[data-picker] .picker-panel").isVisible(), true);
       assert.match(await staticPage.locator("[data-picker]").innerText(), /Copy as Pandoc/);
-      assert.match(await staticPage.locator("[data-picker]").innerText(), /\[@vale2024lanterns\] \[Sample\]/);
-      assert.equal(await staticPage.locator(".copied-notice").isVisible(), true);
+      assert.equal(await staticPage.locator(".picker-shelf code").innerText(), "[@vale2024lanterns]");
+      assert.equal(await staticPage.locator(".picker-status").innerText(), "Copied");
+      assert.equal(await staticPage.locator(".copied-notice, .picker-receipt").count(), 0);
+      assert.equal(await staticPage.locator(".picker-library").textContent(), "Sample references · 3");
       assert.equal(await staticPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
       assert.equal(await staticPage.locator("[data-download-privacy]:visible").count(), 4);
       await staticPage.close();
@@ -272,12 +276,6 @@ async function combineDemoReferences(page) {
   await input.press("Enter");
 }
 
-// Let the receipt's observer and queued fit finish after a width change.
-// Static pictures need only the forced layout in the assertions below.
-const settlePicture = (page, interactive) => interactive
-  ? page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))
-  : Promise.resolve();
-
 test("copied shelf and footer fit one row at 240 px and 200% text", { skip: !process.env.IBIS_WEBSITE_URL }, async () => {
   const url = new URL(process.env.IBIS_WEBSITE_URL);
   assert.equal(url.protocol, "http:"); assert.equal(url.hostname, "127.0.0.1");
@@ -293,7 +291,6 @@ test("copied shelf and footer fit one row at 240 px and 200% text", { skip: !pro
       const panel = page.locator("[data-picker] .picker-panel");
       for (const width of [720, 480, 240]) {
         await panel.evaluate((node, size) => { node.style.width = `${size}px`; }, width);
-        await settlePicture(page, javaScriptEnabled);
         const layout = await panel.evaluate(node => {
           const shelf = node.querySelector(".picker-shelf"), foot = node.querySelector(".picker-foot"), citation = shelf.querySelector("code"), capsule = shelf.querySelector(".picker-status");
           const bounds = element => { const rect = element.getBoundingClientRect(); return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, width: rect.width, height: rect.height }; };
@@ -310,7 +307,7 @@ test("copied shelf and footer fit one row at 240 px and 200% text", { skip: !pro
             actionRows: actions.map(action => bounds(action).top),
             labels: [...foot.querySelectorAll(".picker-action-label")].map(label => bounds(label).width),
             keysVisible: actions.every(action => [...action.querySelectorAll("kbd")].some(key => bounds(key).width > 0)),
-            statusShortened: statusText.clientWidth < statusText.scrollWidth,
+            libraryStatus: statusText.textContent,
             actionNames: actions.map(action => action.getAttribute("aria-label") || action.textContent) };
         });
         const scenario = `${width}px / ${fontSize}px font / ${colorScheme} / JS ${javaScriptEnabled} / touch ${hasTouch}`;
@@ -321,6 +318,7 @@ test("copied shelf and footer fit one row at 240 px and 200% text", { skip: !pro
         assert.ok(layout.citationWidth > 0, `the citation retains room for its ellipsis: ${scenario}`);
         assert.equal(layout.citationEllipsis, "ellipsis", scenario);
         assert.ok(layout.actionRows.every(top => Math.abs(top - layout.actionRows[0]) < 1), `actions stay on one row: ${scenario}`);
+        assert.equal(layout.libraryStatus, "Sample references · 3", scenario);
         assert.equal(layout.keysVisible, true, `keys stay visible on touch as well: ${scenario}`);
         assert.ok(layout.actionNames.some(name => /Copy.*as/.test(name)), `compact actions keep their accessible names: ${scenario}`);
         if (width === 240) {
@@ -329,50 +327,7 @@ test("copied shelf and footer fit one row at 240 px and 200% text", { skip: !pro
         }
         if (width === 480 && fontSize === 16 && javaScriptEnabled) {
           assert.ok(layout.labels.every(size => size > 1), `labels stay until the status has shortened: ${scenario}`);
-          assert.equal(layout.statusShortened, true, scenario);
         }
-      }
-      await page.close();
-    }
-  } finally { await browser.close(); }
-});
-
-test("Copied notice fits at most two citation lines and keeps the frozen receipt", { skip: !process.env.IBIS_WEBSITE_URL }, async () => {
-  const url = new URL(process.env.IBIS_WEBSITE_URL);
-  assert.equal(url.protocol, "http:"); assert.equal(url.hostname, "127.0.0.1");
-  const { chromium } = await import(process.env.IBIS_PLAYWRIGHT_MODULE || "playwright");
-  const browser = await chromium.launch({ executablePath: process.env.IBIS_CHROMIUM_EXECUTABLE });
-  try {
-    for (const fontSize of [16, 32]) for (const javaScriptEnabled of [false, true]) {
-      const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, javaScriptEnabled, reducedMotion: "reduce" });
-      const session = await page.context().newCDPSession(page);
-      await session.send("Page.setFontSizes", { fontSizes: { standard: fontSize, fixed: fontSize } });
-      await page.goto(url.href + "#how");
-      if (javaScriptEnabled) await combineDemoReferences(page);
-      const receipt = page.locator(".picker-receipt"), citation = page.locator(".copied-notice code");
-      const original = await citation.getAttribute("title");
-      assert.match(original, /\[Sample\]/);
-      if (javaScriptEnabled) {
-        await page.getByRole("combobox", { name: "Search the made-up library" }).fill("not in this invented library");
-        await page.getByRole("combobox", { name: "Copy format" }).selectOption("typst");
-      }
-      for (const width of [560, 240, 560]) {
-        await receipt.evaluate((node, size) => { node.style.width = `${size}px`; }, width);
-        await settlePicture(page, javaScriptEnabled);
-        const measured = await citation.evaluate(node => {
-          const visible = [...node.children].find(child => getComputedStyle(child).display !== "none");
-          const rect = visible?.getBoundingClientRect();
-          return { height: rect?.height, width: rect?.width, line: parseFloat(getComputedStyle(node).lineHeight),
-            text: visible?.textContent, full: node.title, box: node.getBoundingClientRect().height, overflow: visible && visible.scrollWidth > visible.clientWidth };
-        });
-        assert.ok(measured.height > 0 && measured.height <= measured.line * 2 + 1, "the visible citation itself fits; a clipping parent cannot hide a third line");
-        assert.ok(measured.box <= measured.line * 2 + 1);
-        assert.equal(measured.overflow, false);
-        assert.equal(measured.full, original, "later searches and formats never rewrite a copied receipt");
-        assert.equal(await citation.getAttribute("aria-description"), original, "the full copied value remains accessible when visually summarised");
-        assert.match(measured.text, /\[Sample\]/);
-        if (width === 240 && fontSize === 32) assert.match(measured.text, javaScriptEnabled ? /\+3 more/ : /\+1 more/, "the count includes every omitted reference");
-        if (width === 560 && fontSize === 16) assert.doesNotMatch(measured.text, /\+\d+ more/, "widening restores the full receipt when it fits");
       }
       await page.close();
     }

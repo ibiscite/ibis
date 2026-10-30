@@ -14,6 +14,8 @@ use crate::{LoadedLibrary, attachments, bibtex, csl_json};
 use ibis_core::contract::{LibraryId, LibraryObject, Snapshot};
 use std::collections::BTreeMap;
 
+mod cache;
+
 pub const MAX_LIBRARY_BYTES: u64 = 64 * 1024 * 1024;
 const SETTLE: Duration = Duration::from_millis(250);
 const MAX_UNAVAILABLE_RETRY: Duration = Duration::from_secs(5);

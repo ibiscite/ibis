@@ -444,7 +444,9 @@ row, menu item and Settings row at normal, Larger and 200% text.
 
 **The Ibis mark in the picker.** The bird from `brand/`, eye included, in the
 brand gradient for the theme (light `#CF4628`→`#B5331A`, dark
-`#FF7F5E`→`#F2552F`); never a plain recoloured silhouette. In the search box it
+`#FF7F5E`→`#F2552F`). Increase Contrast and forced colours draw the same bird
+flat in `CanvasText`, with its eye kept open and no gradient, rim or shadow.
+Normal modes never use a plain recoloured silhouette. In the search box it
 is 24 px, 2 px outset on each side so the query and results stay aligned; its
 eye opens to at least 2 px across at small sizes so it still reads as a bird.
 At 56 px it leads the welcome, at 40 px the opening screen. The empty-search hint shows the
@@ -899,6 +901,8 @@ Rows are 2 px apart (`--row-spacing`) and are a list box: arrow keys move,
 Enter or a click chooses, and ↓ from search enters the list. The focused row
 fills as the active result row; one suggested row at most gets an accent tile.
 A choice screen hides the result heading, the shelf and the Copy hint.
+An earlier source search or found-file request reports nothing after it is
+superseded, leaving the newer explanation visible.
 
 Choice screens are one calm group centred in the steady frame
 (maintainer, 2026-10-30): the title (17 px) and line centred, 6 px apart, then
@@ -910,8 +914,16 @@ the title. Space is shared above and below, never left as one empty band.
 impressions matter). Its line says what Ibis does and promises safety ("Ibis
 finds a reference and pastes its citation where you're typing. It only reads
 your library, never changes it."), and its note says how to come back ("After
-this, open Ibis from any app with ⇧⌘Y."). The welcome is the whole window: with nothing to search yet there is
-no search header (the footer stays, Escape hides). A 56 px mark and a 20 px
+this, open Ibis from any app with ⇧⌘Y." by default). It names the current
+registered shortcut in the platform's notation or the desktop's exact trigger
+text. With no reported trigger it says **No shortcut is set** and shows the
+desktop's guidance or how to open Ibis from the menu bar or tray. A reported
+trigger that is not registered shows its unavailable guidance; a pending or
+failed status read never promises a shortcut. The welcome is the whole window:
+with nothing to search yet there is no search header. The footer stays;
+Escape dismisses any visible menu or sheet, then hides Ibis even when a query
+is retained from samples or another library. Dismissed sheets return focus to a
+visible control, never the hidden search box. A 56 px mark and a 20 px
 title lead. The four starts (Zotero, a .bib
 file, Find them on this computer, Try sample references) are a 2 × 2 grid of
 tiles, 8 px apart and at most 600 px wide, each a tile icon, a title and one
@@ -990,16 +1002,21 @@ breathe. Rows kept from before stay instead, with only the footer saying
   themselves: when Zotero is not sharing, the screen shows where to turn it on and continues on
   its own once it is on; when Zotero is closed, Ibis reads the library anyway;
   with several Zotero profiles, Ibis asks which one; with no library at all,
-  built-in sample references let people try Ibis, labelled "Sample" on every
-  row and in the footer. The explicit **Try sample references** choice uses
-  three bundled invented CSL-JSON references for this run; it never saves a
+  built-in sample references let people try Ibis, marked once, by the footer
+  status "Sample references"; rows carry no extra label. The explicit
+  **Try sample references** choice uses three bundled invented CSL-JSON
+  references for this run; it never saves a
   library preference. The website demo and help screenshots use this same set
   from `apps/desktop/src-tauri/resources/samples.csljson`: lantern gardens,
   clockwork clouds and the invented sea. The practice task is identical on
   every surface: Search for “lantern”, choose the lantern gardens reference, then press Enter. A
-  **Use your own library** choice row returns to setup.
+  **Use your own library** choice row returns to setup. Per maintainer feedback
+  on 2026-10-30, website demo rows show plain titles, including static copy and
+  accessible labels. The website demo copies only inside its own page, so its
+  citations carry no [Sample] suffix. Confirm each action once, in one place:
+  the shelf's Copied capsule, never a second notice for the same copy.
   Choosing a real source replaces samples; sample selections and copy notices
-  leave with them. Samples never join a real library. Every sample citation
+  leave with them. Samples never join a real library. Every desktop sample citation
   ends with the visible text ` [Sample]`, including key outputs and every
   clipboard representation (plain text, HTML and RTF). The marker belongs to
   the prepared citation and its content hash: previews and receipts show the

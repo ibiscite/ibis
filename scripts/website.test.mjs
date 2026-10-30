@@ -89,7 +89,10 @@ test("built homepage keeps a visible picker example and its local interactive as
     assert.match(html, /Copy as Pandoc/);
     assert.match(html, /<link rel="stylesheet" href="picker-tokens.css">/);
     assert.match(html, /class="picker-panel" data-app-tokens data-platform="macos"/);
-    assert.match(html, /class="copied-notice notice-window" data-app-tokens/);
+    assert.deepEqual([...html.matchAll(/class="picker-status"[^>]*>([^<]+)<\/span>/g)].map(match => match[1]), ["Copied"]);
+    assert.doesNotMatch(html, /copied-notice|picker-receipt|notice-citation|Sample ·|\[Sample\]|Sample citations end in/);
+    assert.match(html, /<p class="action flow-copy">Press Enter\. Ibis copies the key\. Paste into the sentence below\.<\/p>/);
+    assert.match(html, /<span>Sample references · 3<\/span>/);
     assert.match(html, /class="picker-mark" aria-hidden="true"/);
     for (const asset of ["ibis-mark.svg", "ibis-mark-on-dark.svg"]) {
       assert.match(html, new RegExp(`<img[^>]+src="assets/${asset.replaceAll(".", "\\.")}"[^>]+alt=""`));

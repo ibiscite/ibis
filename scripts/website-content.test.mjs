@@ -41,9 +41,10 @@ test("website, first-run help and screenshot instructions teach the same practic
   assert.deepEqual([...html.matchAll(/data-practice-task>([^<]+)<\/p>/g)].map(match => match[1]), [task]);
   assert.ok(design.includes(task));
   assert.ok(help.includes(task));
-  assert.match(html, /Sample · Lantern gardens and the rhythm of imaginary cities/);
+  assert.match(html, /<strong>Lantern gardens and the rhythm of imaginary cities<\/strong>/);
   assert.match(html, /Vale · 2024 · Journal of Invented Landscapes/);
-  assert.match(html, /\[@vale2024lanterns\] \[Sample\]/);
+  assert.match(html, /<code class="key">\[@vale2024lanterns\]<\/code>/);
+  assert.doesNotMatch(html, /Sample ·|\[Sample\]|Sample citations end in/);
   assert.doesNotMatch(html, /okafor|Wading birds|wetland change/);
 });
 

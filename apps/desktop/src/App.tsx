@@ -102,6 +102,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   const statusReads = useRef(0);
   // Undefined while loading; null means the status request itself failed.
   const [library, setLibrary] = useState<LibraryStatus | null>();
+  const [welcomeShown, setWelcomeShown] = useState(false);
   const busy = library?.state === "loading" || library?.state === "reloading";
   const blocked = library?.state === "error" && !library.has_snapshot;
   const libraryChoices = library?.state === "none" || blocked || library?.state === "loaded" && library.has_snapshot && library.references === 0;
@@ -411,14 +412,16 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
     cancelCopy();
     closeMenu(false);
     const focused = document.activeElement;
-    // A menu item is gone once the menu closes; the search box takes its place.
-    keysReturn.current = focused instanceof HTMLElement && !focused.closest("[role='menu']") ? focused : input.current;
+    // A dismissed menu item returns to a visible control; welcome has no Search.
+    keysReturn.current = focused instanceof HTMLElement && !focused.closest("[role='menu']") ? focused
+      : welcomeShown ? moreButton.current : input.current;
     setKeysOpen(true);
   };
   const closeKeys = () => {
     setKeysOpen(false);
     const back = keysReturn.current;
-    (back?.isConnected ? back : input.current)?.focus();
+    const fallback = welcomeShown ? moreButton.current : input.current;
+    (back?.isConnected ? back : fallback)?.focus();
   };
   // The keys overlay lists the global shortcut too, when it works.
   const bindings: readonly KeyBinding[] = shortcut?.registered
@@ -436,12 +439,13 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
     choiceKey([prepared]) !== choiceKey([{ ...highlighted, locator: usingLocator, form: prepared.form }]);
   const shiftEnterAction = highlighted && showCitations
     ? (selected.has(idKey(highlighted.id)) ? keyText.removeFromCitation : keyText.addToCitation) : null;
-  const escapeAction = menuOpen ? keyText.closeMenu : query ? keyText.clearSearch : keyText.hide;
+  const escapeAction = keysOpen ? keyText.close : menuOpen ? keyText.closeMenu : query && !welcomeShown ? keyText.clearSearch : keyText.hide;
   const escapeStep = () => {
     cancelCopy();
     // Escape steps back one layer, retaining the chosen references.
-    if (menuOpen) closeMenu(true);
-    else if (query) {
+    if (keysOpen) closeKeys();
+    else if (menuOpen) closeMenu(true);
+    else if (query && !welcomeShown) {
       send({ type: "escape-search" });
       input.current?.focus();
     } else hide();
@@ -457,7 +461,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
       onSearchAll={searchAllLibraries}
       onReload={() => { input.current?.focus(); void perform("reload", reloadLibrary); }}
       setup={
-        (focus, empty) => <LibrarySetup api={setupApi} perform={perform} autoFocus={focus} empty={empty} />
+        (focus, empty) => <LibrarySetup api={setupApi} perform={perform} autoFocus={focus} empty={empty} shortcut={shortcut} onWelcomeChange={setWelcomeShown} />
       } />
   ) : null);
 
@@ -507,7 +511,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
       {shortcut?.error && (
         <p role="status">
           {pickerText.shortcutError(shortcut.registered, shortcut.shortcut, shortcut.error)}
-          {shortcut.desktop && ` ${shortcut.desktop.guidance}`}
+          {shortcut.desktop && !welcomeShown && ` ${shortcut.desktop.guidance}`}
         </p>
       )}
       <PickerHeader

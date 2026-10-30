@@ -8,7 +8,7 @@ export function IndeterminateProgress({ label, className, children }: {
   className: string;
   children: ReactNode;
 }) {
-  return <ProgressBar isIndeterminate aria-label={label} className={className}>{children}</ProgressBar>;
+  return <ProgressBar isIndeterminate data-indeterminate aria-label={label} className={className}>{children}</ProgressBar>;
 }
 
 /** Known percentages and honest indeterminate phases share the same wrapper. */
