@@ -30,6 +30,40 @@ pub(super) fn owned_text(value: &VARIANT) -> Result<String, Failure> {
     String::try_from(text).map_err(|_| Failure::new(Stage::Read))
 }
 
+/// A real owned array, without the crate's invalid BSTR insertion indirection.
+pub(super) fn bstr_array_fixture() -> uiautomation::variants::Variant {
+    use std::mem::ManuallyDrop;
+    use uiautomation::variants::SafeArray;
+    use windows::Win32::System::Variant::{VARENUM, VARIANT_0, VARIANT_0_0, VARIANT_0_0_0, VT_ARRAY};
+
+    let array = SafeArray::new_vector(VT_BSTR, 1).unwrap_or_else(|_| panic!("synthetic BSTR array allocation"));
+    assert_eq!(array.get_var_type().ok(), Some(VT_BSTR));
+    assert_eq!(array.get_dim(), 1);
+    assert_eq!(array.get_lower_bound(1).ok(), Some(0));
+    assert_eq!(array.get_upper_bound(1).ok(), Some(0));
+    // The verified type matches T, as get_element requires. This safe OUT
+    // reader copies the SDK-initialized null slot; no PutElement is called.
+    let element = array
+        .get_element::<BSTR>(0)
+        .unwrap_or_else(|_| panic!("synthetic BSTR array element"));
+    assert_eq!(String::try_from(&element), Ok(String::new()));
+
+    let tag = VARENUM(VT_ARRAY.0 | VT_BSTR.0);
+    // SafeArray::into marks its wrapper unowned. The initialized VARIANT is
+    // now the sole owner; its ordinary VariantClear drop frees the array.
+    // ManuallyDrop wraps only the VARIANT metadata, never a borrowed BSTR.
+    VARIANT {
+        Anonymous: VARIANT_0 {
+            Anonymous: ManuallyDrop::new(VARIANT_0_0 {
+                vt: tag,
+                Anonymous: VARIANT_0_0_0 { parray: array.into() },
+                ..Default::default()
+            }),
+        },
+    }
+    .into()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

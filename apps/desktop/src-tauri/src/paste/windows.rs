@@ -700,7 +700,10 @@ mod tests {
     #[test]
     fn legacy_bstr_keeps_exact_utf16_content_and_refuses_invalid_or_non_bstr_values() {
         use uiautomation::variants::{Value, Variant};
-        use windows::{Win32::System::Variant::VARIANT, core::BSTR};
+        use windows::{
+            Win32::System::Variant::{VARENUM, VARIANT, VT_ARRAY, VT_BSTR},
+            core::BSTR,
+        };
 
         for text in ["", " ", "synthetic\r\nnext ", "é 🪶", "a\0b"] {
             let variant = Variant::from(VARIANT::from(BSTR::from(text)));
@@ -713,18 +716,18 @@ mod tests {
                 "never replace malformed UTF16"
             );
         }
-        for value in [
-            Value::EMPTY,
-            Value::NULL,
-            Value::BOOL(false),
-            Value::I4(0),
-            Value::ArrayString(vec!["synthetic".into()]),
-        ] {
+        for value in [Value::EMPTY, Value::NULL, Value::BOOL(false), Value::I4(0)] {
             assert!(
                 strict_legacy_property(Variant::from(value)).is_err(),
                 "never coerce another variant type"
             );
         }
+        let array = super::exact_bstr::bstr_array_fixture();
+        assert_eq!(array.get_type(), VARENUM(VT_ARRAY.0 | VT_BSTR.0));
+        assert!(
+            strict_legacy_property(array).is_err(),
+            "never coerce a verified VT_ARRAY|VT_BSTR value"
+        );
         assert!(strict_legacy_property(Variant::from(Value::STRING("x".repeat(4097)))).is_err());
         assert_eq!(strict_legacy_capability(Variant::from(true)), Ok(Some(true)));
         assert_eq!(strict_legacy_capability(Variant::from(false)), Ok(Some(false)));
