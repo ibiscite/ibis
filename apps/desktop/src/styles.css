@@ -21,7 +21,9 @@ main {
 .search-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--search-gap); min-height: calc(var(--search-bar-height) + var(--border-width)); padding: var(--inset); border-bottom: var(--border-width) solid var(--separator); cursor: move; user-select: none; }
 .search-bar > svg { width: var(--search-icon-width); stroke-width: var(--search-icon-stroke); flex-shrink: 0; color: var(--muted); pointer-events: none; }
 /* The Ibis mark is the logo, so it keeps brand scarlet; contrast modes make it CanvasText (#1293). */
-.search-bar > svg.search-mark { color: var(--citation); }
+.search-bar > svg.search-mark { width: var(--search-mark-size); height: var(--search-mark-size); color: var(--citation);
+  margin-inline: calc(var(--lead) - var(--search-mark-outset)) calc(var(--lead-gap) - var(--search-gap) - var(--search-mark-outset));
+}
 /* The search glyph is centred over the tile column and the query starts where
    row titles start (docs/design.md, "Two columns"). */
 .pin-button { flex: none; }
@@ -315,4 +317,14 @@ main[data-selection] .results-area { flex: 1 0 var(--results-min-height); }
 @media (prefers-contrast: more), (forced-colors: active) {
   .shelf, .chip { border: var(--border-width) solid CanvasText; }
   .shelf { border-inline: 0; outline: var(--border-width) solid CanvasText; outline-offset: calc(-1 * var(--border-width)); }
+}
+
+/* Keep controls outside the short window's middle scroller. If the edges
+   themselves exceed the viewport at extreme text sizes, main can still scroll. */
+@media (max-height: 400px) {
+  main, main[data-compact], main[data-selection] { height: var(--picker-height); min-height: 0; overflow: auto; }
+  main > .search-bar, main > footer { flex: none; }
+  main > .picker-content { display: block; flex: 1 1 auto; min-height: var(--control-min-size); }
+  main > .picker-content .results-area { flex: none; min-height: 0; overflow: visible; }
+  main[data-compact] > footer { margin-block-start: 0; }
 }
