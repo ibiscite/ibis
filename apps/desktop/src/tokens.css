@@ -354,6 +354,12 @@
 }
 @media (forced-colors: active) { :root { --fill-on-color-hover: var(--clear); --fill-on-color-pressed: var(--clear); } }
 
+/* Short windows compact decoration, never text or actionable targets. */
+@media (max-height: 400px) {
+  :root { --empty-padding: var(--space-2) var(--space-4); --empty-template-padding: var(--space-2);
+    --empty-icon-size: var(--icon-glyph-size); --empty-icon-gap: var(--space-1); --empty-keys-display: none; }
+}
+
 /* BEGIN generated website palette: brand/build.py */
 :root {
   --website-bg: Canvas;
@@ -376,9 +382,3 @@
   }
 }
 /* END generated website palette */
-
-/* Short windows compact decoration, never text or actionable targets. */
-@media (max-height: 400px) {
-  :root { --empty-padding: var(--space-2) var(--space-4); --empty-template-padding: var(--space-2);
-    --empty-icon-size: var(--icon-glyph-size); --empty-icon-gap: var(--space-1); --empty-keys-display: none; }
-}
