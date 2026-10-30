@@ -181,15 +181,18 @@ window remains scrollable rather than clipping controls.
 Intrinsic measurement removes middle-region size containment and preserves
 scroll offsets, focus and selection. Notices keep their natural height and
 scroll with the middle region, including when they appear while compact.
+With a nonempty notice, results use the middle scroller at every height, so an
+arbitrarily tall notice and the shelf cannot leave a second results viewport.
 
 **Nothing clipped, one scroller** (maintainer, 2026-10-30). The window's height
 is measured from its content after fonts and the text size apply, so no state
 is ever cut off: the empty-search hint, a notice line, the shelf and the footer
 always show whole, with S below the footer actions. At normal and Larger text
 there is no window-level scroll bar and never two scroll bars at once; only the
-results list or an open menu scrolls, and only while its content overflows. A
-scroll bar on content that fits, or a hint cut at the window edge, is a bug in
-the sizing rule, fixed with a regression test at normal and Larger text.
+results list, the middle region with notices or limited space, or an open menu
+scrolls, and only while its content overflows. A scroll bar on content that fits,
+or a hint cut at the window edge, is a bug in the sizing rule, fixed with a
+regression test at normal and Larger text.
 
 **Compact start** [C11]. With an empty query the picker shows its hint (the
 search icon, "Type to find a reference", what to search by, and the Copy and

@@ -228,6 +228,9 @@ kbd { font: inherit; font-size: var(--hint-size); font-weight: 500; display: inl
 .picker-content { position: relative; display: flex; flex: 1; flex-direction: column; min-height: 0; overflow: auto; overscroll-behavior: contain; container-type: size; }
 /* Notices keep their full content height and scroll with the middle region. */
 .picker-content > .notices { flex: none; }
+/* Notices have no height bound. Share their scroll owner instead of reserving
+   a nested results viewport that the notice and shelf can push out of view. */
+.picker-content:has(> .notices:not(:empty)) > .results-area { flex: none; min-height: 0; overflow: visible; }
 /* Size follows content (C10): the window fits this height; once it has grown
    it keeps its height while open, and the footer stays at the bottom. */
 main[data-compact] { min-height: 0; }

@@ -62,6 +62,32 @@ test("results, menus and Shortcuts share the scroll area; picker notices belong 
   expect(noticeRule).not.toMatch(/max-height/);
 });
 
+test("nonempty notices hand results to the middle scroller independently of the middle's height", () => {
+  // jsdom checks the notice-dependent ownership rule; picker-layout.browser.mjs
+  // checks actual overflow with a large notice, selected references and results.
+  const styles = css("../styles.css");
+  const props = { library: null, failures: {}, startAtLogin: null, error: null, copyError: null,
+    showCopiedText: false, onDismissCopied: vi.fn() };
+  const warnings = Array.from({ length: 16 }, (_, i) => `Invented copy warning ${i + 1}`);
+  const picker = (copied: { text: string; warnings: string[] } | null) => <main data-selection><div className="picker-content scroll-area">
+    <Notices {...props} copied={copied} /><div className="results-area scroll-area" /><div className="shelf" />
+  </div></main>;
+  const view = render(picker({ text: "[@synthetic0]", warnings }));
+  const results = view.container.querySelector(".results-area")!;
+  const noticeRules = () => [...styles.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+    .filter(([, head]) => {
+      const selector = head!.replace(/\/\*[^]*?\*\//g, "").trim();
+      return selector.includes(".notices") && results.matches(selector);
+    }).map(([, , body]) => body).join(";");
+  const fallback = document.createElement("div").style;
+  fallback.cssText = noticeRules();
+  expect(fallback.flex).toBe("0 0 auto");
+  expect(parseFloat(fallback.minHeight)).toBe(0);
+  expect(fallback.overflow).toBe("visible");
+  view.rerender(picker(null));
+  expect(noticeRules()).toBe("");
+});
+
 test("the fade is valid at either edge and every system shares the native scrollbar", () => {
   const area = css("./ScrollArea.css");
   expect(area).toMatch(/\.scroll-area \{ overflow: auto; scrollbar-width: var\(--scrollbar-width\); scrollbar-color: var\(--scrollbar-color\);/);
