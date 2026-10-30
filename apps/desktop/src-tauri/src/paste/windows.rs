@@ -273,6 +273,7 @@ mod tests {
         activate, legacy_value, qualify_paste, read_document, select_document, wait_for,
     };
     use std::process::Command;
+    use winsafe::prelude::Handle;
 
     fn uia<T>(result: uiautomation::errors::Result<T>, stage: Stage) -> Result<T, Failure> {
         result.map_err(|error| Failure {
@@ -342,7 +343,7 @@ mod tests {
         if identity(&parent)? != binding.root || native_handle(&parent)? != binding.root_window {
             return Err(Failure::new(Stage::Identity));
         }
-        let root = w::GetForegroundWindow().ok_or(Failure::new(Stage::Foreground))?;
+        let root = w::HWND::GetForegroundWindow().ok_or(Failure::new(Stage::Foreground))?;
         if root.ptr() as isize != binding.root_window
             || root.GetWindowThreadProcessId().1 != owner.process
             || !root.IsWindow()
