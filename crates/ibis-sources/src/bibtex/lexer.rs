@@ -590,6 +590,54 @@ mod tests {
     }
 
     #[test]
+    fn literal_contents_share_the_source_after_blocks_are_dropped() {
+        let cases = [
+            ("{ordinary}", "ordinary"),
+            ("{}", ""),
+            ("{é\u{2003}字}", "é\u{2003}字"),
+            ("{A {B} C}", "A {B} C"),
+            (r#""A \"u (B) C""#, r#"A \"u (B) C"#),
+            (r"{\{literal\} \\{group\\}}", r"\{literal\} \\{group\\}"),
+            ("{\u{E000}\u{E001}\u{E002}\u{E003}}", "\u{E000}\u{E001}\u{E002}\u{E003}"),
+        ];
+        let mut text = String::from("@string{greeting=\"Macro é\"}\n");
+        let macro_start = text.find("Macro é").unwrap_or_else(|| panic!("missing macro"));
+        let mut spans = Vec::new();
+        for (i, (literal, value)) in cases.iter().enumerate() {
+            let prefix = format!("@book{{key{i},title=");
+            let start = text.len() + prefix.len() + 1;
+            text.push_str(&prefix);
+            text.push_str(literal);
+            text.push_str("}\n");
+            spans.push(start..start + value.len());
+        }
+        let (blocks, limited) = split_blocks(&text);
+        assert!(!limited);
+        let (_, definition) = parse_string(&blocks[0]).unwrap_or_else(|| panic!("invalid macro"));
+        let entries: Vec<_> = blocks[1..]
+            .iter()
+            .map(|block| parse_entry(block).unwrap_or_else(|e| panic!("{e}")))
+            .collect();
+        drop(blocks);
+        for ((entry, span), (_, expected)) in entries.iter().zip(spans).zip(cases) {
+            let Part::Text(value) = &entry.fields[0].parts[0] else {
+                panic!("literal changed kind");
+            };
+            assert_eq!(&**value, expected);
+            assert_eq!(
+                value.as_ptr(),
+                text[span].as_ptr(),
+                "literal retained a separate buffer"
+            );
+        }
+        let Part::Text(value) = &definition[0] else {
+            panic!("macro literal changed kind");
+        };
+        assert_eq!(&**value, "Macro é");
+        assert_eq!(value.as_ptr(), text[macro_start..].as_ptr());
+    }
+
+    #[test]
     fn ordinary_fields_have_a_bounded_raw_working_set() {
         let text = (0..1_000)
             .map(|i| format!("@article{{synthetic{i},title={{Signals}},author={{Invented, Avery}},year=2026,journal={{Letters}},pages={{1--20}},doi={{10.1000/synthetic{i}}},volume=1,number=2}}\n"))
