@@ -32,6 +32,7 @@ import json
 import os
 import platform
 import plistlib
+import re
 import shutil
 import stat
 import subprocess
@@ -447,6 +448,62 @@ class Linux:
         if self.before == self.expected:
             raise AssertionError("the previous and the new AppImage are identical")
         self.command = [str(self.appimage)]
+        self.wm = None
+        deadline = time.monotonic() + PICKER_TIMEOUT
+        if self.supporting_window(deadline, "-root") is not None:
+            raise AssertionError("the update desktop already has a window manager")
+        try:
+            self.wm = subprocess.Popen(["openbox", "--sm-disable"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            wait_for(lambda: self.window_manager_ready(deadline), max(0, deadline - time.monotonic()),
+                     "the owned Linux window manager did not become ready", step=.1)
+        except BaseException:
+            try:
+                self.close()
+            except (OSError, subprocess.SubprocessError):
+                print("owned Linux window manager cleanup failed", file=sys.stderr)
+            raise
+
+    def x11_property(self, deadline, *args):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise AssertionError("Linux window manager observation timed out")
+        try:
+            result = subprocess.run(["xprop", *args], capture_output=True, timeout=remaining,
+                                    env=dict(os.environ, LC_ALL="C"))
+            if result.returncode or result.stderr or len(result.stdout) > 256:
+                raise ValueError("invalid property answer")
+            return result.stdout.decode("utf-8", errors="strict").strip()
+        except (OSError, ValueError, subprocess.SubprocessError):
+            raise AssertionError("Linux window manager property unavailable") from None
+
+    def supporting_window(self, deadline, *target):
+        text = self.x11_property(deadline, *target, "_NET_SUPPORTING_WM_CHECK")
+        if text in ("_NET_SUPPORTING_WM_CHECK:  no such atom on any window.",
+                    "_NET_SUPPORTING_WM_CHECK:  not found."):
+            return None
+        match = re.fullmatch(r"_NET_SUPPORTING_WM_CHECK\(WINDOW\): window id # (0x[0-9a-fA-F]{1,8})", text)
+        if not match or int(match[1], 16) == 0:
+            raise AssertionError("Linux window manager identity unavailable")
+        return match[1]
+
+    def window_manager_ready(self, deadline):
+        if self.wm.poll() is not None:
+            raise AssertionError("the owned Linux window manager exited")
+        window = self.supporting_window(deadline, "-root")
+        if window is None:
+            return False
+        back = self.supporting_window(deadline, "-id", window)
+        if back is None:
+            return False
+        if back != window:
+            raise AssertionError("Linux window manager identity changed")
+        # Openbox publishes its own PID on the root, before its EWMH hints.
+        text = self.x11_property(deadline, "-root", "_OPENBOX_PID")
+        owner = re.fullmatch(r"_OPENBOX_PID\(CARDINAL\) = ([1-9][0-9]{0,9})", text)
+        if not owner or int(owner[1]) != self.wm.pid or self.wm.poll() is not None:
+            raise AssertionError("Linux window manager has no live owned process")
+        self.wm_window = window
+        return True
 
     def instances(self):
         return instances(self.appimage)
@@ -551,7 +608,15 @@ class Linux:
         return False, seen, None
 
     def close(self):
-        pass
+        manager = getattr(self, "wm", None)
+        if manager is not None and manager.poll() is None:
+            manager.terminate()
+            try:
+                manager.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                manager.kill()
+                manager.wait(timeout=5)
+        self.wm = None
 
 
 class MacOS:
@@ -901,6 +966,8 @@ class Tests(unittest.TestCase):
                 value = "_OPENBOX_PID(CARDINAL) = " + ("99" if scenario == "foreign" else "77")
             else:
                 self.fail("unexpected desktop action")
+            if scenario == "cancelled" and root_reads > 2:
+                raise KeyboardInterrupt()
             if scenario == "query-error" or (scenario == "late-query-error" and root_reads > 2):
                 return subprocess.CompletedProcess(command, 1, stdout=b"", stderr=b"synthetic-private-sentinel")
             if scenario == "query-timeout":
@@ -932,7 +999,8 @@ class Tests(unittest.TestCase):
                     manager.terminate.assert_called_once_with()
                     manager.wait.assert_called_once_with(timeout=5)
                 else:
-                    with self.assertRaises((AssertionError, OSError, RuntimeError, subprocess.TimeoutExpired)) as failure:
+                    expected_error = KeyboardInterrupt if scenario == "cancelled" else (AssertionError, OSError, RuntimeError, subprocess.TimeoutExpired)
+                    with self.assertRaises(expected_error) as failure:
                         Linux(folder, args, library)
                     self.assertNotIn("synthetic-private-sentinel", str(failure.exception))
                     started = ("openbox", "--sm-disable") in events and scenario != "start-error"
@@ -945,7 +1013,7 @@ class Tests(unittest.TestCase):
 
     def test_linux_refuses_existing_unknown_failed_or_unready_desktop_before_app_actions(self):
         for scenario in ("existing", "malformed", "query-error", "query-timeout", "start-error", "exited",
-                         "identity", "foreign", "never-ready", "late-query-error"):
+                         "identity", "foreign", "never-ready", "late-query-error", "cancelled"):
             with self.subTest(scenario=scenario):
                 self.linux_desktop(scenario)
 
@@ -959,6 +1027,17 @@ class Tests(unittest.TestCase):
         current.terminate.assert_not_called()
         second.close()
         current.terminate.assert_called_once_with()
+
+    def test_linux_kills_only_the_owned_manager_when_termination_does_not_finish(self):
+        native = Linux.__new__(Linux)
+        native.wm = MagicMock(pid=77)
+        manager = native.wm
+        manager.poll.return_value = None
+        manager.wait.side_effect = [subprocess.TimeoutExpired("openbox", 5), 0]
+        native.close(); native.close()
+        manager.terminate.assert_called_once_with()
+        manager.kill.assert_called_once_with()
+        self.assertEqual(manager.wait.call_count, 2)
 
     @unittest.skipUnless(shutil.which("node"), "Node is required for the macOS picker provider contract")
     def test_macos_picker_requires_owned_unique_visible_and_native_focused_window(self):
