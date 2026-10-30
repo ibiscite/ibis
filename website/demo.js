@@ -1,4 +1,4 @@
-import { DEFAULT_PICKER_SHORTCUT, KEY_TABLE, keysFor, keyLabel, commandKey, matchesAccelerator } from "./keys.js";
+import { DEFAULT_PICKER_SHORTCUT, KEY_TABLE, keysFor, keyLabel, keyCapLabels, commandKey, matchesAccelerator } from "./keys.js";
 import { typePaths } from "./icon-paths.js";
 import { createDemo, references, formats, noticeCandidates } from "./demo-model.mjs";
 const el = (tag, props = {}, ...children) => { const node = Object.assign(document.createElement(tag), props); node.append(...children); return node; };
@@ -14,7 +14,7 @@ export function setupDemo() {
   const figure = document.querySelector("[data-picker]"), result = document.querySelector("[data-result]");
   if (!figure || !result) return;
   const section = figure.closest("section"), anchorBottom = section.getBoundingClientRect().bottom;
-  const model = createDemo(), state = model.state, mac = document.documentElement.dataset.platform === "macos";
+  const model = createDemo(), state = model.state, platform = document.documentElement.dataset.platform ?? "linux", mac = platform === "macos";
   const sentence = result.firstChild.textContent.trim();
   result.tabIndex = -1;
   const input = el("input", { type: "search", value: state.query, placeholder: "Search references", autocomplete: "off" });
@@ -35,12 +35,21 @@ export function setupDemo() {
   // Keep the live region mounted so the first copy is announced.
   const announce = el("span", { className: "demo-status" }); announce.setAttribute("role", "status"); status.setAttribute("aria-hidden", "true");
   const copy = el("button", { type: "button", className: "picker-primary", textContent: "Copy" }), add = el("button", { type: "button", textContent: "Add" });
+  function keyCaps(accelerator) {
+    const caps = el("span", { className: "key-caps" }); caps.setAttribute("aria-hidden", "true");
+    for (const [index, label] of keyCapLabels(accelerator, mac).entries()) {
+      const cap = el("span", { className: "key-cap" });
+      if (index > 0 && platform === "linux") cap.append(el("span", { className: "key-plus", textContent: "+" }));
+      cap.append(el("kbd", { textContent: label })); caps.append(cap);
+    }
+    return caps;
+  }
   function actionLabel(button, label, command) {
+    const accelerator = keysFor(command);
     button.setAttribute("aria-label", label);
-    button.setAttribute("aria-keyshortcuts", keysFor(command));
-    button.title = `${label} (${keyLabel(keysFor(command), mac)})`;
-    const key = className => { const node = el("kbd", { className, textContent: keyLabel(keysFor(command), className === "picker-key-compact" || mac) }); node.setAttribute("aria-hidden", "true"); return node; };
-    button.replaceChildren(el("span", { className: "picker-action-label", textContent: label }), key("picker-key"), key("picker-key-compact"));
+    button.setAttribute("aria-keyshortcuts", accelerator);
+    button.title = `${label} (${keyLabel(accelerator, mac)})`;
+    button.replaceChildren(el("span", { className: "picker-action-label", textContent: label }), keyCaps(accelerator));
   }
   const paste = el("button", { type: "button", className: "paste-slot" }, "Paste ", el("kbd", { textContent: keyLabel("CmdOrCtrl+V", mac) }));
   paste.setAttribute("aria-label", "Paste the copied citation into the sentence");
