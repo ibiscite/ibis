@@ -31,6 +31,39 @@ test("keys lead the example and roadmap highlights omit version numbers", async 
   assert.doesNotMatch(roadmap, /<strong>Insertion<\/strong>|<strong>Bibliography export<\/strong>|cloud-synced data/);
 });
 
+test("website, first-run help and screenshot instructions teach the same practice task", async () => {
+  const html = await content(await readFile(new URL("../website/index.html", import.meta.url), "utf8"));
+  const messages = await readFile(new URL("../apps/desktop/src/messages.ts", import.meta.url), "utf8");
+  const design = await readFile(new URL("../docs/design.md", import.meta.url), "utf8");
+  const help = await readFile(new URL("../website/README.md", import.meta.url), "utf8");
+  const task = "Search for “lantern”, choose the lantern gardens reference, then press Enter.";
+  assert.equal(messages.match(/sampleSearchHelp: "([^"]+)"/)[1], task);
+  assert.deepEqual([...html.matchAll(/data-practice-task>([^<]+)<\/p>/g)].map(match => match[1]), [task]);
+  assert.ok(design.includes(task));
+  assert.ok(help.includes(task));
+  assert.match(html, /Sample · Lantern gardens and the rhythm of imaginary cities/);
+  assert.match(html, /Vale · 2024 · Journal of Invented Landscapes/);
+  assert.match(html, /\[@vale2024lanterns\] \[Sample\]/);
+  assert.doesNotMatch(html, /okafor|Wading birds|wetland change/);
+});
+
+test("each download location carries the same privacy sentence and policy link without JavaScript", async () => {
+  const html = await content(await readFile(new URL("../website/index.html", import.meta.url), "utf8"));
+  const locations = [html.match(/<div class="row intro">[\s\S]*?<\/div><\/div>/)[0],
+    ...[...html.matchAll(/<div class="platform"[^>]*>[\s\S]*?<\/div>/g)].map(match => match[0])];
+  assert.equal(locations.length, 4);
+  const sentence = "No account, no uploads, no telemetry; sources read without changes.";
+  const link = '<a href="https://github.com/ibiscite/ibis/blob/main/PRIVACY.md">Privacy</a>';
+  for (const location of locations) {
+    assert.ok(location.includes(`${sentence} ${link}`), location);
+    assert.match(location, /<p class="small" data-download-privacy>/, "ordinary wrapping prose stays beside the download at small widths");
+  }
+  const privacy = await readFile(new URL("../PRIVACY.md", import.meta.url), "utf8");
+  assert.match(privacy, /Ibis reads your libraries without changing them/);
+  assert.match(privacy, /Telemetry:\*\* none, ever/);
+  assert.match(privacy, /Ibis never sends your libraries, search queries, selected references,/);
+});
+
 test("macOS browser platform names select Mac shortcuts and native tokens", async () => {
   const { runInNewContext } = await import("node:vm");
   const script = await readFile(new URL("../website/site.js", import.meta.url), "utf8");

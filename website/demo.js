@@ -47,7 +47,7 @@ export function setupDemo() {
   const shelf = el("div", { className: "picker-shelf" }, beak, output, status);
   const panel = el("div", { className: "picker-panel" }, el("div", { className: "picker-search" }, input, clear, format),
     el("p", { className: "picker-meta" }, "Best matches", count), list, shelf,
-    el("div", { className: "picker-foot" }, el("span", {}, "sample.bib · 6 invented references"), add, copy));
+    el("div", { className: "picker-foot" }, el("span", {}, `Sample references · ${references.length} references`), add, copy));
   // C12 source choices require an actually empty or missing library. This
   // fixed invented library stays loaded; an unmatched query keeps search
   // feedback and any references already chosen, as in the app (#949).
@@ -56,7 +56,7 @@ export function setupDemo() {
   const rows = new Map(references.map((ref, index) => {
     const tile = el("button", { type: "button", className: "tile", tabIndex: -1 }, icon(ref.kind));
     const row = el("div", { id: `demo-ref-${index}`, className: "pick", title: `${ref.title} · ${ref.authors} · ${ref.year} · ${ref.key}` }, tile,
-      el("span", { className: "ref" }, el("strong", { textContent: ref.title }), el("span", { className: "sub", textContent: `${ref.authors} · ${ref.where}` })), el("span", { textContent: String(ref.year) }));
+      el("span", { className: "ref" }, el("strong", { textContent: `Sample · ${ref.title}` }), el("span", { className: "sub", textContent: `${ref.authors} · ${ref.where}` })), el("span", { textContent: String(ref.year) }));
     row.setAttribute("role", "option");
     // Match the app's pointer ownership: a click leaves its row under the
     // pointer. Rendering is synchronous here; only the keyboard handler below
@@ -78,7 +78,7 @@ export function setupDemo() {
       row.classList.toggle("is-selected", selected); row.setAttribute("aria-selected", String(selected));
       const added = state.added.includes(ref.key); tile.classList.toggle("is-added", added); tile.replaceChildren(added ? "✓" : icon(ref.kind));
       tile.setAttribute("aria-label", `${added ? "Remove" : "Add"} ${ref.title}${added ? " from" : " to"} citation`); tile.setAttribute("aria-pressed", String(added));
-      row.setAttribute("aria-label", `${ref.title}, ${ref.authors}, ${ref.year}, ${ref.where}${added ? ", added to citation" : ""}`);
+      row.setAttribute("aria-label", `Sample · ${ref.title}, ${ref.authors}, ${ref.year}, ${ref.where}${added ? ", added to citation" : ""}`);
     }
     empty.hidden = found.length > 0;
     if (current) input.setAttribute("aria-activedescendant", rows.get(current.key).row.id); else input.removeAttribute("aria-activedescendant");

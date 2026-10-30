@@ -1,11 +1,9 @@
-// Invented references only. The website never reads a person's library or clipboard.
+// The three bundled desktop samples. website-demo.test.mjs pins their equality.
+// The website never reads a person's library or clipboard.
 export const references = [
-  { key: "okafor2023", kind: "article", authors: "Okafor, Brandt", year: 2023, title: "Wading birds as early signals of wetland change", where: "Journal of Imagined Ecology" },
-  { key: "okafor2021", kind: "article", authors: "Okafor", year: 2021, title: "Estuary feeding patterns of the scarlet ibis", where: "Proceedings of the Example Conference on Coasts" },
-  { key: "rivera2025", kind: "article", authors: "Rivera", year: 2025, title: "A place for reading notes", where: "Example Journal" },
-  { key: "nakamura2024", kind: "book", authors: "Nakamura", year: 2024, title: "Slow reading in fast institutions", where: "Invented Press" },
-  { key: "mensah2022", kind: "article", authors: "Mensah, Ito, Varga", year: 2022, title: "Footnotes and the architecture of trust", where: "Example Review" },
-  { key: "lindqvist2019", kind: "book", authors: "Lindqvist", year: 2019, title: "The marginalia problem", where: "Notes and Margins" },
+  { key: "vale2024lanterns", kind: "article", authors: "Vale", year: 2024, title: "Lantern gardens and the rhythm of imaginary cities", where: "Journal of Invented Landscapes" },
+  { key: "fen2023clouds", kind: "book", authors: "Fen", year: 2023, title: "A field guide to clockwork clouds", where: "Imaginary Orchard Press" },
+  { key: "reed2025maps", kind: "article", authors: "Reed, Vale", year: 2025, title: "Mapping the quiet islands of an invented sea", where: "Review of Fictional Cartography" },
 ];
 export const formats = { pandoc: "Pandoc", autocite: "\\autocite", parencite: "\\parencite", textcite: "\\textcite", cite: "\\cite", typst: "Typst", keys: "Keys only" };
 
@@ -22,12 +20,15 @@ function renderKeys(format, keys) {
   return "";
 }
 export function createDemo() {
-  const state = { query: "okafor", selected: 0, format: "pandoc", added: [], copied: null, pasted: null, open: true, preview: true };
+  const state = { query: "lantern", selected: 0, format: "pandoc", added: [], copied: null, pasted: null, open: true, preview: true };
   const found = () => {
     const words = state.query.toLowerCase().split(/\p{White_Space}+/u).filter(Boolean);
     return references.filter(ref => words.every(word => `${ref.authors} ${ref.title} ${ref.year} ${ref.key} ${ref.where}`.toLowerCase().includes(word)));
   };
-  const output = () => renderKeys(state.format, state.added.length ? state.added : [found()[state.selected]?.key].filter(Boolean));
+  const output = () => {
+    const text = renderKeys(state.format, state.added.length ? state.added : [found()[state.selected]?.key].filter(Boolean));
+    return text ? `${text} [Sample]` : "";
+  };
   const setQuery = query => { state.query = query; state.selected = 0; };
   return { state, found, output, setQuery,
     add(key) {

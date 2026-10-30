@@ -799,7 +799,10 @@ A choice screen hides the result heading, the shelf and the Copy hint.
   built-in sample references let people try Ibis, labelled "Sample" on every
   row and in the footer. The explicit **Try sample references** choice uses
   three bundled invented CSL-JSON references for this run; it never saves a
-  library preference. Its search hint names words in the samples. A
+  library preference. The website demo and help screenshots use this same set
+  from `apps/desktop/src-tauri/resources/samples.csljson`: lantern gardens,
+  clockwork clouds and the invented sea. The practice task is identical on
+  every surface: Search for “lantern”, choose the lantern gardens reference, then press Enter. A
   **Use your own library** choice row returns to setup.
   Choosing a real source replaces samples; sample selections and copy notices
   leave with them. Samples never join a real library. Every sample citation
