@@ -496,6 +496,7 @@ jobs:
           cache: pnpm
           cache-dependency-path: apps/desktop/pnpm-lock.yaml
       - name: Build the web interface
+        shell: bash
         working-directory: apps/desktop
         run: |
           pnpm install --frozen-lockfile
@@ -1284,7 +1285,7 @@ jobs:
           PACKAGE: ${{ matrix.package }}
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends xvfb xauth python3-pyatspi at-spi2-core libfuse2t64 fonts-noto-core
+          sudo apt-get install -y --no-install-recommends xvfb xauth python3-pyatspi at-spi2-core libfuse2t64 fonts-noto-core xdotool
           # AppImages leave graphics drivers to the system. WebKit loads GLES dynamically, so ldd misses it.
           sudo apt-get install -y --no-install-recommends libegl1 libegl-mesa0 libgles2 libgl1 libgl1-mesa-dri libgbm1 libdrm2 libwayland-client0 libx11-xcb1
           /usr/bin/python3 scripts/update-e2e.py --self-test
