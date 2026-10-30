@@ -36,7 +36,6 @@ test("empty-library choices use arrows and Enter, keep focus after cancelling an
   expect(screen.getAllByRole("option")).toHaveLength(2);
   expect(screen.queryByRole("region", { name: "Preview" })).toBeNull();
   expect(within(document.querySelector("footer")!).queryByRole("button", { name: /^Copy/ })).toBeNull();
-  expect(document.querySelector("main")?.getAttribute("data-compact")).toBe("true");
   expect(calls).not.toContain("find_sources");
   expect(calls).not.toContain("copy_file_citation");
 });
@@ -83,7 +82,6 @@ test("a valid empty replacement hides old citation controls and Enter does nothi
   await screen.findByRole("heading", { name: "No references in requested.bib" });
   expect(document.querySelector(".shelf")).toBeNull();
   expect(within(document.querySelector("footer")!).queryByRole("button", { name: /^Copy/ })).toBeNull();
-  expect(document.querySelector("main")?.getAttribute("data-compact")).toBe("true");
   const reads = calls.filter((call) => call === "library_status").length;
   act(() => search.focus());
   fireEvent.keyDown(search, { key: "Enter" });

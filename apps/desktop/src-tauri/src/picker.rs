@@ -8,7 +8,6 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut};
 
 use crate::diagnostics::{NativeIssue, checked, report};
-use crate::placement::place_on_active_display;
 
 mod dialogs;
 mod full_screen;
@@ -140,6 +139,24 @@ pub(crate) fn configured_shortcut_with(
 
 /// Show the picker on the display with the pointer, focused, and tell the interface to focus the search box.
 pub(crate) fn show_picker(app: &AppHandle) {
+    // The macOS frame and its presentation are one main-thread operation.
+    // An older queued show must not revive a picker hidden or reopened since.
+    #[cfg(target_os = "macos")]
+    if tauri_nspanel::objc2::MainThreadMarker::new().is_none() {
+        let generation = app.state::<PickerGeneration>();
+        generation.advance();
+        let owner = generation.current();
+        let handle = app.clone();
+        report(
+            app.run_on_main_thread(move || {
+                if handle.state::<PickerGeneration>().owns(owner) {
+                    show_picker(&handle);
+                }
+            }),
+            NativeIssue::Show,
+        );
+        return;
+    }
     // Cancel an older Windows delivery before capture's bounded name lookup.
     #[cfg(target_os = "windows")]
     app.state::<PickerGeneration>().advance();
@@ -148,8 +165,10 @@ pub(crate) fn show_picker(app: &AppHandle) {
     #[cfg(not(target_os = "windows"))]
     app.state::<PickerGeneration>().advance();
     if let Some(window) = checked(app.get_webview_window("main").ok_or(()), NativeIssue::Window) {
+        if !crate::sizing::prepare(app, &window, false, false) {
+            return;
+        }
         report(window.unminimize(), NativeIssue::Unminimize);
-        place_on_active_display(app, &window, false);
         #[cfg(target_os = "macos")]
         crate::panel::show(app);
         #[cfg(not(target_os = "macos"))]
@@ -168,6 +187,25 @@ pub(crate) fn show_picker(app: &AppHandle) {
         report(window.emit("picker:shown", ()), NativeIssue::PickerEvent);
     }
     crate::library::refresh_zotero(app);
+}
+
+/// Non-macOS windows must also start hidden until settings and display bounds
+/// have supplied their complete frame. macOS's panel owns the same startup gate.
+#[cfg(any(not(target_os = "macos"), test))]
+pub(crate) fn prepare_startup<R: tauri::Runtime>(context: &mut tauri::Context<R>) -> (bool, bool) {
+    let Some(window) = context
+        .config_mut()
+        .app
+        .windows
+        .iter_mut()
+        .find(|window| window.label == "main")
+    else {
+        return (false, false);
+    };
+    let intent = (window.visible, window.focus);
+    window.visible = false;
+    window.focus = false;
+    intent
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -301,7 +339,6 @@ pub(crate) fn dismiss_picker(app: &AppHandle) {
                 Ok::<(), tauri::Error>(())
             },
         );
-        crate::sizing::reset(app, &window);
     }
 }
 
@@ -467,6 +504,26 @@ fn finish_blur(app: &AppHandle, blur: u64, generation: u64) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn window_creation_waits_hidden_for_the_complete_frame_and_preserves_launch_intent() {
+        let mut context = tauri::test::mock_context::<tauri::test::MockRuntime, _>(tauri::test::noop_assets());
+        *context.config_mut() = serde_json::from_str(include_str!("../tauri.conf.json"))
+            .unwrap_or_else(|error| panic!("invalid synthetic window config: {error}"));
+        for visible in [true, false] {
+            for focused in [true, false] {
+                let window = &mut context.config_mut().app.windows[0];
+                window.visible = visible;
+                window.focus = focused;
+                assert_eq!(prepare_startup(&mut context), (visible, focused));
+                let window = &context.config().app.windows[0];
+                assert!(!window.visible);
+                assert!(!window.focus);
+                assert_eq!((window.width, window.height), (720.0, 480.0));
+                assert_eq!((window.min_width, window.min_height), (Some(480.0), Some(360.0)));
+            }
+        }
+    }
 
     /// Only a settings window may appear in the taskbar or Alt+Tab (#495);
     /// macOS already uses an accessory panel, where this option does nothing.

@@ -1,7 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { App } from "../../App";
-import * as api from "../../api";
 import { pickerText } from "../../messages";
 import { backend, resetApp } from "../../testing/app";
 import { isWholeNotice, layoutGeometry, noticeText, waitForLayout } from "./picker-layout-checks.mjs";
@@ -12,39 +11,27 @@ afterEach(async () => {
   document.documentElement.removeAttribute("data-text-size");
 });
 
-test.each([false, true])("a compact failed search is measured and found whole by the browser oracle (Larger=%s)", async (larger) => {
-  const edges = 109, hint = 96, noticeHeight = larger ? 64 : 32;
-  let frame = edges + hint, clipTop = 0, clipBottom = 0, visibleHeight = noticeHeight;
-  // jsdom has no flex layout. Model the containment boundary and native growth;
-  // only the real browser probe can establish the CSS sizes and scroll owners.
-  vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function () {
-    if (this.tagName !== "MAIN") return 0;
-    const middle = this.querySelector(".picker-content");
-    const natural = this.style.height === "auto" && middle.style.containerType === "normal";
-    return natural ? edges + hint + (middle.querySelector('[role="alert"]') ? noticeHeight : 0) : frame;
-  });
+test.each([false, true])("a failed search notice stays reachable in a steady frame (Larger=%s)", async (larger) => {
+  const frame = larger ? 552 : 480, noticeHeight = larger ? 64 : 32;
+  let clipTop = 0, clipBottom = 0, visibleHeight = noticeHeight;
+  // jsdom supplies an oracle regression; the browser probe checks real layout.
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function () {
     if (this.matches('.notices [role="alert"]')) return new DOMRect(0, 53 - clipTop, 720, visibleHeight);
-    if (this.matches(".picker-content")) return new DOMRect(0, 53, 720, frame - edges - clipBottom);
+    if (this.matches(".picker-content")) return new DOMRect(0, 53, 720, frame - 109 - clipBottom);
     return new DOMRect();
   });
-  const fitPicker = vi.fn(async (height) => { if (height !== null) frame = Math.max(frame, height); });
-  backend({
+  const calls = backend({
     picker_preferences: () => ({ larger_text: larger }),
     search: ({ query }) => { if (query.text === "refuse") throw Error("synthetic search refusal"); return []; },
   });
-  const view = render(<App api={{ ...api, fitPicker }} />);
+  render(<App />);
   await screen.findByText("Type to find a reference");
   fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "refuse" } });
-  const alert = await screen.findByText(pickerText.searchError);
-  expect(alert.getAttribute("role")).toBe("alert");
-  expect(view.container.querySelector("main").hasAttribute("data-compact")).toBe(true);
-  expect(fitPicker).toHaveBeenLastCalledWith(edges + hint + noticeHeight, expect.any(Boolean));
+  expect((await screen.findByText(pickerText.searchError)).getAttribute("role")).toBe("alert");
+  expect(calls).not.toContain("fit_picker");
   expect(isWholeNotice(noticeText.failedSearch)).toBe(true);
-
-  // The same oracle must refuse missing, zero-height and clipped notices.
   expect(isWholeNotice("Unrelated synthetic notice")).toBe(false);
-  clipBottom = frame - edges - noticeHeight + 2;
+  clipBottom = frame - 109 - noticeHeight + 2;
   expect(isWholeNotice(noticeText.failedSearch)).toBe(false);
   clipBottom = 0; clipTop = 2;
   expect(isWholeNotice(noticeText.failedSearch)).toBe(false);
@@ -71,6 +58,6 @@ test("a probe timeout keeps its fixed labels when the page cannot supply geometr
     waitForFunction: vi.fn().mockRejectedValue({ name: "TimeoutError" }),
     evaluate: vi.fn().mockRejectedValue(new Error("unreported synthetic page failure")),
   };
-  await expect(waitForLayout(page, "360/normal/light/scale-3/default", "extreme-wheel-scroll", () => false))
-    .rejects.toThrow("Picker layout wait timed out: case=360/normal/light/scale-3/default; check=extreme-wheel-scroll; geometry={}");
+  await expect(waitForLayout(page, "480/normal/light/scale-2/default", "minimum-text-scroll", () => false))
+    .rejects.toThrow("Picker layout wait timed out: case=480/normal/light/scale-2/default; check=minimum-text-scroll; geometry={}");
 });

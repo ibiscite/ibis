@@ -13,10 +13,13 @@ button, input, select { font: inherit; color: inherit; }
 :focus-visible:not(.ui-button, .menu-item) { outline: var(--focus-ring-width) solid var(--focus-ring-color); outline-offset: var(--focus-ring-offset); box-shadow: var(--focus-ring-shadow); }
 main {
   height: var(--picker-height);
+  container-type: inline-size;
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
+/* The frame is native-owned. These bands never shrink when the middle overflows. */
+main > .search-bar, main > footer { flex: none; }
 
 .search-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--search-gap); min-height: calc(var(--search-bar-height) + var(--border-width)); padding: var(--inset); border-bottom: var(--border-width) solid var(--separator); cursor: move; user-select: none; }
 .search-bar > svg { width: var(--search-icon-width); stroke-width: var(--search-icon-stroke); flex-shrink: 0; color: var(--muted); pointer-events: none; }
@@ -128,7 +131,7 @@ main {
    output on one line. Its quote mark is centred over the tile column and the
    output starts at the row titles, so the search glyph, the tiles and the mark
    share one column. Windows draws a layer card with a stroke; GNOME a flat band. */
-.shelf { flex: none; min-height: 0; overflow: auto; margin: 0 var(--inset) var(--inset); border-radius: var(--r-row); background: var(--shelf-fill); }
+.shelf { flex: none; min-height: 0; overflow: visible; margin: 0 var(--inset) var(--inset); border-radius: var(--r-row); background: var(--shelf-fill); }
 main:has(> .picker-content > .shelf) > footer { border-top-color: var(--clear); }
 .shelf-chips { display: flex; align-items: center; gap: var(--space-1); height: var(--shelf-line); margin: 0; padding: 0 var(--row-pad); list-style: none; overflow: hidden; }
 .chip { flex: 0 1 auto; min-width: var(--chip-min-width); display: inline-flex; align-items: center; height: var(--chip-height); max-width: var(--chip-max-width); padding-inline-start: var(--space-2); border-radius: var(--chip-radius); background: var(--chip-fill); font-size: var(--type-label-size); line-height: var(--type-label-line); font-weight: 500; }
@@ -231,18 +234,16 @@ kbd { font: inherit; font-size: var(--hint-size); font-weight: 500; display: inl
 /* Notices have no height bound. Share their scroll owner instead of reserving
    a nested results viewport that the notice and shelf can push out of view. */
 .picker-content:has(> .notices:not(:empty)) > .results-area { flex: none; min-height: 0; overflow: visible; }
-/* Size follows content (C10): the window fits this height; once it has grown
-   it keeps its height while open, and the footer stays at the bottom. */
-main[data-compact] { min-height: 0; }
-main[data-compact] .results-area { flex: none; min-height: 0; overflow: visible; }
-main[data-compact] > footer { margin-block-start: auto; }
-main[data-selection] { height: var(--picker-height); min-height: 0; overflow: hidden; }
-main[data-selection] > .search-bar, main[data-selection] > footer { flex: none; }
+/* An expanded shelf or repair explanation shares that same middle scroller. */
+.picker-content:has(.shelf-chips[data-expanded], .shelf-output[data-state="failed"]) > .results-area { flex: none; min-height: 0; overflow: visible; }
+.picker-content .shelf .shelf-chips[data-expanded] { max-height: none; overflow: visible; }
 /* Below room for the shelf and useful result rows, remove the nested results
-   viewport. Page/Form and the exact preview remain reachable in this same DOM. */
-@container (max-height: 16rem) {
+   viewport. Whole rows and Page/Form remain reachable even while editing. */
+@container (max-height: 18rem) {
   .picker-content > .results-area { flex: none; min-height: 0; overflow: visible; }
 }
+/* Setup/recovery/hints always contribute their whole natural height. */
+.picker-content > .results-area:not(:has([role="option"])) { flex: 1 0 auto; overflow: visible; }
 
 /* No animation: reduced-motion users get the same immediate feedback. */
 
@@ -278,6 +279,12 @@ main[data-selection] > .search-bar, main[data-selection] > footer { flex: none; 
 /* At large system text sizes the label and caps may need separate lines;
    their visible content must stay inside the button's actual hit target. */
 .footer-action > .key-hint { flex-wrap: wrap; max-width: 100%; white-space: normal; }
+footer .key-hint-label { display: var(--footer-hint-label-display); }
+/* Width classes use the actual text size: at 200% the minimum frame keeps
+   one footer line of keys, leaving the middle readable (design C10). */
+@container (max-width: 28.75em) {
+  footer { --footer-hint-label-display: none; }
+}
 @media (pointer: coarse) {
   .footer-action, .more > button { min-width: 2.75rem; min-height: 2.75rem; }
 }
@@ -315,15 +322,6 @@ main[data-selection] > .search-bar, main[data-selection] > footer { flex: none; 
 /* The viewport never adds a second scrollbar: short-window content scrolls
    between the full-height search and footer controls. */
 @media (max-height: 400px) {
-  main, main[data-compact], main[data-selection] { height: var(--picker-height); min-height: 0; overflow: hidden; }
-  main > .search-bar, main > footer { flex: none; }
+  main { height: var(--picker-height); min-height: 0; overflow: hidden; }
   main > .picker-content .results-area { flex: none; min-height: 0; overflow: visible; }
-  main[data-compact] > footer { margin-block-start: 0; }
 }
-
-/* At extreme text growth the fixed edges can exceed the whole viewport.
-   Keep the same DOM and give every control one reachable page instead. */
-main[data-scroll-page] { overflow: auto; }
-main[data-scroll-page] > .picker-content { flex: none; overflow: visible; container-type: normal; }
-main[data-scroll-page] .results-area, main[data-scroll-page] .shelf, main[data-scroll-page] .notices { flex: none; max-height: none; overflow: visible; }
-main[data-scroll-page] .shelf-chips[data-expanded] { max-height: none; overflow: visible; }

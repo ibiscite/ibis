@@ -7,9 +7,9 @@
 use std::sync::atomic::AtomicBool;
 
 use tauri::utils::config::WindowConfig;
-use tauri::{AppHandle, LogicalPosition, Monitor, PhysicalPosition, Position, WebviewWindow};
+use tauri::{AppHandle, Monitor, WebviewWindow};
 
-use crate::diagnostics::{NativeIssue, checked, checked_once, report};
+use crate::diagnostics::{NativeIssue, checked, checked_once};
 
 static POINTER_FAILURE_REPORTED: AtomicBool = AtomicBool::new(false);
 
@@ -163,19 +163,17 @@ pub(crate) fn display(monitor: &Monitor) -> Display {
     }
 }
 
-fn window_area(window: &WebviewWindow) -> Option<Area> {
+pub(crate) fn window_area(window: &WebviewWindow) -> Option<Area> {
     let position = checked(window.outer_position(), NativeIssue::Position)?;
     let size = checked(window.outer_size(), NativeIssue::Size)?;
     let scale = checked(window.scale_factor(), NativeIssue::Size)?;
     Some(area(position.x, position.y, size.width, size.height, scale))
 }
 
-/// Move the picker to the display the user is working on (see [`choose`]).
-/// On first show it has no place of its own yet, so it is always centred.
-pub(crate) fn place_on_active_display(app: &AppHandle, window: &WebviewWindow, first_show: bool) {
-    let Some(monitors) = checked(app.available_monitors(), NativeIssue::Monitor) else {
-        return;
-    };
+/// Resolve the display before sizing or moving the hidden picker. The bool
+/// preserves an existing fully visible position (including debug previews).
+pub(crate) fn active_monitor(app: &AppHandle, window: &WebviewWindow, first_show: bool) -> Option<(Monitor, bool)> {
+    let monitors = checked(app.available_monitors(), NativeIssue::Monitor)?;
     let displays: Vec<Display> = monitors.iter().map(display).collect();
     let primary = checked(app.primary_monitor(), NativeIssue::Monitor).flatten();
     // macOS reports the pointer in points times the primary display's scale.
@@ -184,7 +182,7 @@ pub(crate) fn place_on_active_display(app: &AppHandle, window: &WebviewWindow, f
         .map(|p| (p.x / pointer_scale, p.y / pointer_scale));
     let primary = primary.and_then(|p| displays.iter().position(|d| *d == display(&p)));
     let config = app.config().app.windows.iter().find(|c| c.label == window.label());
-    if let Placement::Centre(i) = choose_for_show(
+    match choose_for_show(
         &displays,
         pointer,
         || window_area(window),
@@ -193,28 +191,11 @@ pub(crate) fn place_on_active_display(app: &AppHandle, window: &WebviewWindow, f
         config,
         cfg!(debug_assertions),
     ) {
-        place_on(window, &monitors[i]);
+        Placement::Centre(i) => Some((monitors[i].clone(), false)),
+        Placement::Keep => checked(window.current_monitor(), NativeIssue::Monitor)
+            .flatten()
+            .map(|monitor| (monitor, true)),
     }
-}
-
-/// Put the picker at its launcher position on the given display.
-fn place_on(window: &WebviewWindow, monitor: &Monitor) {
-    let (Some(size), Some(window_scale)) = (
-        checked(window.outer_size(), NativeIssue::Size),
-        checked(window.scale_factor(), NativeIssue::Size),
-    ) else {
-        return;
-    };
-    // The picker keeps its size in points, so measure it at the target's scale.
-    let points = size.to_logical::<f64>(window_scale);
-    let scale = if MACOS { 1.0 } else { monitor.scale_factor() };
-    let (x, y) = launcher_position(display(monitor).usable, points.width * scale, points.height * scale);
-    let position: Position = if MACOS {
-        LogicalPosition::new(x, y).into()
-    } else {
-        PhysicalPosition::new(x.round() as i32, y.round() as i32).into()
-    };
-    report(window.set_position(position), NativeIssue::Position);
 }
 
 #[cfg(test)]

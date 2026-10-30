@@ -19,7 +19,7 @@ import { CitationShelf } from "./features/picker/CitationShelf";
 import { ResultList } from "./features/picker/ResultList";
 import { closestMatchWarnings } from "./features/picker/rows";
 import { EmptyState } from "./features/picker/EmptyState";
-import { useFitWindow } from "./features/picker/useFitWindow";
+import { usePickerScroll } from "./features/picker/usePickerScroll";
 import { PickerFooter } from "./features/picker/PickerFooter";
 import { PickerMenu } from "./features/picker/PickerMenu";
 import { useOperations } from "./features/picker/useOperations";
@@ -49,7 +49,7 @@ const noSelection = new Map<string, CitationReference>();
 export type PickerApi = Pick<typeof nativeApi,
   "chooseLibrary" | "useZotero" | "libraryStatus" | "reloadLibrary" | "previewFileCitation" | "copyFileCitation" | "copyFormat" | "pickerPreferences" | "setPickerPreferences" |
   "hidePicker" | "pickerVisible" | "setPinned" | "onLibraryChanged" | "onPickerShown" | "onPickerHidden" | "quit" | "search" | "shortcutStatus"> &
-  Partial<Pick<typeof nativeApi, "useSampleLibrary" | "useZoteroLibraries" | "zoteroGroups" | "pickerDestination" | "rememberAppOutput" | "forgetAppOutputs" | "fitPicker" | "findSources" | "openFoundLibrary" | "rowContext" | "showCopiedNotice" | "loginItem" | "setLoginItem" | "onUpdateProgress" | "updateChecks" | "setUpdateChecks" | "onUpdateChecks" | "updateAvailable" | "onUpdateAvailable" | "checkForUpdates" | "onShortcutStatus" | "openSettings" | "onPreferencesChanged">>;
+  Partial<Pick<typeof nativeApi, "useSampleLibrary" | "useZoteroLibraries" | "zoteroGroups" | "pickerDestination" | "rememberAppOutput" | "forgetAppOutputs" | "onWindowSizeSaved" | "findSources" | "openFoundLibrary" | "rowContext" | "showCopiedNotice" | "loginItem" | "setLoginItem" | "onUpdateProgress" | "updateChecks" | "setUpdateChecks" | "onUpdateChecks" | "updateAvailable" | "onUpdateAvailable" | "checkForUpdates" | "onShortcutStatus" | "openSettings" | "onPreferencesChanged">>;
 
 export type PickerPreview = { query?: string; copied?: Copied };
 
@@ -58,7 +58,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const { chooseLibrary, useZotero, libraryStatus, reloadLibrary,
     hidePicker, pickerVisible, setPinned, onLibraryChanged, onPickerShown, onPickerHidden, search, shortcutStatus, previewFileCitation, copyFileCitation,
     useZoteroLibraries: chooseZoteroLibraries, zoteroGroups } = api;
-  const { rowContext, findSources, openFoundLibrary, showCopiedNotice, loginItem, setLoginItem, fitPicker, updateChecks, setUpdateChecks, onUpdateChecks, updateAvailable, onUpdateAvailable, checkForUpdates, onShortcutStatus, openSettings, onPreferencesChanged } = api;
+  const { rowContext, findSources, openFoundLibrary, showCopiedNotice, loginItem, setLoginItem, onWindowSizeSaved, updateChecks, setUpdateChecks, onUpdateChecks, updateAvailable, onUpdateAvailable, checkForUpdates, onShortcutStatus, openSettings, onPreferencesChanged } = api;
   const [updateProgress, setUpdateProgress] = useState<nativeApi.UpdateProgress | null>(null);
   const setupApi = useMemo(() => ({ chooseLibrary, useZotero, useSampleLibrary: api.useSampleLibrary, findSources, openFoundLibrary }),
     [chooseLibrary, useZotero, api.useSampleLibrary, findSources, openFoundLibrary]);
@@ -324,31 +324,34 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   }, [active, pointer.cameFrom, selected.size,
     selected.size > 0 ? formatted : null, selected.size > 0 ? format : null, selected.size > 0 ? searchFocused : null]);
 
-  // Changes below the list can resize its viewport without moving the index.
-  // Preserve only Search's keyboard highlight, using the local scroll owners.
+  // Content changes preserve Search's keyboard highlight. A real viewport
+  // resize must also leave the selected title readable while Page is edited.
   useEffect(() => {
     const area = resultArea.current;
     if (!area) return;
     const scrollers = [area, area.parentElement].filter((node): node is HTMLElement => node !== null);
-    const reveal = () => {
-      if (!followKeyboard.current || document.activeElement !== input.current) return;
+    const reveal = (viewport = false) => {
+      if (!viewport && (!followKeyboard.current || document.activeElement !== input.current)) return;
       const row = document.getElementById(`result-${active}`);
       if (!row) return;
       for (const scroller of scrollers) {
         if (scroller.clientHeight <= 0 || !/auto|scroll/.test(getComputedStyle(scroller).overflowY)) continue;
         const top = scroller.getBoundingClientRect().top + scroller.clientTop;
         const bottom = top + scroller.clientHeight;
-        const item = row.getBoundingClientRect();
+        const whole = row.getBoundingClientRect();
+        const item = whole.height > scroller.clientHeight
+          ? row.querySelector(".result-title")?.getBoundingClientRect() ?? whole : whole;
         // A tall row already filling the scrollport cannot be shown any fuller.
         if (item.top <= top && item.bottom >= bottom) continue;
         if (item.bottom > bottom) scroller.scrollTop += Math.ceil(item.bottom - bottom);
         else if (item.top < top) scroller.scrollTop += Math.floor(item.top - top);
       }
     };
-    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(reveal);
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => reveal());
     for (const scroller of scrollers) observer?.observe(scroller);
-    window.addEventListener("resize", reveal);
-    return () => { observer?.disconnect(); window.removeEventListener("resize", reveal); };
+    const resized = () => reveal(true);
+    window.addEventListener("resize", resized);
+    return () => { observer?.disconnect(); window.removeEventListener("resize", resized); };
   }, [active]);
 
   // Success is brief; warnings stay available until explicitly dismissed.
@@ -459,15 +462,18 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       } />
   ) : null);
 
-  // Size follows content (C10): only results, a citation and overlays need the results height.
   const main = useRef<HTMLElement>(null);
-  const compact = !keysOpen && (!showCitations || selected.size === 0 && !(query && results.length > 0));
-  useFitWindow(main, compact, fitPicker, fitPicker ? onPickerShown : undefined);
+  usePickerScroll(main);
+  useEffect(() => {
+    let current = true;
+    const subscription = onWindowSizeSaved?.((saved) => { if (current) report("windowSize", !saved); });
+    void subscription?.catch(() => { if (current) report("windowSize"); });
+    return () => { current = false; void subscription?.then((stop) => stop()).catch(() => {}); };
+  }, [onWindowSizeSaved, report]);
 
   return (
     <main ref={main}
       data-selection={showCitations && selected.size > 0 || undefined}
-      data-compact={compact || undefined}
       onFocus={(e) => setSearchFocused(e.target === input.current)}
       onBlur={() => setSearchFocused(false)}
       onKeyDownCapture={pointer.resetHover}
@@ -502,12 +508,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
         }
       }}
     >
-      {shortcut?.error && (
-        <p role="status">
-          {pickerText.shortcutError(shortcut.registered, shortcut.shortcut, shortcut.error)}
-          {shortcut.desktop && ` ${shortcut.desktop.guidance}`}
-        </p>
-      )}
+
       <PickerHeader
         pinned={pinned} mark={searchMark} onTogglePin={() => { togglePin(); input.current?.focus(); }}
         inputRef={input}
@@ -576,6 +577,12 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
         }}
       />
       <div className="picker-content scroll-area">
+      {shortcut?.error && <div className="notices">
+        <p role="status">
+          {pickerText.shortcutError(shortcut.registered, shortcut.shortcut, shortcut.error)}
+          {shortcut.desktop && ` ${shortcut.desktop.guidance}`}
+        </p>
+      </div>}
       <Notices densityAnnouncement={preferences.densityAnnouncement} updateProgress={updateProgress} library={library} failures={failures} startAtLogin={startAtLogin}
         error={error} copyError={copyError} copied={copied} missing={list?.missing}
         showCopiedText={displayedOutput == null || typeof displayedOutput === "string" || displayedOutput.text !== copied?.text}

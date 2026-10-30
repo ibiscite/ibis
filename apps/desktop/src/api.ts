@@ -22,7 +22,6 @@ export const {
   libraryStatus,
   hidePicker,
   setPinned,
-  fitPicker,
   quit,
   shortcutStatus,
   copyFileCitation,
@@ -43,6 +42,16 @@ export const {
   updateAvailable,
   openSettings,
 } = commands;
+
+/** Native saves are ordered by the settings owner before publishing a result. */
+export function onWindowSizeSaved(handler: (saved: boolean) => void): Promise<UnlistenFn> {
+  let latest = 0;
+  return listen<{ revision: number; saved: boolean }>("picker:window-saved", ({ payload }) => {
+    if (payload.revision <= latest) return;
+    latest = payload.revision;
+    handler(payload.saved);
+  });
+}
 
 /** UI edits omit unchanged fields; null is meaningful only for citation_style. */
 export function setPickerPreferences(preferences: Partial<PickerPreferences>, copyFormat: CopyFormat | null) {

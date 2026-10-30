@@ -32,6 +32,7 @@ export const operationFailures = {
   hide: "Ibis could not hide this window. Try again.",
   pin: "Ibis could not change the pin. Try again.",
   preferences: "Ibis could not read or save your picker choices. They apply until Ibis restarts.",
+  windowSize: "Ibis could not save the window size. It will be kept until you quit.",
   quit: "Ibis could not quit. Try again.",
   updateEvents: "Update progress is unavailable.",
   pickerEvents: "Ibis could not focus the search box. Restart Ibis to try again.",

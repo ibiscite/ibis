@@ -51,6 +51,12 @@ pub(crate) fn page_loaded(app: &AppHandle) {
     startup_readiness(app, false);
 }
 
+/// Conversion alone cannot release startup: the synchronous native frame
+/// must also be complete before the first orderFront.
+pub(crate) fn frame_ready(app: &AppHandle) {
+    startup_readiness(app, true);
+}
+
 fn startup_readiness(app: &AppHandle, panel_ready: bool) {
     let handle = app.clone();
     report(
@@ -140,8 +146,8 @@ pub(crate) fn configure(app: &AppHandle) -> Result<(), Box<dyn std::error::Error
     // Failure retains the working rectangular picker with a fixed diagnostic.
     crate::native_corners::configure(panel.as_panel());
     // Conversion and activation changes run while the native window is hidden.
-    // Its original visibility/focus intent is presented once both this setup
-    // and the first actual page navigation have finished.
+    // Its original visibility/focus intent waits for the complete native frame
+    // and the first actual page navigation before presentation.
     #[cfg(debug_assertions)]
     eprintln!(
         "ibis: panel initial before visible={} key={} first_responder={} outer_responder={}",
@@ -150,7 +156,6 @@ pub(crate) fn configure(app: &AppHandle) -> Result<(), Box<dyn std::error::Error
         panel.as_panel().firstResponder().is_some(),
         outer_is_responder(panel.as_panel())
     );
-    startup_readiness(app, true);
     Ok(())
 }
 

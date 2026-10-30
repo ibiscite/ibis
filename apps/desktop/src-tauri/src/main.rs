@@ -46,7 +46,6 @@ use crate::library::{Library, LoadRequests, PreviewRequests, SearchRequests, Sou
 use crate::picker::{
     ChooserOpen, Pinned, ShortcutStatus, dismiss_picker, hides_on_blur, show_picker, start_shortcut, toggle_picker,
 };
-use crate::placement::place_on_active_display;
 use crate::preferences::SettingsFile;
 use crate::tray::create_tray;
 
@@ -97,6 +96,8 @@ fn main() {
     }
     #[cfg(target_os = "macos")]
     let initial_panel = panel::prepare_startup(&mut context);
+    #[cfg(not(target_os = "macos"))]
+    let initial_picker = picker::prepare_startup(&mut context);
     let builder = tauri::Builder::default();
     #[cfg(target_os = "macos")]
     let builder = builder.manage(initial_panel);
@@ -174,9 +175,9 @@ fn main() {
                 panel::observe_window_focus(window.app_handle(), *focused);
             }
             match event {
-                WindowEvent::Resized(_) => {
+                WindowEvent::Resized(_) | WindowEvent::Moved(_) | WindowEvent::ScaleFactorChanged { .. } => {
                     if let Some(window) = window.app_handle().get_webview_window("main") {
-                        sizing::resized(window.app_handle(), &window);
+                        sizing::changed(window.app_handle(), &window);
                     }
                 }
                 // Closing the picker hides it; the app keeps running for the shortcut.
@@ -215,9 +216,24 @@ fn main() {
                 _ => {}
             }
         })
-        .setup(|app| {
+        .setup(move |app| {
+            let settings_path = app.path().app_config_dir()?.join("settings.json");
+            let loaded = settings::load(&settings_path);
+            app.manage(SettingsFile::new(settings_path.clone()));
+            app.state::<sizing::Sizing>().load(&loaded.settings);
             #[cfg(target_os = "macos")]
             panel::configure(app.handle())?;
+            // Complete size and placement while the native window is hidden,
+            // before either the panel readiness gate or a window show.
+            if let Some(window) = checked(app.get_webview_window("main").ok_or(()), NativeIssue::Window) {
+                if !sizing::prepare(app.handle(), &window, true, false) {
+                    return Err("the picker frame could not be prepared".into());
+                }
+                #[cfg(not(target_os = "macos"))]
+                {
+                    report(window.set_skip_taskbar(true), NativeIssue::SkipTaskbar);
+                }
+            }
             // macOS says in its open event, readable only now, whether it
             // opened Ibis as a login item.
             #[cfg(target_os = "macos")]
@@ -225,16 +241,6 @@ fn main() {
                 panel::cancel_initial_presentation(app.handle());
             }
             native_feel::install(app.handle());
-            // The picker opens near the top of the display with the pointer.
-            if let Some(window) = checked(app.get_webview_window("main").ok_or(()), NativeIssue::Window) {
-                place_on_active_display(app.handle(), &window, true);
-                // The window option alone does not reach GTK's first mapping.
-                #[cfg(not(target_os = "macos"))]
-                report(window.set_skip_taskbar(true), NativeIssue::SkipTaskbar);
-            }
-            let settings_path = app.path().app_config_dir()?.join("settings.json");
-            let loaded = settings::load(&settings_path);
-            app.manage(SettingsFile::new(settings_path.clone()));
             destination::manage(app.handle(), &settings_path);
             if let Some(problem) = &loaded.problem {
                 application_message(preferences::settings_problem(problem));
@@ -273,6 +279,17 @@ fn main() {
             if let Some(source) = library {
                 // Opened in the background so the window appears at once.
                 start_open(app.handle(), source, false);
+            }
+            #[cfg(target_os = "macos")]
+            panel::frame_ready(app.handle());
+            #[cfg(not(target_os = "macos"))]
+            if initial_picker.0
+                && let Some(window) = app.get_webview_window("main")
+            {
+                report(window.show(), NativeIssue::Show);
+                if initial_picker.1 {
+                    report(window.set_focus(), NativeIssue::Focus);
+                }
             }
             Ok(())
         });

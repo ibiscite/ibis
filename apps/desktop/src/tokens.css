@@ -39,6 +39,7 @@
   --row-spacing: 2px; /* between rows in results, Recently added and choice lists [C4] */
   --search-bar-height: calc(var(--field-h) + 2 * var(--inset)); /* band only; divider outside */
   --footer-height: 2.5rem;
+  --footer-hint-label-display: inline;
   --control-min-size: 2rem;
   --touch-target: 2.75rem;
   --icon-glyph-size: 1.25rem;
@@ -156,7 +157,8 @@
   --hidden-size: 1px;
   --hidden-margin: -1px;
   --hidden-clip: inset(50%);
-  --results-min-height: 5rem;
+  /* A heading plus one whole result, including list insets. */
+  --results-min-height: calc(var(--row-height) + var(--type-label-line) + 3 * var(--space-2));
   --heading-padding: var(--space-2) var(--row-pad) var(--space-1);
   --heading-size: var(--type-label-size);
   --heading-weight: var(--type-strong-weight);
