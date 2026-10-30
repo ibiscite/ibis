@@ -1650,8 +1650,9 @@ const results = JSON.parse(process.argv[1]).map(scenario => {
 });
 process.stdout.write(JSON.stringify(results));
 '''
+        # A cold Node start on Windows runners can legitimately exceed five seconds.
         result = subprocess.run([shutil.which("node"), "-e", model + MACOS_PICKER + driver, json.dumps(scenarios)],
-                                capture_output=True, timeout=5)
+                                capture_output=True, timeout=60)
         self.assertEqual(result.returncode, 0, result.stderr.decode("utf-8", errors="replace"))
         self.assertNotIn(b"synthetic-private-sentinel", result.stdout + result.stderr)
         results = json.loads(result.stdout)
