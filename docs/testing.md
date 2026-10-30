@@ -17,6 +17,9 @@ maintainer's Mac within existing access, with no additional model spend.
 Office licences, paid accounts, paid runners and paid model/API use are
 optional extensions; none blocks the baseline plan or its release checks.
 
+2026-10-30: Run current Windows qualification on GitHub runners without waiting
+for a local Windows Ibis project; existing release gates remain.
+
 ## What exists
 
 - **Rust and proptest:** unit, integration and generated properties check
