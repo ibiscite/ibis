@@ -181,20 +181,22 @@ touch. The shelf reserves the whole Copied capsule; its citation ellipsizes,
 and the paired beaks share the remaining space in very narrow pictures.
 Both beaks mirror in RTL; the brand logo stays unflipped and keys stay LTR.
 It follows the page's system appearance and any
-explicit local appearance choice. Copy feedback adds the closing beak and
-Copied capsule, with the notice card below in its own reserved frame. That card
-keeps the copied receipt through later searches and format changes. Its citation
-fits at most two lines, showing a count of omitted references as “+N more”.
-Resizing re-fits that saved receipt. The picker stays visible after copying
-and pasting so visitors can try another reference; Escape still closes and
-reopens it.
+explicit local appearance choice. Confirm each action once, in one place: the
+shelf's Copied capsule, never a second notice for the same copy. Copy feedback
+adds the closing beak and Copied capsule. The copy step says “Press Enter. Ibis
+copies the key. Paste into the sentence below.” The saved copied value survives
+later searches and format changes until the next copy. The picker stays visible
+after copying and pasting so visitors can try another reference; Escape still
+closes and reopens it.
 
 Use the existing three references in
 `apps/desktop/src-tauri/resources/samples.csljson` for the demo, first-run
 samples and help screenshots. The website tests compare every displayed
-reference field with that file. Website rows show the plain title and citations
-have no sample suffix, including the static example, accessible labels and copy
-receipts. The desktop app keeps its sample markers. The shared practice task is:
+reference field with that file. The footer status `Sample references · 3` marks
+the library once; website rows show plain titles with no extra label. The website
+demo copies only inside its own page, so its citations carry no [Sample] suffix,
+including the static example and accessible labels. The desktop app keeps its
+` [Sample]` citation suffix. The shared practice task is:
 
 Search for “lantern”, choose the lantern gardens reference, then press Enter.
 

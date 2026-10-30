@@ -1,6 +1,6 @@
 import { DEFAULT_PICKER_SHORTCUT, KEY_TABLE, keysFor, keyLabel, keyCapLabels, commandKey, matchesAccelerator } from "./keys.js";
 import { typePaths } from "./icon-paths.js";
-import { createDemo, references, formats, noticeCandidates } from "./demo-model.mjs";
+import { createDemo, references, formats } from "./demo-model.mjs";
 const el = (tag, props = {}, ...children) => { const node = Object.assign(document.createElement(tag), props); node.append(...children); return node; };
 function icon(kind) {
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -29,9 +29,6 @@ export function setupDemo() {
   list.setAttribute("role", "listbox"); list.setAttribute("aria-label", "Best matches");
   const count = el("span"), output = el("code"), status = el("span", { className: "picker-status" });
   output.dir = "ltr";
-  const receipt = figure.querySelector(".copied-notice"), receiptOutput = receipt.querySelector("code"), receiptText = receiptOutput.querySelector(".notice-citation-full");
-  receipt.dataset.interactive = "";
-  let copiedReceipt = null;
   // Keep the live region mounted so the first copy is announced.
   const announce = el("span", { className: "demo-status" }); announce.setAttribute("role", "status"); status.setAttribute("aria-hidden", "true");
   const copy = el("button", { type: "button", className: "picker-primary", textContent: "Copy" }), add = el("button", { type: "button", textContent: "Add" });
@@ -75,7 +72,7 @@ export function setupDemo() {
   const panel = el("div", { className: "picker-panel" }, el("div", { className: "picker-search" },
     el("div", { className: "picker-field" }, mark, input), el("div", { className: "picker-controls" }, clear, format)),
     el("div", { className: "picker-middle" }, heading, list), shelf,
-    el("div", { className: "picker-foot" }, el("span", { className: "picker-library", title: `Sample references · ${references.length} references` }, decoration("picker-dot"), el("span", {}, `Sample references · ${references.length} references`)), actions));
+    el("div", { className: "picker-foot" }, el("span", { className: "picker-library", title: `Sample references · ${references.length}` }, decoration("picker-dot"), el("span", {}, `Sample references · ${references.length}`)), actions));
   panel.setAttribute("data-app-tokens", ""); panel.dataset.platform = "macos";
   // C12 source choices require an actually empty or missing library. This
   // fixed invented library stays loaded; an unmatched query keeps search
@@ -122,7 +119,6 @@ export function setupDemo() {
     shelf.toggleAttribute("data-copied", !!status.textContent);
     const feedback = state.copied ? `${state.pasted === state.copied ? "Pasted" : "Copied"} ${state.copied}` : "";
     if (announce.textContent !== feedback) announce.textContent = feedback;
-    receipt.hidden = !state.copied;
     citation.hidden = !state.preview; shelf.hidden = !value || (!state.preview && !status.textContent);
     copy.disabled = !value; actionLabel(copy, `Copy ${state.added.length > 1 ? `${state.added.length} ` : ""}as ${formats[state.format]}`, "copy");
     add.disabled = !current; actionLabel(add, current && state.added.includes(current.key) ? "Remove" : "Add", "add");
@@ -131,21 +127,9 @@ export function setupDemo() {
     const blank = !state.copied ? [" ", el("span", { className: "paste-gap", ariaHidden: "true", textContent: "\u00a0" })] : [];
     result.replaceChildren(sentence, ...pasted, ...waiting, ...blank, ".");
   }
-  function fitReceipt() {
-    if (!copiedReceipt || receipt.hidden || !receiptOutput.clientWidth) return;
-    const limit = 2 * parseFloat(getComputedStyle(receiptOutput).lineHeight);
-    for (const candidate of copiedReceipt.candidates) {
-      receiptText.textContent = candidate;
-      if (receiptText.getBoundingClientRect().height <= limit + .5) return;
-    }
-  }
   function performCopy() {
     if (!model.copy()) return;
-    const keys = state.added.length ? [...state.added] : [model.found()[state.selected].key];
-    copiedReceipt = Object.freeze({ value: state.copied, candidates: Object.freeze(noticeCandidates(state.format, keys)) });
-    receiptOutput.title = copiedReceipt.value;
-    receiptOutput.setAttribute("aria-description", copiedReceipt.value);
-    render(); fitReceipt(); if (paste.isConnected) paste.focus();
+    render(); if (paste.isConnected) paste.focus();
   }
   function performPaste() { model.paste(); render(); result.focus({ preventScroll: true }); }
   input.addEventListener("input", () => { model.setQuery(input.value); render(); list.scrollTop = 0; });
@@ -187,13 +171,5 @@ export function setupDemo() {
   });
   figure.querySelector(".picker-panel").replaceWith(panel);
   figure.append(reopen, hint, announce); render();
-  // Fit outside observer delivery, so changing between one and two lines
-  // cannot cause a ResizeObserver loop. Pending work always uses the latest
-  // immutable receipt; hidden cards schedule no work and make no measurements.
-  let receiptFrame = 0;
-  new ResizeObserver(() => {
-    if (receipt.hidden || !copiedReceipt || receiptFrame) return;
-    receiptFrame = requestAnimationFrame(() => { receiptFrame = 0; fitReceipt(); });
-  }).observe(receiptOutput);
   if (anchorBottom < 0) window.scrollBy({ top: section.getBoundingClientRect().bottom - anchorBottom, behavior: "instant" });
 }

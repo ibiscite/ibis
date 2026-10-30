@@ -19,17 +19,6 @@ function renderKeys(format, keys) {
     return `\\${format}${keys.length > 1 ? "s" : ""}${keys.map(key => `{${key}}`).join("")}`;
   return "";
 }
-// Notice candidates preserve the copied format and count whole references,
-// including the case where only the remaining count fits in two lines.
-export function noticeCandidates(format, keys) {
-  const candidates = [];
-  for (let shown = keys.length; shown >= 0; shown--) {
-    const remaining = keys.length - shown;
-    const citation = renderKeys(format, keys.slice(0, shown));
-    candidates.push(shown ? `${citation}${remaining ? ` +${remaining} more` : ""}` : `+${remaining} more`);
-  }
-  return candidates;
-}
 export function createDemo() {
   const state = { query: "lantern", selected: 0, format: "pandoc", added: [], copied: null, pasted: null, open: true, preview: true };
   const found = () => {
