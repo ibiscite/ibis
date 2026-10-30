@@ -68,7 +68,7 @@ them before any later delivery; it sends no new paste while they remain blocked.
 |---|---|---|
 | Surfaces [D4] | `--surface-window` < `--surface` < `--surface-raised` < `--surface-overlay`; `--surface-field`, `--scrim` | Base, content sheet, band/cards/shelf, menus and dialogs. On the macOS glass panel the levels share one material (`--surface`) and layers separate by fills and hairlines. |
 | Text [D5] | `--text`, `--muted`, `--text-tertiary`, `--text-disabled` | `--muted` always 4.5:1; tertiary only for glyphs and hints at rest (3:1), never sentences. |
-| Accent [D6] | `--accent`, `--accent-text`, `--text-on-accent` | Always the system accent; Ibis offers no override. Selected rows and the menu highlight use `--selected-text`, the platform's own selected-text colour (white), as native lists do; never black. `--text-on-accent` (primary button, tiles on the accent) is picked per accent to reach 4.5:1. |
+| Accent [D6] | `--accent`, `--accent-text`, `--text-on-accent` | The system accent by default; Look's Accent row can override it (maintainer, 2026-10-30). Selected rows and the menu highlight use `--selected-text`, the platform's own selected-text colour (white), as native lists do; never black. `--text-on-accent` (primary button, tiles on the accent) is picked per accent to reach 4.5:1. |
 | Selection [D7] | `--row-active-*`, `--row-inactive-background`, `--selected-*` | See **Selection and focus**. |
 | Focus [D8] | `--focus-ring-*` | See **Selection and focus**. |
 | Fills | `--fill-control(-hover/-pressed)`, `--fill-subtle-*`, `--fill-primary-*`, `--fill-disabled` | Pressed is darker on macOS and GNOME, lighter on Windows. |
@@ -93,8 +93,11 @@ control or the shortcut recorder. Brand scarlet itself (no app token) is for the
 logo, app icon, website and store art. On an accent-filled row the added tile
 becomes a `--text-on-accent` tile with a scarlet check, so a red or orange
 accent never meets scarlet fill on fill. Ibis offers Appearance (System, Light,
-Dark; System by default, maintainer 2026-10-30) and never an accent, brand
-colour, per-element colours, fonts, radius, spacing, custom CSS or themes.
+Dark; System by default) and Accent (maintainer, 2026-10-30): a row of Mac-style
+colour dots, the first one "Follow the Mac" (the default), then blue, purple,
+pink, red, orange, yellow, green and graphite at the Mac's own values. A chosen
+accent overrides the system's in Ibis only and is never scarlet. Ibis offers no
+brand colour, per-element colours, fonts, radius, spacing, custom CSS or themes.
 
 **Contrast.** Text, placeholder, footer and key-cap labels: 4.5:1 against
 rendered pixels on every look and theme, the 22 px query included; over the
@@ -226,7 +229,23 @@ that edge, and its radius is the container's radius minus that gap. Window 16
 44 px so its actions sit 8 px from the window's bottom and side, like the
 shelf. A shape farther from the edge than its container's radius keeps its own
 radius. Check every new nested pair (key caps in hints, chips in menus, fields
-in rows) against this before adding it:
+in rows) against this before adding it. What the rule covers (settled
+2026-10-30 after an audit of every nested shape):
+
+- **Floors:** 6 px for surfaces (rows, tiles, fields, menu items); 4 px for
+  key caps and other text-sized marks, which is why a key cap can be 4.
+- **Exempt:** capsules and circles (radius is half the height: switches, chips,
+  the Copied capsule, the shelf's × badge, dots) and the miniature pictures in
+  Settings, which are the real picker scaled and keep its radii.
+- **Badges** that straddle an edge (the shelf's ×) are circles; their 24 px
+  target stays inside the window.
+- **Parents:** a shape's container is the nearest surface it sits on. Menus,
+  sheets and popovers float on their own layer, so they keep `--r-menu` and do
+  not derive from the window; their items derive from them. Every overlay
+  stays inside the window (`--overlay-margin`), the Compact bar included,
+  opening upward or shrinking to fit rather than spilling out.
+- **Fields** with a fill derive from their container with equal gaps: in the
+  52 px header that means a 36 px field, 8 px from each edge, radius 8.
 
 ```
 --r-row  = max(--r-min, --r-win  − 8px)        rows, search field, shelf card
@@ -444,7 +463,7 @@ text follows 12 px after it, as system status bars place an indicator.
 | Changed while open | "… · updated 2 minutes ago", only when a reread brought different references | Done |
 | Reloading | "… · reloading…", count kept | Unchanged |
 | Reading notices, empty | "… · 2 reading notices", "Zotero · no references" | Look |
-| Update failed, old copy kept | "Zotero · not updated · checked 2 hours ago" | Stop |
+| Update failed, old copy kept | "Zotero not updated · 2 h", then the fix button | Stop |
 | Never opened | "thesis.bib · not opened" | Stop |
 
 "Updated" means the references changed; "checked" means Ibis read them. The
@@ -459,13 +478,21 @@ Reload Library). **Open the source** (maintainer, 2026-10-30): ⌘O (Ctrl+O)
 works on every screen and opens where the references come from: the selected
 reference in Zotero (Zotero's own `zotero://select` link, starting Zotero if
 it is closed), or the .bib file in its default app. More lists it first as
-"Show in Zotero" or "Open thesis.bib"; a problem's inline action and a choice
-screen's row use the same words and show ⌘O. Ibis shows the system's own icon
-for the source app or file at runtime and never ships another app's logo.
-A problem shows there in a few words with a qualified age and
-one inline action: "Zotero not updated · last read 2 h ago · Open Zotero"
-(Open Zotero launches the app), "thesis.bib moved · Find…". "Last read" is the
-last successful read. Background work (reading a large library, downloading an
+"Show in Zotero" or "Open thesis.bib"; a problem's fix and a choice screen's
+row use the same words and show ⌘O. Ibis shows the system's own icon for the
+source app or file at runtime and never ships another app's logo. With
+several libraries ⌘O follows the selected reference, else the library
+searched. With nothing selected, or on a choice screen, it opens Zotero
+itself. Holding ⌥ turns "Open thesis.bib" into "Show in Finder". When the
+source can't open (Zotero not installed, the file gone) the same place offers
+Choose Library… or Find…, never a key that does nothing.
+A problem shows there in a few words with a qualified age ("Zotero not
+updated · 2 h"; the full sentence in its tooltip) and one fix: "Open Zotero
+⌘O", "Find thesis.bib…". **The fix is a button, not link text** (maintainer,
+2026-10-30): the footer's one quiet action with a resting `--fill`, led by the
+source's 16 px system icon and followed by its keys, right after the status.
+It is never accent text, so Copy stays the only accent in the footer. "2 h" is
+the time since the last successful read. Background work (reading a large library, downloading an
 update) shows as a small progress ring before the words, never a bar across
 the window. When nothing usable is left, the middle area shows the choice
 screen instead.
@@ -614,7 +641,8 @@ an explicitly stored custom shortcut is never replaced.
 | Double-click, Enter, or the footer action | Pastes or copies what the shelf shows, as the footer says; success hides an unpinned window |
 | ⌘-click / Ctrl-click, the + on a hovered tile, Shift+Enter | Adds to the citation, in order (no Shift-click ranges) |
 | Right-click a row | Opens More for that row |
-| Esc | Steps back one layer: menu or dialog, preview, search and filters, then hide |
+| Esc | Steps back one layer: menu or dialog, preview, then clears the search and filters (the shelf stays), then hides. No extra clear key: ⌘⌫ also clears typed text, as in any Mac text field |
+| ⌘O / Ctrl+O | Opens the source: the selected reference in Zotero, or the .bib file |
 | ↑ ↓ (focus stays in search) | Move the selected row (`aria-activedescendant`) |
 | ⌘K / Ctrl+K | More, the one door to every other action, each with its shortcut |
 | ⌘/ / Ctrl+/, or `?` outside a text field | The keyboard shortcuts list |
@@ -734,7 +762,7 @@ system demands it for correctness.
 | | Rule |
 |---|---|
 | Material [C13] | One glass sheet for the whole panel (Liquid Glass; popover vibrancy fallback) under a veil of the surface colour; menus on glass. Elsewhere, an opaque surface. |
-| Accent [C14] | The system accent where the webview reads it, else the `--accent` fallback in `tokens.css`, chosen so white text keeps 4.5:1. |
+| Accent [C14] | The accent chosen in Look; with "Follow the Mac", the system accent where the webview reads it, else the `--accent` fallback in `tokens.css`. Each accent pairs with a `--text-on-accent` that keeps 4.5:1. |
 | Selected row [C4] | Accent fill with white selected text. |
 | Search box | Frameless, large. |
 | Format pop-up | Borderless pop-up, ⌃⌄, 28 px in a 32 px target, capsule. |
@@ -857,6 +885,18 @@ Choice screens are one calm group centred in the steady frame
 16 px below them. On the welcome screen the 40 px mark sits above
 the title. Space is shared above and below, never left as one empty band.
 
+**The welcome screen teaches the basics** (maintainer, 2026-10-30: first
+impressions matter). Its line says what Ibis does and promises safety ("Ibis
+finds a reference and pastes its citation where you're typing. It only reads
+your library, never changes it."), and its note says how to come back ("After
+this, open Ibis from any app with ⇧⌘Y."). The four starts (Zotero, a .bib
+file, Find them on this computer, Try sample references) are a 2 × 2 grid of
+tiles, 8 px apart and at most 600 px wide, each a tile icon, a title and one
+short line on a quiet fill, so the whole group fits the Medium window with
+at least 32 px clear above the mark. Arrow keys move in two dimensions. Once
+found, a library replaces the Find tile ("Use example.bib", "Found in
+Documents"). A choice screen with two or three rows stays a list.
+
 **Opening a library.** Nothing for 400 ms, then the same centred group: the
 40 px mark, "Opening example.bib…", one quiet line ("Reading your library.
 Zotero can stay closed."), and a thin 160 px progress bar (determinate once the
@@ -864,11 +904,10 @@ count is known). With Reduce Motion the bar is still and the mark does not
 breathe. Rows kept from before stay instead, with only the footer saying
 "Reloading…".
 
-- **No library:** "Where do your references live?": Zotero ("Found on this
-  Mac/PC/computer" once looked for), BibTeX, BibLaTeX or CSL-JSON file, then "Look for
-  libraries on this computer". Nothing is searched until that row is chosen;
-  found .bib files join as rows above it (folder as the tag), and the row
-  becomes "Look again" with the outcome as its help line. Zotero refusing other
+- **No library:** "Where do your references live?": the welcome grid above
+  (Zotero, BibTeX, BibLaTeX or CSL-JSON file, "Find them on this computer",
+  samples). Nothing is searched until Find is chosen; a found library takes
+  its tile, and when several are found the tile opens a short list of them. Zotero refusing other
   apps and folders too large to search are one quiet note below. A CSL JSON row
   joins when that source ships (0.2).
 - **Empty library:** only after a successful load reports zero references: "No
@@ -1064,13 +1103,14 @@ window; every drawing and board uses it, and it is kept in step with the app as
 both change. The Rows and Search icon pictures are the real picker drawn small
 (sample references, the current appearance), never a separate sketch, so they
 can't drift from it. Look opens with Appearance: System, Light and Dark as
-pictures of the picker (System split diagonally), System by default. The
+pictures of the picker (System split diagonally), System by default, then
+Accent as colour dots, Follow the Mac by default. The
 website shows the app as it currently is.
 
 **Pages for everyone** (2026-10-30). Most people never open Settings, so
 defaults carry the product (principle 9). Seven pages, each with one job, in this
 order: **General** (the opening shortcut, Open at Login, Show in Menu Bar,
-pasting), **Look** (appearance, rows, text size, window size, search icon, show what will
+pasting), **Look** (appearance, accent, rows, text size, window size, search icon, show what will
 be pasted; each visual choice a row of small pictures), **Libraries**
 (each source with its status in words, which Zotero libraries, Add Library…,
 Remove with Undo), **Citations** (default format, formats remembered per app
