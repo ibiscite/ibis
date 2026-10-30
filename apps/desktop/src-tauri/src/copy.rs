@@ -5,7 +5,7 @@ use std::sync::Mutex;
 use ibis_core::cite::KeyFormat;
 use ibis_core::settings;
 use serde::Serialize;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 
 use crate::library::{CommandError, Library, PreviewIntent, PreviewRequests};
 use crate::preferences::SettingsFile;
@@ -19,6 +19,10 @@ pub(crate) struct Copied {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[specta(optional)]
     pub(crate) delivery: Option<u32>,
+    /// Decided once from memory after a successful clipboard write.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[specta(optional)]
+    pub(crate) paste_hint: Option<bool>,
 }
 
 /// The format the picker starts with: the last one chosen, or Pandoc.
@@ -100,5 +104,6 @@ pub(crate) fn copy_file_citation(
         Ok(())
     })?;
     copied.delivery = delivery;
+    copied.paste_hint = (copied.warnings.is_empty() && app.state::<SettingsFile>().take_copy_hint()).then_some(true);
     Ok(copied)
 }

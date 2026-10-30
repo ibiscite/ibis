@@ -133,7 +133,7 @@ test.each([
   backend({ search: () => [result("a", "First")], show_copied_notice: (args) => { notices.push(args); return delivered; } });
   await act(async () => { render(<App />); });
   await enter();
-  expect(notices).toEqual([{ text: "@a", delivery: null }]);
+  expect(notices).toEqual([{ text: "@a", delivery: null, pasteHint: null }]);
   await act(async () => { await emit("picker:hidden"); await vi.advanceTimersByTimeAsync(3000); await emit("picker:shown"); });
   await act(async () => { fireEvent.click(screen.getByRole("button", { name: /^More/ })); });
   expect(screen.getByRole("group", { name: new RegExp(`^Last outcome\\. ${title}`) })).toBeTruthy();

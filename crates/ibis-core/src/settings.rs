@@ -153,7 +153,7 @@ pub struct Settings {
     /// means on; `false` only copies.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub paste: Option<bool>,
-    /// Plain-copy learning hints already used, capped at three. Not a preference.
+    /// Successful clean clipboard copies counted for learning hints, capped at three.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub copy_hint_count: Option<u8>,
     /// Fields this build does not know, written by another version of Ibis

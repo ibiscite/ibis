@@ -54,8 +54,6 @@ export const commands = {
 	copyFormat: () => __TAURI_INVOKE<KeyFormat>("copy_format"),
 	/**  The preferences the picker starts with. */
 	pickerPreferences: () => __TAURI_INVOKE<PickerPreferences>("picker_preferences"),
-	/**  First-use feedback for a successful copy that stays in the picker. */
-	copyHint: () => __TAURI_INVOKE<boolean>("copy_hint"),
 	/**  Remember the picker preferences; other settings in the file are kept. */
 	setPickerPreferences: (preferences: PickerPreferencesPatch_Deserialize, copyFormat:
 /**  Pandoc / Quarto / R Markdown / Obsidian: `[@key, p. 12]`. */
@@ -113,7 +111,7 @@ export const commands = {
 	 *  citation is on the clipboard either way.
 	 *  Returns the delivery outcome so a permission detour keeps the prepared shelf.
 	 */
-	showCopiedNotice: (text: string, delivery: number | null) => __TAURI_INVOKE<CopyReceipt_Serialize>("show_copied_notice", { text, delivery }),
+	showCopiedNotice: (text: string, delivery: number | null, pasteHint: boolean | null) => __TAURI_INVOKE<Delivered>("show_copied_notice", { text, delivery, pasteHint }),
 	/**
 	 *  The notice being shown, for a notice page that has just loaded and missed
 	 *  the event that announced it.
@@ -192,6 +190,8 @@ export type Copied_Deserialize = {
 	warnings: string[],
 	/**  Unique write token for this copy's one-use paste proof. */
 	delivery?: number | null,
+	/**  Decided once from memory after a successful clipboard write. */
+	paste_hint?: boolean | null,
 };
 
 export type Copied_Serialize = {
@@ -200,20 +200,9 @@ export type Copied_Serialize = {
 	warnings: string[],
 	/**  Unique write token for this copy's one-use paste proof. */
 	delivery?: number | null,
+	/**  Decided once from memory after a successful clipboard write. */
+	paste_hint?: boolean | null,
 };
-
-/**  Delivery meaning stays unchanged; feedback carries its own first-use fact. */
-export type CopyReceipt = CopyReceipt_Serialize | CopyReceipt_Deserialize;
-
-/**  Delivery meaning stays unchanged; feedback carries its own first-use fact. */
-export type CopyReceipt_Deserialize = {
-	paste_hint?: boolean | null,
-} & Delivered;
-
-/**  Delivery meaning stays unchanged; feedback carries its own first-use fact. */
-export type CopyReceipt_Serialize = {
-	paste_hint?: boolean | null,
-} & Delivered;
 
 /**  What happened to a copied citation, for the notice to word. */
 export type Delivered = { outcome: "pasted";

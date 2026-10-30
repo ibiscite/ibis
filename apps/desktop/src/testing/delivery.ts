@@ -55,7 +55,7 @@ class Work<Args, Input = void, Output = void> {
 }
 
 type PreviewContent = Pick<FilePreview, "text"> & Partial<Pick<FilePreview, "html" | "warnings">>;
-type DeliveryRequest = { text: string; delivery: number | null };
+type DeliveryRequest = { text: string; delivery: number | null; pasteHint?: boolean | null };
 type Proof = DeliveryRequest & { delivery: number; sequence: number; presentation: number; app: string };
 
 export function deliveryHarness(text = "Draft: [citation].", selection: [number, number] = [7, 17]) {
@@ -119,8 +119,8 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
     show_copied_notice: (args) => {
       const request = args as unknown as DeliveryRequest;
       return delivery.enqueue(request, () => deliver(request))
-        .then((delivered) => notice.enqueue({ text: request.text, delivered }, () => {
-          showReceipt({ text: request.text, delivered });
+        .then((delivered) => notice.enqueue({ text: request.text, delivered, paste_hint: request.pasteHint }, () => {
+          showReceipt({ text: request.text, delivered, paste_hint: request.pasteHint });
           return delivered;
         }));
     },
