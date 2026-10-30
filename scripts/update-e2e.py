@@ -53,6 +53,7 @@ BUTTON = "Install and Restart"
 OFFER_TIMEOUT = 180
 REPLACE_TIMEOUT = 300
 RESTART_TIMEOUT = 60
+PICKER_TIMEOUT = 30
 UNINSTALL = r"Software\Microsoft\Windows\CurrentVersion\Uninstall"
 
 # Lists the named processes' windows and named elements, or presses the named
@@ -165,7 +166,8 @@ function run(argv) {
           try { labels = place.staticTexts(); } catch (e) { note(pid, e); }
           for (const button of buttons) {
             if (press && text(button) === press) {
-              try { button.click(); probe.pressed_by = 'click'; return answer(); } catch (e) { note(pid, e); }
+              try { button.click(); probe.pressed_by = 'click'; return answer(); }
+              catch (e) { throw Error('Update activation failed or its outcome is unknown'); }
             }
             seen.push(`[${pid}] button: ${text(button)}`);
           }
@@ -177,6 +179,84 @@ function run(argv) {
   return answer();
 }
 """
+
+# Read-only native focus probes. Reopening goes through the installed app's
+# single-instance Show command, never a global shortcut or a foreign window.
+WINDOWS_PICKER = r"""
+$ErrorActionPreference = 'Stop'
+Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
+Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+public static class IbisUpdateFocus {
+  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+}
+'@
+$A = [System.Windows.Automation.AutomationElement]
+$S = [System.Windows.Automation.TreeScope]
+$pickerWindows = @(); $count = 0
+foreach ($id in @($env:IBIS_PIDS -split ',' | Where-Object { $_ } | Select-Object -Unique)) {
+  if ($id -notmatch '^[1-9][0-9]{0,9}$' -or ++$count -gt 20) { throw 'Invalid picker scope' }
+  $condition = [System.Windows.Automation.PropertyCondition]::new($A::ProcessIdProperty, [int]$id)
+  $windows = @($A::RootElement.FindAll($S::Children, $condition))
+  if ($windows.Count -gt 20) { throw 'Picker window bound exceeded' }
+  foreach ($window in $windows) {
+    if ($window.Current.ProcessId -ne [int]$id) { throw 'Picker owner changed' }
+    if ($window.Current.Name -ceq 'Ibis' -and !$window.Current.IsOffscreen) { $pickerWindows += $window }
+  }
+}
+if ($pickerWindows.Count -gt 1) { throw 'Picker is ambiguous' }
+$owner = $null
+if ($pickerWindows.Count -eq 1) {
+  $window = $pickerWindows[0]
+  $handle = $window.Current.NativeWindowHandle
+  if ($handle -ne 0 -and [IbisUpdateFocus]::GetForegroundWindow().ToInt64() -eq [long]$handle) {
+    $owner = $window.Current.ProcessId
+  }
+}
+@{pid=$owner} | ConvertTo-Json -Compress
+"""
+
+MACOS_PICKER = r"""
+ObjC.import('ApplicationServices');
+function run(pids) {
+  if (pids.length > 20 || pids.some(pid => !/^[1-9][0-9]{0,9}$/.test(pid))) throw Error('Invalid picker scope');
+  const attr = (item, name) => {
+    const result = Ref();
+    if ($.AXUIElementCopyAttributeValue(item, $(name), result) !== 0) throw Error('Picker focus unavailable');
+    return result[0];
+  };
+  const events = Application('System Events');
+  const matches = [];
+  for (const pid of pids) {
+    for (const app of events.processes.whose({ unixId: Number(pid) })()) {
+      const windows = app.windows();
+      if (windows.length > 20) throw Error('Picker window bound exceeded');
+      for (const window of windows) {
+        if (window.name() === 'Ibis' && window.visible()) matches.push(Number(pid));
+      }
+    }
+  }
+  if (matches.length > 1) throw Error('Picker is ambiguous');
+  if (matches.length === 0) return JSON.stringify({pid: null});
+  const focused = attr($.AXUIElementCreateSystemWide(), 'AXFocusedUIElement');
+  const owner = Ref();
+  if ($.AXUIElementGetPid(focused, owner) !== 0) throw Error('Picker owner unavailable');
+  if (Number(owner[0]) !== matches[0]) return JSON.stringify({pid: null});
+  const window = attr($.AXUIElementCreateApplication(matches[0]), 'AXFocusedWindow');
+  return JSON.stringify({pid: ObjC.unwrap(attr(window, 'AXTitle')) === 'Ibis' ? matches[0] : null});
+}
+"""
+
+
+def picker_result(stdout, pids):
+    result = json.loads(stdout)
+    if not isinstance(result, dict) or set(result) != {"pid"}:
+        raise AssertionError("picker helper returned an unexpected answer")
+    owner = result["pid"]
+    if owner is not None and (type(owner) is not int or owner not in pids):
+        raise AssertionError("picker helper returned an unowned process")
+    return owner
 
 
 def digest(path):
@@ -341,25 +421,85 @@ class Linux:
     def facts(self):
         return {"appimage_matches_new_package": self.updated()}
 
+    def picker_ready(self, pids):
+        # The update lane's Xvfb has no WM. Native input focus still resolves
+        # to the owning top-level via WM_CLASS; AT-SPI focus alone is stale.
+        deadline = time.monotonic() + 5
+        def query(*args):
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise AssertionError("picker focus observation timed out")
+            result = subprocess.run(["xdotool", *args], capture_output=True, timeout=remaining)
+            if result.returncode == 1 and args[0] == "search" and not result.stdout and not result.stderr:
+                return ""
+            return helper_stdout(result, "X11 picker").strip()
+        windows, count = set(), 0
+        if len(pids) > 20:
+            raise AssertionError("picker process bound exceeded")
+        for pid in pids:
+            for window in query("search", "--onlyvisible", "--pid", str(pid)).splitlines():
+                count += 1
+                if not window.isdecimal() or count > 20:
+                    raise AssertionError("picker window bound exceeded")
+                if query("getwindowpid", window) != str(pid):
+                    raise AssertionError("picker window owner changed")
+                if query("getwindowname", window) == "Ibis":
+                    windows.add((pid, window))
+        if len(windows) > 1:
+            raise AssertionError("picker is ambiguous")
+        if not windows:
+            return None
+        pid, window = windows.pop()
+        focused = query("getwindowfocus")
+        if focused != window or query("getwindowpid", focused) != str(pid):
+            return None
+        # A closed/replaced window cannot lend its earlier focus to a retry.
+        if query("getwindowname", window) != "Ibis" or query("getwindowpid", window) != str(pid):
+            raise AssertionError("picker window changed during focus observation")
+        return pid
+
     def look(self, pids, press=None):
-        seen, visited = [], 0
+        seen, visited, matches = [], 0, []
         for app in self.atspi.Registry.getDesktop(0):
-            if not app:
+            if not app or app.get_process_id() not in pids:
                 continue
-            stack = [app]
-            while stack and visited < 20000:
-                item = stack.pop()
+            stack = [(app, False)]
+            while stack:
+                item, in_offer = stack.pop()
                 visited += 1
+                if visited > 20000:
+                    raise AssertionError("update accessibility tree bound exceeded")
                 try:
                     role = item.getRoleName()
-                    if press and role == "push button" and item.name == press:
-                        item.queryAction().doAction(0)
-                        return True, [], None
-                    if role in ("frame", "dialog", "alert", "push button", "label") and item.name and len(seen) < 200:
-                        seen.append(f"{app.name}[{app.get_process_id()}] {role}: {item.name[:200]}")
-                    stack.extend(child for child in item if child)
-                except Exception:  # Accessibility objects vanish while windows change.
-                    continue
+                    owner = item.get_process_id()
+                    name = item.name
+                    if owner not in pids:
+                        raise AssertionError("update accessibility owner changed")
+                    in_offer = in_offer or (role in ("dialog", "alert", "frame") and name == "An update is available")
+                    if press and in_offer and role == "push button" and name == press:
+                        matches.append(item)
+                    if role in ("frame", "dialog", "alert", "push button", "label") and name and len(seen) < 200:
+                        seen.append(f"[{owner}] {role}: {name[:200]}")
+                    stack.extend((child, in_offer) for child in item if child)
+                except AssertionError:
+                    raise
+                except Exception:
+                    # A partial census cannot prove that activation is unique.
+                    if press:
+                        raise AssertionError("update accessibility observation unavailable") from None
+        if len(matches) > 1:
+            raise AssertionError("update action is ambiguous")
+        if matches:
+            try:
+                item = matches[0]
+                if item.get_process_id() not in pids or item.name != press:
+                    raise AssertionError("update action owner changed")
+                action = item.queryAction()
+                if action.nActions != 1 or not action.doAction(0):
+                    raise AssertionError("update action was refused")
+            except Exception:
+                raise AssertionError("Linux update activation failed or its outcome is unknown") from None
+            return True, seen, None
         return False, seen, None
 
     def close(self):
@@ -405,6 +545,11 @@ class MacOS:
     def facts(self):
         return {"previous_version": self.previous_version, "expected_version": self.expected_version,
                 "installed_version": self.installed()[1], "executable_matches_new_package": self.updated()}
+
+    def picker_ready(self, pids):
+        result = subprocess.run(["osascript", "-l", "JavaScript", "-e", MACOS_PICKER, *map(str, pids)],
+                                capture_output=True, timeout=10)
+        return picker_result(helper_stdout(result, "System Events picker"), pids)
 
     def look(self, pids, press=None):
         result = subprocess.run(["osascript", "-l", "JavaScript", "-e", MACOS_LOOK, press or "", *map(str, pids)],
@@ -478,6 +623,9 @@ class Windows:
         return {"previous_version": self.previous_version, "expected_version": self.version,
                 "installed_version": self.installed_version(), "executable_changed": changed}
 
+    def picker_ready(self, pids):
+        return picker_result(powershell(WINDOWS_PICKER, timeout=10, IBIS_PIDS=",".join(map(str, pids))), pids)
+
     def look(self, pids, press=None):
         probe = None
         try:
@@ -517,7 +665,7 @@ def helper_stdout(result, name):
     return stdout
 
 
-def powershell(script, **env):
+def powershell(script, *, timeout=120, **env):
     """Runs a script from a file: commands read from standard input end at the
     first line break inside a block. Values arrive as environment variables."""
     with tempfile.TemporaryDirectory(prefix="ibis update helper ") as folder:
@@ -525,7 +673,7 @@ def powershell(script, **env):
         # JSON and paths must survive Windows' non-UTF-8 default code page.
         path.write_text("[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)\n" + script, encoding="utf-8")
         result = subprocess.run(["pwsh", "-NoProfile", "-NonInteractive", "-File", str(path)],
-                                capture_output=True, timeout=120, env=dict(os.environ, **env))
+                                capture_output=True, timeout=timeout, env=dict(os.environ, **env))
     return helper_stdout(result, "PowerShell")
 
 
@@ -569,17 +717,41 @@ def run(args):
                 started.append(app)
                 report["steps"].append("previous nightly started")
 
+                wait_for(install.instances, PICKER_TIMEOUT, "the previous nightly did not start")
+                # Let first-launch registration settle, then issue Show exactly
+                # once through the same owned command. The child must exit;
+                # a second persistent instance is never a successful reopen.
+                time.sleep(5)
+                initial = install.instances()
+                if not initial:
+                    raise AssertionError("the previous nightly exited before its reopen")
+                reopen = subprocess.Popen(install.command, env=environment(os.environ, install.config),
+                                          stdout=log, stderr=log, cwd=folder)
+                started.append(reopen)
+                if reopen.wait(timeout=15) != 0:
+                    raise AssertionError("the previous nightly refused its single-instance reopen")
+                def picker_ready():
+                    pids = initial & install.instances()
+                    owner = install.picker_ready(pids)
+                    if owner is not None and (type(owner) is not int or owner not in pids):
+                        raise AssertionError("the reopened picker has no original process owner")
+                    return owner
+                picker = wait_for(picker_ready, PICKER_TIMEOUT, "the previous nightly's owned picker was not visible and focused")
+                report["steps"].append("previous nightly reopened once with its owned picker visible and focused")
+
                 # The processes running just before the press, so helper
                 # processes the old version starts later never count as new.
                 seen["old"] = set()
                 def offered():
                     seen["old"] = install.instances()
+                    if picker not in seen["old"]:
+                        raise AssertionError("the reopened picker exited before offering the update")
                     try:
-                        pressed, _, seen["probe"] = install.look(seen["old"], BUTTON)
+                        pressed, _, seen["probe"] = install.look({picker}, BUTTON)
                         return pressed
                     except (RuntimeError, ValueError, subprocess.TimeoutExpired) as problem:
-                        seen["helper"] = str(problem)  # Windows change while being read.
-                        return False
+                        seen["helper"] = type(problem).__name__
+                        raise AssertionError("update activation helper failed or its outcome is unknown") from None
                 wait_for(offered, OFFER_TIMEOUT, "the previous nightly never offered the update", step=2)
                 old = seen["old"]
                 report["steps"].append("update offered and Install and Restart pressed")
@@ -644,6 +816,84 @@ def run(args):
 
 
 class Tests(unittest.TestCase):
+    @unittest.skipUnless(shutil.which("node"), "Node is required for the macOS picker provider contract")
+    def test_macos_picker_requires_owned_unique_visible_and_native_focused_window(self):
+        model = r'''
+const scenario = process.argv[1];
+const ObjC = {import() {}, unwrap: value => value};
+const Ref = () => [];
+const $ = name => name;
+$.AXUIElementCreateSystemWide = () => 'system';
+$.AXUIElementCreateApplication = pid => { if (pid !== 42) throw Error('unowned app'); return 'app'; };
+$.AXUIElementCopyAttributeValue = (item, name, result) => {
+  if (scenario === 'unknown') return -1;
+  const values = {'system:AXFocusedUIElement': 'focused', 'app:AXFocusedWindow': 'window',
+    'window:AXTitle': scenario === 'wrong-focus-title' ? 'Other' : 'Ibis'};
+  if (!(item + ':' + name in values)) throw Error('unexpected attribute');
+  result[0] = values[item + ':' + name]; return 0;
+};
+$.AXUIElementGetPid = (item, result) => { result[0] = scenario === 'foreign' ? 99 : 42; return scenario === 'owner-error' ? -1 : 0; };
+const window = {name: () => scenario === 'title' ? 'Ibis suffix' : 'Ibis', visible: () => scenario !== 'hidden'};
+const Application = name => {
+  if (name !== 'System Events') throw Error('unexpected application');
+  return {processes: {whose: ({unixId}) => {
+    if (unixId !== 42) throw Error('unowned process');
+    return () => [{windows: () => scenario === 'duplicate' ? [window, window] : [window]}];
+  }}};
+};
+'''
+        for scenario in ("success", "hidden", "title", "duplicate", "foreign", "unknown", "owner-error", "wrong-focus-title"):
+            with self.subTest(scenario=scenario):
+                result = subprocess.run([shutil.which("node"), "-e", model + MACOS_PICKER + "\nprocess.stdout.write(run(['42']));", scenario],
+                                        capture_output=True, timeout=5)
+                if scenario in ("duplicate", "unknown", "owner-error"):
+                    self.assertNotEqual(result.returncode, 0)
+                else:
+                    self.assertEqual(result.returncode, 0, result.stderr.decode("utf-8", errors="replace"))
+                    self.assertEqual(picker_result(result.stdout, {42}), 42 if scenario == "success" else None)
+
+    def test_picker_helper_refuses_unknown_or_unowned_focus(self):
+        for payload in ('{}', '[]', '{"pid":true}', '{"pid":"42"}', '{"pid":99}', '{"pid":42,"extra":1}'):
+            with self.subTest(payload=payload), self.assertRaises(AssertionError):
+                picker_result(payload, {42})
+        self.assertIsNone(picker_result('{"pid":null}', {42}))
+        self.assertEqual(picker_result('{"pid":42}', {42}), 42)
+
+    def test_linux_picker_requires_unique_owned_visible_main_and_native_input_focus(self):
+        for scenario in ("success", "absent", "foreign", "duplicate", "wrong-title", "unfocused", "unknown", "closed", "replaced"):
+            queries, names = [], 0
+            def observed(command, **kwargs):
+                nonlocal names
+                self.assertGreater(kwargs["timeout"], 0)
+                self.assertLessEqual(kwargs["timeout"], 5)
+                args = command[1:]
+                queries.append(args)
+                if args[0] == "search":
+                    self.assertEqual(args, ["search", "--onlyvisible", "--pid", "42"])
+                    if scenario == "absent":
+                        return subprocess.CompletedProcess(command, 1, stdout=b"", stderr=b"")
+                    value = "101\n102" if scenario == "duplicate" else "101"
+                elif args[0] == "getwindowpid":
+                    value = "99" if scenario == "foreign" or (scenario == "replaced" and names > 1) else "42"
+                elif args[0] == "getwindowname":
+                    names += 1
+                    value = "Other" if scenario == "wrong-title" or (scenario == "closed" and names > 1) else "Ibis"
+                elif args[0] == "getwindowfocus":
+                    if scenario == "unknown":
+                        raise subprocess.TimeoutExpired(command, 5)
+                    value = "999" if scenario == "unfocused" else "101"
+                else:
+                    self.fail("unexpected native operation")
+                return subprocess.CompletedProcess(command, 0, stdout=value.encode(), stderr=b"")
+            with self.subTest(scenario=scenario), patch("subprocess.run", side_effect=observed):
+                linux = Linux.__new__(Linux)
+                if scenario in ("foreign", "duplicate", "closed", "replaced", "unknown"):
+                    with self.assertRaises((AssertionError, subprocess.TimeoutExpired)):
+                        linux.picker_ready({42})
+                else:
+                    self.assertEqual(linux.picker_ready({42}), 42 if scenario == "success" else None)
+            self.assertTrue(all(args[0] in ("search", "getwindowpid", "getwindowname", "getwindowfocus") for args in queries))
+
     def update_consumer(self, scenario):
         events = []
         state = {"reopened": False, "pressed": False}
@@ -662,6 +912,8 @@ class Tests(unittest.TestCase):
                         self.assertTrue(state["reopened"], "update polled before its picker was reopened")
                         if scenario == "activation":
                             raise WindowsActivationFailure({"attempted": True})
+                        if scenario == "helper":
+                            raise RuntimeError("synthetic uncertain helper")
                         state["pressed"] = True
                     return bool(press), [], None
                 install.look.side_effect = look
@@ -712,10 +964,12 @@ class Tests(unittest.TestCase):
                 self.assertNotIn("settings_preserved", report)
 
     def test_update_never_retries_an_uncertain_activation_after_reopen(self):
-        result, report, events = self.update_consumer("activation")
-        self.assertEqual(result, 1, report)
-        self.assertEqual(sum(event == "launch" for event, _ in events), 2)
-        self.assertEqual(sum(event == "press" for event, _ in events), 1)
+        for scenario in ("activation", "helper"):
+            with self.subTest(scenario=scenario):
+                result, report, events = self.update_consumer(scenario)
+                self.assertEqual(result, 1, report)
+                self.assertEqual(sum(event == "launch" for event, _ in events), 2)
+                self.assertEqual(sum(event == "press" for event, _ in events), 1)
 
     class Accessible:
         def __init__(self, pid, role, name, children=()):
@@ -804,8 +1058,10 @@ namespace IbisUpdateContract {
   public static object ProcessIdProperty=new object(), ControlTypeProperty=new object(), NameProperty=new object();
   public static Node RootElement=new Node();
  }
+ public static class Focus { public static long Handle=101; public static IntPtr GetForegroundWindow() {return new IntPtr(Handle);} }
  public class Node {
   public string Name="", Type="Pane", AutomationId=""; public int ProcessId=42; public bool IsEnabled=true, IsOffscreen=false;
+  public int NativeWindowHandle=101;
   public bool Supported=true, ThrowOnRead=false, Fail=false; public int Invocations=0;
   public Node[] Nodes=new Node[0];
   public Node Current { get {if(ThrowOnRead && Invocations>0) throw new Exception("synthetic stale element"); return this;} }
@@ -852,6 +1108,19 @@ switch($Scenario) {
  'bound' {$window.Nodes=@($item)*4001}
  'uncertain' {$item.Fail=$true}
 }
+if ($Scenario.StartsWith('picker-')) {
+ $window.Name='Ibis'
+ switch($Scenario) {
+  'picker-hidden' {$window.IsOffscreen=$true}
+  'picker-title' {$window.Name='Ibis suffix'}
+  'picker-duplicate' {[IbisUpdateContract.AutomationElement]::RootElement.Nodes=@($window,$window)}
+  'picker-foreign' {$window.ProcessId=99}
+  'picker-unfocused' {[IbisUpdateContract.Focus]::Handle=102}
+  'picker-unknown' {[IbisUpdateContract.Focus]::Handle=0}
+  'picker-no-handle' {$window.NativeWindowHandle=0}
+  'picker-empty' {[IbisUpdateContract.AutomationElement]::RootElement.Nodes=@()}
+ }
+}
 $env:IBIS_PIDS='42'; $env:IBIS_PRESS='Install and Restart'
 function Contract-Result($pressed,$how) {
  $expected=$Scenario -in @('pane','button','standard','standard-localized','standard-rtl')
@@ -889,6 +1158,25 @@ function Contract-Result($pressed,$how) {
                             self.assertEqual(Windows.__new__(Windows).look({42}, BUTTON)[0], expected)
                     self.assertEqual(pressed, expected)
 
+            # Execute the production focus probe against the same private UIA
+            # provider; substitute only the native foreground observation.
+            picker_helper = WINDOWS_PICKER.replace("Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes", "")
+            native_start = picker_helper.index("Add-Type @'")
+            native_end = picker_helper.index("'@", native_start) + 2
+            picker_helper = picker_helper[:native_start] + picker_helper[native_end:]
+            picker_helper = picker_helper.replace("System.Windows.Automation.", "IbisUpdateContract.")
+            picker_helper = picker_helper.replace("[IbisUpdateFocus]", "[IbisUpdateContract.Focus]")
+            script.write_text(model + picker_helper, encoding="utf-8")
+            for scenario in ("success", "hidden", "title", "duplicate", "foreign", "unfocused", "unknown", "no-handle", "empty"):
+                with self.subTest(picker=scenario):
+                    result = subprocess.run([shutil.which("pwsh"), "-NoProfile", "-File", str(script), "picker-" + scenario],
+                                            capture_output=True, timeout=30)
+                    if scenario in ("duplicate", "foreign"):
+                        self.assertNotEqual(result.returncode, 0)
+                    else:
+                        self.assertEqual(result.returncode, 0, result.stderr.decode("utf-8", errors="replace"))
+                        self.assertEqual(picker_result(result.stdout, {42}), 42 if scenario == "success" else None)
+
     def test_windows_activation_uncertainty_is_fatal_instead_of_pollable(self):
         windows = Windows.__new__(Windows)
         for problem in (RuntimeError("synthetic helper failure"), ValueError("synthetic malformed JSON"),
@@ -908,17 +1196,20 @@ function Contract-Result($pressed,$how) {
         windows = Windows.__new__(Windows)
         windows.command, windows.config = ["synthetic"], None
         windows.instances, windows.facts, windows.close = MagicMock(return_value={42}), MagicMock(return_value={}), MagicMock()
+        windows.picker_ready = MagicMock(return_value=42)
         def two_polls(predicate, _timeout, message, **_kwargs):
             for _ in range(2):
-                if predicate():
-                    return True
+                value = predicate()
+                if value:
+                    return value
             raise AssertionError(message)
         for problem in (RuntimeError("synthetic"), ValueError("synthetic"), subprocess.TimeoutExpired("synthetic", 120)):
             with self.subTest(problem=type(problem).__name__), tempfile.TemporaryDirectory() as temporary, \
                     patch.dict(SYSTEMS, {"Windows": lambda *_args: windows}), patch("platform.system", return_value="Windows"), \
                     patch(__name__ + ".powershell", side_effect=problem) as helper, \
                     patch(__name__ + ".wait_for", side_effect=two_polls), patch(__name__ + ".feed_version", return_value="synthetic"), \
-                    patch("subprocess.Popen"), patch("os.kill"), patch("builtins.print"):
+                    patch("subprocess.Popen") as launch, patch("time.sleep"), patch("os.kill"), patch("builtins.print"):
+                launch.return_value.wait.return_value = 0
                 args = argparse.Namespace(output=Path(temporary))
                 self.assertEqual(run(args), 1)
                 self.assertEqual(sum(bool(call.kwargs.get("IBIS_PRESS")) for call in helper.call_args_list), 1)
@@ -947,19 +1238,23 @@ function Contract-Result($pressed,$how) {
                     settings = folder / "settings.json"
                     choices = {"library": {"bibtex": str(folder / "synthetic.bib")}, "shortcut": "Control+Alt+Y"}
                     settings.write_text(json.dumps(choices), encoding="utf-8")
+                    state = {"replaced": False}
                     def replaced():
+                        state["replaced"] = True
                         if changed:
                             choices[changed] = "synthetic wrong choice"
                             settings.write_text(json.dumps(choices), encoding="utf-8")
                         return True
                     app = MagicMock(command=["synthetic"], config=None, settings=settings)
-                    app.instances.side_effect = [{42}, {43}, {43}, {43}, {43}]
+                    app.instances.side_effect = lambda: {43} if state["replaced"] else {42}
+                    app.picker_ready.return_value = 42
                     app.look.return_value = (True, [], None)
                     app.updated.side_effect = replaced
                     app.facts.return_value = {}
                     return app
                 process = MagicMock()
                 process.poll.return_value = None
+                process.wait.return_value = 0
                 with patch.dict(SYSTEMS, {"Linux": installed}), patch("platform.system", return_value="Linux"), \
                         patch.dict(os.environ, {"IBIS_LIBRARY": "/synthetic outer override.bib"}), \
                         patch("subprocess.Popen", return_value=process) as launch, patch("time.sleep"), \
