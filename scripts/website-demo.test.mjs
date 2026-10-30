@@ -1,7 +1,22 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
-import { createDemo, references } from "../website/demo-model.mjs";
+import { createDemo, references, noticeCandidates } from "../website/demo-model.mjs";
+
+test("notice summaries count omitted references and retain the sample marker", () => {
+  const keys = Object.freeze(["vale2024lanterns", "fen2023clouds", "reed2025maps"]);
+  assert.deepEqual(noticeCandidates("pandoc", keys), [
+    "[@vale2024lanterns; @fen2023clouds; @reed2025maps] [Sample]",
+    "[@vale2024lanterns; @fen2023clouds] [Sample] +1 more",
+    "[@vale2024lanterns] [Sample] +2 more",
+    "+3 more [Sample]",
+  ]);
+  assert.deepEqual(noticeCandidates("parencite", keys.slice(0, 2)), [
+    "\\parencites{vale2024lanterns}{fen2023clouds} [Sample]",
+    "\\parencite{vale2024lanterns} [Sample] +1 more",
+    "+2 more [Sample]",
+  ]);
+});
 
 test("the website uses exactly the desktop's bundled invented references", async () => {
   const samples = JSON.parse(await readFile(new URL("../apps/desktop/src-tauri/resources/samples.csljson", import.meta.url), "utf8"));
