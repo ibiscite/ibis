@@ -1043,7 +1043,9 @@ class Tests(unittest.TestCase):
     def test_macos_picker_requires_owned_unique_visible_and_native_focused_window(self):
         model = r'''
 const scenario = process.argv[1];
-const ObjC = {import() {}, unwrap: value => value, deepUnwrap: value => value};
+const ObjC = {import() {}, unwrap: value => value,
+  castRefToObject: value => { if (!value || !value.opaqueCFArray) throw Error('invalid CF array'); return value.windows; },
+  deepUnwrap: value => { if (value && value.opaqueCFArray) throw Error('opaque CF array requires an explicit bridge'); return value; }};
 const Ref = () => [];
 const $ = name => name;
 $.kCGWindowListOptionOnScreenOnly = 1; $.kCGWindowListExcludeDesktopElements = 16; $.kCGNullWindowID = 0;
@@ -1052,8 +1054,8 @@ $.CGWindowListCopyWindowInfo = (options, relative) => {
   if (scenario === 'cg-unavailable') return null;
   const main = {kCGWindowOwnerPID: scenario === 'cg-foreign' ? 99 : 42,
     kCGWindowName: scenario === 'cg-unknown' ? undefined : scenario === 'title' ? 'Ibis suffix' : 'Ibis'};
-  return scenario === 'hidden' ? [] : scenario === 'duplicate' ? [main, main] :
-    scenario === 'offer-focused' ? [main, {kCGWindowOwnerPID: 42, kCGWindowName: 'An update is available'}] : [main];
+  return {opaqueCFArray: true, windows: scenario === 'hidden' ? [] : scenario === 'duplicate' ? [main, main] :
+    scenario === 'offer-focused' ? [main, {kCGWindowOwnerPID: 42, kCGWindowName: 'An update is available'}] : [main]};
 };
 $.AXUIElementCreateSystemWide = () => 'system';
 $.AXUIElementCreateApplication = pid => { if (pid !== 42) throw Error('unowned app'); return 'app'; };
