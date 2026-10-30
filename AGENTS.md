@@ -62,6 +62,8 @@ node scripts/pr-lint.mjs --title "fix: explain the change"
 
 2026-10-30: Provision child worktrees from a live checkout before delegation; an archived chat working directory cannot serve as their source.
 
+2026-10-30: Resume a finished agent with a follow-up task; an ordinary message does not restart its work.
+
 ## Brief for an implementing agent
 
 ```text
