@@ -18,6 +18,26 @@ impl EditorIdentity {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum EditorKind {
+    ModernDocument,
+    ClassicRootEdit,
+}
+
+/// Retain the positive classification selected with this immutable identity.
+/// Neither the descriptor nor the identity is included in diagnostics.
+pub(crate) struct CapturedEditor {
+    pub identity: EditorIdentity,
+    pub kind: EditorKind,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum QualificationPhase {
+    InitialEmpty,
+    BeforeSend,
+    Readback,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Stage {
     Query,
     Automation,
@@ -43,6 +63,10 @@ pub(crate) struct Failure {
     pub code: Option<i32>,
     pub owned: Option<bool>,
     pub focused: Option<bool>,
+    pub editor_kind: Option<EditorKind>,
+    pub phase: Option<QualificationPhase>,
+    pub text_pattern_available: Option<bool>,
+    pub native_handle_present: Option<bool>,
 }
 
 impl Failure {
@@ -52,6 +76,30 @@ impl Failure {
             code: None,
             owned: None,
             focused: None,
+            editor_kind: None,
+            phase: None,
+            text_pattern_available: None,
+            native_handle_present: None,
+        }
+    }
+
+    fn context(self, kind: EditorKind, phase: QualificationPhase) -> Self {
+        Self {
+            editor_kind: Some(kind),
+            phase: Some(phase),
+            ..self
+        }
+    }
+
+    /// An unavailable or timed-out diagnostic query cannot replace the error.
+    pub fn with_capabilities(self, values: Option<(Option<bool>, Option<bool>)>) -> Self {
+        let Some((text_pattern_available, native_handle_present)) = values else {
+            return self;
+        };
+        Self {
+            text_pattern_available,
+            native_handle_present,
+            ..self
         }
     }
 }
@@ -75,16 +123,23 @@ pub(crate) struct Candidate {
 
 /// Native discovery supplies positive semantic/structural evidence. A first
 /// text-field match is not itself a document identity.
-pub(crate) fn select_document(candidates: &[Candidate]) -> Result<EditorIdentity, Failure> {
+pub(crate) fn select_document(candidates: &[Candidate]) -> Result<CapturedEditor, Failure> {
     let mut selected = None;
     for candidate in candidates {
-        match candidate.kind {
+        let kind = match candidate.kind {
             Some(CandidateKind::Other) => continue,
             None => return Err(Failure::new(Stage::Editor)),
-            Some(CandidateKind::ModernDocument | CandidateKind::ClassicRootEdit) => {}
-        }
+            Some(CandidateKind::ModernDocument) => EditorKind::ModernDocument,
+            Some(CandidateKind::ClassicRootEdit) => EditorKind::ClassicRootEdit,
+        };
         let editor = candidate.editor.as_ref().ok_or(Failure::new(Stage::Identity))?;
-        if selected.replace(editor.clone()).is_some() {
+        if selected
+            .replace(CapturedEditor {
+                identity: editor.clone(),
+                kind,
+            })
+            .is_some()
+        {
             return Err(Failure::new(Stage::Editor));
         }
     }
@@ -94,33 +149,35 @@ pub(crate) fn select_document(candidates: &[Candidate]) -> Result<EditorIdentity
 /// The real Windows test and portable consumer regressions share this exact
 /// sequence. Readbacks are never inferred from successful input injection.
 pub(crate) fn qualify_paste(
-    editor: &EditorIdentity,
+    editor: &CapturedEditor,
     expected: &str,
     limit: Duration,
     read: impl Fn(&EditorIdentity) -> Result<Reading, Failure>,
     prepare: impl FnOnce() -> Result<(), Failure>,
     paste: impl FnOnce(&dyn Fn() -> bool) -> bool,
 ) -> Result<(), Failure> {
-    let checked = || {
-        let reading = read(editor)?;
-        if reading.editor != *editor {
+    let checked = |phase| {
+        let reading = read(&editor.identity).map_err(|failure| failure.context(editor.kind, phase))?;
+        if reading.editor != editor.identity {
             return Err(Failure {
                 focused: Some(false),
                 ..Failure::new(Stage::Identity)
-            });
+            }
+            .context(editor.kind, phase));
         }
         Ok(reading.text)
     };
-    let await_text = |wanted: &str, stage| {
-        let mut last = Failure::new(stage);
-        wait_for(limit, || match checked() {
+    let await_text = |wanted: &str, stage, phase| {
+        let mut last = Failure::new(stage).context(editor.kind, phase);
+        wait_for(limit, || match checked(phase) {
             Ok(text) if text == wanted => Some(()),
             Ok(_) => {
                 last = Failure {
                     owned: Some(true),
                     focused: Some(true),
                     ..Failure::new(stage)
-                };
+                }
+                .context(editor.kind, phase);
                 None
             }
             Err(failure) => {
@@ -130,17 +187,20 @@ pub(crate) fn qualify_paste(
         })
         .ok_or(last)
     };
-    await_text("", Stage::NotEmpty)?;
-    prepare()?;
+    await_text("", Stage::NotEmpty, QualificationPhase::InitialEmpty)?;
+    prepare().map_err(|failure| failure.context(editor.kind, QualificationPhase::BeforeSend))?;
     let refused = std::cell::Cell::new(None);
-    if !paste(&|| match checked() {
+    if !paste(&|| match checked(QualificationPhase::BeforeSend) {
         Ok(text) if text.is_empty() => true,
         Ok(_) => {
-            refused.set(Some(Failure {
-                owned: Some(true),
-                focused: Some(true),
-                ..Failure::new(Stage::NotEmpty)
-            }));
+            refused.set(Some(
+                Failure {
+                    owned: Some(true),
+                    focused: Some(true),
+                    ..Failure::new(Stage::NotEmpty)
+                }
+                .context(editor.kind, QualificationPhase::BeforeSend),
+            ));
             false
         }
         Err(failure) => {
@@ -148,9 +208,11 @@ pub(crate) fn qualify_paste(
             false
         }
     }) {
-        return Err(refused.get().unwrap_or(Failure::new(Stage::Input)));
+        return Err(refused
+            .get()
+            .unwrap_or(Failure::new(Stage::Input).context(editor.kind, QualificationPhase::BeforeSend)));
     }
-    await_text(expected, Stage::Readback)
+    await_text(expected, Stage::Readback, QualificationPhase::Readback)
 }
 
 pub(crate) fn wait_for<T>(limit: Duration, mut condition: impl FnMut() -> Option<T>) -> Option<T> {
@@ -214,10 +276,17 @@ mod tests {
         EditorIdentity::new(7, vec![42, id]).unwrap_or_else(|| panic!("synthetic editor identity"))
     }
 
+    fn captured(id: i32) -> CapturedEditor {
+        CapturedEditor {
+            identity: editor(id),
+            kind: EditorKind::ModernDocument,
+        }
+    }
+
     #[test]
     fn one_paste_must_change_the_owned_document_not_a_same_process_search_field() {
         use std::cell::RefCell;
-        let owner = editor(1);
+        let owner = captured(1);
         let focus = Cell::new(1);
         let document = RefCell::new(String::new());
         let search = RefCell::new(String::new());
@@ -261,7 +330,7 @@ mod tests {
     #[test]
     fn replacing_focus_before_send_refuses_input_and_an_old_editor_cannot_own_a_fresh_attempt() {
         for replaced_before_send in [false, true] {
-            let owner = editor(2);
+            let owner = captured(2);
             let focus = Cell::new(if replaced_before_send { 2 } else { 1 });
             let sends = Cell::new(0);
             let outcome = qualify_paste(
@@ -297,7 +366,7 @@ mod tests {
         let document = std::cell::RefCell::new(String::new());
         let sends = Cell::new(0);
         let outcome = qualify_paste(
-            &editor(1),
+            &captured(1),
             "synthetic citation",
             Duration::ZERO,
             |owner| {
@@ -328,16 +397,19 @@ mod tests {
             ..Failure::new(Stage::Read)
         };
         let outcome = qualify_paste(
-            &editor(1),
+            &captured(1),
             "synthetic citation",
             Duration::ZERO,
             |_| Err(failure),
             || Ok(()),
             |_| panic!("failed I/O must not send"),
         );
-        assert_eq!(outcome, Err(failure));
+        assert_eq!(
+            outcome,
+            Err(failure.context(EditorKind::ModernDocument, QualificationPhase::InitialEmpty))
+        );
         let outcome = qualify_paste(
-            &editor(1),
+            &captured(1),
             "synthetic citation",
             Duration::ZERO,
             |owner| {
@@ -368,7 +440,7 @@ mod tests {
             Stage::Readback,
         ] {
             let diagnostic = format!("{:?}", Failure::new(stage));
-            assert!(diagnostic.len() < 120);
+            assert!(diagnostic.len() < 320);
             assert!(!diagnostic.contains("synthetic citation"));
             assert!(diagnostic.contains("owned: None") && diagnostic.contains("focused: None"));
         }
@@ -391,7 +463,7 @@ mod tests {
             ..Failure::new(Stage::Read)
         };
         let outcome = qualify_paste(
-            &editor(1),
+            &captured(1),
             "synthetic citation",
             Duration::ZERO,
             |owner| {
@@ -413,7 +485,10 @@ mod tests {
                 true
             },
         );
-        assert_eq!(outcome, Err(failure));
+        assert_eq!(
+            outcome,
+            Err(failure.context(EditorKind::ModernDocument, QualificationPhase::Readback))
+        );
         assert_eq!(&*document.borrow(), "synthetic citation");
         assert_eq!(sends.get(), 1);
     }
@@ -428,7 +503,7 @@ mod tests {
             let document = std::cell::RefCell::new(before.to_owned());
             let sends = Cell::new(0);
             let outcome = qualify_paste(
-                &editor(1),
+                &captured(1),
                 "synthetic citation",
                 Duration::ZERO,
                 |owner| {
@@ -466,7 +541,10 @@ mod tests {
                 },
             ];
             let captured = select_document(&candidates).unwrap_or_else(|_| panic!("positive synthetic document"));
-            assert!(captured == editor(1), "same-process search field captured as document");
+            assert!(
+                captured.identity == editor(1),
+                "same-process search field captured as document"
+            );
             let document = std::cell::RefCell::new(String::new());
             let outcome = qualify_paste(
                 &captured,
@@ -545,6 +623,174 @@ mod tests {
             assert!(outcome.is_err());
             assert_eq!(sends.get(), 0);
         }
+    }
+
+    #[test]
+    fn pattern_failure_names_the_captured_kind_and_actual_qualification_phase() {
+        for (kind, name) in [
+            (CandidateKind::ModernDocument, "ModernDocument"),
+            (CandidateKind::ClassicRootEdit, "ClassicRootEdit"),
+        ] {
+            for (failed_read, phase) in [(0, "InitialEmpty"), (1, "BeforeSend"), (2, "Readback")] {
+                let owner = select_document(&[Candidate {
+                    kind: Some(kind),
+                    editor: Some(editor(1)),
+                }])
+                .unwrap_or_else(|_| panic!("positive synthetic document"));
+                let reads = Cell::new(0);
+                let sends = Cell::new(0);
+                let failure = qualify_paste(
+                    &owner,
+                    "synthetic citation",
+                    Duration::ZERO,
+                    |_| {
+                        let read = reads.get();
+                        reads.set(read + 1);
+                        if read == failed_read {
+                            return Err(Failure {
+                                code: Some(0),
+                                owned: Some(true),
+                                ..Failure::new(Stage::Pattern)
+                            });
+                        }
+                        Ok(Reading {
+                            editor: editor(1),
+                            text: String::new(),
+                        })
+                    },
+                    || Ok(()),
+                    |ready| {
+                        if !ready() {
+                            return false;
+                        }
+                        sends.set(sends.get() + 1);
+                        true
+                    },
+                )
+                .err()
+                .unwrap_or_else(|| panic!("failed provider must not qualify"));
+                assert_eq!(failure.stage, Stage::Pattern);
+                assert_eq!(failure.code, Some(0));
+                assert_eq!(sends.get(), usize::from(failed_read == 2));
+                let diagnostic = format!("{failure:?}");
+                assert!(
+                    diagnostic.contains(&format!("editor_kind: Some({name})")),
+                    "{diagnostic}"
+                );
+                assert!(diagnostic.contains(&format!("phase: Some({phase})")), "{diagnostic}");
+                assert!(diagnostic.contains("text_pattern_available: None"), "{diagnostic}");
+                assert!(diagnostic.contains("native_handle_present: None"), "{diagnostic}");
+                assert!(!diagnostic.contains("synthetic citation"));
+            }
+        }
+    }
+
+    #[test]
+    fn replacement_failure_keeps_positive_capture_metadata_without_reading_new_text() {
+        let owner = select_document(&[Candidate {
+            kind: Some(CandidateKind::ClassicRootEdit),
+            editor: Some(editor(1)),
+        }])
+        .unwrap_or_else(|_| panic!("positive synthetic document"));
+        let failure = qualify_paste(
+            &owner,
+            "synthetic citation",
+            Duration::ZERO,
+            |_| {
+                Ok(Reading {
+                    editor: editor(2),
+                    text: "synthetic private replacement".into(),
+                })
+            },
+            || panic!("replacement must refuse before preparation"),
+            |_| panic!("replacement must refuse before input"),
+        )
+        .err()
+        .unwrap_or_else(|| panic!("replacement must refuse"));
+        let diagnostic = format!("{failure:?}");
+        assert_eq!(failure.stage, Stage::Identity);
+        assert!(
+            diagnostic.contains("editor_kind: Some(ClassicRootEdit)"),
+            "{diagnostic}"
+        );
+        assert!(diagnostic.contains("phase: Some(InitialEmpty)"), "{diagnostic}");
+        assert!(!diagnostic.contains("synthetic private replacement"));
+    }
+
+    #[test]
+    fn optional_capability_observations_never_replace_the_primary_failure_or_consumer_phase() {
+        for values in [
+            None,
+            Some((None, None)),
+            Some((Some(false), Some(true))),
+            Some((Some(true), Some(false))),
+        ] {
+            let owner = select_document(&[Candidate {
+                kind: Some(CandidateKind::ClassicRootEdit),
+                editor: Some(editor(1)),
+            }])
+            .unwrap_or_else(|_| panic!("positive synthetic document"));
+            let primary = Failure {
+                code: Some(0),
+                owned: Some(true),
+                focused: Some(true),
+                ..Failure::new(Stage::Pattern)
+            };
+            assert_eq!(
+                primary.with_capabilities(None),
+                primary,
+                "failed or timed-out probe preserves the primary error"
+            );
+            let failure = qualify_paste(
+                &owner,
+                "synthetic citation",
+                Duration::ZERO,
+                |_| Err(primary.with_capabilities(values)),
+                || panic!("pattern failure must refuse"),
+                |_| panic!("pattern failure must not send"),
+            )
+            .err()
+            .unwrap_or_else(|| panic!("pattern failure must not qualify"));
+            let (pattern, handle) = values.unwrap_or((None, None));
+            assert_eq!(failure.text_pattern_available, pattern);
+            assert_eq!(failure.native_handle_present, handle);
+            assert_eq!(failure.editor_kind, Some(EditorKind::ClassicRootEdit));
+            assert_eq!(failure.phase, Some(QualificationPhase::InitialEmpty));
+            assert_eq!(failure.stage, primary.stage);
+            assert_eq!(failure.code, primary.code);
+            assert_eq!(failure.owned, primary.owned);
+            assert_eq!(failure.focused, primary.focused);
+            assert!(format!("{failure:?}").len() < 320);
+        }
+    }
+
+    #[test]
+    fn timed_out_optional_probe_cannot_consume_the_primary_worker_or_error() {
+        let primary_worker = crate::paste::QueryWorker::default();
+        let diagnostic_worker = crate::paste::QueryWorker::default();
+        let (release, held) = std::sync::mpsc::channel::<()>();
+        let (finished, done) = std::sync::mpsc::channel();
+        let probe = diagnostic_worker.run(Duration::ZERO, move || {
+            let _ = held.recv();
+            let _ = finished.send(());
+            Some((Some(false), Some(true)))
+        });
+        assert!(probe.is_none(), "a blocked probe stays within its caller deadline");
+        let primary = Failure {
+            code: Some(0),
+            ..Failure::new(Stage::Pattern)
+        }
+        .context(EditorKind::ClassicRootEdit, QualificationPhase::BeforeSend);
+        let observed = primary_worker
+            .run(Duration::from_secs(1), move || primary)
+            .unwrap_or_else(|| panic!("an optional probe must not own the primary read permit"));
+        let unavailable = diagnostic_worker
+            .run(Duration::ZERO, || panic!("a timed-out probe retains its own permit"))
+            .flatten();
+        assert_eq!(observed.with_capabilities(unavailable), primary);
+        drop(release);
+        done.recv_timeout(Duration::from_secs(1))
+            .unwrap_or_else(|_| panic!("synthetic diagnostic query must finish"));
     }
 
     #[test]
