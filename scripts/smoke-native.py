@@ -1376,7 +1376,7 @@ def _first_run_preferences_main(args):
         exit_code = 2
     except (AssertionError, RuntimeError, ValueError, KeyError, TypeError, subprocess.SubprocessError, OSError) as error:
         failure(error)
-        report["reason"] = str(error) if isinstance(error, AssertionError) else type(error).__name__
+        report["reason"] = str(error) if isinstance(error, (AssertionError, BundleError)) else type(error).__name__
     finally:
         def stop():
             if app and app.poll() is None:
@@ -1431,6 +1431,9 @@ def evidence_main(args, scenario, scenario_id):
     except Exception as error:
         # Includes setup/cleanup failures outside the legacy scenario handlers.
         recorder.failure(error)
+        if isinstance(error, BundleError):
+            # BundleError messages are fixed evidence refusals, safe to show.
+            print(f"FAIL: {error}", file=sys.stderr)
         exit_code = 1
     finally:
         ACTIVE.reset(token)
@@ -1533,10 +1536,13 @@ def smoke_main(args):
                 return current
 
             def check(name, action):
+                code = f"check-{sys._getframe(1).f_lineno}"
                 try:
-                    with recording("request", f"check-{sys._getframe(1).f_lineno}"):
+                    with recording("request", code):
                         action()
                 except Exception:
+                    # Names are fixed scenario labels; no desktop text is printed.
+                    print(f"FAILED CHECK {code}: {name}", file=sys.stderr)
                     if system == "Linux":
                         try:
                             report["linux_census"] = linux_failure_census(native)
@@ -1775,7 +1781,7 @@ def smoke_main(args):
         exit_code = 2
     except (AssertionError, RuntimeError, ValueError, KeyError, TypeError, subprocess.SubprocessError, OSError) as error:
         failure(error)
-        report.update(reason=str(error) if isinstance(error, (AssertionError, Unavailable)) else type(error).__name__)
+        report.update(reason=str(error) if isinstance(error, (AssertionError, BundleError, Unavailable)) else type(error).__name__)
         print(f"FAIL: {report['reason']}", file=sys.stderr)
         if "last_native_state" in report:
             print("LAST NATIVE STATE " + json.dumps(report["last_native_state"]), file=sys.stderr)
@@ -2110,7 +2116,7 @@ class ContractTests(unittest.TestCase):
         app.terminate.assert_called_once()
         native.close.assert_called_once()
 
-    def shortcut_focus_probe(self, *, loses_focus=False, loses_selection=False, failure_at=2):
+    def shortcut_focus_probe(self, *, loses_focus=False, loses_selection=False, failure_at=2, refusal=None, diagnostics=None):
         native = Mock(spec=["snapshot", "focus_editor", "editor_focused", "editor_active",
                             "editor_has_input_focus", "key", "text", "close", "app", "skips_taskbar", "picker_mapped", "picker_has_input_focus"])
         app, second = Mock(pid=100), Mock(pid=101)
@@ -2186,14 +2192,41 @@ class ContractTests(unittest.TestCase):
             executable.touch()
             with patch("sys.argv", ["smoke", "--app", str(executable), "--output", str(output)]), \
                  patch("platform.system", return_value="Linux"), patch(__name__ + ".Linux", return_value=native), \
-                 patch("subprocess.Popen", side_effect=launch), patch("builtins.print"), \
+                 patch("subprocess.Popen", side_effect=launch), patch("builtins.print") as printed, \
                  patch("time.monotonic", clock.monotonic), \
                  patch("time.sleep", lambda interval: setattr(clock, "elapsed", clock.elapsed + interval)), \
-                 patch(__name__ + ".menu_escape_focus", side_effect=AssertionError("synthetic stop after second launch")), \
+                 patch(__name__ + ".menu_escape_focus", side_effect=refusal or AssertionError("synthetic stop after second launch")), \
                  patch(__name__ + ".linux_failure_census", return_value={}):
                 self.assertEqual(main(), 1)
             report = json.loads((output / "smoke.json").read_text())
+            if diagnostics is not None:
+                diagnostics.extend(str(item.args[0]) for item in printed.call_args_list if item.args)
         return report, events
+
+    def test_bundle_refusal_reports_the_failed_check_and_fixed_reason_without_raw_native_errors(self):
+        for error, expected in ((BundleError("Unrecordable native input refused"), "Unrecordable native input refused"),
+                                (RuntimeError("PRIVATE native error"), "RuntimeError")):
+            with self.subTest(kind=type(error).__name__):
+                diagnostics = []
+                report, _events = self.shortcut_focus_probe(refusal=error, diagnostics=diagnostics)
+                self.assertEqual(report["reason"], expected)
+                text = "\n".join(diagnostics)
+                self.assertIn("FAIL: " + expected, text)
+                self.assertRegex(text, r"FAILED CHECK check-[0-9]+: shortcut menu Escape returns to invoker")
+                self.assertNotIn("PRIVATE", text + json.dumps(report))
+
+    def test_evidence_main_prints_a_fixed_bundle_refusal_and_retains_failure_evidence(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            args = argparse.Namespace(app=Path(temporary) / "synthetic-app", output=Path(temporary) / "output",
+                                      identifier="com.ibiscite.ibis", shortcut="ctrl+shift+y", skip_performance=True, seed=0)
+            diagnostic = io.StringIO()
+            with redirect_stderr(diagnostic):
+                result = evidence_main(args, Mock(side_effect=BundleError("Unrecordable native input refused")), "native-smoke")
+            self.assertEqual(result, 1)
+            self.assertIn("FAIL: Unrecordable native input refused", diagnostic.getvalue())
+            bundle = load_bundle(next(args.output.glob("evidence-*/manifest.json")))
+            self.assertEqual(bundle["result"]["outcome"], "fail")
+            self.assertEqual(bundle["result"]["failure_kind"], "harness")
 
     def test_shortcuts_and_second_launch_prove_search_ownership_with_virtual_result_focus(self):
         report, events = self.shortcut_focus_probe()
@@ -3435,6 +3468,29 @@ class ContractTests(unittest.TestCase):
             with patch("time.sleep"):
                 menu_action(native, "Reload Library")
             self.assertEqual(native.click.call_args_list, [call("Library"), call("Reload Library"), call("Reload Library")])
+
+    def test_library_reload_uses_the_real_evidence_wrapper_and_closed_schema(self):
+        metadata = collect_metadata(Path("synthetic-unavailable-app"), {
+            "small": fixture().encode(), "initial-settings": b"{}", "initial-document": b""})
+        recorder = Evidence("native-smoke", {"identifier": "com.ibiscite.ibis", "shortcut": "ctrl+shift+y",
+                                             "skip_performance": True, "seed": 0}, metadata)
+        native = Mock(spec=["click"])
+        click = native.click
+        token = ACTIVE.set(recorder)
+        try:
+            observe_native(native)
+            with recording("request", "check-1"):
+                menu_action(native, "Reload Library")
+        finally:
+            ACTIVE.reset(token)
+        self.assertEqual(click.call_args_list, [call("Library"), call("Reload Library")])
+        bundle = recorder.finish(0)
+        self.assertEqual(bundle["result"]["outcome"], "pass")
+        self.assertEqual(bundle["events"][0]["code"], "check-1")
+        self.assertEqual([event["code"] for event in bundle["events"]
+                          if event["kind"] == "action" and event["phase"] == "dispatch"],
+                         ["click-library", "click-reload"])
+        self.assertEqual(bundle["request_completion_order"][-1], bundle["events"][0]["id"])
 
     class MenuKeyboardModel:
         """Native keys own the input; accessibility can focus its active option."""
