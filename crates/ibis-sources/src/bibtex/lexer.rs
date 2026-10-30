@@ -4,6 +4,8 @@
 //! strict about syntax while staying tolerant of damage: an unclosed entry is
 //! reported and scanning resumes at the next line that starts a new entry.
 
+use std::borrow::Cow;
+
 /// A top-level `@kind{...}` or `@kind(...)` block.
 #[derive(Debug)]
 pub(crate) struct Block<'a> {
@@ -20,26 +22,27 @@ pub(crate) struct Block<'a> {
 }
 
 /// One part of a field value: `{...}`, `"..."`, a number, or a macro name.
+/// Literals borrow unchanged input; constructed text can remain owned.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum Part {
-    Text(String),
+pub(crate) enum Part<'s> {
+    Text(Cow<'s, str>),
     Number(String),
     Macro(String),
 }
 
 /// A parsed `name = value # value` pair. Names are lowercased.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Field {
+pub(crate) struct Field<'s> {
     pub name: String,
-    pub parts: Vec<Part>,
+    pub parts: Vec<Part<'s>>,
 }
 
 /// An entry with its key and fields, before macros and inheritance are resolved.
 #[derive(Debug, Clone)]
-pub(crate) struct RawEntry {
+pub(crate) struct RawEntry<'s> {
     pub kind: String,
     pub key: String,
-    pub fields: Vec<Field>,
+    pub fields: Vec<Field<'s>>,
     pub line: usize,
     /// Number of string definitions preceding this entry, assigned by the loader.
     pub macro_epoch: usize,
@@ -313,7 +316,7 @@ fn next_entry_line(src: &str, from: usize) -> Option<usize> {
 }
 
 /// Parse an entry body: `key, name = value, ...`.
-pub(crate) fn parse_entry(block: &Block) -> Result<RawEntry, String> {
+pub(crate) fn parse_entry<'s>(block: &Block<'s>) -> Result<RawEntry<'s>, String> {
     if block.kind.contains('}') {
         return Err("entry type contains an unexpected closing brace".to_string());
     }
@@ -371,7 +374,7 @@ fn canonical_kind(kind: &str) -> &str {
 }
 
 /// Parse a `@string` body: `name = value`.
-pub(crate) fn parse_string(block: &Block) -> Option<(String, Vec<Part>)> {
+pub(crate) fn parse_string<'s>(block: &Block<'s>) -> Option<(String, Vec<Part<'s>>)> {
     let mut p = Parser::new(block.body);
     p.skip_ws();
     let name = p.ident()?;
@@ -437,7 +440,7 @@ impl<'a> Parser<'a> {
     }
 
     /// `part # part # ...` up to the next top-level comma or end of body.
-    fn value(&mut self) -> Result<Vec<Part>, String> {
+    fn value(&mut self) -> Result<Vec<Part<'a>>, String> {
         // Nearly every field is one literal. Vec's first growth reserves four
         // Parts, which otherwise keeps three unused slots per ordinary field.
         let mut parts = Vec::with_capacity(1);
@@ -471,7 +474,7 @@ impl<'a> Parser<'a> {
     }
 
     /// Contents of `{...}` (nested braces kept) or `"..."` (braces inside allowed).
-    fn delimited(&mut self, open: char, close: char) -> Result<String, String> {
+    fn delimited(&mut self, open: char, close: char) -> Result<Cow<'a, str>, String> {
         self.bump();
         let start = self.pos;
         let mut depth = 0usize;
@@ -487,9 +490,9 @@ impl<'a> Parser<'a> {
                 '{' => depth += 1,
                 '}' if depth > 0 => depth -= 1,
                 c if c == close && depth == 0 => {
-                    let inner = self.src[start..self.pos].to_string();
+                    let inner = &self.src[start..self.pos];
                     self.bump();
-                    return Ok(inner);
+                    return Ok(Cow::Borrowed(inner));
                 }
                 _ => {}
             }
@@ -639,6 +642,7 @@ mod tests {
 
     #[test]
     fn ordinary_fields_have_a_bounded_raw_working_set() {
+        assert!(std::mem::size_of::<Part<'_>>() <= std::mem::size_of::<(String, usize)>());
         let text = (0..1_000)
             .map(|i| format!("@article{{synthetic{i},title={{Signals}},author={{Invented, Avery}},year=2026,journal={{Letters}},pages={{1--20}},doi={{10.1000/synthetic{i}}},volume=1,number=2}}\n"))
             .collect::<String>();
@@ -648,6 +652,16 @@ mod tests {
             .iter()
             .map(|block| parse_entry(block).unwrap_or_else(|e| panic!("{e}")))
             .collect();
+        let literal_capacity: usize = entries
+            .iter()
+            .flat_map(|entry| &entry.fields)
+            .flat_map(|field| &field.parts)
+            .map(|part| match part {
+                Part::Text(Cow::Owned(value)) => value.capacity(),
+                _ => 0,
+            })
+            .sum();
+        assert_eq!(literal_capacity, 0, "raw literals retained separate buffers");
         let retained: usize = entries
             .iter()
             .map(|entry| {
@@ -665,7 +679,8 @@ mod tests {
                                     .parts
                                     .iter()
                                     .map(|part| match part {
-                                        Part::Text(value) | Part::Number(value) | Part::Macro(value) => {
+                                        Part::Text(Cow::Borrowed(_)) => 0,
+                                        Part::Text(Cow::Owned(value)) | Part::Number(value) | Part::Macro(value) => {
                                             value.capacity()
                                         }
                                     })

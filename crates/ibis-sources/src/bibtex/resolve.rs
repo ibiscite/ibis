@@ -193,15 +193,15 @@ type Fields = Rc<Vec<(String, String)>>;
 type Memo = HashMap<(usize, usize), Fields>;
 
 /// Everything needed to resolve entries from one file.
-pub(crate) struct Resolver<'a> {
+pub(crate) struct Resolver<'a, 's> {
     pub(super) budget: &'a Budget,
     macros: HashMap<String, Vec<usize>>,
-    definitions: Vec<Vec<Part>>,
+    definitions: Vec<Vec<Part<'s>>>,
     macro_cache: RefCell<HashMap<(usize, bool), Rc<CachedExpansion>>>,
     macro_cache_bytes: Cell<usize>,
     parent_cache: RefCell<HashMap<(usize, usize), Rc<Memo>>>,
     parent_cache_bytes: Cell<usize>,
-    entries: &'a [RawEntry],
+    entries: &'a [RawEntry<'s>],
     index: HashMap<String, usize>,
     index_folded: HashMap<String, usize>,
 }
@@ -224,8 +224,8 @@ struct Walk {
     problems: Vec<String>,
 }
 
-impl<'a> Resolver<'a> {
-    pub(crate) fn new(macros: Vec<(String, Vec<Part>)>, entries: &'a [RawEntry], budget: &'a Budget) -> Self {
+impl<'a, 's> Resolver<'a, 's> {
+    pub(crate) fn new(macros: Vec<(String, Vec<Part<'s>>)>, entries: &'a [RawEntry<'s>], budget: &'a Budget) -> Self {
         let mut index = HashMap::new();
         let mut index_folded = HashMap::new();
         for (i, entry) in entries.iter().enumerate() {
@@ -598,11 +598,24 @@ impl<'a> Resolver<'a> {
     /// Concatenate parts, expanding macros (and macros used inside macros).
     /// Values larger than [`MAX_VALUE_BYTES`], or needing more than
     /// [`MAX_EXPANSION_STEPS`] expansions, are left empty and reported.
-    fn expand(&self, field: &str, parts: &[Part], epoch: usize, problems: &mut Vec<String>, report: bool) -> String {
+    fn expand(
+        &self,
+        field: &str,
+        parts: &[Part<'_>],
+        epoch: usize,
+        problems: &mut Vec<String>,
+        report: bool,
+    ) -> String {
         let mut x = Expansion::default();
         for part in parts {
             match part {
-                Part::Text(t) | Part::Number(t) => {
+                Part::Text(t) => {
+                    if !self.budget.charge(t.len()) {
+                        return String::new();
+                    }
+                    x.out.push_str(t);
+                }
+                Part::Number(t) => {
                     if !self.budget.charge(t.len()) {
                         return String::new();
                     }
@@ -757,7 +770,13 @@ impl<'a> Resolver<'a> {
             x.stack.push(id);
             for part in &self.definitions[id] {
                 match part {
-                    Part::Text(t) | Part::Number(t) => {
+                    Part::Text(t) => {
+                        if !self.budget.charge(t.len()) {
+                            break;
+                        }
+                        x.out.push_str(t);
+                    }
+                    Part::Number(t) => {
                         if !self.budget.charge(t.len()) {
                             break;
                         }
