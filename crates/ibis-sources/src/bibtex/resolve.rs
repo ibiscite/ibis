@@ -1090,6 +1090,84 @@ mod tests {
     }
 
     #[test]
+    fn conversion_ownership_keeps_entry_outcomes_and_consumer_budget_cuts() {
+        use ibis_core::contract::{Fingerprint, LibraryId, LibraryObject, Snapshot};
+        use serde_json::json;
+
+        let text = concat!(
+            "@string{label={Inherited Synthetic Title}}\n",
+            r"@proceedings{parent,title=label,year=2024,publisher={Invented Press}}",
+            "\n",
+            r"@inproceedings{owned,title={An {ABC} \emph{Signal} $x^2$},subtitle={A Study},titleaddon={Supplement},",
+            r"shorttitle={Short Signal},booktitle={Collected Signals},booksubtitle={Part Two},booktitleaddon={Notes},",
+            r"author={Researcher, Avery and {Synthetic Organization} and others},editor={Morgan, Ann},",
+            r"translator={Example, Lee},volume={ 12 },number={ 3 },issue={Fallback},series={Studies},pages={1--20},",
+            r"isbn={978-0-00-000000-0},pmid={explicit},eprinttype={pubmed},eprint={fallback},",
+            r"type={phdthesis},note={Unknown \madeup{kept}},eventtitle={Invented Meeting},",
+            r"doi={10.1000/synthetic},url={file:///synthetic/private.pdf},file={invented-paper.pdf},",
+            r"keywords={ alpha ; beta, gamma },date={2024-02-30},urldate={2025-01-02},crossref={parent}}",
+            "\n",
+            "@book{unicode,title={বাংলা\u{2003}শিরোনাম},langid={bengali},",
+            "author={ García,\u{2003}Ana and de Vries, \tPiet },",
+            "publisher={\tInvented\u{2003}  Press\n},eprinttype={pubmed},eprint={fallback},",
+            "type={mathesis},url={https://example.invalid/a},year={۲۰۲۴}}\n",
+            r"@book{bad,title={Bad},author={a,b,c,d},date={not-a-date},note=undefined}",
+        );
+        let source = LibraryId::file(b"synthetic-conversion-ownership.bib");
+        let mut macros = Vec::new();
+        let mut entries = Vec::new();
+        let mut raw = Vec::new();
+        for block in split_blocks(text).0 {
+            if block.kind == "string" {
+                macros.extend(parse_string(&block));
+            } else if block.complete
+                && let Ok(mut entry) = parse_entry(&block)
+            {
+                entry.macro_epoch = macros.len();
+                entries.push(entry);
+                raw.push(block.text);
+            }
+        }
+        let mut transcript = Vec::new();
+        for credits in (0..=65_536).step_by(257).chain([usize::MAX]) {
+            let budget = Budget::new(credits);
+            let resolver = Resolver::new(macros.clone(), &entries, &budget);
+            let mut outcomes = Vec::new();
+            for (i, entry) in entries.iter().enumerate() {
+                let outcome =
+                    ibis_core::panic_guard::attempt(|| super::super::load_entry(&source, &resolver, i, entry, raw[i]));
+                if let Ok(Ok((_, _, problems))) = &outcome {
+                    budget.charge(
+                        problems
+                            .iter()
+                            .map(String::len)
+                            .sum::<usize>()
+                            .saturating_add(problems.len().saturating_mul(entry.key.len())),
+                    );
+                }
+                outcomes.push(json!({"outcome": outcome.ok(), "remaining": budget.0.get()}));
+                if budget.exhausted() {
+                    break;
+                }
+            }
+            let (loaded, limited) = super::super::load_with_budget(&source, text, Budget::new(credits), None);
+            let records = serde_json::to_value(&loaded.records).unwrap_or_else(|error| panic!("{error}"));
+            let snapshot = Snapshot::new(loaded.records.into_iter().map(LibraryObject::Record).collect())
+                .unwrap_or_else(|error| panic!("{error}"));
+            transcript.push(json!({
+                "credits": credits, "entry_outcomes": outcomes, "records": records,
+                "warnings": loaded.warnings, "attachments": loaded.attachments,
+                "fingerprints": snapshot.fingerprints(), "limited": limited,
+            }));
+        }
+        let actual = Fingerprint::of_bytes(&serde_json::to_vec(&transcript).unwrap_or_else(|error| panic!("{error}")));
+        assert_eq!(
+            actual.as_str(),
+            "d90db3856ae20683c5c45b2f90a8bcf3cc15da5337ec3d02ec48225123f3c419"
+        );
+    }
+
+    #[test]
     fn shared_parent_dag_fits_one_load_budget() {
         let mut text = String::from("@xdata{p0,publisher={Press}}\n");
         for i in 1..10 {
