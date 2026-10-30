@@ -1,13 +1,16 @@
 //! One steady picker frame, restored before presentation (design C10).
-//! Content never crosses this boundary. Native events read live geometry;
-//! only explicit drags are remembered, through the existing settings owner.
+//! One owner accepts settled native geometry and debounces its settings writes.
+//! Content never crosses this boundary; presentation is complete before show.
 
-use std::collections::BTreeMap;
-use std::sync::Mutex;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+mod owner;
+
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Condvar, Mutex};
+use std::time::{Duration, Instant};
 
 use ibis_core::settings::{PickerWindow, Settings};
-use tauri::{AppHandle, Emitter, Manager, Monitor, WebviewWindow};
+use owner::{Display, Event, MINIMUM, Owner, Sample, Save, content_room};
+use tauri::{AppHandle, Emitter, Manager, Monitor, WebviewWindow, WindowEvent};
 
 #[cfg(not(target_os = "macos"))]
 use tauri::{LogicalSize, PhysicalPosition, Position};
@@ -17,28 +20,20 @@ use crate::placement;
 use crate::preferences::SettingsFile;
 
 const DEFAULT: (u32, u32) = (720, 480);
-const MINIMUM: (u32, u32) = (480, 360);
 // Kept equal to --larger-text-scale; the regression checks the shared token.
 const LARGER_TEXT_SCALE: f64 = 1.15;
+const FLUSH_TIMEOUT: Duration = Duration::from_secs(1);
 
 #[derive(Default)]
 pub(crate) struct Sizing {
-    state: Mutex<State>,
-    revision: AtomicU64,
-    applying: AtomicBool,
+    shared: Arc<Shared>,
     larger_text: AtomicBool,
 }
 
 #[derive(Default)]
-struct State {
-    windows: BTreeMap<String, PickerWindow>,
-    // Includes our pre-show frame, so its delayed events are never a drag.
-    last: Option<(String, PickerWindow)>,
-}
-
-struct Save {
-    revision: u64,
-    windows: BTreeMap<String, PickerWindow>,
+struct Shared {
+    state: Mutex<Owner>,
+    wake: Condvar,
 }
 
 /// All dimensions are logical pixels on the target display. A work area smaller
@@ -75,7 +70,7 @@ fn plan(saved: Option<PickerWindow>, larger: bool, room: (f64, f64)) -> PickerWi
 
 impl Sizing {
     pub(crate) fn load(&self, settings: &Settings) {
-        if let Ok(mut state) = self.state.lock() {
+        if let Ok(mut state) = self.shared.state.lock() {
             state.windows = settings.picker_windows.clone();
         }
         self.set_larger_text(settings.larger_text.unwrap_or(false));
@@ -88,59 +83,137 @@ impl Sizing {
     }
 
     fn remembered(&self, display: &str) -> Option<PickerWindow> {
-        self.state.lock().ok()?.windows.get(display).copied()
+        self.shared.state.lock().ok()?.windows.get(display).copied()
     }
 
-    fn snapshot(&self, state: &State) -> Save {
-        Save {
-            revision: self.revision.fetch_add(1, Ordering::SeqCst) + 1,
-            windows: state.windows.clone(),
-        }
-    }
-
-    fn record(&self, display: String, mut live: PickerWindow) -> Option<Save> {
-        let mut state = self.state.lock().ok()?;
-        let size_changed = state
-            .last
-            .as_ref()
-            .is_none_or(|(_, frame)| (frame.width, frame.height) != (live.width, live.height));
-        live.custom_size = size_changed || state.windows.get(&display).is_some_and(|frame| frame.custom_size);
-        if state
-            .last
-            .as_ref()
-            .is_some_and(|(key, frame)| *key == display && *frame == live)
-        {
-            return None;
-        }
-        state.last = Some((display.clone(), live));
-        let mut remembered = live;
-        if !size_changed && let Some(previous) = state.windows.get(&display) {
-            // Moving a still-open frame across displays must not replace B's
-            // custom size with the size restored for A at this opening.
-            remembered.width = previous.width;
-            remembered.height = previous.height;
-        }
-        state.windows.insert(display, remembered);
-        Some(self.snapshot(&state))
+    fn revision(&self) -> u64 {
+        self.shared.state.lock().map_or(0, |state| state.revision)
     }
 
     fn forget(&self, display: &str) -> Option<Save> {
-        let mut state = self.state.lock().ok()?;
-        state.windows.remove(display);
-        Some(self.snapshot(&state))
+        let mut state = self.shared.state.lock().ok()?;
+        let save = state.forget(display, Instant::now());
+        self.shared.wake.notify_all();
+        save
     }
+}
 
+impl Shared {
     fn persist(&self, file: &SettingsFile, save: Save) -> Option<bool> {
         // Check after entering the settings writer, not before waiting for it.
         // A late A cannot write over B, including B from another display: every
         // snapshot contains all accepted drags. Never hold sizing across I/O.
-        let current = || self.revision.load(Ordering::SeqCst) == save.revision;
+        let current = || self.state.lock().is_ok_and(|state| state.revision == save.revision);
         let result = file.update_when(current, |settings| settings.picker_windows = save.windows);
         if !current() || matches!(result, Ok(None)) {
             return None;
         }
         Some(result.is_ok())
     }
+
+    /// The sole writer sleeps until a deadline or an explicit flush. No timer,
+    /// worker, backup or fsync is created for each step of a native drag.
+    fn run(&self, file: &SettingsFile, notify: impl Fn(u64, bool)) {
+        loop {
+            let save = {
+                let Ok(mut state) = self.state.lock() else {
+                    return;
+                };
+                loop {
+                    if state.stopping && state.pending_save.is_none() {
+                        state.finished = true;
+                        self.wake.notify_all();
+                        return;
+                    }
+                    if let Some(save) = state.take_save(Instant::now()) {
+                        break save;
+                    }
+                    let waiting = if let Some(save) = &state.pending_save {
+                        let delay = save.due.saturating_duration_since(Instant::now());
+                        self.wake
+                            .wait_timeout(state, delay)
+                            .map(|(state, _)| state)
+                            .map_err(|_| ())
+                    } else {
+                        self.wake.wait(state).map_err(|_| ())
+                    };
+                    let Ok(next) = waiting else {
+                        return;
+                    };
+                    state = next;
+                }
+            };
+            let revision = save.revision;
+            let result = self.persist(file, save);
+            if let Ok(mut state) = self.state.lock() {
+                state.complete(revision);
+                self.wake.notify_all();
+            }
+            if let Some(saved) = result {
+                notify(revision, saved);
+            }
+        }
+    }
+
+    fn request_flush(&self, stop: bool) -> Option<u64> {
+        let Ok(mut state) = self.state.lock() else {
+            return None;
+        };
+        let revision = state.flush(Instant::now(), stop);
+        self.wake.notify_all();
+        Some(revision)
+    }
+
+    fn flush(&self, timeout: Duration, stop: bool) -> bool {
+        let deadline = Instant::now() + timeout;
+        let Some(revision) = self.request_flush(stop) else {
+            return false;
+        };
+        let Ok(mut state) = self.state.lock() else {
+            return false;
+        };
+        while !state.drained(revision, stop) {
+            let Some(left) = deadline.checked_duration_since(Instant::now()) else {
+                return false;
+            };
+            let Ok((next, _)) = self.wake.wait_timeout(state, left) else {
+                return false;
+            };
+            state = next;
+        }
+        true
+    }
+}
+
+pub(crate) fn start(app: &AppHandle) -> bool {
+    let sizing = app.state::<Sizing>();
+    let Ok(mut state) = sizing.shared.state.lock() else {
+        return false;
+    };
+    if state.started {
+        return true;
+    }
+    let shared = sizing.shared.clone();
+    let file = app.state::<SettingsFile>().inner().clone();
+    let handle = app.clone();
+    let spawned = std::thread::Builder::new()
+        .name("ibis-window-settings".into())
+        .spawn(move || {
+            shared.run(&file, |revision, saved| {
+                if handle.state::<Sizing>().revision() == revision {
+                    report(
+                        handle.emit_to(
+                            "main",
+                            "picker:window-saved",
+                            serde_json::json!({ "revision": revision, "saved": saved }),
+                        ),
+                        NativeIssue::PickerEvent,
+                    );
+                }
+            });
+        });
+    state.started = checked(spawned, NativeIssue::Startup).is_some();
+    state.started
 }
 
 /// Tauri exposes names and coordinates, not stable hardware display IDs.
@@ -167,23 +240,96 @@ fn position(monitor: &Monitor, frame: PickerWindow) -> Position {
     .into()
 }
 
-fn live_frame(window: &WebviewWindow, monitor: &Monitor) -> Option<PickerWindow> {
+struct Metrics {
+    scale: f64,
+    inner: (f64, f64),
+    outer: (f64, f64),
+    area: placement::Area,
+}
+
+#[cfg(target_os = "linux")]
+fn metrics(window: &WebviewWindow) -> Option<Metrics> {
+    use gtk::prelude::*;
+    let native = checked(window.gtk_window(), NativeIssue::Window)?;
+    // tao 0.37.1 initializes outer_size with root_origin until configure. GDK
+    // queries the realized native frame directly, including before first show.
+    native.realize();
+    let gdk = native.window()?;
+    let extents = gdk.frame_extents();
+    // Match tao's client-size/set_size contract. GDK geometry can include GTK
+    // client-side decoration; subtracting it would incorrectly erase chrome.
+    let (width, height) = GtkWindowExt::size(&native);
+    let scale = f64::from(WidgetExt::scale_factor(&native));
+    Some(Metrics {
+        scale,
+        inner: (f64::from(width), f64::from(height)),
+        outer: (f64::from(extents.width()), f64::from(extents.height())),
+        area: placement::Area {
+            x: f64::from(extents.x()) * scale,
+            y: f64::from(extents.y()) * scale,
+            width: f64::from(extents.width()) * scale,
+            height: f64::from(extents.height()) * scale,
+        },
+    })
+}
+
+#[cfg(not(target_os = "linux"))]
+fn metrics(window: &WebviewWindow) -> Option<Metrics> {
     let scale = checked(window.scale_factor(), NativeIssue::Size)?;
-    let size = checked(window.inner_size(), NativeIssue::Size)?.to_logical::<f64>(scale);
-    let at = placement::window_area(window)?;
+    if !scale.is_finite() || scale <= 0.0 {
+        return None;
+    }
+    let inner = checked(window.inner_size(), NativeIssue::Size)?.to_logical::<f64>(scale);
+    let outer = checked(window.outer_size(), NativeIssue::Size)?;
+    let at = checked(window.outer_position(), NativeIssue::Position)?;
+    let unit = if cfg!(target_os = "macos") { scale } else { 1.0 };
+    Some(Metrics {
+        scale,
+        inner: (inner.width, inner.height),
+        outer: (f64::from(outer.width) / scale, f64::from(outer.height) / scale),
+        area: placement::Area {
+            x: f64::from(at.x) / unit,
+            y: f64::from(at.y) / unit,
+            width: f64::from(outer.width) / unit,
+            height: f64::from(outer.height) / unit,
+        },
+    })
+}
+
+pub(crate) fn window_area(window: &WebviewWindow) -> Option<placement::Area> {
+    Some(metrics(window)?.area)
+}
+
+fn display(monitor: &Monitor, metrics: &Metrics) -> Option<Display> {
+    let work = monitor.work_area().size.to_logical::<f64>(monitor.scale_factor());
+    let usable = placement::display(monitor).usable;
+    let room = checked(
+        content_room(metrics.inner, metrics.outer, (work.width, work.height)).ok_or(()),
+        NativeIssue::Size,
+    )?;
+    Some(Display {
+        key: display_key(monitor),
+        scale: monitor.scale_factor(),
+        origin: (usable.x, usable.y),
+        room,
+    })
+}
+
+fn live_frame(metrics: &Metrics, monitor: &Monitor) -> PickerWindow {
+    let at = metrics.area;
     let usable = placement::display(monitor).usable;
     let unit = if cfg!(target_os = "macos") {
         1.0
     } else {
         monitor.scale_factor()
     };
-    Some(PickerWindow {
-        width: size.width.round() as u32,
-        height: size.height.round() as u32,
+    PickerWindow {
+        width: metrics.inner.0.round() as u32,
+        height: metrics.inner.1.round() as u32,
         custom_size: false,
         x: ((at.x - usable.x) / unit).round() as i32,
         y: ((at.y - usable.y) / unit).round() as i32,
-    })
+    }
 }
 
 #[cfg(any(target_os = "macos", test))]
@@ -203,32 +349,24 @@ pub(crate) fn prepare(app: &AppHandle, window: &WebviewWindow, first_show: bool,
     let Some((monitor, keep_position)) = placement::active_monitor(app, window, first_show || reset) else {
         return false;
     };
-    let key = display_key(&monitor);
     let sizing = app.state::<Sizing>();
-    let saved = if reset { None } else { sizing.remembered(&key) };
+    let saved = if reset {
+        None
+    } else {
+        sizing.remembered(&display_key(&monitor))
+    };
     let larger = sizing.larger_text.load(Ordering::SeqCst);
-    let Some(scale) = checked(window.scale_factor(), NativeIssue::Size) else {
+    let Some(metrics) = metrics(window) else {
         return false;
     };
-    let (Some(inner), Some(outer)) = (
-        checked(window.inner_size(), NativeIssue::Size),
-        checked(window.outer_size(), NativeIssue::Size),
-    ) else {
+    let Some(display) = display(&monitor, &metrics) else {
         return false;
     };
-    let chrome = (
-        (f64::from(outer.width) - f64::from(inner.width)) / scale,
-        (f64::from(outer.height) - f64::from(inner.height)) / scale,
-    );
-    let work = monitor.work_area().size.to_logical::<f64>(monitor.scale_factor());
-    let room = ((work.width - chrome.0).max(1.0), (work.height - chrome.1).max(1.0));
+    let room = display.room;
     let mut frame = plan(saved, larger, room);
     // Explicitly positioned debug previews retain their place too.
-    if saved.is_none()
-        && keep_position
-        && !reset
-        && let Some(live) = live_frame(window, &monitor)
-    {
+    if saved.is_none() && keep_position && !reset {
+        let live = live_frame(&metrics, &monitor);
         frame.x = live
             .x
             .clamp(0, (room.0 - f64::from(frame.width)).max(0.0).floor() as i32);
@@ -236,19 +374,22 @@ pub(crate) fn prepare(app: &AppHandle, window: &WebviewWindow, first_show: bool,
             .y
             .clamp(0, (room.1 - f64::from(frame.height)).max(0.0).floor() as i32);
     }
-    if let Ok(mut state) = sizing.state.lock() {
-        state.last = Some((key, frame));
+    if let Ok(mut state) = sizing.shared.state.lock() {
+        if state.stopping {
+            return false;
+        }
+        state.applying = true;
     }
-    sizing.applying.store(true, Ordering::SeqCst);
     let applied = apply_frame(app, window, &monitor, frame, room);
-
-    if reset
-        && applied.is_some()
-        && let Some(save) = sizing.forget(&display_key(&monitor))
-    {
-        save_later(app, save);
+    if let Ok(mut state) = sizing.shared.state.lock() {
+        if applied.is_some() {
+            state.prepared(Sample { display, frame });
+        }
+        state.applying = false;
     }
-    sizing.applying.store(false, Ordering::SeqCst);
+    if reset && applied.is_some() {
+        sizing.forget(&display_key(&monitor));
+    }
     applied.is_some()
 }
 
@@ -283,12 +424,7 @@ fn apply_frame(
         },
         (usable.x + f64::from(frame.x), usable.y + f64::from(frame.y)),
     );
-    native.setContentMaxSize(NSSize::new(f64::from(f32::MAX), f64::from(f32::MAX)));
-    native.setContentMinSize(NSSize::new(
-        f64::from(MINIMUM.0).min(room.0),
-        f64::from(MINIMUM.1).min(room.1),
-    ));
-    native.setContentMaxSize(NSSize::new(room.0, room.1));
+    apply_constraints(app, window, room)?;
     native.setContentSize(NSSize::new(f64::from(frame.width), f64::from(frame.height)));
     native.setFrameTopLeftPoint(NSPoint::new(x, y));
     Some(())
@@ -296,26 +432,13 @@ fn apply_frame(
 
 #[cfg(not(target_os = "macos"))]
 fn apply_frame(
-    _app: &AppHandle,
+    app: &AppHandle,
     window: &WebviewWindow,
     monitor: &Monitor,
     frame: PickerWindow,
     room: (f64, f64),
 ) -> Option<()> {
-    // Remove the previous display's bounds before applying this display's.
-    // Native size/position/show messages keep their order; no animation.
-    checked(window.set_max_size(None::<LogicalSize<f64>>), NativeIssue::Resize)?;
-    checked(
-        window.set_min_size(Some(LogicalSize::new(
-            f64::from(MINIMUM.0).min(room.0),
-            f64::from(MINIMUM.1).min(room.1),
-        ))),
-        NativeIssue::Resize,
-    )?;
-    checked(
-        window.set_max_size(Some(LogicalSize::new(room.0, room.1))),
-        NativeIssue::Resize,
-    )?;
+    apply_constraints(app, window, room)?;
     checked(
         window.set_size(LogicalSize::new(frame.width, frame.height)),
         NativeIssue::Resize,
@@ -328,59 +451,134 @@ fn apply_frame(
     Some(())
 }
 
-fn save_later(app: &AppHandle, save: Save) {
-    let app = app.clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        let revision = save.revision;
-        let result = app.state::<Sizing>().persist(&app.state::<SettingsFile>(), save);
-        if let Some(saved) = result {
-            let handle = app.clone();
-            report(
-                app.run_on_main_thread(move || {
-                    if handle.state::<Sizing>().revision.load(Ordering::SeqCst) == revision {
-                        report(
-                            handle.emit_to(
-                                "main",
-                                "picker:window-saved",
-                                serde_json::json!({ "revision": revision, "saved": saved }),
-                            ),
-                            NativeIssue::PickerEvent,
-                        );
-                    }
-                }),
-                NativeIssue::PickerEvent,
-            );
-        }
-    });
+/// Only constraints change during an opening; a display/work-area refresh
+/// does not reapply the opening frame or its remembered position.
+#[cfg(target_os = "macos")]
+fn apply_constraints(app: &AppHandle, _window: &WebviewWindow, room: (f64, f64)) -> Option<()> {
+    use tauri_nspanel::{ManagerExt, NSSize, objc2::MainThreadMarker};
+    checked(MainThreadMarker::new().ok_or(()), NativeIssue::Resize)?;
+    let panel = checked(app.get_webview_panel("main"), NativeIssue::Window)?;
+    let native = panel.as_panel();
+    native.setContentMaxSize(NSSize::new(f64::from(f32::MAX), f64::from(f32::MAX)));
+    native.setContentMinSize(NSSize::new(
+        f64::from(MINIMUM.0).min(room.0),
+        f64::from(MINIMUM.1).min(room.1),
+    ));
+    native.setContentMaxSize(NSSize::new(room.0, room.1));
+    Some(())
 }
 
-/// Ignore the event payload: A can arrive after drag B or after hide/reopen.
-/// The live window and monitor are the only source of the next immutable save.
-pub(crate) fn changed(app: &AppHandle, window: &WebviewWindow) {
-    if app.state::<Sizing>().applying.load(Ordering::SeqCst)
-        || checked(window.is_visible(), NativeIssue::Visibility) != Some(true)
-    {
-        return;
+#[cfg(not(target_os = "macos"))]
+fn apply_constraints(_app: &AppHandle, window: &WebviewWindow, room: (f64, f64)) -> Option<()> {
+    checked(window.set_max_size(None::<LogicalSize<f64>>), NativeIssue::Resize)?;
+    checked(
+        window.set_min_size(Some(LogicalSize::new(
+            f64::from(MINIMUM.0).min(room.0),
+            f64::from(MINIMUM.1).min(room.1),
+        ))),
+        NativeIssue::Resize,
+    )?;
+    checked(
+        window.set_max_size(Some(LogicalSize::new(room.0, room.1))),
+        NativeIssue::Resize,
+    )?;
+    Some(())
+}
+
+/// Event payloads never become saved frames. DPI's suggested size identifies
+/// its automatic resize only; the eventual frame comes from a settled read.
+pub(crate) fn changed(app: &AppHandle, event: &WindowEvent) {
+    let event = match event {
+        WindowEvent::ScaleFactorChanged {
+            scale_factor,
+            new_inner_size,
+            ..
+        } => {
+            let size = new_inner_size.to_logical::<u32>(*scale_factor);
+            Event::Dpi {
+                scale: *scale_factor,
+                logical: (size.width, size.height),
+            }
+        }
+        _ => Event::Geometry,
+    };
+    let sizing = app.state::<Sizing>();
+    if let Ok(mut state) = sizing.shared.state.lock() {
+        state.event(event, Instant::now());
     }
+    sizing.shared.wake.notify_all();
+}
+
+fn sample(app: &AppHandle, window: &WebviewWindow, settled: bool) {
+    let sizing = app.state::<Sizing>();
     let Some(monitor) = checked(window.current_monitor(), NativeIssue::Monitor).flatten() else {
         return;
     };
-    let Some(live) = live_frame(window, &monitor) else {
+    let Some(metrics) = metrics(window) else {
         return;
     };
-    if let Some(save) = app.state::<Sizing>().record(display_key(&monitor), live) {
-        save_later(app, save);
+    // A scale and client size from different native turns are not a sample.
+    if metrics.scale != monitor.scale_factor() {
+        return;
     }
+    let Some(display) = display(&monitor, &metrics) else {
+        return;
+    };
+    let frame = live_frame(&metrics, &monitor);
+    let constraints = sizing
+        .shared
+        .state
+        .lock()
+        .ok()
+        .and_then(|mut state| state.observe(Sample { display, frame }, Instant::now(), settled));
+    if let Some(display) = constraints
+        && apply_constraints(app, window, display.room).is_some()
+        && let Ok(mut state) = sizing.shared.state.lock()
+    {
+        state.constraints = Some(display);
+    }
+    sizing.shared.wake.notify_all();
+}
+
+/// Windows sends ScaleFactorChanged inside WM_DPICHANGED, before SetWindowPos.
+/// MainEventsCleared is after that native turn, rather than a racing async task.
+/// It also sees OS work-area changes without waiting for the next edge drag.
+pub(crate) fn settled(app: &AppHandle) {
+    let Some(window) = app.get_webview_window("main") else {
+        return;
+    };
+    if checked(window.is_visible(), NativeIssue::Visibility) == Some(true) {
+        sample(app, &window, true);
+    }
+}
+
+pub(crate) fn flush(app: &AppHandle, stop: bool) {
+    if let Some(window) = app.get_webview_window("main")
+        && checked(window.is_visible(), NativeIssue::Visibility) == Some(true)
+    {
+        sample(app, &window, false);
+    }
+    let sizing = app.state::<Sizing>();
+    if !stop {
+        // Hide forces the existing worker immediately without delaying focus
+        // handoff on disk I/O. Every exit route drains this same revision.
+        report(sizing.shared.request_flush(false).ok_or(()), NativeIssue::WindowSave);
+        return;
+    }
+    report(
+        sizing.shared.flush(FLUSH_TIMEOUT, stop).then_some(()).ok_or(()),
+        NativeIssue::WindowSave,
+    );
 }
 
 pub(crate) fn reset_position(app: &AppHandle) {
     let generation = app.state::<crate::picker::PickerGeneration>().current();
-    let revision = app.state::<Sizing>().revision.load(Ordering::SeqCst);
+    let revision = app.state::<Sizing>().revision();
     let handle = app.clone();
     report(
         app.run_on_main_thread(move || {
             if handle.state::<crate::picker::PickerGeneration>().current() == generation
-                && handle.state::<Sizing>().revision.load(Ordering::SeqCst) == revision
+                && handle.state::<Sizing>().revision() == revision
                 && let Some(window) = handle.get_webview_window("main")
             {
                 prepare(&handle, &window, false, true);

@@ -1,5 +1,39 @@
 use super::*;
 
+fn synthetic_sample(display: String, frame: PickerWindow) -> Sample {
+    Sample {
+        display: Display {
+            key: display,
+            scale: 1.0,
+            origin: (0.0, 0.0),
+            room: (3000.0, 2000.0),
+        },
+        frame,
+    }
+}
+
+impl Sizing {
+    fn record(&self, display: String, live: PickerWindow) -> Option<Save> {
+        let mut state = self.shared.state.lock().ok()?;
+        let revision = state.revision;
+        state.event(Event::Geometry, Instant::now());
+        state.observe(synthetic_sample(display, live), Instant::now(), true);
+        (state.revision > revision)
+            .then(|| state.pending_save.clone())
+            .flatten()
+    }
+    fn present(&self, display: &str, frame: PickerWindow) {
+        self.shared
+            .state
+            .lock()
+            .unwrap_or_else(|error| panic!("{error}"))
+            .prepared(synthetic_sample(display.into(), frame));
+    }
+    fn persist(&self, file: &SettingsFile, save: Save) -> Option<bool> {
+        self.shared.persist(file, save)
+    }
+}
+
 fn dragged(width: u32, height: u32) -> PickerWindow {
     PickerWindow {
         width,
@@ -82,6 +116,17 @@ fn sizing_clamps_size_and_place_to_the_current_work_area_including_tiny_displays
             y: 0
         }
     );
+}
+
+#[test]
+fn sizing_first_show_includes_native_chrome_when_clamping_an_oversized_saved_frame() {
+    let room = content_room((720.0, 480.0), (736.0, 519.0), (1000.0, 700.0))
+        .unwrap_or_else(|| panic!("synthetic native extents rejected"));
+    let shown = plan(Some(dragged(2000, 1400)), false, room);
+    assert_eq!((shown.x, shown.y), (0, 0));
+    assert_eq!((shown.width, shown.height), (984, 661));
+    assert!(f64::from(shown.x) + f64::from(shown.width) + 16.0 <= 1000.0);
+    assert!(f64::from(shown.y) + f64::from(shown.height) + 39.0 <= 700.0);
 }
 
 #[test]
@@ -197,7 +242,7 @@ fn sizing_reset_invalidates_pending_drag_and_restores_only_this_displays_default
 fn sizing_moving_the_default_or_crossing_displays_does_not_replace_a_displays_size() {
     let sizing = Sizing::default();
     let default = plan(None, false, (1400.0, 900.0));
-    sizing.state.lock().unwrap_or_else(|error| panic!("{error}")).last = Some(("display-a".into(), default));
+    sizing.present("display-a", default);
     let moved = PickerWindow {
         x: 40,
         y: 60,
@@ -236,7 +281,7 @@ fn sizing_moving_the_default_or_crossing_displays_does_not_replace_a_displays_si
     );
     // Reopen A, then move its default frame to B without dragging an edge:
     // B retains the size chosen there on the previous opening.
-    sizing.state.lock().unwrap_or_else(|error| panic!("{error}")).last = Some(("display-a".into(), default));
+    sizing.present("display-a", default);
     sizing.record("display-b".into(), moved);
     assert_eq!(sizing.remembered("display-b"), Some(dragged(840, 600)));
 }
@@ -302,4 +347,124 @@ fn sizing_appkit_keeps_the_top_edge_and_handles_displays_above_and_left() {
         appkit_top_left((504.0, 94.0), native, (-2080.0, -1239.0)),
         (-2080.0, 2356.0)
     );
+}
+
+#[test]
+fn sizing_owned_worker_flushes_on_hide_then_drains_the_final_frame_before_exit() {
+    let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
+    let file = SettingsFile::new(directory.path().join("settings.json"));
+    file.update(|settings| settings.larger_text = Some(true))
+        .unwrap_or_else(|error| panic!("{error}"));
+    let sizing = Sizing::default();
+    sizing.record("display-a".into(), dragged(840, 600));
+    let shared = sizing.shared.clone();
+    let worker_file = file.clone();
+    let (written, received) = std::sync::mpsc::channel();
+    let worker = std::thread::spawn(move || {
+        shared.run(&worker_file, |revision, saved| {
+            written
+                .send((revision, saved))
+                .unwrap_or_else(|error| panic!("{error}"));
+        })
+    });
+    assert_eq!(sizing.shared.request_flush(false), Some(1));
+    assert_eq!(
+        received
+            .recv_timeout(FLUSH_TIMEOUT)
+            .unwrap_or_else(|error| panic!("{error}")),
+        (1, true)
+    );
+    assert_eq!(
+        ibis_core::settings::load(&file.path).settings.picker_windows["display-a"],
+        dragged(840, 600)
+    );
+    sizing.record("display-a".into(), dragged(900, 640));
+    assert!(sizing.shared.flush(FLUSH_TIMEOUT, true));
+    assert!(
+        sizing.record("display-a".into(), dragged(1000, 700)).is_none(),
+        "an exit cannot accept a late native event"
+    );
+    worker
+        .join()
+        .unwrap_or_else(|_| panic!("synthetic geometry worker panicked"));
+    let saved = ibis_core::settings::load(&file.path).settings;
+    assert_eq!(saved.picker_windows["display-a"], dragged(900, 640));
+    assert_eq!(saved.larger_text, Some(true));
+    let relaunched = Sizing::default();
+    relaunched.load(&saved);
+    assert_eq!(relaunched.remembered("display-a"), Some(dragged(900, 640)));
+}
+
+#[test]
+fn sizing_failed_final_io_reports_failure_and_still_finishes_the_owned_worker() {
+    let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
+    let path = directory.path().join("settings.json");
+    std::fs::create_dir(&path).unwrap_or_else(|error| panic!("{error}"));
+    let file = SettingsFile::new(path);
+    let sizing = Sizing::default();
+    sizing.record("display-a".into(), dragged(840, 600));
+    let shared = sizing.shared.clone();
+    let (sent, received) = std::sync::mpsc::channel();
+    let worker = std::thread::spawn(move || {
+        shared.run(&file, |revision, saved| {
+            sent.send((revision, saved)).unwrap_or_else(|error| panic!("{error}"));
+        })
+    });
+    assert!(
+        sizing.shared.flush(FLUSH_TIMEOUT, true),
+        "failed I/O is completed I/O, never an endless drain"
+    );
+    assert_eq!(
+        received
+            .recv_timeout(FLUSH_TIMEOUT)
+            .unwrap_or_else(|error| panic!("{error}")),
+        (1, false)
+    );
+    worker
+        .join()
+        .unwrap_or_else(|_| panic!("synthetic geometry worker panicked"));
+    assert_eq!(sizing.remembered("display-a"), Some(dragged(840, 600)));
+}
+
+#[test]
+fn sizing_exit_drain_is_bounded_even_when_another_settings_writer_is_blocked() {
+    let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
+    let file = SettingsFile::new(directory.path().join("settings.json"));
+    let (entered, ready) = std::sync::mpsc::channel();
+    let (release, blocked) = std::sync::mpsc::channel();
+    let blocked_file = file.clone();
+    let writer = std::thread::spawn(move || {
+        blocked_file
+            .update(|settings| {
+                entered.send(()).unwrap_or_else(|error| panic!("{error}"));
+                blocked
+                    .recv_timeout(Duration::from_secs(5))
+                    .unwrap_or_else(|error| panic!("{error}"));
+                settings.larger_text = Some(true);
+            })
+            .unwrap_or_else(|error| panic!("{error}"));
+    });
+    ready
+        .recv_timeout(FLUSH_TIMEOUT)
+        .unwrap_or_else(|error| panic!("{error}"));
+    let sizing = Sizing::default();
+    sizing.record("display-a".into(), dragged(840, 600));
+    let shared = sizing.shared.clone();
+    let worker_file = file.clone();
+    let worker = std::thread::spawn(move || shared.run(&worker_file, |_, _| {}));
+    let drained = sizing.shared.flush(Duration::from_millis(20), true);
+    // Always release before asserting, so a failing regression cannot strand
+    // the synthetic writer or worker during the rest of the test process.
+    release.send(()).unwrap_or_else(|error| panic!("{error}"));
+    assert!(!drained);
+    assert!(sizing.shared.flush(FLUSH_TIMEOUT, true));
+    writer
+        .join()
+        .unwrap_or_else(|_| panic!("synthetic settings writer panicked"));
+    worker
+        .join()
+        .unwrap_or_else(|_| panic!("synthetic geometry worker panicked"));
+    let saved = ibis_core::settings::load(&file.path).settings;
+    assert_eq!(saved.picker_windows["display-a"], dragged(840, 600));
+    assert_eq!(saved.larger_text, Some(true));
 }

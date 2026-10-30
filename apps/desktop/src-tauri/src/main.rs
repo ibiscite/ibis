@@ -176,9 +176,7 @@ fn main() {
             }
             match event {
                 WindowEvent::Resized(_) | WindowEvent::Moved(_) | WindowEvent::ScaleFactorChanged { .. } => {
-                    if let Some(window) = window.app_handle().get_webview_window("main") {
-                        sizing::changed(window.app_handle(), &window);
-                    }
+                    sizing::changed(window.app_handle(), event);
                 }
                 // Closing the picker hides it; the app keeps running for the shortcut.
                 WindowEvent::CloseRequested { api, .. } => {
@@ -221,6 +219,9 @@ fn main() {
             let loaded = settings::load(&settings_path);
             app.manage(SettingsFile::new(settings_path.clone()));
             app.state::<sizing::Sizing>().load(&loaded.settings);
+            if !sizing::start(app.handle()) {
+                return Err("the picker settings worker could not start".into());
+            }
             #[cfg(target_os = "macos")]
             panel::configure(app.handle())?;
             // Complete size and placement while the native window is hidden,
@@ -304,6 +305,11 @@ fn main() {
     let app = builder.build(context);
     match app {
         Ok(app) => app.run(|app, event| {
+            match &event {
+                tauri::RunEvent::MainEventsCleared => sizing::settled(app),
+                tauri::RunEvent::ExitRequested { .. } => sizing::flush(app, true),
+                _ => {}
+            }
             // macOS: a repeated OS open request brings back the hidden picker.
             #[cfg(target_os = "macos")]
             // A Dock click while Settings is open brings Settings forward.

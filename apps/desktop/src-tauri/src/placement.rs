@@ -164,10 +164,7 @@ pub(crate) fn display(monitor: &Monitor) -> Display {
 }
 
 pub(crate) fn window_area(window: &WebviewWindow) -> Option<Area> {
-    let position = checked(window.outer_position(), NativeIssue::Position)?;
-    let size = checked(window.outer_size(), NativeIssue::Size)?;
-    let scale = checked(window.scale_factor(), NativeIssue::Size)?;
-    Some(area(position.x, position.y, size.width, size.height, scale))
+    crate::sizing::window_area(window)
 }
 
 /// Resolve the display before sizing or moving the hidden picker. The bool

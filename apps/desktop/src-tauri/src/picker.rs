@@ -319,6 +319,7 @@ pub(crate) fn hide_picker(app: AppHandle) {
 /// Every dismissal path must also release application focus, unless Settings
 /// is open.
 pub(crate) fn dismiss_picker(app: &AppHandle) {
+    crate::sizing::flush(app, false);
     app.state::<PickerGeneration>().advance();
     #[cfg(target_os = "macos")]
     crate::panel::cancel_initial_presentation(app);

@@ -636,7 +636,8 @@ const appSheets = Object.fromEntries(readdirSync(new FileURL(".", import.meta.ur
   .filter((file) => file.endsWith(".css")).map((file) => [file.replaceAll("\\", "/"), readFileSync(new FileURL(file.replaceAll("\\", "/"), import.meta.url), "utf8")]));
 const parsedSheets = new Map<string, CSSRuleList>();
 type TokenBlock = { file: string; selector: string; values: [string, string][]; scope: string };
-function tokenBlocks(sheets: Record<string, string>, platform = "macos", mode = "normal", advanced = true, material = false, notice = false, coarse = false) {
+type AuditContainer = { width: number; height: number; fontSize: number };
+function tokenBlocks(sheets: Record<string, string>, platform = "macos", mode = "normal", advanced = true, material = false, notice = false, coarse = false, container: AuditContainer = { width: 720, height: 480, fontSize: 16 }) {
   const doc = document.implementation.createHTMLDocument();
   doc.documentElement.dataset.platform = "macos";
   doc.documentElement.dataset.system = platform;
@@ -654,6 +655,15 @@ function tokenBlocks(sheets: Record<string, string>, platform = "macos", mode = 
     const visit = (rules: CSSRuleList) => { for (const rule of Array.from(rules)) {
       if (rule.type === 4 && !media((rule as CSSMediaRule).conditionText)) continue;
       if (rule.type === 12 && ((rule as CSSSupportsRule).conditionText.startsWith("not ") ? advanced : !advanced)) continue;
+      if (rule.cssText.startsWith("@container")) {
+        const condition = (rule as CSSGroupingRule & { conditionText: string }).conditionText;
+        const match = condition.match(/^\((min|max)-(width|height):\s*([\d.]+)(px|em|rem)\)$/);
+        if (!match) throw new Error(`Unmodeled container condition: ${condition}`);
+        const [, direction, axis, amount, unit] = match;
+        const limit = Number(amount) * (unit === "px" ? 1 : container.fontSize);
+        const actual = container[axis as "width" | "height"];
+        if (direction === "max" ? actual > limit : actual < limit) continue;
+      }
       if ("cssRules" in rule) visit((rule as CSSGroupingRule).cssRules);
       if (!("style" in rule)) continue;
       const styled = rule as CSSStyleRule;
@@ -664,7 +674,7 @@ function tokenBlocks(sheets: Record<string, string>, platform = "macos", mode = 
         return (!prefix || doc.documentElement.matches(prefix)) && (!look || look === "macos");
       });
       if (!active) continue;
-      const scope = /\.ui-button\[data-pointer-only\]/.test(selector) ? "pointer-button" : /\.search-field|\.search-clear|#search/.test(selector) ? "search" : /\.chip-group(?:\b|-)/.test(selector) ? "chip-group" : /\.locator-token(?:\b|-)/.test(selector) ? "locator-token" : /\.shelf(?:\b|-)/.test(selector) ? "shelf" : (/\.menu-|\.toolbar-menu/.test(selector) || (selector === "@keyframe" && file.endsWith("Menu.css"))) && !/^:root[^ ]*$/.test(selector) ? "menu" : file.endsWith("notice.css") && !selector.startsWith(":root") ? "notice" : "root";
+      const scope = /\.ui-button\[data-pointer-only\]/.test(selector) ? "pointer-button" : /\.search-field|\.search-clear|#search/.test(selector) ? "search" : /\.chip-group(?:\b|-)/.test(selector) ? "chip-group" : /\.locator-token(?:\b|-)/.test(selector) ? "locator-token" : /\.shelf(?:\b|-)/.test(selector) ? "shelf" : (/\.menu-|\.toolbar-menu/.test(selector) || (selector === "@keyframe" && file.endsWith("Menu.css"))) && !/^:root[^ ]*$/.test(selector) ? "menu" : file.endsWith("notice.css") && !selector.startsWith(":root") ? "notice" : /\bfooter\b|\.footer-|\.enter-hints|\.library-bar|\.library-status|\.more\b/.test(selector) ? "footer" : "root";
       const values: [string, string][] = Array.from(styled.style).map((name) => [name, styled.style.getPropertyValue(name)]);
       if (scope === "root" && values.some(([name]) => name.startsWith("--")) && !selector.split(/,(?![^()]*\))/).every((part) => /^:root\S*$/.test(part.trim()))) throw new Error(`Unmodeled token scope: ${selector}`);
       blocks.push({ file, selector, scope, values });
@@ -703,7 +713,7 @@ function tokenScopes(blocks: TokenBlock[]) {
   // Inherited custom properties resolve on the parent, before child overrides.
   const inherit = (parent: Map<string, string>) => [...parent].map(([name, value]) => [name, resolveToken(value, parent) ?? value] as [string, string]);
   const inherited = inherit(root);
-  const scopes = new Map([ ["root", root], ...["menu", "notice", "shelf", "chip-group", "search", "pointer-button"].map((scope) => [scope, new Map([...inherited, ...raw(scope)])] as const) ]);
+  const scopes = new Map([ ["root", root], ...["menu", "notice", "shelf", "chip-group", "search", "pointer-button", "footer"].map((scope) => [scope, new Map([...inherited, ...raw(scope)])] as const) ]);
   // Locator controls live inside shelf chips and inherit its fine/coarse target.
   scopes.set("locator-token", new Map([...inherit(scopes.get("shelf")!), ...raw("locator-token")]));
   return scopes;
@@ -717,11 +727,11 @@ test.each(["macos", "windows", "linux"].flatMap((platform) =>
   expect(Object.keys(appSheets).length).toBeGreaterThanOrEqual(8);
   expect(tokenBlocks(appSheets).flatMap((block) => block.values).length).toBeGreaterThan(500);
   const errors: string[] = [];
-  for (const advanced of [true, false]) for (const material of [false, true]) for (const notice of [false, true]) for (const coarse of [false, true]) {
-    const blocks = tokenBlocks(appSheets, platform, mode, advanced, material, notice, coarse), scopes = tokenScopes(blocks);
+  for (const advanced of [true, false]) for (const material of [false, true]) for (const notice of [false, true]) for (const coarse of [false, true]) for (const fontSize of [16, 32]) {
+    const blocks = tokenBlocks(appSheets, platform, mode, advanced, material, notice, coarse, { width: 720, height: 480, fontSize }), scopes = tokenScopes(blocks);
     for (const block of blocks) for (const [name, value] of block.values) {
       const definitions = scopes.get(block.scope)!;
-      if ((name.startsWith("--") && hasCycle(name, definitions)) || resolveToken(value, definitions) === null) errors.push(`${platform}/${mode}/${advanced}/${material}/${notice}/${coarse} ${block.file} ${block.selector} ${name}: ${value}`);
+      if ((name.startsWith("--") && hasCycle(name, definitions)) || resolveToken(value, definitions) === null) errors.push(`${platform}/${mode}/${advanced}/${material}/${notice}/${coarse}/${fontSize} ${block.file} ${block.selector} ${name}: ${value}`);
     }
   }
   expect([...new Set(errors)]).toEqual([]);
@@ -779,6 +789,20 @@ test("locator tokens inherit resolved shelf values without leaking their local a
   for (const scope of ["root", "shelf"]) expect(resolveToken("var(--local-only)", scopes.get(scope)!)).toBeNull();
   const standalone = tokenScopes(tokenBlocks({ fixture: ":root { --control-min-size: 2rem; } .locator-token { --locator-token-hit-size: var(--chip-hit-size, var(--control-min-size)); }" }));
   expect(resolveToken("var(--locator-token-hit-size)", standalone.get("locator-token")!)).toBe("2rem");
+});
+
+test.each([
+  [720, 16, "inline"], [480, 16, "inline"], [460, 16, "none"], [461, 16, "inline"],
+  [480, 18.4, "none"], [720, 18.4, "inline"], [480, 32, "none"], [720, 32, "none"],
+])("footer label tokens follow their own container at %s px / %s px text", (width, fontSize, expected) => {
+  const scopes = tokenScopes(tokenBlocks(appSheets, "macos", "normal", true, false, false, false, { width, height: 480, fontSize }));
+  expect(resolveToken("var(--footer-hint-label-display)", scopes.get("footer")!)).toBe(expected);
+  expect(resolveToken("var(--footer-hint-label-display)", scopes.get("root")!)).toBe("inline");
+  expect(resolveToken("var(--footer-hint-label-display)", scopes.get("shelf")!)).toBe("inline");
+});
+
+test("the token audit rejects unmodeled container conditions", () => {
+  expect(() => tokenBlocks({ fixture: "@container (min-aspect-ratio: 1/1) { footer { --local: 4px; } }" })).toThrow("Unmodeled container condition");
 });
 
 /** Only arithmetic used by spacing declarations; 16 px/rem is the unscaled grid. */
