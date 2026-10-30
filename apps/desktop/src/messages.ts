@@ -1,4 +1,4 @@
-import type { KeyFormat, LibraryStatus, LoginItemProblem, PickerCommand, ShortcutRefusal } from "./bindings";
+import type { KeyFormat, LibraryStatus, LoginItemProblem } from "./bindings";
 import type { Platform } from "./platform";
 
 export const citationDetailsText = {
@@ -516,58 +516,4 @@ export const updateText = {
 // The Settings window (#776, docs/design.md "Settings").
 export const settingsText = {
   windowTitle: "Ibis Settings",
-  groups: { updates: "Updates" },
-  shortcut: {
-    open: "Open Ibis",
-    description: "Click the shortcut, then type a new one. Esc cancels.",
-    record: "Type a shortcut…",
-    useDefault: "Use Default",
-    change: "Change…",
-    notAssigned: "Not assigned",
-    configureFailed: "The desktop could not open its shortcut settings. Try again.",
-    inPicker: "In the picker",
-    failed: "Ibis could not change the shortcut. Try again.",
-    readFailed: "Ibis could not check the shortcut. Try reopening Settings.",
-    refusals: {
-      invalid: "Ibis cannot use that key combination. Try another shortcut.",
-      "needs-modifier": "Include Control, Alt or Command. Shift alone is not enough.",
-      "app-shortcut": "That shortcut is used for app commands. Add another modifier.",
-      "alt-gr": "Ctrl+Alt with a typing key is used for AltGr on Windows. Try another shortcut.",
-      "in-use": "Another app or the system may be using that shortcut. Try another.",
-      unavailable: "Global shortcuts are unavailable on this desktop. Open Ibis from your application launcher.",
-      "not-saved": "The shortcut works now, but Ibis could not save it for next time. Try again.",
-    } satisfies Record<Extract<ShortcutRefusal, string>, string>,
-    commands: {
-      format: "Choose Output Format",
-      pin: "Keep Window Open",
-      keys: "Keyboard Shortcuts",
-      more: "More",
-      preview: "Show What Will Be Pasted",
-      settings: "Settings",
-      quit: "Quit Ibis",
-    } satisfies Record<PickerCommand, string>,
-    pickerConflict: (command: string) => `That shortcut is used for ${command}. Try another shortcut.`,
-  },
-  updates: {
-    automatic: "Check for updates automatically",
-    automaticDescription: "Reads a small update file from GitHub a few times a day",
-    check: "Check now",
-    version: (name: string, version: string) => `${name} ${version}`,
-    unavailable: "This build does not update itself.",
-  },
 } as const;
-
-/** Native refusals carry only known codes and command identifiers. */
-export function shortcutRefusalText(refusal: unknown): string {
-  const text = settingsText.shortcut;
-  if (typeof refusal === "string" && Object.hasOwn(text.refusals, refusal)) {
-    return text.refusals[refusal as Extract<ShortcutRefusal, string>];
-  }
-  if (typeof refusal === "object" && refusal !== null && "picker-shortcut" in refusal) {
-    const command = refusal["picker-shortcut"];
-    if (typeof command === "string" && Object.hasOwn(text.commands, command)) {
-      return text.pickerConflict(text.commands[command as PickerCommand]);
-    }
-  }
-  return text.failed;
-}
