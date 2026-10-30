@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { classify } from "./ci-paths.mjs";
 import { recordCounts } from "./release-counts.mjs";
 
-const header = "date,version,asset_name,download_count,updated_at\n";
+const header = "date,asset_name,download_count,updated_at\n";
 const sha = (n) => n.toString(16).padStart(40, "0");
 const monday = "2026-10-26T01:15:00Z";
 const nextMonday = "2026-11-02T01:15:00Z";
@@ -14,17 +14,16 @@ const packageUpdated = "2026-10-25T20:00:00Z";
 const manifestUpdated = "2026-10-25T20:01:00Z";
 
 // In-memory Git objects and atomic ref updates; no network or local Git.
-function github({ csv = null, manifest = true } = {}) {
+function github({ csv = null } = {}) {
   const state = {
     head: csv === null ? null : sha(1),
     csv,
-    release: { id: 12, tag_name: "stable", name: "Ibis 0.2.0", draft: false },
+    release: { id: 12, tag_name: "stable", draft: false },
     assets: [
       { id: 20, name: "Ibis-synthetic.dmg", download_count: 40, updated_at: packageUpdated },
       { id: 21, name: "Ibis-synthetic.app.tar.gz", download_count: 9, updated_at: packageUpdated },
-      ...(manifest ? [{ id: 22, name: "latest.json", download_count: 3, updated_at: manifestUpdated }] : []),
+      { id: 22, name: "latest.json", download_count: 3, updated_at: manifestUpdated },
     ],
-    feed: { version: "0.2.0" },
     calls: [],
     fail: null,
     refName: "refs/heads/stats",
@@ -54,7 +53,6 @@ function github({ csv = null, manifest = true } = {}) {
       assert.equal(parsed.searchParams.get("per_page"), "100");
       return response(state.assets.slice((page - 1) * 100, page * 100));
     }
-    if (method === "GET" && path === "releases/assets/22") return response(state.feed);
     if (method === "GET" && path === "git/ref/heads/stats") return state.head ? response(ref()) : response({}, 404);
     if (method === "GET" && path.startsWith("git/commits/")) {
       const hash = path.slice("git/commits/".length);
@@ -110,9 +108,9 @@ test("first run creates an orphan stats branch with a UTC row for every stable a
   const { state, run } = github();
   await run("2026-10-25T21:15:00-04:00");
   assert.equal(state.csv, header + [
-    `2026-10-26,0.2.0,Ibis-synthetic.dmg,40,${packageUpdated}`,
-    `2026-10-26,0.2.0,Ibis-synthetic.app.tar.gz,9,${packageUpdated}`,
-    `2026-10-26,0.2.0,latest.json,3,${manifestUpdated}`,
+    `2026-10-26,Ibis-synthetic.dmg,40,${packageUpdated}`,
+    `2026-10-26,Ibis-synthetic.app.tar.gz,9,${packageUpdated}`,
+    `2026-10-26,latest.json,3,${manifestUpdated}`,
     "",
   ].join("\n"));
   assert.equal(state.calls.at(-1).path, "git/refs");
@@ -133,7 +131,7 @@ test("formula or control-leading asset names refuse visibly before any write", a
   }
 });
 
-test("malformed release, assets or latest.json refuse without any write", async () => {
+test("malformed release or assets refuse without any write", async () => {
   for (const corrupt of [
     (s) => { s.release = null; },
     (s) => { s.release.tag_name = "nightly"; },
@@ -150,8 +148,6 @@ test("malformed release, assets or latest.json refuse without any write", async 
     (s) => { s.assets[0].updated_at = "not a timestamp"; },
     (s) => { s.assets[0].updated_at = 123; },
     (s) => { s.assets[2].updated_at = null; },
-    (s) => { s.feed = { version: "stable" }; },
-    (s) => { s.feed = null; },
   ]) {
     const { state, run } = github({ csv: header });
     corrupt(state);
@@ -162,7 +158,7 @@ test("malformed release, assets or latest.json refuse without any write", async 
 });
 
 test("failed API reads leave earlier CSV bytes and the stats ref unchanged", async () => {
-  for (const fail of ["GET releases/tags/stable", "GET releases/12/assets?per_page=100&page=1", "GET releases/assets/22", "GET git/ref/heads/stats", `GET git/blobs/${sha(3)}`]) {
+  for (const fail of ["GET releases/tags/stable", "GET releases/12/assets?per_page=100&page=1", "GET git/ref/heads/stats", `GET git/blobs/${sha(3)}`]) {
     const { state, run } = github({ csv: header });
     state.fail = fail;
     await assert.rejects(run());
@@ -182,30 +178,22 @@ test("a rerun anywhere in the same Monday-to-Sunday UTC week is a no-op", async 
   assert.ok(state.calls.every(({ method }) => method === "GET"));
   await run(nextMonday);
   assert.ok(state.csv.startsWith(previous));
-  assert.ok(state.csv.includes(`2026-11-02,0.2.0,Ibis-synthetic.dmg,55,${packageUpdated}\n`));
+  assert.ok(state.csv.includes(`2026-11-02,Ibis-synthetic.dmg,55,${packageUpdated}\n`));
 });
 
-test("packages replaced before latest.json refuse without writes; a completed publication can retry", async () => {
+test("replacement counters append with their own timestamps regardless of latest.json ordering", async () => {
   for (const index of [0, 1]) {
-    const { state, run } = github();
-    await run();
-    const previous = state.csv;
-    const previousHead = state.head;
-    state.calls = [];
-    const replacement = { ...state.assets[index], id: 30, download_count: 2, updated_at: "2026-11-01T23:58:00Z" };
-    state.assets[index] = replacement;
-    await assert.rejects(run(nextMonday), /mid-publication.*retry/i);
-    assert.equal(state.csv, previous);
-    assert.equal(state.head, previousHead);
-    assert.ok(state.calls.every(({ method }) => method === "GET"));
-
-    state.assets[2].updated_at = replacement.updated_at;
-    state.feed.version = "0.2.1";
-    await run(nextMonday);
-    assert.ok(state.csv.startsWith(previous));
-    assert.ok(state.csv.includes(`2026-11-02,0.2.1,${replacement.name},2,${replacement.updated_at}\n`));
-    assert.ok(state.csv.includes(`2026-11-02,0.2.1,latest.json,3,${replacement.updated_at}\n`));
-    assert.ok(!state.csv.includes("2026-11-02,0.2.0,"));
+    for (const updated_at of [packageUpdated, manifestUpdated, "2026-11-01T23:58:00Z"]) {
+      const { state, run } = github();
+      await run();
+      const previous = state.csv;
+      const replacement = { ...state.assets[index], id: 30, download_count: 2, updated_at };
+      state.assets[index] = replacement;
+      await run(nextMonday);
+      assert.ok(state.csv.startsWith(previous));
+      assert.ok(state.csv.includes(`2026-11-02,${replacement.name},2,${updated_at}\n`));
+      assert.ok(state.csv.includes(`2026-11-02,latest.json,3,${manifestUpdated}\n`));
+    }
   }
 });
 
@@ -214,26 +202,24 @@ test("commas, quotes, CR and newlines in raw asset names round-trip through week
   state.assets[0].name = 'Ibis,"synthetic"\r\npackage.dmg';
   await run();
   const previous = state.csv;
-  assert.ok(previous.includes(`2026-10-26,0.2.0,"Ibis,""synthetic""\r\npackage.dmg",40,${packageUpdated}\n`));
+  assert.ok(previous.includes(`2026-10-26,"Ibis,""synthetic""\r\npackage.dmg",40,${packageUpdated}\n`));
   await run();
   assert.equal(state.csv, previous);
   await run(nextMonday);
   assert.ok(state.csv.startsWith(previous));
 });
 
-test("without latest.json a numbered release title supplies the version", async () => {
-  const { state, run } = github({ manifest: false });
-  state.release.name = "Ibis v0.2.0";
+test("snapshots need neither latest.json nor a numbered release title", async () => {
+  const { state, run } = github();
+  state.assets.pop();
+  state.release.name = "Ibis update feed";
   await run();
-  assert.ok(state.csv.includes(",0.2.0,"));
-  const missing = github({ manifest: false });
-  missing.state.release.name = "Ibis update feed";
-  await assert.rejects(missing.run());
-  assert.equal(missing.state.head, null);
+  assert.ok(state.csv.includes(`2026-10-26,Ibis-synthetic.dmg,40,${packageUpdated}\n`));
+  assert.equal(state.csv.split("\n").length, 4);
 });
 
 test("all asset pages are recorded", async () => {
-  const { state, run } = github({ manifest: false });
+  const { state, run } = github();
   state.assets = Array.from({ length: 101 }, (_, i) => ({ id: 1000 + i, name: `synthetic-${i}.dmg`, download_count: i, updated_at: packageUpdated }));
   await run();
   assert.equal(state.csv.split("\n").length, 103);
@@ -253,7 +239,7 @@ test("ref confusion, unrelated trees and damaged CSV are refused before writes",
     assert.equal(state.csv, header);
     assert.ok(state.calls.every(({ method }) => method === "GET"));
   }
-  for (const csv of ["", "wrong,header\n", header + `2026-02-30,0.2.0,file.dmg,1,${packageUpdated}\n`, header + '2026-10-19,0.2.0,"broken,1\n', header + `2026-10-19,0.2.0,file.dmg,-1,${packageUpdated}\n`, header + `2026-10-19,0.2.0,file.dmg,"1\n",${packageUpdated}\n`, header + `2026-10-19,0.2.0,file.dmg,1,${packageUpdated}`, header + "2026-10-19,0.2.0,file.dmg,1,invalid\n", header + `2026-10-19,0.2.0,+1+1,1,${packageUpdated}\n`]) {
+  for (const csv of ["", "wrong,header\n", header + `2026-02-30,file.dmg,1,${packageUpdated}\n`, header + '2026-10-19,"broken,1\n', header + `2026-10-19,file.dmg,-1,${packageUpdated}\n`, header + `2026-10-19,file.dmg,"1\n",${packageUpdated}\n`, header + `2026-10-19,file.dmg,1,${packageUpdated}`, header + "2026-10-19,file.dmg,1,invalid\n", header + `2026-10-19,+1+1,1,${packageUpdated}\n`]) {
     const { state, run } = github({ csv });
     await assert.rejects(run());
     assert.equal(state.csv, csv);
