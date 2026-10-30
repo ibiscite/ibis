@@ -77,39 +77,45 @@ result establishes only what its assertions and retained evidence show.
 
 ## Installed update qualification
 
-`scripts/update-e2e.py` keeps one single-instance reopen, one owned native
-Install and Restart action, package replacement, a fresh process that stays
-up, and persisted library/shortcut checks. Read-only picker observations may
-retry inside the current deadline; ambiguity, lost ownership and uncertain
-activation fail without another reopen or invocation. Linux accessibility
-scans run in fresh, bounded subprocesses, recheck native focus after worker
-startup, and invalidate cached children before both scans. Native helper
-diagnostics retain fixed operation names and numeric errors/exit codes, never
-native exception text. A visible offer without an accessible action is reported
-separately from an offer that never appeared.
+`scripts/update-e2e.py` requires one single-instance reopen, a real owned native
+offer, one activation, package replacement, a fresh process that stays up, and
+persisted library/shortcut choices. Read-only observations share the existing
+deadlines; ambiguity, changed ownership and uncertain input fail without another
+reopen or activation. Helper reports contain fixed stages and counts, never
+window text, private paths or native exception text.
 
-Qualification run 41121775240 (the merged #1493 harness), in its supplied full
-job log:
+Run 41130217340 used the merged observation retries. Its supplied `update4.log`
+establishes:
 
-| Platform | Evidence and classification |
+| Platform | Evidence and cause |
 |---|---|
-| macOS | Lines 139–155 show the first failed observation at 32.557 seconds, after successful reopen. `cg-windows`, two owned windows, and zero completed picker/offer counts identify the explicit missing-`kCGWindowName` assertion during CG enumeration, not an AX API status. A plain JavaScript `Error` has no `errorNumber`, hence `code: null` at line 160. Availability succeeded at lines 193–197. This is a harness observation failure; whether that missing title persists needs a native rerun. |
-| Windows | Lines 291–305 show failure in the first `before-reopen` call to `powershell(WINDOWS_PICKER, timeout=10)`. The old `observe_picker` catch replaced launch, timeout, decode and nonzero-exit errors alike with `picker-helper, code None`; the original exception cannot be recovered from this log. Lines 343–347 contain **zero** automatic-check outcomes, and lines 312–321 show a visible foreground picker with no offer. This establishes a harness diagnostics defect, not an available update withheld by the product. The underlying helper failure needs a rerun with the preserved operation/code. |
-| Linux | Lines 902–910 and 918–920 show a visible, focused native offer from 31.350 through 185.713 seconds (75 samples). Lines 930–934 nevertheless report zero AT-SPI offer/action matches; lines 957–961 record one successful availability result. Presentation succeeded. The long-lived accessibility client did not invalidate child caches or run its event loop; a failing-first cached-tree scenario reproduces the missed late dialog. Fresh scans address that harness defect. Cache staleness explains the observed mismatch, but the log cannot prove the cached GTK tree; confirm that diagnosis in a native rerun. |
+| Linux | Lines 1006–1030 prove one visible, focused native offer from 31.985 through 184.968 seconds. Lines 1036–1045 report a complete fresh AT-SPI scan with zero offer/action matches. Presentation works; this accessibility provider does not expose the native dialog. More cache invalidation or retries cannot establish an action that is absent from that tree. Qualification now uses the smoke harness's exact X11 title, PID, managed-client and native-focus checks, re-enumerates the same window identity, and sends one Return to that XID. Replacement and restart must still follow. |
+| macOS | Lines 383–398 show `cg-window-title` failing persistently from 33.441 through 184.547 seconds; `code: null` comes from the harness's own missing-name assertion. Two CG windows are counted, but the picker/offer counts were assigned only after the loop, so zero counts do **not** prove either window disappeared. AX still sees one window without errors (426–434). The product parents its offer; locked `rfd 0.16.0` uses `beginSheetModalForWindow` and sets the alert's **message text**, not its window title. An anonymous sheet is therefore expected. The harness now ignores unnamed CG auxiliaries for identity, proves the visible picker separately, and enumerates owned AX sheets and separate windows by exact alert heading and button. It rechecks native focus and CF element identity before one AXPress. The original log cannot identify which of the two CG windows lacked a name. |
+| Windows | Lines 180–190 report seven owned native windows, **zero** offer captions, and one visible foreground picker, without census errors. This is a genuinely absent offer, not UIA hiding an existing native dialog. Lines 212–216 record successful availability. The product's remaining automatic presentation conditions are visibility, focus, the still-enabled choice, and a free chooser lease. The seeded choice stays enabled and no harness action acquires a chooser. The locked runtime reveals a focus defect: single-webview `IsFocused` reads Tao's top-level `is_active && is_focused` cache, which `WM_KILLFOCUS` clears when focus moves into WebView2; WebView2's separate focus events do not repair that cache. The harness proves exactly that foreground-with-focused-Search state. The updater now compares the foreground HWND with its exact picker HWND. The old log has no internal focus/lease sample; this source-based diagnosis still needs a rebuilt Windows nightly to verify. |
 
-Product code remains unchanged: `updater.rs:200` logs availability **before**
-presentation. `updater/offer.rs:149` requires visibility **and** focus;
-`:184` withholds automatic presentation while either is absent or automatic
-checks were disabled, and `:187` also requires the chooser lease. Show/focus
-events request a fresh check (`:155`). The offer never waits for hide, and
-hiding would fail the gate. Linux's observed native offer rules that gate out
-as the cause of this run's missing accessibility action. Do not add a hide,
-another Show or an explicit update check to repair that evidence.
+The supplied `update2.log` for run 41107965372 contains only Windows and Linux
+jobs (446 and 778 lines). It supplies no passing macOS observation or action
+record, so a passing-Mac comparison cannot be reconstructed from that file.
 
-Run the qualifier's `--self-test` and focused workflow/feed tests before a
-native rerun. The PowerShell provider contract requires `pwsh`; a skipped
-provider contract is not Windows evidence. Mocks do not certify the installed
-three-platform update path.
+No extra Show, hide, explicit update check, or invocation retry is used. The
+Windows product focus fix cannot repair the already-built previous nightly;
+a native rerun must use a previous nightly containing that fix. Turning an
+automatic check into an explicit one would change the qualified outcome.
+
+Run `update-e2e.py --self-test`, the native provider model tests, and focused
+workflow/feed tests before a native rerun. The Windows provider model requires
+`pwsh`; a skipped provider contract is not Windows evidence. The models prove
+refusal, I/O failure, delayed A after B, close/reopen, and one attempted action;
+only installed runs establish replacement/restart across the three systems.
+
+Local worker validation on 2026-10-30: 64 qualifier self-tests passed (the
+PowerShell provider test skipped because `pwsh` is absent), all 46 focused
+workflow/feed/macOS provider tests and all nine Rust offer tests passed, as did
+desktop Clippy and formatting. The full desktop run had 349 passes, nine
+sandbox-denied socket binds, one unchanged AppKit HTML decoder failure, and
+three ignored tests. Native reruns, the missing passing-Mac log, and independent
+review of the updater change remain outstanding. The full script runner also
+invokes Git and is outside this worker's no-Git boundary.
 
 ## Capability matrix
 

@@ -1297,6 +1297,8 @@ Opening the picker re-checks before offering the latest update; waiting holds
 no check lock or installer metadata. Turning automatic checks off keeps the
 label but leaves further checks to an explicit command. An explicit update
 command checks and presents its result immediately, opening the picker when needed.
+On Windows, this gate checks the exact picker HWND in the foreground, including
+when its child WebView2 has keyboard focus. Another Ibis window does not qualify.
 
 ## Brand and mark
 
