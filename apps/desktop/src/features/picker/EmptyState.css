@@ -11,25 +11,15 @@
 .empty-primary { font-weight: var(--type-strong-weight); }
 .empty-alternative { text-decoration: underline; }
 
-.empty-loading {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-2);
-  padding: calc(3 * var(--space-4) - var(--inset)) 0;
-  color: var(--muted);
-  font-size: var(--metadata-size);
-  line-height: var(--metadata-line-height);
-  text-align: center;
+/* Opening shares the choice screen's middle-area centring and scroll owner. */
+main .picker-content .results-area:has(.empty-opening) { display: flex; flex-direction: column; flex: 1 0 auto; overflow: visible; min-height: min-content; }
+.empty-opening { flex: none; width: 100%; max-width: 33.75rem; margin: auto; padding: var(--inset); text-align: center; }
+.opening-mark { width: 2.5rem; height: 2.5rem; margin: 0 auto var(--space-3); animation: opening-breathe calc(8 * var(--motion-panel)) var(--ease-out) infinite alternate; }
+.opening-title { margin: 0; color: var(--text); font-size: 1.0625rem; line-height: var(--title-line-height); font-weight: var(--type-strong-weight); overflow-wrap: anywhere; }
+.opening-line { margin: .375rem 0 0; color: var(--muted); font-size: var(--metadata-size); line-height: var(--metadata-line-height); overflow-wrap: anywhere; }
+.opening-progress { width: 10rem; max-width: 100%; margin: var(--space-4) auto 0; }
+@keyframes opening-breathe { from { opacity: .65; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .opening-mark { animation: none; }
 }
-.empty-loading > span { min-width: 0; overflow-wrap: anywhere; }
-.empty-spinner {
-  flex: none;
-  width: var(--icon-glyph-size);
-  height: var(--icon-glyph-size);
-  color: var(--text-tertiary, var(--muted));
-  animation: empty-spin calc(5 * var(--motion-panel)) linear infinite;
-}
-@keyframes empty-spin { to { transform: rotate(1turn); } }
-@media (prefers-reduced-motion: reduce) { .empty-spinner { animation: none; } }
-:root[data-picker-hidden] .empty-spinner { animation-play-state: paused; }
+:root[data-picker-hidden] .opening-mark { animation-play-state: paused; }

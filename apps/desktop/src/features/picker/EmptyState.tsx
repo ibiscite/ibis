@@ -8,6 +8,7 @@ import { ChoiceList, type Choice } from "../../ui/ChoiceList";
 import { KeyHint } from "../../ui/KeyCaps";
 import { IndeterminateProgress } from "../../ui/Progress";
 import { Button } from "../../ui/Button";
+import { IbisMark } from "../../ui/IbisMark";
 import "./EmptyState.css";
 
 // The empty-state contract keeps fast library opens free of transient content.
@@ -32,12 +33,16 @@ function LibraryProgress({ library }: { library: LibraryStatus }) {
   if (!visible) return null;
   const progress = library.state === "reloading" ? libraryMessages.reloading : libraryMessages.opening;
   const name = library.name || null;
-  return <div role="status" aria-live="polite"><IndeterminateProgress className="empty-loading" label={progress(name)}>
-    <svg className="empty-spinner" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-      <path d="M12 3a9 9 0 1 1-9 9" />
-    </svg>
-    <span aria-hidden="true" dir="auto">{progress(shortName(name))}</span>
-  </IndeterminateProgress></div>;
+  return <div className="empty-opening" role="status" aria-live="polite">
+    <IbisMark className="opening-mark" />
+    <p className="opening-title" aria-hidden="true" dir="auto">{progress(shortName(name))}</p>
+    <p className="opening-line">{setupText.openingLine}</p>
+    {/* LibraryStatus reports snapshot counts, never read progress: do not turn
+        the retained count into a made-up percentage. */}
+    <IndeterminateProgress className="opening-progress update-progress" label={progress(name)}>
+      <div className="update-track" aria-hidden="true"><div /></div>
+    </IndeterminateProgress>
+  </div>;
 }
 
 /** A library that could not be opened and has no earlier snapshot to search:
@@ -91,7 +96,8 @@ export function EmptyState({ library, query, narrowed, onChooseLibrary, onClearS
 }) {
   if (!library) return <div className="empty-state" />;
   const loading = library.state === "loading" || library.state === "reloading";
-  if (loading) return <LibraryProgress key={`${library.state}\u0000${library.name}`} library={library} />;
+  if (loading) return library.has_snapshot && library.references > 0 ? null
+    : <LibraryProgress key={`${library.state}\u0000${library.name}`} library={library} />;
   if (library.state === "error" && !library.has_snapshot) {
     return <Recovery key={`${library.name}\u0000${library.problem}`} library={library} onFind={onChooseLibrary} onReload={onReload} setup={setup} />;
   }

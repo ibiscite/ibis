@@ -1,0 +1,5 @@
+/* A logo keeps its generated colours and orientation, including in RTL. */
+.ibis-mark { display: block; flex: none; transform: none; forced-color-adjust: none; }
+/* The picker export is 24 px with a 2 px outset around the 20 px glyph column.
+   Keep this with the mark while styles.css belongs to the picker layout lane. */
+.search-bar > svg.ibis-mark.search-mark { width: 1.5rem; height: 1.5rem; margin-inline: calc(var(--lead) - .125rem) calc(var(--lead-gap) - var(--search-gap) - .125rem); }
