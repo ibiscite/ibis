@@ -5,6 +5,7 @@
   background: var(--fill-control); border: var(--border-width) solid var(--stroke-control);
 }
 .ui-segment {
+  position: relative; /* Bound React Aria's hidden input to this choice. */
   min-height: var(--control-min-size); padding: 0 var(--space-3); display: inline-flex; align-items: center;
   min-width: 0; max-width: 100%; box-sizing: border-box; overflow-wrap: anywhere;
   border-radius: calc(var(--r-control) - var(--row-spacing)); font: var(--type-meta-size) / var(--type-meta-line) var(--font-family);
