@@ -51,8 +51,10 @@ export function useFitWindow(main: RefObject<HTMLElement | null>, compact: boole
     void fit(height, animate).catch(() => { if (request.current === operation) sent.current = null; });
   };
   const resized = useRef<ResizeObserver | null>(null);
-  // Watch the parts this render shows; observing a part twice is harmless.
+  // Fallback children keep their intrinsic size; observe the viewport too so
+  // growing it can restore the bounded middle without a content rerender.
   const watch = useCallback(() => {
+    if (main.current) resized.current?.observe(main.current);
     for (const part of main.current?.querySelectorAll(":scope > *, :scope > .picker-content > *") ?? []) resized.current?.observe(part);
   }, [main]);
   useLayoutEffect(() => {

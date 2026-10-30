@@ -96,6 +96,18 @@ try {
     await search.fill("invented");
     await page.getByRole("option").last().waitFor();
     assert.deepEqual(await scan(), [], `${width}/${larger}/${colorScheme}: results`);
+    if (small) {
+      await page.getByRole("region", { name: "Preview" }).getByText("[@synthetic0]", { exact: true }).waitFor();
+      await page.waitForFunction(() => document.querySelector('[aria-label="Search results"]').textContent.trim().length > 0);
+      for (const height of [88, 120]) {
+        await page.setViewportSize({ width, height });
+        await page.waitForFunction(() => document.querySelector("main").hasAttribute("data-scroll-page"));
+        await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+        await page.setViewportSize({ width, height: 320 });
+        await page.waitForFunction(() => !document.querySelector("main").hasAttribute("data-scroll-page"));
+        assert.deepEqual(await scan(), [], `${height}px to 320px recovers bounded middle and whole footer without rerender`);
+      }
+    }
     for (const control of [page.getByLabel("Page", { exact: true }), page.getByRole("radiogroup", { name: "Citation form" }), page.getByRole("region", { name: "Preview" })]) {
       await control.scrollIntoViewIfNeeded();
       const reachable = await control.evaluate((node) => {

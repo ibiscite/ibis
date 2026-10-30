@@ -162,3 +162,29 @@ test("extreme text uses one reachable page when fixed edges cannot leave a reada
   expect(main.hasAttribute("data-scroll-page")).toBe(false);
   expect(fit).toHaveBeenCalledTimes(1);
 });
+
+
+test.each([88, 120])("growing from %spx leaves fallback without needing a content rerender", (smallHeight) => {
+  let frame = smallHeight, notify = () => {};
+  const observed = new Set<Element>();
+  vi.stubGlobal("ResizeObserver", class {
+    constructor(callback: ResizeObserverCallback) { notify = () => callback([], this as unknown as ResizeObserver); }
+    observe(node: Element) { observed.add(node); }
+    disconnect() { observed.clear(); }
+  });
+  vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockImplementation(() => frame);
+  vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (this: HTMLElement) {
+    return this.tagName === "HEADER" ? 57 : this.tagName === "FOOTER" ? 40 : this.tagName === "INPUT" ? 32 : frame;
+  });
+  const fit = vi.fn<FitPicker>(() => Promise.resolve());
+  const view = render(<Picker compact={false} fit={fit} rows={14} />);
+  const main = view.container.querySelector("main")!;
+  expect(main.hasAttribute("data-scroll-page")).toBe(true);
+  frame = 320;
+  act(() => { if (observed.has(main)) notify(); });
+  expect(main.hasAttribute("data-scroll-page")).toBe(false);
+  expect(fit).toHaveBeenCalledTimes(1);
+  view.unmount();
+  act(() => notify()); // a queued callback after disconnect has no owner.
+  expect(fit).toHaveBeenCalledTimes(1);
+});
