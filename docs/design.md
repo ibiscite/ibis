@@ -1146,6 +1146,8 @@ Compact, menu-bar visibility, welcome replay and the remaining Libraries, Citati
 actions appear disabled with Coming soon. Ordinary Settings presentations open
 General at the top; explicit page requests select that page and reset its scroller.
 The shared shell uses the root's full height at Default, Larger and 200% text.
+The page and navigation scrollers contain absolutely positioned descendants,
+so focusing a control never scrolls the document or moves the window chrome.
 General shows desktop-owned shortcut triggers verbatim, or Not assigned, with
 the desktop's guidance.
 

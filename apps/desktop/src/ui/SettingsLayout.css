@@ -22,6 +22,8 @@
 }
 
 .settings-page {
+  /* Hidden radio inputs must stay inside this scroller's coordinate space. */
+  position: relative;
   grid-area: 2 / 2; min-width: 0; min-height: 0; overflow-y: auto; overflow-x: hidden; box-sizing: border-box;
   display: grid; align-content: start; grid-auto-rows: max-content; gap: var(--space-5);
   padding: var(--settings-page-inset); scroll-padding-block: var(--settings-page-inset); overscroll-behavior: contain;

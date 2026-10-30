@@ -59,6 +59,14 @@ test("Settings fills the viewport, with bounded page and navigation scrollers be
   }
 });
 
+test.each([
+  ["page", shell, ".settings-page"],
+  ["sidebar", navigation, ".ui-side-navigation"],
+])("the %s scroller contains absolutely positioned controls instead of extending the document", (_name, source, selector) => {
+  expect(style(source, selector).getPropertyValue("position")).toBe("relative");
+  expect(style(source, selector).getPropertyValue("overflow-y")).toBe("auto");
+});
+
 test("long sidebar labels can scroll within the remaining height without moving the title bar", () => {
   const sidebar = style(shell, ".settings-sidebar");
   expect(sidebar.getPropertyValue("display")).toBe("flex");

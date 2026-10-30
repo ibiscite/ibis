@@ -1,5 +1,6 @@
 /* The navigation list alone scrolls; its shell reserves the native title bar. */
 .ui-side-navigation {
+  position: relative;
   display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; gap: var(--row-spacing);
   overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scroll-padding-block: var(--inset);
   padding: var(--inset); box-sizing: border-box; outline: none;
