@@ -135,9 +135,11 @@ keeps S to the edge, top and bottom.
 **Two columns** [C3]. Icons, the search glyph, the status dot and type tiles
 centre on the 32 px tile column; text starts on the title column: row titles,
 the search query, the status text and the shelf citation. The search glyph sits
-6 px inside the tile column on each side. It is always the magnifier, the
-sign everyone reads as "type here" (maintainer, 2026-10-30). The Ibis mark
-appears on the welcome screen and in the empty-search hint instead [C14].
+6 px inside the tile column on each side. It is the Ibis mark by default, as
+Alfred shows its hat (maintainer, 2026-10-30); Settings › Look ›
+**Search icon** offers Ibis mark, Magnifier or None, drawn as small pictures.
+With None the slot stays empty, so the query never moves off the title
+column. It is a person's choice and never a state [C14].
 
 ```
 --lead     = row-pad + (tile − icon) / 2       field padding before the icon
@@ -179,6 +181,9 @@ across launches; Ibis never changes it. Larger text multiplies the height by
 `--larger-text-scale`, capped at the display's work area. Inside the frame the
 header, shelf and footer keep their sizes; the middle area holds the state,
 starts S below the header divider and is the only thing that scrolls.
+Steady, not rigid: Settings › Look › **Window size** offers Small
+(640 × 400), Medium (720 × 480, the default) and Large (840 × 600) as
+pictures, and any dragged size shows as Custom.
 
 **Nothing clipped, one scroller** (maintainer, 2026-10-30). No state is ever
 cut off: the empty-search hint, a notice line, the shelf and the footer always
@@ -191,7 +196,7 @@ regression test at normal and Larger text and at the minimum size.
 
 **Empty search: first time and every day** [C11]. Same frame, different
 content. While no library is chosen, the welcome screen (**First run**). For
-the first days with a library, the hint: the Ibis mark, "Type to find a
+the first days with a library, the hint: the magnifier, "Type to find a
 reference", what to search by, and the Copy and Add keys, centred in the
 middle area. Once there is history, the middle area shows what people most
 likely want: Cited here recently (up to three, for the app Ibis was opened
@@ -362,11 +367,21 @@ Data truncates with a tooltip; file names shorten in the middle and
 keep their extension. Budget +35 % for German and Greek. RTL uses logical
 properties (tile, year and chevron mirror; key caps keep platform order);
 mixed-direction strings are isolated and citation keys stay LTR.
+**Wrapped text keeps its padding** (maintainer, 2026-10-30). When text takes
+two or more lines (Larger text, long titles, translations), its container
+grows to fit it with the same padding on every side: text never touches or
+crosses a row's fill, a card's edge or a control. Wrapped lines start where
+the first line starts, the trailing control or year stays centred on the
+block, and in Settings the control moves below the label rather than
+squeezing it. Making a window or column wider is never the fix. Check every
+row, menu item and Settings row at normal, Larger and 200% text.
 
-**The Ibis mark in the picker.** The generated bird in its canonical scarlet,
-40 px, leads the welcome screen and the empty-search hint, where a second
-magnifier would only repeat the search box. It never replaces the search
-glyph and never appears on a control.
+**The Ibis mark in the picker.** The generated bird in its canonical scarlet.
+In the search box it uses the tile-sized box (its artwork fills about three
+quarters) with symmetric optical outsets, so the query and results stay
+aligned. At 40 px it leads the welcome screen. The empty-search hint shows the
+magnifier, the sign for "type", whichever search icon is chosen. The mark never
+appears on a control.
 
 **Icons.** Ibis's own drawings on every platform: 20 px grid, 1.5 px rounded
 stroke (1.6 px macOS, 1 px Windows, 16 px symbolic `ibis-…-symbolic` on GNOME);
@@ -400,7 +415,13 @@ text follows 12 px after it, as system status bars place an indicator.
 
 "Updated" means the references changed; "checked" means Ibis read them. The
 footer always names the library searched; its tooltip and the top of More add
-libraries, check times and problems. Names and ages are isolated for RTL; the
+libraries, check times and problems. **One place for each status**
+(maintainer, 2026-10-30): the footer is where library state lives. A notice
+above the results appears only when the person can do something about it,
+and the footer then does not repeat it in other words. It says what happened
+in a few words with its age and one action: "Zotero not updated · 2 hours ago
+· Open Zotero" (Open Zotero launches the app), "thesis.bib moved · Find…".
+While references are usable nothing else interrupts. Names and ages are isolated for RTL; the
 age ticks every 30 s outside the live region.
 
 **Notices.** "Copied" or "Inserted" shows after the picker hides, in a window
@@ -432,23 +453,32 @@ the title column. Shown while there are results or a citation is being built,
 including through empty searches and refresh failures; hidden on choice
 screens. Results never move when a reference is added. With several
 references the citation itself holds them as segments (no chips line): each
-reserves 1 px on each side; under the pointer it becomes a soft pill (radius 6)
-with a 16 px round remove button inside its end over a 6 px fade, so nothing
-moves and neighbours are never covered (also for zero-width separators). From
-the keyboard ← → select a segment as an accent-filled token and Delete removes
-it. On copy the shelf shows a closing beak and "Copied" at the line end.
+reserves 1 px on each side; under the pointer it becomes a soft pill (radius 6),
+so nothing moves, no control ever covers its text and neighbours are never
+covered (also for zero-width separators). From the keyboard ← → select a
+segment as an accent-filled token and Delete removes it. On copy the shelf
+shows a closing beak and "Copied" at the line end.
+
+**One line, details on demand** (maintainer, 2026-10-30). The shelf is always
+one line: no Page field or form choices beneath it. Clicking a segment (or
+Return or Space on a selected one) opens its menu: the reference's short name
+as a heading, **Page** with a field, then **Name in brackets**, **Name in the
+sentence** and **Year only**, each with a quiet example of what it pastes in
+the current style, then **Remove from citation ⌫**. With one reference the
+whole citation is its segment. Pages also come from typing (`garcia 2021 p12`
+shows a page token beside search) and, from 0.5, the PDF pane's "Cite this
+page", where the Page field lives beside the page itself.
 
 - **Text.** Text colours; key formats monospace with punctuation in `--muted`;
   formatted styles in the UI font. A read-only `<bdi dir="auto">` line with an
   ellipsis; the full text is in the tooltip and the wide pane.
-- **Page and form** (#1366). The focused shelf reference has a labelled Page
-  field (a page or range, including Roman numerals) and the shared Normal,
-  Narrative and Omit author choices. Focusing a reference's label shows its
-  details; activating Edit moves focus directly into that reference's Page
-  field, past other chips. The first reference is shown initially. With no built
-  selection, these controls edit the highlighted result. The first edit adds
-  that result to the shelf; subsequent searches cannot change its page or form.
-  Editing keeps focus in the control, clears a queued copy and prepares a new preview.
+- **Page and form** (#1366). A reference's menu holds its Page field (a page
+  or range, including Roman numerals) and the three name forms. Opening the
+  menu from a selected segment puts focus in Page. With no built selection,
+  the same menu on the highlighted result edits it; the first edit adds that
+  result to the shelf; subsequent searches cannot change its page or form.
+  Editing keeps focus in the menu, clears a queued copy and prepares a new
+  preview.
   Clearing Page removes only that reference's page. Optional page labels such
   as `p. 12` or unquoted `pp. ١٢–١٥` use the shared locator parser before
   formatting; Unicode numbers keep their written digits. A recognised page
@@ -458,13 +488,13 @@ it. On copy the shelf shows a closing beak and "Copied" at the line end.
   Only Page edits are parsed as raw input. A locator captured from search is
   already canonical: quoted text such as `S.12` or `pages of notes` keeps its
   literal value through preview, form changes and copying.
-  Controls and actionable formatting refusals
+  Actionable formatting refusals
   remain visible with the paste preview hidden. Engine losses name the reference
   and field beside the preview; an unsupported form explains the refusal there
   and blocks copying until corrected. Enter leaves that explanation visible.
   Mixed narrative clusters, other locator controls, prefixes and suffixes
-  remain in #24/#1315. Controls wrap at narrow widths and keep the shared
-  keyboard focus and touch targets.
+  remain in #24/#1315. The menu keeps the shared keyboard focus and touch
+  targets.
 - **Year-only citations.** Keep supported style forms available through conditional
   layouts. Each selected item's output must show its issued year, or the style's
   own no-date term for an undated or zero-year item; otherwise refuse the citation.
@@ -660,7 +690,11 @@ radii and per-platform depth wait in the Later milestone.
 
 - **Materials** [C13]. Never glass on glass or CSS blur posing as the desktop.
   The macOS veil is the surface at 75%, so the glass shows light and colour from
-  behind but never readable shapes under the list.
+  behind but never readable shapes under the list. **Readable overlays**
+  (maintainer, 2026-10-30): menus, the keys sheet, dialogs and the shelf's
+  reference menu are layers for reading, so they sit on `--surface-overlay`
+  opaque enough that nothing behind them shows as shapes or text (as macOS
+  menus and sheets do); only the panel itself shows the desktop's colour.
   Over the macOS veil, citation and status colours go one step deeper to keep
   4.5:1; fills, hairlines and key caps are translucent; the window edge is a
   1 px hairline, never a white rim. Ibis sets no blur or opacity of its own.
@@ -946,16 +980,19 @@ far: General (login, pasting, picker look), Shortcuts (open Ibis and the picker'
 key list) and About (version, updates); Libraries and Citations follow (#776).
 
 **Pages for everyone** (2026-10-30). Most people never open Settings, so
-defaults carry the product (principle 9). Six pages, each with one job, in this
+defaults carry the product (principle 9). Seven pages, each with one job, in this
 order: **General** (the opening shortcut, Open at Login, Show in Menu Bar,
-pasting, then Look: rows, text size, show what will be pasted), **Libraries**
+pasting), **Look** (rows, text size, window size, search icon, show what will
+be pasted; each visual choice a row of small pictures), **Libraries**
 (each source with its status in words, which Zotero libraries, Add Library…,
 Remove with Undo), **Citations** (default format, formats remembered per app
 with Forget, styles in the format menu), **Shortcuts**, then, after a gap,
-**Advanced** and **About Ibis**. General stays at seven rows or fewer. Labels
+**Advanced** and **About Ibis**. No page opens with more than seven rows. Labels
 are plain words; a one-line description only where a label could be misread.
 Visual choices show pictures: each row density is a small drawing of rows,
-text size a segmented Default, Larger, Largest. Advanced is a page, not a
+each window size a small frame, each search icon itself; text size is a
+segmented Default, Larger, Largest. A choice is picked by clicking its
+picture, never by a menu item that cycles values. Advanced is a page, not a
 mode: Reset Window Position, the settings file (Open, Show in Finder; checked
 when saved, errors explained on this page), installing the `ibis` command,
 copying a problem report, and Reset All Settings with Undo; nothing on it is
