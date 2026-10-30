@@ -105,7 +105,82 @@ fn app(automatic: bool) -> tauri::Result<tauri::App<tauri::test::MockRuntime>> {
         .visible(false)
         .build()?;
     app.state::<Updates>().automatic.store(automatic, Ordering::SeqCst);
+    // Existing scenarios start after the empty picker's idle handshake.
+    let updates = app.state::<Updates>();
+    let mut input = updates.input.lock().unwrap_or_else(|e| panic!("{e}"));
+    let ticket = input.activity().unwrap_or_else(|| panic!("input ticket"));
+    assert!(input.settle(ticket));
+    drop(input);
     Ok(app)
+}
+
+#[test]
+fn automatic_offer_waits_for_idle_and_drops_metadata_found_while_typing() -> tauri::Result<()> {
+    let app = app(true)?;
+    let picker = app.state::<NativePicker>();
+    picker.visible.store(true, Ordering::SeqCst);
+    picker.focused.store(true, Ordering::SeqCst);
+    let updates = app.state::<Updates>();
+    let ticket = updates
+        .input
+        .lock()
+        .unwrap_or_else(|e| panic!("{e}"))
+        .activity()
+        .unwrap_or_else(|| panic!("typing ticket"));
+    check_result(
+        app.handle(),
+        false,
+        Ok(Some(candidate(app.handle(), "9.0.0", "typing metadata"))),
+    );
+    assert!(picker.offers.lock().unwrap_or_else(|e| panic!("{e}")).is_empty());
+    assert!(updates.offer_available.load(Ordering::SeqCst));
+    assert!(updates.begin().is_some());
+    assert!(updates.input.lock().unwrap_or_else(|e| panic!("{e}")).settle(ticket));
+    *picker.next.lock().unwrap_or_else(|e| panic!("{e}")) =
+        Some(Ok(Some(candidate(app.handle(), "9.1.0", "idle metadata"))));
+    refresh_pending(app.handle());
+    assert!(answer(app.handle(), true).contains("9.1.0"));
+    assert_eq!(
+        *picker.installed.lock().unwrap_or_else(|e| panic!("{e}")),
+        ["idle metadata"]
+    );
+    Ok(())
+}
+
+#[test]
+fn typing_during_a_check_and_old_idle_after_new_activity_never_present() -> tauri::Result<()> {
+    let app = app(true)?;
+    let picker = app.state::<NativePicker>();
+    picker.visible.store(true, Ordering::SeqCst);
+    picker.focused.store(true, Ordering::SeqCst);
+    tauri::async_runtime::block_on(check(app.handle(), false, async {
+        let updates = app.state::<Updates>();
+        let mut input = updates.input.lock().unwrap_or_else(|e| panic!("{e}"));
+        let old = input.activity().unwrap_or_else(|| panic!("old ticket"));
+        let _new = input.activity(); // another key, hide or reopen
+        assert!(!input.settle(old));
+        Ok(Some(candidate(app.handle(), "9.0.0", "obsolete metadata")))
+    }));
+    assert!(picker.offers.lock().unwrap_or_else(|e| panic!("{e}")).is_empty());
+    assert!(picker.installed.lock().unwrap_or_else(|e| panic!("{e}")).is_empty());
+    assert!(app.state::<Updates>().begin().is_some());
+    Ok(())
+}
+
+#[test]
+fn unknown_input_and_exhausted_tickets_never_permit_automatic_offers() {
+    let mut input = InputGate::default();
+    assert!(!input.idle);
+    assert!(!input.settle(0));
+    let current = input.activity().unwrap_or_else(|| panic!("input ticket"));
+    assert!(input.settle(current));
+    assert!(!input.settle(current));
+    let _ = input.activity();
+    input.serial = u32::MAX - 1;
+    assert!(input.activity().is_none());
+    assert!(!input.settle(u32::MAX));
+    assert!(input.activity().is_none());
+    assert!(!input.idle);
 }
 
 fn candidate(app: &AppHandle<tauri::test::MockRuntime>, version: &str, metadata: &str) -> Candidate {

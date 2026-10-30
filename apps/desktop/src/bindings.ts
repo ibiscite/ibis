@@ -136,6 +136,7 @@ export const commands = {
 	checkForUpdates: () => __TAURI_INVOKE<void>("check_for_updates"),
 	/**  Whether an automatic check found an update that has not been presented. */
 	updateAvailable: () => __TAURI_INVOKE<boolean>("update_available"),
+	updatePickerActivity: (ticket: number | null) => __TAURI_INVOKE<number | null>("update_picker_activity", { ticket }),
 	/**
 	 *  Open Settings, or bring it forward, on `page` (General by default). Async so
 	 *  the window is built from the event loop: a sync command runs inside the

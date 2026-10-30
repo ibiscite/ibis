@@ -384,3 +384,10 @@ test("fuzz driver uses stable while the actual sanitizer campaign stays on night
   assert.match(fuzz, /cargo \+nightly fuzz build damaged_bibtex --features fuzzing --target-dir target\/fuzz/);
   assert.match(fuzz, /cargo \+nightly fuzz run damaged_bibtex --features fuzzing --target-dir target\/fuzz -- -max_total_time=300 -timeout=5 -max_len=65536 -rss_limit_mb=2048/);
 });
+
+test('Linux native CI exercises update consent keyboard bindings under its isolated display', () => {
+  const workflow = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
+  const native = workflow.split('- name: Exercise the native picker (Linux)')[1].split('\n      # Keep native smoke')[0];
+  assert.match(native, /xvfb-run[^\n]+dbus-run-session -- cargo test -p ibis-desktop --locked gtk_offer_keyboard_return_declines_and_tab_space_deliberately_installs -- --ignored --test-threads=1/);
+  assert.ok(native.indexOf('gtk_offer_keyboard_return') < native.indexOf('--app target/debug/ibis-desktop'));
+});

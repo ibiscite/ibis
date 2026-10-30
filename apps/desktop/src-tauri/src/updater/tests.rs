@@ -102,17 +102,69 @@ fn update_offer_requires_the_picker_instead_of_another_owned_window() -> Result<
 }
 
 #[test]
-fn update_offer_uses_standard_windows_consent_buttons() {
-    if cfg!(target_os = "windows") {
-        assert!(matches!(offer_buttons(), MessageDialogButtons::YesNo));
-    } else {
-        match offer_buttons() {
-            MessageDialogButtons::OkCancelCustom(yes, no) => {
-                assert_eq!((yes.as_str(), no.as_str()), ("Install and Restart", "Later"));
-            }
-            _ => panic!("the update must offer an explicit accept and decline action"),
+fn update_offer_defaults_to_later_and_never_maps_cancellation_to_install() {
+    match offer_buttons() {
+        MessageDialogButtons::YesNoCancelCustom(first, install, cancel) => {
+            assert_eq!(
+                (first.as_str(), install.as_str(), cancel.as_str()),
+                ("Later", "Install and Restart", "Cancel")
+            );
         }
+        _ => panic!("Return and cancellation must have safe answers; Install is a separate action"),
     }
+}
+
+#[test]
+fn update_offer_return_escape_and_close_are_safe_and_install_is_deliberate() {
+    let MessageDialogButtons::YesNoCancelCustom(later, install, cancel) = offer_buttons() else {
+        panic!("separate default, install and cancellation actions");
+    };
+    // Locked rfd's Windows custom TaskDialog and macOS NSAlert select the
+    // first action for Return. The plugin maps dismissal to the cancel slot.
+    for result in [
+        MessageDialogResult::Custom(later),
+        MessageDialogResult::Custom(cancel),
+        MessageDialogResult::Cancel,
+        MessageDialogResult::Ok,
+        MessageDialogResult::Yes,
+        MessageDialogResult::No,
+    ] {
+        assert!(!offer_accepted(result));
+    }
+    assert!(offer_accepted(MessageDialogResult::Custom(install)));
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+#[ignore = "requires an isolated GTK display; exercise during native qualification"]
+fn gtk_offer_keyboard_return_declines_and_tab_space_deliberately_installs() -> Result<(), Box<dyn std::error::Error>> {
+    use gtk::prelude::*;
+    gtk::init()?;
+    let (dialog, later) = gtk_offer_dialog("Synthetic update is available".into());
+    let answers = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+    let observed = answers.clone();
+    dialog.connect_response(move |_, response| observed.borrow_mut().push(response));
+    dialog.show_all();
+    later.grab_focus();
+    // GtkWindow's actual Return and focused-control activation bindings,
+    // rather than calling the answer callback or manufacturing a response.
+    assert!(dialog.activate_default());
+    let drain = |count| {
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        while answers.borrow().len() < count && std::time::Instant::now() < deadline {
+            gtk::glib::MainContext::default().iteration(false);
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert_eq!(answers.borrow().len(), count);
+    };
+    drain(1);
+    assert_eq!(answers.borrow()[0], gtk::ResponseType::Cancel);
+    dialog.emit_by_name::<()>("move-focus", &[&gtk::DirectionType::TabForward]);
+    assert!(dialog.activate_focus());
+    drain(2);
+    assert_eq!(answers.borrow()[1], gtk::ResponseType::Accept);
+    dialog.close();
+    Ok(())
 }
 
 #[test]

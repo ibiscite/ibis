@@ -30,6 +30,7 @@ import { useZoteroScope } from "./features/picker/useZoteroScope";
 import { useDestination } from "./features/picker/useDestination";
 import { useLoginItem } from "./features/picker/useLoginItem";
 import { useUpdateChecks } from "./features/picker/useUpdateChecks";
+import { monitorUpdateOfferInput } from "./features/picker/updateOfferInput";
 import { useShortcutStatus } from "./features/picker/useShortcutStatus";
 import { usePin } from "./features/picker/usePin";
 import { initialSession } from "./features/picker/session";
@@ -49,7 +50,7 @@ const noSelection = new Map<string, CitationReference>();
 export type PickerApi = Pick<typeof nativeApi,
   "chooseLibrary" | "useZotero" | "libraryStatus" | "reloadLibrary" | "previewFileCitation" | "copyFileCitation" | "copyFormat" | "pickerPreferences" | "setPickerPreferences" |
   "hidePicker" | "pickerVisible" | "setPinned" | "onLibraryChanged" | "onPickerShown" | "onPickerHidden" | "quit" | "search" | "shortcutStatus"> &
-  Partial<Pick<typeof nativeApi, "useSampleLibrary" | "useZoteroLibraries" | "zoteroGroups" | "pickerDestination" | "rememberAppOutput" | "forgetAppOutputs" | "fitPicker" | "findSources" | "openFoundLibrary" | "rowContext" | "showCopiedNotice" | "loginItem" | "setLoginItem" | "onUpdateProgress" | "updateChecks" | "setUpdateChecks" | "onUpdateChecks" | "updateAvailable" | "onUpdateAvailable" | "checkForUpdates" | "onShortcutStatus" | "openSettings" | "onPreferencesChanged">>;
+  Partial<Pick<typeof nativeApi, "useSampleLibrary" | "useZoteroLibraries" | "zoteroGroups" | "pickerDestination" | "rememberAppOutput" | "forgetAppOutputs" | "fitPicker" | "findSources" | "openFoundLibrary" | "rowContext" | "showCopiedNotice" | "loginItem" | "setLoginItem" | "onUpdateProgress" | "updateChecks" | "setUpdateChecks" | "onUpdateChecks" | "updateAvailable" | "onUpdateAvailable" | "updatePickerActivity" | "checkForUpdates" | "onShortcutStatus" | "openSettings" | "onPreferencesChanged">>;
 
 export type PickerPreview = { query?: string; copied?: Copied };
 
@@ -129,6 +130,21 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const updateMenu = useUpdateChecks({ updateChecks, setUpdateChecks, onUpdateChecks, updateAvailable, onUpdateAvailable, perform, report });
   const { pinned, currentPin, togglePin } = usePin({ setPinned, perform });
   const [keysOpen, setKeysOpen] = useState(false);
+  const updateInputBlocked = useRef(false);
+  updateInputBlocked.current = Boolean(query || pendingCopy || menuOpen || keysOpen || selected.size || state.activeCopy !== null);
+  const updateInput = useRef<ReturnType<typeof monitorUpdateOfferInput> | null>(null);
+  useEffect(() => {
+    if (!api.updatePickerActivity) return;
+    const monitor = monitorUpdateOfferInput(window, api.updatePickerActivity, () =>
+      updateInputBlocked.current || !document.hasFocus() || document.documentElement.dataset.pickerHidden !== undefined ||
+      [...document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input:not([type]), input[type="text"], input[type="search"], textarea')].some((input) => input.value.length > 0) ||
+      [...document.querySelectorAll('[contenteditable="true"]')].some((input) => Boolean(input.textContent?.length)));
+    updateInput.current = monitor;
+    const visibility = new MutationObserver(monitor.activity);
+    visibility.observe(document.documentElement, { attributes: true, attributeFilter: ["data-picker-hidden"] });
+    return () => { visibility.disconnect(); monitor.stop(); updateInput.current = null; };
+  }, [api.updatePickerActivity]);
+  useEffect(() => { updateInput.current?.activity(); }, [query, pendingCopy, menuOpen, keysOpen, selected.size, state.activeCopy, state.visibility]);
   // Where focus goes back to when the keys overlay closes.
   const keysReturn = useRef<HTMLElement | null>(null);
   // While Alt (⌥) is held, the footer shows the other keys instead of Enter.

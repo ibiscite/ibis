@@ -89,7 +89,7 @@ establishes:
 
 | Platform | Evidence and cause |
 |---|---|
-| Linux | Lines 1006–1030 prove one visible, focused native offer from 31.985 through 184.968 seconds. Lines 1036–1045 report a complete fresh AT-SPI scan with zero offer/action matches. Presentation works; this accessibility provider does not expose the native dialog. More cache invalidation or retries cannot establish an action that is absent from that tree. Qualification now uses the smoke harness's exact X11 title, PID, managed-client and native-focus checks, re-enumerates the same window identity, and sends one Return to that XID. Replacement and restart must still follow. |
+| Linux | Lines 1006–1030 prove one visible, focused native offer from 31.985 through 184.968 seconds. Lines 1036–1045 report a complete fresh AT-SPI scan with zero offer/action matches. Presentation works; this accessibility provider does not expose the native dialog. More cache invalidation or retries cannot establish an action that is absent from that tree. Qualification now uses the smoke harness's exact X11 title, PID, managed-client and native-focus checks, re-enumerates the same window identity, and deliberately activates the Install control in that XID (see the keyboard-safety update below). Replacement and restart must still follow. |
 | macOS | Lines 383–398 show `cg-window-title` failing persistently from 33.441 through 184.547 seconds; `code: null` comes from the harness's own missing-name assertion. Two CG windows are counted, but the picker/offer counts were assigned only after the loop, so zero counts do **not** prove either window disappeared. AX still sees one window without errors (426–434). The product parents its offer; locked `rfd 0.16.0` uses `beginSheetModalForWindow` and sets the alert's **message text**, not its window title. An anonymous sheet is therefore expected. The harness now ignores unnamed CG auxiliaries for identity, proves the visible picker separately, and enumerates owned AX sheets and separate windows by exact alert heading and button. It rechecks native focus and CF element identity before one AXPress. The original log cannot identify which of the two CG windows lacked a name. |
 | Windows | Lines 180–190 report seven owned native windows, **zero** offer captions, and one visible foreground picker, without census errors. This is a genuinely absent offer, not UIA hiding an existing native dialog. Lines 212–216 record successful availability. The product's remaining automatic presentation conditions are visibility, focus, the still-enabled choice, and a free chooser lease. The seeded choice stays enabled and no harness action acquires a chooser. The locked runtime reveals a focus defect: single-webview `IsFocused` reads Tao's top-level `is_active && is_focused` cache, which `WM_KILLFOCUS` clears when focus moves into WebView2; WebView2's separate focus events do not repair that cache. The harness proves exactly that foreground-with-focused-Search state. The updater now compares the foreground HWND with its exact picker HWND. The old log has no internal focus/lease sample; this source-based diagnosis still needs a rebuilt Windows nightly to verify. |
 
@@ -116,6 +116,36 @@ sandbox-denied socket binds, one unchanged AppKit HTML decoder failure, and
 three ignored tests. Native reruns, the missing passing-Mac log, and independent
 review of the updater change remain outstanding. The full script runner also
 invokes Git and is outside this worker's no-Git boundary.
+
+## Update consent keyboard safety
+
+PR #1504's foreground fix exposed a pre-existing consent hazard: Return meant
+for Search could accept an automatic update. The locked sources were checked
+locally, without changing dependencies:
+
+| Locked source | Keyboard behaviour and resulting implementation |
+|---|---|
+| `rfd 0.16.0`, `backend/win_cid/message_dialog.rs` | TaskDialog uses `nDefaultButton: 0`. Standard Yes/No defaults to Yes. Custom actions preserve vector order: custom Yes=1004, No=1008, Cancel=1001. Ibis now puts Later first, Install second and Cancel third. The qualifier invokes Install or sends one bounded `BM_CLICK` to the verified owned native Button ID 1008; it never presses the default. |
+| `rfd 0.16.0`, `backend/macos/message_dialog.rs`; locked AppKit `NSAlert::addButtonWithTitle` documentation | Buttons are added in argument order. The first gets Return; the Cancel title gets Escape. Later is first, Install second, Cancel third. AXPress continues to target only the exact owned Install action. |
+| `rfd 0.16.0`, `backend/gtk3/message_dialog.rs` | Adds custom buttons in argument order but never calls `gtk_dialog_set_default_response`. Ibis owns this small GTK dialog instead, explicitly assigning both the default and initial focus to Later. Only Accept installs; Escape/close cancel. The qualifier selects the next button with Tab, rechecks the same owned, focused XID, then sends one Space. |
+| `tauri-plugin-dialog 2.8.3`, `desktop.rs` and `MessageDialogBuilder::show` | `show(bool)` treats the first custom label as affirmative. The Linux adapter also maps native cancellation to the custom cancel label, including close. Simply reversing a two-button dialog could therefore map Escape/close to Install. Ibis uses `show_with_result` and matches only the exact Install label; a separate Cancel slot remains safe. |
+
+The shared input monitor captures real keyboard/input/composition events before
+picker handlers. One 1.5-second idle timer belongs to its latest interaction;
+non-empty input, held keys/pointers, overlays, copies and hidden/unfocused state
+block it. Only the matching native activity ticket permits a fresh check. Native
+presentation checks that gate again; the safe default covers IPC/native focus
+races. No text or installer metadata is retained in the readiness state.
+
+Node keyboard regressions dispatch Enter through that monitor and a picker
+handler, cover held keys, composition, failed I/O and delayed A after B, and run
+on both Node 22 and 24. Rust offer tests cover unknown/busy input, typing during
+a check, obsolete tickets and fresh metadata after idle. The Linux-only ignored
+`gtk_offer_keyboard_return_declines_and_tab_space_deliberately_installs` test
+uses GTK's actual Return/focused-control activation bindings; run it with an
+isolated display. The existing Linux native CI step runs it under Xvfb before
+the picker smoke. Source inspection and mocks do not replace installed native
+keyboard qualification on each platform.
 
 ## Capability matrix
 

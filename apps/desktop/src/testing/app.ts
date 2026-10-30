@@ -72,6 +72,7 @@ export type Handler = (args: Record<string, unknown> & PreviewRequest & { query:
 /** Mock the Rust commands; returns the list of commands called. */
 export function backend(overrides: Record<string, Handler> = {}): string[] {
   const calls: string[] = [];
+  let activityTicket = 0;
   let preferences = { citation_style: null, density: "comfortable", larger_text: false, show_paste_preview: true, search_mark: false, paste: true } as api.PickerPreferences;
   let copyFormat: api.CopyFormat = "pandoc";
   receipts.clear();
@@ -99,6 +100,7 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
     // Builds without an update key have no update controls.
     update_checks: () => null,
     update_available: () => false,
+    update_picker_activity: ({ ticket }: Record<string, unknown>) => ticket === null ? ++activityTicket : ticket === activityTicket ? ticket : null,
     find_sources: () => ({ zotero: "absent", list: 1, files: [], cut_short: false }),
     library_status: () => ({ state: "loaded", has_snapshot: true, zotero: false, name: "refs.bib", snapshot_name: "refs.bib", references: 1, warnings: 0, error: null, problem: null, note: null }),
   };
