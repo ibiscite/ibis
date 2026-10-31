@@ -538,8 +538,8 @@ mod tests {
                 json!([{"key":"SYNTH001","version":1,"data":{"key":"SYNTH001","version":1,"itemType":"book",
                 "title":"The Synthetic Atlas","date":"Spring 2020","accessDate":"2020-02-03 04:05:06","citationKey":"Synthetic2020",
                 "creators":[{"creatorType":"author","firstName":"Ada","lastName":"Example"},{"creatorType":"editor","name":"Synthetic Institute","fieldMode":1}],
-                "dateModified":"2020-02-02T00:00:00Z"}},
-                {"key":"SYNTH002","version":1,"data":{"key":"SYNTH002","version":1,"itemType":"book","title":"x".repeat(300_000),"creators":[],"dateModified":"2020-02-02T00:00:00Z"}}])
+                "dateAdded":"2020-01-01T00:00:00Z","dateModified":"2020-02-02T00:00:00Z"}},
+                {"key":"SYNTH002","version":1,"data":{"key":"SYNTH002","version":1,"itemType":"book","title":"x".repeat(300_000),"creators":[],"dateAdded":"2020-01-01T00:00:00Z","dateModified":"2020-02-02T00:00:00Z"}}])
             };
             Ok(Response {
                 status: 200,
@@ -867,7 +867,7 @@ mod tests {
                     (
                         200,
                         json!([{"key":"SYNTH001","version":1,"data":{"key":"SYNTH001","version":1,"itemType":"book",
-                        "title":title,"creators":[],"dateModified":"2026-10-26T12:00:00Z"}}]),
+                        "title":title,"creators":[],"dateAdded":"2026-10-26T12:00:00Z","dateModified":"2026-10-26T12:00:00Z"}}]),
                     )
                 };
                 let answer = serde_json::to_vec(&answer).unwrap();
@@ -1122,7 +1122,54 @@ mod tests {
         );
     }
 
-    /// The local API serving `items`, each at version 1.
+    #[test]
+    fn closed_and_live_added_dates_have_the_same_value_and_fingerprints() {
+        for (native_id, group_id, chosen) in [(1, None, Library::User), (2, Some(7), Library::Group(7))] {
+            let mut library = closed_library(native_id, group_id, "Invented atlas", "");
+            let item = &mut library.items[0];
+            item.data.better_bibtex_keys.clear();
+            item.data.fields.insert("citationKey".into(), "Synthetic2026".into());
+            item.metadata.date_added = "2020-01-01 00:00:00".into();
+            let snapshot = closed::ClosedSnapshot {
+                schema_version: 123,
+                libraries: vec![library],
+                warnings: vec![],
+                better_bibtex_unknown: false,
+            };
+            let closed = ZoteroSource::new(&[chosen])
+                .unwrap()
+                .publish_closed(&snapshot, &|| false)
+                .unwrap()
+                .remove(0);
+            let live = ZoteroSource::new(&[chosen])
+                .unwrap()
+                .refresh(
+                    &mut ItemsApi(vec![json!({"key":"SYNTH001","itemType":"book",
+                        "title":"Invented atlas","citationKey":"Synthetic2026","creators":[]})]),
+                    false,
+                    &|| false,
+                )
+                .unwrap()
+                .remove(0);
+            let LibraryObject::Record(closed_record) = &closed.snapshot.objects()[0].object else {
+                panic!("expected closed record");
+            };
+            let LibraryObject::Record(live_record) = &live.snapshot.objects()[0].object else {
+                panic!("expected live record");
+            };
+            assert_eq!(closed_record.added_at.as_deref(), Some("2020-01-01T00:00:00Z"));
+            assert_eq!(live_record.added_at, closed_record.added_at);
+            assert_eq!(
+                serde_json::to_value(&closed.snapshot).unwrap(),
+                serde_json::to_value(&live.snapshot).unwrap()
+            );
+            assert_eq!(closed.snapshot.fingerprints(), live.snapshot.fingerprints());
+            assert_eq!(closed.warnings, live.warnings);
+        }
+    }
+
+    /// The local API serving `items`, each at version 1, with the same creation
+    /// metadata as `write_database` below.
     struct ItemsApi(Vec<Value>);
     impl Transport for ItemsApi {
         fn get(&mut self, path: &str) -> Result<Response, TransportError> {
@@ -1140,6 +1187,7 @@ mod tests {
                         .map(|item| {
                             let mut data = item.clone();
                             data["version"] = json!(1);
+                            data["dateAdded"] = json!("2020-01-01T00:00:00Z");
                             data["dateModified"] = json!("2020-02-02T00:00:00Z");
                             json!({"key": item["key"], "version": 1, "data": data})
                         })
