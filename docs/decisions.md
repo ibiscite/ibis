@@ -194,7 +194,9 @@ The native receipt also owns an immutable request generation (#1520 review).
 It rechecks ownership under the notice publication lock before changing text,
 showing the window or starting a timer. A refused A finishing after B cannot
 replace B's delivery message; delayed or duplicate write tokens cannot claim
-the latest receipt. Copies without native paste proofs use request ordering.
+the latest receipt. Every successful clipboard write gets that identity under
+its platform's write lock, including Linux and copies without native paste
+proofs. An unidentified notice cannot claim ownership (2026-10-31, #1494).
 
 When the shortcut opens the picker with short text selected in the target app,
 that text becomes the search and the paste replaces it (macOS and Windows, on
@@ -490,6 +492,32 @@ Review regressions also cover input that switches an interior document without
 changing either AX identity, input during the final AX read, ignored mouse
 movement, invalid input timing and process replacement before the AX write.
 
+The process-lifetime notification registration in `macos_notifications.rs` is
+also a scoped unsafe exception (2026-10-31). It uses the locked Foundation and
+block2 bindings with no object filter or operation queue, ignores notification
+payloads, and dispatches fresh reads to the native thread. Keyboard-layout
+notifications keep the opening shortcut current while hidden; workspace
+accessibility and distributed color/theme notifications replace the appearance
+timer. Appearance is also read synchronously before showing the picker.
+The webview's library-age timer exists only while the picker is shown. These
+changes remove periodic hidden wakeups; capped unavailable-file retries and
+the updater's six-hour check are unchanged.
+
+A reloaded picker's presentation starts unknown. Enter waits for a native
+identity before starting a copy; initialization failures get one recovery read
+per explicit action, with no timer. Exhausted retries discard the queued Enter
+and show the existing copy-failure alert; another Enter can retry. Hide/reopen
+retires old reads. Escape
+can pass an unknown identity: the synchronous native IPC handler snapshots the
+current owner before dispatch, so a subsequent reopen still rejects that
+delayed hide. This capture cannot live in an async command body: Tauri schedules
+that body after receipt. The handler replies after the native hide completes;
+main-thread dispatch runs inline there, and an off-thread caller waits without
+holding application state.
+Windows show requests from workers dispatch preparation, appearance refresh
+and presentation together to the main thread. No worker may hold the appearance
+cache while synchronously asking that thread for an HWND (2026-10-31, #1558).
+
 Other macOS native calls use objc2's generated AppKit and Core Graphics
 bindings. On Windows, `winsafe` supplies safe Win32 calls (the foreground
 window, its process, name and integrity level, and `SendInput`), and
@@ -558,6 +586,12 @@ settings Ibis cannot read are kept as a copy, Ibis starts from defaults and
 says so, and it never silently overwrites a file it could not read. Existing
 migration code is deleted, not extended, when its area is rebuilt. From 1.0 a
 format change needs an upgrade path.
+
+Primary, backup and damaged-file recovery reads are capped at 1 MiB, including
+growth during a read; saves must fit that same limit. Atomic replacement keeps
+the existing file permissions; new Unix files start owner-only. A load problem
+blocks automatic paste and reports paste unavailable, even with a valid backup
+(2026-10-31, #1525).
 
 Planned copied-key warnings (#1092; maintainer-approved, 2026-10-30) may keep a
 bounded private local record of library/item identity and its last successfully

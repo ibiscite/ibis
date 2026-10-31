@@ -121,6 +121,13 @@ pub(crate) async fn native_appearance(app: AppHandle) -> String {
     receive.recv().await.unwrap_or(Appearance::Opaque).name().to_owned()
 }
 
+/// Refresh synchronously on the main thread before presentation, including
+/// changes while hidden. All show entrypoints must dispatch before calling:
+/// native material operations can synchronously query the main-thread HWND.
+pub(crate) fn before_show(app: &AppHandle) {
+    refresh(app, false);
+}
+
 fn refresh(app: &AppHandle, replay: bool) -> Appearance {
     let Some(window) = app.get_webview_window("main") else {
         return Appearance::Opaque;
