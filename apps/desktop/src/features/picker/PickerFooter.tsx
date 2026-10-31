@@ -9,95 +9,76 @@ import { currentPlatform } from "../../platform";
 import { KeyHint } from "../../ui/KeyCaps";
 import { Button } from "../../ui/Button";
 
-/** What the keys do now; null where a key does nothing. */
 export type KeyHints = { enter: string | null; shiftEnter: string | null; escape: string };
 
-/** The footer: library status, what Enter (or, with Alt held, the other keys)
- * does now, and the More button with its menu. */
-export function PickerFooter({ library, groupName, hints, altHeld, actions, more }: {
-  library: LibraryStatus | null | undefined;
-  groupName: (id: number) => string;
-  hints: KeyHints;
-  /** While Alt (⌥) is held, the footer shows the other keys instead of Enter. */
-  altHeld: boolean;
-  actions: { copy: () => void; add: () => void; escape: () => void; keys: () => void };
-  /** The More button and its menu. */
-  more: React.ReactNode;
+/** Status and its fix, More, then Copy. Shorten status before dropping hint labels. */
+export function PickerFooter({ library, groupName, hints, altHeld, actions, more, status }: {
+  library: LibraryStatus | null | undefined; groupName: (id: number) => string; hints: KeyHints; altHeld: boolean;
+  actions: { copy: () => void; add: () => void; escape: () => void };
+  more: React.ReactNode; status?: React.ReactNode;
 }) {
   const bar = useRef<HTMLElement>(null);
   const hintsRow = useRef<HTMLElement>(null);
-  const shortcut = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLSpanElement>(null);
   const statusSize = useRef<HTMLSpanElement>(null);
-  const foldedFocus = useRef(false);
-  const [fit, setFit] = useState({ shortcuts: false, status: false });
+  const statusMinimum = useRef<HTMLSpanElement>(null);
+  const [fit, setFit] = useState({ status: false, labels: false });
+  const moreControl = <span key="more" ref={menu} className="more">{more}</span>;
   const platform = currentPlatform();
-  // biome-ignore lint/correctness/useExhaustiveDependencies: the hint labels, Alt and the platform change the rendered widths, so the fit is measured again.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: labels, Alt and platform change intrinsic control widths.
   useLayoutEffect(() => {
     const element = bar.current;
     if (!element) return;
     const measure = () => {
-      const available = element.clientWidth;
-      const preferred = statusSize.current?.getBoundingClientRect().width ?? 0;
-      if (!(available > 0 && preferred > 0)) return;
       const width = (node: Element | null) => node?.getBoundingClientRect().width ?? 0;
+      const available = element.clientWidth;
+      const preferred = width(statusSize.current);
+      if (!(available > 0 && preferred > 0)) return;
       const gap = parseFloat(getComputedStyle(element).columnGap) || 0;
-      const hintStyle = hintsRow.current ? getComputedStyle(hintsRow.current) : null;
-      const innerGap = parseFloat(hintStyle?.columnGap ?? "") || 0;
-      const hintMargin = (parseFloat(hintStyle?.marginInlineStart ?? "") || 0) + (parseFloat(hintStyle?.marginInlineEnd ?? "") || 0);
-      const actions = [...(hintsRow.current?.children ?? [])].filter((child) => child !== shortcut.current);
-      const optional = width(shortcut.current);
-      const actionWidth = actions.reduce((sum, child) => sum + width(child), 0);
-      const menuWidth = width(menu.current?.querySelector("button") ?? null);
-      const needed = (showShortcut: boolean) => {
-        const count = actions.length + (showShortcut && optional > 0 ? 1 : 0);
-        const bands = 1 + (menuWidth > 0 ? 1 : 0) + (count > 0 ? 1 : 0);
-        return menuWidth + actionWidth + (showShortcut ? optional : 0) + Math.max(0, count - 1) * innerGap + (bands - 1) * gap + (count > 0 ? hintMargin : 0);
+      const fix = width(element.querySelector(".source-action"));
+      const intrinsic = (button: Element | null) => {
+        const label = button?.querySelector<HTMLElement>(".key-hint-label");
+        const hidden = label && getComputedStyle(label).position === "absolute";
+        const labelGap = label?.parentElement ? parseFloat(getComputedStyle(label.parentElement).columnGap) || 0 : 0;
+        return width(button) + (hidden ? label.scrollWidth + labelGap : 0);
       };
-      const shortcuts = preferred + needed(true) > available;
-      const status = preferred + needed(!shortcuts) > available;
-      if (shortcuts && shortcut.current?.contains(document.activeElement)) foldedFocus.current = true;
-      setFit((previous) => previous.shortcuts === shortcuts && previous.status === status ? previous : { shortcuts, status });
+      const actions = [...(hintsRow.current?.children ?? [])];
+      const hintGap = hintsRow.current ? parseFloat(getComputedStyle(hintsRow.current).columnGap) || 0 : 0;
+      const controls = intrinsic(menu.current?.querySelector("button") ?? null) + actions.reduce((sum, action) => sum + intrinsic(action), 0)
+        + Math.max(0, actions.length - 1) * hintGap + gap * 2;
+      const status = preferred + fix + controls > available;
+      const labels = width(statusMinimum.current) + fix + controls > available;
+      setFit((old) => old.status === status && old.labels === labels ? old : { status, labels });
     };
     measure();
     const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
-    for (const node of [element, statusSize.current, ...(hintsRow.current?.children ?? []), menu.current]) if (node) observer?.observe(node);
+    for (const node of [bar.current, statusSize.current, hintsRow.current, menu.current, bar.current?.querySelector(".source-action")]) if (node) observer?.observe(node);
     window.addEventListener("resize", measure);
     return () => { observer?.disconnect(); window.removeEventListener("resize", measure); };
-  }, [hints.enter, hints.shiftEnter, hints.escape, altHeld, platform]);
-  useLayoutEffect(() => {
-    if (!foldedFocus.current || !fit.shortcuts) return;
-    foldedFocus.current = false;
-    if (document.activeElement === document.body || shortcut.current?.contains(document.activeElement)) menu.current?.querySelector("button")?.focus({ preventScroll: true });
-  }, [fit.shortcuts]);
-  return (
-    <footer data-menu-floor>
-      <section ref={bar} aria-label={pickerText.libraryRegion} className="library-bar" data-shortcuts-folded={fit.shortcuts || undefined} data-status-compact={fit.status || undefined}>
-        <span className="footer-fit-measure" aria-hidden="true" inert><span ref={statusSize} className="footer-status-size" /></span>
-        <LibraryStatusLine library={library} groupName={groupName} />
-        <small ref={hintsRow} data-optional-only={!altHeld && !hints.enter || undefined} className="enter-hints" aria-label={keyText.footer} role="group">
-          {altHeld ? <>
-            {hints.shiftEnter && <FooterAction label={hints.shiftEnter} keys={keysFor("add")} onAction={actions.add} />}
-            <FooterAction label={hints.escape} keys={keysFor("escape")} onAction={actions.escape} />
-          </> : <>
-            {hints.enter && <FooterAction label={hints.enter} keys={keysFor("copy")} primary onAction={actions.copy} />}
-            <FooterAction label={keyText.allKeys} keys={keysFor("keys")} className="shortcuts-hint" folded={fit.shortcuts} controlRef={shortcut} onAction={actions.keys} />
-          </>}
-        </small>
-        <span ref={menu} className="more">
-          {more}
-        </span>
-        {library?.note && <p role="status">{library.note}</p>}
-      </section>
-    </footer>
-  );
+  }, [hints.enter, hints.shiftEnter, hints.escape, altHeld, platform, status]);
+  return <footer data-menu-floor>
+    {/* The region includes More and Copy. Its name must stay distinct from
+        the Library button, so native name lookup cannot activate the region. */}
+    <section ref={bar} aria-label={pickerText.pickerActions} className="library-bar"
+      data-status-compact={fit.status || undefined} data-hints-compact={fit.labels || undefined}>
+      <span className="footer-fit-measure" aria-hidden="true" inert><span ref={statusSize} className="footer-status-size" /><span ref={statusMinimum} className="footer-status-minimum" /></span>
+      {status ?? <LibraryStatusLine library={library} groupName={groupName} />}
+      {!altHeld && moreControl}
+      <small key="hints" ref={hintsRow} className="enter-hints" aria-label={keyText.footer} role="group">
+        {altHeld ? <>
+          {hints.shiftEnter && <FooterAction label={hints.shiftEnter} keys={keysFor("add")} onAction={actions.add} />}
+          <FooterAction label={hints.escape} keys={keysFor("escape")} onAction={actions.escape} />
+        </> : hints.enter && <FooterAction label={hints.enter} keys={keysFor("copy")} primary onAction={actions.copy} />}
+      </small>
+      {altHeld && moreControl}
+      {library?.note && <p role="status">{library.note}</p>}
+    </section>
+  </footer>;
 }
 
-function FooterAction({ label, keys, primary, className = "", folded, controlRef, onAction }: {
-  label: string; keys: string; primary?: boolean; className?: string; folded?: boolean; controlRef?: React.Ref<HTMLButtonElement>; onAction: () => void;
-}) {
+function FooterAction({ label, keys, primary, onAction }: { label: string; keys: string; primary?: boolean; onAction: () => void }) {
   const platform = currentPlatform();
-  return <Button ref={controlRef} variant="quiet" size="small" className={`footer-action ${className}`} aria-label={label} aria-hidden={folded || undefined} inert={folded || undefined} excludeFromTabOrder={folded}
+  return <Button variant={primary ? "primary" : "quiet"} size="small" className="footer-action" aria-label={label}
     aria-keyshortcuts={ariaKeys(keys, platform === "macos")} onPress={onAction}>
     <KeyHint label={label} keys={keys} primary={primary} platform={platform} hidden />
   </Button>;

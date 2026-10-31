@@ -2,6 +2,58 @@ use super::*;
 use std::sync::{Arc, Barrier};
 
 #[test]
+fn item_warnings_reach_both_native_preview_and_copy_feedback() -> Result<(), Box<dyn std::error::Error>> {
+    let directory = tempfile::tempdir()?;
+    let path = directory.path().join("invented.bib");
+    std::fs::write(
+        &path,
+        r"@article{protected2020,title={Using {iPhone} for NASA},author={Okafor, Ada},year={2020},journal={Invented Journal},publisher={\unknown{PRIVATE_SYNTHETIC_FIELD}}}",
+    )?;
+    let engine = Engine::new().map_err(|_| "engine")?.without_file_watches();
+    engine
+        .dispatch(
+            Method::Libraries,
+            &json!({"action":"open-file","path":path}),
+            &Cancellation::default(),
+        )
+        .map_err(|_| "open library")?;
+    let object = engine
+        .show(&ibis_engine::request::ShowRequest {
+            item: ibis_engine::request::ItemSelector::Key("protected2020".into()),
+        })
+        .map_err(|_| "show record")?;
+    let request: CitationRequest = serde_json::from_value(
+        json!({"items":[{"item":object.object.id()}],"output":{"kind":"csl","style":"apa"},"form":"bibliography-only"}),
+    )?;
+    let citation = engine
+        .prepare_citation(&request, &Cancellation::default())
+        .map_err(|_| "prepare citation")?;
+    assert_eq!(citation.result().warnings.len(), 2);
+    let text = citation.result().text.clone();
+    let expected = [
+        "Reference 1: A source field could not be fully converted. Check the library entry.",
+        "Reference 1: APA expects sentence case for this title. Stored capitalization was preserved; check it in your document.",
+    ];
+    let file = FileLibrary::from_engine(engine);
+    let preview = file
+        .publish_preview(file.reserve_preview(), citation)
+        .map_err(|error| error.to_string())?;
+    assert_eq!(preview.warnings, expected);
+    let mut writes = 0;
+    let copy = file
+        .copy(&preview.ticket, &preview.content_hash, |content| {
+            writes += 1;
+            assert_eq!(content.text, text);
+            Ok(())
+        })
+        .map_err(|error| error.to_string())?;
+    assert_eq!(writes, 1);
+    assert_eq!(copy.warnings, expected);
+    assert!(!copy.warnings.join(" ").contains("PRIVATE_SYNTHETIC_FIELD"));
+    Ok(())
+}
+
+#[test]
 fn replacing_or_invalidating_a_preview_cancels_its_engine_work() -> Result<(), Box<dyn std::error::Error>> {
     let file = FileLibrary::from_engine(Engine::new().map_err(|_| "engine")?);
     let first = file.reserve_preview();
@@ -404,5 +456,36 @@ fn a_key_another_record_also_has_is_named_and_not_copied() -> Result<(), Box<dyn
             }
         );
     }
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn remembered_file_choice_uses_the_observation_that_supplied_the_loaded_bytes() -> Result<(), Box<dyn std::error::Error>>
+{
+    let dir = tempfile::tempdir()?;
+    let a = dir.path().join("a.bib");
+    let b = dir.path().join("b.bib");
+    let selected = dir.path().join("selected.bib");
+    std::fs::write(&a, "@book{a}")?;
+    std::fs::write(&b, "@book{b}")?;
+    std::os::unix::fs::symlink(&a, &selected)?;
+    let file = FileLibrary::open_file_with(
+        &selected,
+        Engine::new().map_err(|_| "engine")?.without_file_watches(),
+        || {
+            std::fs::remove_file(&selected).unwrap_or_else(|e| panic!("{e}"));
+            std::os::unix::fs::symlink(&b, &selected).unwrap_or_else(|e| panic!("{e}"));
+        },
+    )
+    .map_err(|e| e.to_string())?;
+    let source = crate::library::Source::File(selected);
+    let loaded = Ok(crate::library::load::Loaded::New(Box::new(crate::library::Library {
+        source: Some(source.clone()),
+        file: Some(std::sync::Arc::new(file)),
+        ..Default::default()
+    })));
+    let chosen = crate::library::tasks::remembered_choice(&source, &loaded).ok_or("choice")?;
+    assert_eq!(chosen, ibis_core::settings::LibrarySetting::Bibtex(b.canonicalize()?));
     Ok(())
 }

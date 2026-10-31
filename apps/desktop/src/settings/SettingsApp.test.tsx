@@ -34,14 +34,14 @@ test.each(["macos", "windows", "linux"])("Shortcuts preserves every English name
   }
 });
 
-test("localized Shortcuts keeps exact key labels, refuses registration, and reopens the saved shortcut", async () => {
+test.each(["general", "shortcuts"])("localized %s records directly, refuses registration, and reopens the saved shortcut", async (page) => {
   const { api, state } = fakeApi();
   const pseudo = createInterfaceMessages(english, true);
-  const view = () => <InterfaceMessagesProvider messages={pseudo}><SettingsApp api={api} initialPage="shortcuts" /></InterfaceMessagesProvider>;
+  const view = () => <InterfaceMessagesProvider messages={pseudo}><SettingsApp api={api} initialPage={page} /></InterfaceMessagesProvider>;
   const mounted = render(view());
   const recorder = await screen.findByRole("button", { name: `${pseudo.text("shortcuts-open")}: ${shortcutLabel(DEFAULT_PICKER_SHORTCUT, currentPlatform() === "macos")}` });
   const keys = [...document.querySelectorAll("kbd")].map((key) => key.textContent);
-  expect(keys).toContain(currentPlatform() === "macos" ? "⌘K" : "Ctrl+K");
+  if (page === "shortcuts") expect(keys).toContain(currentPlatform() === "macos" ? "⌘K" : "Ctrl+K");
   for (const row of document.querySelectorAll("#picker-shortcuts .ui-settings-row-text")) expect(row.textContent).toContain("⟦");
   vi.spyOn(api, "setShortcut").mockRejectedValueOnce("in-use");
   fireEvent.click(recorder);
@@ -144,6 +144,7 @@ function fakeApi(permission: Partial<PastePermission> = {}, preferences: Partial
     pickerPreferences: async () => state.preferences,
     preferenceRevision: async () => ++state.revision,
     setPickerPreferences: commit,
+    forgetAppOutputs: async () => null,
     loginItem: async () => ({ name: "Ibis Nightly", enabled: state.login, problem: null }),
     setLoginItem: async (enabled) => { state.login = enabled; return { name: "Ibis Nightly", enabled, problem: null }; },
     updateChecks: async () => state.updates,
@@ -255,7 +256,8 @@ test.each(["Strg + Umschalt + Y", "Alt + F9", ""])("General preserves the deskto
   expect(within(row as HTMLElement).getByText(guidance)).toBeTruthy();
   expect(within(row as HTMLElement).queryByText("Click the shortcut, then type a new one. Esc cancels.")).toBeNull();
   fireEvent.click(within(row as HTMLElement).getByRole("button", { name: "Change…" }));
-  expect(await screen.findByRole("heading", { level: 1, name: "Shortcuts" })).toBeTruthy();
+  expect(await screen.findByRole("heading", { level: 1, name: "General" })).toBeTruthy();
+  await waitFor(() => expect(state.configured).toBe(1));
   expect(screen.queryByRole("button", { name: /^Open Ibis:/ })).toBeNull();
   expect(state.shortcutChoices).toEqual([]);
 });
@@ -358,7 +360,7 @@ test("Settings opens at the top of General with every built page in a navigable,
   const sidebar = screen.getByRole("navigation", { name: "Settings pages" });
   const list = within(sidebar).getByRole("listbox", { name: "Settings pages" });
   const items = within(list).getAllByRole("option");
-  expect(items.map((item) => item.textContent)).toEqual(["General", "Look", "Libraries", "Citations", "Shortcuts", "Advanced", "About Ibis"]);
+  expect(items.map((item) => item.textContent)).toEqual(["General", "Look", "Citations", "Shortcuts", "About Ibis"]);
   const selected = () => within(list).getAllByRole("option", { selected: true });
   expect(selected().map((item) => item.textContent)).toEqual(["General"]);
   expect(selected()[0]!.getAttribute("aria-current")).toBe("page");
@@ -381,7 +383,7 @@ test("Settings opens at the top of General with every built page in a navigable,
 test("sidebar arrows and Home/End move focus, select the page and reset its scroll", async () => {
   const { api } = fakeApi({ granted: true });
   render(<SettingsApp api={api} initialPage="general" />);
-  await screen.findByRole("switch", { name: "Show in Menu Bar" });
+  await screen.findByRole("button", { name: /^Open Ibis:/ });
   const general = screen.getByRole("option", { name: "General" });
   const shortcuts = screen.getByRole("option", { name: "Look" });
   const about = screen.getByRole("option", { name: "About Ibis" });
@@ -403,8 +405,8 @@ test("sidebar arrows and Home/End move focus, select the page and reset its scro
 test("clicking the current sidebar page once resets its scroll to the top", async () => {
   const { api } = fakeApi({ granted: true });
   render(<SettingsApp api={api} initialPage="general" />);
-  await screen.findByRole("switch", { name: "Show in Menu Bar" });
-  for (const name of ["General", "Look", "Libraries", "Citations", "Shortcuts", "Advanced", "About Ibis"]) {
+  await screen.findByRole("button", { name: /^Open Ibis:/ });
+  for (const name of ["General", "Look", "Citations", "Shortcuts", "About Ibis"]) {
     const item = screen.getByRole("option", { name });
     fireEvent.click(item);
     const main = screen.getByRole("main", { name });
@@ -420,7 +422,7 @@ test("clicking the current sidebar page once resets its scroll to the top", asyn
 test("the title-bar drag region is outside the page scroller and sidebar list", async () => {
   const { api } = fakeApi();
   const { container } = render(<SettingsApp api={api} initialPage={null} />);
-  await screen.findByRole("switch", { name: "Show in Menu Bar" });
+  await screen.findByRole("button", { name: /^Open Ibis:/ });
   const titlebar = container.querySelector("[data-tauri-drag-region]")!;
   expect(titlebar.parentElement?.className).toBe("settings");
   expect(screen.getByRole("main").contains(titlebar)).toBe(false);
@@ -441,7 +443,7 @@ test("a paste deep link waits for permission data and scrolls only the page", as
   Object.defineProperty(Element.prototype, "scrollIntoView", { configurable: true, value: scrollAncestors });
   try {
     render(<SettingsApp api={api} initialPage="paste" />);
-    await screen.findByRole("switch", { name: "Show in Menu Bar" });
+    await screen.findByRole("button", { name: /^Open Ibis:/ });
     const main = screen.getByRole("main");
     expect(main.scrollTop).toBe(0);
     await act(async () => { permission.resolve({ pastes: true, needed: true, granted: false, list: "Accessibility" }); });
@@ -463,19 +465,19 @@ test("the paste guide names the list, opens it, notices the grant on its own and
   const guide = await screen.findByRole("heading", { name: "Allow Ibis to paste for you" });
   const card = guide.closest(".paste-guide") as HTMLElement;
   expect(card.textContent).toContain("In Privacy & Security › Device Control and Data Access, turn on Ibis Nightly.");
-  expect(card.textContent).toContain("To paste, allow Ibis in macOS;");
+  expect(card.textContent).toContain("Ibis needs Accessibility access to check which window has the keyboard");
   expect(card.textContent).not.toContain("Zotero");
   fireEvent.click(within(card).getByRole("button", { name: "Open System Settings" }));
   expect(state.opened).toBe(1);
   expect(within(card).getByRole("status").textContent).toBe("Waiting for your OK…");
   // Still waiting after a while: say how to clear a stale switch.
   await act(async () => { await vi.advanceTimersByTimeAsync(STALE_HINT_MS); });
-  expect(card.textContent).toContain("Ibis clears the old switch");
+  expect(card.textContent).toContain("remove Ibis Nightly from the list, add this copy again, then turn it on");
   state.permission = { ...state.permission, granted: true };
   await act(async () => { await vi.advanceTimersByTimeAsync(RECHECK_MS); });
   expect(within(card).getByRole("status").textContent).toBe("Ibis can paste now.");
   expect(within(card).queryByRole("button", { name: "Open System Settings" })).toBeNull();
-  expect(card.textContent).not.toContain("Ibis clears the old switch");
+  expect(card.textContent).not.toContain("remove Ibis Nightly from the list");
   // Once allowed, Settings stops asking every second.
   const reads = state.reads;
   await act(async () => { await vi.advanceTimersByTimeAsync(RECHECK_MS * 5); });
@@ -688,7 +690,7 @@ test("a failure read cannot overwrite a newer edit", async () => {
 test("the sidebar switches pages, a page request from the app moves it, and the window has no axe violations", async () => {
   const { api, state } = fakeApi({ granted: true });
   const { container } = render(<SettingsApp api={api} initialPage="general" />);
-  await screen.findByRole("switch", { name: "Show in Menu Bar" });
+  await screen.findByRole("button", { name: /^Open Ibis:/ });
   fireEvent.click(screen.getByRole("option", { name: "About Ibis" }));
   expect(await screen.findByText("Ibis Nightly 0.3.0")).toBeTruthy();
   expect(screen.getByRole("option", { name: "About Ibis" }).getAttribute("aria-current")).toBe("page");
@@ -751,7 +753,7 @@ test("Shortcuts records a change, restores the default, and lists every picker k
   const label = (shortcut: string) => shortcutLabel(shortcut, currentPlatform() === "macos");
   expect(recorder.textContent).toBe(label(DEFAULT_PICKER_SHORTCUT));
   expect(screen.queryByRole("button", { name: "Use Default" })).toBeNull();
-  fireEvent.click(screen.getByText("In the picker", { selector: "summary" }));
+  expect(document.querySelector("details, summary")).toBeNull();
   const list = screen.getByRole("region", { name: "In the picker" });
   for (const binding of KEY_TABLE) expect(within(list).getByText(keyText.actions[binding.action])).toBeTruthy();
   expect(within(list).queryAllByRole("button")).toEqual([]);
@@ -787,7 +789,7 @@ test.each([
   ["in-use", "Another app or the system may be using that shortcut. Try another."],
   ["unavailable", "Global shortcuts are unavailable on this desktop. Open Ibis from your application launcher."],
   ["not-saved", "The shortcut works now, but Ibis could not save it for next time. Try again."],
-])("the %s refusal explains the result and keeps the working shortcut", async (code, message) => {
+].flatMap(([code, message]) => ["general", "shortcuts"].map((page) => ({ page, code, message }))))("$page: the $code refusal explains the result and keeps the working shortcut", async ({ page, code, message }) => {
   const { api, state } = fakeApi({ granted: true });
   vi.spyOn(api, "setShortcut").mockImplementationOnce(async () => {
     if (code === "not-saved") {
@@ -796,7 +798,7 @@ test.each([
     }
     throw code;
   });
-  render(<SettingsApp api={api} initialPage="shortcuts" />);
+  render(<SettingsApp api={api} initialPage={page} />);
   const recorder = await screen.findByRole("button", { name: /^Open Ibis:/ });
   const original = recorder.textContent;
   fireEvent.click(recorder);
@@ -809,12 +811,12 @@ test.each([
   expect(api.setShortcut).toHaveBeenLastCalledWith("Alt+J");
 });
 
-test("shortcut saves disable the recorder and default, and finish before Settings closes", async () => {
+test.each(["general", "shortcuts"])("%s shortcut saves disable the recorder and default, and finish before Settings closes", async (page) => {
   const { api, state } = fakeApi({ granted: true });
   state.shortcut = { shortcut: "Alt+K", registered: true, error: null };
   const save = deferred<ShortcutStatus>();
   vi.spyOn(api, "setShortcut").mockReturnValueOnce(save.promise);
-  render(<SettingsApp api={api} initialPage="shortcuts" />);
+  render(<SettingsApp api={api} initialPage={page} />);
   const recorder = await screen.findByRole("button", { name: /^Open Ibis:/ });
   fireEvent.click(recorder);
   fireEvent.keyDown(recorder, { key: "j", code: "KeyJ", altKey: true });
@@ -846,17 +848,17 @@ test("a shortcut event wins over an older read, updates its layout note, and is 
   expect(state.shortcuts).toEqual([]);
 });
 
-test("a failed shortcut read is explained", async () => {
+test.each(["general", "shortcuts"])("%s explains a failed shortcut read", async (page) => {
   const { api } = fakeApi({ granted: true });
   vi.spyOn(api, "shortcutStatus").mockRejectedValueOnce(new Error("unavailable"));
-  render(<SettingsApp api={api} initialPage="shortcuts" />);
+  render(<SettingsApp api={api} initialPage={page} />);
   expect((await screen.findByRole("alert")).textContent).toBe("Ibis could not check the shortcut. Try reopening Settings.");
 });
 
-test("Shortcuts has no axe violations while idle, recording, or showing a refusal", async () => {
+test.each(["general", "shortcuts"])("%s has no axe violations while idle, recording, or showing a refusal", async (page) => {
   const { api } = fakeApi({ granted: true });
   vi.spyOn(api, "setShortcut").mockRejectedValueOnce("app-shortcut");
-  const { container } = render(<SettingsApp api={api} initialPage="shortcuts" />);
+  const { container } = render(<SettingsApp api={api} initialPage={page} />);
   const recorder = await screen.findByRole("button", { name: /^Open Ibis:/ });
   expect((await axe.run(container)).violations.map((v) => v.id)).toEqual([]);
   fireEvent.click(recorder);
@@ -927,7 +929,7 @@ test("a physical default-position key still offers the logical default", async (
 test("seven pages and search find common words, reveal and briefly tint their cause", async () => {
   const { api } = fakeApi({ granted: true });
   render(<SettingsApp api={api} initialPage="general" />);
-  expect(screen.getAllByRole("option").map((x) => x.textContent)).toEqual(["General", "Look", "Libraries", "Citations", "Shortcuts", "Advanced", "About Ibis"]);
+  expect(screen.getAllByRole("option").map((x) => x.textContent)).toEqual(["General", "Look", "Citations", "Shortcuts", "About Ibis"]);
   const search = screen.getByRole("searchbox", { name: "Search Settings" });
   fireEvent.change(search, { target: { value: "dark" } });
   fireEvent.click(await screen.findByRole("button", { name: "Appearance" }));
@@ -937,16 +939,24 @@ test("seven pages and search find common words, reveal and briefly tint their ca
   expect(document.getElementById("appearance")!.closest(".ui-settings-row")!.hasAttribute("data-highlighted")).toBe(false);
 });
 
-test("unavailable rows announce Coming soon and never save invented choices", async () => {
+test("Settings shows only built pages, rows and choices, including in search", async () => {
   const { api, state } = fakeApi({ granted: true });
   render(<SettingsApp api={api} initialPage="look" />);
-  const size = await screen.findByRole("radiogroup", { name: "Window size" });
-  for (const radio of within(size).getAllByRole("radio")) {
-    expect(radio).toHaveProperty("disabled", true);
-    fireEvent.click(radio);
+  await screen.findByRole("radiogroup", { name: "Appearance" });
+  expect(screen.queryByRole("radiogroup", { name: "Window size" })).toBeNull();
+  expect(screen.queryByRole("radio", { name: /Coming soon|None|Largest/ })).toBeNull();
+  for (const name of ["General", "Look", "Citations", "Shortcuts", "About Ibis"]) {
+    fireEvent.click(screen.getByRole("option", { name }));
+    expect(screen.queryByText(/Coming soon/)).toBeNull();
+    expect(screen.queryByRole("switch", { name: "Show in Menu Bar" })).toBeNull();
+    expect(screen.queryByText("Show the welcome again")).toBeNull();
+    expect(document.querySelector("details, summary")).toBeNull();
   }
-  expect(size.getAttribute("aria-describedby")).toBe("window-size-description");
-  expect(document.getElementById("window-size-description")!.textContent).toBe("Coming soon");
+  expect(screen.queryByRole("option", { name: /Libraries|Advanced/ })).toBeNull();
+  for (const query of ["Menu Bar", "welcome", "Window size", "Install the ibis command", "Coming soon"]) {
+    fireEvent.change(screen.getByRole("searchbox"), { target: { value: query } });
+    expect(await screen.findByText("No matching settings")).toBeTruthy();
+  }
   expect(state.patches).toEqual([]);
 });
 
@@ -1147,11 +1157,12 @@ test("a picker change survives a Settings save reply delayed beyond the close ti
   expect(await screen.findByRole("radio", { name: "Spacious" })).toHaveProperty("checked", true);
 });
 
-test("Appearance, nine accents, both search icons, both text sizes and preview persist separately", async () => {
+test("Appearance, ten accents, both search icons, both text sizes and preview persist separately", async () => {
   const { api, state } = fakeApi({ granted: true });
   const mounted = render(<SettingsApp api={api} initialPage="look" />);
   const accents = within(await screen.findByRole("radiogroup", { name: "Accent" })).getAllByRole("radio");
-  expect(accents).toHaveLength(9);
+  expect(accents).toHaveLength(10);
+  expect(accents.slice(0, 2).map((radio) => radio.getAttribute("aria-label"))).toEqual(["Follow the Mac", "Ibis scarlet"]);
   fireEvent.click(screen.getByRole("radio", { name: "Dark" }));
   fireEvent.click(screen.getByRole("radio", { name: "Purple" }));
   fireEvent.click(screen.getByRole("radio", { name: "Ibis mark" }));
@@ -1250,10 +1261,72 @@ test("the Ibis default-format menu saves key or style, restores refusals, and re
 });
 
 
-test("restoring the default shortcut offers Undo that restores the previous saved chord", async () => {
+test.each([false, true])("Citations forgets formats with row-local refusal, retry and brief confirmation (pseudo %s)", async (pseudolocale) => {
+  const { api, state } = fakeApi({}, { citation_style: "apa" });
+  const messages = createInterfaceMessages(english, pseudolocale);
+  const refused = deferred<null>();
+  const forget = vi.spyOn(api, "forgetAppOutputs").mockReturnValueOnce(refused.promise);
+  const view = () => <InterfaceMessagesProvider messages={messages}><SettingsApp api={api} initialPage="citations" /></InterfaceMessagesProvider>;
+  const mounted = render(view());
+  await screen.findByRole("button", { name: `${messages.text("citations-default")} ${messages.text("citations-format-apa")}` });
+  const button = screen.getByRole("button", { name: messages.text("citations-forget-button") });
+  const row = within(button.closest<HTMLElement>(".ui-settings-row")!);
+  expect(row.getByText(messages.text("citations-forget"))).toBeTruthy();
+  expect(row.getByText(messages.text("citations-forget-description"))).toBeTruthy();
+  fireEvent.click(button);
+  expect(button).toHaveProperty("disabled", true);
+  fireEvent.click(button);
+  await waitFor(() => expect(forget).toHaveBeenCalledExactlyOnceWith());
+  expect(row.queryByRole("status")).toBeNull();
+  await act(async () => refused.reject());
+  expect(row.getByRole("alert")).toHaveProperty("textContent", messages.text("citations-forget-failed"));
+  expect(row.queryByRole("status")).toBeNull();
+  expect(button).toHaveProperty("disabled", false);
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  fireEvent.click(button);
+  await act(async () => state.closes.at(-1)!());
+  expect(forget).toHaveBeenCalledTimes(2);
+  expect(row.queryByRole("alert")).toBeNull();
+  expect(row.getByRole("status")).toHaveProperty("textContent", messages.text("citations-forget-done"));
+  expect(state.preferences.citation_style).toBe("apa");
+  expect(state.patches).toEqual([]);
+  await act(async () => vi.advanceTimersByTime(4000));
+  expect(row.queryByRole("status")).toBeNull();
+  mounted.unmount();
+  render(view());
+  expect(screen.queryByRole("status")).toBeNull();
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(await screen.findByRole("button", { name: `${messages.text("citations-default")} ${messages.text("citations-format-apa")}` })).toBeTruthy();
+});
+
+test.each(["success", "failed I/O"])("closing waits for a reset, and its late %s cannot replace a reopened row's refusal", async (outcome) => {
+  const { api, state } = fakeApi();
+  const old = deferred<null>();
+  vi.spyOn(api, "forgetAppOutputs").mockReturnValueOnce(old.promise).mockRejectedValueOnce(new Error("synthetic I/O failure"));
+  const mounted = render(<SettingsApp api={api} initialPage="citations" />);
+  fireEvent.click(screen.getByRole("button", { name: "Forget formats" }));
+  const closed = vi.fn();
+  const closing = state.closes.at(-1)!().then(closed);
+  await act(async () => undefined);
+  expect(closed).not.toHaveBeenCalled();
+  mounted.unmount();
+  render(<SettingsApp api={api} initialPage="citations" />);
+  fireEvent.click(screen.getByRole("button", { name: "Forget formats" }));
+  const problem = await screen.findByRole("alert");
+  expect(problem).toHaveProperty("textContent", "Ibis could not forget formats for apps. Try again.");
+  await act(async () => { if (outcome === "success") old.resolve(null); else old.reject(); await closing; });
+  expect(closed).toHaveBeenCalledOnce();
+  expect(problem).toHaveProperty("textContent", "Ibis could not forget formats for apps. Try again.");
+  expect(screen.queryByRole("status")).toBeNull();
+  fireEvent.click(screen.getByRole("option", { name: "Look" }));
+  fireEvent.click(screen.getByRole("option", { name: "Citations" }));
+  expect(screen.getByRole("alert")).toHaveProperty("textContent", "Ibis could not forget formats for apps. Try again.");
+});
+
+test.each(["general", "shortcuts"])("%s default shortcut offers Undo that restores the previous saved chord", async (page) => {
   const { api, state } = fakeApi();
   state.shortcut = { shortcut: "Alt+K", registered: true, error: null };
-  render(<SettingsApp api={api} initialPage="shortcuts" />);
+  render(<SettingsApp api={api} initialPage={page} />);
   fireEvent.click(await screen.findByRole("button", { name: "Use Default" }));
   fireEvent.click(await screen.findByRole("button", { name: "Undo" }));
   await act(async () => state.closes[0]!());
@@ -1291,6 +1364,7 @@ test("a failed update read retains the saved switch and explains the uncertainty
 
 test.each([
   ["no remembered format", "Default format", "Citations", "default-format"],
+  ["next time you paste", "Forget formats for apps", "Citations", "forget-formats"],
   ["Follow the system", "Appearance", "Look", "appearance"],
 ])("search includes the displayed description %s and reveals its row", async (query, label, page, id) => {
   const { api } = fakeApi({ granted: true });
@@ -1299,4 +1373,85 @@ test.each([
   fireEvent.click(await screen.findByRole("button", { name: label }));
   expect(screen.getByRole("heading", { level: 1 })).toHaveProperty("textContent", page);
   await waitFor(() => expect(document.getElementById(id)?.closest(".ui-settings-row")?.hasAttribute("data-highlighted")).toBe(true));
+});
+
+
+test("General cancels recording on Escape, Tab and page changes without saving", async () => {
+  const { api, state } = fakeApi();
+  render(<SettingsApp api={api} initialPage="general" />);
+  const recorder = await screen.findByRole("button", { name: /^Open Ibis:/ });
+  const original = recorder.textContent;
+  for (const key of ["Escape", "Tab"]) {
+    fireEvent.click(recorder);
+    fireEvent.keyDown(recorder, { key, code: key });
+    expect(recorder.textContent).toBe(original);
+  }
+  fireEvent.click(recorder);
+  fireEvent.click(screen.getByRole("option", { name: "Shortcuts" }));
+  expect(screen.getByRole("button", { name: /^Open Ibis:/ }).getAttribute("aria-pressed")).toBe("false");
+  fireEvent.click(screen.getByRole("option", { name: "General" }));
+  expect(screen.getByRole("button", { name: /^Open Ibis:/ }).textContent).toBe(original);
+  expect(state.shortcutChoices).toEqual([]);
+});
+
+test("a newer shortcut event survives an older General save after switching pages", async () => {
+  const { api, state } = fakeApi();
+  const save = deferred<ShortcutStatus>();
+  vi.spyOn(api, "setShortcut").mockReturnValueOnce(save.promise);
+  render(<SettingsApp api={api} initialPage="general" />);
+  const recorder = await screen.findByRole("button", { name: /^Open Ibis:/ });
+  fireEvent.click(recorder);
+  fireEvent.keyDown(recorder, { key: "k", code: "KeyK", altKey: true });
+  fireEvent.click(screen.getByRole("option", { name: "Shortcuts" }));
+  expect(screen.getByRole("button", { name: /^Open Ibis:/ })).toHaveProperty("disabled", true);
+  act(() => state.shortcuts[0]!({ shortcut: "Alt+J", registered: true, error: null }));
+  await act(async () => save.resolve({ shortcut: "Alt+K", registered: true, error: null }));
+  expect(screen.getByRole("button", { name: /^Open Ibis:/ }).textContent).toBe(shortcutLabel("Alt+J", currentPlatform() === "macos"));
+});
+
+test.each(["light", "dark"] as const)("Ibis scarlet persists and reopens in %s appearance", async (appearance) => {
+  const { api, state } = fakeApi({}, { appearance });
+  const pseudo = createInterfaceMessages(english, true);
+  const view = () => <InterfaceMessagesProvider messages={pseudo}><SettingsApp api={api} initialPage="look" /></InterfaceMessagesProvider>;
+  const mounted = render(view());
+  fireEvent.click(await screen.findByRole("radio", { name: pseudo.text("look-accent-ibis") }));
+  await act(async () => state.closes[0]!());
+  expect(state.patches).toEqual([{ accent: "ibis" }]);
+  expect(document.documentElement.dataset.accent).toBe("ibis");
+  mounted.unmount();
+  render(view());
+  expect(await screen.findByRole("radio", { name: pseudo.text("look-accent-ibis") })).toHaveProperty("checked", true);
+  expect(document.documentElement.dataset.appearance).toBe(appearance);
+});
+
+test("an Ibis accent refusal restores the saved accent beside its localized cause", async () => {
+  const { api } = fakeApi({}, { accent: "blue" });
+  const pseudo = createInterfaceMessages(english, true);
+  render(<InterfaceMessagesProvider messages={pseudo}><SettingsApp api={api} initialPage="look" /></InterfaceMessagesProvider>);
+  vi.spyOn(api, "setPickerPreferences").mockRejectedValueOnce("settings-read-only");
+  fireEvent.click(await screen.findByRole("radio", { name: pseudo.text("look-accent-ibis") }));
+  const problem = await screen.findByRole("alert");
+  expect(problem.textContent).toBe(pseudo.text("settings-read-only"));
+  expect(problem.closest(".ui-settings-row")?.querySelector("#accent")).toBeTruthy();
+  expect(screen.getByRole("radio", { name: pseudo.text("look-accent-blue") })).toHaveProperty("checked", true);
+  expect(document.documentElement.dataset.accent).toBe("blue");
+});
+
+
+test("a delayed accent read cannot replace the newer Ibis choice or its reopened value", async () => {
+  const { api, state } = fakeApi({}, { accent: "blue" });
+  const old = deferred<PickerPreferences>();
+  const mounted = render(<SettingsApp api={api} initialPage="look" />);
+  await screen.findByRole("radio", { name: "Blue" });
+  const previous = state.preferences;
+  vi.spyOn(api, "pickerPreferences").mockReturnValueOnce(old.promise);
+  fireEvent.focus(window);
+  fireEvent.click(screen.getByRole("radio", { name: "Ibis scarlet" }));
+  await act(async () => state.closes[0]!());
+  await act(async () => old.resolve(previous));
+  expect(screen.getByRole("radio", { name: "Ibis scarlet" })).toHaveProperty("checked", true);
+  expect(document.documentElement.dataset.accent).toBe("ibis");
+  mounted.unmount();
+  render(<SettingsApp api={api} initialPage="look" />);
+  expect(await screen.findByRole("radio", { name: "Ibis scarlet" })).toHaveProperty("checked", true);
 });

@@ -17,6 +17,7 @@ fn sample() -> (Snapshot, CitationRequest) {
         csl,
         citation_keys: vec![],
         aliases: vec![],
+        warnings: vec![],
         identifiers: vec![],
     })])
     .unwrap();
@@ -100,6 +101,7 @@ fn library(items: &[serde_json::Value]) -> Snapshot {
                     csl: serde_json::from_value(csl.clone()).unwrap(),
                     citation_keys: vec![],
                     aliases: vec![],
+                    warnings: vec![],
                     identifiers: vec![],
                 })
             })

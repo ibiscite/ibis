@@ -313,6 +313,21 @@ pub enum Notice {
     InputLanguageUnsupported,
 }
 
+/// Fixed codes only; source diagnostics never include field text or locations.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum CitationWarningCode {
+    SourceField,
+    SentenceCaseExpected,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CitationWarning {
+    pub item: usize,
+    pub code: CitationWarningCode,
+}
+
 impl Notice {
     pub const ALL: [Self; 5] = [
         Self::NeedsDocumentContext,
@@ -349,6 +364,8 @@ pub struct CitationResult {
     pub outcomes: Vec<ItemOutcome>,
     pub losses: Vec<Loss>,
     pub notices: Vec<Notice>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<CitationWarning>,
     /// Digest of the exact clipboard representations, including their presence.
     pub content_hash: Fingerprint,
 }
@@ -409,8 +426,18 @@ impl CitationResult {
             outcomes,
             losses,
             notices,
+            warnings: vec![],
             content_hash,
         }
+    }
+
+    /// Diagnostics describe only items the final result actually represents.
+    pub fn with_warnings(mut self, warnings: Vec<CitationWarning>) -> Self {
+        self.warnings = warnings
+            .into_iter()
+            .filter(|warning| self.outcomes.get(warning.item) == Some(&ItemOutcome::Rendered { item: warning.item }))
+            .collect();
+        self
     }
 
     pub fn content_matches_hash(&self) -> bool {

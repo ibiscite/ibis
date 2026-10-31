@@ -14,14 +14,16 @@ function desktop(scenario = "sheet") {
   const app = element("AXApplication"), system = element("AXSystemWide");
   const main = element("AXWindow", "Ibis"), offer = element(scenario === "standalone" ? "AXWindow" : "AXSheet");
   const button = element("AXButton", "Install and Restart");
+  const later = element("AXButton", "Later"), cancel = element("AXButton", "Cancel");
   const label = element("AXStaticText");
   label.value = "An update is available";
   main.parent = app; offer.parent = scenario === "standalone" ? app : main;
-  button.parent = offer; label.parent = offer; offer.children = [label, button];
+  for (const item of [label, later, button, cancel]) item.parent = offer;
+  offer.children = [label, later, button, cancel];
   const replacement = element("AXSheet");
   replacement.parent = main;
   replacement.children = [label, element("AXButton", "Install and Restart")];
-  const focus = () => state.visible ? button : main;
+  const focus = () => state.visible ? later : main;
   const $ = (value) => value;
   Object.assign($, {
     kCGWindowListOptionOnScreenOnly: 1, kCGWindowListExcludeDesktopElements: 16,
@@ -47,14 +49,15 @@ function desktop(scenario = "sheet") {
       if (scenario === "foreign" && item === button) item.owner = 99;
       if (scenario === "owner-changed" && scans > 1 && item === offer) item.owner = 99;
       const current = scenario === "reopened" && scans > 1 ? replacement : offer;
-      const windows = [main, ...(state.visible && scenario === "standalone" ? [current] : [])];
-      const sheets = state.visible && scenario !== "standalone" ? [current] : [];
+      const windows = [main, ...(state.visible && ["standalone", "sheet-and-child"].includes(scenario) ? [current] : [])];
+      const childSheet = scenario.startsWith("child-sheet");
+      const sheets = state.visible && scenario !== "standalone" && !childSheet ? [current] : [];
       if (scenario === "duplicate") sheets.push(current);
       const attributes = {
         AXRole: scalar(7, item.role), AXTitle: scalar(7, item.title),
         AXValue: scalar(7, scenario === "wrong-heading" ? "Other" : item.value || ""),
         AXEnabled: scalar(21, scenario !== "disabled"),
-        AXChildren: array(item.children), AXParent: item.parent,
+        AXChildren: array(item === main && (childSheet || scenario === "sheet-and-child") && state.visible ? [current] : item.children), AXParent: item.parent,
         AXWindows: item === app ? array(windows) : undefined,
         AXSheets: item === main ? array(sheets) : undefined,
         AXFocusedUIElement: item === system ? focus() : undefined,
@@ -65,6 +68,12 @@ function desktop(scenario = "sheet") {
       if (scenario === "detached" && scans > 1 && item === offer && name === "AXChildren") attributes.AXChildren = array([label]);
       if (scenario === "unfocused" && name === "AXFocusedUIElement") attributes.AXFocusedUIElement = element("AXButton");
       if (scenario === "wrong-parent" && item === offer && name === "AXParent") attributes.AXParent = app;
+      if (scenario === "child-sheet-foreign" && item === offer) item.owner = 99;
+      if (scenario === "child-sheet-wrong-parent" && item === offer && name === "AXParent") attributes.AXParent = app;
+      if (scenario === "child-sheet-reopened" && scans > 1 && item === main && name === "AXChildren") attributes.AXChildren = array([replacement]);
+      if (scenario === "child-sheet-duplicate" && item === main && name === "AXChildren") attributes.AXChildren = array([current, replacement]);
+      if (scenario === "child-sheet-io" && item === main && name === "AXChildren") return -25204;
+      if (childSheet && name === "AXSheets") return -25205; // No such standard AX attribute.
       if (scenario === "wrong-type" && name === "AXFocusedUIElement") attributes.AXFocusedUIElement = scalar(7, "private-sentinel");
       if (scenario === "unknown-children" && item === offer && name === "AXChildren") return -25204;
       out[0] = attributes[name];
@@ -83,7 +92,7 @@ function desktop(scenario = "sheet") {
 }
 
 test("an anonymous attached sheet and a separate alert each prove one owned native action", () => {
-  for (const scenario of ["sheet", "standalone"]) {
+  for (const scenario of ["sheet", "standalone", "child-sheet", "sheet-and-child"]) {
     const native = desktop(scenario);
     const result = native.run(true);
     assert.equal(result.pid, 42); assert.equal(result.focus, "offer");
@@ -102,7 +111,7 @@ test("absence, hidden picker, missing identity, wrong meaning and missing focus 
 });
 
 test("ambiguity, foreign owners, failed I/O and delayed A after B fail before activation", () => {
-  for (const scenario of ["duplicate", "duplicate-button", "foreign", "io", "cg-io", "wrong-parent", "wrong-type", "unknown-children", "owner-changed", "reopened", "detached"]) {
+  for (const scenario of ["duplicate", "duplicate-button", "foreign", "io", "cg-io", "wrong-parent", "wrong-type", "unknown-children", "owner-changed", "reopened", "detached", "child-sheet-foreign", "child-sheet-wrong-parent", "child-sheet-reopened", "child-sheet-duplicate", "child-sheet-io"]) {
     const native = desktop(scenario);
     const result = native.run(true);
     assert.equal(result.probe.failed, true, scenario);
@@ -112,11 +121,14 @@ test("ambiguity, foreign owners, failed I/O and delayed A after B fail before ac
 });
 
 test("a late sheet is observed fresh after absence without reopening the app", () => {
-  const native = desktop("absent");
-  assert.equal(native.run().focus, "picker");
-  native.state.visible = true;
-  assert.equal(native.run(true).pressed, true);
-  assert.equal(native.state.presses, 1);
+  for (const scenario of ["absent", "child-sheet"]) {
+    const native = desktop(scenario);
+    native.state.visible = false;
+    assert.equal(native.run().focus, "picker");
+    native.state.visible = true;
+    assert.equal(native.run(true).pressed, true);
+    assert.equal(native.state.presses, 1);
+  }
 });
 
 test("a refused or uncertain AXPress is reported as one attempted action", () => {

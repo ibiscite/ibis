@@ -32,7 +32,7 @@ TEXT = {value: "text-" + code for value, code in (
     ("zzqx no such reference", "no-match"), ("Typst", "typst"),
     ("ibis tab probe", "probe"), ("ibis tab probe alternate", "probe-alternate"))}
 CLICKS = {value: "click-" + code for value, code in (
-    ("More", "more"), ("Reload", "reload"), ("Quit Ibis", "quit"),
+    ("More", "more"), ("Library", "library"), ("Reload Library", "reload"), ("Quit Ibis", "quit"),
     ("Copy as Pandoc key", "format"))}
 
 

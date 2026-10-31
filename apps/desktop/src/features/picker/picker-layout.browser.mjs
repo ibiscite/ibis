@@ -77,7 +77,7 @@ try {
           if (command === "picker_preferences") return preferences;
           if (command === "set_picker_preferences") return { preferences: Object.assign(preferences, args.preferences), copy_format: "pandoc" };
           if (command === "copy_format") return "pandoc";
-          if (command === "picker_destination") return { app: null, app_id: null, automatic: null, remembered: null, unreadable: false, can_paste: false, output_question: null };
+          if (command === "picker_destination") return { app: null, app_id: null, app_identity: null, automatic: null, remembered: null, unreadable: false, can_paste: false, output_question: null, paste: null, paste_question: false, can_choose_paste: false };
           if (command === "shortcut_status") return { shortcut: "CommandOrControl+Shift+Y", registered: true, error: shortcutNotice ? "Synthetic shortcut refusal" : null };
           if (command === "library_status") return library;
           if (command === "search" && args.query.text === "refuse") throw Error("synthetic search refusal");

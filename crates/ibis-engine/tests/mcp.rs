@@ -136,12 +136,68 @@ fn cite_formats_by_key_or_by_id() {
     assert_eq!(apa["structuredContent"]["text"], "(Researcher & Writer, 2026)");
     // Notices travel with the text, as `ibis cite --json` reports; one work needs no year letters.
     assert_eq!(apa["structuredContent"]["notices"], json!([]));
+    assert!(
+        apa["structuredContent"].get("warnings").is_none(),
+        "clean responses retain their existing shape"
+    );
 
     let hits = tool(&engine, "search", json!({"query":"second"}));
     let id = hits["structuredContent"]["hits"][0]["id"].clone();
     assert_eq!(hits["structuredContent"]["hits"][0]["key"], "nokey");
     let by_id = tool(&engine, "cite", json!({"items":[{"id":id}],"style":"apa"}));
     assert_eq!(by_id["structuredContent"]["text"], "(Author, 2025)");
+}
+
+#[test]
+fn cite_preserves_both_item_warning_codes_by_key_and_by_id() {
+    use ibis_core::contract::*;
+    use ibis_engine::request::KeyCitationRequest;
+    let (_dir, engine) = library(
+        "invented.bib",
+        r"@article{protected2020,title={Using {iPhone} for NASA},author={Okafor, Ada},year={2020},journal={Invented Journal},publisher={\unknown{PRIVATE_SYNTHETIC_FIELD}}}",
+    );
+    let expected = engine
+        .cite_keys(
+            &KeyCitationRequest {
+                keys: vec!["protected2020".into()],
+                output: OutputSpec::Csl { style: "apa".into() },
+                form: CitationForm::BibliographyOnly,
+                output_locale: None,
+            },
+            &Cancellation::default(),
+        )
+        .unwrap();
+    assert_eq!(
+        expected.warnings,
+        vec![
+            CitationWarning {
+                item: 0,
+                code: CitationWarningCode::SourceField
+            },
+            CitationWarning {
+                item: 0,
+                code: CitationWarningCode::SentenceCaseExpected
+            }
+        ]
+    );
+    let shown = engine
+        .show(&ibis_engine::request::ShowRequest {
+            item: ibis_engine::request::ItemSelector::Key("protected2020".into()),
+        })
+        .unwrap();
+    for selector in [json!({"key":"protected2020"}), json!({"id":shown.object.id()})] {
+        let answer = tool(
+            &engine,
+            "cite",
+            json!({"items":[selector],"style":"apa","form":"bibliography-only"}),
+        );
+        assert_eq!(answer["isError"], false);
+        assert_eq!(answer["structuredContent"]["text"], expected.text);
+        assert_eq!(answer["structuredContent"]["warnings"], json!(expected.warnings));
+        let text: Value = serde_json::from_str(answer["content"][0]["text"].as_str().unwrap()).unwrap();
+        assert_eq!(text["warnings"], json!(expected.warnings));
+        assert!(!answer.to_string().contains("PRIVATE_SYNTHETIC_FIELD"));
+    }
 }
 
 #[test]

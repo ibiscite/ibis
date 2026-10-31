@@ -4,8 +4,8 @@ use super::{CommandError, LibraryStatus};
 use ibis_core::{
     cite::KeyFormat,
     contract::{
-        CitationError, CitationForm, CitationItem, CitationRequest, CitationResult, Fingerprint, ItemOutcome, ItemRef,
-        KeySyntax, LibraryId, LibraryObject, LocatorTerm, Notice, OutputSpec,
+        CitationError, CitationForm, CitationItem, CitationRequest, CitationResult, CitationWarningCode, Fingerprint,
+        ItemOutcome, ItemRef, KeySyntax, LibraryId, LibraryObject, LocatorTerm, Notice, OutputSpec,
     },
     settings::{CitationStyle, ZoteroLibraries, ZoteroLibrary},
 };
@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use serde_json::json;
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{
     Mutex,
     atomic::{AtomicBool, AtomicU64, Ordering},
@@ -27,6 +27,8 @@ use std::sync::{
 static TICKETS: AtomicU64 = AtomicU64::new(1);
 pub(crate) struct FileLibrary {
     pub(super) engine: Engine,
+    /// Completed initial read identity; Reload carries its own immutable observation.
+    source_path: Option<PathBuf>,
     sample: bool,
     prepared: Mutex<Option<(String, PreparedCitation)>>,
     latest_preview: Mutex<(u64, Cancellation)>,
@@ -78,19 +80,27 @@ impl FileLibrary {
     }
 
     fn open_file(path: &Path, engine: Engine) -> Result<Self, super::LoadError> {
-        engine
-            .dispatch(
-                Method::Libraries,
-                &json!({"action":"open-file","path":path}),
-                &Cancellation::default(),
-            )
-            .map_err(|error| file_load_error(error, false))?;
-        Ok(Self::from_engine(engine))
+        Self::open_file_with(path, engine, || {})
+    }
+
+    fn open_file_with(path: &Path, engine: Engine, before_read: impl FnOnce()) -> Result<Self, super::LoadError> {
+        before_read();
+        let source_path = engine
+            .open_file_observed(path, &Cancellation::default())
+            .map_err(file_load_error)?;
+        let mut file = Self::from_engine(engine);
+        file.source_path = Some(source_path);
+        Ok(file)
+    }
+
+    pub(super) fn source_path(&self) -> Option<&Path> {
+        self.source_path.as_deref()
     }
 
     pub(super) fn from_engine(engine: Engine) -> Self {
         Self {
             engine,
+            source_path: None,
             sample: false,
             prepared: Mutex::new(None),
             latest_preview: Mutex::new((0, Cancellation::default())),
@@ -173,6 +183,25 @@ impl FileLibrary {
             }
         }
     }
+    pub(super) fn prepare_reload(
+        &self,
+        path: &Path,
+        cancel: &Cancellation,
+    ) -> Result<ibis_engine::PreparedFileReload, super::LoadError> {
+        self.engine.prepare_file_reload(path, cancel).map_err(file_reload_error)
+    }
+
+    pub(super) fn accept_reload(&self, reload: ibis_engine::PreparedFileReload) -> Result<(), super::LoadError> {
+        self.engine.accept_file_reload(reload).map_err(|error| {
+            if error.code == ibis_core::contract::ErrorCode::Cancelled {
+                ibis_core::source::SourceError::Changing.into()
+            } else {
+                file_reload_error(error)
+            }
+        })
+    }
+
+    #[cfg(test)]
     pub(super) fn reload(&self) -> Result<(), super::LoadError> {
         self.engine
             .dispatch(Method::Libraries, &json!({"action":"reload"}), &Cancellation::default())
@@ -535,20 +564,22 @@ impl FileLibrary {
     }
 }
 
-pub(super) fn file_load_error(error: ibis_core::contract::EngineError, reload: bool) -> super::LoadError {
+pub(super) fn file_load_error(error: ibis_core::contract::EngineError) -> super::LoadError {
     match error.code {
-        code if reload && code != ibis_core::contract::ErrorCode::Cancelled => {
-            super::LoadError::Source(if code == ibis_core::contract::ErrorCode::SourceUnavailable {
-                ibis_core::source::SourceError::Unavailable
-            } else {
-                ibis_core::source::SourceError::Incomplete
-            })
-        }
         ibis_core::contract::ErrorCode::BadInput => super::LoadError::InvalidData,
         ibis_core::contract::ErrorCode::SourceUnavailable => ibis_core::source::SourceError::Unavailable.into(),
         ibis_core::contract::ErrorCode::ResourceLimit => ibis_core::source::SourceError::TooLarge.into(),
         ibis_core::contract::ErrorCode::Cancelled => super::LoadError::Stopped,
         _ => ibis_core::source::SourceError::Unreadable.into(),
+    }
+}
+
+fn file_reload_error(error: ibis_core::contract::EngineError) -> super::LoadError {
+    use ibis_core::{contract::ErrorCode, source::SourceError};
+    match error.code {
+        ErrorCode::BadInput => SourceError::Incomplete.into(),
+        ErrorCode::ResourceLimit => SourceError::LoadLimit.into(),
+        _ => file_load_error(error),
     }
 }
 
@@ -562,6 +593,15 @@ fn native_source(info: &ibis_engine::LibraryInfo) -> String {
 
 fn citation_warnings(result: &CitationResult) -> Vec<String> {
     let mut warnings = vec![];
+    for warning in &result.warnings {
+        let detail = match warning.code {
+            CitationWarningCode::SourceField => "A source field could not be fully converted. Check the library entry.",
+            CitationWarningCode::SentenceCaseExpected => {
+                "APA expects sentence case for this title. Stored capitalization was preserved; check it in your document."
+            }
+        };
+        warnings.push(format!("Reference {}: {detail}", warning.item + 1));
+    }
     if result.notices.contains(&Notice::YearSuffixWithheld) {
         warnings.push("Year suffixes require the whole document; Ibis leaves them out.".into());
     }

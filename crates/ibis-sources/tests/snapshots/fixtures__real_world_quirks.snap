@@ -82,7 +82,7 @@ expression: "summary(\"real-world.bib\")"
             ]
           ]
         },
-        "title": "Proceedings of the synthetic conference",
+        "title": "Proceedings of the Synthetic Conference",
         "type": "book"
       },
       "identifiers": [],
@@ -110,7 +110,7 @@ expression: "summary(\"real-world.bib\")"
         },
         "publisher": "Example Press",
         "publisher-place": "Lyon",
-        "title": "A book with every detail",
+        "title": "A Book with Every Detail",
         "type": "book"
       },
       "identifiers": [],
@@ -225,7 +225,7 @@ expression: "summary(\"real-world.bib\")"
           ]
         },
         "publisher": "Synthetic University",
-        "title": "A <span class=\"nocase\">Study of Nested Braces</span> in titles",
+        "title": "A <span class=\"nocase\">Study of Nested Braces</span> in Titles",
         "type": "thesis"
       },
       "identifiers": [],
@@ -309,7 +309,7 @@ expression: "summary(\"real-world.bib\")"
           ]
         },
         "publisher": "WHO Press",
-        "title": "Synthetic report on global sleep",
+        "title": "Synthetic Report on Global Sleep",
         "type": "book"
       },
       "identifiers": [],

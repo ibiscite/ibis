@@ -1,6 +1,7 @@
 //! Native geometry and persistence scheduling. No native calls or I/O under this owner.
 
 use std::collections::BTreeMap;
+use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use ibis_core::settings::PickerWindow;
@@ -51,6 +52,8 @@ pub(super) struct Owner {
     pub constraints: Option<Display>,
     pub applying: bool,
     pub pending_event: bool,
+    pending_read: bool,
+    read_queued: bool,
     dpi: Option<Event>,
     automatic: Option<(u32, u32)>,
     pub pending_save: Option<Save>,
@@ -60,6 +63,44 @@ pub(super) struct Owner {
     pub finished: bool,
     pub started: bool,
     pub undo: Option<Undo>,
+}
+
+/// Keep the native read outside the owner's lock, including reentrant events.
+pub(super) fn settled(state: &Mutex<Owner>, read: impl FnOnce()) {
+    let pending = state.lock().is_ok_and(|mut state| state.take_read());
+    if pending {
+        read();
+    }
+}
+
+pub(super) fn display_changed(state: &Mutex<Owner>, now: Instant, enqueue: impl FnOnce()) {
+    let queue = state.lock().is_ok_and(|mut state| {
+        state.event(Event::Geometry, now);
+        if !state.pending_read || state.read_queued {
+            return false;
+        }
+        state.read_queued = true;
+        true
+    });
+    if queue {
+        enqueue();
+    }
+}
+
+pub(super) fn display_settled(state: &Mutex<Owner>, read: impl FnOnce()) {
+    let pending = state.lock().is_ok_and(|mut state| {
+        state.read_queued = false;
+        state.take_read()
+    });
+    if pending {
+        read();
+    }
+}
+
+pub(super) fn display_wake_failed(state: &Mutex<Owner>) {
+    if let Ok(mut state) = state.lock() {
+        state.read_queued = false;
+    }
 }
 
 pub(super) fn content_room(inner: (f64, f64), outer: (f64, f64), work: (f64, f64)) -> Option<(f64, f64)> {
@@ -88,6 +129,9 @@ impl Owner {
         self.constraints = Some(sample.display.clone());
         self.last = Some(sample);
         self.pending_event = false;
+        self.pending_read = false;
+        // Do not release read_queued here or in flush(): its callback still
+        // exists. It can serve a later real event, or drain without a read.
         self.dpi = None;
         self.automatic = None;
     }
@@ -97,6 +141,7 @@ impl Owner {
             return;
         }
         self.pending_event = true;
+        self.pending_read = true;
         // A suggestion for the scale already accepted by this owner is stale.
         // It cannot classify a later edge drag, even if their sizes coincide.
         if matches!(event, Event::Dpi { scale, .. } if self.last.as_ref().is_some_and(|last| last.display.scale != scale))
@@ -106,6 +151,13 @@ impl Owner {
         if let Some(save) = &mut self.pending_save {
             save.due = now + SAVE_DELAY;
         }
+    }
+
+    /// Consume before any handle lookup: even cloning a Tauri window wakes
+    /// Tao's macOS loop. Hidden windows, failed I/O and rejected samples must
+    /// not retry on the resulting cleared event. A real later event can rearm.
+    pub fn take_read(&mut self) -> bool {
+        std::mem::take(&mut self.pending_read)
     }
 
     pub fn observe(&mut self, sample: Sample, now: Instant, settled: bool) -> Option<Display> {
@@ -258,6 +310,7 @@ impl Owner {
         }
         self.pending_event = false;
         self.stopping |= stop;
+        self.pending_read = false;
         self.revision
     }
 

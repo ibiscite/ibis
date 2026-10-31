@@ -1,16 +1,22 @@
 //! Which app the picker was opened from, taken before the panel shows (#1241).
 //!
-//! Only the app's ID, its process and its name for "Pasted into …" are kept,
-//! in memory. Window titles and document text are never read.
+//! Only app identity, its name for feedback and an opaque window token are
+//! kept in memory. Window titles and document text are never read.
 
-use ibis_core::destination::{AppId, System, Target};
+use ibis_core::destination::{AppId, AppPaste, CopyReason, System, Target};
 
 /// What the system reports about the app in front.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Front {
     /// macOS bundle ID or Windows executable file name; `None` for an app without one.
     pub(crate) id: Option<String>,
+    /// Digest of app ID and its OS-reported location; never the raw path.
+    pub(crate) app_identity: Option<String>,
     pub(crate) pid: i32,
+    /// Opaque macOS document/surface identity token; no title or contents.
+    pub(crate) window: Option<u32>,
+    /// Capture-time refusal, kept even if an authorization changes later.
+    pub(crate) focus_failure: Option<CopyReason>,
     /// The app's own name, as the Dock or its file description shows it.
     pub(crate) name: Option<String>,
     /// The app runs with more rights than Ibis (Windows integrity level).
@@ -21,8 +27,15 @@ pub(crate) struct Front {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Captured {
     pub(crate) target: Target,
+    pub(crate) app_identity: Option<String>,
+    /// Frozen before the clipboard write; a later chooser answer cannot authorize it.
+    pub(crate) paste: Result<Option<AppPaste>, CopyReason>,
     pub(crate) pid: Option<i32>,
+    pub(crate) window: Option<u32>,
+    pub(crate) focus_failure: Option<CopyReason>,
     pub(crate) name: Option<String>,
+    #[cfg(target_os = "macos")]
+    pub(crate) diagnostic: Option<super::macos::diagnostics::Snapshot>,
 }
 
 impl Captured {
@@ -36,8 +49,14 @@ impl Captured {
                 secure_field: false,
                 elevated: false,
             },
+            paste: Ok(None),
+            app_identity: None,
             pid: None,
+            window: None,
+            focus_failure: None,
             name: None,
+            #[cfg(target_os = "macos")]
+            diagnostic: None,
         }
     }
 }
@@ -63,9 +82,27 @@ pub(crate) fn captured(system: System, front: Option<Front>, own: i32) -> Option
             secure_field: false,
             elevated: front.elevated,
         },
+        paste: Ok(None),
+        app_identity: front.app_identity,
         pid: Some(front.pid),
+        window: front.window,
+        focus_failure: front.focus_failure,
         name: front.name,
+        #[cfg(target_os = "macos")]
+        diagnostic: super::macos::diagnostics::capture_snapshot(),
     })
+}
+
+/// No filesystem reads or path canonicalisation: compare exactly the location
+/// the OS already reports, including case on case-sensitive volumes.
+#[cfg(any(target_os = "macos", target_os = "windows", test))]
+pub(crate) fn app_identity(system: System, id: &str, path: &str) -> Option<String> {
+    if path.is_empty() || path.chars().any(char::is_control) {
+        return None;
+    }
+    let app = AppId { system, id: id.into() };
+    let bytes = serde_json::to_vec(&(system, app.normalized(), path)).ok()?;
+    Some(ibis_core::contract::Fingerprint::of_bytes(&bytes).as_str().to_owned())
 }
 
 #[cfg(test)]
@@ -74,11 +111,35 @@ mod tests {
 
     fn front(pid: i32) -> Front {
         Front {
+            app_identity: None,
             id: Some("org.example.Writer".into()),
             pid,
+            window: Some(100),
+            focus_failure: None,
             name: Some("Writer".into()),
             elevated: false,
         }
+    }
+
+    #[test]
+    fn app_locations_are_compared_as_digests_without_retaining_the_paths() {
+        let id = "editor.exe";
+        let first = app_identity(System::Windows, id, r"C:\Invented\Writer\editor.exe");
+        let other = app_identity(System::Windows, id, r"C:\Invented\Viewer\editor.exe");
+        assert_ne!(first, other);
+        assert_eq!(first.as_ref().map(String::len), Some(64));
+        let captured = captured(
+            System::Windows,
+            Some(Front {
+                id: Some(id.into()),
+                app_identity: first.clone(),
+                ..front(42)
+            }),
+            7,
+        )
+        .unwrap_or_else(|| panic!("capture"));
+        assert_eq!(captured.app_identity, first);
+        assert!(!format!("{captured:?}").contains("Invented"));
     }
 
     #[test]
@@ -109,6 +170,7 @@ mod tests {
     #[test]
     fn an_app_with_more_rights_than_ibis_is_captured_as_elevated() {
         let admin = Front {
+            app_identity: None,
             elevated: true,
             ..front(42)
         };
@@ -128,5 +190,21 @@ mod tests {
         assert_eq!(keys, ["app", "elevated", "secure_field", "system"]);
         // The only strings kept are the app ID and the app's own name.
         assert_eq!(format!("{captured:?}").matches('"').count(), 4, "{captured:?}");
+    }
+
+    #[test]
+    fn an_active_app_is_kept_without_inventing_a_keyboard_window_proof() {
+        let front = Front {
+            app_identity: None,
+            window: None,
+            ..front(42)
+        };
+        let captured = captured(System::Macos, Some(front), 7).unwrap_or_else(|| panic!("capture"));
+        assert_eq!(captured.pid, Some(42));
+        assert!(captured.target.app.is_some());
+        assert_eq!(
+            captured.window, None,
+            "activation does not establish the global keyboard owner"
+        );
     }
 }

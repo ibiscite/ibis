@@ -81,6 +81,7 @@ fn library(records: usize) -> Vec<LibraryObject> {
                     source: CitationKeySource::Bibtex,
                 }],
                 aliases: vec![],
+                warnings: vec![],
                 identifiers: vec![],
             };
             for (field, value) in [

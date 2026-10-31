@@ -801,9 +801,14 @@ jobs:
           retention-days: 14
 
   publish:
-    name: Publish pre-release
+    name: Publish release
     if: startsWith(github.ref, 'refs/tags/v') && (github.event_name == 'push' || inputs.publish)
     needs: [build, install]
+    # The Latest read and publish must not interleave.
+    concurrency:
+      group: publish-numbered-release
+      queue: max
+      cancel-in-progress: false
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     # Holds the stable update signing key; only v tags may use it, after the
@@ -881,13 +886,21 @@ jobs:
           rm feed/*.sig
           cat feed/latest.json
 
-      - name: Publish the verified pre-release
+      - name: Publish the verified release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
           REPO: ${{ github.repository }}
           ACTOR: ${{ github.actor }}
         run: |
+          set -euo pipefail
+          # An older tag must not take Latest back. A failed lookup stops here,
+          # before any draft is published or its packages are replaced.
+          latest=$(gh api "repos/$REPO/releases/latest" --jq .tag_name)
+          latest_flag=--latest=false
+          if [ "$TAG" = "$latest" ] || node scripts/update-feed.mjs newer "${TAG#v}" "${latest#v}"; then
+            latest_flag=--latest
+          fi
           # Release Please drafts the release with its generated change list;
           # scripts/release-notes.mjs puts the download table and install notes
           # in front and drops the commit hashes (#450).
@@ -899,7 +912,7 @@ jobs:
             jq -r .body release.json > generated-notes.md
             node scripts/release-notes.mjs "$TAG" generated-notes.md > release-notes.md
             gh release upload "$TAG" dist/* --repo "$REPO" --clobber
-            gh release edit "$TAG" --repo "$REPO" --prerelease --draft=false --title "Ibis ${TAG#v}" --notes-file release-notes.md
+            gh release edit "$TAG" --repo "$REPO" --prerelease=false --draft=false "$latest_flag" --title "Ibis ${TAG#v}" --notes-file release-notes.md
           elif [[ "$ACTOR" == *"[bot]" ]]; then
             # Release Please pushes the tag before it drafts the release. A bot
             # tag with no draft means that step failed; publishing would drop
@@ -909,8 +922,8 @@ jobs:
           else
             : > generated-notes.md
             node scripts/release-notes.mjs "$TAG" generated-notes.md > release-notes.md
-            gh release create "$TAG" dist/* --repo "$REPO" --prerelease --draft --title "Ibis ${TAG#v}" --notes-file release-notes.md --verify-tag
-            gh release edit "$TAG" --repo "$REPO" --draft=false
+            gh release create "$TAG" dist/* --repo "$REPO" --prerelease=false --draft --title "Ibis ${TAG#v}" --notes-file release-notes.md --verify-tag
+            gh release edit "$TAG" --repo "$REPO" --prerelease=false --draft=false "$latest_flag"
           fi
 
       # Signed by this job, published by the stable-feed job, which can be
@@ -926,6 +939,11 @@ jobs:
     name: Move the stable update feed
     if: startsWith(github.ref, 'refs/tags/v') && (github.event_name == 'push' || inputs.publish)
     needs: publish
+    # The version check and uploads must not interleave.
+    concurrency:
+      group: publish-stable-feed
+      queue: max
+      cancel-in-progress: false
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -950,10 +968,10 @@ jobs:
           name: stable-feed
           path: feed
 
-      # The rolling "stable" pre-release mirrors the newest release and the
-      # stable app reads its latest.json (ADR 0019); the feed itself points at
-      # the numbered release, which the publish job has made public. A tag
-      # older than the current feed (a backport) leaves it in place.
+      # The fixed "stable" tag anchors permanent downloads; its release's files
+      # mirror the newest release. The stable app reads latest.json (ADR 0019),
+      # which points at the numbered release made public by the publish job.
+      # An older tag (a backport) leaves the current feed in place.
       - name: Move the stable update feed to this release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -964,15 +982,10 @@ jobs:
         run: |
           set -euo pipefail
           (cd dist && sha256sum --check SHA256SUMS-*.txt)
-          version=$(jq -r .version feed/latest.json)
-          if current=$(gh release download "$FEED" --repo "$REPO" --pattern latest.json --output - 2>/dev/null | jq -r .version) && [ -n "$current" ]; then
-            if [ "$current" != "$version" ] && ! node scripts/update-feed.mjs newer "$version" "$current"; then
-              echo "::notice::The stable feed stays at $current, which is newer than $version."
-              exit 0
-            fi
-          fi
+          decision=$(node scripts/publication-guard.mjs stable feed/latest.json)
+          if [ "$decision" != publish ]; then exit 0; fi
           cat > feed-notes.md <<EOF
-          **The newest Ibis release, [Ibis ${TAG#v}](https://github.com/$REPO/releases/tag/$TAG), at links that stay the same,** for example \`https://github.com/$REPO/releases/download/stable/Ibis-Windows-setup.exe\`. See that release for its notes and how to verify a download. \`latest.json\` is the update feed the stable app reads.
+          **Not a release.** This entry holds the files behind Ibis's permanent download links and \`latest.json\`, the update feed the app reads. It currently mirrors [Ibis ${TAG#v}](https://github.com/$REPO/releases/tag/$TAG). For release notes and how to verify a download, see [the latest release](https://github.com/$REPO/releases/latest).
           EOF
           if ! gh release view "$FEED" --repo "$REPO" > /dev/null 2>&1; then
             gh release create "$FEED" --repo "$REPO" --draft --prerelease --target "$SHA" --title "Ibis update feed" --notes-file feed-notes.md
@@ -984,10 +997,7 @@ jobs:
           while IFS= read -r name; do
             if [ -n "$name" ] && [ ! -e "dist/$name" ] && [ ! -e "feed/$name" ]; then gh release delete-asset "$FEED" "$name" --repo "$REPO" --yes; fi
           done <<< "$names"
-          if ! gh api --method PATCH "repos/$REPO/git/refs/tags/$FEED" -f sha="$SHA" -F force=true > /dev/null; then
-            gh api --method POST "repos/$REPO/git/refs" -f ref="refs/tags/$FEED" -f sha="$SHA" > /dev/null
-          fi
-          gh release edit "$FEED" --repo "$REPO" --prerelease --draft=false --title "Ibis update feed" --notes-file feed-notes.md
+          gh release edit "$FEED" --repo "$REPO" --prerelease --draft=false --latest=false --title "Ibis update feed" --notes-file feed-notes.md
 
   nightly:
     name: Publish nightly pre-release
@@ -1117,18 +1127,12 @@ jobs:
           # to main must not stop this one either: with frequent merges that
           # would starve the nightly. Publish unless the nightly already has
           # this commit or a later one.
-          current=$(gh api "repos/$REPO/git/ref/tags/$TAG" --jq .object.sha 2>/dev/null || true)
-          if [ -n "$current" ]; then
-            relation=$(gh api "repos/$REPO/compare/$current...$SHA" --jq .status)
-            if [ "$relation" != ahead ]; then
-              echo "The nightly already has ${current:0:12} ($relation of this build); keeping it."
-              exit 0
-            fi
-          fi
+          decision=$(node scripts/publication-guard.mjs nightly)
+          if [ "$decision" != publish ]; then exit 0; fi
           built=$(date -u '+%Y-%m-%d %H:%M UTC')
           version=$(node scripts/update-feed.mjs version)
           cat > notes.md <<EOF
-          **Ibis Nightly $version**, built from \`${SHA:0:12}\` on main at $built. This development build is replaced after changes to main and may be unfinished or broken. For the steadier version, use the newest numbered preview release.
+          **Ibis Nightly $version**, built from \`${SHA:0:12}\` on main at $built. This development build is replaced after changes to main and may be unfinished or broken. For the steadier version, use the [newest numbered preview release](https://github.com/$REPO/releases/latest).
 
           **Which file:** \`Ibis-macOS-Apple-silicon.dmg\` (M1 and later) or \`Ibis-macOS-Intel.dmg\` on a Mac, \`Ibis-Windows-setup.exe\` on Windows, \`Ibis-Linux.AppImage\` on Linux (\`.deb\` also available). It installs as **Ibis Nightly**, next to the stable Ibis and with its own settings, and can update itself if you allow update checks. The \`.app.tar.gz\` and \`latest.json\` files are for those updates.
 
@@ -1140,7 +1144,7 @@ jobs:
           EOF
           # The first run starts from a draft, so an empty release is never public.
           if ! gh release view "$TAG" --repo "$REPO" > /dev/null 2>&1; then
-            gh release create "$TAG" --repo "$REPO" --draft --prerelease --target "$SHA" --title "Ibis Nightly $version" --notes-file notes.md
+            gh release create "$TAG" --repo "$REPO" --draft --prerelease --target "$SHA" --title "Ibis Nightly" --notes-file notes.md
           fi
           # Packages and signatures first; the update file last, so an app never
           # reads a feed that names packages not yet uploaded.
@@ -1156,7 +1160,7 @@ jobs:
           if ! gh api --method PATCH "repos/$REPO/git/refs/tags/$TAG" -f sha="$SHA" -F force=true > /dev/null; then
             gh api --method POST "repos/$REPO/git/refs" -f ref="refs/tags/$TAG" -f sha="$SHA" > /dev/null
           fi
-          gh release edit "$TAG" --repo "$REPO" --prerelease --draft=false --title "Ibis Nightly $version" --notes-file notes.md
+          gh release edit "$TAG" --repo "$REPO" --prerelease --draft=false --latest=false --title "Ibis Nightly" --notes-file notes.md
 
   update-e2e:
     name: Update the previous nightly to the newest (${{ matrix.name }})

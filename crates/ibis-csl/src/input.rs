@@ -131,6 +131,7 @@ pub(crate) struct Prepared {
     pub outcomes: Vec<ItemOutcome>,
     pub losses: Vec<Loss>,
     pub notices: Vec<Notice>,
+    pub warnings: Vec<CitationWarning>,
     pub empty: bool,
 }
 
@@ -194,6 +195,7 @@ fn prepare_with_traits(
     let mut outcomes = Vec::new();
     let mut losses = Vec::new();
     let mut notices = Vec::new();
+    let mut warnings = Vec::new();
     let mut affixes = Vec::new();
     if traits.numeric {
         notices.extend([Notice::NeedsDocumentContext, Notice::ReferenceEntry]);
@@ -224,6 +226,10 @@ fn prepare_with_traits(
         let LibraryObject::Record(record) = &object.object else {
             return Err(FormatError::InvalidRequest);
         };
+        warnings.extend(record.warnings.iter().map(|code| CitationWarning {
+            item: index,
+            code: *code,
+        }));
         let record = match citable.entry(pick.item.clone()) {
             Entry::Occupied(entry) => entry.into_mut(),
             Entry::Vacant(entry) => {
@@ -241,6 +247,21 @@ fn prepare_with_traits(
                 entry.insert(value)
             }
         };
+        if style == "apa"
+            && bibliography
+            && record.get("title").is_some()
+            && record.get("language").and_then(Value::as_str).is_none_or(|language| {
+                language
+                    .split('-')
+                    .next()
+                    .is_some_and(|primary| primary.eq_ignore_ascii_case("en"))
+            })
+        {
+            warnings.push(CitationWarning {
+                item: index,
+                code: CitationWarningCode::SentenceCaseExpected,
+            });
+        }
         // Name::OTHERS is source metadata for an incomplete name list, not an
         // institution named "others". citeproc has no data form for that marker.
         // Refuse this item rather than inventing missing authors or printing it.
@@ -430,6 +451,7 @@ fn prepare_with_traits(
         outcomes,
         losses,
         notices,
+        warnings,
         empty: cites.is_empty(),
     })
 }

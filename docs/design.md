@@ -4,8 +4,8 @@ The one current rule book for how Ibis looks and behaves: picker, first run,
 Settings, preview, brand and website. [Decisions](decisions.md) win over it. Values live in
 [`apps/desktop/src/tokens.css`](../apps/desktop/src/tokens.css): this page names
 tokens by role and gives numbers only where no token exists. Settings has
-General, Shortcuts and About. The Settings
-window's remaining pages wait in #776; scope is
+General, Look, Citations, Shortcuts and About. The Settings
+window's remaining controls wait in #776; scope is
 in [ROADMAP.md](../ROADMAP.md) and progress in the issues. Tags such as [C9]
 (design canvas) and [D7] (token foundations) are cited by code and tests; keep
 each beside its rule. This page, `tokens.css` and the components in
@@ -71,7 +71,7 @@ them before any later delivery; it sends no new paste while they remain blocked.
 |---|---|---|
 | Surfaces [D4] | `--surface-window` < `--surface` < `--surface-raised` < `--surface-overlay`; `--surface-field`, `--scrim` | Base, content sheet, band/cards/shelf, menus and dialogs. On the macOS glass panel the levels share one material (`--surface`) and layers separate by fills and hairlines. |
 | Text [D5] | `--text`, `--muted`, `--text-tertiary`, `--text-disabled` | `--muted` always 4.5:1; tertiary only for glyphs and hints at rest (3:1), never sentences. |
-| Accent [D6] | `--accent`, `--accent-text`, `--text-on-accent` | The system accent by default; Look's Accent row can override it (maintainer, 2026-10-30). Selected rows and the menu highlight use `--selected-text`, the platform's own selected-text colour (white), as native lists do; never black. `--text-on-accent` (primary button, tiles on the accent) is picked per accent to reach 4.5:1. |
+| Accent [D6] | `--accent`, `--accent-text`, `--text-on-accent` | The system accent by default; Look's Accent row can override it (maintainer, 2026-10-30). Selected rows and the menu highlight use `--selected-text`, paired to the chosen accent; the system and existing fixed accents use white, while Ibis scarlet uses dark ink in dark mode (maintainer, 2026-10-31). `--text-on-accent` (primary button, tiles on the accent) is picked per accent to reach 4.5:1. |
 | Selection [D7] | `--row-active-*`, `--row-inactive-background`, `--selected-*` | See **Selection and focus**. |
 | Focus [D8] | `--focus-ring-*` | See **Selection and focus**. |
 | Fills | `--fill-control(-hover/-pressed)`, `--fill-subtle-*`, `--fill-primary-*`, `--fill-disabled` | Pressed is darker on macOS and GNOME, lighter on Windows. |
@@ -88,19 +88,26 @@ them before any later delivery; it sends no new paste while they remain blocked.
 
 **Colour roles.** The system accent means "you are here, act on this":
 selection, focus, the primary button, switches and the macOS menu highlight.
-Scarlet means "this is what gets pasted" and marks only the citation: the
-shelf's beak mark, the added tile, the Copied notice's citation, the format
-preview, and the logo [C14]. It never appears on a control, link, toggle,
-progress, badge, counter, selection, focus ring, error, Stop status, Settings
-control or the shortcut recorder. Brand scarlet itself (no app token) is for the
-logo, app icon, website and store art. On an accent-filled row the added tile
-becomes a `--text-on-accent` tile with a scarlet check, so a red or orange
-accent never meets scarlet fill on fill. Ibis offers Appearance (System, Light,
-Dark; System by default) and Accent (maintainer, 2026-10-30): a row of Mac-style
-colour dots, the first one "Follow the Mac" (the default), then blue, purple,
-pink, red, orange, yellow, green and graphite at the Mac's own values. A chosen
-accent overrides the system's in Ibis only and is never scarlet. Ibis offers no
-brand colour, per-element colours, fonts, radius, spacing, custom CSS or themes.
+Scarlet marks the citation by default: the shelf's beak mark, the added tile,
+the Copied notice's citation, the format preview and the logo [C14]. It also
+serves as a control accent when the person explicitly chooses **Ibis scarlet**
+in Look (maintainer, 2026-10-31). Status and errors retain their own roles.
+On an accent-filled row the added tile becomes a `--text-on-accent` tile with
+a scarlet check, keeping citation and selection legible even with a warm accent.
+Ibis offers Appearance (System, Light, Dark; System by default) and Accent:
+Mac-style colour dots, first **Follow the Mac** (the default), then prominently
+labelled **Ibis scarlet**, then blue, purple, pink, red, orange, yellow, green
+and graphite. All swatches have Fluent names and tooltips. The Ibis swatch uses
+the real `scarlet` and `scarlet_dark` from `brand/settings.json`, through
+`--settings-accent-ibis`: `#C23A1C` light, `#FF7A5C` dark. Its
+`--settings-accent-ibis-on` pairs white in light mode and `#171717` ink in dark
+mode. Text on the accent, including selected rows and hover/pressed primary
+buttons, passes 4.5:1. Selected switch thumbs use the same paired foreground,
+including the permission-guide illustration; white must never disappear into
+the brighter dark-mode scarlet. Meaningful accent fills, rings and glyphs pass 3:1 on
+their adjacent surfaces in both themes. Contrast modes retain system pairs.
+A chosen accent overrides the system's in Ibis only. Ibis offers no per-element
+colours, fonts, radius, spacing, custom CSS or themes.
 
 **Contrast.** Text, placeholder, footer and key-cap labels: 4.5:1 against
 rendered pixels on every look and theme, the 22 px query included; over the
@@ -599,6 +606,9 @@ page", where the Page field lives beside the page itself.
   remain visible with the paste preview hidden. Engine losses name the reference
   and field beside the preview; an unsupported form explains the refusal there
   and blocks copying until corrected. Enter leaves that explanation visible.
+  Source-field and sentence-case warnings name the reference and appear in both
+  preview details and copy feedback. A copy carrying either warning stays open
+  with its warnings until dismissed; it never becomes a clean-copy receipt.
   Mixed narrative clusters, other locator controls, prefixes and suffixes
   remain in #24/#1315. The menu keeps the shared keyboard focus and touch
   targets.
@@ -787,7 +797,7 @@ system demands it for correctness.
 |---|---|
 | Material [C13] | One glass sheet for the whole panel (Liquid Glass; popover vibrancy fallback) under a veil of the surface colour; menus on glass. Elsewhere, an opaque surface. |
 | Accent [C14] | The accent chosen in Look; with "Follow the Mac", the system accent where the webview reads it, else the `--accent` fallback in `tokens.css`. Each accent pairs with a `--text-on-accent` that keeps 4.5:1. |
-| Selected row [C4] | Accent fill with white selected text. |
+| Selected row [C4] | Accent fill with its contrast-safe paired selected text. |
 | Search box | Frameless, large. |
 | Format pop-up | Borderless pop-up, ⌃⌄, 28 px in a 32 px target, capsule. |
 | Switch | 38 × 22. |
@@ -997,8 +1007,31 @@ breathe. Rows kept from before stay instead, with only the footer saying
   asks again next time. "Just this once" keeps the question open for a pick.
   Changing the search or citation, hiding or reopening the picker, or switching
   to another menu or dialog cancels the held action, including after dismissal
-  or a format pick while its preview or save is still pending. The question uses known app IDs;
-  unknown apps keep the global fallback. App capture currently works on macOS;
+  or a format pick while its preview or save is still pending.
+  The first Enter in an unrecognised app with a proven paste target opens this
+  same chooser, with **Paste into [app name] from now on** and **Copy only**.
+  Either answer saves the displayed format and a separate delivery choice for
+  that app ID; "Just this once" keeps its output temporary and unconsumed.
+  It returns to Search with the citation kept and waits for a fresh
+  Enter; answering, picking a format or dismissing this question never replays
+  the held Enter. A format pick alone cannot approve pasting. A failed save
+  leaves the app unapproved and asks again. Copy only skips the question on
+  later openings and says "Copied. Copy only is set for this app".
+  The chooser also offers these delivery choices for ordinary recognised apps.
+  More offers **Copy only in [app name]** for the current ordinary app too.
+  "Automatic" resets both choices for this app; "Forget formats for apps"
+  resets both for every app and brings the unknown-app question back.
+  An unlisted app at a different location asks again even when its app ID is
+  unchanged. Only an opaque app-identity fingerprint is remembered.
+  Unreadable app choices use automatic formats but block automatic paste with
+  `paste-unavailable`. Saving a format cannot lift this refusal. A fresh explicit
+  Paste or Copy only choice resolves it for that app; other apps keep the
+  refusal, including after restart, until their own choice or Forget formats
+  for apps. The chooser still offers delivery choices for a proven ordinary
+  target during recovery. Uncertainty cannot discard a remembered Copy only rule.
+  Refused terminals, remote viewers, virtual machines and editors with a
+  different paste key never ask and cannot be approved. Without a proven
+  target, Enter copies with its refusal reason. App capture currently works on macOS;
   Windows and Linux keep their existing global output until capture is built.
   Ibis never reads or stores a document title or URL to choose an
   output. No format question interrupts each citation. Setup steps finish
@@ -1040,8 +1073,9 @@ that owns its area in ROADMAP.md.
    named apart: "read your references" and "paste".
    References, locators, search and the prepared output survive the detour,
    including longer than the usual minute away. On return after a read-back
-   grant, the guide closes and the picker captures the destination again;
-   it never replays the earlier Enter. Its prepared output applies once, even
+   grant, the guide closes. The person returns to the external document and
+   summons Ibis again to capture the destination; no earlier Enter is replayed.
+   Its prepared output applies once after a fresh Enter, even
    if the destination changed, without changing that app's remembered format.
    Reopening before the grant keeps the detour active; destination refreshes
    in the same opening keep its prepared output. A successful copy clears
@@ -1055,7 +1089,11 @@ that owns its area in ROADMAP.md.
    copy, even when only the search or chooser scope changes. Returning to a
    citation whose copy is still outstanding cannot repeat it. Deliberately
    choosing a different citation permits a fresh copy; an earlier reply cannot
-   replace its shelf or current copy feedback. A changed query,
+   replace its shelf or current copy feedback. A changed delivery choice revokes
+   outstanding paste permission. If a completed write's response arrives after
+   that choice with no newer interaction, the open picker
+   still confirms Copied; it neither hides nor replays delivery. A newer Enter,
+   including one waiting for the save, keeps ownership. A changed query,
    reference, page, form or output, arrow navigation, Escape or hiding cancels
    a waiting Enter. Every add/remove activation cancels it, including Shift+Enter
    with no highlighted result. A prepared shelf can copy while the next search
@@ -1073,6 +1111,42 @@ that owns its area in ROADMAP.md.
    delivery and receipt. Every activation goes through the same readiness
    checks before starting or joining a copy. A failed reconciliation status
    read cancels waiting Enter; a later library update never replays it.
+   Automatic paste uses a recognised app's normal paste shortcut, or explicit
+   per-app paste approval from the chooser above. Unapproved unknown apps
+   cannot paste; a copy that cannot ask says "Copied. Automatic paste is not
+   approved for this app". A format choice never grants paste approval, and no
+   choice overrides a refused app or the native target/permission checks.
+   Approval is frozen before the clipboard write, so a later answer cannot
+   authorize an earlier copy. Changing delivery choices revokes outstanding
+   proofs; fresh Enter cannot join a copy from an earlier delivery policy.
+   Saving Copy only cannot send an older paste. A proven target that changes,
+   closes or is minimised copies with "Copied. The target app or window changed".
+   An unavailable focus or safety proof uses `paste-unavailable` and the system's
+   manual-paste key; it never claims that the target changed or the paste expired.
+   A replaced clipboard says "Copied. The clipboard changed; copy the citation again".
+   On macOS, sleep, lock and session changes expire pending delivery. Expired
+   deliveries copy with "Copied. The paste expired; paste it yourself".
+   A refusal never retries or replaces another clipboard owner's contents.
+   No window title or document text is read. Window count and front-to-back
+   order cannot establish keyboard focus, including with nonactivating panels.
+   On macOS, Enter uses the captured document and top-level input surface,
+   including when several windows of an app are open. Attached sheets/drawers
+   have their own surface identity; opening a Save sheet cannot borrow its
+   parent document's paste proof. An identity-only AX check requires
+   Accessibility access as well as the separate PostEvent authorization
+   (decision 0029, maintainer 2026-10-30 and #1529 review).
+   It verifies global keyboard ownership as well as the active app, so a foreign
+   nonactivating panel cannot borrow that app's target. Missing Accessibility
+   copies with "Copied. Ibis needs Accessibility access to paste safely. Press
+   ⌘V to paste." Failed/unsupported reads and the bounded 50 ms query timeout
+   copy with `paste-unavailable`. Granting access never retries the old paste;
+   return to the document, open Ibis again and press Enter to try again.
+   No field roles, values or secure-field attributes, window titles or document
+   text are read. The final comparison is followed immediately by
+   process-directed posting, without a
+   lock; a small OS focus-change gap remains and is not atomic window binding.
+   Showing the picker again while it owns the keyboard keeps the original
+   external destination.
 4. Open in under 100 ms with the last snapshot; text received by Search during
    opening is kept (see **Opening** for X11 input routing). The Linux smoke
    types once as soon as the picker is mapped, without waiting for focus.
@@ -1244,21 +1318,31 @@ control at the end, at least `--settings-row-height` (48 px) or
 `--surface-grouped-card` over `--surface-grouped` [D17]. Controls are the
 shared `Switch` (38 × 22), `Segmented` and shortcut recorder in `ui/`. Changes
 apply at once and reach an open picker; preference resets offer Undo. Built so
-far: seven searchable pages, with General (opening-shortcut link, login and
+far: five searchable pages, with General (opening-shortcut recorder, login and
 pasting), Look (real picker pictures, rows, Ibis mark or magnifier,
 Default/Larger text and paste preview), Shortcuts (opening shortcut and an
-expandable key list and Undo for restoring the default), Citations (default
+always-open grouped key list and Undo for restoring the default), Citations (default
 key syntax or style through the shared Ibis menu) and About Ibis (version and
 update checks). Appearance and Accent apply in both Settings and the picker
-through the same root-level roles. Largest text, None, window presets including
-Compact, menu-bar visibility, welcome replay and the remaining Libraries, Citations and Advanced
-actions appear disabled with Coming soon. Ordinary Settings presentations open
+through the same root-level roles. Unfinished controls, choices, rows and their
+sentences stay out of Settings and its search index: no disabled promises or
+"Coming soon" placeholders (maintainer, 2026-10-31). This includes menu-bar
+visibility, welcome replay, window presets, None, Largest, and the unfinished
+Libraries, Citations, Advanced and About actions. A page with no built controls
+stays out of navigation. Ordinary Settings presentations open
 General at the top; explicit page requests select that page and reset its scroller.
 The shared shell uses the root's full height at Default, Larger and 200% text.
 The page and navigation scrollers contain absolutely positioned descendants,
 so focusing a control never scrolls the document or moves the window chrome.
-General shows desktop-owned shortcut triggers verbatim, or Not assigned, with
-the desktop's guidance.
+General and Shortcuts share `ui/ShortcutSetting`: the same real recorder,
+recording prompt, refusal and read-error messages beside the cause, default
+reset and eight-second Undo. General edits in place; it never sends the person
+to Shortcuts to record. Both consume the one Settings shortcut owner and save
+queue, with no second subscription, persisted state or migration. Escape, Tab,
+blur and leaving the page cancel recording; pending writes remain owned by
+Settings across page changes. Desktop-owned triggers stay verbatim, or Not
+assigned, with the desktop's guidance; Change opens the desktop configuration
+only where supported, on either page (maintainer, 2026-10-31).
 Preference notifications retire older replies immediately and refresh after
 the queue actually completes; only closing uses the two-second limit. Both
 windows request a ticket from one synchronous native counter when a choice is
@@ -1281,8 +1365,12 @@ window; every drawing and board uses it, and it is kept in step with the app as
 both change. The Rows and Search icon pictures are the real picker drawn small
 (sample references, the current appearance), never a separate sketch, so they
 can't drift from it. Look opens with Appearance: System, Light and Dark as
-pictures of the picker (System split diagonally), System by default, then
-Accent as colour dots, Follow the Mac by default. The
+pictures of the picker (System split diagonally), in one row at default and
+minimum window widths, including Larger text. `ui/PictureChoice` gives every
+picture an equal grid column and scales the contents inside the available
+padding; never wrap three choices as two plus one. System is the default, then
+Accent as colour dots, Follow the Mac by default, with Ibis scarlet immediately
+after it and visibly named (maintainer, 2026-10-31). The
 website shows the app as it currently is. Each Appearance picture owns the
 labelled theme for its body and controls; System is split across the whole
 picture diagonally. Rows and Search icon use a crop of the real components at
@@ -1291,7 +1379,7 @@ The crop and its contents shrink together within the available row padding at
 minimum width and 200% text.
 
 **Pages for everyone** (2026-10-30). Most people never open Settings, so
-defaults carry the product (principle 9). Seven pages, each with one job, in this
+defaults carry the product (principle 9). The eventual seven pages, each with one job, in this
 order: **General** (the opening shortcut, Open at Login, Show in Menu Bar,
 pasting), **Look** (appearance, accent, rows, text size, window size, search icon, show what will
 be pasted; each visual choice a row of small pictures), **Libraries**
@@ -1312,7 +1400,12 @@ descriptions and common words ("dark", "startup", "paste"), opens the page and
 tints the matching row for two seconds. A setting lives in one place; the
 picker keeps only actions with their own keys.
 
-**Show in Menu Bar** is on by default. Turned off, the shortcut still opens
+**Forget formats for apps** lives on Citations and says Ibis asks again the next
+time you paste into each app. Disable its button while forgetting; show failures
+beside the row with a retry, and a brief confirmation there only after success.
+
+**Show in Menu Bar** is planned and stays hidden until implemented. Its intended
+behaviour is on by default. Turned off, the shortcut still opens
 the picker, and opening Ibis from Applications (or Start, or the app grid)
 opens Settings; the switch's description says so. The menu bar icon is a
 16-point one-colour bird the system tints, from `brand/`, and opens a menu,
@@ -1326,9 +1419,11 @@ runs the full height; its navigation starts below the window buttons.
 page is an option, with exactly one selected option and `aria-current="page"`,
 drawn with the shared selected fill and paired text. One Tab stop enters the
 list; arrows and Home/End move focus and select the page. Typeahead moves
-focus to a matching page; Enter chooses it. Its width is
-`--settings-sidebar-width`, capped in proportion to the window so the page
-still fits at the minimum 480 × 400 size.
+focus to a matching page; Enter chooses it. The native window defaults to
+920 × 560 points and has a minimum of 800 × 400 (maintainer, 2026-10-31).
+`--settings-sidebar-width` is 12 rem, capped at 26% of the window to preserve
+content space with larger type. The page keeps its readable
+`--settings-group-width` cap rather than stretching rows across spare width.
 
 The content page and bounded navigation list scroll independently. The
 document, shell, sidebar background and reserved window-button area stay
@@ -1340,7 +1435,12 @@ bar or traffic lights. Never reserve that space with a sticky spacer or a
 negative margin.
 Opening Settings normally, selecting a page or requesting General again
 starts that page at the top, with a large `--type-page-title-*` heading and
-`--settings-page-inset` around the content. A single click on the current
+`--settings-page-inset` on the sides and bottom. Above the heading, use only
+`--settings-page-top-inset` below the reserved title bar, avoiding a second
+large blank band. `--settings-section-gap` keeps the heading, cards and titled
+groups apart; groups never touch. The page reserves a stable scrollbar gutter
+in addition to the content inset, so an overlay scrollbar cannot cover text
+or controls (maintainer, 2026-10-31). A single click on the current
 sidebar page also returns that page to the top. An explicit Pasting deep link
 may reveal that group, after its data loads, by moving only the page scroller.
 Presenting an existing Settings window without a page (shortcut or tray)
@@ -1349,11 +1449,23 @@ emits the General page event too, selecting General and resetting its scroll.
 `ui/SettingsGroup` owns grouped cards (`--r-card`, `--settings-group-width`)
 and inset rows. Groups and cards keep their natural height; the page must
 never shrink them to squeeze a long form into the window. Row heights are
-minima, include their padding, and grow in rem with text. Labels wrap, controls
-wrap below when necessary, buttons inherit the surrounding type and wrap
+minima, include their padding, and grow in rem with text. Every row shares
+`--settings-row-pad-block`; wrapped descriptions and controls retain the same
+side and vertical inset. `--settings-row-text-gap` separates a label from its
+description. Row buttons keep `--space-1` of block padding, including when a
+recording prompt wraps. Labels wrap, controls move below when necessary,
+buttons inherit the surrounding type and wrap
 their labels, and switches keep their shape. This holds at the minimum window
 size and with system text scaled up to 2×; no fixed row heights or clipped
-labels to make the form fit.
+labels to make the form fit. Check default and minimum widths at both Default
+and Larger text; keep the last control reachable without moving the shell.
+
+**No browser disclosure controls** (maintainer, 2026-10-31). Never use native
+`details` or `summary` elements, raw disclosure triangles, or screen-specific
+imitations anywhere in the app. Related settings and shortcut references use
+always-open `ui/SettingsGroup` rows with a heading; the Shortcuts page's
+**In the picker** group is always visible. Any future collapsible pattern must
+first belong to the shared design system.
 
 Permission-guide artwork, numbered instructions and actions form one column
 at every width. Instructions and **Open System Settings** start at the card's
@@ -1422,11 +1534,14 @@ says why in one sentence, names the exact list in the system's current words
 (macOS 27: "Device Control and Data Access"; earlier: "Accessibility"), shows
 a picture of the switch to turn on, opens that pane with one button, and
 notices the change on its own (read again every second and on return), then
-confirms in words. It never claims success it has not read back. The guide
-opens by itself once per run, the first time a paste is refused, and lives in
-Settings › General › Pasting afterwards. Because macOS keys the permission to
-the code signature, opening the guide first clears Ibis's own entry when the
-permission is not working, so the list shows one fresh switch (#1292, #1242).
+confirms in words. Auto-paste on Mac requires both PostEvent and Accessibility;
+Settings says allowed only after both passive checks succeed. A missing
+Accessibility grant has its own copied receipt; provider failure is not a
+permission denial. The guide lives in Settings › General › Pasting; the
+existing PostEvent refusal also opens it once per run. Because macOS keys
+permissions to the code signature, an explicit Open System Settings click can
+repair Ibis's stale PostEvent entry and request it (#1292, #1242). Permission
+reads never prompt, and the guide never requests or resets Accessibility.
 Automatic listing stays first. Beside **Open System Settings**, the Ibis app
 icon is a file drag source, followed by one line: "If Ibis is not in the list,
 drag it there." It drags the running bundle's file URL, including a renamed,
@@ -1436,10 +1551,11 @@ button states; clicking or pressing it opens System Settings as the keyboard
 alternative. An unbundled development executable cannot be dragged; a failed
 drag points to the list's **+** button. Neither starting nor completing a drag
 claims a grant: the same live permission read must confirm it (#1390).
-Only the guide opened after a refused paste returns to the picker on grant;
-an ordinary Settings visit stays open and confirms the grant in words. A
-background grant never brings Ibis forward: completion waits for the person
-to return. Hidden pages make no permission reads; pasting switched off stops
+The guide opened after a refused paste closes after both grants are read back
+on return. It does not reopen the picker or replay Enter: return to the external
+document and open Ibis again, then press Enter to try again. An ordinary
+Settings visit stays open and confirms the grants in words. A background
+grant never brings Ibis forward. Hidden pages make no permission reads; pasting switched off stops
 the one-second checks, keeping the capability read on return.
 Zotero's sharing line explains reading references; the macOS guide's line
 explains pasting. These are separate grants, never instructions to give both.

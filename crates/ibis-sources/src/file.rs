@@ -14,7 +14,6 @@ use crate::{LoadedLibrary, attachments, bibtex, csl_json};
 use ibis_core::contract::{LibraryId, LibraryObject, Snapshot};
 use std::collections::BTreeMap;
 
-mod cache;
 mod io;
 mod watch;
 
@@ -97,16 +96,6 @@ fn read_text(file: impl Read) -> Result<String, SourceError> {
     String::from_utf8(bytes).map_err(|_| SourceError::Unreadable)
 }
 
-fn resolved_path(path: &Path) -> std::io::Result<PathBuf> {
-    canonical_path(path).or_else(|error| {
-        if error.kind() == std::io::ErrorKind::TimedOut {
-            Err(error)
-        } else {
-            std::path::absolute(path).map(compatible_path)
-        }
-    })
-}
-
 fn canonical_path(path: &Path) -> std::io::Result<PathBuf> {
     let path = path.to_path_buf();
     io::bounded(move || Ok(canonical_path_sync(&path)))
@@ -141,7 +130,8 @@ fn watched_path(path: &Path) -> std::io::Result<PathBuf> {
 /// Initial loads remain tolerant of damaged entries. A reload additionally
 /// refuses unclosed blocks, while duplicate keys and other warnings still load.
 pub(crate) fn load_library_file(path: &Path, reload: bool) -> Result<LoadedLibrary, SourceError> {
-    parse(path, &read_library_file(path)?, reload, None)
+    let observation = SourceSnapshot::read_with(path, || {})?;
+    parse(&observation.source, &observation.text, reload, None)
 }
 
 /// The exact bytes and source identity seen by a completed load. Pass this to
@@ -156,16 +146,56 @@ pub struct SourceSnapshot {
 /// This compares contents, so same-size edits with preserved timestamps remain
 /// visible. Clones share the bounded source text rather than copying it.
 pub fn load_file_snapshot(path: &Path) -> Result<(LoadedLibrary, SourceSnapshot), SourceError> {
-    let text = read_library_file(path)?;
-    let source = resolved_path(path).map_err(|_| SourceError::Unavailable)?;
-    let loaded = parse(&source, &text, false, None)?;
-    Ok((
-        loaded,
-        SourceSnapshot {
+    load_file_snapshot_with(path, || {})
+}
+
+fn load_file_snapshot_with(
+    path: &Path,
+    after_read: impl FnOnce(),
+) -> Result<(LoadedLibrary, SourceSnapshot), SourceError> {
+    let observation = SourceSnapshot::read_with(path, after_read)?;
+    let loaded = parse(&observation.source, &observation.text, false, None)?;
+    Ok((loaded, observation))
+}
+
+impl SourceSnapshot {
+    /// Private canonical identity of the same observation that supplied the bytes.
+    pub fn source_path(&self) -> &Path {
+        &self.source
+    }
+
+    fn read_with(path: &Path, after_read: impl FnOnce()) -> Result<Self, SourceError> {
+        let source = canonical_path(path).map_err(|_| SourceError::Unavailable)?;
+        let text = read_library_file(&source)?;
+        after_read();
+        if canonical_path(path).ok().as_ref() != Some(&source) {
+            return Err(SourceError::Changing);
+        }
+        Ok(Self {
             source,
             text: text.into(),
-        },
-    ))
+        })
+    }
+}
+
+/// Strict Reload carries the second of two identical source observations.
+pub fn reload_file_snapshot_reusing(
+    path: &Path,
+    previous: &Snapshot,
+) -> Result<(LoadedLibrary, SourceSnapshot), SourceError> {
+    let observation = stable_observation_with(path, || std::thread::sleep(SETTLE))?;
+    let loaded = parse(&observation.source, &observation.text, true, Some(previous))?;
+    Ok((loaded, observation))
+}
+
+fn stable_observation_with(path: &Path, settle: impl FnOnce()) -> Result<SourceSnapshot, SourceError> {
+    let before = SourceSnapshot::read_with(path, || {})?;
+    settle();
+    let after = SourceSnapshot::read_with(path, || {})?;
+    if before != after {
+        return Err(SourceError::Changing);
+    }
+    Ok(after)
 }
 
 fn parse(path: &Path, text: &str, reload: bool, previous: Option<&Snapshot>) -> Result<LoadedLibrary, SourceError> {
@@ -179,7 +209,9 @@ fn parse_with_budget(
     budget: bibtex::Budget,
     previous: Option<&Snapshot>,
 ) -> Result<LoadedLibrary, SourceError> {
-    let source = resolved_path(path).map_err(|_| SourceError::Unavailable)?;
+    let source = std::path::absolute(path)
+        .map(compatible_path)
+        .map_err(|_| SourceError::Unavailable)?;
     let library = LibraryId::file(source.as_os_str().as_encoded_bytes());
     let text = text.trim_start_matches('\u{feff}');
     let extension = source.extension();
@@ -446,7 +478,7 @@ fn stable_read(
     error_reported: bool,
     previous: Option<&Snapshot>,
 ) -> Result<Option<LoadedLibrary>, SourceError> {
-    let before = read_library_file(path)?;
+    let before = SourceSnapshot::read_with(path, || {})?;
     // A zero-length file and a valid prefix can both occur during a save.
     // Require identical observations separated by another quiet interval.
     match events.recv_timeout(SETTLE) {
@@ -457,24 +489,21 @@ fn stable_read(
     if stopped.load(Ordering::SeqCst) {
         return Err(SourceError::Changing);
     }
-    let after = read_library_file(path)?;
+    let after = SourceSnapshot::read_with(path, || {})?;
     if before != after {
         return Err(SourceError::Changing);
     }
-    let source = resolved_path(path).map_err(|_| SourceError::Unavailable)?;
-    if snapshot
-        .take()
-        .is_some_and(|previous| previous.source == source && previous.text.as_ref() == after)
-    {
+    let source = &after.source;
+    if snapshot.take().is_some_and(|previous| previous == after) {
         // An earlier gap error must clear even if the file returns unchanged.
         // Only these exact initially accepted bytes retain tolerant loading.
         return if error_reported {
-            parse(&source, &after, false, previous).map(Some)
+            parse(source, &after.text, false, previous).map(Some)
         } else {
             Ok(None)
         };
     }
-    parse(&source, &after, true, previous).map(Some)
+    parse(source, &after.text, true, previous).map(Some)
 }
 
 impl Drop for SourceWatch {
@@ -521,18 +550,6 @@ mod subprocess_watchdog;
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[cfg(target_os = "macos")]
-    #[test]
-    fn a_placeholder_can_name_cached_search_but_cannot_supply_fresh_bytes() {
-        let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
-        let path = directory.path().join(".synthetic.bib.icloud");
-        // The identity can be retained even while provider metadata/data are
-        // absent. Identity alone must never become a successful source read.
-        assert_eq!(SourceSnapshot::resolve_path(&path), Ok(path.clone()));
-        assert_eq!(SourceSnapshot::read(&path).err(), Some(SourceError::Unavailable));
-        assert_eq!(load_file(&path).err(), Some(SourceError::Unavailable));
-        assert!(SourceError::Unavailable.to_string().contains("download"));
-    }
     #[test]
     fn manual_sources_report_live_refresh_off_without_starting_a_worker() {
         let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
@@ -561,6 +578,45 @@ mod tests {
         };
         assert_eq!(record.citation_key(), Ok(Some("after")));
     }
+
+    #[cfg(unix)]
+    #[test]
+    fn completed_file_observation_refuses_a_symlink_retarget_during_read() {
+        let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+        let selected = dir.path().join("selected.bib");
+        let a = dir.path().join("a.bib");
+        let b = dir.path().join("b.bib");
+        std::fs::write(&a, "@book{a}").unwrap_or_else(|e| panic!("{e}"));
+        std::fs::write(&b, "@book{b}").unwrap_or_else(|e| panic!("{e}"));
+        std::os::unix::fs::symlink(&a, &selected).unwrap_or_else(|e| panic!("{e}"));
+        let result = load_file_snapshot_with(&selected, || {
+            std::fs::remove_file(&selected).unwrap_or_else(|e| panic!("{e}"));
+            std::os::unix::fs::symlink(&b, &selected).unwrap_or_else(|e| panic!("{e}"));
+        });
+        assert!(
+            matches!(result, Err(SourceError::Changing)),
+            "retargeted bytes must never acquire the other source identity"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn strict_reload_refuses_equal_bytes_from_a_retargeted_source() {
+        let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+        let selected = dir.path().join("selected.bib");
+        let a = dir.path().join("a.bib");
+        let b = dir.path().join("b.bib");
+        for path in [&a, &b] {
+            std::fs::write(path, "@book{same}").unwrap_or_else(|e| panic!("{e}"));
+        }
+        std::os::unix::fs::symlink(&a, &selected).unwrap_or_else(|e| panic!("{e}"));
+        let result = stable_observation_with(&selected, || {
+            std::fs::remove_file(&selected).unwrap_or_else(|e| panic!("{e}"));
+            std::os::unix::fs::symlink(&b, &selected).unwrap_or_else(|e| panic!("{e}"));
+        });
+        assert!(matches!(result, Err(SourceError::Changing)));
+    }
+
     #[test]
     fn watcher_caches_only_the_accepted_coalesced_model() {
         let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));

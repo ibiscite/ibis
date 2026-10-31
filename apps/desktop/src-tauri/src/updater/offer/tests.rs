@@ -28,7 +28,7 @@ impl OfferUi for tauri::test::MockRuntime {
     fn focused(parent: &tauri::WebviewWindow<Self>) -> bool {
         let picker = parent.state::<NativePicker>();
         if let Some((main, foreground)) = *picker.native_focus.lock().unwrap_or_else(|e| panic!("{e}")) {
-            owned_foreground(main, foreground)
+            crate::picker::foreground_focus(main, foreground) == Some(true)
         } else {
             picker.focused.load(Ordering::SeqCst)
         }

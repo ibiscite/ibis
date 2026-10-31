@@ -218,6 +218,13 @@ fn main() {
             }
         })
         .setup(move |app| {
+            if let Ok(cache) = app.path().app_cache_dir() {
+                // One attempt per launch, independent of loading a library.
+                // Cleanup failures never prevent a fresh source read.
+                tauri::async_runtime::spawn_blocking(move || {
+                    let _ = ibis_zotero_local::closed::remove_obsolete_file_cache(&cache);
+                });
+            }
             let settings_path = app.path().app_config_dir()?.join("settings.json");
             let loaded = settings::load(&settings_path);
             app.manage(SettingsFile::new(settings_path.clone()));
@@ -233,6 +240,7 @@ fn main() {
                 if !sizing::prepare(app.handle(), &window, true, false) {
                     return Err("the picker frame could not be prepared".into());
                 }
+                sizing::watch_display(app.handle(), &window);
                 #[cfg(not(target_os = "macos"))]
                 {
                     report(window.set_skip_taskbar(true), NativeIssue::SkipTaskbar);

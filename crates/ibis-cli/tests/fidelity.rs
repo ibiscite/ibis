@@ -1,5 +1,6 @@
 //! Citation fidelity: a bibliography rendered by Pandoc from the original
-//! `.bib` file must match the one rendered from Ibis's CSL-JSON export.
+//! `.bib` file must match the one rendered from Ibis's CSL-JSON export, with
+//! exact expectations for the one title Pandoc recases during BibTeX import.
 //!
 //! Requires `pandoc` on PATH. Skipped when it is missing, unless
 //! `IBIS_REQUIRE_PANDOC=1` is set (as in CI), in which case it fails.
@@ -79,6 +80,14 @@ fn bibliography_from_csl_export_matches_original_bibtex() {
         "fixture produced warnings: {}",
         String::from_utf8_lossy(&export.stderr)
     );
+    let exported: serde_json::Value = serde_json::from_slice(&export.stdout).unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(
+        exported
+            .as_array()
+            .and_then(|items| items.iter().find(|item| item["id"] == "italic2019"))
+            .and_then(|item| item["title"].as_str()),
+        Some("The Role of <i>In Vivo</i> Studies in Sleep Research")
+    );
     let json = Path::new(env!("CARGO_TARGET_TMPDIR")).join("fidelity.json");
     std::fs::write(&json, &export.stdout).unwrap_or_else(|e| panic!("{e}"));
 
@@ -90,6 +99,13 @@ fn bibliography_from_csl_export_matches_original_bibtex() {
         .iter()
         .zip(&actual_lines)
         .filter(|(e, a)| e != a)
+        .filter(|(e, a)| {
+            // Pandoc lowercases the unprotected word inside TeX emphasis on
+            // import. Ibis now preserves stored case (#1530); pin both exact
+            // outputs instead of normalizing capitalization in the comparison.
+            !(**e == "Lindqvist, Sara. 2019. “The Role of in Vivo Studies in Sleep Research.” Synthetic Biology Letters."
+              && **a == "Lindqvist, Sara. 2019. “The Role of In Vivo Studies in Sleep Research.” Synthetic Biology Letters.")
+        })
         .map(|(e, a)| format!("  from .bib:  {e}\n  from Ibis:  {a}"))
         .collect();
     assert_eq!(

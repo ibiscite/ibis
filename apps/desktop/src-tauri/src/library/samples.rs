@@ -18,7 +18,7 @@ fn source() -> Source {
 fn loaded(source: Source) -> Library {
     match load_source(source, false, None, &Cancellation::default(), || false).unwrap_or_else(|e| panic!("{e}")) {
         Loaded::New(library) => *library,
-        Loaded::Unchanged => panic!("first read"),
+        Loaded::Unchanged | Loaded::Reload(_) => panic!("first read"),
     }
 }
 

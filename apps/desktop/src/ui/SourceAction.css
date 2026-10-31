@@ -1,0 +1,4 @@
+.source-icon { display: inline-flex; flex: none; width: var(--icon-size); height: var(--icon-size); color: var(--muted); }
+.source-icon > :is(img, svg) { width: 100%; height: 100%; object-fit: contain; }
+.ui-button.source-action[data-variant] { flex: none; background: var(--fill); color: var(--text); border-color: var(--clear); border-radius: var(--r-tile); }
+.source-action > .key-hint { flex-wrap: wrap; }

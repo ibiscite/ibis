@@ -21,8 +21,8 @@ pub(super) fn zotero_choice(library: &Library) -> Option<ZoteroLibraries> {
         })
 }
 
-/// Start checking the open library for changes without showing it:
-/// the picker keeps its state until Zotero has changed or cannot be reached.
+/// Start checking the open library without showing a busy state:
+/// the picker keeps its state until the source answers.
 /// The check is numbered like any request, so a newer choice discards it.
 pub(super) fn begin_check(library: &Mutex<Library>, requests: &LoadRequests) -> Option<(u64, Source)> {
     begin_check_with(library, requests, |file| {
@@ -47,15 +47,18 @@ fn begin_check_with(
     if library.opening || library.checking || other_request {
         return None;
     }
+    // A supervised read may fail before the engine can record source health.
+    // A nonlocal dialog refusal says nothing about the installed source.
+    let failed_read = library
+        .error
+        .is_some_and(|error| error != super::error::LoadError::NotLocal);
     let eligible = matches!(source, Source::Zotero(_))
-        || matches!(source, Source::File(_)) && library.file.as_ref().is_some_and(|file| file_needs_check(file));
+        || matches!(source, Source::File(_))
+            && (failed_read || library.file.as_ref().is_some_and(|file| file_needs_check(file)));
     if !eligible {
         return None;
     }
     let request = requests.0.fetch_add(1, Ordering::SeqCst) + 1;
-    if matches!(source, Source::File(_)) {
-        requests.2.invalidate(request);
-    }
     library.checking = true;
     Some((request, source))
 }
@@ -159,8 +162,50 @@ mod tests {
     }
 
     #[test]
-    fn picker_open_file_checks_reserve_the_cache_operation_and_parse_current_bytes()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn picker_open_retries_a_failed_read_even_when_engine_health_is_clear() -> Result<(), Box<dyn std::error::Error>> {
+        let directory = tempfile::tempdir()?;
+        let path = directory.path().join("synthetic.bib");
+        std::fs::write(&path, "@misc{kept}")?;
+        let engine = ibis_engine::Engine::new().map_err(|_| "engine")?.without_file_watches();
+        engine
+            .open_file_observed(&path, &ibis_engine::Cancellation::default())
+            .map_err(|_| "initial read")?;
+        let library = Mutex::new(Library {
+            source: Some(Source::File(path)),
+            file: Some(std::sync::Arc::new(
+                super::super::engine_file::FileLibrary::from_engine(engine),
+            )),
+            ..Library::default()
+        });
+        let requests = LoadRequests::default();
+        // A supervised read can time out before the engine publishes a failure.
+        install_loaded(&library, &requests, 0, Err(SourceError::Unavailable.into())).ok_or("failed read")?;
+        let (request, checked) = begin_check(&library, &requests).ok_or("the next opening must retry")?;
+        assert!(
+            status(&*library.lock().map_err(|_| "library")?).error.is_some(),
+            "the check stays quiet"
+        );
+        assert!(begin_check(&library, &requests).is_none(), "only one check per opening");
+        let file = library.lock().map_err(|_| "library")?.file.clone();
+        let loaded =
+            crate::library::load::load_source(checked, true, file, &ibis_engine::Cancellation::default(), || false);
+        let visible = install_loaded(&library, &requests, request, loaded).ok_or("accepted recovery")?;
+        assert_eq!(visible.references, 1);
+        assert!(visible.error.is_none());
+        assert!(
+            begin_check(&library, &requests).is_none(),
+            "healthy local files need no opening check"
+        );
+        install_loaded(&library, &requests, request, Err(LoadError::NotLocal)).ok_or("refused dialog choice")?;
+        assert!(
+            begin_check(&library, &requests).is_none(),
+            "a dialog refusal is not a failed source read"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn picker_open_file_checks_parse_current_bytes_before_acceptance() -> Result<(), Box<dyn std::error::Error>> {
         let directory = tempfile::tempdir()?;
         let path = directory.path().join("synthetic.bib");
         std::fs::write(&path, "@misc{before}")?;
@@ -170,15 +215,9 @@ mod tests {
         std::fs::write(&path, "@misc{before}\n@misc{fresh,title={Fresh reference}}")?;
         let (request, checked) = begin_check_with(&library, &requests, |_| true).ok_or("picker-open check")?;
         let file = library.lock().map_err(|_| "library")?.file.clone();
-        let loaded = crate::library::load::load_source_cached(
-            checked,
-            false,
-            file,
-            &ibis_engine::Cancellation::default(),
-            requests.2.operation(request),
-            || false,
-        )
-        .map_err(|e| e.to_string())?;
+        let loaded =
+            crate::library::load::load_source(checked, true, file, &ibis_engine::Cancellation::default(), || false)
+                .map_err(|e| e.to_string())?;
         let visible = install_loaded(&library, &requests, request, Ok(loaded)).ok_or("current result")?;
         assert_eq!(visible.references, 2);
         assert!(visible.error.is_none());

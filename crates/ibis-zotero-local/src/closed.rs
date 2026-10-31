@@ -18,8 +18,10 @@ mod database_bounds;
 mod keys;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 mod mounts;
+mod obsolete_cache;
 mod platform;
 mod private_copy;
+pub use obsolete_cache::{PrivateStorageError, remove_obsolete_file_cache};
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 use platform::resident;
@@ -252,248 +254,22 @@ impl Control {
     }
 }
 
-/// A persistent private namespace, independent of disposable Zotero copies.
-/// Paths and native errors are never included in Debug or diagnostics.
-pub struct PrivateDirectory {
-    root: PathBuf,
-    identity: std::fs::Metadata,
-    lease: std::fs::File,
+struct FileLease {
+    file: std::fs::File,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
-pub enum PrivateStorageError {
-    #[error("private storage is unavailable")]
-    Unavailable,
-    #[error("private storage is already in use")]
-    Busy,
-}
-
-impl PrivateDirectory {
-    pub fn open(path: &Path) -> Result<Self, PrivateStorageError> {
-        use std::io::{Read, Write};
-        let unavailable = |_| PrivateStorageError::Unavailable;
-        let control = Control::new(Arc::new(|| false));
-        let parent = platform::directory(path.parent().ok_or(PrivateStorageError::Unavailable)?, &control)
-            .map_err(unavailable)?;
-        let root = parent.join(path.file_name().ok_or(PrivateStorageError::Unavailable)?);
-        let fresh = match std::fs::symlink_metadata(&root) {
-            Ok(_) => {
-                platform::secure(&root, &control).map_err(unavailable)?;
-                false
-            }
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                platform::create_private(&root, &control).map_err(unavailable)?;
-                true
-            }
-            Err(_) => return Err(PrivateStorageError::Unavailable),
-        };
-        const OWNER: &[u8] = b"Ibis prepared source storage\n";
-        let marker_path = root.join(".owner");
-        if fresh {
-            let mut options = std::fs::OpenOptions::new();
-            options.write(true).create_new(true);
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::OpenOptionsExt;
-                options.mode(0o600);
-            }
-            let mut marker = options
-                .open(&marker_path)
-                .map_err(|_| PrivateStorageError::Unavailable)?;
-            marker
-                .write_all(OWNER)
-                .and_then(|_| marker.sync_all())
-                .map_err(|_| PrivateStorageError::Unavailable)?;
-        }
-        platform::secure_file(&marker_path, &control).map_err(unavailable)?;
-        let mut marker = Vec::new();
-        platform::open_source(&marker_path)
-            .map_err(unavailable)?
-            .take(64)
-            .read_to_end(&mut marker)
-            .map_err(|_| PrivateStorageError::Unavailable)?;
-        if marker != OWNER {
-            return Err(PrivateStorageError::Unavailable);
-        }
-        let mut options = std::fs::OpenOptions::new();
-        options.read(true).write(true).create(true).truncate(false);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt;
-            options
-                .mode(0o600)
-                .custom_flags(nix::libc::O_NOFOLLOW | nix::libc::O_NONBLOCK);
-        }
-        #[cfg(windows)]
-        {
-            use std::os::windows::fs::OpenOptionsExt;
-            options.share_mode(7).custom_flags(0x0020_0000);
-        }
-        let lock_path = root.join(".lease");
-        let lease = options.open(&lock_path).map_err(|_| PrivateStorageError::Unavailable)?;
-        platform::secure_file(&lock_path, &control).map_err(unavailable)?;
-        let named = std::fs::symlink_metadata(&lock_path).map_err(|_| PrivateStorageError::Unavailable)?;
-        if !platform::same(&named, &lease.metadata().map_err(|_| PrivateStorageError::Unavailable)?) {
-            return Err(PrivateStorageError::Unavailable);
-        }
-        lease.try_lock().map_err(|_| PrivateStorageError::Busy)?;
-        platform::exclude_backups(&root, &control).map_err(unavailable)?;
-        let identity = std::fs::symlink_metadata(&root).map_err(|_| PrivateStorageError::Unavailable)?;
-        let directory = Self { root, identity, lease };
-        directory.verify()?;
-        Ok(directory)
-    }
-
-    /// Only private-storage code should use this path; it must never serialize.
-    pub fn path(&self) -> &Path {
-        &self.root
-    }
-
-    pub fn verify(&self) -> Result<(), PrivateStorageError> {
-        let control = Control::new(Arc::new(|| false));
-        platform::secure(&self.root, &control).map_err(|_| PrivateStorageError::Unavailable)?;
-        let lease_path = self.root.join(".lease");
-        platform::secure_file(&lease_path, &control).map_err(|_| PrivateStorageError::Unavailable)?;
-        let named = std::fs::symlink_metadata(&lease_path).map_err(|_| PrivateStorageError::Unavailable)?;
-        if !platform::same(
-            &named,
-            &self.lease.metadata().map_err(|_| PrivateStorageError::Unavailable)?,
-        ) {
-            return Err(PrivateStorageError::Unavailable);
-        }
-        // Read identities after the native privacy checks, which can yield.
-        let current = std::fs::symlink_metadata(&self.root).map_err(|_| PrivateStorageError::Unavailable)?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::MetadataExt;
-            if current.dev() != self.identity.dev() || current.ino() != self.identity.ino() {
-                return Err(PrivateStorageError::Unavailable);
-            }
-        }
-        #[cfg(windows)]
-        {
-            use std::os::windows::fs::MetadataExt;
-            if current.creation_time() != self.identity.creation_time()
-                || current.file_attributes() != self.identity.file_attributes()
-            {
-                return Err(PrivateStorageError::Unavailable);
-            }
-        }
-        Ok(())
-    }
-
-    pub fn verify_file(&self, path: &Path) -> Result<(), PrivateStorageError> {
-        self.verify()?;
-        if path.parent() != Some(self.path()) {
-            return Err(PrivateStorageError::Unavailable);
-        }
-        platform::secure_file(path, &Control::new(Arc::new(|| false))).map_err(|_| PrivateStorageError::Unavailable)
-    }
-
-    pub fn open_file(&self, name: &str) -> Result<Option<std::fs::File>, PrivateStorageError> {
-        if name.is_empty()
-            || name.len() > 128
-            || name == "."
-            || name == ".."
-            || !name
-                .bytes()
-                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.'))
-        {
-            return Err(PrivateStorageError::Unavailable);
-        }
-        self.verify()?;
-        let path = self.root.join(name);
-        let named = match std::fs::symlink_metadata(&path) {
-            Ok(metadata) => metadata,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-            Err(_) => return Err(PrivateStorageError::Unavailable),
-        };
-        self.verify_file(&path)?;
-        let file = platform::open_source(&path).map_err(|_| PrivateStorageError::Unavailable)?;
-        if !platform::same(&named, &file.metadata().map_err(|_| PrivateStorageError::Unavailable)?) {
-            return Err(PrivateStorageError::Unavailable);
-        }
-        Ok(Some(file))
+impl FileLease {
+    fn acquire(file: std::fs::File) -> Result<Self, std::fs::TryLockError> {
+        file.try_lock()?;
+        Ok(Self { file })
     }
 }
 
-#[cfg(test)]
-mod persistent_directory_tests {
-    use super::*;
-    #[test]
-    fn a_foreign_private_directory_is_not_adopted_or_modified() {
-        let parent = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
-        let directory = parent.path().join("foreign");
-        platform::create_private(&directory, &Control::new(Arc::new(|| false))).unwrap_or_else(|e| panic!("{e}"));
-        let sentinel = directory.join("generation-invented");
-        std::fs::write(&sentinel, b"IBISGEN1foreign").unwrap_or_else(|e| panic!("{e}"));
-        assert!(matches!(
-            PrivateDirectory::open(&directory),
-            Err(PrivateStorageError::Unavailable)
-        ));
-        assert_eq!(
-            std::fs::read_dir(&directory).unwrap_or_else(|e| panic!("{e}")).count(),
-            1
-        );
-        assert_eq!(
-            std::fs::read(sentinel).unwrap_or_else(|e| panic!("{e}")),
-            b"IBISGEN1foreign"
-        );
-    }
-
-    #[test]
-    fn lease_and_private_namespace_are_independent_of_disposable_copies() {
-        let parent = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
-        let path = parent.path().join("generations");
-        let directory = PrivateDirectory::open(&path).unwrap_or_else(|e| panic!("{e}"));
-        assert!(matches!(PrivateDirectory::open(&path), Err(PrivateStorageError::Busy)));
-        assert!(directory.open_file("../outside").is_err());
-        assert!(
-            directory
-                .open_file("absent")
-                .unwrap_or_else(|e| panic!("{e}"))
-                .is_none()
-        );
-        drop(directory);
-        assert!(PrivateDirectory::open(&path).is_ok());
-    }
-
-    #[test]
-    fn a_missing_or_replaced_named_lease_retires_its_previous_owner() {
-        for replace in [false, true] {
-            let parent = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
-            let path = parent.path().join("generations");
-            let first = PrivateDirectory::open(&path).unwrap_or_else(|e| panic!("{e}"));
-            let lease = path.join(".lease");
-            // Keep the old handle open while replacing its directory entry.
-            std::fs::rename(&lease, path.join("retired-lease")).unwrap_or_else(|e| panic!("{e}"));
-            let second = replace.then(|| PrivateDirectory::open(&path).unwrap_or_else(|e| panic!("{e}")));
-            assert!(matches!(first.verify(), Err(PrivateStorageError::Unavailable)));
-            assert!(matches!(
-                first.open_file("absent"),
-                Err(PrivateStorageError::Unavailable)
-            ));
-            drop(second);
-        }
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn a_linked_namespace_is_refused_without_touching_its_destination() {
-        let parent = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
-        let destination = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
-        let path = parent.path().join("generations");
-        std::os::unix::fs::symlink(destination.path(), &path).unwrap_or_else(|e| panic!("{e}"));
-        assert!(matches!(
-            PrivateDirectory::open(&path),
-            Err(PrivateStorageError::Unavailable)
-        ));
-        assert_eq!(
-            std::fs::read_dir(destination.path())
-                .unwrap_or_else(|e| panic!("{e}"))
-                .count(),
-            0
-        );
+impl Drop for FileLease {
+    fn drop(&mut self) {
+        // Closing only our descriptor can leave a Unix lock held by a concurrent
+        // fork until exec. Release it when this owner ends, including setup errors.
+        let _ = self.file.unlock();
     }
 }
 

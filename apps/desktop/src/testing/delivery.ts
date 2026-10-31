@@ -19,7 +19,7 @@
  * deadlines, engine formatting or hashing. Their Rust tests remain necessary.
  */
 import { emit } from "@tauri-apps/api/event";
-import type { Copied, Delivered, FilePreview, NoticeMessage, SearchQuery, SearchReply } from "../bindings";
+import type { AppOutput, AppPaste, Copied, Delivered, FilePreview, NoticeMessage, SearchQuery, SearchReply } from "../bindings";
 import { renderNotice } from "../copyFeedback";
 import { backend, prepared, receipt, type PreviewRequest } from "./app";
 
@@ -56,19 +56,35 @@ class Work<Args, Input = void, Output = void> {
 
 type PreviewContent = Pick<FilePreview, "text"> & Partial<Pick<FilePreview, "html" | "warnings">>;
 type DeliveryRequest = { text: string; delivery: number | null };
-type Proof = DeliveryRequest & { delivery: number; sequence: number; presentation: number; app: string };
+type Capture = { window: number | null; surface: number | null; reason: string | null };
+type Proof = DeliveryRequest & Capture & { delivery: number; sequence: number; presentation: number; app: string; epoch: number; written: number; paste: AppPaste | null };
+type AppChoice = { output: AppOutput | null; paste: AppPaste | null };
 
 export function deliveryHarness(text = "Draft: [citation].", selection: [number, number] = [7, 17]) {
   const search = new Work<SearchQuery, SearchReply, SearchReply>();
   const preview = new Work<PreviewRequest, PreviewContent, FilePreview>();
   const copy = new Work<{ ticket: string; contentHash: string }, void, Copied>();
+  const copyReplies = new Work<Copied, void, Copied>();
+  let holdCopyReplies = false;
   const delivery = new Work<DeliveryRequest, void, Delivered>();
   const notice = new Work<NoticeMessage, void, Delivered>();
+  const appSaves = new Work<{ appId: string; output: AppOutput | null; paste: AppPaste | null }>();
+  const appChoices = new Map<string, AppChoice>();
+  let holdAppSaves = false;
   const clipboard = { text: "", html: null as string | null, owner: null as "ibis" | "external" | null, sequence: 0 };
   const document = {
     app: "Example Writer", text, selection,
     pastes: [] as { app: string; text: string; start: number; end: number; delivery: number }[],
   };
+  const documents = new Map<number, Pick<typeof document, "text" | "selection">>([
+    [100, document],
+    [200, { text: "Second: [citation].", selection: [8, 18] }],
+  ]);
+  const target = { window: 100 as number | null, verified: true, available: true,
+    appId: "example.writer", refusal: null as "terminal" | "remote-desktop" | "virtual-machine" | "nonstandard-shortcut" | null,
+    surface: null as number | null, focusedPid: 42, focusAvailable: true, focusTimedOut: false };
+  const authorizations = { postEvent: true, accessibility: true };
+  const lifecycle = { epoch: 1, elapsed: 0, available: true };
   // Detached to keep this second window out of the picker's DOM and focus scope.
   const receiptRoot = globalThis.document.createElement("div");
   const showReceipt = renderNotice(receiptRoot, "macos");
@@ -78,24 +94,66 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
   let proof: Proof | null = null;
   let latestPreview = 0;
   let activeTicket: string | null = null;
+  let latestNotice = 0;
+  let captured: Capture | null = null;
+  const capture = (): Capture => {
+    const reason = !authorizations.postEvent ? "no-permission" : !authorizations.accessibility ? "accessibility-required"
+      : target.window === null || !target.focusAvailable || target.focusTimedOut || target.focusedPid !== 42 ? "paste-unavailable" : null;
+    return { window: reason ? null : target.window, surface: reason ? null : target.surface ?? target.window, reason };
+  };
 
   const deliver = ({ text, delivery }: DeliveryRequest): Delivered => {
     // Identity precedes consumption: a stale worker must leave a newer proof.
     const owned = proof?.delivery === delivery && proof?.text === text ? proof : null;
     if (!owned) return { outcome: "copied", reason: null };
     proof = null;
+    if (target.refusal) return { outcome: "copied", reason: target.refusal };
+    if (owned.paste === "copy-only") return { outcome: "copied", reason: "copy-only" };
+    if (!target.verified && owned.paste !== "paste") return { outcome: "copied", reason: "unknown-app" };
+    if (owned.reason) return { outcome: "copied", reason: owned.reason };
+    if (owned.window === null) return { outcome: "copied", reason: "paste-unavailable" };
+    if (!lifecycle.available) return { outcome: "copied", reason: "paste-unavailable" };
+    if (owned.epoch !== lifecycle.epoch || lifecycle.elapsed - owned.written >= 1500) return { outcome: "copied", reason: "paste-expired" };
+    if (!authorizations.postEvent) return { outcome: "copied", reason: "no-permission" };
+    if (!authorizations.accessibility) return { outcome: "copied", reason: "accessibility-required" };
+    if (!target.focusAvailable || target.focusTimedOut) return { outcome: "copied", reason: "paste-unavailable" };
+    if (target.focusedPid !== 42) return { outcome: "copied", reason: "target-changed" };
+    if (clipboard.owner !== "ibis" || owned.sequence !== clipboard.sequence) return { outcome: "copied", reason: "clipboard-changed" };
+    if (!target.available || owned.window !== target.window || owned.surface !== (target.surface ?? target.window)) return { outcome: "copied", reason: "target-changed" };
     if (visible || owned.presentation !== presentation || clipboard.owner !== "ibis"
       || owned.sequence !== clipboard.sequence || owned.app !== document.app) return { outcome: "copied", reason: null };
-    const [start, end] = document.selection;
-    document.text = document.text.slice(0, start) + clipboard.text + document.text.slice(end);
-    document.selection = [start + clipboard.text.length, start + clipboard.text.length];
+    const destination = owned.surface === null ? undefined : documents.get(owned.surface);
+    if (!destination) return { outcome: "copied", reason: "target-changed" };
+    const [start, end] = destination.selection;
+    destination.text = destination.text.slice(0, start) + clipboard.text + destination.text.slice(end);
+    destination.selection = [start + clipboard.text.length, start + clipboard.text.length];
     document.pastes.push({ app: owned.app, text: clipboard.text, start, end, delivery: owned.delivery });
     return { outcome: "pasted", app: owned.app };
   };
 
+
   const calls = backend({
     "plugin:window|is_visible": () => visible,
-    picker_destination: () => ({ app: document.app, app_id: "example.writer", automatic: { key: "pandoc" }, remembered: null, unreadable: false, can_paste: true, output_question: null }),
+    picker_destination: () => {
+      captured ??= capture();
+      const choice = appChoices.get(target.appId);
+      const paste = target.refusal ? null : choice?.paste ?? null;
+      return { app: document.app, app_id: target.appId, app_identity: target.appId, automatic: { key: "pandoc" }, remembered: choice?.output ?? null, unreadable: false,
+        can_paste: !target.refusal && (target.verified || paste === "paste") && paste !== "copy-only" && captured.reason === null,
+        output_question: null, paste, can_choose_paste: !target.refusal && captured.reason === null, paste_question: !target.refusal && !target.verified && paste === null && captured.reason === null };
+    },
+    remember_app_output: ({ appId, output, paste }) => {
+      if (appId !== target.appId || paste === "paste" && target.refusal) throw new Error("The app cannot receive that choice");
+      const args = { appId, output, paste } as { appId: string; output: AppOutput | null; paste: AppPaste | null };
+      const saving = appSaves.enqueue(args, () => {
+        if (args.output === null && args.paste === null) appChoices.delete(args.appId);
+        else appChoices.set(args.appId, { output: args.output, paste: args.paste ?? appChoices.get(args.appId)?.paste ?? null });
+        if (args.paste !== null || args.output === null) proof = null;
+      });
+      if (!holdAppSaves) appSaves.pending.at(-1)!.complete();
+      return saving;
+    },
+    forget_app_outputs: () => { appChoices.clear(); proof = null; return null; },
     search: ({ query }) => search.enqueue(query, (reply) => reply),
     preview_file_citation: (args) => {
       const request = ++latestPreview;
@@ -111,27 +169,33 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
         if (args.ticket !== activeTicket) throw { code: "snapshot_changed" };
         Object.assign(clipboard, { text: preview.text, html: preview.html, owner: "ibis", sequence: clipboard.sequence + 1 });
         const token = ++nextDelivery;
-        proof = { presentation, app: document.app, text: preview.text, delivery: token, sequence: clipboard.sequence };
+        proof = { ...(captured ?? capture()), presentation, app: document.app, text: preview.text, delivery: token, sequence: clipboard.sequence, epoch: lifecycle.epoch, written: lifecycle.elapsed, paste: appChoices.get(target.appId)?.paste ?? null };
         return { text: clipboard.text, warnings: preview.warnings, delivery: token };
-      });
+      }).then((outcome) => holdCopyReplies ? copyReplies.enqueue(outcome, () => outcome) : outcome);
     },
     hide_picker: async () => { visible = false; await emit("picker:hidden"); return null; },
     show_copied_notice: (args) => {
       const request = args as unknown as DeliveryRequest;
+      const noticeOwner = ++latestNotice;
       return delivery.enqueue(request, () => deliver(request))
         .then((delivered) => notice.enqueue({ text: request.text, delivered }, () => {
-          showReceipt({ text: request.text, delivered });
+          if (noticeOwner === latestNotice) showReceipt({ text: request.text, delivered });
           return delivered;
         }));
     },
   });
 
   return {
-    search, preview, copy, delivery, notice, calls, clipboard, document, receipt: receiptRoot,
+    search, preview, copy, copyReplies, delivery, notice, calls, clipboard, document, documents, target, authorizations, lifecycle, receipt: receiptRoot, appChoices, appSaves,
+    get holdCopyReplies() { return holdCopyReplies; },
+    set holdCopyReplies(value: boolean) { holdCopyReplies = value; },
+    get holdAppSaves() { return holdAppSaves; },
+    set holdAppSaves(value: boolean) { holdAppSaves = value; },
     get visible() { return visible; },
     async reopen() {
       presentation += 1;
       proof = null;
+      captured = capture();
       visible = true;
       await emit("picker:shown");
     },

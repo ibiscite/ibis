@@ -69,6 +69,19 @@ queries; malformed or oversized values are ignored before arXiv/DOI equivalence.
 - **BibTeX/BibLaTeX:** each entry is parsed independently, so a broken entry produces a warning with its line while the rest loads; work is bounded so hostile files cannot hang the engine. Long-lived clients watch files and only replace them after two identical reads. A watch failure keeps the successfully read snapshot usable and reports the fixed `live-refresh-off` warning; manual Reload remains available. One-shot CLI calls install no watches.
 - **CSL-JSON:** `citation-key`, then `id`, is the key. An `id` only proves a match against a bibliography made from that same file, which the item's details say.
 
+File reads carry the canonical identity from the observation that supplied their
+bytes; a symlink retarget during that observation is refused. Strict Reload reads
+and prepares its index and watcher privately. Watcher callbacks wait for that
+candidate's acceptance; native registration never holds the selection guard.
+The current desktop request's selection guard
+owns final acceptance, and any newer accepted data publication retires that candidate.
+Failed Reloads record source health under the same guard, so queued notifications
+cannot clear the failure or advance the last successful check.
+Concurrent failed reads retain their errors for unrelated libraries; a fresh repair
+clears its own error. Zotero's read guard must still match at acceptance.
+Obsolete-cache cleanup validates locality and resolves the local directory before
+its first filesystem probe, including when the configured cache path is a symlink.
+
 ### File availability and notification recovery (#1532, items 2, 3 and 7)
 
 Native watch registration does not prove that other clients' edits generate events.
@@ -76,7 +89,9 @@ Network and unknown mounts use manual refresh and the existing `live-refresh-off
 warning. Mount classification follows the selected target: known local filesystem
 types on macOS/Linux, and local volume types on Windows (including mapped-drive
 classification). Opening the picker checks these sources once, as well as files
-whose last refresh failed; a newer choice supersedes that check. There is no
+whose last refresh failed, including a desktop timeout before engine health was
+updated; a newer choice supersedes that check. File checks prepare a strict
+reread for guarded acceptance; Zotero keeps its normal change check. There is no
 periodic filesystem retry, visible or hidden. Local notifications can still
 refresh a hidden picker. Unavailable files recover on a notification, Reload or
 the next picker opening.
@@ -89,15 +104,15 @@ without requesting hydration.
 Filesystem read/probe waits have a two-second deadline and at most eight detached
 calls. The desktop supervises an entire load with a ten-second deadline and
 waits for completion, cancellation or that single deadline; it does not poll.
-Blocked metadata, cache or provider I/O cannot serialize newer choices behind it.
+Blocked metadata or provider I/O cannot serialize newer choices behind it.
 Request reservation records the
 chosen spelling without filesystem access; canonical resolution belongs to the
 supervised worker. At most four complete loads can remain in flight; saturation
 reports unavailability instead of queuing forever.
 OS calls already blocked cannot be terminated safely; they release their slot
 when they return. Late results have no publication authority and retain their
-original cancellation and cache-operation identity. Cached references remain
-search-only until current bytes have been reparsed, as required by #1498.
+original cancellation and request identity. Reload candidates and their watchers
+still require guarded acceptance before they can publish.
 
 Watch an existing ancestor of each selected/target parent. Directory events
 invalidate registrations; reinstall the parent even if its spelling is unchanged,
@@ -110,133 +125,16 @@ mounts, placeholders, blocked reads, stale ownership and registration refusal.
 Native evidence still requires Linux directory replacement, a two-client network
 mount, Windows provider states and iCloud provider states separately.
 
-### Saved source generations (#1298, first storage slice #1468)
+### Saved .bib cache removal
 
-Provisional (2026-10-31, maintainer): this flat-file design is being compared with
-no cache and with SQLite as a private record/generation store before more of it is
-built (#1534); bundled SQLite
-already ships for reading Zotero, so "no new dependency" is no reason to prefer either.
-Same records, scorer and public behaviour; the result is recorded in decisions.
-
-Adopt #1298's revised immutable flat-file design. One `Arc<PreparedLibrary>`
-owns one source generation: opaque library identity, source observation, content
-fingerprints, compact search rows, key/alias ownership and checked object offsets.
-Readers retain that generation; an index never reads objects from another one.
-Only configured sources are reopened. Unknown store formats are cache misses;
-before 1.0 they are rebuilt without migrations. Use bounded ordinary file I/O,
-with no new dependency, unsafe memory mapping, SQLite or hidden polling.
-
-Search returns a typed `SearchSummary`: item identity, cite/full fingerprints,
-title, creator/date/container display fields and bounded availability metadata.
-It is not a truncated `Record` carrying the complete object's fingerprints.
-The same engine contract serves the picker, CLI and protocol clients. Search
-uses prepared contiguous text and offset tables; abstracts remain a separate
-last-pass section. Global search passes, identifier fallback after scope,
-deterministic ordering and the limit-prefix property stay exact across sources.
-
-`show`, citation and export materialize only their requested canonical objects.
-A citation also loads its annotation/attachment/parent closure; every CSL field
-may affect a style, so selected citation data is never reduced to display fields.
-Prepared citations retain that small object set and generation references.
-Replace every full-library owner: the search index, engine registry slots,
-watcher model, `ZoteroSource.current`, live-reader payloads and formatter caches.
-Keeping any full `Snapshot` behind the compact index defeats the memory goal.
-
-Import and refresh stream each validated object through canonical fingerprinting,
-search preparation and the generation writer, then release its CSL tree. Retain
-only compact identity, ownership and ordering metadata; preserve existing parser,
-value, warning, work-budget and fingerprint semantics. The initial storage slice
-must support this sink without requiring a full-library JSON snapshot first.
-
-The cache directory is owner-only, verified for ownership, ACLs and links before
-payloads are written and on reopen, and excluded from backups where supported.
-Reuse the closed-reader private-storage contracts. An exclusive lease permits
-one writer/cleaner; a second process operates uncached. Create a unique generation,
-flush its complete contents, atomically replace and flush the manifest, then
-publish. Failed I/O retains the accepted generation; no reader observes a partial
-write. Clean only owned files after their generation readers release them.
-Writers retain weak session authority and a per-source operation identity; check
-that identity under the reservation/write lock before charging bytes or writing.
-Reserve the aggregate 1 GiB and 512 directory-entry budgets before payload,
-index and manifest writes or temporary-file creation, including publication's
-scratch slot. Cancellation, failure and drop release the operation's stage and
-reservation. Under the exclusive lease, reclaim verified abandoned stages while
-preserving live stages and generation readers. Reclaim before rejecting an
-oversized store, inspecting at most 1,025 entries per pass; incomplete traversal
-or an unknown manifest forbids generation deletion. Storage failure remains a
-cache miss and never grants source readiness.
-
-Treat stored bytes as untrusted: bound file/section/object sizes and counts,
-validate UTF-8, offsets, ordering and identities before indexing, and checksum
-index sections. On materialization, validate canonical objects and recompute their
-fingerprints; a stored fingerprint alone is never trusted. Source paths and
-attachment locations remain engine-private, absent from summaries and diagnostics.
-
-A file observation binds its canonical identity and strong content digest;
-size/mtime are hints, and reload keeps two identical observations. A cached file
-becomes citable only after a fresh parse of current source bytes; stored
-observations, checksums and fingerprints grant no source or citation readiness.
-An accepted, freshly parsed file snapshot remains usable if watching fails. Cached Zotero is searchable but unready for citation
-until a coherent read. Preserve Zotero 10's server identity, monotonic counter and
-complete item-version inventory/deletion reconciliation; older releases, Reload
-and discontinuity still reread fully. Better BibTeX keys refresh independently
-because item versions do not cover their changes. Do not invent a `since` path.
-
-The desktop saves only warning-free, record-only `.bib` imports. Bounded objects reopened through
-one retained `PreparedLibrary::get` may serve search immediately; stored observations, checksums
-and fingerprints never grant readiness. Every reopen silently parses current source bytes, then
-accepts the verified objects and diagnostics through the normal path, replacing any differences.
-Cached search publishes `Reloading`, with no new `checked_at` until verification succeeds;
-failed verification retains searchable references and diagnostics without claiming a fresh check.
-The existing source-generation gate, shared with Zotero, refuses citation and copy until then;
-the desktop uses its existing library-loading message. Cached bytes never seed a watcher that could skip that parse.
-Attachments are not persisted. Full objects remain resident; #1251 and #1298 stay open.
-
-Fresh verification captures the previous immutable snapshot and reuses a record allocation only
-after parsing and comparing its complete canonical content, including identifiers. Tolerant
-verification keeps its warnings and work limits; explicit Reload stays strict. An unchanged
-100k cache and its verified snapshot share approximately 100k canonical payloads instead of
-retaining 200k. This targets verification peak memory; it leaves 100k full objects resident and
-does not establish the mostly-on-disk goal or the <400 MB budget.
-
-One process-lived `FileCacheSession` owns the lease. Remembered `.bib` settings keep the canonical
-path captured by preparation. The session records that identity before hydration, even when the
-file has moved or disappeared, and retains a retargeted path's old and current identities.
-Startup normalizes only the matching saved choice; refresh never saves a choice.
-Failed choice saves retire cached bytes and disable storage for the session, while source verification continues.
-Removal retires even an unfinished startup load's manifest and
-allows bounded cleanup after readers release its payload. Selection and close invalidate work;
-final acceptance serializes manifest and app publication. Parsing, indexing and watcher setup
-remain in the background. Samples preserve the remembered cache; explicit Reload keeps two identical observations.
-
-Only native measurement qualifies time to first search and added import/refresh cost: five fresh
-process runs each at 10k/100k, counterbalanced against a valid baseline, retaining every result.
-Separate cached search from verified citation readiness and rebuild startup; report process-tree
-peak memory and refresh commit delay. Existing budgets hold.
-
-For an engine-only comparison, build baseline/candidate release `file_cache` test executables
-with the same `cached_verification_measurement` test, then run
-`python3 crates/ibis-engine/tests/refresh_budget.py --cached BASELINE CANDIDATE --output target/cache-verification.json`.
-The runner seeds outside measurement, predeclares five counterbalanced fresh-process runs per
-build at 10k/100k and a baseline max/min ratio of 1.25 for each metric, and retains every result.
-It rejects unexplained baseline excursions and reports cached first-search time, verified-ready
-time, sampled process-tree peak and settled MiB separately from import/rebuild. Only native
-integrated measurement proves actual resident savings, allocator release, webview overhead and
-instant visible results; object-sharing tests and this engine runner cannot qualify those.
-
-Background work owns the captured source selection and operation generation.
-Delayed A after B or close/reopen may update neither manifest nor engine state.
-Equal content still updates age, warnings, errors and readiness. Copy retains the
-existing final barrier: current source readiness/generation, selected fingerprints,
-annotation relationships, exact global key ownership and preview hash must agree.
-
-Scenarios precede code: reopen/search/show/cite parity, corrupt-cache refusal,
-failed writes, lease contention, stale completion and close/reopen. Qualify the
-integrated app with at least five fresh-process runs at 10k and 50k, preserving
-every result and reporting startup and process-tree memory medians, against the
-limits in decision 0032. Report cache-hit startup separately from first
-import/rebuild; neither storage tests nor cached results qualify the other.
-#1534 decides whether compact generations and lazy objects (#1298) are still needed.
+The saved `.bib` cache was removed on 2026-10-31: #1534's engine-only comparison
+at 10k records found similar first-result time (753 ms cached, 737 ms fresh), but citation
+readiness took 1,949 ms versus 731 ms. Files now parse fresh and become citable
+when loaded. Startup removes recognized obsolete cache files only from the
+verified private directory under its exclusive lease; controls and unknown files
+stay. Fresh Reload and watches still share unchanged parsed records. Zotero's
+coherent-read barrier remains; future storage/memory work (#1298, #1251) needs
+separate evidence.
 
 ## Citations (ibis-core, ibis-csl)
 
@@ -480,19 +378,21 @@ still needs further work.
 
 - **Shell:** Tauri 2 with the system web view; React with React Aria Components for every control (decision 0021); tokens in `tokens.css`; shared components in `src/ui/`. The app links the engine in-process and calls the same method functions; the web view never touches the clipboard, files or the network.
 - **State:** the citation session uses one pure reducer read through `useSyncExternalStore` and a headless controller with session and operation identities; search/preview I/O, destination choices and preferences remain in their adapters; no state library.
-- **Output per app:** the destination table classifies known browser and code-editor app IDs as needing an output question, without inferring document syntax. The native destination reply carries only this category alongside the existing app ID/name and outputs. The first copy with no remembered app output holds its citation in the picker and opens the existing chooser; a pick or dismissal resumes it once when its preview is ready. Search/citation changes, hide/reopen and menu commands cancel the held action. Picks use the existing bounded, atomic `apps.json`; no new file, polling or document inspection. Only macOS currently captures an app; other systems retain the global fallback. Classification adds one bounded table lookup per destination read and no hidden activity.
+- **Output per app:** the destination table classifies known browser and code-editor app IDs as needing an output question, without inferring document syntax. The native destination reply carries this category alongside app ID/name, outputs and the separate app paste choice. The first copy with no remembered browser/editor output holds its citation in the picker and opens the existing chooser; a format pick or dismissal resumes it once when its preview is ready. An unrecognised app with a proven target asks for paste approval or Copy only in that same chooser; either answer cancels the held action and requires fresh Enter. Format alone never approves paste. The native copy proof freezes delivery approval before clipboard I/O; policy changes revoke outstanding epochs, and the picker cannot join flights across delivery generations. Unlisted-app approval includes an app-location fingerprint, never a raw path. Unreadable-store recovery persists through format saves and restarts; only explicit app delivery choices or the global reset resolve it. All target, permission, lifecycle and one-use guards still apply. Search/citation changes, hide/reopen and menu commands cancel the held action. Choices use the existing bounded, atomic `apps.json`; no new file, polling or document inspection. Only macOS currently captures an app; other systems retain the global fallback. Classification and remembered choices add bounded lookups per destination/copy and no hidden activity.
 - **Keys:** one command registry (id, default chord per system, user override) drives the keys sheet, footer, menus and docs. Conflicts are checked against Ibis's own keys, a reserved list per system and a real registration attempt. Escape, Tab, Enter and arrows cannot be rebound.
-- **Pasting into the previous app:** a pure decision in the engine and thin per-system code. macOS: the app in front is captured (bundle ID, process, name; never window titles) before the picker shows. A successful copy records the pasteboard change count, target, picker presentation and write time in a one-use proof. After the picker hides, one layout-aware ⌘V is posted only to that process. The final foreground, Secure Event Input, change-count and deadline checks run together with posting in one main-thread task. Secure Event Input is system-wide, may be enabled by another app, and does not identify the destination's field or detect every password control. An enabled flag copies with `secure-input`; unavailable checks or expired tasks copy with `paste-unavailable`. Both notices offer ⌘V; neither claims the destination is a password field (decisions 0009, 0029). A replacement clipboard or changed picker also only copies. Paste reads no AX attributes or clipboard contents and requires only PostEvent permission, independent of AX trust. Terminals, remote desktops and VMs are also refused. Windows: the window in front is captured the same way (executable file name, process, integrity level), the picker shows above always-on-top windows, and the keyboard is handed back to that window. A one-use delivery ticket freezes the target, HWND and picker generation before copying, then records the final clipboard sequence after Ibis's own write. One atomic Ctrl+V `SendInput` goes in only while that window and process are in front, no key is held and that sequence is unchanged; apps with more rights than Ibis and UI Automation password fields copy instead. Password checks have a 250 ms caller deadline, no queue and at most one outstanding query per target process (four total); a stuck provider blocks only its own process. Display names are read off the UI thread with a bounded wait and executable-name fallback. Partial `SendInput` releases every key it left down, retries failed releases and retains them for recovery before any later paste. Linux copies and says why. Every refusal leaves a copied outcome. macOS keys PostEvent permission to the signing identity, so builds need a stable signing certificate.
+- **Pasting into the previous app:** a pure decision in the engine and thin per-system code. macOS captures the active app (bundle ID, process, name) and opaque document and top-level input-surface identities before the picker shows. Decision 0029 requires Accessibility access for identity-only AX reads, separately from PostEvent. The globally focused application/window and the focused element's containing document/PID must agree; AXTopLevelUIElement also identifies sheets/drawers, so they cannot borrow the document's proof. Both identities must match at delivery, including when another process has a nonactivating panel. Several windows of an app are supported without enumerating windows or reading titles, field roles, values or secure-field attributes. Each query has one 50 ms sleep-inclusive budget with per-message remaining timeouts; after refreshing authorization, clipboard and security checks, its three final document/surface/global-focus reads share at most 15 ms. Clock sampling admits brackets shorter than 500 µs, preserving interval intersection and bounding combined sampling skew below 1 ms apart from nanosecond rounding. Missing Accessibility uses `accessibility-required`; failed/unsupported reads or timeout use `paste-unavailable`. Retained AX references stay on the main thread; workers carry only immutable tokens. A repeated show while an Ibis native window is key preserves the external capture/bank, even while NSWorkspace still reports the external app active. Bounded capture latency adds up to 50 ms to opening; native provider latency remains to be measured. When a permitted app leaves out document/surface attributes, Ibis automatically enables AXManualAccessibility once per live process, then repeats the full capture inside that same budget (decision 0029). The NSRunningApplication retained when eligibility was decided must still be the live instance for that PID before the write. Optional in-process diagnostics emit only fixed stages, numeric timing/errors, owner/equality booleans and whether capture attempted the activation write. A successful copy records the pasteboard change count, target, picker presentation and write time in a one-use proof. After the picker hides, bounded readiness checks wait up to 1,000 ms at 25 ms intervals for the original captured document window and surface, even if the app stayed active throughout; they never capture a replacement. Then the full final proof is repeated and one layout-aware ⌘V is posted only to that process. The final foreground, Secure Event Input, change-count and deadline checks run together with posting in one main-thread task. Secure Event Input is system-wide, may be enabled by another app, and does not identify the destination's field or detect every password control. An enabled flag copies with `secure-input`; unavailable checks copy with `paste-unavailable`; expired delivery uses `paste-expired`. Both notices offer ⌘V; neither claims the destination is a password field (decisions 0009, 0029). A replacement clipboard or changed picker also only copies. Paste reads no clipboard contents. Auto-paste needs both PostEvent and Accessibility; passive checks never prompt. Settings reports granted only when both are authorized and guides the person to the version-specific Accessibility list. Its explicit guide action repairs only missing grants, including Accessibility; passive checks never request either grant. Granting never revives a failed capture or retries delivery: return to the external document, summon Ibis again and activate the citation afresh. All ownership locks precede the final identity reads. After the last AX comparison, combined-session key-down and left/right/other mouse-down timings must show no input since delivery began; local lifecycle/time and deadline guards finish before posting. Mouse movement does not count. A programmatic tab or conversation change with no input is not detected. PID-directed posting cannot atomically bind to a foreign window: a small sequential focus/session/clipboard observation and focus-read-to-post gap remains (decision 0029). Terminals, remote desktops and VMs are also refused. Windows: the window in front is captured the same way (executable file name, process, integrity level), the picker shows above always-on-top windows, and the keyboard is handed back to that window. A one-use delivery ticket freezes the target, HWND and picker generation before copying, then records the final clipboard sequence after Ibis's own write. One atomic Ctrl+V `SendInput` goes in only while that window and process are in front, no key is held and that sequence is unchanged; apps with more rights than Ibis and UI Automation password fields copy instead. Password checks have a 250 ms caller deadline, no queue and at most one outstanding query per target process (four total); a stuck provider blocks only its own process. Display names are read off the UI thread with a bounded wait and executable-name fallback. Partial `SendInput` releases every key it left down, retries failed releases and retains them for recovery before any later paste. Linux copies and says why. Every refusal leaves a copied outcome. macOS keys PostEvent permission to the signing identity, so builds need a stable signing certificate.
 - **Reader (Later; 0.5 cites from annotations and existing PDFs first):** PDF.js (`pdfjs-dist`, legacy build) behind a small adapter. File bytes arrive over IPC from a command that checks the item and never exposes paths; PDF scripting and eval are off; a plain page-text view backs up accessibility. Ibis keeps the physical page index, the printed page label and an annotation's own page label apart. The printed label comes from the PDF's page labels, a Zotero annotation on that page, or an offset the user confirms; a confirmed offset covers a page range (front matter, missing pages and supplements break a single offset), is tied to the file's content hash and is dropped when the file changes. The record's page range is only a hint.
 - **Accessibility:** combobox and listbox (not grid) for results, `TagGroup` for the shelf, one announcer, native announcements after the picker hides. Tested with axe in jsdom, Playwright WebKit snapshots, native accessibility trees and screen-reader runs per release.
 - **Paste permission detour:** delivery returns its typed outcome to the picker.
-  A `no-permission` result keeps the prepared shelf and output in memory rather
-  than consuming them. Settings rechecks permission every second while its
+  A `no-permission` or `accessibility-required` result keeps the prepared shelf
+  and output in memory rather than consuming them. Settings rechecks both
+  authorizations every second while its
   General page is visible and pasting is on, and immediately on return; older
-  reads cannot replace newer ones. Only a refused-paste deep link resumes the
-  picker, after another native permission and focus check and queued settings
-  saves. Normal picker presentation captures the current destination and
-  retires the old clipboard proof. No paste is attempted until a fresh Enter.
+  reads cannot replace newer ones. A refused-paste deep link closes after a
+  native grant/focus check and queued settings saves; it never reopens the
+  picker. The person returns to the external document and summons Ibis again.
+  That presentation captures the destination and retires the old clipboard
+  proof. No paste is attempted until a fresh Enter.
 - **Language:** the engine returns message codes; the app words them through Fluent from 0.3, so German and one right-to-left language can follow in 0.4. Interface language, citation language and text direction are separate; mixed-direction names are isolated in the preview and on the clipboard.
 - **Budgets (release builds, limits from 0.3):** the limits and sizes are in decision 0032; #1536 gives each its check and channel. No polling loops while hidden. Engine search and picker asset size fail pull request CI; open latency, idle CPU, wakeups and whole-app memory (web view processes included) are measured warm and cold, at least 30 samples after a 60 s settle, on the named release machines before each release. All use invented libraries, report p50/p95/p99 and compare against fixed limits rather than only against `main`. Superseded previews and searches are cancelled, not ignored.
 

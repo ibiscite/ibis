@@ -131,41 +131,32 @@ Add-Type @'
 using System;
 using System.Text;
 using System.Runtime.InteropServices;
-public static class IbisUpdateNativeButton {
+public static class IbisUpdateTaskDialog {
   [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
-  [DllImport("user32.dll")] static extern IntPtr GetDlgItem(IntPtr dialog, int id);
-  [DllImport("user32.dll")] static extern int GetDlgCtrlID(IntPtr button);
-  [DllImport("user32.dll")] static extern bool IsChild(IntPtr dialog, IntPtr button);
   [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr window);
   [DllImport("user32.dll")] static extern bool IsWindowEnabled(IntPtr window);
   [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr window, out uint pid);
   [DllImport("user32.dll", CharSet=CharSet.Unicode)] static extern int GetWindowText(IntPtr window, StringBuilder text, int count);
   [DllImport("user32.dll", CharSet=CharSet.Unicode)] static extern int GetClassName(IntPtr window, StringBuilder text, int count);
-  [DllImport("user32.dll", CharSet=CharSet.Unicode)] static extern IntPtr SendMessageTimeout(
+  [DllImport("user32.dll", EntryPoint="SendMessageTimeoutW", CharSet=CharSet.Unicode)] static extern IntPtr SendMessageTimeout(
     IntPtr window, uint message, IntPtr wparam, IntPtr lparam, uint flags, uint timeout, out IntPtr result);
-  [DllImport("user32.dll", EntryPoint="SendMessageTimeoutW", CharSet=CharSet.Unicode)] static extern IntPtr ReadControlText(
-    IntPtr window, uint message, IntPtr count, [Out] StringBuilder text, uint flags, uint timeout, out IntPtr result);
-  public static IntPtr Find(long handle, int owner) {
-    var dialog=new IntPtr(handle); uint dialogOwner, buttonOwner;
+  public static bool Ready(long handle, int owner) {
+    var dialog=new IntPtr(handle); uint dialogOwner;
     GetWindowThreadProcessId(dialog,out dialogOwner);
-    var button=GetDlgItem(dialog,1008); // locked rfd's second custom (No) action
-    GetWindowThreadProcessId(button,out buttonOwner);
-    if(GetForegroundWindow()!=dialog || dialogOwner!=(uint)owner || buttonOwner!=(uint)owner || button==IntPtr.Zero || !IsChild(dialog,button) ||
-       GetDlgCtrlID(button)!=1008 || !IsWindowVisible(dialog) || !IsWindowEnabled(dialog) || !IsWindowVisible(button) || !IsWindowEnabled(button)) return IntPtr.Zero;
-    var caption=new StringBuilder(128); var title=new StringBuilder(128); var kind=new StringBuilder(64);
-    GetWindowText(dialog,caption,caption.Capacity); GetClassName(button,kind,kind.Capacity);
-    if(caption.ToString()!="An update is available" || kind.ToString()!="Button") return IntPtr.Zero;
-    // GetWindowText cannot reliably read another process's control text.
-    // WM_GETTEXT is OS-marshalled across processes; this observation is bounded.
-    IntPtr length;
-    if(ReadControlText(button,0xD,new IntPtr(title.Capacity),title,3,1000,out length)==IntPtr.Zero ||
-       length.ToInt64()<0 || length.ToInt64()>=title.Capacity || title.ToString()!="Install and Restart") return IntPtr.Zero;
-    return button;
+    if(dialog==IntPtr.Zero || GetForegroundWindow()!=dialog || dialogOwner!=(uint)owner ||
+       !IsWindowVisible(dialog) || !IsWindowEnabled(dialog)) return false;
+    var caption=new StringBuilder(128); var kind=new StringBuilder(64);
+    GetWindowText(dialog,caption,caption.Capacity); GetClassName(dialog,kind,kind.Capacity);
+    return caption.ToString()=="An update is available" && kind.ToString()=="#32770";
   }
-  public static bool Click(long handle, int owner, IntPtr button) {
-    if(button==IntPtr.Zero || Find(handle,owner)!=button) return false;
+  public static bool Click(long handle, int owner) {
+    if(!Ready(handle,owner)) return false;
     IntPtr result;
-    return SendMessageTimeout(button,0xF5,IntPtr.Zero,IntPtr.Zero,3,5000,out result)!=IntPtr.Zero; // one BM_CLICK
+    // TaskDialog actions can be virtual controls without a Button HWND or an
+    // InvokePattern. Locked rfd's second custom action is Install, ID 1008.
+    // The caller rechecks its exact UIA name/identity before this one bounded
+    // TDM_CLICK_BUTTON (WM_USER+102), never a default-button/key activation.
+    return SendMessageTimeout(new IntPtr(handle),0x466,new IntPtr(1008),IntPtr.Zero,3,5000,out result)!=IntPtr.Zero;
   }
 }
 '@
@@ -233,10 +224,8 @@ try {
     $invoke = $null
     $probe.invoke_available = $item.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$invoke)
     if (!$probe.enabled -or !$probe.on_screen -or ($probe.invoke_available -and !$invoke)) { throw 'Update action unavailable' }
-    $native = [IntPtr]::Zero
     if (!$probe.invoke_available) {
-      $native = [IbisUpdateNativeButton]::Find($handle,$owner)
-      if ($native -eq [IntPtr]::Zero) { throw 'Update native action unavailable' }
+      if ($item.Current.Name -cne $env:IBIS_PRESS -or ![IbisUpdateTaskDialog]::Ready($handle,$owner)) { throw 'Update task dialog action unavailable' }
     }
     $stillAction = $item.Current.Name -ceq $env:IBIS_PRESS -or
       ($item.Current.ControlType.ProgrammaticName -ceq 'ControlType.Button' -and $item.Current.AutomationId -ceq '6')
@@ -253,8 +242,8 @@ try {
       $invoke.Invoke()
       Answer $true 'invoke'
     } else {
-      if (![IbisUpdateNativeButton]::Click($handle,$owner,$native)) { throw 'Update native action outcome unknown' }
-      Answer $true 'native-button'
+      if (![IbisUpdateTaskDialog]::Click($handle,$owner)) { throw 'Update task dialog action outcome unknown' }
+      Answer $true 'task-dialog'
     }
     exit 0
   }
@@ -495,9 +484,22 @@ def preserved_settings(settings, library):
         saved = json.loads(contents)
     except (OSError, ValueError, RecursionError):
         raise AssertionError("the updated app's synthetic settings could not be read") from None
-    for field, expected in (("library", {"bibtex": str(library)}), ("shortcut", SHORTCUT)):
-        if not isinstance(saved, dict) or saved.get(field) != expected:
-            raise AssertionError(f"the synthetic {field} choice was not preserved")
+    choice = saved.get("library") if isinstance(saved, dict) else None
+    same_library = False
+    if isinstance(choice, dict) and set(choice) == {"bibtex"} and isinstance(choice["bibtex"], str):
+        try:
+            selected = Path(choice["bibtex"])
+            # Both nightlies persist Rust's canonical path during startup:
+            # /var -> /private/var on macOS, and a verbatim prefix on Windows.
+            # Require the same native file, not the original path spelling or
+            # merely equal contents. Missing/unreadable identity fails closed.
+            same_library = selected.is_absolute() and library.is_file() and selected.samefile(library)
+        except (OSError, ValueError):
+            pass
+    if not same_library:
+        raise AssertionError("the synthetic library choice was not preserved")
+    if saved.get("shortcut") != SHORTCUT:
+        raise AssertionError("the synthetic shortcut choice was not preserved")
     return {"library": True, "shortcut": True}
 
 
@@ -1118,7 +1120,7 @@ class Windows:
                          and probe["tree_complete"] and probe["windows"] == probe["root_windows"] + probe["nested_windows"])
                 if not valid or (pressed and (not all(probe[key] for key in ("enabled", "on_screen"))
                                               or any(probe[key] < 1 for key in ("pids", "windows", "elements", "offer_matches", "action_matches", "root_windows"))
-                                              or probe.get("pressed_by") != ("invoke" if probe["invoke_available"] else "native-button"))) \
+                                              or probe.get("pressed_by") != ("invoke" if probe["invoke_available"] else "task-dialog"))) \
                         or (not pressed and (probe["action_matches"] != 0 or probe.get("pressed_by") is not None)):
                     raise RuntimeError("Windows update action metadata is unavailable or blocked")
             return result
@@ -2118,16 +2120,22 @@ class Tests(unittest.TestCase):
                 Windows.__new__(Windows).look({42}, BUTTON)
 
     def test_windows_custom_native_click_never_accepts_default_key_metadata(self):
-        for method in ("native-button", "return", "default"):
+        for method in ("task-dialog", "native-button", "return", "default"):
             probe = dict(self.windows_probe(True), invoke_available=False, pressed_by=method)
             payload = json.dumps({"pressed": True, "seen": [], "probe": probe})
             with self.subTest(method=method), patch(__name__ + ".powershell", return_value=payload) as helper:
-                if method == "native-button":
+                if method == "task-dialog":
                     self.assertTrue(Windows.__new__(Windows).look({42}, BUTTON)[0])
                 else:
                     with self.assertRaises(WindowsActivationFailure):
                         Windows.__new__(Windows).look({42}, BUTTON)
                 helper.assert_called_once()
+
+    def test_windows_task_dialog_action_without_an_invoke_pattern_is_one_deliberate_activation(self):
+        probe = dict(self.windows_probe(True), invoke_available=False, pressed_by="task-dialog")
+        with patch(__name__ + ".powershell", return_value=json.dumps({"pressed": True, "seen": [], "probe": probe})) as helper:
+            self.assertTrue(Windows.__new__(Windows).look({42}, BUTTON)[0])
+            helper.assert_called_once()
 
     def test_windows_fatal_activation_keeps_only_fixed_failure_facts(self):
         probe = {"attempted": True, "blocked": True, "invoke_available": False, "action_matches": 1,
@@ -2147,6 +2155,7 @@ param([string]$Scenario)
 $ErrorActionPreference='Stop'
 Add-Type @'
 using System;
+using System.Text;
 namespace IbisUpdateContract {
  public enum TreeScope { Children, Descendants }
  public class Condition { public static object TrueCondition=new object(); }
@@ -2166,10 +2175,12 @@ namespace IbisUpdateContract {
   public static TreeWalker RawViewWalker=new TreeWalker();
   public Node GetParent(Node node) {return node.Parent;}
  }
- public static class IbisUpdateNativeButton {
+ public static class Native {
   public static Node Target;
-  public static IntPtr Find(long handle,int owner) {return Target!=null && handle==101 && owner==42 ? new IntPtr(1008) : IntPtr.Zero;}
-  public static bool Click(long handle,int owner,IntPtr button) {if(Find(handle,owner)!=button || Target==null) return false; Target.Invoke(); return true;}
+  public static long Foreground=101; public static uint Owner=42;
+  public static bool Visible=true, Enabled=true, Refused=false, Delivered=true;
+  public static string Caption="An update is available", Class="#32770";
+  public static int Clicks=0;
  }
  public class Node {
   private static int NextId=0; private int Identity=++NextId;
@@ -2217,8 +2228,6 @@ $item=[IbisUpdateContract.Node]::new(); $item.Name='Install and Restart'; $item.
 $window.Nodes=@($item); [IbisUpdateContract.AutomationElement]::RootElement.Nodes=@($window)
 switch($Scenario) {
  'button' {$item.Type='Button'}
- 'native-button' {$item.Supported=$false; [IbisUpdateContract.IbisUpdateNativeButton]::Target=$item}
- 'native-uncertain' {$item.Supported=$false; $item.Fail=$true; [IbisUpdateContract.IbisUpdateNativeButton]::Target=$item}
  'standard' {$item.Type='Button'; $item.Name='Yes'; $item.AutomationId='6'}
  'standard-localized' {$item.Type='Button'; $item.Name='はい'; $item.AutomationId='6'}
  'standard-rtl' {$item.Type='Button'; $item.Name='نعم'; $item.AutomationId='6'}
@@ -2266,6 +2275,25 @@ switch($Scenario) {
  'action-owner-late' {$item.PatternMutation='action-owner'}
  'action-detached' {$item.PatternMutation='detach'}
  'owner-before-press' {$window.ChangeOwnerOnActionScan=$true}
+}
+if ($Scenario.StartsWith('native-')) {
+ $item.Supported=$false; $item.NativeWindowHandle=0; $item.AutomationId='1008'
+ [IbisUpdateContract.Native]::Target=$item
+ $later=[IbisUpdateContract.Node]::new(); $later.Type='Button'; $later.Name='Later'; $later.AutomationId='1004'
+ $window.Nodes=@($later,$item) # The default is Later; Install is a virtual second action.
+ switch($Scenario) {
+  'native-uncertain' {$item.Fail=$true}
+  'native-refused' {[IbisUpdateContract.Native]::Refused=$true}
+  'native-timeout' {[IbisUpdateContract.Native]::Delivered=$false}
+  'native-background' {[IbisUpdateContract.Native]::Foreground=999}
+  'native-foreign' {[IbisUpdateContract.Native]::Owner=99}
+  'native-hidden' {[IbisUpdateContract.Native]::Visible=$false}
+  'native-disabled' {[IbisUpdateContract.Native]::Enabled=$false}
+  'native-caption' {[IbisUpdateContract.Native]::Caption='Other dialog'}
+  'native-class' {[IbisUpdateContract.Native]::Class='Other'}
+  'native-wrong-name' {$item.Name='Install and Restart suffix'}
+  'native-reopened' {$item.ChangeWindow=$window; $item.PatternMutation='window-handle'}
+ }
 }
 if ($Scenario.StartsWith('picker-')) {
  $window.Name='Ibis'
@@ -2339,21 +2367,48 @@ $env:IBIS_PIDS='42'; $env:IBIS_PRESS='Install and Restart'
 if ($Scenario -ceq 'picker-process-bound') { $env:IBIS_PIDS=(1..21) -join ',' }
 function Contract-Result($pressed,$how) {
  $expected=$Scenario -in @('pane','button','native-button','standard','standard-localized','standard-rtl','nested')
- if($pressed -ne $expected -or $item.Invocations -ne [int]($expected -or $Scenario -in @('uncertain','standard-uncertain','native-uncertain'))) {throw 'Unsafe or missing activation'}
- if($probe.attempted -ne ($expected -or $Scenario -in @('uncertain','standard-uncertain','native-uncertain'))) {throw 'Incorrect attempt metadata'}
- if($probe.blocked -ne ($Scenario -notin @('pane','button','native-button','standard','standard-localized','standard-rtl','nested','other-window-action','wrong-window','wrong-name','case-name','case-window','missing-window','standard-no','standard-wrong-id','standard-pane'))) {throw 'Unsafe observation can poll'}
- if($expected -and $how -ne $(if($Scenario -ceq 'native-button') {'native-button'} else {'invoke'})) {throw 'Incorrect invocation metadata'}
+ $invoked=$expected -or $Scenario -in @('uncertain','standard-uncertain','native-uncertain','native-timeout')
+ if($pressed -ne $expected -or $item.Invocations -ne [int]$invoked) {throw 'Unsafe or missing activation'}
+ if($probe.attempted -ne ($invoked -or $Scenario -ceq 'native-refused')) {throw 'Incorrect attempt metadata'}
+ if($probe.blocked -ne ($Scenario -notin @('pane','button','native-button','standard','standard-localized','standard-rtl','nested','other-window-action','wrong-window','wrong-name','case-name','case-window','missing-window','standard-no','standard-wrong-id','standard-pane','native-wrong-name'))) {throw 'Unsafe observation can poll'}
+ if([IbisUpdateContract.Native]::Clicks -ne [int]($Scenario -in @('native-button','native-uncertain','native-refused','native-timeout'))) {throw 'Incorrect native activation count'}
+ if($expected -and $how -ne $(if($Scenario -ceq 'native-button') {'task-dialog'} else {'invoke'})) {throw 'Incorrect invocation metadata'}
 }
 '''
+        # Run the production Ready/Click implementation too. Replace only its
+        # OS boundary; virtual actions intentionally have no native Button HWND.
+        native = WINDOWS_NATIVE_INSTALL.split("public static class ", 1)[1].rsplit("'@", 1)[0]
+        native = "public static class " + native
+        api_start = native.index("  [DllImport")
+        api_end = native.index("  public static bool Ready")
+        native = native[:api_start] + r'''
+  static IntPtr GetForegroundWindow() {return new IntPtr(Native.Foreground);}
+  static bool IsWindowVisible(IntPtr window) {return window.ToInt64()==101 && Native.Target!=null && Native.Visible;}
+  static bool IsWindowEnabled(IntPtr window) {return window.ToInt64()==101 && Native.Enabled;}
+  static uint GetWindowThreadProcessId(IntPtr window,out uint pid) {pid=Native.Owner; return 1;}
+  static int GetWindowText(IntPtr window,StringBuilder text,int count) {text.Append(Native.Caption); return text.Length;}
+  static int GetClassName(IntPtr window,StringBuilder text,int count) {text.Append(Native.Class); return text.Length;}
+  static IntPtr SendMessageTimeout(IntPtr window,uint message,IntPtr wparam,IntPtr lparam,uint flags,uint timeout,out IntPtr result) {
+    if(window.ToInt64()!=101 || message!=0x466 || wparam.ToInt64()!=1008 || lparam!=IntPtr.Zero || flags!=3 || timeout!=5000)
+      throw new Exception("Wrong task-dialog action");
+    Native.Clicks++; result=IntPtr.Zero;
+    if(Native.Refused) return IntPtr.Zero;
+    Native.Target.Invoke();
+    return Native.Delivered ? new IntPtr(1) : IntPtr.Zero;
+  }
+''' + native[api_end:]
+        model = model.replace("namespace IbisUpdateContract {", "namespace IbisUpdateContract {\n" + native)
         # Assert activation counters, retaining real serialization for the caller.
         helper = WINDOWS_LOOK.replace(WINDOWS_NATIVE_INSTALL, "").replace("Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes", "")
-        helper = helper.replace("System.Windows.Automation.", "IbisUpdateContract.").replace("[IbisUpdateNativeButton]", "[IbisUpdateContract.IbisUpdateNativeButton]")
+        helper = helper.replace("System.Windows.Automation.", "IbisUpdateContract.").replace("[IbisUpdateTaskDialog]", "[IbisUpdateContract.IbisUpdateTaskDialog]")
         helper = helper.replace("function Answer($pressed, $how) {",
                                 "function Answer($pressed, $how) {\n  Contract-Result $pressed $how")
         with tempfile.TemporaryDirectory() as temporary:
             script = Path(temporary) / "update-contract.ps1"
             script.write_text(model + helper, encoding="utf-8")
-            for scenario in ("pane", "button", "native-button", "native-uncertain", "standard", "standard-localized", "standard-rtl", "standard-no", "standard-wrong-id", "standard-pane",
+            for scenario in ("pane", "button", "native-button", "native-uncertain", "native-refused", "native-timeout", "native-background",
+                             "native-foreign", "native-hidden", "native-disabled", "native-caption", "native-class", "native-wrong-name", "native-reopened",
+                             "standard", "standard-localized", "standard-rtl", "standard-no", "standard-wrong-id", "standard-pane",
                              "standard-disabled", "standard-hidden", "standard-uncertain", "standard-unsupported", "standard-duplicate",
                              "standard-wrong-owner", "mixed-actions", "wrong-owner", "wrong-window", "wrong-name", "disabled", "hidden",
                              "unsupported", "duplicate-action", "duplicate-window", "missing-window", "wrong-window-owner",
@@ -2475,18 +2530,111 @@ function Contract-Result($pressed,$how) {
                              {"schema_version": 2, "update_checks": True,
                               "library": {"bibtex": str(library)}, "shortcut": "Control+Alt+Y"})
 
+    def test_settings_verification_accepts_the_canonical_library_identity_after_startup(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "selected").mkdir()
+            library = root / "selected" / ".." / "synthetic 引用.bib"
+            library.write_text("@misc{synthetic}\n", encoding="utf-8")
+            settings = seed_settings(root, library)
+            self.assertEqual(preserved_settings(settings, library), {"library": True, "shortcut": True})
+            canonical = str(library.resolve(strict=True))
+            if os.name == "nt" and not canonical.startswith("\\\\?\\"):
+                # Rust's canonicalize retains the verbatim prefix on Windows.
+                canonical = "\\\\?\\UNC\\" + canonical[2:] if canonical.startswith("\\\\") else "\\\\?\\" + canonical
+            self.assertNotEqual(canonical, str(library))
+            saved = json.loads(settings.read_text(encoding="utf-8"))
+            saved["library"] = {"bibtex": canonical}
+            saved["picker_windows"] = {}  # Added by #1500, within the same schema.
+            settings.write_text(json.dumps(saved), encoding="utf-8")
+            self.assertEqual(preserved_settings(settings, library), {"library": True, "shortcut": True})
+
+    @unittest.skipIf(os.name == "nt", "creating symlinks needs extra rights on Windows")
+    def test_settings_verification_accepts_a_resolved_directory_alias_like_macos_var(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            target = root / "canonical"
+            target.mkdir()
+            alias = root / "selected"
+            alias.symlink_to(target, target_is_directory=True)
+            library = alias / "synthetic.bib"
+            library.write_text("@misc{synthetic}\n", encoding="utf-8")
+            settings = seed_settings(root, library)
+            saved = json.loads(settings.read_text(encoding="utf-8"))
+            saved["library"] = {"bibtex": str(library.resolve(strict=True))}
+            settings.write_text(json.dumps(saved), encoding="utf-8")
+            self.assertEqual(preserved_settings(settings, library), {"library": True, "shortcut": True})
+
+    def test_settings_verification_refuses_a_different_file_even_with_identical_contents(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            library, other = root / "synthetic.bib", root / "different.bib"
+            for path in (library, other):
+                path.write_text("@misc{synthetic}\n", encoding="utf-8")
+            settings = seed_settings(root, library)
+            saved = json.loads(settings.read_text(encoding="utf-8"))
+            saved["library"] = {"bibtex": str(other)}
+            settings.write_text(json.dumps(saved), encoding="utf-8")
+            with self.assertRaisesRegex(AssertionError, "synthetic library choice was not preserved"):
+                preserved_settings(settings, library)
+
+    def test_settings_verification_refuses_malformed_or_missing_library_identity(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            library = root / "synthetic.bib"
+            library.write_text("@misc{synthetic}\n", encoding="utf-8")
+            settings = seed_settings(root, library)
+            saved = json.loads(settings.read_text(encoding="utf-8"))
+            choices = (None, str(library), {}, {"zotero": "user"}, {"bibtex": None},
+                       {"bibtex": True}, {"bibtex": [str(library)]}, {"bibtex": ""},
+                       {"bibtex": "synthetic.bib"}, {"bibtex": "synthetic\0private-sentinel"},
+                       {"bibtex": str(library), "zotero": "user"}, {"bibtex": str(root / "missing.bib")})
+            for index, choice in enumerate(choices):
+                saved["library"] = choice
+                settings.write_text(json.dumps(saved), encoding="utf-8")
+                with self.subTest(choice=index), self.assertRaisesRegex(AssertionError, "synthetic library choice was not preserved") as failure:
+                    preserved_settings(settings, library)
+                self.assertNotIn(str(root), str(failure.exception))
+                self.assertNotIn("private-sentinel", str(failure.exception))
+            settings = seed_settings(root, library)
+            library.unlink()
+            with self.assertRaisesRegex(AssertionError, "synthetic library choice was not preserved"):
+                preserved_settings(settings, library)
+            library.mkdir()
+            with self.assertRaisesRegex(AssertionError, "synthetic library choice was not preserved"):
+                preserved_settings(settings, library)
+
+    def test_settings_verification_fails_closed_when_file_identity_cannot_be_read(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            library = root / "synthetic.bib"
+            library.write_text("@misc{synthetic}\n", encoding="utf-8")
+            settings = seed_settings(root, library)
+            with patch.object(Path, "samefile", side_effect=PermissionError("synthetic-private-sentinel")):
+                with self.assertRaisesRegex(AssertionError, "synthetic library choice was not preserved") as failure:
+                    preserved_settings(settings, library)
+            self.assertNotIn("synthetic-private-sentinel", str(failure.exception))
+
     def test_restarted_update_must_keep_choices_without_an_environment_override(self):
-        for changed in ("library", "shortcut", None):
+        for changed in ("library", "shortcut", "canonical", None):
             with self.subTest(changed=changed), tempfile.TemporaryDirectory() as temporary:
-                def installed(folder, _args, _library):
+                runtime = Path(temporary) / "runtime"
+                (runtime / "selected").mkdir(parents=True)
+                failed = changed in ("library", "shortcut")
+                def installed(folder, _args, library):
                     settings = folder / "settings.json"
                     choices = {"library": {"bibtex": str(folder / "synthetic.bib")}, "shortcut": "Control+Alt+Y"}
                     settings.write_text(json.dumps(choices), encoding="utf-8")
                     state = {"replaced": False}
                     def replaced():
                         state["replaced"] = True
-                        if changed:
+                        if changed == "canonical":
+                            canonical = str(library.resolve(strict=True))
+                            self.assertNotEqual(canonical, str(library))
+                            choices["library"] = {"bibtex": canonical}
+                        elif changed:
                             choices[changed] = "synthetic wrong choice"
+                        if changed:
                             settings.write_text(json.dumps(choices), encoding="utf-8")
                         return True
                     app = MagicMock(command=["synthetic"], config=None, settings=settings)
@@ -2502,18 +2650,21 @@ function Contract-Result($pressed,$how) {
                 with patch.dict(SYSTEMS, {"Linux": installed}), patch("platform.system", return_value="Linux"), \
                         patch.dict(os.environ, {"IBIS_LIBRARY": "/synthetic outer override.bib"}), \
                         patch("subprocess.Popen", return_value=process) as launch, patch("time.sleep"), \
-                        patch("os.kill"), patch("builtins.print"), patch(__name__ + ".feed_version", return_value="synthetic"):
-                    self.assertEqual(run(argparse.Namespace(output=Path(temporary))), int(changed is not None))
+                        patch("os.kill"), patch("builtins.print"), patch(__name__ + ".feed_version", return_value="synthetic"), \
+                        patch("tempfile.TemporaryDirectory") as sandbox:
+                    sandbox.return_value.__enter__.return_value = str(runtime / "selected" / "..")
+                    self.assertEqual(run(argparse.Namespace(output=Path(temporary))), int(failed))
                 self.assertTrue("IBIS_LIBRARY" not in launch.call_args.kwargs["env"], "library override masks persistence")
                 report = json.loads((Path(temporary) / "update-e2e.json").read_text(encoding="utf-8"))
-                self.assertEqual(report["status"], "failed" if changed else "passed")
-                if not changed:
+                self.assertEqual(report["status"], "failed" if failed else "passed")
+                if not failed:
                     self.assertEqual(report["settings_preserved"], {"library": True, "shortcut": True})
 
     def test_settings_verification_refuses_bad_files_without_disclosing_them(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             library = root / "synthetic 引用.bib"
+            library.write_text("@misc{synthetic}\n", encoding="utf-8")
             settings = seed_settings(root, library)
             original = settings.read_bytes()
             for contents in (b"", b"{private payload", b"\xff", b"[]", b"null", b"x" * 65537,

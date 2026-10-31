@@ -27,6 +27,7 @@ fn target(app: AppId) -> Target {
 const ON: PastePermission = PastePermission {
     enabled: true,
     granted: true,
+    app: None,
 };
 
 #[test]
@@ -84,6 +85,7 @@ fn output_follows_the_app() {
         }
     );
     assert_eq!(output(mac("com.example.unknown")), default);
+    assert_eq!(output(windows("notepad.exe")), default);
     assert_eq!(output(mac("com.apple.Terminal")), default);
     assert_eq!(output_for(None, &default, "apa"), default);
 }
@@ -134,8 +136,129 @@ fn browsers_and_code_editors_ask_without_inferring_a_syntax() {
 #[test]
 fn an_ordinary_app_gets_the_paste() {
     assert_eq!(decide(&target(mac("com.microsoft.Word")), ON), Decision::Paste);
-    assert_eq!(decide(&target(mac("com.example.unknown")), ON), Decision::Paste);
     assert_eq!(decide(&target(windows("obsidian.exe")), ON), Decision::Paste);
+}
+
+#[test]
+fn an_unrecognised_app_never_gets_a_blind_paste() {
+    for app in [mac("org.example.remote"), windows("unknown-viewer.exe")] {
+        for granted in [true, false] {
+            let decision = decide(&target(app.clone()), PastePermission { granted, ..ON });
+            assert_eq!(
+                serde_json::to_value(decision).unwrap_or_default(),
+                serde_json::json!({ "action": "copy", "reason": "unknown-app" })
+            );
+        }
+    }
+}
+
+#[test]
+fn an_explicit_app_paste_choice_allows_only_ordinary_targets() {
+    let permission = serde_json::from_value::<PastePermission>(serde_json::json!({
+        "enabled": true, "granted": true, "app": "paste"
+    }));
+    assert!(permission.is_ok(), "per-app paste approval is a separate permission");
+    let permission = permission.unwrap_or(ON);
+    assert_eq!(decide(&target(mac("org.example.writer")), permission), Decision::Paste);
+    for app in APPS.iter().filter(|app| app.safety != PasteSafety::Normal) {
+        let target = target(AppId {
+            system: app.system,
+            id: app.id.into(),
+        });
+        assert!(matches!(decide(&target, permission), Decision::Copy(_)), "{}", app.name);
+    }
+    assert_eq!(
+        decide(
+            &target(mac("org.example.writer")),
+            PastePermission {
+                granted: false,
+                ..permission
+            }
+        ),
+        Decision::Copy(CopyReason::NoPermission)
+    );
+}
+
+#[test]
+fn copy_only_is_separate_from_format_and_the_global_paste_switch() {
+    for app in [
+        mac("org.example.writer"),
+        mac("com.microsoft.word"),
+        windows("obsidian.exe"),
+    ] {
+        assert_eq!(
+            decide(
+                &target(app),
+                PastePermission {
+                    app: Some(AppPaste::CopyOnly),
+                    ..ON
+                }
+            ),
+            Decision::Copy(CopyReason::CopyOnly)
+        );
+    }
+    assert_eq!(
+        decide(
+            &target(mac("org.example.writer")),
+            PastePermission {
+                enabled: false,
+                app: Some(AppPaste::Paste),
+                ..ON
+            }
+        ),
+        Decision::Copy(CopyReason::PasteOff)
+    );
+}
+
+#[test]
+fn verified_writing_apps_paste_and_verified_viewers_and_editors_refuse() {
+    for id in [
+        "com.anthropic.claudefordesktop",
+        "com.openai.codex",
+        "com.openai.chat",
+        "com.apple.Notes",
+        "notion.id",
+        "com.lukilabs.lukiapp",
+        "com.microsoft.onenote.mac",
+        "org.mozilla.thunderbird",
+        "com.logseq.logseq",
+    ] {
+        assert_eq!(decide(&target(mac(id)), ON), Decision::Paste, "{id}");
+    }
+    for app in [
+        mac("tv.parsec.www"),
+        mac("com.p5sys.jump.mac.viewer"),
+        mac("com.p5sys.jump.mac.viewer.web"),
+        mac("com.nomachine.nxdock"),
+        mac("com.omnissa.horizon.client.mac"),
+        windows("parsecd.exe"),
+        windows("nxplayer.exe"),
+        windows("nxplayer.bin"),
+        windows("vmware-view.exe"),
+    ] {
+        assert_eq!(
+            decide(
+                &target(app),
+                PastePermission {
+                    app: Some(AppPaste::Paste),
+                    ..ON
+                }
+            ),
+            Decision::Copy(CopyReason::RemoteDesktop)
+        );
+    }
+    for id in ["emacs.exe", "gvim.exe", "neovide.exe"] {
+        assert_eq!(
+            decide(
+                &target(windows(id)),
+                PastePermission {
+                    app: Some(AppPaste::Paste),
+                    ..ON
+                }
+            ),
+            Decision::Copy(CopyReason::NonstandardShortcut)
+        );
+    }
 }
 
 #[test]
@@ -143,6 +266,7 @@ fn the_paste_switch_wins_over_everything() {
     let off = PastePermission {
         enabled: false,
         granted: true,
+        app: None,
     };
     let mut secure = target(mac("com.apple.Terminal"));
     secure.secure_field = true;
@@ -217,6 +341,7 @@ fn a_missing_permission_copies() {
     let denied = PastePermission {
         enabled: true,
         granted: false,
+        app: None,
     };
     assert_eq!(
         decide(&target(mac("com.microsoft.Word")), denied),
