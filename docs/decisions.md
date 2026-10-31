@@ -488,6 +488,32 @@ Review regressions also cover input that switches an interior document without
 changing either AX identity, input during the final AX read, ignored mouse
 movement, invalid input timing and process replacement before the AX write.
 
+The process-lifetime notification registration in `macos_notifications.rs` is
+also a scoped unsafe exception (2026-10-31). It uses the locked Foundation and
+block2 bindings with no object filter or operation queue, ignores notification
+payloads, and dispatches fresh reads to the native thread. Keyboard-layout
+notifications keep the opening shortcut current while hidden; workspace
+accessibility and distributed color/theme notifications replace the appearance
+timer. Appearance is also read synchronously before showing the picker.
+The webview's library-age timer exists only while the picker is shown. These
+changes remove periodic hidden wakeups; capped unavailable-file retries and
+the updater's six-hour check are unchanged.
+
+A reloaded picker's presentation starts unknown. Enter waits for a native
+identity before starting a copy; initialization failures get one recovery read
+per explicit action, with no timer. Exhausted retries discard the queued Enter
+and show the existing copy-failure alert; another Enter can retry. Hide/reopen
+retires old reads. Escape
+can pass an unknown identity: the synchronous native IPC handler snapshots the
+current owner before dispatch, so a subsequent reopen still rejects that
+delayed hide. This capture cannot live in an async command body: Tauri schedules
+that body after receipt. The handler replies after the native hide completes;
+main-thread dispatch runs inline there, and an off-thread caller waits without
+holding application state.
+Windows show requests from workers dispatch preparation, appearance refresh
+and presentation together to the main thread. No worker may hold the appearance
+cache while synchronously asking that thread for an HWND (2026-10-31, #1558).
+
 Other macOS native calls use objc2's generated AppKit and Core Graphics
 bindings. On Windows, `winsafe` supplies safe Win32 calls (the foreground
 window, its process, name and integrity level, and `SendInput`), and
