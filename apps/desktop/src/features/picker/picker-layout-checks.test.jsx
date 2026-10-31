@@ -1,55 +1,150 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, queryAllByRole, render, screen, within } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { App } from "../../App";
-import * as api from "../../api";
+import { CitationShelf } from "./CitationShelf";
 import { pickerText } from "../../messages";
 import { backend, resetApp } from "../../testing/app";
-import { isWholeNotice, layoutGeometry, noticeText, waitForLayout } from "./picker-layout-checks.mjs";
+import { dismissMenu, isAnchoredDetails, isWholeNotice, isWholeShelf, layoutGeometry, noticeText, shelfControl, waitForLayout } from "./picker-layout-checks.mjs";
 
 afterEach(async () => {
   await resetApp();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   document.documentElement.removeAttribute("data-text-size");
 });
 
-test.each([false, true])("a compact failed search is measured and found whole by the browser oracle (Larger=%s)", async (larger) => {
-  const edges = 109, hint = 96, noticeHeight = larger ? 64 : 32;
-  let frame = edges + hint, clipTop = 0, clipBottom = 0, visibleHeight = noticeHeight;
-  // jsdom has no flex layout. Model the containment boundary and native growth;
-  // only the real browser probe can establish the CSS sizes and scroll owners.
-  vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function () {
-    if (this.tagName !== "MAIN") return 0;
-    const middle = this.querySelector(".picker-content");
-    const natural = this.style.height === "auto" && middle.style.containerType === "normal";
-    return natural ? edges + hint + (middle.querySelector('[role="alert"]') ? noticeHeight : 0) : frame;
+test.each([[720, 480, 1], [480, 360, 1], [480, 360, 2]])("the probe selects one rendered Show all control at %s×%s/%s× text, including with its menu open", async (width, height, scale) => {
+  vi.stubGlobal("innerWidth", width); vi.stubGlobal("innerHeight", height);
+  const computed = window.getComputedStyle;
+  vi.spyOn(window, "getComputedStyle").mockImplementation((node) => {
+    const style = computed(node);
+    if (node === document.documentElement) Object.defineProperty(style, "fontSize", { value: `${16 * scale}px` });
+    return style;
   });
+  const records = Array.from({ length: 9 }, (_, i) => ({
+    revision: "1", id: { source: "invented.bib", native_key: `reference${i}` }, key: `reference${i}`, title: `Invented reference ${i}`,
+    authors: "Aster", first_author: "Aster", author_count: 1, year: 2026, container: null, item_type: "book", partial: false, matched: ["title"],
+  }));
+  render(<main><CitationShelf announce={false} selected={new Map(records.map((r) => [r.key, r]))} removeLabel={(r) => `Remove ${r.key} from the selection`}
+    onRemove={() => {}} style={null} keys focusable={false} outputWarnings={[]} shown={{ markup: [], text: "Synthetic citation", html: "", warnings: [] }} /><footer /></main>);
+  const band = document.querySelector("main > .shelf");
+  const name = "Show all 9 selected references";
+  const trigger = within(band).getByRole("button", { name, exact: true });
+  // Model just the Locator intersection and CSS visibility used by this probe.
+  // jsdom has no boxes; hidden/display/visibility exclude retained controls,
+  // while aria-hidden deliberately does not change physical visibility.
+  const locator = (read) => ({ get nodes() { return read(); }, and: (other) => locator(() => read().filter((node) => other.nodes.includes(node))) });
+  const page = {
+    getByRole: (role, { includeHidden, ...options }) => locator(() => queryAllByRole(document.body, role, { ...options, hidden: includeHidden })),
+    locator: (selector) => locator(() => [...document.querySelectorAll(selector.replaceAll(":visible", ""))].filter((node) => {
+      if (!selector.includes(":visible")) return true;
+      for (let part = node; part; part = part.parentElement) {
+        const style = getComputedStyle(part);
+        if (part.hidden || style.display === "none" || style.visibility === "hidden") return false;
+      }
+      return true;
+    })),
+  };
+  const control = shelfControl(page, name), foldedAnchor = shelfControl(page, /^Show all /);
+  expect(control.nodes).toEqual([trigger]);
+  expect(foldedAnchor.nodes).toEqual([trigger]);
+  fireEvent.click(trigger);
+  const dialog = screen.getByRole("dialog", { name: "Selected references", exact: true });
+  expect(within(dialog).getAllByRole("button", { name: /^Remove .* from the selection$/ })).toHaveLength(9);
+  expect(band.closest('[aria-hidden="true"]')).not.toBeNull();
+  expect(control.nodes).toEqual([trigger]);
+  expect(foldedAnchor.nodes).toEqual([trigger]);
+  fireEvent.keyDown(dialog, { key: "Escape" });
+  await act(async () => { await new Promise(requestAnimationFrame); });
+  expect(within(band).getByRole("button", { name, exact: true })).toBe(trigger);
+});
+
+test.each([false, true])("the probe waits for menu exit before the next action (filter=%s)", async (filtered) => {
+  let finishExit;
+  const detached = new Promise((resolve) => { finishExit = resolve; });
+  const menu = { press: vi.fn().mockResolvedValue(undefined), waitFor: vi.fn(() => detached) };
+  const filter = { press: vi.fn().mockResolvedValue(undefined) };
+  const nextAction = vi.fn();
+  const sequence = (async () => {
+    await dismissMenu(menu, filtered ? filter : undefined);
+    nextAction();
+  })();
+  // Escape has closed the trigger; the animated menu is still on screen.
+  await Promise.resolve();
+  expect((filtered ? filter : menu).press).toHaveBeenCalledExactlyOnceWith("Escape");
+  expect(menu.waitFor).toHaveBeenCalledExactlyOnceWith({ state: "detached" });
+  expect(nextAction).not.toHaveBeenCalled();
+  finishExit();
+  await sequence;
+  expect(nextAction).toHaveBeenCalledOnce();
+  if (filtered) expect(menu.press).not.toHaveBeenCalled();
+});
+
+test.each([false, true])("a failed search notice stays reachable in a steady frame (Larger=%s)", async (larger) => {
+  const frame = larger ? 552 : 480, noticeHeight = larger ? 64 : 32;
+  let clipTop = 0, clipBottom = 0, visibleHeight = noticeHeight;
+  // jsdom supplies an oracle regression; the browser probe checks real layout.
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function () {
     if (this.matches('.notices [role="alert"]')) return new DOMRect(0, 53 - clipTop, 720, visibleHeight);
-    if (this.matches(".picker-content")) return new DOMRect(0, 53, 720, frame - edges - clipBottom);
+    if (this.matches(".picker-content")) return new DOMRect(0, 53, 720, frame - 109 - clipBottom);
     return new DOMRect();
   });
-  const fitPicker = vi.fn(async (height) => { if (height !== null) frame = Math.max(frame, height); });
-  backend({
+  const calls = backend({
     picker_preferences: () => ({ larger_text: larger }),
     search: ({ query }) => { if (query.text === "refuse") throw Error("synthetic search refusal"); return []; },
   });
-  const view = render(<App api={{ ...api, fitPicker }} />);
+  render(<App />);
   await screen.findByText("Type to find a reference");
   fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "refuse" } });
-  const alert = await screen.findByText(pickerText.searchError);
-  expect(alert.getAttribute("role")).toBe("alert");
-  expect(view.container.querySelector("main").hasAttribute("data-compact")).toBe(true);
-  expect(fitPicker).toHaveBeenLastCalledWith(edges + hint + noticeHeight, expect.any(Boolean));
+  expect((await screen.findByText(pickerText.searchError)).getAttribute("role")).toBe("alert");
+  expect(calls).not.toContain("fit_picker");
   expect(isWholeNotice(noticeText.failedSearch)).toBe(true);
-
-  // The same oracle must refuse missing, zero-height and clipped notices.
   expect(isWholeNotice("Unrelated synthetic notice")).toBe(false);
-  clipBottom = frame - edges - noticeHeight + 2;
+  clipBottom = frame - 109 - noticeHeight + 2;
   expect(isWholeNotice(noticeText.failedSearch)).toBe(false);
   clipBottom = 0; clipTop = 2;
   expect(isWholeNotice(noticeText.failedSearch)).toBe(false);
   clipTop = 0; visibleHeight = 0;
   expect(isWholeNotice(noticeText.failedSearch)).toBe(false);
+});
+
+test("the shelf oracle rejects clipping, shrinking and placement inside the middle scroller", () => {
+  let bounds = new DOMRect(0, 320, 480, 40);
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function () {
+    if (this.matches(".search-bar")) return new DOMRect(0, 0, 480, 80);
+    if (this.matches("footer")) return new DOMRect(0, 360, 480, 40);
+    return bounds;
+  });
+  render(<main><header className="search-bar" /><div className="picker-content" /><div className="shelf" style={{ flexShrink: 0, overflowY: "visible" }} /><footer /></main>);
+  const band = document.querySelector(".shelf");
+  expect(isWholeShelf()).toBe(true);
+  bounds = new DOMRect(0, 320, 480, 42);
+  expect(isWholeShelf()).toBe(false);
+  bounds = new DOMRect(-2, 320, 480, 40);
+  expect(isWholeShelf()).toBe(false);
+  bounds = new DOMRect(0, 320, 480, 40);
+  band.style.flexShrink = "1";
+  expect(isWholeShelf()).toBe(false);
+  band.style.flexShrink = "0"; band.style.overflowY = "auto";
+  expect(isWholeShelf()).toBe(false);
+  band.style.overflowY = "visible";
+  document.querySelector(".picker-content").append(band);
+  expect(isWholeShelf()).toBe(false);
+});
+
+test("the details oracle rejects a centred panel, clipped menu and unrelated corner token", () => {
+  let rect = new DOMRect(100, 100, 320, 180);
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(() => rect);
+  render(<div className="details-menu" data-placement="top" style={{ "--menu-radius": "12px", "--r-menu": "12px" }} />);
+  const anchor = { top: 286, bottom: 310, left: 100, right: 240 };
+  expect(isAnchoredDetails(anchor)).toBe(true);
+  rect = new DOMRect(100, 180, 320, 180);
+  expect(isAnchoredDetails(anchor)).toBe(false);
+  rect = new DOMRect(-2, 100, 320, 180);
+  expect(isAnchoredDetails(anchor)).toBe(false);
+  rect = new DOMRect(100, 100, 320, 180);
+  document.querySelector(".details-menu").style.setProperty("--menu-radius", "24px");
+  expect(isAnchoredDetails(anchor)).toBe(false);
 });
 
 test.each(["TimeoutError", "Error"])("a %s during a probe wait reports its case, check and numeric geometry only", async (name) => {
@@ -71,6 +166,6 @@ test("a probe timeout keeps its fixed labels when the page cannot supply geometr
     waitForFunction: vi.fn().mockRejectedValue({ name: "TimeoutError" }),
     evaluate: vi.fn().mockRejectedValue(new Error("unreported synthetic page failure")),
   };
-  await expect(waitForLayout(page, "360/normal/light/scale-3/default", "extreme-wheel-scroll", () => false))
-    .rejects.toThrow("Picker layout wait timed out: case=360/normal/light/scale-3/default; check=extreme-wheel-scroll; geometry={}");
+  await expect(waitForLayout(page, "480/normal/light/scale-2/default", "minimum-text-scroll", () => false))
+    .rejects.toThrow("Picker layout wait timed out: case=480/normal/light/scale-2/default; check=minimum-text-scroll; geometry={}");
 });

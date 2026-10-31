@@ -6,7 +6,7 @@ import "./SideNavigation.css";
 export function SideNavigation<T extends string>({ label, value, options, onChange }: {
   label: string;
   value: T;
-  options: readonly { value: T; label: string }[];
+  options: readonly { value: T; label: string; gapBefore?: boolean }[];
   onChange: (value: T) => void;
 }) {
   return (
@@ -16,7 +16,7 @@ export function SideNavigation<T extends string>({ label, value, options, onChan
         if (next !== undefined) onChange(next as T);
       }} onAction={(key) => onChange(key as T)}>
       {options.map((option) => (
-        <ListBoxItem key={option.value} id={option.value} textValue={option.label} className="ui-side-navigation-item"
+        <ListBoxItem key={option.value} id={option.value} textValue={option.label} data-gap-before={option.gapBefore || undefined} className="ui-side-navigation-item"
           onPressStart={(event) => {
             // React Aria suppresses unchanged selection; mouse selection happens on press start.
             if (event.pointerType === "mouse" && option.value === value) onChange(option.value);

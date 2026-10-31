@@ -46,6 +46,11 @@ it to `settings.json` or registers an XWayland grab. Portal activation tokens
 stay native and are consumed through GTK's safe window API (already linked by
 Tauri), never sent to the WebView or stored (2026-10-28, #782).
 
+2026-10-31 (maintainer): reopened before 1.0. Tauri stays unless it fails a release
+gate that the shell itself causes (whole-process memory including WebView helpers,
+summon and typing latency, idle use, screen readers, input methods, focus for
+paste) and an alternative passes that gate for less than fixing the cause in Tauri.
+
 ## 0006 Sources
 
 Ibis never writes to a library. BibTeX and BibLaTeX entries are parsed one by
@@ -345,13 +350,22 @@ Japanese and Korean input methods; Orca joins for 1.0. Interface text goes
 through the translation layer from 0.3, with German and one right-to-left
 language in 0.4. The speed and resource budgets in
 [architecture](architecture.md#desktop-app) are limits: search and bundle
-checks fail pull request CI. Open/refresh fails Preview's nightly/release build
-because shared PR runners have too little timing margin. Native latency and idle
-use are measured on the release machines before each release.
+checks fail pull request CI; checks with too little margin on shared runners
+report there and are enforced on the release machines before each release.
 0.5 cites from Zotero's annotations and the PDFs people already open before
 any reader inside Ibis (maintainer, 2026-10-28).
 
-2026-10-30: Open/refresh timings report after packaging on main and 0.2.x; the unchanged 3 s limits block release tags from 0.3, as the maintainer clarified.
+2026-10-31 (maintainer): limits come from what a person notices, at the size real
+libraries reach. They block a release at 10,000 generated realistic records
+(abstracts, long author lists, Chinese, Japanese and Korean text): shortcut to a
+typeable picker p95 ≤ 100 ms; keystroke to results p95 ≤ 50 ms (engine search
+≤ 20 ms); warm formatted preview p95 ≤ 100 ms and the first after launch ≤ 1 s;
+first results ≤ 1 s after launch; citable again about 2 s after a source edit, with
+search never interrupted; hidden whole-app memory ≤ 200 MiB, web view included;
+hidden idle ≤ 0.2 % of one core and ≤ 1 wakeup a second; picker JS and CSS ≤ 400 KiB
+gzipped. A 50,000-record check reports on nightly against the same numbers as a stretch
+goal and must not grow faster than the library; a miss is studied, not blocking. The 100k limits and the 400-entry bibliography timing are dropped; document
+tools set their own later. Where each check runs: #1536.
 
 ## 0027 Process until 1.0 (with 0011, 0015 and 0017)
 

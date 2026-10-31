@@ -19,6 +19,9 @@ pub(crate) enum Page {
     General,
     /// General, scrolled to pasting and its permission.
     Paste,
+    Look,
+    Libraries,
+    Advanced,
     Shortcuts,
     Citations,
     About,
@@ -29,6 +32,9 @@ impl Page {
         match self {
             Page::General => "general",
             Page::Paste => "paste",
+            Page::Look => "look",
+            Page::Libraries => "libraries",
+            Page::Advanced => "advanced",
             Page::Shortcuts => "shortcuts",
             Page::Citations => "citations",
             Page::About => "about",
@@ -149,7 +155,7 @@ fn present(app: &AppHandle, page: Option<Page>) {
     }
 }
 
-/// Reopening through the shortcut or tray also resets the existing page.
+/// Every presentation has a page; ordinary Settings opens on General at the top.
 fn present_existing<R: tauri::Runtime>(window: &tauri::WebviewWindow<R>, page: Option<Page>) {
     report(
         window.emit_to(LABEL, "settings:page", page.unwrap_or(Page::General)),
@@ -227,7 +233,7 @@ mod tests {
     }
 
     #[test]
-    fn presenting_existing_settings_emits_general_without_a_page_and_keeps_explicit_requests() {
+    fn presenting_existing_settings_resets_general_without_a_request_and_honours_explicit_requests() {
         use std::sync::mpsc;
         use std::time::Duration;
         use tauri::Listener;
@@ -242,6 +248,7 @@ mod tests {
         window.listen("settings:page", move |event| {
             let _ = sent.send(event.payload().to_string());
         });
+
         for (requested, expected) in [
             (None, "general"),
             (Some(Page::About), "about"),
@@ -249,7 +256,7 @@ mod tests {
             (Some(Page::Paste), "paste"),
             (Some(Page::Shortcuts), "shortcuts"),
             (Some(Page::Citations), "citations"),
-            (None, "general"),
+            (Some(Page::General), "general"),
         ] {
             present_existing(&window, requested);
             let payload = events
@@ -264,6 +271,9 @@ mod tests {
         for (page, name) in [
             (Page::General, "general"),
             (Page::Paste, "paste"),
+            (Page::Look, "look"),
+            (Page::Libraries, "libraries"),
+            (Page::Advanced, "advanced"),
             (Page::Shortcuts, "shortcuts"),
             (Page::Citations, "citations"),
             (Page::About, "about"),

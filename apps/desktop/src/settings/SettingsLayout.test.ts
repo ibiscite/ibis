@@ -4,7 +4,7 @@ import { expect, test, vi } from "vitest";
 const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
 const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
 const read = (path: string) => readFileSync(new FileURL(path, import.meta.url), "utf8");
-const shell = read("./Settings.css");
+const shell = read("../ui/SettingsLayout.css") + read("./Settings.css");
 const groups = read("../ui/SettingsGroup.css");
 const buttons = read("../ui/Button.css");
 const switches = read("../ui/Switch.css");
@@ -34,7 +34,9 @@ test("Settings fills the viewport, with bounded page and navigation scrollers be
   expect(roots.getPropertyValue("overflow")).toBe("hidden");
   expect(roots.getPropertyValue("margin")).toBe("0px");
   const frame = style(shell, ".settings");
-  expect(frame.getPropertyValue("height")).toBe("100dvh");
+  // Percentage heights keep the whole root → body → mount → shell chain in
+  // the same coordinate space when browser zoom or text scaling changes it.
+  expect(frame.getPropertyValue("height")).toBe("100%");
   expect(frame.getPropertyValue("display")).toBe("grid");
   expect(frame.getPropertyValue("grid-template-columns")).toBe("var(--settings-sidebar-width) minmax(0, 1fr)");
   expect(frame.getPropertyValue("grid-template-rows")).toBe("var(--titlebar-height) minmax(0, 1fr)");
@@ -55,6 +57,14 @@ test("Settings fills the viewport, with bounded page and navigation scrollers be
     expect(["sticky", "absolute", "fixed"]).not.toContain(layout.getPropertyValue("position"));
     for (const property of ["margin-top", "margin-bottom", "margin-block"]) expect(layout.getPropertyValue(property)).not.toMatch(/-|calc\(/);
   }
+});
+
+test.each([
+  ["page", shell, ".settings-page"],
+  ["sidebar", navigation, ".ui-side-navigation"],
+])("the %s scroller contains absolutely positioned controls instead of extending the document", (_name, source, selector) => {
+  expect(style(source, selector).getPropertyValue("position")).toBe("relative");
+  expect(style(source, selector).getPropertyValue("overflow-y")).toBe("auto");
 });
 
 test("long sidebar labels can scroll within the remaining height without moving the title bar", () => {
@@ -117,4 +127,56 @@ test("permission instructions and actions share the card's leading edge at every
   expect(style(shell, ".paste-guide-actions").getPropertyValue("justify-content")).toBe("start");
   expect(style(shell, ".paste-guide-text").getPropertyValue("min-width")).toBe("0px");
   expect(style(shell, ".paste-guide ol").getPropertyValue("padding-inline-start")).toBe("var(--space-5)");
+});
+
+test("every fixed Settings accent keeps white text at 4.5:1 and stays distinct from citation scarlet", () => {
+  const expected = ["0064e1", "953d96", "c8317d", "c42b30", "b25300", "8a6a00", "3b7f25", "6e6e73"];
+  const shades = [...tokens.matchAll(/--settings-accent-[a-z]+:\s*#([0-9a-f]{6})/g)].map((match) => match[1]!);
+  expect(shades).toEqual(expected);
+  for (const shade of shades) {
+    const linear = shade.match(/../g)!.map((channel) => {
+      const value = Number.parseInt(channel, 16) / 255;
+      return value <= .04045 ? value / 12.92 : ((value + .055) / 1.055) ** 2.4;
+    });
+    const luminance = linear[0]! * .2126 + linear[1]! * .7152 + linear[2]! * .0722;
+    expect(1.05 / (luminance + .05), shade).toBeGreaterThanOrEqual(4.5);
+    expect(["c23a1c", "ff7a5c", "d2401f"]).not.toContain(shade);
+  }
+});
+
+test("picture choices use a quiet selected surface and an inward keyboard-only ring", () => {
+  const choices = read("../ui/PictureChoice.css");
+  expect(style(choices, ".ui-picture-choice[data-selected]").getPropertyValue("background")).toBe("var(--choice-selected-background)");
+  expect(style(choices, ".ui-picture-choice[data-selected]").getPropertyValue("color")).toBe("var(--choice-selected-text)");
+  const selectionRing = "inset 0 0 0 var(--choice-selection-ring-width) var(--accent)";
+  expect(style(choices, ".ui-picture-choice[data-selected]").getPropertyValue("box-shadow")).toBe(selectionRing);
+  expect(tokens).toMatch(/--choice-selection-ring-width:\s*2px/);
+  expect(style(choices, ".ui-picture-choice[data-focus-visible]").getPropertyValue("outline-offset")).toBe("calc(-1 * (var(--focus-ring-width) + var(--focus-ring-offset)))");
+  expect(style(choices, ".ui-picture-choice[data-selected][data-focus-visible]").getPropertyValue("outline-offset")).toBe("calc(-1 * (var(--choice-selection-ring-width) + var(--focus-ring-width) + var(--focus-ring-offset)))");
+  const sheet = document.createElement("style");
+  sheet.textContent = choices;
+  const picture = document.createElement("div");
+  picture.className = "ui-picture-choice";
+  picture.dataset.selected = "true";
+  document.head.append(sheet); document.body.append(picture);
+  try {
+    expect(getComputedStyle(picture).boxShadow).toBe(selectionRing);
+    expect(getComputedStyle(picture).outline).toBe("none");
+    picture.dataset.focusVisible = "true";
+    expect(getComputedStyle(picture).boxShadow).toBe(selectionRing);
+    expect(getComputedStyle(picture).outline).toBe("var(--focus-ring-width) solid var(--focus-ring-color)");
+    expect(getComputedStyle(picture).outlineOffset).toBe("calc(-1 * (var(--choice-selection-ring-width) + var(--focus-ring-width) + var(--focus-ring-offset)))");
+  } finally { picture.remove(); sheet.remove(); }
+  expect(style(groups, ".ui-picker-picture").getPropertyValue("max-width")).toBe("100%");
+  expect(style(groups, ".ui-picker-picture").getPropertyValue("aspect-ratio")).toBe("var(--settings-picture-aspect)");
+  const media = (source: string) => {
+    const sheet = document.createElement("style"); sheet.textContent = source; document.head.append(sheet);
+    const rule = [...sheet.sheet!.cssRules].find((rule) => rule.type === CSSRule.MEDIA_RULE && (rule as CSSMediaRule).conditionText === "(pointer: coarse)") as CSSMediaRule;
+    sheet.remove(); return [...rule.cssRules] as CSSStyleRule[];
+  };
+  expect(media(choices).find((rule) => rule.selectorText === ".ui-picture-choice")?.style.getPropertyValue("min-height")).toBe("var(--touch-target)");
+  expect(media(groups).find((rule) => rule.selectorText === ".ui-settings-search input")?.style.getPropertyValue("min-height")).toBe("var(--touch-target)");
+  expect(media(groups).find((rule) => rule.selectorText === ".ui-settings-key-list summary")?.style.getPropertyValue("min-height")).toBe("var(--touch-target)");
+  expect(style(groups, ".ui-settings-key-list summary").getPropertyValue("box-sizing")).toBe("border-box");
+  expect(media(read("../ui/ToolbarMenu.css")).find((rule) => rule.selectorText === ".toolbar-menu-filter input")?.style.getPropertyValue("min-height")).toBe("var(--touch-target)");
 });

@@ -1,31 +1,4 @@
-/* The Settings window (docs/design.md, "Settings" [C18]): a sidebar of pages
-   beside a page of grouped rows, laid out as System Settings is. */
-:root.settings-window { color-scheme: light dark; }
-:root.settings-window, :root.settings-window body, #settings { height: 100%; min-height: 0; margin: 0; overflow: hidden; }
-:root.settings-window body {
-  background: var(--surface-grouped); color: var(--text);
-  font: var(--type-body-size) / var(--type-body-line) var(--font-family);
-  -webkit-user-select: none; user-select: none; cursor: default;
-}
-.settings {
-  display: grid; height: 100dvh; min-height: 0; min-width: 0; overflow: hidden;
-  grid-template-columns: var(--settings-sidebar-width) minmax(0, 1fr);
-  grid-template-rows: var(--titlebar-height) minmax(0, 1fr);
-}
-/* A separate, non-scrolling band reserves the native traffic-light area. */
-.settings-titlebar { grid-area: 1 / 1 / 2 / -1; z-index: var(--z-chrome); }
-.settings-sidebar {
-  grid-area: 1 / 1 / -1 / 2; min-width: 0; min-height: 0; box-sizing: border-box;
-  display: flex; flex-direction: column; overflow: hidden;
-  padding-block-start: var(--titlebar-height); background: var(--surface-sidebar);
-  border-inline-end: var(--border-width) solid var(--separator);
-}
-
-.settings-page {
-  grid-area: 2 / 2; min-width: 0; min-height: 0; overflow-y: auto; overflow-x: hidden; box-sizing: border-box;
-  display: grid; align-content: start; grid-auto-rows: max-content; gap: var(--space-5);
-  padding: var(--settings-page-inset); scroll-padding-block: var(--settings-page-inset); overscroll-behavior: contain;
-}
+/* Page content; the shared SettingsLayout owns the window and its scrollers. */
 .settings-page-title {
   margin: 0; overflow-wrap: anywhere;
   font-size: var(--type-page-title-size); line-height: var(--type-page-title-line); font-weight: var(--type-strong-weight);
