@@ -363,8 +363,8 @@ typeable picker p95 ≤ 100 ms; keystroke to results p95 ≤ 50 ms (engine searc
 first results ≤ 1 s after launch; citable again about 2 s after a source edit, with
 search never interrupted; hidden whole-app memory ≤ 200 MiB, web view included;
 hidden idle ≤ 0.2 % of one core and ≤ 1 wakeup a second; picker JS and CSS ≤ 400 KiB
-gzipped. A 50,000-record check reports on nightly and must not grow faster than the
-library. The 100k limits and the 400-entry bibliography timing are dropped; document
+gzipped. A 50,000-record check reports on nightly against the same numbers as a stretch
+goal and must not grow faster than the library; a miss is studied, not blocking. The 100k limits and the 400-entry bibliography timing are dropped; document
 tools set their own later. Where each check runs: #1536.
 
 ## 0027 Process until 1.0 (with 0011, 0015 and 0017)
