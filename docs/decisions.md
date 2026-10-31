@@ -206,23 +206,39 @@ Synchronous libnotify check tokens cover lock/unlock and Core Graphics session
 changes before delayed observer callbacks. A bracketed comparison of the SDK's
 sleep-inclusive and awake-only monotonic clocks also retires the epoch when
 their offset changes; unavailable or wider-than-100 µs samples refuse. The
-1,500 ms lifetime is checked against both active and sleep-inclusive time;
-unavailable clocks and epoch exhaustion refuse. Expiry uses `paste-expired`.
+1,500 ms lifetime is checked against both active and sleep-inclusive time.
+A measured timeout or known lifecycle change uses `paste-expired`; missing,
+failed, backwards or exhausted safety evidence uses `paste-unavailable` (#1529).
 Own writes and the final checks/post share the target-state lock, with a unique
 current write token, so superseded work cannot post even with reused counters.
 
-The macOS capture includes an opaque WindowServer window number. Capture and
-final posting read only numeric PID, window number and layer metadata through
-the already-locked Core Graphics/Core Foundation bindings. More than one visible
-window in that app, an unusual window layer or unavailable metadata is ambiguous
-and only copies. A final app/window mismatch uses `target-changed`. There is no
-AX provider access, window-name lookup, screen capture, new permission or hidden
-polling. `paste/macos/safety.rs` is a scoped unsafe exception for the SDK clock
-and observer registration; each block states its ownership/threading contract.
-It uses already-locked `block2` and `objc2-core-foundation` directly, without a
-new binding package. Clock and notification logic has synthetic coverage;
-real OS notification producers and native keyboard placement still require
-qualification. Clock sampling has its stated 100 µs resolution limit.
+The WindowServer window-count heuristic is removed after #1529 review. Neither
+the active app nor front-to-back ordering proves keyboard ownership: a foreign
+nonactivating text panel can be key while Word stays active. Refusing every
+multiwindow app is also not an acceptable focused-window implementation.
+The public Accessibility focused-window/owner queries require an AX read and
+trust, which this decision and #1241's PostEvent-only contract do not authorize.
+Pending an explicit maintainer decision, the macOS adapter supplies no focused
+window proof and copies with `paste-unavailable`, for single- and multiwindow
+apps, without requesting permission or claiming an unchanged target changed.
+The maintainer options are a bounded, identity-only AX exception using existing
+grants with a copied fallback, or retaining PostEvent-only copy-only behavior.
+No exception or new permission prompt has been implemented.
+
+Even with an approved focused-window proof, public `CGEventPostToPid` addresses
+a process, not a window. Public APIs do not provide an atomic foreign-window
+binding for this shortcut. All ownership locks, lifecycle checks and clock
+queries now precede the final target check, which immediately precedes posting;
+Ibis takes no lock or additional guard query in that interval. This narrows the
+check-to-post gap; it does not eliminate an OS focus change between the check
+and PID-directed dispatch, and Ibis must not claim otherwise.
+
+There is no AX provider access, window-name lookup, screen capture, new
+permission or hidden polling. `paste/macos/safety.rs` remains a scoped unsafe
+exception for SDK clocks and observer registration. It uses already-locked
+`block2` directly. Clock/notification logic has synthetic coverage; real OS
+producers and any future native keyboard placement still require qualification.
+Clock sampling has its stated 100 µs resolution limit.
 
 Other macOS native calls use objc2's generated AppKit and Core Graphics
 bindings. On Windows, `winsafe` supplies safe Win32 calls (the foreground
@@ -233,15 +249,22 @@ does one small module get a scoped `#[allow(unsafe_code)]`, with its crate's
 lint relaxed to `deny`, a safety comment on every block and independent
 security-boundary review (2026-10-27, #1133).
 
-A Windows copy freezes its target, HWND and picker generation before writing.
+A Windows copy freezes its target, HWND, picker generation and both safety
+timestamps at native request entry, before waiting on target state or clipboard
+I/O (#1529). Clipboard publication only adds the proved final sequence and write
+token; it never mints a new timestamp after a suspension or delay.
 Its one-use delivery ticket records the final clipboard sequence only after
 closing Ibis's own successful write and proving that no foreign write took
 over, including writes that keep the owner HWND. Neither a notice nor its
 worker adopts a later capture or clipboard baseline, and delivery expires
-1,500 ms after the write receipt. Final checks revalidate that sequence,
+1,500 ms after the frozen pre-I/O start. Final checks revalidate that sequence,
 generation, hidden picker, HWND and process after the password query and
 again after the injection lock and any key-release recovery waits. Windows
 never reads clipboard contents to prove ownership.
+Changed clipboard sequence uses `clipboard-changed`: "Copied. The clipboard
+changed; copy the citation again". Unavailable sequence evidence uses
+`paste-unavailable`, with the platform's manual-paste key. The failure that
+refused injection is retained rather than re-querying mutable state to word it.
 
 The #1520 audit also moves Windows expiry before foreground restoration and
 refuses invalid, hidden or minimised HWNDs. A sleep-inclusive `GetTickCount64`

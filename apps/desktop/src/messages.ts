@@ -494,6 +494,7 @@ export const copiedNoticeText = {
     "no-target": "Copied. No app to paste into",
     "unknown-app": "Copied. Automatic paste is not verified for this app",
     "target-changed": "Copied. The target app or window changed",
+    "clipboard-changed": "Copied. The clipboard changed; copy the citation again",
     "paste-expired": "Copied. The paste expired; paste it yourself",
     "no-permission": "Copied. Ibis needs your OK to paste",
     "terminal": "Copied. Not pasted into a terminal",

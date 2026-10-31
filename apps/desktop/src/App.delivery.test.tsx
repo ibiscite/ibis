@@ -56,6 +56,8 @@ test.each([
   ["sleep and wake", (h: Harness) => { h.lifecycle.epoch += 2; }, "Copied. The paste expired; paste it yourself"],
   ["lock and unlock", (h: Harness) => { h.lifecycle.epoch += 2; }, "Copied. The paste expired; paste it yourself"],
   ["long delay", (h: Harness) => { h.lifecycle.elapsed += 1500; }, "Copied. The paste expired; paste it yourself"],
+  ["safety check unavailable", (h: Harness) => { h.lifecycle.available = false; }, "Copied. Press ⌘V to paste."],
+  ["clipboard changed", (h: Harness) => { h.clipboard.sequence += 1; }, "Copied. The clipboard changed; copy the citation again"],
   ["another window", (h: Harness) => { h.target.window = 200; }, "Copied. The target app or window changed"],
   ["closed window", (h: Harness) => { h.target.window = null; }, "Copied. The target app or window changed"],
   ["minimised window", (h: Harness) => { h.target.available = false; }, "Copied. The target app or window changed"],
@@ -71,6 +73,19 @@ test.each([
   expect(harness.document.text).toBe("Draft: [citation].");
   expect(harness.document.pastes).toEqual([]);
   expectReceipt(harness, message, "[@a]");
+});
+
+test.each(["one document window", "multiple document windows", "a foreign nonactivating panel"])("unproven macOS focus with %s copies with an unavailable reason", async () => {
+  const harness = await open();
+  // PostEvent-only capture cannot prove the globally focused window.
+  harness.target.window = null;
+  await choose(harness, "first");
+  await enter();
+  await finishCopy(harness);
+  await finishDelivery(harness);
+  expectReceipt(harness, "Copied. Press ⌘V to paste.", "[@a]");
+  expect(harness.clipboard.text).toBe("[@a]");
+  expect(harness.document.pastes).toEqual([]);
 });
 
 test("Enter waits for a preview, then copies and replaces the document selection exactly once", async () => {
@@ -269,7 +284,7 @@ test.each(["different text", "identical text"])("another clipboard owner's write
   expect(harness.clipboard).toMatchObject({ text, owner: "external", sequence: 2 });
   expect(harness.document.text).toBe("Draft: [citation].");
   expect(harness.document.pastes).toEqual([]);
-  expectReceipt(harness, "Copied. Press ⌘V to paste", "[@a]");
+  expectReceipt(harness, "Copied. The clipboard changed; copy the citation again", "[@a]");
 });
 
 test.each(["preview", "copy"] as const)("a failed %s leaves the document and clipboard unchanged and gives no success receipt", async (stage) => {

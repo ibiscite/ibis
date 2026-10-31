@@ -50,9 +50,8 @@ objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std"
 # Already locked through Tauri. Reads what a key types on the active layout, so
 # a shortcut letter follows the layout (#196), and posts ⌘V to the app the
 # picker was opened from (#27).
-objc2-core-graphics = { version = "0.3.2", default-features = false, features = ["std", "libc", "CGEvent", "CGEventSource", "CGEventTypes", "CGRemoteOperation", "CGWindow"] }
-# Already locked through Tauri; numeric window metadata and lifecycle observers.
-objc2-core-foundation = { version = "0.3.2", default-features = false, features = ["std", "CFArray", "CFDictionary", "CFNumber", "CFString"] }
+objc2-core-graphics = { version = "0.3.2", default-features = false, features = ["std", "libc", "CGEvent", "CGEventSource", "CGEventTypes", "CGRemoteOperation"] }
+# Already locked through Tauri; lifecycle observers.
 block2 = "0.6.2"
 # Already locked through Tauri. Reads whether macOS opened Ibis as a login
 # item (#525), so the picker stays hidden then.

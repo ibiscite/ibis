@@ -119,16 +119,23 @@ test.each(["macos", "windows", "linux"] as const)("%s receipt updates announce t
 test.each([
   ["unknown-app", "Copied. Automatic paste is not verified for this app"],
   ["target-changed", "Copied. The target app or window changed"],
+  ["clipboard-changed", "Copied. The clipboard changed; copy the citation again"],
   ["paste-expired", "Copied. The paste expired; paste it yourself"],
   ["secure-input", "Copied. Secure typing is on, possibly in another app. Press ⌘V to paste."],
   ["paste-unavailable", "Copied. Press ⌘V to paste."],
 ])("%s offers manual paste without claiming the target is a password field", (reason, message) => {
   const copy = copied("[@synthetic]", reason);
-  expect(noticeTitle(copy)).toBe(message);
+  expect(noticeTitle(copy, "macos")).toBe(message);
   const root = document.createElement("div");
   renderNotice(root, "macos")(copy);
   expect(root.querySelector("strong")?.textContent).toBe(message);
   expect(root.querySelector(".copied-notice")?.getAttribute("data-outcome")).toBe("copied");
+});
+
+test.each(["windows", "linux"] as const)("unavailable safety evidence uses %s's manual paste key", (platform) => {
+  const root = document.createElement("div");
+  renderNotice(root, platform)(copied("[@invented]", "paste-unavailable"));
+  expect(root.querySelector("strong")?.textContent).toBe("Copied. Press Ctrl+V to paste.");
 });
 
 test("the app's timer fades the notice out, and showing it again brings it back", () => {

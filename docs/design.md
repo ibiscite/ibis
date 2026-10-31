@@ -1066,13 +1066,20 @@ that owns its area in ROADMAP.md.
    read cancels waiting Enter; a later library update never replays it.
    Automatic paste is limited to recognised apps with a verified paste shortcut;
    an unknown app copies with "Copied. Automatic paste is not verified for this app".
-   A format choice never grants paste safety. A changed, closed, minimised or
-   unproven target window copies with "Copied. The target app or window changed".
+   A format choice never grants paste safety. A proven target that changes,
+   closes or is minimised copies with "Copied. The target app or window changed".
+   An unavailable focus or safety proof uses `paste-unavailable` and the system's
+   manual-paste key; it never claims that the target changed or the paste expired.
+   A replaced clipboard says "Copied. The clipboard changed; copy the citation again".
    On macOS, sleep, lock and session changes expire pending delivery. Expired
    deliveries copy with "Copied. The paste expired; paste it yourself".
-   Each refusal keeps the citation
-   on the clipboard and never retries the paste. On macOS, ambiguous visible
-   windows in the target app also copy; no window title or document text is read.
+   A refusal never retries or replaces another clipboard owner's contents.
+   No window title or document text is read. Window count and front-to-back
+   order cannot establish keyboard focus, including with nonactivating panels.
+   Under decision 0029's current PostEvent-only contract, macOS copies with
+   `paste-unavailable` until a permitted focused-window proof is agreed; this
+   applies to single- and multiwindow apps and does not call an unchanged window
+   "changed". Restoring multiwindow auto-paste needs that maintainer decision.
 4. Open in under 100 ms with the last snapshot; text received by Search during
    opening is kept (see **Opening** for X11 input routing). The Linux smoke
    types once as soon as the picker is mapped, without waiting for focus.

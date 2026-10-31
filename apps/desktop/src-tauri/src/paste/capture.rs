@@ -73,31 +73,6 @@ pub(crate) fn captured(system: System, front: Option<Front>, own: i32) -> Option
     })
 }
 
-#[cfg(any(target_os = "macos", test))]
-pub(super) struct WindowMetadata {
-    pub(super) pid: i32,
-    pub(super) id: u32,
-    pub(super) layer: i32,
-}
-
-/// A single visible window is the only metadata-only proof of the target.
-/// Additional panels at any layer make keyboard ownership ambiguous.
-#[cfg(any(target_os = "macos", test))]
-pub(super) fn unambiguous_window(windows: impl IntoIterator<Item = Option<WindowMetadata>>, pid: i32) -> Option<u32> {
-    let mut found = None;
-    for window in windows {
-        let window = window?;
-        if window.pid != pid {
-            continue;
-        }
-        if found.is_some() || window.layer != 0 || window.id == 0 {
-            return None;
-        }
-        found = Some(window.id);
-    }
-    found
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -162,22 +137,17 @@ mod tests {
     }
 
     #[test]
-    fn window_metadata_refuses_dialogs_at_every_layer_missing_and_ambiguous_windows() {
-        let window = |pid, id, layer| Some(WindowMetadata { pid, id, layer });
+    fn an_active_app_is_kept_without_inventing_a_keyboard_window_proof() {
+        let front = Front {
+            window: None,
+            ..front(42)
+        };
+        let captured = captured(System::Macos, Some(front), 7).unwrap_or_else(|| panic!("capture"));
+        assert_eq!(captured.pid, Some(42));
+        assert!(captured.target.app.is_some());
         assert_eq!(
-            unambiguous_window([window(42, 100, 0), window(7, 200, 0)], 42),
-            Some(100)
+            captured.window, None,
+            "activation does not establish the global keyboard owner"
         );
-        for windows in [
-            vec![],
-            vec![None],
-            vec![window(7, 100, 0)],
-            vec![window(42, 0, 0)],
-            vec![window(42, 100, 1)],
-            vec![window(42, 100, 0), window(42, 200, 0)],
-            vec![window(42, 100, 0), window(42, 200, 8)],
-        ] {
-            assert_eq!(unambiguous_window(windows, 42), None);
-        }
     }
 }

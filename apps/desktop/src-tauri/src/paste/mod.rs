@@ -50,6 +50,28 @@ struct SafetyStamp {
     elapsed: Duration,
 }
 
+#[derive(Clone, Copy)]
+enum SafetyFailure {
+    Expired,
+    Unavailable,
+}
+
+impl SafetyFailure {
+    fn reason(self) -> CopyReason {
+        match self {
+            Self::Expired => CopyReason::PasteExpired,
+            Self::Unavailable => CopyReason::PasteUnavailable,
+        }
+    }
+
+    fn result(self) -> PostResult {
+        match self {
+            Self::Expired => PostResult::Expired,
+            Self::Unavailable => PostResult::Unavailable,
+        }
+    }
+}
+
 impl SafetyStamp {
     fn now() -> Self {
         #[cfg(target_os = "macos")]
@@ -66,11 +88,26 @@ impl SafetyStamp {
         }
     }
 
+    fn check(self, now: Self) -> Result<(), SafetyFailure> {
+        if [self.epoch, now.epoch]
+            .iter()
+            .any(|epoch| *epoch == 0 || *epoch == u64::MAX)
+        {
+            return Err(SafetyFailure::Unavailable);
+        }
+        let age = now
+            .elapsed
+            .checked_sub(self.elapsed)
+            .ok_or(SafetyFailure::Unavailable)?;
+        if self.epoch != now.epoch || age >= LATE {
+            return Err(SafetyFailure::Expired);
+        }
+        Ok(())
+    }
+
+    #[cfg(test)]
     fn valid_at(self, now: Self) -> bool {
-        self.epoch != 0
-            && self.epoch != u64::MAX
-            && self.epoch == now.epoch
-            && now.elapsed.checked_sub(self.elapsed).is_some_and(|age| age < LATE)
+        self.check(now).is_ok()
     }
 }
 
@@ -272,7 +309,7 @@ fn delivery_decision(captured: &Captured, permission: PastePermission) -> Decisi
         Decision::Paste | Decision::Copy(CopyReason::NoPermission)
             if captured.target.system == System::Macos && captured.window.is_none() =>
         {
-            Decision::Copy(CopyReason::TargetChanged)
+            Decision::Copy(CopyReason::PasteUnavailable)
         }
         decision => decision,
     }
@@ -310,23 +347,32 @@ trait Desk {
     /// Show where to give that permission; at most once per run.
     fn ask_to_post(&self);
     /// Restore only a proven target before waiting for it to come forward.
-    fn prepare(&self) -> bool {
-        true
+    fn prepare(&self) -> Result<(), CopyReason> {
+        Ok(())
     }
     /// The app in front, or `None` once the picker has been shown again.
-    fn frontmost(&self) -> Option<Front>;
+    /// A failed proof must keep its reason while waiting for that app.
+    fn frontmost(&self) -> Result<Option<Front>, CopyReason>;
     /// Finish with this platform's proof and final guards. On macOS all
     /// checks and posting run together in one main-thread task.
     fn finish(&self, request: DeliveryRequest, proof: &Self::Proof) -> PostResult;
     fn wait(&self, time: Duration);
 }
 
-/// Each system keeps its own immutable evidence; only target and write time
-/// are needed by the shared policy and focus-wait flow.
+/// Each system keeps immutable target evidence and lifetime anchors for the
+/// shared policy. Windows starts its lifetime before clipboard I/O.
 trait CopyEvidence {
     fn captured(&self) -> Option<&Captured>;
     fn written(&self) -> Instant;
     fn stamp(&self) -> SafetyStamp;
+
+    fn check_age(&self, now: SafetyStamp) -> Result<(), SafetyFailure> {
+        self.stamp().check(now)?;
+        if Instant::now() >= self.written() + LATE {
+            return Err(SafetyFailure::Expired);
+        }
+        Ok(())
+    }
 }
 
 #[cfg(any(not(target_os = "windows"), test))]
@@ -392,6 +438,7 @@ enum PostResult {
     Unavailable,
     Expired,
     TargetChanged,
+    ClipboardChanged,
     #[cfg(any(target_os = "windows", test))]
     SecureField,
     #[cfg(any(target_os = "windows", test))]
@@ -413,8 +460,8 @@ trait PostDesk {
 
 #[cfg(any(target_os = "macos", test))]
 fn checked_post(desk: &impl PostDesk, request: &PostRequest) -> PostResult {
-    if !request.stamp.valid_at(desk.stamp()) {
-        return PostResult::Expired;
+    if let Err(failure) = request.stamp.check(desk.stamp()) {
+        return failure.result();
     }
     if desk.now() >= request.deadline {
         return PostResult::Unavailable;
@@ -443,22 +490,22 @@ fn checked_post(desk: &impl PostDesk, request: &PostRequest) -> PostResult {
         Some(false) => {}
     }
     if desk.change_count() != request.change_count {
-        return PostResult::Refused;
+        return PostResult::ClipboardChanged;
     }
     if desk.now() >= request.deadline {
         return PostResult::Unavailable;
     }
-    if !request.stamp.valid_at(desk.stamp()) {
-        return PostResult::Expired;
+    if let Err(failure) = request.stamp.check(desk.stamp()) {
+        return failure.result();
     }
+    if desk.now() >= request.deadline {
+        return PostResult::Unavailable;
+    }
+    // All locks, clock and lifecycle queries precede this last target check.
+    // Posting is still process-directed: public macOS APIs cannot atomically
+    // bind Command-V to a foreign window. Keep this remaining gap explicit.
     if !target_matches() {
         return PostResult::TargetChanged;
-    }
-    if !request.stamp.valid_at(desk.stamp()) {
-        return PostResult::Expired;
-    }
-    if desk.now() >= request.deadline {
-        return PostResult::Unavailable;
     }
     if desk.post(request.pid) {
         PostResult::Pasted
@@ -514,11 +561,11 @@ fn deliver<D: Desk>(desk: &D, proof: Option<&D::Proof>, enabled: bool) -> Delive
                 return copied(Some(CopyReason::NoTarget));
             };
             let deadline = proof.written() + LATE;
-            if Instant::now() >= deadline || !proof.stamp().valid_at(desk.stamp()) {
-                return copied(Some(CopyReason::PasteExpired));
+            if let Err(failure) = proof.check_age(desk.stamp()) {
+                return copied(Some(failure.reason()));
             }
-            if !desk.prepare() {
-                return copied(Some(CopyReason::TargetChanged));
+            if let Err(reason) = desk.prepare() {
+                return copied(Some(reason));
             }
             let Some(pid) = captured.pid else {
                 return copied(None);
@@ -528,9 +575,16 @@ fn deliver<D: Desk>(desk: &D, proof: Option<&D::Proof>, enabled: bool) -> Delive
             let back = |front: Option<Front>| front.is_some_and(|front| front.pid == pid && front.id.as_deref() == id);
             let started = Instant::now();
             let mut checks = 0;
-            while !back(desk.frontmost()) {
-                if Instant::now() >= deadline || !proof.stamp().valid_at(desk.stamp()) {
-                    return copied(Some(CopyReason::PasteExpired));
+            loop {
+                let front = match desk.frontmost() {
+                    Ok(front) => front,
+                    Err(reason) => return copied(Some(reason)),
+                };
+                if back(front) {
+                    break;
+                }
+                if let Err(failure) = proof.check_age(desk.stamp()) {
+                    return copied(Some(failure.reason()));
                 }
                 if checks >= RETURN_CHECKS || started.elapsed() >= RETURN_LIMIT {
                     return copied(Some(CopyReason::TargetChanged));
@@ -552,6 +606,7 @@ fn deliver<D: Desk>(desk: &D, proof: Option<&D::Proof>, enabled: bool) -> Delive
                 PostResult::Unavailable => copied(Some(CopyReason::PasteUnavailable)),
                 PostResult::Expired => copied(Some(CopyReason::PasteExpired)),
                 PostResult::TargetChanged => copied(Some(CopyReason::TargetChanged)),
+                PostResult::ClipboardChanged => copied(Some(CopyReason::ClipboardChanged)),
                 #[cfg(any(target_os = "windows", test))]
                 PostResult::SecureField => copied(Some(CopyReason::SecureField)),
                 #[cfg(any(target_os = "windows", test))]
@@ -605,6 +660,14 @@ pub(crate) struct DeliveryTicket<W> {
     stamp: SafetyStamp,
 }
 
+/// Identity and time at request entry, before target locks or clipboard I/O.
+#[cfg(any(target_os = "windows", test))]
+pub(crate) struct CopyAttempt<W> {
+    target: Option<CopyTarget<W>>,
+    written: Instant,
+    stamp: SafetyStamp,
+}
+
 #[cfg(any(target_os = "windows", test))]
 impl<W> CopyEvidence for DeliveryTicket<W> {
     fn captured(&self) -> Option<&Captured> {
@@ -619,46 +682,44 @@ impl<W> CopyEvidence for DeliveryTicket<W> {
 }
 
 #[cfg(target_os = "windows")]
-pub(crate) fn copy_target(app: &AppHandle) -> Option<CopyTarget<windows::Window>> {
-    let state = app.state::<LastTarget>();
-    let last = state.0.lock().ok()?;
-    last.target.clone()
+pub(crate) fn begin_copy(app: &AppHandle) -> CopyAttempt<windows::Window> {
+    let stamp = SafetyStamp::now();
+    let written = Instant::now();
+    let generation = app.state::<crate::picker::PickerGeneration>().current();
+    let target = app
+        .state::<LastTarget>()
+        .0
+        .lock()
+        .ok()
+        .and_then(|last| last.target.clone())
+        .filter(|target| target.generation == generation);
+    CopyAttempt { target, written, stamp }
 }
 
 #[cfg(target_os = "windows")]
 pub(crate) fn remember_copy(
     app: &AppHandle,
-    target: Option<CopyTarget<windows::Window>>,
+    attempt: CopyAttempt<windows::Window>,
     sequence: Option<u32>,
 ) -> Option<u32> {
     let state = app.state::<LastTarget>();
     let mut last = state.0.lock().ok()?;
-    remember_ticket(&mut last.pending, target, sequence)
-}
-
-#[cfg(target_os = "windows")]
-fn remember_ticket<W>(
-    pending: &mut Option<DeliveryTicket<W>>,
-    target: Option<CopyTarget<W>>,
-    sequence: Option<u32>,
-) -> Option<u32> {
-    remember_ticket_at(pending, target, sequence, SafetyStamp::now())
+    remember_ticket(&mut last.pending, attempt, sequence)
 }
 
 #[cfg(any(target_os = "windows", test))]
-fn remember_ticket_at<W>(
+fn remember_ticket<W>(
     pending: &mut Option<DeliveryTicket<W>>,
-    target: Option<CopyTarget<W>>,
+    attempt: CopyAttempt<W>,
     sequence: Option<u32>,
-    stamp: SafetyStamp,
 ) -> Option<u32> {
-    *pending = target.zip(sequence).and_then(|(target, sequence)| {
+    *pending = attempt.target.zip(sequence).and_then(|(target, sequence)| {
         Some(DeliveryTicket {
             token: write_token()?,
             target,
             sequence,
-            written: Instant::now(),
-            stamp,
+            written: attempt.written,
+            stamp: attempt.stamp,
         })
     });
     pending.as_ref().map(|ticket| ticket.token)
@@ -710,12 +771,16 @@ struct TicketDeskGuard<'a, D: TicketDesk> {
 
 #[cfg(any(target_os = "windows", test))]
 impl<D: TicketDesk> TicketDeskGuard<'_, D> {
-    fn current(&self) -> bool {
-        // Copy precedes exactly one dismiss_picker, which advances the
-        // generation. Any additional show/dismiss cancels this delivery.
-        self.desk.generation() == self.ticket.target.generation.wrapping_add(1)
-            && self.desk.picker_hidden()
-            && self.desk.clipboard_sequence() == Some(self.ticket.sequence)
+    fn current(&self) -> Result<(), CopyReason> {
+        // A stale presentation is distinct from replaced or unreadable clipboard evidence.
+        if self.desk.generation() != self.ticket.target.generation.wrapping_add(1) || !self.desk.picker_hidden() {
+            return Err(CopyReason::TargetChanged);
+        }
+        match self.desk.clipboard_sequence() {
+            None => Err(CopyReason::PasteUnavailable),
+            Some(sequence) if sequence != self.ticket.sequence => Err(CopyReason::ClipboardChanged),
+            Some(_) => Ok(()),
+        }
     }
 
     fn in_front(&self) -> bool {
@@ -726,12 +791,41 @@ impl<D: TicketDesk> TicketDeskGuard<'_, D> {
             .is_some_and(|window| self.desk.window_in_front(window))
     }
 
-    fn target_in_front(&self, request: &DeliveryRequest) -> bool {
-        self.desk
+    fn target_in_front(&self, request: &DeliveryRequest) -> Result<(), CopyReason> {
+        self.current()?;
+        if self
+            .desk
             .frontmost()
             .is_some_and(|front| front.pid == request.pid && front.id.as_deref() == Some(&request.id))
-            && self.current()
             && self.in_front()
+        {
+            Ok(())
+        } else {
+            Err(CopyReason::TargetChanged)
+        }
+    }
+
+    fn checked(&self, request: &DeliveryRequest) -> Result<(), PostResult> {
+        self.ticket
+            .check_age(self.desk.stamp())
+            .map_err(SafetyFailure::result)?;
+        if Instant::now() >= request.deadline {
+            return Err(PostResult::Expired);
+        }
+        self.target_in_front(request).map_err(|reason| match reason {
+            CopyReason::TargetChanged => PostResult::TargetChanged,
+            CopyReason::ClipboardChanged => PostResult::ClipboardChanged,
+            _ => PostResult::Unavailable,
+        })?;
+        // Windows target/provider queries can wait. Recheck the immutable
+        // pre-I/O deadline after them; SendInput has its own final native guard.
+        self.ticket
+            .check_age(self.desk.stamp())
+            .map_err(SafetyFailure::result)?;
+        if Instant::now() >= request.deadline {
+            return Err(PostResult::Expired);
+        }
+        Ok(())
     }
 }
 
@@ -742,7 +836,6 @@ impl<D: TicketDesk> Desk for TicketDeskGuard<'_, D> {
     fn stamp(&self) -> SafetyStamp {
         self.desk.stamp()
     }
-
     fn release_keys(&self) -> bool {
         self.desk.release_keys()
     }
@@ -752,34 +845,35 @@ impl<D: TicketDesk> Desk for TicketDeskGuard<'_, D> {
     fn ask_to_post(&self) {
         self.desk.ask_to_post();
     }
-    fn prepare(&self) -> bool {
-        self.current()
-            && self
-                .ticket
-                .target
-                .window
-                .as_ref()
-                .zip(self.ticket.target.captured.as_ref().and_then(|c| c.pid))
-                .is_some_and(|(window, pid)| self.desk.restore(window, pid))
-    }
-    fn frontmost(&self) -> Option<Front> {
-        (self.current() && self.in_front())
-            .then(|| self.desk.frontmost())
-            .flatten()
-    }
-    fn finish(&self, request: DeliveryRequest, _: &Self::Proof) -> PostResult {
-        if !self.ticket.stamp.valid_at(self.desk.stamp()) || Instant::now() >= request.deadline {
-            return PostResult::Expired;
+
+    fn prepare(&self) -> Result<(), CopyReason> {
+        self.current()?;
+        if self
+            .ticket
+            .target
+            .window
+            .as_ref()
+            .zip(self.ticket.target.captured.as_ref().and_then(|c| c.pid))
+            .is_some_and(|(window, pid)| self.desk.restore(window, pid))
+        {
+            Ok(())
+        } else {
+            Err(CopyReason::TargetChanged)
         }
-        if !self.target_in_front(&request) {
-            return PostResult::Refused;
+    }
+
+    fn frontmost(&self) -> Result<Option<Front>, CopyReason> {
+        self.current()?;
+        Ok(self.in_front().then(|| self.desk.frontmost()).flatten())
+    }
+
+    fn finish(&self, request: DeliveryRequest, _: &Self::Proof) -> PostResult {
+        if let Err(result) = self.checked(&request) {
+            return result;
         }
         let secure = self.desk.secure_field(request.pid);
-        if !self.ticket.stamp.valid_at(self.desk.stamp()) || Instant::now() >= request.deadline {
-            return PostResult::Expired;
-        }
-        if !self.target_in_front(&request) || Instant::now() >= request.deadline {
-            return PostResult::Refused;
+        if let Err(result) = self.checked(&request) {
+            return result;
         }
         match secure {
             Some(true) => return PostResult::SecureField,
@@ -789,23 +883,24 @@ impl<D: TicketDesk> Desk for TicketDeskGuard<'_, D> {
         let Some(key) = self.desk.paste_key() else {
             return PostResult::Refused;
         };
-        // No GetClipboardData/read_text: even a read following a sequence
-        // check could race with a foreign delayed-rendering owner. The native
-        // injection rechecks this guard after its lock and key-up retries.
-        if self.desk.post_if(request.pid, key, || {
-            self.target_in_front(&request)
-                && Instant::now() < request.deadline
-                && self.ticket.stamp.valid_at(self.desk.stamp())
+        // Remember the failure that actually prevented injection, rather than
+        // re-querying mutable evidence and inventing a different refusal reason.
+        let refused = std::cell::Cell::new(None);
+        if self.desk.post_if(request.pid, key, || match self.checked(&request) {
+            Ok(()) => true,
+            Err(result) => {
+                refused.set(Some(result));
+                false
+            }
         }) {
             PostResult::Pasted
         } else if self.desk.keys_unreleased() {
             PostResult::KeyReleaseFailed
-        } else if !self.ticket.stamp.valid_at(self.desk.stamp()) || Instant::now() >= request.deadline {
-            PostResult::Expired
         } else {
-            PostResult::Refused
+            refused.get().unwrap_or(PostResult::Refused)
         }
     }
+
     fn wait(&self, time: Duration) {
         self.desk.wait(time);
     }
@@ -1040,8 +1135,8 @@ impl Desk for CopyOnly {
         false
     }
     fn ask_to_post(&self) {}
-    fn frontmost(&self) -> Option<Front> {
-        None
+    fn frontmost(&self) -> Result<Option<Front>, CopyReason> {
+        Ok(None)
     }
     fn finish(&self, _: DeliveryRequest, _: &CopyProof) -> PostResult {
         PostResult::Refused
@@ -1076,6 +1171,8 @@ mod tests {
         front_after_queue: Option<i32>,
         replace_during_check: bool,
         after_check: Option<fn(&Fake)>,
+        focus_after_final_check: bool,
+        posted_windows: RefCell<Vec<Option<u32>>>,
         checks: RefCell<Vec<&'static str>>,
         posts: RefCell<Vec<i32>>,
         pending: PendingPost,
@@ -1103,6 +1200,8 @@ mod tests {
                 front_after_queue: None,
                 replace_during_check: false,
                 after_check: None,
+                focus_after_final_check: false,
+                posted_windows: RefCell::default(),
                 checks: RefCell::default(),
                 posts: RefCell::default(),
                 pending: PendingPost::default(),
@@ -1133,8 +1232,8 @@ mod tests {
         fn ask_to_post(&self) {
             self.asked.set(self.asked.get() + 1);
         }
-        fn frontmost(&self) -> Option<Front> {
-            self.front()
+        fn frontmost(&self) -> Result<Option<Front>, CopyReason> {
+            Ok(self.front())
         }
         fn finish(&self, request: DeliveryRequest, proof: &CopyProof) -> PostResult {
             let request = PostRequest::new(request, proof).queued(self.clock.get());
@@ -1163,6 +1262,17 @@ mod tests {
             self.clock.get()
         }
         fn stamp(&self) -> SafetyStamp {
+            if self.focus_after_final_check
+                && self
+                    .checks
+                    .borrow()
+                    .iter()
+                    .filter(|&&check| check == "foreground")
+                    .count()
+                    >= 2
+            {
+                self.window.set(Some(200));
+            }
             self.stamp.get()
         }
         fn current(&self, presentation: u64) -> bool {
@@ -1188,6 +1298,7 @@ mod tests {
             self.secure.get()
         }
         fn post(&self, pid: i32) -> bool {
+            self.posted_windows.borrow_mut().push(self.window.get());
             self.checks.borrow_mut().push("post");
             self.posts.borrow_mut().push(pid);
             true
@@ -1311,6 +1422,47 @@ mod tests {
 
     #[test]
     #[cfg_attr(target_os = "linux", ignore = "Linux never pastes")]
+    fn nothing_that_can_wait_runs_between_the_last_window_check_and_posting() {
+        let desk = Fake {
+            focus_after_final_check: true,
+            ..Fake::new()
+        };
+        assert_eq!(deliver(&desk, Some(&proof()), true), pasted());
+        assert_eq!(
+            *desk.posted_windows.borrow(),
+            [Some(100)],
+            "Command-V must not reach window B"
+        );
+        assert_eq!(
+            &desk.checks.borrow()[desk.checks.borrow().len() - 2..],
+            ["foreground", "post"]
+        );
+    }
+
+    #[test]
+    #[cfg_attr(target_os = "linux", ignore = "Linux never pastes")]
+    fn unavailable_safety_evidence_is_not_reported_as_expiry() {
+        for stamp in [
+            SafetyStamp {
+                epoch: 0,
+                elapsed: Duration::ZERO,
+            },
+            SafetyStamp {
+                epoch: u64::MAX,
+                elapsed: Duration::ZERO,
+            },
+        ] {
+            let desk = Fake {
+                stamp: Cell::new(stamp),
+                ..Fake::new()
+            };
+            assert_eq!(deliver(&desk, Some(&proof()), true), copied(Some("paste-unavailable")));
+            assert!(desk.posts.borrow().is_empty());
+        }
+    }
+
+    #[test]
+    #[cfg_attr(target_os = "linux", ignore = "Linux never pastes")]
     fn a_changed_closed_minimised_or_unproven_window_never_receives_the_paste() {
         for window in [Some(200), None] {
             let desk = Fake {
@@ -1342,7 +1494,7 @@ mod tests {
                 id: "com.microsoft.word".into(),
             });
             target.window = None;
-            assert_eq!(deliver(&desk, Some(&proof), true), copied(Some("target-changed")));
+            assert_eq!(deliver(&desk, Some(&proof), true), copied(Some("paste-unavailable")));
             assert_eq!(desk.asked.get(), 0);
             assert!(desk.posts.borrow().is_empty());
         }
@@ -1514,7 +1666,7 @@ mod tests {
             replace_during_check: true,
             ..Fake::new()
         };
-        assert_eq!(deliver(&desk, Some(&proof()), true), copied(None));
+        assert_eq!(deliver(&desk, Some(&proof()), true), copied(Some("clipboard-changed")));
         assert!(desk.posts.borrow().is_empty());
         assert_eq!(*desk.checks.borrow(), ["foreground", "secure-input", "change-count"]);
     }
@@ -1745,6 +1897,9 @@ mod windows_tests {
         password: Option<bool>,
         password_queries: Option<std::sync::Arc<PasswordQueries>>,
         after_password: Option<fn(&Fake)>,
+        after_focus_wait: Option<fn(&Fake)>,
+        front_queries: Cell<u32>,
+        after_front_query: Option<fn(&Fake)>,
         posts: RefCell<Vec<(i32, u16)>>,
         generation: Cell<u64>,
         hidden: Cell<bool>,
@@ -1779,6 +1934,9 @@ mod windows_tests {
                 password: Some(false),
                 password_queries: None,
                 after_password: None,
+                after_focus_wait: None,
+                front_queries: Cell::new(0),
+                after_front_query: None,
                 posts: RefCell::default(),
                 generation: Cell::new(11),
                 hidden: Cell::new(true),
@@ -1867,13 +2025,18 @@ mod windows_tests {
             self.asked.set(self.asked.get() + 1);
         }
         fn frontmost(&self) -> Option<Front> {
-            self.fronts.borrow().first().map(|&pid| Front {
+            self.front_queries.set(self.front_queries.get() + 1);
+            let front = self.fronts.borrow().first().map(|&pid| Front {
                 id: Some(self.front_id.get().into()),
                 pid,
                 window: None,
                 name: None,
                 elevated: false,
-            })
+            });
+            if let Some(change) = self.after_front_query {
+                change(self);
+            }
+            front
         }
         fn secure_field(&self, pid: i32) -> Option<bool> {
             if let Some(change) = self.after_password {
@@ -1892,6 +2055,9 @@ mod windows_tests {
             let mut fronts = self.fronts.borrow_mut();
             if fronts.len() > 1 {
                 fronts.remove(0);
+            }
+            if let Some(change) = self.after_focus_wait {
+                change(self);
             }
         }
 
@@ -2004,7 +2170,7 @@ mod windows_tests {
                 Fake::new("other text"),
                 writer("winword.exe"),
                 true,
-                copied(Some("target-changed")),
+                copied(Some("clipboard-changed")),
             ),
             // The switch is off.
             (
@@ -2135,11 +2301,14 @@ mod windows_tests {
         for text_a in ["[@first]", "[@synthetic]"] {
             let desk = Fake::new("[@synthetic]");
             let pending = RefCell::new(None);
-            let token_a = remember_ticket_at(
+            let token_a = remember_ticket(
                 &mut pending.borrow_mut(),
-                Some(ticket().target),
+                CopyAttempt {
+                    target: Some(ticket().target),
+                    written: Instant::now(),
+                    stamp: desk.stamp.get(),
+                },
                 Some(17),
-                desk.stamp.get(),
             );
             // Delay A's claim until after B has copied on a new presentation.
             let delivery = |token, text| {
@@ -2153,7 +2322,15 @@ mod windows_tests {
                 ..ticket().target
             };
             // Even a repeated native sequence cannot alias a write token.
-            let token_b = remember_ticket_at(&mut pending.borrow_mut(), Some(target_b), Some(17), desk.stamp.get());
+            let token_b = remember_ticket(
+                &mut pending.borrow_mut(),
+                CopyAttempt {
+                    target: Some(target_b),
+                    written: Instant::now(),
+                    stamp: desk.stamp.get(),
+                },
+                Some(17),
+            );
             assert_ne!(token_a, token_b);
             desk.generation.set(13);
             assert_eq!(delivery(token_a, text_a), copied(None));
@@ -2180,7 +2357,11 @@ mod windows_tests {
             desk.sequence.set(sequence);
             assert_eq!(
                 deliver_ticket(&desk, &frozen, "[@synthetic]", true),
-                copied(Some("target-changed"))
+                copied(Some(if sequence.is_some() {
+                    "clipboard-changed"
+                } else {
+                    "paste-unavailable"
+                }))
             );
             assert_eq!(desk.clipboard_reads.get(), 0);
             assert!(desk.restores.borrow().is_empty());
@@ -2193,6 +2374,91 @@ mod windows_tests {
         ));
         assert_eq!(desk.clipboard_reads.get(), 0);
         assert_eq!(*desk.restores.borrow(), [(100, 42)]);
+    }
+
+    #[test]
+    fn a_replaced_or_unavailable_clipboard_has_its_own_refusal_reason() {
+        for (sequence, reason) in [(Some(18), "clipboard-changed"), (None, "paste-unavailable")] {
+            let desk = Fake::new("[@synthetic]");
+            desk.sequence.set(sequence);
+            assert_eq!(
+                deliver_ticket(&desk, &ticket(), "[@synthetic]", true),
+                copied(Some(reason))
+            );
+            assert!(desk.events.borrow().is_empty());
+            assert!(desk.restores.borrow().is_empty());
+        }
+    }
+
+    #[test]
+    fn clipboard_failures_while_waiting_for_focus_keep_their_exact_reason() {
+        for (sequence, reason) in [(Some(18), "clipboard-changed"), (None, "paste-unavailable")] {
+            let desk = Fake {
+                after_focus_wait: Some(|desk| desk.sequence.set(None)),
+                ..Fake::new("[@synthetic]")
+            };
+            let mut desk = desk;
+            if sequence.is_some() {
+                desk.after_focus_wait = Some(|desk| desk.sequence.set(Some(18)));
+            }
+            desk.fronts.replace(vec![7, 42]);
+            assert_eq!(
+                deliver_ticket(&desk, &ticket(), "[@synthetic]", true),
+                copied(Some(reason))
+            );
+            assert!(desk.events.borrow().is_empty());
+        }
+    }
+
+    #[test]
+    fn expiry_during_final_target_queries_prevents_injection_even_when_the_target_is_unchanged() {
+        let desk = Fake {
+            after_front_query: Some(|desk| {
+                if desk.front_queries.get() >= 4 {
+                    desk.stamp.set(SafetyStamp {
+                        elapsed: LATE,
+                        ..desk.stamp.get()
+                    });
+                }
+            }),
+            ..Fake::new("[@synthetic]")
+        };
+        assert_eq!(
+            deliver_ticket(&desk, &ticket(), "[@synthetic]", true),
+            copied(Some("paste-expired"))
+        );
+        assert!(desk.events.borrow().is_empty());
+    }
+
+    #[test]
+    fn suspension_during_clipboard_io_or_before_remembering_does_not_refresh_delivery_age() {
+        for phase in ["clipboard write", "before remember_copy"] {
+            let desk = Fake::new("[@synthetic]");
+            let before_io = desk.stamp.get();
+            let started = Instant::now();
+            let attempt = CopyAttempt {
+                target: Some(ticket().target),
+                written: started,
+                stamp: before_io,
+            };
+            // Clipboard I/O / publication completes only after resume.
+            desk.stamp.set(SafetyStamp {
+                elapsed: LATE,
+                ..before_io
+            });
+            let mut pending = None;
+            let token = remember_ticket(&mut pending, attempt, Some(17));
+            let ticket = take_ticket(&mut pending, token).unwrap_or_else(|| panic!("ticket"));
+            assert_eq!(
+                deliver_ticket(&desk, &ticket, "[@synthetic]", true),
+                copied(Some("paste-expired")),
+                "{phase}"
+            );
+            assert_eq!(ticket.written, started);
+            assert_eq!(ticket.stamp.elapsed, before_io.elapsed);
+            assert!(desk.events.borrow().is_empty());
+            assert!(desk.restores.borrow().is_empty());
+        }
     }
 
     #[test]
@@ -2338,7 +2604,7 @@ mod windows_tests {
             },
             |desk| desk.front_id.set("org.example.other"),
         ];
-        for change in changes {
+        for (index, change) in changes.into_iter().enumerate() {
             let desk = Fake {
                 // Model another delivery leaving Control down while this
                 // delivery waits to acquire the injection mutex.
@@ -2350,7 +2616,14 @@ mod windows_tests {
                 ..Fake::new("[@synthetic]")
             };
             desk.input_results.replace(VecDeque::from([0, 1]));
-            assert_eq!(deliver_ticket(&desk, &ticket(), "[@synthetic]", true), copied(None));
+            assert_eq!(
+                deliver_ticket(&desk, &ticket(), "[@synthetic]", true),
+                copied(Some(if index == 2 {
+                    "clipboard-changed"
+                } else {
+                    "target-changed"
+                }))
+            );
             assert_eq!(
                 *desk.input_requests.borrow(),
                 [vec![PasteEvent::ControlUp], vec![PasteEvent::ControlUp]]
@@ -2468,16 +2741,24 @@ mod windows_tests {
             },
             |desk| desk.front_id.set("org.example.other"),
         ];
-        for (change, password) in changes
+        for (index, change, password) in changes
             .into_iter()
-            .flat_map(|change| [Some(false), Some(true)].map(|password| (change, password)))
+            .enumerate()
+            .flat_map(|(index, change)| [Some(false), Some(true)].map(|password| (index, change, password)))
         {
             let desk = Fake {
                 after_password: Some(change),
                 password,
                 ..Fake::new("[@synthetic]")
             };
-            assert_eq!(deliver_ticket(&desk, &ticket(), "[@synthetic]", true), copied(None));
+            assert_eq!(
+                deliver_ticket(&desk, &ticket(), "[@synthetic]", true),
+                copied(Some(if index == 2 {
+                    "clipboard-changed"
+                } else {
+                    "target-changed"
+                }))
+            );
             assert!(desk.posts.borrow().is_empty());
             assert_eq!(desk.clipboard_reads.get(), 0);
         }

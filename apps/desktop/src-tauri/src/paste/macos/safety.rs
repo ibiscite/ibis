@@ -1,4 +1,4 @@
-//! The narrow native boundary for metadata and lifecycle guards (ADR 0029).
+//! The narrow native boundary for lifecycle guards (ADR 0029).
 //! Never requests AX/screen capture, looks up a title, or reads window contents.
 
 use std::ffi::{CStr, c_char, c_int};
@@ -8,12 +8,9 @@ use std::time::Duration;
 
 use block2::RcBlock;
 use objc2_app_kit::NSWorkspace;
-use objc2_core_foundation::{CFDictionary, CFNumber, CFString, CFType};
-use objc2_core_graphics::{CGWindowListCopyWindowInfo, CGWindowListOption};
 use objc2_foundation::{NSDistributedNotificationCenter, NSNotificationCenter, NSString, NSThread};
 
 use super::super::SafetyStamp;
-use super::super::capture::{WindowMetadata, unambiguous_window};
 
 static INSTALLED: Once = Once::new();
 static EPOCH: AtomicU64 = AtomicU64::new(0);
@@ -122,7 +119,9 @@ pub(super) fn stamp() -> SafetyStamp {
         elapsed: Duration::ZERO,
     };
     let Some(checks) = CHECKS.get() else { return invalid };
-    let Ok(mut checks) = checks.lock() else { return invalid };
+    let Ok(mut checks) = checks.try_lock() else {
+        return invalid;
+    };
     let Some(state) = checks.as_mut() else { return invalid };
     for token in &state.tokens {
         match changed(*token) {
@@ -148,7 +147,9 @@ pub(super) fn stamp() -> SafetyStamp {
         Some(true) => invalidate(),
         Some(false) => {}
         None => {
-            invalidate();
+            // Unavailable sampling is not evidence of a lifecycle transition.
+            // This request refuses; retain the old offset so the next sound
+            // sample can still detect any real suspension.
             return invalid;
         }
     }
@@ -172,39 +173,6 @@ fn clock_changed(offset: &mut Option<(i128, i128)>, before: u64, awake: u64, aft
     let changed = overlap.is_some_and(|range| range.0 > range.1);
     *offset = Some(overlap.filter(|range| range.0 <= range.1).unwrap_or(next));
     Some(changed)
-}
-
-/// WindowServer metadata is ordered front to back. More than one visible
-/// window in the app is ambiguous (including sheets/dialogs), so only copy.
-/// Only numeric metadata is accessed; dictionary titles are never looked up,
-/// converted, retained in Ibis state or logged. No screen-recording grant.
-pub(super) fn window(pid: i32) -> Option<u32> {
-    let windows = CGWindowListCopyWindowInfo(
-        CGWindowListOption::OptionOnScreenOnly | CGWindowListOption::ExcludeDesktopElements,
-        0,
-    )?;
-    // SAFETY: The SDK guarantees that CopyWindowInfo returns an immutable
-    // CFArray of CFDictionary entries with CFString keys and CFType values.
-    // The typed view borrows the retained array; values are dynamically checked.
-    let windows = unsafe { windows.cast_unchecked::<CFDictionary<CFString, CFType>>() };
-    unambiguous_window(
-        windows.iter().map(|entry| {
-            Some(WindowMetadata {
-                pid: i32::try_from(number(&entry, "kCGWindowOwnerPID")?).ok()?,
-                id: u32::try_from(number(&entry, "kCGWindowNumber")?).ok()?,
-                layer: i32::try_from(number(&entry, "kCGWindowLayer")?).ok()?,
-            })
-        }),
-        pid,
-    )
-}
-
-fn number(dictionary: &CFDictionary<CFString, CFType>, key: &str) -> Option<i64> {
-    dictionary
-        .get(&CFString::from_str(key))?
-        .downcast::<CFNumber>()
-        .ok()?
-        .as_i64()
 }
 
 #[cfg(test)]

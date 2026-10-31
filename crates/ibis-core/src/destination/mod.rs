@@ -120,6 +120,7 @@ pub enum CopyReason {
     /// The target's paste shortcut has not been verified.
     UnknownApp,
     TargetChanged,
+    ClipboardChanged,
     PasteExpired,
     SecureField,
     /// System-wide secure typing is enabled, possibly by another app.

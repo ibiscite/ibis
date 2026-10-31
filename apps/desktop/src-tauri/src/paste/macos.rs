@@ -5,6 +5,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, mpsc};
 use std::time::{Duration, Instant};
 
+use ibis_core::destination::CopyReason;
 use objc2_app_kit::{NSPasteboard, NSWorkspace};
 use objc2_core_graphics::{CGEvent, CGEventFlags, CGEventSource, CGEventSourceStateID, CGPreflightPostEventAccess};
 use tauri::{AppHandle, Manager};
@@ -24,18 +25,21 @@ pub(super) fn stamp() -> super::SafetyStamp {
 
 const ASK_LIMIT: Duration = Duration::from_millis(250);
 
-/// The app in front and an unambiguous opaque window identity.
+/// The active app for output suggestions. Activation is not keyboard ownership.
 pub(super) fn frontmost() -> Option<Front> {
     safety::install();
     let app = NSWorkspace::sharedWorkspace().frontmostApplication()?;
-    let window = safety::window(app.processIdentifier());
     if !app.isActive() || app.isTerminated() {
         return None;
     }
     Some(Front {
         id: app.bundleIdentifier().map(|id| id.to_string()),
         pid: app.processIdentifier(),
-        window,
+        // PostEvent-only public metadata cannot identify the globally focused
+        // window, especially with a foreign nonactivating panel. Do not infer
+        // focus from activation/z-order. AX is forbidden by ADR 0029/#1241;
+        // keep delivery unavailable pending an explicit maintainer decision.
+        window: None,
         name: app.localizedName().map(|name| name.to_string()),
         elevated: false,
     })
@@ -83,8 +87,8 @@ impl Desk for Mac {
         }
     }
 
-    fn frontmost(&self) -> Option<Front> {
-        self.on_main(frontmost).flatten()
+    fn frontmost(&self) -> Result<Option<Front>, CopyReason> {
+        self.on_main(frontmost).ok_or(CopyReason::PasteUnavailable)
     }
 
     fn finish(&self, request: DeliveryRequest, proof: &CopyProof) -> PostResult {

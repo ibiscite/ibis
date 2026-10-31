@@ -70,7 +70,7 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
     pastes: [] as { app: string; text: string; start: number; end: number; delivery: number }[],
   };
   const target = { window: 100 as number | null, verified: true, available: true };
-  const lifecycle = { epoch: 1, elapsed: 0 };
+  const lifecycle = { epoch: 1, elapsed: 0, available: true };
   // Detached to keep this second window out of the picker's DOM and focus scope.
   const receiptRoot = globalThis.document.createElement("div");
   const showReceipt = renderNotice(receiptRoot, "macos");
@@ -88,8 +88,11 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
     if (!owned) return { outcome: "copied", reason: null };
     proof = null;
     if (!target.verified) return { outcome: "copied", reason: "unknown-app" };
+    if (owned.window === null) return { outcome: "copied", reason: "paste-unavailable" };
+    if (!lifecycle.available) return { outcome: "copied", reason: "paste-unavailable" };
     if (owned.epoch !== lifecycle.epoch || lifecycle.elapsed - owned.written >= 1500) return { outcome: "copied", reason: "paste-expired" };
-    if (!target.available || owned.window === null || owned.window !== target.window) return { outcome: "copied", reason: "target-changed" };
+    if (clipboard.owner !== "ibis" || owned.sequence !== clipboard.sequence) return { outcome: "copied", reason: "clipboard-changed" };
+    if (!target.available || owned.window !== target.window) return { outcome: "copied", reason: "target-changed" };
     if (visible || owned.presentation !== presentation || clipboard.owner !== "ibis"
       || owned.sequence !== clipboard.sequence || owned.app !== document.app) return { outcome: "copied", reason: null };
     const [start, end] = document.selection;
