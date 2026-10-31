@@ -152,9 +152,14 @@ fn initial_damage_is_tolerated_and_reload_warnings_are_not_blanket_rejected() {
     assert_eq!(records(&initial).len(), 1);
     assert_eq!(initial.warnings.len(), 1);
     assert!(matches!(reload_file(&path), Err(SourceError::Incomplete)));
-    std::fs::write(&path, "@misc{good}\n@misc{good}\n@misc{closed, title=}").unwrap_or_else(|e| panic!("{e}"));
+    std::fs::write(
+        &path,
+        "@misc{good}\n@misc{good}\n@misc{retained}\n@misc{closed, title=}",
+    )
+    .unwrap_or_else(|e| panic!("{e}"));
     let reload = reload_file(&path).unwrap_or_else(|e| panic!("{e}"));
     assert_eq!(records(&reload).len(), 1);
+    assert_eq!(records(&reload)[0].citation_key(), Ok(Some("retained")));
     assert_eq!(reload.warnings.len(), 2);
     std::fs::write(&path, "% Deliberately empty library\n").unwrap_or_else(|e| panic!("{e}"));
     assert_eq!(reload_file(&path).map(|l| records(&l).len()), Ok(0));

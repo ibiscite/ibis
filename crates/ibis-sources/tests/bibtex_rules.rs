@@ -549,8 +549,8 @@ fn invalid_or_unreadable_dates_are_reported_not_silently_changed() {
         Some((Some(2), None))
     );
     assert_eq!(year(&r, "junk"), Some(2020));
-    assert_eq!(csl(&r, "none").get("issued"), None);
-    assert_eq!(r.warnings.len(), 3, "{:?}", r.warnings);
+    assert_eq!(csl(&r, "none")["issued"], json!({"literal":"sometime"}));
+    assert_eq!(r.warnings.len(), 2, "{:?}", r.warnings);
 }
 
 #[test]
@@ -688,12 +688,15 @@ fn series_numbers_and_report_numbers_keep_their_meaning() {
 
 #[test]
 fn private_use_characters_in_text_are_not_mistaken_for_braces() {
-    let r = load("@book{pua,title={A \u{E000} and \u{E001} test \\{x\\}},year={2024}}");
+    let r = load(
+        "@book{pua,title={A \u{E000} and \u{E001} \u{E004} test \\{x\\}},url={https://example.org/\u{E004}a--b},year={2024}}",
+    );
     let title = text(&r, "pua", "title").unwrap_or_default();
     assert!(
-        title.contains('\u{E000}') && title.contains('\u{E001}') && title.contains("{x}"),
+        title.contains('\u{E000}') && title.contains('\u{E001}') && title.contains('\u{E004}') && title.contains("{x}"),
         "{title:?}"
     );
+    assert_eq!(text(&r, "pua", "URL"), Some("https://example.org/\u{E004}a--b"));
 }
 
 #[test]
