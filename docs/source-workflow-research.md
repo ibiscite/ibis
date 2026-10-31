@@ -248,7 +248,7 @@ separate annotation formats, JabRef reads annotations from linked PDFs, and
 Citavi distinguishes quotations from thoughts/comments. None makes .bib/RIS a
 portable passage format.
 [Zotero 8 changes](https://www.zotero.org/support/8.0_changelog),
-[Paperpile exports](https://www.forum.paperpile.com/h/print-pdfs-export-annotations/),
+[Paperpile exports](https://paperpile.com/h/print-pdfs-export-annotations/),
 [JabRef file annotations](https://docs.jabref.org/v5/advanced/entryeditor),
 [Citavi quotation kinds](https://www1.citavi.com/sub/manual7/en/quoting_a_text_passage.html).
 
