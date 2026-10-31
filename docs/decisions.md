@@ -192,7 +192,9 @@ The native receipt also owns an immutable request generation (#1520 review).
 It rechecks ownership under the notice publication lock before changing text,
 showing the window or starting a timer. A refused A finishing after B cannot
 replace B's delivery message; delayed or duplicate write tokens cannot claim
-the latest receipt. Copies without native paste proofs use request ordering.
+the latest receipt. Every successful clipboard write gets that identity under
+its platform's write lock, including Linux and copies without native paste
+proofs. An unidentified notice cannot claim ownership (2026-10-31, #1494).
 
 When the shortcut opens the picker with short text selected in the target app,
 that text becomes the search and the paste replaces it (macOS and Windows, on
@@ -556,6 +558,12 @@ settings Ibis cannot read are kept as a copy, Ibis starts from defaults and
 says so, and it never silently overwrites a file it could not read. Existing
 migration code is deleted, not extended, when its area is rebuilt. From 1.0 a
 format change needs an upgrade path.
+
+Primary, backup and damaged-file recovery reads are capped at 1 MiB, including
+growth during a read; saves must fit that same limit. Atomic replacement keeps
+the existing file permissions; new Unix files start owner-only. A load problem
+blocks automatic paste and reports paste unavailable, even with a valid backup
+(2026-10-31, #1525).
 
 Planned copied-key warnings (#1092; maintainer-approved, 2026-10-30) may keep a
 bounded private local record of library/item identity and its last successfully

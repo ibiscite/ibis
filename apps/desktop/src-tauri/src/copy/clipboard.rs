@@ -75,7 +75,7 @@ fn publish_macos(board: &objc2_app_kit::NSPasteboard, content: ClipboardContent<
 
 /// One clipboard write, retried briefly while another app holds it.
 #[cfg(target_os = "windows")]
-pub(crate) fn write(app: &tauri::AppHandle, content: ClipboardContent<'_>) -> Result<Option<u32>, String> {
+pub(crate) fn write(app: &tauri::AppHandle, content: ClipboardContent<'_>) -> Result<(u32, Option<u32>), String> {
     use tauri::Manager;
     let owner = app
         .get_webview_window("main")
@@ -85,7 +85,10 @@ pub(crate) fn write(app: &tauri::AppHandle, content: ClipboardContent<'_>) -> Re
 }
 
 #[cfg(target_os = "windows")]
-fn write_windows(owner: clipboard_win::types::HWND, content: ClipboardContent<'_>) -> Result<Option<u32>, String> {
+fn write_windows(
+    owner: clipboard_win::types::HWND,
+    content: ClipboardContent<'_>,
+) -> Result<(u32, Option<u32>), String> {
     use clipboard_win::{
         Clipboard,
         formats::{CF_UNICODETEXT, Html},
@@ -96,6 +99,7 @@ fn write_windows(owner: clipboard_win::types::HWND, content: ClipboardContent<'_
     // closing the write and proving its final sequence.
     static WRITING: std::sync::Mutex<()> = std::sync::Mutex::new(());
     let _writing = WRITING.lock().map_err(|_| FAILED.to_string())?;
+    let token = super::write_token()?;
     // About 100 ms in all: 20 retries, 5 ms apart.
     let open = Clipboard::new_attempts_for(owner, 20).map_err(|_| FAILED.to_string())?;
     raw::empty().map_err(|_| FAILED.to_string())?;
@@ -123,7 +127,7 @@ fn write_windows(owner: clipboard_win::types::HWND, content: ClipboardContent<'_
         sequence: clipboard_win::seq_num().map(std::num::NonZeroU32::get),
     };
     drop(open);
-    Ok(windows_sequence(owner, &written))
+    Ok((token, windows_sequence(owner, &written)))
 }
 
 #[cfg(target_os = "windows")]
@@ -188,17 +192,37 @@ pub(crate) fn write(app: &tauri::AppHandle, content: ClipboardContent<'_>) -> Re
     let html = flavors(&content)
         .into_iter()
         .find_map(|(flavor, value)| (flavor == Flavor::Html).then_some(value));
-    match html {
-        Some(html) => app.clipboard().write_html(html, Some(content.text)),
-        None => app.clipboard().write_text(content.text),
-    }
-    .map(|()| None)
-    .map_err(|_| FAILED.to_string())
+    write_copy_only(|| {
+        match html {
+            Some(html) => app.clipboard().write_html(html, Some(content.text)),
+            None => app.clipboard().write_text(content.text),
+        }
+        .map_err(|_| FAILED.to_string())
+    })
+}
+
+/// Linux has no native paste proof; it still owns a numbered write receipt.
+#[cfg(any(target_os = "linux", test))]
+fn write_copy_only(write: impl FnOnce() -> Result<(), String>) -> Result<Option<u32>, String> {
+    static WRITING: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _writing = WRITING.lock().map_err(|_| FAILED.to_string())?;
+    let token = super::write_token()?;
+    write()?;
+    Ok(Some(token))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn copy_only_writes_have_ordered_receipts_and_failed_io_has_none() {
+        let a = write_copy_only(|| Ok(())).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(write_copy_only(|| Err(FAILED.into())), Err(FAILED.into()));
+        let b = write_copy_only(|| Ok(())).unwrap_or_else(|e| panic!("{e}"));
+        assert!(a.is_some());
+        assert!(b > a, "a later write has a newer identity even without native paste");
+    }
 
     #[test]
     fn windows_clipboard_receipt_accounts_for_format_writes_and_synthesis_on_close() {
@@ -365,15 +389,15 @@ int main(int argc, const char **argv) { @autoreleasepool {
         let text = "Ŝynthetic 山田";
         let html = "<i>Ŝynthetic 山田</i>";
         let rtf = "{\\rtf1\\ansi\\uc1 {\\i \\u348?ynthetic \\u23665?\\u30000?}}";
-        let sequence = write_windows(
+        let (_, sequence) = write_windows(
             owner.ptr(),
             ClipboardContent {
                 text,
                 html: Some(html),
                 rtf: Some(rtf),
             },
-        )?
-        .ok_or("clipboard sequence")?;
+        )?;
+        let sequence = sequence.ok_or("clipboard sequence")?;
         // The receipt must match the completed write, including any sequence
         // increments from synthesized formats on close. Do not assume a fixed
         // increment per copy or a fixed count of synthesized formats.
@@ -444,15 +468,15 @@ int main(int argc, const char **argv) { @autoreleasepool {
             assert_eq!(windows_sequence(owner.ptr(), &written), None);
         }
         // A later key-only copy must remove stale rich formats.
-        let next_sequence = write_windows(
+        let (_, next_sequence) = write_windows(
             owner.ptr(),
             ClipboardContent {
                 text: "[@Synthetic2026]",
                 html: None,
                 rtf: None,
             },
-        )?
-        .ok_or("next clipboard sequence")?;
+        )?;
+        let next_sequence = next_sequence.ok_or("next clipboard sequence")?;
         assert_ne!(next_sequence, sequence);
         assert_eq!(
             clipboard_win::seq_num().map(std::num::NonZeroU32::get),
