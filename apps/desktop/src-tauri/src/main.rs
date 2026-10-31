@@ -287,10 +287,7 @@ fn main() {
             if initial_picker.0
                 && let Some(window) = app.get_webview_window("main")
             {
-                report(window.show(), NativeIssue::Show);
-                if initial_picker.1 {
-                    report(window.set_focus(), NativeIssue::Focus);
-                }
+                picker::present_window(&window, initial_picker.1);
             }
             Ok(())
         });

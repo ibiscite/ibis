@@ -288,6 +288,8 @@ try {
         await warnings.waitFor();
         beforeShelf = await page.locator("main > .shelf").boundingBox();
         assert.equal(await reachable(warnings), true, "the warnings control stays reachable from the shelf");
+        const folded = await page.locator("main > .shelf").getAttribute("data-folded") !== null;
+        assert.equal(await warnings.getByText(folded ? "! 2" : "2 warnings", { exact: true }).isVisible(), true, "warning and closest-match choices have a visible cue before opening");
         await warnings.press("Space");
         dialog = page.getByRole("dialog", { name: "Citation warnings", exact: true });
         await dialog.waitFor();

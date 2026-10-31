@@ -177,16 +177,44 @@ pub(crate) fn show_picker(app: &AppHandle) {
             // once it loses focus, so it never covers anything for long.
             #[cfg(target_os = "windows")]
             report(window.set_always_on_top(true), NativeIssue::AlwaysOnTop);
-            report(window.show(), NativeIssue::Show);
-            // The quick picker stays out of the taskbar and Alt+Tab. Showing a
-            // hidden window can bring its taskbar button back on Windows.
-            report(window.set_skip_taskbar(true), NativeIssue::SkipTaskbar);
-            report(window.set_focus(), NativeIssue::Focus);
+            present_window(&window, true);
             crate::updater::picker_presented(app);
         }
         report(window.emit("picker:shown", ()), NativeIssue::PickerEvent);
     }
     crate::library::refresh_zotero(app);
+}
+
+#[cfg(not(target_os = "macos"))]
+pub(crate) fn present_window(window: &tauri::WebviewWindow, focus: bool) {
+    present_with(
+        focus,
+        || {
+            // tao's GTK focus=false suppresses accept-focus until the first
+            // draw, and set_focus can be discarded before its queued show.
+            // Restore the hint before first map. This neither maps the window
+            // nor overtakes the complete frame already queued by sizing.
+            #[cfg(target_os = "linux")]
+            report(window.set_focusable(true), NativeIssue::Focus);
+        },
+        || {
+            report(window.show(), NativeIssue::Show);
+            // Showing a hidden quick picker can restore its taskbar button.
+            report(window.set_skip_taskbar(true), NativeIssue::SkipTaskbar);
+        },
+        || report(window.set_focus(), NativeIssue::Focus),
+    );
+}
+
+#[cfg(any(not(target_os = "macos"), test))]
+fn present_with(focus: bool, prepare_focus: impl FnOnce(), show: impl FnOnce(), request_focus: impl FnOnce()) {
+    if focus {
+        prepare_focus();
+    }
+    show();
+    if focus {
+        request_focus();
+    }
 }
 
 /// Non-macOS windows must also start hidden until settings and display bounds
@@ -505,6 +533,97 @@ fn finish_blur(app: &AppHandle, blur: u64, generation: u64) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Model tao 0.37.1's GTK queue: Visible is deferred, set_focus discards a
+    // request made before get_visible(), and focus=false keeps accept-focus
+    // false until the first draw. AT-SPI/WebView focus is not keyboard focus.
+    #[derive(Default)]
+    struct GtkPresentation {
+        accepts_focus: std::cell::Cell<bool>,
+        mapped: std::cell::Cell<bool>,
+        owns_keyboard: std::cell::Cell<bool>,
+        pending: std::cell::RefCell<Vec<Option<(u32, u32)>>>,
+        frame: std::cell::Cell<(u32, u32)>,
+        first_shown: std::cell::Cell<Option<(u32, u32)>>,
+    }
+
+    impl GtkPresentation {
+        fn show(&self) {
+            self.pending.borrow_mut().push(None);
+        }
+
+        fn focus(&self) {
+            if self.mapped.get() && self.accepts_focus.get() {
+                self.owns_keyboard.set(true);
+            }
+        }
+
+        fn settle(&self) {
+            for request in self.pending.borrow_mut().drain(..) {
+                if let Some(frame) = request {
+                    self.frame.set(frame);
+                } else {
+                    self.mapped.set(true);
+                    self.first_shown.set(Some(self.frame.get()));
+                    self.owns_keyboard.set(self.accepts_focus.get());
+                }
+            }
+            // tao restores the hint on draw but does not retry activation.
+            self.accepts_focus.set(true);
+        }
+    }
+
+    #[test]
+    fn a_prepared_hidden_linux_picker_maps_with_its_frame_and_native_keyboard_focus() {
+        let native = GtkPresentation::default();
+        native.frame.set((720, 480));
+        // Sizing's complete frame is queued before presentation, never after it.
+        native.pending.borrow_mut().push(Some((960, 640)));
+        present_with(
+            true,
+            || native.accepts_focus.set(true),
+            || native.show(),
+            || native.focus(),
+        );
+        assert!(
+            !native.mapped.get(),
+            "presentation must preserve the native geometry queue"
+        );
+        native.settle();
+        assert_eq!(native.first_shown.get(), Some((960, 640)), "no default-frame flash");
+        assert!(native.mapped.get());
+        assert!(
+            native.owns_keyboard.get(),
+            "Search must receive actual keyboard input on first map"
+        );
+
+        // Hiding and reopening (including the first show after a login launch)
+        // uses this same path, without any delayed activation to steal focus.
+        native.mapped.set(false);
+        native.owns_keyboard.set(false);
+        present_with(
+            true,
+            || native.accepts_focus.set(true),
+            || native.show(),
+            || native.focus(),
+        );
+        native.settle();
+        assert!(native.owns_keyboard.get());
+    }
+
+    #[test]
+    fn an_explicitly_unfocused_startup_maps_without_taking_the_editors_keyboard() {
+        let native = GtkPresentation::default();
+        present_with(
+            false,
+            || native.accepts_focus.set(true),
+            || native.show(),
+            || native.focus(),
+        );
+        native.settle();
+        assert!(native.mapped.get());
+        assert!(!native.owns_keyboard.get());
+    }
 
     #[test]
     fn window_creation_waits_hidden_for_the_complete_frame_and_preserves_launch_intent() {

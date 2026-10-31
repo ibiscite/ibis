@@ -91,6 +91,11 @@ test.each([[1, true], [2, true], [1, false], [2, false]] as const)("folding at %
   render(shelf({ selected: chosen([reference]), style: "ieee", keys: false, outputWarnings: warnings,
     shown: preview ? { markup: [], text: "Synthetic entry", html: "", warnings } : undefined }));
   const control = screen.getByRole("button", { name: /2 warnings.*Reference entry.*Closest matches/ });
+  expect(control.closest(".shelf")?.hasAttribute("data-folded")).toBe(true);
+  const cue = within(control).getByText("! 2");
+  expect(cue.closest("[hidden], .visually-hidden")).toBeNull();
+  expect(getComputedStyle(cue).display).not.toBe("none");
+  expect(getComputedStyle(cue).visibility).toBe("visible");
   act(() => control.focus());
   fireEvent.keyDown(control, { key: " ", code: "Space" });
   fireEvent.keyUp(control, { key: " ", code: "Space" });
@@ -100,6 +105,28 @@ test.each([[1, true], [2, true], [1, false], [2, false]] as const)("folding at %
   expect(within(details).getByText("Reference 1: Page is not included in this reference entry.")).toBeTruthy();
   expect(within(details).getByText(/IEEE numbers depend on your whole document/)).toBeTruthy();
   expect(within(details).getByText(/only some search words matched/)).toBeTruthy();
+});
+
+test.each([["warning", true], ["warning", false], ["closest", true], ["closest", false]] as const)("a folded %s has a visible cue and opens in one step, even alone (Preview=%s)", (meaning, preview) => {
+  vi.stubGlobal("innerWidth", 480);
+  vi.stubGlobal("innerHeight", 360);
+  const reference = { ...record("near"), partial: meaning === "closest" };
+  const warnings = meaning === "warning" ? ["Reference 1: Check the invented reference metadata."] : [];
+  render(shelf({ selected: chosen([reference]), outputWarnings: warnings,
+    shown: preview ? { markup: [], text: "Synthetic citation", html: "", warnings } : undefined }));
+  const control = screen.getByRole("button", { name: meaning === "closest" ? "1 warning · Closest matches" : "1 warning" });
+  expect(control.closest(".shelf")?.hasAttribute("data-folded")).toBe(true);
+  const cue = within(control).getByText("! 1");
+  expect(cue.closest("[hidden], .visually-hidden")).toBeNull();
+  expect(getComputedStyle(cue).display).not.toBe("none");
+  expect(getComputedStyle(cue).visibility).toBe("visible");
+  expect(screen.queryByRole("dialog")).toBeNull();
+  fireEvent.click(control);
+  const details = screen.getByRole("dialog", { name: "Citation warnings" });
+  if (meaning === "closest") {
+    expect(within(details).getByRole("heading", { name: "Closest matches" })).toBeTruthy();
+    expect(within(details).getByText(/only some search words matched/)).toBeTruthy();
+  } else expect(within(details).getByText(warnings[0]!)).toBeTruthy();
 });
 
 test("expanding chosen references opens an overlay instead of growing the shelf", async () => {
