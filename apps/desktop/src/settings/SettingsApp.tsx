@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { KeyFormat, LoginItem, LoginItemProblem, PickerPreferences, ShortcutStatus } from "../bindings";
 import { DEFAULT_PICKER_SHORTCUT, KEY_TABLE, keyLabel, shortcutLabel } from "../keys";
 import { type MessageId, useInterfaceMessages } from "../i18n";
@@ -51,11 +51,11 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   const [failed, setFailed] = useState(false);
   const preferenceProblem = useRef(false);
   const [readProblems, setReadProblems] = useState<ReadonlySet<string>>(() => new Set());
-  const readProblem = (id: string, failed: boolean) => setReadProblems((current) => {
+  const readProblem = useCallback((id: string, failed: boolean) => setReadProblems((current) => {
     const next = new Set(current);
     if (failed) next.add(id); else next.delete(id);
     return next;
-  });
+  }), []);
   const [problemRow, setProblemRow] = useState<{ id: string; message: MessageId } | null>(null);
   const cause = useRef<string | null>(null);
   const edits = useRef(0);
@@ -203,7 +203,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
       void automatic.then((stop) => stop()).catch(() => undefined);
       void close.then((stop) => stop()).catch(() => undefined);
     };
-  }, [api, queue]);
+  }, [api, queue, readProblem]);
   useEffect(() => {
     const scroller = pageRef.current;
     if (!focus || !scroller) return;
