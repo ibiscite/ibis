@@ -102,7 +102,7 @@ function fixture(t, initial = {}) {
 
 test("numbered publishes serialize the Latest read and publish without cancelling an active job", () => {
   const publish = job("publish");
-  assert.match(publish, /^    concurrency:\n      group: publish-numbered-release\n      cancel-in-progress: false$/m);
+  assert.match(publish, /^    concurrency:\n      group: publish-numbered-release\n      queue: max\n      cancel-in-progress: false$/m);
   assert.doesNotMatch(publish, /^\s+cancel-in-progress:\s*true\b/m);
 });
 
