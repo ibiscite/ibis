@@ -225,16 +225,35 @@ fn mmd<'a>(text: &'a str, work: &mut Work<'_>) -> Option<Citation<'a>> {
             (key, rest.strip_prefix("[]").unwrap_or(rest))
         }
         None => {
-            let after = rest.strip_prefix(']')?.strip_prefix("[#")?;
+            let key_text = rest.strip_prefix(']')?.strip_prefix("[#")?;
             // In particular, JSON strings/objects cannot become notes even if
             // their metadata contains a closing bracket and citation marker.
             if !work.spend(body.len()) || !super::escape::mmd_literal(body) {
                 return None;
             }
-            let end = work.find(after, |c| matches!(c, '[' | ']')).unwrap_or(after.len());
-            let rest = &after[end..];
+            // A complete braced Pandoc key at a valid key start owns any ][#
+            // inside it. Only the last @{ can cross this boundary: keys cannot
+            // contain braces or whitespace. Stop there too, so repeated
+            // unmatched @{ notes do not repeatedly scan the remaining list.
+            if !work.spend(body.len()) {
+                return None;
+            }
+            if let Some(start) = body.rfind("@{").filter(|&start| pandoc_key_start(&body[..start])) {
+                let candidate = &after[start + 2..];
+                if let Some(end) = work.find(candidate, |c| {
+                    c.is_whitespace() || c.is_control() || matches!(c, ',' | '{' | '}')
+                }) && start + 2 + end >= body.len()
+                    && candidate[end..].starts_with('}')
+                {
+                    return None;
+                }
+            }
+            let end = work
+                .find(key_text, |c| matches!(c, '[' | ']'))
+                .unwrap_or(key_text.len());
+            let rest = &key_text[end..];
             let rest = rest.strip_prefix(']').or_else(|| rest.is_empty().then_some(rest))?;
-            (&after[..end], rest)
+            (&key_text[..end], rest)
         }
     };
     Some(explicit([Cow::Borrowed(key)], rest))
@@ -340,6 +359,15 @@ fn json<'a>(text: &'a str, work: &mut Work<'_>) -> Option<Citation<'a>> {
     })
 }
 
+fn pandoc_key_start(before: &str) -> bool {
+    before
+        .strip_suffix('-')
+        .unwrap_or(before)
+        .chars()
+        .next_back()
+        .is_none_or(|c| c.is_whitespace() || "[({;,\"'".contains(c))
+}
+
 fn pandoc<'a>(text: &'a str, work: &mut Work<'_>) -> Option<Citation<'a>> {
     if let Some(after) = text.strip_prefix('@') {
         let (key, rest) = at_key(after, work);
@@ -356,15 +384,10 @@ fn pandoc<'a>(text: &'a str, work: &mut Work<'_>) -> Option<Citation<'a>> {
             }
             if let Some(after) = body.strip_prefix('\\') {
                 body = after.chars().next().map_or("", |c| &after[c.len_utf8()..]);
-            } else if let Some(after) = body.strip_prefix('@').filter(|_| {
-                let before = &whole[..whole.len() - body.len()];
-                before
-                    .strip_suffix('-')
-                    .unwrap_or(before)
-                    .chars()
-                    .next_back()
-                    .is_none_or(|c| c.is_whitespace() || "[({;,\"'".contains(c))
-            }) {
+            } else if let Some(after) = body
+                .strip_prefix('@')
+                .filter(|_| pandoc_key_start(&whole[..whole.len() - body.len()]))
+            {
                 let (key, after) = at_key(after, work);
                 keys.push(Cow::Borrowed(key));
                 body = after;
