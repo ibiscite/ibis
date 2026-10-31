@@ -982,13 +982,8 @@ jobs:
         run: |
           set -euo pipefail
           (cd dist && sha256sum --check SHA256SUMS-*.txt)
-          version=$(jq -r .version feed/latest.json)
-          if current=$(gh release download "$FEED" --repo "$REPO" --pattern latest.json --output - 2>/dev/null | jq -r .version) && [ -n "$current" ]; then
-            if [ "$current" != "$version" ] && ! node scripts/update-feed.mjs newer "$version" "$current"; then
-              echo "::notice::The stable feed stays at $current, which is newer than $version."
-              exit 0
-            fi
-          fi
+          decision=$(node scripts/publication-guard.mjs stable feed/latest.json)
+          if [ "$decision" != publish ]; then exit 0; fi
           cat > feed-notes.md <<EOF
           **Not a release.** This entry holds the files behind Ibis's permanent download links and \`latest.json\`, the update feed the app reads. It currently mirrors [Ibis ${TAG#v}](https://github.com/$REPO/releases/tag/$TAG). For release notes and how to verify a download, see [the latest release](https://github.com/$REPO/releases/latest).
           EOF
@@ -1132,14 +1127,8 @@ jobs:
           # to main must not stop this one either: with frequent merges that
           # would starve the nightly. Publish unless the nightly already has
           # this commit or a later one.
-          current=$(gh api "repos/$REPO/git/ref/tags/$TAG" --jq .object.sha 2>/dev/null || true)
-          if [ -n "$current" ]; then
-            relation=$(gh api "repos/$REPO/compare/$current...$SHA" --jq .status)
-            if [ "$relation" != ahead ]; then
-              echo "The nightly already has ${current:0:12} ($relation of this build); keeping it."
-              exit 0
-            fi
-          fi
+          decision=$(node scripts/publication-guard.mjs nightly)
+          if [ "$decision" != publish ]; then exit 0; fi
           built=$(date -u '+%Y-%m-%d %H:%M UTC')
           version=$(node scripts/update-feed.mjs version)
           cat > notes.md <<EOF
