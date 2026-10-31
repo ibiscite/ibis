@@ -113,7 +113,6 @@ export function useDestination({ pickerDestination, rememberAppOutput, forgetApp
   const choosePaste = (paste: AppPaste) => {
     const id = destination?.app_id;
     if (!rememberAppOutput || !id || !ready || saving) return;
-    choices.current += 1;
     delivery.current += 1;
     lastPolicy.current = undefined;
     // Persisting delivery does not resume the Enter that opened the chooser.

@@ -1089,7 +1089,11 @@ that owns its area in ROADMAP.md.
    copy, even when only the search or chooser scope changes. Returning to a
    citation whose copy is still outstanding cannot repeat it. Deliberately
    choosing a different citation permits a fresh copy; an earlier reply cannot
-   replace its shelf or current copy feedback. A changed query,
+   replace its shelf or current copy feedback. A changed delivery choice revokes
+   outstanding paste permission. If a completed write's response arrives after
+   that choice with no newer interaction, the open picker
+   still confirms Copied; it neither hides nor replays delivery. A newer Enter,
+   including one waiting for the save, keeps ownership. A changed query,
    reference, page, form or output, arrow navigation, Escape or hiding cancels
    a waiting Enter. Every add/remove activation cancels it, including Shift+Enter
    with no highlighted result. A prepared shelf can copy while the next search

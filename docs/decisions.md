@@ -150,8 +150,24 @@ authorize an earlier copy. Saving a delivery choice or reset revokes outstanding
 native proof epochs under the same lock as proof publication and posting. Detached workers
 check that epoch too. The picker gives delivery its own generation: fresh Enter
 can join an outstanding citation only within that generation, so saving Copy
-only cannot renew a flight that froze Paste. Resetting the app to Automatic or choosing "Forget
+only cannot renew a flight that froze Paste. Delivery revocation alone does not
+erase confirmation of a completed clipboard write: a delayed response for the
+current citation shows Copied in the open picker, without hiding or forwarding
+its revoked paste proof. A newer Enter (including one waiting for a save),
+citation or opening retains its own selection, output and feedback ownership.
+Resetting the app to Automatic or choosing "Forget
 formats for apps" clears both output and delivery choices.
+
+Final injection must never wait on the UI thread while holding destination or
+key locks. Windows resolves the picker's known HWND before either lock and uses
+native `IsWindow`/`IsWindowVisible` checks under them; a busy destination guard
+refuses instead of queuing key-downs. Its captured-window and key locks wrap only
+native calls; query admission locks are released before worker waits. macOS
+dispatches its final task before taking its posting locks, uses a main-thread
+marker for the final checks (Tauri's visibility getter runs inline there), and
+tries destination ownership without waiting. Linux only copies and takes no
+posting lock across a UI dispatch. Clipboard and destination-store locks add
+no UI-thread calls; receipt publication follows delivery after those locks end.
 
 The footer names the intended action and output together, from that same
 native policy. Enter during search or preview loading waits for its current

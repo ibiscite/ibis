@@ -93,6 +93,25 @@ test("saving Copy only while a paste-approved clipboard response is delayed cann
   expect(receipt(h)).toBe("Copied. Copy only is set for this app");
 });
 
+test("revoking paste after the write still confirms Copied when its delayed response arrives without another Enter", async () => {
+  const h = await open((h) => {
+    h.appChoices.set("example.writer", { output: { key: "pandoc" }, paste: "paste" });
+    h.holdCopyReplies = true;
+  });
+  await enter();
+  await act(async () => { h.copy.pending[0]!.complete(); });
+  expect(h.clipboard.text).toBe("[@a]");
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: /^More/ })); });
+  await answer("Copy only in Example Writer");
+  await act(async () => { h.copyReplies.pending[0]!.complete(); });
+  expect(screen.getAllByRole("status").some((status) => status.textContent?.includes("Copied"))).toBe(true);
+  expect(h.visible).toBe(true);
+  expect(h.document.text).toBe("Draft: [citation].");
+  expect(h.document.pastes).toHaveLength(0);
+  expect(h.delivery.calls).toHaveLength(0);
+  expect(h.copy.calls).toHaveLength(1);
+});
+
 test("More can keep a recognised writing app to copying, with a fresh Enter", async () => {
   const h = await open((h) => { h.target.verified = true; });
   await act(async () => { fireEvent.click(screen.getByRole("button", { name: /^More/ })); });

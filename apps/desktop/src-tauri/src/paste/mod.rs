@@ -148,6 +148,15 @@ fn write_token() -> Option<u32> {
 #[derive(Default)]
 pub(crate) struct LastTarget(Mutex<TargetState>);
 
+#[cfg(any(target_os = "windows", test))]
+impl LastTarget {
+    /// Final native checks must never dispatch to the UI thread while this
+    /// guard is held. Contention refuses instead of queuing input behind IPC.
+    fn post_if_ready(&self, post: impl FnOnce() -> bool) -> bool {
+        self.0.try_lock().is_ok_and(|_policy| post())
+    }
+}
+
 #[derive(Default)]
 struct TargetState {
     policy: Arc<AtomicU64>,
@@ -938,6 +947,8 @@ trait TicketDesk {
     fn paste_key(&self) -> Option<u16>;
     fn wait(&self, time: Duration);
     fn generation(&self) -> u64;
+    /// Also called under destination and injection locks. Must use native
+    /// state, with no dispatch to or wait on the UI thread.
     fn picker_hidden(&self) -> bool;
     fn restore(&self, window: &Self::Window, pid: i32) -> bool;
     fn window_in_front(&self, window: &Self::Window) -> bool;
@@ -1955,6 +1966,37 @@ mod tests {
         assert_eq!(
             last.post_if_current(&request, || panic!("unowned post")),
             PostResult::Unavailable
+        );
+    }
+
+    #[test]
+    fn a_concurrent_destination_holder_cannot_block_windows_paste_or_queue_key_downs() {
+        let last = Arc::new(LastTarget::default());
+        let (sent, received) = std::sync::mpsc::channel();
+        // Model an IPC command holding destination ownership on the UI thread.
+        let holder = last.0.lock().unwrap_or_else(|e| panic!("{e}"));
+        let worker_target = last.clone();
+        let posted = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let worker_posted = posted.clone();
+        let worker = std::thread::spawn(move || {
+            let result = worker_target.post_if_ready(|| {
+                worker_posted.store(true, Ordering::Release);
+                true
+            });
+            sent.send(result).unwrap_or_else(|e| panic!("{e}"));
+        });
+        let result = received.recv_timeout(Duration::from_secs(1));
+        // Release even on a failed assertion: the regression must never hang tests.
+        drop(holder);
+        worker.join().unwrap_or_else(|e| panic!("{e:?}"));
+        assert_eq!(
+            result.ok(),
+            Some(false),
+            "paste must refuse while the UI owns destination state"
+        );
+        assert!(
+            !posted.load(Ordering::Acquire),
+            "refused input must not run after the holder releases"
         );
     }
 

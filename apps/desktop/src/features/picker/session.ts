@@ -59,7 +59,8 @@ export function initialSession(query = "", copied: Copied | null = null): Sessio
 }
 export const sessionQueryKey = (state: SessionState) => JSON.stringify([state.query, state.interpretLocators]);
 const sameOutput = (a: OutputToken, b: OutputToken) => a.opening === b.opening && a.choice === b.choice && a.delivery === b.delivery;
-const ownsInteraction = (s: SessionState, f: Flight) => s.activeCopy === f.id && s.context === f.owner.context && s.session === f.owner.session;
+const ownsClipboard = (s: SessionState, f: Flight) => s.activeCopy === f.id && s.context === f.owner.context && s.session === f.owner.session;
+const ownsInteraction = (s: SessionState, f: Flight) => ownsClipboard(s, f) && s.view?.output.delivery === f.delivery;
 const ownsCompletion = (s: SessionState, f: Flight, output: OutputToken) => ownsInteraction(s, f) && s.visibility === f.owner.visibility && sameOutput(f.owner.output, output);
 const changed = (s: SessionState, change: Partial<SessionState>): SessionState => ({ ...s, ...change, pendingCopy: null, interaction: s.interaction + 1, context: s.context + 1 });
 const finish = (s: SessionState, f: Flight): SessionState => ({ ...s, flights: s.flights.filter(({ id }) => id !== f.id), activeCopy: s.activeCopy === f.id ? null : s.activeCopy });
@@ -98,7 +99,7 @@ export function reduceSession(s: SessionState, event: SessionEvent): [SessionSta
     case "view": {
       if (event.session !== s.session || event.interaction !== s.interaction || event.view.queryKey !== sessionQueryKey(s)) return [s, []];
       const v = event.view, old = s.view;
-      const contextChanged = old && (old.output.delivery !== v.output.delivery || old.format !== v.format || old.snapshotRevision !== v.snapshotRevision || s.selected.size === 0 && old.defaultChoice !== v.defaultChoice);
+      const contextChanged = old && (old.format !== v.format || old.snapshotRevision !== v.snapshotRevision || s.selected.size === 0 && old.defaultChoice !== v.defaultChoice);
       const same = old && Object.entries(v).every(([key, value]) => key === "chosen" ? choiceKey(old.chosen) === choiceKey(v.chosen) :
         key === "output" ? sameOutput(old.output, v.output) : old[key as keyof SessionView] === value);
       return advance(same && s.viewInteraction === s.interaction ? s : { ...s, view: v, viewInteraction: s.interaction, context: s.context + (contextChanged ? 1 : 0) });
@@ -160,6 +161,14 @@ export function reduceSession(s: SessionState, event: SessionEvent): [SessionSta
       if (f.phase !== "copy") return [s, []];
       const outcome = { ...event.outcome, warnings: [...event.outcome.warnings, ...f.warnings] };
       if (f.id > s.lastSuccessfulCopy) s = { ...s, lastSuccessfulCopy: f.id, lastOutcome: copiedNoticeText.title };
+      // Delivery can be revoked after the native write but before its response.
+      // Confirm that write in place, without hiding or forwarding its old proof.
+      // A newer citation, operation or opening still owns its own feedback.
+      if (!s.pendingCopy && ownsClipboard(s, f) && s.visibility === f.owner.visibility && f.owner.output.opening === event.output.opening
+        && f.owner.output.choice === event.output.choice && f.delivery !== event.output.delivery) {
+        return [finish(changed(s, { selected: new Map(), permissionDetour: false,
+          copied: { text: outcome.text, warnings: outcome.warnings }, escapedQuery: null }), f), [{ type: "consume", output: event.output }]];
+      }
       if (!ownsCompletion(s, f, event.output)) return [finish(s, f), s.activeCopy === f.id && f.owner.session === s.session && sameOutput(f.owner.output, event.output) ? [{ type: "consume", output: f.owner.output }] : []];
       s = { ...s, copied: outcome, escapedQuery: null, flights: s.flights.map((flight) => flight === f ? { ...f, phase: "hide", outcome } : flight) };
       return afterCopy(outcome, event.pinned) === "hide-and-notify" ? [{ ...s, permissionDetour: true }, [{ type: "hide", id: f.id, session: f.session }]] : complete(s);

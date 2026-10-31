@@ -8,6 +8,7 @@ use std::time::{Duration, Instant};
 use ibis_core::destination::CopyReason;
 use objc2_app_kit::{NSApplication, NSPasteboard, NSWorkspace};
 use objc2_core_graphics::{CGEvent, CGEventFlags, CGEventSource, CGEventSourceStateID, CGPreflightPostEventAccess};
+use objc2_foundation::MainThreadMarker;
 use tauri::{AppHandle, Manager};
 use tauri_plugin_global_shortcut::Code;
 
@@ -165,6 +166,9 @@ impl Desk for Mac {
         let queued = Arc::clone(&pending);
         let app = self.app.clone();
         self.on_main_for(limit, move || {
+            let Some(main) = MainThreadMarker::new() else {
+                return PostResult::Unavailable;
+            };
             if Instant::now() >= request.deadline {
                 return PostResult::Unavailable;
             }
@@ -185,6 +189,7 @@ impl Desk for Mac {
                 app.state::<super::LastTarget>().post_if_current(&request, || {
                     checked_post(
                         &Ready {
+                            _main: main,
                             app: &app,
                             down: &down,
                             up: &up,
@@ -205,6 +210,7 @@ impl Desk for Mac {
 
 /// Constructed and used only inside the final main-thread task.
 struct Ready<'a> {
+    _main: MainThreadMarker,
     app: &'a AppHandle,
     down: &'a CGEvent,
     up: &'a CGEvent,
@@ -225,6 +231,8 @@ impl PostDesk for Ready<'_> {
 
     fn current(&self, _presentation: u64) -> bool {
         // The caller holds LastTarget's ownership lock through checked_post.
+        // Ready requires the main-thread marker: locked Tauri handles this
+        // query inline on that thread, never dispatching or waiting on it.
         self.app
             .get_webview_window("main")
             .is_some_and(|window| window.is_visible().ok() == Some(false))

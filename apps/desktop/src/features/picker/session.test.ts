@@ -168,6 +168,63 @@ test("a stale success never consumes the newer citation's copy or receipt", () =
   expect(s.effects).toEqual([]);
 });
 
+test("delivery revocation keeps completed-write feedback without hiding or delivering", () => {
+  const s = scenario();
+  s.send({ type: "toggle", result: a, locator: a.locator });
+  s.send(s.view());
+  s.send({ type: "enter", choice: choiceKey([a]) });
+  const output = { opening: 0, choice: 0, delivery: 1 };
+  s.send(s.view({ output }));
+  s.complete(1, { output, outcome: { text: prepared.text, warnings: [], delivery: 17 } });
+  expect(s.state.copied).toEqual({ text: prepared.text, warnings: [] });
+  expect(s.state.lastOutcome).toBe("Copied");
+  expect(s.state.selected.size).toBe(0);
+  expect(s.state.flights).toHaveLength(0);
+  expect(s.effects).toEqual([{ type: "consume", output }]);
+});
+
+test.each(["before", "after"])("a revoked write arriving %s a newer copy's response cannot consume its feedback", (order) => {
+  const s = scenario();
+  s.send(s.view());
+  s.send({ type: "enter", choice: choiceKey([a]) });
+  const output = { opening: 0, choice: 0, delivery: 1 };
+  s.send(s.view({ output }));
+  s.send({ type: "enter", choice: choiceKey([a]) });
+  expect(s.effects).toMatchObject([{ type: "copy", id: 2 }]);
+  if (order === "before") {
+    s.complete(1, { output });
+    expect(s.state.activeCopy).toBe(2);
+    expect(s.state.copied).toBeNull();
+    expect(s.effects).toEqual([]);
+  }
+  s.complete(2, { output, pinned: true, outcome: { text: "new citation", warnings: [] } });
+  expect(s.state.copied?.text).toBe("new citation");
+  expect(s.effects).toEqual([{ type: "consume", output }]);
+  if (order === "after") {
+    const copied = s.state.copied;
+    s.complete(1, { output });
+    expect(s.state.copied).toBe(copied);
+    expect(s.state.lastOutcome).toBe("Copied");
+    expect(s.effects).toEqual([]);
+  }
+});
+
+test("a revoked write cannot consume a fresh Enter waiting for its delivery save", () => {
+  const s = scenario();
+  s.send(s.view());
+  s.send({ type: "enter", choice: choiceKey([a]) });
+  const output = { opening: 0, choice: 0, delivery: 1 };
+  s.send(s.view({ output, saving: true }));
+  s.send({ type: "enter", choice: choiceKey([a]) });
+  const pending = s.state.pendingCopy;
+  s.complete(1, { output });
+  expect(s.state.pendingCopy).toBe(pending);
+  expect(s.state.copied).toBeNull();
+  expect(s.effects).toEqual([]);
+  s.send(s.view({ output }));
+  expect(s.effects).toMatchObject([{ type: "copy", id: 2 }]);
+});
+
 test("an older confirmation timer cannot dismiss a newer copy's warnings", () => {
   const s = scenario();
   s.send(s.view());
