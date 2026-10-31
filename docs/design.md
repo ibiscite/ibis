@@ -32,9 +32,12 @@ canvas mirrors them (see **How the design changes**).
    sure?"; destructive actions apply at once with an 8 s Undo [D16].
 7. **Calm motion.** Movement only explains where something came from, and it
    switches off when the system asks for reduced motion.
-8. **No glow, no edge rings.** Selection is a fill, never an outline. No
-   coloured borders, outer glows or bright rims, except the selected picture
-   choices described in [D7]. A focus ring appears only when the keyboard moved focus.
+8. **No glow, no edge rings.** Selection is a fill, never an outline.
+   Exception: picture choices in Settings (Appearance, Rows, Search icon
+   miniatures) use a soft accent tint plus a 2 px accent ring, because a fill
+   would hide the picture, as in macOS System Settings. No other coloured
+   borders, outer glows or bright rims. A focus ring appears only when the
+   keyboard moved focus.
 9. **Great defaults, then choice.** Every setting starts from one default that
    works for most people on every platform, so most never open Settings.
    Customising is there for those who want it, never required. No setting
