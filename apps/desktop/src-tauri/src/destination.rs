@@ -3,7 +3,8 @@
 //! docs/decisions.md).
 //!
 //! `apps.json`, beside `settings.json`, holds at most [`MAX_APPS`] app IDs,
-//! each with the output chosen for it. Never a window title, document name or
+//! each with its chosen output and optional paste/copy-only preference.
+//! Never a window title, document name or
 //! citation text. A file Ibis cannot read means defaults, and the picker says
 //! so; the next choice replaces it.
 
@@ -14,7 +15,7 @@ use std::sync::Mutex;
 
 use ibis_core::cite::KeyFormat;
 use ibis_core::contract::citation::{KeySyntax, OutputSpec};
-use ibis_core::destination::{AppId, OutputQuestion, lookup, output_for};
+use ibis_core::destination::{AppId, AppPaste, CopyReason, OutputQuestion, PasteSafety, lookup, output_for};
 use ibis_core::settings::{self, CitationStyle};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
@@ -52,6 +53,10 @@ pub(crate) struct PickerDestination {
     pub(crate) can_paste: bool,
     /// The app cannot identify document syntax; ask until an output is remembered.
     pub(crate) output_question: Option<OutputQuestion>,
+    /// The separate delivery choice; never inferred from a remembered format.
+    pub(crate) paste: Option<AppPaste>,
+    /// An unrecognised app has a proven target but no delivery choice yet.
+    pub(crate) paste_question: bool,
 }
 
 /// The output an app's documents use, from the destination table through
@@ -79,7 +84,9 @@ pub(crate) fn automatic(app: &AppId, default_style: Option<CitationStyle>) -> Op
 #[serde(deny_unknown_fields)]
 struct Remembered {
     app: AppId,
-    output: AppOutput,
+    output: Option<AppOutput>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    paste: Option<AppPaste>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -121,7 +128,11 @@ impl AppMemory {
     pub(crate) fn get(&self, app: &AppId) -> (Option<AppOutput>, bool) {
         let app = normalized(app);
         self.state.lock().map_or((None, true), |state| {
-            let output = state.0.iter().find(|entry| entry.app == app).map(|entry| entry.output);
+            let output = state
+                .0
+                .iter()
+                .find(|entry| entry.app == app)
+                .and_then(|entry| entry.output);
             (output, state.1)
         })
     }
@@ -130,13 +141,35 @@ impl AppMemory {
         self.state.lock().map_or(true, |state| state.1)
     }
 
-    /// Remember `output` for `app`, or forget the app with `None`.
-    pub(crate) fn set(&self, app: &AppId, output: Option<AppOutput>) -> io::Result<()> {
+    pub(crate) fn paste(&self, app: &AppId) -> Result<Option<AppPaste>, CopyReason> {
         let app = normalized(app);
+        let state = self.state.lock().map_err(|_| CopyReason::PasteUnavailable)?;
+        if state.1 {
+            return Err(CopyReason::PasteUnavailable);
+        }
+        Ok(state
+            .0
+            .iter()
+            .find(|entry| entry.app == app)
+            .and_then(|entry| entry.paste))
+    }
+
+    /// Remember `output` for `app`, or forget the app with `None`.
+    #[cfg(test)]
+    pub(crate) fn set(&self, app: &AppId, output: Option<AppOutput>) -> io::Result<()> {
+        self.set_choice(app, output, None)
+    }
+
+    fn set_choice(&self, app: &AppId, output: Option<AppOutput>, paste: Option<AppPaste>) -> io::Result<()> {
+        let app = normalized(app);
+        if paste == Some(AppPaste::Paste) && lookup(&app).is_some_and(|entry| entry.safety != PasteSafety::Normal) {
+            return Err(io::Error::other("this app cannot be approved for automatic paste"));
+        }
         self.change(|apps| {
+            let paste = paste.or_else(|| output.and_then(|_| apps.iter().find(|entry| entry.app == app)?.paste));
             apps.retain(|entry| entry.app != app);
-            if let Some(output) = output {
-                apps.push(Remembered { app, output });
+            if output.is_some() || paste.is_some() {
+                apps.push(Remembered { app, output, paste });
             }
         })
     }
@@ -251,12 +284,19 @@ pub(crate) fn picker_destination(
             unreadable: memory.unreadable(),
             can_paste: false,
             output_question: None,
+            paste: None,
+            paste_question: false,
         };
     };
     let settings = settings::load(&settings_file.path).settings;
     let can_paste = crate::paste::intends_paste(&app, settings.paste.unwrap_or(true));
     let style = settings.citation_style;
     let (remembered, unreadable) = memory.get(&id);
+    let ordinary = lookup(&id).is_none_or(|entry| entry.safety == PasteSafety::Normal);
+    let paste = ordinary.then(|| memory.paste(&id).ok().flatten()).flatten();
+    let paste_question = lookup(&id).is_none()
+        && paste.is_none()
+        && crate::paste::may_choose_paste(&app, settings.paste.unwrap_or(true));
     PickerDestination {
         app: Some(name),
         app_id: Some(id.normalized()),
@@ -265,10 +305,12 @@ pub(crate) fn picker_destination(
         unreadable,
         can_paste,
         output_question: lookup(&id).and_then(|app| app.output_question),
+        paste,
+        paste_question,
     }
 }
 
-/// Always use `output` for the app the picker was opened from; `None` returns it to Automatic.
+/// Remember output and an optional delivery choice; both absent reset this app to Automatic.
 #[tauri::command]
 #[specta::specta]
 pub(crate) fn remember_app_output(
@@ -276,21 +318,33 @@ pub(crate) fn remember_app_output(
     memory: State<'_, AppMemory>,
     app_id: String,
     output: Option<AppOutput>,
+    paste: Option<AppPaste>,
 ) -> Result<(), String> {
     let (id, _) = crate::paste::last_app(&app).ok_or("no app to remember a choice for")?;
-    remember_for(&memory, &id, &app_id, output)
+    remember_choice_for(&memory, &id, &app_id, output, paste)
 }
 
+#[cfg(test)]
 fn remember_for(memory: &AppMemory, id: &AppId, expected: &str, output: Option<AppOutput>) -> Result<(), String> {
+    remember_choice_for(memory, id, expected, output, None)
+}
+
+fn remember_choice_for(
+    memory: &AppMemory,
+    id: &AppId,
+    expected: &str,
+    output: Option<AppOutput>,
+    paste: Option<AppPaste>,
+) -> Result<(), String> {
     if id.normalized() != expected {
         return Err("the app changed; open the output menu again".into());
     }
     memory
-        .set(id, output)
+        .set_choice(id, output, paste)
         .map_err(|_| "the choice for this app could not be saved".into())
 }
 
-/// Forget the outputs chosen for every app.
+/// Forget output and delivery choices for every app.
 #[tauri::command]
 #[specta::specta]
 pub(crate) fn forget_app_outputs(memory: State<'_, AppMemory>) -> Result<(), String> {
@@ -314,6 +368,72 @@ mod tests {
             system: System::Macos,
             id: id.into(),
         }
+    }
+
+    #[test]
+    fn paste_choices_are_separate_durable_and_reset_with_app_formats() -> io::Result<()> {
+        let directory = tempfile::tempdir()?;
+        let path = directory.path().join("apps.json");
+        let app = mac("org.example.Writer");
+        let format = Some(AppOutput::Key(KeyFormat::Pandoc));
+        for paste in [AppPaste::Paste, AppPaste::CopyOnly] {
+            let memory = AppMemory::open(path.clone());
+            memory.set_choice(&app, format, Some(paste))?;
+            let reopened = AppMemory::open(path.clone());
+            assert_eq!(reopened.get(&mac("ORG.EXAMPLE.WRITER")), (format, false));
+            assert_eq!(reopened.paste(&mac("ORG.EXAMPLE.WRITER")), Ok(Some(paste)));
+            // A later format pick preserves delivery; a format alone never grants it.
+            reopened.set(&app, Some(AppOutput::Key(KeyFormat::Cite)))?;
+            assert_eq!(reopened.paste(&app), Ok(Some(paste)));
+            reopened.set(&app, None)?;
+            assert_eq!(AppMemory::open(path.clone()).paste(&app), Ok(None));
+            reopened.set_choice(&app, format, Some(paste))?;
+            reopened.forget()?;
+            assert_eq!(AppMemory::open(path.clone()).paste(&app), Ok(None));
+        }
+        let memory = AppMemory::open(path);
+        memory.set(&app, format)?;
+        assert_eq!(memory.paste(&app), Ok(None));
+        Ok(())
+    }
+
+    #[test]
+    fn failed_or_stale_paste_choices_never_grant_approval() -> io::Result<()> {
+        let directory = tempfile::tempdir()?;
+        let path = directory.path().join("apps.json");
+        let memory = AppMemory::open(path.clone());
+        let app = mac("org.example.Writer");
+        assert!(remember_choice_for(&memory, &app, "org.example.other", None, Some(AppPaste::Paste)).is_err());
+        assert_eq!(memory.paste(&app), Ok(None));
+        memory.set_choice(&app, None, Some(AppPaste::CopyOnly))?;
+        fs::remove_file(&path)?;
+        fs::create_dir(&path)?;
+        assert!(memory.set_choice(&app, None, Some(AppPaste::Paste)).is_err());
+        assert_eq!(memory.paste(&app), Ok(Some(AppPaste::CopyOnly)));
+        assert_eq!(AppMemory::open(path).paste(&app), Err(CopyReason::PasteUnavailable));
+        Ok(())
+    }
+
+    #[test]
+    fn no_refused_app_can_be_approved_by_a_destination_save() -> io::Result<()> {
+        let directory = tempfile::tempdir()?;
+        let memory = AppMemory::open(directory.path().join("apps.json"));
+        for entry in ibis_core::destination::APPS
+            .iter()
+            .filter(|entry| entry.safety != PasteSafety::Normal)
+        {
+            let app = AppId {
+                system: entry.system,
+                id: entry.id.into(),
+            };
+            assert!(
+                memory.set_choice(&app, None, Some(AppPaste::Paste)).is_err(),
+                "{}",
+                entry.name
+            );
+            assert_eq!(memory.paste(&app), Ok(None));
+        }
+        Ok(())
     }
 
     #[test]

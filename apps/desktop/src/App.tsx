@@ -203,11 +203,11 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   };
   const chooseFormat = (choice: Choice) => {
     destination.choose(choice);
-    send({ type: "question", format: choice, output: destination.copyToken(), answer: "answered" });
+    send({ type: "question", format: choice, output: destination.copyToken(), answer: destination.askPaste ? "cancel" : "answered" });
   };
   const questionScope = (action: () => void, keepOpen = false) => {
     action();
-    send({ type: "question", format: null, output: destination.copyToken(), answer: keepOpen ? "open" : "answered" });
+    send({ type: "question", format: null, output: destination.copyToken(), answer: keepOpen ? "open" : destination.askPaste ? "cancel" : "answered" });
     if (keepOpen && session.getSnapshot().pendingCopy?.question === "open") formatButtonRef.current?.click();
   };
 
@@ -578,12 +578,17 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
           setFormatOpen(open);
           if (open || pendingCopy?.question !== "open" || reason === "action") return;
           // Dismissal uses the fallback for this attempt; application commands cancel it.
-          send({ type: "question", answer: reason === "command" ? "cancel" : "answered" });
+          send({ type: "question", answer: destination.askPaste || reason === "command" ? "cancel" : "answered" });
         }}
         onceOnly={destination.onceOnly}
         onToggleOnce={() => questionScope(destination.toggleOnce, true)}
         onAutomatic={() => questionScope(destination.restoreAutomatic)}
         onDefault={() => questionScope(destination.useDefault)}
+        pasteChoices={destination.pasteChoices}
+        onPasteChange={(paste) => {
+          send({ type: "question", answer: "cancel" });
+          destination.choosePaste(paste);
+        }}
         formatDisabled={!destination.ready || destination.saving}
         showFormat={!libraryChoices && (library === null || Boolean(library?.has_snapshot))}
         styles
@@ -704,6 +709,10 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
               pin: togglePin,
               keys: openKeys,
               settings: openSettings ? () => runFromMenu("settings", () => openSettings(null)) : null,
+              copyOnlyHere: destination.pasteChoices && destination.app ? { app: destination.app, choose: () => {
+                cancelCopy();
+                destination.choosePaste("copy-only");
+              } } : null,
               forgetApps: destination.forgetAll,
               quit: () => runFromMenu("quit", quitAfterSaving),
             }} />

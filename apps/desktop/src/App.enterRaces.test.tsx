@@ -138,7 +138,7 @@ test.each(["copy", "hide", "delivery"])("a fresh Enter after changing only choos
   let copies = 0;
   const calls = backend({
     search: () => [result("a", "Prepared reference")],
-    picker_destination: () => ({ app: "Example Writer", app_id: "example.writer", automatic: null, remembered: null, unreadable: false, can_paste: true, output_question: null }),
+    picker_destination: () => ({ app: "Example Writer", app_id: "example.writer", automatic: null, remembered: null, unreadable: false, can_paste: true, output_question: null, paste: null, paste_question: false }),
     copy_file_citation: async (args) => {
       const { preview } = prepared(args);
       if (++copies === 1 && stage === "copy") await paused.promise;

@@ -37,9 +37,11 @@ fn macos_html(fragment: &str) -> String {
 #[cfg(target_os = "macos")]
 pub(crate) fn write(app: &tauri::AppHandle, content: ClipboardContent<'_>) -> Result<Option<u32>, String> {
     use tauri::Manager;
-    app.state::<crate::paste::LastTarget>().write_copy(content.text, || {
-        publish_macos(&objc2_app_kit::NSPasteboard::generalPasteboard(), content)
-    })
+    app.state::<crate::paste::LastTarget>().write_copy(
+        content.text,
+        |id| app.state::<crate::destination::AppMemory>().paste(id),
+        || publish_macos(&objc2_app_kit::NSPasteboard::generalPasteboard(), content),
+    )
 }
 
 /// Return the count immediately after our last format write. A replacement

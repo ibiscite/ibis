@@ -9,7 +9,7 @@
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use ibis_core::destination::{AppId, CopyReason, Decision, PastePermission, System, decide, lookup};
+use ibis_core::destination::{AppId, AppPaste, CopyReason, Decision, PastePermission, System, decide, lookup};
 use serde::Serialize;
 use tauri::{AppHandle, Manager};
 
@@ -181,9 +181,10 @@ impl LastTarget {
     pub(crate) fn write_copy(
         &self,
         text: &str,
+        paste_for: impl FnOnce(&AppId) -> Result<Option<AppPaste>, CopyReason>,
         write: impl FnOnce() -> Result<Option<isize>, String>,
     ) -> Result<Option<u32>, String> {
-        self.write_copy_at(text, SafetyStamp::now(), write)
+        self.write_copy_at(text, SafetyStamp::now(), paste_for, write)
     }
 
     #[cfg(any(target_os = "macos", test))]
@@ -191,17 +192,22 @@ impl LastTarget {
         &self,
         text: &str,
         stamp: SafetyStamp,
+        paste_for: impl FnOnce(&AppId) -> Result<Option<AppPaste>, CopyReason>,
         write: impl FnOnce() -> Result<Option<isize>, String>,
     ) -> Result<Option<u32>, String> {
         let mut last = self.0.lock().map_err(|_| "The clipboard could not be written.")?;
         last.copied = None;
         last.owner = None;
+        let captured = last.captured.clone().map(|mut captured| {
+            captured.paste = captured.target.app.as_ref().map_or(Ok(None), paste_for);
+            captured
+        });
         let change_count = write()?;
         if let Some((change_count, token)) = change_count.zip(write_token()) {
             last.owner = Some(token);
             last.copied = Some(CopyProof {
                 token,
-                captured: last.captured.clone(),
+                captured,
                 text: text.to_owned(),
                 change_count,
                 presentation: last.presentation,
@@ -286,17 +292,39 @@ pub(crate) fn last_app(app: &AppHandle) -> Option<(AppId, String)> {
 /// The footer's intended action, from the same policy as delivery. This only
 /// reads the captured target and permission; secure input is checked at delivery.
 pub(crate) fn intends_paste(app: &AppHandle, enabled: bool) -> bool {
+    paste_policy(app, enabled, false)
+}
+
+/// Whether an ordinary target could paste after explicit approval. It uses the
+/// same proof and refusal policy, so unsafe/unproven apps never ask for approval.
+pub(crate) fn may_choose_paste(app: &AppHandle, enabled: bool) -> bool {
+    paste_policy(app, enabled, true)
+}
+
+fn paste_policy(app: &AppHandle, enabled: bool, choosing: bool) -> bool {
     let state = app.state::<LastTarget>();
     let Ok(last) = state.0.lock() else { return false };
     #[cfg(not(target_os = "windows"))]
     let captured = last.captured.as_ref();
     #[cfg(target_os = "windows")]
     let captured = last.target.as_ref().and_then(|target| target.captured.as_ref());
+    let preference = if choosing {
+        Some(AppPaste::Paste)
+    } else {
+        let Ok(preference) = captured
+            .and_then(|captured| captured.target.app.as_ref())
+            .map_or(Ok(None), |id| app.state::<crate::destination::AppMemory>().paste(id))
+        else {
+            return false;
+        };
+        preference
+    };
     intended_paste(
         captured,
         PastePermission {
             enabled,
             granted: enabled && permission::paste_permission().granted,
+            app: preference,
         },
     )
 }
@@ -306,7 +334,16 @@ fn intended_paste(captured: Option<&Captured>, permission: PastePermission) -> b
 }
 
 fn delivery_decision(captured: &Captured, permission: PastePermission) -> Decision {
-    match decide(&captured.target, permission) {
+    let decision = decide(&captured.target, permission);
+    if let Err(reason) = captured.paste
+        && matches!(
+            decision,
+            Decision::Paste | Decision::Copy(CopyReason::NoPermission | CopyReason::UnknownApp)
+        )
+    {
+        return Decision::Copy(reason);
+    }
+    match decision {
         Decision::Paste | Decision::Copy(CopyReason::NoPermission)
             if captured.target.system == System::Macos && captured.window.is_none() =>
         {
@@ -592,6 +629,7 @@ fn deliver<D: Desk>(desk: &D, proof: Option<&D::Proof>, enabled: bool) -> Delive
     let permission = PastePermission {
         enabled,
         granted: enabled && desk.may_post(),
+        app: captured.paste.unwrap_or(None),
     };
     let copied = |reason: Option<CopyReason>| Delivered::Copied {
         reason: reason
@@ -743,6 +781,16 @@ pub(crate) fn begin_copy(app: &AppHandle) -> CopyAttempt<windows::Window> {
         .ok()
         .and_then(|last| last.target.clone())
         .filter(|target| target.generation == generation);
+    let target = target.map(|mut target| {
+        if let Some(captured) = &mut target.captured {
+            captured.paste = captured
+                .target
+                .app
+                .as_ref()
+                .map_or(Ok(None), |id| app.state::<crate::destination::AppMemory>().paste(id));
+        }
+        target
+    });
     CopyAttempt { target, written, stamp }
 }
 
@@ -1205,6 +1253,7 @@ mod tests {
     const PRESENTATION: u64 = 8;
 
     struct Fake {
+        app_id: &'static str,
         may_post: bool,
         post_event_granted: Cell<bool>,
         asked: Cell<u32>,
@@ -1236,6 +1285,7 @@ mod tests {
     impl Fake {
         fn new() -> Self {
             Self {
+                app_id: "com.microsoft.word",
                 may_post: true,
                 post_event_granted: Cell::new(true),
                 asked: Cell::new(0),
@@ -1270,7 +1320,7 @@ mod tests {
 
         fn front(&self) -> Option<Front> {
             self.fronts.borrow().first().map(|&pid| Front {
-                id: Some("com.microsoft.word".into()),
+                id: Some(self.app_id.into()),
                 pid,
                 window: self.window.get(),
                 focus_failure: None,
@@ -1386,6 +1436,7 @@ mod tests {
     // This fake exercises macOS capture and PostEvent on every test host.
     fn writer(id: &str) -> Captured {
         Captured {
+            paste: Ok(None),
             target: Target {
                 system: System::Macos,
                 app: Some(AppId {
@@ -1407,6 +1458,7 @@ mod tests {
         let permission = PastePermission {
             enabled: true,
             granted: true,
+            app: None,
         };
         let writer = writer("com.microsoft.word");
         assert!(intended_paste(Some(&writer), permission));
@@ -1521,7 +1573,7 @@ mod tests {
         });
         last.begin_presentation(capture::captured(SYSTEM, own_key, 7));
         let token = last
-            .write_copy_at(TEXT, desk.stamp.get(), || Ok(Some(COUNT)))
+            .write_copy_at(TEXT, desk.stamp.get(), |_| Ok(None), || Ok(Some(COUNT)))
             .unwrap_or_else(|error| panic!("{error}"));
         let proof = last.take_copy(TEXT, token).unwrap_or_else(|| panic!("proof"));
         desk.presentation.set(proof.presentation);
@@ -1552,7 +1604,7 @@ mod tests {
             last.begin_presentation(capture::captured(System::Macos, failed, 7));
             let copy = || {
                 let token = last
-                    .write_copy_at(TEXT, desk.stamp.get(), || Ok(Some(COUNT)))
+                    .write_copy_at(TEXT, desk.stamp.get(), |_| Ok(None), || Ok(Some(COUNT)))
                     .unwrap_or_else(|error| panic!("{error}"));
                 last.take_copy(TEXT, token).unwrap_or_else(|| panic!("proof"))
             };
@@ -1709,13 +1761,18 @@ mod tests {
         last.begin_presentation(Some(writer("com.microsoft.word")));
         let desk = Fake::new();
         let token = last
-            .write_copy_at(TEXT, desk.stamp.get(), || {
-                desk.stamp.set(SafetyStamp {
-                    epoch: 2,
-                    elapsed: Duration::ZERO,
-                });
-                Ok(Some(COUNT))
-            })
+            .write_copy_at(
+                TEXT,
+                desk.stamp.get(),
+                |_| Ok(None),
+                || {
+                    desk.stamp.set(SafetyStamp {
+                        epoch: 2,
+                        elapsed: Duration::ZERO,
+                    });
+                    Ok(Some(COUNT))
+                },
+            )
             .unwrap_or_else(|e| panic!("{e}"));
         let proof = last.take_copy(TEXT, token).unwrap_or_else(|| panic!("proof"));
         assert_eq!(proof.stamp.epoch, 1);
@@ -1730,7 +1787,7 @@ mod tests {
         last.begin_presentation(Some(writer("com.microsoft.word")));
         let copy = || {
             let token = last
-                .write_copy(TEXT, || Ok(Some(COUNT)))
+                .write_copy(TEXT, |_| Ok(None), || Ok(Some(COUNT)))
                 .unwrap_or_else(|e| panic!("{e}"));
             last.take_copy(TEXT, token).unwrap_or_else(|| panic!("proof"))
         };
@@ -1950,7 +2007,7 @@ mod tests {
             let desk = Fake::new();
             last.begin_presentation(Some(writer("com.microsoft.word")));
             let token_a = last
-                .write_copy_at(text_a, desk.stamp.get(), || Ok(Some(COUNT)))
+                .write_copy_at(text_a, desk.stamp.get(), |_| Ok(None), || Ok(Some(COUNT)))
                 .unwrap_or_else(|e| panic!("{e}"));
             // A's worker is queued but has not taken its proof yet.
             let delivery_a = || {
@@ -1959,7 +2016,7 @@ mod tests {
             };
             last.begin_presentation(None);
             let token_b = last
-                .write_copy_at(TEXT, desk.stamp.get(), || Ok(Some(COUNT + 1)))
+                .write_copy_at(TEXT, desk.stamp.get(), |_| Ok(None), || Ok(Some(COUNT + 1)))
                 .unwrap_or_else(|e| panic!("{e}"));
             assert_ne!(token_a, token_b);
             desk.presentation.set(2);
@@ -1986,7 +2043,7 @@ mod tests {
             state.captured = Some(writer("com.microsoft.word"));
         }
         let token = last
-            .write_copy(TEXT, || Ok(Some(COUNT)))
+            .write_copy(TEXT, |_| Ok(None), || Ok(Some(COUNT)))
             .unwrap_or_else(|e| panic!("{e}"));
         let ticket = last.take_copy(TEXT, token).unwrap_or_else(|| panic!("copy proof"));
         assert_eq!(ticket.change_count, COUNT);
@@ -1994,7 +2051,7 @@ mod tests {
         assert_eq!(ticket.captured, Some(writer("com.microsoft.word")));
         assert!(last.take_copy(TEXT, token).is_none());
         let token = last
-            .write_copy(TEXT, || Ok(Some(COUNT)))
+            .write_copy(TEXT, |_| Ok(None), || Ok(Some(COUNT)))
             .unwrap_or_else(|e| panic!("{e}"));
         assert!(last.take_copy("different citation", token).is_none());
         assert!(last.take_copy(TEXT, None).is_none());
@@ -2002,9 +2059,9 @@ mod tests {
         // A failed write or a concurrent replacement cannot reuse an old proof.
         for result in [Err("write failed".into()), Ok(None)] {
             let token = last
-                .write_copy(TEXT, || Ok(Some(COUNT)))
+                .write_copy(TEXT, |_| Ok(None), || Ok(Some(COUNT)))
                 .unwrap_or_else(|e| panic!("{e}"));
-            let _ = last.write_copy(TEXT, || result);
+            let _ = last.write_copy(TEXT, |_| Ok(None), || result);
             assert!(last.take_copy(TEXT, token).is_none());
         }
     }
@@ -2023,7 +2080,7 @@ mod tests {
         let last = LastTarget::default();
         last.begin_presentation(Some(writer("com.microsoft.word")));
         let token = last
-            .write_copy(TEXT, || Ok(Some(COUNT)))
+            .write_copy(TEXT, |_| Ok(None), || Ok(Some(COUNT)))
             .unwrap_or_else(|e| panic!("{e}"));
         let ticket = last.take_copy(TEXT, token).unwrap_or_else(|| panic!("copy proof"));
         // Hide/blur can advance PickerGeneration repeatedly. This proof
@@ -2057,6 +2114,146 @@ mod tests {
             assert_eq!(deliver(&desk, Some(&ticket), enabled), copied(reason));
             assert!(desk.posts.borrow().is_empty());
         }
+    }
+
+    #[test]
+    fn unknown_app_approval_is_frozen_before_io_and_each_fresh_enter_pastes_once() {
+        let last = LastTarget::default();
+        let approved = Cell::new(None);
+        let desk = Fake {
+            app_id: "org.example.writer",
+            ..Fake::new()
+        };
+        last.begin_presentation(Some(writer(desk.app_id)));
+        let token = last
+            .write_copy_at(
+                TEXT,
+                desk.stamp.get(),
+                |_| Ok(approved.get()),
+                || {
+                    // Even an approval arriving during the write cannot release this copy.
+                    approved.set(Some(AppPaste::Paste));
+                    Ok(Some(COUNT))
+                },
+            )
+            .unwrap_or_else(|e| panic!("{e}"));
+        let before = last.take_copy(TEXT, token).unwrap_or_else(|| panic!("copy proof"));
+        assert_eq!(deliver(&desk, Some(&before), true), copied(Some("unknown-app")));
+        assert!(desk.posts.borrow().is_empty());
+        let token = last
+            .write_copy_at(TEXT, desk.stamp.get(), |_| Ok(approved.get()), || Ok(Some(COUNT)))
+            .unwrap_or_else(|e| panic!("{e}"));
+        let after = last
+            .take_copy(TEXT, token)
+            .unwrap_or_else(|| panic!("fresh copy proof"));
+        desk.presentation.set(after.presentation);
+        assert_eq!(deliver(&desk, Some(&after), true), pasted());
+        assert_eq!(*desk.posts.borrow(), [42]);
+        assert!(last.take_copy(TEXT, token).is_none(), "one delivery per fresh copy");
+    }
+
+    #[test]
+    fn approved_unknown_apps_keep_window_accessibility_expiry_and_permission_guards() {
+        for (window, failure, age, may_post, reason) in [
+            (
+                None,
+                Some(CopyReason::AccessibilityRequired),
+                Duration::ZERO,
+                true,
+                "accessibility-required",
+            ),
+            (None, None, Duration::ZERO, true, "paste-unavailable"),
+            (Some(200), None, Duration::ZERO, true, "target-changed"),
+            (Some(100), None, LATE, true, "paste-expired"),
+            (Some(100), None, Duration::ZERO, false, "no-permission"),
+        ] {
+            let desk = Fake {
+                app_id: "org.example.writer",
+                may_post,
+                ..Fake::new()
+            };
+            let mut captured = writer(desk.app_id);
+            captured.paste = Ok(Some(AppPaste::Paste));
+            captured.focus_failure = failure;
+            if window.is_none() {
+                captured.window = None;
+            }
+            desk.window.set(window);
+            desk.stamp.set(SafetyStamp { epoch: 1, elapsed: age });
+            let proof = CopyProof {
+                captured: Some(captured),
+                ..proof()
+            };
+            assert_eq!(deliver(&desk, Some(&proof), true), copied(Some(reason)));
+            assert!(desk.posts.borrow().is_empty());
+        }
+    }
+
+    #[test]
+    fn a_remembered_copy_only_choice_never_posts() {
+        let desk = Fake {
+            app_id: "org.example.writer",
+            ..Fake::new()
+        };
+        let mut captured = writer(desk.app_id);
+        captured.paste = Ok(Some(AppPaste::CopyOnly));
+        let proof = CopyProof {
+            captured: Some(captured),
+            ..proof()
+        };
+        assert_eq!(deliver(&desk, Some(&proof), true), copied(Some("copy-only")));
+        assert!(desk.posts.borrow().is_empty());
+    }
+
+    #[test]
+    fn unreadable_app_choices_copy_without_guessing_that_copy_only_was_off() {
+        let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+        let path = directory.path().join("apps.json");
+        std::fs::write(&path, "unreadable invented preferences").unwrap_or_else(|e| panic!("{e}"));
+        let memory = crate::destination::AppMemory::open(path);
+        let desk = Fake::new();
+        let last = LastTarget::default();
+        last.begin_presentation(Some(writer(desk.app_id)));
+        let token = last
+            .write_copy_at(TEXT, desk.stamp.get(), |id| memory.paste(id), || Ok(Some(COUNT)))
+            .unwrap_or_else(|e| panic!("{e}"));
+        let proof = last.take_copy(TEXT, token).unwrap_or_else(|| panic!("copy proof"));
+        desk.presentation.set(proof.presentation);
+        // Repairing preferences cannot authorize the already written citation.
+        memory.forget().unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(deliver(&desk, Some(&proof), true), copied(Some("paste-unavailable")));
+        assert!(desk.posts.borrow().is_empty());
+    }
+
+    #[test]
+    fn a_delayed_app_answer_after_a_newer_copy_cannot_authorize_it_or_consume_its_proof() {
+        let last = LastTarget::default();
+        let approved = Cell::new(None);
+        let desk = Fake {
+            app_id: "org.example.writer",
+            ..Fake::new()
+        };
+        last.begin_presentation(Some(writer(desk.app_id)));
+        let a = last
+            .write_copy_at(
+                "[@older]",
+                desk.stamp.get(),
+                |_| Ok(approved.get()),
+                || Ok(Some(COUNT - 1)),
+            )
+            .unwrap_or_else(|e| panic!("{e}"));
+        let b = last
+            .write_copy_at(TEXT, desk.stamp.get(), |_| Ok(approved.get()), || Ok(Some(COUNT)))
+            .unwrap_or_else(|e| panic!("{e}"));
+        // An answer held by A arrives after B has written the clipboard.
+        approved.set(Some(AppPaste::Paste));
+        assert!(last.take_copy("[@older]", a).is_none());
+        let b = last
+            .take_copy(TEXT, b)
+            .unwrap_or_else(|| panic!("B still owns its proof"));
+        assert_eq!(deliver(&desk, Some(&b), true), copied(Some("unknown-app")));
+        assert!(desk.posts.borrow().is_empty());
+        assert_eq!(b.text, TEXT, "the newest copy and its reason are retained");
     }
 
     #[test]
@@ -2347,6 +2544,7 @@ mod windows_tests {
                 PastePermission {
                     enabled: true,
                     granted: true,
+                    app: None,
                 }
             ));
             assert_eq!(

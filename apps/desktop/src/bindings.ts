@@ -74,9 +74,9 @@ export const commands = {
 "keys" | null, revision: number) => __TAURI_INVOKE<PickerSave_Serialize>("set_picker_preferences", { preferences, copyFormat, revision }),
 	/**  The app the picker was opened from, its output and what Ibis remembers for it. */
 	pickerDestination: () => __TAURI_INVOKE<PickerDestination>("picker_destination"),
-	/**  Always use `output` for the app the picker was opened from; `None` returns it to Automatic. */
-	rememberAppOutput: (appId: string, output: ({ key: KeyFormat }) & { style?: never } | ({ style: CitationStyle }) & { key?: never } | null) => __TAURI_INVOKE<null>("remember_app_output", { appId, output }),
-	/**  Forget the outputs chosen for every app. */
+	/**  Remember output and an optional delivery choice; both absent reset this app to Automatic. */
+	rememberAppOutput: (appId: string, output: ({ key: KeyFormat }) & { style?: never } | ({ style: CitationStyle }) & { key?: never } | null, paste: "paste" | "copy-only" | null) => __TAURI_INVOKE<null>("remember_app_output", { appId, output, paste }),
+	/**  Forget output and delivery choices for every app. */
 	forgetAppOutputs: () => __TAURI_INVOKE<null>("forget_app_outputs"),
 	/**  Whether Ibis starts when the person logs in, read from the system now. */
 	loginItem: () => __TAURI_INVOKE<LoginItem>("login_item"),
@@ -171,6 +171,9 @@ export type Accent = "system" | "blue" | "purple" | "pink" | "red" | "orange" | 
 
 /**  One output the picker can copy: a key syntax or a citation style. */
 export type AppOutput = ({ key: KeyFormat }) & { style?: never } | ({ style: CitationStyle }) & { key?: never };
+
+/**  A deliberate delivery choice for one captured app, independent of its format. */
+export type AppPaste = "paste" | "copy-only";
 
 /**  Settings owns these choices until the picker consumes the same event fields. */
 export type Appearance = "system" | "light" | "dark";
@@ -432,6 +435,10 @@ export type PickerDestination = {
 	can_paste: boolean,
 	/**  The app cannot identify document syntax; ask until an output is remembered. */
 	output_question: OutputQuestion | null,
+	/**  The separate delivery choice; never inferred from a remembered format. */
+	paste: AppPaste | null,
+	/**  An unrecognised app has a proven target but no delivery choice yet. */
+	paste_question: boolean,
 };
 
 /**

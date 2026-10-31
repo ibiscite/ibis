@@ -125,7 +125,7 @@ Every insertion ends in exactly one visible state: pasted, or copied with a
 reason. Ibis captures the target app and window, writes every clipboard format, restores
 focus and pastes with a layout-aware shortcut. The citation stays on the
 clipboard: restoring the previous contents could paste them into a slow app, so
-restoring and per-app rules wait until after 1.0. On macOS it refuses while
+restoring waits until after 1.0. On macOS it refuses while
 system-wide Secure Event Input is on, including when another app enables it;
 this flag does not identify the destination's field or cover every password
 control. On Windows, elevated targets and UI Automation password fields are
@@ -135,10 +135,19 @@ refused on both platforms. Pasting is on by default (maintainer,
 2026-10-25, #27); Settings › General › Pasting turns it off, saved as
 `paste: false` (absent means on), and Enter then only copies.
 
-Unrecognised apps only copy with `unknown-app` (#1520). Recognising an output
-syntax or remembering a format does not establish that an app's paste key is
-safe. This deliberately refuses unlisted remote viewers, terminals and editors
-whose shortcuts are unverified, without growing a guessed app-ID denylist.
+The first Enter into an unrecognised app with a proven target opens the existing
+output chooser (#1520; maintainer correction to #1529, 2026-10-31). It offers
+"Paste into [app name] from now on" or "Copy only", remembered by OS app ID in
+the existing destination settings. Either answer keeps the citation and requires
+a fresh Enter; dismissal and a format pick alone grant no paste approval.
+Failed saves do not approve an app. Unapproved unknown copies use `unknown-app`;
+an explicit copy-only choice uses `copy-only`. Refused terminals, remote viewers,
+VMs and editors whose normal platform paste key means something else never ask.
+Neither an explicit choice nor a saved format can override their refusal, a
+missing window/Accessibility proof, expiry or the one-paste limit. The copy
+proof freezes app approval before clipboard I/O, so delayed approval cannot
+authorize an earlier copy. Resetting the app to Automatic or choosing "Forget
+formats for apps" clears both output and delivery choices.
 
 The footer names the intended action and output together, from that same
 native policy. Enter during search or preview loading waits for its current
@@ -413,25 +422,69 @@ This permission does not change MCP's exclusion of notes, annotations and privat
 
 The output chooser remembers a format picked for the captured app unless the
 person selects "Just this once". `apps.json`, beside `settings.json`, keeps
-only the operating system, normalised app ID and output for at most 200 apps;
+only the operating system, normalised app ID, output and optional delivery choice
+(`paste` or `copy-only`) for at most 200 apps;
 the least recently chosen app is dropped first. Never a document title, URL,
 window title, document text or citation. Browser and editor IDs cannot identify
 a project's syntax, so the first paste in each browser or code editor opens
 the output chooser once and remembers the pick (maintainer, 2026-10-28).
 Remembered choices beat app-table suggestions, then the
-global fallback; "Automatic" removes only the app override, and a deliberate
+global fallback; "Automatic" removes that app's output and delivery overrides, and a deliberate
 global choice never erases app choices.
 
 The bounded file is written whole, flushed and swapped in atomically. A file
-Ibis cannot read means automatic/default outputs, with a visible warning; the
-next explicit app save replaces the damaged data. "Forget formats for apps"
-clears it. A failed save leaves the previous durable choices intact and says
+Ibis cannot read means automatic/default outputs, with a visible warning, and
+automatic paste is unavailable: a lost Copy only rule must not become paste
+permission. The next explicit app save replaces the damaged data. Its read
+failure is frozen in the copy proof, so a later successful save cannot release
+that copy. "Forget formats for apps"
+clears output and delivery choices. Unknown apps ask for delivery approval
+separately from format, in the same chooser (0009); recognised apps also offer
+Copy only there and in More for the current ordinary app. A failed save leaves the previous durable choices intact and says
 so. Preference writes from different windows apply only deliberate field
 patches under the native owner lock, returning the authoritative saved state.
 Settings and the picker share one frontend patch queue for ordering, field
 acknowledgments, stale reads and recovery. Settings restores the saved choice
 after a failed save; the picker retains explicit choices for retry. Each window
 keeps its own queue; the native lock coordinates windows (2026-10-28).
+
+App-ID evidence for the 2026-10-31 destination-table additions:
+
+- Read `CFBundleIdentifier` and `CFBundleName` from the installed bundles for
+  Claude (`com.anthropic.claudefordesktop`), ChatGPT (`com.openai.codex`, whose
+  bundle name is ChatGPT), Notes (`com.apple.Notes`), Notion (`notion.id`), Craft
+  (`com.lukilabs.lukiapp`), OneNote (`com.microsoft.onenote.mac`), Thunderbird
+  (`org.mozilla.thunderbird`), Logseq (`com.logseq.logseq`), Jump Desktop
+  (`com.p5sys.jump.mac.viewer`) and Termius (`com.termius-dmg.mac`). These are
+  app metadata only, with no document or library reads.
+- ChatGPT Classic's `com.openai.chat` is recorded in an
+  [original application crash report](https://community.openai.com/t/chatgpt-app-for-macos-crashing-on-open-november-3/1002242).
+  Parsec's `tv.parsec.www` is recorded in a
+  [firsthand native-paste reproduction](https://github.com/Muesli-HQ/muesli/issues/493);
+  its Windows `parsecd.exe` is in [Parsec's launch instructions](https://support.parsec.app/hc/en-us/articles/32381836182932-Run-Parsec-App-From-Command-Line).
+  Both Jump Desktop Mac variants are named in
+  [the vendor's configuration instructions](https://support.jumpdesktop.com/hc/en-us/articles/4408192384909-Mac-How-can-I-prevent-users-on-Jump-Desktop-for-Mac-from-saving-or-sending-computer-passwords).
+- NoMachine's `com.nomachine.nxdock` comes from its
+  [extracted 7.4.1 Info.plist](https://develop.doesitarm.com/app/nomachine/);
+  Windows `nxplayer.exe` and `nxplayer.bin` appear in a
+  [firsthand installed-file listing](https://forum.nomachine.com/archive/topic/trying-to-make-a-portable-version-of-nomachine-enterprise-client).
+  Horizon's `com.omnissa.horizon.client.mac` is in its
+  [recorded bundle ID and signing requirement](https://appcatalog.cloud/apps/omnissa-horizon-client);
+  `vmware-view.exe` is in the [vendor's Windows client guide](https://docs-be.omnissa.com/bundle/Horizon-Client-for-Windows_2006_Horizon-Client-for-Windows-Installation-and-Setup-Guide/raw/resource/enus/Horizon_Client_for_Windows_2006_Horizon_Client_for_Windows_Installation_and_Setup_Guide.pdf?save_local=true).
+- Windows Emacs and gVim use their real executable names from
+  [Emacs's build source](https://github.com/emacs-mirror/emacs/blob/master/src/Makefile.in)
+  and [Vim's build source](https://github.com/vim/vim/blob/master/src/Make_mvc.mak).
+  Their default shortcuts differ: [Emacs clipboard commands](https://www.gnu.org/software/emacs/manual/html_node/emacs/Clipboard.html)
+  and [Vim's Windows clipboard instructions](https://github.com/vim/vim/blob/master/runtime/doc/gui_w32.txt).
+  Neovide's [bundle metadata](https://github.com/neovide/neovide/blob/main/Cargo.toml)
+  and [Windows release workflow](https://github.com/neovide/neovide/blob/main/.github/workflows/nightly.yml)
+  verify its IDs; its [FAQ](https://neovide.dev/faq.html) requires explicit
+  paste mappings on macOS and Windows.
+
+Not verified: legacy VMware Horizon Mac bundle IDs, separate NoMachine viewer
+helper bundle IDs and Jump Desktop's Windows executable. No guessed entries
+were added for these. The added table rows and per-app choice lookups are bounded;
+no new file, network access, polling or hidden activity is introduced.
 
 ## 0019 Updates
 

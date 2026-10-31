@@ -31,6 +31,7 @@ export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library
   updates: { automatic: boolean; available: boolean; toggle: () => void; check: () => void } | null;
   actions: { choose: () => void; useZotero: () => void; reload: () => void; density: () => void; largerText: () => void; searchMark: () => void; preview: () => void; pin: () => void; keys: () => void; settings: (() => void) | null;
     /** Offered when Ibis remembers formats for apps. */
+    copyOnlyHere?: { app: string; choose: () => void } | null;
     forgetApps?: (() => void) | null; quit: () => void };
 }) {
   return (
@@ -65,6 +66,7 @@ export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library
       <MenuSeparator />
       <MenuSection id="view">
         <MenuItem id="density" label={pickerText.density(densityNames[density])} title={pickerText.densityTitle} onAction={actions.density} />
+        {actions.copyOnlyHere && <MenuItem id="copy-only-here" label={pickerText.copyOnlyHere(actions.copyOnlyHere.app)} onAction={actions.copyOnlyHere.choose} />}
         {actions.forgetApps && <MenuItem id="forget-apps" label={pickerText.forgetApps} title={pickerText.forgetAppsTitle} onAction={actions.forgetApps} />}
       </MenuSection>
       <MenuSection id="view-toggles">

@@ -80,6 +80,17 @@ pub enum PasteSafety {
     RemoteDesktop,
     /// Keystrokes go to a guest system, whose clipboard may differ.
     VirtualMachine,
+    /// The normal platform paste key has another meaning in this editor.
+    NonstandardShortcut,
+}
+
+/// A deliberate delivery choice for one captured app, independent of its format.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[serde(rename_all = "kebab-case")]
+pub enum AppPaste {
+    Paste,
+    CopyOnly,
 }
 
 /// The app the picker was opened from, as captured before the panel showed.
@@ -108,6 +119,9 @@ pub struct PastePermission {
     pub enabled: bool,
     /// The system lets Ibis send the paste keystroke (macOS PostEvent).
     pub granted: bool,
+    /// Explicit app approval or refusal. A format choice never supplies this.
+    #[serde(default)]
+    pub app: Option<AppPaste>,
 }
 
 /// Why a citation was copied instead of pasted.
@@ -117,8 +131,9 @@ pub enum CopyReason {
     PasteOff,
     UnsupportedSystem,
     NoTarget,
-    /// The target's paste shortcut has not been verified.
+    /// An unrecognised app has no explicit paste approval.
     UnknownApp,
+    CopyOnly,
     TargetChanged,
     ClipboardChanged,
     PasteExpired,
@@ -131,6 +146,7 @@ pub enum CopyReason {
     Terminal,
     RemoteDesktop,
     VirtualMachine,
+    NonstandardShortcut,
     NoPermission,
     /// macOS Accessibility trust is required for the identity-only focus proof.
     AccessibilityRequired,
@@ -167,9 +183,11 @@ pub fn decide(target: &Target, permission: PastePermission) -> Decision {
             Some(PasteSafety::Terminal) => CopyReason::Terminal,
             Some(PasteSafety::RemoteDesktop) => CopyReason::RemoteDesktop,
             Some(PasteSafety::VirtualMachine) => CopyReason::VirtualMachine,
-            None => CopyReason::UnknownApp,
-            Some(PasteSafety::Normal) if !permission.granted => CopyReason::NoPermission,
-            Some(PasteSafety::Normal) => return Decision::Paste,
+            Some(PasteSafety::NonstandardShortcut) => CopyReason::NonstandardShortcut,
+            _ if permission.app == Some(AppPaste::CopyOnly) => CopyReason::CopyOnly,
+            None if permission.app != Some(AppPaste::Paste) => CopyReason::UnknownApp,
+            _ if !permission.granted => CopyReason::NoPermission,
+            _ => return Decision::Paste,
         }
     };
     Decision::Copy(reason)

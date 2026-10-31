@@ -4,7 +4,7 @@ import { useDestination } from "./useDestination";
 import type { PickerDestination } from "../../api";
 
 afterEach(cleanup);
-const browser: PickerDestination = { app: "Example Browser", app_id: "example.browser", automatic: null, remembered: null, unreadable: false, can_paste: false, output_question: "browser" };
+const browser: PickerDestination = { app: "Example Browser", app_id: "example.browser", automatic: null, remembered: null, unreadable: false, can_paste: false, output_question: "browser", paste: null, paste_question: false };
 const pending = <T,>() => {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((done) => { resolve = done; });
@@ -50,6 +50,26 @@ test("a failed save leaves the choice once-only and does not claim it was rememb
   expect(settings.report).toHaveBeenCalledWith("appChoice");
 });
 
+test("paste approval preserves a one-time format without remembering or consuming it", async () => {
+  let destination: PickerDestination = { ...browser, output_question: null, paste_question: true };
+  const rememberAppOutput = vi.fn(async () => {
+    destination = { ...destination, paste: "paste", paste_question: false, can_paste: true };
+    return null;
+  });
+  const { result } = renderHook(() => useDestination({ pickerDestination: async () => destination, rememberAppOutput }, options()));
+  act(() => result.current.read());
+  await waitFor(() => expect(result.current.ready).toBe(true));
+  act(() => result.current.toggleOnce());
+  act(() => result.current.choose("typst"));
+  await act(async () => result.current.choosePaste("paste"));
+  await waitFor(() => expect(result.current.ready && !result.current.saving).toBe(true));
+  expect(rememberAppOutput).toHaveBeenCalledWith("example.browser", null, "paste");
+  expect(result.current.format).toBe("typst");
+  expect(result.current.onceOnly).toBe(true);
+  act(() => result.current.consumeOnce(result.current.copyToken()));
+  expect(result.current.format).toBe("pandoc");
+});
+
 test("a stale save completion cannot mark a different app as remembered", async () => {
   let destination = browser;
   const save = pending<null>();
@@ -64,7 +84,7 @@ test("a stale save completion cannot mark a different app as remembered", async 
   await act(async () => save.resolve(null));
   await waitFor(() => expect(result.current.app).toBe("Example Editor"));
   expect(result.current.remembered).toBe(false);
-  expect(rememberAppOutput).toHaveBeenCalledWith("example.browser", { key: "cite" });
+  expect(rememberAppOutput).toHaveBeenCalledWith("example.browser", { key: "cite" }, null);
 });
 
 test("an old successful copy cannot consume a newer one-time output choice", async () => {

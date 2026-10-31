@@ -87,7 +87,7 @@ test.each([
 
 test("a preferences event superseding the permission return keeps the prepared output for the next copy", async () => {
   let granted = false;
-  let destination: PickerDestination = { app: "Example Editor", app_id: "example.editor", automatic: null, remembered: { key: "typst" }, unreadable: false, can_paste: false, output_question: null };
+  let destination: PickerDestination = { app: "Example Editor", app_id: "example.editor", automatic: null, remembered: { key: "typst" }, unreadable: false, can_paste: false, output_question: null, paste: null, paste_question: false };
   let delayReturn = false;
   let finishReturn!: (value: PickerDestination) => void;
   const copies: unknown[] = [];

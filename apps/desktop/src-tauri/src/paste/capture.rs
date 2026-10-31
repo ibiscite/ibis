@@ -3,7 +3,7 @@
 //! Only app identity, its name for feedback and an opaque window token are
 //! kept in memory. Window titles and document text are never read.
 
-use ibis_core::destination::{AppId, CopyReason, System, Target};
+use ibis_core::destination::{AppId, AppPaste, CopyReason, System, Target};
 
 /// What the system reports about the app in front.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -25,6 +25,8 @@ pub(crate) struct Front {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Captured {
     pub(crate) target: Target,
+    /// Frozen before the clipboard write; a later chooser answer cannot authorize it.
+    pub(crate) paste: Result<Option<AppPaste>, CopyReason>,
     pub(crate) pid: Option<i32>,
     pub(crate) window: Option<u32>,
     pub(crate) focus_failure: Option<CopyReason>,
@@ -42,6 +44,7 @@ impl Captured {
                 secure_field: false,
                 elevated: false,
             },
+            paste: Ok(None),
             pid: None,
             window: None,
             focus_failure: None,
@@ -71,6 +74,7 @@ pub(crate) fn captured(system: System, front: Option<Front>, own: i32) -> Option
             secure_field: false,
             elevated: front.elevated,
         },
+        paste: Ok(None),
         pid: Some(front.pid),
         window: front.window,
         focus_failure: front.focus_failure,
