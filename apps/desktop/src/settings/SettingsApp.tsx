@@ -93,16 +93,17 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
       if (event.source === "read" && !preferenceProblem.current) setFailed(true);
     } else if (event.type === "read" || event.type === "saved") {
       setPreferences(event.value.preferences);
-      setFailed(false);
+      if (event.type === "read") setFailed(false);
     } else if (event.type === "saving") {
       const operation = edits.current;
       const row = cause.current;
       void event.promise.catch((reason: unknown) => {
         if (live.current && operation === edits.current) {
-          preferenceProblem.current = true;
-          setFailed(false);
-          if (row) setProblemRow({ id: row, message: reason === "settings-read-only" ? "settings-read-only" : "settings-choice-failed" });
-          setPreferences(queue.savedPreferences);
+          const saved = queue.savedPreferences;
+          preferenceProblem.current = saved !== null;
+          setFailed((failed) => failed || !saved);
+          setProblemRow(saved && row ? { id: row, message: reason === "settings-read-only" ? "settings-read-only" : "settings-choice-failed" } : null);
+          if (saved) setPreferences(saved);
         }
       });
     }
@@ -221,7 +222,6 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     setProblemRow(null);
     preferenceProblem.current = false;
     setPreferences({ ...preferences, ...next, ...(key ? { copy_format: key } : {}) });
-    setFailed(false);
     queue.change(next, key);
   };
   const changeShortcut = (next: string | null) => {

@@ -161,7 +161,10 @@ export class PreferencePatchQueue {
     if (own) {
       own.notified = true;
       if (own.completed) this.ownNotifications.delete(revision);
-    } else this.foreignNotifications += 1;
+    } else {
+      this.foreignNotifications += 1;
+      this.durable = null;
+    }
     const notification = ++this.notifications;
     this.reads += 1;
     await this.drainWrites();

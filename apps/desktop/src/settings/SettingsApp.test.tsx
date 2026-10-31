@@ -1045,6 +1045,51 @@ test("a self-notification before reply preserves the saved row choice when the n
   expect(state.preferences).toMatchObject({ density: "spacious", larger_text: false });
 });
 
+test("a picker notification makes a failed queued save uncertain until the saved settings can be read", async () => {
+  const { api, state, commit } = fakeApi({ granted: true }, { accent: "system" });
+  const reply = deferred<void>();
+  const write = vi.spyOn(api, "setPickerPreferences")
+    .mockImplementationOnce(async (patch, key, revision) => {
+      const saved = await commit(patch, key);
+      for (const changed of state.preferenceEvents) changed(revision);
+      await reply.promise;
+      return saved;
+    })
+    .mockRejectedValueOnce("settings-read-only");
+  render(<SettingsApp api={api} initialPage="look" />);
+  await screen.findByRole("radio", { name: "Spacious" });
+  const read = vi.spyOn(api, "pickerPreferences").mockRejectedValue(new Error("synthetic read failure"));
+  fireEvent.click(screen.getByRole("radio", { name: "Spacious" }));
+  fireEvent.click(screen.getByRole("radio", { name: "Larger" }));
+  await waitFor(() => expect(write).toHaveBeenCalledTimes(1));
+  await act(async () => {
+    await commit({ accent: "purple" });
+    for (const changed of state.preferenceEvents) changed(++state.revision);
+    reply.resolve();
+  });
+  expect(write).toHaveBeenCalledTimes(2);
+  expect(state.preferences).toMatchObject({ density: "spacious", accent: "purple", larger_text: false });
+  const uncertainty = "Ibis could not read your settings; reopen Settings to try again.";
+  expect(screen.getByRole("alert")).toHaveProperty("textContent", uncertainty);
+  expect(screen.queryByText(/the saved value is shown/)).toBeNull();
+
+  fireEvent.click(screen.getByRole("option", { name: "General" }));
+  expect(screen.getByRole("heading", { level: 1 })).toHaveProperty("textContent", "General");
+  await act(async () => { fireEvent.focus(window); });
+  expect(screen.getByRole("alert")).toHaveProperty("textContent", uncertainty);
+  fireEvent.click(screen.getByRole("option", { name: "Look" }));
+  fireEvent.click(screen.getByRole("radio", { name: "Default" }));
+  await act(async () => state.closes[0]!());
+  expect(screen.getByRole("alert")).toHaveProperty("textContent", uncertainty);
+
+  read.mockImplementation(async () => state.preferences);
+  await act(async () => { fireEvent.focus(window); });
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(screen.getByRole("radio", { name: "Spacious" })).toHaveProperty("checked", true);
+  expect(screen.getByRole("radio", { name: "Purple" })).toHaveProperty("checked", true);
+  expect(screen.getByRole("radio", { name: "Default" })).toHaveProperty("checked", true);
+});
+
 test("a picker change survives a Settings save reply delayed beyond the close timeout", async () => {
   const { api, state, commit } = fakeApi({ granted: true });
   const pending = deferred<Awaited<ReturnType<SettingsApi["setPickerPreferences"]>>>();

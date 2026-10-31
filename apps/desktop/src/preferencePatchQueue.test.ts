@@ -308,7 +308,7 @@ test("a foreign notification still retires a late acknowledgement followed by it
   const own = queue.refresh(1);
   saving.resolve({ preferences: { ...defaults, density: "compact" }, copy_format: "pandoc" });
   await vi.waitFor(() => expect(api.read).toHaveBeenCalledTimes(2));
-  expect(queue.savedPreferences?.density).toBe("comfortable");
+  expect(queue.savedPreferences).toBeNull();
   reading.resolve({ preferences: { ...defaults, density: "spacious" } });
   await Promise.all([foreign, own]);
   expect(queue.savedPreferences?.density).toBe("spacious");
