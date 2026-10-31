@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# Usage: bash ibis-fzf references.bib 'initial search words'
+# Requires ibis, jq and fzf on PATH. Only public Ibis commands are used.
+set -euo pipefail
+
+if (($# != 2)) || [[ ! $2 =~ [^[:space:]] ]]; then
+  printf 'Usage: bash ibis-fzf <library.bib|library.json> <search words>\n' >&2
+  exit 2
+fi
+library=$1
+query=$2
+
+# Stop on a failed search or source warnings before opening the selector.
+if result=$(ibis search "$query" --file "$library" --limit 1000 --json); then
+  :
+else
+  status=$?
+  printf 'Ibis search failed (exit %s). Check the library with ibis libraries --file <library> --json.\n' "$status" >&2
+  exit "$status"
+fi
+rows=$(jq -r '
+  .data.hits[] | select(.item.object.kind == "record") |
+  [(.item | @base64), (.item.object.data.csl.title // "(untitled)" | tostring |
+    gsub("[\u007f-\u009f\u200e\u200f\u202a-\u202e\u2066-\u2069]"; "[control]") | @json)] |
+  @tsv
+' <<< "$result")
+if [[ -z $rows ]]; then
+  printf 'No matching references.\n' >&2
+  exit 0
+fi
+
+# The hidden first column retains ItemRef AND the picked cite fingerprint.
+# Display text marks invisible controls and JSON quoting keeps titles on one line.
+selected=$(printf '%s\n' "$rows" |
+  fzf --multi --delimiter $'\t' --with-nth '2..') || exit $?
+[[ -n $selected ]] || exit 0
+
+request=$(jq -Rsc '
+  split("\n") | map(select(length > 0) | split("\t")[0] | @base64d | fromjson) |
+  {
+    items: map({item: .object.data.id, expected_cite: .fingerprints.cite}),
+    output: {kind: "key", syntax: "pandoc"}
+  }
+' <<< "$selected")
+ibis cite --request --file "$library" <<< "$request"
