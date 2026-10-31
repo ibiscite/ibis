@@ -4,9 +4,10 @@
 //! (TCC service PostEvent, listed under Privacy & Security). It keeps that
 //! permission per code signature. While builds are ad-hoc signed, every update
 //! is a new signature, so the switch in System Settings can look on while it
-//! belongs to an older build and the paste is refused (#1242). Opening the
-//! guide therefore clears Ibis's own stale entry first, asks again so one
-//! fresh Ibis switch appears, and opens the pane where it lives.
+//! belongs to an older build and the paste is refused (#1242). The explicit
+//! Open System Settings action can repair the stale PostEvent entry.
+//! Accessibility is separately required for identity-only focus reads: checks
+//! never prompt for it or reset it; the guide names its system list.
 
 use serde::Serialize;
 
@@ -47,7 +48,8 @@ pub(crate) fn paste_permission() -> PastePermission {
     current()
 }
 
-/// Clear a stale entry, ask macOS to list Ibis, then open the pane with the switch.
+/// On an explicit user action, repair PostEvent if needed and open the pane.
+/// Never requests or resets the separate Accessibility grant.
 #[tauri::command]
 #[specta::specta]
 pub(crate) fn open_paste_permission(app: tauri::AppHandle) {
@@ -77,11 +79,20 @@ pub(crate) fn drag_paste_app(window: tauri::WebviewWindow) -> Result<(), String>
 
 #[cfg(target_os = "macos")]
 fn current() -> PastePermission {
+    macos_permissions(
+        objc2_core_graphics::CGPreflightPostEventAccess(),
+        super::macos::accessibility_granted(),
+        macos::major_version(),
+    )
+}
+
+#[cfg(any(target_os = "macos", test))]
+fn macos_permissions(post_event: bool, accessibility: bool, major: u32) -> PastePermission {
     PastePermission {
         pastes: true,
         needed: true,
-        granted: objc2_core_graphics::CGPreflightPostEventAccess(),
-        list: list_name(macos::major_version()).to_string(),
+        granted: post_event && accessibility,
+        list: list_name(major).to_string(),
     }
 }
 
@@ -144,6 +155,15 @@ mod tests {
         assert_eq!(list_name(26), "Accessibility");
         assert_eq!(list_name(27), "Device Control and Data Access");
         assert_eq!(list_name(28), "Device Control and Data Access");
+    }
+
+    #[test]
+    fn macos_needs_both_separate_authorizations_even_when_post_event_is_already_granted() {
+        for (post_event, accessibility) in [(false, false), (false, true), (true, false), (true, true)] {
+            let permission = macos_permissions(post_event, accessibility, 27);
+            assert_eq!(permission.granted, post_event && accessibility);
+            assert_eq!(permission.list, "Device Control and Data Access");
+        }
     }
 
     #[test]
