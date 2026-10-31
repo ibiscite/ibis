@@ -14,9 +14,9 @@ function scenario() {
   const view = (change: Partial<SessionView> = {}): SessionEvent => ({ type: "view", session: state.session, interaction: state.interaction,
     view: { queryKey: sessionQueryKey(state), format: "pandoc", snapshotRevision: "synthetic", defaultChoice: choiceKey([a]),
       chosen: [a], shown: prepared, searchPending: false, ready: true, saving: false, shouldAsk: false,
-      output: { opening: 0, choice: 0 }, ...change } });
+      output: { opening: 0, choice: 0, delivery: 0 }, ...change } });
   const complete = (id: number, change: Partial<Extract<SessionEvent, { type: "copied" }>> = {}) => send({ type: "copied", id, session: 0, outcome: { text: prepared.text, warnings: [] },
-    output: { opening: 0, choice: 0 }, pinned: false, ...change });
+    output: { opening: 0, choice: 0, delivery: 0 }, pinned: false, ...change });
   return { send, view, complete, get state() { return state; }, get effects() { return effects; } };
 }
 
@@ -71,7 +71,7 @@ test("search and preview failures never copy, and a copy rejection shows its fix
   expect(s.effects).toEqual([]);
   s.send(s.view());
   s.send({ type: "enter", choice: choiceKey([a]) });
-  s.send({ type: "copy-failed", id: 1, session: 0, output: { opening: 0, choice: 0 }, message: "Invented copy failure", stale: false });
+  s.send({ type: "copy-failed", id: 1, session: 0, output: { opening: 0, choice: 0, delivery: 0 }, message: "Invented copy failure", stale: false });
   expect(s.state.copyError).toBe("Invented copy failure");
   expect(s.effects).toEqual([]);
 });
@@ -125,7 +125,7 @@ test("Enter during reopening waits for the new opening's readiness and output", 
   s.send(s.view());
   s.send({ type: "hidden", now: 10 });
   s.send({ type: "shown", now: 20 });
-  const output = { opening: 1, choice: 0 };
+  const output = { opening: 1, choice: 0, delivery: 0 };
   s.send({ type: "enter", choice: choiceKey([a]), output });
   expect(s.effects).toEqual([]);
   s.send(s.view({ ready: false, output }));

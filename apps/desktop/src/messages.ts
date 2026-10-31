@@ -45,7 +45,7 @@ export const operationFailures = {
   updateChecksChange: "Ibis could not change its update setting. Try again.",
   checkForUpdates: "Ibis could not check for updates. Try again.",
   settings: "Settings could not open. Try again.",
-  appChoices: "Ibis could not read the formats it remembers for apps. Reopen Ibis or save an app choice to try again.",
+  appChoices: "Ibis could not read the formats it remembers for apps. Confirm this app's paste choice, or use Forget formats for apps.",
   appChoice: "Ibis could not save the choice for this app. Try again.",
 } as const;
 

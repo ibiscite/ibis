@@ -7,7 +7,7 @@ import { copiedNoticeText, pickerText } from "../../messages";
 import { choiceKey, idKey, type Choice, type CitationReference } from "./choice";
 import { closestMatchWarnings } from "./rows";
 
-export type OutputToken = { opening: number; choice: number };
+export type OutputToken = { opening: number; choice: number; delivery: number };
 type Prepared = FormattedCitation & { fileTicket?: string; fileHash?: string };
 export type SessionView = {
   queryKey: string; format: Choice; snapshotRevision: string | undefined; defaultChoice: string;
@@ -16,7 +16,7 @@ export type SessionView = {
 };
 type Pending = { choice: string | null; selection: SessionState["selected"]; queryKey: string;
   format: Choice | null; output: OutputToken; question?: "open" | "answered" };
-type Flight = { id: number; session: number; choice: string; format: Choice; opening: number; warnings: string[];
+type Flight = { id: number; session: number; choice: string; format: Choice; opening: number; delivery: number; warnings: string[];
   phase: "copy" | "hide" | "notice"; outcome?: Copied;
   owner: { context: number; session: number; visibility: number; output: OutputToken } };
 export type SessionState = {
@@ -58,7 +58,7 @@ export function initialSession(query = "", copied: Copied | null = null): Sessio
     pendingCopy: null, flights: [], activeCopy: null, nextCopy: 0, lastSuccessfulCopy: 0, copied, copyError: null, lastOutcome: null };
 }
 export const sessionQueryKey = (state: SessionState) => JSON.stringify([state.query, state.interpretLocators]);
-const sameOutput = (a: OutputToken, b: OutputToken) => a.opening === b.opening && a.choice === b.choice;
+const sameOutput = (a: OutputToken, b: OutputToken) => a.opening === b.opening && a.choice === b.choice && a.delivery === b.delivery;
 const ownsInteraction = (s: SessionState, f: Flight) => s.activeCopy === f.id && s.context === f.owner.context && s.session === f.owner.session;
 const ownsCompletion = (s: SessionState, f: Flight, output: OutputToken) => ownsInteraction(s, f) && s.visibility === f.owner.visibility && sameOutput(f.owner.output, output);
 const changed = (s: SessionState, change: Partial<SessionState>): SessionState => ({ ...s, ...change, pendingCopy: null, interaction: s.interaction + 1, context: s.context + 1 });
@@ -85,10 +85,10 @@ function advance(s: SessionState): [SessionState, SessionEffect[]] {
   if (v.shown === "stale" || !v.chosen[0]?.revision) return [{ ...s, copyError: pickerText.snapshotChanged }, [{ type: "refresh" }]];
   if (!v.shown.fileTicket || !v.shown.fileHash) return [{ ...s, copyError: pickerText.previewError }, []];
   const owner = { context: s.context, session: s.session, visibility: s.visibility, output: v.output };
-  const existing = s.flights.find((f) => f.choice === key && f.format === v.format && f.opening === v.output.opening && f.owner.visibility === s.visibility && f.owner.session === s.session);
+  const existing = s.flights.find((f) => f.choice === key && f.format === v.format && f.opening === v.output.opening && f.delivery === v.output.delivery && f.owner.visibility === s.visibility && f.owner.session === s.session);
   if (existing) return [{ ...s, activeCopy: existing.id, flights: s.flights.map((f) => f === existing ? { ...f, owner } : f) }, []];
   const id = s.nextCopy + 1;
-  const flight: Flight = { id, session: s.session, choice: key, format: v.format, opening: v.output.opening, owner, phase: "copy", warnings: closestMatchWarnings(v.chosen) };
+  const flight: Flight = { id, session: s.session, choice: key, format: v.format, opening: v.output.opening, delivery: v.output.delivery, owner, phase: "copy", warnings: closestMatchWarnings(v.chosen) };
   return [{ ...s, flights: [...s.flights, flight], activeCopy: id, nextCopy: id, copied: null, copyError: null },
     [{ type: "copy", id, session: s.session, ticket: v.shown.fileTicket, hash: v.shown.fileHash }]];
 }
@@ -98,7 +98,7 @@ export function reduceSession(s: SessionState, event: SessionEvent): [SessionSta
     case "view": {
       if (event.session !== s.session || event.interaction !== s.interaction || event.view.queryKey !== sessionQueryKey(s)) return [s, []];
       const v = event.view, old = s.view;
-      const contextChanged = old && (old.format !== v.format || old.snapshotRevision !== v.snapshotRevision || s.selected.size === 0 && old.defaultChoice !== v.defaultChoice);
+      const contextChanged = old && (old.output.delivery !== v.output.delivery || old.format !== v.format || old.snapshotRevision !== v.snapshotRevision || s.selected.size === 0 && old.defaultChoice !== v.defaultChoice);
       const same = old && Object.entries(v).every(([key, value]) => key === "chosen" ? choiceKey(old.chosen) === choiceKey(v.chosen) :
         key === "output" ? sameOutput(old.output, v.output) : old[key as keyof SessionView] === value);
       return advance(same && s.viewInteraction === s.interaction ? s : { ...s, view: v, viewInteraction: s.interaction, context: s.context + (contextChanged ? 1 : 0) });

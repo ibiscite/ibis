@@ -146,7 +146,11 @@ VMs and editors whose normal platform paste key means something else never ask.
 Neither an explicit choice nor a saved format can override their refusal, a
 missing window/Accessibility proof, expiry or the one-paste limit. The copy
 proof freezes app approval before clipboard I/O, so delayed approval cannot
-authorize an earlier copy. Resetting the app to Automatic or choosing "Forget
+authorize an earlier copy. Saving a delivery choice or reset revokes outstanding
+native proof epochs under the same lock as proof publication and posting. Detached workers
+check that epoch too. The picker gives delivery its own generation: fresh Enter
+can join an outstanding citation only within that generation, so saving Copy
+only cannot renew a flight that froze Paste. Resetting the app to Automatic or choosing "Forget
 formats for apps" clears both output and delivery choices.
 
 The footer names the intended action and output together, from that same
@@ -422,8 +426,8 @@ This permission does not change MCP's exclusion of notes, annotations and privat
 
 The output chooser remembers a format picked for the captured app unless the
 person selects "Just this once". `apps.json`, beside `settings.json`, keeps
-only the operating system, normalised app ID, output and optional delivery choice
-(`paste` or `copy-only`) for at most 200 apps;
+only the operating system, normalised app ID, output, optional delivery choice
+(`paste` or `copy-only`) and the identity binding described below for at most 200 apps;
 the least recently chosen app is dropped first. Never a document title, URL,
 window title, document text or citation. Browser and editor IDs cannot identify
 a project's syntax, so the first paste in each browser or code editor opens
@@ -435,10 +439,13 @@ global choice never erases app choices.
 The bounded file is written whole, flushed and swapped in atomically. A file
 Ibis cannot read means automatic/default outputs, with a visible warning, and
 automatic paste is unavailable: a lost Copy only rule must not become paste
-permission. The next explicit app save replaces the damaged data. Its read
-failure is frozen in the copy proof, so a later successful save cannot release
-that copy. "Forget formats for apps"
-clears output and delivery choices. Unknown apps ask for delivery approval
+permission. Subsequent writes preserve a recovery flag in `apps.json`, including
+after restart. A format save never clears it. An explicit Paste or Copy only
+choice resolves recovery for that app alone; all other apps retain the refusal
+until their own delivery choice or the deliberate global reset. Its read failure
+is frozen in the copy proof, so a later successful save cannot release that copy.
+"Forget formats for apps" clears the recovery flag and all output/delivery
+choices. Unknown apps ask for delivery approval
 separately from format, in the same chooser (0009); recognised apps also offer
 Copy only there and in More for the current ordinary app. A failed save leaves the previous durable choices intact and says
 so. Preference writes from different windows apply only deliberate field
@@ -447,6 +454,20 @@ Settings and the picker share one frontend patch queue for ordering, field
 acknowledgments, stale reads and recovery. Settings restores the saved choice
 after a failed save; the picker retains explicit choices for retry. Each window
 keeps its own queue; the native lock coordinates windows (2026-10-28).
+
+Unlisted-app Paste approval compares the normalised OS app ID and a SHA-256
+fingerprint of that ID, platform and exact OS-reported app location. Windows
+uses the full executable path already read by `QueryFullProcessImageName`;
+macOS uses the bundle URL path on the same captured `NSRunningApplication`
+record. Only the fingerprint is retained and sent through IPC; raw app paths
+stay transient in capture. Identity binding adds no document, executable-content,
+signing or filesystem reads. Path case
+is preserved; paths are never canonicalised through filesystem reads. A missing
+or changed saved binding requires approval again; unavailable capture identity
+only copies. A delayed save must match the captured
+fingerprint too. Format and Copy only remain keyed by app ID. Capturing no
+signing team means replacement at exactly the same location remains
+indistinguishable; normal updates at that location keep the choice.
 
 App-ID evidence for the 2026-10-31 destination-table additions:
 

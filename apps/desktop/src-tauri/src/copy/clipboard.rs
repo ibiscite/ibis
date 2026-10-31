@@ -39,7 +39,7 @@ pub(crate) fn write(app: &tauri::AppHandle, content: ClipboardContent<'_>) -> Re
     use tauri::Manager;
     app.state::<crate::paste::LastTarget>().write_copy(
         content.text,
-        |id| app.state::<crate::destination::AppMemory>().paste(id),
+        |target| app.state::<crate::destination::AppMemory>().for_capture(target),
         || publish_macos(&objc2_app_kit::NSPasteboard::generalPasteboard(), content),
     )
 }

@@ -39,6 +39,10 @@ fn active_app() -> Option<Front> {
     }
     Some(Front {
         id: app.bundleIdentifier().map(|id| id.to_string()),
+        app_identity: app.bundleIdentifier().and_then(|id| {
+            let path = app.bundleURL()?.path()?;
+            super::capture::app_identity(super::System::Macos, &id.to_string(), &path.to_string())
+        }),
         pid: app.processIdentifier(),
         window: None,
         focus_failure: None,
@@ -76,6 +80,7 @@ pub(super) fn capture_front(
         // without reserving/clearing a new AX identity for our own picker.
         return Some(Front {
             id: None,
+            app_identity: None,
             pid: own,
             window: None,
             focus_failure: None,
@@ -276,6 +281,7 @@ mod tests {
     #[test]
     fn repeated_show_while_the_ibis_panel_is_key_preserves_the_external_capture_and_identity_bank() {
         let external = Front {
+            app_identity: None,
             id: Some("com.microsoft.word".into()),
             pid: 42,
             window: Some(100),
@@ -300,6 +306,7 @@ mod tests {
     #[test]
     fn a_failed_capture_cannot_claim_an_unproven_target_changed() {
         let active = Front {
+            app_identity: None,
             id: Some("com.microsoft.word".into()),
             pid: 42,
             window: None,

@@ -64,6 +64,8 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
   const search = new Work<SearchQuery, SearchReply, SearchReply>();
   const preview = new Work<PreviewRequest, PreviewContent, FilePreview>();
   const copy = new Work<{ ticket: string; contentHash: string }, void, Copied>();
+  const copyReplies = new Work<Copied, void, Copied>();
+  let holdCopyReplies = false;
   const delivery = new Work<DeliveryRequest, void, Delivered>();
   const notice = new Work<NoticeMessage, void, Delivered>();
   const appSaves = new Work<{ appId: string; output: AppOutput | null; paste: AppPaste | null }>();
@@ -136,9 +138,9 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
       captured ??= capture();
       const choice = appChoices.get(target.appId);
       const paste = target.refusal ? null : choice?.paste ?? null;
-      return { app: document.app, app_id: target.appId, automatic: { key: "pandoc" }, remembered: choice?.output ?? null, unreadable: false,
+      return { app: document.app, app_id: target.appId, app_identity: target.appId, automatic: { key: "pandoc" }, remembered: choice?.output ?? null, unreadable: false,
         can_paste: !target.refusal && (target.verified || paste === "paste") && paste !== "copy-only" && captured.reason === null,
-        output_question: null, paste, paste_question: !target.refusal && !target.verified && paste === null && captured.reason === null };
+        output_question: null, paste, can_choose_paste: !target.refusal && captured.reason === null, paste_question: !target.refusal && !target.verified && paste === null && captured.reason === null };
     },
     remember_app_output: ({ appId, output, paste }) => {
       if (appId !== target.appId || paste === "paste" && target.refusal) throw new Error("The app cannot receive that choice");
@@ -146,11 +148,12 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
       const saving = appSaves.enqueue(args, () => {
         if (args.output === null && args.paste === null) appChoices.delete(args.appId);
         else appChoices.set(args.appId, { output: args.output, paste: args.paste ?? appChoices.get(args.appId)?.paste ?? null });
+        if (args.paste !== null || args.output === null) proof = null;
       });
       if (!holdAppSaves) appSaves.pending.at(-1)!.complete();
       return saving;
     },
-    forget_app_outputs: () => { appChoices.clear(); return null; },
+    forget_app_outputs: () => { appChoices.clear(); proof = null; return null; },
     search: ({ query }) => search.enqueue(query, (reply) => reply),
     preview_file_citation: (args) => {
       const request = ++latestPreview;
@@ -168,7 +171,7 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
         const token = ++nextDelivery;
         proof = { ...(captured ?? capture()), presentation, app: document.app, text: preview.text, delivery: token, sequence: clipboard.sequence, epoch: lifecycle.epoch, written: lifecycle.elapsed, paste: appChoices.get(target.appId)?.paste ?? null };
         return { text: clipboard.text, warnings: preview.warnings, delivery: token };
-      });
+      }).then((outcome) => holdCopyReplies ? copyReplies.enqueue(outcome, () => outcome) : outcome);
     },
     hide_picker: async () => { visible = false; await emit("picker:hidden"); return null; },
     show_copied_notice: (args) => {
@@ -183,7 +186,9 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
   });
 
   return {
-    search, preview, copy, delivery, notice, calls, clipboard, document, documents, target, authorizations, lifecycle, receipt: receiptRoot, appChoices, appSaves,
+    search, preview, copy, copyReplies, delivery, notice, calls, clipboard, document, documents, target, authorizations, lifecycle, receipt: receiptRoot, appChoices, appSaves,
+    get holdCopyReplies() { return holdCopyReplies; },
+    set holdCopyReplies(value: boolean) { holdCopyReplies = value; },
     get holdAppSaves() { return holdAppSaves; },
     set holdAppSaves(value: boolean) { holdAppSaves = value; },
     get visible() { return visible; },

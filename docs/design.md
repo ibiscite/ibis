@@ -1014,9 +1014,14 @@ breathe. Rows kept from before stay instead, with only the footer saying
   More offers **Copy only in [app name]** for the current ordinary app too.
   "Automatic" resets both choices for this app; "Forget formats for apps"
   resets both for every app and brings the unknown-app question back.
+  An unlisted app at a different location asks again even when its app ID is
+  unchanged. Only an opaque app-identity fingerprint is remembered.
   Unreadable app choices use automatic formats but block automatic paste with
-  `paste-unavailable`; a visible notice explains that saving an app choice
-  restores it. Uncertainty cannot discard a remembered Copy only rule.
+  `paste-unavailable`. Saving a format cannot lift this refusal. A fresh explicit
+  Paste or Copy only choice resolves it for that app; other apps keep the
+  refusal, including after restart, until their own choice or Forget formats
+  for apps. The chooser still offers delivery choices for a proven ordinary
+  target during recovery. Uncertainty cannot discard a remembered Copy only rule.
   Refused terminals, remote viewers, virtual machines and editors with a
   different paste key never ask and cannot be approved. Without a proven
   target, Enter copies with its refusal reason. App capture currently works on macOS;
@@ -1101,7 +1106,9 @@ that owns its area in ROADMAP.md.
    approved for this app". A format choice never grants paste approval, and no
    choice overrides a refused app or the native target/permission checks.
    Approval is frozen before the clipboard write, so a later answer cannot
-   authorize an earlier copy. A proven target that changes,
+   authorize an earlier copy. Changing delivery choices revokes outstanding
+   proofs; fresh Enter cannot join a copy from an earlier delivery policy.
+   Saving Copy only cannot send an older paste. A proven target that changes,
    closes or is minimised copies with "Copied. The target app or window changed".
    An unavailable focus or safety proof uses `paste-unavailable` and the system's
    manual-paste key; it never claims that the target changed or the paste expired.

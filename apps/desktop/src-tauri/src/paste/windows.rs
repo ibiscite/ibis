@@ -35,13 +35,16 @@ pub(super) fn capture() -> (Option<Front>, Option<Window>) {
 }
 
 /// The app behind `window`, by executable file name and process; never the
-/// window's title or the executable's folder. Its name and rights are read
+/// window's title. Only a digest of its already-read full path is kept. Its name and rights are read
 /// only for a capture, not for each check while the paste waits.
 fn front(window: &w::HWND, capture: bool) -> Option<Front> {
     let (_, pid) = window.GetWindowThreadProcessId();
     let process = w::HPROCESS::OpenProcess(co::PROCESS::QUERY_LIMITED_INFORMATION, false, pid).ok()?;
     let path = process.QueryFullProcessImageName(co::PROCESS_NAME::WIN32).ok()?;
     let id = path.rsplit(['\\', '/']).next().map(str::to_owned);
+    let app_identity = id
+        .as_deref()
+        .and_then(|id| super::capture::app_identity(super::System::Windows, id, &path));
     let name = if capture {
         let executable = id.clone().unwrap_or_default();
         // Version resources can live on an unavailable share. Only the
@@ -52,6 +55,7 @@ fn front(window: &w::HWND, capture: bool) -> Option<Front> {
     };
     Some(Front {
         id,
+        app_identity,
         pid: i32::try_from(pid).ok()?,
         window: None,
         focus_failure: None,
@@ -214,7 +218,10 @@ impl TicketDesk for Win {
     }
 
     fn post_if(&self, pid: i32, key: u16, ready: impl Fn() -> bool) -> bool {
-        send_paste(|| ready() && key == co::VK::CHAR_V.raw() && !keys_held() && foreground_pid() == Some(pid))
+        // Policy saves use this same lock: key-downs cannot follow a saved refusal.
+        self.app.state::<super::LastTarget>().0.lock().is_ok_and(|_policy| {
+            send_paste(|| ready() && key == co::VK::CHAR_V.raw() && !keys_held() && foreground_pid() == Some(pid))
+        })
     }
     fn release_keys(&self) -> bool {
         let Ok(mut keys) = KEYS.lock() else {
