@@ -10,12 +10,14 @@ import "../tokens.css";
 setPlatform();
 // `pnpm build:pseudo` exercises the same General panel with expanded labels.
 const messages = import.meta.env.MODE === "pseudolocale" ? createInterfaceMessages(english, true) : englishMessages;
+const params = new URLSearchParams(window.location.search);
+const api = import.meta.env.DEV && params.get("demo") === "1" ? (await import("./demo")).demoApi() : settingsApi;
 const root = document.getElementById("settings");
 if (root) {
   createRoot(root).render(
     <StrictMode>
       <InterfaceMessagesProvider messages={messages}>
-        <SettingsApp api={settingsApi} initialPage={new URLSearchParams(window.location.search).get("page")} />
+        <SettingsApp api={api} initialPage={params.get("page")} />
       </InterfaceMessagesProvider>
     </StrictMode>,
   );

@@ -3,8 +3,7 @@
 settings-pages = Settings pages
 settings-general = General
 settings-shortcuts = Shortcuts
-settings-about = About
-settings-save-failed = Ibis could not save that. Try again.
+settings-about = About Ibis
 
 general-login-label =
     { $platform ->
@@ -51,16 +50,12 @@ general-paste-granted = Ibis can paste now.
 general-paste-return-failed = Couldn't return to your citation. Open Ibis with your shortcut to continue.
 general-paste-stale = Already on, but still waiting? In System Settings, remove { $name } from the list, add this copy again, then turn it on.
 
-general-picker-title = Picker
 general-rows = Rows
 general-density-compact = Compact
 general-density-comfortable = Comfortable
 general-density-spacious = Spacious
-general-larger-text = Larger text
 general-preview = Show what will be pasted
 general-preview-description = The line above the footer
-general-search-mark = Ibis mark in search
-general-search-mark-description = In place of the magnifier
 
 shortcuts-open = Open Ibis
 shortcuts-description = Click the shortcut, then type a new one. Esc cancels.
@@ -114,3 +109,100 @@ about-automatic-description = Reads a small update file from GitHub a few times 
 about-check = Check now
 about-version = { $name } { $version }
 about-unavailable = This build does not update itself.
+
+
+# Settings window pages and visual choices.
+settings-look = Look
+settings-libraries = Libraries
+settings-citations = Citations
+settings-advanced = Advanced
+settings-search = Search Settings
+settings-no-results = No matching settings
+settings-coming-soon = Coming soon
+settings-read-failed = Ibis could not read your settings; reopen Settings to try again.
+settings-choice-failed = Ibis could not save this choice; the saved value is shown.
+settings-startup-words = startup launch restart login
+settings-paste-words = paste copy clipboard Enter
+settings-appearance-words = dark light theme system
+general-menu-bar = Show in Menu Bar
+general-menu-bar-description = When hidden, your shortcut still opens Ibis; open Ibis from Applications to return to Settings.
+general-welcome = Show the welcome again
+look-appearance = Appearance
+look-appearance-description = Follow the system, or choose Light or Dark for Ibis.
+look-system = System
+look-light = Light
+look-dark = Dark
+look-accent = Accent
+look-accent-description = Applies inside Ibis only.
+look-accent-system = Follow the Mac
+look-accent-blue = Blue
+look-accent-purple = Purple
+look-accent-pink = Pink
+look-accent-red = Red
+look-accent-orange = Orange
+look-accent-yellow = Yellow
+look-accent-green = Green
+look-accent-graphite = Graphite
+look-window-size = Window size
+look-small = Small
+look-medium = Medium
+look-large = Large
+look-compact-window = Compact · Coming soon
+look-custom = Custom
+look-search-icon = Search icon
+look-ibis = Ibis mark
+look-magnifier = Magnifier
+look-none = None · Coming soon
+look-text-size = Text size
+look-default-text = Default
+look-larger-text = Larger
+look-largest-text = Largest · Coming soon
+look-sample-title = The quiet garden
+look-sample-authors = Mira Vale and Noah Reed
+look-sample-journal = Journal of Imagined Studies
+libraries-sources = Library sources and status
+libraries-search-in = Search in Zotero libraries
+libraries-add = Add Library…
+libraries-remove = Remove Library
+citations-default = Default format
+citations-per-app = Remember the format for each app
+citations-printed = Use printed page numbers
+citations-forget = Remembered formats · Forget
+citations-styles = Styles in the format menu
+shortcuts-choose = Choose shortcuts from a list
+advanced-placement = Where Ibis opens
+advanced-reset-position = Reset Window Position
+advanced-file = Settings file · Open or Show in Finder
+advanced-command = Install the ibis command
+advanced-report = Copy a problem report
+advanced-reset = Reset All Settings
+about-report = Report a problem
+about-suggest = Suggest an idea
+about-licences = Licences
+
+citations-default-description = Used when an app has no remembered format
+citations-format-pandoc = Pandoc / Quarto
+citations-format-autocite = BibLaTeX \autocite
+citations-format-parencite = BibLaTeX \parencite
+citations-format-textcite = BibLaTeX \textcite
+citations-format-cite = LaTeX \cite
+citations-format-typst = Typst
+citations-format-keys = Citation keys
+citations-format-apa = APA (7th edition)
+citations-format-chicago-author-date = Chicago (author-date)
+citations-format-harvard-cite-them-right = Harvard (Cite Them Right)
+citations-format-ieee = IEEE reference entry
+citations-format-modern-language-association = MLA (9th edition)
+
+settings-undo = Undo
+settings-shortcut-restored = Default shortcut restored
+
+general-menu-bar-unavailable = { settings-coming-soon }. { general-menu-bar-description }
+
+settings-read-only = The settings file is read-only; the saved value is shown.
+
+citations-key-formats = Citation keys
+citations-style-formats = Citation styles
+citations-filter-formats = Filter formats
+look-sample-title-2 = Paths through the orchard
+look-sample-title-3 = A map of quiet places
