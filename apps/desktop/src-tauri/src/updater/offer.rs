@@ -3,6 +3,56 @@
 use super::*;
 use crate::picker::{ChooserLease, ChooserOpen};
 
+/// Readiness belongs to the last interaction, never to a delayed idle reply.
+/// Unknown input state is busy. No query or document text leaves the webview.
+#[derive(Default)]
+pub(super) struct InputGate {
+    serial: u32,
+    idle: bool,
+}
+
+impl InputGate {
+    fn activity(&mut self) -> Option<u32> {
+        self.idle = false;
+        self.serial = self.serial.checked_add(1)?;
+        (self.serial < u32::MAX).then_some(self.serial)
+    }
+
+    fn settle(&mut self, ticket: u32) -> bool {
+        if self.idle || ticket != self.serial || ticket == 0 || ticket == u32::MAX {
+            return false;
+        }
+        self.idle = true;
+        true
+    }
+}
+
+pub(crate) fn picker_activity(app: &AppHandle) {
+    if let Some(updates) = app.try_state::<Updates>()
+        && let Ok(mut input) = updates.input.lock()
+    {
+        let _ = input.activity();
+    }
+}
+
+/// None records input; only its returned ticket may report a later idle moment.
+pub(crate) fn update_picker_activity(window: tauri::WebviewWindow, ticket: Option<u32>) -> Option<u32> {
+    if window.label() != "main" {
+        return None;
+    }
+    let updates = window.state::<Updates>();
+    let mut input = updates.input.lock().ok()?;
+    match ticket {
+        None => input.activity(),
+        Some(ticket) if input.settle(ticket) => {
+            drop(input);
+            refresh_pending(window.app_handle());
+            Some(ticket)
+        }
+        Some(_) => None,
+    }
+}
+
 /// A fresh check's result, consumed by this presentation attempt. Never retained
 /// in application state: nightly package URLs can change while Ibis is hidden.
 pub(super) struct Candidate {
@@ -56,7 +106,20 @@ impl OfferUi for tauri::Wry {
     }
 
     fn focused(parent: &tauri::WebviewWindow<Self>) -> bool {
-        crate::picker::focused_for_shortcut(parent) == Some(true)
+        #[cfg(target_os = "windows")]
+        {
+            // The single-webview runtime queries Tao's top-level focus cache.
+            // WM_KILLFOCUS clears it when the child WebView2 takes keyboard
+            // focus, even while this exact picker remains in the foreground.
+            let picker =
+                crate::diagnostics::checked(parent.hwnd(), NativeIssue::FocusState).map(|window| window.0 as usize);
+            let foreground = winsafe::HWND::GetForegroundWindow().map(|window| window.ptr() as usize);
+            owned_foreground(picker, foreground)
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            crate::picker::focused_for_shortcut(parent) == Some(true)
+        }
     }
 
     fn show_picker(app: &AppHandle<Self>) {
@@ -87,6 +150,11 @@ impl OfferUi for tauri::Wry {
     ) {
         present_offer(app, parent, owner, text, answer);
     }
+}
+
+#[cfg(any(target_os = "windows", test))]
+fn owned_foreground(picker: Option<usize>, foreground: Option<usize>) -> bool {
+    picker.is_some_and(|window| window != 0 && Some(window) == foreground)
 }
 
 fn publish_available<R: OfferUi>(app: &AppHandle<R>, available: bool) {
@@ -147,7 +215,7 @@ pub(super) async fn check<R: OfferUi>(
 }
 
 fn ready<R: OfferUi>(parent: &tauri::WebviewWindow<R>) -> bool {
-    R::visible(parent) && R::focused(parent)
+    R::visible(parent) && R::focused(parent) && parent.state::<Updates>().input.lock().is_ok_and(|input| input.idle)
 }
 
 /// Actual show/focus events re-check deferred availability. This never shows a

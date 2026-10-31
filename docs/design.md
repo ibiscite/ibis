@@ -1420,6 +1420,18 @@ Opening the picker re-checks before offering the latest update; waiting holds
 no check lock or installer metadata. Turning automatic checks off keeps the
 label but leaves further checks to an explicit command. An explicit update
 command checks and presents its result immediately, opening the picker when needed.
+On Windows, this gate checks the exact picker HWND in the foreground, including
+when its child WebView2 has keyboard focus. Another Ibis window does not qualify.
+Automatic offers also wait while input is non-empty, a key or pointer is held,
+composition or copying is in progress, or a picker overlay (including the format
+chooser) is open. Opening and closing the format chooser invalidate the previous
+idle ticket; closing starts a fresh idle period. For a pending
+update, an empty, focused picker idle for 1.5 seconds requests a fresh check. Hide and reopen
+invalidate old idle reports; no timer runs while hidden. No query text crosses
+this readiness boundary. Every platform defaults to **Later**: Return, Space
+on the initial control, Escape and close cannot install. **Install and Restart**
+requires deliberately selecting or pressing that action. Safe defaults protect
+the race where a key arrives as a native offer opens (2026-10-30, PR #1504 review).
 
 ## Brand and mark
 

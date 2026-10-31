@@ -102,17 +102,108 @@ fn update_offer_requires_the_picker_instead_of_another_owned_window() -> Result<
 }
 
 #[test]
-fn update_offer_uses_standard_windows_consent_buttons() {
-    if cfg!(target_os = "windows") {
-        assert!(matches!(offer_buttons(), MessageDialogButtons::YesNo));
-    } else {
-        match offer_buttons() {
-            MessageDialogButtons::OkCancelCustom(yes, no) => {
-                assert_eq!((yes.as_str(), no.as_str()), ("Install and Restart", "Later"));
-            }
-            _ => panic!("the update must offer an explicit accept and decline action"),
+fn update_offer_defaults_to_later_and_never_maps_cancellation_to_install() {
+    match offer_buttons() {
+        MessageDialogButtons::YesNoCancelCustom(first, install, cancel) => {
+            assert_eq!(
+                (first.as_str(), install.as_str(), cancel.as_str()),
+                ("Later", "Install and Restart", "Cancel")
+            );
         }
+        _ => panic!("Return and cancellation must have safe answers; Install is a separate action"),
     }
+}
+
+#[test]
+fn update_offer_return_escape_and_close_are_safe_and_install_is_deliberate() {
+    let MessageDialogButtons::YesNoCancelCustom(later, install, cancel) = offer_buttons() else {
+        panic!("separate default, install and cancellation actions");
+    };
+    // Locked rfd's Windows custom TaskDialog and macOS NSAlert select the
+    // first action for Return. The plugin maps dismissal to the cancel slot.
+    for result in [
+        MessageDialogResult::Custom(later),
+        MessageDialogResult::Custom(cancel),
+        MessageDialogResult::Cancel,
+        MessageDialogResult::Ok,
+        MessageDialogResult::Yes,
+        MessageDialogResult::No,
+    ] {
+        assert!(!offer_accepted(result));
+    }
+    assert!(offer_accepted(MessageDialogResult::Custom(install)));
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+#[ignore = "requires an isolated GTK display; exercise during native qualification"]
+fn gtk_offer_return_declines_and_explicit_install_button_accepts() -> Result<(), Box<dyn std::error::Error>> {
+    use gtk::prelude::*;
+    gtk::init()?;
+    let settle = |stage: &str, ready: &dyn Fn() -> bool| {
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        while !ready() {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "GTK offer did not settle: {stage}"
+            );
+            gtk::glib::MainContext::default().iteration(false);
+            std::thread::yield_now();
+        }
+    };
+    // Production closes the dialog after either answer. Use a fresh dialog
+    // for each gesture, rather than moving focus on an already-cancelled one.
+    for deliberate_install in [false, true] {
+        let (dialog, later) = gtk_offer_dialog("Synthetic update is available".into());
+        let install = dialog
+            .widget_for_response(gtk::ResponseType::Accept)
+            .ok_or("Install response button is missing")?;
+        let button = install
+            .clone()
+            .downcast::<gtk::Button>()
+            .map_err(|_| "Install is not a native button")?;
+        assert_eq!(button.label().as_deref(), Some("Install and Restart"));
+        let answers = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let observed = answers.clone();
+        dialog.connect_response(move |_, response| observed.borrow_mut().push(response));
+        dialog.show_all();
+        settle("mapped dialog", &|| dialog.is_realized() && dialog.is_mapped());
+        later.grab_focus();
+        settle("Later focus", &|| dialog.focused_widget().as_ref() == Some(&later));
+        assert_eq!(dialog.focused_widget().as_ref(), Some(&later));
+        assert_eq!(dialog.default_widget().as_ref(), Some(&later));
+        if deliberate_install {
+            // Real Tab/Space navigation is covered by the managed XTEST GTK
+            // regression. Bare Xvfb has no WM; emit("move-focus") is not a
+            // substitute for that keyboard path. Activate the native button.
+            install.grab_focus();
+            settle("Install focus", &|| dialog.focused_widget().as_ref() == Some(&install));
+            assert_eq!(dialog.focused_widget().as_ref(), Some(&install));
+            assert_eq!(
+                dialog.default_widget().as_ref(),
+                Some(&later),
+                "Install must never become the default"
+            );
+            button.emit_clicked();
+        } else {
+            // Exercise GtkWindow's Return/default activation, not the answer
+            // callback or a manufactured GtkDialog response.
+            assert!(dialog.activate_default());
+        }
+        settle("one response", &|| answers.borrow().len() == 1);
+        assert_eq!(
+            answers.borrow().as_slice(),
+            &[if deliberate_install {
+                gtk::ResponseType::Accept
+            } else {
+                gtk::ResponseType::Cancel
+            }]
+        );
+        assert_eq!(dialog.default_widget().as_ref(), Some(&later));
+        dialog.close();
+        settle("closed dialog", &|| !dialog.is_visible());
+    }
+    Ok(())
 }
 
 #[test]
