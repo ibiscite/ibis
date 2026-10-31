@@ -9,7 +9,7 @@ import config from "../src-tauri/tauri.conf.json";
 import { copyFormatNames } from "./messages";
 import { choiceName, outputName, type Choice } from "./features/picker/choice";
 import { STYLE_NAMES } from "./format/styles";
-import { backend, chooseFromMore, prepared, receipt, resetApp, result, type SyntheticId, openCitationDetails, closeCitationDetails } from "./testing/app";
+import { backend, chooseFromMore, prepared, receipt, resetApp, result, type PreviewRequest, type SyntheticId, openCitationDetails, closeCitationDetails } from "./testing/app";
 
 // Vitest can load these existing runtime builtins without a Node-types dependency.
 afterEach(resetApp);
@@ -38,6 +38,46 @@ test("a pasted list previews and copies every result in order, with a safe missi
   const request = prepared(copied.mock.calls[0]![0]).request;
   expect(request.items.map(({ id }) => id.key)).toEqual(["b", "a"]);
   await waitFor(() => expect(calls).toContain("hide_picker"));
+});
+
+test("editing Page in a pasted list preserves every reference in preview and copy order", async () => {
+  const previews: PreviewRequest[] = [];
+  const copied = vi.fn((args: unknown) => {
+    const { preview } = prepared(args);
+    return { text: preview.text, warnings: [] };
+  });
+  backend({
+    search: ({ query }) => query.text ? { revision: "1", results: [result("b", "Second"), result("a", "First")], list: { missing: [] } } : [],
+    preview_file_citation: (request) => {
+      previews.push(request);
+      const spans = request.items.flatMap(({ id, page_input }, item) => [
+        ...(item ? [{ item: null, text: "; " }] : []),
+        { item, text: `@${id.key}${page_input ? `, p. ${page_input}` : ""}` },
+      ]);
+      return { ...receipt(spans.map((span) => span.text).join("")), spans };
+    },
+    copy_file_citation: copied,
+  });
+  render(<App />);
+  const box = screen.getByLabelText("Search references");
+  fireEvent.change(box, { target: { value: "@b @a" } });
+  await screen.findByText("Pasted list");
+  await waitFor(() => expect(screen.getByRole("region", { name: "Preview" }).textContent).toContain("@b; @a"));
+  fireEvent.click(screen.getByRole("button", { name: "Show all 2 selected references" }));
+  fireEvent.click(within(screen.getByRole("dialog", { name: "Selected references" })).getByRole("button", { name: "Edit Smith 2020 · a" }));
+  fireEvent.change(screen.getByRole("textbox", { name: "Page" }), { target: { value: "42" } });
+  await waitFor(() => expect(previews.at(-1)?.items).toMatchObject([
+    { id: result("b", "").id, locator: null },
+    { id: result("a", "").id, locator: null, page_input: "42" },
+  ]));
+  expect(previews.at(-1)?.items[0]).not.toHaveProperty("page_input");
+  const editedItems = previews.at(-1)!.items;
+  closeCitationDetails();
+  await waitFor(() => expect(screen.getByRole("region", { name: "Preview" }).textContent).toContain("@b; @a, p. 42"));
+  fireEvent.keyDown(box, { key: "Enter" });
+  await waitFor(() => expect(copied).toHaveBeenCalledOnce());
+  expect(prepared(copied.mock.calls[0]![0]).request.items).toEqual(editedItems);
+  expect(copied.mock.results[0]!.value.text).toBe("@b; @a, p. 42");
 });
 
 test("an explicit selection overrides the pasted list and a pending query cannot copy it", async () => {

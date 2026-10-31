@@ -43,7 +43,7 @@ export type SessionEvent =
   | { type: "toggle"; result?: SearchResult; locator?: Readonly<Locator> | null }
   | { type: "undo-reference" | "expire-removal"; removal: RemovedReference }
   | { type: "remove-reference"; reference: CitationReference }
-  | { type: "reference"; reference: CitationReference; change: Pick<CitationReference, "locator" | "form">; selectedOnly?: boolean }
+  | { type: "reference"; reference: CitationReference; change: Pick<CitationReference, "locator" | "form">; selectedOnly?: boolean; initialSelection?: readonly CitationReference[] }
   | { type: "enter"; choice: string | null; output?: OutputToken }
   | { type: "question"; format?: Choice | null; output?: OutputToken; answer: "open" | "answered" | "cancel" }
   | { type: "hidden" | "shown"; now: number }
@@ -160,6 +160,7 @@ export function reduceSession(s: SessionState, event: SessionEvent): [SessionSta
       const key = idKey(event.reference.id), previous = s.selected.get(key);
       if (event.selectedOnly ? previous !== event.reference : previous ? previous !== event.reference : s.selected.size > 0) return reduceSession(s, { type: "cancel" });
       const selected = new Map(s.selected);
+      if (selected.size === 0) for (const reference of event.initialSelection ?? []) selected.set(idKey(reference.id), reference);
       selected.set(key, { ...event.reference, ...event.change });
       return [changed(s, { selected, selectionChanged: event.selectedOnly ? s.selectionChanged : true }), []];
     }

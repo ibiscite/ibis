@@ -400,7 +400,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
     input.current?.focus({ preventScroll: true });
   };
   const changeReference = (reference: CitationReference, change: Pick<CitationReference, "locator" | "form">) => {
-    send({ type: "reference", reference, change });
+    send({ type: "reference", reference, change, initialSelection: list ? current : undefined });
   };
 
   const rowScope = useMemo(() => ({ api, current, selected, queryKey, format, snapshotRevision }), [api, current, selected, queryKey, format, snapshotRevision]);

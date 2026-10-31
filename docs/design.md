@@ -600,6 +600,8 @@ page", where the Page field lives beside the page itself.
   menu from a selected segment puts focus in Page. With no built selection,
   the same menu on the highlighted result edits it; the first edit adds that
   result to the shelf; subsequent searches cannot change its page or form.
+  With a pasted list, the first edit adds the complete list to the selection
+  in paste order before changing that reference's page or form.
   Editing keeps focus in the menu, clears a queued copy and prepares a new
   preview.
   Clearing Page removes only that reference's page. Optional page labels such
