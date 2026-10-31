@@ -1,5 +1,5 @@
-// Read-only gates for permanent downloads. Absence must be confirmed by HTTP
-// 404 or a complete asset listing; uncertainty stops before any replacement.
+// Read-only gates for permanent downloads. A nightly 404 or complete stable
+// release/asset listing confirms absence; uncertainty stops any replacement.
 // Prints "publish" or "keep"; lookup/parse failures exit nonzero.
 //   node scripts/publication-guard.mjs stable <candidate latest.json>
 //   node scripts/publication-guard.mjs nightly
@@ -38,10 +38,29 @@ function nightlyRef(repository) {
   return ref.object.sha;
 }
 
-function stableFeed(repository) {
-  // Authenticated reads see feeds in unfinished draft releases too. Do not
-  // confuse a public download URL's 404 for such a draft with an absent feed.
+function stableRelease(repository) {
+  // The tag endpoint only returns published releases. Its 404 must be followed
+  // by a complete authenticated listing, which also exposes unfinished drafts.
   const release = githubJson(repository, "releases/tags/stable", true);
+  if (release !== undefined) return release;
+  let found;
+  for (let page = 1; ; page++) {
+    const releases = githubJson(repository, `releases?per_page=100&page=${page}`);
+    if (!Array.isArray(releases) || releases.length > 100 || releases.some((entry) =>
+      typeof entry?.tag_name !== "string" || !entry.tag_name || !Number.isSafeInteger(entry.id) || entry.id <= 0)) {
+      throw new Error("Invalid release listing response.");
+    }
+    for (const entry of releases) if (entry.tag_name === "stable") {
+      if (found !== undefined) throw new Error("Ambiguous stable release listing.");
+      found = entry;
+    }
+    // Finish even after finding stable: a failed later page is uncertainty.
+    if (releases.length < 100) return found;
+  }
+}
+
+function stableFeed(repository) {
+  const release = stableRelease(repository);
   if (release === undefined) return undefined;
   if (!Number.isSafeInteger(release?.id) || release.id <= 0) throw new Error("Invalid stable release response.");
   // Only a complete asset listing can confirm that latest.json is absent;
@@ -79,7 +98,9 @@ function main([kind, file, ...extra]) {
   if (kind === "stable") {
     const candidate = version(JSON.parse(readFileSync(file, "utf8")));
     const current = stableFeed(repository);
-    publish = current === undefined || compareVersions(candidate, version(current)) > 0;
+    // An equal-version retry must finish asset cleanup and release publication
+    // when an earlier attempt uploaded latest.json but failed afterwards.
+    publish = current === undefined || compareVersions(candidate, version(current)) >= 0;
   } else {
     const sha = process.env.SHA;
     if (!/^[a-f0-9]{40}$/.test(sha ?? "")) throw new Error("Publication guard needs a valid SHA.");

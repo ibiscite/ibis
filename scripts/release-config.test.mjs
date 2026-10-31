@@ -42,7 +42,18 @@ function fakeGithub() {
       return;
     }
     if (args[1] === "repos/example/ibis/releases/tags/stable") {
-      response(state.feedStatus ?? (state.releases.stable ? 200 : 404), JSON.stringify({ id: 12 }), state.feedNetwork);
+      // GitHub's tag lookup does not expose drafts, even with authentication.
+      response(state.feedStatus ?? (state.releases.stable && !state.releases.stable.isDraft ? 200 : 404), JSON.stringify({ id: 12 }), state.feedNetwork);
+      return;
+    }
+    const releasesPage = /^repos\/example\/ibis\/releases\?per_page=100&page=(\d+)$/.exec(args[1]);
+    if (releasesPage) {
+      const page = Number(releasesPage[1]);
+      const releases = state.releasePages?.[page - 1] ?? Object.entries(state.releases).map(([tag, release], index) => ({
+        id: tag === "stable" ? 12 : 20 + index, tag_name: tag, draft: release.isDraft,
+      }));
+      response(state.releaseStatuses?.[page - 1] ?? 200,
+        state.releaseBodies?.[page - 1] ?? JSON.stringify(releases), state.releaseNetworks?.[page - 1]);
       return;
     }
     if (args[1].startsWith("repos/example/ibis/releases/12/assets?per_page=100&page=")) {
@@ -82,10 +93,20 @@ function fakeGithub() {
     if (release) process.exit(1);
     release = state.releases[tag] = { isDraft: args.includes("--draft"), prerelease: false, assets: {} };
   } else if (!release) process.exit(1);
+  if (command === "delete-asset" && state.failCleanup || command === "edit" && state.failFinalize) {
+    state.failCleanup = state.failFinalize = false;
+    save();
+    process.exit(1);
+  }
   if (command === "upload" || command === "create") {
     if (state.failUpload) process.exit(1);
     for (const path of args.filter((arg) => /^(dist|feed)\//.test(arg))) {
       release.assets[path.split("/").at(-1)] = fs.readFileSync(path, "utf8");
+    }
+    if (state.failAfterFeedUpload && args.includes("feed/latest.json")) {
+      state.failAfterFeedUpload = false;
+      save(); // The upload succeeded remotely before its client reported failure.
+      process.exit(1);
     }
   }
   if (command === "edit" || command === "create") {
@@ -197,8 +218,7 @@ test("stable-feed alone replaces assets, uploads the feed last and never moves t
     const uploads = state.calls.filter((args) => args[1] === "upload");
     assert.ok(uploads.at(-2).includes("dist/Ibis-synthetic.zip"));
     assert.ok(uploads.at(-1).includes("feed/latest.json"));
-    if (rerun === 0) assert.ok(state.calls.at(-1).includes("--latest=false"));
-    else assert.equal(uploads.length, 2, "an equal feed version must not replace permanent downloads again");
+    assert.ok(state.calls.at(-1).includes("--latest=false"));
   }
 });
 
@@ -236,6 +256,69 @@ test("stable feed checks authenticated draft assets before replacing permanent d
   assert.equal(result.status, 0, result.stdout + result.stderr);
   assert.deepEqual(f.state().releases.stable.assets, assets);
   assert.equal(f.state().releases.stable.isDraft, true);
+  assert.ok(f.state().calls.some((args) => args[1] === "repos/example/ibis/releases?per_page=100&page=1"));
+});
+
+test("stable draft discovery reads every release page and refuses incomplete or invalid listings", (t) => {
+  const firstPage = Array.from({ length: 100 }, (_, index) => ({ id: 100 + index, tag_name: `synthetic-${index}`, draft: false }));
+  const stable = { id: 12, tag_name: "stable", draft: true };
+  for (const failure of [
+    {}, { releaseStatuses: [200, 500] }, { releaseStatuses: [200, 404] },
+    { releaseNetworks: [false, true] }, { releaseBodies: [undefined, "{"] },
+    { releasePages: [firstPage, { unexpected: "response" }] },
+    { releasePages: [firstPage, [{}]] },
+    { releasePages: [[stable, ...firstPage.slice(1)], []], releaseStatuses: [200, 500] },
+    { releasePages: [[stable, ...firstPage.slice(1)], [stable]] },
+  ]) {
+    const assets = { "latest.json": '{"version":"0.2.10"}', "Ibis-synthetic.zip": "newer package" };
+    const f = fixture(t, { releases: { stable: { isDraft: true, assets } }, releasePages: [firstPage, [stable]], ...failure });
+    const result = f.run("stable-feed", "Move the stable update feed to this release");
+    if (Object.keys(failure).length === 0) assert.equal(result.status, 0, result.stdout + result.stderr);
+    else assert.notEqual(result.status, 0, JSON.stringify(failure));
+    assert.deepEqual(f.state().releases.stable.assets, assets);
+    assert.equal(f.state().releases.stable.isDraft, true);
+    assert.equal(f.state().calls.filter((args) => args[1]?.includes("/releases?")).length, 2);
+    assert.ok(f.state().calls.every((args) => args[0] === "api" || args[1] === "download"));
+  }
+});
+
+test("stable release absence requires a complete successful release listing", (t) => {
+  const firstPage = Array.from({ length: 100 }, (_, index) => ({ id: 100 + index, tag_name: `synthetic-${index}`, draft: false }));
+  for (const status of [200, 500]) {
+    const f = fixture(t, { releases: {}, releasePages: [firstPage, []], releaseStatuses: [200, status] });
+    const result = f.run("stable-feed", "Move the stable update feed to this release");
+    if (status === 200) {
+      assert.equal(result.status, 0, result.stdout + result.stderr);
+      assert.equal(f.state().releases.stable.isDraft, false);
+      assert.equal(JSON.parse(f.state().releases.stable.assets["latest.json"]).version, "0.2.3");
+    } else {
+      assert.notEqual(result.status, 0);
+      assert.deepEqual(f.state().releases, {});
+      assert.ok(f.state().calls.every((args) => args[0] === "api"));
+    }
+    assert.equal(f.state().calls.filter((args) => args[1]?.includes("/releases?")).length, 2);
+  }
+});
+
+test("equal-version retries finish cleanup and finalization after the feed upload", (t) => {
+  for (const isDraft of [false, true]) for (const failure of ["failAfterFeedUpload", "failCleanup", "failFinalize"]) {
+    const f = fixture(t, { releases: { stable: { isDraft, assets: { "latest.json": '{"version":"0.2.2"}', "old.zip": "old" } } }, [failure]: true });
+    const interrupted = f.run("stable-feed", "Move the stable update feed to this release");
+    assert.notEqual(interrupted.status, 0, failure);
+    assert.equal(JSON.parse(f.state().releases.stable.assets["latest.json"]).version, "0.2.3", "the candidate feed is already uploaded");
+    assert.equal(f.state().releases.stable.isDraft, isDraft);
+    assert.equal("old.zip" in f.state().releases.stable.assets, failure !== "failFinalize");
+    const callsBeforeRetry = f.state().calls.length;
+    const retried = f.run("stable-feed", "Move the stable update feed to this release");
+    assert.equal(retried.status, 0, retried.stdout + retried.stderr);
+    const release = f.state().releases.stable;
+    assert.equal(release.isDraft, false);
+    assert.equal(release.title, "Ibis update feed");
+    assert.equal("old.zip" in release.assets, false);
+    assert.equal(release.assets["Ibis-synthetic.zip"], "invented package");
+    assert.equal(JSON.parse(release.assets["latest.json"]).version, "0.2.3");
+    assert.ok(f.state().calls.slice(callsBeforeRetry).some((args) => args[1] === "edit" && args.includes("--draft=false")));
+  }
 });
 
 test("stable feed must read later asset pages and refuses an incomplete listing", (t) => {
