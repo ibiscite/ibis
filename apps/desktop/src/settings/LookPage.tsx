@@ -7,7 +7,7 @@ import { Switch } from "../ui/Switch";
 import { PickerPicture } from "./PickerPicture";
 import { rowDetails } from "./rows";
 
-const ACCENTS: readonly Accent[] = ["system", "blue", "purple", "pink", "red", "orange", "yellow", "green", "graphite"];
+const ACCENTS: readonly Accent[] = ["system", "ibis", "blue", "purple", "pink", "red", "orange", "yellow", "green", "graphite"];
 const APPEARANCES: readonly Appearance[] = ["system", "light", "dark"];
 type Feedback = (id: string) => { highlighted: boolean; problem?: string };
 export function LookPage({ preferences: p, change, feedback }: {
@@ -23,7 +23,7 @@ export function LookPage({ preferences: p, change, feedback }: {
     </Row>
     <Row id="accent" {...rowDetails("accent", text)} {...feedback("accent")}>
       <PictureChoice dots label={text("look-accent")} description="accent-description" value={accent}
-        options={ACCENTS.map((value) => ({ value, label: text(`look-accent-${value}`), picture: <span className="ui-accent-dot" data-accent={value} /> }))}
+        options={ACCENTS.map((value) => ({ value, label: text(`look-accent-${value}`), showLabel: value === "ibis", picture: <span className="ui-accent-dot" data-accent={value} /> }))}
         onChange={(accent) => change({ accent })} />
     </Row>
     <Row id="rows" label={text("general-rows")} {...feedback("rows")}>
@@ -31,21 +31,16 @@ export function LookPage({ preferences: p, change, feedback }: {
         options={(["compact", "comfortable", "spacious"] as const).map((value) => ({ value, label: text(`general-density-${value}`), picture: <PickerPicture rowsOnly density={value} icon={p.search_mark ? "ibis" : "magnifier"} /> }))}
         onChange={(density) => change({ density })} />
     </Row>
-    <Row id="window-size" {...rowDetails("window-size", text)} {...feedback("window-size")}>
-      <PictureChoice label={text("look-window-size")} description="window-size-description" value="" isDisabled
-        options={(["small", "medium", "large", "compact-window", "custom"] as const).map((value) => ({ value, label: text(`look-${value}`) }))} onChange={() => undefined} />
-    </Row>
     <Row id="search-icon" label={text("look-search-icon")} {...feedback("search-icon")}>
       <PictureChoice label={text("look-search-icon")} value={p.search_mark ? "ibis" : "magnifier"}
         options={([
           { value: "ibis", label: text("look-ibis"), picture: <PickerPicture headerOnly icon="ibis" /> },
           { value: "magnifier", label: text("look-magnifier"), picture: <PickerPicture headerOnly icon="magnifier" /> },
-          { value: "none", label: text("look-none"), isDisabled: true },
         ] as const)} onChange={(value) => change({ search_mark: value === "ibis" })} />
     </Row>
     <Row id="text-size" label={text("look-text-size")} {...feedback("text-size")}>
       <Segmented label={text("look-text-size")} value={p.larger_text ? "larger" : "default"}
-        options={[{ value: "default", label: text("look-default-text") }, { value: "larger", label: text("look-larger-text") }, { value: "largest", label: text("look-largest-text"), isDisabled: true }]}
+        options={[{ value: "default", label: text("look-default-text") }, { value: "larger", label: text("look-larger-text") }]}
         onChange={(value) => change({ larger_text: value === "larger" })} />
     </Row>
     <Row id="preview" label={text("general-preview")} description={text("general-preview-description")} {...feedback("preview")}>

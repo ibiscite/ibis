@@ -81,7 +81,7 @@
   --ease-out: cubic-bezier(.2, .8, .2, 1);
   --ease-in: cubic-bezier(.4, 0, 1, 1); --motion-exit: 80ms;
 
-  /* Colour roles. The accent is the system's; scarlet marks only the citation. */
+  /* Colour roles. System accent by default; Look can choose Ibis scarlet. */
   --citation: CanvasText;
   /* The fill of a row's added tile behind its white check: the citation
      scarlet in light mode, the deeper brand scarlet in dark mode, so the
@@ -341,8 +341,12 @@
   --surface-grouped-card: var(--surface-raised);
   --surface-sidebar: color-mix(in srgb, var(--text) 6%, var(--surface));
   --titlebar-height: 3.25rem;
-  --settings-sidebar-width: min(12.5rem, 35%);
-  --settings-page-inset: var(--space-5);
+  --settings-sidebar-width: min(12rem, 26%);
+  --settings-page-inset: var(--space-6);
+  --settings-page-top-inset: var(--space-2);
+  --settings-section-gap: var(--space-6);
+  --settings-row-pad-block: var(--space-3);
+  --settings-row-text-gap: var(--space-1);
   --settings-group-width: 40rem;
   --settings-row-height: 3rem;
   --settings-described-row-height: 3.5rem;
@@ -390,12 +394,17 @@
   --choice-selected-text: var(--text);
   --choice-selection-ring-width: 2px;
   --choice-accent: var(--settings-accent-blue);
+  --choice-accent-on: #fff;
+  /* Real brand colours from brand/settings.json; each has its own text pair. */
+  --settings-accent-ibis: light-dark(#c23a1c, #ff7a5c);
+  --settings-accent-ibis-on: light-dark(#ffffff, #171717);
   --settings-accent-blue: #0064e1; --settings-accent-purple: #953d96;
   --settings-accent-pink: #c8317d; --settings-accent-red: #c42b30;
   --settings-accent-orange: #b25300; --settings-accent-yellow: #8a6a00;
   --settings-accent-green: #3b7f25; --settings-accent-graphite: #6e6e73;
 }
 :root[data-accent="system"] { --choice-accent: conic-gradient(var(--settings-accent-pink), var(--settings-accent-red), var(--settings-accent-orange), var(--settings-accent-yellow), var(--settings-accent-green), var(--settings-accent-blue), var(--settings-accent-purple), var(--settings-accent-pink)); }
+:root[data-accent="ibis"] { --choice-accent: var(--settings-accent-ibis); --choice-accent-on: var(--settings-accent-ibis-on); }
 :root[data-accent="blue"] { --choice-accent: var(--settings-accent-blue); }
 :root[data-accent="purple"] { --choice-accent: var(--settings-accent-purple); }
 :root[data-accent="pink"] { --choice-accent: var(--settings-accent-pink); }
@@ -408,7 +417,7 @@
 @media (prefers-contrast: no-preference) and (forced-colors: none) {
   :root[data-appearance][data-accent]:not([data-accent="system"]):not(.notice-window) {
     --accent: var(--choice-accent); --selected-background: var(--choice-accent);
-    --selected-text: #fff; --text-on-accent: #fff;
+    --selected-text: var(--choice-accent-on); --text-on-accent: var(--choice-accent-on);
     --fill-primary-hover: color-mix(in srgb, var(--accent) 92%, black);
     --fill-primary-pressed: color-mix(in srgb, var(--accent) 84%, black);
     --accent-text: CanvasText;
