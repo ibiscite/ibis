@@ -4,15 +4,38 @@
 
 use super::*;
 
+fn changed(app: &AppHandle) {
+    let sizing = app.state::<Sizing>();
+    owner::display_changed(&sizing.shared.state, Instant::now(), || {
+        let task = app.clone();
+        // In locked Wry, run_on_main_thread executes inline on the main
+        // thread. Dispatch from the existing blocking pool so it sends a real
+        // Tao event, even when the native notification itself queued none.
+        tauri::async_runtime::spawn_blocking(move || {
+            let handle = task.clone();
+            let queued = task.run_on_main_thread(move || {
+                let sizing = handle.state::<Sizing>();
+                owner::display_settled(&sizing.shared.state, || read_settled(&handle));
+            });
+            if queued.is_err() {
+                owner::display_wake_failed(&task.state::<Sizing>().shared.state);
+            }
+            report(queued, NativeIssue::Monitor);
+        });
+    });
+    sizing.shared.wake.notify_all();
+}
+
 #[cfg(target_os = "macos")]
 pub(super) fn install(app: &AppHandle, _window: &WebviewWindow) -> Option<()> {
     use block2::RcBlock;
     use objc2_foundation::{NSNotificationCenter, NSOperationQueue, NSString};
 
-    let shared = app.state::<Sizing>().shared.clone();
-    let block = RcBlock::new(move |_| shared.changed(Event::Geometry));
+    let handle = app.clone();
+    let block = RcBlock::new(move |_| changed(&handle));
     // SAFETY: No object filter; the main queue owns delivery. The sendable
-    // callback captures only Arc<Shared> and marks pending state, never AppKit.
+    // callback captures a sendable app handle and schedules the sizing owner,
+    // never borrowing AppKit objects or notification payloads.
     // The default center retains the copied block/observer for this app lifetime.
     let observer = unsafe {
         NSNotificationCenter::defaultCenter().addObserverForName_object_queue_usingBlock(
@@ -31,16 +54,16 @@ pub(super) fn install(app: &AppHandle, _window: &WebviewWindow) -> Option<()> {
 #[cfg(target_os = "windows")]
 mod windows {
     use super::*;
-    use std::sync::{OnceLock, Weak};
+    use std::sync::OnceLock;
     use winsafe::{HWND, co, msg::Wm, prelude::*};
 
-    // No borrowed native pointer or AppHandle in the callback; one picker HWND.
-    static OWNER: OnceLock<Weak<Shared>> = OnceLock::new();
+    // No borrowed native pointer; the app handle only schedules the sizing owner.
+    static APP: OnceLock<AppHandle> = OnceLock::new();
     const SUBCLASS: usize = 0x49424953;
 
     pub(super) fn install(app: &AppHandle, window: &WebviewWindow) -> Option<()> {
         let hwnd = checked(window.hwnd(), NativeIssue::Window)?;
-        OWNER.set(Arc::downgrade(&app.state::<Sizing>().shared)).ok()?;
+        APP.set(app.clone()).ok()?;
         // SAFETY: Tauri supplies the live picker HWND; setup and subclass
         // installation run on its owning thread. The callback is static, holds
         // no native references, forwards every message, and removes itself at
@@ -61,9 +84,9 @@ mod windows {
     ) -> isize {
         if (message == co::WM::DISPLAYCHANGE
             || message == co::WM::WININICHANGE && wparam == co::SPI::SETWORKAREA.raw() as usize)
-            && let Some(shared) = OWNER.get().and_then(Weak::upgrade)
+            && let Some(app) = APP.get()
         {
-            shared.changed(Event::Geometry);
+            super::changed(app);
         }
         if message == co::WM::NCDESTROY {
             let _ = hwnd.RemoveWindowSubclass(changed, id);
@@ -83,28 +106,28 @@ pub(super) fn install(app: &AppHandle, window: &WebviewWindow) -> Option<()> {
 pub(super) fn install(app: &AppHandle, window: &WebviewWindow) -> Option<()> {
     use gtk::{gdk, prelude::*};
 
-    fn watch(monitor: &gdk::Monitor, shared: &Arc<Shared>) {
-        let owner = shared.clone();
-        monitor.connect_workarea_notify(move |_| owner.changed(Event::Geometry));
-        let owner = shared.clone();
-        monitor.connect_geometry_notify(move |_| owner.changed(Event::Geometry));
-        let owner = shared.clone();
-        monitor.connect_scale_factor_notify(move |_| owner.changed(Event::Geometry));
+    fn watch(monitor: &gdk::Monitor, app: &AppHandle) {
+        let handle = app.clone();
+        monitor.connect_workarea_notify(move |_| changed(&handle));
+        let handle = app.clone();
+        monitor.connect_geometry_notify(move |_| changed(&handle));
+        let handle = app.clone();
+        monitor.connect_scale_factor_notify(move |_| changed(&handle));
     }
 
     let native = checked(window.gtk_window(), NativeIssue::Window)?;
     let display = WidgetExt::display(&native);
-    let shared = app.state::<Sizing>().shared.clone();
     for index in 0..display.n_monitors() {
         if let Some(monitor) = display.monitor(index) {
-            watch(&monitor, &shared);
+            watch(&monitor, app);
         }
     }
-    let owner = shared.clone();
+    let handle = app.clone();
     display.connect_monitor_added(move |_, monitor| {
-        watch(monitor, &owner);
-        owner.changed(Event::Geometry);
+        watch(monitor, &handle);
+        changed(&handle);
     });
-    display.connect_monitor_removed(move |_, _| shared.changed(Event::Geometry));
+    let handle = app.clone();
+    display.connect_monitor_removed(move |_, _| changed(&handle));
     Some(())
 }

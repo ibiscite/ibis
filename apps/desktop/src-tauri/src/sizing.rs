@@ -581,14 +581,16 @@ fn sample(app: &AppHandle, window: &WebviewWindow, settled: bool) {
 /// looking up the window: cloning its Tao proxy wakes the macOS loop itself.
 pub(crate) fn settled(app: &AppHandle) {
     let sizing = app.state::<Sizing>();
-    owner::settled(&sizing.shared.state, || {
-        let Some(window) = app.get_webview_window("main") else {
-            return;
-        };
-        if checked(window.is_visible(), NativeIssue::Visibility) == Some(true) {
-            sample(app, &window, true);
-        }
-    });
+    owner::settled(&sizing.shared.state, || read_settled(app));
+}
+
+fn read_settled(app: &AppHandle) {
+    let Some(window) = app.get_webview_window("main") else {
+        return;
+    };
+    if checked(window.is_visible(), NativeIssue::Visibility) == Some(true) {
+        sample(app, &window, true);
+    }
 }
 
 pub(crate) fn flush(app: &AppHandle, stop: bool) {

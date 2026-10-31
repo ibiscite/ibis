@@ -53,6 +53,7 @@ pub(super) struct Owner {
     pub applying: bool,
     pub pending_event: bool,
     pending_read: bool,
+    read_queued: bool,
     dpi: Option<Event>,
     automatic: Option<(u32, u32)>,
     pub pending_save: Option<Save>,
@@ -69,6 +70,36 @@ pub(super) fn settled(state: &Mutex<Owner>, read: impl FnOnce()) {
     let pending = state.lock().is_ok_and(|mut state| state.take_read());
     if pending {
         read();
+    }
+}
+
+pub(super) fn display_changed(state: &Mutex<Owner>, now: Instant, enqueue: impl FnOnce()) {
+    let queue = state.lock().is_ok_and(|mut state| {
+        state.event(Event::Geometry, now);
+        if !state.pending_read || state.read_queued {
+            return false;
+        }
+        state.read_queued = true;
+        true
+    });
+    if queue {
+        enqueue();
+    }
+}
+
+pub(super) fn display_settled(state: &Mutex<Owner>, read: impl FnOnce()) {
+    let pending = state.lock().is_ok_and(|mut state| {
+        state.read_queued = false;
+        state.take_read()
+    });
+    if pending {
+        read();
+    }
+}
+
+pub(super) fn display_wake_failed(state: &Mutex<Owner>) {
+    if let Ok(mut state) = state.lock() {
+        state.read_queued = false;
     }
 }
 
@@ -99,6 +130,8 @@ impl Owner {
         self.last = Some(sample);
         self.pending_event = false;
         self.pending_read = false;
+        // Do not release read_queued here or in flush(): its callback still
+        // exists. It can serve a later real event, or drain without a read.
         self.dpi = None;
         self.automatic = None;
     }

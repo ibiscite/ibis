@@ -1,5 +1,176 @@
 use super::*;
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
+use std::collections::VecDeque;
+use std::rc::Rc;
+use std::sync::Arc;
+
+struct Notifications {
+    state: Arc<Mutex<Owner>>,
+    now: Instant,
+    live: Rc<RefCell<Sample>>,
+    reads: Rc<Cell<usize>>,
+    queue: VecDeque<Box<dyn FnOnce()>>,
+}
+
+impl Notifications {
+    fn new() -> Self {
+        let native = Native::new();
+        Self {
+            state: Arc::new(Mutex::new(native.owner)),
+            now: native.now,
+            live: Rc::new(RefCell::new(native.live)),
+            reads: Rc::new(Cell::new(0)),
+            queue: VecDeque::new(),
+        }
+    }
+
+    fn notify(&mut self) {
+        let state = self.state.clone();
+        let reads = self.reads.clone();
+        let live = self.live.clone();
+        let now = self.now;
+        display_changed(&self.state, now, || {
+            self.queue.push_back(Box::new(move || {
+                display_settled(&state, || {
+                    reads.set(reads.get() + 1);
+                    locked(&state).observe(live.borrow().clone(), now, true);
+                });
+            }));
+        });
+    }
+
+    fn dispatch(&mut self) {
+        // Only queued work runs: no manual MainEventsCleared or unrelated input.
+        while let Some(task) = self.queue.pop_front() {
+            task();
+        }
+    }
+}
+
+#[test]
+fn sizing_display_notification_without_other_events_queues_one_read() {
+    let mut native = Notifications::new();
+    native.live.borrow_mut().display.room = (800.0, 600.0);
+    native.notify();
+    assert_eq!(
+        native.queue.len(),
+        1,
+        "a GTK notification alone must enqueue a Tao turn"
+    );
+    assert_eq!(
+        native.reads.get(),
+        0,
+        "a notification cannot read during the native turn"
+    );
+    native.dispatch();
+    assert_eq!(native.reads.get(), 1);
+    assert_eq!(
+        locked(&native.state).last.as_ref().map(|sample| sample.display.room),
+        Some((800.0, 600.0))
+    );
+    for _ in 0..100 {
+        native.dispatch();
+        settled(&native.state, || panic!("the queued call cannot rearm itself"));
+    }
+    assert_eq!(native.reads.get(), 1);
+    assert!(native.queue.is_empty());
+}
+
+#[test]
+fn sizing_display_notification_storm_has_one_queued_wake_and_reads_the_latest_area() {
+    let mut native = Notifications::new();
+    for height in 600..700 {
+        native.live.borrow_mut().display.room = (1000.0, f64::from(height));
+        native.notify();
+    }
+    assert_eq!(native.queue.len(), 1);
+    native.dispatch();
+    assert_eq!(native.reads.get(), 1);
+    assert_eq!(
+        locked(&native.state).last.as_ref().map(|sample| sample.display.room),
+        Some((1000.0, 699.0))
+    );
+    native.notify();
+    assert_eq!(
+        native.queue.len(),
+        1,
+        "a later real notification can request a fresh read"
+    );
+    native.dispatch();
+    assert_eq!(native.reads.get(), 2);
+}
+
+#[test]
+fn sizing_a_queued_display_wake_does_not_repeat_a_read_already_consumed_by_cleared() {
+    let mut native = Notifications::new();
+    native.notify();
+    settled(&native.state, || native.reads.set(native.reads.get() + 1));
+    native.dispatch();
+    assert_eq!(native.reads.get(), 1);
+    native.notify();
+    assert_eq!(
+        native.queue.len(),
+        1,
+        "the drained wake releases coalescing for a later event"
+    );
+    native.dispatch();
+    assert_eq!(native.reads.get(), 2);
+}
+
+#[test]
+fn sizing_cleared_events_do_not_release_a_still_queued_display_wake() {
+    let mut native = Notifications::new();
+    native.notify();
+    settled(&native.state, || {});
+    for _ in 0..100 {
+        native.notify();
+    }
+    assert_eq!(
+        native.queue.len(),
+        1,
+        "consuming the read must not duplicate the queued task"
+    );
+    native.dispatch();
+    assert_eq!(native.reads.get(), 1);
+}
+
+#[test]
+fn sizing_failed_display_enqueue_retries_only_on_a_later_notification() {
+    let mut native = Notifications::new();
+    native.notify();
+    native.queue.clear(); // The app rejected this enqueue: no callback will run.
+    display_wake_failed(&native.state);
+    native.dispatch();
+    assert_eq!(native.reads.get(), 0);
+    assert!(native.queue.is_empty(), "failure cannot schedule its own retry");
+    native.notify();
+    assert_eq!(native.queue.len(), 1);
+    native.dispatch();
+    assert_eq!(native.reads.get(), 1);
+}
+
+#[test]
+fn sizing_close_reopen_keeps_one_queued_wake_and_reads_the_current_opening() {
+    let mut native = Notifications::new();
+    native.notify();
+    locked(&native.state).flush(native.now, false);
+    locked(&native.state).prepared(native.live.borrow().clone());
+    for height in 600..700 {
+        native.live.borrow_mut().display.room = (1000.0, f64::from(height));
+        native.notify();
+    }
+    assert_eq!(
+        native.queue.len(),
+        1,
+        "reopen must not forget an existing queued callback"
+    );
+    native.dispatch();
+    assert_eq!(native.reads.get(), 1);
+    assert_eq!(
+        locked(&native.state).last.as_ref().map(|sample| sample.display.room),
+        Some((1000.0, 699.0))
+    );
+}
 
 fn locked(state: &Mutex<Owner>) -> std::sync::MutexGuard<'_, Owner> {
     state.lock().unwrap_or_else(|_| panic!("synthetic owner poisoned"))
@@ -145,6 +316,9 @@ fn sizing_refused_changes_never_request_native_reads() {
         let state = Mutex::new(owner);
         locked(&state).event(Event::Geometry, native.now);
         settled(&state, || panic!("refused change must not look up a native window"));
+        display_changed(&state, native.now, || {
+            panic!("refused notification cannot queue a wake")
+        });
     }
 }
 
