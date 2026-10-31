@@ -358,6 +358,10 @@ any reader inside Ibis (maintainer, 2026-10-28).
 
 2026-10-30: Open/refresh timings report after packaging on main and 0.2.x; the unchanged 3 s limits block release tags from 0.3, as the maintainer clarified.
 
+2026-10-31 (maintainer): the blocking speed and memory limits apply at 10,000
+references, the size real libraries reach. The same checks run at 100,000 on every
+nightly and only report, to catch growth that is worse than linear.
+
 ## 0027 Process until 1.0 (with 0011, 0015 and 0017)
 
 Agents have standing engineering and merge authority and work by
