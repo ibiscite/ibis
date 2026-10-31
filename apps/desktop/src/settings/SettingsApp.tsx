@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import type { KeyFormat, LoginItem, LoginItemProblem, PickerPreferences, ShortcutStatus } from "../bindings";
-import { KEY_TABLE, keyLabel } from "../keys";
+import { KEY_TABLE } from "../keys";
 import { type MessageId, useInterfaceMessages } from "../i18n";
 import { SHORTCUT_ACTIONS, SHORTCUT_REGIONS, type ShortcutProblem, shortcutRefusalMessage } from "../i18n/settings";
 import { PreferencePatchQueue } from "../preferencePatchQueue";
 import { currentPlatform } from "../platform";
 import { Button } from "../ui/Button";
+import { KeyCaps } from "../ui/KeyCaps";
 import { SettingsGroup as Group, SettingsRow as Row } from "../ui/SettingsGroup";
 import { ShortcutSetting } from "../ui/ShortcutSetting";
 import { SideNavigation } from "../ui/SideNavigation";
@@ -286,7 +287,6 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   }, [highlighted, page, preferences]);
   const matches = query.trim() ? ROWS.filter((row) => [row.label, row.description, row.keywords].some((id) => id && text(id, { platform }).toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()))) : [];
   const name = login?.name ?? "Ibis";
-  const mac = platform === "macos";
   const shortcutSetting = <ShortcutSetting key={page} id={page === "general" ? "general-shortcut" : "open-ibis"}
     rowId={page === "general" ? "general-open-shortcut" : "open-shortcut"} status={shortcut} problem={shortcutProblem}
     saving={shortcutSaving} undo={shortcutUndo} highlighted={highlighted === "open-shortcut"}
@@ -364,7 +364,10 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
             <Group id="picker-shortcuts" title={text("shortcuts-in-picker")}>
               {KEY_TABLE.map((binding) => (
                 <Row key={binding.action} id={`key-${binding.action}`} label={text(SHORTCUT_ACTIONS[binding.action])} description={text(SHORTCUT_REGIONS[binding.region])}>
-                  <kbd>{binding.keys.map((keys) => keyLabel(keys, mac)).join(` ${text("shortcuts-or")} `)}</kbd>
+                  <span className="ui-settings-keys">{binding.keys.flatMap((keys, index) => [
+                    index > 0 && <span key={`or-${index}`}>{text("shortcuts-or")}</span>,
+                    <KeyCaps key={keys} accelerator={keys} />,
+                  ])}</span>
                 </Row>
               ))}
             </Group>

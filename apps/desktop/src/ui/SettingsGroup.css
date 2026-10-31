@@ -21,6 +21,7 @@
 .ui-settings-row-text { display: flex; flex-direction: column; gap: var(--settings-row-text-gap); flex: 1 1 14rem; min-width: 0; overflow-wrap: anywhere; }
 .ui-settings-row > :not(.ui-settings-row-text) { max-inline-size: 100%; }
 .ui-settings-row .ui-button { padding-block: var(--space-1); }
+.ui-settings-keys { display: inline-flex; flex: none; align-items: center; gap: var(--space-1); color: var(--muted); }
 .ui-settings-description { color: var(--muted); font-size: var(--type-meta-size); line-height: var(--type-meta-line); }
 @media (prefers-contrast: more), (forced-colors: active) { .ui-settings-card { border: var(--border-width) solid CanvasText; } }
 

@@ -125,7 +125,6 @@ main > .search-bar, main > .shelf, main > footer { flex: none; }
 .copy-notice code, .shelf-mark { color: var(--citation); }
 .copy-notice { display: flow-root; padding-bottom: var(--copy-padding); }
 .dismiss { float: right; margin: var(--dismiss-margin); }
-[role="alert"] { border-inline-start: var(--alert-border-width) solid var(--alert-color); padding-inline-start: var(--alert-padding); }
 
 footer { display: flex; align-items: center; padding-block: 0; padding-inline: var(--footer-padding); font-size: var(--footer-size); min-height: var(--footer-height); }
 /* The divider is outside the 24 px actions and their two 8 px gaps.

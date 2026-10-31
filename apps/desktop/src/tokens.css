@@ -135,8 +135,6 @@
   --focus-ring-offset: 1px;
   --focus-ring-search-offset: 2px; /* Search keeps its existing contrast gap. */
   --focus-ring-shadow: none;
-  --alert-color: CanvasText;
-  --alert-border-width: 3px;
   --r-control: 8px;
   --hint-radius: 4px;
   --picker-height: 100dvh;
@@ -184,7 +182,6 @@
   --progress-segment-width: 25%; --progress-travel: 300%; --progress-duration: 1s; /* Busy indicator; motion's looping exception. */
   --copy-padding: .5rem;
   --dismiss-margin: .5rem 0 .5rem .5rem;
-  --alert-padding: var(--space-3);
   /* One citation line; corner badges keep their physical size at larger text. */
   --shelf-line: var(--space-10);
   --shelf-fill: var(--tile-background);

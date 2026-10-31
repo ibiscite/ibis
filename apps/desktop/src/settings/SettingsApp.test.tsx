@@ -26,7 +26,10 @@ test.each(["macos", "windows", "linux"])("Shortcuts preserves every English name
     for (const binding of KEY_TABLE) {
       const row = document.getElementById(`key-${binding.action}`)!.closest(".ui-settings-row")!;
       expect(row.querySelector(".ui-settings-row-text")?.textContent).toBe(keyText.actions[binding.action] + keyText.regions[binding.region]);
-      expect(row.querySelector("kbd")?.textContent).toBe(binding.keys.map((keys) => keyLabel(keys, platform === "macos")).join(" or "));
+      const compact = (text: string | null | undefined) => text?.replace(/[\s+]/g, "");
+      expect(row.querySelectorAll(".key-caps")).toHaveLength(binding.keys.length);
+      expect(compact(row.querySelector(".ui-settings-keys")?.textContent))
+        .toBe(compact(binding.keys.map((keys) => keyLabel(keys, platform === "macos")).join(" or ")));
     }
   } finally {
     if (previous === undefined) delete document.documentElement.dataset.system;
@@ -40,8 +43,8 @@ test.each(["general", "shortcuts"])("localized %s records directly, refuses regi
   const view = () => <InterfaceMessagesProvider messages={pseudo}><SettingsApp api={api} initialPage={page} /></InterfaceMessagesProvider>;
   const mounted = render(view());
   const recorder = await screen.findByRole("button", { name: `${pseudo.text("shortcuts-open")}: ${shortcutLabel(DEFAULT_PICKER_SHORTCUT, currentPlatform() === "macos")}` });
-  const keys = [...document.querySelectorAll("kbd")].map((key) => key.textContent);
-  if (page === "shortcuts") expect(keys).toContain(currentPlatform() === "macos" ? "⌘K" : "Ctrl+K");
+  const keys = [...document.querySelectorAll(".key-caps")].map((key) => key.textContent?.replaceAll("+", ""));
+  if (page === "shortcuts") expect(keys).toContain(currentPlatform() === "macos" ? "⌘K" : "CtrlK");
   for (const row of document.querySelectorAll("#picker-shortcuts .ui-settings-row-text")) expect(row.textContent).toContain("⟦");
   vi.spyOn(api, "setShortcut").mockRejectedValueOnce("in-use");
   fireEvent.click(recorder);
@@ -757,7 +760,7 @@ test("Shortcuts records a change, restores the default, and lists every picker k
   const list = screen.getByRole("region", { name: "In the picker" });
   for (const binding of KEY_TABLE) expect(within(list).getByText(keyText.actions[binding.action])).toBeTruthy();
   expect(within(list).queryAllByRole("button")).toEqual([]);
-  expect(list.querySelectorAll("kbd")).toHaveLength(KEY_TABLE.length);
+  expect(list.querySelectorAll(".ui-settings-keys")).toHaveLength(KEY_TABLE.length);
   fireEvent.click(recorder);
   fireEvent.keyDown(recorder, { key: "k", code: "KeyK", altKey: true, shiftKey: true });
   await waitFor(() => expect(recorder.textContent).toBe(label("Alt+Shift+K")));
