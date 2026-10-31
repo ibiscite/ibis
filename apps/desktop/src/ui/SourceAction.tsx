@@ -22,14 +22,26 @@ export function SourceIcon({ icon, file = false }: { icon: SystemIcon | null; fi
 }
 
 export type SourceActionProps = {
-  label: string; keys?: string; icon: SystemIcon | null; file?: boolean; open: () => void;
+  label: string; keys?: string; icon: SystemIcon | null; file?: boolean; busy?: boolean; open: () => void;
 };
 
+/** Shorten in the middle so the name's start and its extension both survive. */
+export function shortenedLabel(label: string, limit = 44): string {
+  const characters = [...label];
+  if (characters.length <= limit) return label;
+  const dot = characters.lastIndexOf(".");
+  const ending = dot > 0 && characters.length - dot <= 8 ? characters.length - dot : 8;
+  const start = limit - ending - 1;
+  return `${characters.slice(0, start).join("")}…${characters.slice(-ending).join("")}`;
+}
+
 /** The footer's one quiet, filled source/fix action. */
-export function SourceAction({ label, keys, icon, file, open }: SourceActionProps) {
+export function SourceAction({ label, keys, icon, file, busy = false, open }: SourceActionProps) {
+  const shown = shortenedLabel(label);
   return <Button variant="quiet" size="small" className="source-action library-inline-action" aria-label={label}
+    aria-busy={busy || undefined} title={shown === label ? undefined : label}
     aria-keyshortcuts={keys ? ariaKeys(keys, currentPlatform() === "macos") : undefined} onPress={open}>
-    <SourceIcon icon={icon} file={file} />
-    {keys ? <KeyHint label={label} keys={keys} hidden /> : <bdi>{label}</bdi>}
+    {busy ? <span className="source-spinner" aria-hidden="true" /> : <SourceIcon icon={icon} file={file} />}
+    {keys ? <KeyHint label={shown} keys={keys} hidden /> : <bdi>{shown}</bdi>}
   </Button>;
 }

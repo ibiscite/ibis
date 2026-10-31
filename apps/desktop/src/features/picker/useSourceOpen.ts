@@ -25,6 +25,7 @@ export function useSourceOpen(api: Pick<PickerApi, "openLibrarySource" | "librar
   const request = useRef(0);
   const [resolved, setResolved] = useState<{ scope: typeof scope; source: SourcePresentation } | null>(null);
   const [failure, setFailure] = useState<{ scope: typeof scope; message: string; kind: "zotero" | "file"; changed: boolean } | null>(null);
+  const [busy, setBusy] = useState<typeof scope | null>(null);
   const read = api.librarySource;
   const withStatusIcon = Boolean(library?.error || library?.stale || failure?.scope === scope);
   // biome-ignore lint/correctness/useExhaustiveDependencies: scope captures immutable item identity; objects recreated by a render cannot restart an icon read.
@@ -38,7 +39,8 @@ export function useSourceOpen(api: Pick<PickerApi, "openLibrarySource" | "librar
     }).catch(() => {});
     return () => { current = false; };
   }, [read, scope, visible, withStatusIcon]);
-  useEffect(() => () => { request.current += 1; }, []);
+  const busyTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => { request.current += 1; clearTimeout(busyTimer.current); }, []);
   const source: SourcePresentation = resolved?.scope === scope ? resolved.source : {
     kind: zoteroOnly || (library?.snapshot_zotero ?? library?.zotero) ? "zotero" : "file",
     name: zoteroOnly ? "Zotero" : library?.snapshot_name ?? library?.name ?? "library", icon: null, status_icon: null,
@@ -47,13 +49,22 @@ export function useSourceOpen(api: Pick<PickerApi, "openLibrarySource" | "librar
     if (!api.openLibrarySource) return;
     const current = ++request.current;
     setFailure(null);
+    setBusy(null);
+    clearTimeout(busyTimer.current);
+    busyTimer.current = setTimeout(() => { if (request.current === current) setBusy(scope); }, 400);
+    const settled = () => {
+      if (request.current !== current) return;
+      clearTimeout(busyTimer.current);
+      setBusy(null);
+    };
     const kind = appOnly ? "zotero" : source.kind;
-    void api.openLibrarySource(appOnly ? null : item, library?.revision ?? "", appOnly || zoteroOnly, reveal).catch((error: unknown) => {
+    void api.openLibrarySource(appOnly ? null : item, library?.revision ?? "", appOnly || zoteroOnly, reveal).then(settled, (error: unknown) => {
+      settled();
       if (latest.current !== scope || request.current !== current) return;
       const changed = isSnapshotChanged(error);
       setFailure({ scope, kind, changed, message: changed ? pickerText.sourceChanged : pickerText.sourceOpenFailed(kind === "zotero") });
       if (changed) refresh();
     });
   };
-  return { run, source, failure: failure?.scope === scope ? failure : null };
+  return { run, source, busy: busy === scope, failure: failure?.scope === scope ? failure : null };
 }

@@ -3,7 +3,7 @@ import { mergeProps, useHover, usePress } from "react-aria";
 import { Button as AriaButton, ToggleButton as AriaToggleButton, type ButtonProps, type ToggleButtonProps } from "react-aria-components";
 import "./Button.css";
 
-type Look = Pick<ComponentPropsWithRef<"button">, "ref" | "title" | "aria-keyshortcuts" | "aria-hidden" | "inert"> & {
+type Look = Pick<ComponentPropsWithRef<"button">, "ref" | "title" | "aria-busy" | "aria-keyshortcuts" | "aria-hidden" | "inert"> & {
   variant?: "primary" | "secondary" | "quiet" | "icon"; size?: "default" | "small"; className?: string;
   /** A drawn glyph from Button.css; the caller still names the button with aria-label. */
   glyph?: "close";
@@ -12,12 +12,12 @@ type Look = Pick<ComponentPropsWithRef<"button">, "ref" | "title" | "aria-keysho
 /** Shared pointer, keyboard, touch and disabled states; callers own the action. */
 export function Button({ variant = "secondary", size = "default", className = "", glyph, ...props }: Omit<ButtonProps, "className"> & Look) {
   return <AriaButton {...props} className={`ui-button ${className}`} data-variant={variant} data-size={size} data-glyph={glyph}
-    render={props.render ?? ((native) => <button {...native as ComponentPropsWithRef<"button">} title={props.title} aria-keyshortcuts={props["aria-keyshortcuts"]} aria-hidden={props["aria-hidden"]} tabIndex={props.excludeFromTabOrder ? -1 : native.tabIndex} />)} />;
+    render={props.render ?? ((native) => <button {...native as ComponentPropsWithRef<"button">} title={props.title} aria-busy={props["aria-busy"]} aria-keyshortcuts={props["aria-keyshortcuts"]} aria-hidden={props["aria-hidden"]} tabIndex={props.excludeFromTabOrder ? -1 : native.tabIndex} />)} />;
 }
 
 export function ToggleButton({ variant = "secondary", size = "default", className = "", ...props }: Omit<ToggleButtonProps, "className"> & Look) {
   return <AriaToggleButton {...props} className={`ui-button ${className}`} data-variant={variant} data-size={size}
-    render={props.render ?? ((native) => <button {...native as ComponentPropsWithRef<"button">} title={props.title} aria-keyshortcuts={props["aria-keyshortcuts"]} aria-hidden={props["aria-hidden"]} tabIndex={props.excludeFromTabOrder ? -1 : native.tabIndex} />)} />;
+    render={props.render ?? ((native) => <button {...native as ComponentPropsWithRef<"button">} title={props.title} aria-busy={props["aria-busy"]} aria-keyshortcuts={props["aria-keyshortcuts"]} aria-hidden={props["aria-hidden"]} tabIndex={props.excludeFromTabOrder ? -1 : native.tabIndex} />)} />;
 }
 
 /** A presentational option child: pointer states without a role or Tab stop. */
