@@ -4,7 +4,7 @@ use std::sync::Mutex;
 
 use ibis_core::cite::KeyFormat;
 use ibis_core::settings;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, State};
 
 use crate::library::{CommandError, Library, PreviewIntent, PreviewRequests};
@@ -15,10 +15,31 @@ pub(crate) struct Copied {
     pub(crate) text: String,
     /// What the chosen syntax could not express, and other problems the user should see.
     pub(crate) warnings: Vec<String>,
+    #[specta(optional)]
+    pub(crate) summary: Option<ReceiptSummary>,
     /// Unique write token for this copy's one-use paste proof.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[specta(optional)]
     pub(crate) delivery: Option<u32>,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize, specta::Type)]
+pub(crate) struct ReceiptSummary { pub(crate) text: String, pub(crate) more: usize }
+
+impl ReceiptSummary {
+    pub(crate) fn citation(result: &ibis_core::contract::CitationResult) -> Self {
+        const LIMIT: usize = 120;
+        let line = result.text.split_whitespace().collect::<Vec<_>>().join(" ");
+        if line.chars().count() <= LIMIT { return Self { text: line, more: 0 }; }
+        let owners: std::collections::BTreeSet<_> = result.display.nodes.iter().filter_map(|node| node.item).collect();
+        let first = if owners.len() <= 1 { line } else {
+            let first = result.display.nodes.iter().find_map(|node| node.item);
+            result.display.nodes.iter().take_while(|node| node.item.is_none() || node.item == first).flat_map(|node| &node.content).map(|run| run.text.as_str()).collect::<String>()
+        };
+        let mut text: String = first.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(LIMIT - 1).collect();
+        text.push('…');
+        Self { text, more: owners.len().saturating_sub(1) }
+    }
 }
 
 /// The format the picker starts with: the last one chosen, or Pandoc.
@@ -34,6 +55,14 @@ pub(crate) fn copy_format(settings_file: State<'_, SettingsFile>) -> KeyFormat {
 mod clipboard;
 #[cfg(test)]
 mod engine_file_acceptance;
+
+/// Read-only examples owned by a prepared preview; never publishes a new ticket.
+#[tauri::command]
+#[specta::specta]
+pub(crate) async fn citation_details(ticket: String, content_hash: String, item: usize, library: State<'_, Mutex<Library>>) -> Result<crate::library::engine_file::ReferenceDetails, CommandError> {
+    let file = library.lock().map_err(|_| CommandError::SnapshotChanged)?.file.clone().ok_or(CommandError::SnapshotChanged)?;
+    tauri::async_runtime::spawn_blocking(move || file.details(&ticket, &content_hash, item)).await.map_err(|_| CommandError::from("Citation examples are unavailable. Close and reopen the menu to try again."))?
+}
 
 #[tauri::command]
 #[specta::specta]

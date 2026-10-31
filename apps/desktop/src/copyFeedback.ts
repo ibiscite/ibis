@@ -83,7 +83,16 @@ export function renderNotice(root: HTMLElement, platform: NoticePlatform): (mess
   root.append(notice);
   return (message: NoticeMessage) => {
     title.textContent = noticeTitle(message, platform);
-    code.textContent = message.text;
+    const excerpt = document.createElement("span");
+    excerpt.className = "copy-receipt-excerpt";
+    excerpt.textContent = message.text;
+    code.replaceChildren(excerpt);
+    if (message.more) {
+      const more = document.createElement("span");
+      more.className = "copy-receipt-more";
+      more.textContent = `+${message.more} more`;
+      code.append(more);
+    }
     code.title = message.text;
     notice.dataset.outcome = message.delivered.outcome;
     notice.replaceChildren(source, mark, title, code);

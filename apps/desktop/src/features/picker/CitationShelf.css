@@ -72,3 +72,10 @@ main:has(> .shelf) > footer { border-top-color: var(--clear); }
   .shelf-mark { color: CanvasText; }
   .shelf-copied { color: CanvasText; border: var(--border-width) solid CanvasText; }
 }
+
+.shelf-fragments { display: flex; align-items: center; flex: 0 1 auto; min-width: 0; overflow: hidden; padding-block: var(--row-gap); margin-block: calc(-1 * var(--row-gap)); }
+.shelf-shared { flex: none; white-space: pre; }
+.shelf-punctuation { color: var(--muted); }
+.shelf-segment-button[data-focus-visible] .shelf-punctuation { color: inherit; }
+.shelf-retained { opacity: .45; }
+.shelf-full-citation { margin-block-end: var(--space-2); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }

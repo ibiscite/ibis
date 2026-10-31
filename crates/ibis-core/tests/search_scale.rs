@@ -71,6 +71,7 @@ fn library(records: usize) -> Vec<LibraryObject> {
             let year = 1950 + (n * 7919) % 77;
             let family = authors[0]["family"].as_str().unwrap().to_lowercase();
             let mut record = Record {
+                added_at: None,
                 id: ItemRef {
                     library: library.clone(),
                     key: format!("item{n}"),

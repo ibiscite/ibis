@@ -22,6 +22,24 @@ const press = (node: HTMLElement, key: string) => {
   fireEvent.keyUp(node, { key, code: key === " " ? "Space" : key });
 };
 
+test("engine-owned segments retain punctuation, per-reference removal and arrow selection", () => {
+  const a = record("a", "Alpha"), b = record("b", "Beta"), remove = vi.fn();
+  const formatted = { ...output("(Beta, 2021; Alpha, 2021)"), spans: [
+    { item: null, text: "(" }, { item: 1, text: "Beta, 2021" }, { item: null, text: "; " },
+    { item: 0, text: "Alpha, 2021" }, { item: null, text: ")" },
+  ] };
+  render(shelf({ selected: chosen([a, b]), shown: formatted, onRemove: remove }));
+  const beta = screen.getByRole("button", { name: "Edit Beta 2021" });
+  const alpha = screen.getByRole("button", { name: "Edit Alpha 2021" });
+  expect(document.querySelector(".shelf-citation")?.textContent).toBe(formatted.text);
+  act(() => beta.focus());
+  fireEvent.keyDown(beta, { key: "ArrowRight" });
+  expect(document.activeElement).toBe(alpha);
+  fireEvent.keyDown(alpha, { key: "Delete" });
+  expect(remove).toHaveBeenCalledExactlyOnceWith(a);
+  expect(within(beta.closest(".shelf-segment")!).getByRole("button", { name: "Remove b" })).toBeTruthy();
+});
+
 test("short names distinguish identical author/year labels without using the citation key as identity", () => {
   expect(referenceLabels([record("a"), record("b", "Okafor", 2019), record("c", "", null)])).toEqual(["García 2021", "Okafor 2019", "c"]);
   expect(referenceLabels([record("a"), record("b")])).toEqual(["García 2021 · a", "García 2021 · b"]);
@@ -57,7 +75,7 @@ test.each(["click", "Enter", " "])("a single reference is the whole citation seg
   for (const name of ["Name in brackets", "Name in the sentence", "Year only"]) expect(within(menu).getByRole("radio", { name })).toBeTruthy();
   const year = within(menu).getByRole("radio", { name: "Year only" });
   expect(year.matches(":disabled, [aria-disabled=true]")).toBe(true);
-  expect(document.getElementById(year.getAttribute("aria-describedby")!)?.textContent).toBe("Year only isn’t available yet.");
+  expect(document.getElementById(year.getAttribute("aria-describedby")!)?.textContent).toBe("Preparing examples…");
   expect(within(menu).getByRole("button", { name: /Remove from citation/ })).toBeTruthy();
   fireEvent.keyDown(document.activeElement!, { key: "Escape" });
   await act(async () => { await new Promise(requestAnimationFrame); });
@@ -72,6 +90,21 @@ test("a pending preview can be edited before formatting finishes", () => {
   expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "Page" }));
 });
 
+test("pending retains dimmed old text for 300 ms, then Formatting without treating it as a new receipt", () => {
+  vi.useFakeTimers();
+  try {
+    const reference = record("a");
+    const { rerender } = render(shelf({ selected: chosen([reference]), shown: output("Original citation") }));
+    rerender(shelf({ selected: chosen([{ ...reference, locator: { label: "page", value: "9" } }]), shown: null }));
+    expect(document.querySelector(".shelf-retained")?.textContent).toBe("Original citation");
+    act(() => vi.advanceTimersByTime(299));
+    expect(screen.queryByText("Formatting…")).toBeNull();
+    act(() => vi.advanceTimersByTime(1));
+    expect(screen.getByText("Formatting…")).toBeTruthy();
+    expect(document.querySelector(".shelf-retained")).toBeNull();
+  } finally { cleanup(); vi.useRealTimers(); }
+});
+
 test("a formatting reply cannot retire a segment while it is being activated", () => {
   const selected = chosen([record("a")]);
   const { rerender } = render(shelf({ selected, shown: null }));
@@ -84,7 +117,7 @@ test("a formatting reply cannot retire a segment while it is being activated", (
 });
 
 test("Page retains typed input, canonical pages from search, and independent reference details", () => {
-  const reference: CitationReference = { ...record("a"), locator: { label: "page", value: "S.12" }, form: "author-omitted" };
+  const reference: CitationReference = { ...record("a"), locator: { label: "page", value: "S.12" }, form: "year-only" };
   const change = vi.fn();
   render(shelf({ highlightedReference: reference, shown: output("(2021, S.12)"), onChangeReference: change }));
   fireEvent.click(screen.getByRole("button", { name: "Edit García 2021" }));

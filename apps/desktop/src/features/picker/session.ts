@@ -10,6 +10,7 @@ import { closestMatchWarnings } from "./rows";
 export type OutputToken = { opening: number; choice: number };
 type Prepared = FormattedCitation & { fileTicket?: string; fileHash?: string };
 export type SessionView = {
+  appId?: string | null;
   queryKey: string; format: Choice; snapshotRevision: string | undefined; defaultChoice: string;
   chosen: CitationReference[]; shown: Prepared | "failed" | "stale" | null;
   previewVisible: boolean;
@@ -18,6 +19,7 @@ export type SessionView = {
 type Pending = { choice: string | null; selection: SessionState["selected"]; queryKey: string;
   format: Choice | null; output: OutputToken; question?: "open" | "answered" };
 type Flight = { id: number; session: number; choice: string; format: Choice; opening: number; warnings: string[];
+  references: unknown[]; appId: string | null;
   phase: "copy" | "hide" | "notice"; outcome?: Copied;
   owner: { context: number; session: number; visibility: number; output: OutputToken } };
 export type RemovedReference = { token: number; reference: CitationReference; before: string[]; after: string[] };
@@ -29,6 +31,7 @@ export type SessionState = {
   pendingCopy: Pending | null; flights: Flight[]; activeCopy: number | null; nextCopy: number; lastSuccessfulCopy: number;
   copied: Copied | null; copyError: string | null; lastOutcome: string | null;
   shelfCopied: ShelfCopied | null; copyNotice: Copied | null; removed: RemovedReference | null;
+  recentCopy: { app: string | null; ids: unknown[] } | null;
 };
 type Completion = { id: number; session: number };
 export type SessionEvent =
@@ -61,7 +64,7 @@ export function initialSession(query = "", copied: Copied | null = null): Sessio
   return { query, interpretLocators: true, active: 0, selected: new Map(), selectionChanged: false,
     session: 0, visibility: 0, interaction: 0, context: 0, viewInteraction: -1, view: null,
     hiddenAt: null, escapedQuery: null, restored: 0, permissionDetour: false,
-    pendingCopy: null, flights: [], activeCopy: null, nextCopy: 0, lastSuccessfulCopy: 0, copied, shelfCopied: null, copyNotice: copied, removed: null, copyError: null, lastOutcome: null };
+    pendingCopy: null, flights: [], activeCopy: null, nextCopy: 0, lastSuccessfulCopy: 0, copied, shelfCopied: null, copyNotice: copied, removed: null, recentCopy: null, copyError: null, lastOutcome: null };
 }
 export const sessionQueryKey = (state: SessionState) => JSON.stringify([state.query, state.interpretLocators]);
 const sameOutput = (a: OutputToken, b: OutputToken) => a.opening === b.opening && a.choice === b.choice;
@@ -94,7 +97,7 @@ function advance(s: SessionState): [SessionState, SessionEffect[]] {
   const existing = s.flights.find((f) => f.choice === key && f.format === v.format && f.opening === v.output.opening && f.owner.visibility === s.visibility && f.owner.session === s.session);
   if (existing) return [{ ...s, activeCopy: existing.id, flights: s.flights.map((f) => f === existing ? { ...f, owner } : f) }, []];
   const id = s.nextCopy + 1;
-  const flight: Flight = { id, session: s.session, choice: key, format: v.format, opening: v.output.opening, owner, phase: "copy", warnings: closestMatchWarnings(v.chosen) };
+  const flight: Flight = { id, session: s.session, choice: key, format: v.format, opening: v.output.opening, owner, phase: "copy", warnings: closestMatchWarnings(v.chosen), references: v.chosen.filter((r) => !r.sample).map((r) => r.id), appId: v.appId ?? null };
   return [{ ...s, flights: [...s.flights, flight], activeCopy: id, nextCopy: id, copied: null, shelfCopied: null, copyNotice: null, copyError: null },
     [{ type: "copy", id, session: s.session, ticket: v.shown.fileTicket, hash: v.shown.fileHash }]];
 }
@@ -190,7 +193,7 @@ export function reduceSession(s: SessionState, event: SessionEvent): [SessionSta
     case "copied": {
       if (f.phase !== "copy") return [s, []];
       const outcome = { ...event.outcome, warnings: [...event.outcome.warnings, ...f.warnings] };
-      if (f.id > s.lastSuccessfulCopy) s = { ...s, lastSuccessfulCopy: f.id, lastOutcome: copiedNoticeText.title };
+      if (f.id > s.lastSuccessfulCopy) s = { ...s, lastSuccessfulCopy: f.id, lastOutcome: copiedNoticeText.title, recentCopy: { app: f.appId, ids: f.references } };
       if (!ownsCompletion(s, f, event.output)) return [finish(s, f), s.activeCopy === f.id && f.owner.session === s.session && sameOutput(f.owner.output, event.output) ? [{ type: "consume", output: f.owner.output }] : []];
       // Consuming a built citation can reveal a different default reference.
       // Confirm on the shelf only when its next target is this exact output.

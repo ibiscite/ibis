@@ -24,7 +24,7 @@ test("removing a reference offers an owned Undo that restores its position and c
   const s = scenario();
   const c = { ...b, id: { synthetic: "third" }, key: "third" };
   s.send({ type: "toggle", result: a, locator: a.locator });
-  s.send({ type: "reference", reference: s.state.selected.get(idKey(a.id))!, change: { form: "author-omitted" } });
+  s.send({ type: "reference", reference: s.state.selected.get(idKey(a.id))!, change: { form: "year-only" } });
   s.send({ type: "toggle", result: b });
   s.send({ type: "toggle", result: c });
   const original = [...s.state.selected.values()];

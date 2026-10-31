@@ -26,6 +26,7 @@ import { PickerFooter } from "./features/picker/PickerFooter";
 import { PickerMenu } from "./features/picker/PickerMenu";
 import { useOperations } from "./features/picker/useOperations";
 import { usePickerPreferences } from "./features/picker/usePickerPreferences";
+import { useRecentReferences } from "./features/picker/useRecentReferences";
 import { useLibrarySearch } from "./features/picker/useLibrarySearch";
 import { useCitationOutput } from "./features/picker/useCitationOutput";
 import { useZoteroScope } from "./features/picker/useZoteroScope";
@@ -52,7 +53,7 @@ const noSelection = new Map<string, CitationReference>();
 export type PickerApi = Pick<typeof nativeApi,
   "chooseLibrary" | "useZotero" | "libraryStatus" | "reloadLibrary" | "previewFileCitation" | "copyFileCitation" | "copyFormat" | "pickerPreferences" | "setPickerPreferences" |
   "hidePicker" | "pickerVisible" | "setPinned" | "onLibraryChanged" | "onPickerShown" | "onPickerHidden" | "quit" | "search" | "shortcutStatus"> &
-  Partial<Pick<typeof nativeApi, "useSampleLibrary" | "useZoteroLibraries" | "zoteroGroups" | "pickerDestination" | "rememberAppOutput" | "forgetAppOutputs" | "onWindowSizeSaved" | "readWindowPositionUndo" | "undoWindowPosition" | "dismissWindowPositionUndo" | "onWindowReset" | "findSources" | "openFoundLibrary" | "rowContext" | "showCopiedNotice" | "loginItem" | "setLoginItem" | "onUpdateProgress" | "updateChecks" | "setUpdateChecks" | "onUpdateChecks" | "updateAvailable" | "onUpdateAvailable" | "updatePickerActivity" | "checkForUpdates" | "onShortcutStatus" | "openSettings" | "onPreferencesChanged">>;
+  Partial<Pick<typeof nativeApi, "recentReferences" | "useSampleLibrary" | "useZoteroLibraries" | "zoteroGroups" | "pickerDestination" | "rememberAppOutput" | "forgetAppOutputs" | "onWindowSizeSaved" | "readWindowPositionUndo" | "undoWindowPosition" | "dismissWindowPositionUndo" | "onWindowReset" | "findSources" | "openFoundLibrary" | "rowContext" | "showCopiedNotice" | "loginItem" | "setLoginItem" | "onUpdateProgress" | "updateChecks" | "setUpdateChecks" | "onUpdateChecks" | "updateAvailable" | "onUpdateAvailable" | "updatePickerActivity" | "checkForUpdates" | "onShortcutStatus" | "openSettings" | "onPreferencesChanged">>;
 
 export type PickerPreview = { query?: string; copied?: Copied };
 
@@ -117,13 +118,14 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       report("status", false);
     }).catch(() => { if (statusReads.current === request) failStatus(); });
   };
+  const recents = useRecentReferences(api.recentReferences, destination.appId, density === "compact", state.recentCopy, state.session);
   const { queryKey, results, current, interpretation, list, announcement, resultsQuery, error, pending: searchPending } =
-    useLibrarySearch({ search, query, interpretLocators, library, statusFailed: failures.status ?? false, libraryVersion, sessionId: state.session, isCurrentSession, setActive, refreshSnapshot });
+    useLibrarySearch({ search, emptySearch: recents.load, query, interpretLocators, library, statusFailed: failures.status ?? false, libraryVersion, sessionId: state.session, isCurrentSession, setActive, refreshSnapshot });
   // biome-ignore lint/correctness/useExhaustiveDependencies: new results are the trigger: the pointer must move again before it counts.
   useEffect(resetPointer, [results, resetPointer]);
   // The selection, otherwise the current pasted list or highlighted result.
   const chosen = !showCitations ? [] : selected.size > 0 ? [...selected.values()] : list ? current : current.slice(active, active + 1).map((r) => ({ ...r, locator: interpretation?.locator }));
-  const { formatted, chosenKey, keyFormat, shown, previewProblem, displayedOutput } =
+  const { formatted, previewReceipt, chosenKey, keyFormat, shown, previewProblem, displayedOutput } =
     useCitationOutput({ chosen, library, libraryVersion, sessionId: state.session, isCurrentSession, format, style, showPastePreview, previewFileCitation, refreshSnapshot });
   const input = useRef<HTMLInputElement>(null);
   const formatButtonRef = useRef<HTMLButtonElement>(null);
@@ -172,7 +174,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       pinned: () => currentPin.current, consume: destination.consumeOnce, refresh: refreshSnapshot,
       askFormat: () => formatButtonRef.current?.click(), reportHide: (failed) => report("hide", failed) });
     send({ type: "view", session: state.session, interaction: state.interaction,
-      view: { queryKey, format, snapshotRevision, defaultChoice, chosen, shown, previewVisible: showPastePreview, searchPending,
+      view: { appId: destination.appId, queryKey, format, snapshotRevision, defaultChoice, chosen, shown, previewVisible: showPastePreview, searchPending,
         ready: destination.ready && preferences.ready, saving: destination.saving, shouldAsk: destination.shouldAsk,
         output: destination.copyToken() } });
   });
@@ -536,6 +538,13 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
         pinned={pinned} mark={searchMark} onTogglePin={() => { togglePin(); input.current?.focus(); }}
         inputRef={input}
         query={query}
+        pageToken={usingLocator && <span className="search-page-token" role="group" aria-label={pickerText.usingLocator(usingLocator.label, usingLocator.value)}>
+          <Button variant="quiet" size="small" aria-label={pickerText.searchAsTyped} title={pickerText.searchAsTyped}
+            onPress={() => { send({ type: "literal" }); input.current?.focus({ preventScroll: true }); }}>
+            <bdi>{usingLocator.label === "page" ? "p." : usingLocator.label} {usingLocator.value}</bdi><span aria-hidden="true">×</span>
+          </Button>
+          {canApplyLocator && <Button variant="quiet" size="small" onPress={() => { changeLocator(prepared, usingLocator); input.current?.focus(); }}>{pickerText.applyLocator(prepared.key)}</Button>}
+        </span>}
         onQueryChange={(value) => {
           pointer.resetHover();
           setQuery(value);
@@ -612,18 +621,8 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
         citationProblem={displayedOutput === "failed" ? previewProblem ?? pickerText.previewError : null}
         confirmation={state.copyNotice}
         onDismissCopied={() => send({ type: "dismiss" })} />
-      {usingLocator && <div className="notices">
-        <p role="status">{pickerText.usingLocator(usingLocator.label, usingLocator.value)}{" "}
-          <Button variant="quiet" size="small" onPress={() => { send({ type: "literal" }); input.current?.focus({ preventScroll: true }); }}>
-            {pickerText.searchAsTyped}
-          </Button>
-          {canApplyLocator && <Button variant="quiet" size="small" onPress={() => changeLocator(prepared, usingLocator)}>
-            {pickerText.applyLocator(prepared.key)}
-          </Button>}
-        </p>
-      </div>}
       <div className="results-area scroll-area" ref={resultArea}>
-        {library?.has_snapshot && results.length > 0 && !busy && showCitations && <div className="results-heading" aria-hidden="true">
+        {library?.has_snapshot && results.length > 0 && !results.some((r) => r.recent) && !busy && showCitations && <div className="results-heading" aria-hidden="true">
           <span>{list ? pickerText.pastedList : results.some((r) => r.partial) ? pickerText.closestMatches : query ? pickerText.bestMatches : pickerText.references}</span><bdi>{pickerText.resultCount(results.length)}</bdi>
         </div>}
         <p className="visually-hidden" role="status" aria-label={pickerText.searchResults} aria-live="polite" aria-atomic="true">
@@ -671,7 +670,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       <CitationShelf presentation={state.visibility} announce={selectionChanged} selected={showCitations ? selected : noSelection} removeLabel={removeLabel} onRemove={(r) => {
         send({ type: "remove-reference", reference: r });
         input.current?.focus({ preventScroll: true });
-      }} highlightedReference={selected.size === 0 ? chosen[0] : undefined}
+      }} highlightedReferences={selected.size === 0 ? chosen : undefined} previewReceipt={previewReceipt}
         onChangeReference={changeReference} referenceLibrary={(r) => libraryOf(r.source ?? "")} style={style} keys={keyFormat !== null}
         shown={showCitations ? displayedOutput : undefined} outputWarnings={shown && typeof shown === "object" ? shown.warnings : []}
         problem={previewProblem} copied={showCitations ? state.shelfCopied : null} focusable={selected.size > 0} fallbackFocusRef={input} />
@@ -703,6 +702,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
               keys: openKeys,
               settings: openSettings ? () => runFromMenu("settings", () => openSettings(null)) : null,
               forgetApps: destination.forgetAll,
+              forgetRecent: recents.forget ? () => { report("recentHistory", !recents.forget!()); input.current?.focus(); } : null,
               quit: () => runFromMenu("quit", quitAfterSaving),
             }} />
         } />

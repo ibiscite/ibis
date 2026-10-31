@@ -31,7 +31,7 @@ export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library
   updates: { automatic: boolean; available: boolean; toggle: () => void; check: () => void } | null;
   actions: { choose: () => void; useZotero: () => void; reload: () => void; density: () => void; largerText: () => void; searchMark: () => void; preview: () => void; pin: () => void; keys: () => void; settings: (() => void) | null;
     /** Offered when Ibis remembers formats for apps. */
-    forgetApps?: (() => void) | null; quit: () => void };
+    forgetApps?: (() => void) | null; forgetRecent?: (() => void) | null; quit: () => void };
 }) {
   return (
     <MoreMenu isOpen={isOpen} onOpenChange={onOpenChange} buttonRef={buttonRef} searchRef={searchRef}
@@ -66,6 +66,7 @@ export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library
       <MenuSection id="view">
         <MenuItem id="density" label={pickerText.density(densityNames[density])} title={pickerText.densityTitle} onAction={actions.density} />
         {actions.forgetApps && <MenuItem id="forget-apps" label={pickerText.forgetApps} title={pickerText.forgetAppsTitle} onAction={actions.forgetApps} />}
+        {actions.forgetRecent && <MenuItem id="forget-recent" label="Forget Recent Citations" onAction={actions.forgetRecent} />}
       </MenuSection>
       <MenuSection id="view-toggles">
         <MenuItem id="pin" label={pinned ? pickerText.stopKeepingOpen : pickerText.keepOpenMenu} keys={label(keysFor("pin"))} checked={pinned} onAction={actions.pin} />

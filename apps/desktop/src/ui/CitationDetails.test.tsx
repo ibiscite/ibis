@@ -12,8 +12,26 @@ const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
 function Editor() {
   const [page, setPage] = useState("");
   const [form, setForm] = useState<ReferenceForm>("normal");
-  return <CitationDetails label="Citation details for Synthetic work" page={page} form={form} onPageChange={setPage} onFormChange={setForm} />;
+  return <CitationDetails label="Citation details for Synthetic work" page={page} form={form} choices={{ forms: [
+    { form: "normal", example: "(Example, 2026)", reason: null },
+    { form: "narrative", example: "Example (2026)", reason: null },
+    { form: "year-only", example: "(2026)", reason: null },
+  ] }} onPageChange={setPage} onFormChange={setForm} />;
 }
+
+test("Year only uses its own engine form and unsupported choices expose the reason before editing", () => {
+  const change = vi.fn();
+  render(<CitationDetails label="Synthetic details" page="12" form="normal" onPageChange={vi.fn()} onFormChange={change} choices={{ forms: [
+    { form: "normal", example: "(Example, 2026)", reason: null },
+    { form: "narrative", example: null, reason: "Cite this reference alone for Name in the sentence." },
+    { form: "year-only", example: "(2026)", reason: null },
+  ] }} />);
+  const narrative = screen.getByRole("radio", { name: "Name in the sentence" });
+  expect(narrative.matches(":disabled, [aria-disabled=true]")).toBe(true);
+  expect(document.getElementById(narrative.getAttribute("aria-describedby")!)?.textContent).toContain("Cite this reference alone");
+  fireEvent.click(screen.getByRole("radio", { name: "Year only" }));
+  expect(change).toHaveBeenCalledExactlyOnceWith("year-only");
+});
 
 test.each(["macos", "windows", "linux"])("%s uses labelled shared controls, plain text and keyboard form choices", async (platform) => {
   document.documentElement.dataset.platform = platform;

@@ -1408,6 +1408,7 @@ mod tests {
 
     fn reference(key: &str, title: &str, family: &str, year: i32) -> Record {
         Record {
+            added_at: None,
             id: ItemRef {
                 library: library_id("t"),
                 key: key.into(),

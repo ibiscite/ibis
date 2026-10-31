@@ -21,6 +21,7 @@ export async function resetApp() {
   await act(async () => { await new Promise(requestAnimationFrame); });
   clearMocks();
   receipts.clear();
+  localStorage.removeItem("ibis-citation-history");
   delete document.documentElement.dataset.pickerHidden;
 }
 
@@ -74,7 +75,7 @@ let receiptNumber = 0;
 /** A synthetic engine result. Tests choose output; no renderer runs in the browser. */
 export function receipt(text: string, html: string | null = null, warnings: string[] = []): FilePreview {
   const number = ++receiptNumber;
-  return { ticket: `synthetic-ticket-${number}`, content_hash: `synthetic-hash-${number}`, text, html, warnings };
+  return { ticket: `synthetic-ticket-${number}`, content_hash: `synthetic-hash-${number}`, text, html, warnings, spans: [{ item: 0, text }] };
 }
 
 /** Resolve the exact native copy receipt, including its content hash. */
@@ -105,7 +106,16 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
     undo_window_position: () => false,
     dismiss_window_position_undo: () => null,
     copy_format: () => "pandoc",
-    preview_file_citation: ({ items, style }) => receipt(style ? "(Smith, 2020)" : items.map(({ id }) => `@${id.key}`).join("; ")),
+    preview_file_citation: ({ items, style }) => {
+      const spans = items.flatMap(({ id }, item) => [...(item ? [{ item: null, text: "; " }] : []), { item, text: style ? "(Smith, 2020)" : `@${id.key}` }]);
+      return { ...receipt(spans.map((span) => span.text).join("")), spans };
+    },
+    recent_references: (args) => overrides.search?.({ ...args, query: { text: "", interpret_locators: true } }) ?? [],
+    citation_details: () => ({ forms: [
+      { form: "normal", example: "(Smith, 2020)", reason: null },
+      { form: "narrative", example: "Smith (2020)", reason: null },
+      { form: "year-only", example: "(2020)", reason: null },
+    ] }),
     copy_file_citation: (args) => {
       const { preview } = prepared(args);
       return { text: preview.text, warnings: preview.warnings };
@@ -148,7 +158,7 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
         return result;
       });
       if (cmd === "library_status") return Promise.resolve(value).then((status) => ({ revision: "1", ...status as object }));
-      if (cmd === "search") return Promise.resolve(value).then((reply) => Array.isArray(reply) ? { revision: reply[0]?.revision ?? "1", results: reply } : reply);
+      if (cmd === "search" || cmd === "recent_references") return Promise.resolve(value).then((reply) => Array.isArray(reply) ? { revision: reply[0]?.revision ?? "1", results: reply } : reply);
       return value;
     },
     { shouldMockEvents: true },

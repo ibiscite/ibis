@@ -114,6 +114,9 @@ pub struct CitationKey {
 #[serde(deny_unknown_fields)]
 pub struct Record {
     pub id: ItemRef,
+    /// Source-added metadata; affects recents/display, never citation meaning.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub added_at: Option<String>,
     /// Normalised CSL data; all variables may affect a chosen style.
     pub csl: BTreeMap<String, Value>,
     #[serde(default)]
@@ -252,7 +255,7 @@ impl LibraryObject {
         let full = digest_json(self)?;
         let cite = match self {
             // With no search-only fields, both views serialize identically.
-            Self::Record(record) if record.identifiers.is_empty() => full.clone(),
+            Self::Record(record) if record.identifiers.is_empty() && record.added_at.is_none() => full.clone(),
             Self::Record(record) => {
                 #[derive(Serialize)]
                 struct CiteRecord<'a> {
@@ -751,6 +754,7 @@ mod tests {
 
     fn record() -> Record {
         Record {
+            added_at: None,
             id: id("work"),
             csl: BTreeMap::from([("type".into(), json!("book")), ("title".into(), json!("Invented work"))]),
             citation_keys: vec![CitationKey {

@@ -23,6 +23,7 @@ fn zotero(fields: Value) -> Snapshot {
 
 fn csl(fields: Value) -> Snapshot {
     Snapshot::new(vec![LibraryObject::Record(Record {
+        added_at: None,
         id: ItemRef {
             library: LibraryId::file(b"invented"),
             key: "work".into(),

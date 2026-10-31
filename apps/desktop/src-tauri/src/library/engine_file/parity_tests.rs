@@ -209,13 +209,13 @@ fn page_and_range_with_each_picker_form_match_canonical_output() -> Result<(), B
         ),
     ];
     for (format, style, syntax, command) in outputs {
-        for form in ["normal", "narrative", "author-omitted"] {
+        for form in ["normal", "narrative", "year-only"] {
             for page in ["12", "12–15"] {
                 let mut request = case.request.clone();
                 let pick = &mut request.items[0];
                 pick.expected_cite = Some(case.library.objects()[0].fingerprints.cite.clone());
-                pick.form = (form == "narrative").then_some(CitationForm::Narrative);
-                pick.suppress_author = form == "author-omitted";
+                pick.form = match form { "narrative" => Some(CitationForm::Narrative), "year-only" => Some(CitationForm::YearOnly), _ => None };
+                pick.suppress_author = false;
                 pick.locator = Some(EngineLocator {
                     term: LocatorTerm::Page,
                     value: page.into(),
@@ -240,14 +240,10 @@ fn page_and_range_with_each_picker_form_match_canonical_output() -> Result<(), B
                 request.keep_order = style.is_none();
                 let expected = engine.cite(&request, &Cancellation::default()).map_err(|_| "cite")?;
                 let preview = file.preview(file.reserve_preview(), vec![selection], format, style);
-                if style == Some(CitationStyle::Ieee) && form == "narrative" {
-                    assert!(
-                        preview
-                            .err()
-                            .ok_or("numeric narrative accepted")?
-                            .to_string()
-                            .contains("cannot be expressed")
-                    );
+                if expected.copy_content(1).is_none() {
+                    let preview = preview.map_err(|error| error.to_string())?;
+                    assert!(preview.problem.as_deref().is_some_and(|problem| problem.contains("cannot be expressed")));
+                    assert!(file.copy(&preview.ticket, &preview.content_hash, |_| Ok(())).is_err());
                     continue;
                 }
                 let preview = preview.map_err(|e| e.to_string())?;
@@ -270,16 +266,8 @@ fn page_and_range_with_each_picker_form_match_canonical_output() -> Result<(), B
                         assert!(preview.text.contains("15"));
                     }
                     if style.is_some() {
-                        assert_eq!(preview.text.contains("Taylor"), form != "author-omitted");
+                        assert_eq!(preview.text.contains("Taylor"), form != "year-only");
                     }
-                }
-                if form == "author-omitted" && (format == KeyFormat::Textcite || style == Some(CitationStyle::Ieee)) {
-                    assert!(
-                        preview
-                            .warnings
-                            .iter()
-                            .any(|warning| warning.contains("Reference 1: Omit author"))
-                    );
                 }
                 if syntax == "biblatex" && form == "narrative" {
                     assert!(preview.text.starts_with("\\textcite["));
@@ -470,41 +458,14 @@ fn unsupported_group_forms_refuse_and_field_losses_name_the_reference() -> Resul
         (KeyFormat::Autocite, None),
         (KeyFormat::Pandoc, Some(CitationStyle::Apa)),
     ] {
-        let error = file
-            .preview(
-                file.reserve_preview(),
-                vec![selection("normal")?, selection("narrative")?],
-                format,
-                style,
-            )
-            .err()
-            .ok_or("mixed narrative accepted")?;
-        assert!(error.to_string().contains("Reference 2:"));
+        let preview = file.preview(file.reserve_preview(), vec![selection("normal")?, selection("narrative")?], format, style).map_err(|e| e.to_string())?;
+        assert!(preview.problem.as_deref().is_some_and(|reason| reason.contains("Reference 2:")));
+        assert!(file.copy(&preview.ticket, &preview.content_hash, |_| Ok(())).is_err());
     }
-    let preview = file
-        .preview(
-            file.reserve_preview(),
-            vec![selection("normal")?, selection("author-omitted")?],
-            KeyFormat::Autocite,
-            None,
-        )
-        .map_err(|e| e.to_string())?;
-    assert!(
-        preview
-            .warnings
-            .iter()
-            .any(|warning| warning.contains("Reference 2: Omit author"))
-    );
-    let preview = file
-        .preview(
-            file.reserve_preview(),
-            vec![selection("author-omitted")?],
-            KeyFormat::Keys,
-            None,
-        )
-        .map_err(|e| e.to_string())?;
-    assert!(preview.warnings.iter().any(|warning| warning.contains("Page")));
-    assert!(preview.warnings.iter().any(|warning| warning.contains("Omit author")));
+    let refused = file.preview(file.reserve_preview(), vec![selection("normal")?, selection("year-only")?], KeyFormat::Autocite, None).map_err(|e| e.to_string())?;
+    assert!(refused.problem.as_deref().is_some_and(|reason| reason.contains("Year only")));
+    let preview = file.preview(file.reserve_preview(), vec![selection("normal")?], KeyFormat::Keys, None).map_err(|e| e.to_string())?;
+    assert!(preview.warnings.iter().any(|warning| warning.contains("Reference 1: Page")));
     assert!(
         serde_json::from_value::<FileSelection>(
             json!({"id":pick.object.id(),"cite":pick.fingerprints.cite,"form":"invented"})

@@ -13,6 +13,7 @@ fn sample() -> (Snapshot, CitationRequest) {
     };
     let csl=serde_json::from_value(json!({"type":"book","title":"Synthetic signals","author":[{"family":"Taylor","given":"Avery"}],"issued":{"date-parts":[[2026]]},"publisher":"Imaginary Press"})).unwrap();
     let snapshot = Snapshot::new(vec![LibraryObject::Record(Record {
+        added_at: None,
         id: id.clone(),
         csl,
         citation_keys: vec![],
@@ -39,6 +40,30 @@ fn sample() -> (Snapshot, CitationRequest) {
         output_locale: None,
     };
     (snapshot, request)
+}
+
+#[test]
+fn shelf_spans_follow_processor_order_without_changing_citation_meaning() {
+    let _guard = FORMAT_TESTS.lock().unwrap();
+    let snapshot = library(&[
+        json!({"type":"book","title":"Synthetic Z","author":[{"family":"Zulu"}],"issued":{"date-parts":[[2024]]}}),
+        json!({"type":"book","title":"Synthetic A","author":[{"family":"Alpha"}],"issued":{"date-parts":[[2021]]}}),
+    ]);
+    let formatter = Formatter::new().unwrap();
+    for (style, _) in ibis_csl::STYLES {
+        let request = selection(&snapshot, style, false);
+        let result = formatter.format(&snapshot, &request).unwrap();
+        let plain: String = result.display.nodes.iter().flat_map(|node| &node.content).map(|run| run.text.as_str()).collect();
+        assert_eq!(plain, result.text, "{style}: every character belongs to the display");
+        for item in 0..2 {
+            let owned: String = result.display.nodes.iter().filter(|node| node.item == Some(item)).flat_map(|node| &node.content).map(|run| run.text.as_str()).collect();
+            let id = &request.items[item].item;
+            let LibraryObject::Record(record) = &snapshot.get(id).unwrap().object else { panic!("record") };
+            let family = record.csl["author"][0]["family"].as_str().unwrap();
+            assert!(owned.contains(family), "{style}: item {item} owns its rendered name");
+        }
+        assert!(result.copy_content(2).is_some());
+    }
 }
 #[test]
 fn formats_canonical_text_html_rtf_and_numeric_fallback() {
@@ -92,6 +117,7 @@ fn library(items: &[serde_json::Value]) -> Snapshot {
             .enumerate()
             .map(|(index, csl)| {
                 LibraryObject::Record(Record {
+                    added_at: None,
                     id: ItemRef {
                         library: LibraryId::file(b"synthetic-format-library"),
                         // Snapshot sorts identities; preserve fixture order beyond ten records.

@@ -22,6 +22,24 @@ impl PreparedCitation {
         self.result
     }
 
+    /// Read-only alternatives against the exact snapshot and group that made
+    /// this receipt. No preview is published and no clipboard ticket changes.
+    pub fn form_example(&self, engine: &Engine, original_output: &OutputSpec, item: usize, form: CitationForm, cancel: &Cancellation) -> Result<CitationResult, EngineError> {
+        if !Weak::ptr_eq(&self.origin, &Arc::downgrade(&engine.shared)) { return Err(error(ErrorCode::BadInput)); }
+        let mut request = self.request.clone();
+        request.output = original_output.clone();
+        let pick = request.items.get_mut(item).ok_or_else(|| error(ErrorCode::BadInput))?;
+        pick.form = (form != CitationForm::Normal).then_some(form);
+        pick.suppress_author = false;
+        // Narrative is the textcite member of the native BibLaTeX family.
+        if request.items.len() == 1 && form == CitationForm::Narrative {
+            if let OutputSpec::Key { syntax: KeySyntax::Biblatex, command } = &mut request.output {
+                if matches!(command.as_deref(), Some("autocite" | "parencite")) { *command = Some("textcite".into()); }
+            }
+        }
+        engine.cite_snapshot(&self.snapshot, &request, cancel)
+    }
+
     /// Bind sample provenance to every representation before preview or commit.
     /// The marker is fixed text, never source-provided markup. The original
     /// request and source validation stay attached to the marked result.

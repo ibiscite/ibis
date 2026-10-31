@@ -406,3 +406,49 @@ fn a_key_another_record_also_has_is_named_and_not_copied() -> Result<(), Box<dyn
     }
     Ok(())
 }
+
+#[test]
+fn shelf_form_metadata_uses_the_prepared_snapshot_and_true_year_only() -> Result<(), Box<dyn std::error::Error>> {
+    let directory = tempfile::tempdir()?;
+    let path = directory.path().join("synthetic-shelf.bib");
+    std::fs::write(&path, "@book{Synthetic2021, author={Garcia, Avery}, title={Synthetic work}, year={2021}}")?;
+    let file = FileLibrary::open(&path).map_err(|_| "open")?;
+    let reply = file.search(&SearchQuery { text: "Synthetic".into(), interpret_locators: true }, 10, None, &Cancellation::default())?;
+    let row = reply.results.first().ok_or("row")?;
+    let preview = file.preview(file.reserve_preview(), vec![FileSelection {
+        id: serde_json::from_value(row.id.clone())?, cite: serde_json::from_value(json!(row.cite))?, locator: None, page_input: None, form: None,
+    }], KeyFormat::Pandoc, Some(CitationStyle::Apa)).map_err(|_| "preview")?;
+    assert_eq!(preview.spans.iter().map(|span| span.text.as_str()).collect::<String>(), preview.text);
+    let choices = file.details(&preview.ticket, &preview.content_hash, 0).map_err(|_| "details")?;
+    assert_eq!(choices.forms.len(), 3);
+    let year = &choices.forms[2];
+    assert_eq!(year.form, ReferenceForm::YearOnly);
+    assert_eq!(year.example.as_deref(), Some("(2021)"));
+    assert!(year.reason.is_none());
+    // Metadata is read-only: opening it cannot replace the authoritative copy ticket.
+    assert!(file.copy(&preview.ticket, &preview.content_hash, |_| Ok(())).is_ok());
+    file.reserve_preview();
+    assert!(file.details(&preview.ticket, &preview.content_hash, 0).is_err());
+    Ok(())
+}
+
+#[test]
+fn shelf_biblatex_examples_keep_the_original_family_after_narrative() -> Result<(), Box<dyn std::error::Error>> {
+    let directory = tempfile::tempdir()?;
+    let path = directory.path().join("synthetic-shelf.bib");
+    std::fs::write(&path, "@book{Synthetic2021, author={Garcia, Avery}, title={Synthetic work}, year={2021}}")?;
+    let file = FileLibrary::open(&path).map_err(|_| "open")?;
+    let reply = file.search(&SearchQuery { text: "Synthetic".into(), interpret_locators: true }, 10, None, &Cancellation::default())?;
+    let row = reply.results.first().ok_or("row")?;
+    for (format, command) in [(KeyFormat::Autocite, "autocite"), (KeyFormat::Parencite, "parencite")] {
+        let preview = file.preview(file.reserve_preview(), vec![FileSelection {
+            id: serde_json::from_value(row.id.clone())?, cite: serde_json::from_value(json!(row.cite))?, locator: None, page_input: None, form: Some(ReferenceForm::Narrative),
+        }], format, None).map_err(|_| "preview")?;
+        assert_eq!(preview.text, "\\textcite{Synthetic2021}");
+        let details = file.details(&preview.ticket, &preview.content_hash, 0).map_err(|_| "details")?;
+        assert_eq!(details.forms[0].example.as_deref(), Some(format!("\\{command}{{Synthetic2021}}").as_str()));
+        assert_eq!(details.forms[2].example.as_deref(), Some(format!("\\{command}*{{Synthetic2021}}").as_str()));
+        assert!(details.forms[2].reason.is_none());
+    }
+    Ok(())
+}

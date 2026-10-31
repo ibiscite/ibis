@@ -289,3 +289,11 @@ footer .key-hint-label { display: var(--footer-hint-label-display); }
   main { height: var(--picker-height); min-height: 0; overflow: hidden; }
   main > .picker-content .results-area { flex: none; min-height: 0; overflow: visible; }
 }
+
+.search-page-token { display: flex; flex: none; align-items: center; gap: var(--space-1); min-width: 0; max-width: 100%; }
+.search-page-token > .ui-button { min-width: 0; max-width: 100%; border-radius: var(--r-full); background: var(--chip-fill); }
+.search-page-token bdi { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.recent-heading h2 { margin: 0; font: inherit; }
+[data-active] .result-body > .result-type { color: var(--row-active-muted); }
+.result-body > .result-type { color: var(--muted); font-size: var(--type-meta-size); line-height: var(--type-meta-line); }

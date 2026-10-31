@@ -2,10 +2,11 @@
 // tagged with the choice, style and library it was made for.
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as nativeApi from "../../api";
+import type { FilePreview } from "../../bindings";
 import type { CopyFormat, LibraryStatus } from "../../api";
 import type { FormattedCitation } from "../../format/styles";
 import { parse } from "../../format/markup";
-import type { StyleId } from "../../format/styles";
+import { STYLE_NAMES, type StyleId } from "../../format/styles";
 import { pickerText } from "../../messages";
 import { choiceKey, styleOf, type Choice, type CitationReference } from "./choice";
 
@@ -26,7 +27,7 @@ export function useCitationOutput({ chosen, library, libraryVersion, sessionId =
 }) {
   // Tagged with the style, choice and library it was made for, so Enter never
   // copies a preview of an earlier choice.
-  const [formatted, setFormatted] = useState<{ key: string; request: object; result: (FormattedCitation & { fileTicket?: string; fileHash?: string }) | "failed" | "stale"; problem?: string } | null>(null);
+  const [formatted, setFormatted] = useState<{ key: string; request: object; preview?: FilePreview; result: (FormattedCitation & { fileTicket?: string; fileHash?: string }) | "failed" | "stale"; problem?: string } | null>(null);
   const stalePreview = useRef<string | null>(null);
   const currentSession = useRef(sessionId);
   currentSession.current = sessionId;
@@ -44,7 +45,8 @@ export function useCitationOutput({ chosen, library, libraryVersion, sessionId =
   // What Enter would copy now; null while it is being formatted.
   const shown = formatted?.request === request ? formatted.result : null;
   // Why the preview failed, when the user can fix it.
-  const previewProblem = shown === "failed" ? formatted?.problem : undefined;
+  const previewProblem = shown === "failed" ? formatted?.problem ?? (style ? pickerText.previewStyleError(STYLE_NAMES[style]) : pickerText.previewError) : undefined;
+  const previewReceipt = formatted?.request === request ? formatted.preview : undefined;
   // Hiding citation text never hides the reason it cannot be copied.
   const displayedOutput = chosen.length > 0 && (showPastePreview || shown === "failed") ? shown : undefined;
   // Format the preview again whenever the choice or the style changes.
@@ -69,9 +71,9 @@ export function useCitationOutput({ chosen, library, libraryVersion, sessionId =
       locator: r.locator?.input === "page-editor" ? null : r.locator ?? null,
       ...(r.locator?.input === "page-editor" ? { page_input: r.locator.value } : {}),
       ...(r.form ? { form: r.form } : {}),
-    })), keyFormat ?? "pandoc", style, chosenRevision, abort.signal).then((result) => ({ markup: result.html ? parse(result.html) : [result.text], text: result.text, html: result.html ?? "", warnings: result.warnings, fileTicket: result.ticket, fileHash: result.content_hash }));
+    })), keyFormat ?? "pandoc", style, chosenRevision, abort.signal).then((result) => ({ markup: result.html ? parse(result.html) : [result.text], text: result.text, html: result.html ?? "", warnings: result.warnings, spans: result.spans, preview: result, fileTicket: result.ticket, fileHash: result.content_hash }));
     made
-      .then((result) => { if (owns()) setFormatted({ key, request, result }); })
+      .then((result) => { if (owns()) setFormatted({ key, request, preview: result.preview, result: result.preview.problem ? "failed" : result, problem: result.preview.problem ?? undefined }); })
       .catch((error) => { if (owns()) {
         const stale = nativeApi.isSnapshotChanged(error);
         const shared = nativeApi.sharedCitationKey(error);
@@ -85,5 +87,5 @@ export function useCitationOutput({ chosen, library, libraryVersion, sessionId =
       } });
     return () => { live = false; abort.abort(); };
   }, [previewKey, request, sessionId]);
-  return { formatted, chosenKey, keyFormat, shown, previewProblem, displayedOutput };
+  return { formatted, previewReceipt, chosenKey, keyFormat, shown, previewProblem, displayedOutput };
 }

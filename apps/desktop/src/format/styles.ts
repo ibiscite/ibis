@@ -1,4 +1,4 @@
-import type { CitationStyle } from "../bindings";
+import type { CitationSpan, CitationStyle } from "../bindings";
 import type { Markup } from "./markup";
 
 /** The engine result displayed by the picker. */
@@ -7,6 +7,7 @@ export interface FormattedCitation {
   text: string;
   html: string;
   warnings: string[];
+  spans?: CitationSpan[];
 }
 
 // The bundled citation styles by id and title. Kept apart from the engine so

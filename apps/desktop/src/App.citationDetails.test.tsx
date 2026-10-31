@@ -302,3 +302,56 @@ test("page and form survive changing output and remain editable with the paste p
   await waitFor(() => expect(previews.at(-1)?.items[0]?.page_input).toBe("42–45"));
   expect(previews.at(-1)?.items[0]?.form).toBe("narrative");
 });
+
+test("late form metadata cannot overwrite the examples for a newer Page edit or reopened menu", async () => {
+  const replies: ((value: unknown) => void)[] = [];
+  const requests: { ticket: string; item: number }[] = [];
+  backend({ search: () => [result("a", "Synthetic metadata work")],
+    preview_file_citation: ({ items }) => receipt(`Page ${items[0]?.page_input ?? "original"}`),
+    citation_details: (args) => { requests.push(args); return new Promise((resolve) => replies.push(resolve)); },
+  });
+  render(<App />);
+  const page = await openCitationDetails();
+  await waitFor(() => expect(replies).toHaveLength(1));
+  fireEvent.change(page, { target: { value: "9" } });
+  await waitFor(() => expect(replies).toHaveLength(2));
+  expect(requests[1]?.ticket).not.toBe(requests[0]?.ticket);
+  const choices = (example: string) => ({ forms: [
+    { form: "normal", example, reason: null }, { form: "narrative", example: null, reason: "Cite it alone." }, { form: "year-only", example: "(2026)", reason: null },
+  ] });
+  await act(async () => replies[1]!(choices("Current page 9 example")));
+  await act(async () => replies[0]!(choices("Retired original example")));
+  expect(screen.queryByText("Retired original example")).toBeNull();
+  expect(screen.getByText("Current page 9 example")).toBeTruthy();
+  closeCitationDetails();
+  await openCitationDetails();
+  await waitFor(() => expect(replies).toHaveLength(3));
+  await act(async () => replies[2]!(choices("Reopened page 9 example")));
+  expect(screen.getByText("Reopened page 9 example")).toBeTruthy();
+  expect(screen.getByRole<HTMLInputElement>("textbox", { name: "Page" }).value).toBe("9");
+});
+
+test("true Year only is sent to the engine; an engine refusal can be corrected from its owned menu", async () => {
+  const previews: PreviewRequest[] = [];
+  backend({ search: () => [result("a", "Synthetic year work")],
+    preview_file_citation: (request) => {
+      previews.push(request);
+      return request.items[0]?.form === "year-only"
+        ? { ...receipt(""), spans: [], problem: "Year only cannot show this reference’s year in this output." }
+        : receipt("(Smith, 2020)");
+    },
+  });
+  render(<App />);
+  await openCitationDetails();
+  const year = await screen.findByRole("radio", { name: "Year only" });
+  await waitFor(() => expect(year.matches(":disabled")).toBe(false));
+  fireEvent.click(year);
+  expect((await screen.findByRole("alert")).textContent).toContain("Year only cannot show");
+  expect(previews.at(-1)?.items[0]?.form).toBe("year-only");
+  const normal = screen.getByRole("radio", { name: "Name in brackets" });
+  await waitFor(() => expect(normal.matches(":disabled")).toBe(false));
+  fireEvent.click(normal);
+  await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+  expect(previews.at(-1)?.items[0]?.form).toBe("normal");
+  expect(screen.getByText("(Smith, 2020)", { selector: ".citation-form-example" })).toBeTruthy();
+});

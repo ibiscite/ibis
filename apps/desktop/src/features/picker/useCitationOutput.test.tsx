@@ -32,7 +32,7 @@ function reference(revision = "1", key = "synthetic"): CitationReference {
 }
 
 function preview(text: string): FilePreview {
-  return { text, html: null, warnings: [], ticket: "synthetic-ticket", content_hash: "synthetic-hash" };
+  return { text, spans: [{ item: 0, text }], html: null, warnings: [], ticket: "synthetic-ticket", content_hash: "synthetic-hash" };
 }
 
 function options(overrides: Partial<Options>): Options {
@@ -103,7 +103,7 @@ test.each([
   { edit: "page", details: { locator: { label: "page", value: "42–45" }, form: "normal" } },
   { edit: "cleared page", details: { locator: null, form: "normal" } },
   { edit: "narrative form", details: { locator: { label: "page", value: "12" }, form: "narrative" } },
-  { edit: "suppressed author", details: { locator: { label: "page", value: "12" }, form: "author-omitted" } },
+  { edit: "suppressed author", details: { locator: { label: "page", value: "12" }, form: "year-only" } },
 ] as const)("a $edit edit aborts the old preview and keeps the new receipt after a late result", async ({ details }) => {
   const pending: ((value: FilePreview) => void)[] = [];
   const previewFileCitation = vi.fn<Preview>(() => new Promise((resolve) => pending.push(resolve)));

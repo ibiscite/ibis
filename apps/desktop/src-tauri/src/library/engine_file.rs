@@ -20,7 +20,7 @@ use serde_json::json;
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{
-    Mutex,
+    Arc, Mutex,
     atomic::{AtomicBool, AtomicU64, Ordering},
 };
 
@@ -28,7 +28,7 @@ static TICKETS: AtomicU64 = AtomicU64::new(1);
 pub(crate) struct FileLibrary {
     pub(super) engine: Engine,
     sample: bool,
-    prepared: Mutex<Option<(String, PreparedCitation)>>,
+    prepared: Mutex<Option<(String, Arc<PreparedCitation>, OutputSpec)>>,
     latest_preview: Mutex<(u64, Cancellation)>,
     observing: AtomicBool,
 }
@@ -46,13 +46,23 @@ pub(crate) struct FileSelection {
     #[specta(optional)]
     pub(crate) form: Option<ReferenceForm>,
 }
-#[derive(Clone, Copy, PartialEq, Eq, Deserialize, specta::Type)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, specta::Type)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum ReferenceForm {
     Normal,
     Narrative,
-    AuthorOmitted,
+    YearOnly,
 }
+#[derive(Serialize, specta::Type)]
+pub(crate) struct CitationSpan { pub(crate) item: Option<usize>, pub(crate) text: String }
+#[derive(Serialize, specta::Type)]
+pub(crate) struct FormOption {
+    pub(crate) form: ReferenceForm,
+    pub(crate) example: Option<String>,
+    pub(crate) reason: Option<String>,
+}
+#[derive(Serialize, specta::Type)]
+pub(crate) struct ReferenceDetails { pub(crate) forms: Vec<FormOption> }
 #[derive(Serialize, specta::Type)]
 pub(crate) struct FilePreview {
     pub(crate) ticket: String,
@@ -60,8 +70,35 @@ pub(crate) struct FilePreview {
     pub(crate) text: String,
     pub(crate) html: Option<String>,
     pub(crate) warnings: Vec<String>,
+    pub(crate) spans: Vec<CitationSpan>,
+    #[specta(optional)]
+    pub(crate) problem: Option<String>,
 }
 impl FileLibrary {
+    pub(crate) fn recents(&self, ids: &[ItemRef], include_added: bool) -> Result<SearchReply, String> {
+        use super::search::RecentGroup;
+        let snapshot = self.engine.snapshot().map_err(|_| "Recent references are unavailable.")?;
+        let revision = snapshot.fingerprints().full.as_str().to_owned();
+        let sources: HashMap<_, _> = self.engine.libraries().map_err(|_| "Recent references are unavailable.")?.libraries.iter().map(|info| (info.id.clone(), native_source(info))).collect();
+        let mut picked: Vec<(&ItemRef, RecentGroup)> = ids.iter().filter(|id| snapshot.get(id).is_some_and(|item| matches!(item.object, LibraryObject::Record(_)))).take(3).map(|id| (id, RecentGroup::Cited)).collect();
+        if include_added {
+            let mut added: Vec<_> = snapshot.objects().iter().filter_map(|item| match &item.object {
+                LibraryObject::Record(record) => record.added_at.as_deref().and_then(ibis_core::contract::added_date).map(|date| (date, &record.id)), _ => None,
+            }).filter(|(_, id)| !picked.iter().any(|(existing, _)| *existing == *id)).collect();
+            added.sort_by(|(a, aid), (b, bid)| b.cmp(a).then_with(|| aid.cmp(bid)));
+            picked.extend(added.into_iter().take(3).map(|(_, id)| (id, RecentGroup::Added)));
+        }
+        let results = picked.into_iter().filter_map(|(id, group)| {
+            let object = snapshot.get(id)?;
+            let LibraryObject::Record(record) = &object.object else { return None; };
+            let mut row = SearchResult::from_engine(record, object.fingerprints.cite.as_str(), vec![], false, &revision);
+            row.source = sources.get(&record.id.library).cloned().unwrap_or_else(|| record.id.library.as_str().into());
+            row.sample = self.sample;
+            row.recent = Some(group);
+            Some(row)
+        }).collect();
+        Ok(SearchReply { revision, results, interpretation: None, list: None })
+    }
     pub(crate) fn open(path: &Path) -> Result<Self, super::LoadError> {
         Self::open_file(path, Engine::new().map_err(|_| super::LoadError::Stopped)?)
     }
@@ -352,6 +389,7 @@ impl FileLibrary {
         let cancel = self.preview_cancellation(reservation)?;
         // Narrative is the textcite member of the BibLaTeX output family.
         // Mixed command clusters remain outside the picker's small editor.
+        let original_format = format;
         let format = if items.len() == 1
             && items[0].form == Some(ReferenceForm::Narrative)
             && matches!(format, KeyFormat::Autocite | KeyFormat::Parencite)
@@ -386,6 +424,10 @@ impl FileLibrary {
                 command: command.map(str::to_owned),
             }
         };
+        let mut original_output = output.clone();
+        if let OutputSpec::Key { syntax: KeySyntax::Biblatex, command } = &mut original_output {
+            *command = Some(match original_format { KeyFormat::Autocite => "autocite", KeyFormat::Parencite => "parencite", _ => "textcite" }.into());
+        }
         let items: Vec<_> = items
             .into_iter()
             .enumerate()
@@ -416,8 +458,12 @@ impl FileLibrary {
                 Ok(CitationItem {
                     item: item.id,
                     expected_cite: Some(item.cite),
-                    form: (item.form == Some(ReferenceForm::Narrative)).then_some(CitationForm::Narrative),
-                    suppress_author: item.form == Some(ReferenceForm::AuthorOmitted),
+                    form: match item.form {
+                        Some(ReferenceForm::Narrative) => Some(CitationForm::Narrative),
+                        Some(ReferenceForm::YearOnly) => Some(CitationForm::YearOnly),
+                        _ => None,
+                    },
+                    suppress_author: false,
                     locator,
                     prefix: vec![],
                     suffix: vec![],
@@ -456,11 +502,16 @@ impl FileLibrary {
             }
             if let Some(item) = refused(CitationError::UnsupportedForm) {
                 let form = if request.items[item].form == Some(ibis_core::contract::CitationForm::Narrative) {
-                    "Narrative"
+                    "Name in the sentence"
+                } else if request.items[item].form == Some(CitationForm::YearOnly) {
+                    "Year only"
                 } else {
                     "This citation form"
                 };
-                return Err(format!("Reference {}: {form} cannot be expressed in this output or group. Choose Normal, cite it alone, or choose another output.", item + 1).into());
+                let problem = format!("Reference {}: {form} cannot be expressed in this output or group. Choose Name in brackets, cite it alone, or choose another output.", item + 1);
+                let mut preview = self.publish_preview(reservation, citation, original_output)?;
+                preview.problem = Some(problem);
+                return Ok(preview);
             }
             return Err(if refused(CitationError::ConflictingKey).is_some() {
                 "These references have conflicting citation keys. Resolve them in your library or choose a formatted style."
@@ -469,7 +520,7 @@ impl FileLibrary {
             }
             .into());
         }
-        self.publish_preview(reservation, citation)
+        self.publish_preview(reservation, citation, original_output)
     }
     fn citation_key(&self, request: &CitationRequest, item: usize) -> Option<String> {
         let snapshot = self.engine.snapshot().ok()?;
@@ -478,8 +529,8 @@ impl FileLibrary {
         };
         record.citation_key().ok().flatten().map(str::to_owned)
     }
-    fn publish_preview(&self, reservation: u64, citation: PreparedCitation) -> Result<FilePreview, CommandError> {
-        let citation = if self.sample {
+    fn publish_preview(&self, reservation: u64, citation: PreparedCitation, original_output: OutputSpec) -> Result<FilePreview, CommandError> {
+        let citation = if self.sample && citation.result().outcomes.iter().all(|outcome| matches!(outcome, ItemOutcome::Rendered { .. })) {
             citation.mark_sample().map_err(CommandError::from)?
         } else {
             citation
@@ -498,9 +549,38 @@ impl FileLibrary {
             text: result.text.clone(),
             html: result.html.clone(),
             warnings: citation_warnings(result),
+            spans: result.display.nodes.iter().map(|node| CitationSpan {
+                item: node.item, text: node.content.iter().map(|run| run.text.as_str()).collect(),
+            }).collect(),
+            problem: None,
         };
-        *slot = Some((preview.ticket.clone(), citation));
+        *slot = Some((preview.ticket.clone(), Arc::new(citation), original_output));
         Ok(preview)
+    }
+    pub(crate) fn details(&self, ticket: &str, hash: &str, item: usize) -> Result<ReferenceDetails, CommandError> {
+        let (reservation, citation, original_output) = {
+            let slot = self.prepared.lock().map_err(|_| CommandError::SnapshotChanged)?;
+            let (current, citation, output) = slot.as_ref().ok_or(CommandError::SnapshotChanged)?;
+            if current != ticket || citation.result().content_hash.as_str() != hash { return Err(CommandError::SnapshotChanged); }
+            (ticket.parse().map_err(|_| CommandError::SnapshotChanged)?, Arc::clone(citation), output.clone())
+        };
+        let cancel = self.preview_cancellation(reservation)?;
+        let mut forms = Vec::new();
+        for (wire, form) in [(ReferenceForm::Normal, CitationForm::Normal), (ReferenceForm::Narrative, CitationForm::Narrative), (ReferenceForm::YearOnly, CitationForm::YearOnly)] {
+            cancel.check().map_err(CommandError::from)?;
+            let result = citation.form_example(&self.engine, &original_output, item, form, &cancel).map_err(CommandError::from)?;
+            let supported = result.outcomes.contains(&ItemOutcome::Rendered { item });
+            forms.push(FormOption { form: wire,
+                example: supported.then_some(result.text),
+                reason: (!supported).then(|| match form {
+                    CitationForm::YearOnly => "This output cannot show this reference’s year in this group. Choose another style or cite it alone.",
+                    CitationForm::Narrative => "This output cannot put this reference’s name in the sentence in this group. Cite it alone or choose another output.",
+                    _ => "This reference cannot be expressed in this output. Choose another output.",
+                }.into()),
+            });
+        }
+        self.preview_cancellation(reservation)?.check().map_err(CommandError::from)?;
+        Ok(ReferenceDetails { forms })
     }
     pub(super) fn invalidate(&self) {
         self.reserve_preview();
@@ -515,7 +595,7 @@ impl FileLibrary {
         write: impl FnOnce(ibis_core::contract::ClipboardContent<'_>) -> Result<(), String>,
     ) -> Result<crate::copy::Copied, CommandError> {
         let prepared = self.prepared.lock().map_err(|_| CommandError::SnapshotChanged)?;
-        let (current, citation) = prepared.as_ref().ok_or(CommandError::SnapshotChanged)?;
+        let (current, citation, _) = prepared.as_ref().ok_or(CommandError::SnapshotChanged)?;
         if current != ticket || citation.result().content_hash.as_str() != hash {
             return Err(CommandError::SnapshotChanged);
         }
@@ -528,6 +608,7 @@ impl FileLibrary {
                 _ => CommandError::SnapshotChanged,
             })??;
         Ok(crate::copy::Copied {
+            summary: Some(crate::copy::ReceiptSummary::citation(citation.result())),
             text: citation.result().text.clone(),
             warnings: citation_warnings(citation.result()),
             delivery: None,

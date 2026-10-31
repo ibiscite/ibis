@@ -9,7 +9,7 @@ import config from "../src-tauri/tauri.conf.json";
 import { copyFormatNames } from "./messages";
 import { choiceName, outputName, type Choice } from "./features/picker/choice";
 import { STYLE_NAMES } from "./format/styles";
-import { backend, chooseFromMore, prepared, receipt, resetApp, result, type SyntheticId } from "./testing/app";
+import { backend, chooseFromMore, prepared, receipt, resetApp, result, type SyntheticId, openCitationDetails, closeCitationDetails } from "./testing/app";
 
 // Vitest can load these existing runtime builtins without a Node-types dependency.
 afterEach(resetApp);
@@ -55,7 +55,7 @@ test("an explicit selection overrides the pasted list and a pending query cannot
   await screen.findByText("Pasted list");
   fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
   await waitFor(() => expect(screen.getByRole("region", { name: "Preview" }).textContent).toContain("@b"));
-  expect(chipKeys()).toEqual(["b"]);
+  await waitFor(() => expect(selectedKeys()).toEqual(["b"]));
   fireEvent.keyDown(box, { key: "Enter" });
   await waitFor(() => expect(copied).toHaveBeenCalledOnce());
   expect(prepared(copied.mock.calls[0]![0]).request.items.map(({ id }) => id.key)).toEqual(["b"]);
@@ -103,8 +103,9 @@ test("selected closest-match warnings survive exact searches and copying a mixed
   fireEvent.change(box, { target: { value: "exact" } });
   await screen.findByText("Best matches");
   expect(screen.queryByText("Closest matches")).toBeNull();
-  const chip = screen.getByRole("button", { name: "Remove near from the selection" }).closest("li")!;
-  expect(within(chip).getByText("Closest match")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: /Closest matches/ }));
+  expect(screen.getByRole("dialog", { name: "Citation warnings" }).textContent).toContain("Synthetic closest reference");
+  fireEvent.click(screen.getByRole("button", { name: "Close" }));
   expect(screen.getByRole("status", { name: "Citation selection" }).textContent).toContain("only some search words matched");
   fireEvent.keyDown(box, { key: "Enter" });
   await waitFor(() => expect(copied).toHaveLength(1));
@@ -265,9 +266,17 @@ test("the borderless picker has a permitted drag region around its editable sear
   await waitFor(() => expect((box as HTMLInputElement).value).toBe("sleep"));
 });
 
-/** The keys of the shelf's chips, in order: each chip's tooltip is its key. */
-function chipKeys(root: ParentNode = document) {
-  return [...root.querySelectorAll<HTMLElement>('[aria-label="Selected references"] .chip')].map((chip) => chip.title);
+/** Ordered identities exposed by the current shelf, or its all-references menu. */
+function selectedKeys(root: ParentNode = document) {
+  const menu = root.querySelector('[role="dialog"] .shelf-details-list');
+  const scope = menu ?? root;
+  return [...scope.querySelectorAll<HTMLElement>('.shelf-segment[data-built][data-reference-key], .shelf-details-list > [data-reference-key]')].map((segment) => segment.dataset.referenceKey);
+}
+async function expectPage(value: string) {
+  const page = await openCitationDetails();
+  expect(page.value).toBe(value);
+  closeCitationDetails();
+  await act(async () => { await new Promise(requestAnimationFrame); });
 }
 
 
@@ -296,8 +305,8 @@ test.each([null, "toggle", "copy"])("C5 native context completion %s uses the cu
   expect(context).toHaveBeenCalledWith({ added: false });
   if (action === "copy") await waitFor(() => expect(copied).toHaveBeenCalledOnce());
   else expect(copied).not.toHaveBeenCalled();
-  if (action === "toggle") await waitFor(() => expect(chipKeys()).toEqual(["b"]));
-  else expect(chipKeys()).toEqual([]);
+  if (action === "toggle") await waitFor(() => expect(selectedKeys()).toEqual(["b"]));
+  else expect(selectedKeys()).toEqual([]);
   if (action !== "copy") expect(calls).not.toContain("hide_picker");
 });
 
@@ -319,7 +328,7 @@ test.each(["query", "hide", "selection", "revision", "highlight", "failure"])("C
     expect(document.body.textContent).not.toContain("SYNTHETIC_PRIVATE_PAYLOAD");
   } else await act(async () => { finish(change === "highlight" ? "toggle" : "copy"); await pending; });
   expect(copied).not.toHaveBeenCalled();
-  if (change === "highlight") expect(chipKeys()).toEqual([]);
+  if (change === "highlight") expect(selectedKeys()).toEqual([]);
   expect(calls).not.toContain("hide_picker");
 });
 
@@ -331,7 +340,7 @@ test("typing a query shows results from the search command", async () => {
   render(<App />);
   fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "sleep" } });
   expect(await screen.findByText("Sleep and memory")).toBeTruthy();
-  expect(screen.getByText("smith2020")).toBeTruthy();
+  expect(screen.getByText("smith2020", { selector: ".result-key" })).toBeTruthy();
 });
 
 test.each(["", "unmatched"])("result headings only name actual rows, preserving empty announcements (query=%s)", async (query) => {
@@ -601,7 +610,7 @@ test("Enter copies the highlighted result in the remembered format and hides the
   fireEvent.keyDown(box, { key: "Enter" });
   await waitFor(() => expect(calls).toContain("hide_picker"));
   expect(copies).toMatchObject([{ items: selections([{ library: "refs.bib", key: "b" }]), format: "typst", expectedRevision: "1" }]);
-  expect(screen.getByText("Copied", { selector: ".copy-notice p" })).toBeTruthy();
+  expect(screen.getByText("Copied")).toBeTruthy();
 });
 
 test("the selection is kept by record identity across queries and copied in order", async () => {
@@ -621,7 +630,7 @@ test("the selection is kept by record identity across queries and copied in orde
   fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
   fireEvent.change(box, { target: { value: "two" } });
   fireEvent.click(await screen.findByText("Two"), { shiftKey: true });
-  expect(screen.getAllByRole("button", { name: /Remove same/ })).toHaveLength(2);
+  expect(await screen.findAllByRole("button", { name: /Remove same/ })).toHaveLength(2);
   fireEvent.keyDown(box, { key: "Enter" });
   await waitFor(() => expect(copies).toHaveLength(1));
   expect(copies[0]).toMatchObject({
@@ -662,8 +671,16 @@ test.each([
     }
     for (let i = 1; i < count; i++) fireEvent.keyDown(box, { key: "ArrowUp" });
     const active = box.getAttribute("aria-activedescendant");
-    const tray = screen.getByRole("list", { name: "Selected references" });
-    const remove = within(tray).getAllByRole("button", { name: /^Remove .* from the selection$/ })[index]!;
+    await waitFor(() => expect(selectedKeys()).toHaveLength(count));
+    const tray = screen.getByRole("group", { name: "Selected references" });
+    let remove = within(tray).getAllByRole("button", { name: /^Remove .* from the selection$/ })[index]!;
+    if (activation !== "pointer") {
+      const segment = within(tray).getAllByRole("button", { name: /^Edit / })[index]!;
+      act(() => segment.focus());
+      fireEvent.keyDown(segment, { key: activation === "Space" ? " " : "Enter" });
+      fireEvent.keyUp(segment, { key: activation === "Space" ? " " : "Enter" });
+      remove = screen.getByRole("button", { name: /Remove from citation/ });
+    }
     act(() => remove.focus());
     if (activation === "pointer") {
       fireEvent.pointerDown(remove, { button: 0 });
@@ -677,7 +694,7 @@ test.each([
       fireEvent.click(remove, { detail: 0 });
     }
     const remaining = records.slice(0, count).filter((_, i) => i !== index);
-    expect(chipKeys()).toEqual(remaining.map((record) => record.key));
+    await waitFor(() => expect(selectedKeys()).toEqual(remaining.map((record) => record.key)));
     expect(box.getAttribute("aria-activedescendant")).toBe(active);
     expect(calls).not.toContain("copy_file_citation");
     expect(calls).not.toContain("hide_picker");
@@ -690,10 +707,10 @@ test.each([
     expect(copies[0]).toMatchObject({ items: selections((remaining.length ? remaining : [records[1]!]).map((record) => record.id)), format: "pandoc", expectedRevision: "1" });
     // Calling native copy is not its completion, nor a React commit. Keep the
     // shelf until the native receipt arrives, then await the resulting update.
-    expect(chipKeys()).toEqual(remaining.map((record) => record.key));
+    await waitFor(() => expect(selectedKeys()).toEqual(remaining.map((record) => record.key)));
     expect(calls).not.toContain("hide_picker");
     await act(async () => { finishCopy(); });
-    expect(screen.queryByRole("list", { name: "Selected references" })).toBeNull();
+    expect(screen.queryByRole("group", { name: "Selected references" })).toBeNull();
   },
 );
 
@@ -710,22 +727,22 @@ test.each([false, true])("removal ignores queued Enter repeats and waits for a f
   fireEvent.keyDown(box, { key: "ArrowDown" });
   fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
   fireEvent.keyDown(box, { key: "ArrowUp" });
-  const remove = screen.getByRole("button", { name: "Remove a from the selection" });
+  const remove = await screen.findByRole("button", { name: "Remove a from the selection" });
   act(() => remove.focus());
   fireEvent.keyDown(remove, { key: "Enter", shiftKey });
-  expect(chipKeys()).toEqual(["a", "b"]);
+  await waitFor(() => expect(selectedKeys()).toEqual(["a", "b"]));
   expect(copies).toEqual([]);
   fireEvent.keyUp(remove, { key: "Enter", shiftKey });
   fireEvent.click(remove, { detail: 0 });
   expect(document.activeElement).toBe(box);
   await act(async () => { fireEvent.keyDown(box, { key: "Enter", repeat: true, shiftKey }); });
   expect(copies).toEqual([]);
-  expect(chipKeys()).toEqual(["b"]);
+  await waitFor(() => expect(selectedKeys()).toEqual(["b"]));
   fireEvent.keyUp(box, { key: "Enter", shiftKey });
   if (shiftKey) {
     fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
     fireEvent.keyUp(box, { key: "Enter", shiftKey: true });
-    expect(chipKeys()).toEqual(["b", "a"]);
+    await waitFor(() => expect(selectedKeys()).toEqual(["b", "a"]));
   }
   fireEvent.keyDown(box, { key: "Enter" });
   await waitFor(() => expect(copies).toHaveLength(1));
@@ -738,7 +755,7 @@ test("hovering Remove keeps focus and menu keys unchanged", async () => {
   await screen.findByText("First");
   const box = screen.getByLabelText("Search references");
   fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
-  const remove = screen.getByRole("button", { name: "Remove a from the selection" });
+  const remove = await screen.findByRole("button", { name: "Remove a from the selection" });
   const more = screen.getByRole("button", { name: /^More/ });
   act(() => more.focus());
   fireEvent.mouseEnter(remove);
@@ -778,23 +795,25 @@ test.each([7, 9, 10])("%i long-key selections retain order across queries and fi
     const rows = within(screen.getByRole("listbox", { name: "Results" })).getAllByRole("option");
     for (const row of rows) fireEvent.click(row, { ctrlKey: true });
   }
-  let tray = screen.getByRole("list", { name: "Selected references" });
-  // The shelf shows six chips and folds the rest into "+N", which shows them all.
-  expect(chipKeys(tray)).toHaveLength(6);
-  fireEvent.click(within(tray).getByRole("button", { name: `Show all ${count} selected references` }));
-  tray = within(screen.getByRole("dialog", { name: "Selected references" })).getByRole("list", { name: "Selected references" });
-  expect(chipKeys(tray)).toHaveLength(count);
+  await waitFor(() => expect(selectedKeys()).toHaveLength(count));
+  fireEvent.click(screen.getByRole("button", { name: `Show all ${count} selected references` }));
+  let menu = screen.getByRole("dialog", { name: "Selected references" });
+  expect(within(menu).getAllByRole("button", { name: /^Edit / })).toHaveLength(count);
+  fireEvent.click(within(menu).getByRole("button", { name: "Close" }));
   const removed = [0, Math.floor(count / 2), count - 1];
-  for (const i of removed) fireEvent.click(within(tray).getByRole("button", { name: `Remove ${records[i]!.key} from the selection` }));
+  for (const i of removed) {
+    const key = records[i]!.key;
+    fireEvent.click(await screen.findByRole("button", { name: `Remove ${key} from the selection` }));
+    await waitFor(() => expect(selectedKeys()).not.toContain(key));
+  }
   const expected = records.filter((_, i) => !removed.includes(i));
-  expect(chipKeys(tray)).toEqual(expected.map((record) => record.key));
-  fireEvent.click(screen.getByRole("button", { name: "Close" }));
+  await waitFor(() => expect(selectedKeys()).toEqual(expected.map((record) => record.key)));
   act(() => box.focus());
   await act(async () => { fireEvent.keyDown(box, { key: "Enter" }); });
   expect(copies).toHaveLength(1);
   expect(copies[0]).toMatchObject({ items: selections(expected.map((record) => record.id)), format: "pandoc", expectedRevision: "1" });
-  expect(screen.getByText(`[@${expected.map((record) => record.key).join("; @")}]`)).toBeTruthy();
-  expect(screen.queryByRole("list", { name: "Selected references" })).toBeNull();
+  expect(screen.getByTitle(`[@${expected.map((record) => record.key).join("; @")}]`).textContent).toBe(`[@${expected.map((record) => record.key).join("; @")}]`);
+  expect(screen.queryByRole("group", { name: "Selected references" })).toBeNull();
 });
 
 test("warnings keep the picker open and failures say nothing was copied", async () => {
@@ -861,7 +880,7 @@ test("while a newer search is pending, no key, click or hint acts on the previou
   });
   render(<App />);
   const box = screen.getByLabelText("Search references");
-  const chosenKeys = () => chipKeys().join(" ");
+  const chosenKeys = () => selectedKeys().join(" ");
   // A deliberate choice from an earlier search stays chosen across searches.
   fireEvent.change(box, { target: { value: "kept" } });
   await screen.findByText("Kept result");
@@ -1036,7 +1055,7 @@ test("combobox focus is separate from citation selection and only additions/remo
   expect(document.getElementById(box.getAttribute("aria-activedescendant")!)?.textContent).toContain("Second");
   fireEvent.click(screen.getByText("Second"), { shiftKey: true });
   expect(notice.textContent).toBe("2 references selected for citation");
-  fireEvent.click(screen.getAllByRole("button", { name: "Remove same from the selection" })[0]!);
+  fireEvent.click((await screen.findAllByRole("button", { name: "Remove same from the selection" }))[0]!);
   expect(notice.textContent).toBe("1 reference selected for citation");
   expect(screen.getByText("First").closest('[role="option"]')?.hasAttribute("data-citation-selected")).toBe(false);
   fireEvent.click(screen.getByText("Second"), { shiftKey: true });
@@ -1418,14 +1437,14 @@ test.each(["output", "elsewhere"].flatMap((destination) => ["saved", "keyboard"]
   const box = screen.getByLabelText("Search references");
   fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
   const output = await screen.findByRole("region", { name: "Preview" });
-  await waitFor(() => expect(output.tabIndex).toBe(0));
-  const target = destination === "output" ? output : screen.getByRole("button", { name: /^More/ });
+  const segment = await within(output).findByRole("button", { name: /^Edit / });
+  const target = destination === "output" ? segment : screen.getByRole("button", { name: /^More/ });
   act(() => target.focus());
   if (route === "keyboard") fireEvent.keyDown(target, { key: "i", code: "KeyI", ctrlKey: true });
   await act(async () => { finish(); await reading; });
   expect(screen.queryByRole("region", { name: "Preview" })).toBeNull();
   expect(document.activeElement).toBe(destination === "output" ? box : target);
-  expect(chipKeys()).toEqual(["a"]);
+  await waitFor(() => expect(selectedKeys()).toEqual(["a"]));
 });
 
 test("preview visibility keeps ordered chips and exact key copying", async () => {
@@ -1441,11 +1460,11 @@ test("preview visibility keeps ordered chips and exact key copying", async () =>
   await waitFor(() => expect(screen.getByRole("region", { name: "Preview" }).textContent).toContain("@a; @b"));
   fireEvent.keyDown(box, { key: "i", code: "KeyI", ctrlKey: true });
   expect(screen.queryByRole("region", { name: "Preview" })).toBeNull();
-  expect(chipKeys()).toEqual(["a", "b"]);
+  await waitFor(() => expect(selectedKeys()).toEqual(["a", "b"]));
   expect(screen.getByRole("group", { name: "Keys" }).textContent).toContain("Copy 2 as Pandoc");
   fireEvent.keyDown(box, { key: "Enter" });
   await waitFor(() => expect(copies).toEqual([selections([result("a", "First").id, result("b", "Second").id])]));
-  expect(screen.getByText("@a; @b", { selector: ".copy-notice code" })).toBeTruthy();
+  expect(document.querySelector(".copy-notice code")?.textContent).toBe("@a; @b");
 });
 
 test.each(["same", "hidden", "different"])("copy feedback only omits exact visible output (%s)", async (presentation) => {
@@ -1570,8 +1589,8 @@ test("rows with the same first author and year are told apart by their container
   fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "spindles" } });
   await screen.findByText("Untyped");
   rows = within(screen.getByRole("listbox", { name: "Results" })).getAllByRole("option");
-  expect(rows[0]?.querySelector(".result-type")?.textContent).toBe("Article");
-  expect(rows[1]?.querySelector(".result-type")?.textContent).toBe("Book");
+  expect(rows[0]?.querySelector(".result-type")?.textContent).toBe("Article · 2021");
+  expect(rows[1]?.querySelector(".result-type")?.textContent).toBe("Book · 2021");
   expect(rows[2]?.querySelector(".result-type")).toBeNull();
   cleanup();
 
@@ -1645,11 +1664,11 @@ test("Escape clears the search before it hides the picker, keeping chosen refere
   fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
   fireEvent.keyDown(box, { key: "Escape" });
   expect(box.value).toBe("");
-  expect(within(screen.getByRole("list", { name: "Selected references" })).getByTitle("a")).toBeTruthy();
+  await waitFor(() => expect(selectedKeys()).toEqual(["a"]));
   expect(calls).not.toContain("hide_picker");
   fireEvent.keyDown(box, { key: "Escape" });
   await waitFor(() => expect(calls).toContain("hide_picker"));
-  expect(screen.getByRole("list", { name: "Selected references" })).toBeTruthy();
+  expect(screen.getByRole("group", { name: "Selected references" })).toBeTruthy();
 });
 
 test("header and More share the pin with state-dependent labels", async () => {
@@ -1713,7 +1732,7 @@ test("a pinned picker stays open after copying, and Escape never unpins it", asy
   fireEvent.change(box, { target: { value: "first" } });
   await screen.findByText("First");
   fireEvent.keyDown(box, { key: "Enter" });
-  await screen.findByText("Copied", { selector: ".copy-notice p" });
+  await screen.findByText("Copied");
   fireEvent.keyDown(box, { key: "Escape" });
   expect(screen.getByRole("button", { name: "Keep Window Open", pressed: true })).toBeTruthy();
   expect(calls).not.toContain("hide_picker");
@@ -2264,9 +2283,10 @@ test("removing one of two chosen references with the same key names its library"
   fireEvent.click(screen.getByText("Other"), { shiftKey: true });
   fireEvent.click(screen.getByText("Mine"), { shiftKey: true });
   // Only one garcia2021 chosen so far: its key is enough.
-  expect(screen.getByRole("button", { name: "Remove garcia2021 from the selection" })).toBeTruthy();
+  expect(await screen.findByRole("button", { name: "Remove garcia2021 from the selection" })).toBeTruthy();
   fireEvent.click(screen.getByText("Shared"), { shiftKey: true });
-  const chosen = within(screen.getByRole("list", { name: "Selected references" }));
+  await waitFor(() => expect(selectedKeys()).toHaveLength(3));
+  const chosen = within(screen.getByRole("group", { name: "Selected references" }));
   expect(chosen.getByRole("button", { name: "Remove garcia2021 (My Library) from the selection" })).toBeTruthy();
   expect(chosen.getByRole("button", { name: "Remove garcia2021 (Synthetic lab) from the selection" })).toBeTruthy();
   expect(chosen.getByRole("button", { name: "Remove other from the selection" })).toBeTruthy();
@@ -2567,7 +2587,7 @@ test("a search cleared by Escape stays cleared once something else is typed or c
   await waitFor(() => expect(screen.getByText("References")).toBeTruthy());
   await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
   fireEvent.keyDown(box, { key: "Enter" });
-  await screen.findByText("Copied", { selector: ".copy-notice p" });
+  await screen.findByText("Copied");
   await act(async () => { await emit("picker:hidden"); });
   await act(async () => { await emit("picker:shown"); });
   expect(box.value).toBe("");
@@ -2672,9 +2692,9 @@ test("alternate footer buttons use the current add, remove, clear and hide actio
   fireEvent.change(box, { target: { value: "first" } });
   fireEvent.keyDown(box, { key: "Alt", altKey: true });
   fireEvent.click(await screen.findByRole("button", { name: "Add to citation" }));
-  expect(await screen.findByRole("list", { name: "Selected references" })).toBeTruthy();
+  expect(await screen.findByRole("group", { name: "Selected references" })).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "Remove from citation" }));
-  expect(screen.queryByRole("list", { name: "Selected references" })).toBeNull();
+  expect(screen.queryByRole("group", { name: "Selected references" })).toBeNull();
   fireEvent.click(within(screen.getByRole("contentinfo")).getByRole("button", { name: "Clear search" }));
   expect((box as HTMLInputElement).value).toBe("");
   expect(document.activeElement).toBe(box);
@@ -2865,9 +2885,9 @@ test("the footer can wait for pending engine output and never offers failed outp
     await waitFor(() => expect(screen.getByText("Formatting…")).toBeTruthy());
     await act(async () => release());
     await screen.findByRole("alert");
-    expect(within(screen.getByRole("region", { name: "Preview" })).getByText(/This citation could not be formatted/)).toBeTruthy();
+    expect(within(screen.getByRole("region", { name: "Preview" })).getByText(/Couldn’t format in APA/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Details" }));
-    expect(within(screen.getByRole("dialog")).getByText(/could not be formatted/)).toBeTruthy();
+    expect(within(screen.getByRole("dialog")).getByText(/Couldn’t format in APA/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     expect(footerKeys()).not.toContain("Enter");
   } finally {
@@ -2993,7 +3013,7 @@ test.each(["click", "Enter", "Shift+Enter"])("a replacement snapshot blocks prio
   else fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter", shiftKey: action === "Shift+Enter" });
   await act(async () => { await Promise.resolve(); });
   expect(copied).toEqual([]);
-  expect(screen.queryByRole("list", { name: "Selected references" })).toBeNull();
+  expect(screen.queryByRole("group", { name: "Selected references" })).toBeNull();
   expect(calls).not.toContain("hide_picker");
   await act(async () => { release([fresh]); });
   const replacementRow = await screen.findByText("Replacement title and key");
@@ -3081,7 +3101,9 @@ test("mixed selected revisions retain their original tokens and cannot copy", as
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
   await screen.findByText("The library changed. Search again and reselect the references before copying.");
   expect(copies).toEqual([]);
-  expect(screen.getAllByRole("button", { name: /^Remove / })).toHaveLength(2);
+  fireEvent.click(screen.getByRole("button", { name: "Show all 2 selected references" }));
+  const references = screen.getByRole("dialog", { name: "Selected references" });
+  expect(within(references).getAllByRole("button", { name: /^Edit / })).toHaveLength(2);
 });
 
 test.each(["resolve", "reject"])("an older recovery status cannot override a newer event (%s)", async (outcome) => {
@@ -3191,7 +3213,7 @@ test.each([false, true])("copy completion preserves selections changed while pen
   await waitFor(() => expect(calls).toContain("copy_file_citation"));
   fireEvent.click(screen.getByText("Second"), { shiftKey: true });
   await act(async () => { release({ text: "@a", warnings: [] }); });
-  expect(screen.queryByRole("button", { name: "Remove b from the selection" })).not.toBeNull();
+  expect(await screen.findByRole("button", { name: "Remove b from the selection" })).not.toBeNull();
   expect(screen.queryByRole("button", { name: "Remove a from the selection" })).not.toBeNull();
   expect(calls).not.toContain("hide_picker");
   expect(calls).not.toContain("show_copied_notice");
@@ -3297,7 +3319,7 @@ test("a delayed hide cannot show an old notice over a newer selection", async ()
   await waitFor(() => expect(calls).toContain("hide_picker"));
   fireEvent.click(screen.getByText("Second"), { shiftKey: true });
   await act(async () => { releaseHide(); });
-  expect(screen.queryByRole("button", { name: "Remove b from the selection" })).not.toBeNull();
+  expect(await screen.findByRole("button", { name: "Remove b from the selection" })).not.toBeNull();
   expect(calls).not.toContain("show_copied_notice");
 });
 
@@ -3341,9 +3363,9 @@ test.each(["selection", "copy feedback"])("an obsolete stale copy recovers data 
   expect(calls).not.toContain("show_copied_notice");
   if (change === "selection") {
     expect(screen.queryByRole("button", { name: "Remove a from the selection" })).not.toBeNull();
-    expect(screen.queryByRole("button", { name: "Remove b from the selection" })).not.toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Remove a from the selection" }));
-    fireEvent.click(screen.getByRole("button", { name: "Remove b from the selection" }));
+    expect(await screen.findByRole("button", { name: "Remove b from the selection" })).not.toBeNull();
+    fireEvent.click(await screen.findByRole("button", { name: "Remove a from the selection" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Remove b from the selection" }));
     fireEvent.click(screen.getByText("Second revision 2"), { detail: 2 });
     await waitFor(() => expect(attempts).toEqual(["1", "2"]));
   } else {
@@ -3419,7 +3441,7 @@ test.each(["warning", "notice"])("a search started before a selected copy preser
   fireEvent.click(await screen.findByText("Selected before search"), { shiftKey: true });
   const box = screen.getByLabelText("Search references");
   fireEvent.change(box, { target: { value: "pending" } });
-  await waitFor(() => expect(calls.filter((call) => call === "search")).toHaveLength(2));
+  await waitFor(() => expect(calls.filter((call) => call === "search" || call === "recent_references")).toHaveLength(2));
   fireEvent.keyDown(box, { key: "Enter" });
   await waitFor(() => expect(calls).toContain("copy_file_citation"));
   await act(async () => { releaseSearch([result("b", "Search finished later")]); });
@@ -3671,7 +3693,7 @@ test("hiding output keeps chips and pending copy checks, and remembers the choic
     await waitFor(() => expect(shown).toBe(false));
     fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
     expect(screen.queryByRole("region", { name: "Preview" })).toBeNull();
-    expect(screen.getByRole("list", { name: "Selected references" })).toBeTruthy();
+    expect(screen.getByRole("group", { name: "Selected references" })).toBeTruthy();
     expect(formatValue()).toBe("style:apa");
     act(() => box.focus());
     fireEvent.keyDown(box, { key: "Enter" });
@@ -3690,7 +3712,7 @@ test("hiding output keeps chips and pending copy checks, and remembers the choic
     fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
     expect(screen.queryByRole("region", { name: "Preview" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Edit citation" }));
+    await openCitationDetails();
     const details = screen.getByRole("dialog", { name: "Citation details for First" });
     expect(within(details).getByRole("textbox", { name: "Page" })).toBeTruthy();
     expect(within(details).getByRole("radiogroup", { name: "Citation form" })).toBeTruthy();
@@ -3805,7 +3827,7 @@ test.each(["i", "I"])("Format hands off the %s preview shortcut without changing
     await waitFor(() => expect(document.activeElement).toBe(box));
     expect(screen.queryByRole("region", { name: "Preview" })).toBeNull();
     expect(formatValue()).toBe("style:apa");
-    expect(screen.getByRole("list", { name: "Selected references" })).toBeTruthy();
+    expect(screen.getByRole("group", { name: "Selected references" })).toBeTruthy();
     expect(screen.getByRole("group", { name: "Keys" }).textContent).toContain("Copy as APA");
     for (const command of ["quit", "copy_file_citation"]) expect(calls).not.toContain(command);
   }
@@ -3952,14 +3974,15 @@ test("a selected locator changes only through Apply or Remove, which retains the
   const box = screen.getByLabelText("Search references");
   fireEvent.change(box, { target: { value: "Smith p.12" } });
   fireEvent.click(await screen.findByText("Locator reference"), { ctrlKey: true });
-  expect(screen.getByRole("button", { name: "Remove page 12 from a" })).toBeTruthy();
+  await expectPage("12");
   fireEvent.change(box, { target: { value: "Smith p.9" } });
-  await screen.findByText("Using page 9");
-  expect(screen.getByRole("button", { name: "Remove page 12 from a" })).toBeTruthy();
+  await screen.findByRole("group", { name: "Using page 9" });
+  await expectPage("12");
   fireEvent.click(screen.getByRole("button", { name: "Apply locator to a" }));
-  expect(screen.queryByRole("button", { name: "Remove page 12 from a" })).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: "Remove page 9 from a" }));
-  expect(chipKeys()).toEqual(["a"]);
+  // The Page field is inspected below; the retired page has no inline control.
+  fireEvent.change(await openCitationDetails(), { target: { value: "" } });
+  closeCitationDetails();
+  await waitFor(() => expect(selectedKeys()).toEqual(["a"]));
   fireEvent.keyDown(box, { key: "Enter" });
   await waitFor(() => expect(copies).toMatchObject([{ items: selections([result("a", "").id]), format: "pandoc", expectedRevision: "1" }]));
 });
@@ -3977,13 +4000,13 @@ test("Search as typed preserves the full query and every edit restores interpret
   fireEvent.click(await screen.findByRole("button", { name: "Search as typed" }));
   await waitFor(() => expect(searched.at(-1)).toEqual({ text: "Smith p.12", interpret_locators: false }));
   expect(box.value).toBe("Smith p.12");
-  expect(screen.queryByText("Using page 12")).toBeNull();
+  expect(screen.queryByRole("group", { name: "Using page 12" })).toBeNull();
   fireEvent.change(box, { target: { value: "Smith p.12 " } });
   await waitFor(() => expect(searched.at(-1)).toEqual({ text: "Smith p.12 ", interpret_locators: true }));
-  await screen.findByText("Using page 12");
+  await screen.findByRole("group", { name: "Using page 12" });
   await act(async () => { finish({ revision: "1", results: [result("literal", "Late literal result")], interpretation: null }); });
   expect(screen.queryByText("Late literal result")).toBeNull();
-  expect(screen.getByText("Using page 12")).toBeTruthy();
+  expect(screen.getByRole("group", { name: "Using page 12" })).toBeTruthy();
 });
 
 
@@ -4005,7 +4028,7 @@ test.each(["reopen", "edit", "copy", "expiry"])("an escaped literal search prese
     expect(box.value).toBe("");
     if (change === "edit") {
       fireEvent.change(box, { target: { value: "Edited p 12" } });
-      await screen.findByText("Using page 12");
+      await screen.findByRole("group", { name: "Using page 12" });
       expect(searched.at(-1)).toEqual({ text: "Edited p 12", interpret_locators: true });
       fireEvent.change(box, { target: { value: "" } });
     }
@@ -4013,7 +4036,7 @@ test.each(["reopen", "edit", "copy", "expiry"])("an escaped literal search prese
       await screen.findByText("References");
       await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
       fireEvent.keyDown(box, { key: "Enter" });
-      await screen.findByText("Copied", { selector: ".copy-notice p" });
+      await screen.findByText("Copied");
     } else fireEvent.keyDown(box, { key: "Escape" });
     await waitFor(() => expect(calls).toContain("hide_picker"));
     await act(async () => { await emit("picker:hidden"); });
@@ -4022,13 +4045,13 @@ test.each(["reopen", "edit", "copy", "expiry"])("an escaped literal search prese
     const text = change === "reopen" ? "Reference p 12" : "";
     await waitFor(() => expect(box.value).toBe(text));
     await waitFor(() => expect(searched.at(-1)).toEqual({ text, interpret_locators: change !== "reopen" }));
-    expect(screen.queryByText("Using page 12")).toBeNull();
+    expect(screen.queryByRole("group", { name: "Using page 12" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Search as typed" })).toBeNull();
     expect(document.activeElement).toBe(box);
     expect([box.selectionStart, box.selectionEnd]).toEqual([0, text.length]);
     // A real edit always starts interpreting again, including after restoration.
     fireEvent.change(box, { target: { value: "Reference p 12 " } });
-    await screen.findByText("Using page 12");
+    await screen.findByRole("group", { name: "Using page 12" });
     expect(searched.at(-1)).toEqual({ text: "Reference p 12 ", interpret_locators: true });
   } finally { now.mockRestore(); }
 });
@@ -4084,7 +4107,7 @@ test.each(["copy", "context"])("applying a locator retires a pending native %s c
   else fireEvent.contextMenu(screen.getByText("Locator reference"));
   fireEvent.click(screen.getByRole("button", { name: "Apply locator to a" }));
   await act(async () => { finish(operation === "copy" ? { text: "retired locator receipt", warnings: [] } : "toggle"); });
-  expect(screen.getByRole("button", { name: "Remove page 9 from a" })).toBeTruthy();
+  await expectPage("9");
   expect(screen.queryByText("retired locator receipt")).toBeNull();
   expect(calls).not.toContain("hide_picker");
 });
@@ -4101,7 +4124,7 @@ test.each(["copy", "context"])("literal search mode retires a pending native %s 
   else fireEvent.contextMenu(screen.getByText("Locator reference"));
   fireEvent.click(screen.getByRole("button", { name: "Search as typed" }));
   await act(async () => { finish(operation === "copy" ? { text: "retired mode receipt", warnings: [] } : "toggle"); });
-  expect(screen.getByRole("button", { name: "Remove page 12 from a" })).toBeTruthy();
+  await expectPage("12");
   expect(screen.queryByText("retired mode receipt")).toBeNull();
   expect(calls).not.toContain("hide_picker");
 });
@@ -4163,10 +4186,10 @@ test("a failed replacement search clears the earlier locator interpretation", as
     return locatorReply();
   } });
   await act(async () => { render(<App />); });
-  expect(screen.getByText("Using page 12")).toBeTruthy();
+  expect(screen.getByRole("group", { name: "Using page 12" })).toBeTruthy();
   await act(async () => { fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "failed" } }); });
   expect(screen.getByText("Ibis could not search your library. Use Reload, then try again.")).toBeTruthy();
-  expect(screen.queryByText("Using page 12")).toBeNull();
+  expect(screen.queryByRole("group", { name: "Using page 12" })).toBeNull();
   expect(screen.queryByRole("button", { name: "Search as typed" })).toBeNull();
 });
 
@@ -4189,7 +4212,7 @@ test("literal mode cancels a waiting engine style row click while keeping the pr
     await act(async () => { finish(); });
     await screen.findByText("prepared page 12");
     expect(copies).not.toHaveBeenCalled();
-    expect(screen.getByRole("button", { name: "Remove page 12 from a" })).toBeTruthy();
+    await expectPage("12");
   }
 });
 
@@ -4198,11 +4221,11 @@ test("removing and re-adding a selected identity captures the newer query locato
   render(<App />);
   fireEvent.click(await screen.findByText("Locator reference"), { ctrlKey: true });
   fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "Smith p.9" } });
-  await screen.findByText("Using page 9");
+  await screen.findByRole("group", { name: "Using page 9" });
   fireEvent.click(screen.getByText("Locator reference"), { ctrlKey: true });
   fireEvent.click(screen.getByText("Locator reference"), { ctrlKey: true });
-  expect(screen.getByRole("button", { name: "Remove page 9 from a" })).toBeTruthy();
-  expect(screen.queryByRole("button", { name: "Remove page 12 from a" })).toBeNull();
+  await expectPage("9");
+  // The Page field is inspected below; the retired page has no inline control.
 });
 
 test("a locator cannot update or copy a prepared reference from a retired snapshot", async () => {
@@ -4220,7 +4243,7 @@ test("a locator cannot update or copy a prepared reference from a retired snapsh
   revision = "2";
   await act(async () => { await emit("library:changed", { ...zoteroStatus(["user"]), revision }); });
   await screen.findByText("Snapshot locator 2");
-  expect(screen.getByRole("button", { name: "Remove page 12 from a" })).toBeTruthy();
+  await expectPage("12");
   expect(screen.queryByRole("button", { name: "Apply locator to a" })).toBeNull();
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
   expect(copy).not.toHaveBeenCalled();

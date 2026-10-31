@@ -136,7 +136,7 @@ export function useDestination({ pickerDestination, rememberAppOutput, forgetApp
     : remembered ? `${choiceName(format)} remembered for this ${destination?.output_question ?? "app"}`
       : !app ? `${choiceName(format)} used as global default` : null;
   const shouldAsk = Boolean(rememberAppOutput && destination?.app_id && destination.output_question && !remembered && once === null);
-  return { app: rememberAppOutput ? app : null, format, ready, saving, scope, shouldAsk, remembered: remembered !== null, read, choose,
+  return { appId: destination?.app_id ?? null, app: rememberAppOutput ? app : null, format, ready, saving, scope, shouldAsk, remembered: remembered !== null, read, choose,
     onceOnly, toggleOnce: () => { choices.current += 1; setOnceOnly((old) => !old); }, copyToken, isCurrentCopy, consumeOnce, restoreAutomatic, useDefault,
     quitAfterSaving, forgetAll: forgetAppOutputs ? forgetAll : null };
 }

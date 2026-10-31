@@ -14,7 +14,15 @@ enum Outputs {
         // Preserve processor text before the adapter folds bibliography line breaks.
         text_parts: Option<Vec<String>>,
         coverage: Vec<usize>,
+        spans: Vec<Span>,
     },
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Span {
+    item: Option<usize>,
+    text: String,
 }
 
 pub(crate) fn refused(input: &Prepared) -> CitationResult {
@@ -50,6 +58,7 @@ pub(crate) fn result(
         rtf,
         text_parts,
         coverage,
+        spans,
     } = output
     else {
         return Ok(refused(input));
@@ -88,16 +97,39 @@ pub(crate) fn result(
     {
         return Err(FormatError::Runtime);
     }
+    let items: Vec<_> = input.outcomes.iter().filter_map(|outcome| match outcome {
+        ItemOutcome::Rendered { item } => Some(*item), _ => None,
+    }).collect();
+    if spans.iter().map(|span| span.text.as_str()).collect::<String>() != text
+        || spans.iter().any(|span| span.item.is_some_and(|item| item >= items.len()))
+        || (0..items.len()).any(|item| !spans.iter().any(|span| span.item == Some(item))) {
+        return Err(FormatError::Runtime);
+    }
+    // Keep rich styling when its text is identical. Presentation-equivalent
+    // glyphs (superscripts/space pairs) use canonical plain text for the shelf;
+    // the untouched HTML and RTF still own the rich clipboard representation.
+    let exact = runs.iter().map(|run| run.text.as_str()).collect::<String>() == text;
+    let mut offset = 0;
+    let nodes = spans.into_iter().map(|span| {
+        let end = offset + span.text.len();
+        let content = if exact {
+            let mut position = 0;
+            runs.iter().filter_map(|run| {
+                let start = position;
+                position += run.text.len();
+                let from = offset.max(start);
+                let to = end.min(position);
+                (from < to).then(|| TextRun { text: run.text[from-start..to-start].into(), ..run.clone() })
+            }).collect()
+        } else { vec![TextRun { text: span.text, ..TextRun::default() }] };
+        offset = end;
+        DisplayNode { item: span.item.map(|item| items[item]), content }
+    }).collect();
     Ok(CitationResult::new(
         text,
         Some(html),
         Some(rtf),
-        DisplayTree {
-            nodes: vec![DisplayNode {
-                item: None,
-                content: runs,
-            }],
-        },
+        DisplayTree { nodes },
         input.outcomes.clone(),
         input.losses.clone(),
         input.notices.clone(),
@@ -373,7 +405,7 @@ mod review_tests {
     }
     fn output(text: &str, html: &str, rtf: &str) -> Result<CitationResult, FormatError> {
         result(
-            &json!({"status":"rendered","coverage":[0],"text":text,"html":html,"rtf":rtf}).to_string(),
+            &json!({"status":"rendered","coverage":[0],"spans":[{"item":0,"text":text}],"text":text,"html":html,"rtf":rtf}).to_string(),
             &prepared(),
             &BTreeMap::from([('²', "2".into()), ('™', "TM".into())]),
         )
@@ -422,7 +454,7 @@ mod review_tests {
     }
     #[test]
     fn bibliography_line_folding_requires_original_text_evidence() {
-        let json = json!({"status":"rendered","coverage":[0],"text":"Synthetic area", "html":"Synthetic\u{a0} area", "rtf":"{\\rtf1 canonical}", "text_parts":["Synthetic\r\narea\n"]});
+        let json = json!({"status":"rendered","coverage":[0],"spans":[{"item":0,"text":"Synthetic area"}],"text":"Synthetic area", "html":"Synthetic\u{a0} area", "rtf":"{\\rtf1 canonical}", "text_parts":["Synthetic\r\narea\n"]});
         let rendered = result(&json.to_string(), &prepared(), &BTreeMap::new()).unwrap();
         assert_eq!(rendered.text, "Synthetic area");
         assert_eq!(rendered.html.as_deref(), Some("Synthetic\u{a0} area"));
@@ -435,7 +467,7 @@ mod review_tests {
     #[test]
     fn incomplete_or_duplicate_representation_coverage_never_exposes_candidates() {
         for coverage in [vec![], vec![1], vec![0, 0]] {
-            let output = json!({"status":"rendered","coverage":coverage,"text":"Synthetic","html":"Synthetic","rtf":"canonical"});
+            let output = json!({"status":"rendered","coverage":coverage,"spans":[{"item":0,"text":"Synthetic"}],"text":"Synthetic","html":"Synthetic","rtf":"canonical"});
             let refused = result(&output.to_string(), &prepared(), &BTreeMap::new()).unwrap();
             assert!(refused.copy_content(1).is_none());
             assert!(refused.text.is_empty());

@@ -328,6 +328,7 @@ pub(crate) fn convert(
     }
     // Search-only preprint identifiers never become guessed CSL variables.
     Record {
+        added_at: raw_text("timestamp").or_else(|| raw_text("dateadded")).and_then(|date| ibis_core::contract::added_date(&date)),
         id: ItemRef {
             library: source.clone(),
             key: format!("record:{}", entry.key),
