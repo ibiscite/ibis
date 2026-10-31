@@ -231,14 +231,14 @@ fn mmd<'a>(text: &'a str, work: &mut Work<'_>) -> Option<Citation<'a>> {
             if !work.spend(body.len()) || !super::escape::mmd_literal(body) {
                 return None;
             }
-            // A complete braced Pandoc key owns any ][# inside it. Only the
-            // last @{ can cross this boundary: keys cannot contain braces or
-            // whitespace. Stop there too, so repeated unmatched @{ notes do
-            // not repeatedly scan the remaining list.
+            // A complete braced Pandoc key at a valid key start owns any ][#
+            // inside it. Only the last @{ can cross this boundary: keys cannot
+            // contain braces or whitespace. Stop there too, so repeated
+            // unmatched @{ notes do not repeatedly scan the remaining list.
             if !work.spend(body.len()) {
                 return None;
             }
-            if let Some(start) = body.rfind("@{") {
+            if let Some(start) = body.rfind("@{").filter(|&start| pandoc_key_start(&body[..start])) {
                 let candidate = &after[start + 2..];
                 if let Some(end) = work.find(candidate, |c| {
                     c.is_whitespace() || c.is_control() || matches!(c, ',' | '{' | '}')
@@ -359,6 +359,15 @@ fn json<'a>(text: &'a str, work: &mut Work<'_>) -> Option<Citation<'a>> {
     })
 }
 
+fn pandoc_key_start(before: &str) -> bool {
+    before
+        .strip_suffix('-')
+        .unwrap_or(before)
+        .chars()
+        .next_back()
+        .is_none_or(|c| c.is_whitespace() || "[({;,\"'".contains(c))
+}
+
 fn pandoc<'a>(text: &'a str, work: &mut Work<'_>) -> Option<Citation<'a>> {
     if let Some(after) = text.strip_prefix('@') {
         let (key, rest) = at_key(after, work);
@@ -375,15 +384,10 @@ fn pandoc<'a>(text: &'a str, work: &mut Work<'_>) -> Option<Citation<'a>> {
             }
             if let Some(after) = body.strip_prefix('\\') {
                 body = after.chars().next().map_or("", |c| &after[c.len_utf8()..]);
-            } else if let Some(after) = body.strip_prefix('@').filter(|_| {
-                let before = &whole[..whole.len() - body.len()];
-                before
-                    .strip_suffix('-')
-                    .unwrap_or(before)
-                    .chars()
-                    .next_back()
-                    .is_none_or(|c| c.is_whitespace() || "[({;,\"'".contains(c))
-            }) {
+            } else if let Some(after) = body
+                .strip_prefix('@')
+                .filter(|_| pandoc_key_start(&whole[..whole.len() - body.len()]))
+            {
                 let (key, after) = at_key(after, work);
                 keys.push(Cow::Borrowed(key));
                 body = after;

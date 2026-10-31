@@ -653,7 +653,7 @@ fn writer_multikey_forms_and_notes_round_trip_without_becoming_keys() {
     }
 }
 
-fn mmd_suffix_round_trip(suffix: &str) {
+fn mmd_suffix_round_trip(suffixes: [&str; 2]) {
     let mut case: GoldenCase = serde_json::from_str(include_str!("../../../fixtures/cases/02-pandoc.json")).unwrap();
     let snapshot = index().snapshot().clone();
     case.request.output = OutputSpec::Key {
@@ -662,14 +662,15 @@ fn mmd_suffix_round_trip(suffix: &str) {
     };
     case.request.items = ["a", "b"]
         .into_iter()
-        .map(|key| CitationItem {
+        .zip(suffixes)
+        .map(|(key, suffix)| CitationItem {
             item: ItemRef {
                 key: key.into(),
                 ..case.request.items[0].item.clone()
             },
             expected_cite: None,
             prefix: vec![],
-            suffix: if key == "b" {
+            suffix: if !suffix.is_empty() {
                 vec![TextRun {
                     text: suffix.into(),
                     ..TextRun::default()
@@ -683,7 +684,18 @@ fn mmd_suffix_round_trip(suffix: &str) {
         .collect();
     let written = syntax::cite(&snapshot, &case.request).unwrap();
     assert!(written.copy_content(2).is_some(), "{:?}", written.outcomes);
-    assert_eq!(written.text, format!("[#a][][{suffix}][#b]"));
+    let expected: String = ["a", "b"]
+        .into_iter()
+        .zip(suffixes)
+        .map(|(key, suffix)| {
+            if suffix.is_empty() {
+                format!("[#{key}][]")
+            } else {
+                format!("[{suffix}][#{key}]")
+            }
+        })
+        .collect();
+    assert_eq!(written.text, expected);
     let index = SnapshotIndex::new(snapshot);
     for (query, missing) in [
         (written.text.clone(), vec![]),
@@ -738,7 +750,16 @@ fn multimarkdown_suffix_only_braces_round_trip_before_json_protection() {
         "@{section,tail",
         "@{section tail",
     ] {
-        mmd_suffix_round_trip(suffix);
+        mmd_suffix_round_trip(["", suffix]);
+    }
+}
+
+#[test]
+fn multimarkdown_adjacent_notes_with_embedded_at_braces_round_trip() {
+    // These notes form [x@{y][#a][}][#b]. The @{ has no Pandoc
+    // key-start boundary, so it must not swallow the first reference.
+    for head in ["x", "é", "0", "x-", ":", "."] {
+        mmd_suffix_round_trip([&format!("{head}@{{y"), "}"]);
     }
 }
 
@@ -749,7 +770,7 @@ proptest! {
         head in prop::sample::select(vec!["{", "}"]),
         pieces in prop::collection::vec(prop::sample::select(vec!["{", "}", "section", "日本🌙", "é", " ", ";", ",", "@absent", ":"]), 0..16)
     ) {
-        mmd_suffix_round_trip(format!("{head}{}", pieces.concat()).trim_end());
+        mmd_suffix_round_trip(["", format!("{head}{}", pieces.concat()).trim_end()]);
     }
 
     #[test]
