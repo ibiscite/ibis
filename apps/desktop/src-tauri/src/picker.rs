@@ -248,6 +248,7 @@ fn focus_after_show(window: &tauri::WebviewWindow, owner: u64) {
         activate_presented_with(
             &pending.state::<PickerGeneration>(),
             owner,
+            &pending.state::<ChooserOpen>(),
             || native.get_visible() && native.is_mapped(),
             // This is the same GTK activation request as tao's Focus handler,
             // including Wayland's previously supplied one-use startup token.
@@ -260,12 +261,15 @@ fn focus_after_show(window: &tauri::WebviewWindow, owner: u64) {
 fn activate_presented_with(
     visits: &PickerGeneration,
     owner: u64,
+    chooser: &ChooserOpen,
     mapped: impl FnOnce() -> bool,
     activate: impl FnOnce(),
 ) {
     // A hide or newer show owns the window now; an old callback must neither
     // reveal it again nor take keyboard focus from the new presentation.
-    if visits.still_owns_after(owner, mapped) {
+    // A chooser/offer can open synchronously after Show without changing its
+    // generation or visibility. Its live lease owns focus until it closes.
+    if visits.still_owns_after(owner, mapped) && !chooser.is_open() {
         activate();
     }
 }
@@ -607,6 +611,7 @@ mod tests {
         accepts_focus: std::cell::Cell<bool>,
         mapped: std::cell::Cell<bool>,
         owns_keyboard: std::cell::Cell<bool>,
+        chooser: ChooserOpen,
         pending: std::cell::RefCell<Vec<Option<(u32, u32)>>>,
         worker: std::cell::Cell<bool>,
         worker_shows: std::cell::Cell<usize>,
@@ -668,6 +673,7 @@ mod tests {
                 activate_presented_with(
                     visits,
                     owner,
+                    &self.chooser,
                     || self.mapped.get(),
                     || {
                         self.calls.borrow_mut().push("present-with-current-time");
@@ -757,6 +763,68 @@ mod tests {
         assert!(!native.owns_keyboard.get());
         assert_eq!(*native.calls.borrow(), ["queue-show", "map"]);
         assert!(native.activations.borrow().is_empty());
+    }
+
+    #[test]
+    fn a_native_dialog_keeps_focus_when_it_opens_before_the_activation_idle() {
+        for open_before_show in [true, false] {
+            let native = GtkPresentation::default();
+            let visits = PickerGeneration::default();
+            let owner = visits.advance();
+            native.frame.set((720, 480));
+            // Explicit update offers acquire their lease before show_picker;
+            // another chooser may acquire it after Show but before idle.
+            let mut dialog = if open_before_show { native.chooser.begin() } else { None };
+            present_with(
+                true,
+                || native.allow_focus(),
+                || native.show(),
+                || native.focus_after_show(owner),
+            );
+            if !open_before_show {
+                dialog = native.chooser.begin();
+            }
+            assert!(dialog.is_some());
+            native.settle_native();
+            assert!(native.mapped.get());
+            assert!(
+                visits.owns(owner),
+                "the offer changes neither visibility nor generation"
+            );
+            native.settle_activation(&visits);
+            assert!(native.chooser.is_open());
+            assert!(
+                native.activations.borrow().is_empty(),
+                "the picker must not rise over its native dialog"
+            );
+            assert!(!native.owns_keyboard.get());
+            assert!(
+                native.idle.borrow().is_empty(),
+                "suppressed activation is consumed, never retried"
+            );
+
+            drop(dialog);
+            assert!(!native.chooser.is_open());
+            native.settle_activation(&visits);
+            assert!(
+                native.activations.borrow().is_empty(),
+                "closing the dialog must not replay old activation"
+            );
+
+            let reopened = visits.advance();
+            present_with(
+                true,
+                || native.allow_focus(),
+                || native.show(),
+                || native.focus_after_show(reopened),
+            );
+            native.settle(&visits);
+            assert_eq!(*native.activations.borrow(), [(720, 480)]);
+            assert!(
+                native.owns_keyboard.get(),
+                "a fresh show can focus once its dialog is closed"
+            );
+        }
     }
 
     #[test]
