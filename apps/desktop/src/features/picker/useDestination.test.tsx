@@ -112,10 +112,10 @@ test("an old successful copy cannot consume a newer one-time output choice", asy
   expect(result.current.onceOnly).toBe(true);
 });
 
-test("remembering, Automatic and Forget control the question independently of the global fallback", async () => {
+test("remembering, Automatic and a Settings refresh control the question independently of the global fallback", async () => {
   const settings = options();
   const { result } = renderHook(() => useDestination({ pickerDestination: async () => browser,
-    rememberAppOutput: vi.fn(async () => null), forgetAppOutputs: vi.fn(async () => null) }, settings));
+    rememberAppOutput: vi.fn(async () => null) }, settings));
   act(() => result.current.read());
   await waitFor(() => expect(result.current.ready).toBe(true));
   expect(result.current.shouldAsk).toBe(true);
@@ -126,7 +126,7 @@ test("remembering, Automatic and Forget control the question independently of th
   expect(result.current.shouldAsk).toBe(true);
   expect(result.current.scope).toBeNull();
   await act(async () => result.current.choose("cite"));
-  await act(async () => result.current.forgetAll?.());
+  await act(async () => result.current.read(false));
   expect(result.current.shouldAsk).toBe(true);
   expect(settings.chooseDefault).not.toHaveBeenCalled();
 });

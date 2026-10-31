@@ -16,6 +16,7 @@ export function demoApi(): SettingsApi {
     pickerPreferences: async () => preferences,
     preferenceRevision: async () => ++revision,
     setPickerPreferences: async (patch, key, revision) => { preferences = { ...preferences, ...patch, ...(key ? { copy_format: key } : {}) }; for (const changed of listeners) changed(revision); return { preferences, copy_format: preferences.copy_format ?? "pandoc" }; },
+    forgetAppOutputs: async () => null,
     loginItem: async () => ({ name: "Ibis", enabled, problem: null }),
     setLoginItem: async (on) => { enabled = on; return { name: "Ibis", enabled, problem: null }; },
     updateChecks: async () => automatic,

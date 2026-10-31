@@ -144,6 +144,7 @@ function fakeApi(permission: Partial<PastePermission> = {}, preferences: Partial
     pickerPreferences: async () => state.preferences,
     preferenceRevision: async () => ++state.revision,
     setPickerPreferences: commit,
+    forgetAppOutputs: async () => null,
     loginItem: async () => ({ name: "Ibis Nightly", enabled: state.login, problem: null }),
     setLoginItem: async (enabled) => { state.login = enabled; return { name: "Ibis Nightly", enabled, problem: null }; },
     updateChecks: async () => state.updates,
@@ -1260,6 +1261,68 @@ test("the Ibis default-format menu saves key or style, restores refusals, and re
 });
 
 
+test.each([false, true])("Citations forgets formats with row-local refusal, retry and brief confirmation (pseudo %s)", async (pseudolocale) => {
+  const { api, state } = fakeApi({}, { citation_style: "apa" });
+  const messages = createInterfaceMessages(english, pseudolocale);
+  const refused = deferred<null>();
+  const forget = vi.spyOn(api, "forgetAppOutputs").mockReturnValueOnce(refused.promise);
+  const view = () => <InterfaceMessagesProvider messages={messages}><SettingsApp api={api} initialPage="citations" /></InterfaceMessagesProvider>;
+  const mounted = render(view());
+  await screen.findByRole("button", { name: `${messages.text("citations-default")} ${messages.text("citations-format-apa")}` });
+  const button = screen.getByRole("button", { name: messages.text("citations-forget-button") });
+  const row = within(button.closest<HTMLElement>(".ui-settings-row")!);
+  expect(row.getByText(messages.text("citations-forget"))).toBeTruthy();
+  expect(row.getByText(messages.text("citations-forget-description"))).toBeTruthy();
+  fireEvent.click(button);
+  expect(button).toHaveProperty("disabled", true);
+  fireEvent.click(button);
+  await waitFor(() => expect(forget).toHaveBeenCalledExactlyOnceWith());
+  expect(row.queryByRole("status")).toBeNull();
+  await act(async () => refused.reject());
+  expect(row.getByRole("alert")).toHaveProperty("textContent", messages.text("citations-forget-failed"));
+  expect(row.queryByRole("status")).toBeNull();
+  expect(button).toHaveProperty("disabled", false);
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  fireEvent.click(button);
+  await act(async () => state.closes.at(-1)!());
+  expect(forget).toHaveBeenCalledTimes(2);
+  expect(row.queryByRole("alert")).toBeNull();
+  expect(row.getByRole("status")).toHaveProperty("textContent", messages.text("citations-forget-done"));
+  expect(state.preferences.citation_style).toBe("apa");
+  expect(state.patches).toEqual([]);
+  await act(async () => vi.advanceTimersByTime(4000));
+  expect(row.queryByRole("status")).toBeNull();
+  mounted.unmount();
+  render(view());
+  expect(screen.queryByRole("status")).toBeNull();
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(await screen.findByRole("button", { name: `${messages.text("citations-default")} ${messages.text("citations-format-apa")}` })).toBeTruthy();
+});
+
+test.each(["success", "failed I/O"])("closing waits for a reset, and its late %s cannot replace a reopened row's refusal", async (outcome) => {
+  const { api, state } = fakeApi();
+  const old = deferred<null>();
+  vi.spyOn(api, "forgetAppOutputs").mockReturnValueOnce(old.promise).mockRejectedValueOnce(new Error("synthetic I/O failure"));
+  const mounted = render(<SettingsApp api={api} initialPage="citations" />);
+  fireEvent.click(screen.getByRole("button", { name: "Forget formats" }));
+  const closed = vi.fn();
+  const closing = state.closes.at(-1)!().then(closed);
+  await act(async () => undefined);
+  expect(closed).not.toHaveBeenCalled();
+  mounted.unmount();
+  render(<SettingsApp api={api} initialPage="citations" />);
+  fireEvent.click(screen.getByRole("button", { name: "Forget formats" }));
+  const problem = await screen.findByRole("alert");
+  expect(problem).toHaveProperty("textContent", "Ibis could not forget formats for apps. Try again.");
+  await act(async () => { if (outcome === "success") old.resolve(null); else old.reject(); await closing; });
+  expect(closed).toHaveBeenCalledOnce();
+  expect(problem).toHaveProperty("textContent", "Ibis could not forget formats for apps. Try again.");
+  expect(screen.queryByRole("status")).toBeNull();
+  fireEvent.click(screen.getByRole("option", { name: "Look" }));
+  fireEvent.click(screen.getByRole("option", { name: "Citations" }));
+  expect(screen.getByRole("alert")).toHaveProperty("textContent", "Ibis could not forget formats for apps. Try again.");
+});
+
 test.each(["general", "shortcuts"])("%s default shortcut offers Undo that restores the previous saved chord", async (page) => {
   const { api, state } = fakeApi();
   state.shortcut = { shortcut: "Alt+K", registered: true, error: null };
@@ -1301,6 +1364,7 @@ test("a failed update read retains the saved switch and explains the uncertainty
 
 test.each([
   ["no remembered format", "Default format", "Citations", "default-format"],
+  ["next time you paste", "Forget formats for apps", "Citations", "forget-formats"],
   ["Follow the system", "Appearance", "Look", "appearance"],
 ])("search includes the displayed description %s and reveals its row", async (query, label, page, id) => {
   const { api } = fakeApi({ granted: true });

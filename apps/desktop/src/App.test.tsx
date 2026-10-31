@@ -1546,7 +1546,8 @@ test("Ctrl+K opens More with every action, Escape closes it before hiding the pi
   fireEvent.keyDown(box, { key: "k", ctrlKey: true });
   const menu = await screen.findByRole("menu");
   const items = within(menu).getAllByRole("menuitem").map((item) => item.textContent);
-  expect(items).toEqual(["Open ZoteroCtrl+O", "Rows: Comfortable›", "Forget formats for apps", "Keyboard shortcutsCtrl+/", "Settings…Ctrl+,", "Quit IbisCtrl+Q"]);
+  expect(items).toEqual(["Open ZoteroCtrl+O", "Rows: Comfortable›", "Keyboard shortcutsCtrl+/", "Settings…Ctrl+,", "Quit IbisCtrl+Q"]);
+  expect(within(menu).queryByRole("menuitem", { name: "Forget formats for apps" })).toBeNull();
   expect(within(menu).getByRole("menuitemcheckbox", { name: "Keep window open" }).getAttribute("aria-checked")).toBe("false");
   expect(document.activeElement).toBe(within(menu).getAllByRole("menuitem")[0]);
   fireEvent.keyDown(document.activeElement!, { key: "ArrowUp" });

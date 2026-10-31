@@ -66,7 +66,9 @@ test("More holds working actions, leaving preferences and update checks to Setti
   expect(calls).not.toContain("set_picker_preferences");
   const more = screen.getByRole("menu", { name: "More" });
   expect([...more.querySelectorAll('[role^="menuitem"]')].map((item) => item.getAttribute("aria-label") ?? item.textContent))
-    .toEqual(["Open ZoteroCtrl+O", "Rows: Comfortable", "Forget formats for apps", "Keep window openCtrl+Shift+P", "Show what will be pastedCtrl+I", "Keyboard shortcutsCtrl+/", "Settings…Ctrl+,", "Quit IbisCtrl+Q"]);
+    .toEqual(["Open ZoteroCtrl+O", "Rows: Comfortable", "Keep window openCtrl+Shift+P", "Show what will be pastedCtrl+I", "Keyboard shortcutsCtrl+/", "Settings…Ctrl+,", "Quit IbisCtrl+Q"]);
+  expect(within(more).queryByRole("menuitem", { name: "Forget formats for apps" })).toBeNull();
+  expect(calls).not.toContain("forget_app_outputs");
 });
 
 test.each(["Compact", "Comfortable", "Spacious"])("Rows offers every density and its line count, then chooses %s directly", async (choice) => {

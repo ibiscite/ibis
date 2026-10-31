@@ -72,6 +72,7 @@ mod tests {
         "picker_preferences",
         "preference_revision",
         "set_picker_preferences",
+        "forget_app_outputs",
         "login_item",
         "set_login_item",
         "update_checks",

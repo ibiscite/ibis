@@ -1425,6 +1425,10 @@ descriptions and common words ("dark", "startup", "paste"), opens the page and
 tints the matching row for two seconds. A setting lives in one place; the
 picker keeps only actions with their own keys.
 
+**Forget formats for apps** lives on Citations and says Ibis asks again the next
+time you paste into each app. Disable its button while forgetting; show failures
+beside the row with a retry, and a brief confirmation there only after success.
+
 **Show in Menu Bar** is planned and stays hidden until implemented. Its intended
 behaviour is on by default. Turned off, the shortcut still opens
 the picker, and opening Ibis from Applications (or Start, or the app grid)
