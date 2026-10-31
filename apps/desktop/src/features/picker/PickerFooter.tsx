@@ -57,7 +57,9 @@ export function PickerFooter({ library, groupName, hints, altHeld, actions, more
     return () => { observer?.disconnect(); window.removeEventListener("resize", measure); };
   }, [hints.enter, hints.shiftEnter, hints.escape, altHeld, platform, status]);
   return <footer data-menu-floor>
-    <section ref={bar} aria-label={pickerText.libraryRegion} className="library-bar"
+    {/* The region includes More and Copy. Its name must stay distinct from
+        the Library button, so native name lookup cannot activate the region. */}
+    <section ref={bar} aria-label={pickerText.pickerActions} className="library-bar"
       data-status-compact={fit.status || undefined} data-hints-compact={fit.labels || undefined}>
       <span className="footer-fit-measure" aria-hidden="true" inert><span ref={statusSize} className="footer-status-size" /><span ref={statusMinimum} className="footer-status-minimum" /></span>
       {status ?? <LibraryStatusLine library={library} groupName={groupName} />}

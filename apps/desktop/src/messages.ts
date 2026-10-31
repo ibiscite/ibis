@@ -246,6 +246,7 @@ export const pickerText = {
   useZotero: "Use Zotero",
   useZoteroTitle: "Read your Zotero library, open or closed",
   libraryRegion: "Library",
+  pickerActions: "Picker actions",
   libraryStatus: "Library status",
   reload: "Reload",
   reloadTitle: "Reload library",

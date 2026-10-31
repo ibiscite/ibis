@@ -41,18 +41,24 @@ test("Reload retires the Library menu before publishing a missing-file error, so
     { ...file, references: 3 },
   ];
   const menusAtDispatch: boolean[] = [];
-  backend({ library_status: () => current, reload_library: async () => {
+  const choose = vi.fn(() => null);
+  backend({ library_status: () => current, choose_library: choose, reload_library: async () => {
     menusAtDispatch.push(document.getElementById("library-menu") !== null);
     current = replies.shift()!;
     await emit("library:changed", current);
   } });
   render(<App />);
   await waitFor(() => expect(status().textContent).toContain("4 references"));
+  const libraryButton = within(footer()).getByRole("button", { name: "Library" });
   let finishExit!: () => void;
   const finished = new Promise<void>((resolve) => { finishExit = resolve; });
   try {
     for (const [index, expected] of ["thesis.bib moved", "thesis.bib · no references", "thesis.bib · 3 references"].entries()) {
-      fireEvent.click(within(footer()).getByRole("button", { name: "Library" }));
+      // Native name lookup must find the opener, never a same-named footer
+      // region whose accessibility action can hit the neighbouring Find button.
+      expect(screen.getAllByLabelText("Library")).toEqual([libraryButton]);
+      expect(libraryButton.getAttribute("aria-haspopup")).toBe("true");
+      fireEvent.click(screen.getByLabelText("Library"));
       const menu = await screen.findByRole("menu", { name: "Library" });
       const popover = menu.closest(".menu-popover")!;
       // Model a native exit still in progress when the next recovery step runs.
@@ -64,10 +70,32 @@ test("Reload retires the Library menu before publishing a missing-file error, so
       expect(menusAtDispatch).toEqual(Array(index + 1).fill(false));
       expect(popover.isConnected).toBe(false);
       expect(within(footer()).getByRole("button", { name: "Library" }).getAttribute("aria-expanded")).toBe("false");
+      expect(choose).not.toHaveBeenCalled();
     }
   } finally {
     await act(async () => { finishExit(); });
   }
+});
+
+test.each([
+  ["empty library", { references: 0 }, "thesis.bib · no references"],
+  ["unreadable without a snapshot", { state: "error", has_snapshot: false, references: 0, problem: "unreadable", error: "The library file could not be read" }, "thesis.bib · not opened"],
+  ["damaged file with usable references", { warnings: 1 }, "thesis.bib · 12 references · 1 reading notice"],
+] satisfies [string, Partial<LibraryStatus>, string][])("Library remains a named footer button with Reload in %s", async (_, overrides, expected) => {
+  const reload = vi.fn(() => null);
+  const choose = vi.fn(() => null);
+  backend({ library_status: () => library({ zotero: false, snapshot_zotero: false, name: "thesis.bib", snapshot_name: "thesis.bib", ...overrides }),
+    reload_library: reload, choose_library: choose });
+  render(<App />);
+  await waitFor(() => expect(status().textContent).toBe(expected));
+  const opener = screen.getByLabelText("Library");
+  expect(opener.tagName).toBe("BUTTON");
+  expect(footer().contains(opener)).toBe(true);
+  fireEvent.click(opener);
+  const menu = await screen.findByRole("menu", { name: "Library" });
+  fireEvent.click(within(menu).getByRole("menuitem", { name: "Reload Library" }));
+  await waitFor(() => expect(reload).toHaveBeenCalledOnce());
+  expect(choose).not.toHaveBeenCalled();
 });
 
 test("a stale snapshot has one footer problem and action, and a successful read clears it", async () => {

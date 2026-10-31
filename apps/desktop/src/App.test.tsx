@@ -492,7 +492,7 @@ test.each([
       resolveStatus({ state: "none", has_snapshot: false, zotero: false, name: null, snapshot_name: null, references: 0, warnings: 0, error: null, problem: null, note: null });
     } else rejectStatus(new Error("stale status unavailable"));
   });
-  expect(screen.getByRole("region", { name: "Library" }).textContent).toContain("new.bib");
+  expect(screen.getByRole("region", { name: "Picker actions" }).textContent).toContain("new.bib");
   expect(screen.queryByRole("option", { name: FILE_ROW })).toBeNull();
   if (failed) expect(screen.getByRole("alert").textContent).toContain("Synthetic load failed");
   else expect(screen.getByText("New library reference")).toBeTruthy();
@@ -906,7 +906,7 @@ test("the library is shown, can be chosen and reloaded, and failures are explain
     reload_library: () => null,
   });
   render(<App />);
-  const bar = screen.getByRole("region", { name: "Library" });
+  const bar = screen.getByRole("region", { name: "Picker actions" });
   await waitFor(() => expect(bar.textContent).toContain("No library chosen"));
   await chooseFromLibrary("Choose Library…");
   pressRow(await screen.findByRole("option", { name: FILE_ROW }));
@@ -1056,7 +1056,7 @@ test("failed status and saved format reads show safe notices without hiding sear
   await screen.findByText("Available reference");
   expect(screen.getByText("Ibis could not check your library. Choose the file again.").getAttribute("role")).toBe("alert");
   expect(screen.getByText("Ibis could not read your saved copy format. Check Copy as before copying.").getAttribute("role")).toBe("alert");
-  expect(screen.getByRole("region", { name: "Library" }).textContent).not.toContain("No library chosen");
+  expect(screen.getByRole("region", { name: "Picker actions" }).textContent).not.toContain("No library chosen");
   expect(formatValue()).toBe("pandoc");
   expect(document.body.textContent).not.toContain("SYNTHETIC_PRIVATE_PAYLOAD");
 });
@@ -1069,7 +1069,7 @@ test.each([
 ])("%s failures are reported without rejected IPC payloads", async (command, notice) => {
   backend({ [command]: () => { throw new Error("SYNTHETIC_PRIVATE_PAYLOAD"); } });
   render(<App />);
-  await waitFor(() => expect(screen.getByRole("region", { name: "Library" }).textContent).toMatch(/reference/));
+  await waitFor(() => expect(screen.getByRole("region", { name: "Picker actions" }).textContent).toMatch(/reference/));
   if (command === "choose_library") { await chooseFromLibrary("Choose Library…"); pressRow(await screen.findByRole("option", { name: FILE_ROW })); }
   else if (command === "reload_library") await chooseFromLibrary("Reload Library");
   else fireEvent.keyDown(screen.getByLabelText("Search references"), command === "quit"
@@ -1379,7 +1379,7 @@ test("Search shortcut opening gives Escape an invoker through the animated exit"
   render(<App />);
   const search = screen.getByLabelText("Search references");
   const more = screen.getByRole("button", { name: /^More/ });
-  await waitFor(() => expect(screen.getByRole("region", { name: "Library" }).textContent).toMatch(/reference/));
+  await waitFor(() => expect(screen.getByRole("region", { name: "Picker actions" }).textContent).toMatch(/reference/));
   act(() => search.focus());
   let popover: Element | undefined;
   const focusMore = more.focus.bind(more);
@@ -1482,7 +1482,7 @@ test("Ctrl+K opens More with every action, Escape closes it before hiding the pi
   const calls = backend({ hide_picker: () => null, reload_library: () => null });
   render(<App />);
   const box = screen.getByLabelText("Search references");
-  await waitFor(() => expect(screen.getByRole("region", { name: "Library" }).textContent).toMatch(/reference/));
+  await waitFor(() => expect(screen.getByRole("region", { name: "Picker actions" }).textContent).toMatch(/reference/));
   fireEvent.keyDown(box, { key: "k", ctrlKey: true });
   const menu = await screen.findByRole("menu");
   const items = within(menu).getAllByRole("menuitem").map((item) => item.textContent);
@@ -2223,7 +2223,7 @@ test("The library menu lists Zotero libraries as checkboxes and turning one on r
     use_zotero_libraries: ({ libraries }) => { chosen.push(libraries as unknown[]); return null; },
   });
   render(<App />);
-  await waitFor(() => expect(screen.getByRole("region", { name: "Library" }).textContent).toMatch(/Zotero/));
+  await waitFor(() => expect(screen.getByRole("region", { name: "Picker actions" }).textContent).toMatch(/Zotero/));
   fireEvent.click(libraryButton());
   const group = await screen.findByRole("group", { name: "Zotero libraries" });
   await within(group).findByRole("menuitemcheckbox", { name: "Synthetic lab" });
@@ -2284,7 +2284,7 @@ test("a failed group list is reported and My Library stays available", async () 
     zotero_groups: () => { throw new Error("synthetic: Zotero closed"); },
   });
   render(<App />);
-  await waitFor(() => expect(screen.getByRole("region", { name: "Library" }).textContent).toMatch(/Zotero/));
+  await waitFor(() => expect(screen.getByRole("region", { name: "Picker actions" }).textContent).toMatch(/Zotero/));
   fireEvent.click(libraryButton());
   expect(await screen.findByText(/could not list your Zotero groups/)).toBeTruthy();
   expect(screen.queryByRole("group", { name: "Zotero libraries" })).toBeNull();
@@ -2302,7 +2302,7 @@ test.each(["Ctrl+K", "Escape", "Tab", "outside click"])("closing the library men
     },
   });
   render(<App />);
-  await waitFor(() => expect(screen.getByRole("region", { name: "Library" }).textContent).toMatch(/Zotero/));
+  await waitFor(() => expect(screen.getByRole("region", { name: "Picker actions" }).textContent).toMatch(/Zotero/));
   const more = libraryButton();
   fireEvent.click(more);
   await screen.findByText(/could not list your Zotero groups/);
@@ -2352,7 +2352,7 @@ test.each([false, true])("a late group-list failure stays dismissed after closin
     zotero_groups: () => new Promise((_, reject) => { rejected.push(reject); }),
   });
   render(<App />);
-  await waitFor(() => expect(screen.getByRole("region", { name: "Library" }).textContent).toMatch(/Zotero/));
+  await waitFor(() => expect(screen.getByRole("region", { name: "Picker actions" }).textContent).toMatch(/Zotero/));
   fireEvent.click(libraryButton());
   await waitFor(() => expect(calls).toContain("zotero_groups"));
   fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
@@ -2367,7 +2367,7 @@ test("a late group-list failure from a previous opening cannot replace a success
     zotero_groups: () => new Promise((resolve, reject) => { requests.push({ resolve, reject }); }),
   });
   render(<App />);
-  await waitFor(() => expect(screen.getByRole("region", { name: "Library" }).textContent).toMatch(/Zotero/));
+  await waitFor(() => expect(screen.getByRole("region", { name: "Picker actions" }).textContent).toMatch(/Zotero/));
   const more = libraryButton();
   fireEvent.click(more);
   fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
@@ -2387,7 +2387,7 @@ test("switching to a file removes a previous Zotero group-list failure", async (
     zotero_groups: () => { throw new Error("synthetic: Zotero closed"); },
   });
   render(<App />);
-  await waitFor(() => expect(screen.getByRole("region", { name: "Library" }).textContent).toMatch(/Zotero/));
+  await waitFor(() => expect(screen.getByRole("region", { name: "Picker actions" }).textContent).toMatch(/Zotero/));
   fireEvent.click(libraryButton());
   await screen.findByText(/could not list your Zotero groups/);
   await act(async () => { await emit("library:changed", { revision: "1", state: "loaded", has_snapshot: true, zotero: false,
@@ -2409,7 +2409,7 @@ test("two Zotero libraries turned on before the first is reported are both kept,
     },
   });
   render(<App />);
-  await waitFor(() => expect(screen.getByRole("region", { name: "Library" }).textContent).toMatch(/Zotero/));
+  await waitFor(() => expect(screen.getByRole("region", { name: "Picker actions" }).textContent).toMatch(/Zotero/));
   fireEvent.click(libraryButton());
   const group = await screen.findByRole("group", { name: "Zotero libraries" });
   fireEvent.click(await within(group).findByRole("menuitemcheckbox", { name: "Synthetic lab" }));

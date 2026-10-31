@@ -102,6 +102,14 @@ def shows_count(snapshot, count):
     return count in strings(snapshot)
 
 
+def shows_empty_library(snapshot):
+    # The status's separator and count are separate <bdi> nodes. Match the
+    # complete count clause in one node, not traversal order or joined text.
+    return any(re.search(r"(?:^| · )no references(?=$| · |\. checked )",
+                         " ".join(str(node.get(key, "")).translate(BIDI_ISOLATES).split())) is not None
+               for node in snapshot["nodes"] for key in ("name", "value"))
+
+
 def retained_snapshot_fragments(snapshot, name=None):
     """Fixed predicates only, from one bounded native snapshot; never echo text."""
     # Native traversal order is not reading order (Linux walks a LIFO stack).
@@ -1126,6 +1134,13 @@ class Linux:
 
     def click(self, name):
         named_target, supported_action, returned_false = False, False, False
+        # WebKitGTK can expose a click action on an enclosing named region.
+        # The footer and its menu used to share "Library"; activating the region
+        # could hit Find instead. Bind menu actions to their actual widget role,
+        # also avoiding a same-named menu left in the accessibility tree.
+        roles = {"button", "pushbutton"} if name in MENU_ACTIONS.values() else {
+            "menuitem", "checkmenuitem", "radiomenuitem", "menuitemcheckbox", "menuitemradio"
+        } if name in MENU_ACTIONS else None
         def children(parent, *, owned=False):
             try:
                 count = parent.childCount
@@ -1152,11 +1167,12 @@ class Linux:
             try:
                 if item.name == name:
                     named_target = True
-                    action = item.queryAction()
-                    if not action.nActions:
-                        action = None
-                    else:
-                        supported_action = True
+                    if roles is None or item.getRoleName().lower().replace(" ", "") in roles:
+                        action = item.queryAction()
+                        if not action.nActions:
+                            action = None
+                        else:
+                            supported_action = True
             except self.accessibility_error:
                 continue
             except NotImplementedError:
@@ -1772,7 +1788,7 @@ def smoke_main(args):
                 with recording("action", "fixture-empty"):
                     library.write_text("", encoding="utf-8")
                 menu_action(native, "Reload Library")
-                wait_for(lambda: " · no references" in strings(snapshot()), "empty library count")
+                wait_for(lambda: shows_empty_library(snapshot()), "empty library count")
                 with recording("action", "fixture-small"):
                     library.write_text(fixture(), encoding="utf-8")
                 menu_action(native, "Reload Library")
@@ -1882,13 +1898,16 @@ class ContractTests(unittest.TestCase):
 
 
     class CensusNode:
-        def __init__(self, pid=0, name="", children=(), value=None):
+        def __init__(self, pid=0, name="", children=(), value=None, role="push button"):
             self.pid, self.name, self.children, self.value = pid, name, children, value
+            self.role = role
             self.childCount = len(children)
         def __getitem__(self, index):
             return self.children[index]
         def get_process_id(self):
             return self.pid
+        def getRoleName(self):
+            return self.role
         def queryText(self):
             if self.value is None:
                 raise NotImplementedError
@@ -1898,7 +1917,7 @@ class ContractTests(unittest.TestCase):
         native = Linux.__new__(Linux)
         native.app = Mock(pid=100)
         native.accessibility_error = type("AccessibilityError", (RuntimeError,), {})
-        target = self.CensusNode(name="Reload")
+        target = self.CensusNode(name="Reload", role="menu item")
         target.queryAction = Mock(return_value=Mock(nActions=1, doAction=Mock(return_value=True)))
         foreign = self.CensusNode(999, "Reload", [target])
         foreign.queryAction = Mock()
@@ -2000,6 +2019,35 @@ class ContractTests(unittest.TestCase):
         library_menu.queryAction.return_value.doAction.assert_called_once_with(0)
         target.queryAction.return_value.doAction.assert_called_once_with(0)
         foreign.queryAction.assert_not_called()
+
+    def test_linux_menu_controls_require_their_role_not_just_a_matching_name(self):
+        for name, wrong_role, right_role in (("Library", "section", "push button"),
+                                              ("Library", "menu", "push button"),
+                                              ("More", "section", "push button"),
+                                              ("Reload Library", "heading", "menu item"),
+                                              ("Choose Library…", "label", "menu item"),
+                                              ("Choose Library…", "push button", "menu item"),
+                                              ("Use Zotero", "list item", "menu item"),
+                                              ("Quit Ibis", "section", "menu item")):
+            with self.subTest(name=name, wrong_role=wrong_role):
+                native, desktop, owned, target, foreign = self.linux_click_fixture()
+                target.name, target.role = name, right_role
+                namesake = self.CensusNode(name=name, role=wrong_role, children=[target])
+                namesake.queryAction = Mock(return_value=Mock(nActions=1, doAction=Mock(return_value=True)))
+                owned.children, owned.childCount = [namesake], 1
+                native.click(name)
+                namesake.queryAction.assert_not_called()
+                target.queryAction.return_value.doAction.assert_called_once_with(0)
+                foreign.queryAction.assert_not_called()
+
+    def test_linux_menu_controls_refuse_a_namesake_without_the_real_control(self):
+        for name, role in (("Library", "section"), ("More", "menu"), ("Reload Library", "heading")):
+            with self.subTest(name=name):
+                native, desktop, owned, target, foreign = self.linux_click_fixture()
+                target.name, target.role = name, role
+                with self.assertRaises(NativeControlUnavailable):
+                    native.click(name)
+                target.queryAction.assert_not_called()
 
     def census_commands(self, argv):
         rows = {("ps", "-eo", "pid=,ppid="): "100 1\n200 100\n300 200\n999 1\n",
@@ -3730,6 +3778,20 @@ class ContractTests(unittest.TestCase):
         self.assertTrue(shows_count(kept, "3 references"))
         self.assertTrue(shows_count({"nodes": kept["nodes"][-1:]}, "3 references"))
         self.assertFalse(shows_count(kept, "4 references"))
+
+    def test_empty_library_count_accepts_separate_isolated_footer_nodes(self):
+        name = "synthetic 引用.bib"
+        for nodes in ([{"value": f"\u2068{name}\u2069 · no references"}],
+                      [{"value": name}, {"value": " · "}, {"value": "no references"}],
+                      [{"value": "no references"}, {"value": " · "}, {"value": name}],
+                      [{"value": "no references · 2 reading notices"}],
+                      [{"value": f"\u2068{name}\u2069 · no references. \u2068checked just now, 12:00 PM\u2069"}]):
+            with self.subTest(nodes=nodes):
+                self.assertTrue(shows_empty_library({"nodes": nodes}))
+        for text in ("3 references", "No references in synthetic 引用.bib", "no references were loaded; 3 retained",
+                     "no references missing", "Type no references to search", "no", "references"):
+            with self.subTest(text=text):
+                self.assertFalse(shows_empty_library({"nodes": [{"value": text}]}))
 
     def test_missing_library_requires_both_recovery_message_and_retained_snapshot(self):
         name = "synthetic 引用.bib"
