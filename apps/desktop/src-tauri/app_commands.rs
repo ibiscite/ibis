@@ -16,6 +16,7 @@ pub const APP_COMMANDS: &[&str] = &[
     "copy_file_citation",
     "copy_format",
     "picker_preferences",
+    "preference_revision",
     "set_picker_preferences",
     "picker_destination",
     "remember_app_output",

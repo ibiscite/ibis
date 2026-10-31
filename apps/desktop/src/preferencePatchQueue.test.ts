@@ -12,18 +12,78 @@ const deferred = <T,>() => {
 
 function fixture(policy = {}) {
   let state: PickerSave = { preferences: { ...defaults }, copy_format: "pandoc" };
+  let issued = 0;
   const api = {
+    revision: vi.fn(async () => ++issued),
     read: vi.fn(async (): Promise<PreferenceRead> => state),
     write: vi.fn(async (patch: Partial<PickerPreferences>, key: KeyFormat | null) => {
       state = { preferences: { ...state.preferences, ...patch }, copy_format: key ?? state.copy_format };
       return state;
     }),
   };
-  const queue = new PreferencePatchQueue(api, policy);
+  const queue = new PreferencePatchQueue({ read: api.read, revision: api.revision, write: (patch, key) => api.write(patch, key) }, policy);
   const events = vi.fn<Parameters<typeof queue.subscribe>[0]>();
   queue.subscribe(events);
   return { api, queue, events, saved: () => state };
 }
+
+test("revisions are requested when the person acts, even behind an unfinished save", async () => {
+  let issued = 0;
+  const first = deferred<PickerSave>();
+  const api = {
+    revision: vi.fn(async () => ++issued),
+    read: async () => ({ preferences: defaults }),
+    write: vi.fn(async (_patch: Partial<PickerPreferences>, _key: KeyFormat | null, _revision: number) => first.promise),
+  };
+  const queue = new PreferencePatchQueue(api);
+  await queue.load();
+  queue.change({ density: "compact" });
+  queue.change({ density: "spacious" });
+  expect(api.revision).toHaveBeenCalledTimes(2);
+  first.resolve({ preferences: { ...defaults, density: "spacious" }, copy_format: "pandoc" });
+  await queue.finishSaving();
+  expect(api.write.mock.calls.map((call) => call[2])).toEqual([1, 2]);
+});
+
+test("a rejected ticket does not prevent the next choice from saving", async () => {
+  const { api, queue, saved } = fixture();
+  await queue.load();
+  api.revision.mockRejectedValueOnce(new Error("synthetic issuance failure"));
+  queue.change({ larger_text: true });
+  await queue.finishSaving();
+  expect(api.write).not.toHaveBeenCalled();
+  queue.change({ density: "spacious" });
+  await queue.finishSaving();
+  expect(api.write.mock.calls).toEqual([[{ density: "spacious" }, null]]);
+  expect(saved().preferences).toMatchObject({ density: "spacious", larger_text: false });
+});
+
+test("retrying one field keeps its old ticket when a newer choice saves another field", async () => {
+  let issued = 0;
+  let disk = { ...defaults };
+  let attempt = 0;
+  const tickets: number[] = [];
+  const queue = new PreferencePatchQueue({
+    revision: async () => ++issued,
+    read: async () => ({ preferences: disk }),
+    write: async (patch, _key, ticket) => {
+      tickets.push(ticket);
+      if (++attempt === 1) throw new Error("synthetic write failure");
+      // The other window has already written larger_text with ticket 2.
+      if (ticket > 2 || patch.larger_text === undefined) disk = { ...disk, ...patch };
+      return { preferences: disk, copy_format: "pandoc" };
+    },
+  });
+  await queue.load();
+  queue.change({ larger_text: true });
+  await queue.finishSaving();
+  issued += 1;
+  disk = { ...disk, larger_text: false };
+  queue.change({ density: "spacious" });
+  await queue.finishSaving();
+  expect(tickets).toEqual([1, 1, 3]);
+  expect(queue.savedPreferences).toMatchObject({ density: "spacious", larger_text: false });
+});
 
 test.each([false, true])("writes stay ordered and acknowledged fields never ride a later patch (readAfterWrites=%s)", async (readAfterWrites) => {
   const { api, queue, events } = fixture({ readAfterWrites });
@@ -32,9 +92,7 @@ test.each([false, true])("writes stay ordered and acknowledged fields never ride
   api.write.mockReturnValueOnce(first.promise);
   queue.change({ citation_style: null }, "cite");
   queue.change({ larger_text: true });
-  await Promise.resolve();
-  await Promise.resolve();
-  expect(api.write).toHaveBeenCalledTimes(1);
+  await vi.waitFor(() => expect(api.write).toHaveBeenCalledTimes(1));
   expect(api.write).toHaveBeenCalledWith({ citation_style: null }, "cite");
   // Another window chooses a style after the first write acknowledges.
   first.resolve({ preferences: defaults, copy_format: "cite" });
@@ -59,7 +117,7 @@ test("equal-valued later intents keep their own revision through failure and ret
   await queue.finishSaving();
   expect(api.write.mock.calls).toEqual([
     [{ larger_text: true }, null], [{ larger_text: false }, null],
-    [{ larger_text: true }, null], [{ larger_text: true, density: "spacious" }, null],
+    [{ larger_text: true }, null], [{ larger_text: true }, null], [{ density: "spacious" }, null],
   ]);
   expect(saved().preferences).toMatchObject({ larger_text: true, density: "spacious" });
 });
@@ -94,7 +152,8 @@ test("an unreadable initial file holds explicit edits until a successful read", 
   expect(api.write).not.toHaveBeenCalled();
   await queue.load();
   await queue.finishSaving();
-  expect(api.write.mock.calls).toEqual([[{ citation_style: null, show_paste_preview: false }, "cite"]]);
+  expect(api.write.mock.calls).toEqual([[{ citation_style: null }, "cite"], [{ show_paste_preview: false }, null]]);
+  expect(api.revision).toHaveBeenCalledTimes(2);
   expect(saved()).toMatchObject({ preferences: { show_paste_preview: false }, copy_format: "cite" });
 });
 
@@ -155,10 +214,12 @@ test("Settings focus restores saved choices after a failed recovery read and kee
   expect(events).toHaveBeenLastCalledWith({ type: "read", value: saved(), pendingStyle: false });
   queue.change({ density: "spacious" });
   await queue.finishSaving();
-  expect(api.write).toHaveBeenLastCalledWith({ larger_text: true, density: "spacious" }, null);
+  expect(api.write.mock.calls.slice(-2)).toEqual([[{ larger_text: true }, null], [{ density: "spacious" }, null]]);
 });
 
 test("a native change notification waits for local writes and refreshes cross-window state", async () => {
+  let issued = 0;
+  const revision = async () => ++issued;
   let state: PickerSave = { preferences: { ...defaults }, copy_format: "pandoc" };
   const local = deferred<void>();
   const read = vi.fn(async () => state);
@@ -169,8 +230,8 @@ test("a native change notification waits for local writes and refreshes cross-wi
     void picker.load();
     return state;
   };
-  const picker = new PreferencePatchQueue({ read, write }, { readAfterWrites: true });
-  const settings = new PreferencePatchQueue({ read: async () => state, write }, { restoreOnFailure: true });
+  const picker = new PreferencePatchQueue({ read, write, revision }, { readAfterWrites: true });
+  const settings = new PreferencePatchQueue({ read: async () => state, write, revision }, { restoreOnFailure: true });
   const updates = vi.fn<Parameters<typeof picker.subscribe>[0]>();
   const stop = picker.subscribe(updates);
   await Promise.all([picker.load(), settings.load()]);
@@ -192,6 +253,65 @@ test("a native change notification waits for local writes and refreshes cross-wi
   updates.mockClear();
   await picker.load();
   expect(updates).not.toHaveBeenCalled();
+});
+
+test.each([false, true])("notifications retire old replies before an unbounded refresh (readAfterWrites=%s)", async (readAfterWrites) => {
+  const { api, queue, events } = fixture({ readAfterWrites });
+  await queue.load();
+  const write = deferred<PickerSave>(), read = deferred<PreferenceRead>();
+  api.write.mockReturnValueOnce(write.promise);
+  api.read.mockReturnValueOnce(read.promise);
+  queue.change({ density: "compact" });
+  const refresh = queue.refresh(2);
+  events.mockClear();
+  vi.useFakeTimers();
+  try {
+    await vi.advanceTimersByTimeAsync(2_500);
+    expect(api.read).toHaveBeenCalledOnce();
+    write.resolve({ preferences: { ...defaults, density: "compact" }, copy_format: "pandoc" });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(api.read).toHaveBeenCalledTimes(2);
+    expect(events).not.toHaveBeenCalled();
+    const latest = { preferences: { ...defaults, density: "spacious" as const } };
+    read.resolve(latest);
+    await refresh;
+    expect(events).toHaveBeenCalledExactlyOnceWith({ type: "read", value: latest, pendingStyle: false });
+    expect(queue.savedPreferences?.density).toBe("spacious");
+  } finally { vi.useRealTimers(); }
+});
+
+test.each(["before reply", "after reply"])("an own notification %s keeps the last successful rollback value", async (when) => {
+  const { api, queue } = fixture({ restoreOnFailure: true });
+  await queue.load();
+  const saved = { preferences: { ...defaults, density: "spacious" as const }, copy_format: "pandoc" as const };
+  api.read.mockRejectedValue(new Error("synthetic read failure"));
+  api.write.mockImplementationOnce(async () => {
+    if (when === "before reply") void queue.refresh(1);
+    return saved;
+  }).mockRejectedValueOnce(new Error("synthetic second write failure"));
+  queue.change({ density: "spacious" });
+  if (when === "after reply") { await queue.finishSaving(); void queue.refresh(1); }
+  queue.change({ larger_text: true });
+  await queue.finishSaving();
+  expect(queue.savedPreferences).toMatchObject({ density: "spacious", larger_text: false });
+});
+
+test("a foreign notification still retires a late acknowledgement followed by its own event", async () => {
+  const { api, queue } = fixture({ restoreOnFailure: true });
+  await queue.load();
+  const saving = deferred<PickerSave>(), reading = deferred<PreferenceRead>();
+  api.write.mockReturnValueOnce(saving.promise);
+  api.read.mockReturnValueOnce(reading.promise);
+  queue.change({ density: "compact" });
+  await vi.waitFor(() => expect(api.write).toHaveBeenCalledOnce());
+  const foreign = queue.refresh(2);
+  const own = queue.refresh(1);
+  saving.resolve({ preferences: { ...defaults, density: "compact" }, copy_format: "pandoc" });
+  await vi.waitFor(() => expect(api.read).toHaveBeenCalledTimes(2));
+  expect(queue.savedPreferences).toBeNull();
+  reading.resolve({ preferences: { ...defaults, density: "spacious" } });
+  await Promise.all([foreign, own]);
+  expect(queue.savedPreferences?.density).toBe("spacious");
 });
 
 test("a failed read publishes nothing after unmount", async () => {

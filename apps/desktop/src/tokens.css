@@ -379,6 +379,59 @@
     --empty-icon-size: var(--icon-glyph-size); --empty-icon-gap: var(--space-1); --empty-keys-display: none; }
 }
 
+
+/* Settings roles and Mac selected-row accent shades (#1489). */
+:root {
+  --settings-search-highlight: color-mix(in srgb, var(--accent) 14%, var(--surface-grouped-card));
+  --settings-picture-width: 8rem; --settings-picture-aspect: 4 / 3;
+  --settings-search-picture-width: 10rem; --settings-search-picture-aspect: 4;
+  --settings-picture-source-width: 40rem; --settings-picture-scale: .2;
+  --settings-picture-crop-scale: .6; --settings-snapshot-scale: var(--settings-picture-scale);
+  --choice-selected-background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  --choice-selected-text: var(--text);
+  --choice-selection-ring-width: 2px;
+  --choice-accent: var(--settings-accent-blue);
+  --settings-accent-blue: #0064e1; --settings-accent-purple: #953d96;
+  --settings-accent-pink: #c8317d; --settings-accent-red: #c42b30;
+  --settings-accent-orange: #b25300; --settings-accent-yellow: #8a6a00;
+  --settings-accent-green: #3b7f25; --settings-accent-graphite: #6e6e73;
+}
+:root[data-accent="system"] { --choice-accent: conic-gradient(var(--settings-accent-pink), var(--settings-accent-red), var(--settings-accent-orange), var(--settings-accent-yellow), var(--settings-accent-green), var(--settings-accent-blue), var(--settings-accent-purple), var(--settings-accent-pink)); }
+:root[data-accent="blue"] { --choice-accent: var(--settings-accent-blue); }
+:root[data-accent="purple"] { --choice-accent: var(--settings-accent-purple); }
+:root[data-accent="pink"] { --choice-accent: var(--settings-accent-pink); }
+:root[data-accent="red"] { --choice-accent: var(--settings-accent-red); }
+:root[data-accent="orange"] { --choice-accent: var(--settings-accent-orange); }
+:root[data-accent="yellow"] { --choice-accent: var(--settings-accent-yellow); }
+:root[data-accent="green"] { --choice-accent: var(--settings-accent-green); }
+:root[data-accent="graphite"] { --choice-accent: var(--settings-accent-graphite); }
+
+@media (prefers-contrast: no-preference) and (forced-colors: none) {
+  :root[data-appearance][data-accent]:not([data-accent="system"]):not(.notice-window) {
+    --accent: var(--choice-accent); --selected-background: var(--choice-accent);
+    --selected-text: #fff; --text-on-accent: #fff;
+    --fill-primary-hover: color-mix(in srgb, var(--accent) 92%, black);
+    --fill-primary-pressed: color-mix(in srgb, var(--accent) 84%, black);
+    --accent-text: CanvasText;
+    --focus-ring-color: var(--accent-text);
+  }
+}
+:root[data-appearance="light"] { color-scheme: light; }
+:root[data-appearance="dark"] { color-scheme: dark; }
+:root.settings-window[data-larger-text="true"] { font-size: calc(100% * var(--larger-text-scale)); }
+
+@media (prefers-contrast: no-preference) and (forced-colors: none) {
+  :root[data-appearance][data-accent]:not([data-accent="system"]):not(.notice-window) .ui-button[data-variant="primary"]:is([data-hovered], [data-pressed], [data-selected], [aria-expanded="true"]):not([data-disabled], [aria-disabled="true"]) { color: var(--text-on-accent); }
+}
+
+@supports (color: light-dark(white, black)) {
+  @media (prefers-contrast: no-preference) and (forced-colors: none) {
+    :root[data-appearance][data-accent]:not([data-accent="system"]):not(.notice-window) {
+      --accent-text: light-dark(var(--choice-accent), color-mix(in srgb, var(--choice-accent), white 55%));
+    }
+  }
+}
+
 /* BEGIN generated website palette: brand/build.py */
 :root {
   --website-bg: Canvas;

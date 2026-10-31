@@ -47,15 +47,18 @@ test("a failed login command keeps the saved state and explains failure in Setti
   settings("general", { set_login_item: () => { throw new Error("SYNTHETIC_PRIVATE_ERROR"); } });
   const item = await screen.findByRole<HTMLInputElement>("switch", { name: "Start on Login" });
   fireEvent.click(item);
-  expect((await screen.findByRole("alert")).textContent).toBe("Ibis could not save that. Try again.");
+  expect((await screen.findByRole("alert")).textContent).toBe("Ibis could not save this choice; the saved value is shown.");
   expect(item.checked).toBe(false);
   expect(document.body.textContent).not.toContain("SYNTHETIC_PRIVATE_ERROR");
 });
 
-test("Settings omits login choices on unsupported systems", async () => {
-  settings("general", { login_item: () => ({ name: "Ibis", enabled: false, problem: "unsupported" }) });
-  await screen.findByRole("switch", { name: "Larger text" });
-  expect(screen.queryByRole("switch", { name: "Start on Login" })).toBeNull();
+test("Settings explains the unavailable login choice on unsupported systems", async () => {
+  const calls = settings("general", { login_item: () => ({ name: "Ibis", enabled: false, problem: "unsupported" }) });
+  const item = await screen.findByRole<HTMLInputElement>("switch", { name: "Start on Login" });
+  await waitFor(() => expect(document.getElementById(item.getAttribute("aria-describedby")!)?.textContent).toContain("cannot start"));
+  expect(item.disabled).toBe(true);
+  expect(item.checked).toBe(false);
+  expect(calls).not.toContain("set_login_item");
   expect(screen.queryByRole("alert")).toBeNull();
 });
 
@@ -66,8 +69,7 @@ test("Settings owns automatic checks, follows saved events, and Check now explic
   const item = await screen.findByRole<HTMLInputElement>("switch", { name: "Check for updates automatically" });
   expect(item.checked).toBe(false);
   fireEvent.click(item);
-  fireEvent.click(item);
-  await waitFor(() => expect(asked).toEqual([true, false]));
+  await waitFor(() => expect(asked).toEqual([true]));
   expect(item.checked).toBe(false);
   await act(async () => { await emit("update:automatic", true); });
   expect(item.checked).toBe(true);

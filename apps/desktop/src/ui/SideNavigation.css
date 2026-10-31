@@ -1,5 +1,6 @@
 /* The navigation list alone scrolls; its shell reserves the native title bar. */
 .ui-side-navigation {
+  position: relative;
   display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; gap: var(--row-spacing);
   overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scroll-padding-block: var(--inset);
   padding: var(--inset); box-sizing: border-box; outline: none;
@@ -14,3 +15,5 @@
 }
 .ui-side-navigation-item[aria-current="page"] { background: var(--selected-background); color: var(--selected-text); font-weight: 500; }
 .ui-side-navigation-item[data-focus-visible] { outline: var(--focus-ring-width) solid var(--focus-ring-color); outline-offset: var(--focus-ring-offset); }
+
+.ui-side-navigation-item[data-gap-before] { margin-block-start: var(--space-5); }
