@@ -1,6 +1,6 @@
 // The lightweight mocked Rust side and shared steps for whole-picker tests.
 // For clipboard/document outcomes and reordered workers, use ./delivery instead.
-import { act, cleanup, fireEvent, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { clearMocks, mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { vi } from "vitest";
 import type * as api from "../api";
@@ -32,6 +32,24 @@ export async function chooseFromMore(name: string, role: "menuitem" | "menuitemc
   // the row; the shortcuts dialog uses it to choose its return destination.
   act(() => item.focus());
   fireEvent.click(item);
+}
+
+/** Details are on demand; opening them does not grow the citation band. */
+export async function openCitationDetails(): Promise<HTMLInputElement> {
+  if (!screen.queryByRole("textbox", { name: "Page" })) {
+    const button = await waitFor(() => {
+      const target = screen.queryByRole("button", { name: "Edit citation" }) ?? screen.queryAllByRole("button", { name: /^Edit/ })[0] ?? screen.queryByRole("button", { name: "Details" });
+      if (!target) throw new Error("Citation details action is not ready");
+      return target;
+    });
+    fireEvent.click(button);
+  }
+  return screen.findByRole<HTMLInputElement>("textbox", { name: "Page" });
+}
+
+export function closeCitationDetails() {
+  const dialog = screen.queryByRole("dialog", { name: /^(Citation details|Selected references)/ });
+  if (dialog) fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
 }
 
 export function result(key: string, title: string, source = "refs.bib") {
@@ -75,6 +93,8 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
   let activityTicket = 0;
   let preferences = { citation_style: null, density: "comfortable", larger_text: false, show_paste_preview: true, search_mark: false, paste: true } as api.PickerPreferences;
   let copyFormat: api.CopyFormat = "pandoc";
+  let revision = 0;
+  const written = new Map<string, number>();
   receipts.clear();
   const defaults: Record<string, Handler> = {
     "plugin:window|is_visible": () => true,
@@ -83,13 +103,17 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
     hide_picker: () => null,
     show_copied_notice: () => null,
     set_pinned: () => null,
+    read_window_position_undo: () => null,
+    undo_window_position: () => false,
+    dismiss_window_position_undo: () => null,
     copy_format: () => "pandoc",
     preview_file_citation: ({ items, style }) => receipt(style ? "(Smith, 2020)" : items.map(({ id }) => `@${id.key}`).join("; ")),
     copy_file_citation: (args) => {
       const { preview } = prepared(args);
       return { text: preview.text, warnings: preview.warnings };
     },
-    picker_preferences: () => ({ citation_style: null, density: "comfortable", larger_text: false, show_paste_preview: true }),
+    picker_preferences: () => preferences,
+    preference_revision: () => ++revision,
     set_picker_preferences: () => null,
     // Opened from no app Ibis knows: the default format applies.
     picker_destination: () => ({ app: null, app_id: null, automatic: null, remembered: null, unreadable: false, can_paste: false, output_question: null }),
@@ -117,8 +141,13 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
       if (cmd === "picker_preferences") return Promise.resolve(value).then((loaded) => { preferences = { ...preferences, ...loaded as api.PickerPreferences }; return preferences; });
       if (cmd === "copy_format") return Promise.resolve(value).then((loaded) => { copyFormat = loaded as api.CopyFormat; return loaded; });
       if (cmd === "set_picker_preferences") return Promise.resolve(value).then(() => {
-        preferences = { ...preferences, ...(args as { preferences: Partial<api.PickerPreferences> }).preferences };
-        copyFormat = (args as { copyFormat: api.CopyFormat | null }).copyFormat ?? copyFormat;
+        const save = args as { preferences: Partial<api.PickerPreferences>; copyFormat: api.CopyFormat | null; revision: number };
+        if (!Number.isSafeInteger(save.revision) || save.revision <= 0 || save.revision > revision) throw "preference revision was not issued";
+        const keep = (field: string) => save.revision > (written.get(field) ?? 0);
+        const patch = Object.fromEntries(Object.entries(save.preferences).filter(([field]) => keep(field)));
+        preferences = { ...preferences, ...patch };
+        for (const field of Object.keys(patch)) written.set(field, save.revision);
+        if (save.copyFormat !== null && keep("copy_format")) { copyFormat = save.copyFormat; written.set("copy_format", save.revision); }
         return { preferences, copy_format: copyFormat };
       });
       if (cmd === "preview_file_citation") return Promise.resolve(value).then((preview) => {

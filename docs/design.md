@@ -32,9 +32,12 @@ canvas mirrors them (see **How the design changes**).
    sure?"; destructive actions apply at once with an 8 s Undo [D16].
 7. **Calm motion.** Movement only explains where something came from, and it
    switches off when the system asks for reduced motion.
-8. **No glow, no edge rings.** Selection is a fill, never an outline. No
-   coloured borders, outer glows or bright rims. A focus ring appears only when
-   the keyboard moved focus.
+8. **No glow, no edge rings.** Selection is a fill, never an outline.
+   Exception: picture choices in Settings (Appearance, Rows, Search icon
+   miniatures) use a soft accent tint plus a 2 px accent ring, because a fill
+   would hide the picture, as in macOS System Settings. No other coloured
+   borders, outer glows or bright rims. A focus ring appears only when the
+   keyboard moved focus.
 9. **Great defaults, then choice.** Every setting starts from one default that
    works for most people on every platform, so most never open Settings.
    Customising is there for those who want it, never required. No setting
@@ -310,11 +313,17 @@ forced colours; it never resembles a partially completed download.
 | Switch | No change | Accent track | Ring |
 | Search box | None | None | None: the caret (Windows: its accent underline) |
 
-- **Selection is a fill** [D7]. Every OS: the full accent with paired text (a
-  tint reaches only about 1.2:1 beside other rows), no side pill. On the
+- **Selection is a fill** [D7]. Result rows use the full accent with paired
+  text on every OS (a tint reaches only about 1.2:1 beside other rows), no side
+  pill. On the
   selected row an added tile is the paired text colour with a scarlet check
   [D9]. A kept-open picker without focus uses `--row-inactive-background`. Menu highlight: accent on macOS, a subtle fill on
-  Windows and GNOME.
+  Windows and GNOME. Selected picture choices use a soft accent tint plus a
+  2 px accent ring, with normal text (`--choice-selected-background`,
+  `--choice-selected-text` and `--choice-selection-ring-width`). This selection
+  mark stays visible at rest. The separate keyboard focus ring draws farther
+  inward, with a gap from the selection ring, only on keyboard focus. Rows keep
+  their full accent fill; the full accent primary action remains one per view.
 - **Focus ring only on keyboard focus** [D8] (`:focus-visible`), never after a
   click, and **drawn inside the item it marks**, so no scroll area clips it and
   it never covers a neighbour. macOS 2 px accent with a 1 px gap; Windows 2 px
@@ -1235,8 +1244,37 @@ control at the end, at least `--settings-row-height` (48 px) or
 `--surface-grouped-card` over `--surface-grouped` [D17]. Controls are the
 shared `Switch` (38 × 22), `Segmented` and shortcut recorder in `ui/`. Changes
 apply at once and reach an open picker; preference resets offer Undo. Built so
-far: General (login, pasting, picker look), Shortcuts (open Ibis and the picker's
-key list) and About (version, updates); Libraries and Citations follow (#776).
+far: seven searchable pages, with General (opening-shortcut link, login and
+pasting), Look (real picker pictures, rows, Ibis mark or magnifier,
+Default/Larger text and paste preview), Shortcuts (opening shortcut and an
+expandable key list and Undo for restoring the default), Citations (default
+key syntax or style through the shared Ibis menu) and About Ibis (version and
+update checks). Appearance and Accent apply in both Settings and the picker
+through the same root-level roles. Largest text, None, window presets including
+Compact, menu-bar visibility, welcome replay and the remaining Libraries, Citations and Advanced
+actions appear disabled with Coming soon. Ordinary Settings presentations open
+General at the top; explicit page requests select that page and reset its scroller.
+The shared shell uses the root's full height at Default, Larger and 200% text.
+The page and navigation scrollers contain absolutely positioned descendants,
+so focusing a control never scrolls the document or moves the window chrome.
+General shows desktop-owned shortcut triggers verbatim, or Not assigned, with
+the desktop's guidance.
+Preference notifications retire older replies immediately and refresh after
+the queue actually completes; only closing uses the two-second limit. Both
+windows request a ticket from one synchronous native counter when a choice is
+made, before waiting for earlier saves. The locked writer compares the last
+successfully written ticket per field and returns current saved values when
+an older field is dropped. Retries keep their original tickets; unused tickets
+block nothing and unissued tickets are rejected.
+Notifications carry the publishing write's ticket. A self-notification keeps
+that write's successful acknowledgement available for rollback, including
+when the next save and recovery reads fail; other writes still retire stale replies.
+One preference state owns the shown values and explanation: known saved value,
+save refused, or saved value unknown. Any other window's notification moves it
+to unknown until a real read succeeds, retiring an earlier refusal's saved-value
+claim immediately. A failed read while unknown shows the read-uncertainty error;
+edits and save acknowledgements cannot clear it. A refusal says the saved value
+is shown only while that value is known.
 
 **One Settings design** (maintainer, 2026-10-30). There is one Settings
 window; every drawing and board uses it, and it is kept in step with the app as
@@ -1245,7 +1283,12 @@ both change. The Rows and Search icon pictures are the real picker drawn small
 can't drift from it. Look opens with Appearance: System, Light and Dark as
 pictures of the picker (System split diagonally), System by default, then
 Accent as colour dots, Follow the Mac by default. The
-website shows the app as it currently is.
+website shows the app as it currently is. Each Appearance picture owns the
+labelled theme for its body and controls; System is split across the whole
+picture diagonally. Rows and Search icon use a crop of the real components at
+about 60%, with readable sample titles, rather than shrinking the whole window.
+The crop and its contents shrink together within the available row padding at
+minimum width and 200% text.
 
 **Pages for everyone** (2026-10-30). Most people never open Settings, so
 defaults carry the product (principle 9). Seven pages, each with one job, in this
