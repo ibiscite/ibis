@@ -235,6 +235,7 @@ fn main() {
                 if !sizing::prepare(app.handle(), &window, true, false) {
                     return Err("the picker frame could not be prepared".into());
                 }
+                sizing::watch_display(app.handle(), &window);
                 #[cfg(not(target_os = "macos"))]
                 {
                     report(window.set_skip_taskbar(true), NativeIssue::SkipTaskbar);
