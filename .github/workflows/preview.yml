@@ -939,6 +939,11 @@ jobs:
     name: Move the stable update feed
     if: startsWith(github.ref, 'refs/tags/v') && (github.event_name == 'push' || inputs.publish)
     needs: publish
+    # The version check and uploads must not interleave.
+    concurrency:
+      group: publish-stable-feed
+      queue: max
+      cancel-in-progress: false
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:

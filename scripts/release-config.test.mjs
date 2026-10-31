@@ -100,10 +100,11 @@ function fixture(t, initial = {}) {
   return { dir, state, run };
 }
 
-test("numbered publishes serialize the Latest read and publish without cancelling an active job", () => {
+test("numbered publishes and stable-feed updates queue without interleaving or cancelling an active job", () => {
   const publish = job("publish");
   assert.match(publish, /^    concurrency:\n      group: publish-numbered-release\n      queue: max\n      cancel-in-progress: false$/m);
   assert.doesNotMatch(publish, /^\s+cancel-in-progress:\s*true\b/m);
+  assert.match(job("stable-feed"), /^    concurrency:\n      group: publish-stable-feed\n      queue: max\n      cancel-in-progress: false$/m);
 });
 
 test("numbered releases publish fully with a versioned title and explicit Latest choice", (t) => {
