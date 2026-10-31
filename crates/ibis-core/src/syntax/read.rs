@@ -225,16 +225,35 @@ fn mmd<'a>(text: &'a str, work: &mut Work<'_>) -> Option<Citation<'a>> {
             (key, rest.strip_prefix("[]").unwrap_or(rest))
         }
         None => {
-            let after = rest.strip_prefix(']')?.strip_prefix("[#")?;
+            let key_text = rest.strip_prefix(']')?.strip_prefix("[#")?;
             // In particular, JSON strings/objects cannot become notes even if
             // their metadata contains a closing bracket and citation marker.
             if !work.spend(body.len()) || !super::escape::mmd_literal(body) {
                 return None;
             }
-            let end = work.find(after, |c| matches!(c, '[' | ']')).unwrap_or(after.len());
-            let rest = &after[end..];
+            // A complete braced Pandoc key owns any ][# inside it. Only the
+            // last @{ can cross this boundary: keys cannot contain braces or
+            // whitespace. Stop there too, so repeated unmatched @{ notes do
+            // not repeatedly scan the remaining list.
+            if !work.spend(body.len()) {
+                return None;
+            }
+            if let Some(start) = body.rfind("@{") {
+                let candidate = &after[start + 2..];
+                if let Some(end) = work.find(candidate, |c| {
+                    c.is_whitespace() || c.is_control() || matches!(c, ',' | '{' | '}')
+                }) && start + 2 + end >= body.len()
+                    && candidate[end..].starts_with('}')
+                {
+                    return None;
+                }
+            }
+            let end = work
+                .find(key_text, |c| matches!(c, '[' | ']'))
+                .unwrap_or(key_text.len());
+            let rest = &key_text[end..];
             let rest = rest.strip_prefix(']').or_else(|| rest.is_empty().then_some(rest))?;
-            (&after[..end], rest)
+            (&key_text[..end], rest)
         }
     };
     Some(explicit([Cow::Borrowed(key)], rest))

@@ -622,6 +622,23 @@ fn every_writer_syntax_round_trips_unicode_and_punctuation_keys() {
 }
 
 #[test]
+fn writer_keys_with_multimarkdown_markers_round_trip() {
+    // CI shrank a Pandoc failure to k][#0: the marker is literal key text
+    // inside @{...}, not a MultiMarkdown note/key boundary.
+    for key in ["k][#0", "k][#b]0", "k][#b][]0", "k][#b][#a]0"] {
+        for caps in &syntax::CAPABILITIES {
+            round_trip(
+                caps,
+                &["first".into(), "second".into(), key.into()],
+                CitationForm::Normal,
+                false,
+                "",
+            );
+        }
+    }
+}
+
+#[test]
 fn writer_multikey_forms_and_notes_round_trip_without_becoming_keys() {
     for caps in &syntax::CAPABILITIES {
         for &form in caps.forms.iter().filter(|form| !caps.single_item_forms.contains(form)) {
@@ -709,7 +726,18 @@ fn multimarkdown_recognized_keys_can_end_without_a_closing_bracket() {
 
 #[test]
 fn multimarkdown_suffix_only_braces_round_trip_before_json_protection() {
-    for suffix in ["{section", "}section", "{section}", "section{", "section}"] {
+    for suffix in [
+        "{section",
+        "}section",
+        "{section}",
+        "section{",
+        "section}",
+        "@{section",
+        "@{section}",
+        "@{section} @{tail",
+        "@{section,tail",
+        "@{section tail",
+    ] {
         mmd_suffix_round_trip(suffix);
     }
 }
