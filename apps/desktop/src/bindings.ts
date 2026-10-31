@@ -149,10 +149,7 @@ export const commands = {
 	finishPasteGuide: () => __TAURI_INVOKE<boolean>("finish_paste_guide"),
 	/**  Whether Ibis may paste now. Read each time: the person can change it at any moment. */
 	pastePermission: () => __TAURI_INVOKE<PastePermission>("paste_permission"),
-	/**
-	 *  On an explicit user action, repair PostEvent if needed and open the pane.
-	 *  Never requests or resets the separate Accessibility grant.
-	 */
+	/**  On an explicit user action, repair only missing grants and open the pane. */
 	openPastePermission: () => __TAURI_INVOKE<void>("open_paste_permission"),
 	/**  Drag only the running app bundle into the permission list. */
 	dragPasteApp: () => __TAURI_INVOKE<null>("drag_paste_app"),

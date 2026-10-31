@@ -239,7 +239,7 @@ wake and session changes, and screen lock/unlock notifications retire the epoch.
 Synchronous libnotify check tokens cover lock/unlock and Core Graphics session
 changes before delayed observer callbacks. A bracketed comparison of the SDK's
 sleep-inclusive and awake-only monotonic clocks also retires the epoch when
-their offset changes; unavailable or wider-than-100 µs samples refuse. The
+their offset changes; unavailable or 500 µs-or-wider samples refuse. The
 1,500 ms lifetime is checked against both active and sleep-inclusive time.
 A measured timeout or known lifecycle change uses `paste-expired`; missing,
 failed, backwards or exhausted safety evidence uses `paste-unavailable` (#1529).
@@ -267,7 +267,8 @@ surfaces even while the parent document stays focused. Both relations are
 reread before the last global-focus read, including when a control keeps its
 identity while moving to a different surface. Missing top-level evidence never
 falls back to the document alone. No titles, roles/subroles, document text, values,
-tree traversal, attribute enumeration, descriptions or logs are allowed.
+tree traversal, attribute enumeration or descriptions are allowed. The opt-in
+diagnostics amendment below permits only numeric/boolean evidence and fixed stages.
 Single- and multiwindow apps follow the same focused-window identity contract.
 At capture, Ibis first checks whether one of its own native windows is key.
 A repeated show while its nonactivating picker owns the keyboard keeps the
@@ -278,7 +279,7 @@ Each query has one 50 ms sleep-inclusive budget. Every queried AX object gets
 the remaining messaging timeout; the system object's process-default timeout
 is restored on exit. After the initial provider reads, notification, PostEvent,
 Secure Event Input and clipboard-count checks are refreshed; the final adjacent
-document/surface/global-focus reads share a tighter 5 ms budget, including late
+document/surface/global-focus reads share a tighter 15 ms budget, including late
 successes or errors. Slow providers copy instead of extending stale evidence.
 Missing Accessibility uses its own typed reason at capture and final checks.
 Unsupported reads, errors, timeouts or unstable focus copy with
@@ -286,16 +287,17 @@ Unsupported reads, errors, timeouts or unstable focus copy with
 `target-changed`. A failed capture cannot invent a changed target.
 Captured AX references stay on the main thread, retained only in memory with a
 nonwrapping token; workers carry the token, never the reference. A final query
-only compares and cannot replace the captured identity. There is no idle or
-hidden polling; queries run only during capture and delivery. Provider latency
+only compares and cannot replace the captured identity. There is no idle polling;
+queries run only during capture and bounded pending delivery. Provider latency
 adds at most the bounded capture wait to opening and bounded checks to delivery;
 native latency remains to be measured.
 
 Settings reports permission granted only when both passive preflights succeed,
 including PostEvent=true/Accessibility=false. Its guide names Privacy &
 Security's Accessibility list ("Device Control and Data Access" on macOS 27+).
-The existing Open System Settings action can request/repair PostEvent only on
-that explicit click; it never requests or resets Accessibility. A missing
+The existing Open System Settings action requests/repairs each missing grant
+only on that explicit click, including Accessibility. Working grants are never
+reset; development builds never reset either grant. A missing
 capture authorization stays in its one-use proof after a later grant. Granting
 does not replay delivery or summon the picker: the guide closes on a granted
 return, and the person returns to the external document, opens Ibis again and
@@ -324,14 +326,88 @@ unchanged; local clock correlation independently catches sleep. These narrow
 intervals remain native qualification limits, not guarantees of atomic input.
 
 There is no window-name lookup, screen capture, automatic permission prompt or
-hidden polling. `paste/macos/focus/native.rs` is a scoped unsafe exception for the
+idle polling. `paste/macos/focus/native.rs` is a scoped unsafe exception for the
 public AX APIs; CF ownership/equality use the already-locked
 `objc2-core-foundation` safe binding directly. `paste/macos/safety.rs` remains a
 scoped unsafe exception for SDK clocks and observer registration. It uses already-locked
 `block2` directly. Clock/notification logic has synthetic coverage; real OS
 producers, focused-window providers and native keyboard placement still
 require qualification.
-Clock sampling has its stated 100 µs resolution limit.
+Clock sampling has its stated sub-1 ms uncertainty limit.
+
+2026-10-31 amendment: macOS paste readiness, diagnostics and app accessibility.
+
+Follow-up decision: Ibis enables an eligible app's accessibility support when
+needed, without an environment switch. Apps such as Claude should work through
+the ordinary paste flow. This still needs Ibis's macOS Accessibility grant;
+enabling the other app's support does not grant that permission. A debug build
+without the grant could not complete the real-Mac test.
+
+- **Bounds, chosen from the threat rather than unmeasured provider latency:**
+  the whole AX query still gets 50 ms, including sleep. Its three final sequential
+  relation/focus reads share 15 ms: 5 ms per read on average, accepting the
+  synthetic 3 ms/read case (24 ms for all eight reads), while capping the AX wait
+  after refreshed authorization/clipboard/security guards at 15 ms. Every identity
+  comparison, guard refresh and expiry remains. Clock brackets must be shorter than 500 µs,
+  allowing scheduler skew above the old 100 µs limit without making continuity
+  unbounded. Intersecting intervals never widens established clock evidence.
+  Two brackets contribute skew to an offset comparison, so this keeps their
+  combined ambiguity below 1 ms (plus nanosecond rounding), matching the existing
+  sub-deadline suspension threat. This is a declared qualification limit.
+  Disjoint offsets still expire, and invalid/backwards/wider samples still refuse.
+  These are conservative code/threat bounds, not native measurements.
+- **Readiness:** after hiding the picker, wait at most 1,000 ms, checking at
+  25 ms intervals (at most 40 waits), for the original process/app AND retained
+  document/surface identities. Activation alone is insufficient for a
+  nonactivating picker. Only focus mismatch is pending; failed AX calls refuse.
+  A new presentation/write cancels the old owner. No query can recapture a
+  replacement document, sheet or restarted process. Once ready, all final guards
+  and identity checks run again in the existing at-most-250 ms posting task;
+  the 1,500 ms write lifetime still applies throughout. This replaces macOS's
+  fixed 50 ms settle sleep. The bounded pending-delivery checks are the only
+  hidden polling exception, and stop on success, refusal, cancellation or expiry.
+- **Diagnostics:** `IBIS_MAC_PASTE_DIAGNOSTICS=1` enables one JSON line to stderr
+  per delivery attempt, after its outcome. Otherwise it is off. The closed schema
+  contains a fixed stage, first failing AX error code (or latest success), sleep-inclusive
+  call/attempt durations, clock-bracket widths in microseconds, and owner/equality booleans;
+  `manual_accessibility_ran` says whether capture attempted the activation write,
+  including a failed write. It stays false when no write was attempted. Absent
+  evidence is null. Capture failure evidence follows the immutable target
+  into delivery. No native objects, titles, roles, values, text, paths or document
+  identifiers are logged; even app IDs are omitted. The final focus-to-post tail
+  updates only thread-local evidence, with no logging mutex or output before
+  dispatch. Reentrant and cancelled work cannot consume another attempt's line.
+- **Enable the app's accessibility support automatically:** some Electron and
+  Chromium apps leave out window identities until this support is enabled.
+  During capture, if `AXFocusedWindow` or `AXTopLevelUIElement` returns missing
+  attribute error -25205 or -25212, Ibis sets `AXManualAccessibility=true` on the
+  verified application element. Both the application and the missing relation
+  must belong to the captured process. The app must pass the existing paste
+  policy; an unknown app needs explicit paste approval. Refused apps, Copy only,
+  paste-off, unreadable preferences and missing grants never trigger this write.
+  Ibis attempts it once per live app instance during an Ibis run, even if the
+  attempt fails. It retains `NSRunningApplication` identity so a reused process
+  number does not stand for an earlier app instance.
+  After a successful write, Ibis discards the partial capture and repeats the
+  full identity proof within the same 50 ms budget. Delivery never enables this
+  support or captures a replacement target. Ibis reads no titles, roles, values
+  or text, does not walk the accessibility tree, and does not set
+  `AXEnhancedUserInterface`. Enabling support may use more CPU or memory in the
+  other app and make its accessibility tree available to the OS. Ibis still reads
+  only the allowed identities and process ownership. It leaves support enabled
+  because another assistive app may need it. This is the only permitted foreign
+  attribute write; the list of attributes Ibis reads stays the same.
+- **Grant repair:** missing Accessibility uses the existing
+  `accessibility-required` message and opens the existing guide, once per run,
+  just like missing PostEvent. Only its explicit Open System Settings action may
+  reset Ibis's nonworking grant in a release build and request it; it checks the
+  two grants separately. Granting never revives a failed capture or delivery.
+
+Synthetic scenarios cover success, refusal, AX failure, delayed document/surface
+return with the app already active, close/reopen, target replacement, stale
+ownership, one-use diagnostics and automatic app accessibility activation. Native provider timing under
+load, Electron/Chromium activation behavior, OS grant repair and actual keyboard
+placement still require qualification; PID-directed posting remains non-atomic.
 
 Other macOS native calls use objc2's generated AppKit and Core Graphics
 bindings. On Windows, `winsafe` supplies safe Win32 calls (the foreground

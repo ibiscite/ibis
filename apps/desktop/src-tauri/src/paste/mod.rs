@@ -184,10 +184,21 @@ impl LastTarget {
         paste_for: impl FnOnce(&AppId) -> Result<Option<AppPaste>, CopyReason>,
         write: impl FnOnce() -> Result<Option<isize>, String>,
     ) -> Result<Option<u32>, String> {
-        self.write_copy_at(text, SafetyStamp::now(), paste_for, write)
+        #[cfg(target_os = "macos")]
+        let (stamp, diagnostic) = macos::observe_write_stamp();
+        #[cfg(not(target_os = "macos"))]
+        let stamp = SafetyStamp::now();
+        self.write_copy_observed(
+            text,
+            stamp,
+            paste_for,
+            write,
+            #[cfg(target_os = "macos")]
+            diagnostic,
+        )
     }
 
-    #[cfg(any(target_os = "macos", test))]
+    #[cfg(test)]
     fn write_copy_at(
         &self,
         text: &str,
@@ -195,11 +206,38 @@ impl LastTarget {
         paste_for: impl FnOnce(&AppId) -> Result<Option<AppPaste>, CopyReason>,
         write: impl FnOnce() -> Result<Option<isize>, String>,
     ) -> Result<Option<u32>, String> {
+        self.write_copy_observed(
+            text,
+            stamp,
+            paste_for,
+            write,
+            #[cfg(target_os = "macos")]
+            None,
+        )
+    }
+
+    #[cfg(any(target_os = "macos", test))]
+    fn write_copy_observed(
+        &self,
+        text: &str,
+        stamp: SafetyStamp,
+        paste_for: impl FnOnce(&AppId) -> Result<Option<AppPaste>, CopyReason>,
+        write: impl FnOnce() -> Result<Option<isize>, String>,
+        #[cfg(target_os = "macos")] diagnostic: Option<macos::diagnostics::Snapshot>,
+    ) -> Result<Option<u32>, String> {
         let mut last = self.0.lock().map_err(|_| "The clipboard could not be written.")?;
         last.copied = None;
         last.owner = None;
         let captured = last.captured.clone().map(|mut captured| {
             captured.paste = captured.target.app.as_ref().map_or(Ok(None), paste_for);
+            #[cfg(target_os = "macos")]
+            if captured.focus_failure.is_none()
+                && (stamp.epoch == 0 || stamp.epoch == u64::MAX)
+                && let Some(mut diagnostic) = diagnostic
+            {
+                diagnostic.inherit_activation(captured.diagnostic.as_ref());
+                captured.diagnostic = Some(diagnostic);
+            }
             captured
         });
         let change_count = write()?;
@@ -240,13 +278,20 @@ impl LastTarget {
         last.owner = None;
         post()
     }
+
+    #[cfg(target_os = "macos")]
+    fn owns(&self, request: &PostRequest) -> bool {
+        self.0
+            .try_lock()
+            .is_ok_and(|last| last.presentation == request.presentation && last.owner == Some(request.token))
+    }
 }
 
 /// Remember the app in front, before the picker shows. Ibis in front keeps the earlier capture.
 pub(crate) fn capture(app: &AppHandle) {
     let own = i32::try_from(std::process::id()).unwrap_or(i32::MAX);
     #[cfg(target_os = "macos")]
-    let front = macos::frontmost();
+    let front = macos::frontmost(app);
     #[cfg(target_os = "windows")]
     let generation = app.state::<crate::picker::PickerGeneration>().current();
     #[cfg(target_os = "windows")]
@@ -384,6 +429,12 @@ trait Desk {
     fn may_post(&self) -> bool;
     /// Show where to give that permission; at most once per run.
     fn ask_to_post(&self);
+    fn stage(&self, _stage: &'static str) {}
+    /// Windows retains its existing restoration settle. macOS waits for the
+    /// captured document/surface instead, without an unconditional sleep.
+    fn settle(&self) {
+        self.wait(SETTLE);
+    }
     /// Restore only a proven target before waiting for it to come forward.
     fn prepare(&self) -> Result<(), CopyReason> {
         Ok(())
@@ -391,6 +442,11 @@ trait Desk {
     /// The app in front, or `None` once the picker has been shown again.
     /// A failed proof must keep its reason while waiting for that app.
     fn frontmost(&self) -> Result<Option<Front>, CopyReason>;
+    fn ready(&self, request: &DeliveryRequest, _proof: &Self::Proof) -> Result<bool, CopyReason> {
+        Ok(self
+            .frontmost()?
+            .is_some_and(|front| front.pid == request.pid && front.id.as_deref() == Some(&request.id)))
+    }
     /// Finish with this platform's proof and final guards. On macOS all
     /// checks and posting run together in one main-thread task.
     fn finish(&self, request: DeliveryRequest, proof: &Self::Proof) -> PostResult;
@@ -637,9 +693,9 @@ fn deliver<D: Desk>(desk: &D, proof: Option<&D::Proof>, enabled: bool) -> Delive
             .and_then(|code| code.as_str().map(str::to_owned)),
     };
     match delivery_decision(captured, permission) {
-        Decision::Copy(CopyReason::NoPermission) => {
+        Decision::Copy(reason @ (CopyReason::NoPermission | CopyReason::AccessibilityRequired)) => {
             desk.ask_to_post();
-            copied(Some(CopyReason::NoPermission))
+            copied(Some(reason))
         }
         Decision::Copy(reason) => copied(Some(reason)),
         Decision::Paste => {
@@ -658,27 +714,41 @@ fn deliver<D: Desk>(desk: &D, proof: Option<&D::Proof>, enabled: bool) -> Delive
             };
             // The same process and app: a process number alone can be reused.
             let id = captured.target.app.as_ref().map(|app| app.id.as_str());
-            let back = |front: Option<Front>| front.is_some_and(|front| front.pid == pid && front.id.as_deref() == id);
             let started = Instant::now();
+            let request = DeliveryRequest {
+                pid,
+                id: id.unwrap_or_default().to_owned(),
+                deadline: deadline.min(started + RETURN_LIMIT),
+            };
             let mut checks = 0;
             loop {
-                let front = match desk.frontmost() {
-                    Ok(front) => front,
-                    Err(reason) => return copied(Some(reason)),
-                };
-                if back(front) {
-                    break;
-                }
                 if let Err(failure) = proof.check_age(desk.stamp()) {
                     return copied(Some(failure.reason()));
                 }
-                if checks >= RETURN_CHECKS || started.elapsed() >= RETURN_LIMIT {
+                desk.stage("readiness");
+                let ready = match desk.ready(&request, proof) {
+                    Ok(ready) => ready,
+                    Err(reason) => return copied(Some(reason)),
+                };
+                if let Err(failure) = proof.check_age(desk.stamp()) {
+                    return copied(Some(failure.reason()));
+                }
+                if started.elapsed() >= RETURN_LIMIT {
+                    desk.stage("readiness.timeout");
+                    return copied(Some(CopyReason::TargetChanged));
+                }
+                if ready {
+                    break;
+                }
+                if checks >= RETURN_CHECKS {
+                    desk.stage("readiness.timeout");
                     return copied(Some(CopyReason::TargetChanged));
                 }
                 desk.wait(RETURN_STEP);
                 checks += 1;
             }
-            desk.wait(SETTLE);
+            desk.settle();
+            desk.stage("post.queue");
             let request = DeliveryRequest {
                 pid,
                 id: id.unwrap_or_default().to_owned(),
@@ -693,8 +763,14 @@ fn deliver<D: Desk>(desk: &D, proof: Option<&D::Proof>, enabled: bool) -> Delive
                 PostResult::Expired => copied(Some(CopyReason::PasteExpired)),
                 PostResult::TargetChanged => copied(Some(CopyReason::TargetChanged)),
                 PostResult::ClipboardChanged => copied(Some(CopyReason::ClipboardChanged)),
-                PostResult::AccessibilityRequired => copied(Some(CopyReason::AccessibilityRequired)),
-                PostResult::NoPermission => copied(Some(CopyReason::NoPermission)),
+                PostResult::AccessibilityRequired => {
+                    desk.ask_to_post();
+                    copied(Some(CopyReason::AccessibilityRequired))
+                }
+                PostResult::NoPermission => {
+                    desk.ask_to_post();
+                    copied(Some(CopyReason::NoPermission))
+                }
                 #[cfg(any(target_os = "windows", test))]
                 PostResult::SecureField => copied(Some(CopyReason::SecureField)),
                 #[cfg(any(target_os = "windows", test))]
@@ -1211,14 +1287,17 @@ fn display_name(
 pub(crate) fn deliver_copy(app: &AppHandle, text: &str, token: Option<u32>) -> Delivered {
     let proof = app.state::<LastTarget>().take_copy(text, token);
     #[cfg(target_os = "macos")]
-    let desk = macos::Mac::new(app);
+    let desk = macos::Mac::new(app, proof.as_ref());
     #[cfg(target_os = "linux")]
     let desk = CopyOnly;
     let enabled = ibis_core::settings::load(&app.state::<crate::preferences::SettingsFile>().path)
         .settings
         .paste
         .unwrap_or(true);
-    deliver(&desk, proof.as_ref(), enabled)
+    let outcome = deliver(&desk, proof.as_ref(), enabled);
+    #[cfg(target_os = "macos")]
+    desk.complete(&outcome);
+    outcome
 }
 
 /// Linux captures no target, so it only copies.
@@ -1258,6 +1337,9 @@ mod tests {
         post_event_granted: Cell<bool>,
         asked: Cell<u32>,
         fronts: RefCell<Vec<i32>>,
+        returning_windows: RefCell<Vec<Option<u32>>>,
+        after_return_wait: Option<fn(&Fake)>,
+        waits: Cell<u32>,
         clock: Cell<Instant>,
         stamp: Cell<SafetyStamp>,
         window: Cell<Option<u32>>,
@@ -1290,6 +1372,9 @@ mod tests {
                 post_event_granted: Cell::new(true),
                 asked: Cell::new(0),
                 fronts: RefCell::new(vec![42]),
+                returning_windows: RefCell::new(Vec::new()),
+                after_return_wait: None,
+                waits: Cell::new(0),
                 clock: Cell::new(Instant::now()),
                 stamp: Cell::new(SafetyStamp {
                     epoch: 1,
@@ -1344,7 +1429,20 @@ mod tests {
             self.asked.set(self.asked.get() + 1);
         }
         fn frontmost(&self) -> Result<Option<Front>, CopyReason> {
+            if let Some(window) = self.returning_windows.borrow().first() {
+                self.window.set(*window);
+            }
             Ok(self.front())
+        }
+        fn settle(&self) {}
+        fn ready(&self, request: &DeliveryRequest, proof: &CopyProof) -> Result<bool, CopyReason> {
+            let front = Desk::frontmost(self)?;
+            Ok(front.is_some_and(|front| {
+                front.pid == request.pid
+                    && front.id.as_deref() == Some(&request.id)
+                    && front.window.is_some()
+                    && front.window == proof.captured.as_ref().and_then(|captured| captured.window)
+            }))
         }
         fn finish(&self, request: DeliveryRequest, proof: &CopyProof) -> PostResult {
             let request = PostRequest::new(request, proof).queued(self.clock.get());
@@ -1358,10 +1456,20 @@ mod tests {
             self.pending.run(|| checked_post(self, &request))
         }
         fn wait(&self, time: Duration) {
+            self.waits.set(self.waits.get() + 1);
             self.clock.set(self.clock.get() + time);
             let mut fronts = self.fronts.borrow_mut();
             if fronts.len() > 1 {
                 fronts.remove(0);
+            }
+            drop(fronts);
+            let mut windows = self.returning_windows.borrow_mut();
+            if windows.len() > 1 {
+                windows.remove(0);
+            }
+            drop(windows);
+            if let Some(change) = self.after_return_wait {
+                change(self);
             }
         }
     }
@@ -1450,6 +1558,8 @@ mod tests {
             window: Some(100),
             focus_failure: None,
             name: Some("Writer".into()),
+            #[cfg(target_os = "macos")]
+            diagnostic: None,
         }
     }
 
@@ -1555,6 +1665,60 @@ mod tests {
     }
 
     #[test]
+    fn readiness_waits_for_the_original_surface_even_while_its_app_stays_active() {
+        let desk = Fake::new();
+        desk.returning_windows.replace(vec![None, None, None, Some(100)]);
+        assert_eq!(deliver(&desk, Some(&proof()), true), pasted());
+        assert_eq!(desk.waits.get(), 3);
+        assert_eq!(*desk.posted_windows.borrow(), [Some(100)]);
+    }
+
+    #[test]
+    fn readiness_does_not_add_a_fixed_sleep_to_an_already_focused_document() {
+        let desk = Fake::new();
+        assert_eq!(deliver(&desk, Some(&proof()), true), pasted());
+        assert_eq!(desk.waits.get(), 0);
+    }
+
+    #[test]
+    fn a_replacement_document_during_readiness_is_never_adopted() {
+        let desk = Fake::new();
+        desk.returning_windows.replace(vec![None, Some(200)]);
+        let proof = proof();
+        assert_eq!(deliver(&desk, Some(&proof), true), copied(Some("target-changed")));
+        assert!(desk.posts.borrow().is_empty());
+        assert_eq!(proof.text, TEXT);
+        assert_eq!(desk.waits.get(), RETURN_CHECKS);
+    }
+
+    #[test]
+    fn reopening_the_picker_while_focus_returns_retires_the_old_delivery() {
+        let desk = Fake {
+            after_return_wait: Some(|desk| desk.presentation.set(PRESENTATION + 1)),
+            ..Fake::new()
+        };
+        desk.returning_windows.replace(vec![None, Some(100)]);
+        assert!(matches!(deliver(&desk, Some(&proof()), true), Delivered::Copied { .. }));
+        assert!(desk.posts.borrow().is_empty());
+    }
+
+    #[test]
+    fn a_lifecycle_change_during_readiness_never_posts_after_focus_returns() {
+        let desk = Fake {
+            after_return_wait: Some(|desk| {
+                desk.stamp.set(SafetyStamp {
+                    epoch: 2,
+                    ..desk.stamp.get()
+                })
+            }),
+            ..Fake::new()
+        };
+        desk.returning_windows.replace(vec![None, Some(100)]);
+        assert_eq!(deliver(&desk, Some(&proof()), true), copied(Some("paste-expired")));
+        assert!(desk.posts.borrow().is_empty());
+    }
+
+    #[test]
     #[cfg(target_os = "macos")]
     fn repeated_show_from_our_key_panel_still_pastes_once_into_the_original_external_window() {
         let desk = Fake::new();
@@ -1615,7 +1779,7 @@ mod tests {
                 assert!(desk.posts.borrow().is_empty());
             }
             if reason == CopyReason::AccessibilityRequired {
-                assert_eq!(desk.asked.get(), 0);
+                assert_eq!(desk.asked.get(), 2);
             }
             let valid = macos::capture_front(Some(external()), 7, false, |_| Ok(100));
             last.begin_presentation(capture::captured(System::Macos, valid, 7));

@@ -7,7 +7,7 @@
 //! belongs to an older build and the paste is refused (#1242). The explicit
 //! Open System Settings action can repair the stale PostEvent entry.
 //! Accessibility is separately required for identity-only focus reads: checks
-//! never prompt for it or reset it; the guide names its system list.
+//! never prompt for it. The guide's explicit action repairs whichever grant is missing.
 
 use serde::Serialize;
 
@@ -48,8 +48,7 @@ pub(crate) fn paste_permission() -> PastePermission {
     current()
 }
 
-/// On an explicit user action, repair PostEvent if needed and open the pane.
-/// Never requests or resets the separate Accessibility grant.
+/// On an explicit user action, repair only missing grants and open the pane.
 #[tauri::command]
 #[specta::specta]
 pub(crate) fn open_paste_permission(app: tauri::AppHandle) {
@@ -96,6 +95,22 @@ fn macos_permissions(post_event: bool, accessibility: bool, major: u32) -> Paste
     }
 }
 
+#[cfg(any(target_os = "macos", test))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Grant {
+    PostEvent,
+    Accessibility,
+}
+
+#[cfg(any(target_os = "macos", test))]
+fn repair_missing(mut granted: impl FnMut(Grant) -> bool, mut repair: impl FnMut(Grant)) {
+    for grant in [Grant::PostEvent, Grant::Accessibility] {
+        if !granted(grant) {
+            repair(grant);
+        }
+    }
+}
+
 /// Windows needs no permission to paste; Linux only copies.
 #[cfg(not(target_os = "macos"))]
 fn current() -> PastePermission {
@@ -115,18 +130,36 @@ mod macos {
     const PANE: &str = "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility";
 
     pub(super) fn guide(identifier: &str) {
-        if !objc2_core_graphics::CGPreflightPostEventAccess() {
-            // Only Ibis's own entry, and only while it does not work anyway.
-            // Development builds share the release identifier, so they never
-            // clear an installed copy's working permission.
-            if !cfg!(debug_assertions) {
-                let _ = Command::new("/usr/bin/tccutil")
-                    .args(["reset", "PostEvent", identifier])
-                    .status();
-            }
-            // Lists Ibis, switched off, so the person has one switch to turn on.
-            objc2_core_graphics::CGRequestPostEventAccess();
-        }
+        super::repair_missing(
+            |grant| match grant {
+                super::Grant::PostEvent => objc2_core_graphics::CGPreflightPostEventAccess(),
+                super::Grant::Accessibility => super::super::macos::accessibility_granted(),
+            },
+            |grant| {
+                // Only Ibis's own entry, and only while it does not work anyway.
+                // Development builds share the release identifier, so they never
+                // clear an installed copy's working permission.
+                if !cfg!(debug_assertions) {
+                    let _ = Command::new("/usr/bin/tccutil")
+                        .args([
+                            "reset",
+                            match grant {
+                                super::Grant::PostEvent => "PostEvent",
+                                super::Grant::Accessibility => "Accessibility",
+                            },
+                            identifier,
+                        ])
+                        .status();
+                }
+                // Lists Ibis, switched off, so the person has one switch to turn on.
+                match grant {
+                    super::Grant::PostEvent => {
+                        objc2_core_graphics::CGRequestPostEventAccess();
+                    }
+                    super::Grant::Accessibility => super::super::macos::request_accessibility(),
+                }
+            },
+        );
         let _ = Command::new("/usr/bin/open").arg(PANE).status();
     }
 
@@ -164,6 +197,40 @@ mod tests {
             assert_eq!(permission.granted, post_event && accessibility);
             assert_eq!(permission.list, "Device Control and Data Access");
         }
+    }
+
+    #[test]
+    fn the_explicit_guide_repairs_each_missing_grant_and_preserves_working_grants() {
+        for (post_event, accessibility, expected) in [
+            (true, false, vec![Grant::Accessibility]),
+            (false, true, vec![Grant::PostEvent]),
+            (false, false, vec![Grant::PostEvent, Grant::Accessibility]),
+            (true, true, vec![]),
+        ] {
+            let mut repaired = Vec::new();
+            repair_missing(
+                |grant| match grant {
+                    Grant::PostEvent => post_event,
+                    Grant::Accessibility => accessibility,
+                },
+                |grant| repaired.push(grant),
+            );
+            assert_eq!(repaired, expected);
+        }
+    }
+
+    #[test]
+    fn a_grant_obtained_during_the_first_repair_is_not_reset_by_the_second() {
+        let accessibility = std::cell::Cell::new(false);
+        let mut repaired = Vec::new();
+        repair_missing(
+            |grant| grant == Grant::Accessibility && accessibility.get(),
+            |grant| {
+                repaired.push(grant);
+                accessibility.set(true);
+            },
+        );
+        assert_eq!(repaired, [Grant::PostEvent]);
     }
 
     #[test]

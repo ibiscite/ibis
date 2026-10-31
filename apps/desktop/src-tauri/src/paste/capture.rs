@@ -31,6 +31,8 @@ pub(crate) struct Captured {
     pub(crate) window: Option<u32>,
     pub(crate) focus_failure: Option<CopyReason>,
     pub(crate) name: Option<String>,
+    #[cfg(target_os = "macos")]
+    pub(crate) diagnostic: Option<super::macos::diagnostics::Snapshot>,
 }
 
 impl Captured {
@@ -49,6 +51,8 @@ impl Captured {
             window: None,
             focus_failure: None,
             name: None,
+            #[cfg(target_os = "macos")]
+            diagnostic: None,
         }
     }
 }
@@ -79,6 +83,8 @@ pub(crate) fn captured(system: System, front: Option<Front>, own: i32) -> Option
         window: front.window,
         focus_failure: front.focus_failure,
         name: front.name,
+        #[cfg(target_os = "macos")]
+        diagnostic: super::macos::diagnostics::capture_snapshot(),
     })
 }
 
