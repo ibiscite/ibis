@@ -5,6 +5,57 @@ import { backend, chooseFromMore, resetApp } from "./testing/app";
 
 afterEach(resetApp);
 
+test.each(["welcome", "empty", "loaded"])("%s: the native smoke's More and Quit route accepts virtual activation", async (state) => {
+  const calls = backend({
+    library_status: () => ({ revision: "1", state: state === "welcome" ? "none" : "loaded", has_snapshot: state !== "welcome",
+      zotero: false, snapshot_zotero: false, zotero_libraries: [], name: state === "welcome" ? null : "refs.bib",
+      snapshot_name: state === "welcome" ? null : "refs.bib", references: state === "loaded" ? 3 : 0,
+      source_counts: {}, warnings: 0, error: null, problem: null, note: null, settings_notice: null,
+      stale: false, checked_at: null, updated_at: null }),
+    quit: () => null,
+  });
+  render(<App />);
+  await waitFor(() => expect(screen.getByRole("status", { name: "Library status" }).textContent)
+    .toBe(state === "welcome" ? "No library chosen" : `refs.bib · ${state === "empty" ? "no references" : "3 references"}`));
+  const button = screen.getByRole<HTMLButtonElement>("button", { name: "More" });
+  expect(button.tagName).toBe("BUTTON");
+  expect(button.type).toBe("button");
+  expect(button.disabled).toBe(false);
+  expect(button.tabIndex).toBe(0);
+  expect(button.getAttribute("aria-haspopup")).toBe("true");
+  expect(typeof button.onclick).toBe("function");
+  act(() => button.click());
+  const menu = await screen.findByRole("menu", { name: "More" });
+  const quit = within(menu).getByRole("menuitem", { name: "Quit Ibis" });
+  expect(typeof quit.onclick).toBe("function");
+  act(() => quit.click());
+  await waitFor(() => expect(calls.filter((command) => command === "quit")).toHaveLength(1));
+});
+
+test("the native preferences smoke can virtually open Copy as and choose Typst with the keyboard", async () => {
+  const saved: unknown[] = [];
+  backend({ set_picker_preferences: ({ copyFormat }) => { saved.push(copyFormat); return null; } });
+  render(<App />);
+  fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "zzqx no such reference" } });
+  await screen.findByText("No matching references");
+  const button = await screen.findByRole<HTMLButtonElement>("button", { name: "Copy as Pandoc key" });
+  expect(button.tagName).toBe("BUTTON");
+  expect(button.type).toBe("button");
+  expect(button.disabled).toBe(false);
+  expect(button.tabIndex).toBe(0);
+  expect(typeof button.onclick).toBe("function");
+  act(() => button.click());
+  const filter = await screen.findByRole("searchbox");
+  fireEvent.change(filter, { target: { value: "Typst" } });
+  await screen.findByRole("menuitemradio", { name: "Typst key" });
+  fireEvent.keyDown(filter, { key: "ArrowDown" });
+  const choice = document.activeElement!;
+  fireEvent.keyDown(choice, { key: "Enter" });
+  fireEvent.keyUp(choice, { key: "Enter" });
+  await waitFor(() => expect(saved).toEqual(["typst"]));
+  expect(await screen.findByRole("button", { name: "Copy as Typst used as global default" })).toBeTruthy();
+});
+
 test("More holds working actions, leaving preferences and update checks to Settings", async () => {
   const calls = backend({ login_item: () => ({ name: "Ibis", enabled: true, problem: null }),
     update_checks: () => true, update_available: () => true, check_for_updates: () => null });

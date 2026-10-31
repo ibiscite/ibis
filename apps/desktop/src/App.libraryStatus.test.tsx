@@ -31,7 +31,7 @@ test("a fresh closed Zotero snapshot stays quiet and the footer opens its librar
   await waitFor(() => expect(calls).toContain("reload_library"));
 });
 
-test("Reload retires the Library menu before publishing a missing-file error, so empty and restored files can be reloaded next", async () => {
+test.each(["virtual", "Enter", " "])("%s activation reloads missing, empty and restored libraries after retiring the Library menu", async (activation) => {
   const file = library({ zotero: false, snapshot_zotero: false, name: "thesis.bib", snapshot_name: "thesis.bib", references: 4 });
   let current = file;
   const replies = [
@@ -57,8 +57,18 @@ test("Reload retires the Library menu before publishing a missing-file error, so
       // Native name lookup must find the opener, never a same-named footer
       // region whose accessibility action can hit the neighbouring Find button.
       expect(screen.getAllByLabelText("Library")).toEqual([libraryButton]);
+      expect(libraryButton.tagName).toBe("BUTTON");
+      expect(libraryButton.getAttribute("type")).toBe("button");
+      expect(libraryButton.tabIndex).toBe(0);
+      expect(libraryButton.hasAttribute("disabled")).toBe(false);
+      expect(typeof libraryButton.onclick).toBe("function");
       expect(libraryButton.getAttribute("aria-haspopup")).toBe("true");
-      fireEvent.click(screen.getByLabelText("Library"));
+      act(() => libraryButton.focus());
+      if (activation === "virtual") act(() => libraryButton.click());
+      else {
+        fireEvent.keyDown(libraryButton, { key: activation });
+        fireEvent.keyUp(libraryButton, { key: activation });
+      }
       const menu = await screen.findByRole("menu", { name: "Library" });
       const popover = menu.closest(".menu-popover")!;
       // Model a native exit still in progress when the next recovery step runs.

@@ -150,12 +150,16 @@ def missing_library_evidence(snapshot, name):
 TREE_SETTLE_SECONDS = 10
 MENU_ACTIONS = {"Choose Library…": "Library", "Use Zotero": "Library",
                 "Reload Library": "Library", "Quit Ibis": "More"}
+# ATK_ROLE_PUSH_BUTTON_MENU is how AT-SPI exposes a button with aria-haspopup.
+# Both Library and More use the same native HTML button/MenuTrigger contract.
+MENU_BUTTON_ROLES = {"button", "pushbutton", "pushbuttonmenu"}
+MENU_ITEM_ROLES = {"menuitem", "checkmenuitem", "radiomenuitem", "menuitemcheckbox", "menuitemradio"}
 
 
 class NativeControlUnavailable(AssertionError):
-    def __init__(self, name, *, named, action, returned_false):
+    def __init__(self, name, *, named, action, returned_false, reason):
         super().__init__(f"No invokable accessibility control {name!r}")
-        self.facts = {"named": bool(named), "action": bool(action), "returned_false": bool(returned_false)}
+        self.facts = {"named": bool(named), "action": bool(action), "returned_false": bool(returned_false), "reason": reason}
 
 
 def menu_failure_facts(native, trigger, item, stage, last_error):
@@ -169,7 +173,7 @@ def menu_failure_facts(native, trigger, item, stage, last_error):
         nodes = current["nodes"]
         role = lambda node: str(node.get("role", "")).lower().replace(" ", "")
         facts.update(snapshot_available=True, visible=bool(current.get("visible")), foreground=bool(current.get("foreground")),
-                     trigger_button=any(node.get("name") == trigger and role(node) in ("button", "pushbutton") for node in nodes),
+                     trigger_button=any(node.get("name") == trigger and role(node) in MENU_BUTTON_ROLES for node in nodes),
                      menu=any(node.get("name") == trigger and role(node) == "menu" for node in nodes),
                      item_named=any(node.get("name") == item for node in nodes),
                      chooser_or_dialog=any(role(node) in ("filechooser", "dialog") for node in nodes),
@@ -1133,14 +1137,12 @@ class Linux:
         run("xdotool", "type", "--clearmodifiers", "--delay", "0", text)
 
     def click(self, name):
-        named_target, supported_action, returned_false = False, False, False
+        named_target, matched_role, supported_action, returned_false = False, False, False, False
         # WebKitGTK can expose a click action on an enclosing named region.
         # The footer and its menu used to share "Library"; activating the region
         # could hit Find instead. Bind menu actions to their actual widget role,
         # also avoiding a same-named menu left in the accessibility tree.
-        roles = {"button", "pushbutton"} if name in MENU_ACTIONS.values() else {
-            "menuitem", "checkmenuitem", "radiomenuitem", "menuitemcheckbox", "menuitemradio"
-        } if name in MENU_ACTIONS else None
+        roles = MENU_BUTTON_ROLES if name in MENU_ACTIONS.values() else MENU_ITEM_ROLES if name in MENU_ACTIONS else None
         def children(parent, *, owned=False):
             try:
                 count = parent.childCount
@@ -1168,6 +1170,7 @@ class Linux:
                 if item.name == name:
                     named_target = True
                     if roles is None or item.getRoleName().lower().replace(" ", "") in roles:
+                        matched_role = True
                         action = item.queryAction()
                         if not action.nActions:
                             action = None
@@ -1183,7 +1186,10 @@ class Linux:
                     return
                 returned_false = True
             stack.extend(children(item))
-        raise NativeControlUnavailable(name, named=named_target, action=supported_action, returned_false=returned_false)
+        # A rejected role never queried Action. Do not report that as a button
+        # with no action again: retain the fixed reason without native text.
+        reason = "not-found" if not named_target else "role-mismatch" if not matched_role else "action-unavailable" if not supported_action else "activation-refused"
+        raise NativeControlUnavailable(name, named=named_target, action=supported_action, returned_false=returned_false, reason=reason)
 
     def notice_visible(self):
         try:
@@ -2009,7 +2015,7 @@ class ContractTests(unittest.TestCase):
     def test_linux_menu_action_does_not_retry_uncertain_activation(self):
         native, desktop, owned, target, foreign = self.linux_click_fixture()
         target.name = "Reload Library"
-        library_menu = self.CensusNode(name="Library")
+        library_menu = self.CensusNode(name="Library", role="push button menu")
         library_menu.queryAction = Mock(return_value=Mock(nActions=1, doAction=Mock(return_value=True)))
         owned.children.append(library_menu)
         owned.childCount += 1
@@ -2019,6 +2025,60 @@ class ContractTests(unittest.TestCase):
         library_menu.queryAction.return_value.doAction.assert_called_once_with(0)
         target.queryAction.return_value.doAction.assert_called_once_with(0)
         foreign.queryAction.assert_not_called()
+
+    def test_linux_menu_buttons_accept_the_atspi_popup_button_role(self):
+        # ATK_ROLE_PUSH_BUTTON_MENU is a button with a popup, not a menu or
+        # region. aria-haspopup on the real HTML button supplies that role.
+        for name in ("Library", "More"):
+            with self.subTest(name=name):
+                native, desktop, owned, target, foreign = self.linux_click_fixture()
+                target.name, target.role = name, "push button menu"
+                native.click(name)
+                target.queryAction.assert_called_once_with()
+                target.queryAction.return_value.doAction.assert_called_once_with(0)
+                foreign.queryAction.assert_not_called()
+
+    def test_every_native_menu_route_activates_the_popup_button_then_its_item(self):
+        # Exercise the real Linux discovery/activation code, including repeated
+        # Reloads through the missing -> empty -> restored sequence. Namesake
+        # menus/regions must never be the activated object.
+        for name in ("Reload Library", "Reload Library", "Reload Library", "Choose Library…", "Use Zotero", "Quit Ibis"):
+            with self.subTest(name=name):
+                native, desktop, owned, target, foreign = self.linux_click_fixture()
+                target.name = name
+                menu = self.CensusNode(name=MENU_ACTIONS[name], role="menu", children=[target])
+                menu.queryAction = Mock()
+                trigger = self.CensusNode(name=MENU_ACTIONS[name], role="push button menu")
+                def opened(_index):
+                    owned.children, owned.childCount = [trigger, menu], 2
+                    return True
+                trigger.queryAction = Mock(return_value=Mock(nActions=1, doAction=Mock(side_effect=opened)))
+                owned.children, owned.childCount = [trigger], 1
+                menu_action(native, name)
+                trigger.queryAction.return_value.doAction.assert_called_once_with(0)
+                target.queryAction.return_value.doAction.assert_called_once_with(0)
+                menu.queryAction.assert_not_called()
+                foreign.queryAction.assert_not_called()
+
+    def test_menu_button_diagnostics_distinguish_no_action_from_a_rejected_role(self):
+        for role, reason in (("push button menu", "action-unavailable"), ("section", "role-mismatch")):
+            with self.subTest(role=role):
+                native, desktop, owned, target, foreign = self.linux_click_fixture()
+                target.name, target.role = "Library", role
+                target.queryAction.return_value.nActions = 0
+                native.snapshot = Mock(return_value={"visible": True, "foreground": True, "nodes": [
+                    {"name": "Library", "role": role},
+                ]})
+                with patch("builtins.print") as output, self.assertRaises(NativeControlUnavailable):
+                    menu_action(native, "Reload Library")
+                facts = json.loads(output.call_args.args[1])
+                self.assertEqual(facts["invocation"], {"named": True, "action": False, "returned_false": False, "reason": reason})
+                self.assertEqual(facts["trigger_button"], role == "push button menu")
+                target.queryAction.return_value.doAction.assert_not_called()
+                if role == "push button menu":
+                    target.queryAction.assert_called_once_with()
+                else:
+                    target.queryAction.assert_not_called()
 
     def test_linux_menu_controls_require_their_role_not_just_a_matching_name(self):
         for name, wrong_role, right_role in (("Library", "section", "push button"),
@@ -3627,7 +3687,7 @@ class ContractTests(unittest.TestCase):
                 menu_action(native, "Reload Library")
         facts = json.loads(output.call_args.args[1])
         self.assertTrue(facts["trigger_button"] and facts["menu"] and facts["item_named"])
-        self.assertEqual(facts["invocation"], {"named": True, "action": True, "returned_false": True})
+        self.assertEqual(facts["invocation"], {"named": True, "action": True, "returned_false": True, "reason": "activation-refused"})
         target.queryAction.return_value.doAction.assert_called_once_with(0)
         foreign.queryAction.assert_not_called()
 
