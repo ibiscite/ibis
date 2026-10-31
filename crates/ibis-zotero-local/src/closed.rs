@@ -252,12 +252,31 @@ impl Control {
     }
 }
 
+struct FileLease {
+    file: std::fs::File,
+}
+
+impl FileLease {
+    fn acquire(file: std::fs::File) -> Result<Self, std::fs::TryLockError> {
+        file.try_lock()?;
+        Ok(Self { file })
+    }
+}
+
+impl Drop for FileLease {
+    fn drop(&mut self) {
+        // Closing only our descriptor can leave a Unix lock held by a concurrent
+        // fork until exec. Release it when this owner ends, including setup errors.
+        let _ = self.file.unlock();
+    }
+}
+
 /// A persistent private namespace, independent of disposable Zotero copies.
 /// Paths and native errors are never included in Debug or diagnostics.
 pub struct PrivateDirectory {
     root: PathBuf,
     identity: std::fs::Metadata,
-    lease: std::fs::File,
+    lease: FileLease,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
@@ -336,7 +355,7 @@ impl PrivateDirectory {
         if !platform::same(&named, &lease.metadata().map_err(|_| PrivateStorageError::Unavailable)?) {
             return Err(PrivateStorageError::Unavailable);
         }
-        lease.try_lock().map_err(|_| PrivateStorageError::Busy)?;
+        let lease = FileLease::acquire(lease).map_err(|_| PrivateStorageError::Busy)?;
         platform::exclude_backups(&root, &control).map_err(unavailable)?;
         let identity = std::fs::symlink_metadata(&root).map_err(|_| PrivateStorageError::Unavailable)?;
         let directory = Self { root, identity, lease };
@@ -357,7 +376,11 @@ impl PrivateDirectory {
         let named = std::fs::symlink_metadata(&lease_path).map_err(|_| PrivateStorageError::Unavailable)?;
         if !platform::same(
             &named,
-            &self.lease.metadata().map_err(|_| PrivateStorageError::Unavailable)?,
+            &self
+                .lease
+                .file
+                .metadata()
+                .map_err(|_| PrivateStorageError::Unavailable)?,
         ) {
             return Err(PrivateStorageError::Unavailable);
         }
@@ -455,7 +478,26 @@ mod persistent_directory_tests {
                 .is_none()
         );
         drop(directory);
-        assert!(PrivateDirectory::open(&path).is_ok());
+        let _reopened = PrivateDirectory::open(&path).unwrap_or_else(|e| panic!("reopen after drop: {e}"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn dropping_the_owner_releases_the_lease_even_with_an_inherited_descriptor() {
+        let parent = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+        let path = parent.path().join("generations");
+        let directory = PrivateDirectory::open(&path).unwrap_or_else(|e| panic!("{e}"));
+        // A fork before another thread's exec shares this open file description.
+        // Hold a duplicate to reproduce that window without sleeps or unsafe fork.
+        let inherited = directory.lease.file.try_clone().unwrap_or_else(|e| panic!("{e}"));
+        assert!(matches!(PrivateDirectory::open(&path), Err(PrivateStorageError::Busy)));
+        drop(directory);
+        let successor =
+            PrivateDirectory::open(&path).unwrap_or_else(|e| panic!("reopen with inherited descriptor: {e}"));
+        drop(inherited);
+        assert!(matches!(PrivateDirectory::open(&path), Err(PrivateStorageError::Busy)));
+        drop(successor);
+        let _reopened = PrivateDirectory::open(&path).unwrap_or_else(|e| panic!("reopen after successor: {e}"));
     }
 
     #[test]
