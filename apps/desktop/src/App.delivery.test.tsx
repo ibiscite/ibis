@@ -440,7 +440,12 @@ test("reopening during a pending copy keeps the new query and selection without 
   expect(harness.visible).toBe(true);
   expect((searchBox() as HTMLInputElement).value).toBe("second query");
   expect(screen.getByRole("status", { name: "Citation selection" }).textContent).toBe("2 references selected for citation");
-  await act(async () => { harness.preview.pending[0]!.complete({ text: "[@a; @b]" }); });
+  // Reopening can leave the old single-reference preview queued. Complete the
+  // request for the current selection, independently of worker arrival order.
+  const previews = harness.preview.pending.filter(({ args }) =>
+    args.items.length === 2 && args.items[0]!.id.key === "a" && args.items[1]!.id.key === "b");
+  expect(previews).toHaveLength(1);
+  await act(async () => { previews[0]!.complete({ text: "[@a; @b]" }); });
   expect(screen.getByRole("button", { name: "Remove a from the selection" })).toBeTruthy();
   expect(screen.getByRole("button", { name: "Remove b from the selection" })).toBeTruthy();
   expect(harness.delivery.calls).toHaveLength(0);
