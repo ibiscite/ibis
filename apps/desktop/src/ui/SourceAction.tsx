@@ -27,7 +27,8 @@ export type SourceActionProps = {
 
 /** Shorten in the middle so the name's start and its extension both survive. */
 export function shortenedLabel(label: string, limit = 44): string {
-  const characters = [...label];
+  // Whole graphemes: slicing code points would split emoji and combining accents.
+  const characters = [...new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(label)].map(({ segment }) => segment);
   if (characters.length <= limit) return label;
   const dot = characters.lastIndexOf(".");
   const ending = dot > 0 && characters.length - dot <= 8 ? characters.length - dot : 8;

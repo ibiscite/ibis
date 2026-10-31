@@ -17,6 +17,12 @@ test("long names shorten in the middle, keep their extension and name the whole 
   expect(action.textContent).toBe(shortenedLabel(label));
 });
 
+test("shortening never splits an emoji or a combining accent", () => {
+  const scientist = "👩‍🔬", accent = "e\u0301";
+  expect(shortenedLabel(`${"a".repeat(31)}${scientist}${"z".repeat(20)}.bib`)).toContain(scientist);
+  expect(shortenedLabel(`${"a".repeat(38)}${accent}${"z".repeat(20)}.bib`)).toContain(accent);
+});
+
 test("a short name has no tooltip, and busy replaces the icon with a spinner", () => {
   const { container } = render(<SourceAction label="Open invented.bib" icon={null} file busy open={() => {}} />);
   const action = screen.getByRole("button", { name: "Open invented.bib" });
