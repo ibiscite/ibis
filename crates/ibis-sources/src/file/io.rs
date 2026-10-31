@@ -66,10 +66,11 @@ pub(super) fn bounded<T: Send + 'static>(
 }
 
 // Keep the flag interpretation testable without a real cloud account. Windows
-// OFFLINE, RECALL_ON_OPEN and RECALL_ON_DATA_ACCESS; Darwin SF_DATALESS.
+// OFFLINE and RECALL_ON_DATA_ACCESS; Darwin SF_DATALESS. RECALL_ON_OPEN is left
+// out because its bit also means FILE_ATTRIBUTE_EA on ordinary local files.
 #[cfg(any(windows, target_os = "macos", test))]
 fn placeholder(windows_attributes: u32, darwin_flags: u32) -> bool {
-    windows_attributes & (0x1000 | 0x40000 | 0x400000) != 0 || darwin_flags & 0x40000000 != 0
+    windows_attributes & (0x1000 | 0x400000) != 0 || darwin_flags & 0x40000000 != 0
 }
 
 pub(super) fn needs_download(metadata: &std::fs::Metadata) -> bool {
@@ -96,8 +97,7 @@ pub(super) fn path_needs_download(path: &Path) -> Result<bool, SourceError> {
         use winsafe::co::FILE_ATTRIBUTE;
         let attributes = winsafe::GetFileAttributes(path.to_str().ok_or(SourceError::Unavailable)?)
             .map_err(|_| SourceError::Unavailable)?;
-        Ok(attributes
-            .has(FILE_ATTRIBUTE::OFFLINE | FILE_ATTRIBUTE::RECALL_ON_OPEN | FILE_ATTRIBUTE::RECALL_ON_DATA_ACCESS))
+        Ok(attributes.has(FILE_ATTRIBUTE::OFFLINE | FILE_ATTRIBUTE::RECALL_ON_DATA_ACCESS))
     }
     #[cfg(target_os = "macos")]
     {
@@ -204,7 +204,10 @@ mod tests {
 
     #[test]
     fn placeholders_are_deferred_before_reading_any_data() {
-        for (attributes, flags) in [(0x1000, 0), (0x40000, 0), (0x400000, 0), (0, 0x40000000)] {
+        // FILE_ATTRIBUTE_EA shares 0x40000 with RECALL_ON_OPEN, so an ordinary
+        // local file with extended attributes must stay readable.
+        assert!(!placeholder(0x40000, 0));
+        for (attributes, flags) in [(0x1000, 0), (0x400000, 0), (0, 0x40000000)] {
             let result = read_if_downloaded(placeholder(attributes, flags), || -> Result<(), SourceError> {
                 panic!("cloud data was opened before asking the person to download it")
             });

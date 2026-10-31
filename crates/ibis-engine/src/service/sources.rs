@@ -223,12 +223,13 @@ impl Engine {
             }
         };
         // Failed reads may update health while parsing/indexing. A fresh repair
-        // clears its own error, while unrelated libraries keep their latest one.
+        // clears its own error, while unrelated libraries keep their latest health.
         for (id, info) in &mut read.next.libraries {
             if *id != read.loaded.library
                 && let Some(current) = state.libraries.get(id)
             {
                 info.refresh_error = current.refresh_error;
+                info.watch_warning = current.watch_warning;
             }
         }
         *state = Arc::new(read.next);
@@ -815,13 +816,17 @@ mod tests {
         let prepared = engine.prepare_file_reload(&a, &cancel).unwrap();
         engine.shared.failed(&a_id, ErrorCode::BadInput).unwrap();
         engine.shared.file_watch_unavailable(&a_id).unwrap();
-        engine.shared.failed(&b_id, ErrorCode::SourceUnavailable).unwrap();
+        engine.shared.file_watch_unavailable(&b_id).unwrap();
         engine.accept_file_reload(prepared).unwrap();
         let info = engine.libraries().unwrap().libraries;
         assert_eq!(info.iter().find(|info| info.id == a_id).unwrap().refresh_error, None);
         assert_eq!(
             info.iter().find(|info| info.id == b_id).unwrap().refresh_error,
             Some(ErrorCode::SourceUnavailable)
+        );
+        assert_eq!(
+            info.iter().find(|info| info.id == b_id).unwrap().watch_warning,
+            Some(WatchWarning::LiveRefreshOff)
         );
         let prepared = engine.prepare_file_reload(&a, &cancel).unwrap();
         let same = ibis_sources::load_file(&a).unwrap();
