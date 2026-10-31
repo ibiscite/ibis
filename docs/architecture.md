@@ -142,6 +142,13 @@ The existing source-generation gate, shared with Zotero, refuses citation and co
 the desktop uses its existing library-loading message. Cached bytes never seed a watcher that could skip that parse.
 Attachments are not persisted. Full objects remain resident; #1251 and #1298 stay open.
 
+Fresh verification captures the previous immutable snapshot and reuses a record allocation only
+after parsing and comparing its complete canonical content, including identifiers. Tolerant
+verification keeps its warnings and work limits; explicit Reload stays strict. An unchanged
+100k cache and its verified snapshot share approximately 100k canonical payloads instead of
+retaining 200k. This targets verification peak memory; it leaves 100k full objects resident and
+does not establish the mostly-on-disk goal or the <400 MB budget.
+
 One process-lived `FileCacheSession` owns the lease. Remembered `.bib` settings keep the canonical
 path captured by preparation. The session records that identity before hydration, even when the
 file has moved or disappeared, and retains a retargeted path's old and current identities.
@@ -156,6 +163,16 @@ Only native measurement qualifies time to first search and added import/refresh 
 process runs each at 10k/100k, counterbalanced against a valid baseline, retaining every result.
 Separate cached search from verified citation readiness and rebuild startup; report process-tree
 peak memory and refresh commit delay. Existing budgets hold.
+
+For an engine-only comparison, build baseline/candidate release `file_cache` test executables
+with the same `cached_verification_measurement` test, then run
+`python3 crates/ibis-engine/tests/refresh_budget.py --cached BASELINE CANDIDATE --output target/cache-verification.json`.
+The runner seeds outside measurement, predeclares five counterbalanced fresh-process runs per
+build at 10k/100k and a baseline max/min ratio of 1.25 for each metric, and retains every result.
+It rejects unexplained baseline excursions and reports cached first-search time, verified-ready
+time, sampled process-tree peak and settled MiB separately from import/rebuild. Only native
+integrated measurement proves actual resident savings, allocator release, webview overhead and
+instant visible results; object-sharing tests and this engine runner cannot qualify those.
 
 Background work owns the captured source selection and operation generation.
 Delayed A after B or close/reopen may update neither manifest nor engine state.
