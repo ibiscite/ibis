@@ -1,11 +1,15 @@
 # Source workflows: first versions and research
 
 Planning research, 2026-10-30; not implemented or a compatibility claim. This
-refines four of the [five approved features](../ROADMAP.md#approved-source-workflows-before-10),
+refines four of the [five approved directions](../ROADMAP.md#source-workflow-priorities-for-stable),
 following #1521. The interaction contract remains in
 [design.md](design.md#source-checks-and-passage-reuse-planned); the first-version
 bounds below keep that work small. Decision memory remains deferred. No additional
 manager adapter, source write, network use or MCP permission is approved here.
+The maintainer subsequently clarified that pre-stable work must solve a clear,
+major problem, be easy to explain and fit the tool cohesively. Detailed failure
+contracts do not establish user demand or make every researched idea a release
+requirement. The judgments below apply that bar.
 
 ## Order and shared model
 
@@ -16,13 +20,16 @@ Finish the existing 0.3/source-storage work first. Project-bibliography checking
 | --- | --- | --- |
 | 1 | Find/open saved PDF highlights and comments (#1208, #54, #359) | Prove source identity, text meaning and locations |
 | 2 | Copy one quote with its reference (#1385), completing the same first slice | A search-only demo is insufficient; prove reusable output before batch export |
-| 3 | Selected-evidence Markdown brief (#1517) | Reuse the proven quote block; add selection and safe file publication, not another formatter |
-| 4 | Changed copied-key warning (#1092) | Qualify persistent source identity before UI/storage work; independent of the passage sequence |
+| 3 — validate later | Selected-evidence Markdown brief (#1517) | Recognizable workflow, but demand beyond existing exports is unproven; adds a second selection/file lifecycle |
+| 4 — validate later | Changed copied-key warning (#1092) | Real narrower pain; durable identity/history adds complexity and ordinary .bib renames are not covered |
 
-This ranking is not release chronology: #1092 remains an independent 0.4 item and
-must not wait for the 0.5 brief. Notes and other annotation kinds follow the
-first highlight/comment slice within #54, as honest search/open results. No
-approved pre-1.0 scope or release milestone is removed. Qualify #1092 identity early.
+Prioritize project-bibliography checking and the complete find/open/copy passage
+loop. Qualify their smallest useful paths; broad version/reader/annotation coverage
+must not become a hidden release obligation. Notes and other kinds follow within
+#54 as honest search/open results. The brief and remembered-key warning are
+research candidates, removed from mandatory 0.4/0.5 and pre-1.0 scope. Their
+possible contracts below are retained for evaluation, not implementation orders.
+Other release scope and quality gates remain unchanged.
 
 The shared passage block contains eligible quotation text, separately selected
 comment, bibliographic reference, citation location and labelled source links.
@@ -144,7 +151,16 @@ static text must not suggest that the document bibliography will update.
 [Zotero 9](https://www.zotero.org/blog/zotero-9/),
 [EndNote Quote & Cite](https://docs.endnote.com/docs/endnote/2025/v1/macos/en/content/09word/inserting_quotations_from_pdfs.htm).
 
-## Save selected evidence as one file
+## Later candidate: save selected evidence as one file
+
+The strongest current report shows that Zotero's existing export route was hard
+to discover, not recurring demand for an Ibis cross-paper brief. Zotero can
+already build a note from annotations across papers; Readwise exports by tag.
+The direct quote action addresses much of this pain with less state. Revisit
+only after repeated observed tasks need chosen subsets across papers and a
+prototype materially improves on those workflows without becoming an organiser.
+[Zotero's cross-paper note workflow](https://www.zotero.org/support/pdf_reader#adding_annotations_to_notes),
+[Readwise tag export](https://docs.readwise.io/reader/docs/faqs/exporting).
 
 Select passages/comments in order, optionally enter a question, inspect the whole
 preview, then save a **new .md file**. The question is literal context text, not
@@ -184,7 +200,13 @@ Markdown itself or a new import/sync promise.
 [Readwise export](https://docs.readwise.io/reader/docs/faqs/exporting),
 [Hypothesis export/import](https://web.hypothes.is/help/exporting-and-importing-annotations/).
 
-## Warn about a changed previously copied key
+## Later candidate: warn about a changed previously copied key
+
+Migration breakage is real, but these reports do not yet establish a recurring
+need for Ibis-managed history. Current BBT defaults leave populated keys alone;
+Ibis would add persistence, profile continuity and forgetting semantics while
+neither repairing documents nor covering ordinary .bib renames. Keep the research;
+revisit if recurring current-key changes in supported workflows justify that cost.
 
 Show nonblocking “Previously copied as oldKey; current key newKey” with
 **Copy change details**, Open reference and Forget remembered key. Normal citation
