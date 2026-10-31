@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { App } from "./App";
-import { backend, prepared, receipt, resetApp, result, type PreviewRequest } from "./testing/app";
+import { backend, prepared, receipt, resetApp, result, openCitationDetails, closeCitationDetails, type PreviewRequest } from "./testing/app";
 
 afterEach(resetApp);
 
@@ -12,7 +12,7 @@ test.each(["S.12", "pages of notes"])("a form edit preserves the captured page %
     interpretation: { search: "Example", locator, typed: `pp. "${value}"` } }),
     preview_file_citation: (request) => { previews.push(request); return receipt("Canonical output"); } });
   render(<App />);
-  const page = await screen.findByRole("textbox", { name: "Page" }) as HTMLInputElement;
+  const page = await openCitationDetails() as HTMLInputElement;
   expect(page.value).toBe(value);
   fireEvent.click(screen.getByRole("radio", { name: "Omit author" }));
   await waitFor(() => expect(previews.at(-1)?.items[0]).toEqual({
@@ -32,7 +32,7 @@ test.each([false, true])("a label-only Page refuses copy until corrected (previe
     copy_file_citation: (args) => { const saved = prepared(args); copied.push(saved.preview.text); return { text: saved.preview.text, warnings: [] }; },
   });
   render(<App />);
-  const page = await screen.findByRole("textbox", { name: "Page" });
+  const page = await openCitationDetails();
   await screen.findByText("Original output");
   const search = screen.getByLabelText("Search references");
   if (hidden) fireEvent.keyDown(search, { key: "i", code: "KeyI", ctrlKey: true });
@@ -70,6 +70,7 @@ test.each(["pointer", "Enter", " "])("Edit activated with %s focuses Page and ed
     expect(screen.getByRole("region", { name: `Citation details for ${title}` }).contains(page)).toBe(true);
     fireEvent.change(page, { target: { value } });
     await waitFor(() => expect(previews.at(-1)?.items.find((item) => item.id.key === key)?.page_input).toBe(value));
+    closeCitationDetails();
   }
   expect(previews.at(-1)?.items).toMatchObject([
     { id: result("a", "").id, locator: null, page_input: "16" },
@@ -86,7 +87,7 @@ test.each([true, false])("actionable refusals remain visible with the preview hi
       return receipt("Synthetic output");
     } });
   render(<App />);
-  await screen.findByRole("textbox", { name: "Page" });
+  await openCitationDetails();
   const search = screen.getByLabelText("Search references");
   const hide = () => fireEvent.keyDown(search, { key: "i", code: "KeyI", ctrlKey: true });
   if (hideBefore) hide();
@@ -111,7 +112,7 @@ test("editing the highlighted reference freezes its page and form for preview an
     copy_file_citation: (args) => { const saved = prepared(args); copies.push(saved.request); return { text: saved.preview.text, warnings: [] }; },
   });
   render(<App />);
-  const page = await screen.findByRole("textbox", { name: "Page" });
+  const page = await openCitationDetails();
   act(() => page.focus());
   fireEvent.change(page, { target: { value: "12–15" } });
   expect(document.activeElement).toBe(page);
@@ -134,12 +135,14 @@ test("each shelf reference keeps independent details and an empty Page removes o
     preview_file_citation: (request) => { previews.push(request); return receipt(`preview ${previews.length}`); } });
   render(<App />);
   fireEvent.click(await screen.findByText("First work"), { ctrlKey: true });
+  await openCitationDetails();
   fireEvent.change(screen.getByRole("textbox", { name: "Page" }), { target: { value: "iv–vi" } });
   fireEvent.click(screen.getByRole("radio", { name: "Omit author" }));
+  closeCitationDetails();
   fireEvent.click(screen.getByText("Second work"), { ctrlKey: true });
   const edit = (key: string) => within(screen.getByRole("button", { name: `Remove ${key} from the selection` }).closest("li")!)
     .getByRole("button", { name: /^Edit/ });
-  act(() => edit("b").focus());
+  fireEvent.click(edit("b"));
   expect((screen.getByRole("textbox", { name: "Page" }) as HTMLInputElement).value).toBe("");
   fireEvent.change(screen.getByRole("textbox", { name: "Page" }), { target: { value: "29" } });
   fireEvent.click(screen.getByRole("radio", { name: "Narrative" }));
@@ -148,6 +151,7 @@ test("each shelf reference keeps independent details and an empty Page removes o
     { id: result("a", "").id, locator: null, page_input: "iv–vi", form: "author-omitted" },
     { id: result("b", "").id, locator: null, form: "narrative" },
   ]));
+  closeCitationDetails();
   fireEvent.click(edit("a"));
   expect((screen.getByRole("textbox", { name: "Page" }) as HTMLInputElement).value).toBe("iv–vi");
   expect(screen.getByRole("radio", { name: "Omit author", checked: true })).toBeTruthy();
@@ -162,17 +166,19 @@ test("losses stay beside the preview and an unsupported form blocks copying unti
       return receipt("Synthetic output", null, items[0]?.form === "author-omitted" ? ["Reference 1: Omit author cannot be fully expressed in this output."] : []);
     } });
   render(<App />);
-  await screen.findByRole("textbox", { name: "Page" });
+  await openCitationDetails();
   fireEvent.click(screen.getByRole("radio", { name: "Omit author" }));
+  await within(screen.getByRole("dialog")).findByText(/Reference 1: Omit author/);
+  closeCitationDetails();
   const preview = screen.getByRole("region", { name: "Preview" });
   await within(preview).findByText("1 warning");
-  expect(within(preview).getByText(/Reference 1: Omit author/)).toBeTruthy();
+  await openCitationDetails();
   fireEvent.click(screen.getByRole("radio", { name: "Narrative" }));
   expect((await screen.findByRole("alert")).textContent).toContain("Narrative cannot be expressed");
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
   expect(calls).not.toContain("copy_file_citation");
   fireEvent.click(screen.getByRole("radio", { name: "Normal" }));
-  await waitFor(() => expect(preview.textContent).toBe("Synthetic output"));
+  await waitFor(() => expect(preview.querySelector(".preview-text")?.textContent).toBe("Synthetic output"));
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
   await waitFor(() => expect(calls).toContain("copy_file_citation"));
 });
@@ -182,7 +188,7 @@ test("a form edit cancels queued Enter and ignores the retired preview", async (
   const calls = backend({ search: () => [result("a", "Synthetic work")],
     preview_file_citation: () => new Promise((resolve) => pending.push(resolve)) });
   render(<App />);
-  await screen.findByRole("textbox", { name: "Page" });
+  await openCitationDetails();
   await waitFor(() => expect(pending).toHaveLength(1));
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
   fireEvent.click(screen.getByRole("radio", { name: "Narrative" }));
@@ -198,8 +204,9 @@ test("changing only the form does not offer to reapply an unchanged search page"
   backend({ search: () => ({ revision: "1", results: [result("a", "Synthetic work")],
     interpretation: { search: "Synthetic", locator: { label: "page", value: "12" }, language: "en-US" } }) });
   render(<App />);
-  await screen.findByRole("textbox", { name: "Page" });
+  await openCitationDetails();
   fireEvent.click(screen.getByRole("radio", { name: "Narrative" }));
+  closeCitationDetails();
   await screen.findByRole("button", { name: "Remove page 12 from a" });
   expect(screen.queryByRole("button", { name: "Apply locator to a" })).toBeNull();
 });
@@ -209,16 +216,18 @@ test("page and form survive changing output and remain editable with the paste p
   backend({ search: () => [result("a", "Synthetic work")],
     preview_file_citation: (request) => { previews.push(request); return receipt(`preview ${previews.length}`); } });
   render(<App />);
-  const page = await screen.findByRole("textbox", { name: "Page" });
+  let page = await openCitationDetails();
   fireEvent.change(page, { target: { value: "42" } });
   fireEvent.click(screen.getByRole("radio", { name: "Omit author" }));
   const search = screen.getByLabelText("Search references");
+  closeCitationDetails();
   fireEvent.click(within(search.closest("header")!).getByRole("button", { name: "Copy as Pandoc key" }));
   fireEvent.click(screen.getByRole("menuitemradio", { name: "Typst key" }));
   await waitFor(() => expect(previews.at(-1)?.format).toBe("typst"));
   expect(previews.at(-1)?.items[0]).toMatchObject({ locator: null, page_input: "42", form: "author-omitted" });
   fireEvent.keyDown(search, { key: "i", code: "KeyI", ctrlKey: true });
   expect(screen.queryByRole("region", { name: "Preview" })).toBeNull();
+  page = await openCitationDetails();
   fireEvent.change(page, { target: { value: "42–45" } });
   await waitFor(() => expect(previews.at(-1)?.items[0]?.page_input).toBe("42–45"));
   expect(previews.at(-1)?.items[0]?.form).toBe("author-omitted");

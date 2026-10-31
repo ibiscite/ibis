@@ -56,6 +56,14 @@ function mount() {
   return { onAction, toggle, trigger: screen.getByRole("button", { name: "Actions" }), search: screen.getByRole<HTMLInputElement>("textbox") };
 }
 
+test("a menu trigger keeps its name when a narrow footer folds its visible label", () => {
+  render(<Menu label="More" isOpen={false} onOpenChange={vi.fn()}
+    trigger={<><span style={{ display: "none" }}>More</span><span aria-hidden="true">⌘K</span></>}>
+    <MenuSection id="actions" label="Actions"><MenuItem id="open" label="Open" onAction={vi.fn()} /></MenuSection>
+  </Menu>);
+  expect(screen.getByRole("button", { name: "More" }).getAttribute("aria-expanded")).toBe("false");
+});
+
 test.each(["macos", "windows", "linux"])("%s: a pointer opens with nothing highlighted, a shortcut highlights the first item, axe passes", async (platform) => {
   document.documentElement.dataset.platform = platform;
   const { trigger, search } = mount();
@@ -309,12 +317,15 @@ test("an open menu bounds placement below the return field and removes the bound
   vi.spyOn(search, "getBoundingClientRect").mockReturnValue(new DOMRect(8, 8, 240, 40));
   fireEvent.click(trigger);
   await screen.findByRole("menu");
-  const boundary = document.querySelector<HTMLElement>("[data-menu-boundary]");
+  let boundary = document.querySelector<HTMLElement>("[data-menu-boundary]");
   expect(boundary?.style.position).toBe("fixed");
   expect(boundary?.style.top).toBe("48px");
   expect(boundary?.getAttribute("aria-hidden")).toBe("true");
   vi.mocked(search.getBoundingClientRect).mockReturnValue(new DOMRect(8, 8, 240, 56));
   fireEvent(window, new Event("resize"));
+  await act(async () => { await new Promise(requestAnimationFrame); });
+  expect(boundary?.isConnected).toBe(false);
+  boundary = document.querySelector<HTMLElement>("[data-menu-boundary]");
   expect(boundary?.style.top).toBe("64px");
   fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
   await waitFor(() => expect(boundary?.isConnected).toBe(false));
