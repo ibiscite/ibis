@@ -1130,7 +1130,8 @@ test.each([false, true])("axe checks picker structure (library open: %s) and det
 test("a pending library check does not offer first-run setup", async () => {
   backend({ library_status: () => new Promise(() => undefined) });
   render(<App />);
-  await screen.findByText("Checking library…");
+  await waitFor(() => expect(screen.getByRole("button", { name: "Library" }).textContent).toBe("Checking library…"));
+  expect(screen.getByRole("status", { name: "Library status" }).textContent).toBe("Checking library…");
   expect(screen.queryByRole("listbox", { name: "Where do your references live?" })).toBeNull();
 });
 
@@ -2727,7 +2728,7 @@ test("the footer names the source and count, the age only when it matters, and t
   render(<App />);
   const live = await screen.findByRole("status", { name: "Library status" });
   await waitFor(() => expect(live.textContent).toBe("Zotero · 1,204 references"));
-  const item = live.closest(".library-status")!;
+  const item = screen.getByRole("button", { name: "Library" }).querySelector(".library-status")!;
   expect(item.textContent).toBe("Zotero · 1,204 references");
   expect(item.closest(".library-status-controls")?.getAttribute("data-health")).toBe("done");
   expect(plain(item.getAttribute("title"))).toMatch(/^Zotero · 1,204 references\nMy Library, (Group 7|Lab group) · checked 3 hours ago, .+$/);

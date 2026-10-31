@@ -1,5 +1,6 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { getRoles } from "@testing-library/dom";
 import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
 import type { LibraryStatus } from "./api";
@@ -18,6 +19,36 @@ const stale = (overrides: Partial<LibraryStatus> = {}) => library({ state: "erro
 const status = () => screen.getByRole("status", { name: "Library status" });
 const footer = () => document.querySelector("footer")!;
 const openKey = () => fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "o", ctrlKey: true });
+
+test.each([
+  ["loaded", {}, "thesis.bib · 12 references"],
+  ["missing with retained references", { state: "error", stale: true, problem: "missing", error: "the library file is unavailable; keeping the last loaded references" }, "thesis.bib moved"],
+  ["empty after recovery", { references: 0 }, "thesis.bib · no references"],
+] satisfies [string, Partial<LibraryStatus>, string][])("%s: Library uniquely names a non-empty menu button like More", async (_, overrides, summary) => {
+  backend({ library_status: () => library({ zotero: false, snapshot_zotero: false, name: "thesis.bib", snapshot_name: "thesis.bib", ...overrides }),
+    reload_library: () => null });
+  render(<App />);
+  await waitFor(() => expect(status().textContent).toBe(summary));
+  const button = screen.getByRole("button", { name: "Library" });
+  const more = screen.getByRole("button", { name: "More" });
+  const named = Object.keys(getRoles(document.body)).flatMap((role) => screen.queryAllByRole(role, { name: "Library" }));
+  expect([...new Set(named)]).toEqual([button]);
+  expect(button.firstElementChild?.tagName).toBe(more.firstElementChild?.tagName);
+  expect(button.firstElementChild?.hasAttribute("aria-hidden")).toBe(false);
+  expect(button.firstElementChild?.textContent).toContain(summary);
+  for (const attribute of ["type", "aria-haspopup", "aria-expanded", "tabindex", "data-variant", "data-size", "data-react-aria-pressable"]) {
+    expect(button.getAttribute(attribute)).toBe(more.getAttribute(attribute));
+  }
+  expect(button.closest('[aria-hidden="true"], [hidden], [inert], [role="presentation"], [role="none"]')).toBeNull();
+  for (let node: HTMLElement | null = button; node; node = node.parentElement) {
+    expect(getComputedStyle(node).display).not.toBe("none");
+    expect(getComputedStyle(node).visibility).not.toBe("hidden");
+  }
+  expect(button.contains(status())).toBe(false);
+  expect(screen.getAllByRole("status", { name: "Library status" })).toHaveLength(1);
+  act(() => button.click());
+  expect(within(await screen.findByRole("menu", { name: "Library" })).getByRole("menuitem", { name: "Reload Library" })).toBeTruthy();
+});
 
 test("a fresh closed Zotero snapshot stays quiet and the footer opens its library menu", async () => {
   const calls = backend({ library_status: () => library(), reload_library: () => null });

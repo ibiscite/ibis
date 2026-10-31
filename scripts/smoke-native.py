@@ -166,6 +166,13 @@ def menu_failure_facts(native, trigger, item, stage, last_error):
     """Fresh, fixed-field facts only: no tree, names, paths or exception text."""
     facts = {"stage": stage, "snapshot_available": False,
              "invocation": last_error.facts if isinstance(last_error, NativeControlUnavailable) else None}
+    if isinstance(native, Linux):
+        # Independent of window identity: a chooser or an observation refusal
+        # must not hide which exact Library objects the provider exposed.
+        try:
+            facts["library_controls"] = native.named_control_facts("Library")
+        except Exception:
+            facts["library_controls"] = {"available": False, "complete": False, "matches": []}
     try:
         current = native.snapshot()
         if type(current) is not dict or type(current.get("nodes")) is not list:
@@ -207,7 +214,7 @@ def menu_action(native, name):
         native.click(trigger)
         stage = "item"
         wait_for(pressed, f"{name} appears in the {trigger} menu", timeout=5)
-    except AssertionError as error:
+    except (AssertionError, RuntimeError, subprocess.CalledProcessError) as error:
         print("MENU ACTION FAILURE", json.dumps(menu_failure_facts(native, trigger, name, stage, last_error or error)),
               file=sys.stderr, flush=True)
         raise
@@ -1079,6 +1086,83 @@ class Linux:
                     # with its own timeout, losing the failed branch again.
                     print("LINUX WINDOW OBSERVATION FAILURE " + error.branch, file=sys.stderr, flush=True)
                     raise
+
+    def named_control_facts(self, name):
+        """Read roles and Action metadata only; never activate or echo native text.
+
+        Role names come from the installed AT-SPI ROLE_* enum constants, not
+        an open-ended provider string or a guessed allowlist. Unknown numeric
+        roles remain identifiable by their ID. This does not change eligibility
+        for click(), which still requires a real button/menu item and Action.
+        """
+        facts = {"available": False, "complete": False, "matches": []}
+        role_names = {}
+        for key in dir(self.atspi):
+            if re.fullmatch(r"ROLE_[A-Z][A-Z0-9_]*", key, re.ASCII):
+                try:
+                    role_names[int(getattr(self.atspi, key))] = key[5:].lower().replace("_", " ")
+                except (TypeError, ValueError):
+                    pass
+        try:
+            desktop = self.atspi.Registry.getDesktop(0)
+        except Exception:
+            return facts
+        facts.update(available=True, complete=True)
+
+        def children(parent, owned=False):
+            try:
+                count = parent.childCount
+            except Exception:
+                facts["complete"] = False
+                return
+            if count > 4000:
+                facts["complete"] = False
+            for index in range(min(count, 4000)):
+                try:
+                    child = parent[index]
+                    if child and (not owned or child.get_process_id() == self.app.pid):
+                        yield child
+                except IndexError:
+                    facts["complete"] = False
+                    break
+                except Exception:
+                    facts["complete"] = False
+
+        stack = list(children(desktop, owned=True))
+        visited = 0
+        while stack:
+            if visited >= 4000:
+                facts["complete"] = False
+                break
+            visited += 1
+            item = stack.pop()
+            try:
+                matches = item.name == name
+            except Exception:
+                facts["complete"] = False
+                matches = False
+            if matches:
+                entry = {"role": "unavailable", "role_id": None, "action": "unavailable", "invokable": "unavailable"}
+                try:
+                    role_id = int(item.getRole())
+                    if 0 <= role_id <= 65535:
+                        entry.update(role=role_names.get(role_id, "unknown"), role_id=role_id)
+                except Exception:
+                    pass
+                try:
+                    action = item.queryAction()
+                    if action is None:
+                        entry.update(action="absent", invokable="no")
+                    else:
+                        entry["action"] = "available"
+                        entry["invokable"] = "yes" if action.nActions > 0 else "no"
+                except NotImplementedError:
+                    entry.update(action="absent", invokable="no")
+                except Exception:
+                    pass
+                facts["matches"].append(entry)
+            stack.extend(children(item))
+        return facts
 
     def snapshot(self):
         nodes = []
@@ -2075,10 +2159,70 @@ class ContractTests(unittest.TestCase):
                 self.assertEqual(facts["invocation"], {"named": True, "action": False, "returned_false": False, "reason": reason})
                 self.assertEqual(facts["trigger_button"], role == "push button menu")
                 target.queryAction.return_value.doAction.assert_not_called()
-                if role == "push button menu":
-                    target.queryAction.assert_called_once_with()
-                else:
-                    target.queryAction.assert_not_called()
+                # The failure probe inspects metadata even for rejected roles;
+                # only click() can invoke it, and neither case can be invoked.
+                self.assertEqual(target.queryAction.call_count, 2 if role == "push button menu" else 1)
+
+    def test_library_failure_reports_every_namesake_role_and_action_without_invoking(self):
+        native, desktop, owned, target, foreign = self.linux_click_fixture()
+        foreign.name = "Library"
+        native.atspi.ROLE_SECTION = 1
+        native.atspi.ROLE_PUSH_BUTTON = 2
+        native.atspi.ROLE_PARAGRAPH = 3
+        native.atspi.ROLE_PANEL = 4
+        nodes = [self.CensusNode(name="Library", role="section"),
+                 self.CensusNode(name="Library", role="push button"),
+                 self.CensusNode(name="Library", role="paragraph"),
+                 self.CensusNode(name="Library", role="panel"),
+                 self.CensusNode(name="Library", role="PRIVATE native payload")]
+        for node, role_id in zip(nodes, [1, 2, 3, 4, 999]):
+            node.getRole = Mock(return_value=role_id)
+            node.queryAction = Mock(return_value=Mock(nActions=1, doAction=Mock()))
+        nodes[1].queryAction.return_value.nActions = 0
+        nodes[2].queryAction.side_effect = NotImplementedError("PRIVATE native payload")
+        nodes[3].queryAction.return_value = None
+        nodes[4].queryAction.side_effect = native.accessibility_error("PRIVATE native payload")
+        owned.children, owned.childCount = nodes, len(nodes)
+        native.snapshot = Mock(side_effect=WindowObservationFailure("unexpected-managed-title"))
+        with patch("builtins.print") as output, self.assertRaises(NativeControlUnavailable):
+            menu_action(native, "Reload Library")
+        facts = json.loads(output.call_args.args[1])
+        self.assertFalse(facts["snapshot_available"])
+        self.assertTrue(facts["library_controls"]["available"])
+        self.assertTrue(facts["library_controls"]["complete"])
+        self.assertEqual(facts["library_controls"]["matches"], [
+            {"role": "unknown", "role_id": 999, "action": "unavailable", "invokable": "unavailable"},
+            {"role": "panel", "role_id": 4, "action": "absent", "invokable": "no"},
+            {"role": "paragraph", "role_id": 3, "action": "absent", "invokable": "no"},
+            {"role": "push button", "role_id": 2, "action": "available", "invokable": "no"},
+            {"role": "section", "role_id": 1, "action": "available", "invokable": "yes"},
+        ])
+        for node in nodes:
+            if node.queryAction.return_value is not None:
+                node.queryAction.return_value.doAction.assert_not_called()
+        foreign.queryAction.assert_not_called()
+        self.assertNotIn("PRIVATE", str(output.call_args))
+
+    def test_library_diagnostic_is_fresh_and_marks_a_partial_traversal(self):
+        native, desktop, owned, target, foreign = self.linux_click_fixture()
+        native.atspi.ROLE_PUSH_BUTTON = 1
+        target.name = "Library"
+        target.getRole = Mock(return_value=1)
+        owned.children = [target, target, target]
+        owned.childCount = 3
+        original = self.CensusNode.__getitem__
+        def child(node, index):
+            if node is owned and index == 1:
+                raise native.accessibility_error("PRIVATE stale child")
+            return original(node, index)
+        with patch.object(self.CensusNode, "__getitem__", child):
+            observed = native.named_control_facts("Library")
+        self.assertTrue(observed["available"])
+        self.assertFalse(observed["complete"])
+        self.assertEqual(len(observed["matches"]), 2)
+        owned.children, owned.childCount = [], 0
+        self.assertEqual(native.named_control_facts("Library"), {"available": True, "complete": True, "matches": []})
+        target.queryAction.return_value.doAction.assert_not_called()
 
     def test_linux_menu_controls_require_their_role_not_just_a_matching_name(self):
         for name, wrong_role, right_role in (("Library", "section", "push button"),

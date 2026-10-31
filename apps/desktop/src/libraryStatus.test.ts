@@ -205,6 +205,36 @@ test("native hide removes the age timer; reopen catches up without repeating the
   } finally { delete document.documentElement.dataset.pickerHidden; vi.useRealTimers(); }
 });
 
+test("the non-empty Library button keeps one separate announcement, and its age never repeats it", async () => {
+  vi.useFakeTimers({ now, toFake: ["Date", "setInterval", "clearInterval"] });
+  const menu = { label: "Library", isOpen: false, onOpenChange: vi.fn(), children: null };
+  let current = file({ state: "error", stale: true, problem: "missing", error: "The library file is unavailable", checked_at: now - 2 * 60_000 });
+  const { container, rerender, unmount } = render(createElement(LibraryStatusLine, { library: current, groupName: String, menu }));
+  const live = screen.getByRole("status", { name: "Library status" });
+  const button = screen.getByRole("button", { name: "Library" });
+  const announcements: (string | null)[] = [];
+  const names: string[] = [];
+  const spoken = new MutationObserver(() => announcements.push(live.textContent));
+  const named = new MutationObserver(() => names.push(button.getAttribute("aria-label")!));
+  spoken.observe(live, { childList: true, subtree: true, characterData: true });
+  named.observe(button, { attributes: true, attributeFilter: ["aria-label"] });
+  try {
+    expect(button.textContent).toBe("thesis.bib moved · 2 min");
+    expect(button.contains(live)).toBe(false);
+    expect(live.closest('[aria-hidden="true"]')).toBeNull();
+    await act(async () => { vi.advanceTimersByTime(30_000); });
+    expect(container.querySelector(".library-age")?.textContent).toContain("3 min");
+    expect(announcements).toEqual([]);
+    current = { ...current, state: "loaded", stale: false, error: null, problem: null, references: 13 };
+    await act(async () => { rerender(createElement(LibraryStatusLine, { library: current, groupName: String, menu })); });
+    expect(announcements).toEqual(["thesis.bib · 13 references"]);
+    expect(names).toEqual([]);
+    expect(screen.getAllByRole("status", { name: "Library status" })).toHaveLength(1);
+  } finally {
+    spoken.disconnect(); named.disconnect(); unmount(); vi.useRealTimers();
+  }
+});
+
 test("no sizing rule reaches the hidden spoken detail, so the footer never widens the page", () => {
   // `.library-bar p { width: 100% }` once matched it and beat .visually-hidden (#531).
   const styles = readFileSync(new FileURL("./styles.css", import.meta.url), "utf8")
@@ -262,7 +292,7 @@ test("the status dot sits at the footer edge, 12 px before the text and centred 
 
 test.each(["ltr", "rtl"])("the native Library trigger reserves its own hit area beside Find in a narrow %s footer", (dir) => {
   // jsdom cannot lay out pixels, but it can check the native button's layout
-  // contract: an in-flow box and a non-shrinking minimum, even with no label child.
+  // contract: an in-flow box and a non-shrinking minimum around visible content.
   const style = document.createElement("style");
   style.textContent = readFileSync(new FileURL("./ui/Button.css", import.meta.url), "utf8") +
     readFileSync(new FileURL("./ui/LibraryStatus.css", import.meta.url), "utf8");
@@ -276,6 +306,7 @@ test.each(["ltr", "rtl"])("the native Library trigger reserves its own hit area 
     menu: { label: "Library", isOpen: false, onOpenChange: open, children: null },
   })));
   const trigger = screen.getByRole("button", { name: "Library" });
+  expect(trigger.textContent).toContain("thesis.bib moved");
   expect(getComputedStyle(trigger).position).toBe("relative");
   expect(getComputedStyle(trigger.parentElement!).minWidth).toBe("var(--control-min-size)");
   fireEvent.click(trigger, { detail: 0 });

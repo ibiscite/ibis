@@ -79,14 +79,16 @@ export function LibraryStatusLine({ library, groupName, menu, action, failure }:
   // Recovery and initial opening have their own single announcement in the
   // middle area. Inline operation failures use an alert beside their action.
   const announces = !failure && !(library && !library.has_snapshot && (library.state === "error" || library.state === "loading"));
+  const words = <>
+    {source !== null && <bdi className="library-source">{source}</bdi>}
+    {separated && state && <bdi className="library-separator">{" · "}</bdi>}
+    {state && <bdi className="library-state">{state}</bdi>}
+  </>;
+  const liveProps = { role: "status", "aria-label": pickerText.libraryStatus, "aria-live": announces ? "polite" : "off", "aria-atomic": true } as const;
   const content = <>
         <span className="status-dot" data-health={health} aria-hidden="true" />
         <bdi className="library-words" dir="ltr">
-          <span className="library-name" dir="ltr" role="status" aria-label={pickerText.libraryStatus} aria-live={announces ? "polite" : "off"} aria-atomic="true">
-            {source !== null && <bdi className="library-source">{source}</bdi>}
-            {separated && state && <bdi className="library-separator">{" · "}</bdi>}
-            {state && <bdi className="library-state">{state}</bdi>}
-          </span>
+          <span className="library-name" dir="ltr" {...(!menu && liveProps)}>{words}</span>
           {age && <bdi className="library-age" dir="auto" aria-hidden="true"> · {age}</bdi>}
         </bdi>
     </>;
@@ -94,14 +96,17 @@ export function LibraryStatusLine({ library, groupName, menu, action, failure }:
     <>
       {menu ? <span className="library-status-controls" data-health={health}>
         <span className="library-status-target">
-          {/* The live text is a sibling of the button: button descendants can
-              become presentational in native accessibility trees. Its stable
-              name also avoids announcing a changing button name a second time. */}
-          <span className="library-status" data-health={health} title={detail}>{content}</span>
-          <Menu {...menu} trigger={null} triggerLabel={pickerText.libraryRegion} triggerClassName="library-status-trigger" triggerTitle={detail} />
+          {/* Like More, the shared Menu button owns its visible content. Do not
+              replace it with an empty button beneath a sibling text overlay. */}
+          <Menu {...menu} trigger={<span className="library-status" data-health={health} title={detail}>{content}</span>}
+            triggerLabel={pickerText.libraryRegion} triggerClassName="library-status-trigger" triggerTitle={detail} />
         </span>
         {action}
       </span> : <span className="library-status" data-health={health} title={detail}>{content}</span>}
+      {/* Button descendants can become presentational in native trees. Keep
+          exactly one live announcement beside it, with a stable button name
+          and no ticking age. A paragraph keeps its text in WebKitGTK. */}
+      {menu && <div className="visually-hidden library-announcement"><p className="library-name" dir="ltr" {...liveProps}>{words}</p></div>}
       {/* The visible age and the hover detail, read once by screen readers; not live.
           A <p>, like the state's <bdi>: WebKitGTK drops the text of a plain span
           that sits beside other exposed elements, so Orca would not hear it. */}
