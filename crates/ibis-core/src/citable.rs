@@ -78,49 +78,12 @@ const NAME_PARTS: [&str; 9] = [
 ];
 const DATE_PARTS: [&str; 5] = ["date-parts", "season", "circa", "literal", "raw"];
 
-/// The numeric year and optional source letters of a literal year. Calendar
-/// month/season and era names remain the source date parser's responsibility.
+/// The numeric year and optional source letters of an already literal year.
+/// Every alphabetic suffix is data here, including calendar and era names.
 pub fn literal_year(value: &str) -> Option<(i32, &str)> {
     let (year, suffix) = value.trim().split_at_checked(4)?;
     let suffix = suffix.trim();
-    if !(year.bytes().all(|byte| byte.is_ascii_digit())
-        && suffix.bytes().all(|byte| byte.is_ascii_alphabetic())
-        && !matches!(
-            suffix.to_ascii_lowercase().as_str(),
-            "ad" | "bc"
-                | "bce"
-                | "ce"
-                | "jan"
-                | "january"
-                | "feb"
-                | "february"
-                | "mar"
-                | "march"
-                | "apr"
-                | "april"
-                | "may"
-                | "jun"
-                | "june"
-                | "jul"
-                | "july"
-                | "aug"
-                | "august"
-                | "sep"
-                | "sept"
-                | "september"
-                | "oct"
-                | "october"
-                | "nov"
-                | "november"
-                | "dec"
-                | "december"
-                | "spring"
-                | "summer"
-                | "autumn"
-                | "fall"
-                | "winter"
-        ))
-    {
+    if !(year.bytes().all(|byte| byte.is_ascii_digit()) && suffix.bytes().all(|byte| byte.is_ascii_alphabetic())) {
         return None;
     }
     Some((year.parse().ok()?, suffix))
@@ -132,7 +95,46 @@ pub fn literal_year(value: &str) -> Option<(i32, &str)> {
 /// document-level disambiguation letters.
 pub fn literal_date(value: &str) -> bool {
     let text = value.trim().to_ascii_lowercase();
-    let suffix = literal_year(&text).is_some_and(|(_, suffix)| !suffix.is_empty());
+    let suffix = literal_year(&text).is_some_and(|(_, suffix)| {
+        // Unclassified source dates still leave calendar and era names to the
+        // date parser; explicitly literal dates have already made that choice.
+        !suffix.is_empty()
+            && !matches!(
+                suffix.to_ascii_lowercase().as_str(),
+                "ad" | "bc"
+                    | "bce"
+                    | "ce"
+                    | "jan"
+                    | "january"
+                    | "feb"
+                    | "february"
+                    | "mar"
+                    | "march"
+                    | "apr"
+                    | "april"
+                    | "may"
+                    | "jun"
+                    | "june"
+                    | "jul"
+                    | "july"
+                    | "aug"
+                    | "august"
+                    | "sep"
+                    | "sept"
+                    | "september"
+                    | "oct"
+                    | "october"
+                    | "nov"
+                    | "november"
+                    | "dec"
+                    | "december"
+                    | "spring"
+                    | "summer"
+                    | "autumn"
+                    | "fall"
+                    | "winter"
+            )
+    });
     let mut previous = "";
     suffix
         || text
@@ -474,6 +476,18 @@ fn truthy(value: &Value) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn literal_year_suffixes_and_source_calendar_dates_are_distinct() {
+        for suffix in ["ad", "AD", "bc", "bce", "ce", "january", "may", "spring"] {
+            let date = format!("2020{suffix}");
+            assert_eq!(literal_year(&date), Some((2020, suffix)));
+            assert!(!literal_date(&date), "{date} stays with the source date parser");
+        }
+        for date in ["2020ac", "2020ae", "2020a", "in press"] {
+            assert!(literal_date(date), "{date} stays literal");
+        }
+    }
 
     fn citable(fields: Value) -> Value {
         let Value::Object(mut fields) = fields else {

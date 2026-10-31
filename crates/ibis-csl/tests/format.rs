@@ -299,6 +299,59 @@ fn citation_never_invents_document_year_suffixes_or_keeps_cached_metadata() {
 }
 
 #[test]
+fn explicitly_literal_year_suffixes_keep_era_names_in_date_order() {
+    let _guard = FORMAT_TESTS.lock().unwrap();
+    let formatter = Formatter::new().unwrap();
+    for date_kind in ["literal", "quoted-raw", "curly-quoted-raw"] {
+        let items: Vec<_> = [
+            ("2020ae", "Invented first"),
+            ("2020ad", "Invented second"),
+            ("2020ac", "Invented third"),
+        ]
+        .into_iter()
+        .map(|(year, title)| {
+            let issued = match date_kind {
+                "literal" => json!({"literal": year}),
+                "quoted-raw" => json!({"raw": format!("\"{year}\"")}),
+                _ => json!({"raw": format!("“{year}”")}),
+            };
+            json!({"type":"article-journal","title":title,
+                "author":[{"family":"Okafor","given":"Ada"}],
+                "container-title":"Invented Journal","issued":issued})
+        })
+        .collect();
+        let snapshot = library(&items);
+        for bibliography in [false, true] {
+            let result = formatter
+                .format(&snapshot, &selection(&snapshot, "apa", bibliography))
+                .unwrap();
+            let (text, html, rtf) = if bibliography {
+                (
+                    "Okafor, A. (2020ac). Invented third. Invented Journal.\nOkafor, A. (2020ad). Invented second. Invented Journal.\nOkafor, A. (2020ae). Invented first. Invented Journal.",
+                    "<div class=\"csl-entry\">Okafor, A. (2020ac). Invented third. <i>Invented Journal</i>.</div>\n<div class=\"csl-entry\">Okafor, A. (2020ad). Invented second. <i>Invented Journal</i>.</div>\n<div class=\"csl-entry\">Okafor, A. (2020ae). Invented first. <i>Invented Journal</i>.</div>",
+                    "Okafor, A. (2020ac). Invented third. {\\i{}Invented Journal}.\\par\nOkafor, A. (2020ad). Invented second. {\\i{}Invented Journal}.\\par\nOkafor, A. (2020ae). Invented first. {\\i{}Invented Journal}.",
+                )
+            } else {
+                (
+                    "(Okafor, 2020ac, 2020ad, 2020ae)",
+                    "(Okafor, 2020ac, 2020ad, 2020ae)",
+                    "(Okafor, 2020ac, 2020ad, 2020ae)",
+                )
+            };
+            assert_eq!(result.text, text, "{date_kind}, bibliography={bibliography}");
+            assert_eq!(result.html.as_deref(), Some(html));
+            assert_eq!(
+                result.rtf,
+                Some(format!(
+                    "{{\\rtf1\\ansi\\deff0{{\\fonttbl{{\\f0 Times New Roman;}}}}\\f0\n{rtf}\n}}"
+                ))
+            );
+            assert!(result.copy_content(3).is_some());
+        }
+    }
+}
+
+#[test]
 fn formatter_measurement_gate() {
     let _guard = FORMAT_TESTS.lock().unwrap();
     use std::io::Write;
