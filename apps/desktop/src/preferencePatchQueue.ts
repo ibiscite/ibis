@@ -14,6 +14,7 @@ export type PreferenceRead = {
 type Event =
   | { type: "read"; value: PreferenceRead; pendingStyle: boolean }
   | { type: "saved"; value: PickerSave }
+  | { type: "invalidated" }
   | { type: "saving"; promise: Promise<void> }
   | { type: "error"; source: "read" | "save" };
 
@@ -164,6 +165,7 @@ export class PreferencePatchQueue {
     } else {
       this.foreignNotifications += 1;
       this.durable = null;
+      this.emit({ type: "invalidated" });
     }
     const notification = ++this.notifications;
     this.reads += 1;

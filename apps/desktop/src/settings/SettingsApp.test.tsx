@@ -1045,7 +1045,39 @@ test("a self-notification before reply preserves the saved row choice when the n
   expect(state.preferences).toMatchObject({ density: "spacious", larger_text: false });
 });
 
-test("a picker notification makes a failed queued save uncertain until the saved settings can be read", async () => {
+test("a picker notification after a recovered refusal retires the saved-value claim until a real read succeeds", async () => {
+  const { api, state, commit } = fakeApi({ granted: true });
+  vi.spyOn(api, "setPickerPreferences").mockRejectedValueOnce("settings-read-only");
+  render(<SettingsApp api={api} initialPage="look" />);
+  await screen.findByRole("radio", { name: "Spacious" });
+  const read = vi.spyOn(api, "pickerPreferences");
+  fireEvent.click(screen.getByRole("radio", { name: "Spacious" }));
+  await act(async () => state.closes[0]!());
+  expect(read).toHaveBeenCalledOnce();
+  expect(screen.getByRole("radio", { name: "Comfortable" })).toHaveProperty("checked", true);
+  expect(screen.getByRole("alert")).toHaveProperty("textContent", "The settings file is read-only; the saved value is shown.");
+
+  const refreshing = deferred<PickerPreferences>();
+  read.mockRejectedValue(new Error("synthetic failed read")).mockReturnValueOnce(refreshing.promise);
+  await act(async () => {
+    await commit({ density: "spacious" });
+    for (const changed of state.preferenceEvents) changed(++state.revision);
+  });
+  expect(screen.queryByText(/the saved value is shown/)).toBeNull();
+  await act(async () => refreshing.reject());
+  const uncertainty = "Ibis could not read your settings; reopen Settings to try again.";
+  expect(screen.getByRole("alert")).toHaveProperty("textContent", uncertainty);
+  expect(state.preferences.density).toBe("spacious");
+  await act(async () => { fireEvent.focus(window); });
+  expect(screen.getByRole("alert")).toHaveProperty("textContent", uncertainty);
+
+  read.mockImplementation(async () => state.preferences);
+  await act(async () => { fireEvent.focus(window); });
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(screen.getByRole("radio", { name: "Spacious" })).toHaveProperty("checked", true);
+});
+
+test("a picker notification before a queued save fails stays uncertain until the saved settings can be read", async () => {
   const { api, state, commit } = fakeApi({ granted: true }, { accent: "system" });
   const reply = deferred<void>();
   const write = vi.spyOn(api, "setPickerPreferences")

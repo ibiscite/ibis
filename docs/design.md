@@ -1266,9 +1266,12 @@ block nothing and unissued tickets are rejected.
 Notifications carry the publishing write's ticket. A self-notification keeps
 that write's successful acknowledgement available for rollback, including
 when the next save and recovery reads fail; other writes still retire stale replies.
-Other windows' notifications invalidate rollback certainty. If saving and
-recovery reads fail, Settings explains that it could not read the saved values;
-that error stays until a successful read, without claiming a saved value is shown.
+One preference state owns the shown values and explanation: known saved value,
+save refused, or saved value unknown. Any other window's notification moves it
+to unknown until a real read succeeds, retiring an earlier refusal's saved-value
+claim immediately. A failed read while unknown shows the read-uncertainty error;
+edits and save acknowledgements cannot clear it. A refusal says the saved value
+is shown only while that value is known.
 
 **One Settings design** (maintainer, 2026-10-30). There is one Settings
 window; every drawing and board uses it, and it is kept in step with the app as

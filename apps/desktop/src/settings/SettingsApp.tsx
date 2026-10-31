@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import type { KeyFormat, LoginItem, LoginItemProblem, PickerPreferences, ShortcutStatus } from "../bindings";
 import { DEFAULT_PICKER_SHORTCUT, KEY_TABLE, keyLabel, shortcutLabel } from "../keys";
 import { type MessageId, useInterfaceMessages } from "../i18n";
@@ -19,6 +19,7 @@ import "./Settings.css";
 
 import { PAGES, ROWS, rowDetails, type Page } from "./rows";
 import { LookPage } from "./LookPage";
+import { initialPreferences, preferenceState } from "./preferenceState";
 const LOGIN_PROBLEMS = {
   unsupported: "general-login-unsupported", needs_approval: "general-login-needs-approval",
   refused: "general-login-refused", unreadable: "general-login-unreadable",
@@ -44,12 +45,11 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   const [page, setPage] = useState<Page>(start.page);
   const [focus, setFocus] = useState<"top" | "paste" | null>(start.focus ?? "top");
   const pageRef = useRef<HTMLElement>(null);
-  const [preferences, setPreferences] = useState<PickerPreferences | null>(null);
+  const [preference, dispatchPreference] = useReducer(preferenceState, initialPreferences);
+  const preferences = preference.value;
   const [login, setLogin] = useState<LoginItem | null>(null);
   const [updates, setUpdates] = useState<boolean | null>(null);
   const [version, setVersion] = useState("");
-  const [failed, setFailed] = useState(false);
-  const preferenceProblem = useRef(false);
   const [readProblems, setReadProblems] = useState<ReadonlySet<string>>(() => new Set());
   const readProblem = useCallback((id: string, failed: boolean) => setReadProblems((current) => {
     const next = new Set(current);
@@ -90,20 +90,19 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   useEffect(() => queue.subscribe((event) => {
     if (!live.current) return;
     if (event.type === "error") {
-      if (event.source === "read" && !preferenceProblem.current) setFailed(true);
+      if (event.source === "read") dispatchPreference({ type: "read-failed" });
+    } else if (event.type === "invalidated") {
+      dispatchPreference(event);
     } else if (event.type === "read" || event.type === "saved") {
-      setPreferences(event.value.preferences);
-      if (event.type === "read") setFailed(false);
+      if (event.type === "read") dispatchPreference({ type: "read", value: event.value.preferences });
+      else dispatchPreference({ type: "saved", value: event.value.preferences });
     } else if (event.type === "saving") {
       const operation = edits.current;
       const row = cause.current;
       void event.promise.catch((reason: unknown) => {
         if (live.current && operation === edits.current) {
-          const saved = queue.savedPreferences;
-          preferenceProblem.current = saved !== null;
-          setFailed((failed) => failed || !saved);
-          setProblemRow(saved && row ? { id: row, message: reason === "settings-read-only" ? "settings-read-only" : "settings-choice-failed" } : null);
-          if (saved) setPreferences(saved);
+          dispatchPreference({ type: "refused", saved: queue.savedPreferences,
+            problem: { row, message: reason === "settings-read-only" ? "settings-read-only" : "settings-choice-failed" } });
         }
       });
     }
@@ -167,7 +166,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
       void queue.refresh(revision, () => active);
     });
     readAll(false);
-    void preferenceEvents.then(() => { if (active) void queue.load(() => active); }).catch(() => { if (active) setFailed(true); });
+    void preferenceEvents.then(() => { if (active) void queue.load(() => active); }).catch(() => { if (active) dispatchPreference({ type: "read-failed" }); });
     api.version().then((next) => { if (active) setVersion(next); }).catch(() => undefined);
     // Changes made in the picker or the menu bar while Settings was open.
     window.addEventListener("focus", readAll);
@@ -220,8 +219,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
       : next.density !== undefined ? "rows" : next.larger_text !== undefined ? "text-size"
       : next.search_mark !== undefined ? "search-icon" : next.paste !== undefined ? "paste-label" : "preview";
     setProblemRow(null);
-    preferenceProblem.current = false;
-    setPreferences({ ...preferences, ...next, ...(key ? { copy_format: key } : {}) });
+    dispatchPreference({ type: "change", value: { ...preferences, ...next, ...(key ? { copy_format: key } : {}) } });
     queue.change(next, key);
   };
   const changeShortcut = (next: string | null) => {
@@ -256,7 +254,9 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     void api.configureShortcuts().catch(() => setShortcutProblem({ id: "shortcuts-configure-failed" }))
       .finally(() => { shortcutBusy.current = false; setShortcutSaving(false); });
   };
-  const feedback = (id: string) => ({ highlighted: highlighted === id, problem: readProblems.has(id) ? text("settings-read-failed") : problemRow?.id === id ? text(problemRow.message) : undefined });
+  const feedback = (id: string) => ({ highlighted: highlighted === id, problem: readProblems.has(id) ? text("settings-read-failed")
+    : preference.status === "refused" && preference.problem.row === id ? text(preference.problem.message)
+    : problemRow?.id === id ? text(problemRow.message) : undefined });
   const selectPage = (next: Page) => { highlightOperation.current += 1; setHighlighted(null); setDetour(false); setPage(next); setFocus("top"); };
   const reveal = (row: typeof ROWS[number]) => {
     selectPage(row.page); setQuery(""); setHighlighted(row.id);
@@ -294,7 +294,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
       </nav>
       <main ref={pageRef} className="settings-page" aria-labelledby="settings-page-title">
         <h1 id="settings-page-title" className="settings-page-title">{text(`settings-${page}`)}</h1>
-        {failed && <p className="settings-problem" role="alert">{text("settings-read-failed")}</p>}
+        {preference.status === "unknown" && preference.message && <p className="settings-problem" role="alert">{text(preference.message)}</p>}
         {detour && returnFailed && <p className="settings-problem" role="alert">{text("general-paste-return-failed")}</p>}
         {page === "general" && (
           <>
