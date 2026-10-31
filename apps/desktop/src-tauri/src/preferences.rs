@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex};
 use ibis_core::cite::KeyFormat;
 use ibis_core::settings::{self, CitationStyle, Density};
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::library::Library;
 
@@ -96,11 +96,26 @@ impl SettingsFile {
     }
 
     pub(crate) fn update(&self, change: impl FnOnce(&mut settings::Settings)) -> Result<settings::Settings, String> {
+        self.update_when(|| true, change)?
+            .ok_or_else(|| "settings are unavailable".to_string())
+    }
+
+    /// Conditional writes test their immutable owner after acquiring the writer.
+    pub(crate) fn update_when(
+        &self,
+        current: impl FnOnce() -> bool,
+        change: impl FnOnce(&mut settings::Settings),
+    ) -> Result<Option<settings::Settings>, String> {
         let _writing = self
             .writing
             .lock()
             .map_err(|_| "settings are unavailable".to_string())?;
-        settings::update(&self.path, change).map_err(|error| settings_message(&error))
+        if !current() {
+            return Ok(None);
+        }
+        settings::update(&self.path, change)
+            .map(Some)
+            .map_err(|error| settings_message(&error))
     }
 
     /// Refresh under the library lock so a reload cannot carry forward a stale
@@ -338,6 +353,24 @@ pub(crate) async fn set_picker_preferences<R: tauri::Runtime>(
         preferences,
         copy_format,
     };
+    {
+        let mut current = settings_file
+            .preference_intents
+            .lock()
+            .map_err(|_| "settings are unavailable".to_string())?;
+        if revision == 0 || revision > current.revision {
+            return Err("preference revision was not issued".into());
+        }
+        // Geometry accepts text size before I/O, even if the flush fails.
+        // Use the dispatch ticket so a command first polled late stays stale.
+        if let Some(larger) = intent.preferences.larger_text
+            && revision > current.accepted_larger_text
+            && let Some(sizing) = app.try_state::<crate::sizing::Sizing>()
+        {
+            sizing.set_larger_text(larger);
+            current.accepted_larger_text = revision;
+        }
+    }
     let settings_file = settings_file.inner().clone();
     // A change made in Settings reaches the picker; the picker's own are already shown.
     let from_elsewhere = window.label() != "main";
@@ -372,6 +405,9 @@ struct PreferenceIntents {
     revision: u64,
     /// Last successfully flushed ticket for each field.
     fields: BTreeMap<&'static str, u64>,
+    /// Geometry keeps accepted text size until quit, including failed flushes.
+    /// This must not advance the durable field's successfully flushed ticket.
+    accepted_larger_text: u64,
 }
 
 struct PreferenceIntent {
@@ -420,6 +456,7 @@ impl SettingsFile {
     }
 
     fn save_reserved_preferences(&self, mut intent: PreferenceIntent) -> Result<settings::Settings, String> {
+        // The same writer owns geometry, library, shortcut and preference saves.
         let _writing = self
             .writing
             .lock()
@@ -775,6 +812,55 @@ mod tests {
     }
 
     #[test]
+    fn every_preference_orders_its_own_writes_without_dropping_other_fields() {
+        for (field, value) in [
+            ("appearance", serde_json::json!("light")),
+            ("accent", serde_json::json!("blue")),
+            ("citation_style", serde_json::Value::Null),
+            ("density", serde_json::json!("spacious")),
+            ("larger_text", serde_json::json!(false)),
+            ("show_paste_preview", serde_json::json!(true)),
+            ("search_mark", serde_json::json!(true)),
+            ("paste", serde_json::json!(true)),
+            ("copy_format", serde_json::json!("cite")),
+        ] {
+            let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+            let file = SettingsFile::new(directory.path().join("settings.json"));
+            let mut expected = serde_json::json!({
+                "appearance": "dark", "accent": "purple", "citation_style": "apa",
+                "density": "compact", "larger_text": true, "show_paste_preview": false,
+                "search_mark": false, "paste": false,
+            });
+            let older = file
+                .reserve_preferences(
+                    serde_json::from_value(expected.clone()).unwrap_or_else(|e| panic!("{e}")),
+                    Some(KeyFormat::Typst),
+                )
+                .unwrap_or_else(|e| panic!("{e}"));
+            let mut patch = serde_json::json!({});
+            if field != "copy_format" {
+                patch[field] = value.clone();
+            }
+            let newer = file
+                .reserve_preferences(
+                    serde_json::from_value(patch).unwrap_or_else(|e| panic!("{e}")),
+                    (field == "copy_format").then_some(KeyFormat::Cite),
+                )
+                .unwrap_or_else(|e| panic!("{e}"));
+            file.save_reserved_preferences(newer).unwrap_or_else(|e| panic!("{e}"));
+            file.save_reserved_preferences(older).unwrap_or_else(|e| panic!("{e}"));
+            expected["copy_format"] = serde_json::json!("typst");
+            expected[field] = value;
+            assert_eq!(
+                serde_json::to_value(read_preferences(&file.path).unwrap_or_else(|e| panic!("{e}")))
+                    .unwrap_or_else(|e| panic!("{e}")),
+                expected,
+                "{field} must keep B while every other field from A survives restart"
+            );
+        }
+    }
+
+    #[test]
     fn look_choices_reload_independently_and_defaults_stay_unwritten() {
         let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
         let path = directory.path().join("settings.json");
@@ -979,6 +1065,9 @@ mod tests {
         let current = serde_json::json!({
             "schema_version": 2, "copy_format": "cite", "citation_style": "apa",
             "library": { "bibtex": "refs.bib" }, "shortcut": "Alt+Space", "update_checks": false,
+            "picker_windows": { "display-a": {
+                "width": 840, "height": 600, "custom_size": true, "x": 40, "y": 60
+            } },
             "future_choice": { "kept": [true, null, "参考"] },
         });
         let edited = std::fs::write(&path, current.to_string());
@@ -1009,7 +1098,13 @@ mod tests {
         assert_eq!(loaded.settings.copy_format, Some(KeyFormat::Typst));
         let saved: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(&path).unwrap_or_default()).unwrap_or_else(|e| panic!("{e}"));
-        for field in ["library", "shortcut", "update_checks", "future_choice"] {
+        for field in [
+            "library",
+            "shortcut",
+            "update_checks",
+            "picker_windows",
+            "future_choice",
+        ] {
             assert_eq!(saved[field], current[field], "queued save keeps the current {field}");
         }
     }

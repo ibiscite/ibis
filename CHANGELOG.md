@@ -1,5 +1,63 @@
 # Changelog
 
+## [0.2.2](https://github.com/ibiscite/ibis/compare/v0.2.1...v0.2.2) (2026-10-31)
+
+
+### Features
+
+* **cli:** add doctor, shell completions and an fzf recipe ([#1513](https://github.com/ibiscite/ibis/issues/1513)) ([36c316e](https://github.com/ibiscite/ibis/commit/36c316e44ec087e7899e8db79ff47c152edbf932))
+* **desktop:** make menus, sheets and wrapped text readable ([#1508](https://github.com/ibiscite/ibis/issues/1508)) ([67cb0b8](https://github.com/ibiscite/ibis/commit/67cb0b883d2958b99fee213e123bf2b005bd76ad))
+* **desktop:** tell people how to paste after a plain copy ([#1491](https://github.com/ibiscite/ibis/issues/1491)) ([873d433](https://github.com/ibiscite/ibis/commit/873d4331e3f7005db0bfadf408402a2b8dcb73a2))
+* **desktop:** welcome people with the mark and centred screens ([#1509](https://github.com/ibiscite/ibis/issues/1509)) ([86a9c47](https://github.com/ibiscite/ibis/commit/86a9c476967d0b872db3c583dcbb44073e075c8f))
+* provide private storage directory leases ([#1477](https://github.com/ibiscite/ibis/issues/1477)) ([dd4e73b](https://github.com/ibiscite/ibis/commit/dd4e73b647125c4537935839efe5e4400c347be5))
+* reopen verified .bib generations on launch ([#1498](https://github.com/ibiscite/ibis/issues/1498)) ([81dcfb9](https://github.com/ibiscite/ibis/commit/81dcfb99c3314126c349e8c9919fe4bba5f1d3cf))
+* save immutable source generations ([#1471](https://github.com/ibiscite/ibis/issues/1471)) ([7a8be42](https://github.com/ibiscite/ibis/commit/7a8be4229c71f5066927d85beb0e17752da1c861))
+* **website:** share one invented example and a privacy line ([#1479](https://github.com/ibiscite/ibis/issues/1479)) ([bd11b9c](https://github.com/ibiscite/ibis/commit/bd11b9c64af52749dd0d7af3b8a97b841eee1233))
+* **website:** show the current picker design from app tokens ([#1497](https://github.com/ibiscite/ibis/issues/1497)) ([90b5ac9](https://github.com/ibiscite/ibis/commit/90b5ac98a0666b34607cc440a1d5064c0fd76283))
+
+
+### Bug Fixes
+
+* **ci:** repair scheduled qualification setup ([#1474](https://github.com/ibiscite/ibis/issues/1474)) ([0f7abc5](https://github.com/ibiscite/ibis/commit/0f7abc593525eb529418a2c5ab931c26c45909b6))
+* **desktop:** announce row view changes ([#1426](https://github.com/ibiscite/ibis/issues/1426)) ([0386712](https://github.com/ibiscite/ibis/commit/0386712ac7100369eb4da200d09baee9e4693ba4))
+* **desktop:** keep control focus within its pane ([#1441](https://github.com/ibiscite/ibis/issues/1441)) ([b7026d3](https://github.com/ibiscite/ibis/commit/b7026d37bfaf51eb78ce687db205eddd3f763ef6))
+* **desktop:** keep picker controls and menus readable ([#1431](https://github.com/ibiscite/ibis/issues/1431)) ([8749833](https://github.com/ibiscite/ibis/commit/8749833942ea4f0487a8f0c7149887ae1dda7c26))
+* fit picker content without clipping ([#1470](https://github.com/ibiscite/ibis/issues/1470)) ([e75a559](https://github.com/ibiscite/ibis/commit/e75a559c2449338791239295dd87f9b31821e0ab))
+* keep BibTeX and Zotero citations faithful to their source ([#1522](https://github.com/ibiscite/ibis/issues/1522)) ([8c0c81a](https://github.com/ibiscite/ibis/commit/8c0c81a50a16c62c65a90c72b391e84fa0676ff1))
+* **release:** ship 0.2 packages before reporting scale timings ([#1467](https://github.com/ibiscite/ibis/issues/1467)) ([6fd9b82](https://github.com/ibiscite/ibis/commit/6fd9b824337fdff679756d6a461c2a4c63ba7c7e)), closes [#1466](https://github.com/ibiscite/ibis/issues/1466)
+* **updater:** follow native owners through update qualification ([#1493](https://github.com/ibiscite/ibis/issues/1493)) ([cfb2024](https://github.com/ibiscite/ibis/commit/cfb2024dc5d5afe0d465bbe2ee7ff96603b8ade4))
+* **updater:** qualify updates with the triggering harness ([#1481](https://github.com/ibiscite/ibis/issues/1481)) ([b8c2f71](https://github.com/ibiscite/ibis/commit/b8c2f7161761de23b2b6f94d24ff27fa97b08506))
+* **updater:** reopen the owned picker before installed update checks ([#1469](https://github.com/ibiscite/ibis/issues/1469)) ([f8ad357](https://github.com/ibiscite/ibis/commit/f8ad35725b3821e154cb4d05e245feb0d6d30ee0))
+* **updater:** retry transient qualification observations ([#1501](https://github.com/ibiscite/ibis/issues/1501)) ([e02d609](https://github.com/ibiscite/ibis/commit/e02d60924f24121b47980e7f8993a8bfa046fd74))
+* **updater:** show Windows offers and qualify native sheets ([#1504](https://github.com/ibiscite/ibis/issues/1504)) ([b21fb3b](https://github.com/ibiscite/ibis/commit/b21fb3bf4f035adf60a2be1ffbe6f0f059b3768d))
+* **updater:** verify native installed-update readiness ([#1476](https://github.com/ibiscite/ibis/issues/1476)) ([cf15f0a](https://github.com/ibiscite/ibis/commit/cf15f0ad430b0630ca2fc7e4e98b61ea50287caf))
+* **website:** follow design review at narrow widths and in RTL ([#1502](https://github.com/ibiscite/ibis/issues/1502)) ([f0baf39](https://github.com/ibiscite/ibis/commit/f0baf39f69ff404322042a887182c5e6eeba9389))
+* **website:** match key caps to the visitor's system ([#1505](https://github.com/ibiscite/ibis/issues/1505)) ([fb10ce9](https://github.com/ibiscite/ibis/commit/fb10ce9cd0ee2efb7e202b4c5c26178f923fbd2d))
+* **website:** restore the public picker demo ([#1437](https://github.com/ibiscite/ibis/issues/1437)) ([2a3b49f](https://github.com/ibiscite/ibis/commit/2a3b49f1078b5c7bfacad7ee2dbd0700ded72ab5))
+* **website:** show plain citations and confirm each copy once ([#1511](https://github.com/ibiscite/ibis/issues/1511)) ([6c20758](https://github.com/ibiscite/ibis/commit/6c2075856b41f41fae6a941168c56f1e176e4bbf))
+
+
+### Performance
+
+* avoid copying unchanged BibTeX fields ([#1430](https://github.com/ibiscite/ibis/issues/1430)) ([d8fbb0e](https://github.com/ibiscite/ibis/commit/d8fbb0e448a0afcdbfc6ffd3c81e6d53bff578df))
+* borrow raw BibTeX literal contents ([#1465](https://github.com/ibiscite/ibis/issues/1465)) ([3699ee2](https://github.com/ibiscite/ibis/commit/3699ee23c7bc01a620b09bf34287fceadf7b666f))
+* reuse unchanged records while verifying a reopened library ([#1515](https://github.com/ibiscite/ibis/issues/1515)) ([3aa8427](https://github.com/ibiscite/ibis/commit/3aa8427c458ca59500391a46721d861a6693b1c9))
+
+
+### Documentation
+
+* clarify source workflows and stable priorities ([#1524](https://github.com/ibiscite/ibis/issues/1524)) ([99deba1](https://github.com/ibiscite/ibis/commit/99deba1eee3522817191a16b9bf4a6b3051d3c60)), closes [#1523](https://github.com/ibiscite/ibis/issues/1523)
+* **design:** accent picker, welcome grid, source button and More ([#1499](https://github.com/ibiscite/ibis/issues/1499)) ([a87cad3](https://github.com/ibiscite/ibis/commit/a87cad37e56a0881da625e3fb5411aac1e9f8f85))
+* **design:** make the repository the design source of truth ([#1464](https://github.com/ibiscite/ibis/issues/1464)) ([8bf2c21](https://github.com/ibiscite/ibis/commit/8bf2c21e2af223c1fc50b43ac433ec8b279a9c49))
+* **design:** steady picker, one-line shelf, and simpler Settings ([#1485](https://github.com/ibiscite/ibis/issues/1485)) ([9ee6498](https://github.com/ibiscite/ibis/commit/9ee64985aa47fcaf3a4b5c205bfa0f9fe662ded6))
+* keep Overleaf downloads inside Overleaf's terms ([#1510](https://github.com/ibiscite/ibis/issues/1510)) ([77d93d6](https://github.com/ibiscite/ibis/commit/77d93d67bd468f427a31ebb572f1b4fb262950ab))
+* plan Overleaf-only bibliographies for 0.4 ([#1507](https://github.com/ibiscite/ibis/issues/1507)) ([c6b9a87](https://github.com/ibiscite/ibis/commit/c6b9a8776c236d795f79f6741677cb011d1aac69))
+* plan RIS files and LibreOffice live citations for 0.4 ([#1514](https://github.com/ibiscite/ibis/issues/1514)) ([947feb7](https://github.com/ibiscite/ibis/commit/947feb7bf0f50b6d2ad40fad4b6567bcb2646e28))
+* record engineering check lessons ([#1451](https://github.com/ibiscite/ibis/issues/1451)) ([65e876a](https://github.com/ibiscite/ibis/commit/65e876a0ae403ab9699c436629d43adb220524b6))
+* record the approved source workflows ([#1521](https://github.com/ibiscite/ibis/issues/1521)) ([2ccdbcf](https://github.com/ibiscite/ibis/commit/2ccdbcf05944921a261662865623c47ccaedfe12)), closes [#1516](https://github.com/ibiscite/ibis/issues/1516)
+* state what parity really covers ([#1528](https://github.com/ibiscite/ibis/issues/1528)) ([383d8fb](https://github.com/ibiscite/ibis/commit/383d8fb7f45a0c8a9db0734bc19e5911f4d4840f))
+* tighten RIS, ODF Scan and unknown-app wording in the roadmap ([#1518](https://github.com/ibiscite/ibis/issues/1518)) ([87cf58e](https://github.com/ibiscite/ibis/commit/87cf58ee3e1073c901ba84a6f65a5277f9990901))
+
 ## [0.2.1](https://github.com/ibiscite/ibis/compare/v0.2.0...v0.2.1) (2026-10-29)
 
 

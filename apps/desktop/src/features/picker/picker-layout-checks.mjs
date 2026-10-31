@@ -2,7 +2,23 @@
 export const noticeText = {
   startup: "Synthetic startup settings notice.",
   failedSearch: "Ibis could not search your library. Use Reload, then try again.",
+  formatting: "The invented reference needs a page or another citation form. ".repeat(20).trim(),
+  entryWarning: "The invented page is not included in this reference entry.",
 };
+
+// A closed React Aria menu stays mounted during its exit animation. Await
+// removal before another overlay or picker action can take keyboard input.
+export async function dismissMenu(menu, keyTarget = menu) {
+  await keyTarget.press("Escape");
+  await menu.waitFor({ state: "detached" });
+}
+
+export function shelfControl(page, name) {
+  // Folding retains hidden chip controls. An open menu also marks its visible
+  // background aria-hidden, so distinguish rendered controls from both states.
+  return page.getByRole("button", { name, exact: true, includeHidden: true })
+    .and(page.locator("main > .shelf button:visible"));
+}
 
 // Keep this function self-contained: Playwright serializes it into the page.
 export function isWholeNotice(text) {
@@ -10,6 +26,31 @@ export function isWholeNotice(text) {
   if (!node) return false;
   const rect = node.getBoundingClientRect(), port = node.closest(".picker-content").getBoundingClientRect();
   return rect.height > 0 && rect.top >= port.top - 1 && rect.bottom <= port.bottom + 1;
+}
+
+export function isWholeShelf() {
+  const shelf = document.querySelector("main > .shelf");
+  if (!shelf) return document.querySelector("main .shelf") === null;
+  const rect = shelf.getBoundingClientRect();
+  const header = document.querySelector(".search-bar").getBoundingClientRect();
+  const footer = document.querySelector("footer").getBoundingClientRect();
+  return rect.height > 0 && rect.top >= header.bottom - 1 && rect.bottom <= footer.top + 1 &&
+    rect.left >= 0 && rect.right <= innerWidth + 1 && footer.bottom <= innerHeight + 1 &&
+    getComputedStyle(shelf).flexShrink === "0" && !/auto|scroll/.test(getComputedStyle(shelf).overflowY);
+}
+
+// A centred panel can fit the viewport and still fail the segment-menu rule.
+// Check the actual anchor gap and the same corner token as the shared menu.
+export function isAnchoredDetails(anchor) {
+  const menus = document.querySelectorAll(".details-menu");
+  if (menus.length !== 1) return false;
+  const menu = menus[0], rect = menu.getBoundingClientRect(), style = getComputedStyle(menu);
+  const gap = menu.dataset.placement === "top" ? anchor.top - rect.bottom
+    : menu.dataset.placement === "bottom" ? rect.top - anchor.bottom : NaN;
+  const radius = style.getPropertyValue("--menu-radius").trim();
+  return rect.width > 0 && rect.height > 0 && rect.left >= 7 && rect.top >= 7 && rect.right <= innerWidth - 7 && rect.bottom <= innerHeight - 7 &&
+    Math.abs(gap - 6) <= 2 && Math.min(rect.right, anchor.right) > Math.max(rect.left, anchor.left) &&
+    radius !== "" && radius === style.getPropertyValue("--r-menu").trim();
 }
 
 // Only fixed keys and numeric geometry may cross out of the page on failure.
@@ -26,6 +67,7 @@ export function layoutGeometry() {
     middle: box(document.querySelector(".picker-content")), results: box(document.querySelector(".results-area")),
     active: box(document.querySelector('[role="option"][aria-selected="true"]')),
     shelf: box(document.querySelector(".shelf")), footer: box(document.querySelector("footer")),
+    menu: box(document.querySelector(".details-menu")), menuScroll: box(document.querySelector(".details-menu-scroll")),
     notices: [...document.querySelectorAll(".notices")].map(box),
     alerts: [...document.querySelectorAll('.notices [role="alert"]')].map(box),
     chips: [...document.querySelectorAll(".shelf-chips > .chip")].map(box),

@@ -7,6 +7,7 @@
 //! that add fields within one format do not erase each other's (ADR 0022).
 //! Other format versions are refused, without migration (ADR 0016).
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -117,6 +118,19 @@ pub enum Density {
     Spacious,
 }
 
+/// Picker content size and position relative to a display's work area, in
+/// logical pixels. Display changes clamp these values before presentation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PickerWindow {
+    pub width: u32,
+    pub height: u32,
+    /// Moving the header remembers a place without turning the default size
+    /// into a custom size. Only an edge drag sets this flag.
+    pub custom_size: bool,
+    pub x: i32,
+    pub y: i32,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
@@ -143,6 +157,9 @@ pub struct Settings {
     /// Larger text in the picker. `None` means the normal size.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub larger_text: Option<bool>,
+    /// Frames explicitly dragged by the person, indexed by display.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub picker_windows: BTreeMap<String, PickerWindow>,
     /// Whether to show the citation output. `None` means shown (ADR 0020).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub show_paste_preview: Option<bool>,
@@ -170,6 +187,7 @@ impl Default for Settings {
             citation_style: None,
             density: None,
             larger_text: None,
+            picker_windows: BTreeMap::new(),
             show_paste_preview: None,
             search_mark: None,
             paste: None,

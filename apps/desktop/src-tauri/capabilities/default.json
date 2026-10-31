@@ -34,7 +34,6 @@
     "allow-set-login-item",
     "allow-hide-picker",
     "allow-set-pinned",
-    "allow-fit-picker",
     "allow-quit",
     "allow-shortcut-status",
     "allow-show-copied-notice",
@@ -45,6 +44,9 @@
     "allow-check-for-updates",
     "allow-update-available",
     "allow-update-picker-activity",
-    "allow-open-settings"
+    "allow-open-settings",
+    "allow-read-window-position-undo",
+    "allow-undo-window-position",
+    "allow-dismiss-window-position-undo"
   ]
 }

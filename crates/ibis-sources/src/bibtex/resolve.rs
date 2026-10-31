@@ -91,18 +91,20 @@ pub(crate) const BACKSLASH: char = '\u{E003}';
 /// Marks a placeholder character that occurred in the source itself, so real
 /// text using these private-use characters is never altered.
 pub(crate) const ESCAPE: char = '\u{E002}';
+/// Shield verbatim dashes from biblatex 0.12's unconditional typography pass.
+pub(crate) const HYPHEN: char = '\u{E004}';
 
 /// Encode escaped braces and escape placeholder characters already present.
 /// Decoded by `convert::clean`.
 fn encode_literals(text: &str) -> Cow<'_, str> {
-    if !text.contains(['\\', LEFT_BRACE, RIGHT_BRACE, BACKSLASH, ESCAPE]) {
+    if !text.contains(['\\', LEFT_BRACE, RIGHT_BRACE, BACKSLASH, ESCAPE, HYPHEN]) {
         return Cow::Borrowed(text);
     }
     let mut out = String::with_capacity(text.len());
     let mut chars = text.chars().peekable();
     while let Some(c) = chars.next() {
         match c {
-            LEFT_BRACE | RIGHT_BRACE | BACKSLASH | ESCAPE => {
+            LEFT_BRACE | RIGHT_BRACE | BACKSLASH | ESCAPE | HYPHEN => {
                 out.push(ESCAPE);
                 out.push(c);
             }
@@ -920,11 +922,20 @@ fn render_field(out: &mut String, name: &str, value: &str) {
         out.push_str(value);
     } else {
         out.push('{');
+        // Keep biblatex as the sole owner of verbatim escape/group decoding,
+        // shielding only dashes so its unconditional `--` conversion cannot
+        // change a URL or DOI. Original placeholder characters are encoded.
+        let verbatim = matches!(name, "url" | "doi");
+        let value = if verbatim {
+            Cow::Owned(value.replace('-', &HYPHEN.to_string()))
+        } else {
+            Cow::Borrowed(value)
+        };
         // URLs are verbatim: command-looking path text remains literal.
         if name == "url" {
-            out.push_str(value);
+            out.push_str(&value);
         } else {
-            out.push_str(&protect_backslashes(value));
+            out.push_str(&protect_backslashes(&value));
         }
         out.push('}');
     }

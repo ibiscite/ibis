@@ -171,9 +171,10 @@ test("the shelf shows what Enter pastes in a key syntax, without copying, and le
   expect(calls).not.toContain("copy_file_citation");
 });
 
-test("a key another reference also has is named in the preview and when copying", async () => {
+test.each([true, false])("a duplicate-key refusal stays visible before Details and copying stays blocked (Preview=%s)", async (preview) => {
   const shared = { code: "shared_citation_key", key: "same" };
   const calls = backend({
+    picker_preferences: () => ({ show_paste_preview: preview }),
     search: () => [result("same", "First")],
     preview_file_citation: () => { throw shared; },
     copy_file_citation: () => { throw shared; },
@@ -181,9 +182,19 @@ test("a key another reference also has is named in the preview and when copying"
   render(<App />);
   const box = screen.getByLabelText("Search references");
   fireEvent.change(box, { target: { value: "first" } });
-  const output = await screen.findByRole("region", { name: "Preview" });
   const message = "More than one reference has the key same, so it can't be cited by key.";
-  await waitFor(() => expect(within(output).getByRole("alert").textContent).toContain(message));
+  const refusal = await screen.findByRole("alert");
+  expect(refusal.textContent).toContain(message);
+  expect(refusal.textContent).toContain("Give one of them a different key in Zotero or your .bib file.");
+  expect(refusal.closest(".notices")).toBeTruthy();
+  expect(screen.queryByRole("dialog")).toBeNull();
+  fireEvent.keyDown(box, { key: "Enter" });
+  expect(calls).not.toContain("copy_file_citation");
+  fireEvent.click(screen.getByRole("button", { name: "Details" }));
+  const details = screen.getByRole("dialog", { name: /^Citation details/ });
+  expect(within(details).getByRole("alert").textContent).toContain(message);
+  fireEvent.click(within(details).getByRole("button", { name: "Close" }));
+  act(() => box.focus());
   fireEvent.keyDown(box, { key: "Enter" });
   expect(calls).not.toContain("copy_file_citation");
   expect(screen.getAllByRole("alert").filter((alert) => alert.textContent?.includes(message))).toHaveLength(1);
@@ -767,15 +778,17 @@ test.each([7, 9, 10])("%i long-key selections retain order across queries and fi
     const rows = within(screen.getByRole("listbox", { name: "Results" })).getAllByRole("option");
     for (const row of rows) fireEvent.click(row, { ctrlKey: true });
   }
-  const tray = screen.getByRole("list", { name: "Selected references" });
+  let tray = screen.getByRole("list", { name: "Selected references" });
   // The shelf shows six chips and folds the rest into "+N", which shows them all.
   expect(chipKeys(tray)).toHaveLength(6);
   fireEvent.click(within(tray).getByRole("button", { name: `Show all ${count} selected references` }));
+  tray = within(screen.getByRole("dialog", { name: "Selected references" })).getByRole("list", { name: "Selected references" });
   expect(chipKeys(tray)).toHaveLength(count);
   const removed = [0, Math.floor(count / 2), count - 1];
   for (const i of removed) fireEvent.click(within(tray).getByRole("button", { name: `Remove ${records[i]!.key} from the selection` }));
   const expected = records.filter((_, i) => !removed.includes(i));
   expect(chipKeys(tray)).toEqual(expected.map((record) => record.key));
+  fireEvent.click(screen.getByRole("button", { name: "Close" }));
   act(() => box.focus());
   await act(async () => { fireEvent.keyDown(box, { key: "Enter" }); });
   expect(copies).toHaveLength(1);
@@ -2851,7 +2864,11 @@ test("the footer can wait for pending engine output and never offers failed outp
     fireEvent.keyDown(box, { key: "ArrowDown" });
     await waitFor(() => expect(screen.getByText("Formatting…")).toBeTruthy());
     await act(async () => release());
-    expect(await screen.findByText(/could not be formatted/)).toBeTruthy();
+    await screen.findByRole("alert");
+    expect(within(screen.getByRole("region", { name: "Preview" })).getByText(/This citation could not be formatted/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Details" }));
+    expect(within(screen.getByRole("dialog")).getByText(/could not be formatted/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
     expect(footerKeys()).not.toContain("Enter");
   } finally {
     vi.unstubAllGlobals();
@@ -3670,8 +3687,17 @@ test("hiding output keeps chips and pending copy checks, and remembers the choic
     fireEvent.click(screen.getByRole("button", { name: /^More/ }));
     const choice = await screen.findByRole("menuitemcheckbox", { name: "Show what will be pasted" });
     await waitFor(() => expect(choice.getAttribute("aria-checked")).toBe("false"));
-    expect(document.querySelector(".shelf-output")).toBeNull();
-    fireEvent.click(choice);
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    expect(screen.queryByRole("region", { name: "Preview" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Edit citation" }));
+    const details = screen.getByRole("dialog", { name: "Citation details for First" });
+    expect(within(details).getByRole("textbox", { name: "Page" })).toBeTruthy();
+    expect(within(details).getByRole("radiogroup", { name: "Citation form" })).toBeTruthy();
+    fireEvent.click(within(details).getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("region", { name: "Preview" })).toBeNull();
+    expect(copies).toHaveBeenCalledOnce();
+    await chooseFromMore("Show what will be pasted", "menuitemcheckbox");
     fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
     await screen.findByRole("region", { name: "Preview" });
     await waitFor(() => expect(shown).toBe(true));
@@ -3813,6 +3839,9 @@ test.each(["keyboard", "fallback", "other focus", "pointer", "oversized"])("foot
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
     if (this.matches(".results-area, .picker-content")) return new DOMRect(0, 56, 720, height);
     if (this.id === "result-19") return new DOMRect(0, rowTop - (document.querySelector(".results-area")?.scrollTop ?? 0), 704, rowHeight);
+    // Tall rows reveal their title; it shares the row's position and can itself
+    // fill the short viewport. JSDOM otherwise reports an empty box at y=0.
+    if (this.matches("#result-19 .result-title")) return new DOMRect(0, rowTop - (document.querySelector(".results-area")?.scrollTop ?? 0), 704, mode === "oversized" ? 80 : 20);
     return rect.call(this);
   });
   const computed = window.getComputedStyle;

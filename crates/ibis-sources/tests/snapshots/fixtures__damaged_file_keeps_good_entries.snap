@@ -14,34 +14,14 @@ expression: "summary(\"damaged.bib\")"
         ],
         "citation-key": "baddate",
         "id": "baddate",
+        "issued": {
+          "literal": "sometime-ish"
+        },
         "title": "Date that is not a date",
         "type": "article-journal"
       },
       "identifiers": [],
       "key": "baddate"
-    },
-    {
-      "csl": {
-        "author": [
-          {
-            "family": "First",
-            "given": "Ada"
-          }
-        ],
-        "citation-key": "good1",
-        "id": "good1",
-        "issued": {
-          "date-parts": [
-            [
-              2020
-            ]
-          ]
-        },
-        "title": "Loads before the damage",
-        "type": "article-journal"
-      },
-      "identifiers": [],
-      "key": "good1"
     },
     {
       "csl": {
@@ -100,10 +80,6 @@ expression: "summary(\"damaged.bib\")"
     {
       "code": "field",
       "line": 15
-    },
-    {
-      "code": "field",
-      "line": 35
     }
   ]
 }

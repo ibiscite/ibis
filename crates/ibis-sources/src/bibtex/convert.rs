@@ -7,7 +7,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use biblatex::{Chunk, ChunksExt, DateValue, EditorType, Entry, PermissiveType, RetrievalError};
 
-use super::resolve::{BACKSLASH, ESCAPE, LEFT_BRACE, RIGHT_BRACE};
+use super::resolve::{BACKSLASH, ESCAPE, HYPHEN, LEFT_BRACE, RIGHT_BRACE};
 use ibis_core::contract::{CitationKey, CitationKeySource, ItemRef, LibraryId, Record};
 use ibis_core::model::{Issued, Name, OTHERS, PartialDate};
 use serde_json::{Value, json};
@@ -263,6 +263,15 @@ pub(crate) fn convert(
 
     let issued = issued(entry, problems);
     let dates = other_dates(entry, problems);
+    // The resolver shields verbatim dashes before parsing. DOI keeps the
+    // existing TeX symbol conversion (for exports using \_ and \&); URL uses
+    // only the parser's limited verbatim escapes.
+    let verbatim = |field| {
+        entry
+            .get(field)
+            .map(|c| clean(&c.format_verbatim()))
+            .filter(|s| !s.is_empty())
+    };
     let doi = text("doi");
     let abstract_text = text("abstract");
     let keywords: Vec<String> = text("keywords")
@@ -295,13 +304,7 @@ pub(crate) fn convert(
         ("title", title),
         ("container-title", container_title),
         ("DOI", doi),
-        (
-            "URL",
-            entry
-                .get("url")
-                .map(|c| clean(&c.format_verbatim()))
-                .filter(|s| !s.is_empty()),
-        ),
+        ("URL", verbatim("url")),
         ("abstract", abstract_text),
         ("language", language),
     ] {
@@ -318,7 +321,7 @@ pub(crate) fn convert(
         }
     }
     for (role, date) in issued.map(|date| ("issued".to_owned(), date)).into_iter().chain(dates) {
-        csl.insert(role, date_json(date));
+        csl.insert(role, date);
     }
     if !keywords.is_empty() {
         csl.insert("keyword".into(), json!(keywords.join(", ")));
@@ -492,12 +495,12 @@ fn wholly_braced(name: &str) -> bool {
 
 // ---------- Dates ----------
 
-fn issued(entry: &Entry, problems: &mut Vec<String>) -> Option<Issued> {
+fn issued(entry: &Entry, problems: &mut Vec<String>) -> Option<Value> {
     date_value(entry, "date", problems, || entry.date())
 }
 
 /// Further CSL date variables: access date, original date, event date.
-fn other_dates(entry: &Entry, problems: &mut Vec<String>) -> BTreeMap<String, Issued> {
+fn other_dates(entry: &Entry, problems: &mut Vec<String>) -> BTreeMap<String, Value> {
     let sources = [
         ("accessed", date_value(entry, "urldate", problems, || entry.url_date())),
         (
@@ -516,6 +519,41 @@ fn other_dates(entry: &Entry, problems: &mut Vec<String>) -> BTreeMap<String, Is
 }
 
 fn date_value(
+    entry: &Entry,
+    field: &str,
+    problems: &mut Vec<String>,
+    read: impl FnOnce() -> Result<PermissiveType<biblatex::Date>, RetrievalError>,
+) -> Option<Value> {
+    let year_field = format!("{}year", field.strip_suffix("date")?);
+    let raw = entry
+        .get(field)
+        .or_else(|| entry.get(&year_field))
+        .map(|chunks| clean(&chunks.format_verbatim()));
+    if let Some(raw) = raw.filter(|raw| {
+        ibis_core::citable::literal_date(raw)
+            || raw.starts_with(char::is_alphabetic)
+            || (!raw.is_empty() && !raw.chars().any(char::is_numeric))
+            || (entry.get(field).is_none() && unconsumed_year_text(raw))
+    }) {
+        return Some(json!({"literal": raw}));
+    }
+    numeric_date_value(entry, field, problems, read).map(date_json)
+}
+
+// biblatex's separate-year parser does not require EOF after its optional
+// era. Keep unconsumed source text, while leaving malformed numeric values
+// (including a spaced sign and non-decimal numerals) to the existing guards.
+fn unconsumed_year_text(raw: &str) -> bool {
+    let text = raw.trim().trim_start_matches(['+', '-']);
+    if text.starts_with(char::is_whitespace) {
+        return false;
+    }
+    let digits = text.bytes().take_while(u8::is_ascii_digit).count();
+    let rest = text[digits..].trim();
+    digits > 0 && !rest.is_empty() && !matches!(rest, "AD" | "BC" | "BCE" | "CE")
+}
+
+fn numeric_date_value(
     entry: &Entry,
     field: &str,
     problems: &mut Vec<String>,
@@ -1346,7 +1384,7 @@ fn clean(s: &str) -> String {
         if i != 0 {
             out.push(' ');
         }
-        if !word.contains([ESCAPE, LEFT_BRACE, RIGHT_BRACE, BACKSLASH]) {
+        if !word.contains([ESCAPE, LEFT_BRACE, RIGHT_BRACE, BACKSLASH, HYPHEN]) {
             out.push_str(word);
             continue;
         }
@@ -1357,6 +1395,7 @@ fn clean(s: &str) -> String {
                 LEFT_BRACE => out.push('{'),
                 RIGHT_BRACE => out.push('}'),
                 BACKSLASH => out.push('\\'),
+                HYPHEN => out.push('-'),
                 c => out.push(c),
             }
         }

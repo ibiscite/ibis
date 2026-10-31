@@ -98,6 +98,7 @@ pub(crate) fn load_with_budget(
     let mut entries: Vec<RawEntry<'_>> = Vec::new();
     let mut raw_texts: Vec<&str> = Vec::new();
     let mut seen = HashSet::new();
+    let mut duplicates = HashSet::new();
     for block in &blocks {
         let warn = |code, _key: Option<String>, _message: String| SourceWarning {
             code,
@@ -138,7 +139,8 @@ pub(crate) fn load_with_budget(
                 .warnings
                 .push(warn(WarningCode::Syntax, None, format!("{message}; skipped"))),
             Ok(entry) if !seen.insert(entry.key.clone()) => {
-                let message = format!("duplicate key `{}`; the first entry with this key is used", entry.key);
+                duplicates.insert(entry.key.clone());
+                let message = format!("duplicate key `{}`; all entries with this key are skipped", entry.key);
                 result
                     .warnings
                     .push(warn(WarningCode::DuplicateKey, Some(entry.key), message));
@@ -154,6 +156,13 @@ pub(crate) fn load_with_budget(
     // These are needed only while parsing and deduplicating entry headers.
     drop(blocks);
     drop(seen);
+    // Neither a citation nor inheritance can choose between repeated keys.
+    // Remove every contender before building the resolver's ownership map.
+    let (entries, raw_texts): (Vec<_>, Vec<_>) = entries
+        .into_iter()
+        .zip(raw_texts)
+        .filter(|(entry, _)| !duplicates.contains(&entry.key))
+        .unzip();
     let resolver = Resolver::new(macros, &entries, &budget);
     // `@xdata` entries only supply fields to other entries; they are not
     // references themselves and are never shown or exported.
@@ -366,7 +375,7 @@ mod tests {
                 .iter()
                 .map(|record| record.id.key.as_str())
                 .collect::<Vec<_>>(),
-            ["record:one", "record:two"]
+            ["record:two"]
         );
         assert_eq!(
             result.warnings.iter().map(|warning| warning.line).collect::<Vec<_>>(),

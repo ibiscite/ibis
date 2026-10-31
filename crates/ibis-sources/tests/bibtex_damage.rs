@@ -177,7 +177,7 @@ fn deeply_nested_braces_and_long_lines_are_handled() {
 fn field_text_containing_parser_error_is_not_a_caught_panic() {
     let loaded = load("@article{k,title={Retained},date={parser error}}");
     assert_eq!(keys(&loaded), ["k"]);
-    assert!(loaded.warnings.iter().any(|w| w.code == WarningCode::Field));
+    assert_eq!(csl(&loaded, "k")["issued"], json!({"literal":"parser error"}));
     // A contained parser panic is reported as a syntax problem on the entry.
     assert!(loaded.warnings.iter().all(|w| w.code != WarningCode::Syntax));
 }

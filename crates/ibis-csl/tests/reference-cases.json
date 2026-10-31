@@ -12,5 +12,10 @@
   {"type":"book","title":"Synthetic\t\tarea","author":[{"family":"Whitespace","given":"Avery"}],"issued":{"date-parts":[[2026]]},"publisher":"Imaginary Press"},
   {"type":"book","title":"Synthetic \tarea","author":[{"family":"Whitespace","given":"Avery"}],"issued":{"date-parts":[[2026]]},"publisher":"Imaginary Press"},
   {"type":"book","title":"Synthetic　　area","author":[{"family":"Whitespace","given":"Avery"}],"issued":{"date-parts":[[2026]]},"publisher":"Imaginary Press"},
-  {"type":"book","title":"Synthetic\r\narea","author":[{"family":"Whitespace","given":"Avery"}],"issued":{"date-parts":[[2026]]},"publisher":"Imaginary Press"}
+  {"type":"book","title":"Synthetic\r\narea","author":[{"family":"Whitespace","given":"Avery"}],"issued":{"date-parts":[[2026]]},"publisher":"Imaginary Press"},
+  {"type":"book","title":"Synthetic <sc>small caps</sc>","author":[{"family":"Styling","given":"Avery"}],"issued":{"date-parts":[[2026]]}},
+  {"type":"book","title":"<i>Synthetic <span class=\"nodecor\">plain text</span></i>","author":[{"family":"Styling","given":"Blake"}],"issued":{"date-parts":[[2027]]}},
+  {"type":"book","title":"Synthetic <span style=\"font-variant: small-caps;\">small caps</span>","author":[{"family":"Styling","given":"Casey"}],"issued":{"date-parts":[[2028]]}},
+  {"type":"book","title":"מחיר \u200e-12","author":[{"family":"Direction","given":"Avery"}],"issued":{"date-parts":[[2026]]},"language":"he"},
+  {"type":"book","title":"علامة \u061c-12 \u200f","author":[{"family":"Direction","given":"Blake"}],"issued":{"date-parts":[[2027]]},"language":"ar"}
 ]
