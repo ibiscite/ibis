@@ -171,7 +171,7 @@ export const commands = {
 };
 
 /* Types */
-export type Accent = "system" | "blue" | "purple" | "pink" | "red" | "orange" | "yellow" | "green" | "graphite";
+export type Accent = "system" | "ibis" | "blue" | "purple" | "pink" | "red" | "orange" | "yellow" | "green" | "graphite";
 
 /**  One output the picker can copy: a key syntax or a citation style. */
 export type AppOutput = ({ key: KeyFormat }) & { style?: never } | ({ style: CitationStyle }) & { key?: never };

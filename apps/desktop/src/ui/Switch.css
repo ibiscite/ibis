@@ -1,5 +1,5 @@
 /* One switch (docs/design.md, "Per platform": 38 × 22): the accent when on, a
-   quiet fill when off, a white thumb with a soft shadow. */
+   quiet fill when off, and a contrast-paired thumb on the accent with a soft shadow. */
 /* Anchor React Aria's hidden input to its label, so focus scrolls its pane. */
 .ui-switch { position: relative; display: inline-flex; flex: none; align-items: center; min-height: var(--control-min-size); cursor: default; }
 .ui-switch-track {
@@ -13,7 +13,7 @@
   transition: transform var(--motion-feedback) var(--ease-out);
 }
 .ui-switch[data-selected] .ui-switch-track { background: var(--accent); }
-.ui-switch[data-selected] .ui-switch-thumb { transform: translateX(16px); }
+.ui-switch[data-selected] .ui-switch-thumb { background: var(--text-on-accent); transform: translateX(16px); }
 .ui-switch[data-selected]:dir(rtl) .ui-switch-thumb { transform: translateX(-16px); }
 .ui-switch[data-focus-visible] .ui-switch-track { outline: var(--focus-ring-width) solid var(--focus-ring-color); outline-offset: var(--focus-ring-offset); }
 .ui-switch[data-disabled] { opacity: .5; }
