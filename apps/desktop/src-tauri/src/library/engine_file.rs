@@ -84,16 +84,11 @@ impl FileLibrary {
                 &json!({"action":"open-file","path":path}),
                 &Cancellation::default(),
             )
-            .map_err(|error| match error.code {
-                ibis_core::contract::ErrorCode::BadInput => super::LoadError::InvalidData,
-                ibis_core::contract::ErrorCode::SourceUnavailable => ibis_core::source::SourceError::Unavailable.into(),
-                ibis_core::contract::ErrorCode::ResourceLimit => ibis_core::source::SourceError::TooLarge.into(),
-                _ => ibis_core::source::SourceError::Unreadable.into(),
-            })?;
+            .map_err(|error| file_load_error(error, false))?;
         Ok(Self::from_engine(engine))
     }
 
-    fn from_engine(engine: Engine) -> Self {
+    pub(super) fn from_engine(engine: Engine) -> Self {
         Self {
             engine,
             sample: false,
@@ -537,6 +532,23 @@ impl FileLibrary {
             warnings: citation_warnings(citation.result()),
             delivery: None,
         })
+    }
+}
+
+pub(super) fn file_load_error(error: ibis_core::contract::EngineError, reload: bool) -> super::LoadError {
+    match error.code {
+        code if reload && code != ibis_core::contract::ErrorCode::Cancelled => {
+            super::LoadError::Source(if code == ibis_core::contract::ErrorCode::SourceUnavailable {
+                ibis_core::source::SourceError::Unavailable
+            } else {
+                ibis_core::source::SourceError::Incomplete
+            })
+        }
+        ibis_core::contract::ErrorCode::BadInput => super::LoadError::InvalidData,
+        ibis_core::contract::ErrorCode::SourceUnavailable => ibis_core::source::SourceError::Unavailable.into(),
+        ibis_core::contract::ErrorCode::ResourceLimit => ibis_core::source::SourceError::TooLarge.into(),
+        ibis_core::contract::ErrorCode::Cancelled => super::LoadError::Stopped,
+        _ => ibis_core::source::SourceError::Unreadable.into(),
     }
 }
 

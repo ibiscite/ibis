@@ -2,7 +2,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
-import { backend, resetApp, result } from "./testing/app";
+import { backend, openCitationDetails, resetApp, result } from "./testing/app";
 
 afterEach(resetApp);
 const library = { revision: "1", state: "loaded", has_snapshot: true, zotero: false, snapshot_zotero: false,
@@ -14,6 +14,30 @@ const commandO = () => press("o", { ctrlKey: true });
 const chooseSources = () => press("o", { ctrlKey: true, shiftKey: true });
 const fileRow = () => screen.getByRole("option", { name: /^BibTeX, BibLaTeX or CSL-JSON/ });
 const frame = () => act(async () => { await new Promise(requestAnimationFrame); });
+
+test("Command-O leaves citation details before exposing a source failure and its keyboard recovery", async () => {
+  const atOpen: (HTMLElement | null)[] = [];
+  const open = vi.fn(() => {
+    atOpen.push(screen.queryByRole("dialog", { name: "Citation details" }));
+    throw { code: "failed" };
+  });
+  const choose = vi.fn(() => null);
+  backend({ library_status: () => library, search: () => [result("picked", "Selected invented reference")],
+    open_library_source: open, choose_library: choose });
+  render(<App />);
+  await screen.findByText("Selected invented reference");
+  const page = await openCitationDetails();
+  await waitFor(() => expect(document.activeElement).toBe(page));
+  commandO();
+  await waitFor(() => expect(open).toHaveBeenCalledOnce());
+  expect(atOpen).toEqual([null]);
+  const footer = within(document.querySelector("footer")!);
+  await waitFor(() => expect(footer.getByRole("alert").textContent).toContain("could not open"));
+  expect(footer.getByRole("button", { name: "Find ⁨thesis.bib⁩…" })).toBeTruthy();
+  expect(document.activeElement).toBe(search());
+  commandO();
+  await waitFor(() => expect(choose).toHaveBeenCalledOnce());
+});
 
 test.each([false, true])("source opening leaves Copy as before exposing an accessible failure and recovery (Option %s)", async (altKey) => {
   const atOpen: { menu: HTMLElement | null; focus: Element | null }[] = [];

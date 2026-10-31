@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 use ibis_core::cite::KeyFormat;
 use ibis_core::settings::{self, CitationStyle, Density};
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::library::Library;
 
@@ -93,11 +93,26 @@ impl SettingsFile {
     }
 
     pub(crate) fn update(&self, change: impl FnOnce(&mut settings::Settings)) -> Result<settings::Settings, String> {
+        self.update_when(|| true, change)?
+            .ok_or_else(|| "settings are unavailable".to_string())
+    }
+
+    /// Conditional writes test their immutable owner after acquiring the writer.
+    pub(crate) fn update_when(
+        &self,
+        current: impl FnOnce() -> bool,
+        change: impl FnOnce(&mut settings::Settings),
+    ) -> Result<Option<settings::Settings>, String> {
         let _writing = self
             .writing
             .lock()
             .map_err(|_| "settings are unavailable".to_string())?;
-        settings::update(&self.path, change).map_err(|error| settings_message(&error))
+        if !current() {
+            return Ok(None);
+        }
+        settings::update(&self.path, change)
+            .map(Some)
+            .map_err(|error| settings_message(&error))
     }
 
     /// Refresh under the library lock so a reload cannot carry forward a stale
@@ -197,6 +212,11 @@ pub(crate) async fn set_picker_preferences<R: tauri::Runtime>(
     app: AppHandle<R>,
     window: tauri::Window<R>,
 ) -> Result<PickerSave, String> {
+    if let Some(larger) = preferences.larger_text
+        && let Some(sizing) = app.try_state::<crate::sizing::Sizing>()
+    {
+        sizing.set_larger_text(larger);
+    }
     let settings_file = settings_file.inner().clone();
     // A change made in Settings reaches the picker; the picker's own are already shown.
     let from_elsewhere = window.label() != "main";

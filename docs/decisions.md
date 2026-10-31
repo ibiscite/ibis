@@ -50,7 +50,9 @@ Tauri), never sent to the WebView or stored (2026-10-28, #782).
 
 Ibis never writes to a library. BibTeX and BibLaTeX entries are parsed one by
 one; broken entries, duplicate keys and undefined macros become warnings with
-line numbers. Zotero is read through its local API while it runs and from a
+line numbers. A repeated BibTeX key makes every entry under that key unavailable,
+including as an inheritance parent (2026-10-30, #1519).
+Zotero is read through its local API while it runs and from a
 private read-only copy of `zotero.sqlite` (with `-wal` and `-shm`) while it is
 closed, tested on Zotero 7 to 10, leaving out trashed items. Citation keys
 come from Zotero's native field, Extra and Better BibTeX; when they disagree,
@@ -72,7 +74,11 @@ commit and hash, running in embedded QuickJS with ICU4X collation inside
 syntax, with a warning when a syntax cannot say something. Outside a document,
 Ibis copies only what one citation can get right: numeric styles copy the
 entry without its number, note styles the full first note (never ibid.), and
-author-date year suffixes wait for a document-level view.
+generated author-date year suffixes wait for a document-level view. Source-supplied
+literal dates and year letters are retained as data (2026-10-30, #1519).
+Literal years retain numeric date order independently of their rendered letters.
+Ordinary ALM/LRM/RLM direction marks retain their text meaning; embedding,
+override and isolate controls are neutralized before output (2026-10-30, #1522).
 
 ## 0008 Offline by default
 
@@ -241,6 +247,22 @@ says so, and it never silently overwrites a file it could not read. Existing
 migration code is deleted, not extended, when its area is rebuilt. From 1.0 a
 format change needs an upgrade path.
 
+Planned copied-key warnings (#1092; maintainer-approved, 2026-10-30) may keep a
+bounded private local record of library/item identity and its last successfully
+copied key. This is not document or research history: no queries, document text,
+quotations or personal comments. Failed or superseded copies cannot update it;
+failed storage keeps the previous durable record and reports that it was not
+updated. The implementation defines the capacity and file format under the
+existing atomic-write and single-owner rules. Users can forget the record.
+Only native identities that survive a key rename qualify; never infer continuity
+from titles/DOIs when a `.bib` entry key changes its identity. A successful new
+key copy replaces the baseline, not the keys in any manuscript. Clipboard success
+is the commit event; diagnostic old/new-key copies, previews, CLI stdout and MCP
+formatting do not count. Batch history writes occur outside the source/clipboard
+barrier and preserve successful copy order rather than disk-completion order.
+Stable and Nightly stay isolated.
+This permission does not change MCP's exclusion of notes, annotations and private links.
+
 ## 0031 What Ibis remembers per app
 
 The output chooser remembers a format picked for the captured app unless the
@@ -278,6 +300,13 @@ focuses the picker; it waits in More, the tray and Settings with one sentence
 on what changed. An opt-in "Download quietly, install when I quit" downloads
 and verifies in the background and installs only on an explicit quit; asking
 first stays the default (maintainer, 2026-10-28).
+
+2026-10-30: PR #1504 review found that an automatic dialog could steal Enter
+from Search and install. Automatic offers now wait for empty, idle input; all
+native defaults decline, and only deliberate Install activation accepts. Idle
+reports carry one-use interaction ownership and cannot revive after hide/reopen.
+No input text is sent to the updater. See the native-source audit in
+[testing](testing.md#update-consent-keyboard-safety).
 
 The maintainer approved publishing the current engineering closeout through
 Release Please as 0.2.1 after its PRs pass review and CI (2026-10-29).

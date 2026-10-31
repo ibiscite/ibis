@@ -9,13 +9,14 @@ export type Operation = keyof typeof operationFailures;
 
 /** Settings problems, failed actions, search and copy errors, and what was
  * copied. Library failures belong to the footer's controls. */
-export function Notices({ library, failures, startAtLogin, error, copyError, copied, showCopiedText, onDismissCopied, updateProgress, missing = [], densityAnnouncement }: {
+export function Notices({ library, failures, startAtLogin, error, citationProblem, copyError, copied, showCopiedText, onDismissCopied, updateProgress, missing = [], densityAnnouncement }: {
   densityAnnouncement?: Density;
   updateProgress?: UpdateProgress | null;
   library: LibraryStatus | null | undefined;
   failures: Partial<Record<Operation, boolean>>;
   startAtLogin: LoginItem | null;
   error: string | null;
+  citationProblem?: string | null;
   missing?: string[];
   copyError: string | null;
   copied: Copied | null;
@@ -38,6 +39,7 @@ export function Notices({ library, failures, startAtLogin, error, copyError, cop
         <p role="alert">{loginItemText.problem(startAtLogin.problem, currentPlatform(), startAtLogin.name)}</p>
       )}
       {error && <p role="alert">{error}</p>}
+      {citationProblem && <p role="alert">{citationProblem}</p>}
       {missing.length > 0 && <p role="status">{pickerText.missingCitations(missing)}</p>}
       {copyError && <p role="alert">{copyError}</p>}
       {copied && (

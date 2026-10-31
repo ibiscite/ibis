@@ -1,8 +1,27 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen, type Event } from "@tauri-apps/api/event";
 import { expect, it, vi } from "vitest";
-import { isSnapshotChanged, newerUpdate, previewFileCitation, search } from "./api";
+import { isSnapshotChanged, newerUpdate, onWindowSizeSaved, previewFileCitation, search } from "./api";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn().mockResolvedValue([]) }));
+vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn() }));
+
+it("a delayed size-save result cannot restore an older failure or clear a newer one", async () => {
+  let deliver: (event: Event<{ revision: number; saved: boolean }>) => void = () => {};
+  const stop = vi.fn();
+  vi.mocked(listen).mockImplementation(async (_name, handler) => {
+    deliver = handler;
+    return stop;
+  });
+  const shown = vi.fn();
+  const unlisten = await onWindowSizeSaved(shown);
+  for (const [revision, saved] of [[2, true], [1, false], [3, false], [2, true], [3, true]] as const) {
+    deliver({ event: "picker:window-saved", id: 1, payload: { revision, saved } });
+  }
+  expect(shown.mock.calls).toEqual([[true], [false]]);
+  unlisten();
+  expect(stop).toHaveBeenCalledOnce();
+});
 
 it("aborts only the numbered preview and removes abort listeners after completion", async () => {
   const pending: Array<() => void> = [];

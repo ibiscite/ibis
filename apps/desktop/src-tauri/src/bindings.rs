@@ -27,7 +27,6 @@ pub(crate) fn commands() -> tauri_specta::Builder<tauri::Wry> {
             crate::login_item::set_login_item,
             crate::picker::hide_picker,
             crate::picker::set_pinned,
-            crate::sizing::fit_picker,
             crate::picker::quit,
             crate::picker::shortcut_status,
             crate::picker::wayland::configure_shortcuts,
@@ -39,12 +38,16 @@ pub(crate) fn commands() -> tauri_specta::Builder<tauri::Wry> {
             crate::updater::setting::set_update_checks,
             crate::updater::setting::check_for_updates,
             crate::updater::update_available,
+            crate::updater::update_picker_activity,
             crate::settings_window::open_settings,
             crate::settings_window::finish_paste_guide,
             crate::paste::permission::paste_permission,
             crate::paste::permission::open_paste_permission,
             crate::paste::permission::drag_paste_app,
-            crate::shortcut_setting::set_shortcut
+            crate::shortcut_setting::set_shortcut,
+            crate::sizing::read_window_position_undo,
+            crate::sizing::undo_window_position,
+            crate::sizing::dismiss_window_position_undo
         ])
         // Match Tauri's existing Promise rejection behavior.
         .error_handling(tauri_specta::ErrorHandlingMode::Throw)

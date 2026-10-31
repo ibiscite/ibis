@@ -86,6 +86,7 @@ pub(crate) fn create_tray(app: &AppHandle, shortcut: Option<&str>) -> tauri::Res
     let problem = MenuItem::with_id(app, "problem", "Report a Problem…", true, None::<&str>)?;
     let idea = MenuItem::with_id(app, "idea", "Suggest an Idea…", true, None::<&str>)?;
     let settings = MenuItem::with_id(app, "settings", "Settings…", true, Some("CmdOrCtrl+,"))?;
+    let reset_window = MenuItem::with_id(app, "reset_window", "Reset Window Position", true, None::<&str>)?;
     // "Ibis" or "Ibis Nightly", so the two apps can be told apart.
     let name = app.package_info().name.clone();
     let quit = MenuItem::with_id(app, "quit", format!("Quit {name}"), true, None::<&str>)?;
@@ -141,7 +142,14 @@ pub(crate) fn create_tray(app: &AppHandle, shortcut: Option<&str>) -> tauri::Res
     if let Some(at_login) = &at_login {
         items.push(at_login);
     }
-    items.extend([&settings as &dyn IsMenuItem<tauri::Wry>, &problem, &idea, &third, &quit]);
+    items.extend([
+        &settings as &dyn IsMenuItem<tauri::Wry>,
+        &reset_window,
+        &problem,
+        &idea,
+        &third,
+        &quit,
+    ]);
     let menu = Menu::with_items(app, &items)?;
     if let Some((now, off, on)) = update_items {
         app.manage(UpdateMenuItem(now));
@@ -159,6 +167,7 @@ pub(crate) fn create_tray(app: &AppHandle, shortcut: Option<&str>) -> tauri::Res
         .on_menu_event(|app, event| match event.id.as_ref() {
             "open" => show_picker(app),
             "settings" => crate::settings_window::open(app, None),
+            "reset_window" => crate::sizing::reset_position(app),
             "choose" => choose_library_file(app),
             "zotero" => use_zotero_library(app),
             "reload" => reload_library_file(app),

@@ -19,11 +19,13 @@ import { CitationShelf } from "./features/picker/CitationShelf";
 import { ResultList } from "./features/picker/ResultList";
 import { closestMatchWarnings } from "./features/picker/rows";
 import { EmptyState } from "./features/picker/EmptyState";
-import { useFitWindow } from "./features/picker/useFitWindow";
 import { PickerLibraryStatus } from "./features/picker/PickerLibraryStatus";
 import { useLibraryStatus } from "./features/picker/useLibraryStatus";
 import { SourceIcon, type SourceActionProps } from "./ui/SourceAction";
 import { useSourceOpen } from "./features/picker/useSourceOpen";
+import { PickerScroll } from "./features/picker/PickerScroll";
+import { useWindowResetUndo } from "./features/picker/useWindowResetUndo";
+import { UndoNotice } from "./ui/UndoNotice";
 import { PickerFooter } from "./features/picker/PickerFooter";
 import { PickerMenu } from "./features/picker/PickerMenu";
 import { useOperations } from "./features/picker/useOperations";
@@ -34,6 +36,7 @@ import { useZoteroScope } from "./features/picker/useZoteroScope";
 import { useDestination } from "./features/picker/useDestination";
 import { useLoginItem } from "./features/picker/useLoginItem";
 import { useUpdateChecks } from "./features/picker/useUpdateChecks";
+import { monitorUpdateOfferInput } from "./features/picker/updateOfferInput";
 import { useShortcutStatus } from "./features/picker/useShortcutStatus";
 import { usePin } from "./features/picker/usePin";
 import { initialSession } from "./features/picker/session";
@@ -52,7 +55,7 @@ const noSelection = new Map<string, CitationReference>();
 export type PickerApi = Pick<typeof nativeApi,
   "chooseLibrary" | "useZotero" | "libraryStatus" | "reloadLibrary" | "previewFileCitation" | "copyFileCitation" | "copyFormat" | "pickerPreferences" | "setPickerPreferences" |
   "hidePicker" | "pickerVisible" | "setPinned" | "onLibraryChanged" | "onPickerShown" | "onPickerHidden" | "quit" | "search" | "shortcutStatus"> &
-  Partial<Pick<typeof nativeApi, "openLibrarySource" | "librarySource" | "useSampleLibrary" | "useZoteroLibraries" | "zoteroGroups" | "pickerDestination" | "rememberAppOutput" | "forgetAppOutputs" | "fitPicker" | "findSources" | "openFoundLibrary" | "rowContext" | "showCopiedNotice" | "loginItem" | "setLoginItem" | "onUpdateProgress" | "updateChecks" | "setUpdateChecks" | "onUpdateChecks" | "updateAvailable" | "onUpdateAvailable" | "checkForUpdates" | "onShortcutStatus" | "openSettings" | "onPreferencesChanged">>;
+  Partial<Pick<typeof nativeApi, "openLibrarySource" | "librarySource" | "useSampleLibrary" | "useZoteroLibraries" | "zoteroGroups" | "pickerDestination" | "rememberAppOutput" | "forgetAppOutputs" | "onWindowSizeSaved" | "readWindowPositionUndo" | "undoWindowPosition" | "dismissWindowPositionUndo" | "onWindowReset" | "findSources" | "openFoundLibrary" | "rowContext" | "showCopiedNotice" | "loginItem" | "setLoginItem" | "onUpdateProgress" | "updateChecks" | "setUpdateChecks" | "onUpdateChecks" | "updateAvailable" | "onUpdateAvailable" | "updatePickerActivity" | "checkForUpdates" | "onShortcutStatus" | "openSettings" | "onPreferencesChanged">>;
 
 export type PickerPreview = { query?: string; copied?: Copied };
 
@@ -67,7 +70,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const { chooseLibrary, useZotero, reloadLibrary,
     hidePicker, pickerVisible, setPinned, onPickerShown, onPickerHidden, search, shortcutStatus, previewFileCitation, copyFileCitation,
     useZoteroLibraries: chooseZoteroLibraries, zoteroGroups } = api;
-  const { rowContext, findSources, openFoundLibrary, showCopiedNotice, loginItem, setLoginItem, fitPicker, updateChecks, setUpdateChecks, onUpdateChecks, updateAvailable, onUpdateAvailable, checkForUpdates, onShortcutStatus, openSettings, onPreferencesChanged } = api;
+  const { rowContext, findSources, openFoundLibrary, showCopiedNotice, loginItem, setLoginItem, onWindowSizeSaved, updateChecks, setUpdateChecks, onUpdateChecks, updateAvailable, onUpdateAvailable, checkForUpdates, onShortcutStatus, openSettings, onPreferencesChanged } = api;
   const [updateProgress, setUpdateProgress] = useState<nativeApi.UpdateProgress | null>(null);
   const setupApi = useMemo(() => ({ chooseLibrary, useZotero, useSampleLibrary: api.useSampleLibrary, findSources, openFoundLibrary }),
     [chooseLibrary, useZotero, api.useSampleLibrary, findSources, openFoundLibrary]);
@@ -125,6 +128,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const moreButton = useRef<HTMLButtonElement>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [libraryMenuOpen, setLibraryMenuOpen] = useState(false);
+  const [formatOpen, setFormatOpen] = useState(false);
   const { startAtLogin, readLoginItem, toggleStartAtLogin, offered: loginItemOffered } = useLoginItem({ loginItem, setLoginItem, perform, menuOpen });
   const updateMenu = useUpdateChecks({ updateChecks, setUpdateChecks, onUpdateChecks, updateAvailable, onUpdateAvailable, perform, report });
   const { pinned, currentPin, togglePin } = usePin({ setPinned, perform });
@@ -138,6 +142,24 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     const welcome = input.current?.closest("main")?.querySelector(".library-welcome");
     (welcome ? moreButton.current : input.current)?.focus();
   }, [choosingLibrary]);
+  const windowUndo = useWindowResetUndo(api);
+  useEffect(() => { if (windowUndo.ticket !== null) { setKeysOpen(false); setMenuOpen(false); setLibraryMenuOpen(false); } }, [windowUndo.ticket]);
+  const updateInputBlocked = useRef(false);
+  updateInputBlocked.current = Boolean(query || pendingCopy || menuOpen || libraryMenuOpen || choosingLibrary || formatOpen || keysOpen || selected.size || state.activeCopy !== null);
+  const updateInput = useRef<ReturnType<typeof monitorUpdateOfferInput> | null>(null);
+  useEffect(() => {
+    if (!api.updatePickerActivity) return;
+    const monitor = monitorUpdateOfferInput(window, api.updatePickerActivity, () =>
+      updateInputBlocked.current || !document.hasFocus() || document.documentElement.dataset.pickerHidden !== undefined ||
+      [...document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input:not([type]), input[type="text"], input[type="search"], textarea')].some((input) => input.value.length > 0) ||
+      [...document.querySelectorAll('[contenteditable="true"]')].some((input) => Boolean(input.textContent?.length)));
+    updateInput.current = monitor;
+    const visibility = new MutationObserver(monitor.activity);
+    visibility.observe(document.documentElement, { attributes: true, attributeFilter: ["data-picker-hidden"] });
+    return () => { visibility.disconnect(); monitor.stop(); updateInput.current = null; };
+  }, [api.updatePickerActivity]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: each interaction transition invalidates the old idle ticket, including close/reopen; the monitor reads current blocking state through a ref.
+  useEffect(() => { updateInput.current?.activity(); }, [query, pendingCopy, menuOpen, libraryMenuOpen, choosingLibrary, formatOpen, keysOpen, selected.size, state.activeCopy, state.visibility]);
   // Where focus goes back to when the keys overlay closes.
   const keysReturn = useRef<HTMLElement | null>(null);
   // While Alt (⌥) is held, the footer shows the other keys instead of Enter.
@@ -319,31 +341,34 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   }, [active, pointer.cameFrom, selected.size,
     selected.size > 0 ? formatted : null, selected.size > 0 ? format : null, selected.size > 0 ? searchFocused : null]);
 
-  // Changes below the list can resize its viewport without moving the index.
-  // Preserve only Search's keyboard highlight, using the local scroll owners.
+  // Content changes preserve Search's keyboard highlight. A real viewport
+  // resize must also leave the selected title readable while Page is edited.
   useEffect(() => {
     const area = resultArea.current;
     if (!area) return;
     const scrollers = [area, area.parentElement].filter((node): node is HTMLElement => node !== null);
-    const reveal = () => {
-      if (!followKeyboard.current || document.activeElement !== input.current) return;
+    const reveal = (viewport = false) => {
+      if (!viewport && (!followKeyboard.current || document.activeElement !== input.current)) return;
       const row = document.getElementById(`result-${active}`);
       if (!row) return;
       for (const scroller of scrollers) {
         if (scroller.clientHeight <= 0 || !/auto|scroll/.test(getComputedStyle(scroller).overflowY)) continue;
         const top = scroller.getBoundingClientRect().top + scroller.clientTop;
         const bottom = top + scroller.clientHeight;
-        const item = row.getBoundingClientRect();
+        const whole = row.getBoundingClientRect();
+        const item = whole.height > scroller.clientHeight
+          ? row.querySelector(".result-title")?.getBoundingClientRect() ?? whole : whole;
         // A tall row already filling the scrollport cannot be shown any fuller.
         if (item.top <= top && item.bottom >= bottom) continue;
         if (item.bottom > bottom) scroller.scrollTop += Math.ceil(item.bottom - bottom);
         else if (item.top < top) scroller.scrollTop += Math.floor(item.top - top);
       }
     };
-    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(reveal);
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => reveal());
     for (const scroller of scrollers) observer?.observe(scroller);
-    window.addEventListener("resize", reveal);
-    return () => { observer?.disconnect(); window.removeEventListener("resize", reveal); };
+    const resized = () => reveal(true);
+    window.addEventListener("resize", resized);
+    return () => { observer?.disconnect(); window.removeEventListener("resize", resized); };
   }, [active]);
 
   // Success is brief; warnings stay available until explicitly dismissed.
@@ -513,15 +538,16 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       } />
   ) : null);
 
-  // Size follows content (C10): only results, a citation and overlays need the results height.
-  const main = useRef<HTMLElement>(null);
-  const compact = !keysOpen && (!showCitations || selected.size === 0 && !(query && results.length > 0));
-  useFitWindow(main, compact, fitPicker, fitPicker ? onPickerShown : undefined);
+  useEffect(() => {
+    let current = true;
+    const subscription = onWindowSizeSaved?.((saved) => { if (current) report("windowSize", !saved); });
+    void subscription?.catch(() => { if (current) report("windowSize"); });
+    return () => { current = false; void subscription?.then((stop) => stop()).catch(() => {}); };
+  }, [onWindowSizeSaved, report]);
 
   return (
-    <main ref={main}
+    <main
       data-selection={showCitations && selected.size > 0 || undefined}
-      data-compact={compact || undefined}
       onFocus={(e) => setSearchFocused(e.target === input.current)}
       onBlur={() => setSearchFocused(false)}
       onKeyDownCapture={(e) => {
@@ -571,12 +597,6 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
         }
       }}
     >
-      {shortcut?.error && (
-        <p role="status">
-          {pickerText.shortcutError(shortcut.registered, shortcut.shortcut, shortcut.error)}
-          {shortcut.desktop && !welcomeShown && ` ${shortcut.desktop.guidance}`}
-        </p>
-      )}
       <PickerHeader
         pinned={pinned} mark={searchMark} onTogglePin={() => { togglePin(); input.current?.focus(); }}
         inputRef={input}
@@ -618,6 +638,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
         app={destination.app}
         formatScope={destination.scope}
         onFormatOpenChange={(open, reason) => {
+          setFormatOpen(open);
           if (open || pendingCopy?.question !== "open" || reason === "action") return;
           // Dismissal uses the fallback for this attempt; application commands cancel it.
           send({ type: "question", answer: reason === "command" ? "cancel" : "answered" });
@@ -646,9 +667,16 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
           };
         }}
       />
-      <div className="picker-content scroll-area">
+      <PickerScroll>
+      {shortcut?.error && <div className="notices">
+        <p role="status">
+          {pickerText.shortcutError(shortcut.registered, shortcut.shortcut, shortcut.error)}
+          {shortcut.desktop && !welcomeShown && ` ${shortcut.desktop.guidance}`}
+        </p>
+      </div>}
       <Notices densityAnnouncement={preferences.densityAnnouncement} updateProgress={updateProgress} library={library} failures={failures} startAtLogin={startAtLogin}
         error={error} copyError={copyError} copied={copied} missing={list?.missing}
+        citationProblem={displayedOutput === "failed" ? previewProblem ?? pickerText.previewError : null}
         showCopiedText={displayedOutput == null || typeof displayedOutput === "string" || displayedOutput.text !== copied?.text}
         onDismissCopied={() => send({ type: "dismiss" })} />
       {usingLocator && <div className="notices">
@@ -705,14 +733,15 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
         {!busy && emptyState}
         {library?.sample && <SampleLibraryExit useSampleLibrary={api.useSampleLibrary} perform={perform} />}
       </div>
+      </PickerScroll>
       {/* Keep the selection live region mounted when choices remove citation controls. */}
-      <CitationShelf announce={selectionChanged} selected={showCitations ? selected : noSelection} removeLabel={removeLabel} onRemove={(r) => {
+      <CitationShelf presentation={state.visibility} announce={selectionChanged} selected={showCitations ? selected : noSelection} removeLabel={removeLabel} onRemove={(r) => {
         toggle(r);
         input.current?.focus({ preventScroll: true });
       }} onRemoveLocator={(r) => changeLocator(r, null)} highlightedReference={selected.size === 0 ? chosen[0] : undefined}
         onChangeReference={changeReference} style={style} keys={keyFormat !== null}
-        shown={showCitations ? displayedOutput : undefined} problem={previewProblem} focusable={selected.size > 0} fallbackFocusRef={input} />
-      </div>
+        shown={showCitations ? displayedOutput : undefined} outputWarnings={shown && typeof shown === "object" ? shown.warnings : []}
+        problem={previewProblem} focusable={selected.size > 0} fallbackFocusRef={input} />
       <PickerFooter library={library} groupName={groupName}
         status={<PickerLibraryStatus library={library} groupName={groupName} isOpen={libraryMenuOpen}
           onOpenChange={(open) => { if (open) { cancelCopy(); setMenuOpen(false); } setLibraryMenuOpen(open); }}
@@ -749,6 +778,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
             }} />
         } />
       {keysOpen && <KeysDialog bindings={bindings} isMac={isMac} onClose={closeKeys} />}
+      {windowUndo.ticket !== null && <UndoNotice key={windowUndo.ticket} message={pickerText.windowReset} onUndo={windowUndo.undo} onExpire={windowUndo.expire} paused={state.hiddenAt !== null} fallbackFocusRef={input} />}
     </main>
   );
 }
