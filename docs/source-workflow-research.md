@@ -3,8 +3,9 @@
 Planning research, 2026-10-30; not implemented or a compatibility claim. This
 refines four of the [five approved directions](../ROADMAP.md#source-workflow-priorities-for-stable),
 following #1521. The interaction contract remains in
-[design.md](design.md#source-checks-and-passage-reuse-planned); the first-version
-bounds below keep that work small. Decision memory remains deferred. No additional
+[design.md](design.md#source-checks-and-passage-reuse-planned); the behavioral
+bounds below keep that work small. New presentation/keyboard proposals are marked
+as such and require a canonical design update before implementation. Decision memory remains deferred. No additional
 manager adapter, source write, network use or MCP permission is approved here.
 The maintainer subsequently clarified that pre-stable work must solve a clear,
 major problem, be easy to explain and fit the tool cohesively. Detailed failure
@@ -38,16 +39,24 @@ owns source interpretation and formatting; clients do not reconstruct them.
 
 ## Find and open a saved passage
 
-Use explicit **References / Passages** scopes in the existing picker; References
-remains the default and switching preserves the query. Explain Passages as saved
-Zotero highlights, comments and notes, not full-PDF search. It shows directly
-matching saved content, with its reference as context. A highlight whose comment
-also matches is one annotation result, with the matching field indicated. Do not
-fill normal reference results with every child annotation or treat unavailable
-coverage as zero matches.
-In Passages, the footer names the opening action Enter will perform; unavailable
-targets stay unavailable. **Use reference/page** explicitly changes the citation
-shelf. Matching a comment never silently turns Enter into quote paste.
+Search saved Zotero highlights, comments and notes in the existing picker, not
+full PDF text. Show directly matching saved content with its reference as context.
+A highlight whose comment also matches is one annotation result, with the
+matching field indicated. Do not expose every child annotation by default or
+treat unavailable coverage as zero matches.
+
+**Presentation proposal, not a settled contract:** compare explicit
+References / Passages scopes with the canonical design's passages unfolded under
+a reference row. Preserve the query if scopes are tested. Likewise, Enter opening
+a passage is a proposal, not a new default imposed by this research. Resolve
+these choices in a comprehension walkthrough and update design.md before UI
+implementation; the current design remains the baseline. Do not add a mode or
+setting merely because it was proposed here.
+
+Whichever presentation is chosen, the footer names Enter's actual action;
+unavailable targets remain unavailable. Opening, Copy quote and deliberate
+reference/page selection are distinct actions. Matching a comment must not
+silently initiate quotation paste or change the citation being prepared.
 
 | Saved object | What the person sees and can do |
 | --- | --- |

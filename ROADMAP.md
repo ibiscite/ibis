@@ -65,7 +65,7 @@ The five features do not broaden MCP access to notes, annotations or private lin
 Interaction rules are in [design](docs/design.md#source-checks-and-passage-reuse-planned).
 
 The [first-version research](docs/source-workflow-research.md) narrows these
-features before implementation: explicit References/Passages search scopes; one
+features before implementation: directly matched saved passages with clear actions; one
 eligible saved quotation copied with a standalone reference and separate location;
 the same block reused in a fixed-layout brief saved only to a new Markdown file;
 and key warnings only with proven source/library/item continuity. Notes and
