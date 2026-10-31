@@ -1,5 +1,41 @@
 # Changelog
 
+## [0.2.3](https://github.com/ibiscite/ibis/compare/v0.2.2...v0.2.3) (2026-10-31)
+
+
+### Features
+
+* **desktop:** keep the picker one steady size ([#1500](https://github.com/ibiscite/ibis/issues/1500)) ([8761e2a](https://github.com/ibiscite/ibis/commit/8761e2a42b3ac17afe829fa2fad4c05111b84fa2))
+* **desktop:** keep the shelf on one line with a menu per reference ([#1552](https://github.com/ibiscite/ibis/issues/1552)) ([0ba58bb](https://github.com/ibiscite/ibis/commit/0ba58bb81f07ab1b0df498f323f8083f3bff0303))
+* **desktop:** show library status in one place ([#1503](https://github.com/ibiscite/ibis/issues/1503)) ([7cbe866](https://github.com/ibiscite/ibis/commit/7cbe866e98f50f496a685eb77235a377f8515ccd))
+* **settings:** build the seven-page Settings window ([#1512](https://github.com/ibiscite/ibis/issues/1512)) ([a40f515](https://github.com/ibiscite/ibis/commit/a40f5152cba8c49cd0f0e73c0b82f45b9083e395))
+* **settings:** widen the window and add the Ibis accent ([#1553](https://github.com/ibiscite/ibis/issues/1553)) ([882d8c9](https://github.com/ibiscite/ibis/commit/882d8c93368b4e2d8267ab8447d3c5d355fad282))
+
+
+### Bug Fixes
+
+* **core:** round-trip generated citation keys in pasted lists ([#1549](https://github.com/ibiscite/ibis/issues/1549)) ([1bc6e86](https://github.com/ibiscite/ibis/commit/1bc6e866745c3228a9a65d11c4b5f12c6c256ce8))
+* **desktop:** finish the footer action details ([#1563](https://github.com/ibiscite/ibis/issues/1563)) ([736f4d6](https://github.com/ibiscite/ibis/commit/736f4d6469890cd3420619aade9ea2335399a852))
+* **desktop:** ignore late hides and stop hidden timers ([#1558](https://github.com/ibiscite/ibis/issues/1558)) ([ad8978c](https://github.com/ibiscite/ibis/commit/ad8978c28d70c1d8014eb45767fbdc6246599d44))
+* **desktop:** keep settings safe and give every copy a receipt ([#1559](https://github.com/ibiscite/ibis/issues/1559)) ([023779e](https://github.com/ibiscite/ibis/commit/023779e066489eda8ae110729b20b5e3b027eff5))
+* **desktop:** let the event loop sleep ([#1554](https://github.com/ibiscite/ibis/issues/1554)) ([f305b9e](https://github.com/ibiscite/ibis/commit/f305b9ecc2dd4f811dfcb4f5b9df7ed1323c4888))
+* **desktop:** match the design for notices and shortcut keys ([#1564](https://github.com/ibiscite/ibis/issues/1564)) ([5d3023e](https://github.com/ibiscite/ibis/commit/5d3023e5a0bdad9a84f53510ee355b9cd00d1abd))
+* **desktop:** paste only into the window that was captured ([#1529](https://github.com/ibiscite/ibis/issues/1529)) ([7864cd2](https://github.com/ibiscite/ibis/commit/7864cd2b23ba09ef41e03aa9885b098e63e16930))
+* **library:** count references, not attachments ([#1560](https://github.com/ibiscite/ibis/issues/1560)) ([128ea4f](https://github.com/ibiscite/ibis/commit/128ea4fdfbba2b223a1b0d46977fc63e1c39909f))
+* **paste:** ask once for unknown apps and make Mac paste ready ([#1555](https://github.com/ibiscite/ibis/issues/1555)) ([cffe325](https://github.com/ibiscite/ibis/commit/cffe32512cb7745e18fecf0fe2197aa3aa9fa37e))
+* **release:** keep one clear scheme for GitHub releases ([#1546](https://github.com/ibiscite/ibis/issues/1546)) ([9b7b346](https://github.com/ibiscite/ibis/commit/9b7b3463eeea21b01df123c10042488adbe88bea))
+* **release:** stop publishing when current downloads cannot be checked ([#1557](https://github.com/ibiscite/ibis/issues/1557)) ([6f51d09](https://github.com/ibiscite/ibis/commit/6f51d09bf204ed273f359539929ca7ed738678f4))
+* **sources:** keep BibTeX text and identifiers as written ([#1545](https://github.com/ibiscite/ibis/issues/1545)) ([d82b0b9](https://github.com/ibiscite/ibis/commit/d82b0b96aad2c24d8daa8fb7d1f13172709f4b90))
+* **sources:** keep libraries honest on network and cloud storage ([#1547](https://github.com/ibiscite/ibis/issues/1547)) ([ae3bedd](https://github.com/ibiscite/ibis/commit/ae3beddc264d787a6e28bdccb9211d31492041d5))
+* **zotero:** release file leases explicitly ([#1550](https://github.com/ibiscite/ibis/issues/1550)) ([c7ce6b4](https://github.com/ibiscite/ibis/commit/c7ce6b4f966abf7f134acaa173135eca2dd35773))
+
+
+### Documentation
+
+* plan a test of live Zotero citations pasted into Word ([#1544](https://github.com/ibiscite/ibis/issues/1544)) ([5a19845](https://github.com/ibiscite/ibis/commit/5a198452f8408f7779ebf8819ab1e2b6aa9fd7b8))
+* reopen storage and desktop and set release limits at 10k ([#1541](https://github.com/ibiscite/ibis/issues/1541)) ([beb1e6a](https://github.com/ibiscite/ibis/commit/beb1e6ac740af19733e5e348611f2ec8471af565))
+* **roadmap:** plan moving settings to another computer ([#1562](https://github.com/ibiscite/ibis/issues/1562)) ([144e744](https://github.com/ibiscite/ibis/commit/144e7449b72bf305c01c096c17ab91e327114d0f))
+
 ## [0.2.2](https://github.com/ibiscite/ibis/compare/v0.2.1...v0.2.2) (2026-10-31)
 
 
