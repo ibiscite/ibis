@@ -3,7 +3,6 @@ mod attachments;
 mod bibtex;
 mod csl_json;
 mod file;
-pub mod generation;
 mod urls;
 pub mod zotero;
 

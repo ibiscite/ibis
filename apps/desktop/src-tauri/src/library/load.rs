@@ -62,45 +62,6 @@ pub(crate) enum Loaded {
     Unchanged,
 }
 
-pub(super) fn load_source_cached(
-    source: Source,
-    reload: bool,
-    previous: Option<std::sync::Arc<super::engine_file::FileLibrary>>,
-    cancel: &ibis_engine::Cancellation,
-    cache: ibis_engine::FileCacheOperation,
-    cancelled: impl Fn() -> bool,
-) -> Result<Loaded, LoadError> {
-    let Source::File(path) = source else {
-        return load_source(source, reload, previous, cancel, cancelled);
-    };
-    check_cancelled(&cancelled)?;
-    let file = match previous {
-        Some(file) => file,
-        None => std::sync::Arc::new(super::engine_file::FileLibrary::from_engine(
-            ibis_engine::Engine::new().map_err(|_| LoadError::Stopped)?,
-        )),
-    };
-    let pending = file
-        .engine
-        .prepare_file_load(&path, reload, cache, cancel)
-        .map_err(|error| super::engine_file::file_load_error(error, false))?;
-    check_cancelled(&cancelled)?;
-    let file = pending
-        .engine()
-        .map(|engine| std::sync::Arc::new(super::engine_file::FileLibrary::from_engine(engine)))
-        .unwrap_or(file);
-    let cached = pending.cache_hit();
-    Ok(Loaded::New(Box::new(Library {
-        source: Some(Source::File(path.clone())),
-        requested: cached.then_some(Source::File(path)),
-        opening: cached,
-        file: Some(file),
-        pending_file: Some(pending),
-        checked_at: (!cached).then(std::time::SystemTime::now),
-        ..Library::default()
-    })))
-}
-
 pub(super) fn load_source(
     source: Source,
     reload: bool,

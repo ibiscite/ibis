@@ -272,12 +272,12 @@ impl Engine {
             }
             None => None,
         };
-        let reload = reload || self.state()?.readiness.get(&None).is_some_and(|entry| !entry.1);
+        let reload = reload || !self.state()?.zotero_ready;
         let mut guard_error = None;
         let mut began = false;
         let mut on_full = || {
             if !began {
-                if let Err(failure) = self.shared.begin_read(None) {
+                if let Err(failure) = self.shared.begin_zotero_read() {
                     guard_error = Some(failure);
                     return Err(LiveError::Cancelled);
                 }
@@ -333,7 +333,7 @@ impl Engine {
                 // already began, and the copy guard does not tell them apart.
                 if code != ErrorCode::Cancelled {
                     if !began {
-                        self.shared.begin_read(None)?;
+                        self.shared.begin_zotero_read()?;
                     }
                     // A new choice that fails says nothing about the old one.
                     if chosen.is_none() {
@@ -395,6 +395,68 @@ impl Shared {
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
+    #[test]
+    fn zotero_full_reads_retire_only_zotero_citations_until_coherent_publication() {
+        let case: GoldenCase = serde_json::from_str(include_str!("../../../../fixtures/cases/02-pandoc.json")).unwrap();
+        let engine = Engine::from_snapshot(Arc::new(case.library.clone()));
+        let cancel = Cancellation::default();
+        let file = engine.prepare_citation(&case.request, &cancel).unwrap();
+        let LibraryObject::Record(mut record) = case.library.objects()[0].object.clone() else {
+            panic!("invented record")
+        };
+        record.id.library = LibraryId::zotero(b"synthetic");
+        record.citation_keys[0].value = "Zotero2026".into();
+        let mut request = case.request.clone();
+        request.items[0].item = record.id.clone();
+        let id = record.id.library.clone();
+        let snapshot = Arc::new(Snapshot::new(vec![LibraryObject::Record(record)]).unwrap());
+        engine.publish_library(id.clone(), snapshot.clone()).unwrap();
+        let old = engine.prepare_citation(&request, &cancel).unwrap();
+        engine.shared.begin_zotero_read().unwrap();
+        assert_eq!(
+            engine.prepare_citation(&request, &cancel).unwrap_err().code,
+            ErrorCode::SourceUnavailable
+        );
+        assert!(matches!(
+            engine.commit_citation(&old, &old.result().content_hash, |_| panic!("uncertain Zotero")),
+            Err(CitationCommitError::Engine(EngineError {
+                code: ErrorCode::SourceUnavailable
+            }))
+        ));
+        engine
+            .commit_citation(&file, &file.result().content_hash, |content| {
+                assert_eq!(content.text, "[@Example2026]")
+            })
+            .unwrap();
+        // Neither a failed read nor a successful file publication restores Zotero.
+        engine.shared.failed(&id, ErrorCode::SourceUnavailable).unwrap();
+        engine
+            .publish_library(case.request.items[0].item.library.clone(), Arc::new(case.library))
+            .unwrap();
+        assert_eq!(
+            engine.prepare_citation(&request, &cancel).unwrap_err().code,
+            ErrorCode::SourceUnavailable
+        );
+        engine.publish_library(id.clone(), snapshot.clone()).unwrap();
+        assert!(matches!(
+            engine.commit_citation(&old, &old.result().content_hash, |_| panic!("retired preview")),
+            Err(CitationCommitError::PreviewChanged)
+        ));
+        let current = engine.prepare_citation(&request, &cancel).unwrap();
+        engine
+            .commit_citation(&current, &current.result().content_hash, |content| {
+                assert_eq!(content.text, "[@Zotero2026]")
+            })
+            .unwrap();
+        // A second full read retires the newer preview too, even with equal data.
+        engine.shared.begin_zotero_read().unwrap();
+        engine.publish_library(id, snapshot).unwrap();
+        assert!(matches!(
+            engine.commit_citation(&current, &current.result().content_hash, |_| panic!("old generation")),
+            Err(CitationCommitError::PreviewChanged)
+        ));
+    }
+
     #[test]
     fn readable_file_still_returns_results_when_watch_creation_fails() {
         let dir = tempfile::tempdir().unwrap();

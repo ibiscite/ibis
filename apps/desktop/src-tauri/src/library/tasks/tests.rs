@@ -14,14 +14,12 @@ fn remembered_choice_uses_the_read_identity_even_if_the_selected_path_disappears
     let source = Source::File(selected_root.join(".").join("invented.bib"));
     let library = Mutex::new(Library::default());
     let requests = LoadRequests::default();
-    requests.2.configure(&directory.path().join("cache"));
     let (request, _, _) = begin_open(&library, &requests, source.clone()).ok_or("startup")?;
-    let loaded = load_source_cached(
+    let loaded = load_source(
         source.clone(),
         false,
         None,
         &ibis_engine::Cancellation::default(),
-        requests.2.operation(request),
         || false,
     );
     std::fs::remove_file(&path)?;
@@ -47,27 +45,6 @@ fn remembered_choice_uses_the_read_identity_even_if_the_selected_path_disappears
     OpenIntent::Read
         .install(&library, &requests, request, loaded)
         .ok_or("accepted")?;
-    let (newer, _, _) = begin_open(&library, &requests, source).ok_or("newer selection")?;
-    retire_unsaved_cache(&library, &requests, request); // A delayed failure cannot disable newer storage.
-    let engine = ibis_engine::Engine::new().map_err(|_| "engine")?.without_file_watches();
-    let pending = engine
-        .prepare_file_load(
-            &path,
-            false,
-            requests.2.operation(newer),
-            &ibis_engine::Cancellation::default(),
-        )
-        .map_err(|_| "cached load")?;
-    assert!(pending.cache_hit());
-    let blocked = directory.path().join("blocked-settings.json");
-    std::fs::create_dir(&blocked)?;
-    assert!(SettingsFile::new(blocked).update(|_| {}).is_err());
-    retire_unsaved_cache(&library, &requests, newer);
-    pending
-        .engine()
-        .ok_or("searchable cache")?
-        .accept_file_load(pending)
-        .map_err(|_| "verification remains current")?;
     Ok(())
 }
 

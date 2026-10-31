@@ -17,7 +17,6 @@ use super::status::{LibraryStatus, status};
 pub(crate) struct Library {
     /// Shared so a search or copy can run without holding the library lock.
     pub(crate) file: Option<Arc<FileLibrary>>,
-    pub(super) pending_file: Option<ibis_engine::PreparedFileLoad>,
     /// Disconnect the blocked notification worker when its library is replaced.
     pub(super) observer: Option<ibis_engine::LibrarySubscriptionClose>,
     pub(crate) source: Option<Source>,
@@ -66,15 +65,10 @@ impl Library {
 /// Counts requests to open a library, so a load that finishes after a newer
 /// request never replaces the newer library.
 #[derive(Default)]
-pub(crate) struct LoadRequests(
-    pub(crate) AtomicU64,
-    pub(super) Mutex<super::tasks::OpenQueue>,
-    pub(super) ibis_engine::FileCacheSession,
-);
+pub(crate) struct LoadRequests(pub(crate) AtomicU64, pub(super) Mutex<super::tasks::OpenQueue>);
 
 pub(super) fn dialog_path_error(library: &mut Library, requests: &LoadRequests) {
-    let request = requests.0.fetch_add(1, Ordering::SeqCst) + 1;
-    requests.2.invalidate(request);
+    requests.0.fetch_add(1, Ordering::SeqCst);
     library.opening = false;
     library.checking = false;
     library.error = Some(LoadError::NotLocal);
@@ -86,8 +80,7 @@ pub(super) fn leave_samples(library: &Mutex<Library>, requests: &LoadRequests) {
     if !matches!(library.source, Some(Source::Samples(_))) && !matches!(library.requested, Some(Source::Samples(_))) {
         return;
     }
-    let request = requests.0.fetch_add(1, Ordering::SeqCst) + 1;
-    requests.2.invalidate(request);
+    requests.0.fetch_add(1, Ordering::SeqCst);
     if let Some(file) = &library.file {
         file.invalidate();
     }
@@ -128,17 +121,6 @@ pub(super) fn install_result(
     if requests.0.load(Ordering::SeqCst) != request {
         return None;
     }
-    let loaded = loaded.and_then(|mut new| {
-        if let Some(pending) = new.pending_file.take() {
-            new.file
-                .as_ref()
-                .ok_or(LoadError::Stopped)?
-                .engine
-                .accept_file_load(pending)
-                .map_err(|error| super::engine_file::file_load_error(error, true))?;
-        }
-        Ok(new)
-    });
     // A source refresh is not a successful opening of the rejected choice.
     // Keep that choice visible while continuing to refresh its retained source.
     let failed_choice = automatic
@@ -148,9 +130,6 @@ pub(super) fn install_result(
         && library.requested != library.source;
     match loaded {
         Ok(mut new) => {
-            if matches!(new.source, Some(Source::Zotero(_))) {
-                requests.2.remove();
-            }
             if new
                 .file
                 .as_ref()
@@ -236,10 +215,6 @@ pub(super) fn record_open(
     source: Source,
 ) -> (u64, bool, LibraryStatus) {
     let request = requests.0.fetch_add(1, Ordering::SeqCst) + 1;
-    requests.2.invalidate(request);
-    if let Source::File(path) = &source {
-        let _ = requests.2.operation(request).select_file(path);
-    }
     let reload = library.source.as_ref() == Some(&source);
     library.observe_revision(SystemTime::now());
     if let Some(file) = &library.file {
@@ -287,134 +262,133 @@ mod tests {
 
     #[test]
     #[allow(clippy::unwrap_used)]
-    fn cached_file_verification_reports_reloading_until_checked_and_retains_failure_diagnostics() {
+    fn startup_parses_fresh_and_can_cite_immediately_even_with_obsolete_cache_files() {
         use tauri::Manager;
         let dir = tempfile::tempdir().unwrap();
-        let storage = dir.path().join("cache");
         let path = dir.path().join("invented.bib");
-        std::fs::write(&path, "@book{demo,title={Synthetic stars}}").unwrap();
-        let library = Mutex::new(Library::default());
-        let requests = LoadRequests::default();
-        requests.2.configure(&storage);
-        let (a, _, _) = begin_open(&library, &requests, path.clone()).unwrap();
-        let prepare = |id, strict, previous| {
-            super::super::load::load_source_cached(
+        let cache = dir.path().join("source-generations");
+        #[cfg(unix)]
+        {
+            use std::io::Write;
+            use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
+            std::fs::DirBuilder::new().mode(0o700).create(&cache).unwrap();
+            for (name, bytes) in [
+                (".owner", "Ibis prepared source storage\n"),
+                (".lease", ""),
+                ("generation-invented", "stale saved references"),
+                (
+                    "manifest-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json",
+                    "untrusted old manifest",
+                ),
+            ] {
+                std::fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .mode(0o600)
+                    .open(cache.join(name))
+                    .unwrap()
+                    .write_all(bytes.as_bytes())
+                    .unwrap();
+            }
+        }
+        // This is the startup cleanup; source loading never reads the old files.
+        ibis_zotero_local::closed::remove_obsolete_file_cache(dir.path()).unwrap();
+        assert!(!cache.join("generation-invented").exists());
+        assert!(
+            !cache
+                .join("manifest-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json")
+                .exists()
+        );
+        for key in ["first", "reopened"] {
+            #[cfg(unix)]
+            let busy = (key == "reopened").then(|| {
+                use std::io::Write;
+                use std::os::unix::fs::OpenOptionsExt;
+                let lease = std::fs::OpenOptions::new()
+                    .read(true)
+                    .write(true)
+                    .open(cache.join(".lease"))
+                    .unwrap();
+                lease.try_lock().unwrap();
+                std::fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .mode(0o600)
+                    .open(cache.join("generation-invented"))
+                    .unwrap()
+                    .write_all(b"stale saved references")
+                    .unwrap();
+                assert_eq!(
+                    ibis_zotero_local::closed::remove_obsolete_file_cache(dir.path()),
+                    Err(ibis_zotero_local::closed::PrivateStorageError::Busy)
+                );
+                lease
+            });
+            std::fs::write(&path, format!("@book{{{key},title={{Synthetic stars}}}}")).unwrap();
+            let app = tauri::test::mock_builder()
+                .manage(Mutex::new(Library::default()))
+                .manage(super::super::PreviewRequests::default())
+                .build(tauri::test::mock_context(tauri::test::noop_assets()))
+                .unwrap();
+            let library = app.state::<Mutex<Library>>();
+            let requests = LoadRequests::default();
+            let (request, reload, _) = begin_open(&library, &requests, path.clone()).unwrap();
+            assert!(!reload);
+            let loaded = load_source(
                 Source::File(path.clone()),
-                strict,
-                previous,
+                false,
+                None,
                 &ibis_engine::Cancellation::default(),
-                requests.2.operation(id),
                 || false,
-            )
-        };
-        let loaded = prepare(a, false, None);
-        let saved = super::super::tasks::remembered_choice(&Source::File(path.clone()), &loaded).unwrap();
-        let accepted = install_loaded(&library, &requests, a, loaded).unwrap();
-        assert_eq!(accepted.references, 1);
-        assert!(accepted.error.is_none());
-        let Source::File(path) = Source::from(saved) else {
-            panic!("remembered file")
-        };
-        drop(requests);
-        drop(library);
-        let app = tauri::test::mock_builder()
-            .manage(Mutex::new(Library::default()))
-            .manage(super::super::PreviewRequests::default())
-            .build(tauri::test::mock_context(tauri::test::noop_assets()))
-            .unwrap();
-        let library = app.state::<Mutex<Library>>();
-        let requests = LoadRequests::default();
-        requests.2.configure(&storage);
-        let (a, _, _) = begin_open(&library, &requests, path.clone()).unwrap();
-        let prepare = |id, strict, previous| {
-            super::super::load::load_source_cached(
-                Source::File(path.clone()),
-                strict,
-                previous,
-                &ibis_engine::Cancellation::default(),
-                requests.2.operation(id),
-                || false,
-            )
-        };
-        let refresh = |id, previous| {
-            let Ok(Loaded::New(new)) = prepare(id, false, previous) else {
-                panic!("prepared refresh")
-            };
-            install_automatic(&library, &requests, id, Ok(*new)).unwrap()
-        };
-        let cached = install_loaded(&library, &requests, a, prepare(a, false, None)).unwrap();
-        let active = library.lock().unwrap().file.clone().unwrap();
-        super::super::tasks::engine_changed(&mut library.lock().unwrap(), &active);
-        let observed = status(&library.lock().unwrap());
-        assert_eq!(cached.state, LibraryState::Reloading);
-        assert_eq!(observed.state, LibraryState::Reloading);
-        assert!(cached.has_snapshot && cached.checked_at.is_none() && observed.checked_at.is_none());
-        assert!(library_line(&cached).starts_with("Reloading invented.bib"));
-        let query = serde_json::from_value(serde_json::json!({"text":"synthetic","interpret_locators":false})).unwrap();
-        let search = |file: &FileLibrary| {
-            serde_json::to_value(
-                file.search(&query, 10, None, &ibis_engine::Cancellation::default())
+            );
+            let ready = install_loaded(&library, &requests, request, loaded).unwrap();
+            assert_eq!(ready.state, LibraryState::Loaded);
+            assert!(ready.checked_at.is_some() && ready.has_snapshot && ready.error.is_none());
+            let active = library.lock().unwrap().file.clone().unwrap();
+            let query =
+                serde_json::from_value(serde_json::json!({"text":"synthetic","interpret_locators":false})).unwrap();
+            let rows = serde_json::to_value(
+                active
+                    .search(&query, 10, None, &ibis_engine::Cancellation::default())
                     .unwrap(),
             )
-            .unwrap()
-        };
-        let rows = search(&active);
-        assert_eq!(rows["results"].as_array().unwrap().len(), 1);
-        let selection = || {
-            serde_json::from_value(serde_json::json!({"id":rows["results"][0]["id"],"cite":rows["results"][0]["cite"]}))
-                .unwrap()
-        };
-        let preview = |request| {
-            tauri::async_runtime::block_on(crate::copy::preview_file_citation(
-                vec![selection()],
+            .unwrap();
+            assert_eq!(rows["results"].as_array().unwrap().len(), 1);
+            let selection = serde_json::from_value(serde_json::json!({
+                "id":rows["results"][0]["id"],"cite":rows["results"][0]["cite"]
+            }))
+            .unwrap();
+            let preview = tauri::async_runtime::block_on(crate::copy::preview_file_citation(
+                vec![selection],
                 ibis_core::cite::KeyFormat::Pandoc,
                 None,
                 active.revision(),
                 super::super::PreviewIntent {
                     page: 1,
-                    request,
+                    request: 1,
                     cancel: false,
                 },
                 app.state(),
                 app.state(),
             ))
-        };
-        let refused = serde_json::to_value(preview(1).err().unwrap()).unwrap();
-        assert!(
-            refused
-                .to_string()
-                .contains("The library is loading. Try again after it opens.")
-        );
-        std::fs::remove_file(&path).unwrap();
-        let failed = refresh(a, Some(active.clone()));
-        assert!(failed.stale && failed.kept_references && failed.checked_at.is_none());
-        assert_eq!(failed.state, LibraryState::Error);
-        assert_eq!(failed.error_reason, Some(SourceError::Unavailable.into()));
-        assert_eq!(search(&active), rows);
-        std::fs::write(&path, "@book{demo,title={Synthetic stars}}").unwrap();
-        let (b, _, _) = begin_open(&library, &requests, path.clone()).unwrap();
-        let verifying = install_loaded(&library, &requests, b, prepare(b, false, None)).unwrap();
-        assert_eq!(verifying.state, LibraryState::Reloading);
-        let cached = library.lock().unwrap().file.clone();
-        let ready = refresh(b, cached);
-        assert_eq!(ready.state, LibraryState::Loaded);
-        assert!(ready.checked_at.is_some() && ready.error.is_none() && !ready.stale);
-        assert_eq!(search(library.lock().unwrap().file.as_ref().unwrap()), rows);
-        assert_eq!(
-            preview(2).unwrap_or_else(|_| panic!("verified citation")).text,
-            "[@demo]"
-        );
-        let active = library.lock().unwrap().file.clone().unwrap();
-        std::fs::write(&path, "@book{unfinished,title={").unwrap();
-        let (c, _, _) = begin_open(&library, &requests, path.clone()).unwrap();
-        let failed = prepare(c, true, Some(active.clone()));
-        let retained = install_loaded(&library, &requests, c, failed).unwrap();
-        assert!(retained.kept_references && retained.stale);
-        assert_eq!(retained.error_reason, Some(SourceError::Incomplete.into()));
-        assert_eq!(
-            active.engine.libraries().unwrap().libraries[0].refresh_error,
-            Some(ibis_core::contract::ErrorCode::BadInput)
-        );
+            .unwrap();
+            let expected = format!("[@{key}]");
+            assert_eq!(preview.text, expected);
+            let mut written = String::new();
+            active
+                .copy(&preview.ticket, &preview.content_hash, |content| {
+                    written = content.text.to_owned();
+                    Ok(())
+                })
+                .unwrap();
+            assert_eq!(written, expected);
+            #[cfg(unix)]
+            if let Some(lease) = busy {
+                lease.unlock().unwrap();
+                ibis_zotero_local::closed::remove_obsolete_file_cache(dir.path()).unwrap();
+                assert!(!cache.join("generation-invented").exists());
+            }
+        }
     }
 
     #[test]

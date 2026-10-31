@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use serde_json::json;
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{
     Mutex,
     atomic::{AtomicBool, AtomicU64, Ordering},
@@ -27,6 +27,8 @@ use std::sync::{
 static TICKETS: AtomicU64 = AtomicU64::new(1);
 pub(crate) struct FileLibrary {
     pub(super) engine: Engine,
+    /// Canonical read identity for remembering a file, independent of its watch path.
+    source_path: Option<PathBuf>,
     sample: bool,
     prepared: Mutex<Option<(String, PreparedCitation)>>,
     latest_preview: Mutex<(u64, Cancellation)>,
@@ -78,6 +80,7 @@ impl FileLibrary {
     }
 
     fn open_file(path: &Path, engine: Engine) -> Result<Self, super::LoadError> {
+        let source_path = std::fs::canonicalize(path).map_err(|_| ibis_core::source::SourceError::Unavailable)?;
         engine
             .dispatch(
                 Method::Libraries,
@@ -85,12 +88,19 @@ impl FileLibrary {
                 &Cancellation::default(),
             )
             .map_err(|error| file_load_error(error, false))?;
-        Ok(Self::from_engine(engine))
+        let mut file = Self::from_engine(engine);
+        file.source_path = Some(source_path);
+        Ok(file)
+    }
+
+    pub(super) fn source_path(&self) -> Option<&Path> {
+        self.source_path.as_deref()
     }
 
     pub(super) fn from_engine(engine: Engine) -> Self {
         Self {
             engine,
+            source_path: None,
             sample: false,
             prepared: Mutex::new(None),
             latest_preview: Mutex::new((0, Cancellation::default())),

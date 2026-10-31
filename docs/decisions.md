@@ -70,6 +70,8 @@ Mode). That module and the macOS secure-input boundary are the scoped
 `unsafe` exceptions described in decision 0029; their crates deny it
 elsewhere and the workspace forbids it.
 
+2026-10-31 (maintainer): Remove the saved `.bib` cache (#1498, #1515); #1534 found no first-result gain at 10k and 2.7× slower citation readiness. Parse files fresh, clean obsolete private cache files under their lease, and retain Zotero's coherent-read guard.
+
 ## 0007 Formatting (with 0028)
 
 Formatted citations use Zotero's maintained build of citeproc-js, pinned by
