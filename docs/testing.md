@@ -145,6 +145,41 @@ execution and installed Windows/macOS reruns remain necessary; model tests do
 not establish package replacement or restart. No product or workflow files
 changed, and no commits were made.
 
+Run 41167455728 reaches replacement and a live restarted process on macOS and
+Windows, then fails the synthetic library comparison (`update6.log`, lines 192
+and 420). This is a harness path-spelling defect. Its SHA-256 matches the local
+qualifier before this fix. The nightlies' timestamps identify sources
+`cdfca68bc467` (02:24:08 UTC) and `a40f5152cba8` (02:52:30 UTC). Both use the same
+`com.ibiscite.ibis.nightly` identifier, app-config settings location, schema 2
+and BibTeX enum shape. #1512 does not change `crates/ibis-core/src/settings.rs`;
+#1500 only adds defaulted, optional `picker_windows` geometry there.
+
+Both versions already canonicalize the library during startup and persist the
+captured read identity: `library/tasks.rs`'s `OpenIntent::Read.saves_choice`
+allows the write, and `s.library = Some(chosen)` (line 410 in both sources)
+saves `PreparedFileLoad::source_path`. This resolves macOS's `/var` directory
+alias and retains Windows's `\\?\` prefix. Linux's synthetic path keeps its
+spelling. The old verifier instead compared the entire library object with
+`{"bibtex": str(library)}`. It therefore rejected the same file even though
+the previous app could already have rewritten it before offering the update.
+No Settings window interaction, schema migration or restart-write wait is
+involved. The supplied log does not contain the saved path itself.
+
+Qualification now requires exactly one string-valued `bibtex` member naming
+the same existing regular file by native file identity. The shortcut still
+matches exactly. Other files, even with identical contents, missing or unreadable
+identity, relative paths and malformed choices fail immediately without raw
+values in diagnostics. No retry or environment library override masks a lost
+choice. Regressions cover canonical spelling, directory aliases, failed identity
+I/O and the final restart result. Installed macOS/Windows reruns remain required.
+
+Local validation: 74 qualifier self-tests passed; the PowerShell provider
+contract skipped because `pwsh` is absent. All 26 focused feed, macOS-provider
+and idle-input Node tests, 36 Rust settings tests and three settings-helper
+tests passed. Node 24 with `NODE_OPTIONS=` and `NODE_USE_SYSTEM_CA=0` resolved
+the sandbox's Node certificate startup failure. The full script runner was
+not run because it invokes Git, outside this worker's boundary.
+
 ## Update consent keyboard safety
 
 PR #1504's foreground fix exposed a pre-existing consent hazard: Return meant
