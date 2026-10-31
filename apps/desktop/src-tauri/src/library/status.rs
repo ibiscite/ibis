@@ -317,7 +317,10 @@ mod tests {
             "non-record objects are not searchable references"
         );
         assert!(!failed.stale);
-        assert_eq!(failed.error.as_deref(), Some("the library file is unavailable"));
+        assert_eq!(
+            failed.error.as_deref(),
+            Some("the library file is unavailable; download any online-only file to this computer first")
+        );
         assert_eq!(failed.references, 0);
         assert_eq!(
             failed.source_counts,
