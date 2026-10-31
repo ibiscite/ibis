@@ -1,4 +1,4 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { createElement } from "react";
 import { expect, onTestFinished, test, vi } from "vitest";
 import type { LibraryStatus } from "./bindings";
@@ -258,4 +258,27 @@ test("the status dot sits at the footer edge, 12 px before the text and centred 
   const dot = styles.match(/^\.status-dot \{([^}]*)\}/m)?.[1];
   expect(dot).not.toMatch(/margin/);
   expect(dot).toMatch(/translate: 0 calc\(var\(--status-dot-size\) \/ 2 - \.5ex\);/);
+});
+
+test.each(["ltr", "rtl"])("the native Library trigger reserves its own hit area beside Find in a narrow %s footer", (dir) => {
+  // jsdom cannot lay out pixels, but it can check the native button's layout
+  // contract: an in-flow box and a non-shrinking minimum, even with no label child.
+  const style = document.createElement("style");
+  style.textContent = readFileSync(new FileURL("./ui/Button.css", import.meta.url), "utf8") +
+    readFileSync(new FileURL("./ui/LibraryStatus.css", import.meta.url), "utf8");
+  document.head.append(style);
+  onTestFinished(() => style.remove());
+  const open = vi.fn(), find = vi.fn();
+  render(createElement("div", { dir, style: { display: "flex", width: 80 } }, createElement(LibraryStatusLine, {
+    library: file({ state: "error", stale: true, problem: "missing", error: "the library file is unavailable; keeping the last loaded references" }),
+    groupName: String,
+    action: createElement("button", { className: "source-action library-inline-action", onClick: find }, "Find thesis.bib…"),
+    menu: { label: "Library", isOpen: false, onOpenChange: open, children: null },
+  })));
+  const trigger = screen.getByRole("button", { name: "Library" });
+  expect(getComputedStyle(trigger).position).toBe("relative");
+  expect(getComputedStyle(trigger.parentElement!).minWidth).toBe("var(--control-min-size)");
+  fireEvent.click(trigger, { detail: 0 });
+  expect(open).toHaveBeenCalledWith(true);
+  expect(find).not.toHaveBeenCalled();
 });

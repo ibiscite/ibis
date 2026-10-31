@@ -144,22 +144,61 @@ MENU_ACTIONS = {"Choose Library…": "Library", "Use Zotero": "Library",
                 "Reload Library": "Library", "Quit Ibis": "More"}
 
 
+class NativeControlUnavailable(AssertionError):
+    def __init__(self, name, *, named, action, returned_false):
+        super().__init__(f"No invokable accessibility control {name!r}")
+        self.facts = {"named": bool(named), "action": bool(action), "returned_false": bool(returned_false)}
+
+
+def menu_failure_facts(native, trigger, item, stage, last_error):
+    """Fresh, fixed-field facts only: no tree, names, paths or exception text."""
+    facts = {"stage": stage, "snapshot_available": False,
+             "invocation": last_error.facts if isinstance(last_error, NativeControlUnavailable) else None}
+    try:
+        current = native.snapshot()
+        if type(current) is not dict or type(current.get("nodes")) is not list:
+            return facts
+        nodes = current["nodes"]
+        role = lambda node: str(node.get("role", "")).lower().replace(" ", "")
+        facts.update(snapshot_available=True, visible=bool(current.get("visible")), foreground=bool(current.get("foreground")),
+                     trigger_button=any(node.get("name") == trigger and role(node) in ("button", "pushbutton") for node in nodes),
+                     menu=any(node.get("name") == trigger and role(node) == "menu" for node in nodes),
+                     item_named=any(node.get("name") == item for node in nodes),
+                     chooser_or_dialog=any(role(node) in ("filechooser", "dialog") for node in nodes),
+                     empty_library=any("no references" in str(node.get(key, "")) for node in nodes for key in ("name", "value")),
+                     four_references=shows_count(current, "4 references"))
+    except Exception:
+        # Diagnostics must not replace the original failed check or print the
+        # native exception, which may contain arbitrary desktop text.
+        pass
+    return facts
+
+
 def menu_action(native, name):
     """Open the owning menu, then press the named item, as a user would."""
     if name not in MENU_ACTIONS:
         raise ValueError(f"{name!r} is not a picker menu action")
     trigger = MENU_ACTIONS[name]
-    native.click(trigger)
+    last_error, stage = None, "trigger"
     # The accessibility tree can lag the menu opening; wait for the item.
     def pressed():
+        nonlocal last_error
         try:
             native.click(name)
             return True
         except (AssertionError, RuntimeError, subprocess.CalledProcessError) as error:
             if isinstance(native, Linux) and isinstance(error, native.accessibility_error):
                 raise
+            last_error = error
             return False
-    wait_for(pressed, f"{name} appears in the {trigger} menu", timeout=5)
+    try:
+        native.click(trigger)
+        stage = "item"
+        wait_for(pressed, f"{name} appears in the {trigger} menu", timeout=5)
+    except AssertionError as error:
+        print("MENU ACTION FAILURE", json.dumps(menu_failure_facts(native, trigger, name, stage, last_error or error)),
+              file=sys.stderr, flush=True)
+        raise
 
 
 def named(snapshot, name):
@@ -1086,6 +1125,7 @@ class Linux:
         run("xdotool", "type", "--clearmodifiers", "--delay", "0", text)
 
     def click(self, name):
+        named_target, supported_action, returned_false = False, False, False
         def children(parent, *, owned=False):
             try:
                 count = parent.childCount
@@ -1111,18 +1151,23 @@ class Linux:
             action = None
             try:
                 if item.name == name:
+                    named_target = True
                     action = item.queryAction()
                     if not action.nActions:
                         action = None
+                    else:
+                        supported_action = True
             except self.accessibility_error:
                 continue
             except NotImplementedError:
                 action = None
             # An action error can mean it already ran. Never rediscover/retry it.
-            if action is not None and action.doAction(0):
-                return
+            if action is not None:
+                if action.doAction(0):
+                    return
+                returned_false = True
             stack.extend(children(item))
-        raise AssertionError(f"No invokable accessibility control {name!r}")
+        raise NativeControlUnavailable(name, named=named_target, action=supported_action, returned_false=returned_false)
 
     def notice_visible(self):
         try:
@@ -3491,6 +3536,64 @@ class ContractTests(unittest.TestCase):
                           if event["kind"] == "action" and event["phase"] == "dispatch"],
                          ["click-library", "click-reload"])
         self.assertEqual(bundle["request_completion_order"][-1], bundle["events"][0]["id"])
+
+    def test_menu_failure_observes_the_current_menu_instead_of_reusing_the_prior_check(self):
+        native = Mock()
+        native.click.side_effect = [None, AssertionError("PRIVATE action error")]
+        native.snapshot.return_value = {"visible": True, "foreground": True, "nodes": [
+            {"name": "PRIVATE filename", "role": "file chooser", "value": "PRIVATE document"},
+            {"name": "Search references", "role": "entry", "focused": False},
+        ]}
+        def timeout(predicate, description, **options):
+            self.assertFalse(predicate())
+            raise AssertionError("Timed out: " + description)
+        with patch(__name__ + ".wait_for", side_effect=timeout), patch("builtins.print") as output:
+            with self.assertRaisesRegex(AssertionError, "Timed out: Reload Library appears in the Library menu"):
+                menu_action(native, "Reload Library")
+        native.snapshot.assert_called_once_with()
+        label, encoded = output.call_args.args
+        self.assertEqual(label, "MENU ACTION FAILURE")
+        facts = json.loads(encoded)
+        self.assertEqual(facts["stage"], "item")
+        self.assertTrue(facts["snapshot_available"] and facts["visible"] and facts["foreground"] and facts["chooser_or_dialog"])
+        self.assertFalse(facts["trigger_button"] or facts["menu"] or facts["item_named"])
+        self.assertNotIn("PRIVATE", str(output.call_args))
+
+    def test_menu_failure_distinguishes_a_named_item_that_refuses_atspi_activation(self):
+        native, desktop, owned, target, foreign = self.linux_click_fixture()
+        target.name = "Reload Library"
+        target.queryAction.return_value.doAction.return_value = False
+        trigger = self.CensusNode(name="Library")
+        trigger.queryAction = Mock(return_value=Mock(nActions=1, doAction=Mock(return_value=True)))
+        owned.children.append(trigger)
+        owned.childCount += 1
+        native.snapshot = Mock(return_value={"visible": True, "foreground": True, "nodes": [
+            {"name": "Library", "role": "push button"}, {"name": "Library", "role": "menu"},
+            {"name": "Reload Library", "role": "menu item"},
+        ]})
+        def timeout(predicate, description, **options):
+            self.assertFalse(predicate())
+            raise AssertionError("Timed out: " + description)
+        with patch(__name__ + ".wait_for", side_effect=timeout), patch("builtins.print") as output:
+            with self.assertRaises(AssertionError):
+                menu_action(native, "Reload Library")
+        facts = json.loads(output.call_args.args[1])
+        self.assertTrue(facts["trigger_button"] and facts["menu"] and facts["item_named"])
+        self.assertEqual(facts["invocation"], {"named": True, "action": True, "returned_false": True})
+        target.queryAction.return_value.doAction.assert_called_once_with(0)
+        foreign.queryAction.assert_not_called()
+
+    def test_menu_failure_probe_preserves_the_trigger_failure_when_observation_is_unavailable(self):
+        native = Mock()
+        native.click.side_effect = AssertionError("synthetic trigger refusal")
+        native.snapshot.side_effect = RuntimeError("PRIVATE desktop observation")
+        with patch("builtins.print") as output:
+            with self.assertRaisesRegex(AssertionError, "^synthetic trigger refusal$"):
+                menu_action(native, "Reload Library")
+        self.assertEqual(native.click.call_args_list, [call("Library")])
+        self.assertEqual(json.loads(output.call_args.args[1]), {
+            "stage": "trigger", "snapshot_available": False, "invocation": None})
+        self.assertNotIn("PRIVATE", str(output.call_args))
 
     class MenuKeyboardModel:
         """Native keys own the input; accessibility can focus its active option."""

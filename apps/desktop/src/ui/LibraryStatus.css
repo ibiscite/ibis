@@ -1,9 +1,11 @@
 /* Shared library status controls use the footer's existing geometry and roles. */
 .library-status-controls { flex: 1; min-width: min(var(--library-min-width), 100%); display: flex; align-items: center; gap: var(--space-1); }
 [data-status-compact] > .library-status-controls { min-width: calc(var(--tile-size) + var(--row-gap)); }
-.library-status-target { flex: 1; min-width: 0; position: relative; isolation: isolate; }
-.library-status-target > .library-status { position: relative; z-index: var(--z-chrome); pointer-events: none; }
-.ui-button.library-status-trigger { position: absolute; inset: 0; width: 100%; padding-inline: 0; border-radius: var(--r-tile); color: var(--muted); }
+/* The native button owns a real, non-collapsing box. An empty absolute
+   overlay could shrink beside Find and leave AT-SPI without a usable target. */
+.library-status-target { flex: 1; min-width: var(--control-min-size); position: relative; isolation: isolate; }
+.library-status-target > .library-status { position: absolute; inset-inline: 0; top: 50%; transform: translateY(-50%); z-index: var(--z-chrome); pointer-events: none; }
+.ui-button.library-status-trigger { position: relative; width: 100%; padding-inline: 0; border-radius: var(--r-tile); color: var(--muted); }
 .library-status-controls[data-health="stop"] .library-name, .library-status-controls[data-health="look"] .library-name { color: var(--text); }
 .library-status-controls .library-status { min-width: 0; }
 .library-status-controls .library-inline-action { flex: none; }
