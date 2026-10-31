@@ -448,6 +448,14 @@ The maintainer approved publishing the current engineering closeout through
 Release Please as 0.2.1 after its PRs pass review and CI (2026-10-29).
 Stable deployment retains the maintainer's one-click GitHub approval.
 
+2026-10-31: Numbered releases are full GitHub releases titled “Ibis X.Y.Z”, tagged
+`vX.Y.Z`, with the highest version carrying Latest; this replaces marking every
+numbered release pre-release so GitHub shows one Latest and `/releases/latest`
+works. Before 1.0, preview status stays in the notes and website. “Ibis Nightly”
+uses the rolling `nightly` tag, with its version in the notes; “Ibis update feed”
+uses the fixed `stable` tag, whose release's files are replaced. Both are
+pre-releases and never Latest.
+
 ## 0021 Interface foundation
 
 React Aria Components for interactive parts, pinned exactly, imported only by
