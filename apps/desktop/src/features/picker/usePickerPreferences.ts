@@ -6,8 +6,6 @@ import { PreferencePatchQueue } from "../../preferencePatchQueue";
 import { styleOf, type Choice } from "./choice";
 import type { Operation } from "./Notices";
 
-const DENSITIES: Density[] = ["compact", "comfortable", "spacious"];
-
 type PreferencesApi = Pick<typeof nativeApi, "copyFormat" | "pickerPreferences" | "setPickerPreferences" | "quit">;
 
 export function usePickerPreferences(
@@ -79,8 +77,8 @@ export function usePickerPreferences(
     const chosenStyle = styleOf(choice);
     savePreferences({ citation_style: chosenStyle }, chosenStyle ? null : choice as CopyFormat);
   };
-  const changeDensity = () => {
-    const next = DENSITIES[(DENSITIES.indexOf(density) + 1) % DENSITIES.length] ?? "comfortable";
+  const changeDensity = (next: Density) => {
+    if (next === density) return;
     setDensity(next);
     setDensityFeedback({ presentation, density: next });
     savePreferences({ density: next });

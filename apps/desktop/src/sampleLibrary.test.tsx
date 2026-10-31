@@ -128,9 +128,10 @@ test.each(["none", "More", "keys", "keys from More"] as const)("welcome Escape d
   act(() => zotero.focus());
   expect(input.value).toBe("lantern");
   if (overlay !== "none") {
-    const opener = screen.getByRole("button", { name: overlay === "keys" ? "Shortcuts" : /^More/ });
+    const opener = overlay === "keys" ? zotero : screen.getByRole("button", { name: /^More/ });
     act(() => opener.focus());
-    fireEvent.click(opener);
+    if (overlay === "keys") fireEvent.keyDown(opener, { key: "/", ctrlKey: true });
+    else fireEvent.click(opener);
     if (overlay === "keys from More") {
       const item = await screen.findByRole("menuitem", { name: "Keyboard shortcuts" });
       act(() => item.focus());

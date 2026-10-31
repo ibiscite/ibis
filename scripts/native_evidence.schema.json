@@ -24,6 +24,7 @@
         "text-probe",
         "text-probe-alternate",
         "click-more",
+        "click-library",
         "click-reload",
         "click-quit",
         "click-format",

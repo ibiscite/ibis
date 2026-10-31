@@ -89,6 +89,9 @@ def strings(snapshot):
     return "\n".join(str(n.get(k, "")) for n in snapshot["nodes"] for k in ("name", "value"))
 
 
+BIDI_ISOLATES = str.maketrans("", "", "\u2066\u2067\u2068\u2069")
+
+
 def shows_count(snapshot, count):
     """Whether the footer's count, such as "3 references", reaches the accessibility tree.
 
@@ -99,12 +102,20 @@ def shows_count(snapshot, count):
     return count in strings(snapshot)
 
 
-def retained_snapshot_fragments(snapshot):
+def shows_empty_library(snapshot):
+    # The status's separator and count are separate <bdi> nodes. Match the
+    # complete count clause in one node, not traversal order or joined text.
+    return any(re.search(r"(?:^| · )no references(?=$| · |\. checked )",
+                         " ".join(str(node.get(key, "")).translate(BIDI_ISOLATES).split())) is not None
+               for node in snapshot["nodes"] for key in ("name", "value"))
+
+
+def retained_snapshot_fragments(snapshot, name=None):
     """Fixed predicates only, from one bounded native snapshot; never echo text."""
     # Native traversal order is not reading order (Linux walks a LIFO stack).
     # Match complete atomic wording or one composite text node, never invent a
     # phrase by joining neighboring elements from different native boundaries.
-    values = [" ".join(str(node.get(key, "")).split())
+    values = [" ".join(str(node.get(key, "")).translate(BIDI_ISOLATES).split())
               for node in snapshot["nodes"] for key in ("name", "value")]
     def contains(fragment, ending=r"(?!\w)"):
         return any(re.search(r"(?:^|^· | · )" + re.escape(fragment) + ending, value) is not None
@@ -112,21 +123,22 @@ def retained_snapshot_fragments(snapshot):
     # The count is a complete clause: either its own node/summary, or followed
     # by the spoken detail's check time or failure. A word boundary alone would
     # also accept "4 references missing; 3 references retained".
-    count_ending = r"(?=$|\. (?:checked |The library could not be opened: |the file could not be read$|Zotero could not be reached$))"
-    return {"not_updated": contains("not updated"),
+    count_ending = r"(?=$|\. (?:last read |checked |The library could not be opened: |the file could not be read$|Zotero could not be reached$))"
+    return {"problem_shown": contains("not updated") or contains("moved") or
+            (name is not None and contains(f"{name} moved")),
             "four_references": contains("4 references", count_ending)}
 
 
 def missing_library_evidence(snapshot, name):
-    text = strings(snapshot)
+    text = strings(snapshot).translate(BIDI_ISOLATES)
     # Bidi isolates can expose the separator and state as separate native
     # text nodes. Their boundaries are whitespace, not missing status words.
-    retained = retained_snapshot_fragments(snapshot)
+    retained = retained_snapshot_fragments(snapshot, name)
     return {key: fragment if type(fragment) is bool else fragment in text for key, fragment in {
         "failed_source_named": f"The library could not be opened: {name}",
         "retention_explained": "the library file is unavailable; keeping the last loaded references",
         "recovery_action": "Choose it again or reconnect the drive.",
-        # The footer says the library was not updated; its detail, read by
+        # The footer says the library moved or was not updated; its detail, read by
         # screen readers, keeps the retained count. Names are isolated (U+2068/9).
         "retained_snapshot": all(retained.values()),
     }.items()}
@@ -134,26 +146,78 @@ def missing_library_evidence(snapshot, name):
 
 
 
-# Library actions live in the picker's More menu (Ctrl/Cmd+K), not the footer.
+# Library actions live in the footer's Library menu; application actions in More.
 TREE_SETTLE_SECONDS = 10
-MENU_ACTIONS = {"Choose library…", "Use Zotero", "Reload", "Quit Ibis"}
+MENU_ACTIONS = {"Choose Library…": "Library", "Use Zotero": "Library",
+                "Reload Library": "Library", "Quit Ibis": "More"}
+# ATK_ROLE_PUSH_BUTTON_MENU is how AT-SPI exposes a button with aria-haspopup.
+# Both Library and More use the same native HTML button/MenuTrigger contract.
+MENU_BUTTON_ROLES = {"button", "pushbutton", "pushbuttonmenu", "combobox"}
+MENU_ITEM_ROLES = {"menuitem", "checkmenuitem", "radiomenuitem", "menuitemcheckbox", "menuitemradio"}
+
+
+class NativeControlUnavailable(AssertionError):
+    def __init__(self, name, *, named, action, returned_false, reason):
+        super().__init__(f"No invokable accessibility control {name!r}")
+        self.facts = {"named": bool(named), "action": bool(action), "returned_false": bool(returned_false), "reason": reason}
+
+
+def menu_failure_facts(native, trigger, item, stage, last_error):
+    """Fresh, fixed-field facts only: no tree, names, paths or exception text."""
+    facts = {"stage": stage, "snapshot_available": False,
+             "invocation": last_error.facts if isinstance(last_error, NativeControlUnavailable) else None}
+    if isinstance(native, Linux):
+        # Independent of window identity: a chooser or an observation refusal
+        # must not hide which exact Library objects the provider exposed.
+        try:
+            facts["library_controls"] = native.named_control_facts("Library")
+        except Exception:
+            facts["library_controls"] = {"available": False, "complete": False, "matches": []}
+    try:
+        current = native.snapshot()
+        if type(current) is not dict or type(current.get("nodes")) is not list:
+            return facts
+        nodes = current["nodes"]
+        role = lambda node: str(node.get("role", "")).lower().replace(" ", "")
+        facts.update(snapshot_available=True, visible=bool(current.get("visible")), foreground=bool(current.get("foreground")),
+                     trigger_button=any(node.get("name") == trigger and role(node) in MENU_BUTTON_ROLES for node in nodes),
+                     menu=any(node.get("name") == trigger and role(node) == "menu" for node in nodes),
+                     item_named=any(node.get("name") == item for node in nodes),
+                     chooser_or_dialog=any(role(node) in ("filechooser", "dialog") for node in nodes),
+                     empty_library=any("no references" in str(node.get(key, "")) for node in nodes for key in ("name", "value")),
+                     four_references=shows_count(current, "4 references"))
+    except Exception:
+        # Diagnostics must not replace the original failed check or print the
+        # native exception, which may contain arbitrary desktop text.
+        pass
+    return facts
 
 
 def menu_action(native, name):
-    """Open More, then press the named menu item, as a user would."""
+    """Open the owning menu, then press the named item, as a user would."""
     if name not in MENU_ACTIONS:
-        raise ValueError(f"{name!r} is not a More menu action")
-    native.click("More")
+        raise ValueError(f"{name!r} is not a picker menu action")
+    trigger = MENU_ACTIONS[name]
+    last_error, stage = None, "trigger"
     # The accessibility tree can lag the menu opening; wait for the item.
     def pressed():
+        nonlocal last_error
         try:
             native.click(name)
             return True
         except (AssertionError, RuntimeError, subprocess.CalledProcessError) as error:
             if isinstance(native, Linux) and isinstance(error, native.accessibility_error):
                 raise
+            last_error = error
             return False
-    wait_for(pressed, f"{name} appears in the More menu", timeout=5)
+    try:
+        native.click(trigger)
+        stage = "item"
+        wait_for(pressed, f"{name} appears in the {trigger} menu", timeout=5)
+    except (AssertionError, RuntimeError, subprocess.CalledProcessError) as error:
+        print("MENU ACTION FAILURE", json.dumps(menu_failure_facts(native, trigger, name, stage, last_error or error)),
+              file=sys.stderr, flush=True)
+        raise
 
 
 def named(snapshot, name):
@@ -179,10 +243,10 @@ def menu_escape_focus(native, snapshot, shortcut, report):
                                    "space_reopened", "search_unchanged", "tab_search_typed", "search_restored")}
     report["menu_escape_focus"] = facts
     native.key(shortcut)
-    wait_for(lambda: bool(named(snapshot(), "Reload")), "shortcut opens More", timeout=5)
+    wait_for(lambda: bool(named(snapshot(), "Keyboard shortcuts")), "shortcut opens More", timeout=5)
     facts["shortcut_opened"] = True
     native.key("Escape")
-    wait_for(lambda: not named(snapshot(), "Reload"), "Escape closes More", timeout=5)
+    wait_for(lambda: not named(snapshot(), "Keyboard shortcuts"), "Escape closes More", timeout=5)
     facts["escape_closed"] = True
     def restored():
         current = snapshot()
@@ -193,18 +257,18 @@ def menu_escape_focus(native, snapshot, shortcut, report):
     native.key("space")
     def reopened():
         current = snapshot()
-        facts["space_reopened"] = bool(named(current, "Reload"))
+        facts["space_reopened"] = bool(named(current, "Keyboard shortcuts"))
         # A successful modal open hides Search from the accessibility tree.
         if not facts["space_reopened"]:
             facts["search_unchanged"] = facts["search_unchanged"] and values(current) == original
         return facts["space_reopened"]
     wait_for(reopened, "Space reopens More after Escape", timeout=5)
     native.key("Tab")
-    wait_for(lambda: not named(snapshot(), "Reload"), "Tab closes More", timeout=5)
+    wait_for(lambda: not named(snapshot(), "Keyboard shortcuts"), "Tab closes More", timeout=5)
 
     def picker():
         current = snapshot()  # The caller also verifies the owned app is alive.
-        assert current["visible"] and current["foreground"] and not named(current, "Reload"), "Native picker unavailable after Tab"
+        assert current["visible"] and current["foreground"] and not named(current, "Keyboard shortcuts"), "Native picker unavailable after Tab"
         return current
 
     def available():
@@ -1023,6 +1087,83 @@ class Linux:
                     print("LINUX WINDOW OBSERVATION FAILURE " + error.branch, file=sys.stderr, flush=True)
                     raise
 
+    def named_control_facts(self, name):
+        """Read roles and Action metadata only; never activate or echo native text.
+
+        Role names come from the installed AT-SPI ROLE_* enum constants, not
+        an open-ended provider string or a guessed allowlist. Unknown numeric
+        roles remain identifiable by their ID. This does not change eligibility
+        for click(), which still requires a real button/menu item and Action.
+        """
+        facts = {"available": False, "complete": False, "matches": []}
+        role_names = {}
+        for key in dir(self.atspi):
+            if re.fullmatch(r"ROLE_[A-Z][A-Z0-9_]*", key, re.ASCII):
+                try:
+                    role_names[int(getattr(self.atspi, key))] = key[5:].lower().replace("_", " ")
+                except (TypeError, ValueError):
+                    pass
+        try:
+            desktop = self.atspi.Registry.getDesktop(0)
+        except Exception:
+            return facts
+        facts.update(available=True, complete=True)
+
+        def children(parent, owned=False):
+            try:
+                count = parent.childCount
+            except Exception:
+                facts["complete"] = False
+                return
+            if count > 4000:
+                facts["complete"] = False
+            for index in range(min(count, 4000)):
+                try:
+                    child = parent[index]
+                    if child and (not owned or child.get_process_id() == self.app.pid):
+                        yield child
+                except IndexError:
+                    facts["complete"] = False
+                    break
+                except Exception:
+                    facts["complete"] = False
+
+        stack = list(children(desktop, owned=True))
+        visited = 0
+        while stack:
+            if visited >= 4000:
+                facts["complete"] = False
+                break
+            visited += 1
+            item = stack.pop()
+            try:
+                matches = item.name == name
+            except Exception:
+                facts["complete"] = False
+                matches = False
+            if matches:
+                entry = {"role": "unavailable", "role_id": None, "action": "unavailable", "invokable": "unavailable"}
+                try:
+                    role_id = int(item.getRole())
+                    if 0 <= role_id <= 65535:
+                        entry.update(role=role_names.get(role_id, "unknown"), role_id=role_id)
+                except Exception:
+                    pass
+                try:
+                    action = item.queryAction()
+                    if action is None:
+                        entry.update(action="absent", invokable="no")
+                    else:
+                        entry["action"] = "available"
+                        entry["invokable"] = "yes" if action.nActions > 0 else "no"
+                except NotImplementedError:
+                    entry.update(action="absent", invokable="no")
+                except Exception:
+                    pass
+                facts["matches"].append(entry)
+            stack.extend(children(item))
+        return facts
+
     def snapshot(self):
         nodes = []
         desktop = self.atspi.Registry.getDesktop(0)
@@ -1080,6 +1221,12 @@ class Linux:
         run("xdotool", "type", "--clearmodifiers", "--delay", "0", text)
 
     def click(self, name):
+        named_target, matched_role, supported_action, returned_false = False, False, False, False
+        # WebKitGTK can expose a click action on an enclosing named region.
+        # The footer and its menu used to share "Library"; activating the region
+        # could hit Find instead. Bind menu actions to their actual widget role,
+        # also avoiding a same-named menu left in the accessibility tree.
+        roles = MENU_BUTTON_ROLES if name in MENU_ACTIONS.values() else MENU_ITEM_ROLES if name in MENU_ACTIONS else None
         def children(parent, *, owned=False):
             try:
                 count = parent.childCount
@@ -1105,18 +1252,28 @@ class Linux:
             action = None
             try:
                 if item.name == name:
-                    action = item.queryAction()
-                    if not action.nActions:
-                        action = None
+                    named_target = True
+                    if roles is None or item.getRoleName().lower().replace(" ", "") in roles:
+                        matched_role = True
+                        action = item.queryAction()
+                        if not action.nActions:
+                            action = None
+                        else:
+                            supported_action = True
             except self.accessibility_error:
                 continue
             except NotImplementedError:
                 action = None
             # An action error can mean it already ran. Never rediscover/retry it.
-            if action is not None and action.doAction(0):
-                return
+            if action is not None:
+                if action.doAction(0):
+                    return
+                returned_false = True
             stack.extend(children(item))
-        raise AssertionError(f"No invokable accessibility control {name!r}")
+        # A rejected role never queried Action. Do not report that as a button
+        # with no action again: retain the fixed reason without native text.
+        reason = "not-found" if not named_target else "role-mismatch" if not matched_role else "action-unavailable" if not supported_action else "activation-refused"
+        raise NativeControlUnavailable(name, named=named_target, action=supported_action, returned_false=returned_false, reason=reason)
 
     def notice_visible(self):
         try:
@@ -1370,7 +1527,7 @@ def _first_run_preferences_main(args):
         exit_code = 2
     except (AssertionError, RuntimeError, ValueError, KeyError, TypeError, subprocess.SubprocessError, OSError) as error:
         failure(error)
-        report["reason"] = str(error) if isinstance(error, AssertionError) else type(error).__name__
+        report["reason"] = str(error) if isinstance(error, (AssertionError, BundleError)) else type(error).__name__
     finally:
         def stop():
             if app and app.poll() is None:
@@ -1425,6 +1582,9 @@ def evidence_main(args, scenario, scenario_id):
     except Exception as error:
         # Includes setup/cleanup failures outside the legacy scenario handlers.
         recorder.failure(error)
+        if isinstance(error, BundleError):
+            # BundleError messages are fixed evidence refusals, safe to show.
+            print(f"FAIL: {error}", file=sys.stderr)
         exit_code = 1
     finally:
         ACTIVE.reset(token)
@@ -1527,10 +1687,13 @@ def smoke_main(args):
                 return current
 
             def check(name, action):
+                code = f"check-{sys._getframe(1).f_lineno}"
                 try:
-                    with recording("request", f"check-{sys._getframe(1).f_lineno}"):
+                    with recording("request", code):
                         action()
                 except Exception:
+                    # Names are fixed scenario labels; no desktop text is printed.
+                    print(f"FAILED CHECK {code}: {name}", file=sys.stderr)
                     if system == "Linux":
                         try:
                             report["linux_census"] = linux_failure_census(native)
@@ -1693,15 +1856,15 @@ def smoke_main(args):
                 with recording("action", "fixture-missing"):
                     library.unlink()
                 try:
-                    menu_action(native, "Reload")
+                    menu_action(native, "Reload Library")
                 finally:
                     pass
-                retained_fragments = {"not_updated": False, "four_references": False}
+                retained_fragments = {"problem_shown": False, "four_references": False}
                 def explained():
                     nonlocal retained_fragments
                     current = snapshot()
                     report["missing_library_evidence"] = missing_library_evidence(current, library.name)
-                    retained_fragments = retained_snapshot_fragments(current)
+                    retained_fragments = retained_snapshot_fragments(current, library.name)
                     return all(report["missing_library_evidence"].values())
                 try:
                     wait_for(explained, "missing library explains recovery and retained reference count")
@@ -1714,11 +1877,11 @@ def smoke_main(args):
             def recover():
                 with recording("action", "fixture-empty"):
                     library.write_text("", encoding="utf-8")
-                menu_action(native, "Reload")
-                wait_for(lambda: " · no references" in strings(snapshot()), "empty library count")
+                menu_action(native, "Reload Library")
+                wait_for(lambda: shows_empty_library(snapshot()), "empty library count")
                 with recording("action", "fixture-small"):
                     library.write_text(fixture(), encoding="utf-8")
-                menu_action(native, "Reload")
+                menu_action(native, "Reload Library")
                 wait_for(lambda: shows_count(snapshot(), "3 references"), "reload recovers after error")
             check("empty library and recovery after error", recover)
             stop()
@@ -1769,7 +1932,7 @@ def smoke_main(args):
         exit_code = 2
     except (AssertionError, RuntimeError, ValueError, KeyError, TypeError, subprocess.SubprocessError, OSError) as error:
         failure(error)
-        report.update(reason=str(error) if isinstance(error, (AssertionError, Unavailable)) else type(error).__name__)
+        report.update(reason=str(error) if isinstance(error, (AssertionError, BundleError, Unavailable)) else type(error).__name__)
         print(f"FAIL: {report['reason']}", file=sys.stderr)
         if "last_native_state" in report:
             print("LAST NATIVE STATE " + json.dumps(report["last_native_state"]), file=sys.stderr)
@@ -1825,13 +1988,16 @@ class ContractTests(unittest.TestCase):
 
 
     class CensusNode:
-        def __init__(self, pid=0, name="", children=(), value=None):
+        def __init__(self, pid=0, name="", children=(), value=None, role="push button"):
             self.pid, self.name, self.children, self.value = pid, name, children, value
+            self.role = role
             self.childCount = len(children)
         def __getitem__(self, index):
             return self.children[index]
         def get_process_id(self):
             return self.pid
+        def getRoleName(self):
+            return self.role
         def queryText(self):
             if self.value is None:
                 raise NotImplementedError
@@ -1841,7 +2007,7 @@ class ContractTests(unittest.TestCase):
         native = Linux.__new__(Linux)
         native.app = Mock(pid=100)
         native.accessibility_error = type("AccessibilityError", (RuntimeError,), {})
-        target = self.CensusNode(name="Reload")
+        target = self.CensusNode(name="Reload", role="menu item")
         target.queryAction = Mock(return_value=Mock(nActions=1, doAction=Mock(return_value=True)))
         foreign = self.CensusNode(999, "Reload", [target])
         foreign.queryAction = Mock()
@@ -1932,16 +2098,161 @@ class ContractTests(unittest.TestCase):
 
     def test_linux_menu_action_does_not_retry_uncertain_activation(self):
         native, desktop, owned, target, foreign = self.linux_click_fixture()
-        more = self.CensusNode(name="More")
-        more.queryAction = Mock(return_value=Mock(nActions=1, doAction=Mock(return_value=True)))
-        owned.children.append(more)
+        target.name = "Reload Library"
+        library_menu = self.CensusNode(name="Library", role="push button menu")
+        library_menu.queryAction = Mock(return_value=Mock(nActions=1, doAction=Mock(return_value=True)))
+        owned.children.append(library_menu)
         owned.childCount += 1
         target.queryAction.return_value.doAction.side_effect = native.accessibility_error("uncertain activation")
         with self.assertRaises(native.accessibility_error):
-            menu_action(native, "Reload")
-        more.queryAction.return_value.doAction.assert_called_once_with(0)
+            menu_action(native, "Reload Library")
+        library_menu.queryAction.return_value.doAction.assert_called_once_with(0)
         target.queryAction.return_value.doAction.assert_called_once_with(0)
         foreign.queryAction.assert_not_called()
+
+    def test_linux_menu_buttons_accept_the_atspi_popup_button_role(self):
+        # ATK_ROLE_PUSH_BUTTON_MENU is a button with a popup, not a menu or
+        # region. aria-haspopup on the real HTML button supplies that role.
+        for name in ("Library", "More"):
+            for role in ("push button menu", "combo box"):
+                with self.subTest(name=name, role=role):
+                    native, desktop, owned, target, foreign = self.linux_click_fixture()
+                    target.name, target.role = name, role
+                    native.click(name)
+                    target.queryAction.assert_called_once_with()
+                    target.queryAction.return_value.doAction.assert_called_once_with(0)
+                    foreign.queryAction.assert_not_called()
+
+    def test_every_native_menu_route_activates_the_popup_button_then_its_item(self):
+        # Exercise the real Linux discovery/activation code, including repeated
+        # Reloads through the missing -> empty -> restored sequence. Namesake
+        # menus/regions must never be the activated object.
+        for name in ("Reload Library", "Reload Library", "Reload Library", "Choose Library…", "Use Zotero", "Quit Ibis"):
+            with self.subTest(name=name):
+                native, desktop, owned, target, foreign = self.linux_click_fixture()
+                target.name = name
+                menu = self.CensusNode(name=MENU_ACTIONS[name], role="menu", children=[target])
+                menu.queryAction = Mock()
+                trigger = self.CensusNode(name=MENU_ACTIONS[name], role="push button menu")
+                def opened(_index):
+                    owned.children, owned.childCount = [trigger, menu], 2
+                    return True
+                trigger.queryAction = Mock(return_value=Mock(nActions=1, doAction=Mock(side_effect=opened)))
+                owned.children, owned.childCount = [trigger], 1
+                menu_action(native, name)
+                trigger.queryAction.return_value.doAction.assert_called_once_with(0)
+                target.queryAction.return_value.doAction.assert_called_once_with(0)
+                menu.queryAction.assert_not_called()
+                foreign.queryAction.assert_not_called()
+
+    def test_menu_button_diagnostics_distinguish_no_action_from_a_rejected_role(self):
+        for role, reason in (("push button menu", "action-unavailable"), ("section", "role-mismatch")):
+            with self.subTest(role=role):
+                native, desktop, owned, target, foreign = self.linux_click_fixture()
+                target.name, target.role = "Library", role
+                target.queryAction.return_value.nActions = 0
+                native.snapshot = Mock(return_value={"visible": True, "foreground": True, "nodes": [
+                    {"name": "Library", "role": role},
+                ]})
+                with patch("builtins.print") as output, self.assertRaises(NativeControlUnavailable):
+                    menu_action(native, "Reload Library")
+                facts = json.loads(output.call_args.args[1])
+                self.assertEqual(facts["invocation"], {"named": True, "action": False, "returned_false": False, "reason": reason})
+                self.assertEqual(facts["trigger_button"], role == "push button menu")
+                target.queryAction.return_value.doAction.assert_not_called()
+                # The failure probe inspects metadata even for rejected roles;
+                # only click() can invoke it, and neither case can be invoked.
+                self.assertEqual(target.queryAction.call_count, 2 if role == "push button menu" else 1)
+
+    def test_library_failure_reports_every_namesake_role_and_action_without_invoking(self):
+        native, desktop, owned, target, foreign = self.linux_click_fixture()
+        foreign.name = "Library"
+        native.atspi.ROLE_SECTION = 1
+        native.atspi.ROLE_PUSH_BUTTON = 2
+        native.atspi.ROLE_PARAGRAPH = 3
+        native.atspi.ROLE_PANEL = 4
+        nodes = [self.CensusNode(name="Library", role="section"),
+                 self.CensusNode(name="Library", role="push button"),
+                 self.CensusNode(name="Library", role="paragraph"),
+                 self.CensusNode(name="Library", role="panel"),
+                 self.CensusNode(name="Library", role="PRIVATE native payload")]
+        for node, role_id in zip(nodes, [1, 2, 3, 4, 999]):
+            node.getRole = Mock(return_value=role_id)
+            node.queryAction = Mock(return_value=Mock(nActions=1, doAction=Mock()))
+        nodes[1].queryAction.return_value.nActions = 0
+        nodes[2].queryAction.side_effect = NotImplementedError("PRIVATE native payload")
+        nodes[3].queryAction.return_value = None
+        nodes[4].queryAction.side_effect = native.accessibility_error("PRIVATE native payload")
+        owned.children, owned.childCount = nodes, len(nodes)
+        native.snapshot = Mock(side_effect=WindowObservationFailure("unexpected-managed-title"))
+        with patch("builtins.print") as output, self.assertRaises(NativeControlUnavailable):
+            menu_action(native, "Reload Library")
+        facts = json.loads(output.call_args.args[1])
+        self.assertFalse(facts["snapshot_available"])
+        self.assertTrue(facts["library_controls"]["available"])
+        self.assertTrue(facts["library_controls"]["complete"])
+        self.assertEqual(facts["library_controls"]["matches"], [
+            {"role": "unknown", "role_id": 999, "action": "unavailable", "invokable": "unavailable"},
+            {"role": "panel", "role_id": 4, "action": "absent", "invokable": "no"},
+            {"role": "paragraph", "role_id": 3, "action": "absent", "invokable": "no"},
+            {"role": "push button", "role_id": 2, "action": "available", "invokable": "no"},
+            {"role": "section", "role_id": 1, "action": "available", "invokable": "yes"},
+        ])
+        for node in nodes:
+            if node.queryAction.return_value is not None:
+                node.queryAction.return_value.doAction.assert_not_called()
+        foreign.queryAction.assert_not_called()
+        self.assertNotIn("PRIVATE", str(output.call_args))
+
+    def test_library_diagnostic_is_fresh_and_marks_a_partial_traversal(self):
+        native, desktop, owned, target, foreign = self.linux_click_fixture()
+        native.atspi.ROLE_PUSH_BUTTON = 1
+        target.name = "Library"
+        target.getRole = Mock(return_value=1)
+        owned.children = [target, target, target]
+        owned.childCount = 3
+        original = self.CensusNode.__getitem__
+        def child(node, index):
+            if node is owned and index == 1:
+                raise native.accessibility_error("PRIVATE stale child")
+            return original(node, index)
+        with patch.object(self.CensusNode, "__getitem__", child):
+            observed = native.named_control_facts("Library")
+        self.assertTrue(observed["available"])
+        self.assertFalse(observed["complete"])
+        self.assertEqual(len(observed["matches"]), 2)
+        owned.children, owned.childCount = [], 0
+        self.assertEqual(native.named_control_facts("Library"), {"available": True, "complete": True, "matches": []})
+        target.queryAction.return_value.doAction.assert_not_called()
+
+    def test_linux_menu_controls_require_their_role_not_just_a_matching_name(self):
+        for name, wrong_role, right_role in (("Library", "section", "push button"),
+                                              ("Library", "menu", "push button"),
+                                              ("More", "section", "push button"),
+                                              ("Reload Library", "heading", "menu item"),
+                                              ("Choose Library…", "label", "menu item"),
+                                              ("Choose Library…", "push button", "menu item"),
+                                              ("Use Zotero", "list item", "menu item"),
+                                              ("Quit Ibis", "section", "menu item")):
+            with self.subTest(name=name, wrong_role=wrong_role):
+                native, desktop, owned, target, foreign = self.linux_click_fixture()
+                target.name, target.role = name, right_role
+                namesake = self.CensusNode(name=name, role=wrong_role, children=[target])
+                namesake.queryAction = Mock(return_value=Mock(nActions=1, doAction=Mock(return_value=True)))
+                owned.children, owned.childCount = [namesake], 1
+                native.click(name)
+                namesake.queryAction.assert_not_called()
+                target.queryAction.return_value.doAction.assert_called_once_with(0)
+                foreign.queryAction.assert_not_called()
+
+    def test_linux_menu_controls_refuse_a_namesake_without_the_real_control(self):
+        for name, role in (("Library", "section"), ("More", "menu"), ("Reload Library", "heading")):
+            with self.subTest(name=name):
+                native, desktop, owned, target, foreign = self.linux_click_fixture()
+                target.name, target.role = name, role
+                with self.assertRaises(NativeControlUnavailable):
+                    native.click(name)
+                target.queryAction.assert_not_called()
 
     def census_commands(self, argv):
         rows = {("ps", "-eo", "pid=,ppid="): "100 1\n200 100\n300 200\n999 1\n",
@@ -2103,7 +2414,7 @@ class ContractTests(unittest.TestCase):
         app.terminate.assert_called_once()
         native.close.assert_called_once()
 
-    def shortcut_focus_probe(self, *, loses_focus=False, loses_selection=False, failure_at=2):
+    def shortcut_focus_probe(self, *, loses_focus=False, loses_selection=False, failure_at=2, refusal=None, diagnostics=None):
         native = Mock(spec=["snapshot", "focus_editor", "editor_focused", "editor_active",
                             "editor_has_input_focus", "key", "text", "close", "app", "skips_taskbar", "picker_mapped", "picker_has_input_focus"])
         app, second = Mock(pid=100), Mock(pid=101)
@@ -2179,14 +2490,41 @@ class ContractTests(unittest.TestCase):
             executable.touch()
             with patch("sys.argv", ["smoke", "--app", str(executable), "--output", str(output)]), \
                  patch("platform.system", return_value="Linux"), patch(__name__ + ".Linux", return_value=native), \
-                 patch("subprocess.Popen", side_effect=launch), patch("builtins.print"), \
+                 patch("subprocess.Popen", side_effect=launch), patch("builtins.print") as printed, \
                  patch("time.monotonic", clock.monotonic), \
                  patch("time.sleep", lambda interval: setattr(clock, "elapsed", clock.elapsed + interval)), \
-                 patch(__name__ + ".menu_escape_focus", side_effect=AssertionError("synthetic stop after second launch")), \
+                 patch(__name__ + ".menu_escape_focus", side_effect=refusal or AssertionError("synthetic stop after second launch")), \
                  patch(__name__ + ".linux_failure_census", return_value={}):
                 self.assertEqual(main(), 1)
             report = json.loads((output / "smoke.json").read_text())
+            if diagnostics is not None:
+                diagnostics.extend(str(item.args[0]) for item in printed.call_args_list if item.args)
         return report, events
+
+    def test_bundle_refusal_reports_the_failed_check_and_fixed_reason_without_raw_native_errors(self):
+        for error, expected in ((BundleError("Unrecordable native input refused"), "Unrecordable native input refused"),
+                                (RuntimeError("PRIVATE native error"), "RuntimeError")):
+            with self.subTest(kind=type(error).__name__):
+                diagnostics = []
+                report, _events = self.shortcut_focus_probe(refusal=error, diagnostics=diagnostics)
+                self.assertEqual(report["reason"], expected)
+                text = "\n".join(diagnostics)
+                self.assertIn("FAIL: " + expected, text)
+                self.assertRegex(text, r"FAILED CHECK check-[0-9]+: shortcut menu Escape returns to invoker")
+                self.assertNotIn("PRIVATE", text + json.dumps(report))
+
+    def test_evidence_main_prints_a_fixed_bundle_refusal_and_retains_failure_evidence(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            args = argparse.Namespace(app=Path(temporary) / "synthetic-app", output=Path(temporary) / "output",
+                                      identifier="com.ibiscite.ibis", shortcut="ctrl+shift+y", skip_performance=True, seed=0)
+            diagnostic = io.StringIO()
+            with redirect_stderr(diagnostic):
+                result = evidence_main(args, Mock(side_effect=BundleError("Unrecordable native input refused")), "native-smoke")
+            self.assertEqual(result, 1)
+            self.assertIn("FAIL: Unrecordable native input refused", diagnostic.getvalue())
+            bundle = load_bundle(next(args.output.glob("evidence-*/manifest.json")))
+            self.assertEqual(bundle["result"]["outcome"], "fail")
+            self.assertEqual(bundle["result"]["failure_kind"], "harness")
 
     def test_shortcuts_and_second_launch_prove_search_ownership_with_virtual_result_focus(self):
         report, events = self.shortcut_focus_probe()
@@ -3413,18 +3751,102 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(report, {})
 
 
-    def test_menu_actions_open_more_first(self):
+    def test_menu_actions_open_their_owning_menu_first(self):
         native = Mock()
-        menu_action(native, "Reload")
-        self.assertEqual(native.click.call_args_list, [call("More"), call("Reload")])
+        for label, trigger in (("Reload Library", "Library"), ("Choose Library…", "Library"),
+                               ("Use Zotero", "Library"), ("Quit Ibis", "More")):
+            native.click.reset_mock()
+            menu_action(native, label)
+            self.assertEqual(native.click.call_args_list, [call(trigger), call(label)])
         with self.assertRaises(ValueError):
             menu_action(native, "Search references")
         for error in (AssertionError(), RuntimeError(), subprocess.CalledProcessError(1, "synthetic")):
             native.click.reset_mock()
             native.click.side_effect = [None, error, None]
             with patch("time.sleep"):
-                menu_action(native, "Reload")
-            self.assertEqual(native.click.call_args_list, [call("More"), call("Reload"), call("Reload")])
+                menu_action(native, "Reload Library")
+            self.assertEqual(native.click.call_args_list, [call("Library"), call("Reload Library"), call("Reload Library")])
+
+    def test_library_reload_uses_the_real_evidence_wrapper_and_closed_schema(self):
+        metadata = collect_metadata(Path("synthetic-unavailable-app"), {
+            "small": fixture().encode(), "initial-settings": b"{}", "initial-document": b""})
+        recorder = Evidence("native-smoke", {"identifier": "com.ibiscite.ibis", "shortcut": "ctrl+shift+y",
+                                             "skip_performance": True, "seed": 0}, metadata)
+        native = Mock(spec=["click"])
+        click = native.click
+        token = ACTIVE.set(recorder)
+        try:
+            observe_native(native)
+            with recording("request", "check-1"):
+                menu_action(native, "Reload Library")
+        finally:
+            ACTIVE.reset(token)
+        self.assertEqual(click.call_args_list, [call("Library"), call("Reload Library")])
+        bundle = recorder.finish(0)
+        self.assertEqual(bundle["result"]["outcome"], "pass")
+        self.assertEqual(bundle["events"][0]["code"], "check-1")
+        self.assertEqual([event["code"] for event in bundle["events"]
+                          if event["kind"] == "action" and event["phase"] == "dispatch"],
+                         ["click-library", "click-reload"])
+        self.assertEqual(bundle["request_completion_order"][-1], bundle["events"][0]["id"])
+
+    def test_menu_failure_observes_the_current_menu_instead_of_reusing_the_prior_check(self):
+        native = Mock()
+        native.click.side_effect = [None, AssertionError("PRIVATE action error")]
+        native.snapshot.return_value = {"visible": True, "foreground": True, "nodes": [
+            {"name": "PRIVATE filename", "role": "file chooser", "value": "PRIVATE document"},
+            {"name": "Search references", "role": "entry", "focused": False},
+        ]}
+        def timeout(predicate, description, **options):
+            self.assertFalse(predicate())
+            raise AssertionError("Timed out: " + description)
+        with patch(__name__ + ".wait_for", side_effect=timeout), patch("builtins.print") as output:
+            with self.assertRaisesRegex(AssertionError, "Timed out: Reload Library appears in the Library menu"):
+                menu_action(native, "Reload Library")
+        native.snapshot.assert_called_once_with()
+        label, encoded = output.call_args.args
+        self.assertEqual(label, "MENU ACTION FAILURE")
+        facts = json.loads(encoded)
+        self.assertEqual(facts["stage"], "item")
+        self.assertTrue(facts["snapshot_available"] and facts["visible"] and facts["foreground"] and facts["chooser_or_dialog"])
+        self.assertFalse(facts["trigger_button"] or facts["menu"] or facts["item_named"])
+        self.assertNotIn("PRIVATE", str(output.call_args))
+
+    def test_menu_failure_distinguishes_a_named_item_that_refuses_atspi_activation(self):
+        native, desktop, owned, target, foreign = self.linux_click_fixture()
+        target.name = "Reload Library"
+        target.queryAction.return_value.doAction.return_value = False
+        trigger = self.CensusNode(name="Library")
+        trigger.queryAction = Mock(return_value=Mock(nActions=1, doAction=Mock(return_value=True)))
+        owned.children.append(trigger)
+        owned.childCount += 1
+        native.snapshot = Mock(return_value={"visible": True, "foreground": True, "nodes": [
+            {"name": "Library", "role": "push button"}, {"name": "Library", "role": "menu"},
+            {"name": "Reload Library", "role": "menu item"},
+        ]})
+        def timeout(predicate, description, **options):
+            self.assertFalse(predicate())
+            raise AssertionError("Timed out: " + description)
+        with patch(__name__ + ".wait_for", side_effect=timeout), patch("builtins.print") as output:
+            with self.assertRaises(AssertionError):
+                menu_action(native, "Reload Library")
+        facts = json.loads(output.call_args.args[1])
+        self.assertTrue(facts["trigger_button"] and facts["menu"] and facts["item_named"])
+        self.assertEqual(facts["invocation"], {"named": True, "action": True, "returned_false": True, "reason": "activation-refused"})
+        target.queryAction.return_value.doAction.assert_called_once_with(0)
+        foreign.queryAction.assert_not_called()
+
+    def test_menu_failure_probe_preserves_the_trigger_failure_when_observation_is_unavailable(self):
+        native = Mock()
+        native.click.side_effect = AssertionError("synthetic trigger refusal")
+        native.snapshot.side_effect = RuntimeError("PRIVATE desktop observation")
+        with patch("builtins.print") as output:
+            with self.assertRaisesRegex(AssertionError, "^synthetic trigger refusal$"):
+                menu_action(native, "Reload Library")
+        self.assertEqual(native.click.call_args_list, [call("Library")])
+        self.assertEqual(json.loads(output.call_args.args[1]), {
+            "stage": "trigger", "snapshot_available": False, "invocation": None})
+        self.assertNotIn("PRIVATE", str(output.call_args))
 
     class MenuKeyboardModel:
         """Native keys own the input; accessibility can focus its active option."""
@@ -3453,7 +3875,7 @@ class ContractTests(unittest.TestCase):
                      "Darwin": ("AXTextField", "AXRow")}
             search_role, result_role = roles[self.platform]
             current = {"visible": True, "foreground": True, "nodes": (
-                [{"name": "Reload", "role": "menu item", "focused": True}] if self.menu else [
+                [{"name": "Keyboard shortcuts", "role": "menu item", "focused": True}] if self.menu else [
                     {"name": "More", "role": "button", "focused": self.more},
                     {"name": "Search references", "role": search_role, "value": self.value,
                      "focused": self.search and self.platform == "Darwin"},
@@ -3562,6 +3984,20 @@ class ContractTests(unittest.TestCase):
         self.assertTrue(shows_count({"nodes": kept["nodes"][-1:]}, "3 references"))
         self.assertFalse(shows_count(kept, "4 references"))
 
+    def test_empty_library_count_accepts_separate_isolated_footer_nodes(self):
+        name = "synthetic 引用.bib"
+        for nodes in ([{"value": f"\u2068{name}\u2069 · no references"}],
+                      [{"value": name}, {"value": " · "}, {"value": "no references"}],
+                      [{"value": "no references"}, {"value": " · "}, {"value": name}],
+                      [{"value": "no references · 2 reading notices"}],
+                      [{"value": f"\u2068{name}\u2069 · no references. \u2068checked just now, 12:00 PM\u2069"}]):
+            with self.subTest(nodes=nodes):
+                self.assertTrue(shows_empty_library({"nodes": nodes}))
+        for text in ("3 references", "No references in synthetic 引用.bib", "no references were loaded; 3 retained",
+                     "no references missing", "Type no references to search", "no", "references"):
+            with self.subTest(text=text):
+                self.assertFalse(shows_empty_library({"nodes": [{"value": text}]}))
+
     def test_missing_library_requires_both_recovery_message_and_retained_snapshot(self):
         name = "synthetic 引用.bib"
         message = (f"The library could not be opened: {name}. "
@@ -3578,6 +4014,17 @@ class ContractTests(unittest.TestCase):
         current["nodes"][0]["name"] = message[:100]
         self.assertFalse(missing_library_evidence(current, name)["recovery_action"])
 
+    def test_missing_library_accepts_current_moved_status_and_isolated_last_read_detail(self):
+        name = "synthetic 引用.bib"
+        detail = (f"\u2068{name}\u2069 · 4 references. \u2068last read 2 hours ago, 12:00 PM\u2069 · "
+                  f"The library could not be opened: \u2068{name}\u2069. "
+                  "the library file is unavailable; keeping the last loaded references. "
+                  "Choose it again or reconnect the drive.")
+        current = {"nodes": [{"value": f"{name} moved"}, {"value": detail}]}
+        self.assertTrue(all(missing_library_evidence(current, name).values()))
+        current["nodes"][0]["value"] = "movedish"
+        self.assertFalse(missing_library_evidence(current, name)["retained_snapshot"])
+
     def test_retained_snapshot_diagnostics_separate_fragments_without_echoing_input(self):
         cases = [(" · not updated", True, False), (" · 4 references", False, True),
                  (" · not updated · 4 references", True, True),
@@ -3586,7 +4033,7 @@ class ContractTests(unittest.TestCase):
             with self.subTest(text=text):
                 diagnostic = retained_snapshot_fragments({"nodes": [{"name": "Synthetic test app"}, {"value": text},
                     {"value": "synthetic-private-sentinel"}]})
-                self.assertEqual(diagnostic, {"not_updated": updated, "four_references": count})
+                self.assertEqual(diagnostic, {"problem_shown": updated, "four_references": count})
                 self.assertTrue(all(type(value) is bool for value in diagnostic.values()))
                 self.assertNotIn("synthetic-private-sentinel", json.dumps(diagnostic))
 
@@ -3601,7 +4048,7 @@ class ContractTests(unittest.TestCase):
                 [{"value": "synthetic.bib · not updated. synthetic.bib · 4 references"}]]:
             with self.subTest(nodes=nodes):
                 self.assertEqual(retained_snapshot_fragments({"nodes": nodes}),
-                                 {"not_updated": True, "four_references": True})
+                                 {"problem_shown": True, "four_references": True})
         for nodes in [
                 [{"value": " · "}, {"value": "synthetic.bib · 4 references"}],
                 [{"value": "not updated"}, {"value": "synthetic.bib · 3 references"}],

@@ -338,12 +338,29 @@ fn resolve_focus(native: Result<Option<bool>, ()>, toolkit: impl FnOnce() -> Opt
     }
 }
 
+/// An exact top-level HWND match remains true when its WebView2 child owns
+/// keyboard focus. Unknown or null handles cannot establish focus either way.
+#[cfg(any(target_os = "windows", test))]
+pub(crate) fn foreground_focus(picker: Option<usize>, foreground: Option<usize>) -> Option<bool> {
+    let picker = picker.filter(|window| *window != 0)?;
+    let foreground = foreground.filter(|window| *window != 0)?;
+    Some(picker == foreground)
+}
+
 pub(crate) fn focused_for_shortcut(window: &tauri::WebviewWindow) -> Option<bool> {
     #[cfg(target_os = "linux")]
     return resolve_focus(wayland::x11_state(desktop_owned(), || x11_focus::query(window)), || {
         checked(window.is_focused(), NativeIssue::FocusState)
     });
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(target_os = "windows")]
+    {
+        // Tao's top-level WM_KILLFOCUS cache is cleared by the child webview.
+        // The updater and opening shortcut share this exact native query.
+        let picker = checked(window.hwnd(), NativeIssue::FocusState).map(|window| window.0 as usize);
+        let foreground = winsafe::HWND::GetForegroundWindow().map(|window| window.ptr() as usize);
+        foreground_focus(picker, foreground)
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
     checked(window.is_focused(), NativeIssue::FocusState)
 }
 
@@ -1066,6 +1083,38 @@ mod tests {
         ] {
             assert_eq!(toggle_action(visible, focused), ToggleAction::Show);
         }
+    }
+
+    #[test]
+    fn windows_shortcut_uses_the_exact_foreground_even_when_the_webview_owns_keyboard_focus() {
+        // WebView2 can hold keyboard focus while Tao's top-level cache is false.
+        // Another app (or another Ibis window) must instead summon this picker.
+        assert_eq!(
+            toggle_action(Some(true), foreground_focus(Some(10), Some(10))),
+            ToggleAction::Hide
+        );
+        assert_eq!(
+            toggle_action(Some(true), foreground_focus(Some(10), Some(20))),
+            ToggleAction::Show
+        );
+        for (picker, foreground) in [
+            (None, Some(10)),
+            (Some(10), None),
+            (None, None),
+            (Some(0), Some(0)),
+            (Some(0), Some(10)),
+            (Some(10), Some(0)),
+        ] {
+            assert_eq!(foreground_focus(picker, foreground), None);
+            assert_eq!(
+                toggle_action(Some(true), foreground_focus(picker, foreground)),
+                ToggleAction::Show
+            );
+        }
+        assert_eq!(
+            toggle_action(Some(false), foreground_focus(Some(10), Some(10))),
+            ToggleAction::Show
+        );
     }
 
     #[cfg(debug_assertions)]

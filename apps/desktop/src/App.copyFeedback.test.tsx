@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { App } from "./App";
-import { backend, prepared, resetApp, result } from "./testing/app";
+import { backend, prepared, resetApp, result, type PreviewRequest } from "./testing/app";
 import { emit } from "@tauri-apps/api/event";
 import type { PickerDestination } from "./api";
 
@@ -35,12 +35,23 @@ async function toggleKeepOpen() {
   });
 }
 
+function expectSameCitation(first: PreviewRequest, next: PreviewRequest) {
+  const { intent: firstIntent, ...firstCitation } = first;
+  const { intent: nextIntent, ...nextCitation } = next;
+  expect(nextCitation).toEqual(firstCitation);
+  // Returning refreshes status and prepares a new receipt for the same output.
+  // Its immutable request identity must advance rather than reuse the old one.
+  expect(nextIntent).toEqual({ ...firstIntent, request: expect.any(Number) });
+  expect(nextIntent.request).toBeGreaterThan(firstIntent.request);
+  expect(nextIntent.cancel).toBe(false);
+}
+
 test.each([
   [0, "no-permission"], [2, "no-permission"],
   [0, "accessibility-required"], [2, "accessibility-required"],
 ] as const)("a permission detour keeps the citation past a minute through %i returns (%s), waiting for a fresh Enter", async (returnsBeforeGrant, reason) => {
   let granted = false;
-  const copies: unknown[] = [];
+  const copies: PreviewRequest[] = [];
   const calls = await openPicker({
     search: () => ({ revision: "1", results: [result("a", "First"), result("b", "Second")],
       interpretation: { search: "Smith", locator: { label: "page", value: "12" }, typed: "p.12" } }),
@@ -75,7 +86,7 @@ test.each([
   expect(copies).toHaveLength(1);
   await copy();
   expect(calls.filter((c) => c === "copy_file_citation")).toHaveLength(2);
-  expect(copies[1]).toEqual(copies[0]);
+  expectSameCitation(copies[0]!, copies[1]!);
   expect(copies[1]).toMatchObject({ items: [
     { id: { key: "a" }, locator: { label: "page", value: "12" } },
     { id: { key: "b" }, locator: { label: "page", value: "12" } },
@@ -90,7 +101,7 @@ test("a preferences event superseding the permission return keeps the prepared o
   let destination: PickerDestination = { app: "Example Editor", app_id: "example.editor", automatic: null, remembered: { key: "typst" }, unreadable: false, can_paste: false, output_question: null };
   let delayReturn = false;
   let finishReturn!: (value: PickerDestination) => void;
-  const copies: unknown[] = [];
+  const copies: PreviewRequest[] = [];
   const calls = await openPicker({
     picker_destination: () => {
       if (!delayReturn) return destination;
@@ -118,7 +129,7 @@ test("a preferences event superseding the permission return keeps the prepared o
   expect(copies).toHaveLength(1);
   await copy();
   expect(copies).toHaveLength(2);
-  expect(copies[1]).toEqual(copies[0]);
+  expectSameCitation(copies[0]!, copies[1]!);
   expect(copies[1]).toMatchObject({ format: "typst" });
   expect(screen.getByRole("button", { name: "Copy as \\cite · Example Writer" })).toBeTruthy();
   expect(calls).not.toContain("remember_app_output");

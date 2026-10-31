@@ -59,6 +59,9 @@
 /* Outranks the global ring, which the list would clip into lines at its top and bottom. */
 .menu-popover [role="menu"]:focus-visible { outline: none; box-shadow: none; }
 .menu-section { display: flex; flex: none; flex-direction: column; }
+.menu-section-chips { flex-direction: row; flex-wrap: wrap; gap: var(--space-1); padding-block: var(--space-2); }
+.menu-section-chips .menu-item { min-height: var(--control-min-size); background: var(--fill-control); border-radius: var(--r-full); }
+.menu-section-chips .menu-item[aria-checked="true"] { background: var(--selected-background); color: var(--selected-text); }
 .menu-separator { height: 1px; margin: 4px var(--menu-item-pad); border: 0; background: var(--separator); }
 .menu-header { padding-inline: var(--menu-item-pad); }
 .menu-detail { width: 0; min-width: 100%; margin: 0; padding: var(--space-1) 0 var(--space-2); display: flex; flex-direction: column; gap: var(--space-1); color: var(--muted); font-size: var(--hint-size); overflow-wrap: break-word; }
@@ -77,7 +80,11 @@
    labels wrap while checks and shortcut units retain their columns. */
 .menu-label { flex: 1 1 auto; min-width: 0; white-space: normal; overflow-wrap: break-word; }
 .menu-keys { flex: none; white-space: nowrap; margin-inline-start: 16px; color: var(--muted); font: inherit; }
+.menu-example { flex: none; margin-inline-start: 16px; color: var(--muted); }
+.menu-submenu-arrow { flex: none; margin-inline-start: var(--space-2); }
+[dir="rtl"] .menu-submenu-arrow { transform: scaleX(-1); }
 .menu-item[data-focused] { background: var(--menu-highlight); color: var(--menu-highlight-text); }
+.menu-item[data-focused] .menu-example { color: inherit; }
 .menu-item[data-focused] .menu-keys { color: inherit; }
 .menu-item[aria-disabled="true"] { color: var(--muted); }
 @media (prefers-contrast: more) { .menu-item[data-focused] { outline: 1px solid currentColor; outline-offset: -1px; } }
