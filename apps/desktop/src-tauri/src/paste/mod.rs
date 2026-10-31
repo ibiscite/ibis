@@ -35,6 +35,7 @@ struct PolicyProof {
 }
 
 impl PolicyProof {
+    #[cfg(any(target_os = "macos", target_os = "windows", test))]
     fn capture(epoch: &Arc<AtomicU64>) -> Self {
         Self {
             epoch: Arc::clone(epoch),
