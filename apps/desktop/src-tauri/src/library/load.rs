@@ -11,9 +11,9 @@ use super::state::Library;
 /// file is demonstrably partial.
 #[cfg(test)]
 pub(crate) fn load_library(path: PathBuf, reload: bool) -> Result<Library, LoadError> {
-    match load_file(path, reload, None, &|| false)? {
+    match load_file(path, reload, None, &ibis_engine::Cancellation::default(), &|| false)? {
         Loaded::New(library) => Ok(*library),
-        Loaded::Unchanged => Err(LoadError::Stopped),
+        Loaded::Unchanged | Loaded::Reload(_) => Err(LoadError::Stopped),
     }
 }
 
@@ -21,6 +21,7 @@ fn load_file(
     path: PathBuf,
     reload: bool,
     previous: Option<std::sync::Arc<super::engine_file::FileLibrary>>,
+    cancel: &ibis_engine::Cancellation,
     cancelled: &impl Fn() -> bool,
 ) -> Result<Loaded, LoadError> {
     check_cancelled(cancelled)?;
@@ -28,7 +29,13 @@ fn load_file(
         Some(file) => {
             let before = file.revision();
             if reload {
-                file.reload()?;
+                let prepared = file.prepare_reload(&path, cancel)?;
+                check_cancelled(cancelled)?;
+                return Ok(Loaded::Reload(Box::new(FileReload {
+                    source: Source::File(path),
+                    file,
+                    prepared,
+                })));
             }
             // An unreadable snapshot has no revision and never counts as unchanged.
             let unchanged = !before.is_empty() && before == file.revision();
@@ -60,45 +67,14 @@ pub(crate) enum Loaded {
     New(Box<Library>),
     /// A reread found nothing changed; keep the current references.
     Unchanged,
+    /// A strict read outcome, including failure, still private until acceptance.
+    Reload(Box<FileReload>),
 }
 
-pub(super) fn load_source_cached(
-    source: Source,
-    reload: bool,
-    previous: Option<std::sync::Arc<super::engine_file::FileLibrary>>,
-    cancel: &ibis_engine::Cancellation,
-    cache: ibis_engine::FileCacheOperation,
-    cancelled: impl Fn() -> bool,
-) -> Result<Loaded, LoadError> {
-    let Source::File(path) = source else {
-        return load_source(source, reload, previous, cancel, cancelled);
-    };
-    check_cancelled(&cancelled)?;
-    let file = match previous {
-        Some(file) => file,
-        None => std::sync::Arc::new(super::engine_file::FileLibrary::from_engine(
-            ibis_engine::Engine::new().map_err(|_| LoadError::Stopped)?,
-        )),
-    };
-    let pending = file
-        .engine
-        .prepare_file_load(&path, reload, cache, cancel)
-        .map_err(|error| super::engine_file::file_load_error(error, false))?;
-    check_cancelled(&cancelled)?;
-    let file = pending
-        .engine()
-        .map(|engine| std::sync::Arc::new(super::engine_file::FileLibrary::from_engine(engine)))
-        .unwrap_or(file);
-    let cached = pending.cache_hit();
-    Ok(Loaded::New(Box::new(Library {
-        source: Some(Source::File(path.clone())),
-        requested: cached.then_some(Source::File(path)),
-        opening: cached,
-        file: Some(file),
-        pending_file: Some(pending),
-        checked_at: (!cached).then(std::time::SystemTime::now),
-        ..Library::default()
-    })))
+pub(super) struct FileReload {
+    pub(super) source: Source,
+    pub(super) file: std::sync::Arc<super::engine_file::FileLibrary>,
+    pub(super) prepared: ibis_engine::PreparedFileReload,
 }
 
 pub(super) fn load_source(
@@ -113,7 +89,7 @@ pub(super) fn load_source(
         return Err(LoadError::Stopped);
     }
     match source {
-        Source::File(path) => load_file(path, reload, previous_file, &cancelled),
+        Source::File(path) => load_file(path, reload, previous_file, cancel, &cancelled),
         Source::Samples(path) => {
             // A separate engine, using the normal CSL-JSON file reader. The
             // bundled immutable file needs neither a watch nor a saved choice.
@@ -178,7 +154,7 @@ mod tests {
         }
         std::fs::write(&file, "@misc{synthetic}").unwrap_or_else(|e| panic!("{e}"));
         assert!(matches!(
-            load_file(file, false, None, &|| true),
+            load_file(file, false, None, &ibis_engine::Cancellation::default(), &|| true),
             Err(LoadError::Stopped)
         ));
     }

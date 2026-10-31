@@ -1,59 +1,6 @@
 use ibis_core::contract::{Availability, LibraryObject};
 
 #[test]
-fn tolerant_verification_reuses_only_complete_freshly_parsed_records() -> Result<(), Box<dyn std::error::Error>> {
-    use ibis_sources::{SourceError, SourceSnapshot};
-    use std::sync::Arc;
-    const BIB: &str = "@string{press={Invented Press}}\n@book{parent,title={Synthetic volume},publisher=press}\n@incollection{child,title={Synthetic chapter},crossref={parent}}\n@article{identifier,title={Synthetic signal},eprint={arXiv:2101.00001},archiveprefix={arXiv}}\n@book{stable,title={Synthetic stable}}\n@book{deleted,title={Synthetic retired}}\n";
-    let dir = tempfile::tempdir()?;
-    let path = dir.path().join("synthetic.bib");
-    std::fs::write(&path, BIB)?;
-    let previous = SourceSnapshot::read(&path)?.load()?;
-    for text in [
-        BIB.to_owned(),
-        BIB.replace("Invented Press", "Invented House"),
-        BIB.replace("Synthetic volume", "Synthetic cosmos"),
-        BIB.replace("2101.00001", "2101.00002"),
-        BIB.replace("@book{deleted,title={Synthetic retired}}\n", ""),
-        format!("{BIB}@book{{unfinished,"),
-    ] {
-        let modified = std::fs::metadata(&path)?.modified()?;
-        std::fs::write(&path, &text)?;
-        std::fs::File::options()
-            .write(true)
-            .open(&path)?
-            .set_modified(modified)?;
-        let observation = SourceSnapshot::read(&path)?;
-        let fresh = observation.load()?;
-        let reused = observation.load_reusing(&previous.snapshot)?;
-        assert_eq!(reused.snapshot, fresh.snapshot);
-        assert_eq!(reused.warnings, fresh.warnings);
-        assert_eq!(reused.library, fresh.library);
-        for new in reused.snapshot.objects() {
-            let old = previous
-                .snapshot
-                .objects()
-                .iter()
-                .find(|old| old.object.id() == new.object.id())
-                .ok_or("missing prior record")?;
-            assert_eq!(Arc::ptr_eq(old, new), old.object == new.object);
-            if new.object.id().key == "record:identifier" && text.contains("2101.00002") {
-                assert_eq!(old.fingerprints.cite, new.fingerprints.cite);
-                assert_ne!(old.fingerprints.full, new.fingerprints.full);
-            }
-        }
-        if text.ends_with("@book{unfinished,") {
-            assert!(!reused.warnings.is_empty());
-            assert_eq!(
-                SourceSnapshot::reload(&path, &previous.snapshot).err(),
-                Some(SourceError::Incomplete)
-            );
-        }
-    }
-    Ok(())
-}
-
-#[test]
 fn nonempty_json_without_csl_records_is_a_format_error_but_empty_libraries_are_allowed()
 -> Result<(), Box<dyn std::error::Error>> {
     use ibis_sources::SourceError;
@@ -383,9 +330,6 @@ fn limited_json_warns_on_initial_read_and_refuses_replacement() -> Result<(), Bo
             .iter()
             .any(|warning| warning.code == WarningCode::WorkLimit)
     );
-    let reused = ibis_sources::SourceSnapshot::read(&path)?.load_reusing(&loaded.snapshot)?;
-    assert_eq!(reused.snapshot, loaded.snapshot);
-    assert_eq!(reused.warnings, loaded.warnings);
     assert_eq!(ibis_sources::reload_file(&path).err(), Some(SourceError::LoadLimit));
     Ok(())
 }

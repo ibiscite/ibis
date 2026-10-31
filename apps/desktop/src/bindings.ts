@@ -225,7 +225,7 @@ export type Copied_Deserialize = {
 	/**  What the chosen syntax could not express, and other problems the user should see. */
 	warnings: string[],
 	summary?: ReceiptSummary | null,
-	/**  Unique write token for this copy's one-use paste proof. */
+	/**  Unique clipboard-write identity for receipts, even without a native paste proof. */
 	delivery?: number | null,
 };
 
@@ -234,7 +234,7 @@ export type Copied_Serialize = {
 	/**  What the chosen syntax could not express, and other problems the user should see. */
 	warnings: string[],
 	summary?: ReceiptSummary | null,
-	/**  Unique write token for this copy's one-use paste proof. */
+	/**  Unique clipboard-write identity for receipts, even without a native paste proof. */
 	delivery?: number | null,
 };
 

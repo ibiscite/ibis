@@ -17,9 +17,7 @@ use crate::preferences::SettingsFile;
 use crate::tray::{LibraryMenuItem, library_line};
 
 use super::error::LoadError;
-#[cfg(test)]
-use super::load::load_source;
-use super::load::{Loaded, load_source_cached};
+use super::load::{Loaded, load_source};
 use super::retry::{begin_check, begin_focus_retry, begin_zotero_retry, retry, zotero_choice, zotero_to_check};
 use super::source::Source;
 use super::state::{Library, LoadRequests, begin_open, dialog_path_error, install_automatic, install_loaded};
@@ -129,8 +127,7 @@ pub(super) fn engine_changed(library: &mut Library, file: &std::sync::Arc<super:
     }
     let now = std::time::SystemTime::now();
     let updated = library.observe_revision(now);
-    // Only a verified install establishes a check time; cached engine events cannot.
-    if library.checked_at.is_some() && (updated || healthy) {
+    if updated || healthy {
         library.checked_at = Some(now);
     }
     true
@@ -230,7 +227,7 @@ impl LoadRequests {
 impl OpenIntent {
     fn saves_choice(self, source: &Source, chosen: &LibrarySetting) -> bool {
         let changed = match (source, chosen) {
-            // Path equality ignores `.`; persisted cache identity hashes the exact path bytes.
+            // Path equality ignores `.`; remember the canonical spelling captured by the read.
             (Source::File(previous), LibrarySetting::Bibtex(next)) => previous.as_os_str() != next.as_os_str(),
             _ => source.setting().as_ref() != Some(chosen),
         };
@@ -303,11 +300,6 @@ struct LoadPhases {
 }
 
 fn run_open(app: &AppHandle, request: u64, source: Source, reload: bool, intent: OpenIntent) {
-    if let Ok(path) = app.path().app_cache_dir() {
-        app.state::<LoadRequests>()
-            .2
-            .configure(&path.join("source-generations"));
-    }
     #[cfg(debug_assertions)]
     let started = std::time::Instant::now();
     if !matches!(intent, OpenIntent::Refresh) {
@@ -350,13 +342,12 @@ fn open_one(app: AppHandle, open: OpenRequest) -> impl std::future::Future<Outpu
     });
     let force = reload && !matches!(intent, OpenIntent::Refresh);
     let refresh_source = source.clone();
-    let cache = app.state::<LoadRequests>().2.operation(request);
     async move {
         let loading_app = app.clone();
         let loaded = tauri::async_runtime::spawn_blocking(move || {
             #[cfg(debug_assertions)]
             let loading = std::time::Instant::now();
-            let loaded = load_source_cached(source, force, previous_file, &cancel, cache, || {
+            let loaded = load_source(source, force, previous_file, &cancel, || {
                 loading_app.state::<LoadRequests>().0.load(Ordering::SeqCst) != request
             });
             #[cfg(debug_assertions)]
@@ -381,7 +372,6 @@ fn open_one(app: AppHandle, open: OpenRequest) -> impl std::future::Future<Outpu
             load_ok: u8::from(loaded.is_ok()),
             ..LoadPhases::default()
         };
-        let cached = matches!(&loaded, Ok(Loaded::New(new)) if new.pending_file.as_ref().is_some_and(ibis_engine::PreparedFileLoad::cache_hit));
         #[cfg(debug_assertions)]
         let installing = std::time::Instant::now();
         let installed = intent.install(&app.state(), &app.state(), request, loaded);
@@ -411,7 +401,6 @@ fn open_one(app: AppHandle, open: OpenRequest) -> impl std::future::Future<Outpu
                             }
                         });
                         if let Err(e) = saved {
-                            retire_unsaved_cache(&app.state(), &app.state(), request);
                             library.choice_save_warning =
                                 Some(format!("the library opened but could not be saved for next time: {e}"));
                             show_note = true;
@@ -436,9 +425,6 @@ fn open_one(app: AppHandle, open: OpenRequest) -> impl std::future::Future<Outpu
             }
             // Reattach even after a failed choice so the retained source keeps updating.
             watch_current(&app);
-            if cached {
-                run_open(&app, request, refresh_source, true, OpenIntent::Refresh);
-            }
         }
         #[cfg(debug_assertions)]
         {
@@ -451,19 +437,16 @@ fn open_one(app: AppHandle, open: OpenRequest) -> impl std::future::Future<Outpu
     }
 }
 
-fn retire_unsaved_cache(library: &Mutex<Library>, requests: &LoadRequests, request: u64) {
-    let Ok(_selection) = library.lock() else { return };
-    if requests.0.load(Ordering::SeqCst) == request {
-        requests.2.disable();
-    }
-}
-
 pub(super) fn remembered_choice(source: &Source, loaded: &Result<Loaded, LoadError>) -> Option<LibrarySetting> {
+    if let Ok(Loaded::Reload(reload)) = loaded {
+        return reload
+            .prepared
+            .source_path()
+            .map(|path| LibrarySetting::Bibtex(path.to_path_buf()));
+    }
     if let Ok(Loaded::New(new)) = loaded
-        && let Some(path) = new
-            .pending_file
-            .as_ref()
-            .and_then(ibis_engine::PreparedFileLoad::source_path)
+        && matches!(new.source, Some(Source::File(_)))
+        && let Some(path) = new.file.as_ref().and_then(|file| file.source_path())
         && path
             .extension()
             .is_some_and(|extension| extension.eq_ignore_ascii_case("bib"))
