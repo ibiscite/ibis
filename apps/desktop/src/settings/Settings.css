@@ -43,7 +43,7 @@
   background: var(--control-thumb); box-shadow: var(--shadow-thumb); transition: transform var(--motion-panel) var(--ease-out);
 }
 .paste-guide-switch[data-on] { background: var(--accent); }
-.paste-guide-switch[data-on] > span { transform: translateX(11px); }
+.paste-guide-switch[data-on] > span { background: var(--text-on-accent); transform: translateX(11px); }
 @media (prefers-reduced-motion: reduce) { .paste-guide-switch, .paste-guide-switch > span { transition: none; } }
 @media (prefers-contrast: more), (forced-colors: active) {
   .paste-guide-switch { border: var(--border-width) solid CanvasText; }

@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import type { KeyFormat, LoginItem, LoginItemProblem, PickerPreferences, ShortcutStatus } from "../bindings";
-import { DEFAULT_PICKER_SHORTCUT, KEY_TABLE, keyLabel, shortcutLabel } from "../keys";
+import { KEY_TABLE, keyLabel } from "../keys";
 import { type MessageId, useInterfaceMessages } from "../i18n";
-import { SHORTCUT_ACTIONS, SHORTCUT_COMMANDS, SHORTCUT_REGIONS, type ShortcutProblem, shortcutRefusalMessage } from "../i18n/settings";
+import { SHORTCUT_ACTIONS, SHORTCUT_REGIONS, type ShortcutProblem, shortcutRefusalMessage } from "../i18n/settings";
 import { PreferencePatchQueue } from "../preferencePatchQueue";
 import { currentPlatform } from "../platform";
 import { Button } from "../ui/Button";
 import { SettingsGroup as Group, SettingsRow as Row } from "../ui/SettingsGroup";
-import { ShortcutRecorder } from "../ui/ShortcutRecorder";
+import { ShortcutSetting } from "../ui/ShortcutSetting";
 import { SideNavigation } from "../ui/SideNavigation";
 import { useAppearance } from "../ui/appearance";
 import { DefaultFormat } from "./DefaultFormat";
@@ -268,17 +268,13 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     const target = document.getElementById(highlighted === "open-shortcut" && page === "general" ? "general-open-shortcut" : highlighted)?.closest(".ui-settings-row");
     if (target) pageRef.current.scrollTop += target.getBoundingClientRect().top - pageRef.current.getBoundingClientRect().top;
   }, [highlighted, page, preferences]);
-  const unavailable = (id: string) => {
-    return <Row key={id} id={id} {...rowDetails(id, text)} {...feedback(id)}>
-      <Button isDisabled aria-labelledby={id} aria-describedby={`${id}-description`}>{text("settings-coming-soon")}</Button>
-    </Row>;
-  };
   const matches = query.trim() ? ROWS.filter((row) => [row.label, row.description, row.keywords].some((id) => id && text(id, { platform }).toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()))) : [];
   const name = login?.name ?? "Ibis";
   const mac = platform === "macos";
-  const defaultLabel = shortcutLabel(DEFAULT_PICKER_SHORTCUT, mac);
-  const isDefault = shortcut && /^[a-z]$/i.test(shortcut.shortcut.split("+").at(-1)?.trim() ?? "")
-    && shortcutLabel(shortcut.shortcut, mac).split("+").sort().join("+") === defaultLabel.split("+").sort().join("+");
+  const shortcutSetting = <ShortcutSetting key={page} id={page === "general" ? "general-shortcut" : "open-ibis"}
+    rowId={page === "general" ? "general-open-shortcut" : "open-shortcut"} status={shortcut} problem={shortcutProblem}
+    saving={shortcutSaving} undo={shortcutUndo} highlighted={highlighted === "open-shortcut"}
+    onRecord={changeShortcut} onConfigure={configureShortcut} />;
 
   return (
     <div className="settings">
@@ -289,7 +285,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
         </div>
         {query.trim() ? <div className="ui-side-navigation ui-settings-search-results" aria-live="polite">
           {matches.length ? matches.map((row) => <Button key={row.id} onPress={() => reveal(row)}>{text(row.label, { platform })}</Button>) : <p>{text("settings-no-results")}</p>}
-        </div> : <SideNavigation label={text("settings-pages")} value={page} options={PAGES.map((value) => ({ value, label: text(`settings-${value}`), gapBefore: value === "advanced" }))}
+        </div> : <SideNavigation label={text("settings-pages")} value={page} options={PAGES.map((value) => ({ value, label: text(`settings-${value}`), gapBefore: value === "about" }))}
           onChange={selectPage} />}
       </nav>
       <main ref={pageRef} className="settings-page" aria-labelledby="settings-page-title">
@@ -298,12 +294,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
         {detour && returnFailed && <p className="settings-problem" role="alert">{text("general-paste-return-failed")}</p>}
         {page === "general" && (
           <>
-            <Group id="general-shortcut">
-              <Row id="general-open-shortcut" label={text("shortcuts-open")} description={shortcut?.desktop?.guidance ?? (shortcut?.shortcut ? shortcutLabel(shortcut.shortcut, mac) : text("shortcuts-description"))} {...feedback("open-shortcut")}>
-                {shortcut?.desktop && <span role="status">{shortcut.shortcut || text("shortcuts-not-assigned")}</span>}
-                <Button onPress={() => selectPage("shortcuts")}>{text("shortcuts-change")}</Button>
-              </Row>
-            </Group>
+            {shortcutSetting}
             <Group id="startup">
                 <Row id="login" label={text("general-login-label", { platform })} description={login?.problem ? text(LOGIN_PROBLEMS[login.problem], { platform, name }) : text("general-login-description")} {...feedback("login")}>
                   <Switch aria-labelledby="login" aria-describedby="login-description" isSelected={login?.enabled ?? false}
@@ -316,11 +307,6 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
                         .finally(() => { if (live.current && request === loginReads.current) setLoginSaving(false); loginBusy.current = false; });
                     }} isDisabled={loginSaving || !login || login.problem === "unsupported" || login.problem === "unreadable"} />
                 </Row>
-            </Group>
-            <Group id="menu-bar-group">
-              <Row id="menu-bar" {...rowDetails("menu-bar", text)} {...feedback("menu-bar")}>
-                <Switch aria-labelledby="menu-bar" aria-describedby="menu-bar-description" isSelected isDisabled />
-              </Row>
             </Group>
             {preferences && (
               <>
@@ -343,43 +329,17 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
                 )}
               </>
             )}
-            <Group id="welcome-group">{unavailable("welcome")}</Group>
           </>
         )}
         {page === "look" && preferences && <LookPage preferences={preferences} change={change} feedback={feedback} />}
-        {(page === "libraries" || page === "advanced") && <Group id={`${page}-choices`}>
-          {ROWS.filter((row) => row.page === page).map((row) => unavailable(row.id))}
-        </Group>}
         {page === "citations" && <Group id="citation-choices">
           {preferences && <Row id="default-format" {...rowDetails("default-format", text)} {...feedback("default-format")}>
             <DefaultFormat preferences={preferences} change={change} />
           </Row>}
-          {ROWS.filter((row) => row.page === "citations" && row.id !== "default-format").map((row) => unavailable(row.id))}
         </Group>}
         {page === "shortcuts" && (
           <>
-            <Group id="open-ibis">
-              <Row id="open-shortcut" label={text("shortcuts-open")} description={shortcut?.desktop?.guidance ?? (shortcut ? text("shortcuts-description") : undefined)}>
-                {shortcut?.desktop ? <>
-                  <span role="status">{shortcut.shortcut || text("shortcuts-not-assigned")}</span>
-                  {shortcut.desktop.configurable && <Button isDisabled={shortcutSaving} onPress={configureShortcut}>{text("shortcuts-change")}</Button>}
-                </> : shortcut && <ShortcutRecorder shortcut={shortcut.shortcut} label={text("shortcuts-open")}
-                  prompt={text("shortcuts-record")} isDisabled={shortcutSaving} onRecord={changeShortcut} />}
-              </Row>
-              {shortcut && !shortcut.desktop && !isDefault && (
-                <Row id="default-shortcut" label={defaultLabel}>
-                  <Button isDisabled={shortcutSaving} onPress={() => changeShortcut(null)}>{text("shortcuts-use-default")}</Button>
-                </Row>
-              )}
-            </Group>
-            {shortcutUndo && <Group id="shortcut-undo-group"><Row id="shortcut-undo" label={text("settings-shortcut-restored")}>
-              <Button isDisabled={shortcutSaving} onPress={() => changeShortcut(shortcutUndo)}>{text("settings-undo")}</Button>
-            </Row></Group>}
-            {shortcutProblem && <p className="settings-problem" role="alert">{text(shortcutProblem.id,
-              shortcutProblem.command ? { command: text(SHORTCUT_COMMANDS[shortcutProblem.command]) } : undefined)}</p>}
-            {shortcut?.error && <p className="settings-problem" role="status">{shortcut.error}</p>}
-            <Group id="shortcut-list-choice">{unavailable("choose-shortcut")}</Group>
-            <details className="ui-settings-key-list"><summary>{text("shortcuts-in-picker")}</summary>
+            {shortcutSetting}
             <Group id="picker-shortcuts" title={text("shortcuts-in-picker")}>
               {KEY_TABLE.map((binding) => (
                 <Row key={binding.action} id={`key-${binding.action}`} label={text(SHORTCUT_ACTIONS[binding.action])} description={text(SHORTCUT_REGIONS[binding.region])}>
@@ -387,7 +347,6 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
                 </Row>
               ))}
             </Group>
-            </details>
           </>
         )}
         {page === "about" && (
@@ -412,7 +371,6 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
                 </Row>
               </Group>
             )}
-            <Group id="about-help">{["report-problem", "suggest-idea", "licences"].map(unavailable)}</Group>
           </>
         )}
       </main>
