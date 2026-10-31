@@ -13,6 +13,8 @@ pub(crate) fn commands() -> tauri_specta::Builder<tauri::Wry> {
             crate::library::commands::use_zotero_libraries,
             crate::library::commands::zotero_groups,
             crate::library::commands::library_status,
+            crate::library::open_source::open_library_source,
+            crate::library::open_source::library_source,
             crate::library::commands::search,
             crate::library::commands::recent_references,
             crate::copy::preview_file_citation,

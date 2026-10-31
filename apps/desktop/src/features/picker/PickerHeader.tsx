@@ -8,10 +8,11 @@ import { currentPlatform } from "../../platform";
 import type { Choice } from "./choice";
 import { FormatMenu, type FormatCommand } from "./FormatMenu";
 import type { MenuCloseReason, ToolbarMenuCommand } from "../../ui/ToolbarMenu";
+import type { AppPaste } from "../../api";
 
 /** The search bar: the search box and the copy format. It is also
  * the window's drag region; the editable box itself is not. */
-export function PickerHeader({ inputRef, query, pageToken, onQueryChange, onSearchKeyDown, expanded, activeDescendant, format, formatButtonRef, app = null, formatScope, onFormatOpenChange, onceOnly = false, onToggleOnce = () => undefined, onAutomatic = () => undefined, onDefault = () => undefined, formatDisabled = false, showFormat, styles, onFormatChange, onFormatCommand, pinned, onTogglePin, mark }: {
+export function PickerHeader({ inputRef, query, pageToken, onQueryChange, onSearchKeyDown, expanded, activeDescendant, format, formatButtonRef, app = null, formatScope, onFormatOpenChange, onceOnly = false, onToggleOnce = () => undefined, onAutomatic = () => undefined, onDefault = () => undefined, pasteChoices, onPasteChange, formatDisabled = false, showFormat, styles, onFormatChange, onFormatCommand, pinned, onTogglePin, mark }: {
   inputRef: React.RefObject<HTMLInputElement | null>;
   pinned: boolean;
   /** The Ibis mark in place of the magnifier, a person's choice in More. */
@@ -35,6 +36,8 @@ export function PickerHeader({ inputRef, query, pageToken, onQueryChange, onSear
   onToggleOnce?: () => void;
   onAutomatic?: () => void;
   onDefault?: () => void;
+  pasteChoices?: boolean;
+  onPasteChange?: (paste: AppPaste) => void;
   formatDisabled?: boolean;
   showFormat: boolean;
   /** Whether formatted citation styles can be used now. */
@@ -92,7 +95,7 @@ export function PickerHeader({ inputRef, query, pageToken, onQueryChange, onSear
         </div>
         {pageToken}
       </div>
-      {showFormat && <FormatMenu format={format} buttonRef={formatButtonRef} app={app} scope={formatScope} onOpenChange={onFormatOpenChange} onceOnly={onceOnly} onToggleOnce={onToggleOnce} onAutomatic={onAutomatic} onDefault={onDefault} disabled={formatDisabled} styles={styles} onChange={onFormatChange} searchRef={inputRef} onCommand={onFormatCommand} />}
+      {showFormat && <FormatMenu format={format} buttonRef={formatButtonRef} app={app} scope={formatScope} onOpenChange={onFormatOpenChange} onceOnly={onceOnly} onToggleOnce={onToggleOnce} onAutomatic={onAutomatic} onDefault={onDefault} pasteChoices={pasteChoices} onPasteChange={onPasteChange} disabled={formatDisabled} styles={styles} onChange={onFormatChange} searchRef={inputRef} onCommand={onFormatCommand} />}
       <ToggleButton variant="icon" className="pin-button" aria-label={pickerText.keepOpen} aria-keyshortcuts={ariaKeys(keysFor("pin"), currentPlatform() === "macos")}
         isSelected={pinned} onChange={onTogglePin}>
         <svg aria-hidden="true" viewBox="0 0 24 24" fill={pinned ? "currentColor" : "none"} stroke="currentColor">

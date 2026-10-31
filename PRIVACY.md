@@ -11,6 +11,27 @@ and its local data. New Ibis data flows need a recorded decision ([decisions](do
   and a few levels of subfolders; it opens a file only after you choose it.
 - **Clipboard:** copying writes the citation to your system clipboard. Clipboard
   history, cloud clipboard and other apps may keep it under your system settings.
+- **Automatic paste on macOS:** Ibis checks the active app and process, and opaque
+  Accessibility identities for the focused document and input surface. It reads
+  no document titles, field roles, values or text. A bounded wait after copying
+  compares only with the original captured identities; it never adopts another
+  window or surface. Tabs and conversations can share those identities. Just
+  before pasting, Ibis checks the time since the last key-down and left, right or other
+  mouse-button press (including middle-click) and refuses if any happened after delivery began. It reads no keys,
+  click targets, coordinates or event contents. Mouse movement does not count;
+  a programmatic tab or conversation change with no input is not detected.
+  Accessibility and permission to send the paste shortcut are separate
+  grants. Only the permission guide's explicit action requests or repairs missing
+  grants. If an app Ibis may paste into leaves out a needed document or surface
+  identity, Ibis automatically enables that app's accessibility support by setting
+  `AXManualAccessibility=true`. It tries this once per live app instance during
+  an Ibis run, then repeats the full identity capture after a successful write.
+  This needs no environment switch and does not grant Ibis macOS Accessibility
+  permission. An unknown app still needs your paste approval first.
+  This can increase that app's CPU/memory use and expose its accessibility tree
+  to the OS; Ibis still reads only identities and process ownership. Refused apps
+  and Copy only never receive this write
+  ([decision 0029](docs/decisions.md#0029-native-calls)).
 - **Settings:** the desktop saves `settings.json`, its previous version as
   `settings.json.bak`, and `settings.json.tmp` while saving. An interrupted save
   may leave the temporary file. Settings include the library path or Zotero
@@ -79,7 +100,12 @@ the same as Ibis's settings.
   with the app version and OS filled in. Nothing is posted until you submit it.
 - **Diagnostics:** Ibis has no analytics or crash-upload service. Its own
   diagnostics go to standard error, not an app log file. A terminal, launcher
-  or OS may retain them. WebView and OS diagnostics, crash reporting, backups
+  or OS may retain them. Mac paste diagnostics are off unless
+  `IBIS_MAC_PASTE_DIAGNOSTICS=1` is set: one JSON line per delivery attempt with
+  fixed stages, AX error codes, durations in microseconds and owner/equality
+  booleans, plus whether Ibis tried to enable the app's accessibility support.
+  They include no native object descriptions, app/document IDs,
+  titles, roles, values, text or paths. WebView and OS diagnostics, crash reporting, backups
   and swap follow their own settings; Ibis does not control their retention or
   upload policies.
 

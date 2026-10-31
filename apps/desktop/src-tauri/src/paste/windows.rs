@@ -35,13 +35,16 @@ pub(super) fn capture() -> (Option<Front>, Option<Window>) {
 }
 
 /// The app behind `window`, by executable file name and process; never the
-/// window's title or the executable's folder. Its name and rights are read
+/// window's title. Only a digest of its already-read full path is kept. Its name and rights are read
 /// only for a capture, not for each check while the paste waits.
 fn front(window: &w::HWND, capture: bool) -> Option<Front> {
     let (_, pid) = window.GetWindowThreadProcessId();
     let process = w::HPROCESS::OpenProcess(co::PROCESS::QUERY_LIMITED_INFORMATION, false, pid).ok()?;
     let path = process.QueryFullProcessImageName(co::PROCESS_NAME::WIN32).ok()?;
     let id = path.rsplit(['\\', '/']).next().map(str::to_owned);
+    let app_identity = id
+        .as_deref()
+        .and_then(|id| super::capture::app_identity(super::System::Windows, id, &path));
     let name = if capture {
         let executable = id.clone().unwrap_or_default();
         // Version resources can live on an unavailable share. Only the
@@ -52,6 +55,7 @@ fn front(window: &w::HWND, capture: bool) -> Option<Front> {
     };
     Some(Front {
         id,
+        app_identity,
         pid: i32::try_from(pid).ok()?,
         window: None,
         focus_failure: None,
@@ -160,14 +164,36 @@ fn warn_key_release() {
 
 pub(super) struct Win {
     app: AppHandle,
+    picker: Option<w::HWND>,
 }
 
 impl Win {
     /// Construction never reads a capture, generation or clipboard baseline.
     /// The successful copy's ticket owns those throughout delivery.
     pub(super) fn new(app: &AppHandle) -> Self {
-        Self { app: app.clone() }
+        // Tauri's HWND getter may dispatch. Resolve it before taking any
+        // destination, key or window lock; readiness uses only native calls.
+        Self {
+            app: app.clone(),
+            picker: picker_window(app),
+        }
     }
+}
+
+fn picker_window(app: &AppHandle) -> Option<w::HWND> {
+    let known = app.get_webview_window("main")?.hwnd().ok()?;
+    let mut picker = None;
+    // Obtain a winsafe handle from its safe native enumeration API. Compare
+    // only the already-known HWND, without reading titles or wrapping raw pointers.
+    let _ = w::EnumWindows(|window| {
+        if window.ptr() == known.0 && window.GetWindowThreadProcessId().1 == std::process::id() {
+            picker = Some(window);
+            false
+        } else {
+            true
+        }
+    });
+    picker
 }
 
 impl TicketDesk for Win {
@@ -178,9 +204,11 @@ impl TicketDesk for Win {
     }
 
     fn picker_hidden(&self) -> bool {
-        self.app
-            .get_webview_window("main")
-            .is_some_and(|picker| picker.is_visible().ok() == Some(false))
+        // This guard runs under LastTarget and KEYS immediately before input.
+        // Tauri is_visible() waits for the UI thread and would invert IPC's lock.
+        self.picker.as_ref().is_some_and(|picker| {
+            picker.IsWindow() && picker.GetWindowThreadProcessId().1 == std::process::id() && !picker.IsWindowVisible()
+        })
     }
 
     fn restore(&self, window: &Window, pid: i32) -> bool {
@@ -214,7 +242,10 @@ impl TicketDesk for Win {
     }
 
     fn post_if(&self, pid: i32, key: u16, ready: impl Fn() -> bool) -> bool {
-        send_paste(|| ready() && key == co::VK::CHAR_V.raw() && !keys_held() && foreground_pid() == Some(pid))
+        // Policy saves use this same lock: key-downs cannot follow a saved refusal.
+        self.app.state::<super::LastTarget>().post_if_ready(|| {
+            send_paste(|| ready() && key == co::VK::CHAR_V.raw() && !keys_held() && foreground_pid() == Some(pid))
+        })
     }
     fn release_keys(&self) -> bool {
         let Ok(mut keys) = KEYS.lock() else {

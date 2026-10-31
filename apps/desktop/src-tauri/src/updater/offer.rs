@@ -106,20 +106,7 @@ impl OfferUi for tauri::Wry {
     }
 
     fn focused(parent: &tauri::WebviewWindow<Self>) -> bool {
-        #[cfg(target_os = "windows")]
-        {
-            // The single-webview runtime queries Tao's top-level focus cache.
-            // WM_KILLFOCUS clears it when the child WebView2 takes keyboard
-            // focus, even while this exact picker remains in the foreground.
-            let picker =
-                crate::diagnostics::checked(parent.hwnd(), NativeIssue::FocusState).map(|window| window.0 as usize);
-            let foreground = winsafe::HWND::GetForegroundWindow().map(|window| window.ptr() as usize);
-            owned_foreground(picker, foreground)
-        }
-        #[cfg(not(target_os = "windows"))]
-        {
-            crate::picker::focused_for_shortcut(parent) == Some(true)
-        }
+        crate::picker::focused_for_shortcut(parent) == Some(true)
     }
 
     fn show_picker(app: &AppHandle<Self>) {
@@ -150,11 +137,6 @@ impl OfferUi for tauri::Wry {
     ) {
         present_offer(app, parent, owner, text, answer);
     }
-}
-
-#[cfg(any(target_os = "windows", test))]
-fn owned_foreground(picker: Option<usize>, foreground: Option<usize>) -> bool {
-    picker.is_some_and(|window| window != 0 && Some(window) == foreground)
 }
 
 fn publish_available<R: OfferUi>(app: &AppHandle<R>, available: bool) {

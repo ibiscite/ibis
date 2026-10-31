@@ -20,6 +20,8 @@
     "allow-use-zotero-libraries",
     "allow-zotero-groups",
     "allow-library-status",
+    "allow-open-library-source",
+    "allow-library-source",
     "allow-search",
     "allow-recent-references",
     "allow-preview-file-citation",

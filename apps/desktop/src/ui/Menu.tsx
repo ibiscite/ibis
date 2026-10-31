@@ -2,7 +2,7 @@ import { Children, createContext, isValidElement, useCallback, useContext, useEf
 import { composing as isComposing } from "../composition";
 import { flushSync } from "react-dom";
 import { mergeProps, setInteractionModality } from "react-aria";
-import { Header, Menu as AriaMenu, MenuItem as AriaMenuItem, MenuSection as AriaMenuSection, MenuStateContext, MenuTrigger, Popover, Separator } from "react-aria-components";
+import { Header, Menu as AriaMenu, MenuItem as AriaMenuItem, MenuSection as AriaMenuSection, MenuStateContext, MenuTrigger, Popover, Separator, SubmenuTrigger, Text } from "react-aria-components";
 import { Button } from "./Button";
 import { markScrollEdges } from "./ScrollArea";
 import { useMenuLifecycle } from "./useMenuLifecycle";
@@ -203,7 +203,7 @@ export function MenuRow({ itemId, ...props }: ComponentPropsWithRef<"div"> & { i
   return <div {...mergeProps(props, { onPointerMove })} />;
 }
 
-const ActionFocusContext = createContext<(() => void) | null>(null);
+const ActionFocusContext = createContext<((immediate?: boolean) => void) | null>(null);
 
 /** A wrapping, read-only menu header, also spoken through its section label. */
 export function MenuDetail({ title, detail }: { title: string; detail?: string | null }) {
@@ -214,11 +214,12 @@ export function MenuDetail({ title, detail }: { title: string; detail?: string |
 }
 
 type ItemProps = {
-  id: string; label: string; title?: string; keys?: string;
+  id: string; label: string; title?: string; keys?: string; icon?: ReactNode; example?: string;
   /** A toggle: shows a check and is a menuitemcheckbox. */
   checked?: boolean;
   /** Stays focusable and is announced as unavailable, but does nothing (ADR 0021). */
   disabled?: boolean;
+  closeOnSelect?: boolean;
   onAction: () => void;
 };
 
@@ -230,20 +231,22 @@ export function MenuCheck({ checked }: { checked: boolean }) {
 }
 
 /** An action row: label, optional shortcut and a check for toggles. */
-export function MenuItem({ id, label, title, keys, checked, disabled, onAction }: ItemProps) {
+export function MenuItem({ id, label, title, keys, checked, disabled, closeOnSelect, onAction, icon, example }: ItemProps) {
   const requestActionFocus = useContext(ActionFocusContext);
-  return <AriaMenuItem id={id} className="menu-item" textValue={label}
+  return <AriaMenuItem id={id} className="menu-item" textValue={label} aria-label={example ? label : undefined}
     // A toggle keeps the menu open, as before, so several can be changed at once.
-    shouldCloseOnSelect={checked === undefined && !disabled ? undefined : false}
+    shouldCloseOnSelect={closeOnSelect ?? (checked === undefined && !disabled ? undefined : false)}
     onAction={() => {
       if (disabled) return;
-      if (checked === undefined) requestActionFocus?.();
+      if (checked === undefined || closeOnSelect) requestActionFocus?.(closeOnSelect);
       onAction();
     }}
     render={(props) => <MenuRow {...props as ComponentPropsWithRef<"div">} itemId={id} title={title} aria-disabled={disabled || undefined} />}>
     {({ isSelected }) => <>
       {checked !== undefined && <MenuCheck checked={isSelected} />}
-      <span className="menu-label">{label}</span>
+      {icon}
+      <bdi className="menu-label" dir="auto">{label}</bdi>
+      {example && <Text slot="description" className="menu-example"><bdi dir="auto">{example}</bdi></Text>}
       {keys && <span className="menu-keys" aria-hidden="true"><bdi dir="ltr">{keys}</bdi></span>}
     </>}
   </AriaMenuItem>;
@@ -254,15 +257,37 @@ export function MenuItem({ id, label, title, keys, checked, disabled, onAction }
  * checked keys come from the items themselves. `header` is a visual line
  * above the items that names the group when no `label` is given.
  */
-export function MenuSection({ id, label, header, children }: { id: string; label?: string; header?: ReactNode; children: ReactNode }) {
+export function MenuSection({ id, label, header, children, layout, selectionMode = "multiple" }: { id: string; label?: string; header?: ReactNode; children: ReactNode; layout?: "chips"; selectionMode?: "single" | "multiple" }) {
   const items = Children.toArray(children).filter(isValidElement) as ReactElement<ItemProps>[];
   const checkable = items.some((item) => item.props.checked !== undefined);
-  return <AriaMenuSection id={id} aria-label={label} className="menu-section"
-    selectionMode={checkable ? "multiple" : undefined}
+  return <AriaMenuSection id={id} aria-label={label} className={`menu-section${layout === "chips" ? " menu-section-chips" : ""}`}
+    selectionMode={checkable ? selectionMode : undefined}
     selectedKeys={checkable ? items.filter((item) => item.props.checked).map((item) => item.props.id) : undefined}>
     {header && <Header className="menu-header">{label && <span className="visually-hidden">{label}</span>}<div aria-hidden="true">{header}</div></Header>}
     {children}
   </AriaMenuSection>;
+}
+
+/** A nested choice menu. React Aria owns hover, arrows, Escape and placement;
+ * the parent menu still owns Tab and action focus return. */
+export function MenuSubmenu({ id, label, value, title, children }: {
+  id: string; label: string; value: string; title?: string; children: ReactNode;
+}) {
+  const list = useRef<HTMLDivElement | null>(null);
+  const wholeRows = useWholeRows(list);
+  return <SubmenuTrigger>
+    <AriaMenuItem id={id} className="menu-item" textValue={value} aria-label={value}
+      render={(props) => <MenuRow {...props as ComponentPropsWithRef<"div">} itemId={id} title={title} />}>
+      <bdi className="menu-label" dir="auto">{value}</bdi>
+      <span className="menu-submenu-arrow" aria-hidden="true">›</span>
+    </AriaMenuItem>
+    <Popover ref={wholeRows} className="menu-popover ui-overlay" offset={6} containerPadding={8}>
+      <AriaMenu ref={list} className="menu scroll-area" aria-label={label}
+        render={(props) => <div {...props as ComponentPropsWithRef<"div">} aria-label={label} aria-labelledby={undefined} />}>
+        {children}
+      </AriaMenu>
+    </Popover>
+  </SubmenuTrigger>;
 }
 
 export function MenuSeparator() {
@@ -273,7 +298,7 @@ type MenuProps = {
   /** The menu's accessible name. */
   label: string; id?: string;
   /** The trigger button's content and attributes. */
-  trigger: ReactNode; triggerRef?: Ref<HTMLButtonElement>; triggerClassName?: string; triggerTitle?: string; triggerKeys?: string;
+  trigger: ReactNode; triggerRef?: Ref<HTMLButtonElement>; triggerClassName?: string; triggerTitle?: string; triggerKeys?: string; triggerLabel?: string;
   isOpen: boolean; onOpenChange: (open: boolean) => void;
   /** Where Tab goes: leaving the menu returns there so keys keep working. */
   tabFocusRef?: RefObject<HTMLElement | null>;
@@ -288,7 +313,7 @@ type MenuProps = {
  * opened from the keyboard, including a shortcut that sets `isOpen`, the first
  * item is highlighted, as in native menus.
  */
-export function Menu({ label, id, trigger, triggerRef, triggerClassName, triggerTitle, triggerKeys, isOpen, onOpenChange, tabFocusRef, placement = "bottom end", children }: MenuProps) {
+export function Menu({ label, id, trigger, triggerRef, triggerClassName, triggerTitle, triggerKeys, triggerLabel, isOpen, onOpenChange, tabFocusRef, placement = "bottom end", children }: MenuProps) {
   const fromTrigger = useRef(false);
   const button = useRef<HTMLButtonElement | null>(null);
   const boundary = useMenuBoundary(isOpen, tabFocusRef, button);
@@ -360,28 +385,34 @@ export function Menu({ label, id, trigger, triggerRef, triggerClassName, trigger
     pendingFocus.current = to ?? null;
     onOpenChange(false);
   };
-  return <MenuTrigger isOpen={isOpen} onOpenChange={(open) => { fromTrigger.current = open; onOpenChange(open); }}>
+  // Outside the collection builder so submenu portals inherit the action owner.
+  return <ActionFocusContext.Provider value={(immediate) => {
+    // Release both modal scopes before returning focus from a submenu choice.
+    if (immediate) leave(tabFocusRef?.current, true);
+    else pendingFocus.current = tabFocusRef?.current ?? null;
+  }}><MenuTrigger isOpen={isOpen} onOpenChange={(open) => { fromTrigger.current = open; onOpenChange(open); }}>
     <Button variant="quiet" size="small" aria-label={label} ref={(node) => {
       button.current = node;
       if (typeof triggerRef === "function") triggerRef(node);
       else if (triggerRef) triggerRef.current = node;
     }} className={triggerClassName}
-      render={(props) => <button {...props as ComponentPropsWithRef<"button">} title={triggerTitle} aria-keyshortcuts={triggerKeys} />}>{trigger}</Button>
+      render={(props) => <button {...props as ComponentPropsWithRef<"button">} title={triggerTitle} aria-label={triggerLabel ?? label} aria-keyshortcuts={triggerKeys} />}>{trigger}</Button>
     <Popover ref={popoverRef} className="menu-popover ui-overlay" placement={renderedPlacement} offset={6} containerPadding={8} shouldSkipAnimation={skipExit} {...boundary}>
       <div className="menu-frame" onKeyDownCapture={(event) => {
         if (isComposing(event)) { event.stopPropagation(); return; }
+        // Escape leaves the innermost submenu first. Tab leaves the entire menu.
+        if (event.key === "Escape" && event.target instanceof Element && event.target.closest('[role="menu"]') !== list.current) return;
         const to = event.key === "Escape" ? button.current : event.key === "Tab" ? tabFocusRef?.current : undefined;
         if (to === undefined) return;
         event.preventDefault();
         event.stopPropagation();
         leave(to, event.key === "Tab");
       }} onKeyUpCapture={(event) => { if (isComposing(event)) event.stopPropagation(); }}>
-        <AriaMenu key={opening} ref={listRef} id={id} className="menu scroll-area" aria-label={label} autoFocus={fromTrigger.current ? undefined : "first"}>
-          <ActionFocusContext.Provider value={() => { pendingFocus.current = tabFocusRef?.current ?? null; }}>
-            {children}
-          </ActionFocusContext.Provider>
+        <AriaMenu key={opening} ref={listRef} id={id} className="menu scroll-area" aria-label={label} autoFocus={fromTrigger.current ? undefined : "first"}
+          render={(props) => <div {...props as ComponentPropsWithRef<"div">} aria-label={label} aria-labelledby={undefined} />}>
+          {children}
         </AriaMenu>
       </div>
     </Popover>
-  </MenuTrigger>;
+  </MenuTrigger></ActionFocusContext.Provider>;
 }

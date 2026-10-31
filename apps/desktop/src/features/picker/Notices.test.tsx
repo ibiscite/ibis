@@ -7,7 +7,7 @@ const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encod
 const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
 const noticeStyles = readFileSync(new FileURL("./Notices.css", import.meta.url), "utf8");
 const copied = { text: "[@example2026]", warnings: ["Missing year — 研究 العربية <literal>"] };
-const props = { library: null, failures: {}, startAtLogin: null, error: null, copyError: null,
+const props = { library: null, failures: {}, error: null, copyError: null,
   copied, confirmation: copied, onDismissCopied: vi.fn() };
 
 test("a long citation refusal is a complete keyboard-reachable notice before Details opens", () => {
@@ -86,5 +86,5 @@ test("update progress keeps known, unknown, checking and failed phases honest", 
   expect(screen.getByRole("progressbar").querySelector<HTMLElement>(".update-track > div")?.style.width).toBe("");
   rerender(<Notices {...props} copied={null} {...{ updateProgress: { ...progress, phase: "failed" } }} />);
   expect(screen.queryByRole("progressbar")).toBeNull();
-  expect(screen.getByRole("alert").textContent).toContain("Check for updates in More");
+  expect(screen.getByRole("alert").textContent).toContain("Check now in Settings > About");
 });

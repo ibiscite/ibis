@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import type { EmptyLibraryChoices } from "../../LibrarySetup";
+import type { EmptyLibraryChoices, SourceChoice } from "../../LibrarySetup";
 import type { LibraryStatus } from "../../api";
 import { ChoiceIcon } from "../../icons";
 import { keysFor } from "../../keys";
@@ -47,11 +47,12 @@ function LibraryProgress({ library }: { library: LibraryStatus }) {
 
 /** A library that could not be opened and has no earlier snapshot to search:
  * say what happened in plain words and offer the fix as choice rows [C12]. */
-function Recovery({ library, onFind, onReload, setup }: {
+function Recovery({ library, onFind, onReload, setup, source }: {
   library: LibraryStatus;
   onFind: () => void;
   onReload: () => void;
   setup: (focus: boolean, empty?: EmptyLibraryChoices) => ReactNode;
+  source?: SourceChoice;
 }) {
   const [switching, setSwitching] = useState(false);
   // The chosen row is gone, so the list that replaces it takes focus.
@@ -69,12 +70,14 @@ function Recovery({ library, onFind, onReload, setup }: {
   const choices: Choice[] = problem === "missing" && !library.zotero
     ? [{ id: "find", title: setupText.find(name), help: setupText.findFileHelp, icon: <ChoiceIcon name="find" />, suggested: true }, another]
     : [{ ...tryAgain, suggested: true }, another];
+  if (source) choices.push({ id: "source", title: source.label, icon: source.icon ?? <ChoiceIcon name={library.zotero ? "library" : "file"} />,
+    keys: keysFor("source") });
   return (
     <div className="empty-state">
       {/* Announced once, as the footer's live region does for other states. */}
       <p className="visually-hidden" role="alert">{line ? `${title}. ${line}` : title}</p>
       <ChoiceList title={title} line={line} choices={choices}
-        onChoose={(id) => id === "find" ? onFind() : id === "retry" ? onReload() : setSwitching(true)} />
+        onChoose={(id) => id === "source" ? source?.open() : id === "find" ? onFind() : id === "retry" ? onReload() : setSwitching(true)} />
     </div>
   );
 }
@@ -82,7 +85,7 @@ function Recovery({ library, onFind, onReload, setup }: {
 /** What the result list says when it has no rows: an empty library, no
  * matches and what to try next, a hint to type, first-run setup, or how to
  * recover a library that could not be opened. */
-export function EmptyState({ library, query, narrowed, onChooseLibrary, onClearSearch, onSearchAll, onReload, setup }: {
+export function EmptyState({ library, query, narrowed, onChooseLibrary, onClearSearch, onSearchAll, onReload, setup, source }: {
   library: LibraryStatus | null;
   query: string;
   /** Some Zotero libraries are left out of the search, so searching all may help. */
@@ -93,13 +96,14 @@ export function EmptyState({ library, query, narrowed, onChooseLibrary, onClearS
   onReload: () => void;
   /** Shown while no library is chosen; focus moves into it when asked. */
   setup: (focus: boolean, empty?: EmptyLibraryChoices) => ReactNode;
+  source?: SourceChoice;
 }) {
   if (!library) return <div className="empty-state" />;
   const loading = library.state === "loading" || library.state === "reloading";
   if (loading) return library.has_snapshot && library.references > 0 ? null
     : <LibraryProgress key={`${library.state}\u0000${library.name}`} library={library} />;
   if (library.state === "error" && !library.has_snapshot) {
-    return <Recovery key={`${library.name}\u0000${library.problem}`} library={library} onFind={onChooseLibrary} onReload={onReload} setup={setup} />;
+    return <Recovery key={`${library.name}\u0000${library.problem}`} library={library} onFind={onChooseLibrary} onReload={onReload} setup={setup} source={source} />;
   }
   if (!library.name) return <div className="empty-state">{library.state === "none" ? setup(false) : null}</div>;
   if (library.state === "loaded" && library.has_snapshot && library.references === 0) {
@@ -108,6 +112,7 @@ export function EmptyState({ library, query, narrowed, onChooseLibrary, onClearS
     return <div className="empty-state">{setup(false, {
       title: title === fullTitle ? title : <><span aria-hidden="true">{title}</span><span className="visually-hidden">{fullTitle}</span></>,
       zotero: library.zotero,
+      source,
     })}</div>;
   }
   const title = query ? pickerText.noMatches : pickerText.typeToFind;

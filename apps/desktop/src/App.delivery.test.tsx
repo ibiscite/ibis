@@ -30,10 +30,18 @@ async function enter(shiftKey = false, repeat = false) {
   await act(async () => { fireEvent.keyDown(searchBox(), { key: "Enter", shiftKey, repeat }); });
 }
 
+async function finishSearch(harness: Harness, query: string, results: typeof first[]) {
+  const jobs = harness.search.pending.filter((job) => job.args.text === query);
+  expect(jobs).toHaveLength(1);
+  await act(async () => { jobs[0]!.complete({ revision: "1", results }); });
+}
+
 async function choose(harness: Harness, query: string, reference = first, text = "[@a]") {
   await type(query);
-  await act(async () => { harness.search.pending[0]!.complete({ revision: "1", results: [reference] }); });
-  await act(async () => { harness.preview.pending[0]!.complete({ text }); });
+  await finishSearch(harness, query, [reference]);
+  const preview = harness.preview.pending.at(-1)!;
+  expect(preview.args.items.map(({ id }) => id)).toEqual([reference.id]);
+  await act(async () => { preview.complete({ text }); });
 }
 
 async function finishCopy(harness: Harness) {
@@ -53,7 +61,7 @@ function expectReceipt(harness: Harness, title: string, text: string) {
 }
 
 test.each([
-  ["unknown app", (h: Harness) => { h.target.verified = false; }, "Copied. Automatic paste is not verified for this app"],
+  ["unknown app", (h: Harness) => { h.target.verified = false; }, "Copied. Automatic paste is not approved for this app"],
   ["sleep and wake", (h: Harness) => { h.lifecycle.epoch += 2; }, "Copied. The paste expired; paste it yourself"],
   ["lock and unlock", (h: Harness) => { h.lifecycle.epoch += 2; }, "Copied. The paste expired; paste it yourself"],
   ["long delay", (h: Harness) => { h.lifecycle.elapsed += 1500; }, "Copied. The paste expired; paste it yourself"],
@@ -294,10 +302,17 @@ test.each(["before paste", "before response"])("reopening %s preserves the new c
   await finishCopy(harness);
   if (when === "before response") await act(async () => { harness.delivery.pending[0]!.complete(); });
   await act(async () => { await harness.reopen(); });
+  const recheck = harness.search.pending.at(-1)!;
+  expect(recheck.args.text).toBe("first");
   await type("second");
-  await act(async () => { harness.search.pending[0]!.complete({ revision: "1", results: [second] }); });
+  await finishSearch(harness, "second", [second]);
   await enter(true);
-  await act(async () => { harness.preview.pending[0]!.complete({ text: "[@a; @b]" }); });
+  const preview = harness.preview.pending.at(-1)!;
+  expect(preview.args.items.map(({ id }) => id)).toEqual([first.id, second.id]);
+  await act(async () => { preview.complete({ text: "[@a; @b]" }); });
+  // The status read on reopening also searched the previous query. Complete
+  // that worker late: it must not remove the newer selection or start a copy.
+  await act(async () => { recheck.complete({ revision: "1", results: [first] }); });
   if (when === "before paste") await act(async () => { harness.delivery.pending[0]!.complete(); });
   await act(async () => { harness.notice.pending[0]!.complete(); });
   expect(screen.getByRole("button", { name: "Remove a from the selection" })).toBeTruthy();
@@ -418,7 +433,7 @@ test("reopening during a pending copy keeps the new query and selection without 
   expect(harness.copy.pending).toHaveLength(1);
   await act(async () => { await harness.reopen(); });
   await type("second query");
-  await act(async () => { harness.search.pending[0]!.complete({ revision: "1", results: [second] }); });
+  await finishSearch(harness, "second query", [second]);
   await enter(true);
   await act(async () => { harness.copy.pending[0]!.complete(); });
   expect(harness.clipboard).toMatchObject({ text: "[@a]", owner: "ibis", sequence: 1 });

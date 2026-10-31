@@ -46,8 +46,8 @@ export const operationFailures = {
   updateChecksChange: "Ibis could not change its update setting. Try again.",
   checkForUpdates: "Ibis could not check for updates. Try again.",
   settings: "Settings could not open. Try again.",
-  appChoices: "Ibis could not read the formats it remembers for apps, so each app starts with its automatic format.",
-  appChoice: "Ibis could not save the format for this app. Try again.",
+  appChoices: "Ibis could not read the formats it remembers for apps. Confirm this app's paste choice, or use Forget formats for apps.",
+  appChoice: "Ibis could not save the choice for this app. Try again.",
 } as const;
 
 /** Where people turn login items on and off on each system. */
@@ -151,6 +151,14 @@ export const densityNames = {
 } as const;
 
 export const pickerText = {
+  openZotero: "Open Zotero",
+  showInZotero: "Show in Zotero",
+  findSource: "Find…",
+  findSourceFile: (name: string | null) => name ? `Find ${isolate(name)}…` : "Find…",
+  sourceChanged: "The library changed; select the reference again.",
+  showSourceFolder: (mac: boolean) => mac ? "Show in Finder" : "Show in folder",
+  openSource: (name: string | null) => `Open ${isolate(name ?? "library")}`,
+  sourceOpenFailed: (zotero: boolean) => zotero ? "Zotero could not open. Try again." : "The source file could not open. Try again.",
   searchLabel: "Search references",
   searchPlaceholder: "Search references…",
   dragSearchBar: "Drag the search bar edge to move the picker",
@@ -170,10 +178,13 @@ export const pickerText = {
   formatForApp: (format: string, app: string) => `${format} · ${app}`,
   forApp: (app: string) => `For ${app}`,
   justOnce: "Just this once",
+  pasteFromNowOn: (app: string) => `Paste into ${app} from now on`,
+  copyOnly: "Copy only",
+  copyOnlyHere: (app: string) => `Copy only in ${app}`,
   automatic: "Automatic",
   globalDefault: "Use as global default",
   forgetApps: "Forget formats for apps",
-  forgetAppsTitle: "Every app goes back to its automatic format",
+  forgetAppsTitle: "Forget app formats and paste choices; unrecognised apps will ask again",
   preview: "Preview",
   citationDetails: "Citation details",
   editCitation: "Edit citation",
@@ -236,9 +247,12 @@ export const pickerText = {
   useZotero: "Use Zotero",
   useZoteroTitle: "Read your Zotero library, open or closed",
   libraryRegion: "Library",
+  pickerActions: "Picker actions",
   libraryStatus: "Library status",
   reload: "Reload",
   reloadTitle: "Reload library",
+  reloadLibrary: "Reload Library",
+  chooseLibraryMenu: "Choose Library…",
   copyAs: "Copy as",
   quitLabel: "Quit Ibis",
   settings: "Settings…",
@@ -246,6 +260,8 @@ export const pickerText = {
   updateAvailable: "Update available…",
   checkAutomatically: "Check for updates automatically",
   density: (name: string) => `Rows: ${name}`,
+  rows: "Rows",
+  densityExamples: { compact: "1 line", comfortable: "2 lines", spacious: "3 lines" },
   densityTitle: "Show less or more of each reference",
   viewChanges: "View changes",
   largerText: "Larger text",
@@ -278,6 +294,9 @@ export const keyText = {
     system: "From any app",
   },
   actions: {
+    source: "Open the source",
+    chooseSource: "Choose a library",
+    revealSource: "Show the source in its folder",
     preview: "Show what will be pasted",
     copy: "Paste or copy the highlighted reference, or the ones added to the citation, as the footer says",
     add: "Add the highlighted reference to the citation, or remove it",
@@ -313,8 +332,8 @@ export const libraryMessages = {
   reloading: (name: string | null) => `Reloading ${name ?? "library"}…`,
   openError: (name: string | null, reason: string, zotero = false) => {
     const sentence = /[.!?]$/.test(reason) ? reason : `${reason}.`;
-    if (zotero) return `${name ?? "Zotero"} could not be read. ${sentence} Open Zotero, then reload.`;
-    return `The library could not be opened: ${name ?? "the chosen file"}. ${sentence} Choose it again or reconnect the drive.`;
+    if (zotero) return `${isolate(name ?? "Zotero")} could not be read. ${sentence} Open Zotero, then reload.`;
+    return `The library could not be opened: ${isolate(name ?? "the chosen file")}. ${sentence} Choose it again or reconnect the drive.`;
   },
   emptyTitle: (name: string | null) => `No references in ${name ?? "this library"}`,
   emptyHint: (zotero = false) => zotero
@@ -331,23 +350,23 @@ export const libraryMessages = {
     if (!status.has_snapshot) return [requestedLabel(status), " · not opened"];
     // After a failed switch the previous library is still the one searched: describe it.
     const source = snapshotLabel(status);
-    if (status.stale) return [source, " · not updated"];
-    if (status.references === 0) return [source, " · no references"];
-    return [source, ` · ${count(status.references, "reference")}` +
-      (status.warnings > 0 ? ` · ${count(status.warnings, "reading notice")}` : "")];
+    if (status.stale) return [source, status.problem === "missing" && !status.snapshot_zotero ? " moved" : " not updated"];
+    return [source, ` · ${status.references === 0 ? "no references" : count(status.references, "reference")}` +
+      (status.warnings > 0 ? ` · ${count(status.warnings, "reading notice")}` : "") +
+      (status.error ? ` · ${isolate(requestedLabel(status))} ${status.problem === "missing" ? "moved" : "not opened"}` : "")];
   },
   summary: (status: LibraryStatus | null | undefined) => {
     const [source, state] = libraryMessages.summaryParts(status);
     return (source ?? "") + state;
   },
   /** The quiet age after the summary, or null when the age does not matter:
-   * "updated" only after a real change, "checked" for an old copy. */
+   * "updated" only after a real change, "last read" for an old copy. */
   age: (status: LibraryStatus | null | undefined, now: number) => {
     if (status?.state === "loading") return "opening…";
     if (!status?.has_snapshot) return null;
     if (status.state === "reloading") return "reloading…";
     const { updated, checked } = times(status);
-    if (status.stale) return checked === null ? null : `checked ${ago(checked, now)}`;
+    if (status.stale) return checked === null ? null : shortAge(checked, now);
     if (status.error || updated === null || now - updated > recentUpdate) return null;
     return `updated ${ago(updated, now)}`;
   },
@@ -361,10 +380,10 @@ export const libraryMessages = {
     const { checked } = times(status);
     const parts = [
       zoteroSnapshot(status) && !(status.error && !status.stale) ? libraryNames(status) : null,
-      checked === null ? null : `checked ${ago(checked, now)}, ${clock(checked, now)}`,
-      status.stale && status.error ? libraryMessages.openError(status.name, status.error, status.zotero)
+      checked === null ? null : isolate(`${status.stale ? "last read" : "checked"} ${ago(checked, now)}, ${clock(checked, now)}`),
+      status.error ? libraryMessages.openError(status.name, status.error, status.zotero)
         : status.stale ? (zoteroSnapshot(status) ? "Zotero could not be reached" : "the file could not be read")
-        : status.error ? `${isolate(status.zotero ? "Zotero" : status.name ?? "the chosen library")} could not be opened` : null,
+        : null,
     ].filter((part): part is string => part !== null);
     const first = status.stale ? `${isolate(snapshotLabel(status))} · ${count(status.references, "reference")}` : summary;
     return [first, parts.length > 0 ? parts.join(" · ") : null];
@@ -409,6 +428,14 @@ function times(status: LibraryStatus) {
 }
 
 /** Short relative times, then a date with the year when different. Never in the future. */
+function shortAge(at: number, now: number) {
+  const seconds = Math.max(0, (now - at) / 1000);
+  if (seconds < 45) return "now";
+  if (seconds < 3600) return `${Math.max(1, Math.round(seconds / 60))} min`;
+  if (seconds < 86400) return `${Math.round(seconds / 3600)} h`;
+  return `${Math.round(seconds / 86400)} d`;
+}
+
 export function ago(at: number, now: number) {
   const seconds = Math.max(0, (now - at) / 1000);
   if (seconds < 45) return "just now";
@@ -499,7 +526,9 @@ export const copiedNoticeText = {
     "paste-off": "Copied. Pasting is off",
     "unsupported-system": "Copied. Paste it into your document",
     "no-target": "Copied. No app to paste into",
-    "unknown-app": "Copied. Automatic paste is not verified for this app",
+    "unknown-app": "Copied. Automatic paste is not approved for this app",
+    "copy-only": "Copied. Copy only is set for this app",
+    "nonstandard-shortcut": "Copied. Use this app's paste command",
     "target-changed": "Copied. The target app or window changed",
     "clipboard-changed": "Copied. The clipboard changed; copy the citation again",
     "paste-expired": "Copied. The paste expired; paste it yourself",
@@ -533,7 +562,7 @@ export const copyFormatMenu: Record<KeyFormat, { label: string; sample: string }
 export const updateText = {
   downloading: "Downloading the update…",
   installing: "Checking and installing the update…",
-  failed: "The update could not be installed. Use Check for updates in More to try again later.",
+  failed: "The update could not be installed. Use Check now in Settings > About to try again later.",
 };
 
 // The Settings window (#776, docs/design.md "Settings").

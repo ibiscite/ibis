@@ -3,7 +3,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
 import * as api from "./api";
-import { backend, resetApp, result, openCitationDetails } from "./testing/app";
+import { backend, chooseFromMore, resetApp, result, openCitationDetails } from "./testing/app";
 
 afterEach(async () => { await resetApp(); vi.restoreAllMocks(); });
 
@@ -125,7 +125,7 @@ test.each([false, true])("empty, controls, results, selection, no matches and ke
   expect(document.querySelector("main")?.hasAttribute("data-selection")).toBe(true);
   fireEvent.change(search, { target: { value: "nothing" } });
   await screen.findByText("No matching references");
-  fireEvent.click(screen.getByRole("button", { name: "Shortcuts" }));
+  await chooseFromMore("Keyboard shortcuts");
   await screen.findByRole("dialog", { name: "Keyboard shortcuts" });
   expect(calls).not.toContain("fit_picker");
   expect(calls.some((call) => /set_size|set_position/.test(call))).toBe(false);

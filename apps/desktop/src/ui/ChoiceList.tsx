@@ -1,5 +1,7 @@
-import { useEffect, useId, useRef, type ReactNode } from "react";
+import { useEffect, useId, useRef, type ComponentPropsWithRef, type ReactNode } from "react";
 import { ListBox, ListBoxItem } from "react-aria-components";
+import { ariaKeys, keyLabel } from "../keys";
+import { currentPlatform } from "../platform";
 import "./ChoiceList.css";
 import "./Option.css";
 
@@ -10,6 +12,7 @@ export type Choice = {
   help?: string;
   /** A short fact at the row's end, such as "Found on this Mac". */
   tag?: string;
+  keys?: string;
   icon: ReactNode;
   /** The suggested way forward: an accent tile. One per screen at most. */
   suggested?: boolean;
@@ -32,6 +35,7 @@ export function ChoiceList({ title, line, choices, onChoose, footnote, autoFocus
   focusId?: string;
 }) {
   const heading = useId();
+  const mac = currentPlatform() === "macos";
   const list = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!focusId) return;
@@ -51,6 +55,7 @@ export function ChoiceList({ title, line, choices, onChoose, footnote, autoFocus
         onAction={(id) => onChoose(String(id))}>
         {choices.map((choice) => (
           <ListBoxItem key={choice.id} id={choice.id} textValue={choice.title} className="choice-row"
+            render={(props) => <div {...props as ComponentPropsWithRef<"div">} aria-keyshortcuts={choice.keys ? ariaKeys(choice.keys, mac) : undefined} />}
             data-suggested={choice.suggested || undefined}>
             <span className="result-tile choice-tile" aria-hidden="true">{choice.icon}</span>
             <span className="result-body">
@@ -58,6 +63,7 @@ export function ChoiceList({ title, line, choices, onChoose, footnote, autoFocus
               {choice.help && <span className="result-meta choice-help" dir="auto">{choice.help}</span>}
             </span>
             {choice.tag && <span className="result-year choice-tag" dir="auto" title={choice.tag}>{choice.tag}</span>}
+            {choice.keys && <span className="result-year choice-tag" aria-hidden="true"><bdi dir="ltr">{keyLabel(choice.keys, mac)}</bdi></span>}
             <svg className="choice-chevron" aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 20 20"
               fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="m8 5 5 5-5 5" />
