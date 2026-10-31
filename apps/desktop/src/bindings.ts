@@ -39,6 +39,10 @@ export const commands = {
 	zoteroGroups: () => __TAURI_INVOKE<ZoteroGroup[]>("zotero_groups"),
 	/**  The library as it is now, for the interface when it starts. */
 	libraryStatus: () => __TAURI_INVOKE<LibraryStatus>("library_status"),
+	/**  Open the searched source or launch Zotero for a reported Zotero problem. */
+	openLibrarySource: (item: unknown | null, expectedRevision: string, zoteroOnly: boolean, reveal: boolean) => __TAURI_INVOKE<null>("open_library_source", { item, expectedRevision, zoteroOnly, reveal }),
+	/**  Resolve the selected source and its system icon, never exposing its path. */
+	librarySource: (item: unknown | null, expectedRevision: string, zoteroOnly: boolean, withStatusIcon: boolean) => __TAURI_INVOKE<SourcePresentation>("library_source", { item, expectedRevision, zoteroOnly, withStatusIcon }),
 	/**
 	 *  Search the open library. An empty query returns no results. Async so it
 	 *  runs off the main thread. `page` identifies the interface page and
@@ -74,9 +78,9 @@ export const commands = {
 "keys" | null, revision: number) => __TAURI_INVOKE<PickerSave_Serialize>("set_picker_preferences", { preferences, copyFormat, revision }),
 	/**  The app the picker was opened from, its output and what Ibis remembers for it. */
 	pickerDestination: () => __TAURI_INVOKE<PickerDestination>("picker_destination"),
-	/**  Always use `output` for the app the picker was opened from; `None` returns it to Automatic. */
-	rememberAppOutput: (appId: string, output: ({ key: KeyFormat }) & { style?: never } | ({ style: CitationStyle }) & { key?: never } | null) => __TAURI_INVOKE<null>("remember_app_output", { appId, output }),
-	/**  Forget the outputs chosen for every app. */
+	/**  Remember output and an optional delivery choice; both absent reset this app to Automatic. */
+	rememberAppOutput: (appId: string, output: ({ key: KeyFormat }) & { style?: never } | ({ style: CitationStyle }) & { key?: never } | null, paste: "paste" | "copy-only" | null, identity: string | null) => __TAURI_INVOKE<null>("remember_app_output", { appId, output, paste, identity }),
+	/**  Forget output and delivery choices for every app. */
 	forgetAppOutputs: () => __TAURI_INVOKE<null>("forget_app_outputs"),
 	/**  Whether Ibis starts when the person logs in, read from the system now. */
 	loginItem: () => __TAURI_INVOKE<LoginItem>("login_item"),
@@ -149,10 +153,7 @@ export const commands = {
 	finishPasteGuide: () => __TAURI_INVOKE<boolean>("finish_paste_guide"),
 	/**  Whether Ibis may paste now. Read each time: the person can change it at any moment. */
 	pastePermission: () => __TAURI_INVOKE<PastePermission>("paste_permission"),
-	/**
-	 *  On an explicit user action, repair PostEvent if needed and open the pane.
-	 *  Never requests or resets the separate Accessibility grant.
-	 */
+	/**  On an explicit user action, repair only missing grants and open the pane. */
 	openPastePermission: () => __TAURI_INVOKE<void>("open_paste_permission"),
 	/**  Drag only the running app bundle into the permission list. */
 	dragPasteApp: () => __TAURI_INVOKE<null>("drag_paste_app"),
@@ -171,6 +172,9 @@ export type Accent = "system" | "ibis" | "blue" | "purple" | "pink" | "red" | "o
 
 /**  One output the picker can copy: a key syntax or a citation style. */
 export type AppOutput = ({ key: KeyFormat }) & { style?: never } | ({ style: CitationStyle }) & { key?: never };
+
+/**  A deliberate delivery choice for one captured app, independent of its format. */
+export type AppPaste = "paste" | "copy-only";
 
 /**  Settings owns these choices until the picker consumes the same event fields. */
 export type Appearance = "system" | "light" | "dark";
@@ -414,7 +418,7 @@ export type PastedList = {
 };
 
 /**  Command identifiers shared with KEY_TABLE and the refusal's translated name. */
-export type PickerCommand = "format" | "pin" | "keys" | "more" | "preview" | "settings" | "quit";
+export type PickerCommand = "format" | "pin" | "keys" | "more" | "preview" | "source" | "settings" | "quit";
 
 /**  What the picker needs to know about the app it was opened from. */
 export type PickerDestination = {
@@ -422,16 +426,24 @@ export type PickerDestination = {
 	app: string | null,
 	/**  The captured OS app identifier, used to refuse a save after the target changes. */
 	app_id: string | null,
+	/**  Opaque app-location fingerprint; no path crosses IPC. */
+	app_identity: string | null,
 	/**  The app suggestion; `None` follows the saved global default. */
 	automatic: AppOutput | null,
 	/**  The output the person chose to always use for this app. */
 	remembered: AppOutput | null,
-	/**  The per-app file could not be read, so defaults apply. */
+	/**  Unresolved recovery from an unreadable per-app file; formats use defaults. */
 	unreadable: boolean,
 	/**  The current paste policy permits an attempt; final delivery checks still apply. */
 	can_paste: boolean,
 	/**  The app cannot identify document syntax; ask until an output is remembered. */
 	output_question: OutputQuestion | null,
+	/**  The separate delivery choice; never inferred from a remembered format. */
+	paste: AppPaste | null,
+	/**  An unrecognised app has a proven target but no delivery choice yet. */
+	paste_question: boolean,
+	/**  A proven ordinary target can accept an explicit delivery choice, including recovery. */
+	can_choose_paste: boolean,
 };
 
 /**
@@ -643,6 +655,18 @@ export type ShortcutStatus_Serialize = {
 	desktop?: DesktopShortcut | null,
 };
 
+export type SourceItem = unknown;
+
+export type SourceKind = "zotero" | "file";
+
+export type SourcePresentation = {
+	kind: SourceKind,
+	name: string,
+	icon: SystemIcon | null,
+	/**  The searched library may differ from the selected/default source. */
+	status_icon: SystemIcon | null,
+};
+
 /**  What first-run setup can offer. */
 export type Sources = {
 	zotero: ZoteroPresence,
@@ -654,6 +678,11 @@ export type Sources = {
 	 *  found than are listed.
 	 */
 	cut_short: boolean,
+};
+
+export type SystemIcon = {
+	mime: string,
+	bytes: number[],
 };
 
 /**  A Zotero group library the user can choose. */

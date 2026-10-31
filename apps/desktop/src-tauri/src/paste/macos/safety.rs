@@ -11,6 +11,13 @@ use objc2_app_kit::NSWorkspace;
 use objc2_foundation::{NSDistributedNotificationCenter, NSNotificationCenter, NSString, NSThread};
 
 use super::super::{SafetyFailure, SafetyStamp};
+use super::diagnostics;
+
+// Two brackets contribute uncertainty to an offset comparison. Refuse each at
+// 500 us to keep their combined skew below 1 ms (plus nanosecond rounding), the
+// sub-deadline suspension threat tested below. This admits the 300 us skew case
+// without allowing an unbounded bracket or widening previously established evidence.
+const CLOCK_SAMPLE_LIMIT_NS: u64 = 500_000;
 
 static INSTALLED: Once = Once::new();
 static EPOCH: AtomicU64 = AtomicU64::new(0);
@@ -234,8 +241,13 @@ impl PostProbe {
 }
 
 fn clock_changed(offset: &mut Option<(i128, i128)>, before: u64, awake: u64, after: u64) -> Option<bool> {
+    let width = after.checked_sub(before);
+    if let Some(width) = width {
+        diagnostics::clock(Duration::from_nanos(width));
+    }
     // A slow/inconsistent sample cannot prove continuity. Refuse this check.
-    if before == 0 || awake == 0 || after.checked_sub(before)? > 100_000 {
+    if before == 0 || awake == 0 || width.is_none_or(|width| width >= CLOCK_SAMPLE_LIMIT_NS) {
+        diagnostics::stage("lifecycle.clock_sample");
         return None;
     }
     // Allow nanosecond conversion rounding at either end of the interval.
@@ -245,6 +257,9 @@ fn clock_changed(offset: &mut Option<(i128, i128)>, before: u64, awake: u64, aft
     );
     let overlap = offset.map(|previous| (previous.0.max(next.0), previous.1.min(next.1)));
     let changed = overlap.is_some_and(|range| range.0 > range.1);
+    if changed {
+        diagnostics::stage("lifecycle.clock_offset");
+    }
     *offset = Some(overlap.filter(|range| range.0 <= range.1).unwrap_or(next));
     Some(changed)
 }
@@ -265,9 +280,28 @@ mod tests {
 
     #[test]
     fn clock_failures_backwards_time_and_slow_samples_are_unproven() {
-        for (before, awake, after) in [(0, 10, 11), (10, 0, 11), (10, 9, 8), (10, 9, 100_011)] {
+        for (before, awake, after) in [(0, 10, 11), (10, 0, 11), (10, 9, 8), (10, 9, 500_010)] {
             assert_eq!(clock_changed(&mut None, before, awake, after), None);
         }
+    }
+
+    #[test]
+    fn scheduler_skew_over_one_hundred_microseconds_can_still_prove_continuity() {
+        let mut offset = None;
+        assert_eq!(clock_changed(&mut offset, 100, 95, 110), Some(false));
+        assert_eq!(clock_changed(&mut offset, 200, 195, 300_200), Some(false));
+        // The wide sample must not widen the previously established offset.
+        assert_eq!(offset, Some((4, 16)));
+        assert_eq!(clock_changed(&mut offset, 1_000_200, 195, 1_000_210), Some(true));
+    }
+
+    #[test]
+    fn two_broad_samples_still_bound_ambiguous_suspension_below_a_millisecond_plus_rounding() {
+        let mut offset = None;
+        assert_eq!(clock_changed(&mut offset, 1_000, 1_000, 500_999), Some(false));
+        // Worst opposite-edge skew in both brackets; a 1 ms + 9 ns offset
+        // shift is still disjoint, before any observer can advance the epoch.
+        assert_eq!(clock_changed(&mut offset, 2_000_010, 1_500_000, 2_500_009), Some(true));
     }
 
     #[test]

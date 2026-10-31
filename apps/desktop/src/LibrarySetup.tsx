@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import type { ShortcutStatus, Sources } from "./bindings";
 import { ChoiceIcon } from "./icons";
+import { keysFor } from "./keys";
 import { setupText } from "./messages";
 import { currentPlatform } from "./platform";
 import { shortcutLabel } from "./keys";
@@ -16,7 +17,8 @@ type SetupApi = {
   openFoundLibrary?: (list: number, index: number) => Promise<unknown>;
 };
 
-export type EmptyLibraryChoices = { title: ReactNode; zotero: boolean };
+export type SourceChoice = { label: string; open: () => void; icon?: ReactNode };
+export type EmptyLibraryChoices = { title: ReactNode; zotero: boolean; source?: SourceChoice };
 
 type Action = "choose" | "zotero" | "findSources" | "openFound" | "samples";
 
@@ -71,6 +73,8 @@ export function LibrarySetup({ api, perform, autoFocus = false, empty, shortcut,
     : sources ? setupText.found(files.length, zotero === "available") : setupText.findHelp;
 
   const choices: Choice[] = [
+    ...(empty?.source ? [{ id: "source", title: empty.source.label, icon: empty.source.icon ?? <ChoiceIcon name={empty.zotero ? "library" : "file"} />,
+      keys: keysFor("source") }] : []),
     { id: "zotero", title: setupText.zotero, help: setupText.zoteroHelp, icon: <ChoiceIcon name="library" />,
       tag: zotero === "available" || empty?.zotero ? setupText.foundOn(currentPlatform()) : undefined },
     { id: "file", title: setupText.file, help: setupText.fileHelp, icon: <ChoiceIcon name="file" /> },
@@ -100,7 +104,8 @@ export function LibrarySetup({ api, perform, autoFocus = false, empty, shortcut,
   };
   const choose = (id: string) => {
     intent.current += 1;
-    if (id === "zotero") void perform("zotero", useZotero);
+    if (id === "source") empty?.source?.open();
+    else if (id === "zotero") void perform("zotero", useZotero);
     else if (id === "file") void perform("choose", chooseLibrary);
     else if (id === "samples" && changeSamples) void perform("samples", () => changeSamples(true));
     else if (id === "find") {

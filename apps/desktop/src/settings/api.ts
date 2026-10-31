@@ -10,6 +10,7 @@ export const settingsApi = {
   pickerPreferences: commands.pickerPreferences,
   preferenceRevision: commands.preferenceRevision,
   setPickerPreferences: (preferences: Partial<PickerPreferences>, copyFormat: KeyFormat | null, revision: number) => commands.setPickerPreferences(preferences, copyFormat, revision),
+  forgetAppOutputs: commands.forgetAppOutputs,
   loginItem: commands.loginItem,
   setLoginItem: commands.setLoginItem,
   updateChecks: commands.updateChecks,

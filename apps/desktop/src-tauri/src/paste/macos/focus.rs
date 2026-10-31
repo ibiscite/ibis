@@ -3,11 +3,16 @@
 use std::time::{Duration, Instant};
 
 use ibis_core::destination::CopyReason;
+use objc2_app_kit::NSRunningApplication;
+use tauri_nspanel::objc2::rc::Retained;
+
+use super::diagnostics;
 
 const LIMIT: Duration = Duration::from_millis(50);
 // Authorization/clipboard/security are refreshed before these adjacent reads. Do not let a
-// slow provider turn that final snapshot into another long stale interval.
-const TAIL_LIMIT: Duration = Duration::from_millis(5);
+// slow provider turn that final snapshot into another long stale interval. Three sequential
+// reads share 15 ms (5 ms each on average), still inside the whole query's 50 ms bound.
+const TAIL_LIMIT: Duration = Duration::from_millis(15);
 
 /// This closed set is the entire attribute allowlist, including the containing
 /// document and top-level surface of global focus, including foreign panels.
@@ -18,6 +23,22 @@ enum Attribute {
     FocusedElement,
     Window,
     TopLevel,
+}
+
+fn missing_identity_attribute(attribute: Attribute, error: i32) -> bool {
+    matches!(attribute, Attribute::FocusedWindow | Attribute::TopLevel) && matches!(error, -25205 | -25212)
+}
+
+fn claim_process<P: PartialEq>(claimed: &mut Vec<P>, process: P) -> bool {
+    if claimed.contains(&process) {
+        return false;
+    }
+    claimed.push(process);
+    true
+}
+
+fn same_live_process<P: PartialEq>(original: &P, current: Option<&P>, terminated: bool) -> bool {
+    !terminated && current == Some(original)
 }
 
 /// The document and the actual input surface are distinct for sheets/drawers.
@@ -41,6 +62,38 @@ trait Provider {
         deadline: Instant,
     ) -> Result<Self::Element, CopyReason>;
     fn pid(&self, element: &Self::Element) -> Result<i32, CopyReason>;
+    /// Capture-only exception: the native implementation requires a missing
+    /// attribute on this process and claims that live process before writing.
+    fn enable_manual_accessibility(&self, _pid: i32, _deadline: Instant) -> Result<bool, CopyReason> {
+        Ok(false)
+    }
+}
+
+fn capture_query<P: Provider>(provider: &P, pid: i32, eligible: bool) -> Result<Identity<P::Element>, CopyReason> {
+    let started = provider.elapsed();
+    let deadline = provider.now() + LIMIT;
+    let result = query(provider, pid, deadline, || Ok(()));
+    if !eligible || !matches!(result, Err(CopyReason::PasteUnavailable)) {
+        return result;
+    }
+    let remaining = || {
+        let age = provider
+            .elapsed()
+            .checked_sub(started)
+            .ok_or(CopyReason::PasteUnavailable)?;
+        LIMIT
+            .checked_sub(age)
+            .filter(|time| !time.is_zero())
+            .ok_or(CopyReason::PasteUnavailable)
+    };
+    let budget = remaining()?;
+    if !provider.enable_manual_accessibility(pid, deadline.min(provider.now() + budget))? {
+        return result;
+    }
+    // Enabling AX never repairs partial evidence. Recreate the system element
+    // and run every owner/relation/focus check under the ORIGINAL total budget.
+    let budget = remaining()?;
+    query(provider, pid, deadline.min(provider.now() + budget), || Ok(()))
 }
 
 fn query<P: Provider>(
@@ -56,6 +109,7 @@ fn query<P: Provider>(
             .checked_sub(started)
             .ok_or(CopyReason::PasteUnavailable)?;
         if provider.now() >= deadline || age >= LIMIT {
+            diagnostics::stage("ax.query_timeout");
             Err(CopyReason::PasteUnavailable)
         } else {
             Ok(LIMIT - age)
@@ -63,6 +117,7 @@ fn query<P: Provider>(
     };
     available()?;
     if !provider.trusted() {
+        diagnostics::stage("permission.accessibility");
         return Err(CopyReason::AccessibilityRequired);
     }
     let system = provider.system()?;
@@ -74,27 +129,41 @@ fn query<P: Provider>(
         // whole query, not a fresh budget for each attribute/provider.
         available()?;
         if provider.now() >= call_deadline {
+            diagnostics::stage("ax.call_timeout");
             return Err(CopyReason::PasteUnavailable);
         }
         value
     };
-    let read = |element, attribute| read_until(element, attribute, deadline);
+    let read = |element, attribute| {
+        diagnostics::stage(match attribute {
+            Attribute::Application => "ax.application",
+            Attribute::FocusedWindow => "ax.focused_window",
+            Attribute::FocusedElement => "ax.focused_element",
+            Attribute::Window => "ax.window",
+            Attribute::TopLevel => "ax.top_level",
+        });
+        read_until(element, attribute, deadline)
+    };
     let app = read(&system, Attribute::Application)?;
     let window = read(&app, Attribute::FocusedWindow)?;
     let focused = read(&system, Attribute::FocusedElement)?;
     let containing_window = read(&focused, Attribute::Window)?;
     let surface = read(&focused, Attribute::TopLevel)?;
     for element in [&app, &window, &focused, &containing_window, &surface] {
-        if provider.pid(element)? != pid {
+        let matches = provider.pid(element)? == pid;
+        diagnostics::owner(matches);
+        if !matches {
             return Err(CopyReason::TargetChanged);
         }
     }
+    diagnostics::equality(Some(window == containing_window), None, None);
     if window != containing_window {
         return Err(CopyReason::TargetChanged);
     }
     // Cached/successful provider replies cannot carry a revoked grant into
     // the final tail. This passive preflight precedes all refreshed guards.
     if !provider.trusted() {
+        diagnostics::stage("permission.accessibility");
         return Err(CopyReason::AccessibilityRequired);
     }
     // Synchronous notification/provider work must finish before observing
@@ -106,12 +175,21 @@ fn query<P: Provider>(
             .elapsed()
             .checked_sub(tail_started)
             .ok_or(CopyReason::PasteUnavailable)?;
-        TAIL_LIMIT
+        let remaining = TAIL_LIMIT
             .checked_sub(age)
             .filter(|remaining| !remaining.is_zero())
-            .ok_or(CopyReason::PasteUnavailable)
+            .ok_or(CopyReason::PasteUnavailable);
+        if remaining.is_err() {
+            diagnostics::stage("ax.tail_timeout");
+        }
+        remaining
     };
     let tail_read = |element, attribute| {
+        diagnostics::stage(match attribute {
+            Attribute::Window => "ax.final_window",
+            Attribute::TopLevel => "ax.final_surface",
+            _ => "ax.final_focus",
+        });
         let remaining = tail_available()?;
         let value = read_until(element, attribute, provider.now() + remaining);
         tail_available()?;
@@ -119,13 +197,18 @@ fn query<P: Provider>(
     };
     // A control can keep its AX identity while moving to another window.
     // Revalidate both relations before the last global focus read.
-    if tail_read(&focused, Attribute::Window)? != window {
+    let document_equal = tail_read(&focused, Attribute::Window)? == window;
+    diagnostics::equality(Some(document_equal), None, None);
+    if !document_equal {
         return Err(CopyReason::TargetChanged);
     }
-    if tail_read(&focused, Attribute::TopLevel)? != surface {
+    let surface_equal = tail_read(&focused, Attribute::TopLevel)? == surface;
+    diagnostics::equality(None, Some(surface_equal), None);
+    if !surface_equal {
         return Err(CopyReason::TargetChanged);
     }
     let latest = tail_read(&system, Attribute::FocusedElement)?;
+    diagnostics::equality(None, None, Some(latest == focused));
     if latest != focused {
         // A different control in the same window is not proof the window
         // changed. The assembled identity is unavailable; a foreign owner is
@@ -146,20 +229,24 @@ fn query<P: Provider>(
 #[allow(unsafe_code)]
 mod native;
 
-pub(super) fn capture(pid: i32) -> Result<u32, CopyReason> {
-    native::capture(pid)
+pub(super) fn capture(pid: i32, eligible: Option<Retained<NSRunningApplication>>) -> Result<u32, CopyReason> {
+    native::capture(pid, eligible)
 }
 
 pub(super) fn trusted() -> bool {
     native::trusted()
 }
+pub(super) fn request_trust() {
+    native::request_trust();
+}
 pub(super) fn current(
     pid: i32,
+    token: Option<u32>,
     deadline: Instant,
     before_final_read: impl FnOnce() -> Result<(), CopyReason>,
     validate: impl FnOnce() -> Result<(), CopyReason>,
 ) -> Result<Option<u32>, CopyReason> {
-    native::current(pid, deadline, before_final_read, validate)
+    native::current(pid, token, deadline, before_final_read, validate)
 }
 
 #[cfg(test)]
@@ -184,7 +271,19 @@ mod tests {
         surface: Cell<Option<u32>>,
         surface_after_read: Option<u32>,
         unsupported: Option<Attribute>,
+        missing_error: i32,
         revoke_trust_after_initial_reads: bool,
+        manual: Cell<bool>,
+        manual_calls: Cell<u32>,
+        process: Cell<u32>,
+        eligible_process: Cell<u32>,
+        original_terminated: bool,
+        process_after_missing: Option<u32>,
+        process_after_prepare: Option<u32>,
+        manual_processes: RefCell<Vec<u32>>,
+        manual_failure: Option<CopyReason>,
+        manual_delay: Duration,
+        replace_after_manual: bool,
     }
 
     impl Fake {
@@ -206,7 +305,19 @@ mod tests {
                 surface: Cell::new(None),
                 surface_after_read: None,
                 unsupported: None,
+                missing_error: -25205,
                 revoke_trust_after_initial_reads: false,
+                manual: Cell::new(false),
+                manual_calls: Cell::new(0),
+                process: Cell::new(1),
+                eligible_process: Cell::new(1),
+                original_terminated: false,
+                process_after_missing: None,
+                process_after_prepare: None,
+                manual_processes: RefCell::new(Vec::new()),
+                manual_failure: None,
+                manual_delay: Duration::ZERO,
+                replace_after_manual: false,
             }
         }
 
@@ -239,7 +350,10 @@ mod tests {
             if let Some(reason) = self.read_failure {
                 return Err(reason);
             }
-            if self.unsupported == Some(attribute) {
+            if self.unsupported == Some(attribute) && !self.manual.get() {
+                if let Some(process) = self.process_after_missing {
+                    self.process.set(process);
+                }
                 return Err(CopyReason::PasteUnavailable);
             }
             Ok(match attribute {
@@ -270,6 +384,49 @@ mod tests {
         }
         fn pid(&self, element: &u32) -> Result<i32, CopyReason> {
             Ok(if *element == 1 { 42 } else { self.focused_pid })
+        }
+
+        fn enable_manual_accessibility(&self, pid: i32, _: Instant) -> Result<bool, CopyReason> {
+            if self.focused_pid != pid
+                || !self
+                    .unsupported
+                    .is_some_and(|attribute| missing_identity_attribute(attribute, self.missing_error))
+                || self.read_failure.is_some()
+                || !self.trusted.get()
+            {
+                return Ok(false);
+            }
+            let check = || {
+                if same_live_process(
+                    &self.eligible_process.get(),
+                    Some(&self.process.get()),
+                    self.original_terminated,
+                ) {
+                    Ok(())
+                } else {
+                    Err(CopyReason::TargetChanged)
+                }
+            };
+            check()?;
+            if !claim_process(&mut self.manual_processes.borrow_mut(), self.eligible_process.get()) {
+                return Ok(false);
+            }
+            if let Some(process) = self.process_after_prepare {
+                self.process.set(process);
+            }
+            check()?;
+            self.manual_calls.set(self.manual_calls.get() + 1);
+            diagnostics::manual_accessibility();
+            self.clock.set(self.clock.get() + self.manual_delay);
+            self.elapsed.set(self.elapsed.get() + self.manual_delay);
+            if let Some(reason) = self.manual_failure {
+                return Err(reason);
+            }
+            if self.replace_after_manual {
+                self.focused_window.set(200);
+            }
+            self.manual.set(true);
+            Ok(true)
         }
     }
 
@@ -375,12 +532,23 @@ mod tests {
     }
 
     #[test]
-    fn the_final_identity_reads_share_a_tighter_budget_than_the_whole_query() {
+    fn three_millisecond_identity_reads_fit_the_aggregate_and_final_budgets() {
         let fake = Fake {
             delay: Duration::from_millis(3),
             ..Fake::new()
         };
+        assert_eq!(fake.query(), Ok(100));
+        assert_eq!(fake.elapsed(), Duration::from_millis(24));
+    }
+
+    #[test]
+    fn the_three_final_reads_still_have_a_shared_deadline() {
+        let fake = Fake {
+            delay: Duration::from_millis(5),
+            ..Fake::new()
+        };
         assert_eq!(fake.query(), Err(CopyReason::PasteUnavailable));
+        assert_eq!(fake.reads.borrow().len(), 8);
     }
 
     #[test]
@@ -434,5 +602,179 @@ mod tests {
             ..Fake::new()
         };
         assert_eq!(fake.query(), Err(CopyReason::AccessibilityRequired));
+    }
+
+    #[test]
+    fn eligible_capture_enables_manual_accessibility_for_missing_identity_then_starts_afresh() {
+        for attribute in [Attribute::FocusedWindow, Attribute::TopLevel] {
+            let fake = Fake {
+                unsupported: Some(attribute),
+                ..Fake::new()
+            };
+            assert!(capture_query(&fake, 42, true).is_ok());
+            assert_eq!(fake.manual_calls.get(), 1);
+            assert_eq!(
+                fake.reads
+                    .borrow()
+                    .iter()
+                    .filter(|&&a| a == Attribute::Application)
+                    .count(),
+                2
+            );
+            fake.manual.set(false); // A second missing result in the same live process.
+            assert!(capture_query(&fake, 42, true).is_err());
+            assert_eq!(fake.manual_calls.get(), 1);
+            fake.process.set(2); // A restarted process, even with a reused PID.
+            fake.eligible_process.set(2); // A new eligibility decision retained this instance.
+            assert!(capture_query(&fake, 42, true).is_ok());
+            assert_eq!(fake.manual_calls.get(), 2);
+        }
+    }
+
+    #[test]
+    fn healthy_or_refused_capture_never_activates_manual_accessibility() {
+        let healthy = Fake::new();
+        assert!(capture_query(&healthy, 42, true).is_ok());
+        assert_eq!(healthy.manual_calls.get(), 0);
+        let refused = Fake {
+            unsupported: Some(Attribute::FocusedWindow),
+            ..Fake::new()
+        };
+        assert!(capture_query(&refused, 42, false).is_err());
+        assert_eq!(refused.manual_calls.get(), 0);
+    }
+
+    #[test]
+    fn a_reused_pid_or_terminated_eligible_instance_never_receives_the_ax_write() {
+        for fake in [
+            Fake {
+                unsupported: Some(Attribute::FocusedWindow),
+                process_after_missing: Some(2),
+                ..Fake::new()
+            },
+            Fake {
+                unsupported: Some(Attribute::TopLevel),
+                original_terminated: true,
+                ..Fake::new()
+            },
+            Fake {
+                unsupported: Some(Attribute::FocusedWindow),
+                process_after_prepare: Some(2),
+                ..Fake::new()
+            },
+        ] {
+            assert!(capture_query(&fake, 42, true).is_err());
+            assert_eq!(
+                fake.manual_calls.get(),
+                0,
+                "eligibility belongs to the retained instance, not PID 42"
+            );
+        }
+    }
+
+    #[test]
+    fn diagnostics_record_whether_capture_attempted_the_activation_write() {
+        for failure in [None, Some(CopyReason::PasteUnavailable)] {
+            let fake = Fake {
+                unsupported: Some(Attribute::FocusedWindow),
+                manual_failure: failure,
+                ..Fake::new()
+            };
+            let trace = diagnostics::Trace::enabled();
+            let result = trace.with(|| capture_query(&fake, 42, true));
+            assert_eq!(result.is_ok(), failure.is_none());
+            let record = serde_json::to_value(trace.snapshot()).unwrap_or_else(|e| panic!("{e}"));
+            assert_eq!(record["manual_accessibility_ran"], true);
+            let next = diagnostics::Trace::enabled();
+            let _ = next.with(|| capture_query(&fake, 42, true));
+            let record = serde_json::to_value(next.snapshot()).unwrap_or_else(|e| panic!("{e}"));
+            assert_eq!(
+                record["manual_accessibility_ran"], false,
+                "no second write for this process"
+            );
+        }
+        for eligible in [false, true] {
+            let fake = Fake::new();
+            let trace = diagnostics::Trace::enabled();
+            assert!(trace.with(|| capture_query(&fake, 42, eligible)).is_ok());
+            let record = serde_json::to_value(trace.snapshot()).unwrap_or_else(|e| panic!("{e}"));
+            assert_eq!(record["manual_accessibility_ran"], false);
+        }
+    }
+
+    #[test]
+    fn manual_accessibility_does_not_repair_ax_errors_foreign_owners_or_missing_trust() {
+        for fake in [
+            Fake {
+                read_failure: Some(CopyReason::PasteUnavailable),
+                ..Fake::new()
+            },
+            Fake {
+                focused_pid: 99,
+                unsupported: Some(Attribute::TopLevel),
+                ..Fake::new()
+            },
+            Fake {
+                trusted: Cell::new(false),
+                unsupported: Some(Attribute::TopLevel),
+                ..Fake::new()
+            },
+        ] {
+            assert!(capture_query(&fake, 42, true).is_err());
+            assert_eq!(fake.manual_calls.get(), 0);
+        }
+    }
+
+    #[test]
+    fn only_missing_document_or_surface_attributes_qualify_for_manual_accessibility() {
+        for (attribute, error, repairs) in [
+            (Attribute::FocusedWindow, -25205, 1),
+            (Attribute::TopLevel, -25212, 1),
+            (Attribute::TopLevel, -25204, 0), // CannotComplete is failed I/O, not absence.
+            (Attribute::FocusedWindow, -25202, 0), // InvalidUIElement is not absence.
+            (Attribute::Window, -25212, 0),
+            (Attribute::FocusedElement, -25205, 0),
+            (Attribute::Application, -25205, 0),
+        ] {
+            let fake = Fake {
+                unsupported: Some(attribute),
+                missing_error: error,
+                ..Fake::new()
+            };
+            let result = capture_query(&fake, 42, true);
+            assert_eq!(fake.manual_calls.get(), repairs);
+            assert_eq!(result.is_ok(), repairs == 1);
+        }
+    }
+
+    #[test]
+    fn failed_activation_is_not_repeated_and_activation_cannot_extend_capture_or_borrow_an_old_document() {
+        let failed = Fake {
+            unsupported: Some(Attribute::FocusedWindow),
+            manual_failure: Some(CopyReason::PasteUnavailable),
+            ..Fake::new()
+        };
+        for _ in 0..2 {
+            assert!(capture_query(&failed, 42, true).is_err());
+        }
+        assert_eq!(failed.manual_calls.get(), 1);
+
+        let late = Fake {
+            unsupported: Some(Attribute::TopLevel),
+            manual_delay: LIMIT,
+            ..Fake::new()
+        };
+        assert!(capture_query(&late, 42, true).is_err());
+        assert_eq!(late.reads.borrow().len(), 5, "no fresh budget after enabling");
+
+        let replaced = Fake {
+            unsupported: Some(Attribute::FocusedWindow),
+            replace_after_manual: true,
+            ..Fake::new()
+        };
+        assert!(matches!(
+            capture_query(&replaced, 42, true),
+            Err(CopyReason::TargetChanged)
+        ));
     }
 }

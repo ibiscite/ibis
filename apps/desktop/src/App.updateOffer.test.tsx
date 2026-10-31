@@ -40,3 +40,33 @@ test("the format chooser blocks update readiness and closing rearms a fresh idle
   await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
   expect(reports.filter((value) => value !== null)).toEqual([]);
 });
+
+test.each(["library menu", "source chooser"])("the %s blocks update readiness until it closes", async (layer) => {
+  vi.useFakeTimers();
+  vi.spyOn(document, "hasFocus").mockReturnValue(true);
+  const reports: (number | null)[] = [];
+  let ticket = 0;
+  backend({ update_picker_activity: ({ ticket: value }: { ticket: unknown }) => {
+    if (value !== null && typeof value !== "number") throw new Error("Expected an update activity ticket");
+    reports.push(value);
+    return value === null ? ++ticket : value;
+  } });
+  await act(async () => { render(<App />); });
+  await act(async () => {
+    if (layer === "library menu") fireEvent.click(screen.getByRole("button", { name: "Library" }));
+    else {
+      fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "o", code: "KeyO", ctrlKey: true, shiftKey: true });
+      fireEvent.keyUp(window, { key: "o", code: "KeyO" });
+    }
+  });
+  reports.length = 0;
+  await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+  expect(reports.filter((value) => value !== null)).toEqual([]);
+  await act(async () => {
+    fireEvent.keyDown(document.activeElement!, { key: "Escape", code: "Escape" });
+    fireEvent.keyUp(window, { key: "Escape", code: "Escape" });
+    await vi.advanceTimersByTimeAsync(50);
+  });
+  await act(async () => { await vi.advanceTimersByTimeAsync(1500); });
+  expect(reports.filter((value) => value !== null)).toHaveLength(1);
+});

@@ -3,13 +3,13 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
 import type { AppOutput, PickerDestination } from "./api";
-import { backend, chooseFromMore, prepared, receipt, resetApp, result, type PreviewRequest } from "./testing/app";
+import { backend, prepared, receipt, resetApp, result, type PreviewRequest } from "./testing/app";
 
 afterEach(resetApp);
 const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
 const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
-const WORD: PickerDestination = { app: "Example Word", app_id: "example.word", automatic: { style: "apa" }, remembered: null, unreadable: false, can_paste: false, output_question: null };
-const BROWSER: PickerDestination = { app: "Example Browser", app_id: "example.browser", automatic: null, remembered: null, unreadable: false, can_paste: false, output_question: "browser" };
+const WORD: PickerDestination = { app: "Example Word", app_id: "example.word", app_identity: null, automatic: { style: "apa" }, remembered: null, unreadable: false, can_paste: false, output_question: null, paste: null, paste_question: false, can_choose_paste: false };
+const BROWSER: PickerDestination = { app: "Example Browser", app_id: "example.browser", app_identity: null, automatic: null, remembered: null, unreadable: false, can_paste: false, output_question: "browser", paste: null, paste_question: false, can_choose_paste: false };
 const formatButton = () => within(screen.getByLabelText("Search references").closest("header")!).getByRole("button", { name: /^Copy as / });
 const formatShown = () => formatButton().getAttribute("aria-label")!.slice("Copy as ".length);
 const openFormats = () => { if (formatButton().getAttribute("aria-expanded") !== "true") fireEvent.click(formatButton()); };
@@ -329,16 +329,18 @@ test("deliberately setting a global default preserves another app's remembered c
   expect(remembered).toEqual([]);
 });
 
-test("an unreadable per-app file says defaults apply, and More forgets every app", async () => {
+test("an unreadable per-app file says defaults apply and More leaves forgetting formats to Settings", async () => {
   const { calls } = opened(() => ({ ...WORD, unreadable: true }));
   await screen.findByText("First");
   expect((await screen.findByText(/could not read the formats it remembers for apps/)).getAttribute("role")).toBe("alert");
-  await chooseFromMore("Forget formats for apps");
-  await waitFor(() => expect(calls).toContain("forget_app_outputs"));
+  fireEvent.click(screen.getByRole("button", { name: "More" }));
+  await screen.findByRole("menu", { name: "More" });
+  expect(screen.queryByRole("menuitem", { name: "Forget formats for apps" })).toBeNull();
+  expect(calls).not.toContain("forget_app_outputs");
 });
 
 test("without a captured app no app name or Automatic action is offered", async () => {
-  opened(() => ({ app: null, app_id: null, automatic: null, remembered: null, unreadable: false, can_paste: false, output_question: null }));
+  opened(() => ({ app: null, app_id: null, app_identity: null, automatic: null, remembered: null, unreadable: false, can_paste: false, output_question: null, paste: null, paste_question: false, can_choose_paste: false }));
   await screen.findByText("First");
   expect(formatShown()).toBe("Pandoc key");
   await pick("Just this once", "menuitemcheckbox");
@@ -348,7 +350,7 @@ test("without a captured app no app name or Automatic action is offered", async 
 
 test("without a destination app format picks change the global default, as both README claims explain", async () => {
   const saved: unknown[] = [];
-  const { remembered } = opened(() => ({ app: null, app_id: null, automatic: null, remembered: null, unreadable: false, can_paste: false, output_question: null }), {
+  const { remembered } = opened(() => ({ app: null, app_id: null, app_identity: null, automatic: null, remembered: null, unreadable: false, can_paste: false, output_question: null, paste: null, paste_question: false, can_choose_paste: false }), {
     set_picker_preferences: ({ copyFormat }) => { saved.push(copyFormat); return null; },
   });
   await screen.findByText("First");

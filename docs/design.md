@@ -1007,8 +1007,31 @@ breathe. Rows kept from before stay instead, with only the footer saying
   asks again next time. "Just this once" keeps the question open for a pick.
   Changing the search or citation, hiding or reopening the picker, or switching
   to another menu or dialog cancels the held action, including after dismissal
-  or a format pick while its preview or save is still pending. The question uses known app IDs;
-  unknown apps keep the global fallback. App capture currently works on macOS;
+  or a format pick while its preview or save is still pending.
+  The first Enter in an unrecognised app with a proven paste target opens this
+  same chooser, with **Paste into [app name] from now on** and **Copy only**.
+  Either answer saves the displayed format and a separate delivery choice for
+  that app ID; "Just this once" keeps its output temporary and unconsumed.
+  It returns to Search with the citation kept and waits for a fresh
+  Enter; answering, picking a format or dismissing this question never replays
+  the held Enter. A format pick alone cannot approve pasting. A failed save
+  leaves the app unapproved and asks again. Copy only skips the question on
+  later openings and says "Copied. Copy only is set for this app".
+  The chooser also offers these delivery choices for ordinary recognised apps.
+  More offers **Copy only in [app name]** for the current ordinary app too.
+  "Automatic" resets both choices for this app; "Forget formats for apps"
+  resets both for every app and brings the unknown-app question back.
+  An unlisted app at a different location asks again even when its app ID is
+  unchanged. Only an opaque app-identity fingerprint is remembered.
+  Unreadable app choices use automatic formats but block automatic paste with
+  `paste-unavailable`. Saving a format cannot lift this refusal. A fresh explicit
+  Paste or Copy only choice resolves it for that app; other apps keep the
+  refusal, including after restart, until their own choice or Forget formats
+  for apps. The chooser still offers delivery choices for a proven ordinary
+  target during recovery. Uncertainty cannot discard a remembered Copy only rule.
+  Refused terminals, remote viewers, virtual machines and editors with a
+  different paste key never ask and cannot be approved. Without a proven
+  target, Enter copies with its refusal reason. App capture currently works on macOS;
   Windows and Linux keep their existing global output until capture is built.
   Ibis never reads or stores a document title or URL to choose an
   output. No format question interrupts each citation. Setup steps finish
@@ -1066,7 +1089,11 @@ that owns its area in ROADMAP.md.
    copy, even when only the search or chooser scope changes. Returning to a
    citation whose copy is still outstanding cannot repeat it. Deliberately
    choosing a different citation permits a fresh copy; an earlier reply cannot
-   replace its shelf or current copy feedback. A changed query,
+   replace its shelf or current copy feedback. A changed delivery choice revokes
+   outstanding paste permission. If a completed write's response arrives after
+   that choice with no newer interaction, the open picker
+   still confirms Copied; it neither hides nor replays delivery. A newer Enter,
+   including one waiting for the save, keeps ownership. A changed query,
    reference, page, form or output, arrow navigation, Escape or hiding cancels
    a waiting Enter. Every add/remove activation cancels it, including Shift+Enter
    with no highlighted result. A prepared shelf can copy while the next search
@@ -1084,9 +1111,15 @@ that owns its area in ROADMAP.md.
    delivery and receipt. Every activation goes through the same readiness
    checks before starting or joining a copy. A failed reconciliation status
    read cancels waiting Enter; a later library update never replays it.
-   Automatic paste is limited to recognised apps with a verified paste shortcut;
-   an unknown app copies with "Copied. Automatic paste is not verified for this app".
-   A format choice never grants paste safety. A proven target that changes,
+   Automatic paste uses a recognised app's normal paste shortcut, or explicit
+   per-app paste approval from the chooser above. Unapproved unknown apps
+   cannot paste; a copy that cannot ask says "Copied. Automatic paste is not
+   approved for this app". A format choice never grants paste approval, and no
+   choice overrides a refused app or the native target/permission checks.
+   Approval is frozen before the clipboard write, so a later answer cannot
+   authorize an earlier copy. Changing delivery choices revokes outstanding
+   proofs; fresh Enter cannot join a copy from an earlier delivery policy.
+   Saving Copy only cannot send an older paste. A proven target that changes,
    closes or is minimised copies with "Copied. The target app or window changed".
    An unavailable focus or safety proof uses `paste-unavailable` and the system's
    manual-paste key; it never claims that the target changed or the paste expired.
@@ -1366,6 +1399,10 @@ needed for everyday use. A search field heads the sidebar: it matches labels,
 descriptions and common words ("dark", "startup", "paste"), opens the page and
 tints the matching row for two seconds. A setting lives in one place; the
 picker keeps only actions with their own keys.
+
+**Forget formats for apps** lives on Citations and says Ibis asks again the next
+time you paste into each app. Disable its button while forgetting; show failures
+beside the row with a retry, and a brief confirmation there only after success.
 
 **Show in Menu Bar** is planned and stays hidden until implemented. Its intended
 behaviour is on by default. Turned off, the shortcut still opens

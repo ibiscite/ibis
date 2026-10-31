@@ -127,7 +127,7 @@ Every insertion ends in exactly one visible state: pasted, or copied with a
 reason. Ibis captures the target app and window, writes every clipboard format, restores
 focus and pastes with a layout-aware shortcut. The citation stays on the
 clipboard: restoring the previous contents could paste them into a slow app, so
-restoring and per-app rules wait until after 1.0. On macOS it refuses while
+restoring waits until after 1.0. On macOS it refuses while
 system-wide Secure Event Input is on, including when another app enables it;
 this flag does not identify the destination's field or cover every password
 control. On Windows, elevated targets and UI Automation password fields are
@@ -137,10 +137,39 @@ refused on both platforms. Pasting is on by default (maintainer,
 2026-10-25, #27); Settings › General › Pasting turns it off, saved as
 `paste: false` (absent means on), and Enter then only copies.
 
-Unrecognised apps only copy with `unknown-app` (#1520). Recognising an output
-syntax or remembering a format does not establish that an app's paste key is
-safe. This deliberately refuses unlisted remote viewers, terminals and editors
-whose shortcuts are unverified, without growing a guessed app-ID denylist.
+The first Enter into an unrecognised app with a proven target opens the existing
+output chooser (#1520; maintainer correction to #1529, 2026-10-31). It offers
+"Paste into [app name] from now on" or "Copy only", remembered by OS app ID in
+the existing destination settings. Either answer keeps the citation and requires
+a fresh Enter; dismissal and a format pick alone grant no paste approval.
+Failed saves do not approve an app. Unapproved unknown copies use `unknown-app`;
+an explicit copy-only choice uses `copy-only`. Refused terminals, remote viewers,
+VMs and editors whose normal platform paste key means something else never ask.
+Neither an explicit choice nor a saved format can override their refusal, a
+missing window/Accessibility proof, expiry or the one-paste limit. The copy
+proof freezes app approval before clipboard I/O, so delayed approval cannot
+authorize an earlier copy. Saving a delivery choice or reset revokes outstanding
+native proof epochs under the same lock as proof publication and posting. Detached workers
+check that epoch too. The picker gives delivery its own generation: fresh Enter
+can join an outstanding citation only within that generation, so saving Copy
+only cannot renew a flight that froze Paste. Delivery revocation alone does not
+erase confirmation of a completed clipboard write: a delayed response for the
+current citation shows Copied in the open picker, without hiding or forwarding
+its revoked paste proof. A newer Enter (including one waiting for a save),
+citation or opening retains its own selection, output and feedback ownership.
+Resetting the app to Automatic or choosing "Forget
+formats for apps" clears both output and delivery choices.
+
+Final injection must never wait on the UI thread while holding destination or
+key locks. Windows resolves the picker's known HWND before either lock and uses
+native `IsWindow`/`IsWindowVisible` checks under them; a busy destination guard
+refuses instead of queuing key-downs. Its captured-window and key locks wrap only
+native calls; query admission locks are released before worker waits. macOS
+dispatches its final task before taking its posting locks, uses a main-thread
+marker for the final checks (Tauri's visibility getter runs inline there), and
+tries destination ownership without waiting. Linux only copies and takes no
+posting lock across a UI dispatch. Clipboard and destination-store locks add
+no UI-thread calls; receipt publication follows delivery after those locks end.
 
 The footer names the intended action and output together, from that same
 native policy. Enter during search or preview loading waits for its current
@@ -263,7 +292,7 @@ wake and session changes, and screen lock/unlock notifications retire the epoch.
 Synchronous libnotify check tokens cover lock/unlock and Core Graphics session
 changes before delayed observer callbacks. A bracketed comparison of the SDK's
 sleep-inclusive and awake-only monotonic clocks also retires the epoch when
-their offset changes; unavailable or wider-than-100 µs samples refuse. The
+their offset changes; unavailable or 500 µs-or-wider samples refuse. The
 1,500 ms lifetime is checked against both active and sleep-inclusive time.
 A measured timeout or known lifecycle change uses `paste-expired`; missing,
 failed, backwards or exhausted safety evidence uses `paste-unavailable` (#1529).
@@ -291,7 +320,8 @@ surfaces even while the parent document stays focused. Both relations are
 reread before the last global-focus read, including when a control keeps its
 identity while moving to a different surface. Missing top-level evidence never
 falls back to the document alone. No titles, roles/subroles, document text, values,
-tree traversal, attribute enumeration, descriptions or logs are allowed.
+tree traversal, attribute enumeration or descriptions are allowed. The opt-in
+diagnostics amendment below permits only numeric/boolean evidence and fixed stages.
 Single- and multiwindow apps follow the same focused-window identity contract.
 At capture, Ibis first checks whether one of its own native windows is key.
 A repeated show while its nonactivating picker owns the keyboard keeps the
@@ -302,7 +332,7 @@ Each query has one 50 ms sleep-inclusive budget. Every queried AX object gets
 the remaining messaging timeout; the system object's process-default timeout
 is restored on exit. After the initial provider reads, notification, PostEvent,
 Secure Event Input and clipboard-count checks are refreshed; the final adjacent
-document/surface/global-focus reads share a tighter 5 ms budget, including late
+document/surface/global-focus reads share a tighter 15 ms budget, including late
 successes or errors. Slow providers copy instead of extending stale evidence.
 Missing Accessibility uses its own typed reason at capture and final checks.
 Unsupported reads, errors, timeouts or unstable focus copy with
@@ -310,16 +340,17 @@ Unsupported reads, errors, timeouts or unstable focus copy with
 `target-changed`. A failed capture cannot invent a changed target.
 Captured AX references stay on the main thread, retained only in memory with a
 nonwrapping token; workers carry the token, never the reference. A final query
-only compares and cannot replace the captured identity. There is no idle or
-hidden polling; queries run only during capture and delivery. Provider latency
+only compares and cannot replace the captured identity. There is no idle polling;
+queries run only during capture and bounded pending delivery. Provider latency
 adds at most the bounded capture wait to opening and bounded checks to delivery;
 native latency remains to be measured.
 
 Settings reports permission granted only when both passive preflights succeed,
 including PostEvent=true/Accessibility=false. Its guide names Privacy &
 Security's Accessibility list ("Device Control and Data Access" on macOS 27+).
-The existing Open System Settings action can request/repair PostEvent only on
-that explicit click; it never requests or resets Accessibility. A missing
+The existing Open System Settings action requests/repairs each missing grant
+only on that explicit click, including Accessibility. Working grants are never
+reset; development builds never reset either grant. A missing
 capture authorization stays in its one-use proof after a later grant. Granting
 does not replay delivery or summon the picker: the guide closes on a granted
 return, and the person returns to the external document, opens Ibis again and
@@ -332,8 +363,10 @@ acquired before the final AX identity reads; synchronous notification checks
 also precede those reads. Completion checks use only sleep-inclusive time,
 a locally owned awake-clock correlation and the atomic epoch, so suspension
 during the read also expires delivery without taking a mutex or querying a
-provider. The final local identity comparison immediately precedes posting;
-Ibis takes no lock or extra provider query after it. There remains a small
+provider. After the final local AX identity comparison, Ibis checks the key/click
+timing described below, then finishes the owned clock/epoch and deadline guards
+and posts. This final tail takes no mutex and never dispatches to the UI thread.
+There remains a small
 interval between the last OS focus read and PID-directed dispatch, including
 local validation. Public APIs
 cannot eliminate a focus change in that interval. AX also samples global focus
@@ -348,14 +381,114 @@ unchanged; local clock correlation independently catches sleep. These narrow
 intervals remain native qualification limits, not guarantees of atomic input.
 
 There is no window-name lookup, screen capture, automatic permission prompt or
-hidden polling. `paste/macos/focus/native.rs` is a scoped unsafe exception for the
+idle polling. `paste/macos/focus/native.rs` is a scoped unsafe exception for the
 public AX APIs; CF ownership/equality use the already-locked
 `objc2-core-foundation` safe binding directly. `paste/macos/safety.rs` remains a
 scoped unsafe exception for SDK clocks and observer registration. It uses already-locked
 `block2` directly. Clock/notification logic has synthetic coverage; real OS
 producers, focused-window providers and native keyboard placement still
 require qualification.
-Clock sampling has its stated 100 µs resolution limit.
+Clock sampling has its stated sub-1 ms uncertainty limit.
+
+2026-10-31 amendment: macOS paste readiness, diagnostics and app accessibility.
+
+Follow-up decision: Ibis enables an eligible app's accessibility support when
+needed, without an environment switch. Apps such as Claude should work through
+the ordinary paste flow. This still needs Ibis's macOS Accessibility grant;
+enabling the other app's support does not grant that permission. A debug build
+without the grant could not complete the real-Mac test.
+
+- **Bounds, chosen from the threat rather than unmeasured provider latency:**
+  the whole AX query still gets 50 ms, including sleep. Its three final sequential
+  relation/focus reads share 15 ms: 5 ms per read on average, accepting the
+  synthetic 3 ms/read case (24 ms for all eight reads), while capping the AX wait
+  after refreshed authorization/clipboard/security guards at 15 ms. Every identity
+  comparison, guard refresh and expiry remains. Clock brackets must be shorter than 500 µs,
+  allowing scheduler skew above the old 100 µs limit without making continuity
+  unbounded. Intersecting intervals never widens established clock evidence.
+  Two brackets contribute skew to an offset comparison, so this keeps their
+  combined ambiguity below 1 ms (plus nanosecond rounding), matching the existing
+  sub-deadline suspension threat. This is a declared qualification limit.
+  Disjoint offsets still expire, and invalid/backwards/wider samples still refuse.
+  These are conservative code/threat bounds, not native measurements.
+- **Readiness:** after hiding the picker, wait at most 1,000 ms, checking at
+  25 ms intervals (at most 40 waits), for the original process/app AND retained
+  document/surface identities. Activation alone is insufficient for a
+  nonactivating picker. Only focus mismatch is pending; failed AX calls refuse.
+  A new presentation/write cancels the old owner. No query can recapture a
+  replacement document, sheet or restarted process. Once ready, all final guards
+  and identity checks run again in the existing at-most-250 ms posting task;
+  the 1,500 ms write lifetime still applies throughout. This replaces macOS's
+  fixed 50 ms settle sleep. The bounded pending-delivery checks are the only
+  hidden polling exception, and stop on success, refusal, cancellation or expiry.
+- **Input during delivery (review follow-up):** Chrome tabs and Claude
+  conversations can share the same AX window and surface identities. Ibis does
+  not require a per-tab or per-conversation identity, or read content to invent
+  one. It records when delivery begins, before taking the copy proof or queuing
+  work. This time stays fixed through readiness and the final posting task.
+  Immediately before posting, after the final AX comparison, Ibis calls
+  `CGEventSourceSecondsSinceLastEventType` on the combined session state for
+  key-down, left-mouse-down, right-mouse-down and other-mouse-down (including
+  middle-clicks that can close a Chrome tab). Any such input since delivery
+  began refuses the paste with the existing `target-changed` copied notice.
+  Mouse movement does not count. The Enter that started delivery happened
+  before this boundary; held-Enter repeats after it may refuse, which is safe.
+  Invalid event timing refuses with `paste-unavailable`. No keys, click targets,
+  coordinates or event contents are read or logged, and there is no event tap
+  or background monitoring. Local clock/epoch and deadline checks still run
+  after these reads without taking locks or dispatching to the UI thread.
+  A programmatic tab or conversation change with no input is not detected.
+  The four input reads and posting are sequential OS operations, so an input
+  in that last small interval is also not an atomic window/document binding.
+- **Diagnostics:** `IBIS_MAC_PASTE_DIAGNOSTICS=1` enables one JSON line to stderr
+  per delivery attempt, after its outcome. Otherwise it is off. The closed schema
+  contains a fixed stage, first failing AX error code (or latest success), sleep-inclusive
+  call/attempt durations, clock-bracket widths in microseconds, and owner/equality booleans;
+  `manual_accessibility_ran` says whether capture attempted the activation write,
+  including a failed write. It stays false when no write was attempted. Absent
+  evidence is null. Capture failure evidence follows the immutable target
+  into delivery. No native objects, titles, roles, values, text, paths or document
+  identifiers are logged; even app IDs are omitted. The final focus-to-post tail
+  updates only thread-local evidence, with no logging mutex or output before
+  dispatch. Reentrant and cancelled work cannot consume another attempt's line.
+- **Enable the app's accessibility support automatically:** some Electron and
+  Chromium apps leave out window identities until this support is enabled.
+  During capture, if `AXFocusedWindow` or `AXTopLevelUIElement` returns missing
+  attribute error -25205 or -25212, Ibis sets `AXManualAccessibility=true` on the
+  verified application element. Both the application and the missing relation
+  must belong to the captured process. The app must pass the existing paste
+  policy; an unknown app needs explicit paste approval. Refused apps, Copy only,
+  paste-off, unreadable preferences and missing grants never trigger this write.
+  Ibis attempts it once per live app instance during an Ibis run, even if the
+  attempt fails. It retains the original `NSRunningApplication` before deciding
+  eligibility. Before claiming the process and again immediately before the
+  AX write, that original instance must not be terminated and must still equal
+  the instance returned for the PID. Looking up a new app by a reused PID never
+  supplies approval to that replacement instance. The once-per-process claim
+  also uses the retained original instance, rather than the PID alone.
+  After a successful write, Ibis discards the partial capture and repeats the
+  full identity proof within the same 50 ms budget. Delivery never enables this
+  support or captures a replacement target. Ibis reads no titles, roles, values
+  or text, does not walk the accessibility tree, and does not set
+  `AXEnhancedUserInterface`. Enabling support may use more CPU or memory in the
+  other app and make its accessibility tree available to the OS. Ibis still reads
+  only the allowed identities and process ownership. It leaves support enabled
+  because another assistive app may need it. This is the only permitted foreign
+  attribute write; the list of attributes Ibis reads stays the same.
+- **Grant repair:** missing Accessibility uses the existing
+  `accessibility-required` message and opens the existing guide, once per run,
+  just like missing PostEvent. Only its explicit Open System Settings action may
+  reset Ibis's nonworking grant in a release build and request it; it checks the
+  two grants separately. Granting never revives a failed capture or delivery.
+
+Synthetic scenarios cover success, refusal, AX failure, delayed document/surface
+return with the app already active, close/reopen, target replacement, stale
+ownership, one-use diagnostics and automatic app accessibility activation. Native provider timing under
+load, Electron/Chromium activation behavior, OS grant repair and actual keyboard
+placement still require qualification; PID-directed posting remains non-atomic.
+Review regressions also cover input that switches an interior document without
+changing either AX identity, input during the final AX read, ignored mouse
+movement, invalid input timing and process replacement before the AX write.
 
 Other macOS native calls use objc2's generated AppKit and Core Graphics
 bindings. On Windows, `winsafe` supplies safe Win32 calls (the foreground
@@ -446,25 +579,86 @@ This permission does not change MCP's exclusion of notes, annotations and privat
 
 The output chooser remembers a format picked for the captured app unless the
 person selects "Just this once". `apps.json`, beside `settings.json`, keeps
-only the operating system, normalised app ID and output for at most 200 apps;
+only the operating system, normalised app ID, output, optional delivery choice
+(`paste` or `copy-only`) and the identity binding described below for at most 200 apps;
 the least recently chosen app is dropped first. Never a document title, URL,
 window title, document text or citation. Browser and editor IDs cannot identify
 a project's syntax, so the first paste in each browser or code editor opens
 the output chooser once and remembers the pick (maintainer, 2026-10-28).
 Remembered choices beat app-table suggestions, then the
-global fallback; "Automatic" removes only the app override, and a deliberate
+global fallback; "Automatic" removes that app's output and delivery overrides, and a deliberate
 global choice never erases app choices.
 
 The bounded file is written whole, flushed and swapped in atomically. A file
-Ibis cannot read means automatic/default outputs, with a visible warning; the
-next explicit app save replaces the damaged data. "Forget formats for apps"
-clears it. A failed save leaves the previous durable choices intact and says
+Ibis cannot read means automatic/default outputs, with a visible warning, and
+automatic paste is unavailable: a lost Copy only rule must not become paste
+permission. Subsequent writes preserve a recovery flag in `apps.json`, including
+after restart. A format save never clears it. An explicit Paste or Copy only
+choice resolves recovery for that app alone; all other apps retain the refusal
+until their own delivery choice or the deliberate global reset. Its read failure
+is frozen in the copy proof, so a later successful save cannot release that copy.
+"Forget formats for apps" clears the recovery flag and all output/delivery
+choices. Unknown apps ask for delivery approval
+separately from format, in the same chooser (0009); recognised apps also offer
+Copy only there and in More for the current ordinary app. A failed save leaves the previous durable choices intact and says
 so. Preference writes from different windows apply only deliberate field
 patches under the native owner lock, returning the authoritative saved state.
 Settings and the picker share one frontend patch queue for ordering, field
 acknowledgments, stale reads and recovery. Settings restores the saved choice
 after a failed save; the picker retains explicit choices for retry. Each window
 keeps its own queue; the native lock coordinates windows (2026-10-28).
+
+Unlisted-app Paste approval compares the normalised OS app ID and a SHA-256
+fingerprint of that ID, platform and exact OS-reported app location. Windows
+uses the full executable path already read by `QueryFullProcessImageName`;
+macOS uses the bundle URL path on the same captured `NSRunningApplication`
+record. Only the fingerprint is retained and sent through IPC; raw app paths
+stay transient in capture. Identity binding adds no document, executable-content,
+signing or filesystem reads. Path case
+is preserved; paths are never canonicalised through filesystem reads. A missing
+or changed saved binding requires approval again; unavailable capture identity
+only copies. A delayed save must match the captured
+fingerprint too. Format and Copy only remain keyed by app ID. Capturing no
+signing team means replacement at exactly the same location remains
+indistinguishable; normal updates at that location keep the choice.
+
+App-ID evidence for the 2026-10-31 destination-table additions:
+
+- Read `CFBundleIdentifier` and `CFBundleName` from the installed bundles for
+  Claude (`com.anthropic.claudefordesktop`), ChatGPT (`com.openai.codex`, whose
+  bundle name is ChatGPT), Notes (`com.apple.Notes`), Notion (`notion.id`), Craft
+  (`com.lukilabs.lukiapp`), OneNote (`com.microsoft.onenote.mac`), Thunderbird
+  (`org.mozilla.thunderbird`), Logseq (`com.logseq.logseq`), Jump Desktop
+  (`com.p5sys.jump.mac.viewer`) and Termius (`com.termius-dmg.mac`). These are
+  app metadata only, with no document or library reads.
+- ChatGPT Classic's `com.openai.chat` is recorded in an
+  [original application crash report](https://community.openai.com/t/chatgpt-app-for-macos-crashing-on-open-november-3/1002242).
+  Parsec's `tv.parsec.www` is recorded in a
+  [firsthand native-paste reproduction](https://github.com/Muesli-HQ/muesli/issues/493);
+  its Windows `parsecd.exe` is in [Parsec's launch instructions](https://support.parsec.app/hc/en-us/articles/32381836182932-Run-Parsec-App-From-Command-Line).
+  Both Jump Desktop Mac variants are named in
+  [the vendor's configuration instructions](https://support.jumpdesktop.com/hc/en-us/articles/4408192384909-Mac-How-can-I-prevent-users-on-Jump-Desktop-for-Mac-from-saving-or-sending-computer-passwords).
+- NoMachine's `com.nomachine.nxdock` comes from its
+  [extracted 7.4.1 Info.plist](https://develop.doesitarm.com/app/nomachine/);
+  Windows `nxplayer.exe` and `nxplayer.bin` appear in a
+  [firsthand installed-file listing](https://forum.nomachine.com/archive/topic/trying-to-make-a-portable-version-of-nomachine-enterprise-client).
+  Horizon's `com.omnissa.horizon.client.mac` is in its
+  [recorded bundle ID and signing requirement](https://appcatalog.cloud/apps/omnissa-horizon-client);
+  `vmware-view.exe` is in the [vendor's Windows client guide](https://docs-be.omnissa.com/bundle/Horizon-Client-for-Windows_2006_Horizon-Client-for-Windows-Installation-and-Setup-Guide/raw/resource/enus/Horizon_Client_for_Windows_2006_Horizon_Client_for_Windows_Installation_and_Setup_Guide.pdf?save_local=true).
+- Windows Emacs and gVim use their real executable names from
+  [Emacs's build source](https://github.com/emacs-mirror/emacs/blob/master/src/Makefile.in)
+  and [Vim's build source](https://github.com/vim/vim/blob/master/src/Make_mvc.mak).
+  Their default shortcuts differ: [Emacs clipboard commands](https://www.gnu.org/software/emacs/manual/html_node/emacs/Clipboard.html)
+  and [Vim's Windows clipboard instructions](https://github.com/vim/vim/blob/master/runtime/doc/gui_w32.txt).
+  Neovide's [bundle metadata](https://github.com/neovide/neovide/blob/main/Cargo.toml)
+  and [Windows release workflow](https://github.com/neovide/neovide/blob/main/.github/workflows/nightly.yml)
+  verify its IDs; its [FAQ](https://neovide.dev/faq.html) requires explicit
+  paste mappings on macOS and Windows.
+
+Not verified: legacy VMware Horizon Mac bundle IDs, separate NoMachine viewer
+helper bundle IDs and Jump Desktop's Windows executable. No guessed entries
+were added for these. The added table rows and per-app choice lookups are bounded;
+no new file, network access, polling or hidden activity is introduced.
 
 ## 0019 Updates
 

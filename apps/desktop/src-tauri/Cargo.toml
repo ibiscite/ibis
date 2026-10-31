@@ -45,6 +45,8 @@ x11rb = { version = "0.14.0", default-features = false, features = ["xkb"] }
 # macOS-only adapter provides NSPanel conversion without unsafe app code.
 [target.'cfg(target_os = "macos")'.dependencies]
 tauri-nspanel = "=2.1.1"
+# Already locked through Tauri; converts runtime AppKit icons to bounded PNGs.
+image = { version = "=0.25.10", default-features = false, features = ["png", "tiff"] }
 # Safe AppKit bindings for workspace, appearance, events and the clipboard.
 objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSWorkspace", "NSRunningApplication", "libc", "NSAccessibility", "NSColor", "NSColorSpace", "NSEvent", "NSPasteboard", "NSApplication", "NSView", "NSWindow", "NSDragging", "NSDraggingItem", "NSDraggingSession", "NSImage", "objc2-core-graphics"] }
 # Already locked through Tauri. Reads what a key types on the active layout, so
@@ -54,7 +56,7 @@ objc2-core-graphics = { version = "0.3.2", default-features = false, features = 
 # Already locked through Tauri; lifecycle observers.
 block2 = "0.6.2"
 # Already locked through Tauri; owns opaque AX references and attribute names.
-objc2-core-foundation = { version = "0.3.2", default-features = false, features = ["std", "CFString"] }
+objc2-core-foundation = { version = "0.3.2", default-features = false, features = ["std", "CFString", "CFDictionary", "CFNumber"] }
 # Already locked through Tauri. Reads whether macOS opened Ibis as a login
 # item (#525), so the picker stays hidden then.
 objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSAppleEventManager", "NSAppleEventDescriptor", "NSData", "NSString", "NSThread", "NSArray", "NSBundle", "NSURL", "objc2-core-services", "NSNotification", "NSDistributedNotificationCenter", "NSOperation", "block2"] }
@@ -89,10 +91,13 @@ window-vibrancy = "=0.8.1"
 auto-launch = "0.6.0"
 
 [target.'cfg(target_os = "windows")'.dependencies]
+# Already locked through Tauri. Preserve exact paths while removing a Win32
+# namespace prefix only when the equivalent path is safe for WinRT.
+dunce = "=1.0.5"
 # Already locked through the clipboard plugin. Writes plain text, HTML Format
 # (with its byte offsets) and RTF in one clipboard opening (#26).
 clipboard-win = "5.4.3"
-windows = { version = "0.62.2", features = ["Foundation", "System_Power", "System_Profile", "UI_ViewManagement"] }
+windows = { version = "0.62.2", features = ["Foundation", "System_Power", "System_Profile", "UI_ViewManagement", "Storage", "Storage_FileProperties", "Storage_Streams", "Storage_Search", "ApplicationModel"] }
 # Safe Win32 bindings for pasting (#1133): the window in front, its process,
 # name and rights, and one SendInput. No raw native calls in Ibis (decision 0029).
 winsafe = { version = "0.0.29", features = ["user", "advapi", "version", "comctl"] }
