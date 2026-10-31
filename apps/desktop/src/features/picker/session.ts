@@ -163,7 +163,8 @@ export function reduceSession(s: SessionState, event: SessionEvent): [SessionSta
       if (event.presentation !== null) return advance(s);
       // One recovery read for an explicit action; another Enter can retry a
       // persistent failure. No timer or hidden retry loop owns this work.
-      return retry ? readPresentation(s) : [s, []];
+      if (retry) return readPresentation(s);
+      return [s.pendingCopy ? { ...s, pendingCopy: null, copyError: pickerText.copyError } : s, []];
     }
     case "hiding": return [{ ...s, readingPresentation: false, retryPresentation: false, visibility: s.visibility + 1, pendingCopy: null }, []];
     case "hidden": return [{ ...s, presentation: null, readingPresentation: false, retryPresentation: false, visibility: s.visibility + 1, hiddenAt: event.now, pendingCopy: null }, []];

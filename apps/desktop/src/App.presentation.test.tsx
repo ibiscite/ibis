@@ -96,7 +96,7 @@ test("a failed visibility read cannot discard a successful presentation initiali
   await waitFor(() => expect(hide).toHaveBeenCalledExactlyOnceWith({ presentation: 41 }));
 });
 
-test("persistent initialization failures stop retrying until another Enter", async () => {
+test("persistent initialization failures report that nothing was copied, then another Enter can recover", async () => {
   const read = vi.fn().mockRejectedValue(new Error("invented read failure"));
   const copy = vi.fn(() => ({ text: "invented citation", warnings: [] }));
   const paste = vi.fn(() => ({ outcome: "pasted", app: "Invented Writer" }));
@@ -106,6 +106,9 @@ test("persistent initialization failures stop retrying until another Enter", asy
   await screen.findByText("@a");
   await act(async () => { fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" }); });
   expect(read).toHaveBeenCalledTimes(3); // initial read, action read, one recovery
+  const failure = await screen.findByText("Nothing was copied. Try again, or use Reload.");
+  expect(failure.getAttribute("role")).toBe("alert");
+  expect(document.body.textContent).not.toContain("invented read failure");
   expect(copy).not.toHaveBeenCalled();
   expect(paste).not.toHaveBeenCalled();
   read.mockResolvedValue(41);
@@ -113,6 +116,7 @@ test("persistent initialization failures stop retrying until another Enter", asy
   await waitFor(() => expect(paste).toHaveBeenCalledOnce());
   expect(read).toHaveBeenCalledTimes(4);
   expect(copy).toHaveBeenCalledOnce();
+  expect(screen.queryByText("Nothing was copied. Try again, or use Reload.")).toBeNull();
 });
 
 test("repeated Escape keeps its known owner until the native hide completes", async () => {

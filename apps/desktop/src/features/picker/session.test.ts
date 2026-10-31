@@ -43,6 +43,26 @@ test("search, Enter and receipt use exactly one prepared engine ticket", () => {
   expect(s.state.flights).toHaveLength(0);
 });
 
+test("exhausted presentation reads refuse Enter and later readiness cannot replay it", () => {
+  const s = scenario();
+  s.send({ type: "retire" });
+  s.send(s.view());
+  s.send({ type: "initialize" });
+  s.send({ type: "enter", choice: choiceKey([a]) });
+  const visibility = s.state.visibility;
+  s.send({ type: "presentation", visibility, presentation: null });
+  s.send({ type: "presentation", visibility, presentation: null });
+  expect(s.state.copyError).toBe("Nothing was copied. Try again, or use Reload.");
+  expect(s.state.pendingCopy).toBeNull();
+  expect(s.effects).toEqual([]);
+  s.send({ type: "initialize" });
+  s.send({ type: "presentation", visibility, presentation: 41 });
+  expect(s.effects).toEqual([]);
+  s.send({ type: "enter", choice: choiceKey([a]) });
+  expect(s.effects).toMatchObject([{ type: "copy", ticket: "ticket-b", hash: "hash-b" }]);
+  expect(s.state.flights[0]?.presentation).toBe(41);
+});
+
 test.each([
   ["no-permission", "Copied. Ibis needs your OK to paste"],
   ["accessibility-required", "Copied. Ibis needs Accessibility access to paste safely. Press Ctrl+V to paste."],

@@ -5,6 +5,9 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+const assertRem = (actual, expected, message) => {
+  assert.ok(Math.abs(actual - expected) <= 0.01, `${message}: expected ${expected} rem, got ${actual}`);
+};
 const { chromium } = await import(process.env.IBIS_PLAYWRIGHT_MODULE || "playwright");
 const dist = fileURLToPath(new URL("../../../dist/", import.meta.url));
 const browser = await chromium.launch({ headless: true });
@@ -46,7 +49,7 @@ try {
             if (command === "plugin:event|listen") { listeners.set(args.handler, args.event); return args.handler; }
             if (command === "plugin:event|unlisten" || command === "fit_picker" || command === "plugin:window|hide") return;
             if (command === "hide_picker") {
-              if (args.presentation !== presentation) return false;
+              if (args.presentation !== null && args.presentation !== presentation) return false;
               presentation += 1;
               emit("picker:hidden", null);
               return true;
@@ -79,7 +82,7 @@ try {
       assert.equal(await page.locator(".search-bar").isVisible(), false, `${label}: welcome fills window`);
       assert.equal(await page.getByRole("option").count(), 4);
       const welcomeWidth = await page.locator(".welcome-mark").evaluate((node) => node.getBoundingClientRect().width / parseFloat(getComputedStyle(document.documentElement).fontSize));
-      assert.ok(Math.abs(welcomeWidth - 3.5) <= 0.01, `${label}: 3.5 rem welcome mark`);
+      assertRem(welcomeWidth, 3.5, `${label}: 3.5 rem welcome mark`);
       const scan = async () => page.evaluate(() => {
         const main = document.querySelector("main"), bounds = main.getBoundingClientRect(), issues = [];
         if (Math.abs(bounds.height - innerHeight) > 1) issues.push("frame does not fill window");
@@ -124,7 +127,7 @@ try {
         return { size: node.getBoundingClientRect().width / parseFloat(getComputedStyle(document.documentElement).fontSize), eye: Number(eye.getAttribute("r")) * 2 * 24 / side,
           stops: [...node.querySelectorAll("stop")].map((stop) => getComputedStyle(stop).stopColor), transform: getComputedStyle(node).transform };
       });
-      assert.equal(artwork.size, 1.5, `${label}: 24 px mark`);
+      assertRem(artwork.size, 1.5, `${label}: 24 px mark`);
       assert.ok(artwork.eye >= 2, `${label}: open eye`);
       assert.deepEqual(artwork.stops, theme === "light" ? ["rgb(207, 70, 40)", "rgb(181, 51, 26)"] : ["rgb(255, 127, 94)", "rgb(242, 85, 47)"], `${label}: brand gradient`);
       assert.equal(artwork.transform, "none");
@@ -134,7 +137,11 @@ try {
       await page.getByRole("option", { name: /^Find missing.bib/ }).waitFor();
       assert.deepEqual(await scan(), [], `${label}: missing-file recovery`);
       await page.getByRole("option", { name: /^Find missing.bib/ }).press("Enter");
-      assert.equal(await page.getByRole("option").count(), 2, `${label}: cancellation keeps recovery`);
+      // Recovery includes the source action added with the library footer:
+      // cancelling Find keeps Find, Use another library and Open source.
+      assert.deepEqual(await page.getByRole("option").evaluateAll((rows) => rows.map((row) => row.getAttribute("data-key"))),
+        ["find", "another", "source"], `${label}: cancellation keeps all recovery choices`);
+      assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("data-key")), "find", `${label}: cancellation keeps Find focused`);
       await page.evaluate(() => window.fixtureStatus({ state: "loaded", name: "empty.bib", snapshot_name: "empty.bib", has_snapshot: true }));
       await page.getByRole("heading", { name: "No references in empty.bib" }).waitFor();
       assert.deepEqual(await scan(), [], `${label}: empty library`);
