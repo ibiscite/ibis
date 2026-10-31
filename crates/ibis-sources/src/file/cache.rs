@@ -32,6 +32,12 @@ impl SourceSnapshot {
     pub fn load(&self) -> Result<LoadedLibrary, SourceError> {
         parse(&self.source, &self.text, false, None)
     }
+    /// Tolerant verification still parses every record from these fresh bytes.
+    /// Only complete canonical equality permits reusing a captured allocation;
+    /// neither the previous snapshot nor its fingerprints grant readiness.
+    pub fn load_reusing(&self, previous: &Snapshot) -> Result<LoadedLibrary, SourceError> {
+        parse(&self.source, &self.text, false, Some(previous))
+    }
     fn library(&self) -> LibraryId {
         LibraryId::file(self.source.as_os_str().as_encoded_bytes())
     }

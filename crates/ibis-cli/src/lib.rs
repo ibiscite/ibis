@@ -7,6 +7,8 @@ use std::{
     io::{BufRead, Read, Write},
     path::PathBuf,
 };
+mod completions;
+mod doctor;
 mod human;
 mod toggle;
 
@@ -200,6 +202,21 @@ fn command() -> Command {
             .about("Show or hide the desktop picker")
             .arg(Arg::new("app").long("app").value_parser(clap::value_parser!(PathBuf))),
     )
+    .subcommand(
+        Command::new("doctor")
+            .about("Report source health offline, without writing or sending anything")
+            .arg(
+                Arg::new("config")
+                    .long("config")
+                    .value_parser(clap::value_parser!(PathBuf))
+                    .help("Check a chosen Ibis settings file without repairing it or loading its libraries"),
+            ),
+    )
+    .subcommand(
+        Command::new("completions")
+            .about("Generate shell completions from the CLI commands")
+            .arg(Arg::new("shell").required(true).value_parser(["bash", "zsh", "fish"])),
+    )
     .mut_subcommands(|subcommand| subcommand.arg(file.clone()).arg(group.clone()))
 }
 /// Native entry point, with streams kept explicit for script and terminal clients.
@@ -283,7 +300,7 @@ pub fn run_with<R: BufRead, W: Write + Send, E: Write>(
     } else {
         engine.without_file_watches()
     };
-    match execute(&engine, &matches, &mut input, &mut output) {
+    match execute(&engine, &matches, &mut input, &mut output, mode) {
         Ok(Execution::Stdio(code)) => code,
         Ok(Execution::Result(result, citing)) => {
             emit(json, Ok(result), citing.as_ref(), &mut output, &mut errors, mode)
@@ -348,8 +365,27 @@ fn execute<R: BufRead, W: Write + Send>(
     matches: &ArgMatches,
     input: &mut R,
     output: &mut W,
+    mode: OutputMode,
 ) -> Result<Execution, Failure> {
     let (name, args) = matches.subcommand().ok_or(EngineError { code: ErrorCode::Usage })?;
+    if name == "doctor" {
+        return Ok(Execution::Result(doctor::run(engine, matches, mode)?, None));
+    }
+    if name == "completions" {
+        let shell = args
+            .get_one::<String>("shell")
+            .ok_or(EngineError { code: ErrorCode::Usage })?;
+        let script = completions::generate(command(), shell);
+        return Ok(Execution::Result(
+            DispatchResult {
+                data: json!({"shell":shell, "script":script}),
+                text: Some(script),
+                source_findings: false,
+                exit_code: ibis_core::contract::ExitCode::Ok,
+            },
+            None,
+        ));
+    }
     if name == "toggle" {
         explain(
             toggle::run(args.get_one::<PathBuf>("app").map(PathBuf::as_path)),
