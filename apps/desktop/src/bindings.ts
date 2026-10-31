@@ -75,7 +75,7 @@ export const commands = {
 	/**  The app the picker was opened from, its output and what Ibis remembers for it. */
 	pickerDestination: () => __TAURI_INVOKE<PickerDestination>("picker_destination"),
 	/**  Remember output and an optional delivery choice; both absent reset this app to Automatic. */
-	rememberAppOutput: (appId: string, output: ({ key: KeyFormat }) & { style?: never } | ({ style: CitationStyle }) & { key?: never } | null, paste: "paste" | "copy-only" | null) => __TAURI_INVOKE<null>("remember_app_output", { appId, output, paste }),
+	rememberAppOutput: (appId: string, output: ({ key: KeyFormat }) & { style?: never } | ({ style: CitationStyle }) & { key?: never } | null, paste: "paste" | "copy-only" | null, identity: string | null) => __TAURI_INVOKE<null>("remember_app_output", { appId, output, paste, identity }),
 	/**  Forget output and delivery choices for every app. */
 	forgetAppOutputs: () => __TAURI_INVOKE<null>("forget_app_outputs"),
 	/**  Whether Ibis starts when the person logs in, read from the system now. */
@@ -164,7 +164,7 @@ export const commands = {
 };
 
 /* Types */
-export type Accent = "system" | "blue" | "purple" | "pink" | "red" | "orange" | "yellow" | "green" | "graphite";
+export type Accent = "system" | "ibis" | "blue" | "purple" | "pink" | "red" | "orange" | "yellow" | "green" | "graphite";
 
 /**  One output the picker can copy: a key syntax or a citation style. */
 export type AppOutput = ({ key: KeyFormat }) & { style?: never } | ({ style: CitationStyle }) & { key?: never };
@@ -422,11 +422,13 @@ export type PickerDestination = {
 	app: string | null,
 	/**  The captured OS app identifier, used to refuse a save after the target changes. */
 	app_id: string | null,
+	/**  Opaque app-location fingerprint; no path crosses IPC. */
+	app_identity: string | null,
 	/**  The app suggestion; `None` follows the saved global default. */
 	automatic: AppOutput | null,
 	/**  The output the person chose to always use for this app. */
 	remembered: AppOutput | null,
-	/**  The per-app file could not be read, so defaults apply. */
+	/**  Unresolved recovery from an unreadable per-app file; formats use defaults. */
 	unreadable: boolean,
 	/**  The current paste policy permits an attempt; final delivery checks still apply. */
 	can_paste: boolean,
@@ -436,6 +438,8 @@ export type PickerDestination = {
 	paste: AppPaste | null,
 	/**  An unrecognised app has a proven target but no delivery choice yet. */
 	paste_question: boolean,
+	/**  A proven ordinary target can accept an explicit delivery choice, including recovery. */
+	can_choose_paste: boolean,
 };
 
 /**

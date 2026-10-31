@@ -6,14 +6,17 @@
 //! `ibis_core::destination::decide` says when it must only copy, and the
 //! notice says why. The citation stays on the clipboard either way (ADR 0009).
 
-use std::sync::Mutex;
+use std::sync::{
+    Arc, Mutex,
+    atomic::{AtomicU64, Ordering},
+};
 use std::time::{Duration, Instant};
 
 use ibis_core::destination::{AppId, AppPaste, CopyReason, Decision, PastePermission, System, decide, lookup};
 use serde::Serialize;
 use tauri::{AppHandle, Manager};
 
-mod capture;
+pub(crate) mod capture;
 #[cfg(target_os = "macos")]
 mod macos;
 #[cfg(test)]
@@ -22,7 +25,26 @@ pub(crate) mod permission;
 #[cfg(target_os = "windows")]
 mod windows;
 
-use capture::{Captured, Front};
+pub(crate) use capture::Captured;
+use capture::Front;
+
+#[derive(Clone, Default)]
+struct PolicyProof {
+    epoch: Arc<AtomicU64>,
+    generation: u64,
+}
+
+impl PolicyProof {
+    fn capture(epoch: &Arc<AtomicU64>) -> Self {
+        Self {
+            epoch: Arc::clone(epoch),
+            generation: epoch.load(Ordering::Acquire),
+        }
+    }
+    fn current(&self) -> bool {
+        self.generation != u64::MAX && self.generation == self.epoch.load(Ordering::Acquire)
+    }
+}
 
 const SYSTEM: System = if cfg!(target_os = "macos") {
     System::Macos
@@ -126,8 +148,18 @@ fn write_token() -> Option<u32> {
 #[derive(Default)]
 pub(crate) struct LastTarget(Mutex<TargetState>);
 
+#[cfg(any(target_os = "windows", test))]
+impl LastTarget {
+    /// Final native checks must never dispatch to the UI thread while this
+    /// guard is held. Contention refuses instead of queuing input behind IPC.
+    fn post_if_ready(&self, post: impl FnOnce() -> bool) -> bool {
+        self.0.try_lock().is_ok_and(|_policy| post())
+    }
+}
+
 #[derive(Default)]
 struct TargetState {
+    policy: Arc<AtomicU64>,
     #[cfg(any(not(target_os = "windows"), test))]
     owner: Option<u32>,
     #[cfg(any(not(target_os = "windows"), test))]
@@ -142,10 +174,47 @@ struct TargetState {
     pending: Option<DeliveryTicket<windows::Window>>,
 }
 
+impl TargetState {
+    fn invalidate_policy(&mut self) {
+        self.policy
+            .store(self.policy.load(Ordering::Acquire).saturating_add(1), Ordering::Release);
+        #[cfg(any(not(target_os = "windows"), test))]
+        {
+            self.owner = None;
+            self.copied = None;
+        }
+        #[cfg(target_os = "windows")]
+        {
+            self.pending = None;
+        }
+    }
+}
+
+/// Serialize successful policy changes with proof publication and native
+/// posting. Detached workers keep a revocable epoch after taking their proof.
+pub(crate) fn change_destination<T>(
+    app: &AppHandle,
+    revoke: bool,
+    change: impl FnOnce(Option<&Captured>) -> Result<T, String>,
+) -> Result<T, String> {
+    let state = app.state::<LastTarget>();
+    let mut last = state.0.lock().map_err(|_| "the destination is unavailable")?;
+    #[cfg(not(target_os = "windows"))]
+    let captured = last.captured.as_ref();
+    #[cfg(target_os = "windows")]
+    let captured = last.target.as_ref().and_then(|target| target.captured.as_ref());
+    let result = change(captured)?;
+    if revoke {
+        last.invalidate_policy();
+    }
+    Ok(result)
+}
+
 /// Evidence from Ibis's own successful clipboard write, consumed once. The
 /// text is Ibis's citation, never read back from another clipboard owner.
 #[cfg(any(not(target_os = "windows"), test))]
 struct CopyProof {
+    policy: PolicyProof,
     token: u32,
     captured: Option<Captured>,
     text: String,
@@ -181,7 +250,7 @@ impl LastTarget {
     pub(crate) fn write_copy(
         &self,
         text: &str,
-        paste_for: impl FnOnce(&AppId) -> Result<Option<AppPaste>, CopyReason>,
+        paste_for: impl FnOnce(&Captured) -> Result<Option<AppPaste>, CopyReason>,
         write: impl FnOnce() -> Result<Option<isize>, String>,
     ) -> Result<Option<u32>, String> {
         #[cfg(target_os = "macos")]
@@ -203,7 +272,7 @@ impl LastTarget {
         &self,
         text: &str,
         stamp: SafetyStamp,
-        paste_for: impl FnOnce(&AppId) -> Result<Option<AppPaste>, CopyReason>,
+        paste_for: impl FnOnce(&Captured) -> Result<Option<AppPaste>, CopyReason>,
         write: impl FnOnce() -> Result<Option<isize>, String>,
     ) -> Result<Option<u32>, String> {
         self.write_copy_observed(
@@ -221,7 +290,7 @@ impl LastTarget {
         &self,
         text: &str,
         stamp: SafetyStamp,
-        paste_for: impl FnOnce(&AppId) -> Result<Option<AppPaste>, CopyReason>,
+        paste_for: impl FnOnce(&Captured) -> Result<Option<AppPaste>, CopyReason>,
         write: impl FnOnce() -> Result<Option<isize>, String>,
         #[cfg(target_os = "macos")] diagnostic: Option<macos::diagnostics::Snapshot>,
     ) -> Result<Option<u32>, String> {
@@ -229,7 +298,7 @@ impl LastTarget {
         last.copied = None;
         last.owner = None;
         let captured = last.captured.clone().map(|mut captured| {
-            captured.paste = captured.target.app.as_ref().map_or(Ok(None), paste_for);
+            captured.paste = paste_for(&captured);
             #[cfg(target_os = "macos")]
             if captured.focus_failure.is_none()
                 && (stamp.epoch == 0 || stamp.epoch == u64::MAX)
@@ -244,6 +313,7 @@ impl LastTarget {
         if let Some((change_count, token)) = change_count.zip(write_token()) {
             last.owner = Some(token);
             last.copied = Some(CopyProof {
+                policy: PolicyProof::capture(&last.policy),
                 token,
                 captured,
                 text: text.to_owned(),
@@ -319,7 +389,7 @@ pub(crate) fn capture(app: &AppHandle) {
 
 /// The app the picker was last opened from, with the name the picker shows
 /// for it: the app's own, else the destination table's, else its ID.
-pub(crate) fn last_app(app: &AppHandle) -> Option<(AppId, String)> {
+pub(crate) fn last_app(app: &AppHandle) -> Option<(AppId, String, Option<String>)> {
     let state = app.state::<LastTarget>();
     let last = state.0.lock().ok()?;
     #[cfg(not(target_os = "windows"))]
@@ -331,7 +401,7 @@ pub(crate) fn last_app(app: &AppHandle) -> Option<(AppId, String)> {
         .name
         .or_else(|| lookup(&id).map(|known| known.name.to_owned()))
         .unwrap_or_else(|| id.id.clone());
-    Some((id, name))
+    Some((id, name, captured.app_identity))
 }
 
 /// The footer's intended action, from the same policy as delivery. This only
@@ -353,13 +423,19 @@ fn paste_policy(app: &AppHandle, enabled: bool, choosing: bool) -> bool {
     let captured = last.captured.as_ref();
     #[cfg(target_os = "windows")]
     let captured = last.target.as_ref().and_then(|target| target.captured.as_ref());
+    if choosing
+        && captured.is_some_and(|target| {
+            target.app_identity.is_none() && target.target.app.as_ref().is_some_and(|id| lookup(id).is_none())
+        })
+    {
+        return false;
+    }
     let preference = if choosing {
         Some(AppPaste::Paste)
     } else {
-        let Ok(preference) = captured
-            .and_then(|captured| captured.target.app.as_ref())
-            .map_or(Ok(None), |id| app.state::<crate::destination::AppMemory>().paste(id))
-        else {
+        let Ok(preference) = captured.map_or(Ok(None), |target| {
+            app.state::<crate::destination::AppMemory>().for_capture(target)
+        }) else {
             return false;
         };
         preference
@@ -456,6 +532,7 @@ trait Desk {
 /// Each system keeps immutable target evidence and lifetime anchors for the
 /// shared policy. Windows starts its lifetime before clipboard I/O.
 trait CopyEvidence {
+    fn policy_current(&self) -> bool;
     fn captured(&self) -> Option<&Captured>;
     fn written(&self) -> Instant;
     fn stamp(&self) -> SafetyStamp;
@@ -471,6 +548,9 @@ trait CopyEvidence {
 
 #[cfg(any(not(target_os = "windows"), test))]
 impl CopyEvidence for CopyProof {
+    fn policy_current(&self) -> bool {
+        self.policy.current()
+    }
     fn captured(&self) -> Option<&Captured> {
         self.captured.as_ref()
     }
@@ -692,6 +772,9 @@ fn deliver<D: Desk>(desk: &D, proof: Option<&D::Proof>, enabled: bool) -> Delive
             .and_then(|reason| serde_json::to_value(reason).ok())
             .and_then(|code| code.as_str().map(str::to_owned)),
     };
+    if proof.is_some_and(|proof| !proof.policy_current()) {
+        return copied(Some(CopyReason::PasteUnavailable));
+    }
     match delivery_decision(captured, permission) {
         Decision::Copy(reason @ (CopyReason::NoPermission | CopyReason::AccessibilityRequired)) => {
             desk.ask_to_post();
@@ -817,6 +900,7 @@ fn publish_capture<W>(kept: &mut Option<CopyTarget<W>>, next: CopyTarget<W>, cur
 
 #[cfg(any(target_os = "windows", test))]
 pub(crate) struct DeliveryTicket<W> {
+    policy: PolicyProof,
     token: u32,
     target: CopyTarget<W>,
     sequence: u32,
@@ -827,6 +911,7 @@ pub(crate) struct DeliveryTicket<W> {
 /// Identity and time at request entry, before target locks or clipboard I/O.
 #[cfg(any(target_os = "windows", test))]
 pub(crate) struct CopyAttempt<W> {
+    policy: PolicyProof,
     target: Option<CopyTarget<W>>,
     written: Instant,
     stamp: SafetyStamp,
@@ -834,6 +919,9 @@ pub(crate) struct CopyAttempt<W> {
 
 #[cfg(any(target_os = "windows", test))]
 impl<W> CopyEvidence for DeliveryTicket<W> {
+    fn policy_current(&self) -> bool {
+        self.policy.current()
+    }
     fn captured(&self) -> Option<&Captured> {
         self.target.captured.as_ref()
     }
@@ -850,24 +938,30 @@ pub(crate) fn begin_copy(app: &AppHandle) -> CopyAttempt<windows::Window> {
     let stamp = SafetyStamp::now();
     let written = Instant::now();
     let generation = app.state::<crate::picker::PickerGeneration>().current();
-    let target = app
+    let (target, policy) = app
         .state::<LastTarget>()
         .0
         .lock()
         .ok()
-        .and_then(|last| last.target.clone())
-        .filter(|target| target.generation == generation);
+        .map(|last| {
+            (
+                last.target.clone().filter(|target| target.generation == generation),
+                PolicyProof::capture(&last.policy),
+            )
+        })
+        .unwrap_or_default();
     let target = target.map(|mut target| {
         if let Some(captured) = &mut target.captured {
-            captured.paste = captured
-                .target
-                .app
-                .as_ref()
-                .map_or(Ok(None), |id| app.state::<crate::destination::AppMemory>().paste(id));
+            captured.paste = app.state::<crate::destination::AppMemory>().for_capture(captured);
         }
         target
     });
-    CopyAttempt { target, written, stamp }
+    CopyAttempt {
+        target,
+        policy,
+        written,
+        stamp,
+    }
 }
 
 #[cfg(target_os = "windows")]
@@ -889,6 +983,7 @@ fn remember_ticket<W>(
 ) -> Option<u32> {
     *pending = attempt.target.zip(sequence).and_then(|(target, sequence)| {
         Some(DeliveryTicket {
+            policy: attempt.policy,
             token: write_token()?,
             target,
             sequence,
@@ -928,6 +1023,8 @@ trait TicketDesk {
     fn paste_key(&self) -> Option<u16>;
     fn wait(&self, time: Duration);
     fn generation(&self) -> u64;
+    /// Also called under destination and injection locks. Must use native
+    /// state, with no dispatch to or wait on the UI thread.
     fn picker_hidden(&self) -> bool;
     fn restore(&self, window: &Self::Window, pid: i32) -> bool;
     fn window_in_front(&self, window: &Self::Window) -> bool;
@@ -946,6 +1043,9 @@ struct TicketDeskGuard<'a, D: TicketDesk> {
 #[cfg(any(target_os = "windows", test))]
 impl<D: TicketDesk> TicketDeskGuard<'_, D> {
     fn current(&self) -> Result<(), CopyReason> {
+        if !self.ticket.policy.current() {
+            return Err(CopyReason::PasteUnavailable);
+        }
         // A stale presentation is distinct from replaced or unreadable clipboard evidence.
         if self.desk.generation() != self.ticket.target.generation.wrapping_add(1) || !self.desk.picker_hidden() {
             return Err(CopyReason::TargetChanged);
@@ -1405,6 +1505,7 @@ mod tests {
 
         fn front(&self) -> Option<Front> {
             self.fronts.borrow().first().map(|&pid| Front {
+                app_identity: None,
                 id: Some(self.app_id.into()),
                 pid,
                 window: self.window.get(),
@@ -1544,6 +1645,7 @@ mod tests {
     // This fake exercises macOS capture and PostEvent on every test host.
     fn writer(id: &str) -> Captured {
         Captured {
+            app_identity: capture::app_identity(System::Macos, id, "/invented/Writer.app"),
             paste: Ok(None),
             target: Target {
                 system: System::Macos,
@@ -1619,6 +1721,7 @@ mod tests {
 
     fn proof() -> CopyProof {
         CopyProof {
+            policy: PolicyProof::default(),
             token: 1,
             captured: Some(writer("com.microsoft.word")),
             text: TEXT.into(),
@@ -1725,6 +1828,7 @@ mod tests {
         let last = LastTarget::default();
         last.begin_presentation(Some(writer("com.microsoft.word")));
         let active_external = Front {
+            app_identity: None,
             id: Some("com.microsoft.word".into()),
             pid: 42,
             window: None,
@@ -1757,6 +1861,7 @@ mod tests {
             let desk = Fake::new(); // both authorizations are now present
             let last = LastTarget::default();
             let external = || Front {
+                app_identity: None,
                 id: Some("com.microsoft.word".into()),
                 pid: 42,
                 window: None,
@@ -2025,6 +2130,37 @@ mod tests {
         assert_eq!(
             last.post_if_current(&request, || panic!("unowned post")),
             PostResult::Unavailable
+        );
+    }
+
+    #[test]
+    fn a_concurrent_destination_holder_cannot_block_windows_paste_or_queue_key_downs() {
+        let last = Arc::new(LastTarget::default());
+        let (sent, received) = std::sync::mpsc::channel();
+        // Model an IPC command holding destination ownership on the UI thread.
+        let holder = last.0.lock().unwrap_or_else(|e| panic!("{e}"));
+        let worker_target = last.clone();
+        let posted = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let worker_posted = posted.clone();
+        let worker = std::thread::spawn(move || {
+            let result = worker_target.post_if_ready(|| {
+                worker_posted.store(true, Ordering::Release);
+                true
+            });
+            sent.send(result).unwrap_or_else(|e| panic!("{e}"));
+        });
+        let result = received.recv_timeout(Duration::from_secs(1));
+        // Release even on a failed assertion: the regression must never hang tests.
+        drop(holder);
+        worker.join().unwrap_or_else(|e| panic!("{e:?}"));
+        assert_eq!(
+            result.ok(),
+            Some(false),
+            "paste must refuse while the UI owns destination state"
+        );
+        assert!(
+            !posted.load(Ordering::Acquire),
+            "refused input must not run after the holder releases"
         );
     }
 
@@ -2379,13 +2515,53 @@ mod tests {
         let last = LastTarget::default();
         last.begin_presentation(Some(writer(desk.app_id)));
         let token = last
-            .write_copy_at(TEXT, desk.stamp.get(), |id| memory.paste(id), || Ok(Some(COUNT)))
+            .write_copy_at(
+                TEXT,
+                desk.stamp.get(),
+                |target| memory.for_capture(target),
+                || Ok(Some(COUNT)),
+            )
             .unwrap_or_else(|e| panic!("{e}"));
         let proof = last.take_copy(TEXT, token).unwrap_or_else(|| panic!("copy proof"));
         desk.presentation.set(proof.presentation);
         // Repairing preferences cannot authorize the already written citation.
         memory.forget().unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(deliver(&desk, Some(&proof), true), copied(Some("paste-unavailable")));
+        assert!(desk.posts.borrow().is_empty());
+    }
+
+    #[test]
+    fn a_saved_delivery_change_revokes_a_detached_proof_without_touching_the_clipboard() {
+        let last = LastTarget::default();
+        let desk = Fake {
+            app_id: "org.example.writer",
+            ..Fake::new()
+        };
+        last.begin_presentation(Some(writer(desk.app_id)));
+        let token = last
+            .write_copy_at(
+                TEXT,
+                desk.stamp.get(),
+                |_| Ok(Some(AppPaste::Paste)),
+                || Ok(Some(COUNT)),
+            )
+            .unwrap_or_else(|e| panic!("{e}"));
+        let proof = last.take_copy(TEXT, token).unwrap_or_else(|| panic!("copy proof"));
+        // The worker already took its proof; removing the pending slot alone cannot revoke it.
+        last.0.lock().unwrap_or_else(|e| panic!("{e}")).invalidate_policy();
+        assert_eq!(deliver(&desk, Some(&proof), true), copied(Some("paste-unavailable")));
+        assert!(desk.posts.borrow().is_empty());
+        assert_eq!(desk.change_count.get(), COUNT);
+        let fresh = last
+            .write_copy_at(
+                TEXT,
+                desk.stamp.get(),
+                |_| Ok(Some(AppPaste::CopyOnly)),
+                || Ok(Some(COUNT)),
+            )
+            .unwrap_or_else(|e| panic!("{e}"));
+        let fresh = last.take_copy(TEXT, fresh).unwrap_or_else(|| panic!("fresh proof"));
+        assert_eq!(deliver(&desk, Some(&fresh), true), copied(Some("copy-only")));
         assert!(desk.posts.borrow().is_empty());
     }
 
@@ -2587,6 +2763,7 @@ mod windows_tests {
         fn frontmost(&self) -> Option<Front> {
             self.front_queries.set(self.front_queries.get() + 1);
             let front = self.fronts.borrow().first().map(|&pid| Front {
+                app_identity: None,
                 id: Some(self.front_id.get().into()),
                 pid,
                 window: None,
@@ -2645,6 +2822,7 @@ mod windows_tests {
 
     fn ticket() -> DeliveryTicket<usize> {
         DeliveryTicket {
+            policy: PolicyProof::default(),
             token: 17,
             target: CopyTarget {
                 captured: Some(writer("winword.exe")),
@@ -2676,6 +2854,7 @@ mod windows_tests {
         capture::captured(
             System::Windows,
             Some(Front {
+                app_identity: None,
                 id: Some(id.into()),
                 pid: 42,
                 window: None,
@@ -2692,6 +2871,19 @@ mod windows_tests {
         Delivered::Copied {
             reason: reason.map(str::to_owned),
         }
+    }
+
+    #[test]
+    fn a_detached_windows_ticket_cannot_post_after_its_policy_is_revoked() {
+        let desk = Fake::new("[@synthetic]");
+        let ticket = ticket();
+        ticket.policy.epoch.store(1, Ordering::Release);
+        assert_eq!(
+            deliver_ticket(&desk, &ticket, "[@synthetic]", true),
+            copied(Some("paste-unavailable"))
+        );
+        assert!(desk.posts.borrow().is_empty());
+        assert!(desk.restores.borrow().is_empty());
     }
 
     #[test]
@@ -2878,6 +3070,7 @@ mod windows_tests {
             let token_a = remember_ticket(
                 &mut pending.borrow_mut(),
                 CopyAttempt {
+                    policy: PolicyProof::default(),
                     target: Some(ticket().target),
                     written: Instant::now(),
                     stamp: desk.stamp.get(),
@@ -2899,6 +3092,7 @@ mod windows_tests {
             let token_b = remember_ticket(
                 &mut pending.borrow_mut(),
                 CopyAttempt {
+                    policy: PolicyProof::default(),
                     target: Some(target_b),
                     written: Instant::now(),
                     stamp: desk.stamp.get(),
@@ -3011,6 +3205,7 @@ mod windows_tests {
             let before_io = desk.stamp.get();
             let started = Instant::now();
             let attempt = CopyAttempt {
+                policy: PolicyProof::default(),
                 target: Some(ticket().target),
                 written: started,
                 stamp: before_io,

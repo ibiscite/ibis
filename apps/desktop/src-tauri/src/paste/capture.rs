@@ -10,6 +10,8 @@ use ibis_core::destination::{AppId, AppPaste, CopyReason, System, Target};
 pub(crate) struct Front {
     /// macOS bundle ID or Windows executable file name; `None` for an app without one.
     pub(crate) id: Option<String>,
+    /// Digest of app ID and its OS-reported location; never the raw path.
+    pub(crate) app_identity: Option<String>,
     pub(crate) pid: i32,
     /// Opaque macOS document/surface identity token; no title or contents.
     pub(crate) window: Option<u32>,
@@ -25,6 +27,7 @@ pub(crate) struct Front {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Captured {
     pub(crate) target: Target,
+    pub(crate) app_identity: Option<String>,
     /// Frozen before the clipboard write; a later chooser answer cannot authorize it.
     pub(crate) paste: Result<Option<AppPaste>, CopyReason>,
     pub(crate) pid: Option<i32>,
@@ -47,6 +50,7 @@ impl Captured {
                 elevated: false,
             },
             paste: Ok(None),
+            app_identity: None,
             pid: None,
             window: None,
             focus_failure: None,
@@ -79,6 +83,7 @@ pub(crate) fn captured(system: System, front: Option<Front>, own: i32) -> Option
             elevated: front.elevated,
         },
         paste: Ok(None),
+        app_identity: front.app_identity,
         pid: Some(front.pid),
         window: front.window,
         focus_failure: front.focus_failure,
@@ -88,12 +93,24 @@ pub(crate) fn captured(system: System, front: Option<Front>, own: i32) -> Option
     })
 }
 
+/// No filesystem reads or path canonicalisation: compare exactly the location
+/// the OS already reports, including case on case-sensitive volumes.
+pub(crate) fn app_identity(system: System, id: &str, path: &str) -> Option<String> {
+    if path.is_empty() || path.chars().any(char::is_control) {
+        return None;
+    }
+    let app = AppId { system, id: id.into() };
+    let bytes = serde_json::to_vec(&(system, app.normalized(), path)).ok()?;
+    Some(ibis_core::contract::Fingerprint::of_bytes(&bytes).as_str().to_owned())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn front(pid: i32) -> Front {
         Front {
+            app_identity: None,
             id: Some("org.example.Writer".into()),
             pid,
             window: Some(100),
@@ -101,6 +118,27 @@ mod tests {
             name: Some("Writer".into()),
             elevated: false,
         }
+    }
+
+    #[test]
+    fn app_locations_are_compared_as_digests_without_retaining_the_paths() {
+        let id = "editor.exe";
+        let first = app_identity(System::Windows, id, r"C:\Invented\Writer\editor.exe");
+        let other = app_identity(System::Windows, id, r"C:\Invented\Viewer\editor.exe");
+        assert_ne!(first, other);
+        assert_eq!(first.as_ref().map(String::len), Some(64));
+        let captured = captured(
+            System::Windows,
+            Some(Front {
+                id: Some(id.into()),
+                app_identity: first.clone(),
+                ..front(42)
+            }),
+            7,
+        )
+        .unwrap_or_else(|| panic!("capture"));
+        assert_eq!(captured.app_identity, first);
+        assert!(!format!("{captured:?}").contains("Invented"));
     }
 
     #[test]
@@ -131,6 +169,7 @@ mod tests {
     #[test]
     fn an_app_with_more_rights_than_ibis_is_captured_as_elevated() {
         let admin = Front {
+            app_identity: None,
             elevated: true,
             ..front(42)
         };
@@ -155,6 +194,7 @@ mod tests {
     #[test]
     fn an_active_app_is_kept_without_inventing_a_keyboard_window_proof() {
         let front = Front {
+            app_identity: None,
             window: None,
             ..front(42)
         };

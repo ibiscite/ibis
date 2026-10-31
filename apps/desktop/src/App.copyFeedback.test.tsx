@@ -87,7 +87,7 @@ test.each([
 
 test("a preferences event superseding the permission return keeps the prepared output for the next copy", async () => {
   let granted = false;
-  let destination: PickerDestination = { app: "Example Editor", app_id: "example.editor", automatic: null, remembered: { key: "typst" }, unreadable: false, can_paste: false, output_question: null, paste: null, paste_question: false };
+  let destination: PickerDestination = { app: "Example Editor", app_id: "example.editor", app_identity: null, automatic: null, remembered: { key: "typst" }, unreadable: false, can_paste: false, output_question: null, paste: null, paste_question: false, can_choose_paste: false };
   let delayReturn = false;
   let finishReturn!: (value: PickerDestination) => void;
   const copies: unknown[] = [];
@@ -106,7 +106,7 @@ test("a preferences event superseding the permission return keeps the prepared o
   });
   await copy();
   await act(async () => { await emit("picker:hidden"); });
-  destination = { ...destination, app: "Example Writer", app_id: "example.writer", remembered: { key: "cite" } };
+  destination = { ...destination, app: "Example Writer", app_id: "example.writer", app_identity: null, remembered: { key: "cite" } };
   delayReturn = true;
   granted = true;
   await act(async () => { await emit("picker:shown"); });

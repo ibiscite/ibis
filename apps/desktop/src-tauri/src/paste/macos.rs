@@ -8,6 +8,7 @@ use std::time::{Duration, Instant};
 use ibis_core::destination::CopyReason;
 use objc2_app_kit::{NSApplication, NSPasteboard, NSWorkspace};
 use objc2_core_graphics::{CGEvent, CGEventFlags, CGEventSource, CGEventSourceStateID, CGPreflightPostEventAccess};
+use objc2_foundation::MainThreadMarker;
 use tauri::{AppHandle, Manager};
 use tauri_plugin_global_shortcut::Code;
 
@@ -53,6 +54,10 @@ fn active_app() -> Option<Front> {
     }
     Some(Front {
         id: app.bundleIdentifier().map(|id| id.to_string()),
+        app_identity: app.bundleIdentifier().and_then(|id| {
+            let path = app.bundleURL()?.path()?;
+            super::capture::app_identity(super::System::Macos, &id.to_string(), &path.to_string())
+        }),
         pid: app.processIdentifier(),
         window: None,
         focus_failure: None,
@@ -96,7 +101,10 @@ fn manual_accessibility_allowed(app: &AppHandle, front: &Front) -> bool {
         system: System::Macos,
         id: id.clone(),
     };
-    let Ok(preference) = app.state::<crate::destination::AppMemory>().paste(&id) else {
+    let Ok(preference) = app
+        .state::<crate::destination::AppMemory>()
+        .paste_for(&id, front.app_identity.as_deref())
+    else {
         return false;
     };
     let settings = ibis_core::settings::load(&app.state::<crate::preferences::SettingsFile>().path);
@@ -142,6 +150,7 @@ pub(super) fn capture_front(
         // without reserving/clearing a new AX identity for our own picker.
         return Some(Front {
             id: None,
+            app_identity: None,
             pid: own,
             window: None,
             focus_failure: None,
@@ -348,6 +357,9 @@ impl Desk for Mac {
         let queued = Arc::clone(&pending);
         let app = self.app.clone();
         self.on_main_for(limit, move || {
+            let Some(main) = MainThreadMarker::new() else {
+                return PostResult::Unavailable;
+            };
             if Instant::now() >= request.deadline {
                 return PostResult::Unavailable;
             }
@@ -368,6 +380,7 @@ impl Desk for Mac {
                 app.state::<super::LastTarget>().post_if_current(&request, || {
                     checked_post(
                         &Ready {
+                            _main: main,
                             app: &app,
                             down: &down,
                             up: &up,
@@ -388,6 +401,7 @@ impl Desk for Mac {
 
 /// Constructed and used only inside the final main-thread task.
 struct Ready<'a> {
+    _main: MainThreadMarker,
     app: &'a AppHandle,
     down: &'a CGEvent,
     up: &'a CGEvent,
@@ -411,6 +425,8 @@ impl PostDesk for Ready<'_> {
     fn current(&self, _presentation: u64) -> bool {
         diagnostics::stage("presentation");
         // The caller holds LastTarget's ownership lock through checked_post.
+        // Ready requires the main-thread marker: locked Tauri handles this
+        // query inline on that thread, never dispatching or waiting on it.
         self.app
             .get_webview_window("main")
             .is_some_and(|window| window.is_visible().ok() == Some(false))
@@ -476,6 +492,7 @@ mod tests {
     #[test]
     fn repeated_show_while_the_ibis_panel_is_key_preserves_the_external_capture_and_identity_bank() {
         let external = Front {
+            app_identity: None,
             id: Some("com.microsoft.word".into()),
             pid: 42,
             window: Some(100),
@@ -500,6 +517,7 @@ mod tests {
     #[test]
     fn a_failed_capture_cannot_claim_an_unproven_target_changed() {
         let active = Front {
+            app_identity: None,
             id: Some("com.microsoft.word".into()),
             pid: 42,
             window: None,
@@ -517,6 +535,7 @@ mod tests {
     fn manual_accessibility_runs_by_default_only_for_apps_allowed_to_paste() {
         use ibis_core::destination::{AppId, AppPaste, System};
         let front = Front {
+            app_identity: None,
             id: None,
             pid: 42,
             window: None,

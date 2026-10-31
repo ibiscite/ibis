@@ -50,7 +50,7 @@ try {
             if (command === "native_appearance") return "opaque";
             if (command === "picker_preferences") return preferences;
             if (command === "copy_format") return "pandoc";
-            if (command === "picker_destination") return { app: null, app_id: null, automatic: null, remembered: null, unreadable: false, can_paste: false, output_question: null, paste: null, paste_question: false };
+            if (command === "picker_destination") return { app: null, app_id: null, app_identity: null, automatic: null, remembered: null, unreadable: false, can_paste: false, output_question: null, paste: null, paste_question: false, can_choose_paste: false };
             if (command === "shortcut_status") return { shortcut: "CommandOrControl+Shift+Y", registered: true, error: null };
             if (command === "library_status") return library;
             if (command === "choose_library" || command === "use_zotero") return null;
