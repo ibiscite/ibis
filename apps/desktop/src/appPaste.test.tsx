@@ -22,6 +22,12 @@ async function open(configure?: (h: Harness) => void) {
 async function answer(label: string) {
   await act(async () => { fireEvent.click(screen.getByRole("menuitem", { name: label })); });
 }
+async function reopen(h: Harness) {
+  await act(async () => { await h.reopen(); });
+  // Reopening refreshes library status, which rechecks search and its preview.
+  await act(async () => { h.search.pending.at(-1)!.complete({ revision: "1", results: [result("a", "Invented reference")] }); });
+  await act(async () => { h.preview.pending.at(-1)!.complete({ text: "[@a]" }); });
+}
 async function finish(h: Harness) {
   await act(async () => { h.copy.pending[0]!.complete(); });
   await act(async () => { h.delivery.pending[0]!.complete(); });
@@ -43,7 +49,7 @@ test("the first unknown-app Enter asks in the format chooser; approval needs fre
   expect(h.document.text).toBe("Draft: [@a].");
   expect(h.document.pastes).toHaveLength(1);
   expect(receipt(h)).toBe("Pasted into Example Writer");
-  await act(async () => { await h.reopen(); });
+  await reopen(h);
   await enter();
   expect(screen.queryByRole("menu")).toBeNull();
   await finish(h);
@@ -60,7 +66,7 @@ test("Copy only is remembered across reopening and its receipt stays true", asyn
   expect(h.clipboard.text).toBe("[@a]");
   expect(h.document.pastes).toHaveLength(0);
   expect(receipt(h)).toBe("Copied. Copy only is set for this app");
-  await act(async () => { await h.reopen(); });
+  await reopen(h);
   await enter();
   expect(screen.queryByRole("menu")).toBeNull();
   await finish(h);
@@ -211,7 +217,7 @@ test("a delayed approval cannot replay its held citation after reopening in anot
   h.document.app = "Other Writer";
   h.target.appId = "example.other";
   h.target.verified = true;
-  await act(async () => { await h.reopen(); });
+  await reopen(h);
   await enter();
   expect(h.copy.calls).toHaveLength(0);
   await act(async () => { h.appSaves.pending[0]!.complete(); });
@@ -226,7 +232,7 @@ test("close and reopen while saving approval never replays Enter", async () => {
   const h = await open((h) => { h.holdAppSaves = true; });
   await enter();
   await answer("Paste into Example Writer from now on");
-  await act(async () => { await h.reopen(); });
+  await reopen(h);
   await act(async () => { h.appSaves.pending[0]!.complete(); });
   expect(h.copy.calls).toHaveLength(0);
   expect(h.document.pastes).toHaveLength(0);

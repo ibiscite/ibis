@@ -54,6 +54,10 @@ test("empty-library choices use arrows and Enter, keep focus after cancelling an
   const search = screen.getByLabelText("Search references");
   act(() => search.focus());
   fireEvent.keyDown(search, { key: "ArrowDown", code: "ArrowDown" });
+  const source = choiceRow(/^Open Zotero/);
+  expect(document.activeElement).toBe(source);
+  expect(source.getAttribute("aria-keyshortcuts")).toBe("Control+O");
+  fireEvent.keyDown(source, { key: "ArrowDown", code: "ArrowDown" });
   expect(document.activeElement).toBe(zotero);
   fireEvent.keyDown(zotero, { key: "ArrowDown", code: "ArrowDown" });
   const file = choiceRow(FILE_ROW);
@@ -64,7 +68,7 @@ test("empty-library choices use arrows and Enter, keep focus after cancelling an
   pressRow(file);
   await waitFor(() => expect(calls.filter((call) => call === "choose_library")).toHaveLength(1));
   expect(document.activeElement).toBe(file);
-  expect(screen.getAllByRole("option")).toHaveLength(2);
+  expect(screen.getAllByRole("option")).toHaveLength(3);
   expect(screen.queryByRole("region", { name: "Preview" })).toBeNull();
   expect(within(document.querySelector("footer")!).queryByRole("button", { name: /^Copy/ })).toBeNull();
   expect(calls).not.toContain("find_sources");
@@ -81,7 +85,7 @@ test("missing-file Find uses the requested name and cancellation leaves its keyb
   pressRow(find);
   await waitFor(() => expect(calls.filter((call) => call === "choose_library")).toHaveLength(1));
   expect(document.activeElement).toBe(find);
-  expect(screen.getAllByRole("option")).toHaveLength(2);
+  expect(screen.getAllByRole("option")).toHaveLength(3);
   expect(find.getAttribute("data-suggested")).toBe("true");
   expect(screen.queryByRole("region", { name: "Preview" })).toBeNull();
   expect(within(document.querySelector("footer")!).queryByRole("button", { name: /^Copy/ })).toBeNull();
@@ -136,7 +140,7 @@ test("an empty first library offers library recovery before asking where you wri
   await act(async () => { await emit("library:changed", status()); });
   await screen.findByRole("heading", { name: "No references in empty.bib" });
   expect(screen.queryByRole("listbox", { name: "What do you write in?" })).toBeNull();
-  expect(screen.getAllByRole("option")).toHaveLength(2);
+  expect(screen.getAllByRole("option")).toHaveLength(3);
 });
 
 test.each(["chip", "preview", "elsewhere"])("an empty replacement returns only removed citation focus to Search (%s)", async (destination) => {

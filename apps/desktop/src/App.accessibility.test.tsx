@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "vitest";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
-import { backend, chooseFromMore, resetApp, type Handler } from "./testing/app";
+import { backend, chooseRows, resetApp, type Handler } from "./testing/app";
 import type { PickerPreferences } from "./api";
 
 const saved: PickerPreferences = { citation_style: null, density: "comfortable", larger_text: false, show_paste_preview: true, search_mark: false, paste: true };
@@ -39,7 +39,7 @@ test("Rows applies once in a persistent polite region; initial load, same-value 
   // A hidden announcer must not turn the empty visual notices into a padded row.
   expect(region.closest(".notices")).toBeNull();
   expect(document.querySelector(".notices")?.matches(":empty")).toBe(true);
-  await chooseFromMore("Rows: Comfortable");
+  await chooseRows("spacious");
   await waitFor(() => expect(region.textContent).toBe("Rows: Spacious"));
   expect(document.documentElement.dataset.density).toBe("spacious");
   expect(updates).toEqual(["Rows: Spacious"]);
@@ -71,7 +71,7 @@ test("a failed Rows save keeps the applied view and reports a fixed error withou
   const save = deferred<null>();
   await open({ set_picker_preferences: () => save.promise });
   const { region, updates } = feedback();
-  await chooseFromMore("Rows: Comfortable");
+  await chooseRows("spacious");
   await waitFor(() => expect(region.textContent).toBe("Rows: Spacious"));
   await act(async () => { save.reject(new Error("SYNTHETIC_PRIVATE_SAVE_ERROR")); });
   expect(await screen.findByRole("alert")).toHaveProperty("textContent", "Ibis could not read or save your picker choices. They apply until Ibis restarts.");
@@ -88,7 +88,7 @@ test("a delayed preference read cannot restore or announce A after the user appl
   const { region, updates } = feedback();
   await act(async () => { await emit("preferences:changed"); });
   expect(reads).toBe(2);
-  await chooseFromMore("Rows: Comfortable");
+  await chooseRows("spacious");
   await waitFor(() => expect(region.textContent).toBe("Rows: Spacious"));
   await act(async () => { old.resolve({ ...saved, density: "compact" }); });
   expect(document.documentElement.dataset.density).toBe("spacious");
@@ -100,7 +100,7 @@ test("hide/reopen retires Rows feedback before an old save completes", async () 
   const save = deferred<null>();
   await open({ set_picker_preferences: () => save.promise });
   const { region, updates } = feedback();
-  await chooseFromMore("Rows: Comfortable");
+  await chooseRows("spacious");
   await waitFor(() => expect(region.textContent).toBe("Rows: Spacious"));
   await act(async () => { await emit("picker:hidden"); await emit("picker:shown"); });
   expect(region.textContent).toBe("");
@@ -114,7 +114,7 @@ test("hide/reopen retires Rows feedback before an old save completes", async () 
 test("the same Rows label announces again after a silent background view change", async () => {
   await open();
   const { region, updates } = feedback();
-  await chooseFromMore("Rows: Comfortable");
+  await chooseRows("spacious");
   await waitFor(() => expect(document.documentElement.dataset.density).toBe("spacious"));
   await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
   expect(updates).toEqual(["Rows: Spacious"]);
@@ -122,7 +122,7 @@ test("the same Rows label announces again after a silent background view change"
   await act(async () => { await emit("preferences:changed"); });
   expect(document.documentElement.dataset.density).toBe("comfortable");
   expect(updates).toEqual(["Rows: Spacious"]);
-  await chooseFromMore("Rows: Comfortable");
+  await chooseRows("spacious");
   await waitFor(() => expect(document.documentElement.dataset.density).toBe("spacious"));
   await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
   expect(region.textContent).toBe("Rows: Spacious");

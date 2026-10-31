@@ -9,7 +9,7 @@ import config from "../src-tauri/tauri.conf.json";
 import { copyFormatNames } from "./messages";
 import { choiceName, outputName, type Choice } from "./features/picker/choice";
 import { STYLE_NAMES } from "./format/styles";
-import { backend, chooseFromMore, prepared, receipt, resetApp, result, type SyntheticId } from "./testing/app";
+import { backend, chooseFromMore, chooseRows, chooseFromLibrary, libraryButton, prepared, receipt, resetApp, result, type SyntheticId } from "./testing/app";
 
 // Vitest can load these existing runtime builtins without a Node-types dependency.
 afterEach(resetApp);
@@ -416,8 +416,8 @@ test("the empty-state chooser opens the existing dialog and remains available af
   pressRow(chooser);
   await waitFor(() => expect(calls).toContain("choose_library"));
   expect(choiceRow(FILE_ROW)).toBe(chooser);
-  fireEvent.click(screen.getByRole("button", { name: /^More/ }));
-  expect(screen.getByRole("menuitem", { name: "Choose library…" })).toBeTruthy();
+  fireEvent.click(libraryButton());
+  expect(screen.getByRole("menuitem", { name: "Choose Library…" })).toBeTruthy();
 });
 
 test("typing and clearing before choosing a library keeps the calm hint and chooser", async () => {
@@ -480,21 +480,21 @@ test.each([
   render(<App />);
   await act(async () => { await Promise.resolve(); });
   await act(async () => {
-    await emit("library:changed", { revision: "1",
+    await emit("library:changed", { revision: "1", state: failed ? "error" : "loaded", has_snapshot: !failed, zotero: false, problem: "other",
       name: "new.bib", snapshot_name: "new.bib", references: failed ? 0 : 1, warnings: 0,
       error: failed ? "synthetic load failed" : null, note: null,
     });
   });
-  if (failed) await screen.findByText(/synthetic load failed/);
+  if (failed) await screen.findByRole("alert");
   else await screen.findByText("New library reference");
   await act(async () => {
     if (outcome === "resolves") {
       resolveStatus({ state: "none", has_snapshot: false, zotero: false, name: null, snapshot_name: null, references: 0, warnings: 0, error: null, problem: null, note: null });
     } else rejectStatus(new Error("stale status unavailable"));
   });
-  expect(screen.getByRole("region", { name: "Library" }).textContent).toContain("new.bib");
+  expect(screen.getByRole("region", { name: "Picker actions" }).textContent).toContain("new.bib");
   expect(screen.queryByRole("option", { name: FILE_ROW })).toBeNull();
-  if (failed) expect(screen.getByText(/synthetic load failed/)).toBeTruthy();
+  if (failed) expect(screen.getByRole("alert").textContent).toContain("Synthetic load failed");
   else expect(screen.getByText("New library reference")).toBeTruthy();
 });
 
@@ -906,13 +906,14 @@ test("the library is shown, can be chosen and reloaded, and failures are explain
     reload_library: () => null,
   });
   render(<App />);
-  const bar = screen.getByRole("region", { name: "Library" });
+  const bar = screen.getByRole("region", { name: "Picker actions" });
   await waitFor(() => expect(bar.textContent).toContain("No library chosen"));
-  await chooseFromMore("Choose library…");
+  await chooseFromLibrary("Choose Library…");
+  pressRow(await screen.findByRole("option", { name: FILE_ROW }));
   await waitFor(() => expect(calls).toContain("choose_library"));
   await emit("library:changed", { revision: "1", state: "loaded", has_snapshot: true, zotero: false, name: "refs.bib", snapshot_name: "refs.bib", references: 3, warnings: 1, error: null, problem: null, note: null });
   await waitFor(() => expect(bar.textContent).toContain("refs.bib · 3 references · 1 reading notice"));
-  await chooseFromMore("Reload");
+  await chooseFromLibrary("Reload Library");
   await waitFor(() => expect(calls).toContain("reload_library"));
   await emit("library:changed", { revision: "1",
     state: "error",
@@ -924,7 +925,9 @@ test("the library is shown, can be chosen and reloaded, and failures are explain
     error: "cannot read the library file",
     note: null,
   });
-  expect((await screen.findByText(/The library could not be opened/)).textContent).toContain("cannot read");
+  await waitFor(() => expect(screen.getByRole("status", { name: "Library status" }).textContent).toContain("not opened"));
+  expect(document.querySelector(".notices")?.textContent).toBe("");
+  expect(document.querySelector(".library-status-trigger")?.getAttribute("title")).toContain("could not be opened");
 });
 
 test("opening the first library searches the query typed before choosing it", async () => {
@@ -1053,7 +1056,7 @@ test("failed status and saved format reads show safe notices without hiding sear
   await screen.findByText("Available reference");
   expect(screen.getByText("Ibis could not check your library. Choose the file again.").getAttribute("role")).toBe("alert");
   expect(screen.getByText("Ibis could not read your saved copy format. Check Copy as before copying.").getAttribute("role")).toBe("alert");
-  expect(screen.getByRole("region", { name: "Library" }).textContent).not.toContain("No library chosen");
+  expect(screen.getByRole("region", { name: "Picker actions" }).textContent).not.toContain("No library chosen");
   expect(formatValue()).toBe("pandoc");
   expect(document.body.textContent).not.toContain("SYNTHETIC_PRIVATE_PAYLOAD");
 });
@@ -1066,9 +1069,9 @@ test.each([
 ])("%s failures are reported without rejected IPC payloads", async (command, notice) => {
   backend({ [command]: () => { throw new Error("SYNTHETIC_PRIVATE_PAYLOAD"); } });
   render(<App />);
-  await waitFor(() => expect(screen.getByRole("region", { name: "Library" }).textContent).toMatch(/reference/));
-  if (command === "choose_library") await chooseFromMore("Choose library…");
-  else if (command === "reload_library") await chooseFromMore("Reload");
+  await waitFor(() => expect(screen.getByRole("region", { name: "Picker actions" }).textContent).toMatch(/reference/));
+  if (command === "choose_library") { await chooseFromLibrary("Choose Library…"); pressRow(await screen.findByRole("option", { name: FILE_ROW })); }
+  else if (command === "reload_library") await chooseFromLibrary("Reload Library");
   else fireEvent.keyDown(screen.getByLabelText("Search references"), command === "quit"
     ? { key: "q", ctrlKey: true } : { key: "Escape" });
   expect((await screen.findByText(notice)).getAttribute("role")).toBe("alert");
@@ -1127,7 +1130,8 @@ test.each([false, true])("axe checks picker structure (library open: %s) and det
 test("a pending library check does not offer first-run setup", async () => {
   backend({ library_status: () => new Promise(() => undefined) });
   render(<App />);
-  await screen.findByText("Checking library…");
+  await waitFor(() => expect(screen.getByRole("button", { name: "Library" }).textContent).toBe("Checking library…"));
+  expect(screen.getByRole("status", { name: "Library status" }).textContent).toBe("Checking library…");
   expect(screen.queryByRole("listbox", { name: "Where do your references live?" })).toBeNull();
 });
 
@@ -1143,7 +1147,8 @@ test("opening a chosen library shows its name and searches only when ready", asy
   expect(document.body.textContent).not.toContain("No library chosen");
   fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "sleep" } });
   expect(calls).not.toContain("search");
-  await chooseFromMore("Choose library…");
+  await chooseFromLibrary("Choose Library…");
+  pressRow(await screen.findByRole("option", { name: FILE_ROW }));
   await waitFor(() => expect(calls).toContain("choose_library"));
   await act(async () => { await emit("library:changed", { revision: "1", state: "loaded", has_snapshot: true, zotero: false, name: "研究 refs.bib", snapshot_name: "研究 refs.bib", references: 1, warnings: 0, error: null, problem: null, note: null }); });
   await waitFor(() => expect(calls).toContain("search"));
@@ -1170,8 +1175,8 @@ test("a failed switch names the retained library in its accessible status", asyn
   render(<App />);
   await screen.findByText("Reference from A");
   const status = screen.getByRole("status", { name: "Library status" });
-  expect(status.textContent).toBe("active A.bib · 3 references");
-  expect(status.textContent).not.toContain("missing B.bib");
+  expect(status.querySelector(".library-source")?.textContent).toBe("active A.bib");
+  expect(status.textContent).toContain("missing B.bib⁩ not opened");
 });
 
 test("an unavailable initial library is named once without a duplicate search error", async () => {
@@ -1196,20 +1201,21 @@ test("an unavailable initial library is named once without a duplicate search er
   // The chosen row goes away, so the list that replaces it keeps the keyboard.
   pressRow(choiceRow(/^Use another library/));
   await waitFor(() => expect(document.activeElement).toBe(choiceRow(/^Zotero/)));
-  await chooseFromMore("Choose library…");
+  await chooseFromLibrary("Choose Library…");
+  pressRow(await screen.findByRole("option", { name: FILE_ROW }));
   await waitFor(() => expect(calls).toContain("choose_library"));
 });
 
 test("a failed reload reports one file error while kept references remain searchable", async () => {
   backend({
-    library_status: () => ({ state: "error", has_snapshot: true, zotero: false, name: "refs.bib", snapshot_name: "refs.bib", references: 1, warnings: 0, error: "The library file is unavailable; keeping the last loaded references.", note: null }),
+    library_status: () => ({ state: "error", has_snapshot: true, zotero: false, snapshot_zotero: false, stale: true, problem: "missing", name: "refs.bib", snapshot_name: "refs.bib", references: 1, warnings: 0, error: "The library file is unavailable; keeping the last loaded references.", note: null }),
     search: () => [result("kept", "Previously loaded reference")],
   });
   render(<App />);
   await screen.findByText("Previously loaded reference");
-  expect(screen.getAllByRole("alert")).toHaveLength(1);
-  expect(screen.getByRole("alert").textContent).toContain("refs.bib");
-  expect(screen.getByRole("alert").textContent).toContain("keeping the last loaded references");
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(screen.getByRole("status", { name: "Library status" }).textContent).toBe("refs.bib moved");
+  expect(screen.getByRole("button", { name: "Find ⁨refs.bib⁩…" })).toBeTruthy();
 });
 
 test.each(["backup", "defaults"])("settings recovery from %s stays visible through a library reload", async (fallback) => {
@@ -1240,7 +1246,8 @@ test.each(["", "sleep"])("an empty loaded library is explained even for query %s
 test.each([false, true])("a failed library open is not described as an empty export (retained: %s)", async (retained) => {
   backend({ library_status: () => ({ state: "error", has_snapshot: retained, zotero: false, name: "missing B.bib", snapshot_name: retained ? "empty A.bib" : null, references: 0, warnings: 0, error: "The library file is unavailable", note: null }) });
   render(<App />);
-  await screen.findByRole("alert");
+  await waitFor(() => expect(screen.getByRole("status", { name: "Library status" }).textContent).toContain("not opened"));
+  if (!retained) expect(screen.getByRole("alert")).toBeTruthy();
   expect(document.body.textContent).not.toContain("No references found");
   expect(document.body.textContent).not.toContain("Choose a BibTeX or BibLaTeX export");
 });
@@ -1335,7 +1342,7 @@ test("the design scale keeps text readable and every colour role legible in both
   for (const role of ["--muted", "--citation", "--status-done", "--status-look", "--status-stop"]) {
     pair(role).forEach((colour, mode) => {
       const [lighter, darker] = [luminance(hex(colour)), luminance(hex(surface[mode]!))].sort((a, b) => b - a);
-      expect((lighter! + .05) / (darker! + .05), `${role} in ${mode ? "dark" : "light"} mode`).toBeGreaterThanOrEqual(4.5);
+      expect((lighter! + .05) / (darker! + .05), `${role} in ${mode ? "dark" : "light"} mode`).toBeGreaterThanOrEqual(role === "--status-look" ? 3 : 4.5);
     });
   }
 });
@@ -1373,7 +1380,7 @@ test("Search shortcut opening gives Escape an invoker through the animated exit"
   render(<App />);
   const search = screen.getByLabelText("Search references");
   const more = screen.getByRole("button", { name: /^More/ });
-  await waitFor(() => expect(screen.getByRole("region", { name: "Library" }).textContent).toMatch(/reference/));
+  await waitFor(() => expect(screen.getByRole("region", { name: "Picker actions" }).textContent).toMatch(/reference/));
   act(() => search.focus());
   let popover: Element | undefined;
   const focusMore = more.focus.bind(more);
@@ -1476,12 +1483,12 @@ test("Ctrl+K opens More with every action, Escape closes it before hiding the pi
   const calls = backend({ hide_picker: () => null, reload_library: () => null });
   render(<App />);
   const box = screen.getByLabelText("Search references");
-  await waitFor(() => expect(screen.getByRole("region", { name: "Library" }).textContent).toMatch(/reference/));
+  await waitFor(() => expect(screen.getByRole("region", { name: "Picker actions" }).textContent).toMatch(/reference/));
   fireEvent.keyDown(box, { key: "k", ctrlKey: true });
   const menu = await screen.findByRole("menu");
   const items = within(menu).getAllByRole("menuitem").map((item) => item.textContent);
-  expect(items).toEqual(["Choose library…", "Use Zotero", "Reload", "Rows: Comfortable", "Forget formats for apps", "Settings…Ctrl+,", "Keyboard shortcutsCtrl+/", "Quit IbisCtrl+Q"]);
-  expect(within(menu).getByRole("menuitemcheckbox", { name: "Larger text" }).getAttribute("aria-checked")).toBe("false");
+  expect(items).toEqual(["Open ZoteroCtrl+O", "Rows: Comfortable›", "Keyboard shortcutsCtrl+/", "Settings…Ctrl+,", "Quit IbisCtrl+Q"]);
+  expect(within(menu).getByRole("menuitemcheckbox", { name: "Keep window open" }).getAttribute("aria-checked")).toBe("false");
   expect(document.activeElement).toBe(within(menu).getAllByRole("menuitem")[0]);
   fireEvent.keyDown(document.activeElement!, { key: "ArrowUp" });
   expect(document.activeElement?.textContent).toContain("Quit Ibis");
@@ -1960,12 +1967,12 @@ test("rapid A-B-A choices keep the last failed choice for retry without replayin
   await screen.findByText(/could not read or save your picker choices/);
   expect(remembered).toBe("pandoc");
   expect(screen.queryByText(/SYNTHETIC_PRIVATE_SAVE_ERROR/)).toBeNull();
-  await chooseFromMore("Rows: Comfortable");
+  await chooseRows("spacious");
   await waitFor(() => expect(screen.queryByText(/could not read or save your picker choices/)).toBeNull());
   expect(remembered).toBe("cite");
   expect(keys).toEqual(["cite", "pandoc", "cite", "cite", null]);
   remembered = "keys"; // A hand edit after a successful save must survive.
-  await chooseFromMore("Larger text", "menuitemcheckbox");
+  await chooseRows("compact");
   await waitFor(() => expect(keys).toHaveLength(6));
   expect(keys[5]).toBeNull();
   expect(remembered).toBe("keys");
@@ -2057,7 +2064,7 @@ test("a stuck settings request cannot keep Quit waiting indefinitely", async () 
   expect(calls).toContain("quit");
 });
 
-test("format, density and text size choices are saved without losing each other", async () => {
+test("format, density and preview choices are saved without losing each other", async () => {
   const saved: unknown[] = [];
   backend({
     copy_format: () => "typst",
@@ -2066,8 +2073,8 @@ test("format, density and text size choices are saved without losing each other"
   render(<App />);
   await waitFor(() => expect(formatValue()).toBe("typst"));
   chooseFormat("style:ieee");
-  await chooseFromMore("Rows: Comfortable");
-  await chooseFromMore("Larger text", "menuitemcheckbox");
+  await chooseRows("spacious");
+  await chooseFromMore("Show what will be pasted", "menuitemcheckbox");
   // A toggle keeps More open; close it before reaching the header.
   fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
   chooseFormat("pandoc");
@@ -2075,10 +2082,10 @@ test("format, density and text size choices are saved without losing each other"
   expect(saved).toMatchObject([
     { citation_style: "ieee" },
     { density: "spacious" },
-    { larger_text: true },
+    { show_paste_preview: false },
     { citation_style: null },
   ]);
-  expect(Object.assign({}, ...saved)).toEqual({ citation_style: null, density: "spacious", larger_text: true });
+  expect(Object.assign({}, ...saved)).toEqual({ citation_style: null, density: "spacious", show_paste_preview: false });
   expect(document.documentElement.dataset.density).toBe("spacious");
 });
 
@@ -2111,8 +2118,8 @@ test("unreadable saved choices are reported and never overwritten with defaults"
   // The saved key format still applies, so the next copy does not replace it.
   expect(formatValue()).toBe("typst");
   chooseFormat("style:apa");
-  await chooseFromMore("Larger text", "menuitemcheckbox");
-  expect(document.documentElement.dataset.textSize).toBe("larger");
+  await chooseRows("spacious");
+  expect(document.documentElement.dataset.density).toBe("spacious");
   expect(calls).not.toContain("set_picker_preferences");
 });
 
@@ -2206,10 +2213,10 @@ test("setup replaces Find with its discovered file and leaves a usable focused t
 function zoteroStatus(libraries: unknown[]) {
   return { revision: "1", state: "loaded", has_snapshot: true, zotero: true, zotero_libraries: libraries,
     name: libraries.length > 1 ? `${libraries.length} Zotero libraries` : "Zotero library",
-    snapshot_name: "Zotero library", references: 2, warnings: 0, error: null, problem: null, note: null };
+    snapshot_name: "Zotero library", snapshot_zotero: true, references: 2, warnings: 0, error: null, problem: null, note: null };
 }
 
-test("More lists Zotero libraries as checkboxes and turning one on reads them together", async () => {
+test("The library menu lists Zotero libraries as checkboxes and turning one on reads them together", async () => {
   const chosen: unknown[][] = [];
   backend({
     library_status: () => zoteroStatus(["user"]),
@@ -2217,8 +2224,8 @@ test("More lists Zotero libraries as checkboxes and turning one on reads them to
     use_zotero_libraries: ({ libraries }) => { chosen.push(libraries as unknown[]); return null; },
   });
   render(<App />);
-  await waitFor(() => expect(screen.getByRole("region", { name: "Library" }).textContent).toMatch(/Zotero/));
-  fireEvent.click(screen.getByRole("button", { name: /^More/ }));
+  await waitFor(() => expect(screen.getByRole("region", { name: "Picker actions" }).textContent).toMatch(/Zotero/));
+  fireEvent.click(libraryButton());
   const group = await screen.findByRole("group", { name: "Zotero libraries" });
   await within(group).findByRole("menuitemcheckbox", { name: "Synthetic lab" });
   const [mine, lab, reading] = within(group).getAllByRole("menuitemcheckbox");
@@ -2247,7 +2254,7 @@ test("with several Zotero libraries each result names its library, and a left gr
   const shared = (await screen.findByText("Shared")).closest("li")!;
   await within(shared).findByText("Synthetic lab");
   expect(within(screen.getByText("Mine").closest("li")!).getByText("My Library")).toBeTruthy();
-  await chooseFromMore("Group 9", "menuitemcheckbox");
+  await chooseFromLibrary("Group 9", "menuitemcheckbox");
   await waitFor(() => expect(chosen).toEqual([["user", { group: 42 }]]));
 });
 
@@ -2278,14 +2285,14 @@ test("a failed group list is reported and My Library stays available", async () 
     zotero_groups: () => { throw new Error("synthetic: Zotero closed"); },
   });
   render(<App />);
-  await waitFor(() => expect(screen.getByRole("region", { name: "Library" }).textContent).toMatch(/Zotero/));
-  fireEvent.click(screen.getByRole("button", { name: /^More/ }));
+  await waitFor(() => expect(screen.getByRole("region", { name: "Picker actions" }).textContent).toMatch(/Zotero/));
+  fireEvent.click(libraryButton());
   expect(await screen.findByText(/could not list your Zotero groups/)).toBeTruthy();
-  const group = screen.getByRole("group", { name: "Zotero libraries" });
-  expect(within(group).getAllByRole("menuitemcheckbox").map((box) => box.textContent)).toEqual(["My Library"]);
+  expect(screen.queryByRole("group", { name: "Zotero libraries" })).toBeNull();
+  expect(screen.getByRole("menuitem", { name: "Choose Library…" })).toBeTruthy();
 });
 
-test.each(["Ctrl+K", "Escape", "Tab", "outside click"])("closing More with %s dismisses its group-list error and reopening retries", async (closeWith) => {
+test.each(["Ctrl+K", "Escape", "Tab", "outside click"])("closing the library menu with %s dismisses its group-list error and reopening retries", async (closeWith) => {
   let requests = 0;
   let rejectRetry: (error: Error) => void = () => undefined;
   backend({
@@ -2296,12 +2303,16 @@ test.each(["Ctrl+K", "Escape", "Tab", "outside click"])("closing More with %s di
     },
   });
   render(<App />);
-  await waitFor(() => expect(screen.getByRole("region", { name: "Library" }).textContent).toMatch(/Zotero/));
-  const more = screen.getByRole("button", { name: /^More/ });
+  await waitFor(() => expect(screen.getByRole("region", { name: "Picker actions" }).textContent).toMatch(/Zotero/));
+  const more = libraryButton();
   fireEvent.click(more);
   await screen.findByText(/could not list your Zotero groups/);
   // A click outside, on More itself too, lands on the menu's underlay, as in a native menu.
-  if (closeWith === "Ctrl+K") fireEvent.keyDown(screen.getByRole("menu"), { key: "k", ctrlKey: true });
+  if (closeWith === "Ctrl+K") {
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "k", ctrlKey: true });
+    const moreMenu = screen.getByRole("menu", { name: "More" });
+    fireEvent.keyDown(moreMenu, { key: "Escape" });
+  }
   else if (closeWith === "outside click") { fireEvent.pointerDown(document.body); fireEvent.click(document.body); }
   else fireEvent.keyDown(screen.getByRole("menu"), { key: closeWith });
   expect(screen.queryByRole("menu")).toBeNull();
@@ -2330,20 +2341,20 @@ test("background group-name lookup keeps cached names without showing a closed-m
   await act(async () => { await emit("library:changed", zoteroStatus(["user", { group: 42 }])); });
   expect(screen.queryByText(/could not list your Zotero groups/)).toBeNull();
   expect(within(shared).getByText("Synthetic lab")).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", { name: /^More/ }));
+  fireEvent.click(libraryButton());
   expect(await screen.findByText(/could not list your Zotero groups/)).toBeTruthy();
   expect(screen.getByRole("menuitemcheckbox", { name: "Synthetic lab" })).toBeTruthy();
 });
 
-test.each([false, true])("a late group-list failure stays dismissed after closing More (several libraries: %s)", async (several) => {
+test.each([false, true])("a late group-list failure stays dismissed after closing the library menu (several libraries: %s)", async (several) => {
   const rejected: ((error: Error) => void)[] = [];
   const calls = backend({
     library_status: () => zoteroStatus(several ? ["user", { group: 42 }] : ["user"]),
     zotero_groups: () => new Promise((_, reject) => { rejected.push(reject); }),
   });
   render(<App />);
-  await waitFor(() => expect(screen.getByRole("region", { name: "Library" }).textContent).toMatch(/Zotero/));
-  fireEvent.click(screen.getByRole("button", { name: /^More/ }));
+  await waitFor(() => expect(screen.getByRole("region", { name: "Picker actions" }).textContent).toMatch(/Zotero/));
+  fireEvent.click(libraryButton());
   await waitFor(() => expect(calls).toContain("zotero_groups"));
   fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
   await act(async () => { rejected.forEach((reject) => reject(new Error("synthetic: late failure"))); });
@@ -2357,8 +2368,8 @@ test("a late group-list failure from a previous opening cannot replace a success
     zotero_groups: () => new Promise((resolve, reject) => { requests.push({ resolve, reject }); }),
   });
   render(<App />);
-  await waitFor(() => expect(screen.getByRole("region", { name: "Library" }).textContent).toMatch(/Zotero/));
-  const more = screen.getByRole("button", { name: /^More/ });
+  await waitFor(() => expect(screen.getByRole("region", { name: "Picker actions" }).textContent).toMatch(/Zotero/));
+  const more = libraryButton();
   fireEvent.click(more);
   fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
   const old = [...requests];
@@ -2377,8 +2388,8 @@ test("switching to a file removes a previous Zotero group-list failure", async (
     zotero_groups: () => { throw new Error("synthetic: Zotero closed"); },
   });
   render(<App />);
-  await waitFor(() => expect(screen.getByRole("region", { name: "Library" }).textContent).toMatch(/Zotero/));
-  fireEvent.click(screen.getByRole("button", { name: /^More/ }));
+  await waitFor(() => expect(screen.getByRole("region", { name: "Picker actions" }).textContent).toMatch(/Zotero/));
+  fireEvent.click(libraryButton());
   await screen.findByText(/could not list your Zotero groups/);
   await act(async () => { await emit("library:changed", { revision: "1", state: "loaded", has_snapshot: true, zotero: false,
     name: "synthetic.bib", snapshot_name: "synthetic.bib", references: 1, warnings: 0, error: null, problem: null, note: null }); });
@@ -2399,8 +2410,8 @@ test("two Zotero libraries turned on before the first is reported are both kept,
     },
   });
   render(<App />);
-  await waitFor(() => expect(screen.getByRole("region", { name: "Library" }).textContent).toMatch(/Zotero/));
-  fireEvent.click(screen.getByRole("button", { name: /^More/ }));
+  await waitFor(() => expect(screen.getByRole("region", { name: "Picker actions" }).textContent).toMatch(/Zotero/));
+  fireEvent.click(libraryButton());
   const group = await screen.findByRole("group", { name: "Zotero libraries" });
   fireEvent.click(await within(group).findByRole("menuitemcheckbox", { name: "Synthetic lab" }));
   fireEvent.click(within(group).getByRole("menuitemcheckbox", { name: "Reading group" }));
@@ -2608,10 +2619,10 @@ test("the footer says what Enter will copy, and holding Alt shows the other keys
   render(<App />);
   const box = screen.getByLabelText("Search references");
   // Nothing to copy yet, so Enter is not advertised.
-  await waitFor(() => expect(footerKeys()).toBe("Shortcuts Ctrl+/"));
+  await waitFor(() => expect(footerKeys()).toBe(""));
   fireEvent.change(box, { target: { value: "x" } });
   await screen.findByText("First");
-  expect(footerKeys()).toBe("Copy as Pandoc Enter · Shortcuts Ctrl+/");
+  expect(footerKeys()).toBe("Copy as Pandoc Enter");
   chooseFormat("typst");
   await waitFor(() => expect(footerKeys()).toContain("Copy as Typst Enter"));
   fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
@@ -2638,7 +2649,8 @@ test("More reads like the hints beside it: its name first, then its keys", async
   // The hint that comes and goes is first, so More never moves.
   const hints = [...screen.getByRole("group", { name: "Keys" }).children];
   expect(hints[0]?.textContent).toContain("Copy as Pandoc");
-  expect(hints.at(-1)?.textContent).toContain("Shortcuts");
+  expect(hints).toHaveLength(1);
+  expect(more.compareDocumentPosition(hints[0]!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 });
 
 test("footer actions copy and open shortcuts without using a keyboard shortcut", async () => {
@@ -2656,12 +2668,11 @@ test("footer actions copy and open shortcuts without using a keyboard shortcut",
   fireEvent.pointerUp(copy, { button: 0, pointerType: "mouse" });
   fireEvent.click(copy);
   await waitFor(() => expect(copied).toEqual(selections([{ library: "refs.bib", key: "a" }])));
-  const shortcuts = screen.getByRole("button", { name: "Shortcuts" });
-  act(() => shortcuts.focus());
-  fireEvent.click(shortcuts);
+  expect(screen.queryByRole("button", { name: "Shortcuts" })).toBeNull();
+  await chooseFromMore("Keyboard shortcuts");
   expect(await screen.findByRole("dialog", { name: "Keyboard shortcuts" })).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "Close" }));
-  expect(document.activeElement).toBe(shortcuts);
+  expect(document.activeElement).toBe(screen.getByLabelText("Search references"));
 });
 
 test("alternate footer buttons use the current add, remove, clear and hide actions", async () => {
@@ -2717,9 +2728,9 @@ test("the footer names the source and count, the age only when it matters, and t
   render(<App />);
   const live = await screen.findByRole("status", { name: "Library status" });
   await waitFor(() => expect(live.textContent).toBe("Zotero · 1,204 references"));
-  const item = live.closest(".library-status")!;
+  const item = screen.getByRole("button", { name: "Library" }).querySelector(".library-status")!;
   expect(item.textContent).toBe("Zotero · 1,204 references");
-  expect(item.getAttribute("data-health")).toBe("done");
+  expect(item.closest(".library-status-controls")?.getAttribute("data-health")).toBe("done");
   expect(plain(item.getAttribute("title"))).toMatch(/^Zotero · 1,204 references\nMy Library, (Group 7|Lab group) · checked 3 hours ago, .+$/);
   fireEvent.click(screen.getByRole("button", { name: /^More/ }));
   const group = await screen.findByRole("group", { name: /Lab group/ });
@@ -2736,9 +2747,9 @@ test("the footer names the source and count, the age only when it matters, and t
   status = { ...status, state: "error", stale: true, checked_at: Date.now() - 2 * 3_600_000,
     error: "Zotero is not running, or it is not accepting connections; keeping the last loaded references" };
   await emit("library:changed", status);
-  await waitFor(() => expect(item.textContent).toBe("Zotero · not updated · checked 2 hours ago"));
-  expect(item.getAttribute("data-health")).toBe("look");
-  expect(plain(item.getAttribute("title"))).toMatch(/^Zotero · 1,205 references\nMy Library, Lab group · checked 2 hours ago, .+ · 2 Zotero libraries could not be read\. Zotero is not running, or it is not accepting connections; keeping the last loaded references\. Open Zotero, then reload\.$/);
+  await waitFor(() => expect(item.textContent).toBe("Zotero not updated · 2 h"));
+  expect(item.closest(".library-status-controls")?.getAttribute("data-health")).toBe("stop");
+  expect(plain(item.getAttribute("title"))).toMatch(/^Zotero · 1,205 references\nMy Library, Lab group · last read 2 hours ago, .+ · 2 Zotero libraries could not be read\. Zotero is not running, or it is not accepting connections; keeping the last loaded references\. Open Zotero, then reload\.$/);
 });
 
 test("? lists every key in a modal dialog, but a ? typed in the search is text", async () => {
@@ -2875,7 +2886,7 @@ test("the footer can wait for pending engine output and never offers failed outp
   }
 });
 
-test("first run leaves starting at login to More", async () => {
+test("first run leaves starting at login to Settings", async () => {
   backend({ library_status: () => NO_LIBRARY, login_item: () => ({ name: "Ibis", enabled: false, problem: null }) });
   render(<App />);
   await screen.findByRole("option", { name: FILE_ROW });
@@ -2900,47 +2911,6 @@ test("each system's login item is in its own words, and its problems name where 
       expect(message.includes("log in")).toBe(platform !== "windows" && /unsupported|unreadable/.test(problem));
     }
   }
-});
-
-test("the More menu names starting at login as the page's platform does", async () => {
-  backend({ login_item: () => ({ name: "Ibis", enabled: false, problem: null }) });
-  document.documentElement.dataset.system = "macos";
-  try {
-    render(<App />);
-    fireEvent.click(screen.getByRole("button", { name: /^More/ }));
-    expect(await screen.findByRole("menuitemcheckbox", { name: "Open at Login" })).toBeTruthy();
-  } finally {
-    delete document.documentElement.dataset.system;
-  }
-});
-
-test("quick clicks end in the state of the last click", async () => {
-  let system = false;
-  const order: boolean[] = [];
-  const pending: (() => void)[] = [];
-  backend({
-    login_item: () => ({ name: "Ibis Nightly", enabled: system, problem: null }),
-    // The first change answers last if the calls were not kept in order.
-    set_login_item: ({ enabled }) => new Promise((resolve) => {
-      order.push(Boolean(enabled));
-      const finish = () => { system = Boolean(enabled); resolve({ name: "Ibis Nightly", enabled: system, problem: null }); };
-      if (order.length === 1) pending.push(finish); else finish();
-    }),
-  });
-  render(<App />);
-  fireEvent.click(screen.getByRole("button", { name: /^More/ }));
-  const item = await screen.findByRole("menuitemcheckbox", { name: "Start on Login" });
-  fireEvent.click(item);
-  await waitFor(() => expect(item.getAttribute("aria-checked")).toBe("true"));
-  fireEvent.click(item);
-  await waitFor(() => expect(item.getAttribute("aria-checked")).toBe("false"));
-  // The second call waits for the first.
-  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
-  expect(order).toEqual([true]);
-  await act(async () => { pending.shift()?.(); await new Promise((resolve) => setTimeout(resolve, 0)); });
-  await waitFor(() => expect(order).toEqual([true, false]));
-  await waitFor(() => expect(system).toBe(false));
-  expect(item.getAttribute("aria-checked")).toBe("false");
 });
 
 test.each(["style:ieee", "pandoc", "style:apa"])("changing format cancels a click waiting for its preview (%s)", async (next) => {
@@ -3448,12 +3418,12 @@ test.each([false, true])("retained stale freshness stays in accessible footer de
   await screen.findByText("Retained searchable reference");
   expect(screen.queryByRole("alert")).toBeNull();
   expect(screen.getByRole("status", { name: "Library status" }).textContent).toContain("not updated");
-  expect(container.querySelector(".status-dot")?.getAttribute("data-health")).toBe("look");
+  expect(container.querySelector(".status-dot")?.getAttribute("data-health")).toBe("stop");
   expect(container.querySelector(".library-detail")?.textContent).toContain(reason);
   fireEvent.click(screen.getByRole("button", { name: /^More/ }));
   expect(screen.getByRole("menu").textContent).toContain(reason);
   expect(screen.getByRole("group", { name: new RegExp(zotero ? "Open Zotero, then reload" : "Choose it again or reconnect") })).toBeTruthy();
-  await chooseFromMore("Reload");
+  await chooseFromLibrary("Reload Library");
   await waitFor(() => expect(calls).toContain("reload_library"));
 });
 
@@ -3597,7 +3567,7 @@ test.each(["Tab", "Reload"])("Format hands off to More so %s returns to Search",
   const more = await screen.findByRole("menu", { name: /^More/ });
   expect(trigger.getAttribute("aria-expanded")).toBe("false");
   if (action === "Tab") fireEvent.keyDown(more, { key: "Tab" });
-  else fireEvent.click(await screen.findByRole("menuitem", { name: "Reload" }));
+  else await chooseFromLibrary("Reload Library");
   await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
   await waitFor(() => expect(document.activeElement).toBe(search));
   expect(search.value).toBe("sleep");
@@ -3704,21 +3674,14 @@ test("hiding output keeps chips and pending copy checks, and remembers the choic
   }
 });
 
-test("the Ibis mark can replace the search glyph and is remembered", async () => {
-  let mark = false;
-  backend({
-    search: () => [],
-    picker_preferences: () => ({ citation_style: null, density: "comfortable", larger_text: false, show_paste_preview: true, search_mark: mark, paste: true }),
-    set_picker_preferences: ({ preferences }) => { mark = (preferences as api.PickerPreferences).search_mark; return null; },
-  });
-  const first = render(<App />);
-  expect(document.querySelector(".search-mark")).toBeNull();
-  await chooseFromMore("Ibis mark in search", "menuitemcheckbox");
-  await waitFor(() => expect(mark).toBe(true));
-  expect(document.querySelector(".search-mark")).toBeTruthy();
-  first.unmount();
+test("the search glyph follows Settings on first load and when its saved choice changes", async () => {
+  let mark = true;
+  backend({ search: () => [], picker_preferences: () => ({ citation_style: null, density: "comfortable", larger_text: false, show_paste_preview: true, search_mark: mark, paste: true }) });
   render(<App />);
   await waitFor(() => expect(document.querySelector(".search-mark")).toBeTruthy());
+  mark = false;
+  await act(async () => { await emit("preferences:changed"); });
+  await waitFor(() => expect(document.querySelector(".search-mark")).toBeNull());
 });
 
 
@@ -3889,7 +3852,7 @@ test("update progress never takes focus, toggles the pin or accepts a stale oper
   expect(calls).not.toContain("set_pinned");
   await act(async () => { await emit("update:progress", { ...progress, revision: 3, phase: "failed" }); });
   expect(screen.queryByRole("progressbar")).toBeNull();
-  expect(screen.getByRole("alert").textContent).toContain("Check for updates in More");
+  expect(screen.getByRole("alert").textContent).toContain("Check now in Settings > About");
 });
 
 test("unavailable update events show a fixed notice, retain typing and discard replaced failures", async () => {

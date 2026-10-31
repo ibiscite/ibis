@@ -20,6 +20,8 @@ export const {
   zoteroGroups,
   reloadLibrary,
   libraryStatus,
+  openLibrarySource,
+  librarySource,
   hidePicker,
   setPinned,
   quit,
