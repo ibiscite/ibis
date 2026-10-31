@@ -251,9 +251,10 @@ existing atomic-write and single-owner rules. Users can forget the record.
 Only native identities that survive a key rename qualify; never infer continuity
 from titles/DOIs when a `.bib` entry key changes its identity. A successful new
 key copy replaces the baseline, not the keys in any manuscript. Clipboard success
-is the commit event; previews, CLI stdout and MCP formatting do not count. Batch
-history writes occur outside the source/clipboard barrier and preserve successful
-copy order rather than disk-completion order. Stable and Nightly stay isolated.
+is the commit event; diagnostic old/new-key copies, previews, CLI stdout and MCP
+formatting do not count. Batch history writes occur outside the source/clipboard
+barrier and preserve successful copy order rather than disk-completion order.
+Stable and Nightly stay isolated.
 This permission does not change MCP's exclusion of notes, annotations and private links.
 
 ## 0031 What Ibis remembers per app

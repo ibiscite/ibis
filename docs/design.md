@@ -1211,7 +1211,9 @@ the current adapter's identity; do not infer continuity from a title or DOI.
 
 Remember the actual emitted key after successful native clipboard publication,
 including a copied fallback when paste is unavailable. Previews, failed copies,
-formatted-only output, brief exports, CLI stdout and MCP formatting do not count.
+formatted-only output, brief exports, Copy old/new keys, CLI stdout and MCP
+formatting do not count. Copying the diagnostic explanation leaves the remembered
+baseline and warning intact.
 Several keys update as one successful-copy batch; older asynchronous storage cannot
 overwrite a newer successful copy. Copying the new key replaces the remembered
 baseline; it does not repair old documents or produce an “all clear” claim. Deleted
