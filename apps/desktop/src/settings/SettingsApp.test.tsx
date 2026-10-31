@@ -1000,6 +1000,49 @@ test("a picker preference event updates open Settings without focus, and Setting
   expect(state.preferenceEvents).toEqual([]);
 });
 
+test("a failed queued edit restores the preceding acknowledged save when rereading also fails", async () => {
+  const { api, state, commit } = fakeApi({ granted: true });
+  const pending = deferred<void>();
+  vi.spyOn(api, "setPickerPreferences")
+    .mockImplementationOnce(async (patch, key) => { await pending.promise; return commit(patch, key); })
+    .mockRejectedValueOnce("settings-read-only");
+  render(<SettingsApp api={api} initialPage="look" />);
+  await screen.findByRole("radio", { name: "Spacious" });
+  vi.spyOn(api, "pickerPreferences").mockRejectedValueOnce(new Error("synthetic failed read"));
+  fireEvent.click(screen.getByRole("radio", { name: "Spacious" }));
+  fireEvent.click(screen.getByRole("radio", { name: "Larger" }));
+  await act(async () => pending.resolve());
+  expect(screen.getByRole("alert").textContent).toBe("The settings file is read-only; the saved value is shown.");
+  expect(screen.getByRole("radio", { name: "Spacious" })).toHaveProperty("checked", true);
+  expect(screen.getByRole("radio", { name: "Default" })).toHaveProperty("checked", true);
+  expect(state.preferences).toMatchObject({ density: "spacious", larger_text: false });
+});
+
+test("a picker change survives a Settings save reply delayed beyond the close timeout", async () => {
+  const { api, state, commit } = fakeApi({ granted: true });
+  const pending = deferred<Awaited<ReturnType<SettingsApi["setPickerPreferences"]>>>();
+  let older!: Awaited<ReturnType<SettingsApi["setPickerPreferences"]>>;
+  vi.spyOn(api, "setPickerPreferences").mockImplementationOnce(async (patch, key) => {
+    older = await commit(patch, key);
+    return pending.promise;
+  });
+  const mounted = render(<SettingsApp api={api} initialPage="look" />);
+  await screen.findByRole("radio", { name: "Compact" });
+  vi.useFakeTimers();
+  fireEvent.click(screen.getByRole("radio", { name: "Compact" }));
+  await act(async () => undefined);
+  await commit({ density: "spacious" });
+  await act(async () => { for (const changed of state.preferenceEvents) changed(); });
+  await act(async () => vi.advanceTimersByTimeAsync(2_500));
+  await act(async () => pending.resolve(older));
+  expect(screen.getByRole("radio", { name: "Spacious" })).toHaveProperty("checked", true);
+  expect(state.preferences.density).toBe("spacious");
+  mounted.unmount();
+  vi.useRealTimers();
+  render(<SettingsApp api={api} initialPage="look" />);
+  expect(await screen.findByRole("radio", { name: "Spacious" })).toHaveProperty("checked", true);
+});
+
 test("Appearance, nine accents, both search icons, both text sizes and preview persist separately", async () => {
   const { api, state } = fakeApi({ granted: true });
   const mounted = render(<SettingsApp api={api} initialPage="look" />);

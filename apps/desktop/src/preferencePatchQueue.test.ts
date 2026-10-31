@@ -194,6 +194,31 @@ test("a native change notification waits for local writes and refreshes cross-wi
   expect(updates).not.toHaveBeenCalled();
 });
 
+test.each([false, true])("notifications retire old replies before an unbounded refresh (readAfterWrites=%s)", async (readAfterWrites) => {
+  const { api, queue, events } = fixture({ readAfterWrites });
+  await queue.load();
+  const write = deferred<PickerSave>(), read = deferred<PreferenceRead>();
+  api.write.mockReturnValueOnce(write.promise);
+  api.read.mockReturnValueOnce(read.promise);
+  queue.change({ density: "compact" });
+  const refresh = queue.refresh();
+  events.mockClear();
+  vi.useFakeTimers();
+  try {
+    await vi.advanceTimersByTimeAsync(2_500);
+    expect(api.read).toHaveBeenCalledOnce();
+    write.resolve({ preferences: { ...defaults, density: "compact" }, copy_format: "pandoc" });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(api.read).toHaveBeenCalledTimes(2);
+    expect(events).not.toHaveBeenCalled();
+    const latest = { preferences: { ...defaults, density: "spacious" as const } };
+    read.resolve(latest);
+    await refresh;
+    expect(events).toHaveBeenCalledExactlyOnceWith({ type: "read", value: latest, pendingStyle: false });
+    expect(queue.savedPreferences?.density).toBe("spacious");
+  } finally { vi.useRealTimers(); }
+});
+
 test("a failed read publishes nothing after unmount", async () => {
   const { api, queue, events } = fixture();
   const read = deferred<PreferenceRead>();

@@ -313,10 +313,10 @@ pub(crate) async fn set_picker_preferences<R: tauri::Runtime>(
     app: AppHandle<R>,
     window: tauri::Window<R>,
 ) -> Result<PickerSave, String> {
+    let intent = settings_file.reserve_preferences(preferences, copy_format)?;
     let settings_file = settings_file.inner().clone();
     // A change made in Settings reaches the picker; the picker's own are already shown.
     let from_elsewhere = window.label() != "main";
-    let intent = settings_file.reserve_preferences(preferences, copy_format)?;
     // Keep the whole locked read/change/flush off the command and async workers.
     tauri::async_runtime::spawn_blocking(move || {
         let saved = settings_file.save_reserved_preferences(intent)?;
@@ -354,7 +354,8 @@ struct PreferenceIntent {
 }
 
 impl SettingsFile {
-    /// Reserve at command arrival, before a worker can be delayed behind another window.
+    /// Reserve before blocking work. Async command dispatch can still be
+    /// reordered before its first poll; tickets order saves after reservation.
     fn reserve_preferences(
         &self,
         mut preferences: PickerPreferencesPatch,
@@ -493,6 +494,53 @@ mod tests {
             headers: Default::default(),
             invoke_key: tauri::test::INVOKE_KEY.into(),
         }
+    }
+
+    #[test]
+    #[ignore = "known dispatch-to-first-poll race in the authorized async fallback"]
+    fn a_command_suspended_before_its_first_poll_cannot_overwrite_a_later_dispatch() {
+        let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+        let path = directory.path().join("settings.json");
+        let app = tauri::test::mock_builder()
+            .manage(SettingsFile::new(path.clone()))
+            .build(tauri::generate_context!(test = true))
+            .unwrap_or_else(|e| panic!("{e}"));
+        let older_window = tauri::WebviewWindowBuilder::new(&app, "settings", Default::default())
+            .build()
+            .unwrap_or_else(|e| panic!("{e}"));
+        let newer_window = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+            .build()
+            .unwrap_or_else(|e| panic!("{e}"));
+        // Construct the actual command responses in dispatch order, but suspend
+        // A before any asynchronous command code (including reservation) runs.
+        let older = set_picker_preferences(
+            PickerPreferencesPatch {
+                density: Some(Density::Compact),
+                accent: Some(Accent::Purple),
+                ..Default::default()
+            },
+            Some(KeyFormat::Typst),
+            app.state::<SettingsFile>(),
+            app.handle().clone(),
+            older_window.as_ref().window(),
+        );
+        let newer = set_picker_preferences(
+            PickerPreferencesPatch {
+                density: Some(Density::Spacious),
+                ..Default::default()
+            },
+            Some(KeyFormat::Cite),
+            app.state::<SettingsFile>(),
+            app.handle().clone(),
+            newer_window.as_ref().window(),
+        );
+        tauri::async_runtime::block_on(newer).unwrap_or_else(|e| panic!("{e}"));
+        tauri::async_runtime::block_on(older).unwrap_or_else(|e| panic!("{e}"));
+        // Restart's read must match the newer window, retaining unrelated fields.
+        let reopened = read_preferences(&path).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(reopened.density, Density::Spacious);
+        assert_eq!(reopened.copy_format, Some(KeyFormat::Cite));
+        assert_eq!(reopened.accent, Some(Accent::Purple));
     }
 
     #[test]

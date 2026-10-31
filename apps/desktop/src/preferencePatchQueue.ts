@@ -20,11 +20,13 @@ type Event =
 export class PreferencePatchQueue {
   private listeners = new Set<(event: Event) => void>();
   private loaded = false;
+  private durable: PickerPreferences | null = null;
   private patch: Patch = {};
   private revisions: Revisions = {};
   private key: { value: KeyFormat; saved: boolean } | null = null;
   private revision = 0;
   private reads = 0;
+  private notifications = 0;
   private pending = 0;
   private saving: Promise<unknown> = Promise.resolve();
   private loading: Promise<void> = Promise.resolve();
@@ -47,6 +49,9 @@ export class PreferencePatchQueue {
     return () => { this.listeners.delete(listener); };
   }
 
+  /** Last acknowledged state, excluding replies superseded by native events. */
+  get savedPreferences(): PickerPreferences | null { return this.durable; }
+
   private emit(event: Event) {
     for (const listener of this.listeners) listener(event);
   }
@@ -63,6 +68,7 @@ export class PreferencePatchQueue {
   change(change: Patch, key: KeyFormat | null = null): void {
     const revision = ++this.revision;
     const reading = this.reads;
+    const notification = this.notifications;
     if (key !== null) this.key = { value: key, saved: false };
     this.patch = { ...this.patch, ...change };
     for (const field of Object.keys(change) as (keyof PickerPreferences)[]) this.revisions[field] = revision;
@@ -76,6 +82,7 @@ export class PreferencePatchQueue {
       const patch = Object.fromEntries(Object.entries(queued).filter(([field]) =>
         deliberate.has(field) || this.revisions[field as keyof PickerPreferences] === revisions[field as keyof PickerPreferences]));
       const saved = await this.api.write(patch, chosenKey && !chosenKey.saved ? chosenKey.value : null);
+      if (notification === this.notifications) this.durable = saved.preferences;
       for (const field of Object.keys(patch) as (keyof PickerPreferences)[]) {
         if (this.revisions[field] === revisions[field]) {
           delete this.patch[field];
@@ -84,7 +91,7 @@ export class PreferencePatchQueue {
       }
       if (chosenKey) chosenKey.saved = true;
       if (this.key === chosenKey) this.key = null;
-      if (revision === this.revision && (!this.policy.readAfterWrites || reading === this.reads)) {
+      if (revision === this.revision && notification === this.notifications && (!this.policy.readAfterWrites || reading === this.reads)) {
         this.emit({ type: "saved", value: saved });
       }
     }).catch((error: unknown) => {
@@ -102,6 +109,19 @@ export class PreferencePatchQueue {
 
   load(active: () => boolean = () => true): Promise<void> {
     return this.read(active, false);
+  }
+
+  /** A native notification invalidates old replies immediately. Refresh only
+   * after actual completion, never the bounded wait used when closing. */
+  async refresh(active: () => boolean = () => true): Promise<void> {
+    const notification = ++this.notifications;
+    this.reads += 1;
+    await this.drainWrites();
+    if (active() && notification === this.notifications) await this.load(active);
+  }
+
+  private async drainWrites(): Promise<void> {
+    while (this.pending) await this.saving.catch(() => undefined);
   }
 
   private read(active: () => boolean, restore: boolean): Promise<void> {
@@ -125,6 +145,7 @@ export class PreferencePatchQueue {
       const pendingStyle = this.patch.citation_style !== undefined;
       if (value.preferences) {
         this.loaded = true;
+        this.durable = value.preferences;
         // Picker reads preserve optimistic choices. Settings focus reads show
         // durable state, even if a failed recovery left retry fields pending.
         if (this.policy.readAfterWrites) value = { ...value, preferences: { ...value.preferences, ...this.patch } };
@@ -143,7 +164,7 @@ export class PreferencePatchQueue {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const drain = async () => {
       if (this.policy.readAfterWrites) await this.loading;
-      while (this.pending) await this.saving.catch(() => undefined);
+      await this.drainWrites();
     };
     await Promise.race([
       drain().catch(() => undefined),

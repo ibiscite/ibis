@@ -59,7 +59,6 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   const [problemRow, setProblemRow] = useState<{ id: string; message: MessageId } | null>(null);
   const cause = useRef<string | null>(null);
   const edits = useRef(0);
-  const durable = useRef<PickerPreferences | null>(null);
   const live = useRef(true);
   const [query, setQuery] = useState("");
   const [highlighted, setHighlighted] = useState<string | null>(null);
@@ -85,18 +84,13 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   const [focused, setFocused] = useState(true);
   const queue = useMemo(() => new PreferencePatchQueue({
     read: async () => ({ preferences: await api.pickerPreferences() }),
-    write: async (patch, key) => {
-      const saved = await api.setPickerPreferences(patch, key);
-      durable.current = saved.preferences;
-      return saved;
-    },
+    write: (patch, key) => api.setPickerPreferences(patch, key),
   }, { restoreOnFailure: true }), [api]);
   useEffect(() => queue.subscribe((event) => {
     if (!live.current) return;
     if (event.type === "error") {
       if (event.source === "read" && !preferenceProblem.current) setFailed(true);
     } else if (event.type === "read" || event.type === "saved") {
-      durable.current = event.value.preferences;
       setPreferences(event.value.preferences);
       setFailed(false);
     } else if (event.type === "saving") {
@@ -107,7 +101,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
           preferenceProblem.current = true;
           setFailed(false);
           if (row) setProblemRow({ id: row, message: reason === "settings-read-only" ? "settings-read-only" : "settings-choice-failed" });
-          setPreferences(durable.current);
+          setPreferences(queue.savedPreferences);
         }
       });
     }
@@ -168,7 +162,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
       });
     };
     const preferenceEvents = api.onPreferencesChanged(() => {
-      void queue.finishSaving().then(() => { if (active) void queue.load(() => active); });
+      void queue.refresh(() => active);
     });
     readAll(false);
     void preferenceEvents.then(() => { if (active) void queue.load(() => active); }).catch(() => { if (active) setFailed(true); });

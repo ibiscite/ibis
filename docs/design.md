@@ -1150,6 +1150,11 @@ The page and navigation scrollers contain absolutely positioned descendants,
 so focusing a control never scrolls the document or moves the window chrome.
 General shows desktop-owned shortcut triggers verbatim, or Not assigned, with
 the desktop's guidance.
+Preference notifications retire older replies immediately and refresh after
+the queue actually completes; only closing uses the two-second limit. Native
+preference revisions are reserved at the start of the ordinary async command.
+They protect against delayed saves after reservation; a dispatch-to-first-poll
+scheduling race between windows remains before reservation.
 
 **One Settings design** (maintainer, 2026-10-30). There is one Settings
 window; every drawing and board uses it, and it is kept in step with the app as
