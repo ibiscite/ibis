@@ -470,6 +470,14 @@
             ],
             "type": "string"
           },
+          "CitationWarningCode": {
+            "description": "Fixed codes only; source diagnostics never include field text or locations.",
+            "enum": [
+              "source-field",
+              "sentence-case-expected"
+            ],
+            "type": "string"
+          },
           "Collection": {
             "additionalProperties": false,
             "properties": {
@@ -888,6 +896,13 @@
                   "$ref": "#/$defs/Identifier"
                 },
                 "type": "array"
+              },
+              "warnings": {
+                "description": "Item-local conversion uncertainty, independent of CSL and source paths.",
+                "items": {
+                  "$ref": "#/$defs/CitationWarningCode"
+                },
+                "type": "array"
               }
             },
             "required": [
@@ -1282,6 +1297,14 @@
             ],
             "type": "string"
           },
+          "CitationWarningCode": {
+            "description": "Fixed codes only; source diagnostics never include field text or locations.",
+            "enum": [
+              "source-field",
+              "sentence-case-expected"
+            ],
+            "type": "string"
+          },
           "Collection": {
             "additionalProperties": false,
             "properties": {
@@ -1609,6 +1632,13 @@
                 "description": "Search-only identifiers (for example arXiv eprints), never invented as\nprinted CSL fields. They invalidate display/search, not citation picks.",
                 "items": {
                   "$ref": "#/$defs/Identifier"
+                },
+                "type": "array"
+              },
+              "warnings": {
+                "description": "Item-local conversion uncertainty, independent of CSL and source paths.",
+                "items": {
+                  "$ref": "#/$defs/CitationWarningCode"
                 },
                 "type": "array"
               }
@@ -2074,6 +2104,32 @@
             ],
             "type": "string"
           },
+          "CitationWarning": {
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "$ref": "#/$defs/CitationWarningCode"
+              },
+              "item": {
+                "format": "uint",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "item",
+              "code"
+            ],
+            "type": "object"
+          },
+          "CitationWarningCode": {
+            "description": "Fixed codes only; source diagnostics never include field text or locations.",
+            "enum": [
+              "source-field",
+              "sentence-case-expected"
+            ],
+            "type": "string"
+          },
           "DisplayNode": {
             "additionalProperties": false,
             "description": "One display group owns ordered text leaves; shared punctuation has no item.",
@@ -2294,6 +2350,12 @@
           },
           "text": {
             "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "$ref": "#/$defs/CitationWarning"
+            },
+            "type": "array"
           }
         },
         "required": [

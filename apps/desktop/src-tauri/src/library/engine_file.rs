@@ -4,8 +4,8 @@ use super::{CommandError, LibraryStatus};
 use ibis_core::{
     cite::KeyFormat,
     contract::{
-        CitationError, CitationForm, CitationItem, CitationRequest, CitationResult, Fingerprint, ItemOutcome, ItemRef,
-        KeySyntax, LibraryId, LibraryObject, LocatorTerm, Notice, OutputSpec,
+        CitationError, CitationForm, CitationItem, CitationRequest, CitationResult, CitationWarningCode, Fingerprint,
+        ItemOutcome, ItemRef, KeySyntax, LibraryId, LibraryObject, LocatorTerm, Notice, OutputSpec,
     },
     settings::{CitationStyle, ZoteroLibraries, ZoteroLibrary},
 };
@@ -562,6 +562,15 @@ fn native_source(info: &ibis_engine::LibraryInfo) -> String {
 
 fn citation_warnings(result: &CitationResult) -> Vec<String> {
     let mut warnings = vec![];
+    for warning in &result.warnings {
+        let detail = match warning.code {
+            CitationWarningCode::SourceField => "A source field could not be fully converted. Check the library entry.",
+            CitationWarningCode::SentenceCaseExpected => {
+                "APA expects sentence case for this title. Stored capitalization was preserved; check it in your document."
+            }
+        };
+        warnings.push(format!("Reference {}: {detail}", warning.item + 1));
+    }
     if result.notices.contains(&Notice::YearSuffixWithheld) {
         warnings.push("Year suffixes require the whole document; Ibis leaves them out.".into());
     }

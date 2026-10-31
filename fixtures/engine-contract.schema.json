@@ -349,6 +349,12 @@
         },
         "text": {
           "type": "string"
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CitationWarning"
+          }
         }
       },
       "additionalProperties": false,
@@ -359,6 +365,32 @@
         "losses",
         "notices",
         "content_hash"
+      ]
+    },
+    "CitationWarning": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/CitationWarningCode"
+        },
+        "item": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "item",
+        "code"
+      ]
+    },
+    "CitationWarningCode": {
+      "description": "Fixed codes only; source diagnostics never include field text or locations.",
+      "type": "string",
+      "enum": [
+        "source-field",
+        "sentence-case-expected"
       ]
     },
     "Collection": {
@@ -1065,6 +1097,13 @@
           "type": "array",
           "items": {
             "$ref": "#/$defs/Identifier"
+          }
+        },
+        "warnings": {
+          "description": "Item-local conversion uncertainty, independent of CSL and source paths.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CitationWarningCode"
           }
         }
       },
