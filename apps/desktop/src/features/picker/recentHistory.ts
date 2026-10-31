@@ -5,7 +5,7 @@ type Id = { library: string; key: string };
 export type RecentHistory = { app: string; items: Id[] }[];
 type StoragePort = Pick<Storage, "getItem" | "setItem">;
 const storageKey = "ibis-citation-history";
-const validString = (value: unknown): value is string => typeof value === "string" && value.length > 0 && value.length <= 512 && !/[\u0000-\u001f]/.test(value);
+const validString = (value: unknown): value is string => typeof value === "string" && value.length > 0 && value.length <= 512 && !/[\u0000-\u001f\u007f-\u009f]/.test(value);
 function identity(value: unknown): value is Id {
   return typeof value === "object" && value !== null && Object.keys(value).length === 2 && "library" in value && validString(value.library) && "key" in value && validString(value.key);
 }
@@ -24,7 +24,13 @@ export function recentIds(history: RecentHistory, app: string | null): Id[] {
 export function rememberCitation(history: RecentHistory, app: string | null, ids: unknown[], storage: StoragePort): RecentHistory {
   if (app === null) return history;
   const items = [...ids.filter(identity), ...recentIds(history, app)].filter((id, index, all) => all.findIndex((other) => other.library === id.library && other.key === id.key) === index).slice(0, 30);
-  const next = [{ app, items }, ...history.filter((entry) => entry.app !== app)].slice(0, 20);
-  try { storage.setItem(storageKey, JSON.stringify(next)); } catch { /* In-memory recents still work when webview storage is unavailable. */ }
+  const next = [{ app, items }, ...history.filter((entry) => entry.app !== app).map((entry) => ({ ...entry, items: [...entry.items] }))].slice(0, 20);
+  let encoded = JSON.stringify(next);
+  while (encoded.length > 256 * 1024) {
+    const oldest = next.at(-1)!;
+    if (oldest.items.length > 1) oldest.items.pop(); else next.pop();
+    encoded = JSON.stringify(next);
+  }
+  try { storage.setItem(storageKey, encoded); } catch { /* In-memory recents still work when webview storage is unavailable. */ }
   return next;
 }

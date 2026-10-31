@@ -17,8 +17,8 @@ try {
   cases.push(...["loaded", "first-run", "recovery"].map((viewState) => ({ width: 480, larger: false, colorScheme: "light", scale: 2, viewState })));
   cases.push({ width: 480, larger: false, colorScheme: "light", scale: 2, shortcutNotice: true });
   cases.push(...[720, 480].flatMap((width) => [false, true].flatMap((larger) =>
-    ["single", "expanded", "failed", "warnings", "undo", "copied", "rtl"].map((shelfDetails) => ({ width, larger, colorScheme: "light", scale: 1, shelfDetails })))));
-  cases.push(...["single", "expanded", "failed", "warnings", "undo", "copied", "rtl"].map((shelfDetails) => ({ width: 480, larger: false, colorScheme: "light", scale: 2, shelfDetails })));
+    ["single", "expanded", "failed", "warnings", "undo", "copied", "rtl", "forms", "recents", "receipt"].map((shelfDetails) => ({ width, larger, colorScheme: "light", scale: 1, shelfDetails })))));
+  cases.push(...["single", "expanded", "failed", "warnings", "undo", "copied", "rtl", "forms", "recents", "receipt"].map((shelfDetails) => ({ width: 480, larger: false, colorScheme: "light", scale: 2, shelfDetails })));
   for (const { width, larger, colorScheme, scale, shelfDetails = null, startupNotice = false, largeNotice = false, pointerNotice = null, viewState = "loaded", shortcutNotice = false } of cases) {
     const small = width === 480;
     const height = small ? 360 : largeNotice || pointerNotice ? 480 : Math.round(480 * (larger ? 1.15 : 1));
@@ -40,6 +40,8 @@ try {
       const callbacks = new Map(), listeners = new Map();
       let undoTicket = null, refuseUndo = true, activityTicket = 0, previewNumber = 0;
       const prepared = new Map();
+      if (shelfDetails === "recents") localStorage.setItem("ibis-citation-history", JSON.stringify([{ app: "invented.writer", items: [{ library: "invented.bib", key: "synthetic0" }] }]));
+      const row = (i, recent) => ({ revision: "1", id: { library: "invented.bib", key: `synthetic${i}` }, cite: `synthetic-cite-${i}`, source: "invented.bib", key: `synthetic${i}`, title: shelfDetails === "failed" ? `Invented reference ${i}. ${"A synthetic long title. ".repeat(30)}`.trim() : `Invented reference ${i}`, authors: "Aster", first_author: "Aster", author_count: 1, year: 2026, container: null, item_type: "article-journal", partial: shelfDetails === "warnings" && i === 0, matched: ["title"], ...(recent ? { recent } : {}) });
       if (shelfDetails === "rtl") document.addEventListener("DOMContentLoaded", () => { document.documentElement.dir = "rtl"; });
       window.fixtureWindowReset = () => {
         undoTicket = 7;
@@ -48,7 +50,7 @@ try {
         if (!ids.length) throw Error("Synthetic reset listener unavailable");
         for (const id of ids) callbacks.get(id)?.({ event, id, payload: { revision: 7, undo: 7 } });
       };
-      const preferences = { citation_style: shelfDetails === "warnings" ? "ieee" : null, density: "comfortable", larger_text: larger, show_paste_preview: true, search_mark: true, paste: false };
+      const preferences = { citation_style: shelfDetails === "warnings" ? "ieee" : shelfDetails === "forms" ? "apa" : null, density: "comfortable", larger_text: larger, show_paste_preview: true, search_mark: true, paste: false };
       const library = { state: "loaded", revision: "1", has_snapshot: true, zotero: false, name: "invented.bib", snapshot_name: "invented.bib", references: 14, warnings: 0, error: null, problem: null, note: null, settings_notice: startupNotice ? "Synthetic startup settings notice." : null };
       if (viewState === "first-run") Object.assign(library, { state: "none", has_snapshot: false, name: null, snapshot_name: null, references: 0 });
       if (viewState === "empty-library") library.references = 0;
@@ -79,21 +81,46 @@ try {
           if (command === "picker_preferences") return preferences;
           if (command === "set_picker_preferences") return { preferences: Object.assign(preferences, args.preferences), copy_format: "pandoc" };
           if (command === "copy_format") return "pandoc";
-          if (command === "picker_destination") return { app: null, app_id: null, automatic: null, remembered: null, unreadable: false, can_paste: false, output_question: null };
+          if (command === "picker_destination") return { app: shelfDetails === "recents" ? "Invented Writer" : null, app_id: shelfDetails === "recents" ? "invented.writer" : null, automatic: null, remembered: null, unreadable: false, can_paste: false, output_question: null };
           if (command === "shortcut_status") return { shortcut: "CommandOrControl+Shift+Y", registered: true, error: shortcutNotice ? "Synthetic shortcut refusal" : null };
           if (command === "library_status") return library;
           if (command === "search" && args.query.text === "refuse") throw Error("synthetic search refusal");
-          if (command === "search") return { revision: "1", results: args.query.text && args.query.text !== "no-match" ? Array.from({ length: 14 }, (_, i) => ({ revision: "1", id: { library: "invented.bib", key: `synthetic${i}` }, cite: `synthetic-cite-${i}`, source: "invented.bib", key: `synthetic${i}`, title: shelfDetails === "failed" ? `Invented reference ${i}. ${"A synthetic long title. ".repeat(30)}`.trim() : `Invented reference ${i}`, authors: "Aster", first_author: "Aster", author_count: 1, year: 2026, container: null, item_type: "article-journal", partial: shelfDetails === "warnings" && i === 0, matched: ["title"] })) : [] };
+          if (command === "recent_references") return { revision: "1", results: shelfDetails === "recents" && args.ids.length ? Array.from({ length: args.includeAdded ? 6 : 3 }, (_, i) => row(i, i < 3 ? "cited" : "added")) : [] };
+          if (command === "search") return { revision: "1", results: args.query.text && args.query.text !== "no-match" ? Array.from({ length: 14 }, (_, i) => row(i)) : [],
+            ...(args.query.interpret_locators && / p12$/.test(args.query.text) ? { interpretation: { search: "invented", locator: { label: "page", value: "12" }, typed: "p12" } } : {}) };
+          if (command === "preview_file_citation" && args.intent.cancel) throw { code: "failed", message: "Synthetic preview replaced" };
           if (command === "preview_file_citation" && shelfDetails === "failed") throw { code: "failed", message: formatFailure };
           if (command === "preview_file_citation") {
             const ticket = `synthetic-ticket-${++previewNumber}`;
-            const text = shelfDetails === "warnings" ? "Aster, Invented reference, 2026."
-              : shelfDetails === "single" || shelfDetails === "rtl" ? `[@${"invented-long-key-".repeat(16)}]`
-              : `[${args.items.map((item) => `@${item.id.key}${item.page_input || item.locator?.value ? `, p. ${item.page_input || item.locator.value}` : ""}`).join("; ")}]`;
-            prepared.set(ticket, text);
-            return { ticket, content_hash: "synthetic-hash", text, html: null, warnings: shelfDetails === "warnings" ? [entryWarning] : [] };
+            const spans = [{ item: null, text: "[" }];
+            args.items.forEach((item, index) => {
+              if (index) spans.push({ item: null, text: "; " });
+              const page = item.page_input || item.locator?.value;
+              const key = shelfDetails === "rtl" ? `${"مثال-".repeat(48)}${index}` : ["single", "receipt"].includes(shelfDetails) ? `${"invented-long-key-".repeat(16)}${index}` : item.id.key;
+              const text = args.style === "ieee" ? "Aster, Invented reference, 2026."
+                : args.style === "apa" ? item.form === "year-only" ? `(2026${page ? `, p. ${page}` : ""})` : item.form === "narrative" ? `Aster (2026${page ? `, p. ${page}` : ""})` : `(Aster, 2026${page ? `, p. ${page}` : ""})`
+                : `${item.form === "year-only" ? "-" : ""}@${key}${page ? `, p. ${page}` : ""}`;
+              spans.push({ item: index, text });
+            });
+            spans.push({ item: null, text: "]" });
+            if (args.style) { spans.shift(); spans.pop(); }
+            const text = spans.map((span) => span.text).join("");
+            prepared.set(ticket, { text, items: args.items, style: args.style });
+            return { ticket, content_hash: "synthetic-hash", text, spans, html: null, warnings: shelfDetails === "warnings" ? [entryWarning] : [] };
           }
-          if (command === "copy_file_citation") return { text: prepared.get(args.ticket), warnings: largeNotice ? Array.from({ length: 16 }, (_, i) => `Invented copy warning ${i + 1}: check the reference metadata.`) : [] };
+          if (command === "citation_details") {
+            const saved = prepared.get(args.ticket), item = saved.items[args.item];
+            return { current_form: saved.style === "ieee" ? null : item.form || "normal", forms: [
+              { form: "normal", example: saved.style ? "(Aster, 2026)" : "[@synthetic0]", reason: saved.style === "ieee" ? "This style copies a reference entry." : null },
+              { form: "narrative", example: saved.style ? "Aster (2026)" : "@synthetic0", reason: saved.items.length > 1 ? "Cite this reference alone for Name in the sentence." : saved.style === "ieee" ? "This style copies a reference entry." : null },
+              { form: "year-only", example: saved.style ? "(2026)" : "[-@synthetic0]", reason: saved.style === "ieee" ? "This style cannot show Year only." : null },
+            ] };
+          }
+          if (command === "copy_file_citation") {
+            const saved = prepared.get(args.ticket);
+            return { text: saved.text, summary: shelfDetails === "receipt" ? { text: saved.text.slice(0, 119) + "…", more: saved.items.length - 1 } : null,
+              warnings: largeNotice ? Array.from({ length: 16 }, (_, i) => `Invented copy warning ${i + 1}: check the reference metadata.`) : [] };
+          }
           if (command === "login_item") return { name: "Ibis", enabled: false, problem: null };
           if (command === "update_checks") return null;
           if (command === "update_available") return false;
@@ -178,6 +205,29 @@ try {
       assert.deepEqual(errors, [], "no page errors");
       await page.close(); profiles += 1; continue;
     }
+    if (shelfDetails === "recents") {
+      await page.getByRole("heading", { name: "Cited here recently", exact: true }).waitFor();
+      await page.getByRole("heading", { name: "Recently added", exact: true }).waitFor();
+      const search = page.getByLabel("Search references", { exact: true });
+      assert.equal(await page.getByRole("option").count(), 6, "recents use the ordinary combined result list");
+      await search.press("ArrowDown"); await search.press("ArrowDown"); await search.press("ArrowDown");
+      assert.equal(await page.getByRole("option", { selected: true }).getAttribute("id"), "result-3", "arrows cross the two headings without a second list");
+      await search.press("Shift+Enter");
+      await search.fill("invented p12");
+      const token = page.getByRole("group", { name: "Using page 12", exact: true });
+      await token.waitFor();
+      assert.equal(await token.evaluate((node) => Boolean(node.closest(".search-field"))), true, "query Page token stays beside Search");
+      await token.getByRole("button", { name: "Search as typed", exact: true }).click();
+      await token.waitFor({ state: "detached" });
+      assert.deepEqual(await scan(), [], "recents and the query-page token keep the fixed bands whole");
+      await page.getByRole("button", { name: "More", exact: true }).click();
+      await moreMenu.getByRole("menuitem", { name: "Forget Recent Citations", exact: true }).click();
+      await moreMenu.waitFor({ state: "detached" });
+      assert.equal(await page.evaluate(() => localStorage.getItem("ibis-citation-history")), "[]", "recents are forgettable without Settings");
+      assert.deepEqual(resizes, [], "recents never request native sizing");
+      assert.deepEqual(errors, [], "no page errors");
+      await page.close(); profiles += 1; continue;
+    }
     await page.getByText("Type to find a reference", { exact: true }).waitFor();
     assert.deepEqual(await scan(), [], `${width}/${larger}/${colorScheme}: steady empty frame`);
     assert.equal(await reachable(page.locator(".empty-description")), true, "empty hint is reachable without clipping");
@@ -236,7 +286,7 @@ try {
       const open = async () => {
         const edit = shelfControl(page, /^Edit /).first();
         const count = shelfControl(page, /^Show all /);
-        if (await edit.count()) { await edit.click(); return page.locator("main > .shelf .shelf-output"); }
+        if (await edit.count()) { await edit.click(); return edit; }
         await count.click();
         const choices = page.getByRole("dialog", { name: "Selected references", exact: true });
         await choices.getByRole("button", { name: /^Edit / }).first().click();
@@ -261,6 +311,37 @@ try {
       await dialog.getByRole("button", { name: "Close", exact: true }).click();
       await dialog.waitFor({ state: "detached" });
     };
+    if (shelfDetails === "forms") {
+      const dialog = await openEditor();
+      await dialog.locator(".citation-forms").getByText("(Aster, 2026)", { exact: true }).waitFor();
+      const year = dialog.getByRole("radio", { name: "Year only", exact: true });
+      await year.check();
+      await page.locator('.shelf .preview-text[title="(2026)"]').waitFor();
+      await dialog.getByRole("textbox", { name: "Page", exact: true }).fill("9");
+      await page.locator('.shelf .preview-text[title="(2026, p. 9)"]').waitFor();
+      await closeEditor(dialog);
+      await search.press("ArrowDown"); await search.press("Shift+Enter");
+      const mixed = await openEditor();
+      const narrative = mixed.getByRole("radio", { name: "Name in the sentence", exact: true });
+      assert.equal(await narrative.isDisabled(), true, "unsupported group form is disabled before editing");
+      await mixed.getByText("Cite this reference alone for Name in the sentence.", { exact: true }).waitFor();
+      await closeEditor(mixed);
+      assert.deepEqual(await scan(), [], "current-style examples and true Year only keep one shelf line");
+      assert.deepEqual(resizes, [], "forms never request native sizing");
+      assert.deepEqual(errors, [], "no page errors");
+      await page.close(); profiles += 1; continue;
+    }
+    if (shelfDetails === "receipt") {
+      for (let i = 0; i < 5; i++) { if (i) await search.press("ArrowDown"); await search.press("Shift+Enter"); }
+      await search.press("Enter");
+      const receipt = page.locator(".copy-notice .copy-receipt");
+      await receipt.getByText("+4 more", { exact: true }).waitFor();
+      assert.equal(await reachable(receipt), true, "the summary and remaining-reference count are reachable");
+      assert.equal(await receipt.locator(".copy-receipt-excerpt").evaluate((node) => getComputedStyle(node).webkitLineClamp), "1", "the remaining count has its own second line");
+      assert.deepEqual(await scan(), [], "the receipt summary keeps the shelf one line");
+      assert.deepEqual(errors, [], "no page errors");
+      await page.close(); profiles += 1; continue;
+    }
     if (shelfDetails === "undo") {
       const band = await page.locator("main > .shelf").boundingBox();
       await search.press("Shift+Enter");
@@ -332,6 +413,12 @@ try {
       await page.getByRole("button", { name: "Undo", exact: true }).click();
       assert.equal(await page.locator('[role="option"][data-citation-selected]').count(), 1, "Undo restores the removed reference");
       const dialog = await openEditor();
+      const fullCitation = dialog.getByRole("region", { name: "Full citation", exact: true });
+      assert.equal(await fullCitation.textContent(), await segment.locator(".preview-text").textContent(), "the single-reference menu keeps the entire citation available without hover");
+      await dialog.getByRole("textbox", { name: "Page", exact: true }).press("ArrowUp");
+      await page.keyboard.press("End");
+      assert.equal(await fullCitation.evaluate((node) => document.activeElement === node), true, "menu keys reach the complete citation without hover");
+      assert.equal(await reachable(fullCitation), true, "the complete long/RTL citation is reachable in the menu");
       await dialog.getByRole("textbox", { name: "Page", exact: true }).fill("iv–vi");
       for (const control of await dialog.getByRole("radio").all()) assert.equal(await reachable(control), true, "all name forms stay whole and reachable");
       assert.deepEqual(await page.locator("main > .shelf").boundingBox(), band, "the long citation and menu never grow the shelf");
@@ -354,6 +441,14 @@ try {
       if (shelfDetails === "expanded") {
         for (let i = 0; i < 9; i++) { if (i) await search.press("ArrowDown"); await search.press("Shift+Enter"); }
         beforeShelf = await page.locator("main > .shelf").boundingBox();
+        const segments = page.locator("main > .shelf .shelf-segment-button");
+        await segments.nth(8).waitFor();
+        assert.equal(await segments.count(), 9, "the citation has one engine-owned segment per reference");
+        await segments.first().focus(); await segments.first().press("ArrowRight");
+        assert.equal(await segments.nth(1).evaluate((node) => document.activeElement === node), true, "arrow selection follows citation order");
+        await segments.nth(1).press("Space");
+        await page.getByRole("textbox", { name: "Page", exact: true }).waitFor();
+        await closeEditor(page.getByRole("dialog", { name: /^Citation details/ }));
         const count = shelfControl(page, "Show all 9 selected references");
         await count.click();
         dialog = page.getByRole("dialog", { name: "Selected references", exact: true });
@@ -454,7 +549,7 @@ try {
       await page.close(); profiles += 1; continue;
     }
     if (largeNotice) {
-      await page.getByRole("region", { name: "Preview" }).getByText("[@synthetic0]", { exact: true }).waitFor();
+      await page.locator('.shelf .preview-text[title="[@synthetic0]"]').waitFor();
       await search.press("Enter");
       await page.getByRole("list", { name: "Copy warnings" }).waitFor();
       // Copy consumes the old selection; choose two references while its warnings remain.
@@ -504,7 +599,7 @@ try {
       await page.close(); profiles += 1; continue;
     }
     if (small) {
-      await page.getByRole("region", { name: "Preview" }).getByText("[@synthetic0]", { exact: true }).waitFor();
+      await page.locator('.shelf .preview-text[title="[@synthetic0]"]').waitFor();
       await waitForCheck("results-announced", () => document.querySelector('[aria-label="Search results"]').textContent.trim().length > 0);
       for (const nextHeight of [480, 360]) {
         await page.setViewportSize({ width, height: nextHeight });
@@ -527,7 +622,7 @@ try {
     await page.setViewportSize({ width: 480, height: 360 });
     await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     assert.deepEqual(await scan(), [], "resizing while editing keeps fixed bands and one active scroller");
-    const anchor = page.locator("main > .shelf .shelf-output");
+    const anchor = shelfControl(page, /^Edit /).first();
     await anchoredMenu(anchor);
     const heading = editor.getByRole("heading");
     assert.equal(await heading.evaluate((node) => {

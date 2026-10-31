@@ -49,7 +49,7 @@ export const commands = {
 	 */
 	search: (query: SearchQuery, limit: number, page: number, request: number, scope: string[] | null) => __TAURI_INVOKE<SearchReply_Serialize>("search", { query, limit, page, request, scope }),
 	recentReferences: (ids: RecentIdentity[], includeAdded: boolean) => __TAURI_INVOKE<SearchReply_Serialize>("recent_references", { ids, includeAdded }),
-	previewFileCitation: (items: FileSelection[], format: KeyFormat, style: "apa" | "chicago-author-date" | "harvard-cite-them-right" | "ieee" | "modern-language-association" | null, expectedRevision: string, intent: PreviewIntent) => __TAURI_INVOKE<FilePreview>("preview_file_citation", { items, format, style, expectedRevision, intent }),
+	previewFileCitation: (items: FileSelection[], format: KeyFormat, style: "apa" | "chicago-author-date" | "harvard-cite-them-right" | "ieee" | "modern-language-association" | null, expectedRevision: string, intent: PreviewIntent) => __TAURI_INVOKE<FilePreview_Serialize>("preview_file_citation", { items, format, style, expectedRevision, intent }),
 	/**  Read-only examples owned by a prepared preview; never publishes a new ticket. */
 	citationDetails: (ticket: string, contentHash: string, item: number) => __TAURI_INVOKE<ReferenceDetails>("citation_details", { ticket, contentHash, item }),
 	copyFileCitation: (ticket: string, contentHash: string) => __TAURI_INVOKE<Copied_Serialize>("copy_file_citation", { ticket, contentHash }),
@@ -169,9 +169,18 @@ export const commands = {
 /**  One output the picker can copy: a key syntax or a citation style. */
 export type AppOutput = ({ key: KeyFormat }) & { style?: never } | ({ style: CitationStyle }) & { key?: never };
 
-export type CitationSpan = {
+export type CitationSpan = CitationSpan_Serialize | CitationSpan_Deserialize;
+
+export type CitationSpan_Deserialize = {
 	item: number | null,
 	text: string,
+	runs?: DisplayRun_Deserialize[] | null,
+};
+
+export type CitationSpan_Serialize = {
+	item: number | null,
+	text: string,
+	runs?: DisplayRun_Serialize[] | null,
 };
 
 /**  A bundled citation style the picker can format with (ADR 0020). */
@@ -230,13 +239,57 @@ export type DesktopShortcut = {
 	guidance: string,
 };
 
-export type FilePreview = {
+/**
+ *  Output-only passive presentation. The smaller request TextRun contract stays
+ *  independent of the additional styles a citation processor may produce.
+ */
+export type DisplayRun = DisplayRun_Serialize | DisplayRun_Deserialize;
+
+/**
+ *  Output-only passive presentation. The smaller request TextRun contract stays
+ *  independent of the additional styles a citation processor may produce.
+ */
+export type DisplayRun_Deserialize = {
+	text: string,
+	italic?: boolean,
+	bold?: boolean,
+	script?: Script,
+	small_caps?: boolean,
+	underline?: boolean,
+};
+
+/**
+ *  Output-only passive presentation. The smaller request TextRun contract stays
+ *  independent of the additional styles a citation processor may produce.
+ */
+export type DisplayRun_Serialize = {
+	text: string,
+	italic: boolean,
+	bold: boolean,
+	script: Script,
+	small_caps?: boolean,
+	underline?: boolean,
+};
+
+export type FilePreview = FilePreview_Serialize | FilePreview_Deserialize;
+
+export type FilePreview_Deserialize = {
 	ticket: string,
 	content_hash: string,
 	text: string,
 	html: string | null,
 	warnings: string[],
-	spans: CitationSpan[],
+	spans: CitationSpan_Deserialize[],
+	problem?: string | null,
+};
+
+export type FilePreview_Serialize = {
+	ticket: string,
+	content_hash: string,
+	text: string,
+	html: string | null,
+	warnings: string[],
+	spans: CitationSpan_Serialize[],
 	problem?: string | null,
 };
 
@@ -510,11 +563,14 @@ export type RecentIdentity = unknown;
 
 export type ReferenceDetails = {
 	forms: FormOption[],
+	current_form: ReferenceForm | null,
 };
 
-export type ReferenceForm = "normal" | "narrative" | "author-omitted" | "year-only";
+export type ReferenceForm = "normal" | "narrative" | "year-only";
 
 export type RowAction = "copy" | "toggle";
+
+export type Script = "normal" | "subscript" | "superscript";
 
 /**  Query text and the explicit choice to read a trailing locator. */
 export type SearchQuery = {

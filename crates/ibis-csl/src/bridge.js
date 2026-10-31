@@ -299,7 +299,9 @@
               const ids = bibliography[0].entry_ids[index];
               if (ids.length !== 1) throw unverified;
               if (index) outputs.spans.push({ item: null, text: "\n" });
-              outputs.spans.push({ item: indices.get(String(ids[0]))?.[0], text: oneLine(part) });
+              const occurrences = indices.get(String(ids[0]));
+              if (!occurrences?.length) throw unverified;
+              occurrences.forEach((item, occurrence) => outputs.spans.push({ item, text: occurrence ? "" : oneLine(part) }));
             });
           }
         } else {

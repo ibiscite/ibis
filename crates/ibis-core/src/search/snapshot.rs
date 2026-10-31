@@ -156,7 +156,7 @@ impl SnapshotIndex {
                 Some(Entry {
                     position,
                     record: Arc::new(PreparedRecord {
-                                            id: record.id.clone(),
+                        id: record.id.clone(),
                         year,
                         keys,
                         identifiers: identifier::of_record(record),

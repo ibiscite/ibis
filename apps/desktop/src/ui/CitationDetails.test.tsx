@@ -12,7 +12,7 @@ const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
 function Editor() {
   const [page, setPage] = useState("");
   const [form, setForm] = useState<ReferenceForm>("normal");
-  return <CitationDetails label="Citation details for Synthetic work" page={page} form={form} choices={{ forms: [
+  return <CitationDetails label="Citation details for Synthetic work" page={page} choices={{ current_form: form, forms: [
     { form: "normal", example: "(Example, 2026)", reason: null },
     { form: "narrative", example: "Example (2026)", reason: null },
     { form: "year-only", example: "(2026)", reason: null },
@@ -21,7 +21,7 @@ function Editor() {
 
 test("Year only uses its own engine form and unsupported choices expose the reason before editing", () => {
   const change = vi.fn();
-  render(<CitationDetails label="Synthetic details" page="12" form="normal" onPageChange={vi.fn()} onFormChange={change} choices={{ forms: [
+  render(<CitationDetails label="Synthetic details" page="12" onPageChange={vi.fn()} onFormChange={change} choices={{ current_form: "normal", forms: [
     { form: "normal", example: "(Example, 2026)", reason: null },
     { form: "narrative", example: null, reason: "Cite this reference alone for Name in the sentence." },
     { form: "year-only", example: "(2026)", reason: null },

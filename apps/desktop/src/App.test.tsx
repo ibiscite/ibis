@@ -770,7 +770,7 @@ test("hovering Remove keeps focus and menu keys unchanged", async () => {
   expect(calls).not.toContain("hide_picker");
 });
 
-// Cross the six-chip boundary before and after three removals. The shelf's
+// Cross the folded-reference boundary before and after three removals. The shelf's
 // component test exercises 50 references; replaying 100 navigation/selection
 // events through the whole picker tests the same transitions at much higher cost.
 test.each([7, 9, 10])("%i long-key selections retain order across queries and first/middle/last removal", async (count) => {

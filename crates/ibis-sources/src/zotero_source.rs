@@ -341,7 +341,12 @@ impl ZoteroSource {
                     ZoteroItem {
                         key: raw.key.clone(),
                         item_type: raw.item_type.clone(),
-                        fields: raw.fields.iter().map(|(name, value)| (name.clone(), value.clone())).chain(std::iter::once(("dateAdded".into(), item.metadata.date_added.clone()))).collect(),
+                        fields: raw
+                            .fields
+                            .iter()
+                            .map(|(name, value)| (name.clone(), value.clone()))
+                            .chain(std::iter::once(("dateAdded".into(), item.metadata.date_added.clone())))
+                            .collect(),
                         creators: raw
                             .creators
                             .iter()

@@ -253,7 +253,10 @@ pub fn map_item(library: LibraryId, item: &ZoteroItem) -> Result<MappedItem, Map
     // full provenance list and existing cross-library ambiguity/refusal rules.
     Ok(MappedItem {
         record: Record {
-            added_at: item.fields.get("dateAdded").and_then(|date| ibis_core::contract::added_date(date)),
+            added_at: item
+                .fields
+                .get("dateAdded")
+                .and_then(|date| ibis_core::contract::added_date(date)),
             id: ItemRef {
                 library,
                 key: item.key.clone(),

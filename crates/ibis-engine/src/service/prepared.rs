@@ -21,21 +21,59 @@ impl PreparedCitation {
     pub fn into_result(self) -> CitationResult {
         self.result
     }
+    pub fn item_form(&self, item: usize) -> Option<CitationForm> {
+        self.request
+            .items
+            .get(item)
+            .map(|pick| pick.form.unwrap_or(self.request.form))
+    }
+    /// A short diagnostic name from this receipt's immutable source, never a
+    /// later library snapshot. It is presentation text, not citation markup.
+    pub fn item_label(&self, item: usize) -> Option<String> {
+        let LibraryObject::Record(record) = &self.snapshot.get(&self.request.items.get(item)?.item)?.object else {
+            return None;
+        };
+        let value = record
+            .citation_key()
+            .ok()
+            .flatten()
+            .map(str::to_owned)
+            .or_else(|| record.csl.get("title")?.as_str().map(ibis_core::model::strip_markup))?;
+        Some(if value.chars().count() > 120 {
+            format!("{}…", value.chars().take(119).collect::<String>())
+        } else {
+            value
+        })
+    }
 
     /// Read-only alternatives against the exact snapshot and group that made
     /// this receipt. No preview is published and no clipboard ticket changes.
-    pub fn form_example(&self, engine: &Engine, original_output: &OutputSpec, item: usize, form: CitationForm, cancel: &Cancellation) -> Result<CitationResult, EngineError> {
-        if !Weak::ptr_eq(&self.origin, &Arc::downgrade(&engine.shared)) { return Err(error(ErrorCode::BadInput)); }
+    pub fn form_example(
+        &self,
+        engine: &Engine,
+        original_output: &OutputSpec,
+        item: usize,
+        form: CitationForm,
+        cancel: &Cancellation,
+    ) -> Result<CitationResult, EngineError> {
+        if !Weak::ptr_eq(&self.origin, &Arc::downgrade(&engine.shared)) {
+            return Err(error(ErrorCode::BadInput));
+        }
         let mut request = self.request.clone();
         request.output = original_output.clone();
         let pick = request.items.get_mut(item).ok_or_else(|| error(ErrorCode::BadInput))?;
         pick.form = (form != CitationForm::Normal).then_some(form);
         pick.suppress_author = false;
         // Narrative is the textcite member of the native BibLaTeX family.
-        if request.items.len() == 1 && form == CitationForm::Narrative {
-            if let OutputSpec::Key { syntax: KeySyntax::Biblatex, command } = &mut request.output {
-                if matches!(command.as_deref(), Some("autocite" | "parencite")) { *command = Some("textcite".into()); }
-            }
+        if request.items.len() == 1
+            && form == CitationForm::Narrative
+            && let OutputSpec::Key {
+                syntax: KeySyntax::Biblatex,
+                command,
+            } = &mut request.output
+            && matches!(command.as_deref(), Some("autocite" | "parencite"))
+        {
+            *command = Some("textcite".into());
         }
         engine.cite_snapshot(&self.snapshot, &request, cancel)
     }
@@ -74,9 +112,9 @@ impl PreparedCitation {
             .transpose()?;
         display.nodes.push(DisplayNode {
             item: None,
-            content: vec![TextRun {
+            content: vec![DisplayRun {
                 text: " [Sample]".into(),
-                ..TextRun::default()
+                ..DisplayRun::default()
             }],
         });
         self.result = CitationResult::new(

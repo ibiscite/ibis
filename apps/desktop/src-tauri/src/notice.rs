@@ -129,7 +129,12 @@ pub(crate) fn copied_notice(notice: State<'_, Notice>) -> Option<NoticeMessage> 
 /// Returns the delivery outcome so a permission detour keeps the prepared shelf.
 #[tauri::command]
 #[specta::specta]
-pub(crate) async fn show_copied_notice(app: AppHandle, text: String, delivery: Option<u32>, summary: Option<crate::copy::ReceiptSummary>) -> Delivered {
+pub(crate) async fn show_copied_notice(
+    app: AppHandle,
+    text: String,
+    delivery: Option<u32>,
+    summary: Option<crate::copy::ReceiptSummary>,
+) -> Delivered {
     #[cfg(target_os = "windows")]
     let ticket = crate::paste::take_copy(&app, delivery);
     // A paste may wait up to a second for the app to come back to the front.
@@ -152,7 +157,9 @@ pub(crate) async fn show_copied_notice(app: AppHandle, text: String, delivery: O
         &app,
         NoticeMessage {
             delivered: delivered.clone(),
-            text: summary.as_ref().map_or_else(|| self::summary(&text), |receipt| self::summary(&receipt.text)),
+            text: summary
+                .as_ref()
+                .map_or_else(|| self::summary(&text), |receipt| self::summary(&receipt.text)),
             more: summary.map(|receipt| receipt.more),
         },
     );

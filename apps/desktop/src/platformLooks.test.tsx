@@ -197,7 +197,7 @@ test("the shared receipt card keeps its geometry and shadow gutter on every syst
   const receipt = readFileSync(new FileURL("./ui/CopyReceipt.css", import.meta.url), "utf8");
   expect(rules(receipt, ".copy-receipt")).toContain("border-radius: var(--r-copy-card)");
   expect(rules(receipt, ".copy-receipt-mark")).toContain("border-radius: var(--r-copy-tile)");
-  expect(rules(receipt, ".copy-receipt > code")).toContain("-webkit-line-clamp: 2");
+  expect(rules(receipt, ".copy-receipt-excerpt")).toContain("-webkit-line-clamp: 2");
   expect(rules(notices, ".copied-notice")).toContain("margin: var(--space-4) auto");
   expect(notices).not.toMatch(/copied-notice\[data-platform=/);
   const gutter = Number(tokens.match(/--space-4:\s*([\d.]+)rem/)?.[1]) * 16;

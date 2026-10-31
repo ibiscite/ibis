@@ -401,7 +401,7 @@
         "content": {
           "type": "array",
           "items": {
-            "$ref": "#/$defs/TextRun"
+            "$ref": "#/$defs/DisplayRun"
           }
         },
         "item": {
@@ -416,6 +416,37 @@
       "additionalProperties": false,
       "required": [
         "content"
+      ]
+    },
+    "DisplayRun": {
+      "description": "Output-only passive presentation. The smaller request TextRun contract stays\nindependent of the additional styles a citation processor may produce.",
+      "type": "object",
+      "properties": {
+        "bold": {
+          "type": "boolean",
+          "default": false
+        },
+        "italic": {
+          "type": "boolean",
+          "default": false
+        },
+        "script": {
+          "$ref": "#/$defs/Script",
+          "default": "normal"
+        },
+        "small_caps": {
+          "type": "boolean"
+        },
+        "text": {
+          "type": "string"
+        },
+        "underline": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "text"
       ]
     },
     "DisplayTree": {
@@ -1038,6 +1069,13 @@
     "Record": {
       "type": "object",
       "properties": {
+        "added_at": {
+          "description": "Source-added metadata; affects recents/display, never citation meaning.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "aliases": {
           "type": "array",
           "default": [],

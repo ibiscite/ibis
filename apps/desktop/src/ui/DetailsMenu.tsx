@@ -66,7 +66,7 @@ export function DetailsMenu({ id, anchor, returnFocusRef, title, heading = title
         // Radio groups retain their native arrow selection. Elsewhere arrows
         // reach the next field/action without making Tab a focus trap.
         if ((event.key === "ArrowDown" || event.key === "ArrowUp" || !inField && (event.key === "Home" || event.key === "End")) && !target.closest('[role="radiogroup"]')) {
-          const controls = [...(frame.current?.querySelectorAll<HTMLElement>("button:not(:disabled), input:not(:disabled)") ?? [])];
+          const controls = [...(frame.current?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), [tabindex="0"]') ?? [])].filter((node) => node.tabIndex >= 0);
           const index = controls.indexOf(target);
           if (index >= 0 && controls.length > 1) {
             event.preventDefault();

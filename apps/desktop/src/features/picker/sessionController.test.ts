@@ -37,7 +37,7 @@ test("the runner writes and delivers one canonical result despite repeated Enter
   pending.resolve({ text: "canonical citation", warnings: [], delivery: 42 });
   await pending.promise;
   await Promise.resolve();
-  expect(s.ports.showCopiedNotice).toHaveBeenCalledExactlyOnceWith("canonical citation", 42);
+  expect(s.ports.showCopiedNotice).toHaveBeenCalledExactlyOnceWith("canonical citation", 42, null);
   await Promise.resolve();
   expect(s.controller.getSnapshot().lastOutcome).toBe("Pasted into Example Writer");
   expect(s.ports.consume).toHaveBeenCalledTimes(1);
@@ -58,7 +58,7 @@ test("an old copy response cannot consume a reopened session's new copy", async 
   fresh.resolve({ text: "fresh citation", warnings: [] });
   await fresh.promise;
   await Promise.resolve();
-  expect(s.ports.showCopiedNotice).toHaveBeenCalledExactlyOnceWith("fresh citation", null);
+  expect(s.ports.showCopiedNotice).toHaveBeenCalledExactlyOnceWith("fresh citation", null, null);
 });
 
 test("a delayed hide rejection cannot show an error in a reopened session", async () => {

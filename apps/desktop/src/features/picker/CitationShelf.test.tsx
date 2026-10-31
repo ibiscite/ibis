@@ -40,9 +40,32 @@ test("engine-owned segments retain punctuation, per-reference removal and arrow 
   expect(within(beta.closest(".shelf-segment")!).getByRole("button", { name: "Remove b" })).toBeTruthy();
 });
 
+test("formatted segments preserve engine emphasis and keep source strings inert", () => {
+  const a = record("a", "Alpha"), b = record("b", "Beta");
+  const text = "Alpha species; <script>literal</script>";
+  render(shelf({ selected: chosen([a, b]), shown: { ...output(text), spans: [
+    { item: 0, text: "Alpha species", runs: [{ text: "Alpha species", italic: true, bold: false, script: "normal" }] },
+    { item: null, text: "; " },
+    { item: 1, text: "<script>literal</script>", runs: [{ text: "<script>literal</script>", italic: false, bold: true, script: "normal" }] },
+  ] } }));
+  expect(document.querySelector(".shelf-citation")?.textContent).toBe(text);
+  expect(document.querySelector(".shelf-citation i")?.textContent).toBe("Alpha species");
+  expect(document.querySelector(".shelf-citation b")?.textContent).toBe("<script>literal</script>");
+  expect(document.querySelector(".shelf script")).toBeNull();
+});
+
 test("short names distinguish identical author/year labels without using the citation key as identity", () => {
   expect(referenceLabels([record("a"), record("b", "Okafor", 2019), record("c", "", null)])).toEqual(["García 2021", "Okafor 2019", "c"]);
   expect(referenceLabels([record("a"), record("b")])).toEqual(["García 2021 · a", "García 2021 · b"]);
+});
+
+test("formatted segments keep passive small caps and underline from the engine", () => {
+  render(shelf({ selected: chosen([record("a"), record("b")]), shown: { ...output("Caps; Under"), spans: [
+    { item: 0, text: "Caps", runs: [{ text: "Caps", small_caps: true }] },
+    { item: null, text: "; " }, { item: 1, text: "Under", runs: [{ text: "Under", underline: true }] },
+  ] } }));
+  expect(document.querySelector<HTMLElement>('.shelf [style*="small-caps"]')?.textContent).toBe("Caps");
+  expect(document.querySelector<HTMLElement>('.shelf [style*="underline"]')?.textContent).toBe("Under");
 });
 
 test("colliding keys from different libraries have distinct visible and screen-reader names", () => {
@@ -90,18 +113,56 @@ test("a pending preview can be edited before formatting finishes", () => {
   expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "Page" }));
 });
 
+test("RTL citation text is isolated with automatic direction without changing key punctuation", () => {
+  const text = "[@مثال2021, p. 12]";
+  render(shelf({ selected: chosen([record("rtl")]), keys: true, style: null, shown: output(text) }));
+  const citation = document.querySelector(".shelf .preview-text")!;
+  expect(citation.getAttribute("dir")).toBe("auto");
+  expect(citation.textContent).toBe(text);
+  expect(citation.getAttribute("title")).toBe(text);
+});
+
+test("a long single citation can be read in full from its keyboard-opened menu without hover", () => {
+  const text = "An invented long reference with its complete meaning. ".repeat(30).trim();
+  render(shelf({ selected: chosen([record("a")]), shown: output(text) }));
+  press(screen.getByRole("button", { name: "Edit García 2021" }), "Enter");
+  const full = within(screen.getByRole("dialog")).getByRole("region", { name: "Full citation" });
+  expect(full.textContent).toBe(text);
+  fireEvent.keyDown(document.activeElement!, { key: "ArrowUp" });
+  fireEvent.keyDown(document.activeElement!, { key: "End" });
+  expect(document.activeElement).toBe(full);
+});
+
 test("pending retains dimmed old text for 300 ms, then Formatting without treating it as a new receipt", () => {
   vi.useFakeTimers();
   try {
     const reference = record("a");
     const { rerender } = render(shelf({ selected: chosen([reference]), shown: output("Original citation") }));
     rerender(shelf({ selected: chosen([{ ...reference, locator: { label: "page", value: "9" } }]), shown: null }));
-    expect(document.querySelector(".shelf-retained")?.textContent).toBe("Original citation");
+    expect(document.querySelector('.shelf-output[data-state="pending"] .preview-text')?.textContent).toBe("Original citation");
     act(() => vi.advanceTimersByTime(299));
     expect(screen.queryByText("Formatting…")).toBeNull();
     act(() => vi.advanceTimersByTime(1));
     expect(screen.getByText("Formatting…")).toBeTruthy();
-    expect(document.querySelector(".shelf-retained")).toBeNull();
+    expect(document.querySelector('.shelf-output[data-state="pending"] .preview-text')).toBeNull();
+  } finally { cleanup(); vi.useRealTimers(); }
+});
+
+test("a later refresh of unchanged reference details gets its own 300 ms retention", () => {
+  vi.useFakeTimers();
+  try {
+    const selected = chosen([record("a")]);
+    const { rerender } = render(shelf({ selected, shown: output("Original citation") }));
+    rerender(shelf({ selected, shown: null }));
+    act(() => vi.advanceTimersByTime(300));
+    expect(screen.getByText("Formatting…")).toBeTruthy();
+    rerender(shelf({ selected, shown: output("Refreshed citation") }));
+    rerender(shelf({ selected, shown: null }));
+    expect(document.querySelector('.shelf-output[data-state="pending"] .preview-text')?.textContent).toBe("Refreshed citation");
+    act(() => vi.advanceTimersByTime(299));
+    expect(screen.queryByText("Formatting…")).toBeNull();
+    act(() => vi.advanceTimersByTime(1));
+    expect(screen.getByText("Formatting…")).toBeTruthy();
   } finally { cleanup(); vi.useRealTimers(); }
 });
 
@@ -162,7 +223,7 @@ test.each([1, 2])("many references at the minimum frame and %s× text retain exa
   const preview = screen.getByRole("region", { name: "Preview" });
   expect(within(preview).getByTitle(text).textContent).toBe(text);
   const count = screen.getByRole("button", { name: "Show all 50 selected references" });
-  expect(count.textContent).toBe("+50");
+  expect(count.textContent).toBe("50");
   fireEvent.click(count);
   const menu = screen.getByRole("dialog", { name: "Selected references" });
   expect(document.querySelector(".shelf")!.contains(menu)).toBe(false);
@@ -238,6 +299,24 @@ test("Copied shows the exact receipt between matching beaks, with one polite con
   rerender(shelf({ shown: output("New preview") }));
   expect(screen.queryByRole("status", { name: "Copied" })).toBeNull();
   expect(document.querySelector(".preview-text")?.textContent).toBe("New preview");
+});
+
+test("a multi-reference Copied receipt has one complete read-only line for ellipsis", () => {
+  const text = "(Alpha, 2021; Beta, 2021)";
+  render(shelf({ selected: chosen([record("a", "Alpha"), record("b", "Beta")]), copied: { text, warnings: [] }, shown: {
+    ...output(text), spans: [{ item: null, text: "(" }, { item: 0, text: "Alpha, 2021" },
+      { item: null, text: "; " }, { item: 1, text: "Beta, 2021" }, { item: null, text: ")" }],
+  } }));
+  expect(document.querySelector('.shelf[data-copied] .preview-text')?.textContent).toBe(text);
+  expect(screen.queryByRole("button", { name: /^Edit / })).toBeNull();
+});
+
+test("Copied retains the citation's scientific script and emphasis", () => {
+  render(shelf({ selected: chosen([record("a")]), shown: { ...output("CO2"), markup: [
+    { tag: "i", children: ["CO", { tag: "sub", children: ["2"] }] },
+  ] }, copied: { text: "CO2", warnings: [] } }));
+  expect(document.querySelector('.shelf[data-copied] .preview-text')?.textContent).toBe("CO2");
+  expect(document.querySelector('.shelf[data-copied] i sub')?.textContent).toBe("2");
 });
 
 test("Copied warnings keep their count and one-step access; a newer receipt retires the old menu", () => {

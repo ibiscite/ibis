@@ -110,10 +110,19 @@ pub(crate) async fn recent_references(
     include_added: bool,
     library: State<'_, Mutex<Library>>,
 ) -> Result<SearchReply, String> {
-    if ids.len() > 30 { return Err("Too many recent references.".into()); }
+    if ids.len() > 30 {
+        return Err("Too many recent references.".into());
+    }
     let ids: Vec<_> = ids.into_iter().map(|id| id.0).collect();
-    let file = library.lock().map_err(|_| "The library is unavailable.")?.file.clone().ok_or("No library is open.")?;
-    tauri::async_runtime::spawn_blocking(move || file.recents(&ids, include_added)).await.map_err(|_| "Recent references are unavailable.".to_owned())?
+    let file = library
+        .lock()
+        .map_err(|_| "The library is unavailable.")?
+        .file
+        .clone()
+        .ok_or("No library is open.")?;
+    tauri::async_runtime::spawn_blocking(move || file.recents(&ids, include_added))
+        .await
+        .map_err(|_| "Recent references are unavailable.".to_owned())?
 }
 
 /// Search the open library. An empty query returns no results. Async so it

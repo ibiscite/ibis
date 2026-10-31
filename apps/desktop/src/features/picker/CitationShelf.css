@@ -79,3 +79,5 @@ main:has(> .shelf) > footer { border-top-color: var(--clear); }
 .shelf-segment-button[data-focus-visible] .shelf-punctuation { color: inherit; }
 .shelf-retained { opacity: .45; }
 .shelf-full-citation { margin-block-end: var(--space-2); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
+
+.shelf-output[data-state="pending"] .preview-text { opacity: .45; }

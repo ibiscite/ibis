@@ -43,32 +43,71 @@ pub(super) fn render(
 
 /// Native shelf ownership is emitted while the syntax is written, never by
 /// looking for keys inside the final string (keys may occur in page text too).
-pub(super) fn display(caps: &SyntaxCapabilities, picks: &[Pick<'_>], requested: usize) -> Result<DisplayTree, CitationError> {
-    if picks.is_empty() { return Ok(DisplayTree::default()); }
+pub(super) fn display(
+    caps: &SyntaxCapabilities,
+    picks: &[Pick<'_>],
+    requested: usize,
+) -> Result<DisplayTree, CitationError> {
+    if picks.is_empty() {
+        return Ok(DisplayTree::default());
+    }
     let tree = match caps.syntax {
         KeySyntax::Pandoc => pandoc(picks),
         KeySyntax::Biblatex => biblatex(caps.command.unwrap_or("autocite"), picks),
         KeySyntax::Latex => latex(picks),
         KeySyntax::Typst => typst(picks),
-        KeySyntax::Keys => groups(picks, picks.iter().map(|pick| pick.key.to_owned()).collect(), ", ", "", ""),
-        _ => DisplayTree { nodes: vec![node((picks.len() == 1).then(|| picks[0].index), render(caps, picks, requested)?)] },
+        KeySyntax::Keys => groups(
+            picks,
+            picks.iter().map(|pick| pick.key.to_owned()).collect(),
+            ", ",
+            "",
+            "",
+        ),
+        _ => DisplayTree {
+            nodes: vec![node(
+                (picks.len() == 1).then(|| picks[0].index),
+                render(caps, picks, requested)?,
+            )],
+        },
     };
-    Ok(if picks.len() == 1 { DisplayTree { nodes: vec![node(Some(picks[0].index), flatten(&tree))] } } else { tree })
+    Ok(if picks.len() == 1 {
+        DisplayTree {
+            nodes: vec![node(Some(picks[0].index), flatten(&tree))],
+        }
+    } else {
+        tree
+    })
 }
 pub(super) fn flatten(tree: &DisplayTree) -> String {
-    tree.nodes.iter().flat_map(|node| &node.content).map(|run| run.text.as_str()).collect()
+    tree.nodes
+        .iter()
+        .flat_map(|node| &node.content)
+        .map(|run| run.text.as_str())
+        .collect()
 }
 fn node(item: Option<usize>, text: String) -> DisplayNode {
-    DisplayNode { item, content: vec![TextRun { text, ..TextRun::default() }] }
+    DisplayNode {
+        item,
+        content: vec![DisplayRun {
+            text,
+            ..DisplayRun::default()
+        }],
+    }
 }
 fn groups(picks: &[Pick<'_>], parts: Vec<String>, separator: &str, prefix: &str, suffix: &str) -> DisplayTree {
     let mut nodes = Vec::new();
-    if !prefix.is_empty() { nodes.push(node(None, prefix.into())); }
+    if !prefix.is_empty() {
+        nodes.push(node(None, prefix.into()));
+    }
     for (index, (pick, text)) in picks.iter().zip(parts).enumerate() {
-        if index > 0 && !separator.is_empty() { nodes.push(node(None, separator.into())); }
+        if index > 0 && !separator.is_empty() {
+            nodes.push(node(None, separator.into()));
+        }
         nodes.push(node(Some(pick.index), text));
     }
-    if !suffix.is_empty() { nodes.push(node(None, suffix.into())); }
+    if !suffix.is_empty() {
+        nodes.push(node(None, suffix.into()));
+    }
     DisplayTree { nodes }
 }
 
@@ -114,7 +153,13 @@ fn pandoc(picks: &[Pick<'_>]) -> DisplayTree {
             }
         })
         .collect::<Vec<_>>();
-    groups(picks, parts, "; ", if narrative { "" } else { "[" }, if narrative { "" } else { "]" })
+    groups(
+        picks,
+        parts,
+        "; ",
+        if narrative { "" } else { "[" },
+        if narrative { "" } else { "]" },
+    )
 }
 
 fn before(prefix: &str) -> String {
@@ -168,14 +213,29 @@ fn biblatex(command: &str, picks: &[Pick<'_>]) -> DisplayTree {
         }
     };
     if let [pick] = picks {
-        groups(picks, vec![format!(
-            "\\{command}{}{}{{{}}}",
-            if pick.suppress { "*" } else { "" },
-            notes(pick),
-            pick.key
-        )], "", "", "")
+        groups(
+            picks,
+            vec![format!(
+                "\\{command}{}{}{{{}}}",
+                if pick.suppress { "*" } else { "" },
+                notes(pick),
+                pick.key
+            )],
+            "",
+            "",
+            "",
+        )
     } else {
-        groups(picks, picks.iter().map(|pick| format!("{}{{{}}}", notes(pick), pick.key)).collect(), "", &format!("\\{command}s"), "")
+        groups(
+            picks,
+            picks
+                .iter()
+                .map(|pick| format!("{}{{{}}}", notes(pick), pick.key))
+                .collect(),
+            "",
+            &format!("\\{command}s"),
+            "",
+        )
     }
 }
 
@@ -226,7 +286,13 @@ fn latex(picks: &[Pick<'_>]) -> DisplayTree {
         .iter()
         .all(|pick| pick.item.locator.is_none() && pick.item.prefix.is_empty() && pick.item.suffix.is_empty())
     {
-        return groups(picks, picks.iter().map(|pick| pick.key.to_owned()).collect(), ",", "\\cite{", "}");
+        return groups(
+            picks,
+            picks.iter().map(|pick| pick.key.to_owned()).collect(),
+            ",",
+            "\\cite{",
+            "}",
+        );
     }
     let parts = picks
         .iter()

@@ -111,7 +111,7 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
       return { ...receipt(spans.map((span) => span.text).join("")), spans };
     },
     recent_references: (args) => overrides.search?.({ ...args, query: { text: "", interpret_locators: true } }) ?? [],
-    citation_details: () => ({ forms: [
+    citation_details: (args) => ({ current_form: prepared(args).request.items[Number(args.item)]?.form ?? "normal", forms: [
       { form: "normal", example: "(Smith, 2020)", reason: null },
       { form: "narrative", example: "Smith (2020)", reason: null },
       { form: "year-only", example: "(2020)", reason: null },

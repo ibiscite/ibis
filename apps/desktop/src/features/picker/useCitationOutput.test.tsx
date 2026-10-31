@@ -1,6 +1,6 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
-import type { FilePreview } from "../../bindings";
+import type { FilePreview_Serialize as FilePreview } from "../../bindings";
 import type { LibraryStatus } from "../../api";
 import type { CitationReference } from "./choice";
 import { pickerText } from "../../messages";
@@ -43,6 +43,19 @@ function options(overrides: Partial<Options>): Options {
     refreshSnapshot: vi.fn(), ...overrides,
   };
 }
+
+test("an empty reconciliation cannot retire a settled ticket when no other preview ran", async () => {
+  const previewFileCitation = vi.fn<Preview>().mockResolvedValue(preview("Settled citation"));
+  const initial = options({ previewFileCitation });
+  const { result, rerender } = renderHook(useCitationOutput, { initialProps: initial });
+  await waitFor(() => expect(result.current.shown).toMatchObject({ text: "Settled citation" }));
+  const settled = result.current.shown;
+  rerender({ ...initial, chosen: [] });
+  expect(result.current.displayedOutput).toBeUndefined();
+  rerender(initial);
+  expect(result.current.shown).toBe(settled);
+  expect(previewFileCitation).toHaveBeenCalledOnce();
+});
 
 test("reopening replaces unfinished preview work but preserves a settled canonical receipt", async () => {
   const pending: ((value: FilePreview) => void)[] = [];

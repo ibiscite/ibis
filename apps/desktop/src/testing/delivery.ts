@@ -54,7 +54,7 @@ class Work<Args, Input = void, Output = void> {
   }
 }
 
-type PreviewContent = Pick<FilePreview, "text"> & Partial<Pick<FilePreview, "html" | "warnings">>;
+type PreviewContent = Pick<FilePreview, "text"> & Partial<Pick<FilePreview, "html" | "warnings" | "spans">>;
 type DeliveryRequest = { text: string; delivery: number | null };
 type Proof = DeliveryRequest & { delivery: number; sequence: number; presentation: number; app: string };
 
@@ -101,6 +101,13 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
       const request = ++latestPreview;
       return preview.enqueue(args, (content) => {
         const value = receipt(content.text, content.html ?? null, content.warnings ?? []);
+        const bodies = args.items.map((item) => `@${item.id.key}`);
+        if (content.spans) value.spans = content.spans;
+        else if (content.text === `[${bodies.join("; ")}]`) value.spans = [
+          { item: null, text: "[" },
+          ...bodies.flatMap((text, item) => [...(item ? [{ item: null, text: "; " }] : []), { item, text }]),
+          { item: null, text: "]" },
+        ];
         if (request === latestPreview) activeTicket = value.ticket;
         return value;
       });

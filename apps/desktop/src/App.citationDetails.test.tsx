@@ -94,7 +94,7 @@ test.each([false, true])("a label-only Page refuses copy until corrected (previe
   });
   render(<App />);
   const page = await openCitationDetails();
-  await screen.findByText("Original output");
+  await within(screen.getByRole("dialog")).findByText("Original output");
   const search = screen.getByLabelText("Search references");
   if (hidden) fireEvent.keyDown(search, { key: "i", code: "KeyI", ctrlKey: true });
   fireEvent.change(page, { target: { value: "pp." } });
@@ -217,7 +217,7 @@ test("each shelf reference keeps independent details and an empty Page removes o
   closeCitationDetails();
   fireEvent.click(edit("a"));
   expect((screen.getByRole("textbox", { name: "Page" }) as HTMLInputElement).value).toBe("iv–vi");
-  expect(screen.getByRole("radio", { name: "Name in the sentence", checked: true })).toBeTruthy();
+  expect(await screen.findByRole("radio", { name: "Name in the sentence", checked: true })).toBeTruthy();
   fireEvent.click(screen.getByRole("radio", { name: "Name in brackets" }));
   await waitFor(() => expect(previews.at(-1)?.items[0]?.form).toBe("normal"));
 });
@@ -262,7 +262,7 @@ test("a form edit cancels queued Enter and ignores the retired preview", async (
   fireEvent.click(screen.getByRole("radio", { name: "Name in the sentence" }));
   await waitFor(() => expect(pending).toHaveLength(2));
   await act(async () => { pending[1]!(receipt("New narrative")); });
-  await screen.findByText("New narrative");
+  await within(screen.getByRole("dialog")).findByText("New narrative");
   await act(async () => { pending[0]!(receipt("Retired normal")); });
   expect(screen.queryByText("Retired normal")).toBeNull();
   expect(calls).not.toContain("copy_file_citation");
@@ -308,7 +308,7 @@ test("late form metadata cannot overwrite the examples for a newer Page edit or 
   const requests: { ticket: string; item: number }[] = [];
   backend({ search: () => [result("a", "Synthetic metadata work")],
     preview_file_citation: ({ items }) => receipt(`Page ${items[0]?.page_input ?? "original"}`),
-    citation_details: (args) => { requests.push(args); return new Promise((resolve) => replies.push(resolve)); },
+    citation_details: (args) => { requests.push({ ticket: args.ticket, item: Number(args.item) }); return new Promise((resolve) => replies.push(resolve)); },
   });
   render(<App />);
   const page = await openCitationDetails();
@@ -316,7 +316,7 @@ test("late form metadata cannot overwrite the examples for a newer Page edit or 
   fireEvent.change(page, { target: { value: "9" } });
   await waitFor(() => expect(replies).toHaveLength(2));
   expect(requests[1]?.ticket).not.toBe(requests[0]?.ticket);
-  const choices = (example: string) => ({ forms: [
+  const choices = (example: string) => ({ current_form: "normal", forms: [
     { form: "normal", example, reason: null }, { form: "narrative", example: null, reason: "Cite it alone." }, { form: "year-only", example: "(2026)", reason: null },
   ] });
   await act(async () => replies[1]!(choices("Current page 9 example")));
@@ -353,5 +353,5 @@ test("true Year only is sent to the engine; an engine refusal can be corrected f
   fireEvent.click(normal);
   await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
   expect(previews.at(-1)?.items[0]?.form).toBe("normal");
-  expect(screen.getByText("(Smith, 2020)", { selector: ".citation-form-example" })).toBeTruthy();
+  expect(await screen.findByText("(Smith, 2020)", { selector: ".citation-form-example" })).toBeTruthy();
 });

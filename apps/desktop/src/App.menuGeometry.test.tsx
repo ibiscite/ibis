@@ -3,7 +3,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
 import * as api from "./api";
-import { backend, resetApp, result } from "./testing/app";
+import { backend, resetApp, result, openCitationDetails } from "./testing/app";
 
 afterEach(async () => { await resetApp(); vi.restoreAllMocks(); });
 
@@ -209,7 +209,7 @@ test("resizing while editing keeps the selected title readable without moving Pa
   await screen.findByRole("option", { name: /First invented work/ });
   const search = screen.getByRole("combobox");
   fireEvent.keyDown(search, { key: "Enter", shiftKey: true });
-  fireEvent.click(screen.getByRole("button", { name: "Edit citation" }));
+  await openCitationDetails();
   const page = screen.getByLabelText("Page", { exact: true });
   act(() => page.focus());
   const middle = document.querySelector<HTMLElement>(".picker-content")!;

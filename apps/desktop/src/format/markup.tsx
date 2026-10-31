@@ -3,9 +3,24 @@
 // markup the engine is known to emit, and everything else is dropped. The
 // preview is built from that tree; clipboard content stays in the engine.
 import { createElement, type CSSProperties, type ReactNode } from "react";
+import type { DisplayRun } from "../bindings";
 
 type Tag = "i" | "b" | "sup" | "sub" | "span";
 type Block = "entry" | "margin" | "inline" | "block" | "indent";
+
+/** Engine display leaves are inert style data, never HTML to evaluate. */
+export function renderRuns(runs: readonly DisplayRun[]): ReactNode[] {
+  return runs.map((run, index) => {
+    let node: ReactNode = run.text;
+    if (run.italic) node = createElement("i", null, node);
+    if (run.bold) node = createElement("b", null, node);
+    if (run.script === "superscript" || run.script === "subscript") node = createElement(run.script === "superscript" ? "sup" : "sub", null, node);
+    return createElement("span", { key: index, style: {
+      ...(run.small_caps ? { fontVariant: "small-caps" } : {}),
+      ...(run.underline ? { textDecoration: "underline" } : {}),
+    } }, node);
+  });
+}
 
 export type Markup = string | { tag: Tag; style?: Style; children: Markup[] } | { block: Block; children: Markup[] };
 

@@ -3,7 +3,7 @@ import { citationDetails, type SearchResult } from "../../api";
 import type { FilePreview, ReferenceDetails } from "../../bindings";
 import type { FormattedCitation, StyleId } from "../../format/styles";
 import { copiesEntry, STYLE_NAMES } from "../../format/styles";
-import { render } from "../../format/markup";
+import { render, renderRuns } from "../../format/markup";
 import { citationDetailsText, pickerText } from "../../messages";
 import { choiceKey, idKey, type CitationDetailsChange, type CitationReference } from "./choice";
 import { closestMatchWarnings } from "./rows";
@@ -38,8 +38,9 @@ function Beak({ closing = false }: { closing?: boolean }) {
 
 /** One line of exact engine output. All editing stays in an anchored menu;
  * a folded citation retains its full text and every reference's identity. */
-export function CitationShelf({ announce, selected, highlightedReference, highlightedReferences, onChangeReference, removeLabel, onRemove, referenceLibrary, style, keys, shown, previewReceipt, outputWarnings, problem, focusable, fallbackFocusRef, presentation, copied: copiedReceipt }: {
+export function CitationShelf({ announce, selected, highlightedReference, highlightedReferences, onChangeReference, removeLabel, onRemove, referenceLibrary, style, keys, shown, previewReceipt, outputWarnings, problem, focusable, fallbackFocusRef, presentation, present = false, copied: copiedReceipt }: {
   presentation?: number;
+  present?: boolean;
   announce: boolean;
   selected: Map<string, CitationReference>;
   highlightedReference?: CitationReference;
@@ -96,16 +97,17 @@ export function CitationShelf({ announce, selected, highlightedReference, highli
   const edited = panel?.reference ? references.find((r) => idKey(r.id) === panel.reference) : references[0];
   const editedIndex = edited ? references.indexOf(edited) : -1;
   const detailsOpen = panel?.kind === "reference" || panel?.kind === "failure";
+  const panelPresentation = panel?.presentation;
   useEffect(() => {
-    if (!detailsOpen || !previewReceipt || editedIndex < 0) return;
+    if (!detailsOpen || panelPresentation !== presentation || !previewReceipt || editedIndex < 0) return;
     let live = true;
     void citationDetails(previewReceipt.ticket, previewReceipt.content_hash, editedIndex).then(
       (value) => { if (live) setFormChoices({ receipt: previewReceipt, item: editedIndex, value }); },
       () => { if (live) setFormChoices({ receipt: previewReceipt, item: editedIndex, value: "failed" }); },
     );
     return () => { live = false; };
-  }, [detailsOpen, previewReceipt, editedIndex, presentation]);
-  const choices = formChoices?.receipt === previewReceipt && formChoices?.item === editedIndex ? formChoices.value : undefined;
+  }, [detailsOpen, previewReceipt, editedIndex, presentation, panelPresentation]);
+  const choices = formChoices?.receipt === previewReceipt && formChoices?.item === editedIndex ? formChoices.value : shown === "failed" && !previewReceipt ? "refused" : undefined;
   useLayoutEffect(() => {
     if (!panel) return;
     if (panel.presentation !== presentation || panel.receipt !== copied || panel.kind === "reference" && !edited || panel.kind === "references" && references.length === 0 || copied && panel.kind !== "warnings") {
@@ -130,20 +132,24 @@ export function CitationShelf({ announce, selected, highlightedReference, highli
   const isSelected = (reference: CitationReference) => records.some((r) => idKey(r.id) === idKey(reference.id));
   const fullProblem = problem ?? (style ? pickerText.previewStyleError(STYLE_NAMES[style]) : pickerText.previewError);
   const ready = shown && typeof shown === "object" ? shown : null;
-  const retained = useRef<{ presentation: typeof presentation; value: FormattedCitation } | null>(null);
-  useLayoutEffect(() => { if (ready) retained.current = { presentation, value: ready }; }, [ready, presentation]);
+  const referenceIds = JSON.stringify(references.map((reference) => idKey(reference.id)));
+  const retained = useRef<{ presentation: typeof presentation; ids: string; value: FormattedCitation } | null>(null);
+  useLayoutEffect(() => { if (ready) retained.current = { presentation, ids: referenceIds, value: ready }; }, [ready, presentation, referenceIds]);
   const meaning = choiceKey(references);
-  const pendingOwner = useMemo(() => ({}), [meaning, style, keys, presentation]);
+  const pendingOwner = useMemo(() => ({ meaning, style, keys, presentation }), [meaning, style, keys, presentation]);
   const [expired, setExpired] = useState<object | null>(null);
   useEffect(() => {
-    if (shown !== null) return;
+    if (shown !== null) { setExpired(null); return; }
     const timer = window.setTimeout(() => setExpired(pendingOwner), 300);
     return () => window.clearTimeout(timer);
   }, [shown, pendingOwner]);
   const previous = shown === null && expired !== pendingOwner && retained.current?.presentation === presentation ? retained.current?.value ?? null : null;
-  const text = ready?.text;
+  const retainedSegments = Boolean(previous && retained.current?.ids === referenceIds);
+  const visible = ready ?? (retainedSegments ? previous : null);
+  const text = visible?.text;
   const single = references.length === 1 ? references[0] : undefined;
-  const hasShelf = copied || references.length || shown !== undefined;
+  const hasShelf = present || copied || references.length || shown !== undefined;
+  const fullCitation = ready && <section aria-label="Full citation" className="shelf-full-citation" tabIndex={0}><bdi dir="auto">{ready.markup.length ? render(ready.markup) : ready.text}</bdi></section>;
   const detailsTitle = panel?.kind === "warnings" ? pickerText.citationWarnings : panel?.kind === "references" ? pickerText.selectedReferences : edited
     ? citationDetailsText.details(edited.title || edited.key) : pickerText.citationDetails;
   const segmentKeys = (event: KeyboardEvent, reference: CitationReference) => {
@@ -159,10 +165,11 @@ export function CitationShelf({ announce, selected, highlightedReference, highli
     }
   };
   const keyText = (value: string) => keys ? value.split(/([^\p{L}\p{N}\s]+)/u).map((part, index) => index % 2 ? <span className="shelf-punctuation" key={index}>{part}</span> : part) : value;
-  const segments = ready?.spans ?? (shown === undefined || shown === null && !previous ? references.map((_, item) => ({ item, text: `${item ? "; " : ""}${labels[item]}` })) : undefined);
-  const manySegments = !single && segments?.map((span, index) => {
+  const segments = visible?.spans ?? (shown === undefined || shown === null && !previous ? references.map((_, item) => ({ item, text: `${item ? "; " : ""}${labels[item]}` })) : undefined);
+  const manySegments = !single && !copied && segments?.map((span, index) => {
     const reference = span.item === null ? undefined : references[span.item];
-    if (!reference || !onChangeReference || copied) return <span key={index} className="shelf-shared">{keyText(span.text)}</span>;
+    const contents = !keys && "runs" in span && span.runs ? renderRuns(span.runs) : keyText(span.text);
+    if (!reference || !onChangeReference || copied) return <span key={index} className="shelf-shared">{contents}</span>;
     const name = labels[span.item!]!;
     return <span key={idKey(reference.id)} className="shelf-segment" data-reference-key={reference.key} data-built={isSelected(reference) || undefined}
       data-menu-open={panel?.kind === "reference" && panel.reference === idKey(reference.id) || undefined}>
@@ -170,7 +177,7 @@ export function CitationShelf({ announce, selected, highlightedReference, highli
         aria-describedby={`${citationId}-${index}`} aria-keyshortcuts={isSelected(reference) ? "Backspace Delete" : undefined}
         aria-haspopup="dialog" aria-expanded={panel?.kind === "reference" && panel.reference === idKey(reference.id)}
         onKeyDown={(event) => segmentKeys(event, reference)} onPress={(event) => edit(reference, event.target as HTMLElement)}>
-        <bdi id={`${citationId}-${index}`} dir={keys ? "ltr" : "auto"} className="preview-text" title={span.text}>{keyText(span.text)}</bdi>
+        <bdi id={`${citationId}-${index}`} dir="auto" className="preview-text" title={span.text}>{contents}</bdi>
       </Button>
       {isSelected(reference) && <Button variant="icon" size="small" className="shelf-remove" glyph="close" excludeFromTabOrder aria-label={removeLabel(reference)} onPress={() => remove(reference)} />}
     </span>;
@@ -181,7 +188,7 @@ export function CitationShelf({ announce, selected, highlightedReference, highli
               aria-describedby={text !== undefined ? citationId : undefined}
               aria-haspopup="dialog" aria-expanded={panel?.kind === "reference"} aria-controls={panel?.kind === "reference" ? menuId : undefined}
               onKeyDown={(event) => segmentKeys(event, single)} onPress={(event) => edit(single, event.target as HTMLElement)}>
-              <bdi id={text !== undefined ? citationId : undefined} dir={text !== undefined && keys ? "ltr" : "auto"} className={text !== undefined ? "preview-text" : "shelf-reference-name"} title={text ?? single.title}>{text !== undefined ? keys ? keyText(text) : ready && ready.markup.length ? render(ready.markup) : text : labels[0]}</bdi>
+              <bdi id={text !== undefined ? citationId : undefined} dir="auto" className={text !== undefined ? "preview-text" : "shelf-reference-name"} title={text ?? single.title}>{text !== undefined ? keys ? keyText(text) : visible && visible.markup.length ? render(visible.markup) : text : labels[0]}</bdi>
             </Button>
             {isSelected(single) && <Button variant="icon" size="small" className="shelf-remove" glyph="close" excludeFromTabOrder
               aria-label={removeLabel(single)} onPress={() => remove(single)} />}
@@ -195,9 +202,9 @@ export function CitationShelf({ announce, selected, highlightedReference, highli
         className="shelf-output" data-keys={keys || undefined} data-state={!copied && (shown === null || typeof shown === "string") ? shown ?? "pending" : undefined}>
         <span className="shelf-leading"><Beak /></span>
         <div className="shelf-citation" role={selected.size ? "group" : undefined} aria-label={selected.size ? pickerText.selectedReferences : undefined}>
-          {previous ? <bdi className="preview-text shelf-retained" dir={keys ? "ltr" : "auto"} title={previous.text}>{keyText(previous.text)}</bdi> : shown !== "failed" && shown !== "stale" && singleSegment}
-          {text !== undefined ? singleSegment ? null : manySegments ? <span className="shelf-fragments" dir={keys ? "ltr" : "auto"} title={text}>{manySegments}</span> : <bdi id={citationId} dir={keys ? "ltr" : "auto"} className="preview-text" title={text} tabIndex={focusable && !copied ? 0 : undefined}>
-            {!copied && ready?.markup.length ? render(ready.markup) : text}
+          {previous && !retainedSegments ? <bdi className="preview-text shelf-retained" dir="auto" title={previous.text}>{keyText(previous.text)}</bdi> : shown !== "failed" && shown !== "stale" && singleSegment}
+          {text !== undefined ? singleSegment ? null : manySegments ? <span className="shelf-fragments" dir={keys ? "ltr" : "auto"} title={text}>{manySegments}</span> : <bdi id={citationId} dir="auto" className="preview-text" title={text} tabIndex={focusable && !copied ? 0 : undefined}>
+            {ready?.markup.length && !keys ? render(ready.markup) : keyText(text)}
           </bdi> : shown === "failed" ? <><span className="shelf-state-icon" data-state="failed" aria-hidden="true">!</span><p title={fullProblem}>{fullProblem}</p></> : shown === "stale" ? <><span className="shelf-state-icon" data-state="stale" aria-hidden="true">!</span><p role="status">{pickerText.shelfStale}</p></>
             : shown === undefined && manySegments ? <span className="shelf-fragments">{manySegments}</span> : shown === null && !previous ? <p role="status">{pickerText.previewPending}</p> : null}
           {copied && <Beak closing />}
@@ -205,9 +212,9 @@ export function CitationShelf({ announce, selected, highlightedReference, highli
         <div className="shelf-actions">
           {copied && <span role="status" aria-label={pickerText.copied} className="shelf-copied"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 10.5 3.2 3.2L15 6.5" pathLength="1" /></svg>{pickerText.copied}</span>}
           {!copied && references.length > 1 && <Button ref={count} variant="quiet" size="small" className="shelf-count" aria-haspopup="dialog"
-            aria-label={pickerText.allChosen(references.length)} aria-expanded={panel?.kind === "references" || panel?.anchor === count.current}
+            aria-label={pickerText.allChosen(references.length)} title={pickerText.allChosen(references.length)} aria-expanded={panel?.kind === "references" || panel?.anchor === count.current}
             aria-controls={panel?.kind === "references" || panel?.anchor === count.current ? menuId : undefined}
-            onPress={(event) => open("references", event.target as HTMLElement)}>{pickerText.moreChosen(references.length)}</Button>}
+            onPress={(event) => open("references", event.target as HTMLElement)}>{references.length}</Button>}
           {statusLabel && <Button variant="quiet" size="small" className="shelf-warnings" aria-label={statusLabel} title={statusLabel}
             aria-haspopup="dialog" aria-expanded={panel?.kind === "warnings"} aria-controls={panel?.kind === "warnings" ? menuId : undefined}
             onPress={(event) => open("warnings", event.target as HTMLElement)}>{compact ? warnings.length > 0 ? `! ${warnings.length}` : "i" : <>
@@ -223,14 +230,13 @@ export function CitationShelf({ announce, selected, highlightedReference, highli
       onRemove={panel.kind === "reference" && edited && isSelected(edited) ? () => remove(edited) : undefined}
       heading={panel.kind === "references" || panel.kind === "warnings" ? detailsTitle : labels[editedIndex] ?? detailsTitle} onClose={() => setPanel(null)}>
       {panel.kind === "references" ? <>
-        {ready && <section aria-label="Full citation" className="shelf-full-citation"><bdi dir={keys ? "ltr" : "auto"}>{ready.markup.length ? render(ready.markup) : ready.text}</bdi></section>}
         <ul className="shelf-details-list" aria-label={pickerText.selectedReferences}>{references.map((reference, i) => <li key={idKey(reference.id)} data-reference-key={reference.key}>
         <Button variant="quiet" aria-label={citationDetailsText.edit(labels[i]!)} aria-describedby={`${menuId}-reference-${i}`} onKeyDown={(event) => segmentKeys(event, reference)} onPress={(event) => edit(reference, event.target as HTMLElement, true)}>
           <span className="shelf-reference-summary"><bdi>{labels[i]}</bdi><bdi className="shelf-reference-title" id={`${menuId}-reference-${i}`}>{reference.title}</bdi></span>
           {reference.locator && <bdi className="shelf-detail-locator">{reference.locator.label} {reference.locator.value}</bdi>}
           {reference.partial && <span className="shelf-pill">{pickerText.closestMatch}</span>}
         </Button>
-      </li>)}</ul></> : panel.kind === "warnings" ? <>
+      </li>)}</ul>{fullCitation}</> : panel.kind === "warnings" ? <>
         {entryNotice && <><h3>{pickerText.entryOnlyShort}</h3><p>{entryNotice}</p></>}
         {currentWarnings.map((warning, i) => <p key={`output-${i}`}>{warning}</p>)}
         {partialWarnings.length > 0 && <h3>{pickerText.closestMatches}</h3>}
@@ -239,12 +245,13 @@ export function CitationShelf({ announce, selected, highlightedReference, highli
         {edited && <p className="shelf-detail-title">{edited.title || edited.key}</p>}
         {shown === "failed" && <p role="alert" className="shelf-problem">{fullProblem}</p>}
         {edited && onChangeReference && <CitationDetails key={idKey(edited.id)} pageRef={page} autoFocus label={citationDetailsText.details(edited.title || edited.key)}
-          page={edited.locator?.label === "page" ? edited.locator.value : ""} form={edited.form ?? "normal"} choices={choices}
+          page={edited.locator?.label === "page" ? edited.locator.value : ""} choices={choices}
           onPageChange={(value) => onChangeReference(edited, { locator: value.trim() ? { label: "page", value, input: "page-editor" } : null })}
           onFormChange={(form) => onChangeReference(edited, { form })} />}
         {edited && <Button variant="quiet" className="shelf-menu-remove" aria-keyshortcuts="Backspace Delete" isDisabled={!isSelected(edited)} onPress={() => remove(edited)}>
           <span>Remove from citation</span><span aria-hidden="true">{keyLabel("Backspace", currentPlatform() === "macos")}</span>
         </Button>}
+        {fullCitation}
         {warnings.map((warning, i) => <p key={i}>{warning}</p>)}
       </>}
     </DetailsMenu>}

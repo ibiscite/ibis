@@ -97,7 +97,10 @@ pub(crate) struct SearchResult {
 
 #[derive(Serialize, specta::Type)]
 #[serde(rename_all = "kebab-case")]
-pub(crate) enum RecentGroup { Cited, Added }
+pub(crate) enum RecentGroup {
+    Cited,
+    Added,
+}
 
 /// Longest container sent to the interface, in characters, ellipsis included.
 const CONTAINER_LIMIT: usize = 120;

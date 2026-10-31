@@ -30,7 +30,7 @@ function nativeLayout() {
     return new DOMRect(parseFloat(menu.style.left) || 16, menu.style.bottom ? innerHeight - parseFloat(menu.style.bottom) - height : parseFloat(menu.style.top) || 0, 448, height);
   };
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
-    if (this.matches(".shelf-output, [data-segment]")) return new DOMRect(16, anchorTop, 448, anchorHeight);
+    if (this.matches(".shelf-output, .shelf-segment-button, [data-segment]")) return new DOMRect(16, anchorTop, 448, anchorHeight);
     if (this.matches(".search-bar")) return new DOMRect(0, 0, innerWidth, 185);
     if (this.matches(".picker-content")) return new DOMRect(0, 185, innerWidth, Math.max(0, anchorTop - 185));
     if (this.matches("[data-anchor-port]")) return new DOMRect(0, 185, innerWidth, 80);
@@ -173,7 +173,7 @@ test.each([192, 700])("folding the shelf keeps its %spx editor inside the window
   // real order: viewport resize, then a shelf fold that moves (but does not
   // resize) the same citation segment. React Aria still owns the fitting.
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
-    if (this.matches(".shelf-output")) return new DOMRect(8, this.closest("[data-folded]") ? 272 : 249, 464, 40);
+    if (this.matches(".shelf-output, .shelf-segment-button")) return new DOMRect(8, this.closest("[data-folded]") ? 272 : 249, 464, 40);
     if (this.matches(".details-menu")) {
       const top = this.style.bottom ? innerHeight - parseFloat(this.style.bottom) - height(this) : parseFloat(this.style.top) || 0;
       return new DOMRect(parseFloat(this.style.left) || 8, top, 464, height(this));

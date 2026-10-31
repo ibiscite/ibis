@@ -543,7 +543,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
             onPress={() => { send({ type: "literal" }); input.current?.focus({ preventScroll: true }); }}>
             <bdi>{usingLocator.label === "page" ? "p." : usingLocator.label} {usingLocator.value}</bdi><span aria-hidden="true">×</span>
           </Button>
-          {canApplyLocator && <Button variant="quiet" size="small" onPress={() => { changeLocator(prepared, usingLocator); input.current?.focus(); }}>{pickerText.applyLocator(prepared.key)}</Button>}
+          {canApplyLocator && <Button variant="quiet" size="small" onPress={() => { changeLocator(prepared, usingLocator); input.current?.focus(); }} aria-label={pickerText.applyLocator(prepared.key)} title={pickerText.applyLocator(prepared.key)}>Apply</Button>}
         </span>}
         onQueryChange={(value) => {
           pointer.resetHover();
@@ -667,7 +667,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       </div>
       </PickerScroll>
       {/* Keep the selection live region mounted when choices remove citation controls. */}
-      <CitationShelf presentation={state.visibility} announce={selectionChanged} selected={showCitations ? selected : noSelection} removeLabel={removeLabel} onRemove={(r) => {
+      <CitationShelf presentation={state.visibility} present={showCitations && results.length > 0} announce={selectionChanged} selected={showCitations ? selected : noSelection} removeLabel={removeLabel} onRemove={(r) => {
         send({ type: "remove-reference", reference: r });
         input.current?.focus({ preventScroll: true });
       }} highlightedReferences={selected.size === 0 ? chosen : undefined} previewReceipt={previewReceipt}

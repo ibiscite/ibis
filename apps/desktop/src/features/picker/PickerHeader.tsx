@@ -55,6 +55,7 @@ export function PickerHeader({ inputRef, query, pageToken, onQueryChange, onSear
       <div className="search-field" title=""
         onKeyDownCapture={(e) => { if (composing(e)) e.stopPropagation(); }}
         onKeyUpCapture={(e) => { if (composing(e)) e.stopPropagation(); }}>
+        <div className="query-input">
         <input
           id="search"
           type="search"
@@ -88,8 +89,9 @@ export function PickerHeader({ inputRef, query, pageToken, onQueryChange, onSear
         />
         {query !== "" && <Button variant="icon" glyph="close" className="search-clear" aria-label={pickerText.clearSearch}
           onPress={() => { onQueryChange(""); inputRef.current?.focus(); }} />}
+        </div>
+        {pageToken}
       </div>
-      {pageToken}
       {showFormat && <FormatMenu format={format} buttonRef={formatButtonRef} app={app} scope={formatScope} onOpenChange={onFormatOpenChange} onceOnly={onceOnly} onToggleOnce={onToggleOnce} onAutomatic={onAutomatic} onDefault={onDefault} disabled={formatDisabled} styles={styles} onChange={onFormatChange} searchRef={inputRef} onCommand={onFormatCommand} />}
       <ToggleButton variant="icon" className="pin-button" aria-label={pickerText.keepOpen} aria-keyshortcuts={ariaKeys(keysFor("pin"), currentPlatform() === "macos")}
         isSelected={pinned} onChange={onTogglePin}>

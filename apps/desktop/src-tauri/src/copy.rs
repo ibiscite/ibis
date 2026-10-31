@@ -24,21 +24,94 @@ pub(crate) struct Copied {
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize, specta::Type)]
-pub(crate) struct ReceiptSummary { pub(crate) text: String, pub(crate) more: usize }
+pub(crate) struct ReceiptSummary {
+    pub(crate) text: String,
+    pub(crate) more: usize,
+}
 
 impl ReceiptSummary {
     pub(crate) fn citation(result: &ibis_core::contract::CitationResult) -> Self {
         const LIMIT: usize = 120;
         let line = result.text.split_whitespace().collect::<Vec<_>>().join(" ");
-        if line.chars().count() <= LIMIT { return Self { text: line, more: 0 }; }
+        if line.chars().count() <= LIMIT {
+            return Self { text: line, more: 0 };
+        }
         let owners: std::collections::BTreeSet<_> = result.display.nodes.iter().filter_map(|node| node.item).collect();
-        let first = if owners.len() <= 1 { line } else {
+        let first = if owners.len() <= 1 {
+            line
+        } else {
             let first = result.display.nodes.iter().find_map(|node| node.item);
-            result.display.nodes.iter().take_while(|node| node.item.is_none() || node.item == first).flat_map(|node| &node.content).map(|run| run.text.as_str()).collect::<String>()
+            result
+                .display
+                .nodes
+                .iter()
+                .take_while(|node| node.item.is_none() || node.item == first)
+                .flat_map(|node| &node.content)
+                .map(|run| run.text.as_str())
+                .collect::<String>()
         };
-        let mut text: String = first.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(LIMIT - 1).collect();
+        let mut text: String = first
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .chars()
+            .take(LIMIT - 1)
+            .collect();
         text.push('…');
-        Self { text, more: owners.len().saturating_sub(1) }
+        Self {
+            text,
+            more: owners.len().saturating_sub(1),
+        }
+    }
+}
+
+#[cfg(test)]
+mod shelf_summary_tests {
+    use super::*;
+    use ibis_core::contract::*;
+    #[test]
+    fn shelf_summary_keeps_narrative_remainders_and_counts_remaining_references() {
+        let text = format!("Taylor (2026, p. {})", "12–30 ".repeat(40));
+        let node = |item, text: String| DisplayNode {
+            item,
+            content: vec![DisplayRun {
+                text,
+                ..DisplayRun::default()
+            }],
+        };
+        let result = CitationResult::new(
+            text.clone(),
+            None,
+            None,
+            DisplayTree {
+                nodes: vec![
+                    node(Some(0), "Taylor".into()),
+                    node(None, " ".into()),
+                    node(Some(0), text[7..].into()),
+                ],
+            },
+            vec![ItemOutcome::Rendered { item: 0 }],
+            vec![],
+            vec![],
+        );
+        let summary = ReceiptSummary::citation(&result);
+        assert!(summary.text.starts_with("Taylor (2026, p."));
+        assert!(summary.text.ends_with('…'));
+        assert_eq!(summary.more, 0);
+        let result = CitationResult::new(
+            "Long synthetic citation ".repeat(20),
+            None,
+            None,
+            DisplayTree {
+                nodes: (0..5)
+                    .map(|item| node(Some(item), format!("Synthetic reference {item}; ")))
+                    .collect(),
+            },
+            (0..5).map(|item| ItemOutcome::Rendered { item }).collect(),
+            vec![],
+            vec![],
+        );
+        assert_eq!(ReceiptSummary::citation(&result).more, 4);
     }
 }
 
@@ -59,9 +132,21 @@ mod engine_file_acceptance;
 /// Read-only examples owned by a prepared preview; never publishes a new ticket.
 #[tauri::command]
 #[specta::specta]
-pub(crate) async fn citation_details(ticket: String, content_hash: String, item: usize, library: State<'_, Mutex<Library>>) -> Result<crate::library::engine_file::ReferenceDetails, CommandError> {
-    let file = library.lock().map_err(|_| CommandError::SnapshotChanged)?.file.clone().ok_or(CommandError::SnapshotChanged)?;
-    tauri::async_runtime::spawn_blocking(move || file.details(&ticket, &content_hash, item)).await.map_err(|_| CommandError::from("Citation examples are unavailable. Close and reopen the menu to try again."))?
+pub(crate) async fn citation_details(
+    ticket: String,
+    content_hash: String,
+    item: usize,
+    library: State<'_, Mutex<Library>>,
+) -> Result<crate::library::engine_file::ReferenceDetails, CommandError> {
+    let file = library
+        .lock()
+        .map_err(|_| CommandError::SnapshotChanged)?
+        .file
+        .clone()
+        .ok_or(CommandError::SnapshotChanged)?;
+    tauri::async_runtime::spawn_blocking(move || file.details(&ticket, &content_hash, item))
+        .await
+        .map_err(|_| CommandError::from("Citation examples are unavailable. Close and reopen the menu to try again."))?
 }
 
 #[tauri::command]

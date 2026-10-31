@@ -41,12 +41,17 @@ export function useCitationOutput({ chosen, library, libraryVersion, sessionId =
   // A -> B -> A is a new operation: B has retired A's native copy ticket.
   // Equal input alone cannot revive that receipt before fresh A finishes.
   const request = useMemo(() => ({ key: previewKey }), [previewKey]);
+  const lastStarted = useRef<object | null>(null);
   const previousRequest = useRef({ sessionId, key: previewKey });
+  // An empty search/reconciliation performs no native preview and cannot
+  // retire its settled ticket. A -> B -> A still waits if B actually started.
+  const reusable = formatted?.key === previewKey && lastStarted.current === formatted.request;
+  const ownsResult = formatted?.request === request || reusable;
   // What Enter would copy now; null while it is being formatted.
-  const shown = formatted?.request === request ? formatted.result : null;
+  const shown = ownsResult ? formatted?.result ?? null : null;
   // Why the preview failed, when the user can fix it.
   const previewProblem = shown === "failed" ? formatted?.problem ?? (style ? pickerText.previewStyleError(STYLE_NAMES[style]) : pickerText.previewError) : undefined;
-  const previewReceipt = formatted?.request === request ? formatted.preview : undefined;
+  const previewReceipt = ownsResult ? formatted?.preview : undefined;
   // Hiding citation text never hides the reason it cannot be copied.
   const displayedOutput = chosen.length > 0 && (showPastePreview || shown === "failed") ? shown : undefined;
   // Format the preview again whenever the choice or the style changes.
@@ -55,6 +60,11 @@ export function useCitationOutput({ chosen, library, libraryVersion, sessionId =
     const previous = previousRequest.current;
     previousRequest.current = { sessionId, key: previewKey };
     if (chosen.length === 0 || !chosenRevision) return;
+    if (reusable && formatted && formatted.request !== request) {
+      lastStarted.current = request;
+      setFormatted({ ...formatted, request });
+      return;
+    }
     // A settled prepared result survives reopening, including permission
     // detours. Only unfinished work needs a new session's request.
     if (previous.sessionId !== sessionId && previous.key === previewKey && formatted?.request === request) return;
@@ -65,6 +75,7 @@ export function useCitationOutput({ chosen, library, libraryVersion, sessionId =
     let live = true;
     const owns = () => live && currentSession.current === sessionId && (isCurrentSession?.(sessionId) ?? true);
     const abort = new AbortController();
+    lastStarted.current = request;
     const key = previewKey;
     const made = previewFileCitation(chosen.map((r) => ({
       id: r.id, cite: r.cite ?? "",
