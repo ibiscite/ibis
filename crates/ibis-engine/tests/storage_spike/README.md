@@ -12,8 +12,8 @@ Run from the worktree, with no other build or benchmark started by this task:
 export CARGO_TARGET_DIR="$PWD/target"
 export CARGO_NET_OFFLINE=true
 cargo test -p ibis-engine --release --offline --locked --test storage_spike
-/Users/diyanko/miniconda3/bin/python3 crates/ibis-engine/tests/storage_spike/protocol_tests.py
-/Users/diyanko/miniconda3/bin/python3 crates/ibis-engine/tests/storage_spike.py
+python3 crates/ibis-engine/tests/storage_spike/protocol_tests.py
+python3 crates/ibis-engine/tests/storage_spike.py
 ```
 
 The runner refuses to overwrite evidence. For an outside-sandbox measurement
@@ -21,7 +21,7 @@ using the already generated, hash-checked fixtures:
 
 ```sh
 CARGO_TARGET_DIR="$PWD/target" CARGO_NET_OFFLINE=true \
-  /Users/diyanko/miniconda3/bin/python3 crates/ibis-engine/tests/storage_spike.py \
+  python3 crates/ibis-engine/tests/storage_spike.py \
   --reuse-fixtures --output spike-results/stage-a-outside-sandbox.json
 ```
 

@@ -1,6 +1,6 @@
 """Stage A, fresh release processes, five retained runs per source and size.
 
-Use /Users/diyanko/miniconda3/bin/python3. All generated data/builds are under
+Use python3. All generated data/builds are under
 target; only the JSON evidence is under spike-results. Never discovers a real
 profile, launches Zotero, changes production files, installs or uses a network.
 The optional stub binds loopback only. A denied socket/process check is retained
