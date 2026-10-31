@@ -7,9 +7,9 @@ export const citationDetailsText = {
   pageHint: "A page or range",
   form: "Citation form",
   forms: [
-    { value: "normal", label: "Normal" },
-    { value: "narrative", label: "Narrative" },
-    { value: "author-omitted", label: "Omit author" },
+    { value: "normal", label: "Name in brackets" },
+    { value: "narrative", label: "Name in the sentence" },
+    { value: "year-only", label: "Year only" },
   ] as const,
   edit: (reference: string) => `Edit ${reference}`,
   details: (reference: string) => `Citation details for ${reference}`,

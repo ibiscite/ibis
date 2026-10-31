@@ -14,8 +14,8 @@ export async function dismissMenu(menu, keyTarget = menu) {
 }
 
 export function shelfControl(page, name) {
-  // Folding retains hidden chip controls. An open menu also marks its visible
-  // background aria-hidden, so distinguish rendered controls from both states.
+  // An open menu marks its visible background aria-hidden; intersect physical
+  // shelf controls so menu rows never become a second match for their cause.
   return page.getByRole("button", { name, exact: true, includeHidden: true })
     .and(page.locator("main > .shelf button:visible"));
 }
@@ -32,6 +32,15 @@ export function isWholeShelf() {
   const shelf = document.querySelector("main > .shelf");
   if (!shelf) return document.querySelector("main .shelf") === null;
   const rect = shelf.getBoundingClientRect();
+  const output = shelf.querySelector(":scope > .shelf-output");
+  if (!output || shelf.children.length !== 1 || Math.abs(output.getBoundingClientRect().height - rect.height) > 1) return false;
+  const rem = parseFloat(getComputedStyle(document.documentElement).fontSize);
+  const pixels = (value) => value.endsWith("rem") ? parseFloat(value) * rem : value.endsWith("px") ? parseFloat(value) : NaN;
+  const style = getComputedStyle(shelf);
+  const line = pixels(style.getPropertyValue("--shelf-line").trim());
+  const target = pixels(style.getPropertyValue(matchMedia("(pointer: coarse)").matches ? "--touch-target" : "--control-min-size").trim());
+  const expected = Math.max(line, target);
+  if (Number.isFinite(expected) && Math.abs(rect.height - expected) > 1) return false;
   const header = document.querySelector(".search-bar").getBoundingClientRect();
   const footer = document.querySelector("footer").getBoundingClientRect();
   return rect.height > 0 && rect.top >= header.bottom - 1 && rect.bottom <= footer.top + 1 &&
@@ -70,7 +79,7 @@ export function layoutGeometry() {
     menu: box(document.querySelector(".details-menu")), menuScroll: box(document.querySelector(".details-menu-scroll")),
     notices: [...document.querySelectorAll(".notices")].map(box),
     alerts: [...document.querySelectorAll('.notices [role="alert"]')].map(box),
-    chips: [...document.querySelectorAll(".shelf-chips > .chip")].map(box),
+    segments: [...document.querySelectorAll(".shelf-segment")].map(box),
   };
 }
 

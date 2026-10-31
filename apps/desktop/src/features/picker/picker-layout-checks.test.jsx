@@ -50,7 +50,7 @@ test.each([[720, 480, 1], [480, 360, 1], [480, 360, 2]])("the probe selects one 
   expect(foldedAnchor.nodes).toEqual([trigger]);
   fireEvent.click(trigger);
   const dialog = screen.getByRole("dialog", { name: "Selected references", exact: true });
-  expect(within(dialog).getAllByRole("button", { name: /^Remove .* from the selection$/ })).toHaveLength(9);
+  expect(within(dialog).getAllByRole("button", { name: /^Edit / })).toHaveLength(9);
   expect(band.closest('[aria-hidden="true"]')).not.toBeNull();
   expect(control.nodes).toEqual([trigger]);
   expect(foldedAnchor.nodes).toEqual([trigger]);
@@ -109,13 +109,14 @@ test.each([false, true])("a failed search notice stays reachable in a steady fra
 });
 
 test("the shelf oracle rejects clipping, shrinking and placement inside the middle scroller", () => {
+  vi.stubGlobal("matchMedia", () => ({ matches: false }));
   let bounds = new DOMRect(0, 320, 480, 40);
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function () {
     if (this.matches(".search-bar")) return new DOMRect(0, 0, 480, 80);
     if (this.matches("footer")) return new DOMRect(0, 360, 480, 40);
     return bounds;
   });
-  render(<main><header className="search-bar" /><div className="picker-content" /><div className="shelf" style={{ flexShrink: 0, overflowY: "visible" }} /><footer /></main>);
+  render(<main><header className="search-bar" /><div className="picker-content" /><div className="shelf" style={{ flexShrink: 0, overflowY: "visible" }}><section className="shelf-output" /></div><footer /></main>);
   const band = document.querySelector(".shelf");
   expect(isWholeShelf()).toBe(true);
   bounds = new DOMRect(0, 320, 480, 42);
@@ -129,6 +130,21 @@ test("the shelf oracle rejects clipping, shrinking and placement inside the midd
   expect(isWholeShelf()).toBe(false);
   band.style.overflowY = "visible";
   document.querySelector(".picker-content").append(band);
+  expect(isWholeShelf()).toBe(false);
+});
+
+test.each([false, true])("a second shelf line fails with room inside the window (coarse=%s)", (coarse) => {
+  vi.stubGlobal("matchMedia", () => ({ matches: coarse }));
+  vi.stubGlobal("innerHeight", 600); vi.stubGlobal("innerWidth", 720);
+  let height = coarse ? 44 : 40;
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function () {
+    if (this.matches(".search-bar")) return new DOMRect(0, 0, 720, 80);
+    if (this.matches("footer")) return new DOMRect(0, 500, 720, 40);
+    return new DOMRect(0, 400, 720, height);
+  });
+  render(<main><header className="search-bar" /><div className="shelf" style={{ flexShrink: 0, overflowY: "visible", "--shelf-line": "40px", "--control-min-size": "32px", "--touch-target": "44px" }}><section className="shelf-output" /></div><footer /></main>);
+  expect(isWholeShelf()).toBe(true);
+  height = 80;
   expect(isWholeShelf()).toBe(false);
 });
 

@@ -5,7 +5,7 @@ import { Notices } from "./Notices";
 afterEach(cleanup);
 const copied = { text: "[@example2026]", warnings: ["Missing year — 研究 العربية <literal>"] };
 const props = { library: null, failures: {}, startAtLogin: null, error: null, copyError: null,
-  copied, showCopiedText: true, onDismissCopied: vi.fn() };
+  copied, confirmation: copied, onDismissCopied: vi.fn() };
 
 test.each(["Enter", " "])("warning dismissal uses shared states and activates once with %s", (key) => {
   const dismiss = vi.fn();
@@ -28,6 +28,15 @@ test("clean confirmations have no dismissal action or warning list", () => {
   expect(screen.getByRole("status", { name: "" })).toBeTruthy();
   expect(screen.queryByRole("button")).toBeNull();
   expect(screen.queryByLabelText("Copy warnings")).toBeNull();
+});
+
+test("retiring a confirmation leaves its warnings without announcing Copied again", () => {
+  const { rerender } = render(<Notices {...props} />);
+  expect(screen.getByRole("status", { name: "" }).textContent).toContain("Copied");
+  rerender(<Notices {...props} confirmation={null} />);
+  expect(screen.queryByRole("status", { name: "" })).toBeNull();
+  expect(screen.getByLabelText("Copy warnings").textContent).toBe(copied.warnings[0]);
+  expect(screen.queryByText("Copied")).toBeNull();
 });
 
 // Download completion is not installation success: verification still follows.

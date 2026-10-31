@@ -126,11 +126,11 @@ test.each(["Enter", " "])("copy confirmation expires, but copy warnings remain u
   let warnings: string[] = [];
   const calls = await openPicker({ copy_file_citation: () => ({ text: "@a", warnings }) });
   await copy();
-  expect(screen.getByText("Copied", { selector: ".copy-notice p" })).toBeTruthy();
+  expect(screen.getByText("Copied", { selector: ".shelf-copied, .copy-notice p" })).toBeTruthy();
   await act(() => vi.advanceTimersByTimeAsync(2399));
-  expect(document.querySelector(".copy-notice")).toBeTruthy();
+  expect(document.querySelector(".shelf-copied, .copy-notice")).toBeTruthy();
   await act(() => vi.advanceTimersByTimeAsync(1));
-  expect(document.querySelector(".copy-notice")).toBeNull();
+  expect(document.querySelector(".shelf-copied, .copy-notice")).toBeNull();
 
   warnings = ["A warning to read"];
   await copy();
@@ -157,7 +157,7 @@ test("copy remains confirmed when hiding after a successful copy fails", async (
   await selectPair();
   await copy();
   expect(screen.getByText("Ibis could not hide this window. Try again.")).toBeTruthy();
-  expect(screen.getByText("Copied", { selector: ".copy-notice p" })).toBeTruthy();
+  expect(screen.getByText("Copied", { selector: ".shelf-copied, .copy-notice p" })).toBeTruthy();
   expect(document.body.textContent).not.toContain("Nothing was copied");
   expect(document.body.textContent).not.toContain("SYNTHETIC_PRIVATE_PAYLOAD");
   expect(copies[0]).toMatchObject({ items: [{ id: { key: "a" } }, { id: { key: "b" } }] });
@@ -168,6 +168,31 @@ test("copy remains confirmed when hiding after a successful copy fails", async (
   expect(copies).toHaveLength(2);
   expect(copies[1]).toMatchObject({ items: [{ id: { key: "c" } }] });
   expect(calls).not.toContain("show_copied_notice");
+});
+
+test("after a pinned batch copy, the live shelf and the next Enter agree", async () => {
+  const copies: string[] = [];
+  await openPicker({ search: () => [result("a", "First"), result("b", "Second")],
+    copy_file_citation: (args) => { const { preview } = prepared(args); copies.push(preview.text); return { text: preview.text, warnings: [] }; } });
+  await toggleKeepOpen();
+  await selectPair();
+  const original = document.querySelector(".shelf .preview-text")?.textContent;
+  await copy();
+  expect(copies).toEqual([original]);
+  const next = document.querySelector(".shelf .preview-text")?.textContent;
+  expect(next).not.toBe(original);
+  await copy();
+  expect(copies).toEqual([original, next]);
+});
+
+test("editing after a shelf confirmation never announces the old success a second time", async () => {
+  await openPicker({ copy_file_citation: (args) => ({ text: prepared(args).preview.text, warnings: [] }) });
+  await toggleKeepOpen();
+  await copy();
+  expect(screen.getByRole("status", { name: "Copied" })).toBeTruthy();
+  await act(async () => { fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "newer" } }); });
+  expect(screen.queryByRole("status", { name: "Copied" })).toBeNull();
+  expect(document.querySelector(".copy-notice p")).toBeNull();
 });
 
 test.each(["selection", "search", "reopening"])("a delayed hide failure cannot complete a citation after a newer %s", async (change) => {
@@ -187,7 +212,7 @@ test.each(["selection", "search", "reopening"])("a delayed hide failure cannot c
   const shelfText = document.querySelector(".shelf")?.textContent;
   await act(async () => { rejectHide(new Error("SYNTHETIC_PRIVATE_PAYLOAD")); });
   expect(document.querySelector(".shelf")?.textContent).toBe(shelfText);
-  expect(screen.getByRole("list", { name: "Selected references" })).toBeTruthy();
+  expect(document.querySelector(".shelf-segment, .shelf-count")).toBeTruthy();
   expect(calls).not.toContain("show_copied_notice");
 });
 
@@ -203,11 +228,11 @@ test("a clean copy hides the picker, then says Copied with the copied text", asy
   await copy();
   expect(calls).toContain("copy_file_citation");
   expect(calls).not.toContain("hide_picker");
-  expect(document.querySelector(".copy-notice")).toBeNull();
+  expect(document.querySelector(".shelf-copied, .copy-notice")).toBeNull();
   await act(async () => { finishCopy(); });
   expect(calls).toContain("hide_picker");
   expect(notices).toEqual([]);
-  expect(screen.getByText("Copied", { selector: ".copy-notice p" })).toBeTruthy();
+  expect(screen.getByText("Copied", { selector: ".shelf-copied, .copy-notice p" })).toBeTruthy();
   await act(async () => { finishHide(); });
   expect(notices).toEqual([{ text: "[@a]", delivery: null }]);
   expect(calls.indexOf("hide_picker")).toBeLessThan(calls.indexOf("show_copied_notice"));
@@ -262,7 +287,7 @@ test("a failed Copied notice never undoes the copy or the hide", async () => {
     expect(log).toHaveBeenCalledWith("The Copied notice could not be shown.");
     expect(calls).toContain("hide_picker");
     expect(screen.queryByRole("alert")).toBeNull();
-    expect(screen.getByText("Copied", { selector: ".copy-notice p" })).toBeTruthy();
+    expect(screen.getByText("Copied", { selector: ".shelf-copied, .copy-notice p" })).toBeTruthy();
     expect(log.mock.calls.flat().join(" ")).not.toContain("SYNTHETIC_PRIVATE_PAYLOAD");
   } finally { log.mockRestore(); }
 });

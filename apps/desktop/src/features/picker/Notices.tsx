@@ -4,13 +4,14 @@ import { Button } from "../../ui/Button";
 import { hasRetainedFreshnessProblem } from "../../LibraryStatusLine";
 import { densityNames, libraryMessages, loginItemText, operationFailures, pickerText, updateText } from "../../messages";
 import { currentPlatform } from "../../platform";
+import "../../ui/CopyReceipt.css";
 
 /** An action whose failure the picker reports in its notices. */
 export type Operation = keyof typeof operationFailures;
 
 /** Problems and confirmations above the results: library and settings
  * problems, failed actions, search and copy errors, and what was copied. */
-export function Notices({ library, failures, startAtLogin, error, citationProblem, copyError, copied, showCopiedText, onDismissCopied, updateProgress, missing = [], densityAnnouncement }: {
+export function Notices({ library, failures, startAtLogin, error, citationProblem, copyError, copied, confirmation, onDismissCopied, updateProgress, missing = [], densityAnnouncement }: {
   densityAnnouncement?: Density;
   updateProgress?: UpdateProgress | null;
   library: LibraryStatus | null | undefined;
@@ -21,7 +22,7 @@ export function Notices({ library, failures, startAtLogin, error, citationProble
   missing?: string[];
   copyError: string | null;
   copied: Copied | null;
-  showCopiedText: boolean;
+  confirmation?: Copied | null;
   onDismissCopied: () => void;
 }) {
   return <>
@@ -45,11 +46,12 @@ export function Notices({ library, failures, startAtLogin, error, citationProble
       {citationProblem && <p role="alert">{citationProblem}</p>}
       {missing.length > 0 && <p role="status">{pickerText.missingCitations(missing)}</p>}
       {copyError && <p role="alert">{copyError}</p>}
-      {copied && (
-        <div role="status" className="copy-notice">
-          <p>
-            {pickerText.copied}{showCopiedText && <> <code>{copied.text}</code></>}
-          </p>
+      {copied && (confirmation || copied.warnings.length > 0) && (
+        <div role={confirmation ? "status" : "group"} className="copy-notice">
+          {confirmation && <p className="copy-receipt" data-outcome="copied">
+            <svg className="copy-receipt-mark" aria-hidden="true" viewBox="0 0 20 20"><path d="m5 10.5 3.2 3.2L15 6.5" /></svg>
+            {pickerText.copied} <code dir="auto" title={confirmation.text}>{confirmation.text}</code>
+          </p>}
           {copied.warnings.length > 0 && (
             <>
               <Button className="dismiss" aria-label={pickerText.dismissWarnings} onPress={onDismissCopied}>

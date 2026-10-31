@@ -63,6 +63,22 @@ test("reopening replaces unfinished preview work but preserves a settled canonic
 
 const conflictMessage = "These references have conflicting citation keys. Resolve them in your library or choose a formatted style.";
 
+test("returning from B to A waits for a fresh ticket instead of reusing A's retired receipt", async () => {
+  const pending: ((value: FilePreview) => void)[] = [];
+  const previewFileCitation = vi.fn<Preview>(() => new Promise((resolve) => pending.push(resolve)));
+  const initial = options({ previewFileCitation });
+  const { result, rerender } = renderHook(useCitationOutput, { initialProps: initial });
+  await act(async () => { pending[0]!(preview("Original A")); });
+  expect(result.current.shown).toMatchObject({ text: "Original A" });
+  rerender({ ...initial, chosen: [{ ...initial.chosen[0]!, locator: { label: "page", value: "12", input: "page-editor" } }] });
+  rerender(initial);
+  expect(result.current.shown).toBeNull();
+  await act(async () => { pending[1]!(preview("Retired B")); });
+  expect(result.current.shown).toBeNull();
+  await act(async () => { pending[2]!({ ...preview("Fresh A"), ticket: "fresh-a" }); });
+  expect(result.current.shown).toMatchObject({ text: "Fresh A", fileTicket: "fresh-a" });
+});
+
 test("replacing, clearing and unmounting a selection aborts obsolete engine previews", () => {
   const signals: AbortSignal[] = [];
   const previewFileCitation = vi.fn<Preview>((_items, _format, _style, _revision, signal) => {

@@ -184,17 +184,22 @@
   --copy-padding: .5rem;
   --dismiss-margin: .5rem 0 .5rem .5rem;
   --alert-padding: var(--space-3);
-  /* The citation shelf (docs/design.md, "Shelf"): two 40 px lines, 24 px chips
-     with a quieter fill than the card under them. */
-  --shelf-line: 2.5rem;
-  --shelf-folded-line: max(40px, var(--control-min-size));
+  /* One citation line; corner badges keep their physical size at larger text. */
+  --shelf-line: var(--space-10);
   --shelf-fill: var(--tile-background);
-  --chip-count-only-width: 460px;
+  --shelf-segment-radius: 6px;
+  --shelf-segment-inset: 1px;
+  --shelf-remove-size: 16px;
+  --shelf-remove-target: 24px;
+  --shelf-copied-fill: color-mix(in srgb, var(--status-done) 14%, transparent);
+  --shelf-copy-wash: color-mix(in srgb, var(--status-done) 9%, transparent);
+  --shelf-copy-duration: 160ms;
+  --r-copy-card: 18px;
+  --r-copy-tile: 10px;
+  --copy-tile-size: calc(2 * var(--space-4) + var(--space-1));
   --chip-height: 1.5rem;
   --chip-fill: color-mix(in srgb, var(--text) 8%, transparent);
   --chip-radius: calc(var(--chip-height) / 2);
-  --chip-max-width: 12rem;
-  --chip-min-width: 5rem;
   --footer-padding: calc(var(--inset) + var(--row-pad)) var(--inset); /* inline start, end */
   --footer-size: var(--type-label-size);
   --footer-gap: var(--space-2);

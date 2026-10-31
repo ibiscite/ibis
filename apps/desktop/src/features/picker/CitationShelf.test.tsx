@@ -2,486 +2,228 @@ import { afterEach, expect, test, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { createRef, useState } from "react";
 import type { SearchResult } from "../../api";
-import { chipLabels, CitationShelf } from "./CitationShelf";
-
-const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
-const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
+import type { CitationReference } from "./choice";
+import { referenceLabels, CitationShelf } from "./CitationShelf";
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
-function mockResizeObservers() {
-  const observers: { callback: () => void; active: () => boolean }[] = [];
-  vi.stubGlobal("ResizeObserver", class implements ResizeObserver {
-    private nodes = new Set<Element>();
-    observe(node: Element) { this.nodes.add(node); }
-    unobserve(node: Element) { this.nodes.delete(node); }
-    disconnect() { this.nodes.clear(); }
-    constructor(callback: ResizeObserverCallback) {
-      observers.push({ active: () => this.nodes.size > 0, callback: () => {
-        if (!this.nodes.size) return;
-        const entries = [...this.nodes].map((target) => {
-          const contentRect = target.getBoundingClientRect();
-          const size = [{ blockSize: contentRect.height, inlineSize: contentRect.width }];
-          return { target, contentRect, borderBoxSize: size, contentBoxSize: size, devicePixelContentBoxSize: size };
-        });
-        callback(entries, this);
-      } });
-    }
-  });
-  return observers;
-}
-
 function record(key: string, first_author = "García", year: number | null = 2021): SearchResult {
-  return {
-    revision: "1", id: { source: "refs.bib", native_key: key }, key, title: `Title ${key}`, authors: first_author,
-    year, matched: ["title"], partial: false, first_author, author_count: 1, container: null, item_type: "book",
-  };
+  return { revision: "1", id: { source: "invented.bib", native_key: key }, key, title: `Invented title ${key}`, authors: first_author,
+    year, matched: ["title"], partial: false, first_author, author_count: 1, container: null, item_type: "book" };
 }
+const chosen = (records: CitationReference[]) => new Map(records.map((r) => [r.key, r]));
+const output = (text = "(García, 2021)") => ({ markup: [], text, html: "", warnings: [] });
+const shelf = (props: Partial<Parameters<typeof CitationShelf>[0]>) => <CitationShelf announce={false} selected={new Map()}
+  removeLabel={(r) => `Remove ${r.key}`} onRemove={() => undefined} onChangeReference={() => undefined}
+  style="apa" keys={false} shown={undefined} focusable={false} outputWarnings={[]} {...props} />;
+const press = (node: HTMLElement, key: string) => {
+  act(() => node.focus());
+  fireEvent.keyDown(node, { key, code: key === " " ? "Space" : key });
+  fireEvent.keyUp(node, { key, code: key === " " ? "Space" : key });
+};
 
-function chosen(records: SearchResult[]) {
-  return new Map(records.map((r) => [r.key, r]));
-}
-
-const shelf = (props: Partial<Parameters<typeof CitationShelf>[0]>) => (
-  <CitationShelf announce={false} selected={new Map()} removeLabel={(r) => `Remove ${r.key}`} onRemove={() => undefined}
-    style={null} keys shown={undefined} focusable={false}
-    outputWarnings={props.shown && typeof props.shown === "object" ? props.shown.warnings : []} {...props} />
-);
-
-test("chips read as author and year, and add the key only where two would read the same", () => {
-  expect(chipLabels([record("a"), record("b", "Okafor", 2019), record("c", "", null)])).toEqual(["García 2021", "Okafor 2019", "c"]);
-  expect(chipLabels([record("garcia2021a"), record("garcia2021b")])).toEqual(["García 2021 · garcia2021a", "García 2021 · garcia2021b"]);
+test("short names distinguish identical author/year labels without using the citation key as identity", () => {
+  expect(referenceLabels([record("a"), record("b", "Okafor", 2019), record("c", "", null)])).toEqual(["García 2021", "Okafor 2019", "c"]);
+  expect(referenceLabels([record("a"), record("b")])).toEqual(["García 2021 · a", "García 2021 · b"]);
 });
 
-test("the failed citation shows its actionable refusal beside the citation before Details opens", () => {
-  const reason = "Reference 1: Narrative cannot be expressed here. Choose Normal or another output.";
-  render(shelf({ shown: "failed", problem: reason }));
-  expect(within(screen.getByRole("region", { name: "Preview" })).getByText(reason)).toBeTruthy();
-  expect(screen.queryByRole("dialog")).toBeNull();
-});
-
-test("a reference opens an anchored menu on its own segment and Escape returns there", async () => {
-  render(shelf({ selected: chosen([record("a"), record("b")]), onChangeReference: vi.fn() }));
-  const edit = screen.getByRole("button", { name: "Edit García 2021 · b" });
-  act(() => edit.focus());
+test("colliding keys from different libraries have distinct visible and screen-reader names", () => {
+  const first = { ...record("shared"), id: { source: "invented-one", key: "shared" }, source: "invented-one", title: "First invented work" };
+  const second = { ...first, id: { source: "invented-two", key: "shared" }, source: "invented-two", title: "Second invented work" };
+  const change = vi.fn();
+  render(shelf({ selected: new Map([["first", first], ["second", second]]), onChangeReference: change,
+    referenceLibrary: (r) => r.source === "invented-one" ? "First library" : "Second library", shown: output() }));
+  fireEvent.click(screen.getByRole("button", { name: "Show all 2 selected references" }));
+  const menu = screen.getByRole("dialog", { name: "Selected references" });
+  expect(within(menu).getByRole("button", { name: "Edit García 2021 · shared · First library" }).textContent).toContain("First library");
+  const edit = within(menu).getByRole("button", { name: "Edit García 2021 · shared · Second library" });
+  expect(document.getElementById(edit.getAttribute("aria-describedby")!)?.textContent).toBe("Second invented work");
   fireEvent.click(edit);
-  const details = screen.getByRole("dialog", { name: "Citation details for Title b" });
-  expect(details.closest(".details-menu")).not.toBeNull();
-  expect(document.querySelector(".overlay-backdrop")).toBeNull();
-  expect(edit.getAttribute("aria-expanded")).toBe("true");
-  expect(document.activeElement).toBe(within(details).getByRole("textbox", { name: "Page" }));
+  fireEvent.change(screen.getByRole("textbox", { name: "Page" }), { target: { value: "42" } });
+  expect(change).toHaveBeenCalledWith(second, { locator: { label: "page", value: "42", input: "page-editor" } });
+});
+
+test.each(["click", "Enter", " "])("a single reference is the whole citation segment; %s opens its menu and focuses Page", async (key) => {
+  render(shelf({ selected: chosen([record("a")]), shown: output() }));
+  const segment = screen.getByRole("button", { name: "Edit García 2021" });
+  expect(segment.textContent).toBe("(García, 2021)");
+  expect(document.getElementById(segment.getAttribute("aria-describedby")!)?.textContent).toBe("(García, 2021)");
+  expect(document.querySelector(".shelf-chips")).toBeNull();
+  if (key === "click") { act(() => segment.focus()); fireEvent.click(segment); } else press(segment, key);
+  const menu = screen.getByRole("dialog", { name: "Citation details for Invented title a" });
+  expect(menu.closest(".details-menu")).not.toBeNull();
+  expect(within(menu).getByRole("heading").textContent).toBe("García 2021");
+  expect(document.activeElement).toBe(within(menu).getByRole("textbox", { name: "Page" }));
+  for (const name of ["Name in brackets", "Name in the sentence", "Year only"]) expect(within(menu).getByRole("radio", { name })).toBeTruthy();
+  const year = within(menu).getByRole("radio", { name: "Year only" });
+  expect(year.matches(":disabled, [aria-disabled=true]")).toBe(true);
+  expect(document.getElementById(year.getAttribute("aria-describedby")!)?.textContent).toBe("Year only isn’t available yet.");
+  expect(within(menu).getByRole("button", { name: /Remove from citation/ })).toBeTruthy();
   fireEvent.keyDown(document.activeElement!, { key: "Escape" });
   await act(async () => { await new Promise(requestAnimationFrame); });
   expect(screen.queryByRole("dialog")).toBeNull();
-  expect(document.activeElement).toBe(edit);
+  expect(document.activeElement).toBe(segment);
 });
 
-test.each([[1, true], [2, true], [1, false], [2, false]] as const)("folding at %s× text keeps warnings, reference entries and closest matches reachable (Preview=%s)", (scale, preview) => {
-  vi.stubGlobal("innerWidth", 480);
-  vi.stubGlobal("innerHeight", 360);
-  const computed = window.getComputedStyle;
-  vi.spyOn(window, "getComputedStyle").mockImplementation((element) => {
-    if (element !== document.documentElement) return computed(element);
-    const style = document.createElement("div").style;
-    style.fontSize = `${16 * scale}px`;
-    return style;
-  });
-  const reference = { ...record("near"), title: "Synthetic closest match", partial: true };
-  const warnings = ["Reference 1: Page is not included in this reference entry."];
-  render(shelf({ selected: chosen([reference]), style: "ieee", keys: false, outputWarnings: warnings,
-    shown: preview ? { markup: [], text: "Synthetic entry", html: "", warnings } : undefined }));
-  const control = screen.getByRole("button", { name: /2 warnings.*Reference entry.*Closest matches/ });
-  expect(control.closest(".shelf")?.hasAttribute("data-folded")).toBe(true);
-  const cue = within(control).getByText("! 2");
-  expect(cue.closest("[hidden], .visually-hidden")).toBeNull();
-  expect(getComputedStyle(cue).display).not.toBe("none");
-  expect(getComputedStyle(cue).visibility).toBe("visible");
-  act(() => control.focus());
-  fireEvent.keyDown(control, { key: " ", code: "Space" });
-  fireEvent.keyUp(control, { key: " ", code: "Space" });
-  const details = screen.getByRole("dialog", { name: "Citation warnings" });
-  expect(within(details).getByText("Reference entry")).toBeTruthy();
-  expect(within(details).getByText("Closest matches")).toBeTruthy();
-  expect(within(details).getByText("Reference 1: Page is not included in this reference entry.")).toBeTruthy();
-  expect(within(details).getByText(/IEEE numbers depend on your whole document/)).toBeTruthy();
-  expect(within(details).getByText(/only some search words matched/)).toBeTruthy();
-});
-
-test.each([["warning", true], ["warning", false], ["closest", true], ["closest", false]] as const)("a folded %s has a visible cue and opens in one step, even alone (Preview=%s)", (meaning, preview) => {
-  vi.stubGlobal("innerWidth", 480);
-  vi.stubGlobal("innerHeight", 360);
-  const reference = { ...record("near"), partial: meaning === "closest" };
-  const warnings = meaning === "warning" ? ["Reference 1: Check the invented reference metadata."] : [];
-  render(shelf({ selected: chosen([reference]), outputWarnings: warnings,
-    shown: preview ? { markup: [], text: "Synthetic citation", html: "", warnings } : undefined }));
-  const control = screen.getByRole("button", { name: meaning === "closest" ? "1 warning · Closest matches" : "1 warning" });
-  expect(control.closest(".shelf")?.hasAttribute("data-folded")).toBe(true);
-  const cue = within(control).getByText("! 1");
-  expect(cue.closest("[hidden], .visually-hidden")).toBeNull();
-  expect(getComputedStyle(cue).display).not.toBe("none");
-  expect(getComputedStyle(cue).visibility).toBe("visible");
-  expect(screen.queryByRole("dialog")).toBeNull();
-  fireEvent.click(control);
-  const details = screen.getByRole("dialog", { name: "Citation warnings" });
-  if (meaning === "closest") {
-    expect(within(details).getByRole("heading", { name: "Closest matches" })).toBeTruthy();
-    expect(within(details).getByText(/only some search words matched/)).toBeTruthy();
-  } else expect(within(details).getByText(warnings[0]!)).toBeTruthy();
-});
-
-test("expanding chosen references opens an overlay instead of growing the shelf", async () => {
-  render(shelf({ selected: chosen(Array.from({ length: 9 }, (_, i) => record(`k${i}`))) }));
-  const band = document.querySelector(".shelf")!;
-  fireEvent.click(screen.getByRole("button", { name: "Show all 9 selected references" }));
-  const overlay = await screen.findByRole("dialog", { name: "Selected references" });
-  expect(band.contains(overlay)).toBe(false);
-  expect(band.querySelector("[data-expanded]")).toBeNull();
-  expect(within(overlay).getAllByRole("button", { name: /^Remove/ })).toHaveLength(9);
-});
-
-test.each([1, 2])("at the minimum frame and %s× text, every folded reference stays removable in the overlay", (scale) => {
-  vi.stubGlobal("innerWidth", 480);
-  vi.stubGlobal("innerHeight", 360);
-  const computed = window.getComputedStyle;
-  vi.spyOn(window, "getComputedStyle").mockImplementation((element) => {
-    if (element !== document.documentElement) return computed(element);
-    const style = document.createElement("div").style;
-    style.fontSize = `${16 * scale}px`;
-    return style;
-  });
-  const records = Array.from({ length: 9 }, (_, i) => record(`k${i}`));
-  const remove = vi.fn();
-  render(shelf({ selected: chosen(records), onRemove: remove, shown: { markup: [], text: "Synthetic citation", html: "", warnings: [] } }));
-  const band = document.querySelector(".shelf")!;
-  expect(band.hasAttribute("data-folded")).toBe(true);
-  expect(screen.queryByRole("list", { name: "Selected references" })).toBeNull();
-  expect(screen.getByRole("region", { name: "Preview" }).textContent).toContain("Synthetic citation");
-  fireEvent.click(screen.getByRole("button", { name: "Show all 9 selected references" }));
-  const dialog = screen.getByRole("dialog", { name: "Selected references" });
-  expect(band.contains(dialog)).toBe(false);
-  for (const r of records) fireEvent.click(within(dialog).getByRole("button", { name: `Remove ${r.key}` }));
-  expect(remove.mock.calls.map(([r]) => r)).toEqual(records);
-});
-
-test("a long reference title stays available in the details scroller beside its editor", () => {
-  const reference = { ...record("a"), title: "A synthetic title with many words. ".repeat(30).trim() };
-  render(shelf({ highlightedReference: reference, onChangeReference: vi.fn() }));
-  fireEvent.click(screen.getByRole("button", { name: "Edit citation" }));
-  const dialog = screen.getByRole("dialog", { name: `Citation details for ${reference.title}` });
-  expect(within(dialog).getByRole("heading").textContent).toBe(reference.title);
-  const scroll = dialog.querySelector<HTMLElement>(".details-menu-scroll")!;
-  expect(within(scroll).getByText(reference.title)).toBeTruthy();
-  expect(within(scroll).getByRole("textbox", { name: "Page" })).toBeTruthy();
-});
-
-test("closest-match chips and announcements keep provenance with the preview hidden", () => {
-  const partial = { ...record("partial"), title: "Synthetic near match", partial: true };
-  const { rerender } = render(shelf({ announce: true, selected: chosen([record("exact"), partial]) }));
-  const chip = screen.getByRole("button", { name: "Remove partial" }).closest("li")!;
-  expect(within(chip).getByText("Closest match").className).not.toContain("visually-hidden");
-  expect(within(chip).getByText(/only some search words matched/).className).toBe("visually-hidden");
-  expect(within(chip).getByText("Closest match").parentElement?.className).toBe("shelf-pill");
-  expect(screen.getByRole("status", { name: "Citation selection" }).textContent).toContain("Synthetic near match");
-  rerender(shelf({ selected: chosen([record("exact")]) }));
-  expect(screen.queryByText("Closest match")).toBeNull();
-});
-
-test("folded closest matches remain marked and their warning uses the existing preview pill", () => {
-  const records = Array.from({ length: 8 }, (_, i) => ({ ...record(`k${i}`), partial: i === 7 }));
-  render(shelf({ selected: chosen(records), shown: { markup: [], text: "Synthetic citation", html: "", warnings: [] } }));
-  const more = screen.getByRole("button", { name: "Show all 8 selected references" });
-  expect(more.textContent).toBe("+2 · Closest matches");
-  expect(more.getAttribute("title")).toContain("only some search words matched");
-  const output = screen.getByRole("region", { name: "Preview" });
-  expect(within(output).getByText("1 warning")).toBeTruthy();
-  expect(within(output).getByText(/only some search words matched/)).toBeTruthy();
-  fireEvent.click(more);
-  const chip = screen.getByRole("button", { name: "Remove k7" }).closest("li")!;
-  expect(within(chip).getByText("Closest match")).toBeTruthy();
-});
-
-test("marked chips fold without squeezing the warning or cycling when hidden, then return on growth", () => {
-  let width = 350;
-  const computed = window.getComputedStyle;
-  vi.spyOn(window, "getComputedStyle").mockImplementation((element) => {
-    if (!element.matches(".chip, .shelf-chips")) return computed(element);
-    const style = document.createElement("div").style;
-    style.minWidth = "80px";
-    style.maxWidth = "192px";
-    style.columnGap = "4px";
-    style.paddingInlineStart = style.paddingInlineEnd = "12px";
-    return style;
-  });
-  vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(function (this: HTMLElement) {
-    return this.classList.contains("shelf-chips") ? width : 0;
-  });
-  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
-    return { width: this.matches(".chip-fit-measure > button") ? 120 : this.hasAttribute("data-partial") && !this.hidden ? 192 : 0 } as DOMRect;
-  });
-  render(shelf({ selected: chosen([record("a"), record("b"), { ...record("near"), partial: true }]) }));
-  const list = () => screen.getByRole("list", { name: "Selected references" });
-  expect(within(list()).getAllByRole("button", { name: /^Remove/ })).toHaveLength(1);
-  expect(within(list()).getByRole("button", { name: "Show all 3 selected references" }).textContent).toContain("Closest matches");
-  width = 650;
-  fireEvent(window, new Event("resize"));
-  expect(within(list()).getAllByRole("button", { name: /^Remove/ })).toHaveLength(3);
-  expect(within(list()).getByText("Closest match")).toBeTruthy();
-});
-
-test("six chips show, the rest fold into +N, and +N shows every chip so each can be removed", () => {
-  const records = Array.from({ length: 9 }, (_, i) => record(`k${i}`, `Author${i}`));
-  const onRemove = vi.fn();
-  render(shelf({ selected: chosen(records), onRemove }));
-  const list = () => screen.getByRole("list", { name: "Selected references" });
-  expect(within(list()).getAllByRole("button", { name: /^Remove/ })).toHaveLength(6);
-  const more = within(list()).getByRole("button", { name: "Show all 9 selected references" });
-  expect(more.textContent).toBe("+3");
-  expect(more.getAttribute("aria-expanded")).toBe("false");
-  fireEvent.click(more);
-  expect(within(list()).getAllByRole("button", { name: /^Remove/ })).toHaveLength(9);
-  fireEvent.click(within(list()).getByRole("button", { name: "Remove k8" }));
-  expect(onRemove).toHaveBeenCalledWith(records[8]);
-  // Each chip names its whole key to the pointer.
-  expect(within(list()).getByText("Author8 2021").closest("li")?.getAttribute("title")).toBe("k8");
-});
-
-test("shelf controls share Button states and their measuring copies stay inaccessible", () => {
-  const { container } = render(shelf({ selected: chosen(Array.from({ length: 9 }, (_, i) => record(`k${i}`))) }));
-  const buttons = screen.getAllByRole("button");
-  expect(buttons).toHaveLength(7);
-  for (const button of buttons) expect(button.classList.contains("ui-button")).toBe(true);
-  const measure = container.querySelector(".chip-fit-measure")!;
-  expect(measure.getAttribute("aria-hidden")).toBe("true");
-  expect(measure.hasAttribute("inert")).toBe(true);
-  for (const button of measure.querySelectorAll("button")) {
-    expect(button.classList.contains("ui-button")).toBe(true);
-    expect(button.tabIndex).toBe(-1);
-    expect(buttons).not.toContain(button);
-  }
-});
-
-test.each(["Enter", " "])("%s expands, removes and folds exactly once from the keyboard", (key) => {
-  const records = Array.from({ length: 9 }, (_, i) => record(`k${i}`));
-  const onRemove = vi.fn();
-  render(shelf({ selected: chosen(records), onRemove }));
-  const press = (button: HTMLElement) => {
-    act(() => button.focus());
-    const code = key === " " ? "Space" : "Enter";
-    fireEvent.keyDown(button, { key, code });
-    fireEvent.keyUp(button, { key, code });
-  };
-  press(screen.getByRole("button", { name: "Show all 9 selected references" }));
-  expect(screen.getAllByRole("button", { name: /^Remove/ })).toHaveLength(9);
-  press(screen.getByRole("button", { name: "Remove k8" }));
-  expect(onRemove).toHaveBeenCalledExactlyOnceWith(records[8]);
-  press(screen.getByRole("button", { name: "Close" }));
-  expect(screen.getAllByRole("button", { name: /^Remove/ })).toHaveLength(6);
-});
-
-test("50 choices fit narrow and 200% text rows, keeping hidden source identities removable", () => {
-  let scale = 1;
-  let width = 344;
-  const observers = mockResizeObservers();
-  vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(function (this: HTMLElement) { return this.classList.contains("shelf-chips") ? width : 0; });
-  const computed = window.getComputedStyle;
-  vi.spyOn(window, "getComputedStyle").mockImplementation((element) => {
-    if (!element.matches(".chip, .shelf-chips")) return computed(element);
-    const style = document.createElement("div").style;
-    style.minWidth = `${80 * scale}px`;
-    style.columnGap = `${4 * scale}px`;
-    style.paddingInlineStart = style.paddingInlineEnd = `${12 * scale}px`;
-    return style;
-  });
-  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
-    return new DOMRect(0, 0, this.matches(".chip-more button") ? 40 * scale : 0, 24 * scale);
-  });
-  const records = Array.from({ length: 50 }, (_, i) => ({ ...record(`shared${i % 25}`, `Author${i}`),
-    id: { source: i < 25 ? "first.bib" : "second.bib", native_key: `entry${i}` } }));
-  const onRemove = vi.fn();
-  function Picker() {
-    const [selected, setSelected] = useState(new Map(records.map((r, i) => [`identity${i}`, r])));
-    return shelf({ selected, removeLabel: (r) => { const id = r.id as { source: string; native_key: string }; return `Remove ${id.source}/${id.native_key}`; }, onRemove: (r) => {
-      onRemove(r); setSelected((previous) => new Map([...previous].filter(([, value]) => value !== r)));
-    } });
-  }
-  const view = render(<Picker />);
-  const list = () => screen.getByRole("list", { name: "Selected references" });
-  const removeButtons = () => within(list()).getAllByRole("button", { name: /^Remove/ });
-  expect(removeButtons()).toHaveLength(3);
-  expect(within(list()).getByRole("button", { name: "Show all 50 selected references" }).textContent).toBe("+47");
-  scale = 2; width = 328;
-  act(() => { for (const observer of [...observers]) observer.callback(); });
-  expect(removeButtons()).toHaveLength(1);
-  const more = within(list()).getByRole("button", { name: "Show all 50 selected references" });
-  expect(more.textContent).toBe("+49");
-  fireEvent.click(more);
-  expect(removeButtons().map((button) => button.getAttribute("aria-label"))).toEqual(records.map((r) => `Remove ${r.id.source}/${r.id.native_key}`));
-  fireEvent.click(within(list()).getByRole("button", { name: "Remove second.bib/entry49" }));
-  expect(onRemove).toHaveBeenCalledWith(records[49]);
-  expect(removeButtons()).toHaveLength(49);
-  expect(within(list()).getByRole("button", { name: "Remove first.bib/entry24" })).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", { name: "Close" }));
-  expect(within(list()).getByRole("button", { name: "Show all 49 selected references" }).textContent).toBe("+48");
-  scale = 1; width = 1000;
-  act(() => { for (const observer of [...observers]) observer.callback(); });
-  expect(removeButtons()).toHaveLength(6);
-  expect(within(list()).getByRole("button", { name: "Show all 49 selected references" }).textContent).toBe("+43");
-  act(() => removeButtons()[5]!.focus());
-  width = 344;
-  act(() => { for (const observer of [...observers]) observer.callback(); });
-  expect(removeButtons()).toHaveLength(3);
-  expect(document.activeElement).toBe(within(list()).getByRole("button", { name: "Show all 49 selected references" }));
-  width = 1000;
-  act(() => { for (const observer of [...observers]) observer.callback(); });
-  fireEvent.click(within(list()).getByRole("button", { name: "Show all 49 selected references" }));
-  scale = 2; width = 328;
-  act(() => { for (const observer of [...observers]) observer.callback(); });
-  // Retained chips keep their DOM identity. Avoid recomputing accessible names
-  // and visibility for every remaining button after each of 43 removals.
-  const tail = removeButtons().slice(6).reverse();
-  for (const button of tail) fireEvent.click(button);
-  expect(list().className === "shelf-details-list").toBe(true);
-  fireEvent.click(screen.getByRole("button", { name: "Close" }));
-  expect(removeButtons()).toHaveLength(1);
-  expect(within(list()).getByRole("button", { name: "Show all 6 selected references" }).textContent).toBe("+5");
-  scale = 1; width = 1000;
-  act(() => { for (const observer of [...observers]) observer.callback(); });
-  expect(within(list()).queryByRole("button", { name: "Show all 6 selected references" })).toBeNull();
-  act(() => removeButtons()[5]!.focus());
-  width = 344;
-  act(() => { for (const observer of [...observers]) observer.callback(); });
-  expect(document.activeElement).toBe(within(list()).getByRole("button", { name: "Show all 6 selected references" }));
-  view.unmount();
-  expect(observers.every((observer) => !observer.active())).toBe(true);
-});
-
-test("the output is one line in text colours: keys in monospace, failures and pending in words", () => {
-  const { rerender } = render(shelf({ keys: true, shown: { markup: [], text: "[@a; @b]", html: "", warnings: [] } }));
-  const output = screen.getByRole("region", { name: "Preview" });
-  expect(output.hasAttribute("data-keys")).toBe(true);
-  expect(within(output).getByText("[@a; @b]").getAttribute("title")).toBe("[@a; @b]");
-  rerender(shelf({ keys: false, style: "apa", shown: null }));
-  expect(screen.getByRole("region", { name: "Preview" }).getAttribute("data-state")).toBe("pending");
-  expect(within(screen.getByRole("region", { name: "Preview" })).getByRole("status").textContent).toBe("Formatting…");
-  rerender(shelf({ keys: false, style: "apa", shown: "failed" }));
-  expect(screen.getByText(/This citation could not be formatted/)).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", { name: "Details" }));
-  expect(within(screen.getByRole("dialog")).getByText(/could not be formatted/)).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", { name: "Close" }));
-  rerender(shelf({ keys: false, style: "ieee", shown: { markup: [], text: "A. Garcia, “Synthetic,” 2021.", html: "", warnings: ["Missing year"] } }));
-  expect(screen.getByText("Reference entry")).toBeTruthy();
-  expect(screen.getByText("IEEE numbers depend on your whole document, so Ibis copies the reference entry instead.")).toBeTruthy();
-  expect(screen.getByText("1 warning")).toBeTruthy();
-  expect(screen.getByText("Missing year")).toBeTruthy();
-});
-
-test("proportional overflow digits cannot cycle the fitted count, and growth restores chips", () => {
-  let width = 350;
-  const observers = mockResizeObservers();
-  vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(function (this: HTMLElement) {
-    return this.matches(".shelf-chips") ? width : 0;
-  });
-  const computed = window.getComputedStyle;
-  vi.spyOn(window, "getComputedStyle").mockImplementation((element) => {
-    if (!element.matches(".chip, .shelf-chips")) return computed(element);
-    const style = document.createElement("div").style;
-    style.minWidth = "100px";
-    style.columnGap = "4px";
-    style.paddingInlineStart = style.paddingInlineEnd = "0px";
-    return style;
-  });
-  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
-    // With three chips, +20 is wider and only two fit. With two, +21 is
-    // narrower and three fit: measuring the current label never converges.
-    return new DOMRect(0, 0, this.textContent === "+20" ? 40 : this.textContent === "+21" ? 30 : 35, 24);
-  });
-  const records = Array.from({ length: 23 }, (_, i) => record(`k${i}`, `Author${i}`));
-  render(shelf({ selected: chosen(records) }));
-  const list = () => screen.getByRole("list", { name: "Selected references" });
-  const visible = () => within(list()).getAllByRole("button", { name: /^Remove/ });
-  const more = () => within(list()).getByRole("button", { name: "Show all 23 selected references" });
-  expect(visible()).toHaveLength(2);
-  expect(more().textContent).toBe("+21");
-  act(() => more().focus());
-  act(() => { for (const observer of [...observers]) observer.callback(); });
-  expect(document.activeElement).toBe(more());
-  expect(visible()).toHaveLength(2);
-  width = 1000;
-  act(() => { for (const observer of [...observers]) observer.callback(); });
-  expect(visible()).toHaveLength(6);
-  width = 350;
-  act(() => { for (const observer of [...observers]) observer.callback(); });
-  expect(visible()).toHaveLength(2);
-  fireEvent.click(more());
-  expect(visible().map((button) => button.getAttribute("aria-label"))).toEqual(records.map((r) => `Remove ${r.key}`));
-});
-
-test("nothing chosen and nothing to show draws no shelf", () => {
-  const { container } = render(shelf({}));
-  expect(container.querySelector(".shelf")).toBeNull();
-});
-
-test.each(["removed", "retained"])("a programmatically removed chip hands off only its own focus (%s)", (focus) => {
-  const fallbackFocusRef = createRef<HTMLInputElement>();
-  const records = [record("a"), record("b")];
-  const picker = (remaining: SearchResult[]) => <>
-    <input aria-label="Search" ref={fallbackFocusRef} />
-    {shelf({ selected: chosen(remaining), announce: true, fallbackFocusRef })}
-  </>;
-  const view = render(picker(records));
-  const target = screen.getByRole("button", { name: focus === "removed" ? "Remove a" : "Remove b" });
-  act(() => target.focus());
-  // An ordinary rerender must keep focus on the current chip.
-  view.rerender(picker([...records]));
-  expect(document.activeElement).toBe(target);
-  view.rerender(picker(records.slice(1)));
-  expect(document.activeElement).toBe(focus === "removed" ? fallbackFocusRef.current : target);
-  expect(screen.getByRole("button", { name: "Remove b" })).toBeTruthy();
-  expect(screen.getByRole("status", { name: "Citation selection" }).textContent).toBe("1 reference selected for citation");
-});
-
-test("the beak quote is decorative, unfocusable and confined to the output line", () => {
-  const output = { markup: [], text: "Synthetic citation", html: "", warnings: [] };
-  const { container, rerender } = render(shelf({ selected: chosen([record("a")]), shown: output, focusable: true }));
-  const preview = screen.getByRole("region", { name: "Preview" });
-  const mark = preview.querySelector("svg.shelf-mark");
-  const master = new DOMParser().parseFromString(readFileSync(new FileURL("../../../../../brand/master.svg", import.meta.url), "utf8"), "image/svg+xml");
-  expect(mark?.getAttribute("viewBox")).toBe(master.querySelector('[id="beak"]')?.getAttribute("viewBox"));
-  expect(mark?.getAttribute("aria-hidden")).toBe("true");
-  expect(mark?.getAttribute("focusable")).toBe("false");
-  expect(mark?.querySelectorAll("circle")).toHaveLength(2);
-  expect(mark?.textContent).toBe("");
-  expect(preview.textContent).toBe(output.text);
-  preview.focus();
-  expect(document.activeElement).toBe(preview);
-  rerender(shelf({ selected: chosen([record("a")]), shown: null }));
+test("a pending preview can be edited before formatting finishes", () => {
+  render(shelf({ selected: chosen([record("a")]), shown: null }));
   expect(screen.getByRole("status", { name: "" }).textContent).toBe("Formatting…");
-  expect(container.querySelectorAll("svg.shelf-mark")).toHaveLength(1);
-  rerender(shelf({ selected: chosen([record("a")]) }));
-  expect(container.querySelector(".shelf-mark")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Edit García 2021" }));
+  expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "Page" }));
 });
 
-test("RTL mirrors the beak through its HTML shelf direction", () => {
-  const sheet = document.createElement("style");
-  sheet.textContent = readFileSync(new FileURL("./CitationShelf.css", import.meta.url), "utf8");
-  // The build lowers :dir(rtl) to :lang(...), which misses explicit RTL
-  // in an English UI. Keep the direction attribute in the built selector.
-  expect(sheet.textContent).toContain('[dir="rtl"] .shelf-mark');
-  document.head.append(sheet);
-  try {
-    const { container } = render(<div dir="rtl">{shelf({ shown: { markup: [], text: "Synthetic citation", html: "", warnings: [] } })}</div>);
-    expect(getComputedStyle(container.querySelector("svg.shelf-mark")!).transform).toBe("scaleX(-1)");
-  } finally { sheet.remove(); }
+test("a formatting reply cannot retire a segment while it is being activated", () => {
+  const selected = chosen([record("a")]);
+  const { rerender } = render(shelf({ selected, shown: null }));
+  const segment = screen.getByRole("button", { name: "Edit García 2021" });
+  fireEvent.mouseDown(segment, { button: 0 });
+  rerender(shelf({ selected, shown: output() }));
+  fireEvent.mouseUp(segment, { button: 0 });
+  fireEvent.click(segment);
+  expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "Page" }));
 });
 
+test("Page retains typed input, canonical pages from search, and independent reference details", () => {
+  const reference: CitationReference = { ...record("a"), locator: { label: "page", value: "S.12" }, form: "author-omitted" };
+  const change = vi.fn();
+  render(shelf({ highlightedReference: reference, shown: output("(2021, S.12)"), onChangeReference: change }));
+  fireEvent.click(screen.getByRole("button", { name: "Edit García 2021" }));
+  const page = screen.getByRole<HTMLInputElement>("textbox", { name: "Page" });
+  expect(page.value).toBe("S.12");
+  fireEvent.change(page, { target: { value: "pp. ١٢–١٥" } });
+  expect(change).toHaveBeenCalledWith(reference, { locator: { label: "page", value: "pp. ١٢–١٥", input: "page-editor" } });
+  expect(document.activeElement).toBe(page);
+  fireEvent.change(page, { target: { value: "" } });
+  expect(change).toHaveBeenLastCalledWith(reference, { locator: null });
+});
 
-test("a captured locator has a separate removal action naming its owning reference", () => {
-  const reference = { ...record("a"), locator: { label: "page" as const, value: "12–15" } };
-  const onRemove = vi.fn(), onRemoveLocator = vi.fn();
-  render(shelf({ selected: chosen([reference]), onRemove, onRemoveLocator }));
-  expect(screen.getByText("page 12–15").tagName).toBe("BDI");
-  fireEvent.click(screen.getByRole("button", { name: "Remove page 12–15 from a" }));
-  expect(onRemoveLocator).toHaveBeenCalledExactlyOnceWith(reference);
-  expect(onRemove).not.toHaveBeenCalled();
-  expect(screen.getByRole("button", { name: "Remove a" })).toBeTruthy();
+test.each(["Backspace", "Delete", "menu", "badge"])("%s removes exactly once; removal never opens the reference menu", (method) => {
+  const reference = record("a"), remove = vi.fn();
+  render(shelf({ selected: chosen([reference]), shown: output(), onRemove: remove }));
+  const segment = screen.getByRole("button", { name: "Edit García 2021" });
+  if (method === "menu") {
+    fireEvent.click(segment);
+    fireEvent.click(screen.getByRole("button", { name: /Remove from citation/ }));
+  } else if (method === "badge") fireEvent.click(screen.getByRole("button", { name: "Remove a" }));
+  else press(segment, method);
+  expect(remove).toHaveBeenCalledExactlyOnceWith(reference);
+  expect(screen.queryByRole("dialog")).toBeNull();
+});
+
+test("hiding the output keeps the reference's one-click remove badge", () => {
+  const reference = record("a"), remove = vi.fn();
+  render(shelf({ selected: chosen([reference]), shown: undefined, onRemove: remove }));
+  const segment = screen.getByRole("button", { name: "Edit García 2021" });
+  const wrapper = segment.closest<HTMLElement>(".shelf-segment")!;
+  fireEvent.click(within(wrapper).getByRole("button", { name: "Remove a" }));
+  expect(remove).toHaveBeenCalledExactlyOnceWith(reference);
+  expect(screen.queryByRole("dialog")).toBeNull();
+});
+
+test.each([1, 2])("many references at the minimum frame and %s× text retain exact output and one-step access to every reference", (scale) => {
+  vi.stubGlobal("innerWidth", 480); vi.stubGlobal("innerHeight", 360);
+  document.documentElement.style.fontSize = `${16 * scale}px`;
+  const records = Array.from({ length: 50 }, (_, i) => record(`synthetic${i}`, `Author${i}`));
+  const text = "An invented very long citation. ".repeat(40).trim();
+  render(shelf({ selected: chosen(records), shown: output(text) }));
+  const preview = screen.getByRole("region", { name: "Preview" });
+  expect(within(preview).getByTitle(text).textContent).toBe(text);
+  const count = screen.getByRole("button", { name: "Show all 50 selected references" });
+  expect(count.textContent).toBe("+50");
+  fireEvent.click(count);
+  const menu = screen.getByRole("dialog", { name: "Selected references" });
+  expect(document.querySelector(".shelf")!.contains(menu)).toBe(false);
+  expect(within(menu).getAllByRole("button", { name: /^Edit Author/ })).toHaveLength(50);
+  fireEvent.click(within(menu).getByRole("button", { name: "Edit Author49 2021" }));
+  expect(screen.getByRole("heading").textContent).toBe("Author49 2021");
+  expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "Page" }));
+  document.documentElement.style.fontSize = "";
+});
+
+test.each([true, false])("folded warnings and Closest matches keep a visible count and one-step access (preview=%s)", (preview) => {
+  vi.stubGlobal("innerWidth", 480); vi.stubGlobal("innerHeight", 360);
+  const reference = { ...record("near"), partial: true };
+  const warning = "Reference 1: Check the invented year.";
+  render(shelf({ selected: chosen([reference]), style: "ieee", outputWarnings: [warning], shown: preview ? output() : undefined }));
+  const warnings = screen.getByRole("button", { name: /2 warnings.*Reference entry.*Closest matches/ });
+  expect(warnings.textContent).toBe("! 2");
+  press(warnings, " ");
+  const menu = screen.getByRole("dialog", { name: "Citation warnings" });
+  expect(within(menu).getByText(warning)).toBeTruthy();
+  expect(within(menu).getByRole("heading", { name: "Closest matches" })).toBeTruthy();
+  expect(within(menu).getByText(/only some search words matched/)).toBeTruthy();
+  expect(within(menu).getByText(/IEEE numbers depend on your whole document/)).toBeTruthy();
+});
+
+test("a formatting refusal stays beside the citation before its menu opens, even with the preview hidden", () => {
+  const reason = "Reference 1: This form cannot be expressed. Choose another form.";
+  render(shelf({ selected: chosen([record("a")]), shown: "failed", problem: reason }));
+  expect(within(screen.getByRole("region", { name: "Preview" })).getByText(reason)).toBeTruthy();
+  expect(screen.queryByRole("dialog")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Details" }));
+  expect(within(screen.getByRole("dialog")).getByText(reason)).toBeTruthy();
+});
+
+test("closing and reopening retires an old reference menu, focuses Search, and keeps the edited citation", async () => {
+  const search = createRef<HTMLInputElement>();
+  function Picker({ presentation }: { presentation: number }) {
+    const [reference, setReference] = useState<CitationReference>(record("a"));
+    return <><input ref={search} aria-label="Search" />{shelf({ presentation, selected: chosen([reference]), shown: output(), fallbackFocusRef: search,
+      onChangeReference: (previous, update) => setReference({ ...previous, ...update }) })}</>;
+  }
+  const { rerender } = render(<Picker presentation={0} />);
+  fireEvent.click(screen.getByRole("button", { name: "Edit García 2021" }));
+  fireEvent.change(screen.getByRole("textbox", { name: "Page" }), { target: { value: "iv–vi" } });
+  rerender(<Picker presentation={1} />);
+  await act(async () => { await new Promise(requestAnimationFrame); });
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "Search" }));
+  fireEvent.click(screen.getByRole("button", { name: "Edit García 2021" }));
+  expect(screen.getByRole<HTMLInputElement>("textbox", { name: "Page" }).value).toBe("iv–vi");
+});
+
+test("removing a focused segment sends focus to Search before it disappears", () => {
+  const search = createRef<HTMLInputElement>();
+  function Picker() {
+    const [selected, setSelected] = useState(chosen([record("a")]));
+    return <><input ref={search} aria-label="Search" />{shelf({ selected, shown: selected.size ? output() : undefined,
+      fallbackFocusRef: search, onRemove: () => setSelected(new Map()) })}</>;
+  }
+  render(<Picker />);
+  press(screen.getByRole("button", { name: "Edit García 2021" }), "Backspace");
+  expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "Search" }));
+});
+
+test("Copied shows the exact receipt between matching beaks, with one polite confirmation", () => {
+  const text = "[@invented-first; @invented-second]";
+  const { rerender } = render(shelf({ shown: output(text), copied: { text, warnings: [] } }));
+  expect(screen.getByRole("status", { name: "Copied" }).textContent).toBe("Copied");
+  const band = document.querySelector(".shelf")!;
+  expect(band.querySelector(".preview-text")?.textContent).toBe(text);
+  expect(band.querySelectorAll(".shelf-mark")).toHaveLength(2);
+  expect(band.querySelector(".shelf-mark-close")?.innerHTML).toBe(band.querySelector(".shelf-mark-open")?.innerHTML);
+  rerender(shelf({ shown: output("New preview") }));
+  expect(screen.queryByRole("status", { name: "Copied" })).toBeNull();
+  expect(document.querySelector(".preview-text")?.textContent).toBe("New preview");
+});
+
+test("Copied warnings keep their count and one-step access; a newer receipt retires the old menu", () => {
+  vi.stubGlobal("innerWidth", 480); vi.stubGlobal("innerHeight", 360);
+  const copied = { text: "Copied citation", warnings: ["Check the invented year.", "Closest match: Invented title."], closestMatches: ["Closest match: Invented title."] };
+  const { rerender } = render(shelf({ copied, shown: output(copied.text) }));
+  const count = screen.getByRole("button", { name: "2 warnings · Closest matches" });
+  expect(count.textContent).toBe("! 2");
+  fireEvent.click(count);
+  const menu = screen.getByRole("dialog", { name: "Citation warnings" });
+  expect(within(menu).getByText("Check the invented year.")).toBeTruthy();
+  expect(within(menu).getByRole("heading", { name: "Closest matches" })).toBeTruthy();
+  expect(within(menu).getAllByText("Closest match: Invented title.")).toHaveLength(1);
+  rerender(shelf({ copied: { text: "New citation", warnings: [] } }));
+  expect(screen.queryByRole("dialog")).toBeNull();
+});
+
+test("an old receipt never replaces the live copy target or confirms a different citation", () => {
+  render(shelf({ copied: { text: "Old citation", warnings: [] }, shown: output("New citation") }));
+  expect(document.querySelector(".preview-text")?.textContent).toBe("New citation");
+  expect(screen.queryByRole("status", { name: "Copied" })).toBeNull();
 });

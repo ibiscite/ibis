@@ -17,12 +17,12 @@ try {
   cases.push(...["loaded", "first-run", "recovery"].map((viewState) => ({ width: 480, larger: false, colorScheme: "light", scale: 2, viewState })));
   cases.push({ width: 480, larger: false, colorScheme: "light", scale: 2, shortcutNotice: true });
   cases.push(...[720, 480].flatMap((width) => [false, true].flatMap((larger) =>
-    ["expanded", "failed", "warnings", "undo"].map((shelfDetails) => ({ width, larger, colorScheme: "light", scale: 1, shelfDetails })))));
-  cases.push(...["expanded", "failed", "warnings", "undo"].map((shelfDetails) => ({ width: 480, larger: false, colorScheme: "light", scale: 2, shelfDetails })));
+    ["single", "expanded", "failed", "warnings", "undo", "copied", "rtl"].map((shelfDetails) => ({ width, larger, colorScheme: "light", scale: 1, shelfDetails })))));
+  cases.push(...["single", "expanded", "failed", "warnings", "undo", "copied", "rtl"].map((shelfDetails) => ({ width: 480, larger: false, colorScheme: "light", scale: 2, shelfDetails })));
   for (const { width, larger, colorScheme, scale, shelfDetails = null, startupNotice = false, largeNotice = false, pointerNotice = null, viewState = "loaded", shortcutNotice = false } of cases) {
     const small = width === 480;
     const height = small ? 360 : largeNotice || pointerNotice ? 480 : Math.round(480 * (larger ? 1.15 : 1));
-    const page = await browser.newPage({ viewport: { width, height }, colorScheme });
+    const page = await browser.newPage({ viewport: { width, height }, colorScheme, reducedMotion: shelfDetails === "copied" && scale === 2 ? "reduce" : "no-preference" });
     const caseLabel = `${width}/${larger ? "larger" : "normal"}/${colorScheme}/scale-${scale}/${shelfDetails ? `shelf-${shelfDetails}` : shortcutNotice ? "shortcut-notice" : startupNotice ? "startup-notice" : largeNotice ? "large-notice" : pointerNotice ? `pointer-${pointerNotice}` : viewState}`;
     const waitForCheck = (check, predicate, arg) => waitForLayout(page, caseLabel, check, predicate, arg);
     const errors = [], resizes = [];
@@ -38,7 +38,9 @@ try {
       Object.defineProperty(navigator, "platform", { value: "MacIntel" });
       let callback = 0;
       const callbacks = new Map(), listeners = new Map();
-      let undoTicket = null, refuseUndo = true, activityTicket = 0;
+      let undoTicket = null, refuseUndo = true, activityTicket = 0, previewNumber = 0;
+      const prepared = new Map();
+      if (shelfDetails === "rtl") document.addEventListener("DOMContentLoaded", () => { document.documentElement.dir = "rtl"; });
       window.fixtureWindowReset = () => {
         undoTicket = 7;
         const event = "picker:window-reset";
@@ -83,8 +85,15 @@ try {
           if (command === "search" && args.query.text === "refuse") throw Error("synthetic search refusal");
           if (command === "search") return { revision: "1", results: args.query.text && args.query.text !== "no-match" ? Array.from({ length: 14 }, (_, i) => ({ revision: "1", id: { library: "invented.bib", key: `synthetic${i}` }, cite: `synthetic-cite-${i}`, source: "invented.bib", key: `synthetic${i}`, title: shelfDetails === "failed" ? `Invented reference ${i}. ${"A synthetic long title. ".repeat(30)}`.trim() : `Invented reference ${i}`, authors: "Aster", first_author: "Aster", author_count: 1, year: 2026, container: null, item_type: "article-journal", partial: shelfDetails === "warnings" && i === 0, matched: ["title"] })) : [] };
           if (command === "preview_file_citation" && shelfDetails === "failed") throw { code: "failed", message: formatFailure };
-          if (command === "preview_file_citation") return { ticket: "synthetic-ticket", content_hash: "synthetic-hash", text: shelfDetails === "warnings" ? "Aster, Invented reference, 2026." : "[@synthetic0]", html: null, warnings: shelfDetails === "warnings" ? [entryWarning] : [] };
-          if (command === "copy_file_citation") return { text: "[@synthetic0]", warnings: largeNotice ? Array.from({ length: 16 }, (_, i) => `Invented copy warning ${i + 1}: check the reference metadata.`) : [] };
+          if (command === "preview_file_citation") {
+            const ticket = `synthetic-ticket-${++previewNumber}`;
+            const text = shelfDetails === "warnings" ? "Aster, Invented reference, 2026."
+              : shelfDetails === "single" || shelfDetails === "rtl" ? `[@${"invented-long-key-".repeat(16)}]`
+              : `[${args.items.map((item) => `@${item.id.key}${item.page_input || item.locator?.value ? `, p. ${item.page_input || item.locator.value}` : ""}`).join("; ")}]`;
+            prepared.set(ticket, text);
+            return { ticket, content_hash: "synthetic-hash", text, html: null, warnings: shelfDetails === "warnings" ? [entryWarning] : [] };
+          }
+          if (command === "copy_file_citation") return { text: prepared.get(args.ticket), warnings: largeNotice ? Array.from({ length: 16 }, (_, i) => `Invented copy warning ${i + 1}: check the reference metadata.`) : [] };
           if (command === "login_item") return { name: "Ibis", enabled: false, problem: null };
           if (command === "update_checks") return null;
           if (command === "update_available") return false;
@@ -223,27 +232,29 @@ try {
       });
       await waitForCheck("details-menu-anchored-and-contained", isAnchoredDetails, rect);
     };
-    const tabLoop = async (dialog, anotherControl = true) => {
-      const close = dialog.getByRole("button", { name: "Close", exact: true });
-      await close.press("Shift+Tab");
-      assert.equal(await close.evaluate((node) => node.closest('[role="dialog"]').contains(document.activeElement)), true, "Shift+Tab stays in the menu");
-      if (anotherControl) assert.equal(await close.evaluate((node) => node !== document.activeElement), true, "Shift+Tab wraps from Close to the last control");
-      await page.keyboard.press("Tab");
-      assert.equal(await close.evaluate((node) => document.activeElement === node), true, "Tab wraps back to Close");
-    };
-    const openEditor = async (segment = false) => {
-      const chip = page.locator("main > .shelf .shelf-chips > .chip").first();
-      const edit = chip.getByRole("button", { name: /^Edit/ });
-      const fromChip = segment && await edit.isVisible();
-      const anchor = fromChip ? chip : page.locator("main > .shelf .shelf-output");
-      if (fromChip) await edit.click();
-      else await shelfControl(page, "Edit citation").click();
-      const dialog = page.getByRole("dialog", { name: /^Citation details/ });
+    const openEditor = async () => {
+      const open = async () => {
+        const edit = shelfControl(page, /^Edit /).first();
+        const count = shelfControl(page, /^Show all /);
+        if (await edit.count()) { await edit.click(); return page.locator("main > .shelf .shelf-output"); }
+        await count.click();
+        const choices = page.getByRole("dialog", { name: "Selected references", exact: true });
+        await choices.getByRole("button", { name: /^Edit / }).first().click();
+        return count;
+      };
+      let anchor = await open();
+      let dialog = page.getByRole("dialog", { name: /^Citation details/ });
       await dialog.waitFor();
-      await page.getByLabel("Page", { exact: true }).waitFor();
+      const pageField = dialog.getByRole("textbox", { name: "Page", exact: true });
+      assert.equal(await pageField.evaluate((node) => document.activeElement === node), true, "opening a segment focuses Page");
       await anchoredMenu(anchor);
-      await tabLoop(dialog);
-      await page.getByLabel("Page", { exact: true }).focus();
+      await pageField.press("Tab");
+      await dialog.waitFor({ state: "detached" });
+      assert.equal(await page.evaluate(() => document.activeElement !== document.body && !document.activeElement.closest(".details-menu")), true, "Tab closes details and moves on");
+      anchor = await open();
+      dialog = page.getByRole("dialog", { name: /^Citation details/ });
+      await dialog.waitFor();
+      await anchoredMenu(anchor);
       return dialog;
     };
     const closeEditor = async (dialog) => {
@@ -252,20 +263,88 @@ try {
     };
     if (shelfDetails === "undo") {
       const band = await page.locator("main > .shelf").boundingBox();
+      await search.press("Shift+Enter");
+      await shelfControl(page, /^Edit /).first().press("Backspace");
+      const removal = page.locator(".undo-notices > .undo-notice").first();
+      await removal.getByText("Removed from citation.", { exact: true }).waitFor();
       await page.evaluate(() => window.fixtureWindowReset());
-      const undo = page.getByRole("button", { name: "Undo", exact: true });
+      const undo = page.locator(".undo-notices > .undo-notice").nth(1).getByRole("button", { name: "Undo", exact: true });
       await undo.waitFor();
       assert.equal(await search.evaluate((node) => document.activeElement === node), true, "Reset's Undo notice leaves typing focus in Search");
+      await waitForCheck("independent-undo-actions-whole-and-uncovered", () => {
+        const boxes = [...document.querySelectorAll(".undo-notices > .undo-notice")].map((node) => node.getBoundingClientRect());
+        return boxes.length === 2 && boxes.every((box) => box.top >= 7 && box.bottom <= innerHeight - 7 && box.left >= 7 && box.right <= innerWidth - 7) && boxes[0].bottom <= boxes[1].top;
+      });
       await undo.click();
       await page.getByRole("alert").and(page.getByText("Could not undo. Try again.", { exact: true })).waitFor();
       assert.equal(await undo.isEnabled(), true, "a refused Undo stays visible and retryable");
       await undo.click();
       await undo.waitFor({ state: "detached" });
       assert.equal(await search.evaluate((node) => document.activeElement === node), true, "successful retry returns focus to Search");
+      await removal.getByRole("button", { name: "Undo", exact: true }).click();
+      await removal.waitFor({ state: "detached" });
+      assert.equal(await page.locator('[role="option"][data-citation-selected]').count(), 1, "undoing the window leaves the independent reference Undo intact");
       assert.deepEqual(await page.locator("main > .shelf").boundingBox(), band, "Undo feedback does not move the shelf");
       assert.deepEqual(await scan(), [], "Undo feedback keeps fixed bands and one scroller");
       assert.deepEqual(page.viewportSize(), frame, "Undo feedback keeps the fixture's frame");
       assert.deepEqual(resizes, [], "no content-driven native sizing");
+      assert.deepEqual(errors, [], "no page errors");
+      await page.close(); profiles += 1; continue;
+    }
+    if (shelfDetails === "copied") {
+      const text = await page.locator("main > .shelf .preview-text").textContent();
+      await search.press("Enter");
+      await page.getByRole("status", { name: "Copied", exact: true }).waitFor();
+      assert.equal(await page.locator("main > .shelf .preview-text").textContent(), text, "Copied confirms the exact receipt");
+      assert.equal(await page.locator(".copy-notice p").count(), 0, "the shelf confirms each copy once");
+      await waitForCheck("matching-copied-beaks", () => {
+        const open = document.querySelector(".shelf-mark-open").getBoundingClientRect();
+        const close = document.querySelector(".shelf-mark-close").getBoundingClientRect();
+        const text = document.querySelector(".shelf .preview-text").getBoundingClientRect();
+        return Math.abs(open.width - close.width) <= 1 && Math.abs(open.height - close.height) <= 1 &&
+          Math.abs((text.left - open.right) - (close.left - text.right)) <= 1;
+      });
+      if (scale === 2) assert.equal(await page.locator(".shelf").evaluate((node) => getComputedStyle(node).animationName), "none", "Reduce Motion shows only the Copied end state");
+      assert.deepEqual(await scan(), [], "Copied keeps one whole shelf line");
+      await search.fill("newer");
+      await page.getByRole("status", { name: "Copied", exact: true }).waitFor({ state: "detached" });
+      assert.deepEqual(resizes, [], "Copied never requests native sizing");
+      assert.deepEqual(errors, [], "no page errors");
+      await page.close(); profiles += 1; continue;
+    }
+    if (shelfDetails === "single" || shelfDetails === "rtl") {
+      await search.press("Shift+Enter");
+      const band = await page.locator("main > .shelf").boundingBox();
+      const segment = shelfControl(page, /^Edit /).first();
+      await segment.hover();
+      const remove = shelfControl(page, "Remove synthetic0 from the selection");
+      await remove.waitFor({ state: "visible" });
+      assert.equal(await remove.evaluate((node) => {
+        const rect = node.getBoundingClientRect();
+        const text = node.closest(".shelf-segment").querySelector(".preview-text").getBoundingClientRect();
+        const size = parseFloat(getComputedStyle(node).getPropertyValue("--shelf-remove-size"));
+        const top = rect.top + (rect.height - size) / 2, left = rect.left + (rect.width - size) / 2;
+        return Math.abs(rect.width - 24) <= 1 && Math.abs(rect.height - 24) <= 1 && size === 16 &&
+          (top + size <= text.top + 1 || left + size <= text.left + 1 || top >= text.bottom - 1 || left >= text.right - 1);
+      }), true, "the 16 px badge and 24 px target stay outside the long key's text at every text size/direction");
+      await remove.click();
+      assert.equal(await page.getByRole("dialog").count(), 0, "the remove badge never opens the menu");
+      await page.getByRole("button", { name: "Undo", exact: true }).click();
+      assert.equal(await page.locator('[role="option"][data-citation-selected]').count(), 1, "Undo restores the removed reference");
+      const dialog = await openEditor();
+      await dialog.getByRole("textbox", { name: "Page", exact: true }).fill("iv–vi");
+      for (const control of await dialog.getByRole("radio").all()) assert.equal(await reachable(control), true, "all name forms stay whole and reachable");
+      assert.deepEqual(await page.locator("main > .shelf").boundingBox(), band, "the long citation and menu never grow the shelf");
+      await closeEditor(dialog);
+      const reopened = await openEditor();
+      assert.equal(await reopened.getByRole("textbox", { name: "Page", exact: true }).inputValue(), "iv–vi", "close/reopen keeps the page");
+      await closeEditor(reopened);
+      await segment.focus();
+      assert.equal(await remove.isVisible(), false, "keyboard focus never shows the hover badge");
+      await segment.press("Backspace");
+      await page.getByRole("button", { name: "Undo", exact: true }).waitFor();
+      assert.deepEqual(await scan(), [], "long/RTL text and removal keep the shelf whole");
+      assert.deepEqual(resizes, [], "no native size requests from the shelf");
       assert.deepEqual(errors, [], "no page errors");
       await page.close(); profiles += 1; continue;
     }
@@ -280,9 +359,9 @@ try {
         dialog = page.getByRole("dialog", { name: "Selected references", exact: true });
         await dialog.waitFor();
         await anchoredMenu(count);
-        const controls = dialog.getByRole("button", { name: /^Remove .* from the selection$/ });
-        assert.equal(await controls.count(), 9, "every chosen reference is removable in the overlay");
-        for (const control of await controls.all()) assert.equal(await reachable(control), true, "every remove target is reachable");
+        const controls = dialog.getByRole("button", { name: /^Edit / });
+        assert.equal(await controls.count(), 9, "every chosen reference has its own editor in the overlay");
+        for (const control of await controls.all()) assert.equal(await reachable(control), true, "every reference menu is reachable");
       } else if (shelfDetails === "warnings") {
         await search.press("Shift+Enter");
         const warnings = shelfControl(page, /2 warnings.*Reference entry.*Closest matches/);
@@ -314,7 +393,6 @@ try {
         assert.equal(await reachable(dialog.locator(".shelf-detail-title")), true, "both ends of a long reference title are reachable");
         assert.equal(await reachable(dialog.getByText(noticeText.formatting, { exact: true })), true, "both ends of the full refusal are reachable");
       }
-      await tabLoop(dialog, shelfDetails !== "warnings");
       assert.deepEqual(await scan(), [], "details leave whole fixed bands and one active scroller");
       const shelf = await page.locator("main > .shelf").boundingBox();
       assert.deepEqual(shelf, beforeShelf, "opening details does not grow or move the shelf");
@@ -383,13 +461,13 @@ try {
       await search.press("Shift+Enter");
       await search.press("ArrowDown");
       await search.press("Shift+Enter");
-      await waitForCheck("large-notice-two-selected", () => document.querySelectorAll('.shelf-chips > .chip').length === 2);
+      await waitForCheck("large-notice-two-selected", () => document.querySelector(".shelf-count")?.getAttribute("aria-label") === "Show all 2 selected references");
       assert.deepEqual(page.viewportSize(), { width: 720, height: 480 }, "large-notice fixture uses the reported frame");
       assert.ok(await page.locator(".notices").evaluate((node) => node.getBoundingClientRect().height >= 300), "warnings consume at least 300px");
       assert.equal(await page.evaluate(isWholeShelf), true, "the shelf stays outside the overflowing notice region");
       await search.evaluate((node) => { node.focus({ preventScroll: true }); node.setSelectionRange(2, 5); });
       const selection = () => search.evaluate((node) => ({ focused: document.activeElement === node, range: [node.selectionStart, node.selectionEnd],
-        references: [...document.querySelectorAll('.shelf-chips > .chip')].map((chip) => chip.title) }));
+        references: [...document.querySelectorAll('[role=option][data-citation-selected]')].map((row) => row.id) }));
       const chosen = await selection();
       const owners = () => page.evaluate(() => [document.querySelector("main"), ...document.querySelectorAll("main *")]
         .filter((node) => /auto|scroll/.test(getComputedStyle(node).overflowY) && node.clientHeight > 0 && node.scrollHeight > node.clientHeight + 1)
@@ -449,10 +527,7 @@ try {
     await page.setViewportSize({ width: 480, height: 360 });
     await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     assert.deepEqual(await scan(), [], "resizing while editing keeps fixed bands and one active scroller");
-    const foldedAnchor = shelfControl(page, /^Show all /);
-    // A visible segment folds to the count; an editor opened from the whole
-    // citation stays on that citation. Both anchors stay inside the window.
-    const anchor = await foldedAnchor.getAttribute("aria-expanded") === "true" ? foldedAnchor : page.locator("main > .shelf .shelf-output");
+    const anchor = page.locator("main > .shelf .shelf-output");
     await anchoredMenu(anchor);
     const heading = editor.getByRole("heading");
     assert.equal(await heading.evaluate((node) => {

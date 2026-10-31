@@ -172,7 +172,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       pinned: () => currentPin.current, consume: destination.consumeOnce, refresh: refreshSnapshot,
       askFormat: () => formatButtonRef.current?.click(), reportHide: (failed) => report("hide", failed) });
     send({ type: "view", session: state.session, interaction: state.interaction,
-      view: { queryKey, format, snapshotRevision, defaultChoice, chosen, shown, searchPending,
+      view: { queryKey, format, snapshotRevision, defaultChoice, chosen, shown, previewVisible: showPastePreview, searchPending,
         ready: destination.ready && preferences.ready, saving: destination.saving, shouldAsk: destination.shouldAsk,
         output: destination.copyToken() } });
   });
@@ -610,7 +610,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       <Notices densityAnnouncement={preferences.densityAnnouncement} updateProgress={updateProgress} library={library} failures={failures} startAtLogin={startAtLogin}
         error={error} copyError={copyError} copied={copied} missing={list?.missing}
         citationProblem={displayedOutput === "failed" ? previewProblem ?? pickerText.previewError : null}
-        showCopiedText={displayedOutput == null || typeof displayedOutput === "string" || displayedOutput.text !== copied?.text}
+        confirmation={state.copyNotice}
         onDismissCopied={() => send({ type: "dismiss" })} />
       {usingLocator && <div className="notices">
         <p role="status">{pickerText.usingLocator(usingLocator.label, usingLocator.value)}{" "}
@@ -669,12 +669,12 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       </PickerScroll>
       {/* Keep the selection live region mounted when choices remove citation controls. */}
       <CitationShelf presentation={state.visibility} announce={selectionChanged} selected={showCitations ? selected : noSelection} removeLabel={removeLabel} onRemove={(r) => {
-        toggle(r);
+        send({ type: "remove-reference", reference: r });
         input.current?.focus({ preventScroll: true });
-      }} onRemoveLocator={(r) => changeLocator(r, null)} highlightedReference={selected.size === 0 ? chosen[0] : undefined}
-        onChangeReference={changeReference} style={style} keys={keyFormat !== null}
+      }} highlightedReference={selected.size === 0 ? chosen[0] : undefined}
+        onChangeReference={changeReference} referenceLibrary={(r) => libraryOf(r.source ?? "")} style={style} keys={keyFormat !== null}
         shown={showCitations ? displayedOutput : undefined} outputWarnings={shown && typeof shown === "object" ? shown.warnings : []}
-        problem={previewProblem} focusable={selected.size > 0} fallbackFocusRef={input} />
+        problem={previewProblem} copied={showCitations ? state.shelfCopied : null} focusable={selected.size > 0} fallbackFocusRef={input} />
       <PickerFooter library={library} groupName={groupName}
         hints={{ enter: enterAction, shiftEnter: shiftEnterAction, escape: escapeAction }}
         altHeld={altHeld} actions={{ copy: copyChosen, add: toggleHighlighted, escape: escapeStep, keys: openKeys }}
@@ -707,7 +707,12 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
             }} />
         } />
       {keysOpen && <KeysDialog bindings={bindings} isMac={isMac} onClose={closeKeys} />}
-      {windowUndo.ticket !== null && <UndoNotice key={windowUndo.ticket} message={pickerText.windowReset} onUndo={windowUndo.undo} onExpire={windowUndo.expire} paused={state.hiddenAt !== null} fallbackFocusRef={input} />}
+      {(state.removed || windowUndo.ticket !== null) && <div className="undo-notices" role="region" aria-label={pickerText.undo}>
+        {state.removed && <UndoNotice key={`reference-${state.removed.token}`} message="Removed from citation." paused={state.hiddenAt !== null} fallbackFocusRef={input}
+          onExpire={() => send({ type: "expire-removal", removal: state.removed! })}
+          onUndo={async () => { send({ type: "undo-reference", removal: state.removed! }); }} />}
+        {windowUndo.ticket !== null && <UndoNotice key={`window-${windowUndo.ticket}`} message={pickerText.windowReset} onUndo={windowUndo.undo} onExpire={windowUndo.expire} paused={state.hiddenAt !== null} fallbackFocusRef={input} />}
+      </div>}
     </main>
   );
 }

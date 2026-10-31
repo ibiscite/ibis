@@ -81,7 +81,7 @@ test("200% text refits after the middle settles even when the shelf stays folded
   }
   render(<Picker />);
   expect(document.querySelector(".shelf")!.getAttribute("data-folded")).toBe("true");
-  fireEvent.click(screen.getByRole("button", { name: "Edit citation" }));
+  fireEvent.click(screen.getByRole("button", { name: /^Edit / }));
   const page = screen.getByRole<HTMLInputElement>("textbox", { name: "Page" });
   act(() => page.focus()); fireEvent.change(page, { target: { value: "12" } });
   vi.stubGlobal("innerWidth", 480); vi.stubGlobal("innerHeight", 360);
@@ -195,7 +195,7 @@ test.each([192, 700])("folding the shelf keeps its %spx editor inside the window
       shown={{ text: "[@invented]", markup: [], html: "", warnings: [] }} outputWarnings={[]} />;
   }
   render(<Picker />);
-  fireEvent.click(screen.getByRole("button", { name: "Edit citation" }));
+  fireEvent.click(screen.getByRole("button", { name: /^Edit / }));
   const page = screen.getByRole<HTMLInputElement>("textbox", { name: "Page" });
   act(() => page.focus());
   fireEvent.change(page, { target: { value: "12" } });
@@ -224,43 +224,37 @@ test.each([192, 700])("folding the shelf keeps its %spx editor inside the window
   vi.stubGlobal("innerWidth", 480);
   vi.stubGlobal("innerHeight", 360);
   fireEvent.resize(window);
-  fireEvent.click(screen.getByRole("button", { name: "Edit citation" }));
+  fireEvent.click(screen.getByRole("button", { name: /^Edit / }));
   expect(document.querySelector(".details-menu")!.getBoundingClientRect().bottom).toBe(266);
   expect(screen.getByRole<HTMLInputElement>("textbox", { name: "Page" }).value).toBe("12");
 });
 
-test("Tab wraps both ways inside the anchored details menu while picker shortcuts stay blocked", async () => {
+test.each([false, true])("Tab closes reference details and moves past its trigger (backward=%s)", async (backward) => {
   const pickerKey = vi.fn();
   function Picker() {
     const anchor = useRef<HTMLButtonElement>(null);
     const [open, setOpen] = useState(false);
-    return <div onKeyDown={pickerKey}><button ref={anchor} type="button" onClick={() => setOpen(true)}>Reference segment</button>
+    return <main onKeyDown={pickerKey}><button type="button">Before</button><button ref={anchor} type="button" onClick={() => setOpen(true)}>Reference segment</button><button type="button">After</button>
       {open && anchor.current && <DetailsMenu anchor={anchor.current} title="Citation details" onClose={() => setOpen(false)}>
         <input aria-label="Page" /><button type="button">Last action</button>
       </DetailsMenu>}
-    </div>;
+    </main>;
   }
   render(<Picker />);
-  fireEvent.click(screen.getByRole("button", { name: "Reference segment" }));
+  const trigger = screen.getByRole("button", { name: "Reference segment" });
+  act(() => trigger.focus()); fireEvent.click(trigger);
   const close = screen.getByRole("button", { name: "Close" });
-  const last = screen.getByRole("button", { name: "Last action" });
-  expect(screen.getByRole("dialog", { name: "Citation details" }).closest(".ui-overlay")).not.toBeNull();
-  await act(async () => { close.focus(); });
+  act(() => close.focus());
   for (const composition of [{ isComposing: true }, { keyCode: 229 }]) {
-    fireEvent.keyDown(close, { key: "Tab", shiftKey: true, ...composition });
+    fireEvent.keyDown(close, { key: "Tab", shiftKey: backward, ...composition });
     expect(document.activeElement).toBe(close);
   }
-  fireEvent.keyDown(close, { key: "Tab", shiftKey: true });
-  await waitFor(() => expect(document.activeElement).toBe(last));
-  fireEvent.keyDown(last, { key: "Tab" });
-  await waitFor(() => expect(document.activeElement).toBe(close));
   pickerKey.mockClear();
-  fireEvent.keyDown(close, { key: "k", ctrlKey: true });
-  fireEvent.keyDown(close, { key: "i", ctrlKey: true });
-  fireEvent.keyDown(close, { key: "/", ctrlKey: true });
-  fireEvent.keyDown(close, { key: "Enter" });
+  for (const key of ["k", "i", "/", "Enter"]) fireEvent.keyDown(close, { key, ctrlKey: true });
   expect(pickerKey).not.toHaveBeenCalled();
-  expect(screen.getByRole("dialog", { name: "Citation details" })).toBeTruthy();
+  fireEvent.keyDown(close, { key: "Tab", shiftKey: backward });
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: backward ? "Before" : "After" })));
+  expect(screen.queryByRole("dialog")).toBeNull();
 });
 
 test("folding the originating segment preserves the edit and Escape returns to the visible shelf control", async () => {

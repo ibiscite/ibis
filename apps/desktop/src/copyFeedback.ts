@@ -54,7 +54,7 @@ export function noticeTitle({ delivered }: NoticeMessage, platform = currentPlat
 }
 
 /**
- * Draw the notice: a check mark, what happened and the citation on one line.
+ * Draw one receipt card: a check tile, what happened, then the citation.
  * Text goes in as text, never as markup. The status region exists before its
  * text arrives, so screen readers that follow other windows announce it
  * politely without the notice taking focus.
@@ -62,7 +62,7 @@ export function noticeTitle({ delivered }: NoticeMessage, platform = currentPlat
 export function renderNotice(root: HTMLElement, platform: NoticePlatform): (message: NoticeMessage) => void {
   root.replaceChildren();
   const notice = document.createElement("div");
-  notice.className = "copied-notice";
+  notice.className = "copied-notice copy-receipt";
   notice.dataset.platform = platform;
   notice.setAttribute("role", "status");
   notice.setAttribute("aria-live", "polite");
@@ -73,7 +73,7 @@ export function renderNotice(root: HTMLElement, platform: NoticePlatform): (mess
   const mark = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   mark.setAttribute("aria-hidden", "true");
   mark.setAttribute("viewBox", "0 0 20 20");
-  mark.classList.add("copied-notice-mark");
+  mark.classList.add("copied-notice-mark", "copy-receipt-mark");
   const tick = document.createElementNS("http://www.w3.org/2000/svg", "path");
   tick.setAttribute("d", "m5 10.5 3.2 3.2L15 6.5");
   mark.append(tick);
@@ -84,11 +84,9 @@ export function renderNotice(root: HTMLElement, platform: NoticePlatform): (mess
   return (message: NoticeMessage) => {
     title.textContent = noticeTitle(message, platform);
     code.textContent = message.text;
+    code.title = message.text;
     notice.dataset.outcome = message.delivered.outcome;
     notice.replaceChildren(source, mark, title, code);
-    // A citation cut to a few characters says nothing: give it its own line.
-    delete notice.dataset.stacked;
-    if (code.scrollWidth > code.clientWidth) notice.dataset.stacked = "";
     // Restart the fade for a notice shown again while still visible.
     notice.classList.remove("showing", "leaving");
     void notice.offsetWidth;

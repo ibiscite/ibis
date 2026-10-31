@@ -1,6 +1,6 @@
 // What Enter would paste for the chosen references: the formatted or key preview,
 // tagged with the choice, style and library it was made for.
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as nativeApi from "../../api";
 import type { CopyFormat, LibraryStatus } from "../../api";
 import type { FormattedCitation } from "../../format/styles";
@@ -26,7 +26,7 @@ export function useCitationOutput({ chosen, library, libraryVersion, sessionId =
 }) {
   // Tagged with the style, choice and library it was made for, so Enter never
   // copies a preview of an earlier choice.
-  const [formatted, setFormatted] = useState<{ key: string; result: (FormattedCitation & { fileTicket?: string; fileHash?: string }) | "failed" | "stale"; problem?: string } | null>(null);
+  const [formatted, setFormatted] = useState<{ key: string; request: object; result: (FormattedCitation & { fileTicket?: string; fileHash?: string }) | "failed" | "stale"; problem?: string } | null>(null);
   const stalePreview = useRef<string | null>(null);
   const currentSession = useRef(sessionId);
   currentSession.current = sessionId;
@@ -37,9 +37,12 @@ export function useCitationOutput({ chosen, library, libraryVersion, sessionId =
   // Reading unchanged status must not retry the same stale citation forever.
   const retryKey = JSON.stringify([output, library?.revision, chosenKey]);
   const previewKey = `${output}\u0002${libraryVersion}\u0002${chosenKey}`;
+  // A -> B -> A is a new operation: B has retired A's native copy ticket.
+  // Equal input alone cannot revive that receipt before fresh A finishes.
+  const request = useMemo(() => ({ key: previewKey }), [previewKey]);
   const previousRequest = useRef({ sessionId, key: previewKey });
   // What Enter would copy now; null while it is being formatted.
-  const shown = formatted?.key === previewKey ? formatted.result : null;
+  const shown = formatted?.request === request ? formatted.result : null;
   // Why the preview failed, when the user can fix it.
   const previewProblem = shown === "failed" ? formatted?.problem : undefined;
   // Hiding citation text never hides the reason it cannot be copied.
@@ -52,9 +55,9 @@ export function useCitationOutput({ chosen, library, libraryVersion, sessionId =
     if (chosen.length === 0 || !chosenRevision) return;
     // A settled prepared result survives reopening, including permission
     // detours. Only unfinished work needs a new session's request.
-    if (previous.sessionId !== sessionId && previous.key === previewKey && formatted?.key === previewKey) return;
+    if (previous.sessionId !== sessionId && previous.key === previewKey && formatted?.request === request) return;
     if (stalePreview.current === retryKey) {
-      setFormatted({ key: previewKey, result: "stale" });
+      setFormatted({ key: previewKey, request, result: "stale" });
       return;
     }
     let live = true;
@@ -68,19 +71,19 @@ export function useCitationOutput({ chosen, library, libraryVersion, sessionId =
       ...(r.form ? { form: r.form } : {}),
     })), keyFormat ?? "pandoc", style, chosenRevision, abort.signal).then((result) => ({ markup: result.html ? parse(result.html) : [result.text], text: result.text, html: result.html ?? "", warnings: result.warnings, fileTicket: result.ticket, fileHash: result.content_hash }));
     made
-      .then((result) => { if (owns()) setFormatted({ key, result }); })
+      .then((result) => { if (owns()) setFormatted({ key, request, result }); })
       .catch((error) => { if (owns()) {
         const stale = nativeApi.isSnapshotChanged(error);
         const shared = nativeApi.sharedCitationKey(error);
         const failure = typeof error === "object" && error !== null ? error as { code?: unknown; message?: unknown } : null;
         const message = failure?.code === "failed" && typeof failure.message === "string" ? failure.message : undefined;
-        setFormatted({ key, result: stale ? "stale" : "failed", problem: shared ? pickerText.sharedKey(shared) : message });
+        setFormatted({ key, request, result: stale ? "stale" : "failed", problem: shared ? pickerText.sharedKey(shared) : message });
         if (stale) {
           stalePreview.current = retryKey;
           refreshSnapshot();
         }
       } });
     return () => { live = false; abort.abort(); };
-  }, [previewKey, sessionId]);
+  }, [previewKey, request, sessionId]);
   return { formatted, chosenKey, keyFormat, shown, previewProblem, displayedOutput };
 }

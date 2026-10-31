@@ -145,28 +145,17 @@ test("the notice window grants only copied text reading and event subscriptions"
   expect([...noticeCapability.permissions].sort()).toEqual(["allow-copied-notice", "core:event:allow-listen", "core:event:allow-unlisten"]);
 });
 
-test("a citation that would be cut short moves to its own line, and only a paste is marked done", () => {
+test("every receipt uses one card and only a paste is marked done", () => {
   const root = document.createElement("div");
   const show = renderNotice(root, "macos");
   const code = () => root.querySelector("code")!;
   const notice = () => root.querySelector<HTMLElement>(".copied-notice")!;
-  // jsdom has no layout: stand in for a citation wider than its room.
-  const widths = (scroll: number, client: number) => {
-    Object.defineProperty(HTMLElement.prototype, "scrollWidth", { configurable: true, get() { return this.tagName === "CODE" ? scroll : 0; } });
-    Object.defineProperty(HTMLElement.prototype, "clientWidth", { configurable: true, get() { return this.tagName === "CODE" ? client : 0; } });
-  };
-  try {
-    widths(400, 60);
-    show(copied("\\parencite{synthetic2020}", "no-permission"));
-    expect(code().textContent).toBe("\\parencite{synthetic2020}");
-    expect(notice().dataset.stacked).toBe("");
-    expect(notice().dataset.outcome).toBe("copied");
-    widths(120, 120);
-    show({ delivered: { outcome: "pasted", app: "Writer" }, text: "[@synthetic]" });
-    expect(notice().dataset.stacked).toBeUndefined();
-    expect(notice().dataset.outcome).toBe("pasted");
-  } finally {
-    delete (HTMLElement.prototype as { scrollWidth?: number }).scrollWidth;
-    delete (HTMLElement.prototype as { clientWidth?: number }).clientWidth;
-  }
+  show(copied("\\parencite{synthetic2020}", "no-permission"));
+  expect(code().textContent).toBe("\\parencite{synthetic2020}");
+  expect(notice().classList.contains("copy-receipt")).toBe(true);
+  expect(notice().querySelectorAll(".copy-receipt-mark")).toHaveLength(1);
+  expect(notice().dataset.outcome).toBe("copied");
+  show({ delivered: { outcome: "pasted", app: "Writer" }, text: "[@synthetic]" });
+  expect(notice().dataset.outcome).toBe("pasted");
+  expect(notice().querySelectorAll("code")).toHaveLength(1);
 });

@@ -55,7 +55,7 @@ test("results, menus and Shortcuts share the scroll area; picker notices belong 
   expect(css("./Menu.css")).not.toMatch(/\[role="menu"\] \{[^}]*overflow/);
   const keys = render(<KeysDialog bindings={[{ region: "picker", action: "pin", keys: ["CmdOrCtrl+Shift+P"] }]} isMac onClose={vi.fn()} />);
   expect(keys.container.querySelector(".keys-scroll")?.classList.contains("scroll-area")).toBe(true);
-  const notices = render(<Notices library={null} failures={{}} startAtLogin={null} error="Search failed" copyError={null} copied={null} showCopiedText={false} onDismissCopied={vi.fn()} />);
+  const notices = render(<Notices library={null} failures={{}} startAtLogin={null} error="Search failed" copyError={null} copied={null} onDismissCopied={vi.fn()} />);
   expect(notices.container.querySelector(".notices")?.classList.contains("scroll-area")).toBe(false);
   const noticeRule = styles.split("\n").find((line) => line.startsWith(".picker-content > .notices {")) ?? "";
   expect(noticeRule).toMatch(/flex: none/);
@@ -67,7 +67,7 @@ test("nonempty notices hand results to the middle scroller independently of the 
   // checks actual overflow with a large notice, selected references and results.
   const styles = css("../styles.css");
   const props = { library: null, failures: {}, startAtLogin: null, error: null, copyError: null,
-    showCopiedText: false, onDismissCopied: vi.fn() };
+    onDismissCopied: vi.fn() };
   const warnings = Array.from({ length: 16 }, (_, i) => `Invented copy warning ${i + 1}`);
   const picker = (copied: { text: string; warnings: string[] } | null) => <main data-selection><div className="picker-content scroll-area">
     <Notices {...props} copied={copied} /><div className="results-area scroll-area" /><div className="shelf" />

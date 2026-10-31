@@ -24,10 +24,10 @@ test.each(["macos", "windows", "linux"])("%s uses labelled shared controls, plai
   expect(page.value).toBe(text);
   expect(container.querySelector("script")).toBeNull();
   expect(page.getAttribute("aria-describedby")).toBeTruthy();
-  const normal = screen.getByRole("radio", { name: "Normal" });
+  const normal = screen.getByRole("radio", { name: "Name in brackets" });
   act(() => normal.focus());
-  fireEvent.keyDown(normal, { key: "ArrowRight" });
-  expect(screen.getByRole("radio", { name: "Narrative", checked: true })).toBeTruthy();
+  fireEvent.keyDown(normal, { key: "ArrowDown" });
+  expect(screen.getByRole("radio", { name: "Name in the sentence", checked: true })).toBeTruthy();
   const results = await axe.run(container, { rules: { "color-contrast": { enabled: false } } });
   expect(results.violations).toEqual([]);
   delete document.documentElement.dataset.platform;
