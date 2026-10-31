@@ -234,7 +234,7 @@ fn prepare_with_traits(
                 // Notes, annotations and private links never reach the
                 // processor; every check below sees what it will print.
                 ibis_core::citable::citable_fields(&mut value);
-                normalize_strings(value.values_mut());
+                normalize_strings(value.values_mut())?;
                 if value.keys().any(|key| crate::output::unsupported_controls(key)) || record_controls(value.values()) {
                     return Err(FormatError::InvalidRequest);
                 }
@@ -363,7 +363,13 @@ fn prepare_with_traits(
                     continue;
                 }
                 cite["label"] = serde_json::to_value(locator.term).map_err(|_| FormatError::InvalidRequest)?;
-                cite["locator"] = json!(locator.value);
+                cite["locator"] = json!(
+                    locator
+                        .value
+                        .chars()
+                        .filter(|ch| !bidi_control(*ch))
+                        .collect::<String>()
+                );
             }
             // Rich affixes belong to the 0.4 builder. Omitting them is explicit,
             // never citeproc markup that could reinterpret literal input.
@@ -371,8 +377,12 @@ fn prepare_with_traits(
             // it sees inert placeholders and the bridge writes each affix in
             // every output format afterwards, with citeproc's own escaping.
             for (key, runs) in [("prefix", &pick.prefix), ("suffix", &pick.suffix)] {
+                let mut runs = runs.clone();
+                for run in &mut runs {
+                    run.text.retain(|ch| !bidi_control(ch));
+                }
                 if runs.iter().any(|run| !run.text.is_empty()) {
-                    let placeholder = placeholder(affixes.len(), key, runs);
+                    let placeholder = placeholder(affixes.len(), key, &runs);
                     cite[key] = json!(placeholder);
                     affixes.push(json!({"placeholder": placeholder, "kind": key, "runs": runs}));
                 }
@@ -476,13 +486,15 @@ fn year(issued: Option<&Value>) -> Option<String> {
     if !parts.is_empty() {
         return Some(parts);
     }
-    ["literal", "raw"].into_iter().find_map(|field| {
-        let date = text(issued.get(field));
-        let digits: String = date.chars().filter(char::is_ascii_digit).collect();
-        (digits.len() == 4)
-            .then_some(digits)
-            .or_else(|| (!date.is_empty()).then_some(date))
-    })
+    let literal = text(issued.get("literal"));
+    if !literal.is_empty() {
+        return Some(literal);
+    }
+    let date = text(issued.get("raw"));
+    let digits: String = date.chars().filter(char::is_ascii_digit).collect();
+    (digits.len() == 4)
+        .then_some(digits)
+        .or_else(|| (!date.is_empty()).then_some(date))
 }
 
 fn validate_pick(snapshot: &Snapshot, pick: &CitationItem) -> Option<CitationError> {
@@ -553,14 +565,31 @@ fn record_controls<'a>(values: impl Iterator<Item = &'a Value>) -> bool {
 
 // citeproc's title casing can silently discard words at line boundaries. CSL
 // fields are inline content: preserve their words before the processor sees them.
-fn normalize_strings<'a>(values: impl Iterator<Item = &'a mut Value>) {
+fn normalize_strings<'a>(values: impl Iterator<Item = &'a mut Value>) -> Result<(), FormatError> {
     let mut pending: Vec<_> = values.collect();
     while let Some(value) = pending.pop() {
         match value {
             Value::String(text) => {
                 let mut normalized = String::with_capacity(text.len());
                 let mut line_break = false;
+                let mut inside_tag = false;
                 for ch in text.chars() {
+                    // Directional formatting must not escape a field and
+                    // reorder the citation around it. Keep RTL letters and
+                    // shaping characters (including ZWJ/ZWNJ) unchanged.
+                    if bidi_control(ch) {
+                        // Removing a control inside tag-looking text could
+                        // create markup that the source never contained.
+                        if inside_tag {
+                            return Err(FormatError::InvalidRequest);
+                        }
+                        continue;
+                    }
+                    match ch {
+                        '<' => inside_tag = true,
+                        '>' => inside_tag = false,
+                        _ => {}
+                    }
                     let is_break = matches!(ch, '\r' | '\n' | '\u{85}' | '\u{2028}' | '\u{2029}');
                     if is_break {
                         // A break between words is a space; one at either
@@ -583,6 +612,11 @@ fn normalize_strings<'a>(values: impl Iterator<Item = &'a mut Value>) {
             _ => {}
         }
     }
+    Ok(())
+}
+
+fn bidi_control(ch: char) -> bool {
+    matches!(ch, '\u{061c}' | '\u{200e}' | '\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{206f}')
 }
 
 /// Abort serialization at the boundary instead of allocating an unbounded JSON copy.

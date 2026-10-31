@@ -75,6 +75,66 @@ const NAME_PARTS: [&str; 9] = [
 ];
 const DATE_PARTS: [&str; 5] = ["date-parts", "season", "circa", "literal", "raw"];
 
+/// Dates with source-supplied year letters or publication status must not go
+/// through a permissive parser that silently keeps only their numeric year.
+/// Shared by source dates and note/Extra date overrides; this does not generate
+/// document-level disambiguation letters.
+pub fn literal_date(value: &str) -> bool {
+    let text = value.trim().to_ascii_lowercase();
+    let suffix = text.split_at_checked(4).is_some_and(|(year, suffix)| {
+        let suffix = suffix.trim();
+        year.bytes().all(|byte| byte.is_ascii_digit())
+            && !suffix.is_empty()
+            && suffix.bytes().all(|byte| byte.is_ascii_alphabetic())
+            && !matches!(
+                suffix,
+                "ad" | "bc"
+                    | "bce"
+                    | "ce"
+                    | "jan"
+                    | "january"
+                    | "feb"
+                    | "february"
+                    | "mar"
+                    | "march"
+                    | "apr"
+                    | "april"
+                    | "may"
+                    | "jun"
+                    | "june"
+                    | "jul"
+                    | "july"
+                    | "aug"
+                    | "august"
+                    | "sep"
+                    | "sept"
+                    | "september"
+                    | "oct"
+                    | "october"
+                    | "nov"
+                    | "november"
+                    | "dec"
+                    | "december"
+                    | "spring"
+                    | "summer"
+                    | "autumn"
+                    | "fall"
+                    | "winter"
+            )
+    });
+    let mut previous = "";
+    suffix
+        || text
+            .split(|ch: char| !ch.is_ascii_alphabetic())
+            .filter(|word| !word.is_empty())
+            .any(|word| {
+                let status = matches!(word, "forthcoming" | "unpublished" | "submitted" | "accepted")
+                    || matches!((previous, word), ("in", "press") | ("to", "appear"));
+                previous = word;
+                status
+            })
+}
+
 /// A CSL variable a note may set and an agent may see. Fields a source keeps
 /// beyond these (custom keys, processor state) are not bibliographic data.
 pub fn is_variable(name: &str) -> bool {
@@ -255,7 +315,19 @@ fn apply_overrides(fields: &mut Map<String, Value>, note: &str) {
         if key == "type" {
             fields.insert(key.into(), json!(value));
         } else if DATES.contains(&key) {
-            fields.insert(key.into(), json!({"raw": value}));
+            // The existing raw-date parser owns explicit quoted literals and
+            // strips their delimiters. Do not make those quotes visible data.
+            let quoted = value.len() > 1
+                && ((value.starts_with('"') && value.ends_with('"'))
+                    || (value.starts_with('“') && value.ends_with('”')));
+            fields.insert(
+                key.into(),
+                if !quoted && literal_date(value) {
+                    json!({"literal":value})
+                } else {
+                    json!({"raw":value})
+                },
+            );
         } else if fields.get(key).is_some_and(truthy) {
             // A note fills gaps; it never replaces the record's own data.
         } else if NAMES.contains(&key) {

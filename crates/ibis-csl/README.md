@@ -20,6 +20,17 @@ rejects embedded NUL in text, HTML or RTF. JavaScript stack and heap exhaustion,
 including the processor's exact native-error forwarding forms, return the fixed
 `ResourceLimit` code; arbitrary exception text never crosses the boundary.
 
+Canonical rich title fields retain the source adapters' escaped text and allowed
+markup. The bridge decodes entities once before processor casing and sorting;
+escaped less-than signs stay inert until each output format escapes its text.
+A request-specific sentinel is checked against both raw and decoded input, so
+literal tags cannot become formatting and source text cannot consume a sentinel.
+Plain fields, names and typed affixes do not undergo entity decoding. Directional
+formatting controls are removed from fields, locators and affixes before rendering,
+including controls encoded as rich-text entities; RTL letters and shaping
+characters remain unchanged. A raw control inside tag-looking text refuses the
+request, since removing it could create a formatting instruction.
+
 One worker thread owns a QuickJS runtime and a bounded FIFO queue. Queued
 cancellation releases its slot immediately; running work is cancelled through
 QuickJS's interrupt handler. Deadlines include time in the queue. Every

@@ -17,6 +17,49 @@
   const styles = new Map(__ibisStyles);
   const engines = new Map();
   let activeItems = new Map();
+  // The source adapters' canonical rich fields escape text separately from
+  // markup. citeproc expects decoded text, but must never parse an escaped
+  // literal `<i>` as an instruction. Decode once before casing/sorting and
+  // restore only literal less-than signs at the final text-escaping boundary.
+  const richFields = ["title", "title-short", "container-title", "container-title-short", "volume-title", "volume-title-short"];
+  const entities = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: "\u00a0" };
+  const bidi = /[\u061c\u200e\u200f\u202a-\u202e\u2066-\u206f]/g;
+  const decodeText = (text, lessThan) => text.replace(/&(?:amp|lt|gt|quot|apos|nbsp|#[0-9]{1,7}|#x[0-9a-fA-F]{1,6});/g, (entity) => {
+    const name = entity.slice(1, -1);
+    let decoded = entities[name];
+    if (decoded === undefined) {
+      const code = name.startsWith("#x") ? parseInt(name.slice(2), 16) : Number(name.slice(1));
+      if (code > 0x10ffff || (code >= 0xd800 && code <= 0xdfff)) return entity;
+      decoded = String.fromCodePoint(code);
+    }
+    return decoded.replace(bidi, "");
+  }).replace(/</g, () => lessThan);
+  // Match the pinned processor's existing tag spellings/normalization before
+  // decoding text. An entity in an unrecognized tag or attribute cannot create
+  // a new formatting instruction. Keep native sc/nodecor support for CSL-JSON.
+  const markup = /(<\/?(?:i|b|sc|sub|sup)>|<span\s+class="no(?:case|decor)"[^>]*>|<span\s+style="font-variant:\s*small-caps;?"[^>]*>|<\/span>)/g;
+  const decodeRich = (text, lessThan = "<") => text.split(markup)
+    .map((part, index) => index % 2 ? part : decodeText(part, lessThan)).join("");
+  let literalLessThan = null;
+  for (const format of ["text", "html", "rtf"]) {
+    const escape = CSL.Output.Formats[format].text_escape;
+    CSL.Output.Formats[format].text_escape = (text) => escape(literalLessThan && text ? text.split(literalLessThan).join("<") : text);
+  }
+  const processorItems = (request) => {
+    // Include decoded data in the collision check: numeric entities can spell
+    // the sentinel too. This non-overlapping sentinel cannot consume a suffix
+    // of adjacent source text. Doubling bounds the total collision-scan work.
+    const decoded = request.items.map((item) => Object.fromEntries(richFields
+      .filter((field) => typeof item[field] === "string")
+      .map((field) => [field, decodeRich(item[field])])));
+    const source = JSON.stringify([request, decoded]);
+    let prefix = "\uE002";
+    while (source.includes(prefix + "\uE003")) prefix += prefix;
+    literalLessThan = prefix + "\uE003";
+    return request.items.map((item) => ({ ...item, ...Object.fromEntries(richFields
+      .filter((field) => typeof item[field] === "string")
+      .map((field) => [field, decodeRich(item[field], literalLessThan)])) }));
+  };
   // Observe only each final cite's newly emitted tree. Do not enable citation
   // wrappers, render again, alter blobs, or infer errors from output strings.
   const unverified = Object.freeze({});
@@ -114,7 +157,7 @@
   const wrapRtf = (text, bibliography) => `{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Times New Roman;}}\\f0\n${bibliography ? text.split("\n").join("\\par\n") : text}\n}`;
   globalThis.__ibisFormat = (request) => {
     let xml = styles.get(request.style).replace(/disambiguate-add-year-suffix="true"/g, 'disambiguate-add-year-suffix="false"');
-    activeItems = new Map(request.items.map((item) => [item.id, item]));
+    activeItems = new Map(processorItems(request).map((item) => [item.id, item]));
     const key = JSON.stringify([request.style, request.locale, request.keep_order]);
     let engine = engines.get(key);
     if (!engine) {
@@ -196,6 +239,7 @@
       // No cached engine keeps the last request's source records alive.
       activeItems.clear();
       engine.updateItems([]);
+      literalLessThan = null;
     }
     outputs.coverage = request.cites.map((_, index) => index);
     return JSON.stringify(outputs);

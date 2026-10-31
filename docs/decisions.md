@@ -50,7 +50,9 @@ Tauri), never sent to the WebView or stored (2026-10-28, #782).
 
 Ibis never writes to a library. BibTeX and BibLaTeX entries are parsed one by
 one; broken entries, duplicate keys and undefined macros become warnings with
-line numbers. Zotero is read through its local API while it runs and from a
+line numbers. A repeated BibTeX key makes every entry under that key unavailable,
+including as an inheritance parent (2026-10-30, #1519).
+Zotero is read through its local API while it runs and from a
 private read-only copy of `zotero.sqlite` (with `-wal` and `-shm`) while it is
 closed, tested on Zotero 7 to 10, leaving out trashed items. Citation keys
 come from Zotero's native field, Extra and Better BibTeX; when they disagree,
@@ -72,7 +74,8 @@ commit and hash, running in embedded QuickJS with ICU4X collation inside
 syntax, with a warning when a syntax cannot say something. Outside a document,
 Ibis copies only what one citation can get right: numeric styles copy the
 entry without its number, note styles the full first note (never ibid.), and
-author-date year suffixes wait for a document-level view.
+generated author-date year suffixes wait for a document-level view. Source-supplied
+literal dates and year letters are retained as data (2026-10-30, #1519).
 
 ## 0008 Offline by default
 
