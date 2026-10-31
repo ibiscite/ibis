@@ -98,6 +98,9 @@ fn main() {
     let initial_panel = panel::prepare_startup(&mut context);
     #[cfg(not(target_os = "macos"))]
     let initial_picker = picker::prepare_startup(&mut context);
+    let picker_generation = picker::PickerGeneration::default();
+    #[cfg(not(target_os = "macos"))]
+    let initial_picker_owner = picker_generation.current();
     let builder = tauri::Builder::default();
     #[cfg(target_os = "macos")]
     let builder = builder.manage(initial_panel);
@@ -109,8 +112,8 @@ fn main() {
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             // macOS: the shortcut acts on the main thread, so a toggle decides
             // and acts there too, or the two could interleave and lose one.
-            // Elsewhere, act in the callback as a second launch always has:
-            // deferring the show loses the focus hand-off on Linux.
+            // Elsewhere, make the instance decision in the callback;
+            // show_picker serializes native preparation and presentation.
             if acts_on_main_thread(&args, cfg!(target_os = "macos")) {
                 let handle = app.clone();
                 report(
@@ -148,7 +151,7 @@ fn main() {
         .on_menu_event(row_context::selected)
         .manage(Pinned::default())
         .manage(sizing::Sizing::default())
-        .manage(picker::PickerGeneration::default())
+        .manage(picker_generation)
         .manage(picker::Registered::default())
         .manage(shortcut_setting::Changing::default())
         .manage(notice::Notice::default())
@@ -287,7 +290,7 @@ fn main() {
             if initial_picker.0
                 && let Some(window) = app.get_webview_window("main")
             {
-                picker::present_window(&window, initial_picker.1);
+                picker::present_window(&window, initial_picker.1, initial_picker_owner);
             }
             Ok(())
         });

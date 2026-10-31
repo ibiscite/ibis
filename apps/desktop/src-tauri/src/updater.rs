@@ -14,7 +14,7 @@ use tauri::{AppHandle, Emitter, Manager};
 mod offer;
 mod progress;
 pub(crate) mod setting;
-#[cfg(any(target_os = "macos", test))]
+#[cfg(any(not(target_os = "linux"), test))]
 use tauri_plugin_dialog::MessageDialogResult;
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
 use tauri_plugin_updater::{Update, Updater, UpdaterExt};
@@ -43,6 +43,7 @@ pub(crate) struct Updates {
     declined: Mutex<Option<String>>,
     /// Availability only: deferred offers retain neither metadata nor a check lease.
     offer_available: AtomicBool,
+    input: Mutex<offer::InputGate>,
     progress: Mutex<progress::Progress>,
     saver: setting::Saver,
     #[cfg(any(target_os = "macos", test))]
@@ -251,37 +252,91 @@ fn present_offer(
     text: String,
     answer: impl FnOnce(bool) + Send + 'static,
 ) {
-    let dialog = app
-        .dialog()
-        .message(text)
-        .title("An update is available")
-        .buttons(offer_buttons());
-    #[cfg(target_os = "macos")]
-    let dialog = {
-        crate::panel::activate_for_dialog(app);
-        dialog.parent(parent)
-    };
-    #[cfg(not(target_os = "macos"))]
-    let _ = parent;
-    let handle = app.clone();
-    dialog.show(move |accepted| {
-        let result = handle.run_on_main_thread(move || {
-            // Never hold the dialog's blur protection for the download.
-            drop(owner);
-            answer(accepted);
+    #[cfg(target_os = "linux")]
+    {
+        present_gtk_offer(owner, text, answer);
+        let _ = (app, parent);
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let dialog = app
+            .dialog()
+            .message(text)
+            .title("An update is available")
+            .buttons(offer_buttons());
+        #[cfg(target_os = "macos")]
+        let dialog = {
+            crate::panel::activate_for_dialog(app);
+            dialog.parent(parent)
+        };
+        #[cfg(not(target_os = "macos"))]
+        let _ = parent;
+        let handle = app.clone();
+        dialog.show_with_result(move |result| {
+            let accepted = offer_accepted(result);
+            let result = handle.run_on_main_thread(move || {
+                // Never hold the dialog's blur protection for the download.
+                drop(owner);
+                answer(accepted);
+            });
+            report(result, NativeIssue::Window);
         });
-        report(result, NativeIssue::Window);
-    });
+    }
 }
 
+#[cfg(any(not(target_os = "linux"), test))]
 fn offer_buttons() -> MessageDialogButtons {
-    if cfg!(target_os = "windows") {
-        // rfd's custom TaskDialog actions have no usable InvokePattern in the
-        // installed-update reports. Prefer the OS's standard Yes/No actions.
-        MessageDialogButtons::YesNo
-    } else {
-        MessageDialogButtons::OkCancelCustom("Install and Restart".into(), "Later".into())
-    }
+    // rfd defaults to the first custom action on Windows and macOS. A separate
+    // Cancel slot is essential: the plugin maps Escape/close to that label.
+    MessageDialogButtons::YesNoCancelCustom("Later".into(), "Install and Restart".into(), "Cancel".into())
+}
+
+#[cfg(any(not(target_os = "linux"), test))]
+fn offer_accepted(result: MessageDialogResult) -> bool {
+    matches!(result, MessageDialogResult::Custom(label) if label == "Install and Restart")
+}
+
+#[cfg(target_os = "linux")]
+fn present_gtk_offer(owner: crate::picker::ChooserLease, text: String, answer: impl FnOnce(bool) + Send + 'static) {
+    use gtk::prelude::*;
+    let (dialog, later) = gtk_offer_dialog(text);
+    let completion = std::cell::RefCell::new(Some((owner, answer)));
+    dialog.connect_response(move |dialog, response| {
+        let finished = completion.borrow_mut().take();
+        if let Some((owner, answer)) = finished {
+            dialog.close();
+            drop(owner);
+            answer(response == gtk::ResponseType::Accept);
+        }
+    });
+    dialog.show_all();
+    later.grab_focus();
+}
+
+#[cfg(target_os = "linux")]
+fn gtk_offer_dialog(text: String) -> (gtk::MessageDialog, gtk::Widget) {
+    use gtk::prelude::*;
+    // rfd's GTK backend neither selects a safe default nor exposes its dialog
+    // for configuring one. Own this small native dialog on Tauri's GTK thread.
+    let dialog = gtk::MessageDialog::builder()
+        .modal(true)
+        .use_header_bar(0)
+        .title("An update is available")
+        .text("An update is available")
+        .secondary_text(text)
+        .build();
+    let later = dialog.add_button("Later", gtk::ResponseType::Cancel);
+    dialog.add_button("Install and Restart", gtk::ResponseType::Accept);
+    dialog.set_default_response(gtk::ResponseType::Cancel);
+    (dialog, later)
+}
+
+pub(crate) use offer::picker_activity;
+
+#[tauri::command]
+#[specta::specta]
+pub(crate) fn update_picker_activity(window: tauri::WebviewWindow, ticket: Option<u32>) -> Option<u32> {
+    offer::update_picker_activity(window, ticket)
 }
 
 pub(crate) fn offer_text(current: &str, update: &Update) -> String {

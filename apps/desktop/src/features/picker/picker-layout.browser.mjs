@@ -38,7 +38,7 @@ try {
       Object.defineProperty(navigator, "platform", { value: "MacIntel" });
       let callback = 0;
       const callbacks = new Map(), listeners = new Map();
-      let undoTicket = null, refuseUndo = true;
+      let undoTicket = null, refuseUndo = true, activityTicket = 0;
       window.fixtureWindowReset = () => {
         undoTicket = 7;
         const event = "picker:window-reset";
@@ -88,6 +88,7 @@ try {
           if (command === "login_item") return { name: "Ibis", enabled: false, problem: null };
           if (command === "update_checks") return null;
           if (command === "update_available") return false;
+          if (command === "update_picker_activity") return args.ticket === null ? ++activityTicket : args.ticket === activityTicket ? activityTicket : null;
           if (command === "set_pinned") return;
           if (command === "read_window_position_undo") return undoTicket;
           if (command === "dismiss_window_position_undo") { if (args.revision === undoTicket) undoTicket = null; return; }
