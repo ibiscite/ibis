@@ -100,6 +100,9 @@ cargo run -p ibis -- serve --stdio --file fixtures/bibtex/fidelity.bib
 cargo run -p ibis -- mcp --file fixtures/bibtex/fidelity.bib
 ```
 
+The [terminal kit](crates/ibis-cli/README.md) includes an fzf picker recipe,
+`ibis completions bash|zsh|fish` and read-only `ibis doctor --json` diagnostics.
+
 The command line calls the same typed engine methods as the app: `libraries`,
 `search`, `show`, `cite`, `styles`, `schema` and `call`. Repeat `--file` to open
 several BibTeX, BibLaTeX or CSL-JSON libraries. Use `--zotero` for the local
