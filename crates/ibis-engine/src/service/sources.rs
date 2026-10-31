@@ -17,6 +17,8 @@ pub(super) struct Owners {
     zotero_port: Option<u16>,
     #[cfg(test)]
     fail_watches: std::sync::atomic::AtomicBool,
+    #[cfg(test)]
+    before_watch: Mutex<Option<Box<dyn Fn() + Send>>>,
 }
 impl Owners {
     pub(super) fn on_port(port: u16) -> Self {
@@ -36,22 +38,27 @@ struct Slot {
     path: PathBuf,
     loaded: Arc<LoadedLibrary>,
 }
-/// A fresh strict read with its index prepared privately. No publication occurs
-/// until the native client accepts it under its current source-selection guard.
+/// A strict read outcome prepared privately, including source-health failures.
+/// No publication occurs until the client accepts it under its selection guard.
 pub struct PreparedFileReload {
     origin: Weak<Shared>,
     base: Arc<State>,
     slot: u64,
     generation: u64,
     path: PathBuf,
+    read: Result<FileReloadRead, EngineError>,
+    cancel: Cancellation,
+}
+struct FileReloadRead {
     loaded: LoadedLibrary,
     observation: ibis_sources::SourceSnapshot,
     next: State,
-    cancel: Cancellation,
+    watch: Option<SourceWatch>,
+    activation: mpsc::Sender<()>,
 }
 impl PreparedFileReload {
-    pub fn source_path(&self) -> &Path {
-        self.observation.source_path()
+    pub fn source_path(&self) -> Option<&Path> {
+        self.read.as_ref().ok().map(|read| read.observation.source_path())
     }
 }
 
@@ -99,6 +106,8 @@ impl Engine {
         drop(operation);
         Ok(source)
     }
+    /// Prepare the read and watch without publishing. Source failures are also
+    /// carried to acceptance, so superseded requests cannot change source health.
     pub fn prepare_file_reload(&self, path: &Path, cancel: &Cancellation) -> Result<PreparedFileReload, EngineError> {
         self.prepare_file_reload_expected(path, None, cancel)
     }
@@ -132,13 +141,37 @@ impl Engine {
                     .any(|(other, other_slot)| *other != id && other_slot.loaded.library == slot.loaded.library),
             )
         };
-        let (loaded, observation) =
-            ibis_sources::reload_file_snapshot_reusing(&path, base.index.snapshot()).map_err(source_error)?;
-        cancel.check()?;
-        let library = loaded.library.clone();
-        let next = State::replacement(&base, vec![(info(&loaded), &loaded.snapshot)], |id| {
-            *id == library || (!other_owners && *id == previous)
-        })?;
+        let read = (|| {
+            let (loaded, observation) =
+                ibis_sources::reload_file_snapshot_reusing(&path, base.index.snapshot()).map_err(source_error)?;
+            cancel.check()?;
+            let library = loaded.library.clone();
+            let mut next = State::replacement(&base, vec![(info(&loaded), &loaded.snapshot)], |id| {
+                *id == library || (!other_owners && *id == previous)
+            })?;
+            // Canonicalization and native registration can stall. Keep them off
+            // the selection lock; callbacks wait for this exact acceptance.
+            let (activation, callback) = self.reload_watch_callback(slot, generation.wrapping_add(1));
+            let (watch, warning) = if self.watch_files {
+                match self.watch(&path, Some(observation.clone()), loaded.snapshot.clone(), callback) {
+                    Ok(watch) => (Some(watch), None),
+                    Err(_) => (None, Some(WatchWarning::LiveRefreshOff)),
+                }
+            } else {
+                (None, None)
+            };
+            next.libraries
+                .get_mut(&library)
+                .ok_or_else(|| error(ErrorCode::Internal))?
+                .watch_warning = warning;
+            Ok(FileReloadRead {
+                loaded,
+                observation,
+                next,
+                watch,
+                activation,
+            })
+        })();
         cancel.check()?;
         Ok(PreparedFileReload {
             origin: Arc::downgrade(&self.shared),
@@ -146,16 +179,14 @@ impl Engine {
             slot,
             generation,
             path,
-            loaded,
-            observation,
-            next,
+            read,
             cancel: cancel.clone(),
         })
     }
 
-    /// The caller holds its selection guard. Parsing/index preparation is done;
+    /// The caller holds its selection guard. Parsing/index/watch setup is done;
     /// any newer accepted publication retires this candidate, including watcher R2.
-    pub fn accept_file_reload(&self, mut prepared: PreparedFileReload) -> Result<(), EngineError> {
+    pub fn accept_file_reload(&self, prepared: PreparedFileReload) -> Result<(), EngineError> {
         prepared.cancel.check()?;
         if !Weak::ptr_eq(&prepared.origin, &Arc::downgrade(&self.shared)) {
             return Err(error(ErrorCode::BadInput));
@@ -174,71 +205,78 @@ impl Engine {
             return Err(error(ErrorCode::Cancelled));
         }
         let _publication = self.shared.publication.lock().map_err(|_| error(ErrorCode::Internal))?;
-        if !prepared.base.same_publication(self.state()?.as_ref()) {
-            return Err(error(ErrorCode::Cancelled));
-        }
         let generation = slot.generation.wrapping_add(1);
         let id = prepared.slot;
-        let weak = Arc::downgrade(&self.shared);
-        let callback = move |candidate| {
-            weak.upgrade()
-                .and_then(|shared| shared.file_changed(id, generation, candidate))
-        };
-        let (watch, warning) = if self.watch_files {
-            match self.watch(
-                &prepared.path,
-                Some(prepared.observation),
-                prepared.loaded.snapshot.clone(),
-                callback,
-            ) {
-                Ok(watch) => (Some(watch), None),
-                Err(_) => (None, Some(WatchWarning::LiveRefreshOff)),
-            }
-        } else {
-            (None, None)
-        };
-        prepared
-            .next
-            .libraries
-            .get_mut(&prepared.loaded.library)
-            .ok_or_else(|| error(ErrorCode::Internal))?
-            .watch_warning = warning;
         prepared.cancel.check()?;
         // Recheck under the state write barrier: direct publishers need no source lock.
         let mut state = self.shared.state.write().map_err(|_| error(ErrorCode::Internal))?;
         if !prepared.base.same_publication(&state) {
             return Err(error(ErrorCode::Cancelled));
         }
+        let mut read = match prepared.read {
+            Ok(read) => read,
+            Err(failure) => {
+                *state = Arc::new(state.with_failure(&slot.loaded.library, failure.code)?);
+                drop(state);
+                self.shared.notify()?;
+                return Err(failure);
+            }
+        };
         // Failed reads may update health while parsing/indexing. A fresh repair
         // clears its own error, while unrelated libraries keep their latest one.
-        for (id, info) in &mut prepared.next.libraries {
-            if *id != prepared.loaded.library
+        for (id, info) in &mut read.next.libraries {
+            if *id != read.loaded.library
                 && let Some(current) = state.libraries.get(id)
             {
                 info.refresh_error = current.refresh_error;
             }
         }
-        *state = Arc::new(prepared.next);
+        *state = Arc::new(read.next);
         registry.slots.insert(
             id,
             Slot {
                 generation,
                 path: prepared.path,
-                loaded: Arc::new(prepared.loaded),
+                loaded: Arc::new(read.loaded),
             },
         );
         drop(state);
         drop(registry);
         let old = {
             let mut watches = self.resources.watches.lock().map_err(|_| error(ErrorCode::Internal))?;
-            match watch {
+            match read.watch {
                 Some(watch) => watches.insert(id, watch),
                 None => watches.remove(&id),
             }
         };
+        // Each candidate has its own one-shot gate, so an abandoned watch with
+        // the same next slot generation can never publish another read's data.
+        let _ = read.activation.send(());
         drop(old);
         self.shared.notify()?;
         Ok(())
+    }
+
+    fn reload_watch_callback(
+        &self,
+        id: u64,
+        generation: u64,
+    ) -> (
+        mpsc::Sender<()>,
+        impl Fn(Result<LoadedLibrary, SourceError>) -> Option<Snapshot> + Send + Sync + 'static,
+    ) {
+        let (activation, accepted) = mpsc::channel();
+        let accepted = Mutex::new(accepted);
+        let active = std::sync::OnceLock::new();
+        let weak = Arc::downgrade(&self.shared);
+        let callback = move |candidate| {
+            if !*active.get_or_init(|| accepted.lock().is_ok_and(|accepted| accepted.recv().is_ok())) {
+                return None;
+            }
+            weak.upgrade()
+                .and_then(|shared| shared.file_changed(id, generation, candidate))
+        };
+        (activation, callback)
     }
 
     pub(super) fn install_file(
@@ -322,6 +360,16 @@ impl Engine {
         callback: impl Fn(Result<LoadedLibrary, SourceError>) -> Option<Snapshot> + Send + Sync + 'static,
     ) -> Result<SourceWatch, SourceError> {
         #[cfg(test)]
+        if let Some(before_watch) = self
+            .resources
+            .before_watch
+            .lock()
+            .map_err(|_| SourceError::WatchUnavailable)?
+            .as_ref()
+        {
+            before_watch();
+        }
+        #[cfg(test)]
         if self.resources.fail_watches.load(Ordering::Relaxed) {
             return Err(SourceError::WatchUnavailable);
         }
@@ -359,19 +407,12 @@ impl Engine {
             .slots
             .iter()
             .filter(|(_, slot)| library.is_none_or(|id| slot.loaded.library == *id))
-            .map(|(slot, source)| {
-                (
-                    *slot,
-                    source.generation,
-                    source.path.clone(),
-                    source.loaded.library.clone(),
-                )
-            })
+            .map(|(slot, source)| (*slot, source.generation, source.path.clone()))
             .collect();
         if library.is_some() && paths.is_empty() {
             return Err(error(ErrorCode::SourceUnavailable));
         }
-        for (slot, generation, path, id) in paths {
+        for (slot, generation, path) in paths {
             cancel.check()?;
             let reload = self
                 .prepare_file_reload_expected(&path, Some((slot, generation)), cancel)
@@ -380,7 +421,6 @@ impl Engine {
                 if failure.code == ErrorCode::Cancelled {
                     return Err(failure);
                 }
-                let _ = self.shared.failed(&id, failure.code);
                 if library.is_some() {
                     return Err(failure);
                 }
@@ -539,6 +579,130 @@ impl Shared {
 mod tests {
     use super::*;
     #[test]
+    fn an_unaccepted_watch_cannot_activate_with_another_reloads_slot_generation() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("synthetic.bib");
+        std::fs::write(&path, "@book{original}").unwrap();
+        let engine = Engine::new().unwrap().without_file_watches();
+        let cancel = Cancellation::default();
+        engine.open_file(&path, &cancel).unwrap();
+        let (id, generation) = engine
+            .shared
+            .sources
+            .lock()
+            .unwrap()
+            .slots
+            .iter()
+            .map(|(id, slot)| (*id, slot.generation.wrapping_add(1)))
+            .next()
+            .unwrap();
+        let (abandoned, callback) = engine.reload_watch_callback(id, generation);
+        let old = ibis_sources::load_file(&path).unwrap();
+        // The worker can already have read a candidate during native setup.
+        let worker = std::thread::spawn(move || callback(Ok(old)));
+        std::fs::write(&path, "@book{accepted}").unwrap();
+        let prepared = engine.prepare_file_reload(&path, &cancel).unwrap();
+        engine.accept_file_reload(prepared).unwrap();
+        let accepted = engine.snapshot().unwrap();
+        // Its generation now exists, but this particular watch was not accepted.
+        drop(abandoned);
+        assert!(worker.join().unwrap().is_none());
+        assert_eq!(engine.snapshot().unwrap().fingerprints(), accepted.fingerprints());
+
+        let (activation, callback) = engine.reload_watch_callback(id, generation);
+        std::fs::write(&path, "@book{watched}").unwrap();
+        let watched = ibis_sources::load_file(&path).unwrap();
+        let worker = std::thread::spawn(move || callback(Ok(watched)));
+        activation.send(()).unwrap();
+        assert!(worker.join().unwrap().is_some());
+        assert_ne!(engine.snapshot().unwrap().fingerprints(), accepted.fingerprints());
+        // A previously activated watcher still retires when the source reopens.
+        let (activation, callback) = engine.reload_watch_callback(id, generation);
+        activation.send(()).unwrap();
+        let late = ibis_sources::load_file(&path).unwrap();
+        engine.open_file(&path, &cancel).unwrap();
+        assert!(callback(Ok(late)).is_none());
+    }
+
+    #[test]
+    fn failed_reload_stays_private_and_cannot_mark_a_newer_accepted_read_stale() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("synthetic.bib");
+        std::fs::write(&path, "@book{original}").unwrap();
+        let engine = Engine::new().unwrap().without_file_watches();
+        let cancel = Cancellation::default();
+        engine.open_file(&path, &cancel).unwrap();
+        std::fs::remove_file(&path).unwrap();
+        let failed = engine.prepare_file_reload(&path, &cancel).unwrap();
+        assert_eq!(engine.libraries().unwrap().libraries[0].refresh_error, None);
+        std::fs::write(&path, "@book{repaired}").unwrap();
+        let repair = engine.prepare_file_reload(&path, &cancel).unwrap();
+        engine.accept_file_reload(repair).unwrap();
+        assert_eq!(
+            engine.accept_file_reload(failed).unwrap_err().code,
+            ErrorCode::Cancelled
+        );
+        assert_eq!(engine.libraries().unwrap().libraries[0].refresh_error, None);
+        std::fs::remove_file(&path).unwrap();
+        let cancelled = Cancellation::default();
+        let failed = engine.prepare_file_reload(&path, &cancelled).unwrap();
+        cancelled.cancel();
+        assert_eq!(
+            engine.accept_file_reload(failed).unwrap_err().code,
+            ErrorCode::Cancelled
+        );
+        assert_eq!(engine.libraries().unwrap().libraries[0].refresh_error, None);
+        let failed = engine.prepare_file_reload(&path, &cancel).unwrap();
+        assert_eq!(
+            engine.accept_file_reload(failed).unwrap_err().code,
+            ErrorCode::SourceUnavailable
+        );
+        assert_eq!(
+            engine.libraries().unwrap().libraries[0].refresh_error,
+            Some(ErrorCode::SourceUnavailable)
+        );
+    }
+
+    #[test]
+    fn reload_watch_setup_leaves_the_selection_guard_available_for_supersession() {
+        use std::{sync::mpsc, time::Duration};
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("synthetic.bib");
+        std::fs::write(&path, "@book{original}").unwrap();
+        let engine = Engine::new().unwrap();
+        engine.resources.fail_watches.store(true, Ordering::Relaxed);
+        engine.open_file(&path, &Cancellation::default()).unwrap();
+        let original = engine.snapshot().unwrap();
+        std::fs::write(&path, "@book{replacement}").unwrap();
+        let (entered, setup_started) = mpsc::channel();
+        let (release, released) = mpsc::channel();
+        *engine.resources.before_watch.lock().unwrap() = Some(Box::new(move || {
+            entered.send(()).unwrap();
+            released.recv().unwrap();
+        }));
+        let selection = Arc::new(Mutex::new(()));
+        let cancel = Cancellation::default();
+        let worker = {
+            let engine = engine.clone();
+            let selection = selection.clone();
+            let cancel = cancel.clone();
+            std::thread::spawn(move || {
+                let prepared = engine.prepare_file_reload(&path, &cancel)?;
+                let _selection = selection.lock().unwrap();
+                engine.accept_file_reload(prepared)
+            })
+        };
+        setup_started.recv_timeout(Duration::from_secs(2)).unwrap();
+        let can_supersede = selection.try_lock().is_ok();
+        cancel.cancel();
+        release.send(()).unwrap();
+        assert_eq!(worker.join().unwrap().unwrap_err().code, ErrorCode::Cancelled);
+        assert!(can_supersede, "native watch setup must never hold the selection guard");
+        assert_eq!(engine.snapshot().unwrap().fingerprints(), original.fingerprints());
+    }
+
+    #[test]
     fn prepared_file_reload_cannot_replace_a_newer_watcher_publication() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("synthetic.bib");
@@ -647,20 +811,17 @@ mod tests {
         assert_eq!(engine.snapshot().unwrap().fingerprints(), original.fingerprints());
         for text in ["@book{partial,", "@book{complete}", ""] {
             std::fs::write(&path, text).unwrap();
-            match engine.prepare_file_reload(&path, &Cancellation::default()) {
-                Err(error) => {
-                    assert_eq!(error.code, ErrorCode::BadInput);
-                    assert_eq!(engine.snapshot().unwrap().fingerprints(), original.fingerprints());
-                }
-                Ok(prepared) => {
-                    engine.accept_file_reload(prepared).unwrap();
-                }
+            let prepared = engine.prepare_file_reload(&path, &Cancellation::default()).unwrap();
+            if let Err(error) = engine.accept_file_reload(prepared) {
+                assert_eq!(error.code, ErrorCode::BadInput);
+                assert_eq!(engine.snapshot().unwrap().fingerprints(), original.fingerprints());
             }
         }
         assert!(engine.snapshot().unwrap().objects().is_empty());
         let accepted = engine.snapshot().unwrap();
         std::fs::remove_file(&path).unwrap();
-        assert!(engine.prepare_file_reload(&path, &Cancellation::default()).is_err());
+        let failed = engine.prepare_file_reload(&path, &Cancellation::default()).unwrap();
+        assert!(engine.accept_file_reload(failed).is_err());
         assert_eq!(engine.snapshot().unwrap().fingerprints(), accepted.fingerprints());
     }
 

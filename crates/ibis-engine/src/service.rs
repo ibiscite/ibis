@@ -521,6 +521,21 @@ impl Engine {
     }
 }
 impl State {
+    fn with_failure(&self, library: &LibraryId, code: ErrorCode) -> Result<Self, EngineError> {
+        let mut libraries = self.libraries.clone();
+        libraries
+            .get_mut(library)
+            .ok_or_else(|| error(ErrorCode::NotFound))?
+            .refresh_error = Some(code);
+        Ok(Self {
+            accepted: self.accepted.clone(),
+            zotero_generation: self.zotero_generation,
+            zotero_ready: self.zotero_ready,
+            index: self.index.clone(),
+            libraries,
+        })
+    }
+
     fn same_publication(&self, current: &Self) -> bool {
         Arc::ptr_eq(&self.accepted, &current.accepted)
             && self.zotero_generation == current.zotero_generation
@@ -628,18 +643,7 @@ impl Shared {
     fn failed(&self, library: &LibraryId, code: ErrorCode) -> Result<(), EngineError> {
         let _publication = self.publication.lock().map_err(|_| error(ErrorCode::Internal))?;
         let old = self.state_view()?;
-        let mut libraries = old.libraries.clone();
-        libraries
-            .get_mut(library)
-            .ok_or_else(|| error(ErrorCode::NotFound))?
-            .refresh_error = Some(code);
-        *self.state.write().map_err(|_| error(ErrorCode::Internal))? = Arc::new(State {
-            accepted: old.accepted.clone(),
-            zotero_generation: old.zotero_generation,
-            zotero_ready: old.zotero_ready,
-            index: old.index.clone(),
-            libraries,
-        });
+        *self.state.write().map_err(|_| error(ErrorCode::Internal))? = Arc::new(old.with_failure(library, code)?);
         self.notify()
     }
 }

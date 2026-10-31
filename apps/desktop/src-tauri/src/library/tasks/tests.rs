@@ -391,6 +391,59 @@ fn reload_and_engine_event_record_one_update_in_either_completion_order() -> Res
 }
 
 #[test]
+fn queued_reload_notification_cannot_clear_a_later_failed_read() -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempfile::tempdir()?;
+    let path = dir.path().join("synthetic.bib");
+    std::fs::write(&path, "@book{original}")?;
+    // No native event delivery: manual Reload is the only source of fresh reads.
+    let engine = ibis_engine::Engine::new().map_err(|_| "engine")?.without_file_watches();
+    engine
+        .open_file_observed(&path, &ibis_engine::Cancellation::default())
+        .map_err(|_| "initial read")?;
+    let file = std::sync::Arc::new(super::super::engine_file::FileLibrary::from_engine(engine));
+    let library = Mutex::new(Library {
+        source: Some(Source::File(path.clone())),
+        file: Some(file.clone()),
+        ..Library::default()
+    });
+    let requests = LoadRequests::default();
+    let (_, events) = observe_current(&library).ok_or("observer")?;
+    let reload = || {
+        let (request, _, _) = begin_open(&library, &requests, path.clone()).ok_or("reload")?;
+        let loaded = load_source(
+            Source::File(path.clone()),
+            true,
+            Some(file.clone()),
+            &ibis_engine::Cancellation::default(),
+            || false,
+        );
+        install_loaded(&library, &requests, request, loaded).ok_or("accept reload")
+    };
+    std::fs::write(&path, "@book{accepted}")?;
+    assert!(reload()?.error.is_none());
+    let checked = std::time::UNIX_EPOCH + std::time::Duration::from_secs(42);
+    library.lock().map_err(|_| "library")?.checked_at = Some(checked);
+    std::fs::remove_file(&path)?;
+    assert!(reload()?.error.is_some());
+    // Deliver the still-queued successful Reload notification after the failure.
+    events.try_recv()?;
+    engine_changed(&mut *library.lock().map_err(|_| "library")?, &file);
+    let current = library.lock().map_err(|_| "library")?;
+    let status = super::super::status::status(&current);
+    assert!(status.error.is_some(), "an older event cannot clear the failed Reload");
+    assert!(status.stale, "retained references must remain visibly stale");
+    assert_eq!(current.checked_at, Some(checked));
+    assert_eq!(status.references, 1);
+    drop(current);
+    std::fs::write(&path, "@book{repaired}")?;
+    let repaired = reload()?;
+    assert!(repaired.error.is_none());
+    assert!(!repaired.stale);
+    assert!(library.lock().map_err(|_| "library")?.checked_at > Some(checked));
+    Ok(())
+}
+
+#[test]
 fn cancelled_reload_cannot_publish_over_a_newer_accepted_snapshot() -> Result<(), Box<dyn std::error::Error>> {
     use super::super::state::install_loaded;
     let dir = tempfile::tempdir()?;

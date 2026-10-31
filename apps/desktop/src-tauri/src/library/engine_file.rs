@@ -188,14 +188,7 @@ impl FileLibrary {
         path: &Path,
         cancel: &Cancellation,
     ) -> Result<ibis_engine::PreparedFileReload, super::LoadError> {
-        self.engine.prepare_file_reload(path, cancel).map_err(|error| {
-            use ibis_core::{contract::ErrorCode, source::SourceError};
-            match error.code {
-                ErrorCode::BadInput => SourceError::Incomplete.into(),
-                ErrorCode::ResourceLimit => SourceError::LoadLimit.into(),
-                _ => file_load_error(error),
-            }
-        })
+        self.engine.prepare_file_reload(path, cancel).map_err(file_reload_error)
     }
 
     pub(super) fn accept_reload(&self, reload: ibis_engine::PreparedFileReload) -> Result<(), super::LoadError> {
@@ -203,7 +196,7 @@ impl FileLibrary {
             if error.code == ibis_core::contract::ErrorCode::Cancelled {
                 ibis_core::source::SourceError::Changing.into()
             } else {
-                file_load_error(error)
+                file_reload_error(error)
             }
         })
     }
@@ -578,6 +571,15 @@ pub(super) fn file_load_error(error: ibis_core::contract::EngineError) -> super:
         ibis_core::contract::ErrorCode::ResourceLimit => ibis_core::source::SourceError::TooLarge.into(),
         ibis_core::contract::ErrorCode::Cancelled => super::LoadError::Stopped,
         _ => ibis_core::source::SourceError::Unreadable.into(),
+    }
+}
+
+fn file_reload_error(error: ibis_core::contract::EngineError) -> super::LoadError {
+    use ibis_core::{contract::ErrorCode, source::SourceError};
+    match error.code {
+        ErrorCode::BadInput => SourceError::Incomplete.into(),
+        ErrorCode::ResourceLimit => SourceError::LoadLimit.into(),
+        _ => file_load_error(error),
     }
 }
 

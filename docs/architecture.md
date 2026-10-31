@@ -71,8 +71,12 @@ queries; malformed or oversized values are ignored before arXiv/DOI equivalence.
 
 File reads carry the canonical identity from the observation that supplied their
 bytes; a symlink retarget during that observation is refused. Strict Reload reads
-and prepares its index privately. The current desktop request's selection guard
+and prepares its index and watcher privately. Watcher callbacks wait for that
+candidate's acceptance; native registration never holds the selection guard.
+The current desktop request's selection guard
 owns final acceptance, and any newer accepted data publication retires that candidate.
+Failed Reloads record source health under the same guard, so queued notifications
+cannot clear the failure or advance the last successful check.
 Concurrent failed reads retain their errors for unrelated libraries; a fresh repair
 clears its own error. Zotero's read guard must still match at acceptance.
 Obsolete-cache cleanup validates locality and resolves the local directory before

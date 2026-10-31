@@ -67,7 +67,7 @@ pub(crate) enum Loaded {
     New(Box<Library>),
     /// A reread found nothing changed; keep the current references.
     Unchanged,
-    /// A strict read/index, still private until the current selection accepts it.
+    /// A strict read outcome, including failure, still private until acceptance.
     Reload(Box<FileReload>),
 }
 
