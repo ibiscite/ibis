@@ -69,7 +69,8 @@ queries; malformed or oversized values are ignored before arXiv/DOI equivalence.
 ### Saved source generations (#1298, first storage slice #1468)
 
 Provisional (2026-10-31, maintainer): this flat-file design is being compared with
-SQLite as a private record/generation store before more of it is built; bundled SQLite
+no cache and with SQLite as a private record/generation store before more of it is
+built (#1534); bundled SQLite
 already ships for reading Zotero, so "no new dependency" is no reason to prefer either.
 Same records, scorer and public behaviour; the result is recorded in decisions.
 
@@ -187,12 +188,11 @@ annotation relationships, exact global key ownership and preview hash must agree
 
 Scenarios precede code: reopen/search/show/cite parity, corrupt-cache refusal,
 failed writes, lease contention, stale completion and close/reopen. Qualify the
-integrated app with at least five fresh-process runs at 10k and 100k, preserving
-every result and reporting startup and process-tree memory medians. Target 100k
-<3 s/<400 MB and instant cached 10k results. Report cache-hit startup separately
-from first import/rebuild; neither storage tests nor cached results qualify the
-other. #1298 stays open until the app uses compact generations and lazy objects
-and meets these targets, with existing search/copy correctness still enforced.
+integrated app with at least five fresh-process runs at 10k and 50k, preserving
+every result and reporting startup and process-tree memory medians, against the
+limits in decision 0032. Report cache-hit startup separately from first
+import/rebuild; neither storage tests nor cached results qualify the other.
+#1534 decides whether compact generations and lazy objects (#1298) are still needed.
 
 ## Citations (ibis-core, ibis-csl)
 
@@ -284,14 +284,11 @@ the formatter task, and exhaustion remains a typed resource-limit error.
 
 ### Large-library measurement (#1251)
 
-At 10,000 references the release budgets are load/refresh < 3 s, summon p95
-≤ 100 ms, typing p95 ≤ 50 ms (engine search p95 ≤ 20 ms) and hidden memory ≤
-200 MiB. These are fixed limits, per decision 0032. The same measurements run at
-100,000 references on every nightly and report without blocking (maintainer,
-2026-10-31), so growth that is worse than linear shows before people with large
-libraries meet it. Pull request CI fails on search p95 > 20 ms and picker assets
-> 400 KiB gzipped. The sections below describe today's checks, which still run
-at 100k until #1251's follow-up moves the blocking checks to 10k.
+The release limits are in decision 0032 (2026-10-31): they block at 10,000
+generated realistic records and a 50,000-record check reports on nightly. 100k is
+no longer a target. Pull request CI fails on search p95 > 20 ms and picker assets
+> 400 KiB gzipped. The rest of this section records the earlier 100k checks and
+measurements, which still run until #1536 moves them to the new sizes.
 
 The explicitly invoked `ibis-engine` test `refresh_budget` generates its own 21.05 MB
 BibTeX file (two authors, journal, date, pages, DOI, volume and issue per entry).
@@ -453,7 +450,7 @@ still needs further work.
   saves. Normal picker presentation captures the current destination and
   retires the old clipboard proof. No paste is attempted until a fresh Enter.
 - **Language:** the engine returns message codes; the app words them through Fluent from 0.3, so German and one right-to-left language can follow in 0.4. Interface language, citation language and text direction are separate; mixed-direction names are isolated in the preview and on the clipboard.
-- **Budgets (release builds, limits from 0.3; decision 0032):** picker interactive p95 ≤ 100 ms after the shortcut; typing to results p95 ≤ 50 ms at 10,000 references (engine search ≤ 20 ms of it); hidden idle CPU ≤ 0.2 % of one core and at most one wakeup a second, so no polling loops; hidden memory ≤ 200 MiB at 10,000 references; initial picker JS and CSS ≤ 400 KiB gzipped. Engine search and picker asset size fail pull request CI; open/refresh fails Preview’s Linux release build from 0.3 at 10k and reports at 100k; open latency, idle CPU, wakeups and whole-app memory (web view processes included) are measured warm and cold, at least 30 samples after a 60 s settle, on the named release machines before each release. All use invented libraries, report p50/p95/p99 and compare against fixed limits rather than only against `main`. Superseded previews and searches are cancelled, not ignored.
+- **Budgets (release builds, limits from 0.3):** the limits and sizes are in decision 0032; #1536 gives each its check and channel. No polling loops while hidden. Engine search and picker asset size fail pull request CI; open latency, idle CPU, wakeups and whole-app memory (web view processes included) are measured warm and cold, at least 30 samples after a 60 s settle, on the named release machines before each release. All use invented libraries, report p50/p95/p99 and compare against fixed limits rather than only against `main`. Superseded previews and searches are cancelled, not ignored.
 
 The picker asset gate (`node scripts/picker-budget.mjs`) reads Vite's manifest
 and sums gzip level-9 bytes for `index.html`'s JS, static imports and CSS,
