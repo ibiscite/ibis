@@ -68,6 +68,11 @@ queries; malformed or oversized values are ignored before arXiv/DOI equivalence.
 
 ### Saved source generations (#1298, first storage slice #1468)
 
+Provisional (2026-10-31, maintainer): this flat-file design is being compared with
+SQLite as a private record/generation store before more of it is built; bundled SQLite
+already ships for reading Zotero, so "no new dependency" is no reason to prefer either.
+Same records, scorer and public behaviour; the result is recorded in decisions.
+
 Adopt #1298's revised immutable flat-file design. One `Arc<PreparedLibrary>`
 owns one source generation: opaque library identity, source observation, content
 fingerprints, compact search rows, key/alias ownership and checked object offsets.
@@ -283,7 +288,8 @@ At 100,000 references the release budgets are load/refresh < 3 s, memory <
 400 MB, summon p95 ≤ 100 ms and typing p95 ≤ 50 ms (engine search p95 ≤ 20 ms).
 These are fixed limits, per decision 0032. Pull request CI fails on search
 p95 > 20 ms and picker assets > 400 KiB gzipped. The 100k open/refresh gate
-fails Preview's nightly/release build above the unchanged < 3 s limit.
+reports on Preview's nightly and 0.2.x builds and fails release tags from 0.3
+above the unchanged < 3 s limit (decision 0032).
 
 The explicitly invoked `ibis-engine` test `refresh_budget` generates its own 21.05 MB
 BibTeX file (two authors, journal, date, pages, DOI, volume and issue per entry).
@@ -344,7 +350,7 @@ Enforcement is split by measured margin (maintainer, 2026-10-28):
 |---|---|---|
 | Search p95 ≤ 20 ms, each query | `ci.yml` → `test` (`Test (ubuntu-24.04)`), release `search_budget` | At least 61% measured margin |
 | Picker JS/CSS ≤ 400 KiB gzipped | `ci.yml` → `changes` and `web`, both picker build paths | Deterministic asset bytes |
-| 100k open and refresh < 3 s each | `preview.yml` → Linux `build`, release `open_refresh_budget` | Only 224 ms open margin; shared PR-runner noise can exceed it |
+| 100k open and refresh < 3 s each | `preview.yml` → Linux `build`: `open_refresh_report` on branches and 0.2.x, `open_refresh_budget` on tags from 0.3 | Only 224 ms open margin; shared PR-runner noise can exceed it |
 
 Preview's build covers nightly packages from `main`, tagged releases and manual
 package builds; the scheduled update-test-only run retains its existing build
@@ -445,7 +451,7 @@ still needs further work.
   saves. Normal picker presentation captures the current destination and
   retires the old clipboard proof. No paste is attempted until a fresh Enter.
 - **Language:** the engine returns message codes; the app words them through Fluent from 0.3, so German and one right-to-left language can follow in 0.4. Interface language, citation language and text direction are separate; mixed-direction names are isolated in the preview and on the clipboard.
-- **Budgets (release builds, limits from 0.3; decision 0032):** picker interactive p95 ≤ 100 ms after the shortcut; typing to results p95 ≤ 50 ms at 100,000 references (engine search ≤ 20 ms of it); hidden idle CPU ≤ 0.2 % of one core and at most one wakeup a second, so no polling loops; hidden memory ≤ 200 MiB at 10,000 references; initial picker JS and CSS ≤ 400 KiB gzipped. Engine search and picker asset size fail pull request CI; 100k open/refresh fails Preview’s Linux nightly/release build; open latency, idle CPU, wakeups and whole-app memory (web view processes included) are measured warm and cold, at least 30 samples after a 60 s settle, on the named release machines before each release. All use invented libraries, report p50/p95/p99 and compare against fixed limits rather than only against `main`. Superseded previews and searches are cancelled, not ignored.
+- **Budgets (release builds, limits from 0.3; decision 0032):** picker interactive p95 ≤ 100 ms after the shortcut; typing to results p95 ≤ 50 ms at 100,000 references (engine search ≤ 20 ms of it); hidden idle CPU ≤ 0.2 % of one core and at most one wakeup a second, so no polling loops; hidden memory ≤ 200 MiB at 10,000 references; initial picker JS and CSS ≤ 400 KiB gzipped. Engine search and picker asset size fail pull request CI; 100k open/refresh reports on Preview’s Linux nightly and fails its release build from 0.3; open latency, idle CPU, wakeups and whole-app memory (web view processes included) are measured warm and cold, at least 30 samples after a 60 s settle, on the named release machines before each release. All use invented libraries, report p50/p95/p99 and compare against fixed limits rather than only against `main`. Superseded previews and searches are cancelled, not ignored.
 
 The picker asset gate (`node scripts/picker-budget.mjs`) reads Vite's manifest
 and sums gzip level-9 bytes for `index.html`'s JS, static imports and CSS,
