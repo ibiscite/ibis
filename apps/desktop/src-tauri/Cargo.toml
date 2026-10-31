@@ -72,7 +72,8 @@ tauri = { version = "2.12", features = ["test"] }
 
 # `forbid` cannot be narrowed by a module allowance. Match the workspace
 # policy, with unsafe allowed only in paste/macos/secure_input.rs, safety.rs and focus/native.rs,
-# paste/permission/drag.rs and cfg(test) paste/windows_bstr_test.rs (ADR 0029).
+# paste/permission/drag.rs, sizing/display_events.rs and cfg(test)
+# paste/windows_bstr_test.rs (ADR 0029).
 [lints.rust]
 unsafe_code = "deny"
 
@@ -99,7 +100,7 @@ clipboard-win = "5.4.3"
 windows = { version = "0.62.2", features = ["Foundation", "System_Power", "System_Profile", "UI_ViewManagement", "Storage", "Storage_FileProperties", "Storage_Streams", "Storage_Search", "ApplicationModel"] }
 # Safe Win32 bindings for pasting (#1133): the window in front, its process,
 # name and rights, and one SendInput. No raw native calls in Ibis (decision 0029).
-winsafe = { version = "0.0.29", features = ["user", "advapi", "version"] }
+winsafe = { version = "0.0.29", features = ["user", "advapi", "version", "comctl"] }
 # Safe UI Automation: whether the focused field takes a password (#1133).
 # Its core module needs `input`; `pattern` reads Notepad's text in a test.
 uiautomation = { version = "0.25.1", default-features = false, features = ["input", "pattern"] }
