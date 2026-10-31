@@ -495,6 +495,10 @@ text follows 12 px after it, as system status bars place an indicator.
 | Update failed, old copy kept | "Zotero not updated · 2 h", then the fix button | Stop |
 | Never opened | "thesis.bib · not opened" | Stop |
 
+Reference counts include bibliographic records only, across the footer, library
+status and per-source counts. Attachments, notes and other library objects do
+not add references.
+
 "Updated" means the references changed; "checked" means Ibis read them. The
 footer always names the library searched; its tooltip and the top of More add
 libraries, check times and problems. **One place for each status**

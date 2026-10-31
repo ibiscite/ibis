@@ -231,11 +231,22 @@ impl FileLibrary {
             .unwrap_or_default()
     }
     pub(super) fn status(&self, status: &mut LibraryStatus) {
-        status.revision = self.revision();
+        let Ok(snapshot) = self.engine.snapshot() else { return };
+        status.revision = snapshot.fingerprints().full.as_str().to_owned();
+        let mut references = HashMap::<_, usize>::new();
+        for item in snapshot.objects() {
+            if let LibraryObject::Record(record) = &item.object {
+                *references.entry(&record.id.library).or_default() += 1;
+            }
+        }
+        status.references = references.values().sum();
         if let Ok(info) = self.engine.libraries() {
-            status.references = info.libraries.iter().map(|i| i.objects).sum();
             status.warnings = info.libraries.iter().map(|i| i.warnings_total).sum();
-            status.source_counts = info.libraries.iter().map(|i| (native_source(i), i.objects)).collect();
+            status.source_counts = info
+                .libraries
+                .iter()
+                .map(|i| (native_source(i), references.get(&i.id).copied().unwrap_or_default()))
+                .collect();
             if info.libraries.iter().any(|i| i.refresh_error.is_some()) {
                 status.stale = true;
                 if status.error.is_none() {
