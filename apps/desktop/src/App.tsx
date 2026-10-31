@@ -53,7 +53,7 @@ const noSelection = new Map<string, CitationReference>();
 export type PickerApi = Pick<typeof nativeApi,
   "chooseLibrary" | "useZotero" | "libraryStatus" | "reloadLibrary" | "previewFileCitation" | "copyFileCitation" | "copyFormat" | "pickerPreferences" | "setPickerPreferences" |
   "hidePicker" | "pickerVisible" | "setPinned" | "onLibraryChanged" | "onPickerShown" | "onPickerHidden" | "quit" | "search" | "shortcutStatus"> &
-  Partial<Pick<typeof nativeApi, "useSampleLibrary" | "useZoteroLibraries" | "zoteroGroups" | "pickerDestination" | "rememberAppOutput" | "forgetAppOutputs" | "onWindowSizeSaved" | "readWindowPositionUndo" | "undoWindowPosition" | "dismissWindowPositionUndo" | "onWindowReset" | "findSources" | "openFoundLibrary" | "rowContext" | "showCopiedNotice" | "loginItem" | "setLoginItem" | "onUpdateProgress" | "updateChecks" | "setUpdateChecks" | "onUpdateChecks" | "updateAvailable" | "onUpdateAvailable" | "updatePickerActivity" | "checkForUpdates" | "onShortcutStatus" | "openSettings" | "onPreferencesChanged">>;
+  Partial<Pick<typeof nativeApi, "pickerPresentation" | "useSampleLibrary" | "useZoteroLibraries" | "zoteroGroups" | "pickerDestination" | "rememberAppOutput" | "forgetAppOutputs" | "onWindowSizeSaved" | "readWindowPositionUndo" | "undoWindowPosition" | "dismissWindowPositionUndo" | "onWindowReset" | "findSources" | "openFoundLibrary" | "rowContext" | "showCopiedNotice" | "loginItem" | "setLoginItem" | "onUpdateProgress" | "updateChecks" | "setUpdateChecks" | "onUpdateChecks" | "updateAvailable" | "onUpdateAvailable" | "updatePickerActivity" | "checkForUpdates" | "onShortcutStatus" | "openSettings" | "onPreferencesChanged">>;
 
 export type PickerPreview = { query?: string; copied?: Copied };
 
@@ -199,7 +199,8 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   };
   const hide = () => {
     send({ type: "hiding" });
-    void perform("hide", hidePicker);
+    const presentation = session.getSnapshot().presentation;
+    void perform("hide", () => hidePicker(presentation));
   };
   const chooseFormat = (choice: Choice) => {
     destination.choose(choice);
@@ -254,11 +255,11 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
       else search.setSelectionRange(search.value.length, search.value.length);
     };
     window.addEventListener("focus", activated);
-    const focusSearch = () => {
+    const focusSearch = (presentation: number) => {
       searchAtShow = input.current?.value ?? "";
       resetPointer();
       const previousQuery = session.getSnapshot().query;
-      send({ type: "shown", now: performance.now() });
+      send({ type: "shown", now: performance.now(), presentation });
       if (session.getSnapshot().query !== previousQuery) searchAtShow = session.getSnapshot().query;
       destination.read(true, session.getSnapshot().permissionDetour);
       readLoginItem();
@@ -281,17 +282,18 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
       setAltHeld(false);
     })
       .catch(() => subscriptionFailure("pickerEvents"));
-    const unlisten = onPickerShown(() => {
+    const unlisten = onPickerShown((presentation) => {
       visibilityEvents += 1;
       delete document.documentElement.dataset.pickerHidden;
-      focusSearch();
+      focusSearch(presentation);
     }).catch(() => subscriptionFailure("pickerEvents"));
     void Promise.all([unlistenHidden, unlisten]).then(async () => {
       if (!mounted) return;
       const events = visibilityEvents;
-      const visible = await pickerVisible();
+      const [visible, presentation] = await Promise.all([pickerVisible(), api.pickerPresentation?.()]);
       // A newer event wins over this read; failed reads leave the flag alone.
       if (!mounted || events !== visibilityEvents) return;
+      if (presentation !== undefined) send({ type: "presentation", presentation });
       if (visible) delete document.documentElement.dataset.pickerHidden;
       else document.documentElement.dataset.pickerHidden = "";
     }).catch(() => undefined);

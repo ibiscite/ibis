@@ -22,6 +22,7 @@ pub const APP_COMMANDS: &[&str] = &[
     "login_item",
     "set_login_item",
     "hide_picker",
+    "picker_presentation",
     "set_pinned",
     "quit",
     "shortcut_status",

@@ -1,12 +1,9 @@
 //! Registering the global shortcut, and moving it with the keyboard layout.
 
 use std::sync::Mutex;
-#[cfg(target_os = "macos")]
-use std::sync::atomic::{AtomicBool, Ordering};
-
-#[cfg(target_os = "macos")]
-use tauri::Emitter;
 use tauri::{AppHandle, Manager};
+#[cfg(target_os = "macos")]
+use tauri::{Emitter, Listener};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
 
 use super::OpeningShortcut;
@@ -122,34 +119,32 @@ pub(crate) fn replace_with(
     Ok(())
 }
 
-/// Move the shortcut when the person switches keyboard layout. objc2's
-/// notification observers need unsafe code, so check every two seconds, with
-/// at most one pending main-thread check (layout queries need the main thread).
+/// Follow layout changes even while hidden: the opening shortcut must already
+/// match the new layout before the picker can be shown. No periodic wakeups.
 #[cfg(target_os = "macos")]
 pub(crate) fn follow_layout(app: &AppHandle) {
     let handle = app.clone();
-    let pending = std::sync::Arc::new(AtomicBool::new(false));
-    let watcher = std::thread::Builder::new()
-        .name("keyboard-layout".to_owned())
-        .spawn(move || {
-            loop {
-                std::thread::sleep(std::time::Duration::from_secs(2));
-                if pending.swap(true, Ordering::Relaxed) {
-                    continue;
-                }
-                let (task, done) = (handle.clone(), pending.clone());
-                if handle
-                    .run_on_main_thread(move || {
-                        relayout(&task);
-                        done.store(false, Ordering::Relaxed);
-                    })
-                    .is_err()
-                {
-                    pending.store(false, Ordering::Relaxed);
-                }
-            }
-        });
-    report(watcher, NativeIssue::Shortcut);
+    crate::macos_notifications::observe(
+        &objc2_foundation::NSDistributedNotificationCenter::defaultCenter(),
+        "com.apple.HIToolbox.selectedKeyboardInputSourceChanged",
+        move || {
+            let task = handle.clone();
+            report(
+                handle.run_on_main_thread(move || relayout(&task)),
+                NativeIssue::Shortcut,
+            );
+        },
+    );
+    // Recover the latest source before presenting even if the system coalesced
+    // notifications while the application was inactive.
+    let handle = app.clone();
+    app.listen("picker:shown", move |_| {
+        let task = handle.clone();
+        report(
+            handle.run_on_main_thread(move || relayout(&task)),
+            NativeIssue::Shortcut,
+        );
+    });
 }
 
 #[cfg(target_os = "macos")]

@@ -61,7 +61,7 @@ export function testProvider(state: typeof testStates[number]): { api: PickerApi
       chooseLibrary: async () => undefined,
       useZotero: async () => undefined,
       reloadLibrary: async () => undefined,
-      hidePicker: async () => undefined,
+      hidePicker: async () => true,
       pickerVisible: async () => true,
       setPinned: async () => undefined,
       loginItem: async () => ({ name: "Ibis", enabled: false, problem: null }),

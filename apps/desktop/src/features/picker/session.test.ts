@@ -94,7 +94,7 @@ test("close/reopen retires old completion without consuming a newer copy", () =>
   s.send(s.view());
   s.send({ type: "enter", choice: choiceKey([a]) });
   s.send({ type: "hidden", now: 10 });
-  s.send({ type: "shown", now: 20 });
+  s.send({ type: "shown", now: 20, presentation: 2 });
   s.send(s.view());
   expect(s.effects).toEqual([]);
   s.send({ type: "enter", choice: choiceKey([a]) });
@@ -124,7 +124,7 @@ test("Enter during reopening waits for the new opening's readiness and output", 
   const s = scenario();
   s.send(s.view());
   s.send({ type: "hidden", now: 10 });
-  s.send({ type: "shown", now: 20 });
+  s.send({ type: "shown", now: 20, presentation: 2 });
   const output = { opening: 1, choice: 0 };
   s.send({ type: "enter", choice: choiceKey([a]), output });
   expect(s.effects).toEqual([]);

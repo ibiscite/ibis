@@ -30,13 +30,27 @@ function useMinuteTick() {
   const [, setTick] = useState(0);
   useEffect(() => {
     const tick = () => setTick((n) => n + 1);
-    const timer = window.setInterval(() => { if (document.visibilityState !== "hidden") tick(); }, 30_000);
-    document.addEventListener("visibilitychange", tick);
-    window.addEventListener("focus", tick);
+    let timer: number | undefined;
+    const visible = () => document.visibilityState !== "hidden" && !document.documentElement.hasAttribute("data-picker-hidden");
+    const sync = () => {
+      if (timer !== undefined) window.clearInterval(timer);
+      timer = undefined;
+      if (visible()) {
+        tick();
+        timer = window.setInterval(() => { if (visible()) tick(); }, 30_000);
+      }
+    };
+    // Native hides need not produce DOM visibilitychange in a webview.
+    const observer = new MutationObserver(sync);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-picker-hidden"] });
+    sync();
+    document.addEventListener("visibilitychange", sync);
+    window.addEventListener("focus", sync);
     return () => {
-      window.clearInterval(timer);
-      document.removeEventListener("visibilitychange", tick);
-      window.removeEventListener("focus", tick);
+      observer.disconnect();
+      if (timer !== undefined) window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", sync);
+      window.removeEventListener("focus", sync);
     };
   }, []);
 }

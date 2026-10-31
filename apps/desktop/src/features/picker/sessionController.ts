@@ -32,7 +32,10 @@ export function createSessionController(initial = initialSession()) {
         break;
       }
       case "hide":
-        try { await ports.hidePicker(); dispatch({ type: "hid", id: effect.id, session: effect.session }); }
+        try {
+          const hidden = await ports.hidePicker(effect.presentation);
+          dispatch({ type: hidden === false ? "hide-refused" : "hid", id: effect.id, session: effect.session });
+        }
         catch { dispatch({ type: "hide-failed", id: effect.id, session: effect.session }); }
         break;
       case "notice": {

@@ -26,6 +26,7 @@ pub(crate) fn commands() -> tauri_specta::Builder<tauri::Wry> {
             crate::login_item::login_item,
             crate::login_item::set_login_item,
             crate::picker::hide_picker,
+            crate::picker::picker_presentation,
             crate::picker::set_pinned,
             crate::picker::quit,
             crate::picker::shortcut_status,

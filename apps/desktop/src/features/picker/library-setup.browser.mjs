@@ -30,13 +30,13 @@ try {
         if (text === "200%") document.addEventListener("DOMContentLoaded", () => { document.documentElement.style.fontSize = "200%"; });
         const preferences = { citation_style: null, density: "comfortable", larger_text: text === "larger", show_paste_preview: true, search_mark: true, paste: false };
         const none = { state: "none", revision: "1", has_snapshot: false, zotero: false, name: null, snapshot_name: null, references: 0, warnings: 0, error: null, problem: null, note: null };
-        let library = none, callback = 0, discoveries = 0;
+        let library = none, callback = 0, discoveries = 0, presentation = 0;
         const callbacks = new Map(), listeners = new Map();
         const emit = (event, payload) => {
           for (const [id, name] of listeners) if (event === name) callbacks.get(id)?.({ event, id, payload });
         };
         window.fixtureStatus = (patch) => { library = { ...none, ...patch }; emit("library:changed", library); };
-        window.fixtureReopen = () => { emit("picker:hidden", null); emit("picker:shown", null); window.dispatchEvent(new Event("focus")); };
+        window.fixtureReopen = () => { emit("picker:hidden", null); emit("picker:shown", ++presentation); window.dispatchEvent(new Event("focus")); };
         window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: (_event, id) => listeners.delete(id) };
         window.__TAURI_INTERNALS__ = {
           metadata: { currentWindow: { label: "main" }, currentWebview: { label: "main" } },
@@ -45,8 +45,14 @@ try {
           invoke: async (command, args) => {
             if (command === "plugin:event|listen") { listeners.set(args.handler, args.event); return args.handler; }
             if (command === "plugin:event|unlisten" || command === "fit_picker" || command === "plugin:window|hide") return;
-            if (command === "hide_picker") { emit("picker:hidden", null); return; }
+            if (command === "hide_picker") {
+              if (args.presentation !== presentation) return false;
+              presentation += 1;
+              emit("picker:hidden", null);
+              return true;
+            }
             if (command === "plugin:window|is_visible") return true;
+            if (command === "picker_presentation") return presentation;
             if (command === "native_appearance") return "opaque";
             if (command === "picker_preferences") return preferences;
             if (command === "copy_format") return "pandoc";
@@ -72,7 +78,8 @@ try {
       await page.waitForFunction(() => document.activeElement?.getAttribute("data-key") === "zotero");
       assert.equal(await page.locator(".search-bar").isVisible(), false, `${label}: welcome fills window`);
       assert.equal(await page.getByRole("option").count(), 4);
-      assert.equal(await page.locator(".welcome-mark").evaluate((node) => node.getBoundingClientRect().width / parseFloat(getComputedStyle(document.documentElement).fontSize)), 3.5);
+      const welcomeWidth = await page.locator(".welcome-mark").evaluate((node) => node.getBoundingClientRect().width / parseFloat(getComputedStyle(document.documentElement).fontSize));
+      assert.ok(Math.abs(welcomeWidth - 3.5) <= 0.01, `${label}: 3.5 rem welcome mark`);
       const scan = async () => page.evaluate(() => {
         const main = document.querySelector("main"), bounds = main.getBoundingClientRect(), issues = [];
         if (Math.abs(bounds.height - innerHeight) > 1) issues.push("frame does not fill window");

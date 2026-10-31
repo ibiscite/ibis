@@ -324,6 +324,17 @@ producers, focused-window providers and native keyboard placement still
 require qualification.
 Clock sampling has its stated 100 µs resolution limit.
 
+The process-lifetime notification registration in `macos_notifications.rs` is
+also a scoped unsafe exception (2026-10-31). It uses the locked Foundation and
+block2 bindings with no object filter or operation queue, ignores notification
+payloads, and dispatches fresh reads to the native thread. Keyboard-layout
+notifications keep the opening shortcut current while hidden; workspace
+accessibility and distributed color/theme notifications replace the appearance
+timer. Appearance is also read synchronously before showing the picker.
+The webview's library-age timer exists only while the picker is shown. These
+changes remove periodic hidden wakeups; capped unavailable-file retries and
+the updater's six-hour check are unchanged.
+
 Other macOS native calls use objc2's generated AppKit and Core Graphics
 bindings. On Windows, `winsafe` supplies safe Win32 calls (the foreground
 window, its process, name and integrity level, and `SendInput`), and

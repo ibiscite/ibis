@@ -187,6 +187,7 @@ fn show_picker_on_thread(app: &AppHandle, owner: u64) {
         if !crate::sizing::prepare(app, &window, false, false) || !visits.owns(owner) {
             return;
         }
+        crate::native_feel::before_show(app);
         report(window.unminimize(), NativeIssue::Unminimize);
         #[cfg(target_os = "macos")]
         crate::panel::show(app);
@@ -199,7 +200,7 @@ fn show_picker_on_thread(app: &AppHandle, owner: u64) {
             present_window(&window, true, owner);
             crate::updater::picker_presented(app);
         }
-        report(window.emit("picker:shown", ()), NativeIssue::PickerEvent);
+        report(window.emit("picker:shown", owner), NativeIssue::PickerEvent);
     }
     crate::library::refresh_zotero(app);
 }
@@ -343,8 +344,23 @@ pub(crate) fn focused_for_shortcut(window: &tauri::WebviewWindow) -> Option<bool
     return resolve_focus(wayland::x11_state(desktop_owned(), || x11_focus::query(window)), || {
         checked(window.is_focused(), NativeIssue::FocusState)
     });
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(target_os = "windows")]
+    {
+        // Tao loses its top-level focus cache when the child WebView2 takes
+        // keyboard focus. Only this exact foreground HWND owns the shortcut.
+        let picker = checked(window.hwnd(), NativeIssue::FocusState).map(|window| window.0 as usize);
+        let foreground = winsafe::HWND::GetForegroundWindow().map(|window| window.ptr() as usize);
+        owned_foreground(picker, foreground)
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
     checked(window.is_focused(), NativeIssue::FocusState)
+}
+
+#[cfg(any(target_os = "windows", test))]
+pub(crate) fn owned_foreground(picker: Option<usize>, foreground: Option<usize>) -> Option<bool> {
+    let picker = picker.filter(|window| *window != 0)?;
+    let foreground = foreground.filter(|window| *window != 0)?;
+    Some(picker == foreground)
 }
 
 /// Toggle the picker: hide it if it is visible and focused, show it otherwise.
@@ -404,19 +420,47 @@ fn foreground_full_screen() -> Option<bool> {
     None
 }
 
-/// Hide the picker (Escape in the interface).
+/// Read the native presentation after subscribing, including on webview reload.
 #[tauri::command]
 #[specta::specta]
-pub(crate) fn hide_picker(app: AppHandle) {
-    dismiss_picker(&app);
+pub(crate) fn picker_presentation(visits: State<'_, PickerGeneration>) -> u64 {
+    visits.current()
+}
+
+/// Hide only the originating presentation; a delayed request cannot dismiss a reopen.
+#[tauri::command]
+#[specta::specta]
+pub(crate) async fn hide_picker(app: AppHandle, presentation: u64) -> Result<bool, &'static str> {
+    let (send, mut receive) = tauri::async_runtime::channel(1);
+    let handle = app.clone();
+    app.run_on_main_thread(move || {
+        let hidden = dismiss_presented_with(&handle.state::<PickerGeneration>(), presentation, || {
+            finish_dismiss(&handle);
+        });
+        let _ = send.try_send(hidden);
+    })
+    .map_err(|_| "The picker could not be hidden.")?;
+    receive.recv().await.ok_or("The picker could not be hidden.")
+}
+
+fn dismiss_presented_with(visits: &PickerGeneration, presentation: u64, dismiss: impl FnOnce()) -> bool {
+    if !visits.retire(presentation) {
+        return false;
+    }
+    dismiss();
+    true
 }
 
 /// A window hide alone leaves Ibis active on macOS, swallowing the next paste.
 /// Every dismissal path must also release application focus, unless Settings
 /// is open.
 pub(crate) fn dismiss_picker(app: &AppHandle) {
-    crate::updater::picker_activity(app);
     app.state::<PickerGeneration>().advance();
+    finish_dismiss(app);
+}
+
+fn finish_dismiss(app: &AppHandle) {
+    crate::updater::picker_activity(app);
     #[cfg(target_os = "macos")]
     crate::panel::cancel_initial_presentation(app);
     crate::sizing::flush(app, false);
@@ -500,6 +544,16 @@ impl PickerGeneration {
     }
     fn advance(&self) -> u64 {
         self.0.fetch_add(1, Ordering::SeqCst).wrapping_add(1)
+    }
+    fn retire(&self, generation: u64) -> bool {
+        self.0
+            .compare_exchange(
+                generation,
+                generation.wrapping_add(1),
+                Ordering::SeqCst,
+                Ordering::SeqCst,
+            )
+            .is_ok()
     }
     fn still_owns_after(&self, generation: u64, query: impl FnOnce() -> bool) -> bool {
         query() && self.owns(generation)
@@ -602,6 +656,50 @@ fn finish_blur(app: &AppHandle, blur: u64, generation: u64) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ipc_hide_retires_only_its_presentation_including_failed_io_and_reopen() {
+        use std::cell::Cell;
+        let visits = PickerGeneration::default();
+        let visible = Cell::new(true);
+        let a = visits.current();
+        assert!(dismiss_presented_with(&visits, a, || visible.set(false)));
+        assert!(!visible.get(), "the current picker hides");
+        let b = visits.advance();
+        visible.set(true);
+        assert!(!dismiss_presented_with(&visits, a, || visible.set(false)));
+        assert!(visible.get(), "A's delayed hide cannot dismiss reopened B");
+        assert_eq!(visits.current(), b, "refusal cannot retire B's activation work");
+        assert!(dismiss_presented_with(&visits, b, || {
+            // Native hide I/O fails, so the window is still visible. B's
+            // ticket is nevertheless retired and cannot later hide C.
+        }));
+        assert!(visible.get());
+        let c = visits.advance();
+        assert!(!dismiss_presented_with(&visits, b, || visible.set(false)));
+        assert!(visible.get());
+        assert!(dismiss_presented_with(&visits, c, || visible.set(false)));
+        assert!(!visible.get(), "a fresh hide still works after the refusal");
+    }
+
+    #[test]
+    fn windows_shortcut_uses_the_exact_foreground_owner_even_after_webview_focus_and_reopen() {
+        // Cached top-level focus is false when WebView2 owns keyboard input.
+        // A foreign Ibis window is still a different HWND, even in this process.
+        for (picker, foreground, focused, action) in [
+            (Some(41), Some(41), Some(true), ToggleAction::Hide),
+            (Some(41), Some(43), Some(false), ToggleAction::Show),
+            (None, Some(41), None, ToggleAction::Show),
+            (Some(41), None, None, ToggleAction::Show),
+            (Some(0), Some(0), None, ToggleAction::Show),
+            // Close/recreate B: a delayed foreground sample of A cannot hide B.
+            (Some(43), Some(41), Some(false), ToggleAction::Show),
+            (Some(43), Some(43), Some(true), ToggleAction::Hide),
+        ] {
+            assert_eq!(owned_foreground(picker, foreground), focused);
+            assert_eq!(toggle_action(Some(true), focused), action);
+        }
+    }
 
     // Model the two GLib priorities, not automatic focus on map: tao queues
     // frame/visibility at DEFAULT; our GTK activation runs at DEFAULT_IDLE.
