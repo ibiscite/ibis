@@ -1,10 +1,53 @@
-import { afterEach, expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
 import { backend, prepared, receipt, resetApp, result, openCitationDetails, closeCitationDetails, type PreviewRequest } from "./testing/app";
 
 afterEach(resetApp);
+
+test("a delayed long formatting refusal reveals its full notice before Details and Enter leaves it readable", async () => {
+  const message = "Reference 1: Choose another form or clear Page. ".repeat(30);
+  let rejectPreview: ((reason: unknown) => void) | undefined;
+  const calls = backend({ search: () => [result("a", "Invented work")],
+    preview_file_citation: () => new Promise((_, reject) => { rejectPreview = reject; }),
+  });
+  const computed = window.getComputedStyle;
+  const styles = vi.spyOn(window, "getComputedStyle").mockImplementation((node) => {
+    if (!node.matches(".results-area, .picker-content")) return computed(node);
+    const style = document.createElement("div").style;
+    style.overflowY = node.matches(".picker-content") ? "auto" : "visible";
+    return style;
+  });
+  const boxes = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+    const middle = this.closest(".picker-content");
+    const hasRefusal = Boolean(middle?.querySelector(".citation-problem"));
+    if (this.matches(".picker-content")) return new DOMRect(0, 80, 480, 96);
+    if (this.matches(".notices")) return new DOMRect(0, 80 - middle!.scrollTop, 480, hasRefusal ? 1200 : 0);
+    if (this.matches(".citation-problem")) return new DOMRect(24, 92 - middle!.scrollTop, 432, 1176);
+    if (this.matches('[role="option"]')) return new DOMRect(8, 116 + (hasRefusal ? 1200 : 0) - middle!.scrollTop, 464, 58);
+    return new DOMRect();
+  });
+  try {
+    render(<App />);
+    await screen.findByText("Invented work");
+    await waitFor(() => expect(rejectPreview).toBeTypeOf("function"));
+    const search = screen.getByLabelText("Search references");
+    const middle = document.querySelector<HTMLElement>(".picker-content")!;
+    act(() => search.focus()); middle.scrollTop = 380; fireEvent.scroll(middle);
+    await act(async () => rejectPreview!({ code: "failed", message }));
+    const refusal = await screen.findByRole("alert");
+    expect(refusal.textContent).toBe(message);
+    expect(refusal.getBoundingClientRect().top).toBe(middle.getBoundingClientRect().top);
+    expect(refusal.tabIndex).toBe(0);
+    expect(document.activeElement).toBe(search);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    fireEvent.keyDown(search, { key: "Enter" });
+    expect(calls).not.toContain("copy_file_citation");
+    expect(refusal.textContent).toBe(message);
+    expect(refusal.getBoundingClientRect().top).toBe(middle.getBoundingClientRect().top);
+  } finally { boxes.mockRestore(); styles.mockRestore(); }
+});
 
 test("removing a middle reference and Undo restore its position and page through the real picker", async () => {
   backend({ search: () => [result("a", "First work"), result("b", "Second work"), result("c", "Third work")] });

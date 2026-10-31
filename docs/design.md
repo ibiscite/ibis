@@ -599,6 +599,10 @@ page", where the Page field lives beside the page itself.
   remain visible with the paste preview hidden. Engine losses name the reference
   and field beside the preview; an unsupported form explains the refusal there
   and blocks copying until corrected. Enter leaves that explanation visible.
+  The full refusal wraps in the middle notice area before Details is opened,
+  with no line clamp or separate scroller. A new refusal reveals its start
+  without taking focus; subsequent scrolling can reach its entire text while
+  the shelf band stays one line.
   Source-field and sentence-case warnings name the reference and appear in both
   preview details and copy feedback. A copy carrying either warning stays open
   with its warnings until dismissed; it never becomes a clean-copy receipt.

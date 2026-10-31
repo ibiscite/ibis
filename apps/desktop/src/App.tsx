@@ -129,6 +129,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   const chosen = !showCitations ? [] : selected.size > 0 ? [...selected.values()] : list ? current : current.slice(active, active + 1).map((r) => ({ ...r, locator: interpretation?.locator }));
   const { formatted, previewReceipt, chosenKey, keyFormat, shown, previewProblem, displayedOutput } =
     useCitationOutput({ chosen, library, libraryVersion, sessionId: state.session, isCurrentSession, format, style, showPastePreview, previewFileCitation, refreshSnapshot });
+  const citationProblem = displayedOutput === "failed" ? previewProblem ?? pickerText.previewError : null;
   const input = useRef<HTMLInputElement>(null);
   const formatButtonRef = useRef<HTMLButtonElement>(null);
   const moreButton = useRef<HTMLButtonElement>(null);
@@ -611,7 +612,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
           };
         }}
       />
-      <PickerScroll>
+      <PickerScroll citationProblem={citationProblem}>
       {shortcut?.error && <div className="notices">
         <p role="status">
           {pickerText.shortcutError(shortcut.registered, shortcut.shortcut, shortcut.error)}
@@ -620,7 +621,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
       </div>}
       <Notices densityAnnouncement={preferences.densityAnnouncement} updateProgress={updateProgress} library={library} failures={failures} startAtLogin={startAtLogin}
         error={error} copyError={copyError} copied={copied} missing={list?.missing}
-        citationProblem={displayedOutput === "failed" ? previewProblem ?? pickerText.previewError : null}
+        citationProblem={citationProblem}
         confirmation={state.copyNotice}
         onDismissCopied={() => send({ type: "dismiss" })} />
       <div className="results-area scroll-area" ref={resultArea}>

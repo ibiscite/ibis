@@ -4,9 +4,41 @@ import { PickerScroll } from "./PickerScroll";
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
-function Picker({ rows, notice, extraNotice, generation = 0 }: { notice?: string; extraNotice?: string; rows: number; generation?: number }) {
-  return <main><header className="search-bar"><input id="search" aria-label="Synthetic search" /></header><PickerScroll>{notice && <div className="notices"><p role="alert">{notice}</p></div>}{extraNotice && <div className="notices secondary"><p role="alert">{extraNotice}</p></div>}<div className="results-area">{Array.from({ length: rows }, (_, i) => <p role="option" id={`result-${i}`} key={`${generation}/${i}`}>row</p>)}</div></PickerScroll><footer /></main>;
+function Picker({ rows, notice, citationProblem, extraNotice, generation = 0 }: { notice?: string; citationProblem?: string; extraNotice?: string; rows: number; generation?: number }) {
+  return <main><header className="search-bar"><input id="search" aria-label="Synthetic search" /></header><PickerScroll citationProblem={citationProblem}>{notice && <div className="notices"><p role="alert" className={citationProblem ? "citation-problem" : undefined}>{notice}</p></div>}{extraNotice && <div className="notices secondary"><p role="alert">{extraNotice}</p></div>}<div className="results-area">{Array.from({ length: rows }, (_, i) => <p role="option" id={`result-${i}`} key={`${generation}/${i}`}>row</p>)}</div></PickerScroll><footer /></main>;
 }
+
+test.each([96, 280])("a new long formatting refusal is revealed in the %spx middle viewport without taking focus or resetting later reading", (height) => {
+  const reason = "Reference 1: Choose another form or clear Page. ".repeat(30);
+  const computed = window.getComputedStyle;
+  vi.spyOn(window, "getComputedStyle").mockImplementation((node) => {
+    if (!node.matches(".results-area, .picker-content")) return computed(node);
+    const style = document.createElement("div").style;
+    style.overflowY = node.matches(".picker-content") ? "auto" : "visible";
+    return style;
+  });
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+    const middle = this.closest(".picker-content")!;
+    if (this.matches(".picker-content")) return new DOMRect(0, 80, 480, height);
+    if (this.matches(".notices")) return new DOMRect(0, 80 - middle.scrollTop, 480, 1200);
+    if (this.matches(".citation-problem")) return new DOMRect(24, 92 - middle.scrollTop, 432, 1176);
+    if (this.matches('[role="option"]')) return new DOMRect(8, 116 + (middle.querySelector(".notices") ? 1200 : 0) - middle.scrollTop, 464, 58);
+    return new DOMRect();
+  });
+  const view = render(<Picker rows={14} />);
+  const middle = view.container.querySelector<HTMLElement>(".picker-content")!;
+  const search = view.container.querySelector<HTMLInputElement>("#search")!;
+  search.focus(); middle.scrollTop = 380; fireEvent.scroll(middle);
+  view.rerender(<Picker rows={14} notice={reason} citationProblem={reason} />);
+  const refusal = view.container.querySelector<HTMLElement>(".citation-problem")!;
+  expect(refusal.getBoundingClientRect().top).toBe(middle.getBoundingClientRect().top);
+  expect(refusal.getBoundingClientRect().height).toBeGreaterThan(height);
+  expect(document.activeElement).toBe(search);
+  middle.scrollTop += 240; fireEvent.scroll(middle);
+  view.rerender(<Picker rows={14} notice={reason} citationProblem={reason} />);
+  expect(middle.scrollTop).toBe(252);
+  expect(refusal.textContent).toBe(reason);
+});
 
 test("a second notice line preserves browsing place when the first notice is unchanged", () => {
   const computed = window.getComputedStyle;

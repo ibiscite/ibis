@@ -494,6 +494,14 @@ try {
       } else {
         const refusal = page.locator(".notices").getByRole("alert").and(page.getByText(noticeText.formatting, { exact: true }));
         await refusal.waitFor();
+        assert.equal(await refusal.evaluate((node) => {
+          const style = getComputedStyle(node);
+          const owner = node.closest(".picker-content");
+          const rect = node.getBoundingClientRect(), bounds = owner.getBoundingClientRect();
+          return node.tabIndex === 0 && style.whiteSpace === "normal" && style.overflowY === "visible" &&
+            node.scrollWidth <= node.clientWidth + 1 && node.scrollHeight <= node.clientHeight + 1 &&
+            rect.top >= bounds.top - 1 && rect.top < bounds.bottom;
+        }), true, "a new refusal starts in view, wraps in full and is keyboard reachable before Details");
         assert.equal(await reachable(refusal), true, "the full refusal is readable before opening Details");
         const shelfReason = page.locator("main > .shelf .shelf-output p");
         await shelfReason.waitFor();

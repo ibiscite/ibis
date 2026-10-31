@@ -5,6 +5,7 @@ import { hasRetainedFreshnessProblem } from "../../LibraryStatusLine";
 import { densityNames, libraryMessages, loginItemText, operationFailures, pickerText, updateText } from "../../messages";
 import { currentPlatform } from "../../platform";
 import "../../ui/CopyReceipt.css";
+import "./Notices.css";
 
 /** An action whose failure the picker reports in its notices. */
 export type Operation = keyof typeof operationFailures;
@@ -43,7 +44,7 @@ export function Notices({ library, failures, startAtLogin, error, citationProble
         <p role="alert">{loginItemText.problem(startAtLogin.problem, currentPlatform(), startAtLogin.name)}</p>
       )}
       {error && <p role="alert">{error}</p>}
-      {citationProblem && <p role="alert">{citationProblem}</p>}
+      {citationProblem && <p role="alert" className="citation-problem" tabIndex={0}>{citationProblem}</p>}
       {missing.length > 0 && <p role="status">{pickerText.missingCitations(missing)}</p>}
       {copyError && <p role="alert">{copyError}</p>}
       {copied && (confirmation || copied.warnings.length > 0) && (

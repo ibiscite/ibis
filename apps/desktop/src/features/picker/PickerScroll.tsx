@@ -1,6 +1,6 @@
 import { Component, createRef, type ReactNode } from "react";
 
-type Props = { children: ReactNode };
+type Props = { children: ReactNode; citationProblem?: string | null };
 type Place = { row: HTMLElement; owner: HTMLElement; top: number; noticeHeight: number };
 
 /** Preserve browsing place across notices and scroll-owner changes. The commit
@@ -43,6 +43,17 @@ export class PickerScroll extends Component<Props> {
     if (event.target === this.anchor?.owner) this.update();
   };
 
+  private revealCitationProblem = () => {
+    if (!this.props.citationProblem) return;
+    const middle = this.middle.current;
+    const problem = middle?.querySelector<HTMLElement>(":scope > .notices > .citation-problem");
+    if (!middle || !problem) return;
+    // A refusal explains why Enter cannot continue. Reveal its start instead
+    // of anchoring the results past it; the rest stays in this same scroller.
+    middle.scrollTop += problem.getBoundingClientRect().top - middle.getBoundingClientRect().top - middle.clientTop;
+    this.anchor = this.capture();
+  };
+
   componentDidMount() {
     const middle = this.middle.current!;
     this.anchor = this.capture();
@@ -50,12 +61,14 @@ export class PickerScroll extends Component<Props> {
     this.resized?.observe(middle);
     window.addEventListener("resize", this.update);
     middle.addEventListener("scroll", this.scrolled, true);
+    this.revealCitationProblem();
   }
 
   getSnapshotBeforeUpdate() { return this.capture(); }
 
-  componentDidUpdate(_props: Props, _state: unknown, snapshot: Place | null) {
+  componentDidUpdate(previous: Props, _state: unknown, snapshot: Place | null) {
     this.restore(snapshot);
+    if (previous.citationProblem !== this.props.citationProblem) this.revealCitationProblem();
   }
 
   componentWillUnmount() {
