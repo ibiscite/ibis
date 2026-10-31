@@ -1,18 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ComponentProps, type ReactNode } from "react";
 import type { LibraryStatus, ZoteroLibrary } from "./bindings";
 import { appLocale, isolate, libraryMessages, pickerText } from "./messages";
-import { MenuDetail } from "./ui/Menu";
-
-/** A same-source freshness failure whose retained index remains searchable. */
-export function hasRetainedFreshnessProblem(library: LibraryStatus | null | undefined): boolean {
-  return Boolean(library?.has_snapshot && library.stale && library.error);
-}
+import { Menu, MenuDetail } from "./ui/Menu";
+import "./ui/LibraryStatus.css";
 
 /** Done, Look or Stop for the footer dot; words carry the same meaning. */
 export function libraryHealth(library: LibraryStatus | null | undefined): "done" | "look" | "stop" | "idle" {
-  if (library === null || (library?.error && !hasRetainedFreshnessProblem(library))) return "stop";
+  if (library === null || library?.error || library?.stale) return "stop";
   if (!library?.has_snapshot) return "idle";
-  return hasRetainedFreshnessProblem(library) || library.warnings > 0 || library.references === 0 ? "look" : "done";
+  return library.warnings > 0 || library.references === 0 ? "look" : "done";
 }
 
 const lists = new Intl.ListFormat(appLocale, { style: "short", type: "unit" });
@@ -35,20 +31,18 @@ function useMinuteTick() {
     const sync = () => {
       if (timer !== undefined) window.clearInterval(timer);
       timer = undefined;
-      if (visible()) {
-        tick();
-        timer = window.setInterval(() => { if (visible()) tick(); }, 30_000);
-      }
+      if (!visible()) return;
+      tick();
+      timer = window.setInterval(() => { if (visible()) tick(); }, 30_000);
     };
-    // Native hides need not produce DOM visibilitychange in a webview.
     const observer = new MutationObserver(sync);
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-picker-hidden"] });
-    sync();
     document.addEventListener("visibilitychange", sync);
     window.addEventListener("focus", sync);
+    sync();
     return () => {
+      window.clearInterval(timer);
       observer.disconnect();
-      if (timer !== undefined) window.clearInterval(timer);
       document.removeEventListener("visibilitychange", sync);
       window.removeEventListener("focus", sync);
     };
@@ -59,10 +53,13 @@ function useMinuteTick() {
  * The footer's library item: a dot, the source and count, and an age only when
  * it matters (just updated, or an older copy kept after a failure). The full
  * detail is the tooltip; the live region holds no clock, so it is not repeated
- * every minute.
+ * every age tick.
  */
-export function LibraryStatusLine({ library, groupName }: {
+export function LibraryStatusLine({ library, groupName, menu, action, failure }: {
   library: LibraryStatus | null | undefined; groupName: (id: number) => string;
+  menu?: Omit<ComponentProps<typeof Menu>, "trigger" | "triggerTitle" | "triggerClassName">;
+  action?: ReactNode;
+  failure?: string | null;
 }) {
   useMinuteTick();
   const now = Date.now();
@@ -79,23 +76,42 @@ export function LibraryStatusLine({ library, groupName }: {
   // A kept copy's age ("checked …") is already in the second line.
   const heard = age && !library?.stale ? `${lines[0]} · ${age}` : lines[0];
   const spoken = age || lines[1] ? [heard, lines[1]].filter(Boolean).join(". ") : null;
-  return (
-    <>
-      <span className="library-status" data-health={health} title={detail}>
+  // Recovery and initial opening have their own single announcement in the
+  // middle area. Inline operation failures use an alert beside their action.
+  const announces = !failure && !(library && !library.has_snapshot && (library.state === "error" || library.state === "loading"));
+  const words = <>
+    {source !== null && <bdi className="library-source">{source}</bdi>}
+    {separated && state && <bdi className="library-separator">{" · "}</bdi>}
+    {state && <bdi className="library-state">{state}</bdi>}
+  </>;
+  const liveProps = { role: "status", "aria-label": pickerText.libraryStatus, "aria-live": announces ? "polite" : "off", "aria-atomic": true } as const;
+  const content = <>
         <span className="status-dot" data-health={health} aria-hidden="true" />
         <bdi className="library-words" dir="ltr">
-          <span className="library-name" dir="ltr" role="status" aria-label={pickerText.libraryStatus} aria-live="polite" aria-atomic="true">
-            {source !== null && <bdi className="library-source">{source}</bdi>}
-            {separated && state && <bdi className="library-separator">{" · "}</bdi>}
-            {state && <bdi className="library-state">{state}</bdi>}
-          </span>
+          <span className="library-name" dir="ltr" {...(!menu && liveProps)}>{words}</span>
           {age && <bdi className="library-age" dir="auto" aria-hidden="true"> · {age}</bdi>}
         </bdi>
-      </span>
+    </>;
+  return (
+    <>
+      {menu ? <span className="library-status-controls" data-health={health}>
+        <span className="library-status-target">
+          {/* Like More, the shared Menu button owns its visible content. Do not
+              replace it with an empty button beneath a sibling text overlay. */}
+          <Menu {...menu} trigger={<span className="library-status" data-health={health} title={detail}>{content}</span>}
+            triggerLabel={pickerText.libraryRegion} triggerClassName="library-status-trigger" triggerTitle={detail} />
+        </span>
+        {action}
+      </span> : <span className="library-status" data-health={health} title={detail}>{content}</span>}
+      {/* Button descendants can become presentational in native trees. Keep
+          exactly one live announcement beside it, with a stable button name
+          and no ticking age. A paragraph keeps its text in WebKitGTK. */}
+      {menu && <div className="visually-hidden library-announcement"><p className="library-name" dir="ltr" {...liveProps}>{words}</p></div>}
       {/* The visible age and the hover detail, read once by screen readers; not live.
           A <p>, like the state's <bdi>: WebKitGTK drops the text of a plain span
           that sits beside other exposed elements, so Orca would not hear it. */}
       {spoken && <p className="visually-hidden library-detail">{spoken}</p>}
+      {failure && <p className="library-action-error" role="alert">{failure}</p>}
     </>
   );
 }

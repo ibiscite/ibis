@@ -76,6 +76,8 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   const loginBusy = useRef(false);
   const [loginSaving, setLoginSaving] = useState(false);
   const [updatesSaving, setUpdatesSaving] = useState(false);
+  const [forgetStatus, setForgetStatus] = useState<"idle" | "saving" | "done" | "failed">("idle");
+  const forgetBusy = useRef(false);
   const updateIntent = useRef<boolean | null>(null);
   /** The guide stays to confirm a permission given while it was open. */
   const [guided, setGuided] = useState(false);
@@ -254,6 +256,20 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     void api.configureShortcuts().catch(() => setShortcutProblem({ id: "shortcuts-configure-failed" }))
       .finally(() => { shortcutBusy.current = false; setShortcutSaving(false); });
   };
+  const forgetFormats = () => {
+    if (forgetBusy.current) return;
+    forgetBusy.current = true;
+    setForgetStatus("saving");
+    void queue.enqueue(() => api.forgetAppOutputs())
+      .then(() => { if (live.current) setForgetStatus("done"); })
+      .catch(() => { if (live.current) setForgetStatus("failed"); })
+      .finally(() => { forgetBusy.current = false; });
+  };
+  useEffect(() => {
+    if (forgetStatus !== "done") return;
+    const expiry = window.setTimeout(() => setForgetStatus("idle"), 4000);
+    return () => window.clearTimeout(expiry);
+  }, [forgetStatus]);
   const feedback = (id: string) => ({ highlighted: highlighted === id, problem: readProblems.has(id) ? text("settings-read-failed")
     : preference.status === "refused" && preference.problem.row === id ? text(preference.problem.message)
     : problemRow?.id === id ? text(problemRow.message) : undefined });
@@ -336,6 +352,11 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
           {preferences && <Row id="default-format" {...rowDetails("default-format", text)} {...feedback("default-format")}>
             <DefaultFormat preferences={preferences} change={change} />
           </Row>}
+          <Row id="forget-formats" {...rowDetails("forget-formats", text)} highlighted={highlighted === "forget-formats"}
+            problem={forgetStatus === "failed" ? text("citations-forget-failed") : undefined}>
+            <Button aria-describedby="forget-formats-description" isDisabled={forgetStatus === "saving"} onPress={forgetFormats}>{text("citations-forget-button")}</Button>
+            {forgetStatus === "done" && <span role="status" className="ui-settings-description">{text("citations-forget-done")}</span>}
+          </Row>
         </Group>}
         {page === "shortcuts" && (
           <>

@@ -1,4 +1,4 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { createElement } from "react";
 import { expect, onTestFinished, test, vi } from "vitest";
 import type { LibraryStatus } from "./bindings";
@@ -61,11 +61,11 @@ test.each<[string, LibraryStatus | null | undefined, string, ReturnType<typeof l
   ["a watched file", file(), "thesis.bib · 1,204 references", "done"],
   ["reading notices", file({ warnings: 2 }), "thesis.bib · 1,204 references · 2 reading notices", "look"],
   ["empty", zotero({ references: 0 }), "Zotero · no references", "look"],
-  ["Zotero closed, copy kept", zotero({ state: "error", error: kept, stale: true, checked_at: now - 2 * hour }), "Zotero · not updated · checked 2 hours ago", "look"],
+  ["Zotero closed, copy kept", zotero({ state: "error", error: kept, stale: true, checked_at: now - 2 * hour }), "Zotero not updated · 2 h", "stop"],
   ["never opened", zotero({ state: "error", has_snapshot: false, snapshot_name: null, references: 0, error: "Zotero is not running" }), "Zotero · not opened", "stop"],
-  ["failed switch between files", file({ state: "error", name: "missing.bib", error: "The library file is unavailable; keeping the last loaded references" }), "thesis.bib · 1,204 references", "stop"],
-  ["failed switch from a file to Zotero", file({ state: "error", zotero: true, zotero_libraries: ["user"], name: "Zotero library", error: "Zotero is not running" }), "thesis.bib · 1,204 references", "stop"],
-  ["failed switch from Zotero to a file", zotero({ state: "error", zotero: false, zotero_libraries: [], name: "missing.bib", error: "The library file is unavailable" }), "Zotero · 1,204 references", "stop"],
+  ["failed switch between files", file({ state: "error", name: "missing.bib", error: "The library file is unavailable; keeping the last loaded references" }), "thesis.bib · 1,204 references · ⁨missing.bib⁩ not opened", "stop"],
+  ["failed switch from a file to Zotero", file({ state: "error", zotero: true, zotero_libraries: ["user"], name: "Zotero library", error: "Zotero is not running" }), "thesis.bib · 1,204 references · ⁨Zotero⁩ not opened", "stop"],
+  ["failed switch from Zotero to a file", zotero({ state: "error", zotero: false, zotero_libraries: [], name: "missing.bib", error: "The library file is unavailable" }), "Zotero · 1,204 references · ⁨missing.bib⁩ not opened", "stop"],
 ])("%s", (_, status, expected, health) => {
   expect(line(status)).toBe(expected);
   expect(libraryHealth(status)).toBe(health);
@@ -102,11 +102,11 @@ test("the detail is a short line, then libraries, check time and any problem", (
     ["Zotero · 1,204 references", `My Library, Group 41, Group 9 · checked 3 hours ago, ${clockAt(3)}`]);
   expect(detail(file({ warnings: 1 }))).toEqual(["thesis.bib · 1,204 references · 1 reading notice", `checked 3 hours ago, ${clockAt(3)}`]);
   expect(detail(zotero({ state: "error", error: kept, stale: true, checked_at: now - 2 * hour }))).toEqual(
-    ["Zotero · 1,204 references", `My Library · checked 2 hours ago, ${clockAt(2)} · Zotero library could not be read. ${kept}. Open Zotero, then reload.`]);
+    ["Zotero · 1,204 references", `My Library · last read 2 hours ago, ${clockAt(2)} · Zotero library could not be read. ${kept}. Open Zotero, then reload.`]);
   expect(detail(file({ state: "error", name: "missing.bib", error: "The library file is unavailable" }))).toEqual(
-    ["thesis.bib · 1,204 references", `checked 3 hours ago, ${clockAt(3)} · missing.bib could not be opened`]);
+    ["thesis.bib · 1,204 references · missing.bib not opened", `checked 3 hours ago, ${clockAt(3)} · The library could not be opened: missing.bib. The library file is unavailable. Choose it again or reconnect the drive.`]);
   expect(detail(file({ state: "error", zotero: true, zotero_libraries: ["user"], name: "Zotero library", error: "Zotero is not running" }))).toEqual(
-    ["thesis.bib · 1,204 references", `checked 3 hours ago, ${clockAt(3)} · Zotero could not be opened`]);
+    ["thesis.bib · 1,204 references · Zotero not opened", `checked 3 hours ago, ${clockAt(3)} · Zotero library could not be read. Zotero is not running. Open Zotero, then reload.`]);
   expect(detail(file({ state: "none", has_snapshot: false, name: null }))).toEqual(["No library chosen", null]);
 });
 
@@ -151,9 +151,9 @@ test("screen readers can read the detail, including the count kept after a faile
     library: file({ state: "error", stale: true, error: "The library file is unavailable; keeping the last loaded references", references: 4, checked_at: Date.now() - 3 * hour }),
     groupName: String,
   }));
-  expect(container.querySelector(".library-status")?.textContent).toMatch(/^thesis\.bib · not updated · checked /);
+  expect(container.querySelector(".library-status")?.textContent).toMatch(/^thesis\.bib not updated · /);
   expect(strip(container.querySelector(".library-detail")?.textContent ?? null)).toMatch(
-    /^thesis\.bib · 4 references\. checked .+ ago, .+ · The library could not be opened: thesis\.bib\. The library file is unavailable; keeping the last loaded references\. Choose it again or reconnect the drive\.$/);
+    /^thesis\.bib · 4 references\. last read .+ ago, .+ · The library could not be opened: thesis\.bib\. The library file is unavailable; keeping the last loaded references\. Choose it again or reconnect the drive\.$/);
 });
 
 test("every footer text sits in an element WebKitGTK exposes, not a plain span beside one", () => {
@@ -194,6 +194,69 @@ test("the footer age ticks by itself, skips hidden windows and catches up when s
   } finally {
     visibility.mockRestore();
     vi.useRealTimers();
+  }
+});
+
+test("native hide removes the age timer; reopen catches up without repeating the live status", async () => {
+  vi.useFakeTimers({ now });
+  try {
+    const { container, unmount, rerender } = render(createElement(LibraryStatusLine, {
+      library: zotero({ state: "error", stale: true, error: kept, checked_at: now - 2 * 60_000 }), groupName: String,
+    }));
+    const live = screen.getByRole("status", { name: "Library status" });
+    const changes: (string | null)[] = [];
+    const observer = new MutationObserver(() => changes.push(live.textContent));
+    observer.observe(live, { childList: true, subtree: true, characterData: true });
+    expect(vi.getTimerCount()).toBe(1);
+    await act(async () => { vi.advanceTimersByTime(30_000); });
+    expect(container.querySelector(".library-age")?.textContent).toContain("3 min");
+    expect(changes).toHaveLength(0);
+    await act(async () => { document.documentElement.dataset.pickerHidden = ""; });
+    expect(vi.getTimerCount()).toBe(0);
+    await act(async () => { vi.advanceTimersByTime(180_000); });
+    expect(container.querySelector(".library-age")?.textContent).toContain("3 min");
+    await act(async () => { delete document.documentElement.dataset.pickerHidden; });
+    expect(container.querySelector(".library-age")?.textContent).toContain("6 min");
+    expect(vi.getTimerCount()).toBe(1);
+    expect(changes).toHaveLength(0);
+    await act(async () => { rerender(createElement(LibraryStatusLine, { library: zotero(), groupName: String })); });
+    expect(changes).toEqual(["Zotero · 1,204 references"]);
+    expect(live.textContent).toBe("Zotero · 1,204 references");
+    await act(async () => { vi.advanceTimersByTime(30_000); });
+    expect(changes).toEqual(["Zotero · 1,204 references"]);
+    observer.disconnect();
+    unmount();
+    expect(vi.getTimerCount()).toBe(0);
+  } finally { delete document.documentElement.dataset.pickerHidden; vi.useRealTimers(); }
+});
+
+test("the non-empty Library button keeps one separate announcement, and its age never repeats it", async () => {
+  vi.useFakeTimers({ now, toFake: ["Date", "setInterval", "clearInterval"] });
+  const menu = { label: "Library", isOpen: false, onOpenChange: vi.fn(), children: null };
+  let current = file({ state: "error", stale: true, problem: "missing", error: "The library file is unavailable", checked_at: now - 2 * 60_000 });
+  const { container, rerender, unmount } = render(createElement(LibraryStatusLine, { library: current, groupName: String, menu }));
+  const live = screen.getByRole("status", { name: "Library status" });
+  const button = screen.getByRole("button", { name: "Library" });
+  const announcements: (string | null)[] = [];
+  const names: string[] = [];
+  const spoken = new MutationObserver(() => announcements.push(live.textContent));
+  const named = new MutationObserver(() => names.push(button.getAttribute("aria-label")!));
+  spoken.observe(live, { childList: true, subtree: true, characterData: true });
+  named.observe(button, { attributes: true, attributeFilter: ["aria-label"] });
+  try {
+    expect(button.textContent).toBe("thesis.bib moved · 2 min");
+    expect(button.contains(live)).toBe(false);
+    expect(live.closest('[aria-hidden="true"]')).toBeNull();
+    await act(async () => { vi.advanceTimersByTime(30_000); });
+    expect(container.querySelector(".library-age")?.textContent).toContain("3 min");
+    expect(announcements).toEqual([]);
+    current = { ...current, state: "loaded", stale: false, error: null, problem: null, references: 13 };
+    await act(async () => { rerender(createElement(LibraryStatusLine, { library: current, groupName: String, menu })); });
+    expect(announcements).toEqual(["thesis.bib · 13 references"]);
+    expect(names).toEqual([]);
+    expect(screen.getAllByRole("status", { name: "Library status" })).toHaveLength(1);
+  } finally {
+    spoken.disconnect(); named.disconnect(); unmount(); vi.useRealTimers();
   }
 });
 
@@ -241,7 +304,7 @@ test("the visible age is hidden from screen readers, which read the detail inste
     groupName: String,
   }));
   const heard = strip(kept.container.querySelector(".library-detail")?.textContent ?? null) ?? "";
-  expect(heard.match(/checked 2 hours ago/g)).toHaveLength(1);
+  expect(heard.match(/last read 2 hours ago/g)).toHaveLength(1);
 });
 
 test("the status dot sits at the footer edge, 12 px before the text and centred on its x-height", () => {
@@ -250,4 +313,28 @@ test("the status dot sits at the footer edge, 12 px before the text and centred 
   const dot = styles.match(/^\.status-dot \{([^}]*)\}/m)?.[1];
   expect(dot).not.toMatch(/margin/);
   expect(dot).toMatch(/translate: 0 calc\(var\(--status-dot-size\) \/ 2 - \.5ex\);/);
+});
+
+test.each(["ltr", "rtl"])("the native Library trigger reserves its own hit area beside Find in a narrow %s footer", (dir) => {
+  // jsdom cannot lay out pixels, but it can check the native button's layout
+  // contract: an in-flow box and a non-shrinking minimum around visible content.
+  const style = document.createElement("style");
+  style.textContent = readFileSync(new FileURL("./ui/Button.css", import.meta.url), "utf8") +
+    readFileSync(new FileURL("./ui/LibraryStatus.css", import.meta.url), "utf8");
+  document.head.append(style);
+  onTestFinished(() => style.remove());
+  const open = vi.fn(), find = vi.fn();
+  render(createElement("div", { dir, style: { display: "flex", width: 80 } }, createElement(LibraryStatusLine, {
+    library: file({ state: "error", stale: true, problem: "missing", error: "the library file is unavailable; keeping the last loaded references" }),
+    groupName: String,
+    action: createElement("button", { className: "source-action library-inline-action", onClick: find }, "Find thesis.bib…"),
+    menu: { label: "Library", isOpen: false, onOpenChange: open, children: null },
+  })));
+  const trigger = screen.getByRole("button", { name: "Library" });
+  expect(trigger.textContent).toContain("thesis.bib moved");
+  expect(getComputedStyle(trigger).position).toBe("relative");
+  expect(getComputedStyle(trigger.parentElement!).minWidth).toBe("var(--control-min-size)");
+  fireEvent.click(trigger, { detail: 0 });
+  expect(open).toHaveBeenCalledWith(true);
+  expect(find).not.toHaveBeenCalled();
 });

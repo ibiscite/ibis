@@ -111,6 +111,40 @@ class EvidenceScenarios(unittest.TestCase):
         original.assert_not_called()
         self.assertNotIn("PRIVATE", json.dumps(recorder.finish(1)))
 
+    def test_library_menu_reload_records_fixed_actions_and_replays_once(self):
+        bundle = None
+        for _ in range(2):
+            recorder, native = self.recorder(bundle), Mock(spec=["click"])
+            click = native.click
+            token = ACTIVE.set(recorder)
+            try:
+                observe_native(native)
+                native.click("Library")
+                native.click("Reload Library")
+            finally:
+                ACTIVE.reset(token)
+            self.assertEqual(click.call_args_list, [unittest.mock.call("Library"), unittest.mock.call("Reload Library")])
+            bundle = recorder.finish(0)
+            self.assertEqual(bundle["result"]["outcome"], "pass")
+            self.assertEqual([(event["code"], event["phase"]) for event in bundle["events"]],
+                             [("click-library", "dispatch"), ("click-library", "complete"),
+                              ("click-reload", "dispatch"), ("click-reload", "complete")])
+            self.assertNotIn("Reload Library", json.dumps(bundle))
+
+    def test_obsolete_and_unknown_click_labels_are_refused_without_driver_or_desktop_text(self):
+        recorder, native = self.recorder(), Mock(spec=["click"])
+        click = native.click
+        token = ACTIVE.set(recorder)
+        try:
+            observe_native(native)
+            for label in ("Reload", "PRIVATE desktop clipboard /home/person"):
+                with self.assertRaisesRegex(BundleError, "^Unrecordable native input refused$"):
+                    native.click(label)
+        finally:
+            ACTIVE.reset(token)
+        click.assert_not_called()
+        self.assertEqual(recorder.finish(1)["events"], [])
+
     def test_metadata_drops_private_os_versions_probe_output_and_locale(self):
         with tempfile.TemporaryDirectory() as temporary:
             app = Path(temporary) / "missing-app"

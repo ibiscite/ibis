@@ -3,7 +3,7 @@ import { emit } from "@tauri-apps/api/event";
 import { afterEach, expect, test } from "vitest";
 import { App } from "../App";
 import { commands } from "../bindings";
-import { backend, chooseFromMore, resetApp } from "../testing/app";
+import { backend, chooseRows, resetApp } from "../testing/app";
 import { SettingsApp } from "./SettingsApp";
 import { settingsApi } from "./api";
 import { demoApi } from "./demo";
@@ -27,7 +27,7 @@ test("late Settings A and newer picker B converge on B in both real interfaces a
   const rows = await screen.findByRole("radiogroup", { name: "Rows" });
   fireEvent.click(within(rows).getByRole("radio", { name: "Compact" }));
   await waitFor(() => expect(writes).toHaveLength(1));
-  await chooseFromMore("Rows: Comfortable");
+  await chooseRows("spacious");
   await waitFor(() => expect(writes).toHaveLength(2));
   expect(writes[0]!).toBeLessThan(writes[1]!);
   await waitFor(async () => expect((await commands.pickerPreferences()).density).toBe("spacious"));

@@ -64,6 +64,14 @@ test("a menu trigger keeps its name when a narrow footer folds its visible label
   expect(screen.getByRole("button", { name: "More" }).getAttribute("aria-expanded")).toBe("false");
 });
 
+test.each([undefined, "Open actions"])("an icon-only trigger uses its explicit name or the menu label (%s)", (triggerLabel) => {
+  render(<Menu label="Actions" triggerLabel={triggerLabel} isOpen={false} onOpenChange={vi.fn()}
+    trigger={<svg aria-hidden="true" />}>
+    <MenuSection id="actions"><MenuItem id="open" label="Open" onAction={vi.fn()} /></MenuSection>
+  </Menu>);
+  expect(screen.getByRole("button", { name: triggerLabel ?? "Actions" }).getAttribute("aria-expanded")).toBe("false");
+});
+
 test.each(["macos", "windows", "linux"])("%s: a pointer opens with nothing highlighted, a shortcut highlights the first item, axe passes", async (platform) => {
   document.documentElement.dataset.platform = platform;
   const { trigger, search } = mount();

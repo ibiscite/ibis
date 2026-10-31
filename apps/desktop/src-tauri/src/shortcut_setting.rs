@@ -25,6 +25,7 @@ pub(crate) enum PickerCommand {
     Keys,
     More,
     Preview,
+    Source,
     Settings,
     Quit,
 }
@@ -37,6 +38,7 @@ impl std::fmt::Display for PickerCommand {
             Self::Keys => "Keyboard Shortcuts",
             Self::More => "More",
             Self::Preview => "Show What Will Be Pasted",
+            Self::Source => "Open the Source",
             Self::Settings => "Settings",
             Self::Quit => "Quit Ibis",
         })
@@ -141,6 +143,15 @@ fn validate_shortcut_for(
     {
         return Err(ShortcutRefusal::NeedsModifier);
     }
+    if shortcut.mods == command | Modifiers::ALT {
+        let effective = typed.map_or(shortcut, |typed| crate::picker::on_layout_with(requested, typed).0);
+        let character = typed
+            .and_then(|typed| crate::picker::character(effective, typed))
+            .or_else(|| crate::picker::us_character(effective));
+        if picker_command(effective, character) == Some(PickerCommand::Source) {
+            return Err(ShortcutRefusal::PickerShortcut(PickerCommand::Source));
+        }
+    }
     if shortcut.mods == command || shortcut.mods == command | Modifiers::SHIFT {
         // Resolve a logical letter just as registration does; physical recorder
         // codes stay put. Query the resulting event with Shift to recognize ?.
@@ -170,6 +181,9 @@ fn picker_command(shortcut: Shortcut, character: Option<char>) -> Option<PickerC
                 || (shortcut.key == code && (!typed.is_ascii() || (code == Code::KeyQ && matches!(typed, ';' | '/'))))
         })
     };
+    if letter('o', Code::KeyO) {
+        return Some(PickerCommand::Source);
+    }
     if shortcut.mods.contains(Modifiers::SHIFT) {
         if letter('f', Code::KeyF) {
             return Some(PickerCommand::Format);
@@ -180,6 +194,9 @@ fn picker_command(shortcut: Shortcut, character: Option<char>) -> Option<PickerC
     } else {
         if letter('k', Code::KeyK) {
             return Some(PickerCommand::More);
+        }
+        if letter('o', Code::KeyO) {
+            return Some(PickerCommand::Source);
         }
         if letter('q', Code::KeyQ) {
             return Some(PickerCommand::Quit);

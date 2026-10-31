@@ -19,7 +19,7 @@ pub struct App {
 }
 
 use OutputClass::{Formatted, Key};
-use PasteSafety::{Normal, RemoteDesktop, Terminal, VirtualMachine};
+use PasteSafety::{NonstandardShortcut, Normal, RemoteDesktop, Terminal, VirtualMachine};
 use System::{Macos, Windows};
 
 const fn app(
@@ -112,6 +112,15 @@ pub const APPS: &[App] = &[
     app(Macos, "com.microsoft.outlook", "Microsoft Outlook", FORMATTED, Normal),
     app(Windows, "outlook.exe", "Microsoft Outlook", FORMATTED, Normal),
     app(Macos, "com.apple.mail", "Mail", FORMATTED, Normal),
+    // App metadata and on-device reports; provenance is in docs/decisions.md.
+    app(Macos, "com.anthropic.claudefordesktop", "Claude", None, Normal),
+    app(Macos, "com.openai.codex", "ChatGPT", None, Normal),
+    app(Macos, "com.openai.chat", "ChatGPT Classic", None, Normal),
+    app(Macos, "com.apple.notes", "Notes", FORMATTED, Normal),
+    app(Macos, "notion.id", "Notion", FORMATTED, Normal),
+    app(Macos, "com.lukilabs.lukiapp", "Craft", FORMATTED, Normal),
+    app(Macos, "com.microsoft.onenote.mac", "OneNote", FORMATTED, Normal),
+    app(Macos, "org.mozilla.thunderbird", "Thunderbird", FORMATTED, Normal),
     // Markdown writing apps: Pandoc citations.
     app(Macos, "md.obsidian", "Obsidian", PANDOC, Normal),
     app(Windows, "obsidian.exe", "Obsidian", PANDOC, Normal),
@@ -120,6 +129,7 @@ pub const APPS: &[App] = &[
     app(Macos, "com.zettlr.app", "Zettlr", PANDOC, Normal),
     app(Windows, "zettlr.exe", "Zettlr", PANDOC, Normal),
     app(Macos, "pro.writer.mac", "iA Writer", PANDOC, Normal),
+    app(Macos, "com.logseq.logseq", "Logseq", PANDOC, Normal),
     // LaTeX editors: BibLaTeX citations.
     app(Macos, "texshop", "TeXShop", BIBLATEX, Normal),
     app(Windows, "texstudio.exe", "TeXstudio", BIBLATEX, Normal),
@@ -135,6 +145,7 @@ pub const APPS: &[App] = &[
     app(Macos, "com.mitchellh.ghostty", "Ghostty", None, Terminal),
     app(Macos, "co.zeit.hyper", "Hyper", None, Terminal),
     app(Macos, "org.tabby", "Tabby", None, Terminal),
+    app(Macos, "com.termius-dmg.mac", "Termius", None, Terminal),
     app(Windows, "windowsterminal.exe", "Windows Terminal", None, Terminal),
     app(Windows, "cmd.exe", "Command Prompt", None, Terminal),
     app(Windows, "conhost.exe", "Console Window Host", None, Terminal),
@@ -144,12 +155,28 @@ pub const APPS: &[App] = &[
     app(Windows, "alacritty.exe", "Alacritty", None, Terminal),
     app(Windows, "mintty.exe", "mintty", None, Terminal),
     app(Windows, "putty.exe", "PuTTY", None, Terminal),
+    // Their default Ctrl+V does not paste the clipboard.
+    app(Windows, "emacs.exe", "Emacs", None, NonstandardShortcut),
+    app(Windows, "gvim.exe", "gVim", None, NonstandardShortcut),
+    app(Macos, "com.neovide.neovide", "Neovide", None, NonstandardShortcut),
+    app(Windows, "neovide.exe", "Neovide", None, NonstandardShortcut),
     // Remote desktops: keystrokes reach another computer.
     app(Macos, "com.microsoft.rdc.macos", "Windows App", None, RemoteDesktop),
     app(Macos, "com.teamviewer.teamviewer", "TeamViewer", None, RemoteDesktop),
     app(Macos, "com.realvnc.vncviewer", "VNC Viewer", None, RemoteDesktop),
     app(Macos, "com.apple.screensharing", "Screen Sharing", None, RemoteDesktop),
     app(Macos, "com.philandro.anydesk", "AnyDesk", None, RemoteDesktop),
+    app(Macos, "tv.parsec.www", "Parsec", None, RemoteDesktop),
+    app(Macos, "com.p5sys.jump.mac.viewer", "Jump Desktop", None, RemoteDesktop),
+    app(
+        Macos,
+        "com.p5sys.jump.mac.viewer.web",
+        "Jump Desktop",
+        None,
+        RemoteDesktop,
+    ),
+    app(Macos, "com.nomachine.nxdock", "NoMachine", None, RemoteDesktop),
+    app(Macos, "com.omnissa.horizon.client.mac", "Horizon", None, RemoteDesktop),
     app(
         Macos,
         "com.citrix.receiver.icaviewer.mac",
@@ -163,6 +190,10 @@ pub const APPS: &[App] = &[
     app(Windows, "vncviewer.exe", "VNC Viewer", None, RemoteDesktop),
     app(Windows, "anydesk.exe", "AnyDesk", None, RemoteDesktop),
     app(Windows, "wfica32.exe", "Citrix Workspace", None, RemoteDesktop),
+    app(Windows, "parsecd.exe", "Parsec", None, RemoteDesktop),
+    app(Windows, "nxplayer.exe", "NoMachine", None, RemoteDesktop),
+    app(Windows, "nxplayer.bin", "NoMachine", None, RemoteDesktop),
+    app(Windows, "vmware-view.exe", "Horizon", None, RemoteDesktop),
     // Virtual machines: keystrokes reach a guest system.
     app(
         Macos,

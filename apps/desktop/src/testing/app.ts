@@ -3,8 +3,9 @@
 import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { clearMocks, mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { vi } from "vitest";
+import { listen } from "@tauri-apps/api/event";
 import type * as api from "../api";
-import type { FilePreview, FileSelection, PreviewIntent } from "../bindings";
+import type { Density, FilePreview, FileSelection, PreviewIntent } from "../bindings";
 
 export async function resetApp() {
   cleanup();
@@ -30,6 +31,31 @@ export async function chooseFromMore(name: string, role: "menuitem" | "menuitemc
   const item = await screen.findByRole(role, { name });
   // fireEvent.click omits the focus a real pointer/keyboard activation gives
   // the row; the shortcuts dialog uses it to choose its return destination.
+  act(() => item.focus());
+  fireEvent.click(item);
+}
+
+/** Choose a named row density from More's submenu, without cycling values. */
+export async function chooseRows(density: Density) {
+  if (!screen.queryByRole("menu")) fireEvent.click(screen.getByRole("button", { name: /^More/ }));
+  fireEvent.click(await screen.findByRole("menuitem", { name: /^Rows: / }));
+  const item = await screen.findByRole("menuitemradio", { name: density.charAt(0).toUpperCase() + density.slice(1) });
+  act(() => item.focus());
+  fireEvent.click(item);
+}
+
+export function libraryButton(): HTMLButtonElement {
+  return document.querySelector<HTMLButtonElement>(".library-status-trigger")!;
+}
+
+/** Open the footer's library menu, leaving another menu first if needed. */
+export async function chooseFromLibrary(name: string, role: "menuitem" | "menuitemcheckbox" = "menuitem") {
+  if (!document.getElementById("library-menu")) {
+    const other = screen.queryByRole("menu");
+    if (other) fireEvent.keyDown(other, { key: "Escape" });
+    fireEvent.click(libraryButton());
+  }
+  const item = await screen.findByRole(role, { name });
   act(() => item.focus());
   fireEvent.click(item);
 }
@@ -90,6 +116,7 @@ export type Handler = (args: Record<string, unknown> & PreviewRequest & { query:
 /** Mock the Rust commands; returns the list of commands called. */
 export function backend(overrides: Record<string, Handler> = {}): string[] {
   const calls: string[] = [];
+  let lastLibrary: Partial<api.LibraryStatus> = {};
   let activityTicket = 0;
   let preferences = { citation_style: null, density: "comfortable", larger_text: false, show_paste_preview: true, search_mark: false, paste: true } as api.PickerPreferences;
   let copyFormat: api.CopyFormat = "pandoc";
@@ -117,7 +144,7 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
     preference_revision: () => ++revision,
     set_picker_preferences: () => null,
     // Opened from no app Ibis knows: the default format applies.
-    picker_destination: () => ({ app: null, app_id: null, automatic: null, remembered: null, unreadable: false, can_paste: false, output_question: null }),
+    picker_destination: () => ({ app: null, app_id: null, app_identity: null, automatic: null, remembered: null, unreadable: false, can_paste: false, output_question: null, paste: null, paste_question: false, can_choose_paste: false }),
     remember_app_output: () => null,
     forget_app_outputs: () => null,
     login_item: () => ({ name: "Ibis", enabled: false, problem: null }),
@@ -127,6 +154,7 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
     update_available: () => false,
     update_picker_activity: ({ ticket }: Record<string, unknown>) => ticket === null ? ++activityTicket : ticket === activityTicket ? ticket : null,
     find_sources: () => ({ zotero: "absent", list: 1, files: [], cut_short: false }),
+    library_source: ({ zoteroOnly }) => ({ kind: zoteroOnly || (lastLibrary.snapshot_zotero ?? lastLibrary.zotero) ? "zotero" : "file", name: zoteroOnly ? "Zotero" : lastLibrary.snapshot_name ?? lastLibrary.name ?? "library", icon: null, status_icon: null }),
     library_status: () => ({ state: "loaded", has_snapshot: true, zotero: false, name: "refs.bib", snapshot_name: "refs.bib", references: 1, warnings: 0, error: null, problem: null, note: null }),
   };
   mockWindows("main");
@@ -156,11 +184,12 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
         receipts.set(result.ticket, { request: args as PreviewRequest, preview: result });
         return result;
       });
-      if (cmd === "library_status") return Promise.resolve(value).then((status) => ({ revision: "1", ...status as object }));
+      if (cmd === "library_status") return Promise.resolve(value).then((status) => { lastLibrary = status as api.LibraryStatus; return { revision: "1", ...status as object }; });
       if (cmd === "search") return Promise.resolve(value).then((reply) => Array.isArray(reply) ? { revision: reply[0]?.revision ?? "1", results: reply } : reply);
       return value;
     },
     { shouldMockEvents: true },
   );
+  void listen<api.LibraryStatus>("library:changed", (event) => { lastLibrary = event.payload; });
   return calls;
 }

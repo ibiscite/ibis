@@ -6,6 +6,7 @@ const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
 const read = (name: string) => readFileSync(new FileURL(`./${name}`, import.meta.url), "utf8");
 const tokens = read("tokens.css");
 const native = read("nativeAppearance.css");
+const libraryStatus = read("ui/LibraryStatus.css");
 
 test("readable overlays use the panel surface at 92% for menus and 96% for sheets", () => {
   expect(tokens).toMatch(/--surface-overlay:\s*color-mix\(in srgb, var\(--surface\) 92%, transparent\)/);
@@ -101,10 +102,12 @@ test("Acrylic text roles keep contrast over black and white backdrops in both th
       const background = tint.slice(0, 3).map((c) => c * tint[3]! + under * (1 - tint[3]!));
       // The shared macOS hover is black 4.5% / white 6%.
       const hover = background.map((c) => theme ? c * .94 + 255 * .06 : c * .955);
-      for (const role of ["--text", "--muted", "--citation", "--status-done", "--status-look", "--status-stop"]) {
+      for (const role of ["--text", "--muted", "--citation", "--status-done", "--status-stop"]) {
         const foreground = hexes(role === "--text" || role === "--muted" ? shared : roles, role)[theme]!;
         for (const fill of [background, hover]) expect(contrast(foreground, fill), `${role}/${theme}/${under}`).toBeGreaterThanOrEqual(4.5);
       }
+      expect(hexes(roles, "--status-look")).toEqual(hexes(tokens, "--status-look"));
+      expect(contrast(hexes(roles, "--status-look")[theme]!, hexes(tokens, "--surface")[theme]!)).toBeGreaterThanOrEqual(3);
     }
   }
   // Accessibility overrides follow the material rule, never exposing its tint.
@@ -151,13 +154,22 @@ test("the window edge is a hairline, never a white rim or glow (prototype round 
   expect(edge.match(/box-shadow:\s*([^;]+);/)?.[1]).toBe("inset 0 0 0 var(--border-width) var(--glass-edge, transparent)");
 });
 
-test.each(["vibrancy", "liquid-glass"])("every colour role keeps 4.5:1 over the qualified veiled %s backdrops", (mode) => {
+test("the Look glyph keeps the frozen colours and an opaque adjacent surface for 3:1 contrast", () => {
+  expect(hexes(tokens, "--status-look")).toEqual([[176, 122, 0], [245, 197, 66]]);
+  expect(libraryStatus).toMatch(/\.status-dot\[data-health="look"\]\s*\{[^}]*outline:\s*var\(--border-width\) solid var\(--surface\)/);
+});
+
+test.each(["vibrancy", "liquid-glass"])("text keeps 4.5:1 and the Look glyph 3:1 with the qualified %s material", (mode) => {
   const { body } = macBlock();
   const [light, dark] = rgba(body, "--vibrancy-tint");
   const over = (veil: [number, number, number, number], under: number) => veil.slice(0, 3).map((c) => c * veil[3] + under * (1 - veil[3]));
   const roles = materialRoles(mode);
-  expect(luminance(hexes(roles, "--status-look")[1]!)).toBeGreaterThan(luminance(hexes(tokens, "--status-look")[1]!));
-  for (const role of ["--citation", "--status-done", "--status-look", "--status-stop"]) {
+  expect(hexes(roles, "--status-look")).toEqual(hexes(tokens, "--status-look"));
+  const [surfaceLight, surfaceDark] = hexes(tokens, "--surface");
+  const [lookLight, lookDark] = hexes(roles, "--status-look");
+  expect(contrast(lookLight!, surfaceLight!)).toBeGreaterThanOrEqual(3);
+  expect(contrast(lookDark!, surfaceDark!)).toBeGreaterThanOrEqual(3);
+  for (const role of ["--citation", "--status-done", "--status-stop"]) {
     const [onLight, onDark] = hexes(roles, role);
     for (const under of [141, 255]) expect(contrast(onLight!, over(light!, under)), `${role} light over ${under}`).toBeGreaterThanOrEqual(4.5);
     for (const under of [0, 120]) expect(contrast(onDark!, over(dark!, under)), `${role} dark over ${under}`).toBeGreaterThanOrEqual(4.5);
