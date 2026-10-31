@@ -77,6 +77,7 @@ fn deep_snapshot_rejection_is_safe() -> Result<(), Box<dyn std::error::Error>> {
                     value = serde_json::Value::Array(vec![value]);
                 }
                 let mut record = Record {
+                    added_at: None,
                     id: ItemRef {
                         library: LibraryId::file(b"synthetic-depth-fixture"),
                         key: if mode == 3 { "".into() } else { "work".into() },
@@ -91,6 +92,7 @@ fn deep_snapshot_rejection_is_safe() -> Result<(), Box<dyn std::error::Error>> {
                 let mut objects = vec![LibraryObject::Record(record)];
                 if mode == 2 {
                     objects.push(LibraryObject::Record(Record {
+                        added_at: None,
                         id: ItemRef {
                             library: LibraryId::file(b"synthetic-depth-fixture"),
                             key: "work".into(),

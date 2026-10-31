@@ -223,6 +223,7 @@ fn container_fallback_uses_trimmed_visible_text() {
         (Some(""), Some(" <b> </b> "), None),
     ] {
         let mut record = Record {
+            added_at: None,
             id: ItemRef {
                 library: LibraryId::file(b"synthetic"),
                 key: "record:a".into(),

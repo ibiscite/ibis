@@ -93,13 +93,13 @@ test("an empty search keeps the prepared citation, page and Enter available", as
     copy_file_citation: (args) => { const citation = prepared(args); copied.push(citation.request); return { text: citation.preview.text, warnings: [] }; },
   });
   await act(async () => { render(<App />); });
-  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Edit citation" })); });
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: /^Edit / })); });
   await act(async () => { fireEvent.change(screen.getByRole("textbox", { name: "Page" }), { target: { value: "12" } }); });
   await act(async () => { closeCitationDetails(); });
   await act(async () => { fireEvent.change(searchBox(), { target: { value: "no matches" } }); });
-  expect(screen.getByRole("list", { name: "Selected references" })).toBeTruthy();
+  expect(screen.getByRole("group", { name: "Selected references" })).toBeTruthy();
   expect(screen.getByRole("button", { name: "Remove a from the selection" })).toBeTruthy();
-  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Edit citation" })); });
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: /^Edit / })); });
   expect((screen.getByRole("textbox", { name: "Page" }) as HTMLInputElement).value).toBe("12");
   await act(async () => { closeCitationDetails(); });
   expect(keys().getByRole("button", { name: /Copy/ })).toBeTruthy();
@@ -137,7 +137,7 @@ test.each([
   backend({ search: () => [result("a", "First")], show_copied_notice: (args) => { notices.push(args); return delivered; } });
   await act(async () => { render(<App />); });
   await enter();
-  expect(notices).toEqual([{ text: "@a", delivery: null }]);
+  expect(notices).toEqual([{ text: "@a", delivery: null, summary: null }]);
   await act(async () => { await emit("picker:hidden"); await vi.advanceTimersByTimeAsync(3000); await emit("picker:shown"); });
   await act(async () => { fireEvent.click(screen.getByRole("button", { name: /^More/ })); });
   expect(screen.getByRole("group", { name: new RegExp(`^Last outcome\\. ${title}`) })).toBeTruthy();

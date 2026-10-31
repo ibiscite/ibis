@@ -12,72 +12,10 @@
   background: transparent;
 }
 
-.copied-notice {
-  --notice-surface: var(--surface);
-  --notice-text: var(--text);
-  --notice-citation: var(--citation);
-  --notice-done: var(--status-done);
-  box-sizing: border-box;
-  display: flex;
-  align-items: center;
-  gap: .5rem;
-  max-width: 100%;
-  font: var(--type-strong-weight) var(--type-body-size) / var(--type-body-line) var(--font-family);
-  color: var(--notice-text);
-  background: var(--notice-surface);
-  box-shadow: var(--shadow-toast);
-  border: var(--border-width) solid color-mix(in srgb, var(--line) 45%, transparent);
-  opacity: 0;
-}
+/* One card, with the same shadow gutter and geometry on every system. */
+.copied-notice { width: max-content; max-width: calc(100% - 2 * var(--space-4)); max-height: calc(100% - 2 * var(--space-4)); margin: var(--space-4) auto; overflow: hidden; opacity: 0; --notice-from: calc(-1 * var(--space-2)); }
 .copied-notice:empty { display: none; }
-.copied-notice strong { flex: none; font-weight: var(--type-strong-weight); }
-.copied-notice code {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font: 500 var(--type-citation-size) var(--font-mono);
-  color: var(--notice-citation);
-}
-.copied-notice-mark {
-  flex: none;
-  width: 1.25rem;
-  height: 1.25rem;
-  padding: .2rem;
-  box-sizing: border-box;
-  border-radius: 50%;
-  fill: none;
-  stroke: var(--notice-surface);
-  stroke-width: 2.2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  background: var(--notice-done);
-}
 .copied-notice-source { display: none; }
-
-/* The macOS pill on every system. It keeps 16 points of the window for its
-   shadow on every side, and never clips its words: when the citation would
-   be cut short it moves to a second line (copyFeedback.ts). */
-.copied-notice {
-  width: max-content;
-  max-width: calc(100% - 2rem);
-  min-height: 2.75rem;
-  margin: 1rem auto;
-  padding: 0 1.125rem 0 .5rem;
-  border-radius: 1.375rem;
-  --notice-from: -.5rem;
-}
-.copied-notice[data-stacked] {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  column-gap: .5rem;
-  padding: .5rem 1rem .5rem .5rem;
-  border-radius: 1.125rem;
-}
-.copied-notice[data-stacked] .copied-notice-mark { grid-row: 1 / span 2; align-self: start; margin-top: .125rem; }
-.copied-notice[data-stacked] code { grid-column: 2; }
-/* Copied without a paste: the same mark, quieter, so "pasted" stands out. */
-.copied-notice[data-outcome="copied"] { --notice-done: var(--muted); }
 
 /* 2.8 s in view, as in the prototype: a 120 ms fade in when shown, then a
    200 ms fade out when the app's timer marks it as leaving (notice.rs). */
@@ -106,23 +44,8 @@
   .copied-notice { --notice-from: 0; }
 }
 
-/* High contrast and reduced transparency: the opaque system surface, a full border, no colour-only meaning. */
-@media (prefers-contrast: more), (forced-colors: active), (prefers-reduced-transparency: reduce) {
-  .copied-notice {
-    --notice-surface: Canvas;
-    --notice-text: CanvasText;
-    --notice-citation: CanvasText;
-    --notice-done: CanvasText;
-    border: 2px solid CanvasText;
-    box-shadow: none;
-  }
+@media (prefers-reduced-transparency: reduce) {
+  .copied-notice { background: var(--surface); }
 }
-
-/* Linux without a compositor: an opaque window, so the toast fills it with square corners. */
-:root.notice-window[data-surface="opaque"],
-:root.notice-window[data-surface="opaque"] body { background: var(--surface); }
-:root.notice-window[data-surface="opaque"] .copied-notice { width: 100%; max-width: none; height: 100%; margin: 0; border-radius: 0; }
-@media (prefers-contrast: more), (forced-colors: active), (prefers-reduced-transparency: reduce) {
-  :root.notice-window[data-surface="opaque"],
-  :root.notice-window[data-surface="opaque"] body { background: Canvas; }
-}
+/* An opaque native surface still contains the same inset card. */
+:root.notice-window[data-surface="opaque"] body { background: var(--surface-window); }

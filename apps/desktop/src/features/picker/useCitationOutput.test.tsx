@@ -1,6 +1,6 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
-import type { FilePreview } from "../../bindings";
+import type { FilePreview_Serialize as FilePreview } from "../../bindings";
 import type { LibraryStatus } from "../../api";
 import type { CitationReference } from "./choice";
 import { pickerText } from "../../messages";
@@ -32,7 +32,7 @@ function reference(revision = "1", key = "synthetic"): CitationReference {
 }
 
 function preview(text: string): FilePreview {
-  return { text, html: null, warnings: [], ticket: "synthetic-ticket", content_hash: "synthetic-hash" };
+  return { text, spans: [{ item: 0, text }], html: null, warnings: [], ticket: "synthetic-ticket", content_hash: "synthetic-hash" };
 }
 
 function options(overrides: Partial<Options>): Options {
@@ -43,6 +43,19 @@ function options(overrides: Partial<Options>): Options {
     refreshSnapshot: vi.fn(), ...overrides,
   };
 }
+
+test("an empty reconciliation cannot retire a settled ticket when no other preview ran", async () => {
+  const previewFileCitation = vi.fn<Preview>().mockResolvedValue(preview("Settled citation"));
+  const initial = options({ previewFileCitation });
+  const { result, rerender } = renderHook(useCitationOutput, { initialProps: initial });
+  await waitFor(() => expect(result.current.shown).toMatchObject({ text: "Settled citation" }));
+  const settled = result.current.shown;
+  rerender({ ...initial, chosen: [] });
+  expect(result.current.displayedOutput).toBeUndefined();
+  rerender(initial);
+  expect(result.current.shown).toBe(settled);
+  expect(previewFileCitation).toHaveBeenCalledOnce();
+});
 
 test("reopening replaces unfinished preview work but preserves a settled canonical receipt", async () => {
   const pending: ((value: FilePreview) => void)[] = [];
@@ -62,6 +75,22 @@ test("reopening replaces unfinished preview work but preserves a settled canonic
 });
 
 const conflictMessage = "These references have conflicting citation keys. Resolve them in your library or choose a formatted style.";
+
+test("returning from B to A waits for a fresh ticket instead of reusing A's retired receipt", async () => {
+  const pending: ((value: FilePreview) => void)[] = [];
+  const previewFileCitation = vi.fn<Preview>(() => new Promise((resolve) => pending.push(resolve)));
+  const initial = options({ previewFileCitation });
+  const { result, rerender } = renderHook(useCitationOutput, { initialProps: initial });
+  await act(async () => { pending[0]!(preview("Original A")); });
+  expect(result.current.shown).toMatchObject({ text: "Original A" });
+  rerender({ ...initial, chosen: [{ ...initial.chosen[0]!, locator: { label: "page", value: "12", input: "page-editor" } }] });
+  rerender(initial);
+  expect(result.current.shown).toBeNull();
+  await act(async () => { pending[1]!(preview("Retired B")); });
+  expect(result.current.shown).toBeNull();
+  await act(async () => { pending[2]!({ ...preview("Fresh A"), ticket: "fresh-a" }); });
+  expect(result.current.shown).toMatchObject({ text: "Fresh A", fileTicket: "fresh-a" });
+});
 
 test("replacing, clearing and unmounting a selection aborts obsolete engine previews", () => {
   const signals: AbortSignal[] = [];
@@ -87,7 +116,7 @@ test.each([
   { edit: "page", details: { locator: { label: "page", value: "42–45" }, form: "normal" } },
   { edit: "cleared page", details: { locator: null, form: "normal" } },
   { edit: "narrative form", details: { locator: { label: "page", value: "12" }, form: "narrative" } },
-  { edit: "suppressed author", details: { locator: { label: "page", value: "12" }, form: "author-omitted" } },
+  { edit: "suppressed author", details: { locator: { label: "page", value: "12" }, form: "year-only" } },
 ] as const)("a $edit edit aborts the old preview and keeps the new receipt after a late result", async ({ details }) => {
   const pending: ((value: FilePreview) => void)[] = [];
   const previewFileCitation = vi.fn<Preview>(() => new Promise((resolve) => pending.push(resolve)));

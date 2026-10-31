@@ -57,8 +57,13 @@ and its local data. New Ibis data flows need a recorded decision ([decisions](do
   installer/extraction/backup files. AppImage extraction also writes unpacked
   app files. Runtime data and caches are described below.
 
-Ibis does not save search queries or citation history as an app feature. The
-interface uses a WebView, which can write browser data and caches. Crash dumps
+Ibis does not save search queries. Recent citations save only opaque library/item
+identities and the originating app ID in local WebView storage: at most 20 apps
+and 30 identities per app. They contain no citation text, pages, forms or document
+information. More → Forget Recent Citations clears this history. Unknown apps and
+sample references are not remembered. Recently added reads the library's own
+added-date metadata; it is not a record of documents you open.
+The interface uses a WebView, which can write browser data and caches. Crash dumps
 can contain memory, including library text, queries and paths. These are not
 the same as Ibis's settings.
 
@@ -194,4 +199,4 @@ library files and Zotero data in place.
 | --- | --- | --- | --- |
 | Metadata lookup / reference verification | The identifier you choose, such as a DOI | Crossref / OpenAlex / doi.org | Only on request, after an explanation |
 
-Citation history and manual diagnostic export are not shipped features.
+Manual diagnostic export is not a shipped feature.

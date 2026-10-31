@@ -216,6 +216,13 @@ scrolls, and only while its content overflows. Content taller than the middle
 area (a small window, 200% text) scrolls there, never under the header or
 footer. A clipped hint or a second scroll bar is a bug, fixed with a
 regression test at normal and Larger text and at the minimum size.
+The middle keeps a minimum of about one text line. In a short frame with
+enlarged text, the header's vertical gaps and the footer hint row give way;
+the shelf, footer and control targets retain their normal sizes. The keys
+still work and More opens their reference. Long format labels shorten within
+their row, preserving space for Pin. The shelf keeps its existing folded counts
+and one-line form. Notices use the full middle content width and the
+body-text size, wrapping naturally.
 
 **Empty search: first time and every day** [C11]. Same frame, different
 content. While no library is chosen, the welcome screen (**First run**). For
@@ -503,8 +510,9 @@ not add references.
 footer always names the library searched; its tooltip and the top of More add
 libraries, check times and problems. **One place for each status**
 (maintainer, 2026-10-30): the footer's leading status is the only place
-library state lives, and nothing is ever inserted above the results, so a
-problem never pushes the list down. The status is a button: it opens the
+library state lives. Library problems stay there, so they never push the list
+down; citation refusals and settings notices use the middle scroller. The status
+is a button: it opens the
 **library menu** (the library with its count and age, a Reload button, the
 Zotero libraries as toggle chips when there are several, Choose Library… ⇧⌘O
 (the Mac's "Open…": pick a .bib file or a Zotero library),
@@ -590,11 +598,15 @@ page", where the Page field lives beside the page itself.
 - **Text.** Text colours; key formats monospace with punctuation in `--muted`;
   formatted styles in the UI font. A read-only `<bdi dir="auto">` line with an
   ellipsis; the full text is in the tooltip and the wide pane.
+  The selected citation's Preview region stays a keyboard focus target;
+  hiding or removing it returns its focus to Search.
 - **Page and form** (#1366). A reference's menu holds its Page field (a page
   or range, including Roman numerals) and the three name forms. Opening the
   menu from a selected segment puts focus in Page. With no built selection,
   the same menu on the highlighted result edits it; the first edit adds that
   result to the shelf; subsequent searches cannot change its page or form.
+  With a pasted list, the first edit adds the complete list to the selection
+  in paste order before changing that reference's page or form.
   Editing keeps focus in the menu, clears a queued copy and prepares a new
   preview.
   Clearing Page removes only that reference's page. Optional page labels such
@@ -610,12 +622,21 @@ page", where the Page field lives beside the page itself.
   remain visible with the paste preview hidden. Engine losses name the reference
   and field beside the preview; an unsupported form explains the refusal there
   and blocks copying until corrected. Enter leaves that explanation visible.
+  The full refusal wraps in the middle notice area before Details is opened,
+  with no line clamp or separate scroller. Each new refusal, even one with
+  repeated wording, instantly reveals its start in the middle scroller after
+  layout without taking focus; subsequent scrolling can reach its entire text while
+  the shelf band stays one line. Automatic result highlighting and layout
+  reflow preserve the refusal's reading position; explicit arrow navigation
+  can reveal a newly highlighted result.
   Source-field and sentence-case warnings name the reference and appear in both
   preview details and copy feedback. A copy carrying either warning stays open
   with its warnings until dismissed; it never becomes a clean-copy receipt.
   Mixed narrative clusters, other locator controls, prefixes and suffixes
   remain in #24/#1315. The menu keeps the shared keyboard focus and touch
-  targets.
+  targets. A form's whole row, including its label and example, is clickable;
+  its native radio stays inside that row with the same pointer target even
+  when it is outside the group's Tab sequence.
 - **Year-only citations.** Keep supported style forms available through conditional
   layouts. Each selected item's output must show its issued year, or the style's
   own no-date term for an undated or zero-year item; otherwise refuse the citation.
@@ -625,7 +646,9 @@ page", where the Page field lives beside the page itself.
   `--citation`, 20 px tall (`--space-5`), scaled with text, `aria-hidden`,
   mirrored in RTL, 45 % while pending, `CanvasText` in contrast modes [C16].
 - **States.** Pending: the old text dims for 300 ms, then "Formatting…"; Enter
-  waits. Failed: a Stop icon, "Couldn't format in APA. Choose another style, or
+  waits. Resolving the destination can refresh recents; a waiting Enter keeps
+  its reference through that read and cancels if it changes or cannot be read.
+  Failed: a Stop icon, "Couldn't format in APA. Choose another style, or
   copy keys.", no Enter hint. Stale: a Look icon, "The library changed. Reading
   it again…". Warnings: a trailing pill ("1 warning"; "Reference entry" for a numeric
   style, which copies the entry because its number depends on the document).
@@ -1064,7 +1087,9 @@ breathe. Rows kept from before stay instead, with only the footer saying
   choosing a real library produces ordinary citations. The
   footer, receipt and announcement describe the action actually taken:
   "Paste into Word", "Copied. Press ⌘V to paste." (the right key per system)
-  when pasting is off or unavailable, or "Copied" with the reason. The footer shows the library, Shortcuts and More.
+  when pasting is off or unavailable, or "Copied" with the reason. The footer
+  shows the library, More and the primary Copy or Paste action; Shortcuts lives
+  in More.
 
 ### Everyday details (rebuild, 2026-10-26)
 

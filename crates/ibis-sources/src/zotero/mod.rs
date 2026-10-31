@@ -153,7 +153,7 @@ pub fn map_item(library: LibraryId, item: &ZoteroItem) -> Result<MappedItem, Map
     if item
         .fields
         .keys()
-        .any(|name| !kind.fields.iter().any(|field| field.field == *name))
+        .any(|name| name != "dateAdded" && !kind.fields.iter().any(|field| field.field == *name))
     {
         warn(&mut warnings, MappingWarning::UnknownField);
     }
@@ -253,6 +253,10 @@ pub fn map_item(library: LibraryId, item: &ZoteroItem) -> Result<MappedItem, Map
     // full provenance list and existing cross-library ambiguity/refusal rules.
     Ok(MappedItem {
         record: Record {
+            added_at: item
+                .fields
+                .get("dateAdded")
+                .and_then(|date| ibis_core::contract::added_date(date)),
             id: ItemRef {
                 library,
                 key: item.key.clone(),

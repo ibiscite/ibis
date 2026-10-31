@@ -1,0 +1,5 @@
+/* Full refusal text belongs to the middle scroller, beside the one-line shelf.
+   It must contribute its natural height, including at 200% text. */
+.notices { min-width: 0; inline-size: 100%; align-self: stretch; box-sizing: border-box; font: var(--type-body-size) / var(--type-body-line) var(--font-family); }
+.picker-content:has(> .notices > .citation-problem) { overflow-anchor: none; scroll-behavior: auto; }
+.notices > .citation-problem { min-width: 0; inline-size: 100%; max-inline-size: 100%; box-sizing: border-box; max-block-size: none; white-space: normal; overflow: visible; overflow-wrap: anywhere; user-select: text; }

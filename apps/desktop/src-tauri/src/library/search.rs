@@ -60,6 +60,9 @@ impl PreviewRequests {
 
 #[derive(Serialize, specta::Type)]
 pub(crate) struct SearchResult {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[specta(optional)]
+    pub(super) recent: Option<RecentGroup>,
     /// This row comes from the bundled invented library, including while a replacement search is pending.
     #[specta(optional)]
     pub(super) sample: bool,
@@ -90,6 +93,13 @@ pub(crate) struct SearchResult {
     container: Option<String>,
     /// CSL item type, such as `article-journal`.
     item_type: String,
+}
+
+#[derive(Serialize, specta::Type)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum RecentGroup {
+    Cited,
+    Added,
 }
 
 /// Longest container sent to the interface, in characters, ellipsis included.
@@ -141,6 +151,7 @@ impl SearchResult {
             .find(|text| !text.is_empty())
             .map(|text| capped(text, CONTAINER_LIMIT));
         Self {
+            recent: None,
             sample: false,
             revision: revision.into(),
             id: serde_json::json!(&record.id),

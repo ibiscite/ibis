@@ -7,6 +7,7 @@ import { leaveNotice, noticePlatform, renderNotice } from "./copyFeedback";
 import { copiedNoticeText } from "./messages";
 import { setPlatform } from "./nativeAppearance";
 import "./tokens.css";
+import "./ui/CopyReceipt.css";
 import "./notice.css";
 
 const root = document.getElementById("notice");

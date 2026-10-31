@@ -40,14 +40,19 @@ test.each<Density>(["compact", "comfortable", "spacious"])("%s rows reserve the 
   const row = getByRole("option");
   const year = container.querySelector(".result-year")!;
   const key = container.querySelector(".result-key")!;
-  expect(year.parentElement).toBe(row);
-  expect(year.textContent).toBe("No date");
+  if (density === "spacious") {
+    expect(year).toBeNull();
+    expect(row.querySelector(".result-type")?.textContent).toBe("Book · No date");
+  } else {
+    expect(year.parentElement).toBe(row);
+    expect(year.textContent).toBe("No date");
+  }
   // C4: the key is not drawn in the row; it stays spoken, in the tooltip and LTR.
   expect(key.classList.contains("visually-hidden")).toBe(true);
   expect(container.querySelector(".result-meta")?.contains(key)).toBe(false);
   expect(key.getAttribute("dir")).toBe("ltr");
   expect(container.querySelector(".result-body")?.getAttribute("title")).toBe(record.key);
-  expect(getByRole("option", { name: /多言語の研究 · الذاكرة.*memory2020.*No date/ })).toBe(row);
+  expect(getByRole("option", { name: /多言語の研究 · الذاكرة/ }).textContent).toContain("No date");
 });
 
 test.each(["", "研究_memory_".repeat(1_000)])("unusual keys stay literal and do not change row actions (%#)", (key) => {

@@ -10,15 +10,20 @@ import { closestMatchWarnings } from "./rows";
 export type OutputToken = { opening: number; choice: number; delivery: number };
 type Prepared = FormattedCitation & { fileTicket?: string; fileHash?: string };
 export type SessionView = {
+  appId?: string | null;
   queryKey: string; format: Choice; snapshotRevision: string | undefined; defaultChoice: string;
   chosen: CitationReference[]; shown: Prepared | "failed" | "stale" | null;
+  previewVisible: boolean;
   searchPending: boolean; ready: boolean; saving: boolean; shouldAsk: boolean; output: OutputToken;
 };
 type Pending = { choice: string | null; selection: SessionState["selected"]; queryKey: string;
   format: Choice | null; output: OutputToken; question?: "open" | "answered" };
 type Flight = { id: number; session: number; presentation: number; choice: string; format: Choice; opening: number; delivery: number; warnings: string[];
+  references: unknown[]; appId: string | null;
   phase: "copy" | "hide" | "notice"; outcome?: Copied;
   owner: { context: number; session: number; visibility: number; output: OutputToken } };
+export type RemovedReference = { token: number; reference: CitationReference; before: string[]; after: string[] };
+export type ShelfCopied = Copied & { closestMatches?: readonly string[] };
 export type SessionState = {
   query: string; interpretLocators: boolean; active: number; selected: Map<string, CitationReference>; selectionChanged: boolean;
   session: number; presentation: number | null; visibility: number; interaction: number; context: number; viewInteraction: number; view: SessionView | null;
@@ -26,6 +31,8 @@ export type SessionState = {
   hiddenAt: number | null; escapedQuery: { text: string; interpretLocators: boolean } | null; restored: number; permissionDetour: boolean;
   pendingCopy: Pending | null; flights: Flight[]; activeCopy: number | null; nextCopy: number; lastSuccessfulCopy: number;
   copied: Copied | null; copyError: string | null; lastOutcome: string | null;
+  shelfCopied: ShelfCopied | null; copyNotice: Copied | null; removed: RemovedReference | null;
+  recentCopy: { app: string | null; ids: unknown[] } | null;
 };
 type Completion = { id: number; session: number };
 export type SessionEvent =
@@ -35,7 +42,9 @@ export type SessionEvent =
   | { type: "dismiss"; copied?: Copied }
   | { type: "highlight"; index: number; cancel?: boolean }
   | { type: "toggle"; result?: SearchResult; locator?: Readonly<Locator> | null }
-  | { type: "reference"; reference: CitationReference; change: Pick<CitationReference, "locator" | "form">; selectedOnly?: boolean }
+  | { type: "undo-reference" | "expire-removal"; removal: RemovedReference }
+  | { type: "remove-reference"; reference: CitationReference }
+  | { type: "reference"; reference: CitationReference; change: Pick<CitationReference, "locator" | "form">; selectedOnly?: boolean; initialSelection?: readonly CitationReference[] }
   | { type: "enter"; choice: string | null; output?: OutputToken }
   | { type: "question"; format?: Choice | null; output?: OutputToken; answer: "open" | "answered" | "cancel" }
   | { type: "hidden"; now: number }
@@ -61,14 +70,14 @@ export function initialSession(query = "", copied: Copied | null = null): Sessio
     session: 0, presentation: null, visibility: 0, interaction: 0, context: 0, viewInteraction: -1, view: null,
     presentationSubscribed: false, readingPresentation: false, retryPresentation: false,
     hiddenAt: null, escapedQuery: null, restored: 0, permissionDetour: false,
-    pendingCopy: null, flights: [], activeCopy: null, nextCopy: 0, lastSuccessfulCopy: 0, copied, copyError: null, lastOutcome: null };
+    pendingCopy: null, flights: [], activeCopy: null, nextCopy: 0, lastSuccessfulCopy: 0, copied, shelfCopied: null, copyNotice: copied, removed: null, recentCopy: null, copyError: null, lastOutcome: null };
 }
 export const sessionQueryKey = (state: SessionState) => JSON.stringify([state.query, state.interpretLocators]);
 const sameOutput = (a: OutputToken, b: OutputToken) => a.opening === b.opening && a.choice === b.choice && a.delivery === b.delivery;
 const ownsClipboard = (s: SessionState, f: Flight) => s.activeCopy === f.id && s.context === f.owner.context && s.session === f.owner.session;
 const ownsInteraction = (s: SessionState, f: Flight) => ownsClipboard(s, f) && s.view?.output.delivery === f.delivery;
 const ownsCompletion = (s: SessionState, f: Flight, output: OutputToken) => ownsInteraction(s, f) && s.visibility === f.owner.visibility && sameOutput(f.owner.output, output);
-const changed = (s: SessionState, change: Partial<SessionState>): SessionState => ({ ...s, ...change, pendingCopy: null, interaction: s.interaction + 1, context: s.context + 1 });
+const changed = (s: SessionState, change: Partial<SessionState>): SessionState => ({ ...s, shelfCopied: null, copyNotice: null, ...change, pendingCopy: null, interaction: s.interaction + 1, context: s.context + 1 });
 const finish = (s: SessionState, f: Flight): SessionState => ({ ...s, flights: s.flights.filter(({ id }) => id !== f.id), activeCopy: s.activeCopy === f.id ? null : s.activeCopy });
 
 function readPresentation(s: SessionState, retry = false): [SessionState, SessionEffect[]] {
@@ -87,8 +96,11 @@ function advance(s: SessionState): [SessionState, SessionEffect[]] {
   const presentation = s.presentation;
   if (presentation === null) return [s, []];
   const key = choiceKey(v.chosen);
-  if (p.selection !== s.selected || p.queryKey !== sessionQueryKey(s) || p.choice !== null && p.choice !== key ||
+  if (p.selection !== s.selected || p.queryKey !== sessionQueryKey(s) ||
     p.format !== null && p.format !== v.format || !sameOutput(p.output, v.output)) return [{ ...s, pendingCopy: null }, []];
+  // A destination read can refresh recents and temporarily retire the current
+  // rows. Keep the captured choice until the reply can confirm or reject it.
+  if (p.choice !== null && p.choice !== key) return v.searchPending ? [s, []] : [{ ...s, pendingCopy: null }, []];
   if (p.choice === null) {
     if (v.searchPending) return [s, []];
     if (!v.chosen.length) return [{ ...s, pendingCopy: null }, []];
@@ -105,8 +117,8 @@ function advance(s: SessionState): [SessionState, SessionEffect[]] {
   const existing = s.flights.find((f) => f.choice === key && f.format === v.format && f.opening === v.output.opening && f.delivery === v.output.delivery && f.owner.visibility === s.visibility && f.owner.session === s.session);
   if (existing) return [{ ...s, activeCopy: existing.id, flights: s.flights.map((f) => f === existing ? { ...f, owner } : f) }, []];
   const id = s.nextCopy + 1;
-  const flight: Flight = { id, session: s.session, presentation, choice: key, format: v.format, opening: v.output.opening, delivery: v.output.delivery, owner, phase: "copy", warnings: closestMatchWarnings(v.chosen) };
-  return [{ ...s, flights: [...s.flights, flight], activeCopy: id, nextCopy: id, copied: null, copyError: null },
+  const flight: Flight = { id, session: s.session, presentation, choice: key, format: v.format, opening: v.output.opening, delivery: v.output.delivery, owner, phase: "copy", warnings: closestMatchWarnings(v.chosen), references: v.chosen.filter((r) => !r.sample).map((r) => r.id), appId: v.appId ?? null };
+  return [{ ...s, flights: [...s.flights, flight], activeCopy: id, nextCopy: id, copied: null, shelfCopied: null, copyNotice: null, copyError: null },
     [{ type: "copy", id, session: s.session, ticket: v.shown.fileTicket, hash: v.shown.fileHash }]];
 }
 
@@ -118,28 +130,54 @@ export function reduceSession(s: SessionState, event: SessionEvent): [SessionSta
       const contextChanged = old && (old.format !== v.format || old.snapshotRevision !== v.snapshotRevision || s.selected.size === 0 && old.defaultChoice !== v.defaultChoice);
       const same = old && Object.entries(v).every(([key, value]) => key === "chosen" ? choiceKey(old.chosen) === choiceKey(v.chosen) :
         key === "output" ? sameOutput(old.output, v.output) : old[key as keyof SessionView] === value);
-      return advance(same && s.viewInteraction === s.interaction ? s : { ...s, view: v, viewInteraction: s.interaction, context: s.context + (contextChanged ? 1 : 0) });
+      const newOutput = old && (old.format !== v.format || old.snapshotRevision !== v.snapshotRevision);
+      return advance(same && s.viewInteraction === s.interaction ? s : { ...s, view: v, viewInteraction: s.interaction, context: s.context + (contextChanged ? 1 : 0),
+        shelfCopied: newOutput || !v.previewVisible ? null : s.shelfCopied, copyNotice: newOutput ? null : s.copyNotice });
     }
     case "query": return [changed(s, { query: event.value, interpretLocators: true, escapedQuery: null }), []];
     case "literal": return [changed(s, { interpretLocators: false }), []];
     case "escape-search": return [changed(s, { escapedQuery: { text: s.query, interpretLocators: s.interpretLocators }, query: "", interpretLocators: true }), []];
-    case "sample": return [changed(s, { selected: new Map(), copied: null, copyError: null }), []];
+    case "sample": return [changed(s, { selected: new Map(), copied: null, removed: null, copyError: null }), []];
     case "cancel": return [s.pendingCopy ? { ...s, pendingCopy: null } : s, []];
-    case "dismiss": return [s.copied && (!event.copied || event.copied === s.copied) ? { ...s, copied: null } : s, []];
+    case "dismiss": return [s.copied && (!event.copied || event.copied === s.copied) ? { ...s, copied: null, shelfCopied: null, copyNotice: null } : s, []];
     case "highlight": {
       if (event.index === s.active) return event.cancel ? reduceSession(s, { type: "cancel" }) : [s, []];
-      return [{ ...s, active: event.index, interaction: s.interaction + 1, context: s.context + (s.selected.size === 0 ? 1 : 0), pendingCopy: event.cancel ? null : s.pendingCopy }, []];
+      return [{ ...s, active: event.index, shelfCopied: null, copyNotice: null, interaction: s.interaction + 1, context: s.context + (s.selected.size === 0 ? 1 : 0), pendingCopy: event.cancel ? null : s.pendingCopy }, []];
     }
     case "toggle": {
       if (!event.result) return reduceSession(s, { type: "cancel" });
       const selected = new Map(s.selected), key = idKey(event.result.id);
-      if (!selected.delete(key)) selected.set(key, { ...event.result, locator: event.locator ? { ...event.locator } : null });
-      return [changed(s, { selected, selectionChanged: true }), []];
+      const previous = selected.get(key), order = [...selected.keys()], index = order.indexOf(key);
+      let removed = s.removed;
+      if (previous) {
+        selected.delete(key);
+        removed = { token: s.context + 1, reference: previous, before: order.slice(0, index), after: order.slice(index + 1) };
+      } else {
+        selected.set(key, { ...event.result, locator: event.locator ? { ...event.locator } : null });
+        if (removed && idKey(removed.reference.id) === key) removed = null;
+      }
+      return [changed(s, { selected, removed, selectionChanged: true }), []];
+    }
+    case "remove-reference": {
+      if (s.selected.get(idKey(event.reference.id)) !== event.reference) return [s, []];
+      return reduceSession(s, { type: "toggle", result: event.reference });
+    }
+    case "expire-removal": return [s.removed === event.removal ? { ...s, removed: null } : s, []];
+    case "undo-reference": {
+      if (s.removed !== event.removal) return [s, []];
+      const { reference, before, after } = event.removal, key = idKey(reference.id);
+      if (s.selected.has(key)) return [{ ...s, removed: null }, []];
+      const entries = [...s.selected], next = entries.findIndex(([id]) => after.includes(id));
+      let previous = -1;
+      for (let i = 0; i < entries.length; i++) if (before.includes(entries[i]![0])) previous = i;
+      entries.splice(next >= 0 ? next : previous >= 0 ? previous + 1 : entries.length, 0, [key, reference]);
+      return [changed(s, { selected: new Map(entries), removed: null, selectionChanged: true }), []];
     }
     case "reference": {
       const key = idKey(event.reference.id), previous = s.selected.get(key);
       if (event.selectedOnly ? previous !== event.reference : previous ? previous !== event.reference : s.selected.size > 0) return reduceSession(s, { type: "cancel" });
       const selected = new Map(s.selected);
+      if (selected.size === 0) for (const reference of event.initialSelection ?? []) selected.set(idKey(reference.id), reference);
       selected.set(key, { ...event.reference, ...event.change });
       return [changed(s, { selected, selectionChanged: event.selectedOnly ? s.selectionChanged : true }), []];
     }
@@ -166,14 +204,14 @@ export function reduceSession(s: SessionState, event: SessionEvent): [SessionSta
       if (retry) return readPresentation(s);
       return [s.pendingCopy ? { ...s, pendingCopy: null, copyError: pickerText.copyError } : s, []];
     }
-    case "hiding": return [{ ...s, readingPresentation: false, retryPresentation: false, visibility: s.visibility + 1, pendingCopy: null }, []];
-    case "hidden": return [{ ...s, presentation: null, readingPresentation: false, retryPresentation: false, visibility: s.visibility + 1, hiddenAt: event.now, pendingCopy: null }, []];
+    case "hiding": return [{ ...s, readingPresentation: false, retryPresentation: false, visibility: s.visibility + 1, pendingCopy: null, shelfCopied: null, copyNotice: null }, []];
+    case "hidden": return [{ ...s, presentation: null, readingPresentation: false, retryPresentation: false, visibility: s.visibility + 1, hiddenAt: event.now, pendingCopy: null, shelfCopied: null, copyNotice: null }, []];
     case "shown": {
       const expired = !s.permissionDetour && s.hiddenAt !== null && event.now - s.hiddenAt > 60_000;
       const escaped = s.hiddenAt !== null ? s.escapedQuery : null;
-      s = expired ? changed(s, { query: "", interpretLocators: true, selected: new Map(), active: 0, escapedQuery: null }) :
+      s = expired ? changed(s, { query: "", interpretLocators: true, selected: new Map(), removed: null, active: 0, escapedQuery: null }) :
         escaped ? changed(s, { query: s.query || escaped.text, interpretLocators: escaped.interpretLocators, escapedQuery: null, restored: s.restored + 1 }) : s;
-      return [{ ...s, session: s.session + 1, presentation: event.presentation, readingPresentation: false, retryPresentation: false, visibility: s.visibility + 1, viewInteraction: -1, hiddenAt: null, pendingCopy: null }, []];
+      return [{ ...s, session: s.session + 1, presentation: event.presentation, readingPresentation: false, retryPresentation: false, visibility: s.visibility + 1, viewInteraction: -1, hiddenAt: null, pendingCopy: null, shelfCopied: null, copyNotice: null }, []];
     }
     case "retire": return [{ ...s, presentation: null, presentationSubscribed: false, readingPresentation: false, retryPresentation: false, session: s.session + 1, visibility: s.visibility + 1, viewInteraction: -1, pendingCopy: null, flights: [], activeCopy: null }, []];
   }
@@ -181,24 +219,30 @@ export function reduceSession(s: SessionState, event: SessionEvent): [SessionSta
   if (!f) return [s, []];
   const complete = (state: SessionState): [SessionState, SessionEffect[]] => {
     if (!ownsInteraction(state, f)) return [finish(state, f), []];
-    return [finish(changed(state, { selected: new Map(), permissionDetour: false }), f), [{ type: "consume", output: f.owner.output }]];
+    return [finish(changed(state, { selected: new Map(), removed: null, shelfCopied: state.shelfCopied, copyNotice: state.copyNotice, permissionDetour: false }), f), [{ type: "consume", output: f.owner.output }]];
   };
   switch (event.type) {
     case "copy-failed": return f.phase !== "copy" ? [s, []] : [finish(ownsCompletion(s, f, event.output) ? { ...s, copyError: event.message } : s, f), event.stale ? [{ type: "refresh" }] : []];
     case "copied": {
       if (f.phase !== "copy") return [s, []];
       const outcome = { ...event.outcome, warnings: [...event.outcome.warnings, ...f.warnings] };
-      if (f.id > s.lastSuccessfulCopy) s = { ...s, lastSuccessfulCopy: f.id, lastOutcome: copiedNoticeText.title };
+      if (f.id > s.lastSuccessfulCopy) s = { ...s, lastSuccessfulCopy: f.id, lastOutcome: copiedNoticeText.title, recentCopy: { app: f.appId, ids: f.references } };
+      // Consuming a built citation can reveal a different default reference.
+      // Confirm on the shelf only when its next target is this exact output.
+      const sameVisibleOutput = s.view?.previewVisible && s.view.defaultChoice === f.choice && s.view.shown && typeof s.view.shown === "object" && s.view.shown.text === outcome.text;
       // Delivery can be revoked after the native write but before its response.
       // Confirm that write in place, without hiding or forwarding its old proof.
       // A newer citation, operation or opening still owns its own feedback.
       if (!s.pendingCopy && ownsClipboard(s, f) && s.visibility === f.owner.visibility && f.owner.output.opening === event.output.opening
         && f.owner.output.choice === event.output.choice && f.delivery !== event.output.delivery) {
-        return [finish(changed(s, { selected: new Map(), permissionDetour: false,
-          copied: { text: outcome.text, warnings: outcome.warnings }, escapedQuery: null }), f), [{ type: "consume", output: event.output }]];
+        const copied = { text: outcome.text, warnings: outcome.warnings };
+        return [finish(changed(s, { selected: new Map(), removed: null, permissionDetour: false,
+          copied, shelfCopied: sameVisibleOutput ? { ...copied, closestMatches: f.warnings } : null,
+          copyNotice: sameVisibleOutput ? null : copied, escapedQuery: null }), f), [{ type: "consume", output: event.output }]];
       }
       if (!ownsCompletion(s, f, event.output)) return [finish(s, f), s.activeCopy === f.id && f.owner.session === s.session && sameOutput(f.owner.output, event.output) ? [{ type: "consume", output: f.owner.output }] : []];
-      s = { ...s, copied: outcome, escapedQuery: null, flights: s.flights.map((flight) => flight === f ? { ...f, phase: "hide", outcome } : flight) };
+      s = { ...s, copied: outcome, shelfCopied: sameVisibleOutput ? { ...outcome, closestMatches: f.warnings } : null,
+        copyNotice: sameVisibleOutput ? null : outcome, escapedQuery: null, flights: s.flights.map((flight) => flight === f ? { ...f, phase: "hide", outcome } : flight) };
       return afterCopy(outcome, event.pinned) === "hide-and-notify" ? [{ ...s, permissionDetour: true }, [{ type: "hide", id: f.id, session: f.session, presentation: f.presentation }]] : complete(s);
     }
     case "hid": {

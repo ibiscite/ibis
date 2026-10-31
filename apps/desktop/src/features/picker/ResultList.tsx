@@ -70,12 +70,18 @@ export function ResultList({ results, active, selected, density, hoverAllowed = 
   const handlers = useMemo<RowHandlers>(() => ({ onPointerDown, onClick, onTileClick, onContext: context }), [onPointerDown, onClick, onTileClick, context]);
   return (
     <ul id="results" role="listbox" aria-label={pickerText.results} onMouseMove={onMouseMove}>
-      {results.map((r, i) => (
-        <ResultRow key={idKey(r.id)} record={r} index={i} active={i === active} added={selected.has(idKey(r.id))}
+      {results.map((r, i) => <ResultGroup key={idKey(r.id)} record={r} previous={results[i - 1]}>
+        <ResultRow record={r} index={i} active={i === active} added={selected.has(idKey(r.id))}
           density={density} hoverAllowed={hoverAllowed} library={libraryOf(r.source ?? "")} handlers={handlers} />
-      ))}
+      </ResultGroup>)}
     </ul>
   );
+}
+
+function ResultGroup({ record, previous, children }: { record: SearchResult; previous?: SearchResult; children: React.ReactNode }) {
+  return <>{record.recent && record.recent !== previous?.recent && <li role="presentation" className="results-heading recent-heading">
+    <h2 id={`recent-${record.recent}`}>{record.recent === "cited" ? "Cited here recently" : "Recently added"}</h2>
+  </li>}{children}</>;
 }
 
 /** One search result as an option of the result list. */
@@ -99,6 +105,8 @@ export const ResultRow = memo(function ResultRow({ record: r, index: i, active, 
       id={`result-${i}`}
       role="option"
       aria-selected={active}
+      aria-describedby={r.recent ? `recent-${r.recent}` : undefined}
+      data-density={density}
       data-citation-selected={added || undefined}
       data-active={active || undefined}
       onPointerDownCapture={handlers.onPointerDown}
@@ -137,9 +145,9 @@ export const ResultRow = memo(function ResultRow({ record: r, index: i, active, 
             {!compact && r.container && r.authors && <span className="result-separator" aria-hidden="true">{" · "}</span>}
             {!compact && r.container && <span className="result-container" dir="auto">{r.container}</span>}
           </span>
-          {itemType && <span className="result-type">{itemType}</span>}
           {library && <span className="result-library">{library}</span>}
         </span>
+        {itemType && <span className="result-type">{itemType}{" · "}<bdi>{r.year ?? pickerText.noDate}</bdi></span>}
         {why && <span className="result-why">{pickerText.matchedIn(why)}</span>}
         {/* The type in words where the row does not show it; the tile's icon is decorative. */}
         {!itemType && rowText.itemType(r.item_type) && <span className="visually-hidden">{rowText.itemType(r.item_type)}</span>}
@@ -147,7 +155,7 @@ export const ResultRow = memo(function ResultRow({ record: r, index: i, active, 
         {/* The key is searchable and spoken but not drawn: the shelf shows the citation (C4). */}
         <span className="result-key visually-hidden" dir="ltr">{r.key}</span>
       </span>
-      <span className="result-year">{r.year ?? pickerText.noDate}</span>
+      {density !== "spacious" && <span className="result-year">{r.year ?? pickerText.noDate}</span>}
     </Option>
   );
 });

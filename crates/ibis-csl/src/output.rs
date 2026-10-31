@@ -14,7 +14,15 @@ enum Outputs {
         // Preserve processor text before the adapter folds bibliography line breaks.
         text_parts: Option<Vec<String>>,
         coverage: Vec<usize>,
+        spans: Vec<Span>,
     },
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Span {
+    item: Option<usize>,
+    text: String,
 }
 
 pub(crate) fn refused(input: &Prepared) -> CitationResult {
@@ -51,6 +59,7 @@ pub(crate) fn result(
         rtf,
         text_parts,
         coverage,
+        spans,
     } = output
     else {
         return Ok(refused(input));
@@ -89,16 +98,62 @@ pub(crate) fn result(
     {
         return Err(FormatError::Runtime);
     }
+    let items: Vec<_> = input
+        .outcomes
+        .iter()
+        .filter_map(|outcome| match outcome {
+            ItemOutcome::Rendered { item } => Some(*item),
+            _ => None,
+        })
+        .collect();
+    if spans.iter().map(|span| span.text.as_str()).collect::<String>() != text
+        || spans
+            .iter()
+            .any(|span| span.item.is_some_and(|item| item >= items.len()))
+        || (0..items.len()).any(|item| !spans.iter().any(|span| span.item == Some(item)))
+    {
+        return Err(FormatError::Runtime);
+    }
+    // Project validated presentation equivalents onto the canonical text while
+    // retaining emphasis. Clipboard HTML and RTF remain untouched.
+    let canonical = canonical_runs(&text, &runs, superscripts);
+    let mut offset = 0;
+    let nodes = spans
+        .into_iter()
+        .map(|span| {
+            let end = offset + span.text.len();
+            let content = if let Some(runs) = &canonical {
+                let mut position = 0;
+                runs.iter()
+                    .filter_map(|run| {
+                        let start = position;
+                        position += run.text.len();
+                        let from = offset.max(start);
+                        let to = end.min(position);
+                        (from < to).then(|| DisplayRun {
+                            text: run.text[from - start..to - start].into(),
+                            ..run.clone()
+                        })
+                    })
+                    .collect()
+            } else {
+                vec![DisplayRun {
+                    text: span.text,
+                    ..DisplayRun::default()
+                }]
+            };
+            offset = end;
+            DisplayNode {
+                item: span.item.map(|item| items[item]),
+                content,
+            }
+        })
+        .collect();
     Ok(CitationResult::new(
         text,
         Some(html),
         Some(rtf),
-        DisplayTree {
-            nodes: vec![DisplayNode {
-                item: None,
-                content: runs,
-            }],
-        },
+        DisplayTree { nodes },
         input.outcomes.clone(),
         input.losses.clone(),
         input.notices.clone(),
@@ -164,7 +219,7 @@ fn one_line(text: &str) -> String {
 
 /// Consume exact text, allowing only processor-known glyph presentation and
 /// nonbreaking spaces. Do not fold case, compatibility characters or space counts.
-fn presentation_matches(text: &str, runs: &RichText, superscripts: &BTreeMap<char, String>) -> bool {
+fn presentation_matches(text: &str, runs: &[DisplayRun], superscripts: &BTreeMap<char, String>) -> bool {
     let mut shown = runs
         .iter()
         .flat_map(|run| run.text.chars().map(move |ch| (ch, run.script)))
@@ -202,11 +257,67 @@ fn presentation_matches(text: &str, runs: &RichText, superscripts: &BTreeMap<cha
     shown.next().is_none()
 }
 
+fn canonical_runs(text: &str, runs: &[DisplayRun], superscripts: &BTreeMap<char, String>) -> Option<Vec<DisplayRun>> {
+    let mut shown = runs
+        .iter()
+        .flat_map(|run| run.text.chars().map(move |ch| (ch, run)))
+        .peekable();
+    let mut result: Vec<DisplayRun> = Vec::new();
+    for original in text.chars() {
+        let &(ch, run) = shown.peek()?;
+        let script = if original == ch || js_space(original) && js_space(ch) {
+            shown.next();
+            run.script
+        } else {
+            let expansion = match run.script {
+                Script::Superscript => superscripts.get(&original)?.clone(),
+                Script::Subscript => match original {
+                    '₀'..='₉' => char::from_u32(original as u32 - '₀' as u32 + '0' as u32)?.to_string(),
+                    '₊' => "+".into(),
+                    '₋' => "−".into(),
+                    '₌' => "=".into(),
+                    '₍' => "(".into(),
+                    '₎' => ")".into(),
+                    _ => return None,
+                },
+                Script::Normal => return None,
+            };
+            for expected in expansion.chars() {
+                let (actual, style) = shown.next()?;
+                if actual != expected || style.script != run.script {
+                    return None;
+                }
+            }
+            // The canonical character already carries its raised/lowered glyph.
+            Script::Normal
+        };
+        if let Some(last) = result.last_mut().filter(|last| {
+            last.italic == run.italic
+                && last.bold == run.bold
+                && last.script == script
+                && last.small_caps == run.small_caps
+                && last.underline == run.underline
+        }) {
+            last.text.push(original);
+        } else {
+            result.push(DisplayRun {
+                text: original.to_string(),
+                italic: run.italic,
+                bold: run.bold,
+                script,
+                small_caps: run.small_caps,
+                underline: run.underline,
+            });
+        }
+    }
+    shown.next().is_none().then_some(result)
+}
+
 /// Only processor-generated passive tags are permitted in canonical clipboard HTML.
 /// Output is rejected rather than silently changing a citation's visible text.
-fn parse_html(html: &str) -> Result<RichText, FormatError> {
+fn parse_html(html: &str) -> Result<Vec<DisplayRun>, FormatError> {
     let mut runs = Vec::new();
-    let mut stack = vec![TextRun::default()];
+    let mut stack = vec![DisplayRun::default()];
     let mut names = Vec::new();
     let mut rest = html;
     while !rest.is_empty() {
@@ -251,8 +362,10 @@ fn parse_html(html: &str) -> Result<RichText, FormatError> {
                                 ("vertical-align", "sup") => style.script = Script::Superscript,
                                 ("vertical-align", "sub") => style.script = Script::Subscript,
                                 ("vertical-align", "baseline") => style.script = Script::Normal,
-                                ("font-variant", "small-caps" | "normal")
-                                | ("text-decoration", "none" | "underline") => {}
+                                ("font-variant", "small-caps") => style.small_caps = true,
+                                ("font-variant", "normal") => style.small_caps = false,
+                                ("text-decoration", "underline") => style.underline = true,
+                                ("text-decoration", "none") => style.underline = false,
                                 _ => return Err(FormatError::Runtime),
                             }
                         }
@@ -286,7 +399,7 @@ fn parse_html(html: &str) -> Result<RichText, FormatError> {
 
 // Bibliography text trims each entry; HTML may keep a space just inside its div.
 // Ignore only those entry boundaries, preserving all interior text and spacing.
-fn trim_entry(runs: &mut [TextRun]) {
+fn trim_entry(runs: &mut [DisplayRun]) {
     for run in runs.iter_mut() {
         run.text = run.text.trim_start_matches(js_space).to_owned();
         if !run.text.is_empty() {
@@ -357,6 +470,14 @@ mod tests {
         assert_eq!(runs[0].text, "例 & 😀 &lt;");
         assert!(runs[0].italic);
     }
+    #[test]
+    fn passive_style_resets_and_canonical_projection_preserve_every_display_flag() {
+        let runs = parse_html("<span style=\"font-variant: small-caps;text-decoration:underline\">Caps<span style=\"font-variant:normal;text-decoration:none\">Plain</span>Tail</span>").unwrap();
+        assert!(runs[0].small_caps && runs[0].underline);
+        assert!(!runs[1].small_caps && !runs[1].underline);
+        assert!(runs[2].small_caps && runs[2].underline);
+        assert_eq!(canonical_runs("CapsPlainTail", &runs, &BTreeMap::new()), Some(runs));
+    }
 }
 
 #[cfg(test)]
@@ -376,7 +497,7 @@ mod review_tests {
     }
     fn output(text: &str, html: &str, rtf: &str) -> Result<CitationResult, FormatError> {
         result(
-            &json!({"status":"rendered","coverage":[0],"text":text,"html":html,"rtf":rtf}).to_string(),
+            &json!({"status":"rendered","coverage":[0],"spans":[{"item":0,"text":text}],"text":text,"html":html,"rtf":rtf}).to_string(),
             &prepared(),
             &BTreeMap::from([('²', "2".into()), ('™', "TM".into())]),
         )
@@ -425,7 +546,7 @@ mod review_tests {
     }
     #[test]
     fn bibliography_line_folding_requires_original_text_evidence() {
-        let json = json!({"status":"rendered","coverage":[0],"text":"Synthetic area", "html":"Synthetic\u{a0} area", "rtf":"{\\rtf1 canonical}", "text_parts":["Synthetic\r\narea\n"]});
+        let json = json!({"status":"rendered","coverage":[0],"spans":[{"item":0,"text":"Synthetic area"}],"text":"Synthetic area", "html":"Synthetic\u{a0} area", "rtf":"{\\rtf1 canonical}", "text_parts":["Synthetic\r\narea\n"]});
         let rendered = result(&json.to_string(), &prepared(), &BTreeMap::new()).unwrap();
         assert_eq!(rendered.text, "Synthetic area");
         assert_eq!(rendered.html.as_deref(), Some("Synthetic\u{a0} area"));
@@ -438,7 +559,7 @@ mod review_tests {
     #[test]
     fn incomplete_or_duplicate_representation_coverage_never_exposes_candidates() {
         for coverage in [vec![], vec![1], vec![0, 0]] {
-            let output = json!({"status":"rendered","coverage":coverage,"text":"Synthetic","html":"Synthetic","rtf":"canonical"});
+            let output = json!({"status":"rendered","coverage":coverage,"spans":[{"item":0,"text":"Synthetic"}],"text":"Synthetic","html":"Synthetic","rtf":"canonical"});
             let refused = result(&output.to_string(), &prepared(), &BTreeMap::new()).unwrap();
             assert!(refused.copy_content(1).is_none());
             assert!(refused.text.is_empty());
