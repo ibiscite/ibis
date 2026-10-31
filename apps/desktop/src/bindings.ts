@@ -203,7 +203,7 @@ export type Copied_Deserialize = {
 	text: string,
 	/**  What the chosen syntax could not express, and other problems the user should see. */
 	warnings: string[],
-	/**  Unique write token for this copy's one-use paste proof. */
+	/**  Unique clipboard-write identity for receipts, even without a native paste proof. */
 	delivery?: number | null,
 };
 
@@ -211,7 +211,7 @@ export type Copied_Serialize = {
 	text: string,
 	/**  What the chosen syntax could not express, and other problems the user should see. */
 	warnings: string[],
-	/**  Unique write token for this copy's one-use paste proof. */
+	/**  Unique clipboard-write identity for receipts, even without a native paste proof. */
 	delivery?: number | null,
 };
 
