@@ -24,9 +24,9 @@ export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library
   showPastePreview: boolean;
   pinned: boolean;
   actions: { density: (density: Density) => void; preview: () => void; pin: () => void; keys: () => void; settings: (() => void) | null;
-    /** Offered when Ibis remembers formats for apps. */
+    /** Offered for a proven ordinary app target. */
     copyOnlyHere?: { app: string; choose: () => void } | null;
-    forgetApps?: (() => void) | null; quit: () => void };
+    quit: () => void };
 }) {
   return (
     <MoreMenu isOpen={isOpen} onOpenChange={onOpenChange} buttonRef={buttonRef} searchRef={searchRef}
@@ -47,7 +47,6 @@ export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library
           </MenuSection>
         </MenuSubmenu>
         {actions.copyOnlyHere && <MenuItem id="copy-only-here" label={pickerText.copyOnlyHere(actions.copyOnlyHere.app)} onAction={actions.copyOnlyHere.choose} />}
-        {actions.forgetApps && <MenuItem id="forget-apps" label={pickerText.forgetApps} title={pickerText.forgetAppsTitle} onAction={actions.forgetApps} />}
       </MenuSection>
       <MenuSection id="view-toggles">
         <MenuItem id="pin" label={pinned ? pickerText.stopKeepingOpen : pickerText.keepOpenMenu} keys={label(keysFor("pin"))} checked={pinned} onAction={actions.pin} />

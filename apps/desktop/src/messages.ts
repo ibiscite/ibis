@@ -182,8 +182,6 @@ export const pickerText = {
   copyOnlyHere: (app: string) => `Copy only in ${app}`,
   automatic: "Automatic",
   globalDefault: "Use as global default",
-  forgetApps: "Forget formats for apps",
-  forgetAppsTitle: "Forget app formats and paste choices; unrecognised apps will ask again",
   preview: "Preview",
   citationDetails: "Citation details",
   editCitation: "Edit citation",

@@ -7,7 +7,7 @@ type CopyToken = { opening: number; choice: number; delivery: number };
 
 import type { Operation } from "./Notices";
 
-type DestinationApi = Partial<Pick<typeof nativeApi, "pickerDestination" | "rememberAppOutput" | "forgetAppOutputs">>;
+type DestinationApi = Partial<Pick<typeof nativeApi, "pickerDestination" | "rememberAppOutput">>;
 export function choiceOf(output: AppOutput | null): Choice | null {
   return output ? output.key ?? `style:${output.style}` : null;
 }
@@ -16,7 +16,7 @@ export function outputOf(choice: Choice): AppOutput {
   return style ? { style } : { key: choice as CopyFormat };
 }
 
-export function useDestination({ pickerDestination, rememberAppOutput, forgetAppOutputs }: DestinationApi, { fallback, fallbackReady = true, chooseDefault, report }: {
+export function useDestination({ pickerDestination, rememberAppOutput }: DestinationApi, { fallback, fallbackReady = true, chooseDefault, report }: {
   fallback: Choice;
   fallbackReady?: boolean;
   chooseDefault: (choice: Choice) => void;
@@ -146,18 +146,6 @@ export function useDestination({ pickerDestination, rememberAppOutput, forgetApp
     window.clearTimeout(timer);
     await quit();
   };
-  const forgetAll = () => {
-    if (!forgetAppOutputs) return;
-    choices.current += 1;
-    delivery.current += 1;
-    lastPolicy.current = undefined;
-    setPicked(false);
-    save(forgetAppOutputs, () => {
-      setDestination((old) => old && { ...old, remembered: null });
-      setOnceOnly(false);
-      if (destination?.paste || destination?.unreadable) read(false);
-    });
-  };
   const scope = !picked ? null : once !== null || onceOnly ? `${choiceName(format)} for this citation`
     : remembered ? `${choiceName(format)} remembered for this ${destination?.output_question ?? "app"}`
       : !app ? `${choiceName(format)} used as global default` : null;
@@ -166,5 +154,5 @@ export function useDestination({ pickerDestination, rememberAppOutput, forgetApp
   const shouldAsk = askPaste || Boolean(rememberAppOutput && destination?.app_id && destination.output_question && !remembered && once === null);
   return { app: rememberAppOutput ? app : null, format, ready, saving, scope, shouldAsk, remembered: remembered !== null, read, choose,
     onceOnly, toggleOnce: () => { choices.current += 1; setOnceOnly((old) => !old); }, copyToken, isCurrentCopy, consumeOnce, restoreAutomatic, useDefault,
-    askPaste, pasteChoices, choosePaste, quitAfterSaving, forgetAll: forgetAppOutputs ? forgetAll : null };
+    askPaste, pasteChoices, choosePaste, quitAfterSaving };
 }

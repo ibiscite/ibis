@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
+import { forgetAppOutputs } from "./api";
 import { resetApp, result } from "./testing/app";
 import { deliveryHarness } from "./testing/delivery";
 
@@ -56,9 +58,11 @@ test("the first unknown-app Enter asks in the format chooser; approval needs fre
   expect(h.document.pastes).toHaveLength(2);
 });
 
-test("Copy only is remembered across reopening and its receipt stays true", async () => {
-  const h = await open();
-  await enter();
+test.each(["first Enter", "recognised app's format chooser"])("Copy only through %s is remembered across reopening and its receipt stays true", async (route) => {
+  const h = await open((h) => { h.target.verified = route !== "first Enter"; });
+  if (route === "first Enter") await enter();
+  else await act(async () => { fireEvent.click(screen.getByRole("button", { name: /^Copy as / })); });
+  expect(screen.getByRole("menuitem", { name: "Paste into Example Writer from now on" })).toBeTruthy();
   await answer("Copy only");
   expect(h.copy.calls).toHaveLength(0);
   await enter();
@@ -140,7 +144,7 @@ test("an unknown app without a proven target only copies and never asks for appr
   expect(receipt(h)).toBe("Copied. Automatic paste is not approved for this app");
 });
 
-test.each(["Automatic", "Forget formats for apps"])("%s resets unknown-app approval and brings the question back", async (reset) => {
+test.each(["Automatic", "a Settings reset notification"])("%s resets unknown-app approval and brings the question back", async (reset) => {
   const h = await open();
   await enter();
   await answer("Paste into Example Writer from now on");
@@ -148,9 +152,10 @@ test.each(["Automatic", "Forget formats for apps"])("%s resets unknown-app appro
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: /^Copy as / })); });
     await answer(reset);
   } else {
-    await act(async () => { fireEvent.click(screen.getByRole("button", { name: /^More/ })); });
-    await answer(reset);
-    await act(async () => { await vi.advanceTimersByTimeAsync(200); });
+    await act(async () => {
+      await forgetAppOutputs();
+      await emit("preferences:changed");
+    });
   }
   expect(h.copy.calls).toHaveLength(0);
   await enter();
