@@ -295,6 +295,13 @@ on what changed. An opt-in "Download quietly, install when I quit" downloads
 and verifies in the background and installs only on an explicit quit; asking
 first stays the default (maintainer, 2026-10-28).
 
+2026-10-30: PR #1504 review found that an automatic dialog could steal Enter
+from Search and install. Automatic offers now wait for empty, idle input; all
+native defaults decline, and only deliberate Install activation accepts. Idle
+reports carry one-use interaction ownership and cannot revive after hide/reopen.
+No input text is sent to the updater. See the native-source audit in
+[testing](testing.md#update-consent-keyboard-safety).
+
 The maintainer approved publishing the current engineering closeout through
 Release Please as 0.2.1 after its PRs pass review and CI (2026-10-29).
 Stable deployment retains the maintainer's one-click GitHub approval.
