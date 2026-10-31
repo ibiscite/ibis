@@ -484,9 +484,22 @@ def preserved_settings(settings, library):
         saved = json.loads(contents)
     except (OSError, ValueError, RecursionError):
         raise AssertionError("the updated app's synthetic settings could not be read") from None
-    for field, expected in (("library", {"bibtex": str(library)}), ("shortcut", SHORTCUT)):
-        if not isinstance(saved, dict) or saved.get(field) != expected:
-            raise AssertionError(f"the synthetic {field} choice was not preserved")
+    choice = saved.get("library") if isinstance(saved, dict) else None
+    same_library = False
+    if isinstance(choice, dict) and set(choice) == {"bibtex"} and isinstance(choice["bibtex"], str):
+        try:
+            selected = Path(choice["bibtex"])
+            # Both nightlies persist Rust's canonical path during startup:
+            # /var -> /private/var on macOS, and a verbatim prefix on Windows.
+            # Require the same native file, not the original path spelling or
+            # merely equal contents. Missing/unreadable identity fails closed.
+            same_library = selected.is_absolute() and library.is_file() and selected.samefile(library)
+        except (OSError, ValueError):
+            pass
+    if not same_library:
+        raise AssertionError("the synthetic library choice was not preserved")
+    if saved.get("shortcut") != SHORTCUT:
+        raise AssertionError("the synthetic shortcut choice was not preserved")
     return {"library": True, "shortcut": True}
 
 
@@ -2517,18 +2530,111 @@ function Contract-Result($pressed,$how) {
                              {"schema_version": 2, "update_checks": True,
                               "library": {"bibtex": str(library)}, "shortcut": "Control+Alt+Y"})
 
+    def test_settings_verification_accepts_the_canonical_library_identity_after_startup(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "selected").mkdir()
+            library = root / "selected" / ".." / "synthetic 引用.bib"
+            library.write_text("@misc{synthetic}\n", encoding="utf-8")
+            settings = seed_settings(root, library)
+            self.assertEqual(preserved_settings(settings, library), {"library": True, "shortcut": True})
+            canonical = str(library.resolve(strict=True))
+            if os.name == "nt" and not canonical.startswith("\\\\?\\"):
+                # Rust's canonicalize retains the verbatim prefix on Windows.
+                canonical = "\\\\?\\UNC\\" + canonical[2:] if canonical.startswith("\\\\") else "\\\\?\\" + canonical
+            self.assertNotEqual(canonical, str(library))
+            saved = json.loads(settings.read_text(encoding="utf-8"))
+            saved["library"] = {"bibtex": canonical}
+            saved["picker_windows"] = {}  # Added by #1500, within the same schema.
+            settings.write_text(json.dumps(saved), encoding="utf-8")
+            self.assertEqual(preserved_settings(settings, library), {"library": True, "shortcut": True})
+
+    @unittest.skipIf(os.name == "nt", "creating symlinks needs extra rights on Windows")
+    def test_settings_verification_accepts_a_resolved_directory_alias_like_macos_var(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            target = root / "canonical"
+            target.mkdir()
+            alias = root / "selected"
+            alias.symlink_to(target, target_is_directory=True)
+            library = alias / "synthetic.bib"
+            library.write_text("@misc{synthetic}\n", encoding="utf-8")
+            settings = seed_settings(root, library)
+            saved = json.loads(settings.read_text(encoding="utf-8"))
+            saved["library"] = {"bibtex": str(library.resolve(strict=True))}
+            settings.write_text(json.dumps(saved), encoding="utf-8")
+            self.assertEqual(preserved_settings(settings, library), {"library": True, "shortcut": True})
+
+    def test_settings_verification_refuses_a_different_file_even_with_identical_contents(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            library, other = root / "synthetic.bib", root / "different.bib"
+            for path in (library, other):
+                path.write_text("@misc{synthetic}\n", encoding="utf-8")
+            settings = seed_settings(root, library)
+            saved = json.loads(settings.read_text(encoding="utf-8"))
+            saved["library"] = {"bibtex": str(other)}
+            settings.write_text(json.dumps(saved), encoding="utf-8")
+            with self.assertRaisesRegex(AssertionError, "synthetic library choice was not preserved"):
+                preserved_settings(settings, library)
+
+    def test_settings_verification_refuses_malformed_or_missing_library_identity(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            library = root / "synthetic.bib"
+            library.write_text("@misc{synthetic}\n", encoding="utf-8")
+            settings = seed_settings(root, library)
+            saved = json.loads(settings.read_text(encoding="utf-8"))
+            choices = (None, str(library), {}, {"zotero": "user"}, {"bibtex": None},
+                       {"bibtex": True}, {"bibtex": [str(library)]}, {"bibtex": ""},
+                       {"bibtex": "synthetic.bib"}, {"bibtex": "synthetic\0private-sentinel"},
+                       {"bibtex": str(library), "zotero": "user"}, {"bibtex": str(root / "missing.bib")})
+            for index, choice in enumerate(choices):
+                saved["library"] = choice
+                settings.write_text(json.dumps(saved), encoding="utf-8")
+                with self.subTest(choice=index), self.assertRaisesRegex(AssertionError, "synthetic library choice was not preserved") as failure:
+                    preserved_settings(settings, library)
+                self.assertNotIn(str(root), str(failure.exception))
+                self.assertNotIn("private-sentinel", str(failure.exception))
+            settings = seed_settings(root, library)
+            library.unlink()
+            with self.assertRaisesRegex(AssertionError, "synthetic library choice was not preserved"):
+                preserved_settings(settings, library)
+            library.mkdir()
+            with self.assertRaisesRegex(AssertionError, "synthetic library choice was not preserved"):
+                preserved_settings(settings, library)
+
+    def test_settings_verification_fails_closed_when_file_identity_cannot_be_read(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            library = root / "synthetic.bib"
+            library.write_text("@misc{synthetic}\n", encoding="utf-8")
+            settings = seed_settings(root, library)
+            with patch.object(Path, "samefile", side_effect=PermissionError("synthetic-private-sentinel")):
+                with self.assertRaisesRegex(AssertionError, "synthetic library choice was not preserved") as failure:
+                    preserved_settings(settings, library)
+            self.assertNotIn("synthetic-private-sentinel", str(failure.exception))
+
     def test_restarted_update_must_keep_choices_without_an_environment_override(self):
-        for changed in ("library", "shortcut", None):
+        for changed in ("library", "shortcut", "canonical", None):
             with self.subTest(changed=changed), tempfile.TemporaryDirectory() as temporary:
-                def installed(folder, _args, _library):
+                runtime = Path(temporary) / "runtime"
+                (runtime / "selected").mkdir(parents=True)
+                failed = changed in ("library", "shortcut")
+                def installed(folder, _args, library):
                     settings = folder / "settings.json"
                     choices = {"library": {"bibtex": str(folder / "synthetic.bib")}, "shortcut": "Control+Alt+Y"}
                     settings.write_text(json.dumps(choices), encoding="utf-8")
                     state = {"replaced": False}
                     def replaced():
                         state["replaced"] = True
-                        if changed:
+                        if changed == "canonical":
+                            canonical = str(library.resolve(strict=True))
+                            self.assertNotEqual(canonical, str(library))
+                            choices["library"] = {"bibtex": canonical}
+                        elif changed:
                             choices[changed] = "synthetic wrong choice"
+                        if changed:
                             settings.write_text(json.dumps(choices), encoding="utf-8")
                         return True
                     app = MagicMock(command=["synthetic"], config=None, settings=settings)
@@ -2544,18 +2650,21 @@ function Contract-Result($pressed,$how) {
                 with patch.dict(SYSTEMS, {"Linux": installed}), patch("platform.system", return_value="Linux"), \
                         patch.dict(os.environ, {"IBIS_LIBRARY": "/synthetic outer override.bib"}), \
                         patch("subprocess.Popen", return_value=process) as launch, patch("time.sleep"), \
-                        patch("os.kill"), patch("builtins.print"), patch(__name__ + ".feed_version", return_value="synthetic"):
-                    self.assertEqual(run(argparse.Namespace(output=Path(temporary))), int(changed is not None))
+                        patch("os.kill"), patch("builtins.print"), patch(__name__ + ".feed_version", return_value="synthetic"), \
+                        patch("tempfile.TemporaryDirectory") as sandbox:
+                    sandbox.return_value.__enter__.return_value = str(runtime / "selected" / "..")
+                    self.assertEqual(run(argparse.Namespace(output=Path(temporary))), int(failed))
                 self.assertTrue("IBIS_LIBRARY" not in launch.call_args.kwargs["env"], "library override masks persistence")
                 report = json.loads((Path(temporary) / "update-e2e.json").read_text(encoding="utf-8"))
-                self.assertEqual(report["status"], "failed" if changed else "passed")
-                if not changed:
+                self.assertEqual(report["status"], "failed" if failed else "passed")
+                if not failed:
                     self.assertEqual(report["settings_preserved"], {"library": True, "shortcut": True})
 
     def test_settings_verification_refuses_bad_files_without_disclosing_them(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             library = root / "synthetic 引用.bib"
+            library.write_text("@misc{synthetic}\n", encoding="utf-8")
             settings = seed_settings(root, library)
             original = settings.read_bytes()
             for contents in (b"", b"{private payload", b"\xff", b"[]", b"null", b"x" * 65537,

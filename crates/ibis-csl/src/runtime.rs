@@ -216,7 +216,7 @@ mod tests {
         let cites: Vec<_> = (0..count)
             .map(|index| serde_json::json!({"id":format!("ibis-{index}")}))
             .collect();
-        Prepared {json:serde_json::json!({"style":"apa","items":items,"cites":cites,"bibliography":bibliography,"keep_order":false,"locale":null}).to_string(), outcomes:(0..count).map(|item|ibis_core::contract::ItemOutcome::Rendered {item}).collect(),losses:vec![],notices:vec![],empty:false}
+        Prepared {json:serde_json::json!({"style":"apa","items":items,"cites":cites,"bibliography":bibliography,"keep_order":false,"locale":null}).to_string(), outcomes:(0..count).map(|item|ibis_core::contract::ItemOutcome::Rendered {item}).collect(),losses:vec![],notices:vec![],warnings:vec![],empty:false}
     }
 
     fn on_worker_stack(work: impl FnOnce() + Send + 'static) {
@@ -399,7 +399,7 @@ mod tests {
             let limits = Limits::default();
             let control = control();
             let mut session = Session::new(&limits, &control).unwrap();
-            let prepared=Prepared {json:serde_json::json!({"style":"apa","items":[{"id":"ibis-0","type":"book","title":"Synthetic title","author":[{"family":"Taylor","given":"Avery"}],"issued":{"date-parts":[[2026]]}}],"cites":[{"id":"ibis-0","author-only":true,"suppress-author":true}],"bibliography":false,"keep_order":false,"locale":null}).to_string(),outcomes:vec![ibis_core::contract::ItemOutcome::Rendered {item:0}],losses:vec![],notices:vec![],empty:false};
+            let prepared=Prepared {json:serde_json::json!({"style":"apa","items":[{"id":"ibis-0","type":"book","title":"Synthetic title","author":[{"family":"Taylor","given":"Avery"}],"issued":{"date-parts":[[2026]]}}],"cites":[{"id":"ibis-0","author-only":true,"suppress-author":true}],"bibliography":false,"keep_order":false,"locale":null}).to_string(),outcomes:vec![ibis_core::contract::ItemOutcome::Rendered {item:0}],losses:vec![],notices:vec![],warnings:vec![],empty:false};
             let refused = session.run(&prepared, &limits, &control).unwrap();
             assert_eq!(
                 refused.outcomes,
@@ -539,6 +539,7 @@ mod tests {
                     outcomes: vec![],
                     losses: vec![],
                     notices: vec![],
+                    warnings: vec![],
                     empty: false,
                 };
                 assert!(matches!(

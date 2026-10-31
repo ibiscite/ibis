@@ -1,6 +1,6 @@
 #![allow(clippy::unwrap_used)]
 //! Every canonical golden case an agent can ask for gives the same text,
-//! notices and losses through `ibis mcp` as through the command line.
+//! warnings, notices and losses through `ibis mcp` as through the command line.
 use ibis_core::contract::*;
 use ibis_engine::{Cancellation, Engine, mcp};
 use serde_json::{Value, json};
@@ -55,12 +55,16 @@ fn golden_cases_replay_through_mcp() {
         }) {
             Some((data, content)) => {
                 assert_eq!(answer["isError"], false, "{}", case.name);
-                assert_eq!(
-                    answer["structuredContent"],
-                    json!({"text": content.text, "notices": data.notices, "losses": data.losses}),
-                    "{}",
-                    case.name
-                );
+                let mut expected = json!({"text": content.text, "notices": data.notices, "losses": data.losses});
+                // Nonempty warnings are part of citation feedback, including
+                // APA's sentence-case reminder for the bibliography case.
+                // Keep the established response shape for clean citations.
+                if !data.warnings.is_empty() {
+                    expected["warnings"] = json!(data.warnings);
+                }
+                assert_eq!(answer["structuredContent"], expected, "{}", case.name);
+                let text: Value = serde_json::from_str(answer["content"][0]["text"].as_str().unwrap()).unwrap();
+                assert_eq!(text, expected, "{}: text response", case.name);
             }
             None => assert_eq!(answer["isError"], true, "{}", case.name),
         }

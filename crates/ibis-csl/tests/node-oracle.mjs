@@ -49,7 +49,7 @@ const expected = pristine.map((request) => {
   let xml = new Map(__ibisStyles).get(request.style).replace(/disambiguate-add-year-suffix="true"/g, 'disambiguate-add-year-suffix="false"');
   if (request.style === "ieee") xml = xml.replace('<text variable="citation-number" prefix="[" suffix="]"/>', "").replace(' second-field-align="flush"', "");
   const items = new Map(request.items.map((item) => [item.id, item]));
-  const engine = new CSL.Engine({ retrieveLocale: () => __ibisLocale, retrieveItem: (id) => items.get(id) }, xml, request.locale ?? undefined, request.locale !== null);
+  const engine = new CSL.Engine({ retrieveLocale: () => __ibisLocale, retrieveItem: (id) => items.get(id), uppercase_subtitles: request.style === "apa" }, xml, request.locale ?? undefined, request.locale !== null);
   engine.opt.development_extensions.throw_on_empty = true;
   if (request.keep_order) engine.citation_sort.tokens = [];
   const output = {};

@@ -65,6 +65,53 @@
   // decoding text. An entity in an unrecognized tag or attribute cannot create
   // a new formatting instruction. Keep native sc/nodecor support for CSL-JSON.
   const markup = /(<\/?(?:i|b|sc|sub|sup)>|<span\s+class="no(?:case|decor)"[^>]*>|<span\s+style="font-variant:\s*small-caps;?"[^>]*>|<\/span>)/g;
+  // Periods cannot distinguish a subtitle from an abbreviation ("vs. y").
+  // Keep the processor's explicit subtitle delimiters and capitalization,
+  // but never split a protected span or a markup attribute into case fragments.
+  const subtitleStops = ["!\\s+", "\\?\\s+", "\\s*:+\\s+", "\\s*—\\s*", "\\s+-\\s+", "\\s*---*\\s*"];
+  const subtitlePattern = {
+    match: new RegExp("(" + subtitleStops.join("|") + ")", "g"),
+    matchfirst: new RegExp("^(" + subtitleStops.join("|") + ")"),
+    split: new RegExp("(?:" + subtitleStops.join("|") + ")"),
+  };
+  const splitSubtitle = (text) => {
+    if (!text) return text;
+    const parts = [], spans = [];
+    let cursor = 0, start = 0, protectedDepth = 0;
+    const stopsThrough = (end) => {
+      if (protectedDepth) return;
+      for (const stop of text.slice(cursor, end).matchAll(subtitlePattern.match)) {
+        const offset = cursor + stop.index;
+        parts.push(text.slice(start, offset).trim(), stop[0]);
+        start = offset + stop[0].length;
+      }
+    };
+    for (const tag of text.matchAll(markup)) {
+      stopsThrough(tag.index);
+      if (tag[0] === "</span>") {
+        if (spans.pop()) protectedDepth--;
+      } else if (tag[0].startsWith("<span")) {
+        const protectedSpan = /^<span\s+class="nocase"/.test(tag[0]);
+        spans.push(protectedSpan);
+        if (protectedSpan) protectedDepth++;
+      }
+      cursor = tag.index + tag[0].length;
+    }
+    stopsThrough(text.length);
+    parts.push(text.slice(start));
+    return parts;
+  };
+  const withSubtitleBoundaries = (state, render, receiver, args) => {
+    if (!state.opt.development_extensions.uppercase_subtitles) return render.apply(receiver, args);
+    const pattern = CSL.TITLE_SPLIT_REGEXP, split = CSL.TITLE_SPLIT;
+    CSL.TITLE_SPLIT_REGEXP = subtitlePattern;
+    CSL.TITLE_SPLIT = splitSubtitle;
+    try { return render.apply(receiver, args); }
+    finally { CSL.TITLE_SPLIT_REGEXP = pattern; CSL.TITLE_SPLIT = split; }
+  };
+  const extractTitle = CSL.extractTitleAndSubtitle, caseTitle = CSL.titlecaseSentenceOrNormal;
+  CSL.extractTitleAndSubtitle = function (...args) { return withSubtitleBoundaries(this, extractTitle, this, args); };
+  CSL.titlecaseSentenceOrNormal = function (...args) { return withSubtitleBoundaries(args[0], caseTitle, this, args); };
   const decodeRich = (text, lessThan = "<") => inline(text.split(markup)
     .map((part, index) => index % 2 ? part : decodeText(part, lessThan)).join(""));
   let literalLessThan = null;
@@ -233,7 +280,7 @@
         }
         xml = tree;
       }
-      engine = new CSL.Engine({ retrieveLocale: () => __ibisLocale, retrieveItem: (id) => activeItems.get(id) }, xml, request.locale ?? undefined, request.locale !== null);
+      engine = new CSL.Engine({ retrieveLocale: () => __ibisLocale, retrieveItem: (id) => activeItems.get(id), uppercase_subtitles: request.style === "apa" }, xml, request.locale ?? undefined, request.locale !== null);
       engine.opt.development_extensions.throw_on_empty = true;
       if (request.keep_order) engine.citation_sort.tokens = [];
       engines.set(key, engine);

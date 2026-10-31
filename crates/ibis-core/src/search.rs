@@ -1417,6 +1417,7 @@ mod tests {
                 source: CitationKeySource::Bibtex,
             }],
             aliases: vec![],
+            warnings: vec![],
             identifiers: vec![],
             csl: serde_json::from_value(json!({
                 "type": "article-journal", "title": title,

@@ -6,6 +6,23 @@ returns a cancellable task; dropping a task cancels it. Callers use the result's
 `copy_content(request.items.len())` gate before copying. Diagnostics are fixed
 codes, with no reference text or JavaScript exception messages.
 
+Source conversion warnings stay on immutable records and participate in citation
+fingerprints. Results carry fixed warning codes with request item indices only
+for rendered items; warning text and source locations never reach JavaScript.
+BibTeX titles retain stored case and protected `nocase` spans. APA uses citeproc's
+constructor option `uppercase_subtitles`, as Zotero does, and returns the
+`sentence-case-expected` advisory for English reference titles rather than
+guessing which capitalized words are proper nouns. Other styles retain their
+native title presentation. DOI wrappers (`doi:` and HTTP(S) DOI resolver URLs)
+are removed at the shared citable-field boundary, preserving identifier bytes.
+
+The adapter constrains APA's title splitting before native extraction and
+capitalization: periods remain data (including abbreviation stops), while
+explicit subtitle punctuation keeps its native presentation. Protected `nocase`
+spans and markup attributes never become split points. Each native call restores
+the processor's original split policy, so other styles and cached requests retain
+their own behavior.
+
 Canonical representations stay byte-identical to the processor's output.
 Validation accepts only known script-glyph presentation equivalents and
 the pinned HTML whitespace-pair conversion, with exact character and space

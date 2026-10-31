@@ -84,6 +84,7 @@ fn deep_snapshot_rejection_is_safe() -> Result<(), Box<dyn std::error::Error>> {
                     csl: BTreeMap::new(),
                     citation_keys: vec![],
                     aliases: vec![],
+                    warnings: vec![],
                     identifiers: vec![],
                 };
                 record.csl.insert("title".into(), value);
@@ -97,6 +98,7 @@ fn deep_snapshot_rejection_is_safe() -> Result<(), Box<dyn std::error::Error>> {
                         csl: BTreeMap::new(),
                         citation_keys: vec![],
                         aliases: vec![],
+                        warnings: vec![],
                         identifiers: vec![],
                     }));
                 }

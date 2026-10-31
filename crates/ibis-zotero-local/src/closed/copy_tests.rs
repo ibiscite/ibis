@@ -169,15 +169,16 @@ fn startup_cleans_only_marked_private_copies_and_preserves_active_root() {
     let scratch = scratch();
     let root = scratch.path().join(ROOT);
     let store = Store::open(scratch.path(), &control()).unwrap_or_else(|e| panic!("{e}"));
+    // Model a concurrent fork retaining the lock's open file description until exec.
+    #[cfg(unix)]
+    let inherited = store._lock.file.try_clone().unwrap_or_else(|e| panic!("{e}"));
     let copy = Copy::new(&root, &control()).unwrap_or_else(|e| panic!("{e}"));
     let leftover = copy.path.clone();
     std::mem::forget(copy); // synthetic crash leaves the marked candidate.
     let lookalike = root.join("copy-not-ours");
     std::fs::create_dir(&lookalike).unwrap_or_else(|_| panic!("lookalike"));
     assert_eq!(
-        Store::open(scratch.path(), &control())
-            .err()
-            .map(|_| ClosedError::StorageInUse),
+        Store::open(scratch.path(), &control()).err(),
         Some(ClosedError::StorageInUse)
     );
     assert!(leftover.exists());
@@ -185,6 +186,12 @@ fn startup_cleans_only_marked_private_copies_and_preserves_active_root() {
     let _store = Store::open(scratch.path(), &control()).unwrap_or_else(|e| panic!("{e}"));
     assert!(!leftover.exists());
     assert!(lookalike.exists());
+    #[cfg(unix)]
+    drop(inherited);
+    assert_eq!(
+        Store::open(scratch.path(), &control()).err(),
+        Some(ClosedError::StorageInUse)
+    );
 }
 
 #[test]

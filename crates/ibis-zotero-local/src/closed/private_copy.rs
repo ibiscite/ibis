@@ -1,5 +1,5 @@
 //! Byte-only acquisition. This module never gives a source path to SQLite.
-use super::{ClosedError, ClosedSnapshot, ClosedWarning, Control, database, keys, platform};
+use super::{ClosedError, ClosedSnapshot, ClosedWarning, Control, FileLease, database, keys, platform};
 use std::fs::{File, Metadata, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
@@ -42,7 +42,7 @@ pub(super) fn private_name(name: &str) -> String {
 
 pub(super) struct Store {
     root: PathBuf,
-    _lock: File,
+    _lock: FileLease,
 }
 impl Store {
     pub(super) fn open(cache: &Path, control: &Control) -> Result<Self, ClosedError> {
@@ -69,7 +69,7 @@ impl Store {
         if !lock.metadata().is_ok_and(|m| m.is_file()) {
             return Err(ClosedError::PrivateStorage);
         }
-        lock.try_lock().map_err(|_| ClosedError::StorageInUse)?;
+        let lock = FileLease::acquire(lock).map_err(|_| ClosedError::StorageInUse)?;
         platform::exclude_backups(&root, control)?;
         // Only marked candidates in our verified root are ours. Prefix
         // lookalikes, foreign files and symlinks are never traversed/deleted.

@@ -39,7 +39,13 @@
         }
       ],
       "rtf": "{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Times New Roman;}}\\f0\nTaylor, A. (2026). {\\i{}Synthetic signals}. Imaginary Press.\n}",
-      "text": "Taylor, A. (2026). Synthetic signals. Imaginary Press."
+      "text": "Taylor, A. (2026). Synthetic signals. Imaginary Press.",
+      "warnings": [
+        {
+          "item": 0,
+          "code": "sentence-case-expected"
+        }
+      ]
     },
     "ibis": 1,
     "ok": true
