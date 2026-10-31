@@ -369,8 +369,12 @@ the updater's six-hour check are unchanged.
 A reloaded picker's presentation starts unknown. Enter waits for a native
 identity before starting a copy; initialization failures get one recovery read
 per explicit action, with no timer, and hide/reopen retires old reads. Escape
-can pass an unknown identity: native command entry snapshots the current owner
-before dispatch, so a subsequent reopen still rejects that delayed hide.
+can pass an unknown identity: the synchronous native IPC handler snapshots the
+current owner before dispatch, so a subsequent reopen still rejects that
+delayed hide. This capture cannot live in an async command body: Tauri schedules
+that body after receipt. The handler replies after the native hide completes;
+main-thread dispatch runs inline there, and an off-thread caller waits without
+holding application state.
 Windows show requests from workers dispatch preparation, appearance refresh
 and presentation together to the main thread. No worker may hold the appearance
 cache while synchronously asking that thread for an HWND (2026-10-31, #1558).

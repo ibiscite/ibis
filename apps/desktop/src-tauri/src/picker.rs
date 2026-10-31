@@ -446,20 +446,35 @@ pub(crate) fn picker_presentation(visits: State<'_, PickerGeneration>) -> u64 {
 /// Hide only the originating presentation; a delayed request cannot dismiss a reopen.
 #[tauri::command]
 #[specta::specta]
-pub(crate) async fn hide_picker(app: AppHandle, presentation: Option<u64>) -> Result<bool, &'static str> {
-    // An uninitialized webview can still dismiss. Freeze its native owner at
-    // command entry, before dispatch: this is never an unqualified queued hide.
+pub(crate) fn hide_picker<R: PickerHideUi>(app: AppHandle<R>, presentation: Option<u64>) -> Result<bool, &'static str> {
+    // This command must stay synchronous: Tauri spawns async commands before
+    // running their bodies. Capture an unknown owner at IPC receipt, before
+    // either that runtime scheduling gap or a native-thread dispatch.
     let presentation = app.state::<PickerGeneration>().originating(presentation);
-    let (send, mut receive) = tauri::async_runtime::channel(1);
+    let (send, receive) = std::sync::mpsc::sync_channel(1);
     let handle = app.clone();
     app.run_on_main_thread(move || {
         let hidden = dismiss_presented_with(&handle.state::<PickerGeneration>(), presentation, || {
-            finish_dismiss(&handle);
+            R::dismiss(&handle);
         });
-        let _ = send.try_send(hidden);
+        let _ = send.send(hidden);
     })
     .map_err(|_| "The picker could not be hidden.")?;
-    receive.recv().await.ok_or("The picker could not be hidden.")
+    // Wry runs main-thread tasks inline when already on that thread. A worker
+    // waits without holding application state; the one-slot buffer also lets
+    // an inline hide complete before we receive its result.
+    receive.recv().map_err(|_| "The picker could not be hidden.")
+}
+
+/// Keep receipt and ownership checks real in tests; replace only native hiding.
+pub(crate) trait PickerHideUi: tauri::Runtime {
+    fn dismiss(app: &AppHandle<Self>);
+}
+
+impl PickerHideUi for tauri::Wry {
+    fn dismiss(app: &AppHandle<Self>) {
+        finish_dismiss(app);
+    }
 }
 
 fn dismiss_presented_with(visits: &PickerGeneration, presentation: u64, dismiss: impl FnOnce()) -> bool {
@@ -679,6 +694,44 @@ fn finish_blur(app: &AppHandle, blur: u64, generation: u64) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[derive(Default)]
+    struct HideUi {
+        visible: AtomicBool,
+    }
+
+    impl PickerHideUi for tauri::test::MockRuntime {
+        fn dismiss(app: &AppHandle<Self>) {
+            app.state::<HideUi>().visible.store(false, Ordering::SeqCst);
+        }
+    }
+
+    #[test]
+    fn picker_unknown_hide_received_before_reopen_cannot_capture_b_when_its_response_runs_late() -> tauri::Result<()> {
+        use tauri::ipc::private::*;
+        let app = tauri::test::mock_builder()
+            .manage(PickerGeneration(AtomicU64::new(41)))
+            .manage(HideUi {
+                visible: AtomicBool::new(true),
+            })
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))?;
+        // Call the actual command at receipt, then leave any returned future
+        // unpolled until A has closed and B has reopened. Tauri's async wrapper
+        // adds this same scheduling gap before executing an async command body.
+        let response = hide_picker(app.handle().clone(), None);
+        let visits = app.state::<PickerGeneration>();
+        visits.advance(); // close A
+        let b = visits.advance(); // reopen B
+        app.state::<HideUi>().visible.store(true, Ordering::SeqCst);
+        let kind = (&response).async_kind();
+        tauri::async_runtime::block_on(kind.future(response)).unwrap_or_else(|e| panic!("{e:?}"));
+        assert!(
+            app.state::<HideUi>().visible.load(Ordering::SeqCst),
+            "A's Escape must leave B visible"
+        );
+        assert_eq!(visits.current(), b, "A's late response must not retire B's owner");
+        Ok(())
+    }
 
     #[test]
     fn picker_unknown_hide_snapshots_its_native_owner_before_dispatch_and_cannot_dismiss_a_reopen() {
