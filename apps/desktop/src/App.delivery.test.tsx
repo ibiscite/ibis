@@ -61,7 +61,7 @@ function expectReceipt(harness: Harness, title: string, text: string) {
 }
 
 test.each([
-  ["unknown app", (h: Harness) => { h.target.verified = false; }, "Copied. Automatic paste is not verified for this app"],
+  ["unknown app", (h: Harness) => { h.target.verified = false; }, "Copied. Automatic paste is not approved for this app"],
   ["sleep and wake", (h: Harness) => { h.lifecycle.epoch += 2; }, "Copied. The paste expired; paste it yourself"],
   ["lock and unlock", (h: Harness) => { h.lifecycle.epoch += 2; }, "Copied. The paste expired; paste it yourself"],
   ["long delay", (h: Harness) => { h.lifecycle.elapsed += 1500; }, "Copied. The paste expired; paste it yourself"],

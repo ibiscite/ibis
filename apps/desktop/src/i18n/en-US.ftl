@@ -154,6 +154,11 @@ look-sample-journal = Journal of Imagined Studies
 citations-default = Default format
 
 citations-default-description = Used when an app has no remembered format
+citations-forget = Forget formats for apps
+citations-forget-description = Ibis asks again the next time you paste into each app
+citations-forget-button = Forget formats
+citations-forget-failed = Ibis could not forget formats for apps. Try again.
+citations-forget-done = Formats forgotten for apps.
 citations-format-pandoc = Pandoc / Quarto
 citations-format-autocite = BibLaTeX \autocite
 citations-format-parencite = BibLaTeX \parencite

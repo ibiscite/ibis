@@ -19,7 +19,7 @@
  * deadlines, engine formatting or hashing. Their Rust tests remain necessary.
  */
 import { emit } from "@tauri-apps/api/event";
-import type { Copied, Delivered, FilePreview, NoticeMessage, SearchQuery, SearchReply } from "../bindings";
+import type { AppOutput, AppPaste, Copied, Delivered, FilePreview, NoticeMessage, SearchQuery, SearchReply } from "../bindings";
 import { renderNotice } from "../copyFeedback";
 import { backend, prepared, receipt, type PreviewRequest } from "./app";
 
@@ -57,14 +57,20 @@ class Work<Args, Input = void, Output = void> {
 type PreviewContent = Pick<FilePreview, "text"> & Partial<Pick<FilePreview, "html" | "warnings">>;
 type DeliveryRequest = { text: string; delivery: number | null };
 type Capture = { window: number | null; surface: number | null; reason: string | null };
-type Proof = DeliveryRequest & Capture & { delivery: number; sequence: number; presentation: number; app: string; epoch: number; written: number };
+type Proof = DeliveryRequest & Capture & { delivery: number; sequence: number; presentation: number; app: string; epoch: number; written: number; paste: AppPaste | null };
+type AppChoice = { output: AppOutput | null; paste: AppPaste | null };
 
 export function deliveryHarness(text = "Draft: [citation].", selection: [number, number] = [7, 17]) {
   const search = new Work<SearchQuery, SearchReply, SearchReply>();
   const preview = new Work<PreviewRequest, PreviewContent, FilePreview>();
   const copy = new Work<{ ticket: string; contentHash: string }, void, Copied>();
+  const copyReplies = new Work<Copied, void, Copied>();
+  let holdCopyReplies = false;
   const delivery = new Work<DeliveryRequest, void, Delivered>();
   const notice = new Work<NoticeMessage, void, Delivered>();
+  const appSaves = new Work<{ appId: string; output: AppOutput | null; paste: AppPaste | null }>();
+  const appChoices = new Map<string, AppChoice>();
+  let holdAppSaves = false;
   const clipboard = { text: "", html: null as string | null, owner: null as "ibis" | "external" | null, sequence: 0 };
   const document = {
     app: "Example Writer", text, selection,
@@ -75,6 +81,7 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
     [200, { text: "Second: [citation].", selection: [8, 18] }],
   ]);
   const target = { window: 100 as number | null, verified: true, available: true,
+    appId: "example.writer", refusal: null as "terminal" | "remote-desktop" | "virtual-machine" | "nonstandard-shortcut" | null,
     surface: null as number | null, focusedPid: 42, focusAvailable: true, focusTimedOut: false };
   const authorizations = { postEvent: true, accessibility: true };
   const lifecycle = { epoch: 1, elapsed: 0, available: true };
@@ -100,7 +107,9 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
     const owned = proof?.delivery === delivery && proof?.text === text ? proof : null;
     if (!owned) return { outcome: "copied", reason: null };
     proof = null;
-    if (!target.verified) return { outcome: "copied", reason: "unknown-app" };
+    if (target.refusal) return { outcome: "copied", reason: target.refusal };
+    if (owned.paste === "copy-only") return { outcome: "copied", reason: "copy-only" };
+    if (!target.verified && owned.paste !== "paste") return { outcome: "copied", reason: "unknown-app" };
     if (owned.reason) return { outcome: "copied", reason: owned.reason };
     if (owned.window === null) return { outcome: "copied", reason: "paste-unavailable" };
     if (!lifecycle.available) return { outcome: "copied", reason: "paste-unavailable" };
@@ -122,12 +131,29 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
     return { outcome: "pasted", app: owned.app };
   };
 
+
   const calls = backend({
     "plugin:window|is_visible": () => visible,
     picker_destination: () => {
       captured ??= capture();
-      return { app: document.app, app_id: "example.writer", automatic: { key: "pandoc" }, remembered: null, unreadable: false, can_paste: captured.reason === null, output_question: null };
+      const choice = appChoices.get(target.appId);
+      const paste = target.refusal ? null : choice?.paste ?? null;
+      return { app: document.app, app_id: target.appId, app_identity: target.appId, automatic: { key: "pandoc" }, remembered: choice?.output ?? null, unreadable: false,
+        can_paste: !target.refusal && (target.verified || paste === "paste") && paste !== "copy-only" && captured.reason === null,
+        output_question: null, paste, can_choose_paste: !target.refusal && captured.reason === null, paste_question: !target.refusal && !target.verified && paste === null && captured.reason === null };
     },
+    remember_app_output: ({ appId, output, paste }) => {
+      if (appId !== target.appId || paste === "paste" && target.refusal) throw new Error("The app cannot receive that choice");
+      const args = { appId, output, paste } as { appId: string; output: AppOutput | null; paste: AppPaste | null };
+      const saving = appSaves.enqueue(args, () => {
+        if (args.output === null && args.paste === null) appChoices.delete(args.appId);
+        else appChoices.set(args.appId, { output: args.output, paste: args.paste ?? appChoices.get(args.appId)?.paste ?? null });
+        if (args.paste !== null || args.output === null) proof = null;
+      });
+      if (!holdAppSaves) appSaves.pending.at(-1)!.complete();
+      return saving;
+    },
+    forget_app_outputs: () => { appChoices.clear(); proof = null; return null; },
     search: ({ query }) => search.enqueue(query, (reply) => reply),
     preview_file_citation: (args) => {
       const request = ++latestPreview;
@@ -143,9 +169,9 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
         if (args.ticket !== activeTicket) throw { code: "snapshot_changed" };
         Object.assign(clipboard, { text: preview.text, html: preview.html, owner: "ibis", sequence: clipboard.sequence + 1 });
         const token = ++nextDelivery;
-        proof = { ...(captured ?? capture()), presentation, app: document.app, text: preview.text, delivery: token, sequence: clipboard.sequence, epoch: lifecycle.epoch, written: lifecycle.elapsed };
+        proof = { ...(captured ?? capture()), presentation, app: document.app, text: preview.text, delivery: token, sequence: clipboard.sequence, epoch: lifecycle.epoch, written: lifecycle.elapsed, paste: appChoices.get(target.appId)?.paste ?? null };
         return { text: clipboard.text, warnings: preview.warnings, delivery: token };
-      });
+      }).then((outcome) => holdCopyReplies ? copyReplies.enqueue(outcome, () => outcome) : outcome);
     },
     hide_picker: async () => { visible = false; await emit("picker:hidden"); return null; },
     show_copied_notice: (args) => {
@@ -160,7 +186,11 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
   });
 
   return {
-    search, preview, copy, delivery, notice, calls, clipboard, document, documents, target, authorizations, lifecycle, receipt: receiptRoot,
+    search, preview, copy, copyReplies, delivery, notice, calls, clipboard, document, documents, target, authorizations, lifecycle, receipt: receiptRoot, appChoices, appSaves,
+    get holdCopyReplies() { return holdCopyReplies; },
+    set holdCopyReplies(value: boolean) { holdCopyReplies = value; },
+    get holdAppSaves() { return holdAppSaves; },
+    set holdAppSaves(value: boolean) { holdAppSaves = value; },
     get visible() { return visible; },
     async reopen() {
       presentation += 1;

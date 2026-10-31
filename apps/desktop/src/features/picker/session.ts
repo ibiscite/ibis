@@ -7,7 +7,7 @@ import { copiedNoticeText, pickerText } from "../../messages";
 import { choiceKey, idKey, type Choice, type CitationReference } from "./choice";
 import { closestMatchWarnings } from "./rows";
 
-export type OutputToken = { opening: number; choice: number };
+export type OutputToken = { opening: number; choice: number; delivery: number };
 type Prepared = FormattedCitation & { fileTicket?: string; fileHash?: string };
 export type SessionView = {
   queryKey: string; format: Choice; snapshotRevision: string | undefined; defaultChoice: string;
@@ -16,7 +16,7 @@ export type SessionView = {
 };
 type Pending = { choice: string | null; selection: SessionState["selected"]; queryKey: string;
   format: Choice | null; output: OutputToken; question?: "open" | "answered" };
-type Flight = { id: number; session: number; choice: string; format: Choice; opening: number; warnings: string[];
+type Flight = { id: number; session: number; choice: string; format: Choice; opening: number; delivery: number; warnings: string[];
   phase: "copy" | "hide" | "notice"; outcome?: Copied;
   owner: { context: number; session: number; visibility: number; output: OutputToken } };
 export type SessionState = {
@@ -58,8 +58,9 @@ export function initialSession(query = "", copied: Copied | null = null): Sessio
     pendingCopy: null, flights: [], activeCopy: null, nextCopy: 0, lastSuccessfulCopy: 0, copied, copyError: null, lastOutcome: null };
 }
 export const sessionQueryKey = (state: SessionState) => JSON.stringify([state.query, state.interpretLocators]);
-const sameOutput = (a: OutputToken, b: OutputToken) => a.opening === b.opening && a.choice === b.choice;
-const ownsInteraction = (s: SessionState, f: Flight) => s.activeCopy === f.id && s.context === f.owner.context && s.session === f.owner.session;
+const sameOutput = (a: OutputToken, b: OutputToken) => a.opening === b.opening && a.choice === b.choice && a.delivery === b.delivery;
+const ownsClipboard = (s: SessionState, f: Flight) => s.activeCopy === f.id && s.context === f.owner.context && s.session === f.owner.session;
+const ownsInteraction = (s: SessionState, f: Flight) => ownsClipboard(s, f) && s.view?.output.delivery === f.delivery;
 const ownsCompletion = (s: SessionState, f: Flight, output: OutputToken) => ownsInteraction(s, f) && s.visibility === f.owner.visibility && sameOutput(f.owner.output, output);
 const changed = (s: SessionState, change: Partial<SessionState>): SessionState => ({ ...s, ...change, pendingCopy: null, interaction: s.interaction + 1, context: s.context + 1 });
 const finish = (s: SessionState, f: Flight): SessionState => ({ ...s, flights: s.flights.filter(({ id }) => id !== f.id), activeCopy: s.activeCopy === f.id ? null : s.activeCopy });
@@ -85,10 +86,10 @@ function advance(s: SessionState): [SessionState, SessionEffect[]] {
   if (v.shown === "stale" || !v.chosen[0]?.revision) return [{ ...s, copyError: pickerText.snapshotChanged }, [{ type: "refresh" }]];
   if (!v.shown.fileTicket || !v.shown.fileHash) return [{ ...s, copyError: pickerText.previewError }, []];
   const owner = { context: s.context, session: s.session, visibility: s.visibility, output: v.output };
-  const existing = s.flights.find((f) => f.choice === key && f.format === v.format && f.opening === v.output.opening && f.owner.visibility === s.visibility && f.owner.session === s.session);
+  const existing = s.flights.find((f) => f.choice === key && f.format === v.format && f.opening === v.output.opening && f.delivery === v.output.delivery && f.owner.visibility === s.visibility && f.owner.session === s.session);
   if (existing) return [{ ...s, activeCopy: existing.id, flights: s.flights.map((f) => f === existing ? { ...f, owner } : f) }, []];
   const id = s.nextCopy + 1;
-  const flight: Flight = { id, session: s.session, choice: key, format: v.format, opening: v.output.opening, owner, phase: "copy", warnings: closestMatchWarnings(v.chosen) };
+  const flight: Flight = { id, session: s.session, choice: key, format: v.format, opening: v.output.opening, delivery: v.output.delivery, owner, phase: "copy", warnings: closestMatchWarnings(v.chosen) };
   return [{ ...s, flights: [...s.flights, flight], activeCopy: id, nextCopy: id, copied: null, copyError: null },
     [{ type: "copy", id, session: s.session, ticket: v.shown.fileTicket, hash: v.shown.fileHash }]];
 }
@@ -160,6 +161,14 @@ export function reduceSession(s: SessionState, event: SessionEvent): [SessionSta
       if (f.phase !== "copy") return [s, []];
       const outcome = { ...event.outcome, warnings: [...event.outcome.warnings, ...f.warnings] };
       if (f.id > s.lastSuccessfulCopy) s = { ...s, lastSuccessfulCopy: f.id, lastOutcome: copiedNoticeText.title };
+      // Delivery can be revoked after the native write but before its response.
+      // Confirm that write in place, without hiding or forwarding its old proof.
+      // A newer citation, operation or opening still owns its own feedback.
+      if (!s.pendingCopy && ownsClipboard(s, f) && s.visibility === f.owner.visibility && f.owner.output.opening === event.output.opening
+        && f.owner.output.choice === event.output.choice && f.delivery !== event.output.delivery) {
+        return [finish(changed(s, { selected: new Map(), permissionDetour: false,
+          copied: { text: outcome.text, warnings: outcome.warnings }, escapedQuery: null }), f), [{ type: "consume", output: event.output }]];
+      }
       if (!ownsCompletion(s, f, event.output)) return [finish(s, f), s.activeCopy === f.id && f.owner.session === s.session && sameOutput(f.owner.output, event.output) ? [{ type: "consume", output: f.owner.output }] : []];
       s = { ...s, copied: outcome, escapedQuery: null, flights: s.flights.map((flight) => flight === f ? { ...f, phase: "hide", outcome } : flight) };
       return afterCopy(outcome, event.pinned) === "hide-and-notify" ? [{ ...s, permissionDetour: true }, [{ type: "hide", id: f.id, session: f.session }]] : complete(s);

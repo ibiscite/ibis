@@ -143,7 +143,7 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
     preference_revision: () => ++revision,
     set_picker_preferences: () => null,
     // Opened from no app Ibis knows: the default format applies.
-    picker_destination: () => ({ app: null, app_id: null, automatic: null, remembered: null, unreadable: false, can_paste: false, output_question: null }),
+    picker_destination: () => ({ app: null, app_id: null, app_identity: null, automatic: null, remembered: null, unreadable: false, can_paste: false, output_question: null, paste: null, paste_question: false, can_choose_paste: false }),
     remember_app_output: () => null,
     forget_app_outputs: () => null,
     login_item: () => ({ name: "Ibis", enabled: false, problem: null }),

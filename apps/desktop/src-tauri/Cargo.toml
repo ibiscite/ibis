@@ -56,7 +56,7 @@ objc2-core-graphics = { version = "0.3.2", default-features = false, features = 
 # Already locked through Tauri; lifecycle observers.
 block2 = "0.6.2"
 # Already locked through Tauri; owns opaque AX references and attribute names.
-objc2-core-foundation = { version = "0.3.2", default-features = false, features = ["std", "CFString"] }
+objc2-core-foundation = { version = "0.3.2", default-features = false, features = ["std", "CFString", "CFDictionary", "CFNumber"] }
 # Already locked through Tauri. Reads whether macOS opened Ibis as a login
 # item (#525), so the picker stays hidden then.
 objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSAppleEventManager", "NSAppleEventDescriptor", "NSData", "NSString", "NSThread", "NSArray", "NSBundle", "NSURL", "objc2-core-services", "NSNotification", "NSDistributedNotificationCenter", "NSOperation", "block2"] }

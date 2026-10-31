@@ -4,7 +4,7 @@ import { useDestination } from "./useDestination";
 import type { PickerDestination } from "../../api";
 
 afterEach(cleanup);
-const browser: PickerDestination = { app: "Example Browser", app_id: "example.browser", automatic: null, remembered: null, unreadable: false, can_paste: false, output_question: "browser" };
+const browser: PickerDestination = { app: "Example Browser", app_id: "example.browser", app_identity: null, automatic: null, remembered: null, unreadable: false, can_paste: false, output_question: "browser", paste: null, paste_question: false, can_choose_paste: false };
 const pending = <T,>() => {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((done) => { resolve = done; });
@@ -50,6 +50,38 @@ test("a failed save leaves the choice once-only and does not claim it was rememb
   expect(settings.report).toHaveBeenCalledWith("appChoice");
 });
 
+test("paste approval preserves a one-time format without remembering or consuming it", async () => {
+  let destination: PickerDestination = { ...browser, output_question: null, paste_question: true, can_choose_paste: false };
+  const rememberAppOutput = vi.fn(async () => {
+    destination = { ...destination, paste: "paste", paste_question: false, can_choose_paste: false, can_paste: true };
+    return null;
+  });
+  const { result } = renderHook(() => useDestination({ pickerDestination: async () => destination, rememberAppOutput }, options()));
+  act(() => result.current.read());
+  await waitFor(() => expect(result.current.ready).toBe(true));
+  act(() => result.current.toggleOnce());
+  act(() => result.current.choose("typst"));
+  await act(async () => result.current.choosePaste("paste"));
+  await waitFor(() => expect(result.current.ready && !result.current.saving).toBe(true));
+  expect(rememberAppOutput).toHaveBeenCalledWith("example.browser", null, "paste", null);
+  expect(result.current.format).toBe("typst");
+  expect(result.current.onceOnly).toBe(true);
+  act(() => result.current.consumeOnce(result.current.copyToken()));
+  expect(result.current.format).toBe("pandoc");
+});
+
+test("recovery keeps a proven app's delivery choices available and a format save cannot clear its warning", async () => {
+  const destination: PickerDestination = { ...browser, output_question: null, unreadable: true, can_choose_paste: true };
+  const settings = options();
+  const { result } = renderHook(() => useDestination({ pickerDestination: async () => destination,
+    rememberAppOutput: vi.fn(async () => null) }, settings));
+  await act(async () => result.current.read());
+  expect(result.current.pasteChoices).toBe(true);
+  await act(async () => result.current.choose("cite"));
+  await waitFor(() => expect(result.current.ready && !result.current.saving).toBe(true));
+  expect(settings.report).toHaveBeenLastCalledWith("appChoices", true);
+});
+
 test("a stale save completion cannot mark a different app as remembered", async () => {
   let destination = browser;
   const save = pending<null>();
@@ -64,7 +96,7 @@ test("a stale save completion cannot mark a different app as remembered", async 
   await act(async () => save.resolve(null));
   await waitFor(() => expect(result.current.app).toBe("Example Editor"));
   expect(result.current.remembered).toBe(false);
-  expect(rememberAppOutput).toHaveBeenCalledWith("example.browser", { key: "cite" });
+  expect(rememberAppOutput).toHaveBeenCalledWith("example.browser", { key: "cite" }, null, null);
 });
 
 test("an old successful copy cannot consume a newer one-time output choice", async () => {
@@ -80,10 +112,10 @@ test("an old successful copy cannot consume a newer one-time output choice", asy
   expect(result.current.onceOnly).toBe(true);
 });
 
-test("remembering, Automatic and Forget control the question independently of the global fallback", async () => {
+test("remembering, Automatic and a Settings refresh control the question independently of the global fallback", async () => {
   const settings = options();
   const { result } = renderHook(() => useDestination({ pickerDestination: async () => browser,
-    rememberAppOutput: vi.fn(async () => null), forgetAppOutputs: vi.fn(async () => null) }, settings));
+    rememberAppOutput: vi.fn(async () => null) }, settings));
   act(() => result.current.read());
   await waitFor(() => expect(result.current.ready).toBe(true));
   expect(result.current.shouldAsk).toBe(true);
@@ -94,7 +126,7 @@ test("remembering, Automatic and Forget control the question independently of th
   expect(result.current.shouldAsk).toBe(true);
   expect(result.current.scope).toBeNull();
   await act(async () => result.current.choose("cite"));
-  await act(async () => result.current.forgetAll?.());
+  await act(async () => result.current.read(false));
   expect(result.current.shouldAsk).toBe(true);
   expect(settings.chooseDefault).not.toHaveBeenCalled();
 });
@@ -120,7 +152,7 @@ test("returning from permission keeps the prepared output once while reading the
   act(() => result.current.toggleOnce());
   act(() => result.current.choose("typst"));
   const oldCopy = result.current.copyToken();
-  destination = { ...browser, app: "Example Writer", app_id: "example.writer", remembered: { key: "cite" } };
+  destination = { ...browser, app: "Example Writer", app_id: "example.writer", app_identity: null, remembered: { key: "cite" } };
   await act(async () => result.current.read(true, true));
   expect(result.current.app).toBe("Example Writer");
   expect(result.current.format).toBe("typst");
@@ -144,7 +176,7 @@ test("superseding destination reads preserve the permission return's output and 
   act(() => result.current.choose("typst"));
   act(() => result.current.read(true, true));
   const token = result.current.copyToken();
-  destination = { ...browser, app: "Example Writer", app_id: "example.writer", remembered: { key: "cite" } };
+  destination = { ...browser, app: "Example Writer", app_id: "example.writer", app_identity: null, remembered: { key: "cite" } };
   await act(async () => result.current.read(false));
   await act(async () => returning.resolve(browser));
   expect(result.current.app).toBe("Example Writer");
