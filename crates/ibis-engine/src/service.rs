@@ -16,9 +16,8 @@ use std::{
     },
 };
 
-mod file_cache;
 mod sources;
-pub use file_cache::{FileCacheOperation, FileCacheSession, PreparedFileLoad};
+pub use sources::PreparedFileReload;
 
 mod formatting;
 pub use formatting::Cancellation;
@@ -183,8 +182,10 @@ impl Drop for LibrarySubscription {
     }
 }
 struct State {
-    // None is the coherent Zotero reader; Some(id) is a file reader.
-    readiness: BTreeMap<Option<LibraryId>, (u64, bool)>,
+    /// Accepted data/diagnostic identity; read errors alone do not replace it.
+    accepted: Arc<()>,
+    zotero_generation: u64,
+    zotero_ready: bool,
     index: Arc<SnapshotIndex>,
     libraries: BTreeMap<LibraryId, LibraryInfo>,
 }
@@ -227,7 +228,9 @@ impl Engine {
             shared: Arc::new(Shared {
                 formatter: Mutex::new(None),
                 state: RwLock::new(Arc::new(State {
-                    readiness: BTreeMap::new(),
+                    accepted: Arc::new(()),
+                    zotero_generation: 0,
+                    zotero_ready: true,
                     index: Arc::new(SnapshotIndex::new(snapshot)),
                     libraries,
                 })),
@@ -517,6 +520,75 @@ impl Engine {
         })
     }
 }
+impl State {
+    fn with_failure(&self, library: &LibraryId, code: ErrorCode) -> Result<Self, EngineError> {
+        let mut libraries = self.libraries.clone();
+        libraries
+            .get_mut(library)
+            .ok_or_else(|| error(ErrorCode::NotFound))?
+            .refresh_error = Some(code);
+        Ok(Self {
+            accepted: self.accepted.clone(),
+            zotero_generation: self.zotero_generation,
+            zotero_ready: self.zotero_ready,
+            index: self.index.clone(),
+            libraries,
+        })
+    }
+
+    fn same_publication(&self, current: &Self) -> bool {
+        Arc::ptr_eq(&self.accepted, &current.accepted)
+            && self.zotero_generation == current.zotero_generation
+            && self.zotero_ready == current.zotero_ready
+    }
+
+    /// Build immutable publication data off the native selection lock.
+    fn replacement(
+        old: &Self,
+        entries: Vec<(LibraryInfo, &Snapshot)>,
+        replaced: impl Fn(&LibraryId) -> bool,
+    ) -> Result<Self, EngineError> {
+        if entries.iter().any(|(info, snapshot)| {
+            snapshot
+                .objects()
+                .iter()
+                .any(|item| item.object.id().library != info.id)
+        }) {
+            return Err(error(ErrorCode::BadInput));
+        }
+        // Unchanged libraries keep their prepared objects; nothing is re-fingerprinted.
+        let combined = old
+            .index
+            .snapshot()
+            .merged_many(
+                &entries.iter().map(|(_, snapshot)| *snapshot).collect::<Vec<_>>(),
+                |id| !replaced(id),
+            )
+            .map_err(|_| error(ErrorCode::BadInput))?;
+        let combined = Arc::new(combined);
+        let zotero_ready = old.zotero_ready
+            || entries
+                .iter()
+                .any(|(info, _)| ibis_sources::zotero_source::is_zotero(&info.id));
+        let mut libraries = old.libraries.clone();
+        libraries.retain(|id, _| !replaced(id));
+        libraries.extend(entries.into_iter().map(|(info, _)| (info.id.clone(), info)));
+        let index = if combined.fingerprints().full == old.index.snapshot().fingerprints().full {
+            old.index.clone()
+        } else {
+            Arc::new(SnapshotIndex::updated(combined, &old.index))
+        };
+        let next = State {
+            accepted: Arc::new(()),
+            zotero_generation: old.zotero_generation,
+            zotero_ready,
+            index,
+            libraries,
+        };
+        Ok(next)
+    }
+}
+
 impl Shared {
     fn state_view(&self) -> Result<Arc<State>, EngineError> {
         self.state
@@ -546,57 +618,23 @@ impl Shared {
         entries: Vec<(LibraryInfo, &Snapshot)>,
         replaced: impl Fn(&LibraryId) -> bool,
     ) -> Result<(), EngineError> {
-        if entries.iter().any(|(info, snapshot)| {
-            snapshot
-                .objects()
-                .iter()
-                .any(|item| item.object.id().library != info.id)
-        }) {
-            return Err(error(ErrorCode::BadInput));
-        }
         let _publication = self.publication.lock().map_err(|_| error(ErrorCode::Internal))?;
         let old = self.state_view()?;
-        // Unchanged libraries keep their prepared objects; nothing is re-fingerprinted.
-        let combined = old
-            .index
-            .snapshot()
-            .merged_many(
-                &entries.iter().map(|(_, snapshot)| *snapshot).collect::<Vec<_>>(),
-                |id| !replaced(id),
-            )
-            .map_err(|_| error(ErrorCode::BadInput))?;
-        let combined = Arc::new(combined);
-        let mut readiness = old.readiness.clone();
-        for (info, _) in &entries {
-            if let Some(entry) = readiness.get_mut(&read_source(&info.id)) {
-                entry.1 = true;
-            }
-        }
-        let mut libraries = old.libraries.clone();
-        libraries.retain(|id, _| !replaced(id));
-        libraries.extend(entries.into_iter().map(|(info, _)| (info.id.clone(), info)));
-        let index = if combined.fingerprints().full == old.index.snapshot().fingerprints().full {
-            old.index.clone()
-        } else {
-            Arc::new(SnapshotIndex::updated(combined, &old.index))
-        };
-        let next = Arc::new(State {
-            readiness,
-            index,
-            libraries,
-        });
+        let next = Arc::new(State::replacement(&old, entries, replaced)?);
         *self.state.write().map_err(|_| error(ErrorCode::Internal))? = next;
         self.notify()
     }
-    fn begin_read(&self, source: Option<LibraryId>) -> Result<(), EngineError> {
+    fn begin_zotero_read(&self) -> Result<(), EngineError> {
         let _publication = self.publication.lock().map_err(|_| error(ErrorCode::Internal))?;
         let old = self.state_view()?;
-        let mut readiness = old.readiness.clone();
-        let entry = readiness.entry(source).or_insert((0, true));
-        entry.0 = entry.0.checked_add(1).ok_or_else(|| error(ErrorCode::ResourceLimit))?;
-        entry.1 = false;
+        let generation = old
+            .zotero_generation
+            .checked_add(1)
+            .ok_or_else(|| error(ErrorCode::ResourceLimit))?;
         *self.state.write().map_err(|_| error(ErrorCode::Internal))? = Arc::new(State {
-            readiness,
+            accepted: old.accepted.clone(),
+            zotero_generation: generation,
+            zotero_ready: false,
             index: old.index.clone(),
             libraries: old.libraries.clone(),
         });
@@ -605,23 +643,10 @@ impl Shared {
     fn failed(&self, library: &LibraryId, code: ErrorCode) -> Result<(), EngineError> {
         let _publication = self.publication.lock().map_err(|_| error(ErrorCode::Internal))?;
         let old = self.state_view()?;
-        let mut libraries = old.libraries.clone();
-        libraries
-            .get_mut(library)
-            .ok_or_else(|| error(ErrorCode::NotFound))?
-            .refresh_error = Some(code);
-        *self.state.write().map_err(|_| error(ErrorCode::Internal))? = Arc::new(State {
-            readiness: old.readiness.clone(),
-            index: old.index.clone(),
-            libraries,
-        });
+        *self.state.write().map_err(|_| error(ErrorCode::Internal))? = Arc::new(old.with_failure(library, code)?);
         self.notify()
     }
 }
-fn read_source(library: &LibraryId) -> Option<LibraryId> {
-    (!ibis_sources::zotero_source::is_zotero(library)).then(|| library.clone())
-}
-
 fn now_ms() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

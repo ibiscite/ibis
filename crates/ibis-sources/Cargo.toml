@@ -15,7 +15,6 @@ serde_json = { version = "1.0.154", features = ["raw_value"] }
 thiserror = "2.0.21"
 ibis-zotero-local = { path = "../ibis-zotero-local" }
 rusqlite = { version = "0.41.0", features = ["bundled", "hooks"] }
-tempfile = "3.27.0"
 sha2 = "0.10.9"
 biblatex = "0.12.0"
 notify = "8.2.0"
@@ -32,6 +31,7 @@ nix = { version = "0.31.3", default-features = false, features = ["fs"] }
 nix = { version = "0.31.3", default-features = false, features = ["event"] }
 
 [dev-dependencies]
+tempfile = "3.27.0"
 insta = { version = "1.49.0", features = ["json"] }
 proptest = "1.12.0"
 

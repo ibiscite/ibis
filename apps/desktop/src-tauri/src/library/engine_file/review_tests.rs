@@ -458,3 +458,34 @@ fn a_key_another_record_also_has_is_named_and_not_copied() -> Result<(), Box<dyn
     }
     Ok(())
 }
+
+#[cfg(unix)]
+#[test]
+fn remembered_file_choice_uses_the_observation_that_supplied_the_loaded_bytes() -> Result<(), Box<dyn std::error::Error>>
+{
+    let dir = tempfile::tempdir()?;
+    let a = dir.path().join("a.bib");
+    let b = dir.path().join("b.bib");
+    let selected = dir.path().join("selected.bib");
+    std::fs::write(&a, "@book{a}")?;
+    std::fs::write(&b, "@book{b}")?;
+    std::os::unix::fs::symlink(&a, &selected)?;
+    let file = FileLibrary::open_file_with(
+        &selected,
+        Engine::new().map_err(|_| "engine")?.without_file_watches(),
+        || {
+            std::fs::remove_file(&selected).unwrap_or_else(|e| panic!("{e}"));
+            std::os::unix::fs::symlink(&b, &selected).unwrap_or_else(|e| panic!("{e}"));
+        },
+    )
+    .map_err(|e| e.to_string())?;
+    let source = crate::library::Source::File(selected);
+    let loaded = Ok(crate::library::load::Loaded::New(Box::new(crate::library::Library {
+        source: Some(source.clone()),
+        file: Some(std::sync::Arc::new(file)),
+        ..Default::default()
+    })));
+    let chosen = crate::library::tasks::remembered_choice(&source, &loaded).ok_or("choice")?;
+    assert_eq!(chosen, ibis_core::settings::LibrarySetting::Bibtex(b.canonicalize()?));
+    Ok(())
+}
