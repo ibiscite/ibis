@@ -79,8 +79,11 @@ function advance(s: SessionState): [SessionState, SessionEffect[]] {
   const p = s.pendingCopy, v = s.view;
   if (!p || !v || s.viewInteraction !== s.interaction) return [s, []];
   const key = choiceKey(v.chosen);
-  if (p.selection !== s.selected || p.queryKey !== sessionQueryKey(s) || p.choice !== null && p.choice !== key ||
+  if (p.selection !== s.selected || p.queryKey !== sessionQueryKey(s) ||
     p.format !== null && p.format !== v.format || !sameOutput(p.output, v.output)) return [{ ...s, pendingCopy: null }, []];
+  // A destination read can refresh recents and temporarily retire the current
+  // rows. Keep the captured choice until the reply can confirm or reject it.
+  if (p.choice !== null && p.choice !== key) return v.searchPending ? [s, []] : [{ ...s, pendingCopy: null }, []];
   if (p.choice === null) {
     if (v.searchPending) return [s, []];
     if (!v.chosen.length) return [{ ...s, pendingCopy: null }, []];

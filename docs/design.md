@@ -593,6 +593,8 @@ page", where the Page field lives beside the page itself.
 - **Text.** Text colours; key formats monospace with punctuation in `--muted`;
   formatted styles in the UI font. A read-only `<bdi dir="auto">` line with an
   ellipsis; the full text is in the tooltip and the wide pane.
+  The selected citation's Preview region stays a keyboard focus target;
+  hiding or removing it returns its focus to Search.
 - **Page and form** (#1366). A reference's menu holds its Page field (a page
   or range, including Roman numerals) and the three name forms. Opening the
   menu from a selected segment puts focus in Page. With no built selection,
@@ -637,7 +639,9 @@ page", where the Page field lives beside the page itself.
   `--citation`, 20 px tall (`--space-5`), scaled with text, `aria-hidden`,
   mirrored in RTL, 45 % while pending, `CanvasText` in contrast modes [C16].
 - **States.** Pending: the old text dims for 300 ms, then "Formatting…"; Enter
-  waits. Failed: a Stop icon, "Couldn't format in APA. Choose another style, or
+  waits. Resolving the destination can refresh recents; a waiting Enter keeps
+  its reference through that read and cancels if it changes or cannot be read.
+  Failed: a Stop icon, "Couldn't format in APA. Choose another style, or
   copy keys.", no Enter hint. Stale: a Look icon, "The library changed. Reading
   it again…". Warnings: a trailing pill ("1 warning"; "Reference entry" for a numeric
   style, which copies the entry because its number depends on the document).

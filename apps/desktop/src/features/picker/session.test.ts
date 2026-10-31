@@ -140,6 +140,31 @@ test("search and preview failures never copy, and a copy rejection shows its fix
   expect(s.effects).toEqual([]);
 });
 
+test.each(["same", "different", "empty", "failed", "reopened"])("Enter waiting for the destination survives only the same refreshed recent reference (%s)", (outcome) => {
+  const s = scenario();
+  s.send(s.view({ ready: false }));
+  s.send({ type: "enter", choice: choiceKey([a]) });
+  // Resolving the captured app refreshes empty-query recents. The old rows
+  // temporarily stop being actionable while this request is pending.
+  s.send(s.view({ appId: "example.browser", chosen: [], shown: null, searchPending: true, shouldAsk: true }));
+  expect(s.effects).toEqual([]);
+  if (outcome === "reopened") {
+    s.send({ type: "hidden", now: 10 });
+    s.send({ type: "shown", now: 20 });
+  }
+  const chosen = outcome === "different" ? [b] : outcome === "empty" || outcome === "failed" ? [] : [a];
+  s.send(s.view({ appId: "example.browser", chosen, shouldAsk: true, shown: outcome === "failed" ? "failed" : prepared }));
+  if (outcome === "same") {
+    expect(s.effects).toEqual([{ type: "ask-format" }]);
+    s.send({ type: "question", answer: "answered" });
+    s.send(s.view({ appId: "example.browser" }));
+    expect(s.effects).toMatchObject([{ type: "copy", id: 1, ticket: "ticket-b", hash: "hash-b" }]);
+  } else {
+    expect(s.effects).toEqual([]);
+    expect(s.state.pendingCopy).toBeNull();
+  }
+});
+
 test("delayed A after B cannot replace B's Enter or prepared output", () => {
   const s = scenario();
   s.send({ type: "query", value: "A" });

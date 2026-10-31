@@ -199,11 +199,12 @@ export function CitationShelf({ announce, selected, highlightedReference, highli
     </p>
     {hasShelf ? <div className="shelf" data-folded={compact || undefined} data-copied={copied ? "" : undefined} ref={preserveFocus}>
       <section ref={(node) => { output.current = node; }} aria-label={shown !== undefined || copied ? pickerText.preview : pickerText.citationDetails}
+        tabIndex={focusable && shown !== undefined && !copied ? 0 : undefined}
         className="shelf-output" data-keys={keys || undefined} data-state={!copied && (shown === null || typeof shown === "string") ? shown ?? "pending" : undefined}>
         <span className="shelf-leading"><Beak /></span>
         <div className="shelf-citation" role={selected.size ? "group" : undefined} aria-label={selected.size ? pickerText.selectedReferences : undefined}>
           {previous && !retainedSegments ? <bdi className="preview-text shelf-retained" dir="auto" title={previous.text}>{keyText(previous.text)}</bdi> : shown !== "failed" && shown !== "stale" && singleSegment}
-          {text !== undefined ? singleSegment ? null : manySegments ? <span className="shelf-fragments" dir={keys ? "ltr" : "auto"} title={text}>{manySegments}</span> : <bdi id={citationId} dir="auto" className="preview-text" title={text} tabIndex={focusable && !copied ? 0 : undefined}>
+          {text !== undefined ? singleSegment ? null : manySegments ? <span className="shelf-fragments" dir={keys ? "ltr" : "auto"} title={text}>{manySegments}</span> : <bdi id={citationId} dir="auto" className="preview-text" title={text}>
             {ready?.markup.length && !keys ? render(ready.markup) : keyText(text)}
           </bdi> : shown === "failed" ? <><span className="shelf-state-icon" data-state="failed" aria-hidden="true">!</span><p title={fullProblem}>{fullProblem}</p></> : shown === "stale" ? <><span className="shelf-state-icon" data-state="stale" aria-hidden="true">!</span><p role="status">{pickerText.shelfStale}</p></>
             : shown === undefined && manySegments ? <span className="shelf-fragments">{manySegments}</span> : shown === null && !previous ? <p role="status">{pickerText.previewPending}</p> : null}
