@@ -317,7 +317,10 @@ mod tests {
             "non-record objects are not searchable references"
         );
         assert!(!failed.stale);
-        assert_eq!(failed.error.as_deref(), Some("the library file is unavailable"));
+        assert_eq!(
+            failed.error.as_deref(),
+            Some("the library file is unavailable; download any online-only file to this computer first")
+        );
         assert_eq!(failed.references, 0);
         assert_eq!(
             failed.source_counts,
@@ -406,7 +409,7 @@ mod tests {
         assert!(expected.iter().all(|key| keys.contains_key(*key)));
         assert_eq!(
             payload["error"],
-            "the library file is unavailable; keeping the last loaded references"
+            "the library file is unavailable; download any online-only file to this computer first; keeping the last loaded references"
         );
         assert_eq!(payload["note"], "the choice could not be saved");
         assert_eq!(payload["problem"], "missing");
@@ -432,7 +435,10 @@ mod tests {
     #[test]
     fn only_populated_snapshots_claim_that_references_were_retained() {
         let failures = [
-            (SourceError::Unavailable, "the library file is unavailable"),
+            (
+                SourceError::Unavailable,
+                "the library file is unavailable; download any online-only file to this computer first",
+            ),
             (
                 SourceError::Unreadable,
                 "the library file is not UTF-8 text; save it as UTF-8",

@@ -82,6 +82,51 @@ clears its own error. Zotero's read guard must still match at acceptance.
 Obsolete-cache cleanup validates locality and resolves the local directory before
 its first filesystem probe, including when the configured cache path is a symlink.
 
+### File availability and notification recovery (#1532, items 2, 3 and 7)
+
+Native watch registration does not prove that other clients' edits generate events.
+Network and unknown mounts use manual refresh and the existing `live-refresh-off`
+warning. Mount classification follows the selected target: known local filesystem
+types on macOS/Linux, and local volume types on Windows (including mapped-drive
+classification). Opening the picker checks these sources once, as well as files
+whose last refresh failed, including a desktop timeout before engine health was
+updated; a newer choice supersedes that check. File checks prepare a strict
+reread for guarded acceptance; Zotero keeps its normal change check. There is no
+periodic filesystem retry, visible or hidden. Local notifications can still
+refresh a hidden picker. Unavailable files recover on a notification, Reload or
+the next picker opening.
+
+Check Windows offline/recall attributes and macOS dataless flags before opening
+file data, and check descriptor metadata again before reading. Legacy iCloud
+`.icloud` placeholders are deferred too. The unavailable-file message asks the
+person to download online-only files first; known placeholders are refused
+without requesting hydration.
+Filesystem read/probe waits have a two-second deadline and at most eight detached
+calls. The desktop supervises an entire load with a ten-second deadline and
+waits for completion, cancellation or that single deadline; it does not poll.
+Blocked metadata or provider I/O cannot serialize newer choices behind it.
+Request reservation records the
+chosen spelling without filesystem access; canonical resolution belongs to the
+supervised worker. At most four complete loads can remain in flight; saturation
+reports unavailability instead of queuing forever.
+OS calls already blocked cannot be terminated safely; they release their slot
+when they return. Late results have no publication authority and retain their
+original cancellation and request identity. Reload candidates and their watchers
+still require guarded acceptance before they can publish.
+
+Watch an existing ancestor of each selected/target parent. Directory events
+invalidate registrations; reinstall the parent even if its spelling is unchanged,
+and move the anchor upward if several levels disappeared. A failed registration
+retains the old references and `live-refresh-off` until a registered, stable read
+succeeds. Ordinary leaf edits reuse registrations; replacement closes the
+registration gap with two identical reads. These changes add bounded helper
+threads and metadata probes, with no hidden polling. Fakes cover event-less
+mounts, placeholders, blocked reads, stale ownership and registration refusal.
+Native evidence still requires Linux directory replacement, a two-client network
+mount, Windows provider states and iCloud provider states separately.
+
+### Saved .bib cache removal
+
 The saved `.bib` cache was removed on 2026-10-31: #1534's engine-only comparison
 at 10k records found similar first-result time (753 ms cached, 737 ms fresh), but citation
 readiness took 1,949 ms versus 731 ms. Files now parse fresh and become citable

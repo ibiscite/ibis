@@ -233,7 +233,9 @@ fn a_coherent_engine_update_clears_only_its_own_failed_reload() -> Result<(), Bo
     let directory = tempfile::tempdir()?;
     let path = directory.path().join("synthetic.bib");
     std::fs::write(&path, "@book{a}")?;
-    let file = Arc::new(FileLibrary::open(&path).map_err(|_| "file")?);
+    // No live watcher: its own accepted read would supersede these reloads.
+    let engine = Engine::new().map_err(|_| "engine")?.without_file_watches();
+    let file = Arc::new(FileLibrary::open_file_with(&path, engine, || {}).map_err(|_| "file")?);
     let source = Source::File(path.clone());
     let library = Mutex::new(Library {
         source: Some(source.clone()),

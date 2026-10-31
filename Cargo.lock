@@ -2102,19 +2102,17 @@ dependencies = [
  "ibis-core",
  "ibis-zotero-local",
  "insta",
- "miniz_oxide 0.8.9",
  "nix",
  "notify",
  "proptest",
  "rusqlite",
- "rustix",
  "schemars 1.2.3",
  "serde",
  "serde_json",
- "sha2",
  "tempfile",
  "thiserror 2.0.21",
  "unicode-normalization",
+ "winsafe",
 ]
 
 [[package]]

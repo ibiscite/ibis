@@ -281,20 +281,27 @@ impl FileLibrary {
     }
 
     pub(super) fn accept_reload(&self, reload: ibis_engine::PreparedFileReload) -> Result<(), super::LoadError> {
-        self.engine.accept_file_reload(reload).map_err(|error| {
-            if error.code == ibis_core::contract::ErrorCode::Cancelled {
-                ibis_core::source::SourceError::Changing.into()
-            } else {
-                file_reload_error(error)
-            }
-        })
+        match self.engine.accept_file_reload(reload) {
+            // The caller holds the current request, so a newer accepted read
+            // (usually the watcher's) retired this one: the library is fresh.
+            Err(error) if error.code == ibis_core::contract::ErrorCode::Cancelled => Ok(()),
+            result => result.map_err(file_reload_error),
+        }
     }
 
     #[cfg(test)]
     pub(super) fn reload(&self) -> Result<(), super::LoadError> {
-        self.engine
+        // A live watcher can accept the same change first, which retires this
+        // reload. The newer publication is the result, so it is not a failure.
+        match self
+            .engine
             .dispatch(Method::Libraries, &json!({"action":"reload"}), &Cancellation::default())
-            .map_err(|_| super::LoadError::Stopped)?;
+        {
+            Err(failure) if failure.code != ibis_core::contract::ErrorCode::Cancelled => {
+                return Err(super::LoadError::Stopped);
+            }
+            _ => {}
+        }
         if let Some(error) = self
             .engine
             .libraries()

@@ -714,7 +714,10 @@ mod tests {
         let failed = install(&library, &requests, request, load_library(missing, false))
             .unwrap_or_else(|| panic!("expected the current library request"));
         assert_eq!(failed.name.as_deref(), Some("missing.bib"));
-        assert_eq!(failed.error.as_deref(), Some("the library file is unavailable"));
+        assert_eq!(
+            failed.error.as_deref(),
+            Some("the library file is unavailable; download any online-only file to this computer first")
+        );
         assert!(!failed.has_snapshot);
         assert!(
             !failed

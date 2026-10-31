@@ -14,15 +14,17 @@ use crate::{LoadedLibrary, attachments, bibtex, csl_json};
 use ibis_core::contract::{LibraryId, LibraryObject, Snapshot};
 use std::collections::BTreeMap;
 
+mod io;
+mod watch;
+
 pub const MAX_LIBRARY_BYTES: u64 = 64 * 1024 * 1024;
 const SETTLE: Duration = Duration::from_millis(250);
-const MAX_UNAVAILABLE_RETRY: Duration = Duration::from_secs(5);
 
 /// Allowlisted diagnostics: never expose paths, contents or operating system errors.
 /// Front ends add any context about their installed references.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 pub enum SourceError {
-    #[error("the library file is unavailable")]
+    #[error("the library file is unavailable; download any online-only file to this computer first")]
     Unavailable,
     #[error("the library must be a regular file")]
     NotRegular,
@@ -43,7 +45,15 @@ pub enum SourceError {
 }
 
 pub fn read_library_file(path: &Path) -> Result<String, SourceError> {
+    let path = path.to_path_buf();
+    io::bounded(move || read_library_file_sync(&path))
+}
+
+fn read_library_file_sync(path: &Path) -> Result<String, SourceError> {
     let pause = || std::thread::sleep(Duration::from_millis(50));
+    if io::path_needs_download(path)? {
+        return Err(SourceError::Unavailable);
+    }
     let metadata = retry_io(|| std::fs::metadata(path), pause).map_err(|_| SourceError::Unavailable)?;
     if !metadata.is_file() {
         return Err(SourceError::NotRegular);
@@ -51,8 +61,10 @@ pub fn read_library_file(path: &Path) -> Result<String, SourceError> {
     if metadata.len() > MAX_LIBRARY_BYTES {
         return Err(SourceError::TooLarge);
     }
-    let file = retry_io(|| open_readonly(path), pause).map_err(|_| SourceError::Unavailable)?;
-    read_open_file(file)
+    io::read_if_downloaded(io::needs_download(&metadata), || {
+        let file = retry_io(|| open_readonly(path), pause).map_err(|_| SourceError::Unavailable)?;
+        read_open_file(file)
+    })
 }
 
 fn retry_io<T>(mut operation: impl FnMut() -> std::io::Result<T>, mut pause: impl FnMut()) -> std::io::Result<T> {
@@ -85,6 +97,13 @@ fn read_text(file: impl Read) -> Result<String, SourceError> {
 }
 
 fn canonical_path(path: &Path) -> std::io::Result<PathBuf> {
+    let path = path.to_path_buf();
+    io::bounded(move || Ok(canonical_path_sync(&path)))
+        .map_err(|_| std::io::Error::from(std::io::ErrorKind::TimedOut))?
+}
+
+// Only call directly from a job already protected by the filesystem deadline.
+fn canonical_path_sync(path: &Path) -> std::io::Result<PathBuf> {
     std::fs::canonicalize(path).map(compatible_path)
 }
 
@@ -98,7 +117,7 @@ fn compatible_path(path: PathBuf) -> PathBuf {
 fn watched_path(path: &Path) -> std::io::Result<PathBuf> {
     let path = std::path::absolute(path)?;
     let parent = path.parent().ok_or(std::io::ErrorKind::InvalidInput)?;
-    let parent = std::fs::canonicalize(parent).or_else(|_| std::path::absolute(parent))?;
+    let parent = canonical_path(parent).or_else(|_| std::path::absolute(parent))?;
     #[cfg(windows)]
     if matches!(path.components().next(), Some(std::path::Component::Prefix(prefix)) if prefix.kind().is_verbatim()) {
         return Ok(compatible_path(
@@ -314,16 +333,30 @@ impl SourceWatch {
 
     fn start(
         path: &Path,
+        snapshot: Option<SourceSnapshot>,
+        model: Option<Snapshot>,
+        changed: impl FnMut(Result<LoadedLibrary, SourceError>) -> Option<Snapshot> + Send + 'static,
+    ) -> Result<Self, SourceError> {
+        Self::start_with_policy(path, snapshot, model, changed, io::supports_notifications)
+    }
+
+    fn start_with_policy(
+        path: &Path,
         mut snapshot: Option<SourceSnapshot>,
         mut model: Option<Snapshot>,
         mut changed: impl FnMut(Result<LoadedLibrary, SourceError>) -> Option<Snapshot> + Send + 'static,
+        supports_notifications: impl FnOnce(&Path) -> bool,
     ) -> Result<Self, SourceError> {
+        if !supports_notifications(path) {
+            return Err(SourceError::WatchUnavailable);
+        }
         // Keep the selected filename, rather than canonicalizing the file inode.
         let path = watched_path(path).map_err(|_| SourceError::WatchUnavailable)?;
-        let parent = path.parent().ok_or(SourceError::WatchUnavailable)?.to_path_buf();
         let (signal, events) = mpsc::sync_channel(1);
         let failed = Arc::new(AtomicBool::new(false));
         let notify_failed = Arc::clone(&failed);
+        let dirty = Arc::new(AtomicBool::new(false));
+        let notify_dirty = Arc::clone(&dirty);
         let event_signal = signal.clone();
         let selected = path.clone();
         let target = Arc::new(Mutex::new(None::<PathBuf>));
@@ -331,20 +364,21 @@ impl SourceWatch {
         let mut watcher = notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
             let relevant = match event {
                 Ok(event) => {
-                    !matches!(event.kind, notify::EventKind::Access(_))
-                        && (event.need_rescan()
-                            || event.paths.iter().any(|p| {
-                                p == &selected
-                                    || p == &parent
-                                    || event_target.lock().is_ok_and(|target| {
-                                        target
-                                            .as_ref()
-                                            .is_some_and(|target| p == target || Some(p.as_path()) == target.parent())
-                                    })
-                            }))
+                    let Ok(target) = event_target.lock() else {
+                        notify_failed.store(true, Ordering::SeqCst);
+                        notify_dirty.store(true, Ordering::SeqCst);
+                        let _ = event_signal.try_send(());
+                        return;
+                    };
+                    let (relevant, reset) = watch::invalidation(&event, &selected, target.as_deref());
+                    if reset {
+                        notify_dirty.store(true, Ordering::SeqCst);
+                    }
+                    relevant
                 }
                 Err(_) => {
                     notify_failed.store(true, Ordering::SeqCst);
+                    notify_dirty.store(true, Ordering::SeqCst);
                     true
                 }
             };
@@ -353,14 +387,8 @@ impl SourceWatch {
             }
         })
         .map_err(|_| SourceError::WatchUnavailable)?;
-        watcher
-            .watch(
-                path.parent().ok_or(SourceError::WatchUnavailable)?,
-                RecursiveMode::NonRecursive,
-            )
-            .map_err(|_| SourceError::WatchUnavailable)?;
-        let mut target_parent = None;
-        rearm_target(&mut watcher, &path, &target, &mut target_parent)?;
+        let mut directories = Default::default();
+        watch::rearm(&mut watcher, &path, &target, &mut directories, true)?;
         let stopped = Arc::new(AtomicBool::new(false));
         let stop = Arc::clone(&stopped);
         let retry = signal.clone();
@@ -369,8 +397,10 @@ impl SourceWatch {
             .spawn(move || {
                 // Also check once after registration to close the load/watch gap.
                 let mut error_reported = false;
-                let mut unavailable_retry = None;
-                while wait_for_change(&events, unavailable_retry) && !stop.load(Ordering::SeqCst) {
+                // Windows reports one delete as several directory events: the
+                // same failure is one report until a read succeeds again.
+                let mut reported = None;
+                while events.recv().is_ok() && !stop.load(Ordering::SeqCst) {
                     loop {
                         if stop.load(Ordering::SeqCst) {
                             return;
@@ -385,20 +415,30 @@ impl SourceWatch {
                         return;
                     }
                     if failed.swap(false, Ordering::SeqCst) {
-                        unavailable_retry = None;
                         error_reported = true;
                         let _ = changed(Err(SourceError::WatchUnavailable));
                         continue;
                     }
                     // A selected symlink may now point into a different directory.
-                    let candidate = rearm_target(&mut watcher, &path, &target, &mut target_parent).and_then(|()| {
-                        stable_read(&path, &events, &stop, &mut snapshot, error_reported, model.as_ref())
-                    });
-                    unavailable_retry = if matches!(candidate, Err(SourceError::Unavailable)) {
-                        Some(unavailable_retry.map_or(SETTLE, |delay| (delay * 2).min(MAX_UNAVAILABLE_RETRY)))
+                    let candidate = if !io::supports_notifications(&path) {
+                        Err(SourceError::WatchUnavailable)
                     } else {
-                        None
+                        watch::rearm(
+                            &mut watcher,
+                            &path,
+                            &target,
+                            &mut directories,
+                            dirty.swap(false, Ordering::SeqCst),
+                        )
+                        .and_then(|()| {
+                            stable_read(&path, &events, &stop, &mut snapshot, error_reported, model.as_ref())
+                        })
                     };
+                    if matches!(candidate, Err(SourceError::WatchUnavailable)) {
+                        // A later leaf event must retry uncertain registrations,
+                        // rather than trusting their cached path membership.
+                        dirty.store(true, Ordering::SeqCst);
+                    }
                     if !stop.load(Ordering::SeqCst) {
                         if matches!(candidate, Err(SourceError::Changing)) {
                             let _ = retry.try_send(());
@@ -406,12 +446,16 @@ impl SourceWatch {
                         match candidate {
                             Ok(Some(loaded)) => {
                                 error_reported = false;
+                                reported = None;
                                 publish_candidate(&mut model, loaded, &mut changed);
                             }
                             Ok(None) => {}
                             Err(error) => {
                                 error_reported = true;
-                                let _ = changed(Err(error));
+                                if reported != Some(error) {
+                                    reported = Some(error);
+                                    let _ = changed(Err(error));
+                                }
                             }
                         }
                     }
@@ -431,55 +475,6 @@ fn publish_candidate(
     if let Some(installed) = changed(Ok(loaded)) {
         *model = Some(installed);
     }
-}
-
-// A failed read may outlast the short I/O retries without generating a later
-// notification (for example a Windows editor's exclusive handle). Keep retrying
-// with a capped delay; file events and dropping the watcher interrupt the wait.
-fn wait_for_change(events: &Receiver<()>, unavailable_retry: Option<Duration>) -> bool {
-    match unavailable_retry {
-        Some(delay) => !matches!(events.recv_timeout(delay), Err(RecvTimeoutError::Disconnected)),
-        None => events.recv().is_ok(),
-    }
-}
-
-/// Keep the selected path watched while following its resolved target as well.
-/// If the target disappears, keep its parent registered so recreation is seen.
-fn rearm_target(
-    watcher: &mut notify::RecommendedWatcher,
-    selected: &Path,
-    target: &Mutex<Option<PathBuf>>,
-    watched_parent: &mut Option<PathBuf>,
-) -> Result<(), SourceError> {
-    let resolved = canonical_path(selected).ok().or_else(|| {
-        // A dangling selected link can still name a file in an existing
-        // directory. Resolve only that parent so creation of the leaf is seen.
-        // One read_link plus OS canonicalization keeps resolution bounded.
-        let linked = selected.parent()?.join(std::fs::read_link(selected).ok()?);
-        Some(canonical_path(linked.parent()?).ok()?.join(linked.file_name()?))
-    });
-    let Some(resolved) = resolved else {
-        return Ok(());
-    };
-    let resolved = (resolved != selected).then_some(resolved);
-    let parent = resolved
-        .as_deref()
-        .and_then(Path::parent)
-        .filter(|parent| Some(*parent) != selected.parent())
-        .map(Path::to_path_buf);
-    if parent != *watched_parent {
-        if let Some(parent) = &parent {
-            watcher
-                .watch(parent, RecursiveMode::NonRecursive)
-                .map_err(|_| SourceError::WatchUnavailable)?;
-        }
-        if let Some(old) = watched_parent.as_deref() {
-            watcher.unwatch(old).map_err(|_| SourceError::WatchUnavailable)?;
-        }
-        *watched_parent = parent;
-    }
-    *target.lock().map_err(|_| SourceError::WatchUnavailable)? = resolved;
-    Ok(())
 }
 
 fn stable_read(
@@ -535,6 +530,13 @@ fn open_readonly(path: &Path) -> std::io::Result<std::fs::File> {
         // Nonblocking open plus descriptor metadata prevents hanging on it.
         options.custom_flags(nix::fcntl::OFlag::O_NONBLOCK.bits());
     }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        // Avoid implicitly recalling remote-storage data if the provider state
+        // changes between the path check and open. Check handle metadata too.
+        options.custom_flags(0x0010_0000); // FILE_FLAG_OPEN_NO_RECALL
+    }
     options.open(path)
 }
 fn read_open_file(file: std::fs::File) -> Result<String, SourceError> {
@@ -545,7 +547,7 @@ fn read_open_file(file: std::fs::File) -> Result<String, SourceError> {
     if metadata.len() > MAX_LIBRARY_BYTES {
         return Err(SourceError::TooLarge);
     }
-    read_text(file)
+    io::read_if_downloaded(io::needs_download(&metadata), || read_text(file))
 }
 
 #[cfg(all(test, unix))]
@@ -555,6 +557,35 @@ mod subprocess_watchdog;
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn manual_sources_report_live_refresh_off_without_starting_a_worker() {
+        let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+        let path = directory.path().join("synthetic-network.bib");
+        std::fs::write(&path, "@misc{before}").unwrap_or_else(|e| panic!("{e}"));
+        let (send, events) = mpsc::channel();
+        let result = SourceWatch::start_with_policy(
+            &path,
+            None,
+            None,
+            move |candidate| {
+                let _ = send.send(candidate);
+                None
+            },
+            |_| false,
+        ); // Event-less filesystem, regardless of native registration success.
+        assert_eq!(result.err(), Some(SourceError::WatchUnavailable));
+        assert!(
+            matches!(events.try_recv(), Err(mpsc::TryRecvError::Disconnected)),
+            "manual sources do no background work"
+        );
+        std::fs::write(&path, "@misc{after}").unwrap_or_else(|e| panic!("{e}"));
+        let refreshed = reload_file(&path).unwrap_or_else(|e| panic!("{e}"));
+        let LibraryObject::Record(record) = &refreshed.snapshot.objects()[0].object else {
+            panic!("reference")
+        };
+        assert_eq!(record.citation_key(), Ok(Some("after")));
+    }
+
     #[cfg(unix)]
     #[test]
     fn completed_file_observation_refuses_a_symlink_retarget_during_read() {

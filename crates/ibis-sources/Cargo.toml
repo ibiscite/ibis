@@ -15,20 +15,16 @@ serde_json = { version = "1.0.154", features = ["raw_value"] }
 thiserror = "2.0.21"
 ibis-zotero-local = { path = "../ibis-zotero-local" }
 rusqlite = { version = "0.41.0", features = ["bundled", "hooks"] }
-sha2 = "0.10.9"
 biblatex = "0.12.0"
 notify = "8.2.0"
 unicode-normalization = "0.1.26"
-miniz_oxide = { version = "0.8.9", features = ["with-alloc"] }
-
-[target.'cfg(any(target_os = "macos", target_os = "linux"))'.dependencies]
-rustix = { version = "1.1.5", features = ["fs"] }
 
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.31.3", default-features = false, features = ["fs"] }
 
-[target.'cfg(target_os = "macos")'.dependencies]
-nix = { version = "0.31.3", default-features = false, features = ["event"] }
+[target.'cfg(windows)'.dependencies]
+# Already locked through the desktop: safe mount/placeholder metadata queries.
+winsafe = { version = "0.0.29", default-features = false, features = ["kernel"] }
 
 [dev-dependencies]
 tempfile = "3.27.0"
