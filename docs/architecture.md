@@ -69,6 +69,47 @@ queries; malformed or oversized values are ignored before arXiv/DOI equivalence.
 - **BibTeX/BibLaTeX:** each entry is parsed independently, so a broken entry produces a warning with its line while the rest loads; work is bounded so hostile files cannot hang the engine. Long-lived clients watch files and only replace them after two identical reads. A watch failure keeps the successfully read snapshot usable and reports the fixed `live-refresh-off` warning; manual Reload remains available. One-shot CLI calls install no watches.
 - **CSL-JSON:** `citation-key`, then `id`, is the key. An `id` only proves a match against a bibliography made from that same file, which the item's details say.
 
+### File availability and notification recovery (#1532, items 2, 3 and 7)
+
+Native watch registration does not prove that other clients' edits generate events.
+Network and unknown mounts use manual refresh and the existing `live-refresh-off`
+warning. Mount classification follows the selected target: known local filesystem
+types on macOS/Linux, and local volume types on Windows (including mapped-drive
+classification). Opening the picker checks these sources once, as well as files
+whose last refresh failed; a newer choice supersedes that check. There is no
+periodic filesystem retry, visible or hidden. Local notifications can still
+refresh a hidden picker. Unavailable files recover on a notification, Reload or
+the next picker opening.
+
+Check Windows offline/recall attributes and macOS dataless flags before opening
+file data, and check descriptor metadata again before reading. Legacy iCloud
+`.icloud` placeholders are deferred too. The unavailable-file message asks the
+person to download online-only files first; known placeholders are refused
+without requesting hydration.
+Filesystem read/probe waits have a two-second deadline and at most eight detached
+calls. The desktop supervises an entire load with a ten-second deadline and
+waits for completion, cancellation or that single deadline; it does not poll.
+Blocked metadata, cache or provider I/O cannot serialize newer choices behind it.
+Request reservation records the
+chosen spelling without filesystem access; canonical resolution belongs to the
+supervised worker. At most four complete loads can remain in flight; saturation
+reports unavailability instead of queuing forever.
+OS calls already blocked cannot be terminated safely; they release their slot
+when they return. Late results have no publication authority and retain their
+original cancellation and cache-operation identity. Cached references remain
+search-only until current bytes have been reparsed, as required by #1498.
+
+Watch an existing ancestor of each selected/target parent. Directory events
+invalidate registrations; reinstall the parent even if its spelling is unchanged,
+and move the anchor upward if several levels disappeared. A failed registration
+retains the old references and `live-refresh-off` until a registered, stable read
+succeeds. Ordinary leaf edits reuse registrations; replacement closes the
+registration gap with two identical reads. These changes add bounded helper
+threads and metadata probes, with no hidden polling. Fakes cover event-less
+mounts, placeholders, blocked reads, stale ownership and registration refusal.
+Native evidence still requires Linux directory replacement, a two-client network
+mount, Windows provider states and iCloud provider states separately.
+
 ### Saved source generations (#1298, first storage slice #1468)
 
 Provisional (2026-10-31, maintainer): this flat-file design is being compared with

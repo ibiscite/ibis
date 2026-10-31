@@ -31,6 +31,10 @@ nix = { version = "0.31.3", default-features = false, features = ["fs"] }
 [target.'cfg(target_os = "macos")'.dependencies]
 nix = { version = "0.31.3", default-features = false, features = ["event"] }
 
+[target.'cfg(windows)'.dependencies]
+# Already locked through the desktop: safe mount/placeholder metadata queries.
+winsafe = { version = "0.0.29", default-features = false, features = ["kernel"] }
+
 [dev-dependencies]
 insta = { version = "1.49.0", features = ["json"] }
 proptest = "1.12.0"

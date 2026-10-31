@@ -6,7 +6,7 @@ use thiserror::Error;
 /// Front ends add any context about their installed references.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 pub enum SourceError {
-    #[error("the library file is unavailable")]
+    #[error("the library file is unavailable; download any online-only file to this computer first")]
     Unavailable,
     #[error("the library must be a regular file")]
     NotRegular,

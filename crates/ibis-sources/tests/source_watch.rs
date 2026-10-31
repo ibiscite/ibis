@@ -42,6 +42,59 @@ fn settling_wait_ignores_the_watchers_transient_changing_notification() {
 }
 
 #[test]
+fn a_recreated_directory_keeps_refreshing_and_can_be_closed_and_reopened() {
+    let root = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+    let parent = root.path().join("selected");
+    std::fs::create_dir(&parent).unwrap_or_else(|e| panic!("{e}"));
+    let path = parent.join("synthetic.bib");
+    std::fs::write(&path, "@misc{before}").unwrap_or_else(|e| panic!("{e}"));
+    let watch = || {
+        let (tx, rx) = mpsc::channel();
+        let watch = SourceWatch::new(&path, move |result| {
+            let _ = tx.send(result);
+        })
+        .unwrap_or_else(|e| panic!("{e}"));
+        (watch, rx)
+    };
+    let (watcher, rx) = watch();
+    assert_eq!(
+        records(&next(&rx).unwrap_or_else(|e| panic!("{e}")))[0].citation_key(),
+        Ok(Some("before"))
+    );
+    std::fs::remove_dir_all(&parent).unwrap_or_else(|e| panic!("{e}"));
+    assert!(
+        next(&rx).is_err(),
+        "keep the previously displayed references with a failure"
+    );
+    std::fs::create_dir(&parent).unwrap_or_else(|e| panic!("{e}"));
+    std::fs::write(&path, "@misc{restored}").unwrap_or_else(|e| panic!("{e}"));
+    let until_key = |rx: &Receiver<_>, key: &str| {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            let result = rx
+                .recv_timeout(deadline.saturating_duration_since(Instant::now()))
+                .unwrap_or_else(|e| panic!("no refreshed {key}: {e}"));
+            if let Ok(loaded) = result
+                && records(&loaded)[0].citation_key() == Ok(Some(key))
+            {
+                assert_eq!(records(&loaded).len(), 1);
+                break;
+            }
+        }
+    };
+    until_key(&rx, "restored");
+    // Recovery alone is insufficient: a later save must still reach the picker.
+    std::fs::write(&path, "@misc{later}").unwrap_or_else(|e| panic!("{e}"));
+    until_key(&rx, "later");
+    drop(watcher);
+    let (watcher, rx) = watch();
+    until_key(&rx, "later");
+    std::fs::write(&path, "@misc{reopened}").unwrap_or_else(|e| panic!("{e}"));
+    until_key(&rx, "reopened");
+    drop(watcher);
+}
+
+#[test]
 fn seeded_watches_reuse_bibtex_and_json_records_in_the_registration_gap() {
     for extension in ["bib", "json"] {
         let dir = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
@@ -349,9 +402,9 @@ fn unchanged_contents_after_a_gap_error_publish_recovery() {
         })
         .unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(next(&rx).err(), Some(SourceError::Unavailable));
-        // Repeated unavailable reads must preserve the initial observation,
-        // including its tolerant damaged-data policy, until recovery.
-        assert_eq!(next(&rx).err(), Some(SourceError::Unavailable));
+        // No timed retries while hidden. The next native event must preserve
+        // the initial observation, including its tolerant damaged-data policy.
+        assert!(rx.recv_timeout(Duration::from_millis(800)).is_err());
         std::fs::write(&path, contents).unwrap_or_else(|e| panic!("{e}"));
         let recovered = next(&rx).unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(records(&recovered)[0].citation_keys[0].value, "same");
@@ -377,7 +430,7 @@ fn damaged_changes_in_the_registration_gap_still_use_strict_reloads() {
 }
 
 #[test]
-fn unavailable_reads_retry_without_another_file_event() {
+fn unavailable_reads_wait_for_events_instead_of_polling() {
     let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
     let path = dir.path().join("library.bib");
     std::fs::write(&path, "@misc{old}").unwrap_or_else(|e| panic!("{e}"));
@@ -389,10 +442,7 @@ fn unavailable_reads_retry_without_another_file_event() {
     let last_good = next(&rx).unwrap_or_else(|e| panic!("{e}"));
     std::fs::remove_file(&path).unwrap_or_else(|e| panic!("{e}"));
     assert_eq!(next(&rx).err(), Some(SourceError::Unavailable));
-    assert_eq!(
-        rx.recv_timeout(Duration::from_secs(2)).ok().and_then(Result::err),
-        Some(SourceError::Unavailable)
-    );
+    assert!(rx.recv_timeout(Duration::from_millis(800)).is_err());
     assert_eq!(records(&last_good)[0].citation_keys[0].value, "old");
     std::fs::write(&path, "@misc{new}").unwrap_or_else(|e| panic!("{e}"));
     assert_eq!(
@@ -408,7 +458,7 @@ fn unavailable_reads_retry_without_another_file_event() {
 
 #[cfg(windows)]
 #[test]
-fn a_long_exclusive_lock_recovers_without_a_followup_save() {
+fn a_long_exclusive_lock_recovers_on_reload_without_background_polling() {
     use std::os::windows::fs::OpenOptionsExt;
     let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
     let path = dir.path().join("library.bib");
@@ -430,25 +480,11 @@ fn a_long_exclusive_lock_recovers_without_a_followup_save() {
     .unwrap_or_else(|e| panic!("{e}"));
     assert_eq!(next(&rx).err(), Some(SourceError::Unavailable));
     assert_eq!(records(&last_good)[0].citation_keys[0].value, "old");
-    std::thread::sleep(Duration::from_secs(2));
+    assert!(rx.recv_timeout(Duration::from_millis(800)).is_err());
     // Closing this read-only handle does not save or modify the source.
     drop(locked);
-    let deadline = Instant::now() + Duration::from_secs(10);
-    loop {
-        let remaining = deadline
-            .checked_duration_since(Instant::now())
-            .unwrap_or_else(|| panic!("lock did not recover"));
-        match rx.recv_timeout(remaining).unwrap_or_else(|e| panic!("{e}")) {
-            Err(SourceError::Unavailable | SourceError::Changing) => continue,
-            loaded => {
-                assert_eq!(
-                    loaded.map(|l| records(&l)[0].citation_keys[0].value.clone()),
-                    Ok("new".into())
-                );
-                break;
-            }
-        }
-    }
+    let reloaded = ibis_sources::reload_file(&path).unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(records(&reloaded)[0].citation_key(), Ok(Some("new")));
 }
 
 #[test]

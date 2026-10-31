@@ -2,8 +2,8 @@
 //! status to the interface and the tray.
 
 use std::collections::BTreeMap;
-use std::sync::Mutex;
 use std::sync::atomic::Ordering;
+use std::sync::{Arc, Condvar, Mutex};
 
 use ibis_core::settings::{LibrarySetting, ZoteroLibraries, ZoteroLibrary};
 #[cfg(debug_assertions)]
@@ -187,17 +187,31 @@ struct OpenRequest {
     source: Source,
     reload: bool,
     intent: OpenIntent,
-    cancel: ibis_engine::Cancellation,
+    cancel: OpenCancellation,
     #[cfg(debug_assertions)]
     started: std::time::Instant,
 }
 
-/// One worker owns the active load; new choices replace its pending request.
+#[derive(Clone, Default)]
+struct OpenCancellation {
+    token: ibis_engine::Cancellation,
+    wake: Arc<(Mutex<()>, Condvar)>,
+}
+
+impl OpenCancellation {
+    fn cancel(&self) {
+        self.token.cancel();
+        let _gate = self.wake.0.lock().unwrap_or_else(|e| e.into_inner());
+        self.wake.1.notify_all();
+    }
+}
+
+/// One supervisor owns the active request; new choices replace pending work.
 #[derive(Default)]
 pub(super) struct OpenQueue {
     running: bool,
     pending: Option<OpenRequest>,
-    active: Option<ibis_engine::Cancellation>,
+    active: Option<OpenCancellation>,
 }
 
 impl LoadRequests {
@@ -224,6 +238,77 @@ impl LoadRequests {
             queue.running = false;
         }
         next
+    }
+}
+
+fn supervise_load<T: Send + 'static>(
+    cancel: &OpenCancellation,
+    deadline: std::time::Duration,
+    operation: impl FnOnce() -> Result<T, LoadError> + Send + 'static,
+) -> Result<T, LoadError> {
+    use std::sync::atomic::AtomicUsize;
+    use std::sync::mpsc;
+    use std::time::Instant;
+    // A driver call cannot be killed safely. Bound abandoned operations, while
+    // leaving room for local B to open when remote A is stuck. Saturation fails
+    // promptly, rather than queuing behind an indefinitely blocked OS call.
+    static IN_FLIGHT: AtomicUsize = AtomicUsize::new(0);
+    struct Permit;
+    impl Drop for Permit {
+        fn drop(&mut self) {
+            IN_FLIGHT.fetch_sub(1, Ordering::SeqCst);
+        }
+    }
+    if cancel.token.is_cancelled() {
+        return Err(LoadError::Stopped);
+    }
+    if IN_FLIGHT.fetch_add(1, Ordering::SeqCst) >= 4 {
+        IN_FLIGHT.fetch_sub(1, Ordering::SeqCst);
+        return Err(ibis_core::source::SourceError::Unavailable.into());
+    }
+    let permit = Permit;
+    let (send, result) = mpsc::sync_channel(1);
+    let wake = Arc::clone(&cancel.wake);
+    std::thread::Builder::new()
+        .name("ibis-library-read".into())
+        .spawn(move || {
+            let _permit = permit;
+            let loaded =
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(operation)).unwrap_or(Err(LoadError::Stopped));
+            let _ = send.send(loaded);
+            let _gate = wake.0.lock().unwrap_or_else(|e| e.into_inner());
+            wake.1.notify_all();
+        })
+        .map_err(|_| LoadError::Stopped)?;
+    let until = Instant::now() + deadline;
+    let mut gate = cancel.wake.0.lock().map_err(|_| LoadError::Stopped)?;
+    loop {
+        if cancel.token.is_cancelled() {
+            return Err(LoadError::Stopped);
+        }
+        let remaining = until.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            drop(gate);
+            cancel.cancel();
+            return Err(ibis_core::source::SourceError::Unavailable.into());
+        }
+        match result.try_recv() {
+            Ok(result) => {
+                return if cancel.token.is_cancelled() {
+                    Err(LoadError::Stopped)
+                } else {
+                    result
+                };
+            }
+            Err(mpsc::TryRecvError::Empty) => {}
+            Err(mpsc::TryRecvError::Disconnected) => return Err(LoadError::Stopped),
+        }
+        gate = cancel
+            .wake
+            .1
+            .wait_timeout(gate, remaining)
+            .map_err(|_| LoadError::Stopped)?
+            .0;
     }
 }
 
@@ -318,7 +403,7 @@ fn run_open(app: &AppHandle, request: u64, source: Source, reload: bool, intent:
         source,
         reload,
         intent,
-        cancel: ibis_engine::Cancellation::default(),
+        cancel: OpenCancellation::default(),
         #[cfg(debug_assertions)]
         started,
     }) {
@@ -352,25 +437,35 @@ fn open_one(app: AppHandle, open: OpenRequest) -> impl std::future::Future<Outpu
     let refresh_source = source.clone();
     let cache = app.state::<LoadRequests>().2.operation(request);
     async move {
-        let loading_app = app.clone();
         let loaded = tauri::async_runtime::spawn_blocking(move || {
-            #[cfg(debug_assertions)]
-            let loading = std::time::Instant::now();
-            let loaded = load_source_cached(source, force, previous_file, &cancel, cache, || {
-                loading_app.state::<LoadRequests>().0.load(Ordering::SeqCst) != request
-            });
-            #[cfg(debug_assertions)]
-            {
-                (loaded, loading.elapsed().as_secs_f64() * 1000.0)
-            }
-            #[cfg(not(debug_assertions))]
-            {
-                loaded
+            let file_io = matches!(source, Source::File(_) | Source::Samples(_));
+            let worker_cancel = cancel.token.clone();
+            let operation = move || {
+                #[cfg(debug_assertions)]
+                let loading = std::time::Instant::now();
+                let loaded = load_source_cached(source, force, previous_file, &worker_cancel, cache, || {
+                    worker_cancel.is_cancelled()
+                });
+                #[cfg(debug_assertions)]
+                {
+                    Ok((loaded, loading.elapsed().as_secs_f64() * 1000.0))
+                }
+                #[cfg(not(debug_assertions))]
+                {
+                    loaded
+                }
+            };
+            if file_io {
+                supervise_load(&cancel, std::time::Duration::from_secs(10), operation)
+            } else {
+                operation()
             }
         })
         .await;
         #[cfg(debug_assertions)]
-        let (loaded, load_ms) = loaded.unwrap_or((Err(LoadError::Stopped), 0.0));
+        let (loaded, load_ms) = loaded
+            .unwrap_or(Err(LoadError::Stopped))
+            .unwrap_or_else(|error| (Err(error), 0.0));
         #[cfg(not(debug_assertions))]
         let loaded = loaded.unwrap_or(Err(LoadError::Stopped));
         let chosen = remembered_choice(&refresh_source, &loaded);
@@ -614,7 +709,10 @@ mod engine_read_cancellation {
             source: Source::Zotero(ibis_core::settings::ZoteroLibrary::User.into()),
             reload: true,
             intent: OpenIntent::Refresh,
-            cancel,
+            cancel: OpenCancellation {
+                token: cancel,
+                ..Default::default()
+            },
             #[cfg(debug_assertions)]
             started: std::time::Instant::now(),
         };

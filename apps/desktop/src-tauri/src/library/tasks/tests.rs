@@ -2,6 +2,114 @@ use super::super::state::candidate;
 use super::*;
 
 #[test]
+fn a_stuck_read_releases_the_load_worker_on_cancellation_or_deadline() {
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    for superseded in [false, true] {
+        let cancel = OpenCancellation::default();
+        let worker_cancel = cancel.clone();
+        let (started, reading) = mpsc::channel();
+        let (release, stuck) = mpsc::channel();
+        let (finished, outcome) = mpsc::channel();
+        let worker = std::thread::spawn(move || {
+            let result = supervise_load(&worker_cancel, Duration::from_millis(100), move || {
+                started.send(()).unwrap_or_else(|e| panic!("{e}"));
+                stuck.recv().unwrap_or_else(|e| panic!("{e}"));
+                Ok("obsolete A")
+            });
+            finished.send(result).unwrap_or_else(|e| panic!("{e}"));
+        });
+        reading
+            .recv_timeout(Duration::from_secs(2))
+            .unwrap_or_else(|e| panic!("{e}"));
+        if superseded {
+            cancel.cancel();
+        }
+        let result = outcome.recv_timeout(Duration::from_secs(1));
+        // Always release the fake filesystem, including on a regression failure.
+        release.send(()).unwrap_or_else(|e| panic!("{e}"));
+        worker.join().unwrap_or_else(|e| panic!("{e:?}"));
+        assert_eq!(
+            result.ok(),
+            Some(Err(if superseded {
+                LoadError::Stopped
+            } else {
+                ibis_core::source::SourceError::Unavailable.into()
+            }))
+        );
+    }
+}
+
+#[test]
+fn a_new_library_opens_before_the_obsolete_filesystem_read_returns() {
+    use std::sync::{Arc, mpsc};
+    use std::time::Duration;
+    let library = Arc::new(Mutex::new(Library::default()));
+    let requests = Arc::new(LoadRequests::default());
+    let choose = |name: &str| {
+        let source = Source::File(std::path::PathBuf::from(name));
+        let (request, reload, _) = begin_open(&library, &requests, source.clone()).unwrap_or_else(|| panic!("choice"));
+        OpenRequest {
+            request,
+            source,
+            reload,
+            intent: OpenIntent::Read,
+            cancel: OpenCancellation::default(),
+            #[cfg(debug_assertions)]
+            started: std::time::Instant::now(),
+        }
+    };
+    assert!(requests.enqueue(choose("synthetic-cloud.bib")));
+    let (started, reading) = mpsc::channel();
+    let (release, stuck) = mpsc::channel();
+    let (visible, displayed) = mpsc::channel();
+    let worker = {
+        let library = Arc::clone(&library);
+        let requests = Arc::clone(&requests);
+        std::thread::spawn(move || {
+            let mut blocked = Some((started, stuck));
+            while let Some(open) = requests.next_open() {
+                let source = open.source.clone();
+                let blocked = blocked.take();
+                let loaded = supervise_load(&open.cancel, Duration::from_secs(5), move || {
+                    if let Some((started, stuck)) = blocked {
+                        started.send(()).unwrap_or_else(|e| panic!("{e}"));
+                        stuck.recv().unwrap_or_else(|e| panic!("{e}"));
+                    }
+                    Ok(Loaded::New(Box::new(candidate(source, "@misc{current}"))))
+                });
+                if let Some(status) = open.intent.install(&library, &requests, open.request, loaded) {
+                    visible.send(status).unwrap_or_else(|e| panic!("{e}"));
+                }
+            }
+        })
+    };
+    reading
+        .recv_timeout(Duration::from_secs(2))
+        .unwrap_or_else(|e| panic!("{e}"));
+    assert!(!requests.enqueue(choose("synthetic-middle.bib")));
+    assert!(!requests.enqueue(choose("synthetic-local.bib")));
+    let result = displayed.recv_timeout(Duration::from_secs(2));
+    release.send(()).unwrap_or_else(|e| panic!("{e}"));
+    worker.join().unwrap_or_else(|e| panic!("{e:?}"));
+    let status = result.unwrap_or_else(|e| panic!("local library was held hostage: {e}"));
+    assert_eq!(status.name.as_deref(), Some("synthetic-local.bib"));
+    assert_eq!(status.references, 1);
+    assert!(status.error.is_none());
+    let current = current_status_for_test(&library);
+    assert_eq!(current.name, status.name, "late A cannot consume or replace B");
+    assert!(
+        requests.enqueue(choose("synthetic-reopened.bib")),
+        "the queue can restart"
+    );
+}
+
+fn current_status_for_test(library: &Mutex<Library>) -> LibraryStatus {
+    status(&library.lock().unwrap_or_else(|e| panic!("{e}")))
+}
+
+#[test]
 fn remembered_choice_uses_the_read_identity_even_if_the_selected_path_disappears()
 -> Result<(), Box<dyn std::error::Error>> {
     let directory = tempfile::tempdir()?;
@@ -156,7 +264,7 @@ fn three_rapid_choices_run_only_first_and_last_loads_and_the_last_wins() {
         let (request, reload, _) =
             begin_open(&library, &requests, source.clone()).unwrap_or_else(|| panic!("choice starts"));
         OpenRequest {
-            cancel: ibis_engine::Cancellation::default(),
+            cancel: OpenCancellation::default(),
             request,
             source,
             reload,

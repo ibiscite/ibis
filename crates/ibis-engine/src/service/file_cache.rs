@@ -112,9 +112,25 @@ impl Drop for FileCacheSession {
     }
 }
 impl FileCacheOperation {
-    /// Capture selection before startup work, including before hydration begins.
+    /// Reserve the chosen spelling without filesystem I/O. This can run under
+    /// the app's selection lock, before a worker or cloud provider starts.
     pub fn select_file(&self, path: &Path) -> Result<Option<PathBuf>, EngineError> {
-        let source = std::fs::canonicalize(path).ok();
+        let selected = std::path::absolute(path).ok();
+        self.current(|state, _| {
+            if let Some(selected) = &selected {
+                state
+                    .configured
+                    .insert(LibraryId::file(selected.as_os_str().as_encoded_bytes()));
+            }
+            Ok(())
+        })?;
+        Ok(selected)
+    }
+
+    // Canonicalization belongs to supervised background preparation. Preserve
+    // both the reserved spelling and the resolved identity for removal/retargets.
+    fn resolve_file(&self, path: &Path) -> Result<Option<PathBuf>, EngineError> {
+        let source = SourceSnapshot::resolve_path(path).ok();
         // Retain the persisted identity as well as a possibly retargeted path.
         let identities: BTreeSet<_> = source
             .as_deref()
@@ -171,7 +187,7 @@ impl Engine {
             .readiness
             .iter()
             .any(|(source, entry)| source.is_some() && !entry.1);
-        if let Some(source) = operation.select_file(&path)? {
+        if let Some(source) = operation.resolve_file(&path)? {
             let library = LibraryId::file(source.as_os_str().as_encoded_bytes());
             if !strict
                 && !verifying
