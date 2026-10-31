@@ -41,6 +41,7 @@ export const {
   setUpdateChecks,
   checkForUpdates,
   updateAvailable,
+  updatePickerActivity,
   openSettings,
 } = commands;
 

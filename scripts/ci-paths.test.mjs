@@ -384,3 +384,12 @@ test("fuzz driver uses stable while the actual sanitizer campaign stays on night
   assert.match(fuzz, /cargo \+nightly fuzz build damaged_bibtex --features fuzzing --target-dir target\/fuzz/);
   assert.match(fuzz, /cargo \+nightly fuzz run damaged_bibtex --features fuzzing --target-dir target\/fuzz -- -max_total_time=300 -timeout=5 -max_len=65536 -rss_limit_mb=2048/);
 });
+
+test('Linux native CI exercises update consent keyboard bindings under its isolated display', () => {
+  const workflow = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
+  const native = workflow.split('- name: Exercise the native picker (Linux)')[1].split('\n      # Keep native smoke')[0];
+  assert.match(native, /xvfb-run[^\n]+dbus-run-session -- cargo test -p ibis-desktop --locked gtk_offer_return_declines_and_explicit_install_button_accepts -- --ignored --test-threads=1/);
+  assert.match(native, /for tool in Xvfb xvfb-run xauth dbus-run-session; do command -v "\$tool"; done/);
+  assert.match(native, /for layout in old new missing; do\n\s+IBIS_GTK_CONTROL_TEST=1 GDK_BACKEND=x11 xvfb-run[^\n]+dbus-run-session -- \/usr\/bin\/python3 scripts\/update-gtk-probe\.test\.py --layout "\$layout"\n\s+done/);
+  assert.ok(native.indexOf('gtk_offer_return_declines') < native.indexOf('--app target/debug/ibis-desktop'));
+});

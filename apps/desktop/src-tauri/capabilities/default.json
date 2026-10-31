@@ -44,6 +44,7 @@
     "allow-set-update-checks",
     "allow-check-for-updates",
     "allow-update-available",
+    "allow-update-picker-activity",
     "allow-open-settings"
   ]
 }

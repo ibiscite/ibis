@@ -140,6 +140,7 @@ pub(crate) fn configured_shortcut_with(
 
 /// Show the picker on the display with the pointer, focused, and tell the interface to focus the search box.
 pub(crate) fn show_picker(app: &AppHandle) {
+    crate::updater::picker_activity(app);
     // Cancel an older Windows delivery before capture's bounded name lookup.
     #[cfg(target_os = "windows")]
     app.state::<PickerGeneration>().advance();
@@ -281,6 +282,7 @@ pub(crate) fn hide_picker(app: AppHandle) {
 /// Every dismissal path must also release application focus, unless Settings
 /// is open.
 pub(crate) fn dismiss_picker(app: &AppHandle) {
+    crate::updater::picker_activity(app);
     app.state::<PickerGeneration>().advance();
     #[cfg(target_os = "macos")]
     crate::panel::cancel_initial_presentation(app);

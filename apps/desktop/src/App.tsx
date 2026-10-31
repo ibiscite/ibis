@@ -31,6 +31,7 @@ import { useZoteroScope } from "./features/picker/useZoteroScope";
 import { useDestination } from "./features/picker/useDestination";
 import { useLoginItem } from "./features/picker/useLoginItem";
 import { useUpdateChecks } from "./features/picker/useUpdateChecks";
+import { monitorUpdateOfferInput } from "./features/picker/updateOfferInput";
 import { useShortcutStatus } from "./features/picker/useShortcutStatus";
 import { usePin } from "./features/picker/usePin";
 import { initialSession } from "./features/picker/session";
@@ -50,7 +51,7 @@ const noSelection = new Map<string, CitationReference>();
 export type PickerApi = Pick<typeof nativeApi,
   "chooseLibrary" | "useZotero" | "libraryStatus" | "reloadLibrary" | "previewFileCitation" | "copyFileCitation" | "copyFormat" | "pickerPreferences" | "setPickerPreferences" |
   "hidePicker" | "pickerVisible" | "setPinned" | "onLibraryChanged" | "onPickerShown" | "onPickerHidden" | "quit" | "search" | "shortcutStatus"> &
-  Partial<Pick<typeof nativeApi, "useSampleLibrary" | "useZoteroLibraries" | "zoteroGroups" | "pickerDestination" | "rememberAppOutput" | "forgetAppOutputs" | "fitPicker" | "findSources" | "openFoundLibrary" | "rowContext" | "showCopiedNotice" | "loginItem" | "setLoginItem" | "onUpdateProgress" | "updateChecks" | "setUpdateChecks" | "onUpdateChecks" | "updateAvailable" | "onUpdateAvailable" | "checkForUpdates" | "onShortcutStatus" | "openSettings" | "onPreferencesChanged">>;
+  Partial<Pick<typeof nativeApi, "useSampleLibrary" | "useZoteroLibraries" | "zoteroGroups" | "pickerDestination" | "rememberAppOutput" | "forgetAppOutputs" | "fitPicker" | "findSources" | "openFoundLibrary" | "rowContext" | "showCopiedNotice" | "loginItem" | "setLoginItem" | "onUpdateProgress" | "updateChecks" | "setUpdateChecks" | "onUpdateChecks" | "updateAvailable" | "onUpdateAvailable" | "updatePickerActivity" | "checkForUpdates" | "onShortcutStatus" | "openSettings" | "onPreferencesChanged">>;
 
 export type PickerPreview = { query?: string; copied?: Copied };
 
@@ -128,10 +129,27 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   const formatButtonRef = useRef<HTMLButtonElement>(null);
   const moreButton = useRef<HTMLButtonElement>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [formatOpen, setFormatOpen] = useState(false);
   const { startAtLogin, readLoginItem, toggleStartAtLogin, offered: loginItemOffered } = useLoginItem({ loginItem, setLoginItem, perform, menuOpen });
   const updateMenu = useUpdateChecks({ updateChecks, setUpdateChecks, onUpdateChecks, updateAvailable, onUpdateAvailable, perform, report });
   const { pinned, currentPin, togglePin } = usePin({ setPinned, perform });
   const [keysOpen, setKeysOpen] = useState(false);
+  const updateInputBlocked = useRef(false);
+  updateInputBlocked.current = Boolean(query || pendingCopy || menuOpen || formatOpen || keysOpen || selected.size || state.activeCopy !== null);
+  const updateInput = useRef<ReturnType<typeof monitorUpdateOfferInput> | null>(null);
+  useEffect(() => {
+    if (!api.updatePickerActivity) return;
+    const monitor = monitorUpdateOfferInput(window, api.updatePickerActivity, () =>
+      updateInputBlocked.current || !document.hasFocus() || document.documentElement.dataset.pickerHidden !== undefined ||
+      [...document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input:not([type]), input[type="text"], input[type="search"], textarea')].some((input) => input.value.length > 0) ||
+      [...document.querySelectorAll('[contenteditable="true"]')].some((input) => Boolean(input.textContent?.length)));
+    updateInput.current = monitor;
+    const visibility = new MutationObserver(monitor.activity);
+    visibility.observe(document.documentElement, { attributes: true, attributeFilter: ["data-picker-hidden"] });
+    return () => { visibility.disconnect(); monitor.stop(); updateInput.current = null; };
+  }, [api.updatePickerActivity]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: each interaction transition invalidates the old idle ticket, including close/reopen; the monitor reads current blocking state through a ref.
+  useEffect(() => { updateInput.current?.activity(); }, [query, pendingCopy, menuOpen, formatOpen, keysOpen, selected.size, state.activeCopy, state.visibility]);
   // Where focus goes back to when the keys overlay closes.
   const keysReturn = useRef<HTMLElement | null>(null);
   // While Alt (⌥) is held, the footer shows the other keys instead of Enter.
@@ -555,6 +573,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
         app={destination.app}
         formatScope={destination.scope}
         onFormatOpenChange={(open, reason) => {
+          setFormatOpen(open);
           if (open || pendingCopy?.question !== "open" || reason === "action") return;
           // Dismissal uses the fallback for this attempt; application commands cancel it.
           send({ type: "question", answer: reason === "command" ? "cancel" : "answered" });
