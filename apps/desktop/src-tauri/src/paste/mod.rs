@@ -492,6 +492,11 @@ pub(crate) enum Delivered {
 /// The system calls a paste needs, so the decision is testable without them.
 trait Desk {
     type Proof: CopyEvidence;
+    /// One immutable start covers policy work, readiness and the queued post.
+    #[cfg(any(target_os = "macos", test))]
+    fn delivery_began(&self) -> Instant {
+        Instant::now()
+    }
     /// Release keys left by an earlier partial Windows injection, including
     /// on deliveries that will only copy. macOS has no pending releases.
     fn release_keys(&self) -> bool {
@@ -566,6 +571,8 @@ impl CopyEvidence for CopyProof {
 struct DeliveryRequest {
     pid: i32,
     id: String,
+    #[cfg(any(target_os = "macos", test))]
+    began: Instant,
     deadline: Instant,
 }
 
@@ -579,6 +586,7 @@ struct PostRequest {
     presentation: u64,
     stamp: SafetyStamp,
     window: Option<u32>,
+    began: Instant,
     deadline: Instant,
 }
 
@@ -593,6 +601,7 @@ impl PostRequest {
             presentation: proof.presentation,
             stamp: proof.stamp,
             window: proof.captured.as_ref().and_then(|captured| captured.window),
+            began: request.began,
             deadline: request.deadline,
         }
     }
@@ -621,6 +630,14 @@ enum PostResult {
     KeyReleaseFailed,
 }
 
+#[cfg(any(target_os = "macos", test))]
+#[derive(Clone, Copy)]
+enum InputPress {
+    Key,
+    LeftMouse,
+    RightMouse,
+}
+
 /// These calls run in one main-thread task. The only AX query is the bounded,
 /// identity-only focused-window proof (ADR 0029); never clipboard contents.
 #[cfg(any(target_os = "macos", test))]
@@ -634,7 +651,31 @@ trait PostDesk {
     fn frontmost(&self, refresh: impl FnOnce() -> Result<(), CopyReason>) -> Result<Option<Front>, CopyReason>;
     fn change_count(&self) -> isize;
     fn secure_input(&self) -> Option<bool>;
+    fn seconds_since_input(&self, event: InputPress) -> f64;
+    fn input_unchanged(&self, began: Instant) -> Result<(), PostResult> {
+        check_input_since(self, began)
+    }
     fn post(&self, pid: i32) -> bool;
+}
+
+#[cfg(any(target_os = "macos", test))]
+fn check_input_since(desk: &(impl PostDesk + ?Sized), began: Instant) -> Result<(), PostResult> {
+    for event in [InputPress::Key, InputPress::LeftMouse, InputPress::RightMouse] {
+        let age = desk.seconds_since_input(event);
+        if !age.is_finite() || age < 0.0 {
+            return Err(PostResult::Unavailable);
+        }
+        // Sample our clock AFTER the native read: skew may conservatively
+        // refuse an earlier event, but cannot move the delivery boundary later.
+        let elapsed = desk
+            .now()
+            .checked_duration_since(began)
+            .ok_or(PostResult::Unavailable)?;
+        if age <= elapsed.as_secs_f64() {
+            return Err(PostResult::TargetChanged);
+        }
+    }
+    Ok(())
 }
 
 #[cfg(any(target_os = "macos", test))]
@@ -728,6 +769,12 @@ fn checked_post(desk: &impl PostDesk, request: &PostRequest) -> PostResult {
     if let Err(failure) = target_matches(true) {
         return failure;
     }
+    if let Err(failure) = desk.input_unchanged(request.began) {
+        return failure;
+    }
+    if desk.now() >= request.deadline {
+        return PostResult::Unavailable;
+    }
     if desk.post(request.pid) {
         PostResult::Pasted
     } else {
@@ -757,6 +804,8 @@ impl PendingPost {
 
 /// Paste a proven copy into its captured app, or say why it stays copied.
 fn deliver<D: Desk>(desk: &D, proof: Option<&D::Proof>, enabled: bool) -> Delivered {
+    #[cfg(any(target_os = "macos", test))]
+    let began = desk.delivery_began();
     if !desk.release_keys() {
         return key_release_failed();
     }
@@ -801,6 +850,8 @@ fn deliver<D: Desk>(desk: &D, proof: Option<&D::Proof>, enabled: bool) -> Delive
             let request = DeliveryRequest {
                 pid,
                 id: id.unwrap_or_default().to_owned(),
+                #[cfg(any(target_os = "macos", test))]
+                began,
                 deadline: deadline.min(started + RETURN_LIMIT),
             };
             let mut checks = 0;
@@ -835,6 +886,8 @@ fn deliver<D: Desk>(desk: &D, proof: Option<&D::Proof>, enabled: bool) -> Delive
             let request = DeliveryRequest {
                 pid,
                 id: id.unwrap_or_default().to_owned(),
+                #[cfg(any(target_os = "macos", test))]
+                began,
                 deadline,
             };
             match desk.finish(request, proof) {
@@ -1385,9 +1438,11 @@ fn display_name(
 /// Paste into the captured app when it is safe to; the notice then says what happened.
 #[cfg(not(target_os = "windows"))]
 pub(crate) fn deliver_copy(app: &AppHandle, text: &str, token: Option<u32>) -> Delivered {
+    #[cfg(target_os = "macos")]
+    let began = Instant::now();
     let proof = app.state::<LastTarget>().take_copy(text, token);
     #[cfg(target_os = "macos")]
-    let desk = macos::Mac::new(app, proof.as_ref());
+    let desk = macos::Mac::new(app, proof.as_ref(), began);
     #[cfg(target_os = "linux")]
     let desk = CopyOnly;
     let enabled = ibis_core::settings::load(&app.state::<crate::preferences::SettingsFile>().path)
@@ -1439,6 +1494,7 @@ mod tests {
         fronts: RefCell<Vec<i32>>,
         returning_windows: RefCell<Vec<Option<u32>>>,
         after_return_wait: Option<fn(&Fake)>,
+        input_on_first_wait: Cell<Option<fn(&Fake)>>,
         waits: Cell<u32>,
         clock: Cell<Instant>,
         stamp: Cell<SafetyStamp>,
@@ -1459,6 +1515,11 @@ mod tests {
         replace_on_refresh_stamp: bool,
         focus_after_final_check: bool,
         posted_windows: RefCell<Vec<Option<u32>>>,
+        document: Cell<u32>,
+        posted_documents: RefCell<Vec<u32>>,
+        input_events: Cell<[Option<Instant>; 3]>,
+        mouse_moved: Cell<Option<Instant>>,
+        input_error: Option<f64>,
         checks: RefCell<Vec<&'static str>>,
         posts: RefCell<Vec<i32>>,
         pending: PendingPost,
@@ -1474,6 +1535,7 @@ mod tests {
                 fronts: RefCell::new(vec![42]),
                 returning_windows: RefCell::new(Vec::new()),
                 after_return_wait: None,
+                input_on_first_wait: Cell::new(None),
                 waits: Cell::new(0),
                 clock: Cell::new(Instant::now()),
                 stamp: Cell::new(SafetyStamp {
@@ -1497,6 +1559,11 @@ mod tests {
                 replace_on_refresh_stamp: false,
                 focus_after_final_check: false,
                 posted_windows: RefCell::default(),
+                document: Cell::new(1),
+                posted_documents: RefCell::default(),
+                input_events: Cell::new([None; 3]),
+                mouse_moved: Cell::new(None),
+                input_error: None,
                 checks: RefCell::default(),
                 posts: RefCell::default(),
                 pending: PendingPost::default(),
@@ -1518,6 +1585,10 @@ mod tests {
 
     impl Desk for Fake {
         type Proof = CopyProof;
+
+        fn delivery_began(&self) -> Instant {
+            self.clock.get()
+        }
 
         fn stamp(&self) -> SafetyStamp {
             self.stamp.get()
@@ -1569,6 +1640,11 @@ mod tests {
                 windows.remove(0);
             }
             drop(windows);
+            if self.waits.get() == 1
+                && let Some(event) = self.input_on_first_wait.get()
+            {
+                event(self);
+            }
             if let Some(change) = self.after_return_wait {
                 change(self);
             }
@@ -1634,8 +1710,25 @@ mod tests {
             }
             self.secure.get()
         }
+        fn seconds_since_input(&self, event: InputPress) -> f64 {
+            if let Some(error) = self.input_error {
+                return error;
+            }
+            let index = match event {
+                InputPress::Key => 0,
+                InputPress::LeftMouse => 1,
+                InputPress::RightMouse => 2,
+            };
+            self.input_events.get()[index]
+                .map_or(f64::MAX, |event| self.clock.get().duration_since(event).as_secs_f64())
+        }
+        fn input_unchanged(&self, began: Instant) -> Result<(), PostResult> {
+            self.checks.borrow_mut().push("input");
+            check_input_since(self, began)
+        }
         fn post(&self, pid: i32) -> bool {
             self.posted_windows.borrow_mut().push(self.window.get());
+            self.posted_documents.borrow_mut().push(self.document.get());
             self.checks.borrow_mut().push("post");
             self.posts.borrow_mut().push(pid);
             true
@@ -1762,6 +1855,7 @@ mod tests {
                 "secure-input",
                 "change-count",
                 "foreground",
+                "input",
                 "post"
             ]
         );
@@ -1781,6 +1875,99 @@ mod tests {
         let desk = Fake::new();
         assert_eq!(deliver(&desk, Some(&proof()), true), pasted());
         assert_eq!(desk.waits.get(), 0);
+    }
+
+    #[test]
+    fn input_switching_a_tab_or_conversation_while_focus_returns_refuses_even_with_the_same_ax_window() {
+        let events: [fn(&Fake); 3] = [
+            |desk| {
+                let mut events = desk.input_events.get();
+                events[0] = Some(desk.clock.get());
+                desk.input_events.set(events);
+            },
+            |desk| {
+                let mut events = desk.input_events.get();
+                events[1] = Some(desk.clock.get());
+                desk.input_events.set(events);
+            },
+            |desk| {
+                let mut events = desk.input_events.get();
+                events[2] = Some(desk.clock.get());
+                desk.input_events.set(events);
+            },
+        ];
+        for app_id in ["com.google.chrome", "com.anthropic.claudefordesktop"] {
+            for event in events {
+                let desk = Fake { app_id, ..Fake::new() };
+                desk.returning_windows.replace(vec![None, None, Some(100)]);
+                let mut proof = proof();
+                proof.captured = Some(writer(app_id));
+                // One input switches the interior document at the first wait;
+                // another wait follows it, before the original AX window returns.
+                let desk = Fake {
+                    after_return_wait: Some(|desk| {
+                        if desk.waits.get() == 1 {
+                            desk.document.set(2);
+                        }
+                    }),
+                    ..desk
+                };
+                // Use the same first-wait event for each of the three native types.
+                // The event itself is emitted by the fake while waiting below.
+                desk.input_on_first_wait.set(Some(event));
+                assert_eq!(deliver(&desk, Some(&proof), true), copied(Some("target-changed")));
+                assert!(desk.posts.borrow().is_empty());
+                assert!(desk.posted_documents.borrow().is_empty());
+                assert_eq!(proof.text, TEXT);
+                assert_eq!(desk.waits.get(), 2);
+            }
+        }
+    }
+
+    #[test]
+    fn input_during_the_final_ax_read_and_unreadable_input_timing_never_post() {
+        let desk = Fake {
+            after_window_query: Some(|desk| {
+                desk.clock.set(desk.clock.get() + Duration::from_millis(1));
+                desk.document.set(2);
+                desk.input_events.set([Some(desk.clock.get()), None, None]);
+            }),
+            ..Fake::new()
+        };
+        assert_eq!(deliver(&desk, Some(&proof()), true), copied(Some("target-changed")));
+        assert!(desk.posts.borrow().is_empty());
+        for value in [f64::NAN, f64::INFINITY, -1.0] {
+            let desk = Fake {
+                input_error: Some(value),
+                ..Fake::new()
+            };
+            assert_eq!(deliver(&desk, Some(&proof()), true), copied(Some("paste-unavailable")));
+            assert!(desk.posts.borrow().is_empty());
+        }
+    }
+
+    #[test]
+    fn the_activating_enter_and_mouse_movement_do_not_cancel_a_paste() {
+        let desk = Fake {
+            after_return_wait: Some(|desk| desk.mouse_moved.set(Some(desk.clock.get()))),
+            ..Fake::new()
+        };
+        desk.input_events
+            .set([Some(desk.clock.get() - Duration::from_millis(1)), None, None]);
+        desk.returning_windows.replace(vec![None, Some(100)]);
+        assert_eq!(deliver(&desk, Some(&proof()), true), pasted());
+        assert_eq!(*desk.posted_documents.borrow(), [1]);
+    }
+
+    #[test]
+    fn a_programmatic_interior_document_change_with_no_input_is_not_detected() {
+        let desk = Fake {
+            after_return_wait: Some(|desk| desk.document.set(2)),
+            ..Fake::new()
+        };
+        desk.returning_windows.replace(vec![None, Some(100)]);
+        assert_eq!(deliver(&desk, Some(&proof()), true), pasted());
+        assert_eq!(*desk.posted_documents.borrow(), [2]);
     }
 
     #[test]
@@ -1896,7 +2083,7 @@ mod tests {
     }
 
     #[test]
-    fn nothing_that_can_wait_runs_between_the_last_window_check_and_posting() {
+    fn only_the_final_input_fence_follows_the_last_window_check_before_posting() {
         let desk = Fake {
             focus_after_final_check: true,
             ..Fake::new()
@@ -1908,8 +2095,8 @@ mod tests {
             "Command-V must not reach window B"
         );
         assert_eq!(
-            &desk.checks.borrow()[desk.checks.borrow().len() - 2..],
-            ["foreground", "post"]
+            &desk.checks.borrow()[desk.checks.borrow().len() - 3..],
+            ["foreground", "input", "post"]
         );
     }
 
@@ -2065,6 +2252,7 @@ mod tests {
                 DeliveryRequest {
                     pid: 42,
                     id: "com.microsoft.word".into(),
+                    began: proof.written,
                     deadline: proof.written + LATE,
                 },
                 proof,
@@ -2122,6 +2310,7 @@ mod tests {
             DeliveryRequest {
                 pid: 42,
                 id: "com.microsoft.word".into(),
+                began: proof.written,
                 deadline: proof.written + LATE,
             },
             &proof,

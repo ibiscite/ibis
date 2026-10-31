@@ -14,6 +14,7 @@ use tauri_nspanel::objc2::rc::Retained;
 
 use super::{
     Attribute, Identity, LIMIT, Provider, capture_query, claim_process, diagnostics, missing_identity_attribute, query,
+    same_live_process,
 };
 
 // SAFETY: AXUIElement.h declares AXError=int32_t, pid_t=int and Boolean=u8.
@@ -73,6 +74,21 @@ impl PartialEq for Element {
 struct Native {
     application: RefCell<Option<Element>>,
     missing_identity: RefCell<Option<i32>>,
+    activation_process: Option<Retained<NSRunningApplication>>,
+}
+
+impl Native {
+    fn check_activation_process(&self, pid: i32) -> Result<&Retained<NSRunningApplication>, CopyReason> {
+        let original = self.activation_process.as_ref().ok_or(CopyReason::PasteUnavailable)?;
+        let current = NSRunningApplication::runningApplicationWithProcessIdentifier(pid);
+        let terminated = original.isTerminated() || current.as_ref().is_some_and(|process| process.isTerminated());
+        if original.processIdentifier() != pid || !same_live_process(original.as_ref(), current.as_deref(), terminated)
+        {
+            diagnostics::owner(false);
+            return Err(CopyReason::TargetChanged);
+        }
+        Ok(original)
+    }
 }
 
 // NSRunningApplication equality identifies a live instance, unlike a reusable
@@ -189,16 +205,11 @@ impl Provider for Native {
         if !self.trusted() {
             return Err(CopyReason::AccessibilityRequired);
         }
-        let Some(process) = NSRunningApplication::runningApplicationWithProcessIdentifier(pid) else {
-            return Ok(false);
-        };
-        if process.isTerminated() {
-            return Ok(false);
-        }
+        let process = self.check_activation_process(pid)?;
         let claimed = MANUAL_PROCESSES.with(|processes| {
             let mut processes = processes.borrow_mut();
             processes.retain(|process| !process.isTerminated());
-            claim_process(&mut processes, process)
+            claim_process(&mut processes, process.clone())
         });
         if !claimed {
             return Ok(false);
@@ -217,6 +228,12 @@ impl Provider for Native {
             return Err(CopyReason::PasteUnavailable);
         }
         let name = CFString::from_static_str("AXManualAccessibility");
+        // The timeout preparation was another native call. Recheck the instance
+        // retained before eligibility immediately before the sole foreign write.
+        self.check_activation_process(pid)?;
+        if Instant::now() >= deadline {
+            return Err(CopyReason::PasteUnavailable);
+        }
         diagnostics::manual_accessibility();
         // SAFETY: This is the sole foreign attribute write: a CFBoolean true on
         // the verified application element, once per live process and only after
@@ -260,7 +277,7 @@ pub(super) fn request_trust() {
     unsafe { AXIsProcessTrustedWithOptions(CFRetained::as_ptr(&options).as_ptr().cast()) };
 }
 
-pub(super) fn capture(pid: i32, eligible: bool) -> Result<u32, CopyReason> {
+pub(super) fn capture(pid: i32, eligible: Option<Retained<NSRunningApplication>>) -> Result<u32, CopyReason> {
     if !NSThread::isMainThread_class() {
         return Err(CopyReason::PasteUnavailable);
     }
@@ -272,7 +289,12 @@ pub(super) fn capture(pid: i32, eligible: bool) -> Result<u32, CopyReason> {
         saved.next = saved.next.checked_add(1).ok_or(CopyReason::PasteUnavailable)?;
         Ok(saved.next)
     })?;
-    let window = capture_query(&Native::default(), pid, eligible);
+    let may_activate = eligible.is_some();
+    let provider = Native {
+        activation_process: eligible,
+        ..Native::default()
+    };
+    let window = capture_query(&provider, pid, may_activate);
     SAVED.with(|saved| {
         let mut saved = saved.borrow_mut();
         if saved.next != token {

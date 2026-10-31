@@ -6,14 +6,20 @@ use std::sync::{Arc, mpsc};
 use std::time::{Duration, Instant};
 
 use ibis_core::destination::CopyReason;
-use objc2_app_kit::{NSApplication, NSPasteboard, NSWorkspace};
-use objc2_core_graphics::{CGEvent, CGEventFlags, CGEventSource, CGEventSourceStateID, CGPreflightPostEventAccess};
+use objc2_app_kit::{NSApplication, NSPasteboard, NSRunningApplication, NSWorkspace};
+use objc2_core_graphics::{
+    CGEvent, CGEventFlags, CGEventSource, CGEventSourceStateID, CGEventType, CGPreflightPostEventAccess,
+};
 use objc2_foundation::MainThreadMarker;
 use tauri::{AppHandle, Manager};
+use tauri_nspanel::objc2::rc::Retained;
 use tauri_plugin_global_shortcut::Code;
 
 use super::capture::Front;
-use super::{CopyProof, DeliveryRequest, Desk, PendingPost, PostDesk, PostRequest, PostResult, checked_post};
+use super::{
+    CopyProof, DeliveryRequest, Desk, InputPress, PendingPost, PostDesk, PostRequest, PostResult, check_input_since,
+    checked_post,
+};
 
 pub(super) mod diagnostics;
 mod focus;
@@ -46,13 +52,17 @@ pub(super) fn request_accessibility() {
 const ASK_LIMIT: Duration = Duration::from_millis(250);
 
 /// The active app for output suggestions. Activation is not keyboard ownership.
-fn active_app() -> Option<Front> {
+fn active_application() -> Option<Retained<NSRunningApplication>> {
     safety::install();
     let app = NSWorkspace::sharedWorkspace().frontmostApplication()?;
     if !app.isActive() || app.isTerminated() {
         return None;
     }
-    Some(Front {
+    Some(app)
+}
+
+fn app_front(app: &NSRunningApplication) -> Front {
+    Front {
         id: app.bundleIdentifier().map(|id| id.to_string()),
         app_identity: app.bundleIdentifier().and_then(|id| {
             let path = app.bundleURL()?.path()?;
@@ -63,7 +73,11 @@ fn active_app() -> Option<Front> {
         focus_failure: None,
         name: app.localizedName().map(|name| name.to_string()),
         elevated: false,
-    })
+    }
+}
+
+fn active_app() -> Option<Front> {
+    active_application().as_deref().map(app_front)
 }
 
 /// Capture only a globally verified window owned by the active target. Ibis in
@@ -74,7 +88,10 @@ pub(super) fn frontmost(app: &AppHandle) -> Option<Front> {
     let own_window_key = NSApplication::sharedApplication(main)
         .keyWindow()
         .is_some_and(|window| window.isKeyWindow());
-    let active = active_app();
+    // Keep the very instance whose metadata and approval we inspect, before
+    // either preference I/O or AX messaging can allow PID reuse.
+    let process = active_application();
+    let active = process.as_deref().map(app_front);
     let activation_allowed = !own_window_key
         && active
             .as_ref()
@@ -87,7 +104,7 @@ pub(super) fn frontmost(app: &AppHandle) -> Option<Front> {
             if !CGPreflightPostEventAccess() {
                 return Err(CopyReason::NoPermission);
             }
-            focus::capture(pid, activation_allowed)
+            focus::capture(pid, process.filter(|_| activation_allowed))
         });
         trace.remember_capture();
         result
@@ -186,15 +203,17 @@ pub(super) struct Mac {
     app: AppHandle,
     trace: diagnostics::Trace,
     started: Duration,
+    began: Instant,
     stamp_unavailable: bool,
 }
 
 impl Mac {
-    pub(super) fn new(app: &AppHandle, proof: Option<&CopyProof>) -> Self {
+    pub(super) fn new(app: &AppHandle, proof: Option<&CopyProof>, began: Instant) -> Self {
         Self {
             app: app.clone(),
             trace: diagnostics::Trace::new(proof.and_then(|p| p.captured.as_ref()?.diagnostic.clone())),
             started: safety::elapsed(),
+            began,
             stamp_unavailable: proof.is_some_and(|proof| proof.stamp.epoch == 0 || proof.stamp.epoch == u64::MAX),
         }
     }
@@ -248,6 +267,10 @@ impl Mac {
 impl Desk for Mac {
     type Proof = CopyProof;
 
+    fn delivery_began(&self) -> Instant {
+        self.began
+    }
+
     fn stamp(&self) -> super::SafetyStamp {
         // A failed pre-write sample is immutable evidence. Do not overwrite its
         // diagnostic with a later good sample while checking the same refusal.
@@ -287,6 +310,7 @@ impl Desk for Mac {
             DeliveryRequest {
                 pid: request.pid,
                 id: request.id.clone(),
+                began: request.began,
                 deadline: request.deadline,
             },
             proof,
@@ -376,6 +400,10 @@ impl Desk for Mac {
             for event in [&down, &up] {
                 CGEvent::set_flags(Some(event), CGEventFlags::MaskCommand);
             }
+            let probe = match safety::PostProbe::new() {
+                Ok(probe) => probe,
+                Err(failure) => return failure.result(),
+            };
             queued.run(|| {
                 app.state::<super::LastTarget>().post_if_current(&request, || {
                     checked_post(
@@ -385,6 +413,7 @@ impl Desk for Mac {
                             down: &down,
                             up: &up,
                             request: &request,
+                            probe,
                         },
                         &request,
                     )
@@ -406,6 +435,7 @@ struct Ready<'a> {
     down: &'a CGEvent,
     up: &'a CGEvent,
     request: &'a PostRequest,
+    probe: safety::PostProbe,
 }
 
 impl PostDesk for Ready<'_> {
@@ -442,19 +472,18 @@ impl PostDesk for Ready<'_> {
         if !matches {
             return Err(CopyReason::TargetChanged);
         }
-        let probe = safety::PostProbe::new().map_err(|failure| failure.reason())?;
         front.window = focus::current(
             front.pid,
             self.request.window,
             self.request.deadline,
             || {
-                probe.before_focus().map_err(|failure| failure.reason())?;
+                self.probe.before_focus().map_err(|failure| failure.reason())?;
                 refresh()
             },
             || {
                 // A sleep/lock during AX must not escape expiry. This completion
                 // guard uses no mutex; identity comparison immediately follows it.
-                let stamp = probe.finish().map_err(|failure| failure.reason())?;
+                let stamp = self.probe.finish().map_err(|failure| failure.reason())?;
                 self.request.stamp.check(stamp).map_err(|failure| failure.reason())?;
                 if Instant::now() >= self.request.deadline {
                     return Err(CopyReason::PasteUnavailable);
@@ -473,6 +502,24 @@ impl PostDesk for Ready<'_> {
     fn secure_input(&self) -> Option<bool> {
         diagnostics::stage("secure_input");
         secure_input::enabled()
+    }
+
+    fn seconds_since_input(&self, event: InputPress) -> f64 {
+        let event = match event {
+            InputPress::Key => CGEventType::KeyDown,
+            InputPress::LeftMouse => CGEventType::LeftMouseDown,
+            InputPress::RightMouse => CGEventType::RightMouseDown,
+        };
+        CGEventSource::seconds_since_last_event_type(CGEventSourceStateID::CombinedSessionState, event)
+    }
+
+    fn input_unchanged(&self, began: Instant) -> Result<(), PostResult> {
+        diagnostics::stage("input");
+        check_input_since(self, began)?;
+        // Native input sampling also takes time. Finish with the owned clock
+        // correlation/epoch, with no mutex, notification IPC or UI dispatch.
+        let stamp = self.probe.finish().map_err(|failure| failure.result())?;
+        self.request.stamp.check(stamp).map_err(|failure| failure.result())
     }
 
     fn post(&self, pid: i32) -> bool {

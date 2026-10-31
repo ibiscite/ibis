@@ -3,6 +3,8 @@
 use std::time::{Duration, Instant};
 
 use ibis_core::destination::CopyReason;
+use objc2_app_kit::NSRunningApplication;
+use tauri_nspanel::objc2::rc::Retained;
 
 use super::diagnostics;
 
@@ -33,6 +35,10 @@ fn claim_process<P: PartialEq>(claimed: &mut Vec<P>, process: P) -> bool {
     }
     claimed.push(process);
     true
+}
+
+fn same_live_process<P: PartialEq>(original: &P, current: Option<&P>, terminated: bool) -> bool {
+    !terminated && current == Some(original)
 }
 
 /// The document and the actual input surface are distinct for sheets/drawers.
@@ -223,7 +229,7 @@ fn query<P: Provider>(
 #[allow(unsafe_code)]
 mod native;
 
-pub(super) fn capture(pid: i32, eligible: bool) -> Result<u32, CopyReason> {
+pub(super) fn capture(pid: i32, eligible: Option<Retained<NSRunningApplication>>) -> Result<u32, CopyReason> {
     native::capture(pid, eligible)
 }
 
@@ -270,6 +276,10 @@ mod tests {
         manual: Cell<bool>,
         manual_calls: Cell<u32>,
         process: Cell<u32>,
+        eligible_process: Cell<u32>,
+        original_terminated: bool,
+        process_after_missing: Option<u32>,
+        process_after_prepare: Option<u32>,
         manual_processes: RefCell<Vec<u32>>,
         manual_failure: Option<CopyReason>,
         manual_delay: Duration,
@@ -300,6 +310,10 @@ mod tests {
                 manual: Cell::new(false),
                 manual_calls: Cell::new(0),
                 process: Cell::new(1),
+                eligible_process: Cell::new(1),
+                original_terminated: false,
+                process_after_missing: None,
+                process_after_prepare: None,
                 manual_processes: RefCell::new(Vec::new()),
                 manual_failure: None,
                 manual_delay: Duration::ZERO,
@@ -337,6 +351,9 @@ mod tests {
                 return Err(reason);
             }
             if self.unsupported == Some(attribute) && !self.manual.get() {
+                if let Some(process) = self.process_after_missing {
+                    self.process.set(process);
+                }
                 return Err(CopyReason::PasteUnavailable);
             }
             Ok(match attribute {
@@ -379,9 +396,25 @@ mod tests {
             {
                 return Ok(false);
             }
-            if !claim_process(&mut self.manual_processes.borrow_mut(), self.process.get()) {
+            let check = || {
+                if same_live_process(
+                    &self.eligible_process.get(),
+                    Some(&self.process.get()),
+                    self.original_terminated,
+                ) {
+                    Ok(())
+                } else {
+                    Err(CopyReason::TargetChanged)
+                }
+            };
+            check()?;
+            if !claim_process(&mut self.manual_processes.borrow_mut(), self.eligible_process.get()) {
                 return Ok(false);
             }
+            if let Some(process) = self.process_after_prepare {
+                self.process.set(process);
+            }
+            check()?;
             self.manual_calls.set(self.manual_calls.get() + 1);
             diagnostics::manual_accessibility();
             self.clock.set(self.clock.get() + self.manual_delay);
@@ -592,6 +625,7 @@ mod tests {
             assert!(capture_query(&fake, 42, true).is_err());
             assert_eq!(fake.manual_calls.get(), 1);
             fake.process.set(2); // A restarted process, even with a reused PID.
+            fake.eligible_process.set(2); // A new eligibility decision retained this instance.
             assert!(capture_query(&fake, 42, true).is_ok());
             assert_eq!(fake.manual_calls.get(), 2);
         }
@@ -608,6 +642,34 @@ mod tests {
         };
         assert!(capture_query(&refused, 42, false).is_err());
         assert_eq!(refused.manual_calls.get(), 0);
+    }
+
+    #[test]
+    fn a_reused_pid_or_terminated_eligible_instance_never_receives_the_ax_write() {
+        for fake in [
+            Fake {
+                unsupported: Some(Attribute::FocusedWindow),
+                process_after_missing: Some(2),
+                ..Fake::new()
+            },
+            Fake {
+                unsupported: Some(Attribute::TopLevel),
+                original_terminated: true,
+                ..Fake::new()
+            },
+            Fake {
+                unsupported: Some(Attribute::FocusedWindow),
+                process_after_prepare: Some(2),
+                ..Fake::new()
+            },
+        ] {
+            assert!(capture_query(&fake, 42, true).is_err());
+            assert_eq!(
+                fake.manual_calls.get(),
+                0,
+                "eligibility belongs to the retained instance, not PID 42"
+            );
+        }
     }
 
     #[test]

@@ -15,7 +15,12 @@ and its local data. New Ibis data flows need a recorded decision ([decisions](do
   Accessibility identities for the focused document and input surface. It reads
   no document titles, field roles, values or text. A bounded wait after copying
   compares only with the original captured identities; it never adopts another
-  document. Accessibility and permission to send the paste shortcut are separate
+  window or surface. Tabs and conversations can share those identities. Just
+  before pasting, Ibis checks the time since the last key-down and left/right
+  mouse click and refuses if any happened after delivery began. It reads no keys,
+  click targets, coordinates or event contents. Mouse movement does not count;
+  a programmatic tab or conversation change with no input is not detected.
+  Accessibility and permission to send the paste shortcut are separate
   grants. Only the permission guide's explicit action requests or repairs missing
   grants. If an app Ibis may paste into leaves out a needed document or surface
   identity, Ibis automatically enables that app's accessibility support by setting

@@ -330,8 +330,10 @@ acquired before the final AX identity reads; synchronous notification checks
 also precede those reads. Completion checks use only sleep-inclusive time,
 a locally owned awake-clock correlation and the atomic epoch, so suspension
 during the read also expires delivery without taking a mutex or querying a
-provider. The final local identity comparison immediately precedes posting;
-Ibis takes no lock or extra provider query after it. There remains a small
+provider. After the final local AX identity comparison, Ibis checks the key/click
+timing described below, then finishes the owned clock/epoch and deadline guards
+and posts. This final tail takes no mutex and never dispatches to the UI thread.
+There remains a small
 interval between the last OS focus read and PID-directed dispatch, including
 local validation. Public APIs
 cannot eliminate a focus change in that interval. AX also samples global focus
@@ -386,6 +388,24 @@ without the grant could not complete the real-Mac test.
   the 1,500 ms write lifetime still applies throughout. This replaces macOS's
   fixed 50 ms settle sleep. The bounded pending-delivery checks are the only
   hidden polling exception, and stop on success, refusal, cancellation or expiry.
+- **Input during delivery (review follow-up):** Chrome tabs and Claude
+  conversations can share the same AX window and surface identities. Ibis does
+  not require a per-tab or per-conversation identity, or read content to invent
+  one. It records when delivery begins, before taking the copy proof or queuing
+  work. This time stays fixed through readiness and the final posting task.
+  Immediately before posting, after the final AX comparison, Ibis calls
+  `CGEventSourceSecondsSinceLastEventType` on the combined session state for
+  key-down, left-mouse-down and right-mouse-down. Any such input since delivery
+  began refuses the paste with the existing `target-changed` copied notice.
+  Mouse movement does not count. The Enter that started delivery happened
+  before this boundary; held-Enter repeats after it may refuse, which is safe.
+  Invalid event timing refuses with `paste-unavailable`. No keys, click targets,
+  coordinates or event contents are read or logged, and there is no event tap
+  or background monitoring. Local clock/epoch and deadline checks still run
+  after these reads without taking locks or dispatching to the UI thread.
+  A programmatic tab or conversation change with no input is not detected.
+  The three input reads and posting are sequential OS operations, so an input
+  in that last small interval is also not an atomic window/document binding.
 - **Diagnostics:** `IBIS_MAC_PASTE_DIAGNOSTICS=1` enables one JSON line to stderr
   per delivery attempt, after its outcome. Otherwise it is off. The closed schema
   contains a fixed stage, first failing AX error code (or latest success), sleep-inclusive
@@ -406,8 +426,12 @@ without the grant could not complete the real-Mac test.
   policy; an unknown app needs explicit paste approval. Refused apps, Copy only,
   paste-off, unreadable preferences and missing grants never trigger this write.
   Ibis attempts it once per live app instance during an Ibis run, even if the
-  attempt fails. It retains `NSRunningApplication` identity so a reused process
-  number does not stand for an earlier app instance.
+  attempt fails. It retains the original `NSRunningApplication` before deciding
+  eligibility. Before claiming the process and again immediately before the
+  AX write, that original instance must not be terminated and must still equal
+  the instance returned for the PID. Looking up a new app by a reused PID never
+  supplies approval to that replacement instance. The once-per-process claim
+  also uses the retained original instance, rather than the PID alone.
   After a successful write, Ibis discards the partial capture and repeats the
   full identity proof within the same 50 ms budget. Delivery never enables this
   support or captures a replacement target. Ibis reads no titles, roles, values
@@ -428,6 +452,9 @@ return with the app already active, close/reopen, target replacement, stale
 ownership, one-use diagnostics and automatic app accessibility activation. Native provider timing under
 load, Electron/Chromium activation behavior, OS grant repair and actual keyboard
 placement still require qualification; PID-directed posting remains non-atomic.
+Review regressions also cover input that switches an interior document without
+changing either AX identity, input during the final AX read, ignored mouse
+movement, invalid input timing and process replacement before the AX write.
 
 Other macOS native calls use objc2's generated AppKit and Core Graphics
 bindings. On Windows, `winsafe` supplies safe Win32 calls (the foreground
