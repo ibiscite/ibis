@@ -2,6 +2,7 @@
 //! One owner accepts settled native geometry and debounces its settings writes.
 //! Content never crosses this boundary; presentation is complete before show.
 
+mod display_events;
 mod owner;
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -92,6 +93,13 @@ impl Sizing {
 }
 
 impl Shared {
+    fn changed(&self, event: Event) {
+        if let Ok(mut state) = self.state.lock() {
+            state.event(event, Instant::now());
+        }
+        self.wake.notify_all();
+    }
+
     fn persist(&self, file: &SettingsFile, save: Save) -> Option<bool> {
         // Check after entering the settings writer, not before waiting for it.
         // A late A cannot write over B, including B from another display: every
@@ -531,11 +539,12 @@ pub(crate) fn changed(app: &AppHandle, event: &WindowEvent) {
         }
         _ => Event::Geometry,
     };
-    let sizing = app.state::<Sizing>();
-    if let Ok(mut state) = sizing.shared.state.lock() {
-        state.event(event, Instant::now());
-    }
-    sizing.shared.wake.notify_all();
+    app.state::<Sizing>().shared.changed(event);
+}
+
+pub(crate) fn watch_display(app: &AppHandle, window: &WebviewWindow) {
+    // If registration fails, prepare() still reads the work area on next show.
+    report(display_events::install(app, window).ok_or(()), NativeIssue::Monitor);
 }
 
 fn sample(app: &AppHandle, window: &WebviewWindow, settled: bool) {
@@ -568,14 +577,18 @@ fn sample(app: &AppHandle, window: &WebviewWindow, settled: bool) {
 
 /// Windows sends ScaleFactorChanged inside WM_DPICHANGED, before SetWindowPos.
 /// MainEventsCleared is after that native turn, rather than a racing async task.
-/// It also sees OS work-area changes without waiting for the next edge drag.
+/// Only a geometry/DPI/display event can request this read. Consume it before
+/// looking up the window: cloning its Tao proxy wakes the macOS loop itself.
 pub(crate) fn settled(app: &AppHandle) {
-    let Some(window) = app.get_webview_window("main") else {
-        return;
-    };
-    if checked(window.is_visible(), NativeIssue::Visibility) == Some(true) {
-        sample(app, &window, true);
-    }
+    let sizing = app.state::<Sizing>();
+    owner::settled(&sizing.shared.state, || {
+        let Some(window) = app.get_webview_window("main") else {
+            return;
+        };
+        if checked(window.is_visible(), NativeIssue::Visibility) == Some(true) {
+            sample(app, &window, true);
+        }
+    });
 }
 
 pub(crate) fn flush(app: &AppHandle, stop: bool) {

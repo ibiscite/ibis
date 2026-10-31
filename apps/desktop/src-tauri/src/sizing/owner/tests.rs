@@ -1,4 +1,168 @@
 use super::*;
+use std::cell::Cell;
+
+fn locked(state: &Mutex<Owner>) -> std::sync::MutexGuard<'_, Owner> {
+    state.lock().unwrap_or_else(|_| panic!("synthetic owner poisoned"))
+}
+
+#[test]
+fn sizing_idle_cleared_events_do_no_native_reads_hidden_or_visible() {
+    for visible in [false, true] {
+        let state = Mutex::new(Native::new().owner);
+        let reads = Cell::new(0);
+        let samples = Cell::new(0);
+        for _ in 0..100 {
+            settled(&state, || {
+                reads.set(reads.get() + 1);
+                if visible {
+                    samples.set(samples.get() + 1);
+                }
+            });
+        }
+        assert_eq!(reads.get(), 0, "idle cleared events must not even look up the window");
+        assert_eq!(samples.get(), 0);
+    }
+}
+
+#[test]
+fn sizing_one_change_consumes_one_read_even_when_the_getter_wakes_the_loop() {
+    let mut native = Native::new();
+    native.live.frame = frame(840, 600);
+    let state = Mutex::new(native.owner);
+    let reads = Cell::new(0);
+    locked(&state).event(Event::Geometry, native.now);
+    for _ in 0..100 {
+        settled(&state, || {
+            reads.set(reads.get() + 1);
+            locked(&state).observe(native.live.clone(), native.now, true);
+        });
+    }
+    assert_eq!(reads.get(), 1);
+    assert_eq!(locked(&state).windows["a"].width, 840);
+}
+
+#[test]
+fn sizing_failed_or_hidden_reads_are_consumed_and_show_prepares_a_fresh_sample() {
+    for visibility in [Ok(false), Err(())] {
+        let native = Native::new();
+        let state = Mutex::new(native.owner);
+        locked(&state).event(Event::Geometry, native.now);
+        let reads = Cell::new(0);
+        for _ in 0..100 {
+            settled(&state, || {
+                reads.set(reads.get() + 1);
+                if visibility != Ok(true) {
+                    return;
+                }
+                panic!("hidden windows and failed visibility reads must not sample geometry");
+            });
+        }
+        assert_eq!(reads.get(), 1);
+        let mut reopened = native.live;
+        reopened.display.room = (800.0, 600.0);
+        // Every show already samples and prepares while hidden, before presentation.
+        locked(&state).prepared(reopened);
+        settled(&state, || panic!("show preparation already supplied the sample"));
+        assert_eq!(
+            locked(&state)
+                .constraints
+                .as_ref()
+                .unwrap_or_else(|| panic!("missing prepared sample"))
+                .room,
+            (800.0, 600.0)
+        );
+    }
+}
+
+#[test]
+fn sizing_dpi_alone_keeps_its_read_until_after_the_native_turn() {
+    let native = Native::new();
+    let state = Mutex::new(native.owner);
+    locked(&state).event(
+        Event::Dpi {
+            scale: 2.0,
+            logical: (720, 480),
+        },
+        native.now,
+    );
+    let mut live = native.live;
+    live.display.scale = 2.0;
+    live.frame = frame(360, 240); // Before SetWindowPos: old physical client area.
+    locked(&state).observe(live.clone(), native.now, false);
+    live.frame = frame(720, 480); // The native turn completes; no extra resize event is required.
+    let reads = Cell::new(0);
+    settled(&state, || {
+        reads.set(reads.get() + 1);
+        locked(&state).observe(live, native.now, true);
+    });
+    settled(&state, || panic!("the getter's wakeup cannot read again"));
+    assert_eq!(reads.get(), 1);
+    assert_eq!(
+        locked(&state)
+            .last
+            .as_ref()
+            .unwrap_or_else(|| panic!("missing prepared sample"))
+            .display
+            .scale,
+        2.0
+    );
+    assert!(
+        locked(&state).windows.is_empty(),
+        "automatic DPI resize is not saved as a drag"
+    );
+}
+
+#[test]
+fn sizing_a_change_during_a_read_belongs_to_the_next_cleared_event() {
+    let native = Native::new();
+    let state = Mutex::new(native.owner);
+    locked(&state).event(Event::Geometry, native.now);
+    settled(&state, || {
+        locked(&state).event(Event::Geometry, native.now);
+        // Accepting this sample cannot consume the reentrant event's read.
+        locked(&state).observe(native.live, native.now, true);
+    });
+    let reads = Cell::new(0);
+    settled(&state, || reads.set(reads.get() + 1));
+    settled(&state, || panic!("the second change is consumed"));
+    assert_eq!(reads.get(), 1);
+}
+
+#[test]
+fn sizing_refused_changes_never_request_native_reads() {
+    let native = Native::new();
+    for owner in [
+        Owner::default(),
+        Owner {
+            applying: true,
+            ..Native::new().owner
+        },
+        Owner {
+            stopping: true,
+            ..native.owner
+        },
+    ] {
+        let state = Mutex::new(owner);
+        locked(&state).event(Event::Geometry, native.now);
+        settled(&state, || panic!("refused change must not look up a native window"));
+    }
+}
+
+#[test]
+fn sizing_close_retires_a_pending_read_and_reopen_accepts_the_next_change() {
+    let native = Native::new();
+    let state = Mutex::new(native.owner);
+    locked(&state).event(Event::Geometry, native.now);
+    locked(&state).flush(native.now, false);
+    settled(&state, || panic!("close retired the old opening's read"));
+    locked(&state).prepared(native.live);
+    locked(&state).event(Event::Geometry, native.now);
+    let reads = Cell::new(0);
+    for _ in 0..100 {
+        settled(&state, || reads.set(reads.get() + 1));
+    }
+    assert_eq!(reads.get(), 1);
+}
 
 fn frame(width: u32, height: u32) -> PickerWindow {
     PickerWindow {
@@ -48,6 +212,9 @@ impl Native {
         self.owner.event(event, self.now);
     }
     fn settle(&mut self) {
+        if !self.owner.take_read() {
+            return;
+        }
         let frame = self.live.frame;
         if let Some(display) = self.owner.observe(self.live.clone(), self.now, true) {
             self.maximum = display.room;
@@ -112,7 +279,8 @@ fn sizing_new_display_and_work_area_refresh_the_maximum_without_moving_the_frame
     native.settle();
     assert_eq!(native.maximum, (2000.0, 1200.0));
     native.live.display.room = (2200.0, 1300.0);
-    native.settle(); // The OS work-area event need not contain a window resize.
+    native.event(Event::Geometry); // OS work-area notification, without a window resize.
+    native.settle();
     assert_eq!(native.maximum, (2200.0, 1300.0));
     native.drag(1800, 1000);
     assert!(f64::from(native.live.frame.width) <= native.maximum.0);
@@ -233,6 +401,7 @@ fn sizing_an_automatic_work_area_clamp_keeps_the_custom_size_for_a_later_larger_
     let mut native = Native::new();
     native.drag(900, 640);
     native.live.display.room = (800.0, 600.0);
+    native.event(Event::Geometry);
     native.settle();
     assert_eq!(native.maximum, (800.0, 600.0));
     // The platform enforces the new limits; this is not an explicit edge drag.
@@ -244,6 +413,7 @@ fn sizing_an_automatic_work_area_clamp_keeps_the_custom_size_for_a_later_larger_
         (900, 640)
     );
     native.live.display.room = (1400.0, 900.0);
+    native.event(Event::Geometry);
     native.settle();
     native.drag(1100, 700);
     assert_eq!(native.owner.windows["a"].width, 1100);
