@@ -47,7 +47,7 @@ export function testProvider(state: typeof testStates[number]): { api: PickerApi
         const ticket = `synthetic-ticket-${++sequence}`;
         const hash = `synthetic-hash-${sequence}`;
         receipts.set(ticket, { text, hash });
-        return { text, html: null, warnings: [], ticket, content_hash: hash };
+        return { text, html: null, spans: [], warnings: [], ticket, content_hash: hash };
       },
       copyFileCitation: async (ticket, hash) => {
         const receipt = receipts.get(ticket);

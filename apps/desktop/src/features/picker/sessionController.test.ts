@@ -17,7 +17,7 @@ function setup(overrides: Partial<SessionPorts> = {}) {
     controller.dispatch({ type: "view", session: state.session, interaction: state.interaction,
       view: { queryKey: sessionQueryKey(state), format: "pandoc", snapshotRevision: "synthetic", defaultChoice: choiceKey(chosen), chosen,
         shown: { text: "canonical citation", html: "", markup: [], warnings: [], fileTicket: "prepared", fileHash: "hash" },
-        searchPending: false, ready: true, saving: false, shouldAsk: false, output: ports.output() } });
+        previewVisible: true, searchPending: false, ready: true, saving: false, shouldAsk: false, output: ports.output() } });
   };
   ready();
   const enter = () => controller.dispatch({ type: "enter", choice: choiceKey(chosen) });
@@ -37,7 +37,7 @@ test("the runner writes and delivers one canonical result despite repeated Enter
   pending.resolve({ text: "canonical citation", warnings: [], delivery: 42 });
   await pending.promise;
   await Promise.resolve();
-  expect(s.ports.showCopiedNotice).toHaveBeenCalledExactlyOnceWith("canonical citation", 42);
+  expect(s.ports.showCopiedNotice).toHaveBeenCalledExactlyOnceWith("canonical citation", 42, null);
   await Promise.resolve();
   expect(s.controller.getSnapshot().lastOutcome).toBe("Pasted into Example Writer");
   expect(s.ports.consume).toHaveBeenCalledTimes(1);
@@ -58,7 +58,7 @@ test("an old copy response cannot consume a reopened session's new copy", async 
   fresh.resolve({ text: "fresh citation", warnings: [] });
   await fresh.promise;
   await Promise.resolve();
-  expect(s.ports.showCopiedNotice).toHaveBeenCalledExactlyOnceWith("fresh citation", null);
+  expect(s.ports.showCopiedNotice).toHaveBeenCalledExactlyOnceWith("fresh citation", null, null);
 });
 
 test("a delayed hide rejection cannot show an error in a reopened session", async () => {

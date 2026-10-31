@@ -281,8 +281,9 @@ test("a copy finishing after a selection edit writes the clipboard but cannot pa
   expect(harness.document.pastes).toEqual([]);
   expect(harness.receipt.textContent).toBe("");
   expect(harness.visible).toBe(true);
-  expect(screen.getByRole("button", { name: "Remove b from the selection" })).toBeTruthy();
+  expect(screen.getByRole("status", { name: "Citation selection" }).textContent).toBe("1 reference selected for citation");
   await act(async () => { harness.preview.pending[0]!.complete({ text: "[@b]" }); });
+  expect(screen.getByRole("button", { name: "Remove b from the selection" })).toBeTruthy();
   await enter();
   await finishCopy(harness);
   await finishDelivery(harness);
@@ -438,6 +439,13 @@ test("reopening during a pending copy keeps the new query and selection without 
   expect(harness.clipboard).toMatchObject({ text: "[@a]", owner: "ibis", sequence: 1 });
   expect(harness.visible).toBe(true);
   expect((searchBox() as HTMLInputElement).value).toBe("second query");
+  expect(screen.getByRole("status", { name: "Citation selection" }).textContent).toBe("2 references selected for citation");
+  // Reopening can leave the old single-reference preview queued. Complete the
+  // request for the current selection, independently of worker arrival order.
+  const previews = harness.preview.pending.filter(({ args }) =>
+    args.items.length === 2 && args.items[0]!.id.key === "a" && args.items[1]!.id.key === "b");
+  expect(previews).toHaveLength(1);
+  await act(async () => { previews[0]!.complete({ text: "[@a; @b]" }); });
   expect(screen.getByRole("button", { name: "Remove a from the selection" })).toBeTruthy();
   expect(screen.getByRole("button", { name: "Remove b from the selection" })).toBeTruthy();
   expect(harness.delivery.calls).toHaveLength(0);

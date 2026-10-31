@@ -162,6 +162,8 @@ test("Enter during a browser search waits, asks, then copies the chosen format o
   let finish!: (results: ReturnType<typeof result>[]) => void;
   const searching = new Promise<ReturnType<typeof result>[]>((resolve) => { finish = resolve; });
   const { calls, copies, remembered } = opened(() => BROWSER, { search: () => searching });
+  // Blank queries load recents; type a query to exercise an actual search.
+  fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "First" } });
   await waitFor(() => expect(calls).toContain("search"));
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });

@@ -192,17 +192,19 @@ test("shared macOS overlays retain their shapes, easing, scrims and shadow-free 
   expect(contrast).toContain("--scrim: Canvas;");
 });
 
-test("the shared macOS notice keeps its nominal shadow within the reserved gutter", () => {
+test("the shared receipt card keeps its geometry and shadow gutter on every system", () => {
   const notices = readFileSync(new FileURL("./notice.css", import.meta.url), "utf8");
-  const pill = rules(notices, ".copied-notice");
-  expect(pill).toMatch(/height:\s*2\.75rem/);
-  expect(pill).toMatch(/border-radius:\s*1\.375rem/);
+  const receipt = readFileSync(new FileURL("./ui/CopyReceipt.css", import.meta.url), "utf8");
+  expect(rules(receipt, ".copy-receipt")).toContain("border-radius: var(--r-copy-card)");
+  expect(rules(receipt, ".copy-receipt-mark")).toContain("border-radius: var(--r-copy-tile)");
+  expect(rules(receipt, ".copy-receipt-excerpt")).toContain("-webkit-line-clamp: 2");
+  expect(rules(notices, ".copied-notice")).toContain("margin: var(--space-4) auto");
   expect(notices).not.toMatch(/copied-notice\[data-platform=/);
-  const gutter = Number(pill.match(/margin:\s*([\d.]+)rem/)?.[1]) * 16;
+  const gutter = Number(tokens.match(/--space-4:\s*([\d.]+)rem/)?.[1]) * 16;
   expect(gutter).toBe(16);
   const shadow = rules(tokens, ":root").match(/--shadow-toast:\s*([^;]+);/)![1]!;
   for (const [, offset, blur] of shadow.matchAll(/0 (-?[\d.]+)(?:px)? ([\d.]+)px /g)) expect(Math.abs(Number(offset)) + Number(blur) / 2).toBeLessThanOrEqual(gutter);
-  expect(rules(notices, ':root.notice-window[data-surface="opaque"] .copied-notice')).toMatch(/width:\s*100%;\s*max-width:\s*none;\s*height:\s*100%;\s*margin:\s*0;\s*border-radius:\s*0/);
+  expect(notices).not.toContain('data-surface="opaque"] .copied-notice');
 });
 
 test("menus and dialogs consume their shared elevation and separate shape roles", () => {
@@ -545,7 +547,7 @@ test("shared default buttons are at least 32 px, with on-grid padding", () => {
 });
 
 test("shared macOS dividers remain quiet hairlines until contrast modes", () => {
-  for (const selector of [".search-bar", ".copy-notice"]) expect(rules(styles, selector), selector).toMatch(/border-(top|bottom):\s*var\(--border-width\) solid var\(--separator\)/);
+  expect(rules(styles, ".search-bar")).toMatch(/border-(top|bottom):\s*var\(--border-width\) solid var\(--separator\)/);
   const shared = rules(tokens, ':root:not(.notice-window)');
   expect(shared).toMatch(/--line:\s*light-dark\(rgb\(0 0 0 \/ 10%\), rgb\(255 255 255 \/ 10%\)\)/);
   expect(shared).toMatch(/--separator:\s*var\(--line\)/);
@@ -570,30 +572,20 @@ test("buttons and key caps are fills without an outline except in contrast modes
   }
 });
 
-test("the shelf is two 40 px lines of 24 px chips and one output line above the footer", () => {
-  expect(rules(tokens, ":root")).toMatch(/--shelf-line:\s*2\.5rem/);
-  expect(rules(tokens, ":root")).toMatch(/--chip-height:\s*1\.5rem/);
-  expect(rules(styles, ".shelf-chips")).toMatch(/height:\s*var\(--shelf-line\)/);
-  expect(rules(styles, ".shelf-output")).toMatch(/height:\s*var\(--shelf-line\)/);
-  // The output is one line; the full text is its tooltip.
-  expect(rules(styles, ".shelf-output .preview-text, .shelf-output p")).toMatch(/white-space:\s*nowrap/);
-  // A refusal keeps the fixed band; its full explanation is on demand.
-  expect(rules(styles, '.shelf-output[data-state="failed"]')).not.toMatch(/height: auto|min-height/);
-  expect(styles).toContain("main > .search-bar, main > .shelf, main > footer { flex: none; }");
-  expect(styles).not.toContain(".picker-content:has(.shelf-chips");
-  // Chips are fills without an outline, except in contrast modes.
-  const edge = styles.lastIndexOf("@media (prefers-contrast: more), (forced-colors: active) {");
-  expect(rules(styles.slice(0, edge), ".chip")).toMatch(/background:\s*var\(--chip-fill\)/);
-  expect(rules(styles.slice(0, edge), ".chip")).not.toMatch(/border:/);
-  const contrast = styles.slice(edge);
-  expect(rules(contrast, ".shelf, .chip")).toMatch(/border:\s*var\(--border-width\) solid CanvasText/);
-  // The shared macOS card has the same inset and rounded shape everywhere.
-  expect(rules(styles, ".shelf")).toMatch(/border-radius:\s*var\(--r-row\)/);
-  for (const platform of ["windows", "linux"]) expect(rules(styles, `:root[data-platform="${platform}"] .shelf`)).toBe("");
+test("the shelf reserves one token-sized line and keeps its shared controls readable in contrast", () => {
   const shelf = readFileSync(new FileURL("./features/picker/CitationShelf.css", import.meta.url), "utf8");
-  const forced = shelf.slice(shelf.indexOf("@media (forced-colors: active)"));
-  expect(rules(forced, ".chip-remove::before")).toMatch(/forced-color-adjust:\s*none/);
-  expect(rules(forced, ".chip-remove::before")).toMatch(/background:\s*ButtonText/);
+  expect(rules(tokens, ":root")).toMatch(/--shelf-line:\s*var\(--space-10\)/);
+  expect(rules(tokens, ":root")).toMatch(/--shelf-segment-inset:\s*1px/);
+  expect(rules(shelf, ".shelf-output")).toContain("height: max(var(--shelf-line), var(--shelf-target))");
+  expect(rules(shelf, ".shelf .preview-text, .shelf-citation > p")).toContain("white-space: nowrap");
+  expect(styles).toContain("main > .search-bar, main > .shelf, main > footer { flex: none; }");
+  expect(styles + shelf).not.toContain("shelf-chips");
+  expect(rules(shelf, ".shelf")).toContain("border-radius: var(--r-row)");
+  const contrast = shelf.slice(shelf.indexOf("@media (prefers-contrast: more), (forced-colors: active)"));
+  expect(rules(contrast, ".shelf")).toContain("outline: var(--border-width) solid CanvasText");
+  const buttons = readFileSync(new FileURL("./ui/Button.css", import.meta.url), "utf8");
+  const forced = buttons.slice(buttons.indexOf("@media (forced-colors: active)"));
+  expect(rules(forced, '.ui-button[data-glyph="close"]::before')).toContain("background: ButtonText");
 });
 
 test("a wrapped footer keeps breathing room above and below its lines", () => {
@@ -863,9 +855,10 @@ function opticalSpacing(block: TokenBlock, name: string, value: string) {
   const same = (expected: string) => normalized(value) === normalized(expected);
   // [C4] rows are 2 px apart in every list, off the 4 px grid by design.
   if (same("var(--row-spacing)")) return true;
+  if (name === "--shelf-segment-inset") return same("1px");
   if (name === "--lead-gap") return same("calc((var(--tile-size) - var(--icon-glyph-size)) / 2 + var(--row-gap))");
   // Centre the 24 px fill in a 32/44 px target: the coarse inset is 10 px.
-  if (block.selector === ".shelf .shelf-chips[data-expanded]" && name === "padding-block") return same("calc((var(--chip-hit-size) - var(--chip-height)) / 2)");
+  if (block.selector === ".shelf-segment" && name === "padding-inline") return same("var(--shelf-segment-inset)");
   const borderCompensation = [".search-bar", '[role="option"]', '[role="option"][data-active]', '.ui-option[role="option"], .choice-row[role="option"]', ".key-caps kbd", ".library-bar", ".more > button"].includes(block.selector);
   if (borderCompensation && /^0?calc\(var\(--(?:inset|row-pad|space-1|space-2)\)[+-]var\(--(?:border-width|contrast-border-width)\)\)(var\(--space-1\))?$/.test(normalized(value))) return true;
   if (block.selector.includes("#search") && name === "padding-inline-start" && same("calc(var(--lead) + var(--search-icon-width) + var(--lead-gap) - var(--border-width))")) return true;
@@ -894,8 +887,8 @@ test("spacing audits resolve aliases and calc without exempting arbitrary one-pi
     expect(gridPixels(resolveToken("max(var(--space-1), calc(var(--chip-group-target) - var(--chip-height)))", scope)!)).toBe(gap);
     const scopes = tokenScopes(tokenBlocks(appSheets, "windows", "normal", true, false, false, coarse));
     const shelf = scopes.get("shelf")!;
-    expect(gridPixels(resolveToken("var(--chip-hit-size)", shelf)!)).toBe(target);
-    expect(gridPixels(resolveToken("calc((var(--chip-hit-size) - var(--chip-height)) / 2)", shelf)!)).toBe(gap / 2);
+    expect(gridPixels(resolveToken("var(--shelf-target)", shelf)!)).toBe(target);
+    expect(gridPixels(resolveToken("calc((var(--shelf-target) - var(--chip-height)) / 2)", shelf)!)).toBe(gap / 2);
     const locator = scopes.get("locator-token")!;
     expect(gridPixels(resolveToken("var(--locator-token-hit-size)", locator)!)).toBe(target);
     const locatorCss = appSheets["ui/LocatorToken.css"]!;
@@ -936,9 +929,44 @@ test("short windows reserve header/footer controls and compact decoration withou
   const short = styles.slice(styles.indexOf("@media (max-height: 400px)"));
   expect(short).toContain("height: var(--picker-height); min-height: 0; overflow: hidden");
   expect(styles).toContain(".picker-content > .results-area { flex: none; min-height: 0; overflow: visible");
-  expect(styles).toContain("min-height: 0; overflow: auto; overscroll-behavior: contain; container-type: size");
+  expect(styles).toContain("min-height: var(--type-label-line); overflow: auto; overscroll-behavior: contain; container-type: size");
   expect(short).not.toMatch(/font-size:|zoom:|transform:/);
+  expect(rules(short, ".search-bar")).toMatch(/padding-block: 0; row-gap: 0/);
+  expect(rules(short, ".enter-hints")).toMatch(/display: none/);
+  expect(rules(short, ".library-bar > .more")).toMatch(/display: flex/);
+  expect(rules(short, ".search-bar .toolbar-menu-control")).toMatch(/min-width: 0; max-width: calc\(100% - var\(--field-h\) - var\(--search-gap\)\)/);
+  // Folding optional hints must not shrink the footer, shelf or segment
+  // targets, and hidden hints must have no boxes for the geometry scan.
+  for (const selector of ["main > .shelf", "main > .shelf .shelf-segment", "main > footer", ".library-bar"]) expect(rules(short, selector)).toBe("");
+  expect(short).not.toContain("--shelf-line:");
   const compactTokens = tokens.slice(tokens.indexOf("@media (max-height: 400px)"));
   expect(compactTokens).toContain("--empty-icon-size: var(--icon-glyph-size)");
   expect(compactTokens).toContain("--empty-keys-display: none");
+});
+
+test("the doubled-text minimum frame keeps normal shelf/footer targets and room for a text line, including the page token", () => {
+  // The real failing profile has two search rows in 480x360, not a larger
+  // viewport. Read the unchanged control sizes and yielded header gaps from
+  // the shared CSS contract above; browser geometry remains the final oracle.
+  const g = geometry();
+  const remValue = (css: string, property: string) => Number(css.match(new RegExp(`${property}:\\s*([\\d.]+)rem`))?.[1]) * 32;
+  const inset = g["--inset"]! * 2;
+  const line = remValue(tokens, "--type-label-line");
+  const smallButton = remValue(rules(buttons, '.ui-button[data-size="small"]'), "min-height");
+  const field = g["--field-h"]! * 2;
+  // Recents knows the destination app, making the format value long enough
+  // to reach its maximum width. It must leave Pin and the gap on the same
+  // second row instead of adding another full-height control row.
+  const headerWidth = 480 - 2 * inset;
+  const gap = g["--space-1"]! * 2;
+  const formatWidth = headerWidth - field - gap;
+  expect(formatWidth + gap + field).toBeLessThanOrEqual(headerWidth);
+  const header = 2 * field + 1;
+  const shelf = remValue(tokens, "--space-10") + inset;
+  const footer = Math.max(remValue(tokens, "--footer-height"), smallButton + 2 * inset);
+  // The token uses label typography. Even a two-line Apply label fits the
+  // unchanged search control; it must not create a third header row.
+  expect(rules(styles, ".search-page-token")).toMatch(/font: var\(--type-label-size\) \/ var\(--type-label-line\)/);
+  expect(2 * line + 2).toBeLessThanOrEqual(field);
+  expect(360 - header - shelf - footer).toBeGreaterThanOrEqual(line);
 });

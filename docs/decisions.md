@@ -95,6 +95,17 @@ empty, preserving clean response shapes; warned responses include the same
 codes as the engine and command line
 (2026-10-31, #1530).
 
+2026-10-31 (#1486): The shelf consumes engine-owned reference spans. Form
+examples and support reasons are read-only alternatives against the prepared
+ticket's immutable snapshot and original output family; they never replace its
+copy ticket. Year only uses the engine's year-only form. Late previews and
+detail replies cannot publish into a newer edit or picker presentation.
+Output-only display leaves preserve passive emphasis, scientific scripts,
+small caps and underline; adding a reference or confirming Copied cannot flatten
+them. The citation request's affix vocabulary is unchanged. Full text is
+selectable in the reference menu as well as the tooltip, including for one
+long reference.
+
 ## 0008 Offline by default
 
 No telemetry, ever. Everything works offline. Update checks, style updates,
@@ -586,6 +597,15 @@ the output chooser once and remembers the pick (maintainer, 2026-10-28).
 Remembered choices beat app-table suggestions, then the
 global fallback; "Automatic" removes that app's output and delivery overrides, and a deliberate
 global choice never erases app choices.
+
+2026-10-31 (#1486): Recent citations keep only opaque reference identities and
+known originating app IDs in the channel's WebView storage, bounded to 20 apps,
+30 identities per app and 256 Ki characters. More can forget them. Unknown
+destinations and sample references are not remembered. Rows resolve against the
+current snapshot; no page, form, query or citation text is restored. Failed
+history writes retain in-memory recents; a failed forget remains available for
+retry. Recently added uses validated source-added dates, never publication years
+or invented import times. These display dates do not change cite fingerprints.
 
 The bounded file is written whole, flushed and swapped in atomically. A file
 Ibis cannot read means automatic/default outputs, with a visible warning, and

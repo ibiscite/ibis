@@ -115,6 +115,8 @@ test("revoking paste after the write still confirms Copied when its delayed resp
   await answer("Copy only in Example Writer");
   await act(async () => { h.copyReplies.pending[0]!.complete(); });
   expect(screen.getAllByRole("status").some((status) => status.textContent?.includes("Copied"))).toBe(true);
+  expect(within(screen.getByRole("region", { name: "Preview" })).getByRole("status", { name: "Copied" })).toBeTruthy();
+  expect(document.querySelector(".copy-notice")).toBeNull();
   expect(h.visible).toBe(true);
   expect(h.document.text).toBe("Draft: [citation].");
   expect(h.document.pastes).toHaveLength(0);
@@ -226,6 +228,10 @@ test("a delayed approval cannot replay its held citation after reopening in anot
   await enter();
   expect(h.copy.calls).toHaveLength(0);
   await act(async () => { h.appSaves.pending[0]!.complete(); });
+  // The destination read waits for the old save. Its new app identity then
+  // refreshes that app's recent references before the held Enter can copy.
+  expect(h.copy.calls).toHaveLength(0);
+  await act(async () => { h.search.pending.at(-1)!.complete({ revision: "1", results: [result("a", "Invented reference")] }); });
   await finish(h);
   expect(h.document.pastes).toHaveLength(1);
   expect(receipt(h)).toBe("Pasted into Other Writer");

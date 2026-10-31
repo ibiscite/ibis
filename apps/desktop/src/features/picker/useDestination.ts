@@ -152,7 +152,7 @@ export function useDestination({ pickerDestination, rememberAppOutput }: Destina
   const askPaste = Boolean(rememberAppOutput && destination?.app_id && destination.paste_question);
   const pasteChoices = Boolean(rememberAppOutput && destination?.can_choose_paste);
   const shouldAsk = askPaste || Boolean(rememberAppOutput && destination?.app_id && destination.output_question && !remembered && once === null);
-  return { app: rememberAppOutput ? app : null, format, ready, saving, scope, shouldAsk, remembered: remembered !== null, read, choose,
+  return { appId: destination?.app_id ?? null, app: rememberAppOutput ? app : null, format, ready, saving, scope, shouldAsk, remembered: remembered !== null, read, choose,
     onceOnly, toggleOnce: () => { choices.current += 1; setOnceOnly((old) => !old); }, copyToken, isCurrentCopy, consumeOnce, restoreAutomatic, useDefault,
     askPaste, pasteChoices, choosePaste, quitAfterSaving };
 }

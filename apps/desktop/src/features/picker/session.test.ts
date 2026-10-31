@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 import { testStates } from "../../test-fixtures";
 import { enterLabel } from "./enterLabel";
-import { choiceKey, type CitationReference } from "./choice";
+import { choiceKey, idKey, type CitationReference } from "./choice";
 import { initialSession, reduceSession, sessionQueryKey, type SessionEvent, type SessionView } from "./session";
 
 const a: CitationReference = { ...testStates[1]!.results[0]!, locator: { label: "page", value: "١٢–١٤" } };
@@ -13,12 +13,76 @@ function scenario() {
   const send = (event: SessionEvent) => { [state, effects] = reduceSession(state, event); return effects; };
   const view = (change: Partial<SessionView> = {}): SessionEvent => ({ type: "view", session: state.session, interaction: state.interaction,
     view: { queryKey: sessionQueryKey(state), format: "pandoc", snapshotRevision: "synthetic", defaultChoice: choiceKey([a]),
-      chosen: [a], shown: prepared, searchPending: false, ready: true, saving: false, shouldAsk: false,
+      chosen: [a], shown: prepared, previewVisible: true, searchPending: false, ready: true, saving: false, shouldAsk: false,
       output: { opening: 0, choice: 0, delivery: 0 }, ...change } });
   const complete = (id: number, change: Partial<Extract<SessionEvent, { type: "copied" }>> = {}) => send({ type: "copied", id, session: 0, outcome: { text: prepared.text, warnings: [] },
     output: { opening: 0, choice: 0, delivery: 0 }, pinned: false, ...change });
   return { send, view, complete, get state() { return state; }, get effects() { return effects; } };
 }
+
+test("removing a reference offers an owned Undo that restores its position and complete details", () => {
+  const s = scenario();
+  const c = { ...b, id: { synthetic: "third" }, key: "third" };
+  s.send({ type: "toggle", result: a, locator: a.locator });
+  s.send({ type: "reference", reference: s.state.selected.get(idKey(a.id))!, change: { form: "year-only" } });
+  s.send({ type: "toggle", result: b });
+  s.send({ type: "toggle", result: c });
+  const original = [...s.state.selected.values()];
+  s.send({ type: "toggle", result: b });
+  const undo = s.state.removed!;
+  expect([...s.state.selected.values()]).toEqual([original[0], original[2]]);
+  s.send({ type: "undo-reference", removal: undo });
+  expect([...s.state.selected.values()]).toEqual(original);
+  expect(s.state.removed).toBeNull();
+  s.send({ type: "toggle", result: a });
+  const newer = s.state.removed;
+  s.send({ type: "expire-removal", removal: undo });
+  expect(s.state.removed).toBe(newer);
+  s.send({ type: "undo-reference", removal: undo });
+  expect(s.state.removed).toBe(newer);
+  expect(s.state.selected.has(idKey(a.id))).toBe(false);
+});
+
+test("Undo never overwrites a reference added again or crosses a cleared session", () => {
+  const s = scenario();
+  s.send({ type: "toggle", result: a, locator: a.locator });
+  s.send({ type: "toggle", result: a });
+  const undo = s.state.removed!;
+  s.send({ type: "toggle", result: a, locator: { label: "page", value: "42" } });
+  s.send({ type: "undo-reference", removal: undo });
+  expect(s.state.selected.get(idKey(a.id))?.locator?.value).toBe("42");
+  s.send({ type: "toggle", result: a });
+  const old = s.state.removed!;
+  s.send({ type: "sample" });
+  s.send({ type: "undo-reference", removal: old });
+  expect(s.state.selected.size).toBe(0);
+});
+
+test("a retired segment cannot remove a newly edited reference or add a removed one back", () => {
+  const s = scenario();
+  s.send({ type: "toggle", result: a });
+  const retired = s.state.selected.get(idKey(a.id))!;
+  s.send({ type: "reference", reference: retired, change: { locator: { label: "page", value: "42" } } });
+  s.send({ type: "remove-reference", reference: retired });
+  const current = s.state.selected.get(idKey(a.id))!;
+  expect(current.locator?.value).toBe("42");
+  s.send({ type: "remove-reference", reference: current });
+  s.send({ type: "remove-reference", reference: current });
+  expect(s.state.selected.size).toBe(0);
+  expect(s.state.removed?.reference).toBe(current);
+});
+
+test("the shelf confirms the copied text until a newer edit, and late completion cannot revive it", () => {
+  const s = scenario();
+  s.send(s.view());
+  s.send({ type: "enter", choice: choiceKey([a]) });
+  s.complete(1, { pinned: true });
+  expect(s.state.shelfCopied?.text).toBe(prepared.text);
+  s.send({ type: "query", value: "newer" });
+  expect(s.state.shelfCopied).toBeNull();
+  s.complete(1, { pinned: true });
+  expect(s.state.shelfCopied).toBeNull();
+});
 
 test("search, Enter and receipt use exactly one prepared engine ticket", () => {
   const s = scenario();
@@ -74,6 +138,31 @@ test("search and preview failures never copy, and a copy rejection shows its fix
   s.send({ type: "copy-failed", id: 1, session: 0, output: { opening: 0, choice: 0, delivery: 0 }, message: "Invented copy failure", stale: false });
   expect(s.state.copyError).toBe("Invented copy failure");
   expect(s.effects).toEqual([]);
+});
+
+test.each(["same", "different", "empty", "failed", "reopened"])("Enter waiting for the destination survives only the same refreshed recent reference (%s)", (outcome) => {
+  const s = scenario();
+  s.send(s.view({ ready: false }));
+  s.send({ type: "enter", choice: choiceKey([a]) });
+  // Resolving the captured app refreshes empty-query recents. The old rows
+  // temporarily stop being actionable while this request is pending.
+  s.send(s.view({ appId: "example.browser", chosen: [], shown: null, searchPending: true, shouldAsk: true }));
+  expect(s.effects).toEqual([]);
+  if (outcome === "reopened") {
+    s.send({ type: "hidden", now: 10 });
+    s.send({ type: "shown", now: 20 });
+  }
+  const chosen = outcome === "different" ? [b] : outcome === "empty" || outcome === "failed" ? [] : [a];
+  s.send(s.view({ appId: "example.browser", chosen, shouldAsk: true, shown: outcome === "failed" ? "failed" : prepared }));
+  if (outcome === "same") {
+    expect(s.effects).toEqual([{ type: "ask-format" }]);
+    s.send({ type: "question", answer: "answered" });
+    s.send(s.view({ appId: "example.browser" }));
+    expect(s.effects).toMatchObject([{ type: "copy", id: 1, ticket: "ticket-b", hash: "hash-b" }]);
+  } else {
+    expect(s.effects).toEqual([]);
+    expect(s.state.pendingCopy).toBeNull();
+  }
 });
 
 test("delayed A after B cannot replace B's Enter or prepared output", () => {
@@ -177,9 +266,23 @@ test("delivery revocation keeps completed-write feedback without hiding or deliv
   s.send(s.view({ output }));
   s.complete(1, { output, outcome: { text: prepared.text, warnings: [], delivery: 17 } });
   expect(s.state.copied).toEqual({ text: prepared.text, warnings: [] });
+  expect(s.state.shelfCopied).toEqual({ text: prepared.text, warnings: [], closestMatches: [] });
+  expect(s.state.copyNotice).toBeNull();
   expect(s.state.lastOutcome).toBe("Copied");
   expect(s.state.selected.size).toBe(0);
   expect(s.state.flights).toHaveLength(0);
+  expect(s.effects).toEqual([{ type: "consume", output }]);
+});
+
+test("a revoked write confirms in Notices when Preview is hidden, without retaining its delivery proof", () => {
+  const s = scenario();
+  s.send(s.view({ previewVisible: false }));
+  s.send({ type: "enter", choice: choiceKey([a]) });
+  const output = { opening: 0, choice: 0, delivery: 1 };
+  s.send(s.view({ output, previewVisible: false }));
+  s.complete(1, { output, outcome: { text: prepared.text, warnings: [], delivery: 17 } });
+  expect(s.state.shelfCopied).toBeNull();
+  expect(s.state.copyNotice).toEqual({ text: prepared.text, warnings: [] });
   expect(s.effects).toEqual([{ type: "consume", output }]);
 });
 

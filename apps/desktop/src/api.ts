@@ -27,6 +27,8 @@ export const {
   quit,
   shortcutStatus,
   copyFileCitation,
+  citationDetails,
+  recentReferences,
   copyFormat,
   pickerPreferences,
   pickerDestination,
@@ -36,7 +38,6 @@ export const {
   setLoginItem,
   findSources,
   openFoundLibrary,
-  showCopiedNotice,
   rowContext,
   updateChecks,
   setUpdateChecks,
@@ -159,4 +160,9 @@ export function onUpdateChecks(handler: (automatic: boolean) => void): Promise<U
 /** Quiet availability only; this event never shows or focuses the picker. */
 export function onUpdateAvailable(handler: (available: boolean) => void): Promise<UnlistenFn> {
   return listen<boolean>("update:available", (event) => handler(event.payload));
+}
+
+/** Delivery still receives the full canonical text; only the receipt is shortened. */
+export function showCopiedNotice(text: string, delivery: number | null, summary: import("./bindings").ReceiptSummary | null = null) {
+  return commands.showCopiedNotice(text, delivery, summary);
 }

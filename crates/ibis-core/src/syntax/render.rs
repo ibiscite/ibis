@@ -15,11 +15,11 @@ pub(super) fn render(
         return Ok(String::new());
     }
     let text = match caps.syntax {
-        KeySyntax::Pandoc => pandoc(picks),
-        KeySyntax::Biblatex => biblatex(caps.command.unwrap_or("autocite"), picks),
+        KeySyntax::Pandoc => flatten(&pandoc(picks)),
+        KeySyntax::Biblatex => flatten(&biblatex(caps.command.unwrap_or("autocite"), picks)),
         KeySyntax::Natbib => natbib(picks, requested_items),
-        KeySyntax::Latex => latex(picks),
-        KeySyntax::Typst => typst(picks),
+        KeySyntax::Latex => flatten(&latex(picks)),
+        KeySyntax::Typst => flatten(&typst(picks)),
         KeySyntax::Keys => picks.iter().map(|pick| pick.key).collect::<Vec<_>>().join(", "),
         KeySyntax::CslJson => return csl_json(picks),
         KeySyntax::OrgCite => org(picks),
@@ -41,7 +41,77 @@ pub(super) fn render(
     Ok(text)
 }
 
-fn pandoc(picks: &[Pick<'_>]) -> String {
+/// Native shelf ownership is emitted while the syntax is written, never by
+/// looking for keys inside the final string (keys may occur in page text too).
+pub(super) fn display(
+    caps: &SyntaxCapabilities,
+    picks: &[Pick<'_>],
+    requested: usize,
+) -> Result<DisplayTree, CitationError> {
+    if picks.is_empty() {
+        return Ok(DisplayTree::default());
+    }
+    let tree = match caps.syntax {
+        KeySyntax::Pandoc => pandoc(picks),
+        KeySyntax::Biblatex => biblatex(caps.command.unwrap_or("autocite"), picks),
+        KeySyntax::Latex => latex(picks),
+        KeySyntax::Typst => typst(picks),
+        KeySyntax::Keys => groups(
+            picks,
+            picks.iter().map(|pick| pick.key.to_owned()).collect(),
+            ", ",
+            "",
+            "",
+        ),
+        _ => DisplayTree {
+            nodes: vec![node(
+                (picks.len() == 1).then(|| picks[0].index),
+                render(caps, picks, requested)?,
+            )],
+        },
+    };
+    Ok(if picks.len() == 1 {
+        DisplayTree {
+            nodes: vec![node(Some(picks[0].index), flatten(&tree))],
+        }
+    } else {
+        tree
+    })
+}
+pub(super) fn flatten(tree: &DisplayTree) -> String {
+    tree.nodes
+        .iter()
+        .flat_map(|node| &node.content)
+        .map(|run| run.text.as_str())
+        .collect()
+}
+fn node(item: Option<usize>, text: String) -> DisplayNode {
+    DisplayNode {
+        item,
+        content: vec![DisplayRun {
+            text,
+            ..DisplayRun::default()
+        }],
+    }
+}
+fn groups(picks: &[Pick<'_>], parts: Vec<String>, separator: &str, prefix: &str, suffix: &str) -> DisplayTree {
+    let mut nodes = Vec::new();
+    if !prefix.is_empty() {
+        nodes.push(node(None, prefix.into()));
+    }
+    for (index, (pick, text)) in picks.iter().zip(parts).enumerate() {
+        if index > 0 && !separator.is_empty() {
+            nodes.push(node(None, separator.into()));
+        }
+        nodes.push(node(Some(pick.index), text));
+    }
+    if !suffix.is_empty() {
+        nodes.push(node(None, suffix.into()));
+    }
+    DisplayTree { nodes }
+}
+
+fn pandoc(picks: &[Pick<'_>]) -> DisplayTree {
     let narrative = picks.iter().any(|pick| pick.form == Narrative);
     let parts = picks
         .iter()
@@ -82,9 +152,14 @@ fn pandoc(picks: &[Pick<'_>]) -> String {
                 if narrative { format!("[{value}]") } else { value }
             }
         })
-        .collect::<Vec<_>>()
-        .join("; ");
-    if narrative { parts } else { format!("[{parts}]") }
+        .collect::<Vec<_>>();
+    groups(
+        picks,
+        parts,
+        "; ",
+        if narrative { "" } else { "[" },
+        if narrative { "" } else { "]" },
+    )
 }
 
 fn before(prefix: &str) -> String {
@@ -95,7 +170,7 @@ fn before(prefix: &str) -> String {
     }
 }
 
-fn biblatex(command: &str, picks: &[Pick<'_>]) -> String {
+fn biblatex(command: &str, picks: &[Pick<'_>]) -> DisplayTree {
     let notes = |pick: &Pick<'_>| {
         let prefix = rich(&pick.item.prefix, Escaping::Latex);
         let suffix = rich(&pick.item.suffix, Escaping::Latex);
@@ -138,19 +213,28 @@ fn biblatex(command: &str, picks: &[Pick<'_>]) -> String {
         }
     };
     if let [pick] = picks {
-        format!(
-            "\\{command}{}{}{{{}}}",
-            if pick.suppress { "*" } else { "" },
-            notes(pick),
-            pick.key
+        groups(
+            picks,
+            vec![format!(
+                "\\{command}{}{}{{{}}}",
+                if pick.suppress { "*" } else { "" },
+                notes(pick),
+                pick.key
+            )],
+            "",
+            "",
+            "",
         )
     } else {
-        format!(
-            "\\{command}s{}",
+        groups(
+            picks,
             picks
                 .iter()
                 .map(|pick| format!("{}{{{}}}", notes(pick), pick.key))
-                .collect::<String>()
+                .collect(),
+            "",
+            &format!("\\{command}s"),
+            "",
         )
     }
 }
@@ -197,17 +281,20 @@ fn natbib(picks: &[Pick<'_>], requested_items: usize) -> String {
     )
 }
 
-fn latex(picks: &[Pick<'_>]) -> String {
+fn latex(picks: &[Pick<'_>]) -> DisplayTree {
     if picks
         .iter()
         .all(|pick| pick.item.locator.is_none() && pick.item.prefix.is_empty() && pick.item.suffix.is_empty())
     {
-        return format!(
-            "\\cite{{{}}}",
-            picks.iter().map(|pick| pick.key).collect::<Vec<_>>().join(",")
+        return groups(
+            picks,
+            picks.iter().map(|pick| pick.key.to_owned()).collect(),
+            ",",
+            "\\cite{",
+            "}",
         );
     }
-    picks
+    let parts = picks
         .iter()
         .map(|pick| {
             let prefix = rich(&pick.item.prefix, Escaping::Latex);
@@ -239,12 +326,12 @@ fn latex(picks: &[Pick<'_>]) -> String {
                 pick.key
             )
         })
-        .collect::<Vec<_>>()
-        .join(", ")
+        .collect::<Vec<_>>();
+    groups(picks, parts, ", ", "", "")
 }
 
-fn typst(picks: &[Pick<'_>]) -> String {
-    picks
+fn typst(picks: &[Pick<'_>]) -> DisplayTree {
+    let parts = picks
         .iter()
         .map(|pick| {
             let prefix = rich(&pick.item.prefix, Escaping::Typst);
@@ -296,8 +383,8 @@ fn typst(picks: &[Pick<'_>]) -> String {
             };
             format!("{}{body}", before(&prefix))
         })
-        .collect::<Vec<_>>()
-        .join(" ")
+        .collect::<Vec<_>>();
+    groups(picks, parts, " ", "", "")
 }
 
 fn quoted(text: &str) -> String {

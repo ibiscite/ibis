@@ -8,6 +8,7 @@ fn library() -> LibraryId {
 
 fn item(key: &str, title: &str) -> LibraryObject {
     LibraryObject::Record(Record {
+        added_at: None,
         id: ItemRef { library: library(), key: key.into() },
         csl: serde_json::from_value(json!({"type":"book","title":title,"author":[{"family":"Invented"}],"issued":{"date-parts":[[2026]]},"abstract":"Lazy invented detail"}))
             .unwrap_or_else(|e| panic!("{e}")),

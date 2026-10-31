@@ -8,6 +8,8 @@ pub mod model;
 pub use citation::*;
 pub use envelope::*;
 pub use model::*;
+mod added;
+pub use added::added_date;
 
 mod schema;
 pub use schema::{GoldenCase, schema};

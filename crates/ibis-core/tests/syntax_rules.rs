@@ -161,14 +161,24 @@ fn repeated_and_unusual_keys_keep_syntax_and_input_identity() {
             "{format:?}"
         );
         assert_eq!(
-            result.display.nodes,
-            [DisplayNode {
-                item: None,
-                content: vec![TextRun {
-                    text: expected.into(),
-                    ..TextRun::default()
-                }],
-            }]
+            result
+                .display
+                .nodes
+                .iter()
+                .flat_map(|node| &node.content)
+                .map(|run| run.text.as_str())
+                .collect::<String>(),
+            expected
+        );
+        assert_eq!(
+            result
+                .display
+                .nodes
+                .iter()
+                .filter_map(|node| node.item)
+                .collect::<Vec<_>>(),
+            [0, 1, 2],
+            "each repeated input retains its own segment: {format:?}"
         );
     }
 }

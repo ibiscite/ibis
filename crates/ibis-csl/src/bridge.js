@@ -140,8 +140,9 @@
       .filter((field) => typeof item[field] === "string")
       .map((field) => [field, decodeRich(item[field], literalLessThan)])) }));
   };
-  // Observe only each final cite's newly emitted tree. Do not enable citation
-  // wrappers, render again, alter blobs, or infer errors from output strings.
+  // Observe each final cite's newly emitted tree without enabling wrappers,
+  // rendering it again or changing blobs. Ownership follows those exact roots
+  // through the processor's normal serialization, including sorting/collapse.
   const unverified = Object.freeze({});
   let observation = null;
   // An affix alone does not make a cite printed.
@@ -157,6 +158,12 @@
     const result = getCite.apply(this, args);
     if (this.output.current.value() !== parent) throw unverified;
     const pending = children.slice(offset);
+    const identity = String(args[0].id);
+    const occurrence = capture.occurrences.get(identity) ?? 0;
+    capture.occurrences.set(identity, occurrence + 1);
+    const indices = capture.indices.get(identity);
+    const owner = indices?.[Math.min(occurrence, indices.length - 1)];
+    for (const root of pending) if (root && typeof root === "object") capture.roots.set(root, owner);
     let printed = false;
     const yearOnly = capture.format === "text" && args[1]?.["year-only"];
     const issued = args[0].issued;
@@ -190,6 +197,34 @@
     const id = String(args[0].id);
     capture.seen.set(id, (capture.seen.get(id) ?? 0) + 1);
     return result;
+  };
+  const serialize = CSL.Output.Queue.prototype.string;
+  CSL.Output.Queue.prototype.string = function (state, blobs, parent) {
+    const capture = observation;
+    const owner = capture?.format === "text" && blobs.length === 1 ? capture.roots.get(blobs[0]) : undefined;
+    const result = serialize.call(this, state, blobs, parent);
+    if (owner !== undefined) {
+      const parts = typeof result === "string" ? [result] : result;
+      if (!Array.isArray(parts)) throw unverified;
+      capture.parts.push({ item: owner, parts: [...parts] });
+    }
+    return result;
+  };
+  // These are the processor's final serialized chunks, not searches for source
+  // names/years. Shared layout punctuation remains unowned. Full reconstruction
+  // and one appearance per cite are validated again at the Rust boundary.
+  const spans = (text, parts) => {
+    const nodes = [];
+    let offset = 0;
+    for (const part of parts) {
+      const start = text.indexOf(part.text, offset);
+      if (start < 0) throw unverified;
+      if (start > offset) nodes.push({ item: null, text: text.slice(offset, start) });
+      nodes.push({ item: part.item, text: part.text });
+      offset = start + part.text.length;
+    }
+    if (offset < text.length) nodes.push({ item: null, text: text.slice(offset) });
+    return nodes;
   };
   // Affixes reach citeproc as inert placeholders; each is written here as the
   // person typed it, escaped and styled by citeproc's own output format, with
@@ -295,7 +330,9 @@
       engine.updateItems(request.items.map((item) => item.id));
       for (const format of ["text", "html", "rtf"]) {
         engine.setOutputFormat(format);
-        const capture = { engine, format, area: request.bibliography ? "bibliography" : "citation", seen: new Map() };
+        const indices = new Map();
+        request.cites.forEach((cite, index) => indices.set(cite.id, [...indices.get(cite.id) ?? [], index]));
+        const capture = { engine, format, area: request.bibliography ? "bibliography" : "citation", seen: new Map(), roots: new WeakMap(), parts: [], indices, occurrences: new Map() };
         observation = capture;
         let output;
         if (request.bibliography) {
@@ -303,9 +340,32 @@
           if (!bibliography || bibliography[0].bibliography_errors.length) throw unverified;
           if (format === "text") outputs.text_parts = bibliography[1];
           output = bibliography[1].map(oneLine).join("\n");
+          if (format === "text") {
+            outputs.spans = [];
+            bibliography[1].forEach((part, index) => {
+              const ids = bibliography[0].entry_ids[index];
+              if (ids.length !== 1) throw unverified;
+              if (index) outputs.spans.push({ item: null, text: "\n" });
+              const occurrences = indices.get(String(ids[0]));
+              if (!occurrences?.length) throw unverified;
+              occurrences.forEach((item, occurrence) => outputs.spans.push({ item, text: occurrence ? "" : oneLine(part) }));
+            });
+          }
         } else {
           output = cluster(engine, request.cites);
           output = writeAffixes(engine, format, output, request.affixes ?? []);
+          if (format === "text") {
+            const parts = capture.parts.map((part) => {
+              // Numeric locators remain NumberBlobs until the processor's final
+              // range pass. Serialize copies of those now-final leaves only;
+              // no cite tree is evaluated again, and no processor blob changes.
+              const text = part.parts.map((leaf) => typeof leaf === "string" ? leaf : engine.output.renderBlobs([
+                { ...leaf, strings: { ...leaf.strings }, decorations: [...leaf.decorations], checkNext: null, checkLast: null },
+              ])).join("");
+              return { item: part.item, text: writeAffixes(engine, format, text, (request.affixes ?? []).filter((affix) => text.includes(affix.placeholder))) };
+            });
+            outputs.spans = spans(output, parts);
+          }
         }
         observation = null;
         if (capture.seen.size !== expected.size || [...expected].some(([id, count]) => capture.seen.get(id) !== count)) throw unverified;

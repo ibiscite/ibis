@@ -85,6 +85,7 @@ pub struct Locator {
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[cfg_attr(feature = "type-export", derive(specta::Type))]
 #[serde(rename_all = "kebab-case")]
 pub enum Script {
     #[default]
@@ -95,6 +96,7 @@ pub enum Script {
 
 /// Fixed-depth rich text: styling is data, never arbitrary HTML or executable markup.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[cfg_attr(feature = "type-export", derive(specta::Type))]
 #[serde(deny_unknown_fields)]
 pub struct TextRun {
     pub text: String,
@@ -338,12 +340,35 @@ impl Notice {
     ];
 }
 
+/// Output-only passive presentation. The smaller request TextRun contract stays
+/// independent of the additional styles a citation processor may produce.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[serde(deny_unknown_fields)]
+pub struct DisplayRun {
+    pub text: String,
+    #[serde(default)]
+    pub italic: bool,
+    #[serde(default)]
+    pub bold: bool,
+    #[serde(default)]
+    pub script: Script,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub small_caps: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub underline: bool,
+}
+
+fn is_false(value: &bool) -> bool {
+    !value
+}
+
 /// One display group owns ordered text leaves; shared punctuation has no item.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct DisplayNode {
     pub item: Option<usize>,
-    pub content: RichText,
+    pub content: Vec<DisplayRun>,
 }
 
 /// A bounded-depth tree: root -> ownership groups -> styled text leaves.
@@ -592,10 +617,10 @@ mod tests {
             DisplayTree {
                 nodes: vec![DisplayNode {
                     item: Some(0),
-                    content: vec![TextRun {
+                    content: vec![DisplayRun {
                         text: "合成 & <work>".into(),
                         italic: true,
-                        ..TextRun::default()
+                        ..DisplayRun::default()
                     }],
                 }],
             },

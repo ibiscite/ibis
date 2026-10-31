@@ -7,9 +7,9 @@ export const citationDetailsText = {
   pageHint: "A page or range",
   form: "Citation form",
   forms: [
-    { value: "normal", label: "Normal" },
-    { value: "narrative", label: "Narrative" },
-    { value: "author-omitted", label: "Omit author" },
+    { value: "normal", label: "Name in brackets" },
+    { value: "narrative", label: "Name in the sentence" },
+    { value: "year-only", label: "Year only" },
   ] as const,
   edit: (reference: string) => `Edit ${reference}`,
   details: (reference: string) => `Citation details for ${reference}`,
@@ -20,6 +20,7 @@ export const citationDetailsText = {
  * arrive as English strings from Rust; translating those needs structured codes.
  */
 export const operationFailures = {
+  recentHistory: "Recent citations could not be forgotten. Try again.",
   rowContext: "The reference menu could not open. Use Enter to copy or Shift+Enter to add.",
   status: "Ibis could not check your library. Choose the file again.",
   format: "Ibis could not read your saved copy format. Check Copy as before copying.",
@@ -194,18 +195,15 @@ export const pickerText = {
   previewPending: "Formatting…",
   previewNotReady: "Nothing was copied yet: the citation is still being formatted. Press Enter again in a moment.",
   previewError: "This citation could not be formatted. Choose another style, or copy citation keys.",
+  previewStyleError: (style: string) => `Couldn’t format in ${style}. Choose another style, or copy keys.`,
   entryOnly: (style: string) => `${style} numbers depend on your whole document, so Ibis copies the reference entry instead.`,
   entryOnlyShort: "Reference entry",
   entryLocator: (style: string) => `A reference entry has no page or other locator, so the ${style} copy leaves it out.`,
   entryEmpty: (style: string, shown: string) => `${style} shows nothing for “${shown}”, so Ibis copies that instead.`,
   entryNothing: (style: string) => `${style} shows nothing for a reference, so the copy leaves it out.`,
-  shelfStale: "The library changed since these were chosen.",
+  shelfStale: "The library changed. Reading it again…",
   warningCount: (n: number) => (n === 1 ? "1 warning" : `${n} warnings`),
-  /** The shelf's last chip, for references beyond the ones it shows. */
-  moreChosen: (n: number) => `+${n}`,
   allChosen: (n: number) => `Show all ${n} selected references`,
-  fewerChosen: "Show fewer selected references",
-  fewerChosenShort: "Fewer",
   dismiss: "Dismiss",
   dismissWarnings: "Dismiss copy warnings",
   copyWarnings: "Copy warnings",

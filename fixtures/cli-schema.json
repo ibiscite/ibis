@@ -868,6 +868,13 @@
           "Record": {
             "additionalProperties": false,
             "properties": {
+              "added_at": {
+                "description": "Source-added metadata; affects recents/display, never citation meaning.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
               "aliases": {
                 "default": [],
                 "items": {
@@ -1606,6 +1613,13 @@
           "Record": {
             "additionalProperties": false,
             "properties": {
+              "added_at": {
+                "description": "Source-added metadata; affects recents/display, never citation meaning.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
               "aliases": {
                 "default": [],
                 "items": {
@@ -2136,7 +2150,7 @@
             "properties": {
               "content": {
                 "items": {
-                  "$ref": "#/$defs/TextRun"
+                  "$ref": "#/$defs/DisplayRun"
                 },
                 "type": "array"
               },
@@ -2151,6 +2165,37 @@
             },
             "required": [
               "content"
+            ],
+            "type": "object"
+          },
+          "DisplayRun": {
+            "additionalProperties": false,
+            "description": "Output-only passive presentation. The smaller request TextRun contract stays\nindependent of the additional styles a citation processor may produce.",
+            "properties": {
+              "bold": {
+                "default": false,
+                "type": "boolean"
+              },
+              "italic": {
+                "default": false,
+                "type": "boolean"
+              },
+              "script": {
+                "$ref": "#/$defs/Script",
+                "default": "normal"
+              },
+              "small_caps": {
+                "type": "boolean"
+              },
+              "text": {
+                "type": "string"
+              },
+              "underline": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "text"
             ],
             "type": "object"
           },
@@ -2280,31 +2325,6 @@
               "superscript"
             ],
             "type": "string"
-          },
-          "TextRun": {
-            "additionalProperties": false,
-            "description": "Fixed-depth rich text: styling is data, never arbitrary HTML or executable markup.",
-            "properties": {
-              "bold": {
-                "default": false,
-                "type": "boolean"
-              },
-              "italic": {
-                "default": false,
-                "type": "boolean"
-              },
-              "script": {
-                "$ref": "#/$defs/Script",
-                "default": "normal"
-              },
-              "text": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "text"
-            ],
-            "type": "object"
           }
         },
         "$schema": "https://json-schema.org/draft/2020-12/schema",
