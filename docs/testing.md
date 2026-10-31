@@ -141,11 +141,15 @@ Node keyboard regressions dispatch Enter through that monitor and a picker
 handler, cover held keys, composition, failed I/O and delayed A after B, and run
 on both Node 22 and 24. Rust offer tests cover unknown/busy input, typing during
 a check, obsolete tickets and fresh metadata after idle. The Linux-only ignored
-`gtk_offer_keyboard_return_declines_and_tab_space_deliberately_installs` test
-uses GTK's actual Return/focused-control activation bindings; run it with an
-isolated display. The existing Linux native CI step runs it under Xvfb before
-the picker smoke. Source inspection and mocks do not replace installed native
-keyboard qualification on each platform.
+`gtk_offer_return_declines_and_explicit_install_button_accepts` test waits for
+mapping and GTK's focused-widget state within a two-second deadline per phase.
+On fresh dialogs it proves that Return/default activation cancels, Later stays
+the default even when Install is focused, and clicking the native Install button
+emits Accept. It does not invoke the answer callback or fabricate a response.
+The existing Linux native CI step runs it under Xvfb before the picker smoke.
+Real Tab/Space navigation remains covered by the managed XTEST fixture below.
+Source inspection and mocks do not replace installed native keyboard
+qualification on each platform.
 
 The Linux qualifier builds `scripts/update-gtk-probe.c` as a private GTK module
 and loads it only in its owned test processes. It resolves the AppImage’s GTK
@@ -176,8 +180,15 @@ AppImage rerun remains necessary to verify loading against its bundled GTK.
 The supplied `ci-1504c.log`, lines 82–98, shows a live fixture PID timing out
 after the attempted activation. That rules out the earlier inherited-pipe
 explanation for that run: availability, dialog observation and display setup
-had already succeeded. The keyboard transport change still needs the real
-Linux GTK run; this source inspection is not a native passing result.
+had already succeeded. The subsequent `ci-1504-d.log`, lines 85–107, records all
+three managed GTK fixtures passing, including real Tab/Space on the Later-first
+layout. Lines 124–127 instead show Cancel from the Rust test's unobserved
+`move-focus` signal on bare Xvfb. That test did not establish its intermediate
+focus state and kept using the same dialog after cancellation, although
+production closes it. This is evidence of a test assumption, not a broken
+person-facing Tab chain. The Rust test now uses the deterministic consent
+checks above; its revised Linux execution and the bundled AppImage still need
+native verification.
 
 ## Capability matrix
 
