@@ -8,6 +8,8 @@ import { test } from "node:test";
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 const pathKey = Object.keys(process.env).find((key) => key.toLowerCase() === "path") ?? "PATH";
+// Linux-only publication steps use POSIX executable shims in these fixtures.
+const skip = process.platform === "win32";
 const workflow = read(".github/workflows/preview.yml");
 const job = (name) => workflow.split(`\n  ${name}:\n`)[1]?.split(/^  [\w-]+:\n/m)[0];
 const step = (name, prefix) => {
@@ -172,7 +174,7 @@ test("numbered publishes and stable-feed updates queue without interleaving or c
   assert.match(job("stable-feed"), /^    concurrency:\n      group: publish-stable-feed\n      queue: max\n      cancel-in-progress: false$/m);
 });
 
-test("numbered releases publish fully with a versioned title and explicit Latest choice", (t) => {
+test("numbered releases publish fully with a versioned title and explicit Latest choice", { skip }, (t) => {
   for (const releases of [undefined, {}]) for (const latest of ["v0.2.2", "v0.2.3", "v0.2.10"]) {
     const f = fixture(t, { latest, ...(releases ? { releases } : {}) });
     const result = f.run("publish", "Publish the verified");
@@ -187,7 +189,7 @@ test("numbered releases publish fully with a versioned title and explicit Latest
   }
 });
 
-test("failed Latest I/O or package upload leaves a numbered draft unpublished", (t) => {
+test("failed Latest I/O or package upload leaves a numbered draft unpublished", { skip }, (t) => {
   for (const initial of [{ failLatest: true }, { failLatest: true, releases: {} }, { failUpload: true }]) {
     const f = fixture(t, initial);
     assert.notEqual(f.run("publish", "Publish the verified").status, 0);
@@ -198,7 +200,7 @@ test("failed Latest I/O or package upload leaves a numbered draft unpublished", 
   }
 });
 
-test("public numbered releases and bot tags without a draft still refuse publication", (t) => {
+test("public numbered releases and bot tags without a draft still refuse publication", { skip }, (t) => {
   for (const releases of [{ "v0.2.3": { isDraft: false, assets: {} } }, {}]) {
     const f = fixture(t, { releases });
     const result = f.run("publish", "Publish the verified", { ACTOR: "release[bot]" });
@@ -208,7 +210,7 @@ test("public numbered releases and bot tags without a draft still refuse publica
   }
 });
 
-test("stable-feed alone replaces assets, uploads the feed last and never moves the fixed tag", (t) => {
+test("stable-feed alone replaces assets, uploads the feed last and never moves the fixed tag", { skip }, (t) => {
   const f = fixture(t, { releases: { stable: { isDraft: false, assets: { "latest.json": '{"version":"0.2.2"}', "old.zip": "old" } } } });
   for (let rerun = 0; rerun < 2; rerun++) {
     const result = f.run("stable-feed", "Move the stable update feed to this release");
@@ -229,7 +231,7 @@ test("stable-feed alone replaces assets, uploads the feed last and never moves t
   }
 });
 
-test("delayed older runs cannot move Latest or the stable feed backwards", (t) => {
+test("delayed older runs cannot move Latest or the stable feed backwards", { skip }, (t) => {
   const f = fixture(t, { latest: "v0.2.10", releases: {
     "v0.2.3": { isDraft: true, prerelease: true, body: "", assets: {} },
     stable: { isDraft: false, assets: { "latest.json": '{"version":"0.2.10"}' } },
@@ -247,7 +249,7 @@ test("delayed older runs cannot move Latest or the stable feed backwards", (t) =
   }
 });
 
-test("stable feed publication permits confirmed absence or an older parsed feed", (t) => {
+test("stable feed publication permits confirmed absence or an older parsed feed", { skip }, (t) => {
   for (const assets of [undefined, { "old.zip": "old" }, { "latest.json": '{"version":"0.2.2"}' }]) {
     const f = fixture(t, { releases: assets === undefined ? {} : { stable: { isDraft: false, assets } } });
     const result = f.run("stable-feed", "Move the stable update feed to this release");
@@ -256,7 +258,7 @@ test("stable feed publication permits confirmed absence or an older parsed feed"
   }
 });
 
-test("stable feed checks authenticated draft assets before replacing permanent downloads", (t) => {
+test("stable feed checks authenticated draft assets before replacing permanent downloads", { skip }, (t) => {
   const assets = { "latest.json": '{"version":"0.2.10"}', "Ibis-synthetic.zip": "newer package" };
   const f = fixture(t, { releases: { stable: { isDraft: true, assets } } });
   const result = f.run("stable-feed", "Move the stable update feed to this release");
@@ -266,7 +268,7 @@ test("stable feed checks authenticated draft assets before replacing permanent d
   assert.ok(f.state().calls.some((args) => args[1] === "repos/example/ibis/releases?per_page=100&page=1"));
 });
 
-test("stable draft discovery reads every release page and refuses incomplete or invalid listings", (t) => {
+test("stable draft discovery reads every release page and refuses incomplete or invalid listings", { skip }, (t) => {
   const firstPage = Array.from({ length: 100 }, (_, index) => ({ id: 100 + index, tag_name: `synthetic-${index}`, draft: false }));
   const stable = { id: 12, tag_name: "stable", draft: true };
   for (const failure of [
@@ -289,7 +291,7 @@ test("stable draft discovery reads every release page and refuses incomplete or 
   }
 });
 
-test("stable release absence requires a complete successful release listing", (t) => {
+test("stable release absence requires a complete successful release listing", { skip }, (t) => {
   const firstPage = Array.from({ length: 100 }, (_, index) => ({ id: 100 + index, tag_name: `synthetic-${index}`, draft: false }));
   for (const status of [200, 500]) {
     const f = fixture(t, { releases: {}, releasePages: [firstPage, []], releaseStatuses: [200, status] });
@@ -307,7 +309,7 @@ test("stable release absence requires a complete successful release listing", (t
   }
 });
 
-test("oversized release pages are projected by gh before buffering without losing pagination or draft protection", (t) => {
+test("oversized release pages are projected by gh before buffering without losing pagination or draft protection", { skip }, (t) => {
   const firstPage = Array.from({ length: 100 }, (_, index) => ({
     id: 100 + index, tag_name: `synthetic-${index}`, draft: false, body: "invented notes ".repeat(2048),
   }));
@@ -335,7 +337,7 @@ test("oversized release pages are projected by gh before buffering without losin
   }
 });
 
-test("equal-version retries finish cleanup and finalization after the feed upload", (t) => {
+test("equal-version retries finish cleanup and finalization after the feed upload", { skip }, (t) => {
   for (const isDraft of [false, true]) for (const failure of ["failAfterFeedUpload", "failCleanup", "failFinalize"]) {
     const f = fixture(t, { releases: { stable: { isDraft, assets: { "latest.json": '{"version":"0.2.2"}', "old.zip": "old" } } }, [failure]: true });
     const interrupted = f.run("stable-feed", "Move the stable update feed to this release");
@@ -356,7 +358,7 @@ test("equal-version retries finish cleanup and finalization after the feed uploa
   }
 });
 
-test("stable feed must read later asset pages and refuses an incomplete listing", (t) => {
+test("stable feed must read later asset pages and refuses an incomplete listing", { skip }, (t) => {
   for (const status of [200, 500]) {
     const assets = { "latest.json": '{"version":"0.2.10"}', "Ibis-synthetic.zip": "newer package" };
     const f = fixture(t, { releases: { stable: { isDraft: false, assets } },
@@ -372,7 +374,7 @@ test("stable feed must read later asset pages and refuses an incomplete listing"
   }
 });
 
-test("stable feed read failures stop before changing permanent installers or latest.json", (t) => {
+test("stable feed read failures stop before changing permanent installers or latest.json", { skip }, (t) => {
   for (const failure of [
     { feedStatus: 500 }, { feedStatus: 403 }, { feedNetwork: true },
     { feedStatus: 404, feedNetwork: true }, { feedDownloadFailure: true }, { assetStatus: 500 },
@@ -388,7 +390,7 @@ test("stable feed read failures stop before changing permanent installers or lat
   }
 });
 
-test("nightly only publishes after a successful ahead comparison or confirmed ref absence", (t) => {
+test("nightly only publishes after a successful ahead comparison or confirmed ref absence", { skip }, (t) => {
   for (const currentSha of [undefined, "b".repeat(40)]) {
     const f = fixture(t, { currentSha });
     const result = f.run("nightly", "Replace the nightly pre-release", { TAG: "nightly" });
@@ -399,7 +401,7 @@ test("nightly only publishes after a successful ahead comparison or confirmed re
   }
 });
 
-test("nightly read failures and malformed ref responses stop before any publication mutation", (t) => {
+test("nightly read failures and malformed ref responses stop before any publication mutation", { skip }, (t) => {
   for (const failure of [
     { refStatus: 500 }, { refStatus: 403 }, { refNetwork: true },
     { refStatus: 404, refNetwork: true }, { failCompare: true },
@@ -418,7 +420,7 @@ test("nightly read failures and malformed ref responses stop before any publicat
   }
 });
 
-test("nightly leaves a newer, equal or diverged nightly untouched", (t) => {
+test("nightly leaves a newer, equal or diverged nightly untouched", { skip }, (t) => {
   for (const relation of ["behind", "identical", "diverged"]) {
     const assets = { "latest.json": '{"version":"0.2.10"}', "Ibis-synthetic.zip": "newer package" };
     const f = fixture(t, { currentSha: "b".repeat(40), relation, releases: { nightly: { isDraft: false, assets } } });
