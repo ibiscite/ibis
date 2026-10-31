@@ -192,8 +192,8 @@ pub(crate) fn present_window(window: &tauri::WebviewWindow, focus: bool) {
         || {
             // tao's GTK focus=false suppresses accept-focus until the first
             // draw, and set_focus can be discarded before its queued show.
-            // Restore the hint before first map. This neither maps the window
-            // nor overtakes the complete frame already queued by sizing.
+            // Restore the hint before first map. Activation is separate and
+            // must follow the complete frame and show already queued by tao.
             #[cfg(target_os = "linux")]
             report(window.set_focusable(true), NativeIssue::Focus);
         },
@@ -202,8 +202,51 @@ pub(crate) fn present_window(window: &tauri::WebviewWindow, focus: bool) {
             // Showing a hidden quick picker can restore its taskbar button.
             report(window.set_skip_taskbar(true), NativeIssue::SkipTaskbar);
         },
-        || report(window.set_focus(), NativeIssue::Focus),
+        || {
+            #[cfg(target_os = "linux")]
+            focus_after_show(window);
+            #[cfg(not(target_os = "linux"))]
+            report(window.set_focus(), NativeIssue::Focus);
+        },
     );
+}
+
+#[cfg(target_os = "linux")]
+fn focus_after_show(window: &tauri::WebviewWindow) {
+    use gtk::prelude::*;
+    let owner = window.state::<PickerGeneration>().current();
+    let pending = window.clone();
+    // tao 0.37.1 drains Size/Visible requests on the default GTK context at
+    // DEFAULT priority (0). This one-shot idle runs there at DEFAULT_IDLE
+    // (200), after those requests. An immediate Tauri set_focus sees the still
+    // hidden GTK window and drops the request, leaving the WM unnotified.
+    gtk::glib::idle_add_once(move || {
+        let Some(native) = checked(pending.gtk_window(), NativeIssue::Window) else {
+            return;
+        };
+        activate_presented_with(
+            &pending.state::<PickerGeneration>(),
+            owner,
+            || native.get_visible() && native.is_mapped(),
+            // This is the same GTK activation request as tao's Focus handler,
+            // including Wayland's previously supplied one-use startup token.
+            || native.present_with_time(0),
+        );
+    });
+}
+
+#[cfg(any(target_os = "linux", test))]
+fn activate_presented_with(
+    visits: &PickerGeneration,
+    owner: u64,
+    mapped: impl FnOnce() -> bool,
+    activate: impl FnOnce(),
+) {
+    // A hide or newer show owns the window now; an old callback must neither
+    // reveal it again nor take keyboard focus from the new presentation.
+    if visits.still_owns_after(owner, mapped) {
+        activate();
+    }
 }
 
 #[cfg(any(not(target_os = "macos"), test))]
@@ -534,95 +577,207 @@ fn finish_blur(app: &AppHandle, blur: u64, generation: u64) {
 mod tests {
     use super::*;
 
-    // Model tao 0.37.1's GTK queue: Visible is deferred, set_focus discards a
-    // request made before get_visible(), and focus=false keeps accept-focus
-    // false until the first draw. AT-SPI/WebView focus is not keyboard focus.
+    // Model the two GLib priorities, not automatic focus on map: tao queues
+    // frame/visibility at DEFAULT; our GTK activation runs at DEFAULT_IDLE.
+    // Eligibility and AT-SPI/WebView focus cannot prove keyboard ownership.
     #[derive(Default)]
     struct GtkPresentation {
         accepts_focus: std::cell::Cell<bool>,
         mapped: std::cell::Cell<bool>,
         owns_keyboard: std::cell::Cell<bool>,
         pending: std::cell::RefCell<Vec<Option<(u32, u32)>>>,
+        idle: std::cell::RefCell<Vec<u64>>,
+        calls: std::cell::RefCell<Vec<&'static str>>,
+        activations: std::cell::RefCell<Vec<(u32, u32)>>,
         frame: std::cell::Cell<(u32, u32)>,
         first_shown: std::cell::Cell<Option<(u32, u32)>>,
     }
 
     impl GtkPresentation {
+        fn allow_focus(&self) {
+            self.calls.borrow_mut().push("allow-focus");
+            self.accepts_focus.set(true);
+        }
+
         fn show(&self) {
+            self.calls.borrow_mut().push("queue-show");
             self.pending.borrow_mut().push(None);
         }
 
-        fn focus(&self) {
-            if self.mapped.get() && self.accepts_focus.get() {
-                self.owns_keyboard.set(true);
-            }
+        fn focus_after_show(&self, visits: &PickerGeneration) {
+            self.calls.borrow_mut().push("queue-activation");
+            self.idle.borrow_mut().push(visits.current());
         }
 
-        fn settle(&self) {
+        fn settle_native(&self) {
             for request in self.pending.borrow_mut().drain(..) {
                 if let Some(frame) = request {
+                    self.calls.borrow_mut().push("apply-frame");
                     self.frame.set(frame);
                 } else {
+                    self.calls.borrow_mut().push("map");
                     self.mapped.set(true);
                     self.first_shown.set(Some(self.frame.get()));
-                    self.owns_keyboard.set(self.accepts_focus.get());
+                    // Eligibility alone does not ask the WM to activate. A
+                    // mapped window may leave input with the previous editor.
                 }
             }
             // tao restores the hint on draw but does not retry activation.
             self.accepts_focus.set(true);
+        }
+
+        fn settle_activation(&self, visits: &PickerGeneration) {
+            for owner in self.idle.borrow_mut().drain(..) {
+                activate_presented_with(
+                    visits,
+                    owner,
+                    || self.mapped.get(),
+                    || {
+                        self.calls.borrow_mut().push("present-with-current-time");
+                        self.activations.borrow_mut().push(self.frame.get());
+                        self.owns_keyboard.set(self.accepts_focus.get());
+                    },
+                );
+            }
+        }
+
+        fn settle(&self, visits: &PickerGeneration) {
+            self.settle_native();
+            self.settle_activation(visits);
         }
     }
 
     #[test]
     fn a_prepared_hidden_linux_picker_maps_with_its_frame_and_native_keyboard_focus() {
         let native = GtkPresentation::default();
+        let visits = PickerGeneration::default();
         native.frame.set((720, 480));
         // Sizing's complete frame is queued before presentation, never after it.
         native.pending.borrow_mut().push(Some((960, 640)));
         present_with(
             true,
-            || native.accepts_focus.set(true),
+            || native.allow_focus(),
             || native.show(),
-            || native.focus(),
+            || native.focus_after_show(&visits),
         );
         assert!(
             !native.mapped.get(),
             "presentation must preserve the native geometry queue"
         );
-        native.settle();
+        native.settle_native();
         assert_eq!(native.first_shown.get(), Some((960, 640)), "no default-frame flash");
         assert!(native.mapped.get());
+        assert!(
+            !native.owns_keyboard.get(),
+            "mapping alone need not activate the picker"
+        );
+        native.settle_activation(&visits);
+        assert_eq!(
+            *native.calls.borrow(),
+            [
+                "allow-focus",
+                "queue-show",
+                "queue-activation",
+                "apply-frame",
+                "map",
+                "present-with-current-time"
+            ],
+            "ask the WM to activate only after applying the frame and mapping"
+        );
+        assert_eq!(*native.activations.borrow(), [(960, 640)]);
         assert!(
             native.owns_keyboard.get(),
             "Search must receive actual keyboard input on first map"
         );
 
         // Hiding and reopening (including the first show after a login launch)
-        // uses this same path, without any delayed activation to steal focus.
+        // uses this same owned activation path.
+        visits.advance();
         native.mapped.set(false);
         native.owns_keyboard.set(false);
         present_with(
             true,
-            || native.accepts_focus.set(true),
+            || native.allow_focus(),
             || native.show(),
-            || native.focus(),
+            || native.focus_after_show(&visits),
         );
-        native.settle();
+        native.settle(&visits);
         assert!(native.owns_keyboard.get());
     }
 
     #[test]
     fn an_explicitly_unfocused_startup_maps_without_taking_the_editors_keyboard() {
         let native = GtkPresentation::default();
+        let visits = PickerGeneration::default();
         present_with(
             false,
-            || native.accepts_focus.set(true),
+            || native.allow_focus(),
             || native.show(),
-            || native.focus(),
+            || native.focus_after_show(&visits),
         );
-        native.settle();
+        native.settle(&visits);
         assert!(native.mapped.get());
         assert!(!native.owns_keyboard.get());
+        assert_eq!(*native.calls.borrow(), ["queue-show", "map"]);
+        assert!(native.activations.borrow().is_empty());
+    }
+
+    #[test]
+    fn a_hidden_failed_or_superseded_linux_show_cannot_activate_later() {
+        for still_mapped in [false, true] {
+            let native = GtkPresentation::default();
+            let visits = PickerGeneration::default();
+            present_with(
+                true,
+                || native.allow_focus(),
+                || native.show(),
+                || native.focus_after_show(&visits),
+            );
+            // A failed show never maps. Its activation must neither show the
+            // hidden window itself nor wait around to consume a later show.
+            native.pending.borrow_mut().clear();
+            native.settle_activation(&visits);
+            assert!(native.activations.borrow().is_empty());
+            assert!(native.idle.borrow().is_empty());
+
+            native.show();
+            native.settle_native();
+            native.focus_after_show(&visits);
+            visits.advance(); // Every hide cancels, even when native hide fails.
+            native.mapped.set(still_mapped);
+            native.settle_activation(&visits);
+            assert!(native.activations.borrow().is_empty());
+            assert!(!native.owns_keyboard.get());
+        }
+    }
+
+    #[test]
+    fn a_newer_linux_opening_alone_owns_activation_and_can_request_no_focus() {
+        for focus in [false, true] {
+            let native = GtkPresentation::default();
+            let visits = PickerGeneration::default();
+            native.pending.borrow_mut().push(Some((960, 640)));
+            present_with(
+                true,
+                || native.allow_focus(),
+                || native.show(),
+                || native.focus_after_show(&visits),
+            );
+            visits.advance(); // A is replaced by B before either queue drains.
+            native.pending.borrow_mut().push(Some((840, 600)));
+            present_with(
+                focus,
+                || native.allow_focus(),
+                || native.show(),
+                || native.focus_after_show(&visits),
+            );
+            native.settle(&visits);
+            assert_eq!(native.owns_keyboard.get(), focus);
+            assert_eq!(
+                *native.activations.borrow(),
+                if focus { vec![(840, 600)] } else { vec![] }
+            );
+        }
     }
 
     #[test]
