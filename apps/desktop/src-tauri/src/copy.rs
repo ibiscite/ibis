@@ -15,10 +15,20 @@ pub(crate) struct Copied {
     pub(crate) text: String,
     /// What the chosen syntax could not express, and other problems the user should see.
     pub(crate) warnings: Vec<String>,
-    /// Unique write token for this copy's one-use paste proof.
+    /// Unique clipboard-write identity for receipts, even without a native paste proof.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[specta(optional)]
     pub(crate) delivery: Option<u32>,
+}
+
+/// Allocate under the platform's write lock, before clipboard I/O. Exhaustion
+/// refuses the write instead of wrapping or publishing an unidentified copy.
+pub(crate) fn write_token() -> Result<u32, String> {
+    static NEXT: Mutex<u32> = Mutex::new(0);
+    let failed = || "The clipboard could not be written.".to_owned();
+    let mut token = NEXT.lock().map_err(|_| failed())?;
+    *token = token.checked_add(1).ok_or_else(failed)?;
+    Ok(*token)
 }
 
 /// The format the picker starts with: the last one chosen, or Pandoc.
@@ -90,8 +100,8 @@ pub(crate) fn copy_file_citation(
     let mut copied = file.copy(&ticket, &content_hash, |content| {
         #[cfg(target_os = "windows")]
         {
-            let sequence = clipboard::write(&app, content)?;
-            delivery = crate::paste::remember_copy(&app, attempt, sequence);
+            let (token, sequence) = clipboard::write(&app, content)?;
+            delivery = crate::paste::remember_copy(&app, attempt, sequence, token);
         }
         #[cfg(not(target_os = "windows"))]
         {

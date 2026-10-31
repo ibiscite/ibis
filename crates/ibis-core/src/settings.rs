@@ -9,7 +9,7 @@
 
 use std::collections::BTreeMap;
 use std::fs;
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -20,6 +20,10 @@ use crate::cite::KeyFormat;
 
 /// Version of the settings format this build reads and writes.
 pub const SCHEMA_VERSION: u32 = 2;
+
+/// Settings are small; bound both primary and backup reads, including growth
+/// after metadata was checked. Recovery uses the same bound for damaged bytes.
+const MAX_SETTINGS_BYTES: u64 = 1024 * 1024;
 
 /// The library Ibis opens at start.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -351,6 +355,15 @@ fn write_settings(path: &Path, settings: &Settings, recovering: bool) -> Result<
         fs::create_dir_all(dir)?;
     }
     let json = serde_json::to_string_pretty(settings).map_err(|e| SettingsError::Invalid(e.to_string()))?;
+    // Include the trailing newline: a successful save must remain readable.
+    if json.len() as u64 >= MAX_SETTINGS_BYTES {
+        return Err(settings_too_large().into());
+    }
+    let permissions = match fs::metadata(path) {
+        Ok(metadata) => Some(metadata.permissions()),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => None,
+        Err(error) => return Err(error.into()),
+    };
     if recovering {
         preserve_invalid(path)?;
     }
@@ -359,6 +372,9 @@ fn write_settings(path: &Path, settings: &Settings, recovering: bool) -> Result<
     // Never remove an interrupted write: the primary or backup may point to it.
     let (temporary, mut file) = create_temporary(path)?;
     file.write_all(format!("{json}\n").as_bytes())?;
+    if let Some(permissions) = permissions {
+        file.set_permissions(permissions)?;
+    }
     file.sync_all()?;
     drop(file);
     if !recovering && path.exists() {
@@ -374,7 +390,11 @@ fn write_settings(path: &Path, settings: &Settings, recovering: bool) -> Result<
 fn create_temporary(path: &Path) -> io::Result<(PathBuf, fs::File)> {
     for number in 1..=1000 {
         let temporary = path.with_extension(format!("json.tmp-{number}"));
-        match fs::OpenOptions::new().write(true).create_new(true).open(&temporary) {
+        let mut options = fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+        match options.open(&temporary) {
             Ok(file) => return Ok((temporary, file)),
             Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
             Err(error) => return Err(error),
@@ -390,7 +410,7 @@ fn create_temporary(path: &Path) -> io::Result<(PathBuf, fs::File)> {
 /// Exclusive creation never overwrites an occupied name and works on
 /// filesystems without hard links.
 fn preserve_invalid(path: &Path) -> io::Result<()> {
-    let bytes = match fs::read(path) {
+    let bytes = match read_regular_bytes(path) {
         // A missing primary has no damaged bytes to preserve. Refuse a dangling
         // symlink rather than discarding an existing entry during recovery.
         Err(error)
@@ -480,8 +500,29 @@ fn require_regular(path: &Path) -> io::Result<()> {
 }
 
 fn read_regular(path: &Path) -> io::Result<String> {
+    String::from_utf8(read_regular_bytes(path)?).map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
+}
+
+fn read_regular_bytes(path: &Path) -> io::Result<Vec<u8>> {
     require_regular(path)?;
-    fs::read_to_string(path)
+    let file = fs::File::open(path)?;
+    if file.metadata()?.len() > MAX_SETTINGS_BYTES {
+        return Err(settings_too_large());
+    }
+    read_bounded(file)
+}
+
+fn settings_too_large() -> io::Error {
+    io::Error::new(io::ErrorKind::FileTooLarge, "settings file exceeds 1 MiB")
+}
+
+fn read_bounded(reader: impl Read) -> io::Result<Vec<u8>> {
+    let mut bytes = Vec::new();
+    reader.take(MAX_SETTINGS_BYTES + 1).read_to_end(&mut bytes)?;
+    if bytes.len() as u64 > MAX_SETTINGS_BYTES {
+        return Err(settings_too_large());
+    }
+    Ok(bytes)
 }
 
 #[cfg(test)]
@@ -501,6 +542,87 @@ mod tests {
         let loaded = load(&directory.path().join("missing/settings.json"));
         assert_eq!(loaded.settings, Settings::default());
         assert!(loaded.problem.is_none());
+    }
+
+    #[test]
+    fn settings_reads_refuse_oversized_primary_and_backup_files() {
+        let directory = dir("bounded");
+        let path = directory.path().join("settings.json");
+        let mut text = String::from(r#"{"paste":false}"#);
+        text.extend(std::iter::repeat_n(' ', 1024 * 1024 - text.len()));
+        fs::write(&path, &text).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(load(&path).settings.paste, Some(false), "the limit is inclusive");
+        text.push(' ');
+        fs::write(&path, &text).unwrap_or_else(|e| panic!("{e}"));
+        for _ in 0..2 {
+            let loaded = load(&path);
+            assert_eq!(loaded.primary_read, PrimaryRead::Unreadable);
+            assert!(
+                matches!(loaded.problem, Some(SettingsError::Unreadable(e)) if e.kind() == io::ErrorKind::FileTooLarge)
+            );
+            assert!(update(&path, |s| s.paste = Some(true)).is_err());
+            assert_eq!(fs::read_to_string(&path).unwrap_or_default(), text);
+        }
+        fs::rename(&path, backup_path(&path)).unwrap_or_else(|e| panic!("{e}"));
+        let loaded = load(&path);
+        assert!(!loaded.from_backup);
+        assert!(
+            matches!(loaded.problem, Some(SettingsError::Backup(error)) if matches!(error.as_ref(), SettingsError::Unreadable(e) if e.kind() == io::ErrorKind::FileTooLarge))
+        );
+    }
+
+    #[test]
+    fn a_growing_settings_read_stops_after_one_byte_beyond_the_limit() {
+        let mut reader = io::Cursor::new(vec![b' '; MAX_SETTINGS_BYTES as usize + 100]);
+        let error = read_bounded(&mut reader)
+            .err()
+            .unwrap_or_else(|| panic!("oversized read"));
+        assert_eq!(error.kind(), io::ErrorKind::FileTooLarge);
+        assert_eq!(reader.position(), MAX_SETTINGS_BYTES + 1);
+    }
+
+    #[test]
+    fn a_save_cannot_create_settings_that_exceed_the_read_limit() {
+        let directory = dir("oversized-save");
+        let path = directory.path().join("settings.json");
+        let original = r#"{"paste":false}"#;
+        fs::write(&path, original).unwrap_or_else(|e| panic!("{e}"));
+        let result = update(&path, |s| {
+            s.unknown
+                .insert("future".into(), Value::String("x".repeat(MAX_SETTINGS_BYTES as usize)));
+        });
+        assert!(matches!(result, Err(SettingsError::Unreadable(e)) if e.kind() == io::ErrorKind::FileTooLarge));
+        assert_eq!(fs::read_to_string(&path).unwrap_or_default(), original);
+        assert!(!backup_path(&path).exists());
+        assert_eq!(load(&path).settings.paste, Some(false));
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn saving_and_recovering_settings_keep_the_existing_file_mode() {
+        use std::os::unix::fs::PermissionsExt;
+        for recovering in [false, true] {
+            let directory = dir("save-mode");
+            let path = directory.path().join("settings.json");
+            fs::write(&path, r#"{"paste":false}"#).unwrap_or_else(|e| panic!("{e}"));
+            if recovering {
+                fs::copy(&path, backup_path(&path)).unwrap_or_else(|e| panic!("{e}"));
+                fs::write(&path, "{").unwrap_or_else(|e| panic!("{e}"));
+            }
+            fs::set_permissions(&path, fs::Permissions::from_mode(0o640)).unwrap_or_else(|e| panic!("{e}"));
+            for larger in [true, false] {
+                update(&path, |s| s.larger_text = Some(larger)).unwrap_or_else(|e| panic!("{e}"));
+                assert_eq!(
+                    fs::metadata(&path)
+                        .unwrap_or_else(|e| panic!("{e}"))
+                        .permissions()
+                        .mode()
+                        & 0o777,
+                    0o640
+                );
+                assert_eq!(load(&path).settings.paste, Some(false), "reopening keeps copy only");
+            }
+        }
     }
 
     #[test]

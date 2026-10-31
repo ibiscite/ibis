@@ -135,16 +135,6 @@ impl SafetyStamp {
     }
 }
 
-/// Receipts identify writes, independently of citation text and native
-/// clipboard counters. Never wrap and let a stale notice claim a new proof.
-#[cfg(any(target_os = "macos", target_os = "windows", test))]
-fn write_token() -> Option<u32> {
-    static NEXT: Mutex<u32> = Mutex::new(0);
-    let mut token = NEXT.lock().ok()?;
-    *token = token.checked_add(1)?;
-    Some(*token)
-}
-
 /// The app the picker was last opened from.
 #[derive(Default)]
 pub(crate) struct LastTarget(Mutex<TargetState>);
@@ -310,8 +300,9 @@ impl LastTarget {
             }
             captured
         });
+        let token = crate::copy::write_token()?;
         let change_count = write()?;
-        if let Some((change_count, token)) = change_count.zip(write_token()) {
+        if let Some(change_count) = change_count {
             last.owner = Some(token);
             last.copied = Some(CopyProof {
                 policy: PolicyProof::capture(&last.policy),
@@ -323,9 +314,8 @@ impl LastTarget {
                 written: Instant::now(),
                 stamp,
             });
-            return Ok(Some(token));
         }
-        Ok(None)
+        Ok(Some(token))
     }
 
     fn take_copy(&self, text: &str, token: Option<u32>) -> Option<CopyProof> {
@@ -924,6 +914,16 @@ fn deliver<D: Desk>(desk: &D, proof: Option<&D::Proof>, enabled: bool) -> Delive
     }
 }
 
+fn with_paste_settings(path: &std::path::Path, deliver: impl FnOnce(bool) -> Delivered) -> Delivered {
+    let loaded = ibis_core::settings::load(path);
+    if loaded.problem.is_some() {
+        return Delivered::Copied {
+            reason: Some("paste-unavailable".into()),
+        };
+    }
+    deliver(loaded.settings.paste.unwrap_or(true))
+}
+
 fn key_release_failed() -> Delivered {
     Delivered::Copied {
         reason: Some("key-release-failed".into()),
@@ -1029,10 +1029,13 @@ pub(crate) fn remember_copy(
     app: &AppHandle,
     attempt: CopyAttempt<windows::Window>,
     sequence: Option<u32>,
+    token: u32,
 ) -> Option<u32> {
     let state = app.state::<LastTarget>();
-    let mut last = state.0.lock().ok()?;
-    remember_ticket(&mut last.pending, attempt, sequence)
+    let Ok(mut last) = state.0.lock() else {
+        return Some(token);
+    };
+    remember_ticket(&mut last.pending, attempt, sequence, token)
 }
 
 #[cfg(any(target_os = "windows", test))]
@@ -1040,18 +1043,22 @@ fn remember_ticket<W>(
     pending: &mut Option<DeliveryTicket<W>>,
     attempt: CopyAttempt<W>,
     sequence: Option<u32>,
+    token: u32,
 ) -> Option<u32> {
-    *pending = attempt.target.zip(sequence).and_then(|(target, sequence)| {
-        Some(DeliveryTicket {
-            policy: attempt.policy,
-            token: write_token()?,
-            target,
-            sequence,
-            written: attempt.written,
-            stamp: attempt.stamp,
-        })
+    // Clipboard writes allocate identities before releasing their own lock.
+    // Delayed bookkeeping for A must leave B's newer paste proof available.
+    if pending.as_ref().is_some_and(|newer| newer.token > token) {
+        return Some(token);
+    }
+    *pending = attempt.target.zip(sequence).map(|(target, sequence)| DeliveryTicket {
+        policy: attempt.policy,
+        token,
+        target,
+        sequence,
+        written: attempt.written,
+        stamp: attempt.stamp,
     });
-    pending.as_ref().map(|ticket| ticket.token)
+    Some(token)
 }
 
 /// A stale notice must leave a newer copy's ticket alone.
@@ -1260,11 +1267,9 @@ pub(crate) fn deliver_copy(app: &AppHandle, text: &str, ticket: Option<DeliveryT
     let Some(ticket) = ticket else {
         return Delivered::Copied { reason: None };
     };
-    let enabled = ibis_core::settings::load(&app.state::<crate::preferences::SettingsFile>().path)
-        .settings
-        .paste
-        .unwrap_or(true);
-    deliver_ticket(&desk, &ticket, text, enabled)
+    with_paste_settings(&app.state::<crate::preferences::SettingsFile>().path, |enabled| {
+        deliver_ticket(&desk, &ticket, text, enabled)
+    })
 }
 
 #[cfg(any(target_os = "windows", test))]
@@ -1452,11 +1457,9 @@ pub(crate) fn deliver_copy(app: &AppHandle, text: &str, token: Option<u32>) -> D
     let desk = macos::Mac::new(app, proof.as_ref(), began);
     #[cfg(target_os = "linux")]
     let desk = CopyOnly;
-    let enabled = ibis_core::settings::load(&app.state::<crate::preferences::SettingsFile>().path)
-        .settings
-        .paste
-        .unwrap_or(true);
-    let outcome = deliver(&desk, proof.as_ref(), enabled);
+    let outcome = with_paste_settings(&app.state::<crate::preferences::SettingsFile>().path, |enabled| {
+        deliver(&desk, proof.as_ref(), enabled)
+    });
     #[cfg(target_os = "macos")]
     desk.complete(&outcome);
     outcome
@@ -1846,6 +1849,40 @@ mod tests {
         Delivered::Pasted {
             app: Some("Writer".into()),
         }
+    }
+
+    #[test]
+    fn settings_failures_keep_the_citation_copied_after_reopening() {
+        let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+        let path = directory.path().join("settings.json");
+        let desk = Fake::new();
+        let deliver = || with_paste_settings(&path, |enabled| super::deliver(&desk, Some(&proof()), enabled));
+        assert_eq!(deliver(), pasted(), "first-run defaults still allow paste");
+        desk.posts.borrow_mut().clear();
+        std::fs::write(&path, r#"{"paste":false}"#).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(deliver(), copied(Some("paste-off")));
+        // The same read is used again after closing and reopening the picker.
+        for _ in 0..2 {
+            std::fs::write(&path, "{").unwrap_or_else(|e| panic!("{e}"));
+            std::fs::write(path.with_extension("json.bak"), r#"{"paste":true}"#).unwrap_or_else(|e| panic!("{e}"));
+            assert_eq!(deliver(), copied(Some("paste-unavailable")));
+            std::fs::write(&path, format!("{{}}{}", " ".repeat(1024 * 1024))).unwrap_or_else(|e| panic!("{e}"));
+            assert_eq!(
+                deliver(),
+                copied(Some("paste-unavailable")),
+                "oversized settings cannot use backup consent"
+            );
+            std::fs::remove_file(&path).unwrap_or_else(|e| panic!("{e}"));
+            std::fs::create_dir(&path).unwrap_or_else(|e| panic!("{e}"));
+            assert_eq!(
+                deliver(),
+                copied(Some("paste-unavailable")),
+                "failed I/O cannot use backup consent"
+            );
+            std::fs::remove_dir(&path).unwrap_or_else(|e| panic!("{e}"));
+        }
+        assert!(desk.posts.borrow().is_empty());
+        assert_eq!(desk.asked.get(), 0);
     }
 
     #[test]
@@ -3266,6 +3303,46 @@ mod windows_tests {
     }
 
     #[test]
+    fn a_windows_copy_without_a_target_or_native_sequence_still_has_a_receipt() {
+        for (target, sequence) in [(None, Some(17)), (Some(ticket().target), None)] {
+            let mut pending = Some(ticket());
+            let token = remember_ticket(
+                &mut pending,
+                CopyAttempt {
+                    policy: PolicyProof::default(),
+                    target,
+                    written: Instant::now(),
+                    stamp: SafetyStamp::now(),
+                },
+                sequence,
+                19,
+            );
+            assert!(token.is_some());
+            assert!(pending.is_none(), "a receipt is not authority to paste");
+        }
+    }
+
+    #[test]
+    fn delayed_windows_bookkeeping_cannot_replace_a_newer_copy_proof() {
+        let mut pending = None;
+        for token in [2, 1] {
+            remember_ticket(
+                &mut pending,
+                CopyAttempt {
+                    policy: PolicyProof::default(),
+                    target: Some(ticket().target),
+                    written: Instant::now(),
+                    stamp: SafetyStamp::now(),
+                },
+                Some(17),
+                token,
+            );
+        }
+        assert!(take_ticket(&mut pending, Some(1)).is_none());
+        assert!(take_ticket(&mut pending, Some(2)).is_some());
+    }
+
+    #[test]
     fn overlapping_copy_deliveries_leave_the_newer_windows_ticket_available() {
         for text_a in ["[@first]", "[@synthetic]"] {
             let desk = Fake::new("[@synthetic]");
@@ -3279,6 +3356,7 @@ mod windows_tests {
                     stamp: desk.stamp.get(),
                 },
                 Some(17),
+                1,
             );
             // Delay A's claim until after B has copied on a new presentation.
             let delivery = |token, text| {
@@ -3301,6 +3379,7 @@ mod windows_tests {
                     stamp: desk.stamp.get(),
                 },
                 Some(17),
+                2,
             );
             assert_ne!(token_a, token_b);
             desk.generation.set(13);
@@ -3419,7 +3498,7 @@ mod windows_tests {
                 ..before_io
             });
             let mut pending = None;
-            let token = remember_ticket(&mut pending, attempt, Some(17));
+            let token = remember_ticket(&mut pending, attempt, Some(17), 18);
             let ticket = take_ticket(&mut pending, token).unwrap_or_else(|| panic!("ticket"));
             assert_eq!(
                 deliver_ticket(&desk, &ticket, "[@synthetic]", true),
