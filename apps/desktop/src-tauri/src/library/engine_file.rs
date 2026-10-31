@@ -27,7 +27,7 @@ use std::sync::{
 static TICKETS: AtomicU64 = AtomicU64::new(1);
 pub(crate) struct FileLibrary {
     pub(super) engine: Engine,
-    /// Canonical read identity for remembering a file, independent of its watch path.
+    /// Completed initial read identity; Reload carries its own immutable observation.
     source_path: Option<PathBuf>,
     sample: bool,
     prepared: Mutex<Option<(String, PreparedCitation)>>,
@@ -80,14 +80,14 @@ impl FileLibrary {
     }
 
     fn open_file(path: &Path, engine: Engine) -> Result<Self, super::LoadError> {
-        let source_path = std::fs::canonicalize(path).map_err(|_| ibis_core::source::SourceError::Unavailable)?;
-        engine
-            .dispatch(
-                Method::Libraries,
-                &json!({"action":"open-file","path":path}),
-                &Cancellation::default(),
-            )
-            .map_err(|error| file_load_error(error, false))?;
+        Self::open_file_with(path, engine, || {})
+    }
+
+    fn open_file_with(path: &Path, engine: Engine, before_read: impl FnOnce()) -> Result<Self, super::LoadError> {
+        before_read();
+        let source_path = engine
+            .open_file_observed(path, &Cancellation::default())
+            .map_err(file_load_error)?;
         let mut file = Self::from_engine(engine);
         file.source_path = Some(source_path);
         Ok(file)
@@ -183,6 +183,32 @@ impl FileLibrary {
             }
         }
     }
+    pub(super) fn prepare_reload(
+        &self,
+        path: &Path,
+        cancel: &Cancellation,
+    ) -> Result<ibis_engine::PreparedFileReload, super::LoadError> {
+        self.engine.prepare_file_reload(path, cancel).map_err(|error| {
+            use ibis_core::{contract::ErrorCode, source::SourceError};
+            match error.code {
+                ErrorCode::BadInput => SourceError::Incomplete.into(),
+                ErrorCode::ResourceLimit => SourceError::LoadLimit.into(),
+                _ => file_load_error(error),
+            }
+        })
+    }
+
+    pub(super) fn accept_reload(&self, reload: ibis_engine::PreparedFileReload) -> Result<(), super::LoadError> {
+        self.engine.accept_file_reload(reload).map_err(|error| {
+            if error.code == ibis_core::contract::ErrorCode::Cancelled {
+                ibis_core::source::SourceError::Changing.into()
+            } else {
+                file_load_error(error)
+            }
+        })
+    }
+
+    #[cfg(test)]
     pub(super) fn reload(&self) -> Result<(), super::LoadError> {
         self.engine
             .dispatch(Method::Libraries, &json!({"action":"reload"}), &Cancellation::default())
@@ -545,15 +571,8 @@ impl FileLibrary {
     }
 }
 
-pub(super) fn file_load_error(error: ibis_core::contract::EngineError, reload: bool) -> super::LoadError {
+pub(super) fn file_load_error(error: ibis_core::contract::EngineError) -> super::LoadError {
     match error.code {
-        code if reload && code != ibis_core::contract::ErrorCode::Cancelled => {
-            super::LoadError::Source(if code == ibis_core::contract::ErrorCode::SourceUnavailable {
-                ibis_core::source::SourceError::Unavailable
-            } else {
-                ibis_core::source::SourceError::Incomplete
-            })
-        }
         ibis_core::contract::ErrorCode::BadInput => super::LoadError::InvalidData,
         ibis_core::contract::ErrorCode::SourceUnavailable => ibis_core::source::SourceError::Unavailable.into(),
         ibis_core::contract::ErrorCode::ResourceLimit => ibis_core::source::SourceError::TooLarge.into(),

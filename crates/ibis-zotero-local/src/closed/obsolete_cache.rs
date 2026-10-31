@@ -8,13 +8,23 @@ use thiserror::Error;
 /// Absent, foreign, insecure or busy storage never becomes a source of records.
 /// Keep the control files: unlinking a live lease would allow competing owners.
 pub fn remove_obsolete_file_cache(cache: &Path) -> Result<(), PrivateStorageError> {
-    let root = cache.join("source-generations");
-    match std::fs::symlink_metadata(&root) {
+    remove_obsolete_file_cache_with(cache, platform::directory, |path| std::fs::symlink_metadata(path))
+}
+
+fn remove_obsolete_file_cache_with(
+    cache: &Path,
+    local: impl FnOnce(&Path, &Control) -> Result<PathBuf, super::ClosedError>,
+    probe: impl FnOnce(&Path) -> std::io::Result<std::fs::Metadata>,
+) -> Result<(), PrivateStorageError> {
+    let control = Control::new(Arc::new(|| false));
+    let parent = local(cache, &control).map_err(|_| PrivateStorageError::Unavailable)?;
+    let root = parent.join("source-generations");
+    match probe(&root) {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
         Err(_) => return Err(PrivateStorageError::Unavailable),
         Ok(_) => (),
     }
-    let directory = PrivateDirectory::open(&root)?;
+    let directory = PrivateDirectory::open_local(root, control)?;
     let mut candidates = Vec::new();
     for (index, entry) in std::fs::read_dir(&directory.root)
         .map_err(|_| PrivateStorageError::Unavailable)?
@@ -85,13 +95,19 @@ pub enum PrivateStorageError {
 }
 
 impl PrivateDirectory {
+    #[cfg(test)]
     fn open(path: &Path) -> Result<Self, PrivateStorageError> {
-        use std::io::Read;
         let unavailable = |_| PrivateStorageError::Unavailable;
         let control = Control::new(Arc::new(|| false));
         let parent = platform::directory(path.parent().ok_or(PrivateStorageError::Unavailable)?, &control)
             .map_err(unavailable)?;
         let root = parent.join(path.file_name().ok_or(PrivateStorageError::Unavailable)?);
+        Self::open_local(root, control)
+    }
+
+    fn open_local(root: PathBuf, control: Control) -> Result<Self, PrivateStorageError> {
+        use std::io::Read;
+        let unavailable = |_| PrivateStorageError::Unavailable;
         platform::secure(&root, &control).map_err(unavailable)?;
         const OWNER: &[u8] = b"Ibis prepared source storage\n";
         let marker_path = root.join(".owner");
@@ -245,6 +261,40 @@ mod tests {
             .open(path)
             .and_then(|mut file| file.write_all(bytes))
             .unwrap_or_else(|e| panic!("{e}"));
+    }
+
+    #[test]
+    fn remote_or_symlinked_cache_is_rejected_before_the_first_probe() {
+        for cache in ["/synthetic/nfs/cache", "/synthetic/smb/cache", "/synthetic/link/cache"] {
+            assert_eq!(
+                remove_obsolete_file_cache_with(
+                    Path::new(cache),
+                    |_, _| Err(super::super::ClosedError::UnsafeSource),
+                    |_| panic!("an unavailable remote mount must never be probed")
+                ),
+                Err(PrivateStorageError::Unavailable)
+            );
+        }
+    }
+
+    #[test]
+    fn cleanup_probes_only_the_validated_directory() {
+        let selected = Path::new("/synthetic/cache-alias");
+        let local = Path::new("/synthetic/local/cache");
+        assert_eq!(
+            remove_obsolete_file_cache_with(
+                selected,
+                |path, _| {
+                    assert_eq!(path, selected);
+                    Ok(local.to_path_buf())
+                },
+                |path| {
+                    assert_eq!(path, local.join("source-generations"));
+                    Err(std::io::ErrorKind::NotFound.into())
+                }
+            ),
+            Ok(())
+        );
     }
 
     #[test]

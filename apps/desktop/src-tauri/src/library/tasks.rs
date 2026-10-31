@@ -438,6 +438,9 @@ fn open_one(app: AppHandle, open: OpenRequest) -> impl std::future::Future<Outpu
 }
 
 pub(super) fn remembered_choice(source: &Source, loaded: &Result<Loaded, LoadError>) -> Option<LibrarySetting> {
+    if let Ok(Loaded::Reload(reload)) = loaded {
+        return Some(LibrarySetting::Bibtex(reload.prepared.source_path().to_path_buf()));
+    }
     if let Ok(Loaded::New(new)) = loaded
         && matches!(new.source, Some(Source::File(_)))
         && let Some(path) = new.file.as_ref().and_then(|file| file.source_path())

@@ -36,6 +36,25 @@ struct Slot {
     path: PathBuf,
     loaded: Arc<LoadedLibrary>,
 }
+/// A fresh strict read with its index prepared privately. No publication occurs
+/// until the native client accepts it under its current source-selection guard.
+pub struct PreparedFileReload {
+    origin: Weak<Shared>,
+    base: Arc<State>,
+    slot: u64,
+    generation: u64,
+    path: PathBuf,
+    loaded: LoadedLibrary,
+    observation: ibis_sources::SourceSnapshot,
+    next: State,
+    cancel: Cancellation,
+}
+impl PreparedFileReload {
+    pub fn source_path(&self) -> &Path {
+        self.observation.source_path()
+    }
+}
+
 pub(super) fn source_error(error: SourceError) -> EngineError {
     super::error(match error {
         SourceError::TooLarge | SourceError::LoadLimit => ErrorCode::ResourceLimit,
@@ -61,15 +80,11 @@ fn info(loaded: &LoadedLibrary) -> LibraryInfo {
 }
 impl Engine {
     pub(super) fn open_file(&self, path: &Path, cancel: &Cancellation) -> Result<(), EngineError> {
-        self.load_file(path, false, None, cancel)
+        self.open_file_observed(path, cancel).map(|_| ())
     }
-    fn load_file(
-        &self,
-        path: &Path,
-        strict: bool,
-        expected: Option<(u64, u64)>,
-        cancel: &Cancellation,
-    ) -> Result<(), EngineError> {
+
+    /// Return the canonical identity from the observation that supplied the bytes.
+    pub fn open_file_observed(&self, path: &Path, cancel: &Cancellation) -> Result<PathBuf, EngineError> {
         cancel.check()?;
         let operation = self
             .resources
@@ -77,30 +92,155 @@ impl Engine {
             .lock()
             .map_err(|_| error(ErrorCode::Internal))?;
         let path = std::path::absolute(path).map_err(|_| error(ErrorCode::BadInput))?;
-        if let Some((id, generation)) = expected {
+        let (loaded, observation) = ibis_sources::load_file_snapshot(&path).map_err(source_error)?;
+        let source = observation.source_path().to_path_buf();
+        cancel.check()?;
+        self.install_file(path, loaded, Some(observation), cancel)?;
+        drop(operation);
+        Ok(source)
+    }
+    pub fn prepare_file_reload(&self, path: &Path, cancel: &Cancellation) -> Result<PreparedFileReload, EngineError> {
+        self.prepare_file_reload_expected(path, None, cancel)
+    }
+
+    fn prepare_file_reload_expected(
+        &self,
+        path: &Path,
+        expected: Option<(u64, u64)>,
+        cancel: &Cancellation,
+    ) -> Result<PreparedFileReload, EngineError> {
+        cancel.check()?;
+        let path = std::path::absolute(path).map_err(|_| error(ErrorCode::BadInput))?;
+        let (slot, generation, base, previous, other_owners) = {
             let registry = self.shared.sources.lock().map_err(|_| error(ErrorCode::Internal))?;
-            if !registry
+            let (&id, slot) = registry
                 .slots
-                .get(&id)
-                .is_some_and(|slot| slot.generation == generation && slot.path == path)
-            {
+                .iter()
+                .find(|(_, slot)| slot.path == path)
+                .ok_or_else(|| error(ErrorCode::NotFound))?;
+            if expected.is_some_and(|expected| expected != (id, slot.generation)) {
                 return Err(error(ErrorCode::Cancelled));
             }
-        }
-        let (loaded, observation) = if strict {
             (
-                ibis_sources::reload_file_reusing(&path, self.snapshot()?.as_ref()).map_err(source_error)?,
-                None,
+                id,
+                slot.generation,
+                self.state()?,
+                slot.loaded.library.clone(),
+                registry
+                    .slots
+                    .iter()
+                    .any(|(other, other_slot)| *other != id && other_slot.loaded.library == slot.loaded.library),
             )
-        } else {
-            let (loaded, observation) = ibis_sources::load_file_snapshot(&path).map_err(source_error)?;
-            (loaded, Some(observation))
         };
+        let (loaded, observation) =
+            ibis_sources::reload_file_snapshot_reusing(&path, base.index.snapshot()).map_err(source_error)?;
         cancel.check()?;
-        self.install_file(path, loaded, observation, cancel)?;
-        drop(operation);
+        let library = loaded.library.clone();
+        let next = State::replacement(&base, vec![(info(&loaded), &loaded.snapshot)], |id| {
+            *id == library || (!other_owners && *id == previous)
+        })?;
+        cancel.check()?;
+        Ok(PreparedFileReload {
+            origin: Arc::downgrade(&self.shared),
+            base,
+            slot,
+            generation,
+            path,
+            loaded,
+            observation,
+            next,
+            cancel: cancel.clone(),
+        })
+    }
+
+    /// The caller holds its selection guard. Parsing/index preparation is done;
+    /// any newer accepted publication retires this candidate, including watcher R2.
+    pub fn accept_file_reload(&self, mut prepared: PreparedFileReload) -> Result<(), EngineError> {
+        prepared.cancel.check()?;
+        if !Weak::ptr_eq(&prepared.origin, &Arc::downgrade(&self.shared)) {
+            return Err(error(ErrorCode::BadInput));
+        }
+        let _operation = self
+            .resources
+            .operation
+            .lock()
+            .map_err(|_| error(ErrorCode::Internal))?;
+        let mut registry = self.shared.sources.lock().map_err(|_| error(ErrorCode::Internal))?;
+        let slot = registry
+            .slots
+            .get(&prepared.slot)
+            .ok_or_else(|| error(ErrorCode::Cancelled))?;
+        if slot.generation != prepared.generation || slot.path != prepared.path {
+            return Err(error(ErrorCode::Cancelled));
+        }
+        let _publication = self.shared.publication.lock().map_err(|_| error(ErrorCode::Internal))?;
+        if !prepared.base.same_publication(self.state()?.as_ref()) {
+            return Err(error(ErrorCode::Cancelled));
+        }
+        let generation = slot.generation.wrapping_add(1);
+        let id = prepared.slot;
+        let weak = Arc::downgrade(&self.shared);
+        let callback = move |candidate| {
+            weak.upgrade()
+                .and_then(|shared| shared.file_changed(id, generation, candidate))
+        };
+        let (watch, warning) = if self.watch_files {
+            match self.watch(
+                &prepared.path,
+                Some(prepared.observation),
+                prepared.loaded.snapshot.clone(),
+                callback,
+            ) {
+                Ok(watch) => (Some(watch), None),
+                Err(_) => (None, Some(WatchWarning::LiveRefreshOff)),
+            }
+        } else {
+            (None, None)
+        };
+        prepared
+            .next
+            .libraries
+            .get_mut(&prepared.loaded.library)
+            .ok_or_else(|| error(ErrorCode::Internal))?
+            .watch_warning = warning;
+        prepared.cancel.check()?;
+        // Recheck under the state write barrier: direct publishers need no source lock.
+        let mut state = self.shared.state.write().map_err(|_| error(ErrorCode::Internal))?;
+        if !prepared.base.same_publication(&state) {
+            return Err(error(ErrorCode::Cancelled));
+        }
+        // Failed reads may update health while parsing/indexing. A fresh repair
+        // clears its own error, while unrelated libraries keep their latest one.
+        for (id, info) in &mut prepared.next.libraries {
+            if *id != prepared.loaded.library
+                && let Some(current) = state.libraries.get(id)
+            {
+                info.refresh_error = current.refresh_error;
+            }
+        }
+        *state = Arc::new(prepared.next);
+        registry.slots.insert(
+            id,
+            Slot {
+                generation,
+                path: prepared.path,
+                loaded: Arc::new(prepared.loaded),
+            },
+        );
+        drop(state);
+        drop(registry);
+        let old = {
+            let mut watches = self.resources.watches.lock().map_err(|_| error(ErrorCode::Internal))?;
+            match watch {
+                Some(watch) => watches.insert(id, watch),
+                None => watches.remove(&id),
+            }
+        };
+        drop(old);
+        self.shared.notify()?;
         Ok(())
     }
+
     pub(super) fn install_file(
         &self,
         path: PathBuf,
@@ -233,7 +373,10 @@ impl Engine {
         }
         for (slot, generation, path, id) in paths {
             cancel.check()?;
-            if let Err(failure) = self.load_file(&path, true, Some((slot, generation)), cancel) {
+            let reload = self
+                .prepare_file_reload_expected(&path, Some((slot, generation)), cancel)
+                .and_then(|prepared| self.accept_file_reload(prepared));
+            if let Err(failure) = reload {
                 if failure.code == ErrorCode::Cancelled {
                     return Err(failure);
                 }
@@ -395,6 +538,132 @@ impl Shared {
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
+    #[test]
+    fn prepared_file_reload_cannot_replace_a_newer_watcher_publication() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("synthetic.bib");
+        std::fs::write(&path, "@book{r0}").unwrap();
+        let engine = Engine::new().unwrap().without_file_watches();
+        let cancel = Cancellation::default();
+        engine.open_file(&path, &cancel).unwrap();
+        let before = engine.snapshot().unwrap();
+        std::fs::write(&path, "@book{r1}").unwrap();
+        let prepared = engine.prepare_file_reload(&path, &cancel).unwrap();
+        assert_eq!(engine.snapshot().unwrap().fingerprints(), before.fingerprints());
+        let (id, generation) = engine
+            .shared
+            .sources
+            .lock()
+            .unwrap()
+            .slots
+            .iter()
+            .map(|(id, slot)| (*id, slot.generation))
+            .next()
+            .unwrap();
+        std::fs::write(&path, "@book{r2}").unwrap();
+        let watcher = ibis_sources::load_file(&path).unwrap();
+        let newer = watcher.snapshot.fingerprints().clone();
+        engine.shared.file_changed(id, generation, Ok(watcher)).unwrap();
+        std::fs::remove_file(&path).unwrap();
+        assert!(matches!(
+            engine.accept_file_reload(prepared),
+            Err(EngineError {
+                code: ErrorCode::Cancelled
+            })
+        ));
+        assert_eq!(engine.snapshot().unwrap().fingerprints(), &newer);
+        // A later fresh open has a new owner; a captured reload cannot consume it.
+        std::fs::write(&path, "@book{reopened}").unwrap();
+        let prepared = engine.prepare_file_reload(&path, &cancel).unwrap();
+        engine.open_file(&path, &cancel).unwrap();
+        let reopened = engine.snapshot().unwrap();
+        assert!(engine.accept_file_reload(prepared).is_err());
+        assert_eq!(engine.snapshot().unwrap().fingerprints(), reopened.fingerprints());
+    }
+
+    #[test]
+    fn prepared_reload_accepts_repair_after_health_only_updates_and_keeps_other_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        let a = dir.path().join("a.bib");
+        let b = dir.path().join("b.bib");
+        std::fs::write(&a, "@book{original}").unwrap();
+        std::fs::write(&b, "@book{other}").unwrap();
+        let engine = Engine::new().unwrap().without_file_watches();
+        let cancel = Cancellation::default();
+        engine.open_file(&a, &cancel).unwrap();
+        engine.open_file(&b, &cancel).unwrap();
+        let a_id = ibis_sources::load_file(&a).unwrap().library;
+        let b_id = ibis_sources::load_file(&b).unwrap().library;
+        std::fs::write(&a, "@book{repaired}").unwrap();
+        let prepared = engine.prepare_file_reload(&a, &cancel).unwrap();
+        engine.shared.failed(&a_id, ErrorCode::BadInput).unwrap();
+        engine.shared.failed(&b_id, ErrorCode::SourceUnavailable).unwrap();
+        engine.accept_file_reload(prepared).unwrap();
+        let info = engine.libraries().unwrap().libraries;
+        assert_eq!(info.iter().find(|info| info.id == a_id).unwrap().refresh_error, None);
+        assert_eq!(
+            info.iter().find(|info| info.id == b_id).unwrap().refresh_error,
+            Some(ErrorCode::SourceUnavailable)
+        );
+        let prepared = engine.prepare_file_reload(&a, &cancel).unwrap();
+        let same = ibis_sources::load_file(&a).unwrap();
+        // Equal payloads are still a newer accepted observation/diagnostic owner.
+        engine.publish_library(a_id, Arc::new(same.snapshot)).unwrap();
+        assert!(matches!(
+            engine.accept_file_reload(prepared),
+            Err(EngineError {
+                code: ErrorCode::Cancelled
+            })
+        ));
+    }
+
+    #[test]
+    fn prepared_file_reload_is_cancellable_and_accepts_only_its_origin() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("synthetic.bib");
+        std::fs::write(&path, "@book{original}").unwrap();
+        let engine = Engine::new().unwrap().without_file_watches();
+        engine.open_file(&path, &Cancellation::default()).unwrap();
+        let original = engine.snapshot().unwrap();
+        std::fs::write(&path, "@book{replacement}").unwrap();
+        let cancel = Cancellation::default();
+        let prepared = engine.prepare_file_reload(&path, &cancel).unwrap();
+        cancel.cancel();
+        assert!(matches!(
+            engine.accept_file_reload(prepared),
+            Err(EngineError {
+                code: ErrorCode::Cancelled
+            })
+        ));
+        assert_eq!(engine.snapshot().unwrap().fingerprints(), original.fingerprints());
+        let prepared = engine.prepare_file_reload(&path, &Cancellation::default()).unwrap();
+        let other = Engine::new().unwrap().without_file_watches();
+        assert!(matches!(
+            other.accept_file_reload(prepared),
+            Err(EngineError {
+                code: ErrorCode::BadInput
+            })
+        ));
+        assert_eq!(engine.snapshot().unwrap().fingerprints(), original.fingerprints());
+        for text in ["@book{partial,", "@book{complete}", ""] {
+            std::fs::write(&path, text).unwrap();
+            match engine.prepare_file_reload(&path, &Cancellation::default()) {
+                Err(error) => {
+                    assert_eq!(error.code, ErrorCode::BadInput);
+                    assert_eq!(engine.snapshot().unwrap().fingerprints(), original.fingerprints());
+                }
+                Ok(prepared) => {
+                    engine.accept_file_reload(prepared).unwrap();
+                }
+            }
+        }
+        assert!(engine.snapshot().unwrap().objects().is_empty());
+        let accepted = engine.snapshot().unwrap();
+        std::fs::remove_file(&path).unwrap();
+        assert!(engine.prepare_file_reload(&path, &Cancellation::default()).is_err());
+        assert_eq!(engine.snapshot().unwrap().fingerprints(), accepted.fingerprints());
+    }
+
     #[test]
     fn zotero_full_reads_retire_only_zotero_citations_until_coherent_publication() {
         let case: GoldenCase = serde_json::from_str(include_str!("../../../../fixtures/cases/02-pandoc.json")).unwrap();

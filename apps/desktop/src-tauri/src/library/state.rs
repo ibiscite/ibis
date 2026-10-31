@@ -7,7 +7,7 @@ use std::time::SystemTime;
 
 use super::engine_file::FileLibrary;
 use super::error::LoadError;
-use super::load::Loaded;
+use super::load::{FileReload, Loaded};
 use super::source::Source;
 use super::status::{LibraryStatus, status};
 
@@ -179,6 +179,7 @@ pub(super) fn install_loaded(
 ) -> Option<LibraryStatus> {
     match loaded {
         Ok(Loaded::New(new)) => install(library, requests, request, Ok(*new)),
+        Ok(Loaded::Reload(reload)) => install_reload(library, requests, request, *reload),
         Err(error) => install(library, requests, request, Err(error)),
         Ok(Loaded::Unchanged) => {
             let mut library = library.lock().ok()?;
@@ -196,6 +197,45 @@ pub(super) fn install_loaded(
             Some(status(&library))
         }
     }
+}
+
+/// Publication and status reconciliation share the immutable request's selection
+/// guard. No cancelled completion can alter the engine retained by a failed choice.
+fn install_reload(
+    library: &Mutex<Library>,
+    requests: &LoadRequests,
+    request: u64,
+    reload: FileReload,
+) -> Option<LibraryStatus> {
+    let mut library = library.lock().ok()?;
+    if requests.0.load(Ordering::SeqCst) != request
+        || library.source.as_ref() != Some(&reload.source)
+        || !library
+            .file
+            .as_ref()
+            .is_some_and(|file| Arc::ptr_eq(file, &reload.file))
+    {
+        return None;
+    }
+    match reload.file.accept_reload(reload.prepared) {
+        Ok(()) => {
+            library.opening = false;
+            library.checking = false;
+            library.error = None;
+            library.retained_error = None;
+            library.requested = library.source.clone();
+            let now = SystemTime::now();
+            library.checked_at = Some(now);
+            library.observe_revision(now);
+            library.choice_save_warning = None;
+        }
+        Err(error) => {
+            library.opening = false;
+            library.checking = false;
+            library.error = Some(error);
+        }
+    }
+    Some(status(&library))
 }
 
 /// Record the request before any background work can start or complete.

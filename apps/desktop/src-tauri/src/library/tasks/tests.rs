@@ -343,7 +343,9 @@ fn settings_io_releases_the_library_and_discards_obsolete_feedback() {
 
 #[test]
 fn reload_and_engine_event_record_one_update_in_either_completion_order() -> Result<(), Box<dyn std::error::Error>> {
-    for event_first in [false, true] {
+    // Publication and load status now share the selection lock. A subscriber can
+    // attach before or after acceptance; neither ordering may stamp it twice.
+    for subscribe_first in [false, true] {
         let directory = tempfile::tempdir()?;
         let path = directory.path().join("synthetic.bib");
         std::fs::write(&path, "@misc{first}")?;
@@ -360,28 +362,96 @@ fn reload_and_engine_event_record_one_update_in_either_completion_order() -> Res
             || false,
         )
         .map_err(|e| e.to_string())?;
-        let observed = std::time::UNIX_EPOCH + std::time::Duration::from_secs(42);
-        let record_event = || {
-            let _subscription = observe_current(&library).unwrap_or_else(|| panic!("subscribe"));
-            assert!(
-                library.lock().unwrap_or_else(|e| panic!("{e}")).changed_at.is_some(),
-                "subscription must reconcile the missed update"
-            );
+        assert!(
+            library.lock().map_err(|_| "library")?.changed_at.is_none(),
+            "preparation cannot stamp an unaccepted update"
+        );
+        let _subscription_before = if subscribe_first {
+            Some(observe_current(&library).ok_or("subscribe before")?)
+        } else {
+            None
         };
-        if event_first {
-            record_event();
-            library.lock().map_err(|_| "library")?.changed_at = Some(observed);
-        }
         install_loaded(&library, &requests, request, Ok(loaded)).ok_or("install")?;
-        if !event_first {
-            library.lock().map_err(|_| "library")?.changed_at = Some(observed);
-            record_event();
-        }
+        assert!(library.lock().map_err(|_| "library")?.changed_at.is_some());
+        let observed = std::time::UNIX_EPOCH + std::time::Duration::from_secs(42);
+        library.lock().map_err(|_| "library")?.changed_at = Some(observed);
+        let _subscription_after = if !subscribe_first {
+            Some(observe_current(&library).ok_or("subscribe after")?)
+        } else {
+            None
+        };
+        engine_changed(&mut *library.lock().map_err(|_| "library")?, &file);
         assert_eq!(
             library.lock().map_err(|_| "library")?.changed_at,
             Some(observed),
-            "the same snapshot must not be stamped twice (event first: {event_first})"
+            "one accepted snapshot must be stamped once"
         );
     }
+    Ok(())
+}
+
+#[test]
+fn cancelled_reload_cannot_publish_over_a_newer_accepted_snapshot() -> Result<(), Box<dyn std::error::Error>> {
+    use super::super::state::install_loaded;
+    let dir = tempfile::tempdir()?;
+    let path = dir.path().join("selected.bib");
+    std::fs::write(&path, "@book{r0}")?;
+    let engine = ibis_engine::Engine::new().map_err(|_| "engine")?.without_file_watches();
+    engine
+        .open_file_observed(&path, &ibis_engine::Cancellation::default())
+        .map_err(|_| "initial read")?;
+    let library = Mutex::new(Library {
+        source: Some(Source::File(path.clone())),
+        file: Some(std::sync::Arc::new(
+            super::super::engine_file::FileLibrary::from_engine(engine),
+        )),
+        ..Library::default()
+    });
+    let requests = LoadRequests::default();
+    let file = library.lock().map_err(|_| "library")?.file.clone().ok_or("file")?;
+    let accepted = file.revision();
+    let (a, _, _) = begin_open(&library, &requests, path.clone()).ok_or("reload A")?;
+    let cancel = ibis_engine::Cancellation::default();
+    std::fs::write(&path, "@book{r1}")?;
+    let prepared = load_source(Source::File(path.clone()), true, Some(file.clone()), &cancel, || false);
+    assert_eq!(
+        file.revision(),
+        accepted,
+        "Reload must stay private until the selection guard accepts it"
+    );
+    // Simulate the accepted watcher R2 without requiring native event delivery.
+    std::fs::write(&path, "@book{r2}")?;
+    let newer = ibis_engine::Engine::new()
+        .map_err(|_| "watcher fixture")?
+        .without_file_watches();
+    newer
+        .dispatch(
+            ibis_engine::Method::Libraries,
+            &serde_json::json!({"action":"open-file","path":path}),
+            &ibis_engine::Cancellation::default(),
+        )
+        .map_err(|_| "R2 read")?;
+    let snapshot = newer.snapshot().map_err(|_| "R2 snapshot")?;
+    let id = newer.libraries().map_err(|_| "R2 library")?.libraries[0].id.clone();
+    file.engine
+        .publish_library(id, snapshot.clone())
+        .map_err(|_| "watcher accepts R2")?;
+    let missing = Source::File(dir.path().join("unavailable.bib"));
+    let (b, _, _) = begin_open(&library, &requests, missing.clone()).ok_or("new choice B")?;
+    cancel.cancel();
+    std::fs::remove_file(&path)?;
+    assert!(install_loaded(&library, &requests, a, prepared).is_none());
+    let refused = load_source(missing, false, None, &ibis_engine::Cancellation::default(), || false);
+    install_loaded(&library, &requests, b, refused).ok_or("failed choice")?;
+    assert_eq!(file.revision(), snapshot.fingerprints().full.as_str());
+    let result = file
+        .engine
+        .dispatch(
+            ibis_engine::Method::Search,
+            &serde_json::json!({"query":"r2"}),
+            &ibis_engine::Cancellation::default(),
+        )
+        .map_err(|_| "retained search")?;
+    assert_eq!(result.data["hits"].as_array().ok_or("hits")?.len(), 1);
     Ok(())
 }

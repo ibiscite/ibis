@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 
 pub use file::{
     MAX_LIBRARY_BYTES, SourceError, SourceSnapshot, SourceWatch, load_file, load_file_snapshot, reload_file,
-    reload_file_reusing,
+    reload_file_reusing, reload_file_snapshot_reusing,
 };
 
 // Real bibliographies reach 100,000 entries (#1251). Memory follows file size

@@ -69,6 +69,15 @@ queries; malformed or oversized values are ignored before arXiv/DOI equivalence.
 - **BibTeX/BibLaTeX:** each entry is parsed independently, so a broken entry produces a warning with its line while the rest loads; work is bounded so hostile files cannot hang the engine. Long-lived clients watch files and only replace them after two identical reads. A watch failure keeps the successfully read snapshot usable and reports the fixed `live-refresh-off` warning; manual Reload remains available. One-shot CLI calls install no watches.
 - **CSL-JSON:** `citation-key`, then `id`, is the key. An `id` only proves a match against a bibliography made from that same file, which the item's details say.
 
+File reads carry the canonical identity from the observation that supplied their
+bytes; a symlink retarget during that observation is refused. Strict Reload reads
+and prepares its index privately. The current desktop request's selection guard
+owns final acceptance, and any newer accepted data publication retires that candidate.
+Concurrent failed reads retain their errors for unrelated libraries; a fresh repair
+clears its own error. Zotero's read guard must still match at acceptance.
+Obsolete-cache cleanup validates locality and resolves the local directory before
+its first filesystem probe, including when the configured cache path is a symlink.
+
 The saved `.bib` cache was removed on 2026-10-31: #1534's engine-only comparison
 at 10k records found similar first-result time (753 ms cached, 737 ms fresh), but citation
 readiness took 1,949 ms versus 731 ms. Files now parse fresh and become citable
