@@ -77,6 +77,25 @@ test("the library menu preserves switching from a file to Zotero", async () => {
   expect(screen.queryByRole("menu")).toBeNull();
 });
 
+test("a refused switch keeps the file searchable and the engine's recovery instructions in the footer detail", async () => {
+  const reason = 'Zotero refused local access. In Zotero Settings > Advanced, enable "Allow other applications on this computer to communicate with Zotero"; keeping the last loaded references';
+  const kept = library({ zotero: false, snapshot_zotero: false, name: "thesis.bib", snapshot_name: "thesis.bib" });
+  backend({ library_status: () => kept, search: () => [result("a", "Retained file reference")],
+    use_zotero: async () => { await emit("library:changed", { ...kept, state: "error", zotero: true, name: "Zotero library", error: reason, problem: "zotero_access_off" }); return null; } });
+  render(<App />);
+  await screen.findByText("Retained file reference");
+  fireEvent.click(within(footer()).getByRole("button", { name: "Library" }));
+  fireEvent.click(await screen.findByRole("menuitem", { name: "Use Zotero" }));
+  await waitFor(() => expect(status().textContent).toContain("Zotero⁩ not opened"));
+  expect(await screen.findByText("Retained file reference")).toBeTruthy();
+  const tooltip = within(footer()).getByRole("button", { name: "Library" }).getAttribute("title");
+  expect(tooltip).toContain(reason);
+  expect(tooltip).toContain("Open Zotero, then reload.");
+  expect(footer().querySelector(".library-detail")?.textContent).toContain(reason);
+  expect(document.querySelector(".notices")?.textContent).toBe("");
+  expect(within(footer()).getByRole("button", { name: "Choose Library…" })).toBeTruthy();
+});
+
 test("a failed source open says so beside its footer action without exposing native details", async () => {
   backend({ library_status: () => stale(), open_library_source: () => { throw new Error("invented private path"); } });
   render(<App />);

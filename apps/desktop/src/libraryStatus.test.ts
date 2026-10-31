@@ -79,9 +79,9 @@ test("the detail is a short line, then libraries, check time and any problem", (
   expect(detail(zotero({ state: "error", error: kept, stale: true, checked_at: now - 2 * hour }))).toEqual(
     ["Zotero · 1,204 references", `My Library · last read 2 hours ago, ${clockAt(2)} · Zotero library could not be read. ${kept}. Open Zotero, then reload.`]);
   expect(detail(file({ state: "error", name: "missing.bib", error: "The library file is unavailable" }))).toEqual(
-    ["thesis.bib · 1,204 references · missing.bib not opened", `checked 3 hours ago, ${clockAt(3)} · missing.bib could not be opened`]);
+    ["thesis.bib · 1,204 references · missing.bib not opened", `checked 3 hours ago, ${clockAt(3)} · The library could not be opened: missing.bib. The library file is unavailable. Choose it again or reconnect the drive.`]);
   expect(detail(file({ state: "error", zotero: true, zotero_libraries: ["user"], name: "Zotero library", error: "Zotero is not running" }))).toEqual(
-    ["thesis.bib · 1,204 references · Zotero not opened", `checked 3 hours ago, ${clockAt(3)} · Zotero could not be opened`]);
+    ["thesis.bib · 1,204 references · Zotero not opened", `checked 3 hours ago, ${clockAt(3)} · Zotero library could not be read. Zotero is not running. Open Zotero, then reload.`]);
   expect(detail(file({ state: "none", has_snapshot: false, name: null }))).toEqual(["No library chosen", null]);
 });
 

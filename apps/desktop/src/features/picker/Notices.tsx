@@ -1,20 +1,18 @@
-import type { Copied, Density, LibraryStatus, LoginItem, UpdateProgress } from "../../api";
+import type { Copied, Density, LibraryStatus, UpdateProgress } from "../../api";
 import { Progress } from "../../ui/Progress";
 import { Button } from "../../ui/Button";
-import { densityNames, loginItemText, operationFailures, pickerText, updateText } from "../../messages";
-import { currentPlatform } from "../../platform";
+import { densityNames, operationFailures, pickerText, updateText } from "../../messages";
 
 /** An action whose failure the picker reports in its notices. */
 export type Operation = keyof typeof operationFailures;
 
 /** Settings problems, failed actions, search and copy errors, and what was
  * copied. Library failures belong to the footer's controls. */
-export function Notices({ library, failures, startAtLogin, error, citationProblem, copyError, copied, showCopiedText, onDismissCopied, updateProgress, missing = [], densityAnnouncement }: {
+export function Notices({ library, failures, error, citationProblem, copyError, copied, showCopiedText, onDismissCopied, updateProgress, missing = [], densityAnnouncement }: {
   densityAnnouncement?: Density;
   updateProgress?: UpdateProgress | null;
   library: LibraryStatus | null | undefined;
   failures: Partial<Record<Operation, boolean>>;
-  startAtLogin: LoginItem | null;
   error: string | null;
   citationProblem?: string | null;
   missing?: string[];
@@ -35,9 +33,6 @@ export function Notices({ library, failures, startAtLogin, error, citationProble
       {(Object.keys(failures) as Operation[]).filter((operation) => failures[operation] && !libraryOperations.has(operation)).map((operation) => (
         <p role="alert" key={operation}>{operationFailures[operation]}</p>
       ))}
-      {startAtLogin?.problem && startAtLogin.problem !== "unsupported" && (
-        <p role="alert">{loginItemText.problem(startAtLogin.problem, currentPlatform(), startAtLogin.name)}</p>
-      )}
       {error && <p role="alert">{error}</p>}
       {citationProblem && <p role="alert">{citationProblem}</p>}
       {missing.length > 0 && <p role="status">{pickerText.missingCitations(missing)}</p>}

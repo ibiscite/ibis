@@ -9,7 +9,7 @@ import config from "../src-tauri/tauri.conf.json";
 import { copyFormatNames } from "./messages";
 import { choiceName, outputName, type Choice } from "./features/picker/choice";
 import { STYLE_NAMES } from "./format/styles";
-import { backend, chooseFromMore, chooseFromLibrary, libraryButton, prepared, receipt, resetApp, result, type SyntheticId } from "./testing/app";
+import { backend, chooseFromMore, chooseRows, chooseFromLibrary, libraryButton, prepared, receipt, resetApp, result, type SyntheticId } from "./testing/app";
 
 // Vitest can load these existing runtime builtins without a Node-types dependency.
 afterEach(resetApp);
@@ -1486,8 +1486,8 @@ test("Ctrl+K opens More with every action, Escape closes it before hiding the pi
   fireEvent.keyDown(box, { key: "k", ctrlKey: true });
   const menu = await screen.findByRole("menu");
   const items = within(menu).getAllByRole("menuitem").map((item) => item.textContent);
-  expect(items).toEqual(["Open ZoteroCtrl+O", "Rows: Comfortable", "Forget formats for apps", "Settings…Ctrl+,", "Keyboard shortcutsCtrl+/", "Quit IbisCtrl+Q"]);
-  expect(within(menu).getByRole("menuitemcheckbox", { name: "Larger text" }).getAttribute("aria-checked")).toBe("false");
+  expect(items).toEqual(["Open ZoteroCtrl+O", "Rows: Comfortable›", "Keyboard shortcutsCtrl+/", "Settings…Ctrl+,", "Quit IbisCtrl+Q"]);
+  expect(within(menu).getByRole("menuitemcheckbox", { name: "Keep window open" }).getAttribute("aria-checked")).toBe("false");
   expect(document.activeElement).toBe(within(menu).getAllByRole("menuitem")[0]);
   fireEvent.keyDown(document.activeElement!, { key: "ArrowUp" });
   expect(document.activeElement?.textContent).toContain("Quit Ibis");
@@ -1966,12 +1966,12 @@ test("rapid A-B-A choices keep the last failed choice for retry without replayin
   await screen.findByText(/could not read or save your picker choices/);
   expect(remembered).toBe("pandoc");
   expect(screen.queryByText(/SYNTHETIC_PRIVATE_SAVE_ERROR/)).toBeNull();
-  await chooseFromMore("Rows: Comfortable");
+  await chooseRows("spacious");
   await waitFor(() => expect(screen.queryByText(/could not read or save your picker choices/)).toBeNull());
   expect(remembered).toBe("cite");
   expect(keys).toEqual(["cite", "pandoc", "cite", "cite"]);
   remembered = "keys"; // A hand edit after a successful save must survive.
-  await chooseFromMore("Larger text", "menuitemcheckbox");
+  await chooseRows("compact");
   await waitFor(() => expect(keys).toHaveLength(5));
   expect(keys[4]).toBeNull();
   expect(remembered).toBe("keys");
@@ -2063,7 +2063,7 @@ test("a stuck settings request cannot keep Quit waiting indefinitely", async () 
   expect(calls).toContain("quit");
 });
 
-test("format, density and text size choices are saved without losing each other", async () => {
+test("format, density and preview choices are saved without losing each other", async () => {
   const saved: unknown[] = [];
   backend({
     copy_format: () => "typst",
@@ -2072,8 +2072,8 @@ test("format, density and text size choices are saved without losing each other"
   render(<App />);
   await waitFor(() => expect(formatValue()).toBe("typst"));
   chooseFormat("style:ieee");
-  await chooseFromMore("Rows: Comfortable");
-  await chooseFromMore("Larger text", "menuitemcheckbox");
+  await chooseRows("spacious");
+  await chooseFromMore("Show what will be pasted", "menuitemcheckbox");
   // A toggle keeps More open; close it before reaching the header.
   fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
   chooseFormat("pandoc");
@@ -2081,10 +2081,10 @@ test("format, density and text size choices are saved without losing each other"
   expect(saved).toMatchObject([
     { citation_style: "ieee" },
     { density: "spacious" },
-    { larger_text: true },
+    { show_paste_preview: false },
     { citation_style: null },
   ]);
-  expect(Object.assign({}, ...saved)).toEqual({ citation_style: null, density: "spacious", larger_text: true });
+  expect(Object.assign({}, ...saved)).toEqual({ citation_style: null, density: "spacious", show_paste_preview: false });
   expect(document.documentElement.dataset.density).toBe("spacious");
 });
 
@@ -2117,8 +2117,8 @@ test("unreadable saved choices are reported and never overwritten with defaults"
   // The saved key format still applies, so the next copy does not replace it.
   expect(formatValue()).toBe("typst");
   chooseFormat("style:apa");
-  await chooseFromMore("Larger text", "menuitemcheckbox");
-  expect(document.documentElement.dataset.textSize).toBe("larger");
+  await chooseRows("spacious");
+  expect(document.documentElement.dataset.density).toBe("spacious");
   expect(calls).not.toContain("set_picker_preferences");
 });
 
@@ -2885,7 +2885,7 @@ test("the footer can wait for pending engine output and never offers failed outp
   }
 });
 
-test("first run leaves starting at login to More", async () => {
+test("first run leaves starting at login to Settings", async () => {
   backend({ library_status: () => NO_LIBRARY, login_item: () => ({ name: "Ibis", enabled: false, problem: null }) });
   render(<App />);
   await screen.findByRole("option", { name: FILE_ROW });
@@ -2910,47 +2910,6 @@ test("each system's login item is in its own words, and its problems name where 
       expect(message.includes("log in")).toBe(platform !== "windows" && /unsupported|unreadable/.test(problem));
     }
   }
-});
-
-test("the More menu names starting at login as the page's platform does", async () => {
-  backend({ login_item: () => ({ name: "Ibis", enabled: false, problem: null }) });
-  document.documentElement.dataset.system = "macos";
-  try {
-    render(<App />);
-    fireEvent.click(screen.getByRole("button", { name: /^More/ }));
-    expect(await screen.findByRole("menuitemcheckbox", { name: "Open at Login" })).toBeTruthy();
-  } finally {
-    delete document.documentElement.dataset.system;
-  }
-});
-
-test("quick clicks end in the state of the last click", async () => {
-  let system = false;
-  const order: boolean[] = [];
-  const pending: (() => void)[] = [];
-  backend({
-    login_item: () => ({ name: "Ibis Nightly", enabled: system, problem: null }),
-    // The first change answers last if the calls were not kept in order.
-    set_login_item: ({ enabled }) => new Promise((resolve) => {
-      order.push(Boolean(enabled));
-      const finish = () => { system = Boolean(enabled); resolve({ name: "Ibis Nightly", enabled: system, problem: null }); };
-      if (order.length === 1) pending.push(finish); else finish();
-    }),
-  });
-  render(<App />);
-  fireEvent.click(screen.getByRole("button", { name: /^More/ }));
-  const item = await screen.findByRole("menuitemcheckbox", { name: "Start on Login" });
-  fireEvent.click(item);
-  await waitFor(() => expect(item.getAttribute("aria-checked")).toBe("true"));
-  fireEvent.click(item);
-  await waitFor(() => expect(item.getAttribute("aria-checked")).toBe("false"));
-  // The second call waits for the first.
-  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
-  expect(order).toEqual([true]);
-  await act(async () => { pending.shift()?.(); await new Promise((resolve) => setTimeout(resolve, 0)); });
-  await waitFor(() => expect(order).toEqual([true, false]));
-  await waitFor(() => expect(system).toBe(false));
-  expect(item.getAttribute("aria-checked")).toBe("false");
 });
 
 test.each(["style:ieee", "pandoc", "style:apa"])("changing format cancels a click waiting for its preview (%s)", async (next) => {
@@ -3714,21 +3673,14 @@ test("hiding output keeps chips and pending copy checks, and remembers the choic
   }
 });
 
-test("the Ibis mark can replace the search glyph and is remembered", async () => {
-  let mark = false;
-  backend({
-    search: () => [],
-    picker_preferences: () => ({ citation_style: null, density: "comfortable", larger_text: false, show_paste_preview: true, search_mark: mark, paste: true }),
-    set_picker_preferences: ({ preferences }) => { mark = (preferences as api.PickerPreferences).search_mark; return null; },
-  });
-  const first = render(<App />);
-  expect(document.querySelector(".search-mark")).toBeNull();
-  await chooseFromMore("Ibis mark in search", "menuitemcheckbox");
-  await waitFor(() => expect(mark).toBe(true));
-  expect(document.querySelector(".search-mark")).toBeTruthy();
-  first.unmount();
+test("the search glyph follows Settings on first load and when its saved choice changes", async () => {
+  let mark = true;
+  backend({ search: () => [], picker_preferences: () => ({ citation_style: null, density: "comfortable", larger_text: false, show_paste_preview: true, search_mark: mark, paste: true }) });
   render(<App />);
   await waitFor(() => expect(document.querySelector(".search-mark")).toBeTruthy());
+  mark = false;
+  await act(async () => { await emit("preferences:changed"); });
+  await waitFor(() => expect(document.querySelector(".search-mark")).toBeNull());
 });
 
 
@@ -3899,7 +3851,7 @@ test("update progress never takes focus, toggles the pin or accepts a stale oper
   expect(calls).not.toContain("set_pinned");
   await act(async () => { await emit("update:progress", { ...progress, revision: 3, phase: "failed" }); });
   expect(screen.queryByRole("progressbar")).toBeNull();
-  expect(screen.getByRole("alert").textContent).toContain("Check for updates in More");
+  expect(screen.getByRole("alert").textContent).toContain("Check now in Settings > About");
 });
 
 test("unavailable update events show a fixed notice, retain typing and discard replaced failures", async () => {

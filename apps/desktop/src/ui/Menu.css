@@ -80,7 +80,11 @@
    labels wrap while checks and shortcut units retain their columns. */
 .menu-label { flex: 1 1 auto; min-width: 0; white-space: normal; overflow-wrap: break-word; }
 .menu-keys { flex: none; white-space: nowrap; margin-inline-start: 16px; color: var(--muted); font: inherit; }
+.menu-example { flex: none; margin-inline-start: 16px; color: var(--muted); }
+.menu-submenu-arrow { flex: none; margin-inline-start: var(--space-2); }
+[dir="rtl"] .menu-submenu-arrow { transform: scaleX(-1); }
 .menu-item[data-focused] { background: var(--menu-highlight); color: var(--menu-highlight-text); }
+.menu-item[data-focused] .menu-example { color: inherit; }
 .menu-item[data-focused] .menu-keys { color: inherit; }
 .menu-item[aria-disabled="true"] { color: var(--muted); }
 @media (prefers-contrast: more) { .menu-item[data-focused] { outline: 1px solid currentColor; outline-offset: -1px; } }

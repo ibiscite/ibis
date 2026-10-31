@@ -3,7 +3,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
 import type { AppOutput, PickerDestination } from "./api";
-import { backend, chooseFromMore, prepared, receipt, resetApp, result, type PreviewRequest } from "./testing/app";
+import { backend, prepared, receipt, resetApp, result, type PreviewRequest } from "./testing/app";
 
 afterEach(resetApp);
 const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
@@ -329,12 +329,14 @@ test("deliberately setting a global default preserves another app's remembered c
   expect(remembered).toEqual([]);
 });
 
-test("an unreadable per-app file says defaults apply, and More forgets every app", async () => {
+test("an unreadable per-app file says defaults apply and More leaves forgetting formats to Settings", async () => {
   const { calls } = opened(() => ({ ...WORD, unreadable: true }));
   await screen.findByText("First");
   expect((await screen.findByText(/could not read the formats it remembers for apps/)).getAttribute("role")).toBe("alert");
-  await chooseFromMore("Forget formats for apps");
-  await waitFor(() => expect(calls).toContain("forget_app_outputs"));
+  fireEvent.click(screen.getByRole("button", { name: "More" }));
+  await screen.findByRole("menu", { name: "More" });
+  expect(screen.queryByRole("menuitem", { name: "Forget formats for apps" })).toBeNull();
+  expect(calls).not.toContain("forget_app_outputs");
 });
 
 test("without a captured app no app name or Automatic action is offered", async () => {

@@ -258,6 +258,8 @@ export const pickerText = {
   updateAvailable: "Update available…",
   checkAutomatically: "Check for updates automatically",
   density: (name: string) => `Rows: ${name}`,
+  rows: "Rows",
+  densityExamples: { compact: "1 line", comfortable: "2 lines", spacious: "3 lines" },
   densityTitle: "Show less or more of each reference",
   viewChanges: "View changes",
   largerText: "Larger text",
@@ -377,9 +379,9 @@ export const libraryMessages = {
     const parts = [
       zoteroSnapshot(status) && !(status.error && !status.stale) ? libraryNames(status) : null,
       checked === null ? null : isolate(`${status.stale ? "last read" : "checked"} ${ago(checked, now)}, ${clock(checked, now)}`),
-      status.stale && status.error ? libraryMessages.openError(status.name, status.error, status.zotero)
+      status.error ? libraryMessages.openError(status.name, status.error, status.zotero)
         : status.stale ? (zoteroSnapshot(status) ? "Zotero could not be reached" : "the file could not be read")
-        : status.error ? `${isolate(status.zotero ? "Zotero" : status.name ?? "the chosen library")} could not be opened` : null,
+        : null,
     ].filter((part): part is string => part !== null);
     const first = status.stale ? `${isolate(snapshotLabel(status))} · ${count(status.references, "reference")}` : summary;
     return [first, parts.length > 0 ? parts.join(" · ") : null];
@@ -551,7 +553,7 @@ export const copyFormatMenu: Record<KeyFormat, { label: string; sample: string }
 export const updateText = {
   downloading: "Downloading the update…",
   installing: "Checking and installing the update…",
-  failed: "The update could not be installed. Use Check for updates in More to try again later.",
+  failed: "The update could not be installed. Use Check now in Settings > About to try again later.",
 };
 
 // The Settings window (#776, docs/design.md "Settings").

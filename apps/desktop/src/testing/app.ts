@@ -5,7 +5,7 @@ import { clearMocks, mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { vi } from "vitest";
 import { listen } from "@tauri-apps/api/event";
 import type * as api from "../api";
-import type { FilePreview, FileSelection, PreviewIntent } from "../bindings";
+import type { Density, FilePreview, FileSelection, PreviewIntent } from "../bindings";
 
 export async function resetApp() {
   cleanup();
@@ -31,6 +31,15 @@ export async function chooseFromMore(name: string, role: "menuitem" | "menuitemc
   const item = await screen.findByRole(role, { name });
   // fireEvent.click omits the focus a real pointer/keyboard activation gives
   // the row; the shortcuts dialog uses it to choose its return destination.
+  act(() => item.focus());
+  fireEvent.click(item);
+}
+
+/** Choose a named row density from More's submenu, without cycling values. */
+export async function chooseRows(density: Density) {
+  if (!screen.queryByRole("menu")) fireEvent.click(screen.getByRole("button", { name: /^More/ }));
+  fireEvent.click(await screen.findByRole("menuitem", { name: /^Rows: / }));
+  const item = await screen.findByRole("menuitemradio", { name: density.charAt(0).toUpperCase() + density.slice(1) });
   act(() => item.focus());
   fireEvent.click(item);
 }

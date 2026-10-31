@@ -1,167 +1,92 @@
 import { afterEach, expect, test } from "vitest";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
-import * as api from "./api";
-import { backend, chooseFromMore, resetApp } from "./testing/app";
+import { SettingsApp } from "./settings/SettingsApp";
+import { settingsApi } from "./settings/api";
+import { backend, chooseFromMore, resetApp, type Handler } from "./testing/app";
 
 afterEach(resetApp);
 
-test("More shows whether Ibis starts at login as the system reports it, and follows changes made elsewhere", async () => {
+function settings(page = "general", overrides: Record<string, Handler> = {}) {
+  const calls = backend({ update_checks: () => true, ...overrides });
+  render(<SettingsApp initialPage={page} api={{ ...settingsApi,
+    version: async () => "0.2.2", pastePermission: async () => ({ pastes: false, needed: false, granted: false, list: "" }),
+    onCloseRequested: async () => () => undefined,
+  }} />);
+  return calls;
+}
+
+test("Settings shows login state from the system and follows changes made elsewhere", async () => {
   let system = true;
-  const calls = backend({
+  const calls = settings("general", {
     login_item: () => ({ name: "Ibis", enabled: system, problem: null }),
-    set_login_item: ({ enabled }) => { system = Boolean(enabled); return { enabled: system, problem: null }; },
+    set_login_item: ({ enabled }) => { system = Boolean(enabled); return { name: "Ibis", enabled: system, problem: null }; },
   });
-  render(<App />);
-  fireEvent.click(screen.getByRole("button", { name: /^More/ }));
-  const item = await screen.findByRole("menuitemcheckbox", { name: "Start on Login" });
-  await waitFor(() => expect(item.getAttribute("aria-checked")).toBe("true"));
+  const item = await screen.findByRole<HTMLInputElement>("switch", { name: "Start on Login" });
+  expect(item.checked).toBe(true);
   fireEvent.click(item);
   await waitFor(() => expect(calls).toContain("set_login_item"));
-  expect(system).toBe(false);
-  // Removed or added again in System Settings while Ibis was hidden.
+  await waitFor(() => expect(item.checked).toBe(false));
   system = true;
-  await act(async () => { await emit("picker:shown"); });
-  if (!screen.queryByRole("menu")) fireEvent.click(screen.getByRole("button", { name: /^More/ }));
-  await waitFor(() => expect(screen.getByRole("menuitemcheckbox", { name: "Start on Login" }).getAttribute("aria-checked")).toBe("true"));
+  fireEvent.focus(window);
+  await waitFor(() => expect(item.checked).toBe(true));
   expect(screen.queryByRole("alert")).toBeNull();
 });
 
-test("a refused login item is explained kindly and never shown as on", async () => {
-  backend({ set_login_item: () => ({ name: "Ibis", enabled: false, problem: "refused" }) });
-  render(<App />);
-  await chooseFromMore("Start on Login", "menuitemcheckbox");
-  const alert = await screen.findByText(/^The system did not let Ibis change this\. You can change it in /);
-  expect(alert.getAttribute("role")).toBe("alert");
-  if (!screen.queryByRole("menu")) fireEvent.click(screen.getByRole("button", { name: /^More/ }));
-  expect((await screen.findByRole("menuitemcheckbox", { name: "Start on Login" })).getAttribute("aria-checked")).toBe("false");
+test("a refused login change is explained in Settings and never shown as on", async () => {
+  settings("general", { set_login_item: () => ({ name: "Ibis", enabled: false, problem: "refused" }) });
+  const item = await screen.findByRole<HTMLInputElement>("switch", { name: "Start on Login" });
+  fireEvent.click(item);
+  await screen.findByText(/The system did not let .*Ibis.* change this/);
+  expect(item.checked).toBe(false);
+  expect(document.getElementById(item.getAttribute("aria-describedby")!)?.textContent).toContain("startup applications settings");
 });
 
-test("a failed login item command restores the previous state and says so", async () => {
-  backend({ set_login_item: () => { throw new Error("ipc"); } });
-  render(<App />);
-  await chooseFromMore("Start on Login", "menuitemcheckbox");
-  expect(await screen.findByText("Ibis could not change whether it starts when you log in. Try again.")).toBeTruthy();
-  if (!screen.queryByRole("menu")) fireEvent.click(screen.getByRole("button", { name: /^More/ }));
-  expect((await screen.findByRole("menuitemcheckbox", { name: "Start on Login" })).getAttribute("aria-checked")).toBe("false");
+test("a failed login command keeps the saved state and explains failure in Settings", async () => {
+  settings("general", { set_login_item: () => { throw new Error("SYNTHETIC_PRIVATE_ERROR"); } });
+  const item = await screen.findByRole<HTMLInputElement>("switch", { name: "Start on Login" });
+  fireEvent.click(item);
+  expect((await screen.findByRole("alert")).textContent).toBe("Ibis could not save that. Try again.");
+  expect(item.checked).toBe(false);
+  expect(document.body.textContent).not.toContain("SYNTHETIC_PRIVATE_ERROR");
 });
 
-test("systems without login items, and pickers without the commands, offer no choice", async () => {
-  backend({ login_item: () => ({ name: "Ibis", enabled: false, problem: "unsupported" }) });
-  render(<App />);
-  fireEvent.click(screen.getByRole("button", { name: /^More/ }));
-  await screen.findByRole("menuitemcheckbox", { name: "Larger text" });
-  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
-  expect(screen.queryByRole("menuitemcheckbox", { name: "Start on Login" })).toBeNull();
+test("Settings omits login choices on unsupported systems", async () => {
+  settings("general", { login_item: () => ({ name: "Ibis", enabled: false, problem: "unsupported" }) });
+  await screen.findByRole("switch", { name: "Larger text" });
+  expect(screen.queryByRole("switch", { name: "Start on Login" })).toBeNull();
   expect(screen.queryByRole("alert")).toBeNull();
-  cleanup();
-  const { loginItem: _read, setLoginItem: _set, ...withoutLoginItem } = api;
-  backend();
-  render(<App api={withoutLoginItem} />);
-  fireEvent.click(screen.getByRole("button", { name: /^More/ }));
-  await screen.findByRole("menuitemcheckbox", { name: "Larger text" });
-  expect(screen.queryByRole("menuitemcheckbox", { name: "Start on Login" })).toBeNull();
 });
 
-test("More has the tray's update controls, in builds that have updates", async () => {
+test("Settings owns automatic checks, follows saved events, and Check now explicitly checks once", async () => {
   const asked: unknown[] = [];
-  const calls = backend({
-    update_checks: () => false,
-    set_update_checks: ({ enabled }) => { asked.push(enabled); return null; },
-    check_for_updates: () => null,
-  });
-  render(<App />);
-  fireEvent.click(screen.getByRole("button", { name: /^More/ }));
-  const box = () => screen.getByRole("menuitemcheckbox", { name: "Check for updates automatically" });
-  await screen.findByRole("menuitemcheckbox", { name: "Check for updates automatically" });
-  expect(box().getAttribute("aria-checked")).toBe("false");
-  // Each click asks natively, at once, for the opposite of what More shows,
-  // even if a newer saved choice is still on its way; nothing shows until saved.
-  fireEvent.click(box());
-  if (!screen.queryByRole("menu")) fireEvent.click(screen.getByRole("button", { name: /^More/ }));
-  fireEvent.click(box());
-  await waitFor(() => expect(asked).toEqual([true, true]));
-  expect(box().getAttribute("aria-checked")).toBe("false");
+  const calls = settings("about", { update_checks: () => false,
+    set_update_checks: ({ enabled }) => { asked.push(enabled); return null; }, check_for_updates: () => null });
+  const item = await screen.findByRole<HTMLInputElement>("switch", { name: "Check for updates automatically" });
+  expect(item.checked).toBe(false);
+  fireEvent.click(item);
+  fireEvent.click(item);
+  await waitFor(() => expect(asked).toEqual([true, false]));
+  expect(item.checked).toBe(false);
   await act(async () => { await emit("update:automatic", true); });
-  expect(box().getAttribute("aria-checked")).toBe("true");
-  // Turned off from the tray while More is open.
+  expect(item.checked).toBe(true);
   await act(async () => { await emit("update:automatic", false); });
-  expect(box().getAttribute("aria-checked")).toBe("false");
-  fireEvent.click(box());
-  await waitFor(() => expect(asked).toEqual([true, true, true]));
-  await chooseFromMore("Check for updates…");
+  expect(item.checked).toBe(false);
+  fireEvent.click(screen.getByRole("button", { name: "Check now" }));
   await waitFor(() => expect(calls.filter((c) => c === "check_for_updates")).toHaveLength(1));
-  expect(screen.queryByRole("menu")).toBeNull();
-  expect(screen.queryByRole("alert")).toBeNull();
 });
 
-test("a saved change heard before the first read answers is kept", async () => {
-  let answer!: (on: boolean) => void;
-  backend({ update_checks: () => new Promise((resolve) => { answer = resolve; }), set_update_checks: () => null, check_for_updates: () => null });
-  render(<App />);
-  await waitFor(() => expect(answer).toBeDefined());
-  await act(async () => { await emit("update:automatic", true); });
-  await act(async () => { answer(false); await new Promise((resolve) => setTimeout(resolve, 0)); });
-  fireEvent.click(screen.getByRole("button", { name: /^More/ }));
-  const box = await screen.findByRole("menuitemcheckbox", { name: "Check for updates automatically" });
-  expect(box.getAttribute("aria-checked")).toBe("true");
-});
-
-test("pending availability quietly changes More's existing action and an explicit click checks now", async () => {
-  const calls = backend({
-    "plugin:window|is_visible": () => false,
-    update_checks: () => false,
-    set_update_checks: () => null,
-    check_for_updates: () => null,
-  });
+test("a hidden picker ignores update availability without showing, checking or surfacing Settings preferences", async () => {
+  const calls = backend({ "plugin:window|is_visible": () => false, update_available: () => true });
   await act(async () => { render(<App />); });
+  await act(async () => { await emit("update:available", true); await emit("update:automatic", true); });
   expect(document.documentElement.dataset.pickerHidden).toBe("");
-  await act(async () => { await emit("update:available", true); });
-  expect(document.documentElement.dataset.pickerHidden).toBe("");
+  await chooseFromMore("Rows: Comfortable");
+  expect(screen.queryByRole("menuitem", { name: /[Uu]pdates/ })).toBeNull();
   expect(calls).not.toContain("check_for_updates");
+  expect(calls).not.toContain("update_checks");
+  expect(calls).not.toContain("login_item");
   expect(calls).not.toContain("plugin:window|show");
   expect(calls).not.toContain("plugin:window|set_focus");
-  await chooseFromMore("Update available…");
-  await waitFor(() => expect(calls.filter((call) => call === "check_for_updates")).toHaveLength(1));
-  expect(screen.queryByRole("menu")).toBeNull();
-  await act(async () => { await emit("update:available", false); });
-  fireEvent.click(screen.getByRole("button", { name: /^More/ }));
-  expect(await screen.findByRole("menuitem", { name: "Check for updates…" })).toBeTruthy();
-  expect(screen.queryByRole("menuitem", { name: "Update available…" })).toBeNull();
-});
-
-test("More reads availability retained before its listener mounted", async () => {
-  backend({ update_checks: () => false, update_available: () => true, set_update_checks: () => null, check_for_updates: () => null });
-  render(<App />);
-  fireEvent.click(screen.getByRole("button", { name: /^More/ }));
-  expect(await screen.findByRole("menuitem", { name: "Update available…" })).toBeTruthy();
-});
-
-test("an availability event wins over an older initial read", async () => {
-  let answer!: (pending: boolean) => void;
-  backend({ update_checks: () => false, update_available: () => new Promise((resolve) => { answer = resolve; }), set_update_checks: () => null, check_for_updates: () => null });
-  render(<App />);
-  await waitFor(() => expect(answer).toBeDefined());
-  await act(async () => { await emit("update:available", true); answer(false); });
-  fireEvent.click(screen.getByRole("button", { name: /^More/ }));
-  expect(await screen.findByRole("menuitem", { name: "Update available…" })).toBeTruthy();
-});
-
-test("builds without updates, and pickers without the commands, offer no update controls", async () => {
-  backend();
-  render(<App />);
-  fireEvent.click(screen.getByRole("button", { name: /^More/ }));
-  await screen.findByRole("menuitemcheckbox", { name: "Larger text" });
-  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
-  expect(screen.queryByRole("menuitem", { name: "Check for updates…" })).toBeNull();
-  expect(screen.queryByRole("menuitemcheckbox", { name: "Check for updates automatically" })).toBeNull();
-  cleanup();
-  const { updateChecks: _read, ...withoutRead } = api;
-  backend({ update_checks: () => true });
-  render(<App api={withoutRead} />);
-  fireEvent.click(screen.getByRole("button", { name: /^More/ }));
-  await screen.findByRole("menuitemcheckbox", { name: "Larger text" });
-  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
-  expect(screen.queryByRole("menuitem", { name: "Check for updates…" })).toBeNull();
 });

@@ -34,8 +34,6 @@ import { useLibrarySearch } from "./features/picker/useLibrarySearch";
 import { useCitationOutput } from "./features/picker/useCitationOutput";
 import { useZoteroScope } from "./features/picker/useZoteroScope";
 import { useDestination } from "./features/picker/useDestination";
-import { useLoginItem } from "./features/picker/useLoginItem";
-import { useUpdateChecks } from "./features/picker/useUpdateChecks";
 import { monitorUpdateOfferInput } from "./features/picker/updateOfferInput";
 import { useShortcutStatus } from "./features/picker/useShortcutStatus";
 import { usePin } from "./features/picker/usePin";
@@ -70,7 +68,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const { chooseLibrary, useZotero, reloadLibrary,
     hidePicker, pickerVisible, setPinned, onPickerShown, onPickerHidden, search, shortcutStatus, previewFileCitation, copyFileCitation,
     useZoteroLibraries: chooseZoteroLibraries, zoteroGroups } = api;
-  const { rowContext, findSources, openFoundLibrary, showCopiedNotice, loginItem, setLoginItem, onWindowSizeSaved, updateChecks, setUpdateChecks, onUpdateChecks, updateAvailable, onUpdateAvailable, checkForUpdates, onShortcutStatus, openSettings, onPreferencesChanged } = api;
+  const { rowContext, findSources, openFoundLibrary, showCopiedNotice, onWindowSizeSaved, onShortcutStatus, openSettings, onPreferencesChanged } = api;
   const [updateProgress, setUpdateProgress] = useState<nativeApi.UpdateProgress | null>(null);
   const setupApi = useMemo(() => ({ chooseLibrary, useZotero, useSampleLibrary: api.useSampleLibrary, findSources, openFoundLibrary }),
     [chooseLibrary, useZotero, api.useSampleLibrary, findSources, openFoundLibrary]);
@@ -101,7 +99,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
     };
   }, [api, setFailures]);
   const preferences = usePickerPreferences(api, { styles: true, report, perform, presentation: state.visibility });
-  const { density, largerText, searchMark, showPastePreview, togglePastePreview, changeDensity, toggleLargerText, toggleSearchMark, quitAfterSaving: quitPreferences } = preferences;
+  const { density, searchMark, showPastePreview, togglePastePreview, changeDensity, quitAfterSaving: quitPreferences } = preferences;
   const deliveryTarget = useDeliveryTarget(api);
   const destination = useDestination(deliveryTarget.api, { fallback: preferences.format, fallbackReady: preferences.available, chooseDefault: preferences.chooseFormat, report });
   const { format } = destination;
@@ -129,8 +127,6 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
   const [menuOpen, setMenuOpen] = useState(false);
   const [libraryMenuOpen, setLibraryMenuOpen] = useState(false);
   const [formatOpen, setFormatOpen] = useState(false);
-  const { startAtLogin, readLoginItem, toggleStartAtLogin, offered: loginItemOffered } = useLoginItem({ loginItem, setLoginItem, perform, menuOpen });
-  const updateMenu = useUpdateChecks({ updateChecks, setUpdateChecks, onUpdateChecks, updateAvailable, onUpdateAvailable, perform, report });
   const { pinned, currentPin, togglePin } = usePin({ setPinned, perform });
   const [keysOpen, setKeysOpen] = useState(false);
   const restoreChooserFocus = useRef(false);
@@ -261,7 +257,6 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       send({ type: "shown", now: performance.now() });
       if (session.getSnapshot().query !== previousQuery) searchAtShow = session.getSnapshot().query;
       destination.read(true, session.getSnapshot().permissionDetour);
-      readLoginItem();
       readShortcut();
       // On X11, showing can precede native activation. WebKit restores the
       // previous control then, so finish Search focus once activation arrives.
@@ -299,7 +294,6 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
       if (visible) delete document.documentElement.dataset.pickerHidden;
       else document.documentElement.dataset.pickerHidden = "";
     }).catch(() => undefined);
-    readLoginItem();
     destination.read();
     preferences.loadPreferences(() => mounted);
     // Choices made in Settings apply to the picker at once.
@@ -674,7 +668,7 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
           {shortcut.desktop && !welcomeShown && ` ${shortcut.desktop.guidance}`}
         </p>
       </div>}
-      <Notices densityAnnouncement={preferences.densityAnnouncement} updateProgress={updateProgress} library={library} failures={failures} startAtLogin={startAtLogin}
+      <Notices densityAnnouncement={preferences.densityAnnouncement} updateProgress={updateProgress} library={library} failures={failures}
         error={error} copyError={copyError} copied={copied} missing={list?.missing}
         citationProblem={displayedOutput === "failed" ? previewProblem ?? pickerText.previewError : null}
         showCopiedText={displayedOutput == null || typeof displayedOutput === "string" || displayedOutput.text !== copied?.text}
@@ -762,18 +756,13 @@ export function App({ api = nativeApi, preview }: { api?: PickerApi; preview?: P
             buttonRef={moreButton} searchRef={input} libraryDetail={libraryDetail}
             source={api.openLibrarySource ? sourceAction : undefined}
             lastOutcome={lastOutcome}
-            density={density} largerText={largerText} searchMark={searchMark} showPastePreview={showPastePreview} pinned={pinned}
-            startAtLogin={loginItemOffered && startAtLogin ? { item: startAtLogin, toggle: toggleStartAtLogin } : null}
-            updates={updateMenu(checkForUpdates && (() => runFromMenu("checkForUpdates", checkForUpdates)))}
+            density={density} showPastePreview={showPastePreview} pinned={pinned}
             actions={{
               density: changeDensity,
-              largerText: toggleLargerText,
-              searchMark: toggleSearchMark,
               preview: togglePastePreview,
               pin: togglePin,
               keys: openKeys,
               settings: openSettings ? () => runFromMenu("settings", () => openSettings(null)) : null,
-              forgetApps: destination.forgetAll,
               quit: () => runFromMenu("quit", quitAfterSaving),
             }} />
         } />
