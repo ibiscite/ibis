@@ -45,8 +45,8 @@ export const {
 } = commands;
 
 /** UI edits omit unchanged fields; null is meaningful only for citation_style. */
-export function setPickerPreferences(preferences: Partial<PickerPreferences>, copyFormat: CopyFormat | null) {
-  return commands.setPickerPreferences(preferences, copyFormat);
+export function setPickerPreferences(preferences: Partial<PickerPreferences>, copyFormat: CopyFormat | null, revision: number) {
+  return commands.setPickerPreferences(preferences, copyFormat, revision);
 }
 
 // The limit default, page and request number are not part of the UI's API:

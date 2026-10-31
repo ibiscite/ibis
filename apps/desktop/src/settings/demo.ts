@@ -7,13 +7,15 @@ export function demoApi(): SettingsApi {
   let preferences: PickerPreferences = { citation_style: null, density: "comfortable", larger_text: false, show_paste_preview: true, search_mark: true, paste: true, appearance: "system", accent: "system" };
   let shortcut: ShortcutStatus = { shortcut: DEFAULT_PICKER_SHORTCUT, registered: true, error: null };
   let enabled = false, automatic = false;
+  let revision = 0;
   const updateListeners = new Set<(on: boolean) => void>();
-  const listeners = new Set<() => void>();
+  const listeners = new Set<(revision: number) => void>();
   const noop = async () => undefined as never;
   const subscribe = async () => () => undefined;
   return {
     pickerPreferences: async () => preferences,
-    setPickerPreferences: async (patch, key) => { preferences = { ...preferences, ...patch, ...(key ? { copy_format: key } : {}) }; for (const changed of listeners) changed(); return { preferences, copy_format: preferences.copy_format ?? "pandoc" }; },
+    preferenceRevision: async () => ++revision,
+    setPickerPreferences: async (patch, key, revision) => { preferences = { ...preferences, ...patch, ...(key ? { copy_format: key } : {}) }; for (const changed of listeners) changed(revision); return { preferences, copy_format: preferences.copy_format ?? "pandoc" }; },
     loginItem: async () => ({ name: "Ibis", enabled, problem: null }),
     setLoginItem: async (on) => { enabled = on; return { name: "Ibis", enabled, problem: null }; },
     updateChecks: async () => automatic,

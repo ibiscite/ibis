@@ -84,7 +84,8 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   const [focused, setFocused] = useState(true);
   const queue = useMemo(() => new PreferencePatchQueue({
     read: async () => ({ preferences: await api.pickerPreferences() }),
-    write: (patch, key) => api.setPickerPreferences(patch, key),
+    revision: () => api.preferenceRevision(),
+    write: (patch, key, revision) => api.setPickerPreferences(patch, key, revision),
   }, { restoreOnFailure: true }), [api]);
   useEffect(() => queue.subscribe((event) => {
     if (!live.current) return;
@@ -161,8 +162,8 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
         if (active && updateRequest === updateReads.current) readProblem("automatic", true);
       });
     };
-    const preferenceEvents = api.onPreferencesChanged(() => {
-      void queue.refresh(() => active);
+    const preferenceEvents = api.onPreferencesChanged((revision) => {
+      void queue.refresh(revision, () => active);
     });
     readAll(false);
     void preferenceEvents.then(() => { if (active) void queue.load(() => active); }).catch(() => { if (active) setFailed(true); });

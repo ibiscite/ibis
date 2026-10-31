@@ -2,6 +2,7 @@
 
 pub(crate) fn commands() -> tauri_specta::Builder<tauri::Wry> {
     tauri_specta::Builder::new()
+        .typ::<crate::preferences::PreferenceChange>()
         .commands(tauri_specta::collect_commands![
             crate::library::commands::choose_library,
             crate::library::commands::reload_library,
@@ -17,6 +18,7 @@ pub(crate) fn commands() -> tauri_specta::Builder<tauri::Wry> {
             crate::copy::copy_file_citation,
             crate::copy::copy_format,
             crate::preferences::picker_preferences,
+            crate::preferences::preference_revision,
             crate::preferences::set_picker_preferences::<tauri::Wry>,
             crate::destination::picker_destination,
             crate::destination::remember_app_output,
@@ -61,6 +63,7 @@ mod tests {
     /// What the Settings window may call: saved choices, never the library or copies.
     const SETTINGS_COMMANDS: &[&str] = &[
         "picker_preferences",
+        "preference_revision",
         "set_picker_preferences",
         "login_item",
         "set_login_item",

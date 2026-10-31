@@ -54,6 +54,8 @@ export const commands = {
 	copyFormat: () => __TAURI_INVOKE<KeyFormat>("copy_format"),
 	/**  The preferences the picker starts with. */
 	pickerPreferences: () => __TAURI_INVOKE<PickerPreferences_Serialize>("picker_preferences"),
+	/**  Issue a save identity inline at IPC dispatch; unused identities block nothing. */
+	preferenceRevision: () => __TAURI_INVOKE<number>("preference_revision"),
 	/**  Remember the picker preferences; other settings in the file are kept. */
 	setPickerPreferences: (preferences: PickerPreferencesPatch_Deserialize, copyFormat:
 /**  Pandoc / Quarto / R Markdown / Obsidian: `[@key, p. 12]`. */
@@ -69,7 +71,7 @@ export const commands = {
 /**  Typst `@key[p. 12]`. */
 "typst" |
 /**  Bare keys separated by commas. */
-"keys" | null) => __TAURI_INVOKE<PickerSave_Serialize>("set_picker_preferences", { preferences, copyFormat }),
+"keys" | null, revision: number) => __TAURI_INVOKE<PickerSave_Serialize>("set_picker_preferences", { preferences, copyFormat, revision }),
 	/**  The app the picker was opened from, its output and what Ibis remembers for it. */
 	pickerDestination: () => __TAURI_INVOKE<PickerDestination>("picker_destination"),
 	/**  Always use `output` for the app the picker was opened from; `None` returns it to Automatic. */
@@ -512,6 +514,19 @@ export type PickerSave_Serialize = {
 	preferences: PickerPreferences_Serialize,
 	copy_format: KeyFormat,
 };
+
+/**  The saved snapshot and the identity of the write that published it. */
+export type PreferenceChange = PreferenceChange_Serialize | PreferenceChange_Deserialize;
+
+/**  The saved snapshot and the identity of the write that published it. */
+export type PreferenceChange_Deserialize = {
+	revision: number,
+} & PickerPreferences_Deserialize;
+
+/**  The saved snapshot and the identity of the write that published it. */
+export type PreferenceChange_Serialize = {
+	revision: number,
+} & PickerPreferences_Serialize;
 
 export type PreviewIntent = {
 	page: number,

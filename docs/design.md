@@ -1257,10 +1257,15 @@ so focusing a control never scrolls the document or moves the window chrome.
 General shows desktop-owned shortcut triggers verbatim, or Not assigned, with
 the desktop's guidance.
 Preference notifications retire older replies immediately and refresh after
-the queue actually completes; only closing uses the two-second limit. Native
-preference revisions are reserved at the start of the ordinary async command.
-They protect against delayed saves after reservation; a dispatch-to-first-poll
-scheduling race between windows remains before reservation.
+the queue actually completes; only closing uses the two-second limit. Both
+windows request a ticket from one synchronous native counter when a choice is
+made, before waiting for earlier saves. The locked writer compares the last
+successfully written ticket per field and returns current saved values when
+an older field is dropped. Retries keep their original tickets; unused tickets
+block nothing and unissued tickets are rejected.
+Notifications carry the publishing write's ticket. A self-notification keeps
+that write's successful acknowledgement available for rollback, including
+when the next save and recovery reads fail; other writes still retire stale replies.
 
 **One Settings design** (maintainer, 2026-10-30). There is one Settings
 window; every drawing and board uses it, and it is kept in step with the app as

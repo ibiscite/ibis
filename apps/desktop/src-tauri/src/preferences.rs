@@ -202,6 +202,14 @@ pub(crate) struct PickerSave {
     copy_format: KeyFormat,
 }
 
+/// The saved snapshot and the identity of the write that published it.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, specta::Type)]
+pub(crate) struct PreferenceChange {
+    revision: u64,
+    #[serde(flatten)]
+    preferences: PickerPreferences,
+}
+
 /// Only fields deliberately changed in one window cross the write boundary.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, specta::Type)]
 #[serde(deny_unknown_fields)]
@@ -284,6 +292,10 @@ pub(crate) fn picker_preferences(settings_file: State<'_, SettingsFile>) -> Resu
 }
 
 fn read_preferences(path: &Path) -> Result<PickerPreferences, String> {
+    read_preference_settings(path).map(|saved| PickerPreferences::from_settings(&saved))
+}
+
+fn read_preference_settings(path: &Path) -> Result<settings::Settings, String> {
     let loaded = settings::load(path);
     if let Some(problem) = &loaded.problem {
         let recoverable = loaded.from_backup
@@ -300,7 +312,14 @@ fn read_preferences(path: &Path) -> Result<PickerPreferences, String> {
         }
     }
     look_from_settings(&loaded.settings)?;
-    Ok(PickerPreferences::from_settings(&loaded.settings))
+    Ok(loaded.settings)
+}
+
+/// Issue a save identity inline at IPC dispatch; unused identities block nothing.
+#[tauri::command]
+#[specta::specta]
+pub(crate) fn preference_revision(settings_file: State<'_, SettingsFile>) -> Result<u64, String> {
+    settings_file.issue_preference_revision()
 }
 
 /// Remember the picker preferences; other settings in the file are kept.
@@ -309,11 +328,16 @@ fn read_preferences(path: &Path) -> Result<PickerPreferences, String> {
 pub(crate) async fn set_picker_preferences<R: tauri::Runtime>(
     preferences: PickerPreferencesPatch,
     copy_format: Option<KeyFormat>,
+    revision: u64,
     settings_file: State<'_, SettingsFile>,
     app: AppHandle<R>,
     window: tauri::Window<R>,
 ) -> Result<PickerSave, String> {
-    let intent = settings_file.reserve_preferences(preferences, copy_format)?;
+    let intent = PreferenceIntent {
+        revision,
+        preferences,
+        copy_format,
+    };
     let settings_file = settings_file.inner().clone();
     // A change made in Settings reaches the picker; the picker's own are already shown.
     let from_elsewhere = window.label() != "main";
@@ -321,15 +345,16 @@ pub(crate) async fn set_picker_preferences<R: tauri::Runtime>(
     tauri::async_runtime::spawn_blocking(move || {
         let saved = settings_file.save_reserved_preferences(intent)?;
         let preferences = PickerPreferences::from_settings(&saved);
+        let change = PreferenceChange { revision, preferences };
         crate::library::refresh_settings_notice(&app, &settings_file);
         if from_elsewhere {
             crate::diagnostics::report(
-                app.emit_to("main", "preferences:changed", preferences),
+                app.emit_to("main", "preferences:changed", change),
                 crate::diagnostics::NativeIssue::PickerEvent,
             );
         }
         crate::diagnostics::report(
-            app.emit_to("settings", "preferences:changed", preferences),
+            app.emit_to("settings", "preferences:changed", change),
             crate::diagnostics::NativeIssue::PickerEvent,
         );
         Ok(PickerSave {
@@ -343,7 +368,9 @@ pub(crate) async fn set_picker_preferences<R: tauri::Runtime>(
 
 #[derive(Default)]
 struct PreferenceIntents {
+    /// Last issued ticket, independent of the writer and any unused tickets.
     revision: u64,
+    /// Last successfully flushed ticket for each field.
     fields: BTreeMap<&'static str, u64>,
 }
 
@@ -354,29 +381,27 @@ struct PreferenceIntent {
 }
 
 impl SettingsFile {
-    /// Reserve before blocking work. Async command dispatch can still be
-    /// reordered before its first poll; tickets order saves after reservation.
-    fn reserve_preferences(
-        &self,
-        mut preferences: PickerPreferencesPatch,
-        copy_format: Option<KeyFormat>,
-    ) -> Result<PreferenceIntent, String> {
+    fn issue_preference_revision(&self) -> Result<u64, String> {
         let mut intents = self
             .preference_intents
             .lock()
             .map_err(|_| "settings are unavailable".to_string())?;
-        let revision = intents
+        // The generated bridge represents revisions as JavaScript numbers.
+        intents.revision = intents
             .revision
             .checked_add(1)
+            .filter(|value| *value < 1 << 53)
             .ok_or_else(|| "settings are unavailable".to_string())?;
-        intents.revision = revision;
-        preferences.retain_fields(|field| {
-            intents.fields.insert(field, revision);
-            true
-        });
-        if copy_format.is_some() {
-            intents.fields.insert("copy_format", revision);
-        }
+        Ok(intents.revision)
+    }
+
+    #[cfg(test)]
+    fn reserve_preferences(
+        &self,
+        preferences: PickerPreferencesPatch,
+        copy_format: Option<KeyFormat>,
+    ) -> Result<PreferenceIntent, String> {
+        let revision = self.issue_preference_revision()?;
         Ok(PreferenceIntent {
             revision,
             preferences,
@@ -403,25 +428,42 @@ impl SettingsFile {
             .preference_intents
             .lock()
             .map_err(|_| "settings are unavailable".to_string())?;
-        let mut has_fields = false;
+        if intent.revision == 0 || intent.revision > current.revision {
+            return Err("preference revision was not issued".into());
+        }
+        let mut written_fields = Vec::new();
         intent.preferences.retain_fields(|field| {
-            let keep = current.fields.get(field) == Some(&intent.revision);
-            has_fields |= keep;
+            let keep = current
+                .fields
+                .get(field)
+                .is_none_or(|written| intent.revision > *written);
+            if keep {
+                written_fields.push(field);
+            }
             keep
         });
-        if current.fields.get("copy_format") != Some(&intent.revision) {
-            intent.copy_format = None;
+        if intent.copy_format.is_some() {
+            if current
+                .fields
+                .get("copy_format")
+                .is_none_or(|written| intent.revision > *written)
+            {
+                written_fields.push("copy_format");
+            } else {
+                intent.copy_format = None;
+            }
         }
         drop(current);
         let preferences = intent.preferences;
         let copy_format = intent.copy_format;
-        look_from_settings(&settings::load(&self.path).settings)?;
-        if (has_fields || copy_format.is_some())
-            && std::fs::metadata(&self.path).is_ok_and(|metadata| metadata.permissions().readonly())
-        {
+        let current_settings = read_preference_settings(&self.path)?;
+        if written_fields.is_empty() {
+            return Ok(current_settings);
+        }
+        if std::fs::metadata(&self.path).is_ok_and(|metadata| metadata.permissions().readonly()) {
             return Err("settings-read-only".into());
         }
-        settings::update(&self.path, |s| {
+        let saved = settings::update(&self.path, |s| {
             if let Some(appearance) = preferences.appearance {
                 if appearance == Appearance::System {
                     s.unknown.remove("appearance");
@@ -459,7 +501,17 @@ impl SettingsFile {
                 s.paste = Some(paste).filter(|paste| !paste);
             }
         })
-        .map_err(|error| settings_message(&error))
+        .map_err(|error| settings_message(&error))?;
+        // The writer lock still excludes every other save. Issuance never
+        // waits for disk I/O, and failed writes never advance a field revision.
+        let mut current = self
+            .preference_intents
+            .lock()
+            .map_err(|_| "settings are unavailable".to_string())?;
+        for field in written_fields {
+            current.fields.insert(field, intent.revision);
+        }
+        Ok(saved)
     }
 }
 
@@ -469,7 +521,8 @@ mod tests {
     use ibis_core::settings::LibrarySetting;
     use tauri::Manager;
 
-    fn preference_request(
+    fn preference_request<R: tauri::Runtime>(
+        window: &tauri::WebviewWindow<R>,
         preferences: PickerPreferences,
         copy_format: Option<KeyFormat>,
     ) -> tauri::webview::InvokeRequest {
@@ -477,8 +530,18 @@ mod tests {
         if let Some(patch) = patch.as_object_mut() {
             patch.remove("copy_format");
         }
+        command_request(
+            "set_picker_preferences",
+            serde_json::json!({
+                "preferences": patch, "copyFormat": copy_format,
+                "revision": preference_revision(window.state::<SettingsFile>()).unwrap_or_else(|e| panic!("{e}")),
+            }),
+        )
+    }
+
+    fn command_request(command: &str, body: serde_json::Value) -> tauri::webview::InvokeRequest {
         tauri::webview::InvokeRequest {
-            cmd: "set_picker_preferences".into(),
+            cmd: command.into(),
             callback: tauri::ipc::CallbackFn(0),
             error: tauri::ipc::CallbackFn(1),
             url: if cfg!(windows) {
@@ -488,21 +551,19 @@ mod tests {
             }
             .parse()
             .unwrap_or_else(|e| panic!("invalid fixture URL: {e}")),
-            body: tauri::ipc::InvokeBody::Json(serde_json::json!({
-                "preferences": patch, "copyFormat": copy_format,
-            })),
+            body: tauri::ipc::InvokeBody::Json(body),
             headers: Default::default(),
             invoke_key: tauri::test::INVOKE_KEY.into(),
         }
     }
 
     #[test]
-    #[ignore = "known dispatch-to-first-poll race in the authorized async fallback"]
     fn a_command_suspended_before_its_first_poll_cannot_overwrite_a_later_dispatch() {
         let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
         let path = directory.path().join("settings.json");
         let app = tauri::test::mock_builder()
             .manage(SettingsFile::new(path.clone()))
+            .invoke_handler(tauri::generate_handler![preference_revision, set_picker_preferences])
             .build(tauri::generate_context!(test = true))
             .unwrap_or_else(|e| panic!("{e}"));
         let older_window = tauri::WebviewWindowBuilder::new(&app, "settings", Default::default())
@@ -511,6 +572,27 @@ mod tests {
         let newer_window = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
             .build()
             .unwrap_or_else(|e| panic!("{e}"));
+        let revision = |window: &tauri::WebviewWindow<_>| {
+            tauri::test::get_ipc_response(window, command_request("preference_revision", serde_json::json!({})))
+                .unwrap_or_else(|e| panic!("{e:?}"))
+                .deserialize::<u64>()
+                .unwrap_or_else(|e| panic!("{e}"))
+        };
+        let a = revision(&older_window);
+        let b = revision(&newer_window);
+        assert!(a < b, "both windows share the synchronous issuer");
+        use tauri::Listener;
+        let shown = Arc::new(Mutex::new(BTreeMap::new()));
+        for window in [&older_window, &newer_window] {
+            let seen = Arc::clone(&shown);
+            let label = window.label().to_string();
+            window.listen("preferences:changed", move |event| {
+                let value: PickerPreferences = serde_json::from_str(event.payload()).unwrap_or_else(|e| panic!("{e}"));
+                seen.lock()
+                    .unwrap_or_else(|e| panic!("{e}"))
+                    .insert(label.clone(), value.density);
+            });
+        }
         // Construct the actual command responses in dispatch order, but suspend
         // A before any asynchronous command code (including reservation) runs.
         let older = set_picker_preferences(
@@ -520,6 +602,7 @@ mod tests {
                 ..Default::default()
             },
             Some(KeyFormat::Typst),
+            a,
             app.state::<SettingsFile>(),
             app.handle().clone(),
             older_window.as_ref().window(),
@@ -530,17 +613,129 @@ mod tests {
                 ..Default::default()
             },
             Some(KeyFormat::Cite),
+            b,
             app.state::<SettingsFile>(),
             app.handle().clone(),
             newer_window.as_ref().window(),
         );
-        tauri::async_runtime::block_on(newer).unwrap_or_else(|e| panic!("{e}"));
-        tauri::async_runtime::block_on(older).unwrap_or_else(|e| panic!("{e}"));
+        let newer = tauri::async_runtime::block_on(newer).unwrap_or_else(|e| panic!("{e}"));
+        let older = tauri::async_runtime::block_on(older).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(newer.preferences.density, Density::Spacious);
+        assert_eq!(
+            older.preferences.density,
+            Density::Spacious,
+            "late reply reports current disk state"
+        );
+        let shown = shown.lock().unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(shown.get("main"), Some(&Density::Spacious));
+        assert_eq!(shown.get("settings"), Some(&Density::Spacious));
         // Restart's read must match the newer window, retaining unrelated fields.
         let reopened = read_preferences(&path).unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(reopened.density, Density::Spacious);
         assert_eq!(reopened.copy_format, Some(KeyFormat::Cite));
         assert_eq!(reopened.accent, Some(Accent::Purple));
+    }
+
+    #[test]
+    fn an_unused_revision_does_not_block_an_older_different_field() {
+        let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+        let path = directory.path().join("settings.json");
+        let file = SettingsFile::new(path.clone());
+        let older = file
+            .reserve_preferences(
+                PickerPreferencesPatch {
+                    density: Some(Density::Compact),
+                    ..Default::default()
+                },
+                None,
+            )
+            .unwrap_or_else(|e| panic!("{e}"));
+        let _unused = file.issue_preference_revision().unwrap_or_else(|e| panic!("{e}"));
+        let newer = file
+            .reserve_preferences(
+                PickerPreferencesPatch {
+                    paste: Some(false),
+                    ..Default::default()
+                },
+                None,
+            )
+            .unwrap_or_else(|e| panic!("{e}"));
+        file.save_reserved_preferences(newer).unwrap_or_else(|e| panic!("{e}"));
+        file.save_reserved_preferences(older).unwrap_or_else(|e| panic!("{e}"));
+        let saved = read_preferences(&path).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(saved.density, Density::Compact);
+        assert!(!saved.paste);
+    }
+
+    #[test]
+    fn a_failed_newer_save_does_not_block_an_older_unwritten_field() {
+        let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+        let path = directory.path().join("settings.json");
+        std::fs::write(&path, "{}").unwrap_or_else(|e| panic!("{e}"));
+        let file = SettingsFile::new(path.clone());
+        let older = file
+            .reserve_preferences(
+                PickerPreferencesPatch {
+                    density: Some(Density::Compact),
+                    ..Default::default()
+                },
+                None,
+            )
+            .unwrap_or_else(|e| panic!("{e}"));
+        let newer = file
+            .reserve_preferences(
+                PickerPreferencesPatch {
+                    density: Some(Density::Spacious),
+                    ..Default::default()
+                },
+                None,
+            )
+            .unwrap_or_else(|e| panic!("{e}"));
+        let original = std::fs::metadata(&path).unwrap_or_else(|e| panic!("{e}")).permissions();
+        let mut readonly = original.clone();
+        readonly.set_readonly(true);
+        std::fs::set_permissions(&path, readonly).unwrap_or_else(|e| panic!("{e}"));
+        let refused = file.save_reserved_preferences(newer);
+        std::fs::set_permissions(&path, original).unwrap_or_else(|e| panic!("{e}"));
+        assert!(refused.is_err());
+        file.save_reserved_preferences(older).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(
+            read_preferences(&path).unwrap_or_else(|e| panic!("{e}")).density,
+            Density::Compact
+        );
+    }
+
+    #[test]
+    fn unissued_and_replayed_revisions_cannot_jam_or_rewrite_a_field() {
+        let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+        let path = directory.path().join("settings.json");
+        let file = SettingsFile::new(path.clone());
+        let issued = file.issue_preference_revision().unwrap_or_else(|e| panic!("{e}"));
+        let intent = |revision, density| PreferenceIntent {
+            revision,
+            preferences: PickerPreferencesPatch {
+                density: Some(density),
+                ..Default::default()
+            },
+            copy_format: None,
+        };
+        for revision in [0, issued + 1, u64::MAX] {
+            assert!(
+                file.save_reserved_preferences(intent(revision, Density::Spacious))
+                    .is_err()
+            );
+            assert!(!path.exists(), "an unissued save must not touch disk");
+        }
+        file.save_reserved_preferences(intent(issued, Density::Compact))
+            .unwrap_or_else(|e| panic!("{e}"));
+        let replay = file
+            .save_reserved_preferences(intent(issued, Density::Spacious))
+            .unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(PickerPreferences::from_settings(&replay).density, Density::Compact);
+        assert_eq!(
+            file.issue_preference_revision().unwrap_or_else(|e| panic!("{e}")),
+            issued + 1
+        );
     }
 
     #[test]
@@ -711,18 +906,30 @@ mod tests {
             let _ = sent.send(event.payload().to_string());
         });
         let chosen = PickerPreferences::from_settings(&settings::Settings::default());
-        for window in [&main, &settings] {
-            let response = tauri::test::get_ipc_response(window, preference_request(chosen, None));
+        for (index, window) in [&main, &settings].into_iter().enumerate() {
+            let response = tauri::test::get_ipc_response(window, preference_request(window, chosen, None));
             assert!(response.is_ok());
             let payload = events
                 .recv_timeout(Duration::from_secs(3))
                 .unwrap_or_else(|e| panic!("{e}"));
             assert_eq!(serde_json::from_str::<PickerPreferences>(&payload).ok(), Some(chosen));
+            assert_eq!(
+                serde_json::from_str::<PreferenceChange>(&payload)
+                    .unwrap_or_else(|e| panic!("{e}"))
+                    .revision,
+                index as u64 + 1
+            );
         }
         let payload = picker_events
             .recv_timeout(Duration::from_secs(3))
             .unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(serde_json::from_str::<PickerPreferences>(&payload).ok(), Some(chosen));
+        assert_eq!(
+            serde_json::from_str::<PreferenceChange>(&payload)
+                .unwrap_or_else(|e| panic!("{e}"))
+                .revision,
+            2
+        );
     }
 
     #[test]
@@ -759,7 +966,7 @@ mod tests {
         let (responded, response) = mpsc::channel();
         let thread = std::thread::spawn(move || {
             window.as_ref().clone().on_message(
-                preference_request(chosen, Some(KeyFormat::Typst)),
+                preference_request(&window, chosen, Some(KeyFormat::Typst)),
                 Box::new(move |_, _, reply, _, _| {
                     let _ = responded.send(reply);
                 }),
@@ -838,7 +1045,7 @@ mod tests {
             });
             // Even unchanged preferences complete recovery.
             let chosen = PickerPreferences::from_settings(&settings::load(&path).settings);
-            let result = tauri::test::get_ipc_response(&window, preference_request(chosen, None));
+            let result = tauri::test::get_ipc_response(&window, preference_request(&window, chosen, None));
             assert_eq!(result.is_ok(), has_backup);
             let library = app.state::<Mutex<crate::library::Library>>();
             let library = library.lock().unwrap_or_else(|_| panic!("library lock poisoned"));
@@ -883,7 +1090,7 @@ mod tests {
             ),
         ] {
             std::fs::write(&path, text).unwrap_or_else(|e| panic!("{e}"));
-            let result = tauri::test::get_ipc_response(&window, preference_request(chosen, None));
+            let result = tauri::test::get_ipc_response(&window, preference_request(&window, chosen, None));
             assert_eq!(result.err(), Some(serde_json::json!(expected)));
             assert_eq!(std::fs::read_to_string(&path).unwrap_or_default(), text);
         }

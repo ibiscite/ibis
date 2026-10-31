@@ -2,13 +2,14 @@
 import { getVersion } from "@tauri-apps/api/app";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { commands, type KeyFormat, type PastePermission, type PickerPreferences, type ShortcutStatus } from "../bindings";
+import { commands, type KeyFormat, type PastePermission, type PickerPreferences, type PreferenceChange, type ShortcutStatus } from "../bindings";
 
 export type { PastePermission } from "../bindings";
 
 export const settingsApi = {
   pickerPreferences: commands.pickerPreferences,
-  setPickerPreferences: (preferences: Partial<PickerPreferences>, copyFormat: KeyFormat | null) => commands.setPickerPreferences(preferences, copyFormat),
+  preferenceRevision: commands.preferenceRevision,
+  setPickerPreferences: (preferences: Partial<PickerPreferences>, copyFormat: KeyFormat | null, revision: number) => commands.setPickerPreferences(preferences, copyFormat, revision),
   loginItem: commands.loginItem,
   setLoginItem: commands.setLoginItem,
   updateChecks: commands.updateChecks,
@@ -24,7 +25,7 @@ export const settingsApi = {
   onShortcutStatus: (handler: (status: ShortcutStatus) => void): Promise<UnlistenFn> => listen<ShortcutStatus>("shortcut:status", (event) => handler(event.payload)),
   version: getVersion,
   /** Settings is asked to show a page, such as the paste guide after a refused paste. */
-  onPreferencesChanged: (handler: () => void): Promise<UnlistenFn> => listen("preferences:changed", handler),
+  onPreferencesChanged: (handler: (revision: number) => void): Promise<UnlistenFn> => listen<PreferenceChange>("preferences:changed", (event) => handler(event.payload.revision)),
   onPage: (handler: (page: string) => void): Promise<UnlistenFn> => listen<string>("settings:page", (event) => handler(event.payload)),
   /** The saved automatic update choice, after a change from any menu. */
   onUpdateChecks: (handler: (on: boolean) => void): Promise<UnlistenFn> => listen<boolean>("update:automatic", (event) => handler(event.payload)),

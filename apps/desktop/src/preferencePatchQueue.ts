@@ -1,7 +1,9 @@
-import type { KeyFormat, PickerPreferences, PickerSave } from "./bindings";
+import { commands, type KeyFormat, type PickerPreferences, type PickerSave } from "./bindings";
 
 type Patch = Partial<PickerPreferences>;
-type Revisions = Partial<Record<keyof PickerPreferences, number>>;
+type Intent = { order: number; revision: Promise<number> };
+type Revisions = Partial<Record<keyof PickerPreferences, Intent>>;
+type KeyChoice = { value: KeyFormat; saved: boolean; intent: Intent };
 
 /** The picker can still read its key format when preferences are unreadable. */
 export type PreferenceRead = {
@@ -23,10 +25,12 @@ export class PreferencePatchQueue {
   private durable: PickerPreferences | null = null;
   private patch: Patch = {};
   private revisions: Revisions = {};
-  private key: { value: KeyFormat; saved: boolean } | null = null;
+  private key: KeyChoice | null = null;
   private revision = 0;
   private reads = 0;
   private notifications = 0;
+  private foreignNotifications = 0;
+  private ownNotifications = new Map<number, { completed: boolean; notified: boolean }>();
   private pending = 0;
   private saving: Promise<unknown> = Promise.resolve();
   private loading: Promise<void> = Promise.resolve();
@@ -34,7 +38,8 @@ export class PreferencePatchQueue {
   constructor(
     private api: {
       read: () => Promise<PreferenceRead>;
-      write: (patch: Patch, key: KeyFormat | null) => Promise<PickerSave>;
+      revision?: () => Promise<number>;
+      write: (patch: Patch, key: KeyFormat | null, revision: number) => Promise<PickerSave>;
     },
     private policy: {
       /** Picker notifications read after its writes; Settings focus reads skip busy state. */
@@ -49,7 +54,7 @@ export class PreferencePatchQueue {
     return () => { this.listeners.delete(listener); };
   }
 
-  /** Last acknowledged state, excluding replies superseded by native events. */
+  /** Last acknowledged state, excluding replies superseded by other writers. */
   get savedPreferences(): PickerPreferences | null { return this.durable; }
 
   private emit(event: Event) {
@@ -69,9 +74,17 @@ export class PreferencePatchQueue {
     const revision = ++this.revision;
     const reading = this.reads;
     const notification = this.notifications;
-    if (key !== null) this.key = { value: key, saved: false };
+    const fields = Object.keys(change) as (keyof PickerPreferences)[];
+    // Dispatch issuance in the input handler, before waiting for any local
+    // save or read. A reply arriving late cannot change this action's identity.
+    if (fields.length || key !== null) {
+      const issued = (this.api.revision ?? commands.preferenceRevision)();
+      void issued.catch(() => undefined);
+      const intent = { order: revision, revision: issued };
+      if (key !== null) this.key = { value: key, saved: false, intent };
+      for (const field of fields) this.revisions[field] = intent;
+    }
     this.patch = { ...this.patch, ...change };
-    for (const field of Object.keys(change) as (keyof PickerPreferences)[]) this.revisions[field] = revision;
     // Never replace unreadable settings with defaults. Pre-load edits wait.
     if (!this.loaded) return;
     const queued = { ...this.patch };
@@ -79,19 +92,42 @@ export class PreferencePatchQueue {
     const deliberate = new Set(Object.keys(change));
     const chosenKey = this.key;
     const save = this.enqueue(async () => {
-      const patch = Object.fromEntries(Object.entries(queued).filter(([field]) =>
-        deliberate.has(field) || this.revisions[field as keyof PickerPreferences] === revisions[field as keyof PickerPreferences]));
-      const saved = await this.api.write(patch, chosenKey && !chosenKey.saved ? chosenKey.value : null);
-      if (notification === this.notifications) this.durable = saved.preferences;
-      for (const field of Object.keys(patch) as (keyof PickerPreferences)[]) {
-        if (this.revisions[field] === revisions[field]) {
-          delete this.patch[field];
-          delete this.revisions[field];
+      const groups = new Map<Intent, { patch: Patch; key: KeyFormat | null }>();
+      const group = (intent: Intent) => {
+        if (!groups.has(intent)) groups.set(intent, { patch: {}, key: null });
+        return groups.get(intent)!;
+      };
+      for (const field of Object.keys(queued) as (keyof PickerPreferences)[]) {
+        const intent = revisions[field];
+        if (intent && (deliberate.has(field) || this.revisions[field] === intent)) {
+          Object.assign(group(intent).patch, { [field]: queued[field] });
         }
       }
-      if (chosenKey) chosenKey.saved = true;
-      if (this.key === chosenKey) this.key = null;
-      if (revision === this.revision && notification === this.notifications && (!this.policy.readAfterWrites || reading === this.reads)) {
+      if (chosenKey && !chosenKey.saved) group(chosenKey.intent).key = chosenKey.value;
+      let saved: PickerSave | undefined;
+      for (const [intent, { patch, key }] of [...groups].sort(([a], [b]) => a.order - b.order)) {
+        const issued = await intent.revision.catch((error: unknown) => {
+          // An issuance failure has no ticket to retry; later choices remain usable.
+          this.retire(intent, patch, chosenKey);
+          throw error;
+        });
+        const own = { completed: false, notified: false };
+        // Settings has versioned notifications and needs authoritative rollback.
+        // The picker uses its existing reload path and retains no notice records.
+        if (this.policy.restoreOnFailure) this.ownNotifications.set(issued, own);
+        const foreign = this.foreignNotifications;
+        let completed = false;
+        try {
+          saved = await this.api.write(patch, key, issued);
+          completed = true;
+          if (foreign === this.foreignNotifications) this.durable = saved.preferences;
+        } finally {
+          own.completed = true;
+          if ((!completed || own.notified) && this.ownNotifications.get(issued) === own) this.ownNotifications.delete(issued);
+        }
+        this.retire(intent, patch, chosenKey);
+      }
+      if (saved && revision === this.revision && notification === this.notifications && (!this.policy.readAfterWrites || reading === this.reads)) {
         this.emit({ type: "saved", value: saved });
       }
     }).catch((error: unknown) => {
@@ -107,13 +143,25 @@ export class PreferencePatchQueue {
     this.emit({ type: "saving", promise: save });
   }
 
+  private retire(intent: Intent, patch: Patch, key: KeyChoice | null) {
+    for (const field of Object.keys(patch) as (keyof PickerPreferences)[]) {
+      if (this.revisions[field] === intent) { delete this.patch[field]; delete this.revisions[field]; }
+    }
+    if (key?.intent === intent) { key.saved = true; if (this.key === key) this.key = null; }
+  }
+
   load(active: () => boolean = () => true): Promise<void> {
     return this.read(active, false);
   }
 
-  /** A native notification invalidates old replies immediately. Refresh only
-   * after actual completion, never the bounded wait used when closing. */
-  async refresh(active: () => boolean = () => true): Promise<void> {
+  /** Notifications invalidate old rendering replies; self-notifications retain
+   * rollback acknowledgements. Refresh waits for actual completion, not closing. */
+  async refresh(revision: number, active: () => boolean = () => true): Promise<void> {
+    const own = this.ownNotifications.get(revision);
+    if (own) {
+      own.notified = true;
+      if (own.completed) this.ownNotifications.delete(revision);
+    } else this.foreignNotifications += 1;
     const notification = ++this.notifications;
     this.reads += 1;
     await this.drainWrites();

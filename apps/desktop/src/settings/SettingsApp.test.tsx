@@ -121,6 +121,7 @@ function fakeApi(permission: Partial<PastePermission> = {}, preferences: Partial
     patches: [] as Partial<PickerPreferences>[],
     opened: 0,
     reads: 0,
+    revision: 0,
     finished: 0,
     pages: [] as ((page: string) => void)[],
     closes: [] as (() => Promise<void>)[],
@@ -130,7 +131,7 @@ function fakeApi(permission: Partial<PastePermission> = {}, preferences: Partial
     configured: 0,
     login: false,
     updates: true,
-    preferenceEvents: [] as (() => void)[],
+    preferenceEvents: [] as ((revision: number) => void)[],
     automatic: [] as ((on: boolean) => void)[],
   };
   const commit = async (next: Partial<PickerPreferences>, key: KeyFormat | null = null) => {
@@ -141,6 +142,7 @@ function fakeApi(permission: Partial<PastePermission> = {}, preferences: Partial
   };
   const api: SettingsApi = {
     pickerPreferences: async () => state.preferences,
+    preferenceRevision: async () => ++state.revision,
     setPickerPreferences: commit,
     loginItem: async () => ({ name: "Ibis Nightly", enabled: state.login, problem: null }),
     setLoginItem: async (enabled) => { state.login = enabled; return { name: "Ibis Nightly", enabled, problem: null }; },
@@ -607,10 +609,11 @@ test.each(["success", "failure", "later edit"])("closing drains both queued choi
   await act(async () => { await Promise.resolve(); });
   expect(closed).not.toHaveBeenCalled();
   await act(async () => { if (outcome === "failure") first.reject(); else first.resolve(null); });
-  expect(save).toHaveBeenNthCalledWith(2, outcome === "failure" ? { density: "spacious", larger_text: true } : { larger_text: true }, null);
+  expect(save).toHaveBeenNthCalledWith(2, outcome === "failure" ? { density: "spacious" } : { larger_text: true }, null, outcome === "failure" ? 1 : 2);
   expect(read).toHaveBeenCalledOnce();
   expect(closed).not.toHaveBeenCalled();
   await act(async () => { second.resolve(null); await closing; });
+  expect(save).toHaveBeenLastCalledWith({ larger_text: true }, null, 2);
   expect(closed).toHaveBeenCalledOnce();
 });
 
@@ -733,10 +736,10 @@ test("a later equal-valued switch intent is retried when its own save fails", as
   fireEvent.click(larger);
   fireEvent.click(screen.getByRole("radio", { name: "Default" }));
   fireEvent.click(larger);
-  // Queue another field before the third write fails; it must carry the still-unsaved intent.
+  // Retrying the third intent keeps its ticket separate from the newer row choice.
   fireEvent.click(screen.getByRole("radio", { name: "Spacious" }));
   await act(async () => { first.resolve(); });
-  await waitFor(() => expect(writes).toBe(4));
+  await waitFor(() => expect(writes).toBe(5));
   expect(state.preferences).toMatchObject({ larger_text: true, density: "spacious" });
   expect((larger as HTMLInputElement).checked).toBe(true);
 });
@@ -989,7 +992,7 @@ test("a picker preference event updates open Settings without focus, and Setting
   const { unmount } = render(<SettingsApp api={api} initialPage="look" />);
   await screen.findByRole("radio", { name: "Spacious" });
   state.preferences = { ...state.preferences, density: "compact", show_paste_preview: false };
-  await act(async () => { for (const changed of state.preferenceEvents) changed(); });
+  await act(async () => { for (const changed of state.preferenceEvents) changed(++state.revision); });
   expect(screen.getByRole("radio", { name: "Compact" })).toHaveProperty("checked", true);
   fireEvent.click(screen.getByRole("radio", { name: "Spacious" }));
   await act(async () => state.closes[0]!());
@@ -1018,6 +1021,30 @@ test("a failed queued edit restores the preceding acknowledged save when rereadi
   expect(state.preferences).toMatchObject({ density: "spacious", larger_text: false });
 });
 
+test("a self-notification before reply preserves the saved row choice when the next save and every read fail", async () => {
+  const { api, state, commit } = fakeApi({ granted: true });
+  const first = deferred<void>();
+  vi.spyOn(api, "setPickerPreferences")
+    .mockImplementationOnce(async (patch, key, revision) => {
+      await first.promise;
+      const saved = await commit(patch, key);
+      // Native emits its normal revision-tagged event before returning the save.
+      for (const changed of state.preferenceEvents) changed(revision);
+      return saved;
+    })
+    .mockRejectedValueOnce("settings-read-only");
+  render(<SettingsApp api={api} initialPage="look" />);
+  await screen.findByRole("radio", { name: "Spacious" });
+  vi.spyOn(api, "pickerPreferences").mockRejectedValue(new Error("synthetic read failure"));
+  fireEvent.click(screen.getByRole("radio", { name: "Spacious" }));
+  fireEvent.click(screen.getByRole("radio", { name: "Larger" }));
+  await act(async () => first.resolve());
+  expect(screen.getByRole("alert").textContent).toBe("The settings file is read-only; the saved value is shown.");
+  expect(screen.getByRole("radio", { name: "Spacious" })).toHaveProperty("checked", true);
+  expect(screen.getByRole("radio", { name: "Default" })).toHaveProperty("checked", true);
+  expect(state.preferences).toMatchObject({ density: "spacious", larger_text: false });
+});
+
 test("a picker change survives a Settings save reply delayed beyond the close timeout", async () => {
   const { api, state, commit } = fakeApi({ granted: true });
   const pending = deferred<Awaited<ReturnType<SettingsApi["setPickerPreferences"]>>>();
@@ -1032,7 +1059,7 @@ test("a picker change survives a Settings save reply delayed beyond the close ti
   fireEvent.click(screen.getByRole("radio", { name: "Compact" }));
   await act(async () => undefined);
   await commit({ density: "spacious" });
-  await act(async () => { for (const changed of state.preferenceEvents) changed(); });
+  await act(async () => { for (const changed of state.preferenceEvents) changed(++state.revision); });
   await act(async () => vi.advanceTimersByTimeAsync(2_500));
   await act(async () => pending.resolve(older));
   expect(screen.getByRole("radio", { name: "Spacious" })).toHaveProperty("checked", true);
