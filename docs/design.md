@@ -1136,6 +1136,10 @@ that owns its area in ROADMAP.md.
    delivery and receipt. Every activation goes through the same readiness
    checks before starting or joining a copy. A failed reconciliation status
    read cancels waiting Enter; a later library update never replays it.
+   Failed presentation reads after reopening get one recovery attempt. If that
+   also fails, keep the citation in place, cancel waiting Enter and show the
+   existing "Nothing was copied" alert. Becoming ready later does not replay
+   that failed action; a fresh Enter can retry.
    Automatic paste uses a recognised app's normal paste shortcut, or explicit
    per-app paste approval from the chooser above. Unapproved unknown apps
    cannot paste; a copy that cannot ask says "Copied. Automatic paste is not

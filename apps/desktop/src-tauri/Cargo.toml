@@ -72,8 +72,8 @@ tauri = { version = "2.12", features = ["test"] }
 
 # `forbid` cannot be narrowed by a module allowance. Match the workspace
 # policy, with unsafe allowed only in paste/macos/secure_input.rs, safety.rs and focus/native.rs,
-# paste/permission/drag.rs, sizing/display_events.rs and cfg(test)
-# paste/windows_bstr_test.rs (ADR 0029).
+# paste/permission/drag.rs, macos_notifications.rs, sizing/display_events.rs and
+# cfg(test) paste/windows_bstr_test.rs (ADR 0029).
 [lints.rust]
 unsafe_code = "deny"
 

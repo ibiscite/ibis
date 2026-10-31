@@ -37,6 +37,7 @@
     "allow-login-item",
     "allow-set-login-item",
     "allow-hide-picker",
+    "allow-picker-presentation",
     "allow-set-pinned",
     "allow-quit",
     "allow-shortcut-status",

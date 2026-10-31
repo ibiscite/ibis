@@ -79,6 +79,7 @@ fn startup_readiness(app: &AppHandle, panel_ready: bool) {
                 let Some(panel) = checked(handle.get_webview_panel("main"), NativeIssue::Window) else {
                     return;
                 };
+                crate::native_feel::before_show(&handle);
                 if focused {
                     panel.show_and_make_key();
                     if let Some(window) = checked(handle.get_webview_window("main").ok_or(()), NativeIssue::Window) {

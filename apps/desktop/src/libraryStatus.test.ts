@@ -25,6 +25,31 @@ const detail = (status: LibraryStatus) =>
   libraryMessages.detail(status, now, (s) => zoteroLibraryNames(s, (id) => `Group ${id}`)).map(strip);
 const clockAt = (hours: number) => new Intl.DateTimeFormat("en", { timeStyle: "short" }).format(now - hours * hour);
 
+test("native hide stops the age timer and reopen refreshes it without DOM visibility events", async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(now);
+  document.documentElement.dataset.pickerHidden = "";
+  const { container, unmount } = render(createElement(LibraryStatusLine, { library: zotero({ updated_at: now, checked_at: now }), groupName: String }));
+  try {
+    expect(vi.getTimerCount()).toBe(0);
+    await act(async () => { delete document.documentElement.dataset.pickerHidden; });
+    expect(vi.getTimerCount()).toBe(1);
+    await act(async () => { document.documentElement.dataset.pickerHidden = ""; });
+    expect(vi.getTimerCount()).toBe(0);
+    act(() => { vi.advanceTimersByTime(3 * 60_000); });
+    expect(container.textContent).toContain("updated just now");
+    await act(async () => { delete document.documentElement.dataset.pickerHidden; });
+    expect(container.textContent).toContain("updated 3 minutes ago");
+    expect(vi.getTimerCount()).toBe(1);
+    unmount();
+    expect(vi.getTimerCount()).toBe(0);
+  } finally {
+    unmount();
+    delete document.documentElement.dataset.pickerHidden;
+    vi.useRealTimers();
+  }
+});
+
 test.each<[string, LibraryStatus | null | undefined, string, ReturnType<typeof libraryHealth>]>([
   ["starting", undefined, "Checking library…", "idle"],
   ["status unavailable", null, "Library details unavailable", "stop"],

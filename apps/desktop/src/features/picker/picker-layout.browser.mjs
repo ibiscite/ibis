@@ -77,6 +77,7 @@ try {
           if (command === "plugin:event|listen") { listeners.set(args.handler, args.event); return args.handler; }
           if (command === "plugin:event|unlisten") return;
           if (command === "plugin:window|is_visible") return true;
+          if (command === "picker_presentation") return 0;
           if (command === "native_appearance") return "opaque";
           if (command === "picker_preferences") return preferences;
           if (command === "set_picker_preferences") return { preferences: Object.assign(preferences, args.preferences), copy_format: "pandoc" };

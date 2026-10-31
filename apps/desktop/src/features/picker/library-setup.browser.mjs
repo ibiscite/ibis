@@ -5,6 +5,9 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+const assertRem = (actual, expected, message) => {
+  assert.ok(Math.abs(actual - expected) <= 0.01, `${message}: expected ${expected} rem, got ${actual}`);
+};
 const { chromium } = await import(process.env.IBIS_PLAYWRIGHT_MODULE || "playwright");
 const dist = fileURLToPath(new URL("../../../dist/", import.meta.url));
 const browser = await chromium.launch({ headless: true });
@@ -30,13 +33,13 @@ try {
         if (text === "200%") document.addEventListener("DOMContentLoaded", () => { document.documentElement.style.fontSize = "200%"; });
         const preferences = { citation_style: null, density: "comfortable", larger_text: text === "larger", show_paste_preview: true, search_mark: true, paste: false };
         const none = { state: "none", revision: "1", has_snapshot: false, zotero: false, name: null, snapshot_name: null, references: 0, warnings: 0, error: null, problem: null, note: null };
-        let library = none, callback = 0, discoveries = 0;
+        let library = none, callback = 0, discoveries = 0, presentation = 0;
         const callbacks = new Map(), listeners = new Map();
         const emit = (event, payload) => {
           for (const [id, name] of listeners) if (event === name) callbacks.get(id)?.({ event, id, payload });
         };
         window.fixtureStatus = (patch) => { library = { ...none, ...patch }; emit("library:changed", library); };
-        window.fixtureReopen = () => { emit("picker:hidden", null); emit("picker:shown", null); window.dispatchEvent(new Event("focus")); };
+        window.fixtureReopen = () => { emit("picker:hidden", null); emit("picker:shown", ++presentation); window.dispatchEvent(new Event("focus")); };
         window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: (_event, id) => listeners.delete(id) };
         window.__TAURI_INTERNALS__ = {
           metadata: { currentWindow: { label: "main" }, currentWebview: { label: "main" } },
@@ -45,8 +48,14 @@ try {
           invoke: async (command, args) => {
             if (command === "plugin:event|listen") { listeners.set(args.handler, args.event); return args.handler; }
             if (command === "plugin:event|unlisten" || command === "fit_picker" || command === "plugin:window|hide") return;
-            if (command === "hide_picker") { emit("picker:hidden", null); return; }
+            if (command === "hide_picker") {
+              if (args.presentation !== null && args.presentation !== presentation) return false;
+              presentation += 1;
+              emit("picker:hidden", null);
+              return true;
+            }
             if (command === "plugin:window|is_visible") return true;
+            if (command === "picker_presentation") return presentation;
             if (command === "native_appearance") return "opaque";
             if (command === "picker_preferences") return preferences;
             if (command === "copy_format") return "pandoc";
@@ -72,7 +81,8 @@ try {
       await page.waitForFunction(() => document.activeElement?.getAttribute("data-key") === "zotero");
       assert.equal(await page.locator(".search-bar").isVisible(), false, `${label}: welcome fills window`);
       assert.equal(await page.getByRole("option").count(), 4);
-      assert.equal(await page.locator(".welcome-mark").evaluate((node) => node.getBoundingClientRect().width / parseFloat(getComputedStyle(document.documentElement).fontSize)), 3.5);
+      const welcomeWidth = await page.locator(".welcome-mark").evaluate((node) => node.getBoundingClientRect().width / parseFloat(getComputedStyle(document.documentElement).fontSize));
+      assertRem(welcomeWidth, 3.5, `${label}: 3.5 rem welcome mark`);
       const scan = async () => page.evaluate(() => {
         const main = document.querySelector("main"), bounds = main.getBoundingClientRect(), issues = [];
         if (Math.abs(bounds.height - innerHeight) > 1) issues.push("frame does not fill window");
@@ -117,7 +127,7 @@ try {
         return { size: node.getBoundingClientRect().width / parseFloat(getComputedStyle(document.documentElement).fontSize), eye: Number(eye.getAttribute("r")) * 2 * 24 / side,
           stops: [...node.querySelectorAll("stop")].map((stop) => getComputedStyle(stop).stopColor), transform: getComputedStyle(node).transform };
       });
-      assert.equal(artwork.size, 1.5, `${label}: 24 px mark`);
+      assertRem(artwork.size, 1.5, `${label}: 24 px mark`);
       assert.ok(artwork.eye >= 2, `${label}: open eye`);
       assert.deepEqual(artwork.stops, theme === "light" ? ["rgb(207, 70, 40)", "rgb(181, 51, 26)"] : ["rgb(255, 127, 94)", "rgb(242, 85, 47)"], `${label}: brand gradient`);
       assert.equal(artwork.transform, "none");
@@ -127,7 +137,11 @@ try {
       await page.getByRole("option", { name: /^Find missing.bib/ }).waitFor();
       assert.deepEqual(await scan(), [], `${label}: missing-file recovery`);
       await page.getByRole("option", { name: /^Find missing.bib/ }).press("Enter");
-      assert.equal(await page.getByRole("option").count(), 2, `${label}: cancellation keeps recovery`);
+      // Recovery includes the source action added with the library footer:
+      // cancelling Find keeps Find, Use another library and Open source.
+      assert.deepEqual(await page.getByRole("option").evaluateAll((rows) => rows.map((row) => row.getAttribute("data-key"))),
+        ["find", "another", "source"], `${label}: cancellation keeps all recovery choices`);
+      assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("data-key")), "find", `${label}: cancellation keeps Find focused`);
       await page.evaluate(() => window.fixtureStatus({ state: "loaded", name: "empty.bib", snapshot_name: "empty.bib", has_snapshot: true }));
       await page.getByRole("heading", { name: "No references in empty.bib" }).waitFor();
       assert.deepEqual(await scan(), [], `${label}: empty library`);

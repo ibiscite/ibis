@@ -14,6 +14,8 @@ mod feedback;
 mod library;
 mod login_item;
 #[cfg(target_os = "macos")]
+mod macos_notifications;
+#[cfg(target_os = "macos")]
 mod native_corners;
 mod native_feel;
 mod notice;

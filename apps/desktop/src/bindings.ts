@@ -89,8 +89,10 @@ export const commands = {
 	loginItem: () => __TAURI_INVOKE<LoginItem>("login_item"),
 	/**  Start Ibis when the person logs in, or stop doing so. */
 	setLoginItem: (enabled: boolean) => __TAURI_INVOKE<LoginItem>("set_login_item", { enabled }),
-	/**  Hide the picker (Escape in the interface). */
-	hidePicker: () => __TAURI_INVOKE<void>("hide_picker"),
+	/**  Hide only the originating presentation; a delayed request cannot dismiss a reopen. */
+	hidePicker: (presentation: number | null) => __TAURI_INVOKE<boolean>("hide_picker", { presentation }),
+	/**  Read the native presentation after subscribing, including on webview reload. */
+	pickerPresentation: () => __TAURI_INVOKE<number>("picker_presentation"),
 	/**
 	 *  Pin or unpin the picker. Staying on top is best effort: Wayland does not
 	 *  allow it, and there pinned means only that the picker stays open. The

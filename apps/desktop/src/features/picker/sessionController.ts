@@ -4,7 +4,7 @@ import type { Delivered } from "../../bindings";
 import { copiedNoticeText, pickerText } from "../../messages";
 import { initialSession, reduceSession, type OutputToken, type SessionEffect, type SessionEvent } from "./session";
 
-export type SessionPorts = Pick<typeof nativeApi, "copyFileCitation" | "hidePicker"> & Partial<Pick<typeof nativeApi, "showCopiedNotice">> & {
+export type SessionPorts = Pick<typeof nativeApi, "copyFileCitation" | "hidePicker" | "pickerPresentation"> & Partial<Pick<typeof nativeApi, "showCopiedNotice">> & {
   output: () => OutputToken; pinned: () => boolean; consume: (output: OutputToken) => unknown;
   refresh: () => void; askFormat: () => void; reportHide: (failed: boolean) => void;
 };
@@ -20,6 +20,13 @@ export function createSessionController(initial = initialSession()) {
   };
   const run = async (effect: SessionEffect) => {
     switch (effect.type) {
+      case "read-presentation": {
+        let presentation: number | null = null;
+        try { presentation = await ports.pickerPresentation(); }
+        catch { /* A pending action owns one recovery read, never a timer. */ }
+        dispatch({ type: "presentation", visibility: effect.visibility, presentation });
+        break;
+      }
       case "copy": {
         try {
           const outcome = await ports.copyFileCitation(effect.ticket, effect.hash);
@@ -32,7 +39,10 @@ export function createSessionController(initial = initialSession()) {
         break;
       }
       case "hide":
-        try { await ports.hidePicker(); dispatch({ type: "hid", id: effect.id, session: effect.session }); }
+        try {
+          const hidden = await ports.hidePicker(effect.presentation);
+          dispatch({ type: hidden === false ? "hide-refused" : "hid", id: effect.id, session: effect.session });
+        }
         catch { dispatch({ type: "hide-failed", id: effect.id, session: effect.session }); }
         break;
       case "notice": {

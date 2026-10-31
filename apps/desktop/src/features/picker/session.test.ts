@@ -8,7 +8,7 @@ const a: CitationReference = { ...testStates[1]!.results[0]!, locator: { label: 
 const b = testStates[1]!.results[1]!;
 const prepared = { text: "canonical engine text", html: "", markup: ["canonical engine text"], warnings: [], fileTicket: "ticket-b", fileHash: "hash-b" };
 function scenario() {
-  let state = initialSession();
+  let state = { ...initialSession(), presentation: 0 as number | null };
   let effects: ReturnType<typeof reduceSession>[1] = [];
   const send = (event: SessionEvent) => { [state, effects] = reduceSession(state, event); return effects; };
   const view = (change: Partial<SessionView> = {}): SessionEvent => ({ type: "view", session: state.session, interaction: state.interaction,
@@ -107,6 +107,26 @@ test("search, Enter and receipt use exactly one prepared engine ticket", () => {
   expect(s.state.flights).toHaveLength(0);
 });
 
+test("exhausted presentation reads refuse Enter and later readiness cannot replay it", () => {
+  const s = scenario();
+  s.send({ type: "retire" });
+  s.send(s.view());
+  s.send({ type: "initialize" });
+  s.send({ type: "enter", choice: choiceKey([a]) });
+  const visibility = s.state.visibility;
+  s.send({ type: "presentation", visibility, presentation: null });
+  s.send({ type: "presentation", visibility, presentation: null });
+  expect(s.state.copyError).toBe("Nothing was copied. Try again, or use Reload.");
+  expect(s.state.pendingCopy).toBeNull();
+  expect(s.effects).toEqual([]);
+  s.send({ type: "initialize" });
+  s.send({ type: "presentation", visibility, presentation: 41 });
+  expect(s.effects).toEqual([]);
+  s.send({ type: "enter", choice: choiceKey([a]) });
+  expect(s.effects).toMatchObject([{ type: "copy", ticket: "ticket-b", hash: "hash-b" }]);
+  expect(s.state.flights[0]?.presentation).toBe(41);
+});
+
 test.each([
   ["no-permission", "Copied. Ibis needs your OK to paste"],
   ["accessibility-required", "Copied. Ibis needs Accessibility access to paste safely. Press Ctrl+V to paste."],
@@ -150,7 +170,7 @@ test.each(["same", "different", "empty", "failed", "reopened"])("Enter waiting f
   expect(s.effects).toEqual([]);
   if (outcome === "reopened") {
     s.send({ type: "hidden", now: 10 });
-    s.send({ type: "shown", now: 20 });
+    s.send({ type: "shown", now: 20, presentation: 2 });
   }
   const chosen = outcome === "different" ? [b] : outcome === "empty" || outcome === "failed" ? [] : [a];
   s.send(s.view({ appId: "example.browser", chosen, shouldAsk: true, shown: outcome === "failed" ? "failed" : prepared }));
@@ -183,7 +203,7 @@ test("close/reopen retires old completion without consuming a newer copy", () =>
   s.send(s.view());
   s.send({ type: "enter", choice: choiceKey([a]) });
   s.send({ type: "hidden", now: 10 });
-  s.send({ type: "shown", now: 20 });
+  s.send({ type: "shown", now: 20, presentation: 2 });
   s.send(s.view());
   expect(s.effects).toEqual([]);
   s.send({ type: "enter", choice: choiceKey([a]) });
@@ -213,7 +233,7 @@ test("Enter during reopening waits for the new opening's readiness and output", 
   const s = scenario();
   s.send(s.view());
   s.send({ type: "hidden", now: 10 });
-  s.send({ type: "shown", now: 20 });
+  s.send({ type: "shown", now: 20, presentation: 2 });
   const output = { opening: 1, choice: 0, delivery: 0 };
   s.send({ type: "enter", choice: choiceKey([a]), output });
   expect(s.effects).toEqual([]);
