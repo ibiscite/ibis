@@ -93,18 +93,30 @@ pub(crate) const BACKSLASH: char = '\u{E003}';
 pub(crate) const ESCAPE: char = '\u{E002}';
 /// Shield verbatim dashes from biblatex 0.12's unconditional typography pass.
 pub(crate) const HYPHEN: char = '\u{E004}';
+/// Keep a real non-breaking space through upstream whitespace folding.
+pub(crate) const NBSPACE: char = '\u{E005}';
+pub(crate) const NARROW_NBSPACE: char = '\u{E006}';
 
 /// Encode escaped braces and escape placeholder characters already present.
 /// Decoded by `convert::clean`.
 fn encode_literals(text: &str) -> Cow<'_, str> {
-    if !text.contains(['\\', LEFT_BRACE, RIGHT_BRACE, BACKSLASH, ESCAPE, HYPHEN]) {
+    if !text.contains([
+        '\\',
+        LEFT_BRACE,
+        RIGHT_BRACE,
+        BACKSLASH,
+        ESCAPE,
+        HYPHEN,
+        NBSPACE,
+        NARROW_NBSPACE,
+    ]) {
         return Cow::Borrowed(text);
     }
     let mut out = String::with_capacity(text.len());
     let mut chars = text.chars().peekable();
     while let Some(c) = chars.next() {
         match c {
-            LEFT_BRACE | RIGHT_BRACE | BACKSLASH | ESCAPE | HYPHEN => {
+            LEFT_BRACE | RIGHT_BRACE | BACKSLASH | ESCAPE | HYPHEN | NBSPACE | NARROW_NBSPACE => {
                 out.push(ESCAPE);
                 out.push(c);
             }
@@ -130,46 +142,50 @@ fn encode_literals(text: &str) -> Cow<'_, str> {
 /// final cleaning. Apply only to parser input, retaining resolved source text
 /// for the unchanged fallback used when a field has an unknown command.
 fn protect_backslashes(text: &str) -> Cow<'_, str> {
-    const BACKSLASH_COMMAND: &str = "textbackslash";
     if !text.as_bytes().contains(&b'\\') {
         return Cow::Borrowed(text);
     }
     let mut out = String::with_capacity(text.len());
     let mut chars = text.chars().peekable();
     while let Some(c) = chars.next() {
-        match c {
-            ESCAPE => {
-                out.push(c);
-                out.extend(chars.next());
+        if c == ESCAPE || c == '\\' && chars.peek() == Some(&'\\') {
+            out.push(c);
+            out.extend(chars.next());
+            continue;
+        }
+        let symbol = (c == '\\')
+            .then(|| {
+                [
+                    ("textbackslash", BACKSLASH),
+                    ("textasciitilde", '~'),
+                    ("textasciigrave", '`'),
+                    ("textquotesingle", '\''),
+                ]
+                .into_iter()
+                .find(|(name, _)| {
+                    chars.clone().take(name.len()).eq(name.chars())
+                        && chars.clone().nth(name.len()).is_none_or(|c| !c.is_ascii_alphabetic())
+                })
+            })
+            .flatten();
+        if let Some((name, symbol)) = symbol {
+            if symbol != BACKSLASH {
+                out.push(ESCAPE);
             }
-            '\\' if chars.peek() == Some(&'\\') => {
-                out.push(c);
-                out.extend(chars.next());
+            out.push(symbol);
+            for _ in 0..name.len() {
+                chars.next();
             }
-            '\\' if chars
-                .clone()
-                .take(BACKSLASH_COMMAND.len())
-                .eq(BACKSLASH_COMMAND.chars())
-                && chars
-                    .clone()
-                    .nth(BACKSLASH_COMMAND.len())
-                    .is_none_or(|c| !c.is_ascii_alphabetic()) =>
-            {
-                out.push(BACKSLASH);
-                for _ in 0..BACKSLASH_COMMAND.len() {
+            if chars.clone().take(2).eq("{}".chars()) {
+                chars.next();
+                chars.next();
+            } else {
+                while chars.peek().is_some_and(|c| c.is_whitespace()) {
                     chars.next();
                 }
-                if chars.clone().take(2).eq("{}".chars()) {
-                    chars.next();
-                    chars.next();
-                } else {
-                    // Whitespace terminates the control word, as in TeX.
-                    while chars.peek().is_some_and(|c| c.is_whitespace()) {
-                        chars.next();
-                    }
-                }
             }
-            _ => out.push(c),
+        } else {
+            out.push(c);
         }
     }
     Cow::Owned(out)
@@ -413,8 +429,13 @@ impl<'a, 's> Resolver<'a, 's> {
                 }
             }));
             match field.name.as_str() {
-                "xdata" => xdata_keys.extend(value.split(',').map(|k| k.trim().to_string()).filter(|k| !k.is_empty())),
-                "crossref" => crossref_key = Some(value.trim().to_string()).filter(|k| !k.is_empty()),
+                "xdata" => xdata_keys.extend(
+                    super::convert::literal_value(&value)
+                        .split(',')
+                        .map(|k| k.trim().to_string())
+                        .filter(|k| !k.is_empty()),
+                ),
+                "crossref" => crossref_key = Some(super::convert::literal_value(&value)).filter(|k| !k.is_empty()),
                 _ => {
                     // As in Biber and Pandoc, a repeated field keeps its last value.
                     if let Some(&position) = own_positions.get(field.name.as_str()) {
@@ -914,6 +935,46 @@ fn crossref_targets<'n>(parent: &str, child: &str, field: &'n str) -> Vec<&'n st
 /// Render one field canonically. A month written as a three-letter
 /// abbreviation stays bare so the parser reads it as a month.
 fn render_field(out: &mut String, name: &str, value: &str) {
+    // Shield spacing only after typed resolution, and only for text fields.
+    // Names, dates and graph keys need ordinary whitespace for their parsers;
+    // raw paths and verbatim identifiers are decoded separately from source.
+    const TEXT_FIELDS: &[&str] = &[
+        "title",
+        "subtitle",
+        "titleaddon",
+        "shorttitle",
+        "maintitle",
+        "mainsubtitle",
+        "maintitleaddon",
+        "booktitle",
+        "booksubtitle",
+        "booktitleaddon",
+        "journaltitle",
+        "journalsubtitle",
+        "journaltitleaddon",
+        "journal",
+        "abstract",
+        "note",
+        "publisher",
+        "institution",
+        "school",
+        "organization",
+        "address",
+        "location",
+        "series",
+        "eventtitle",
+        "type",
+    ];
+    let text = if TEXT_FIELDS.contains(&name) && value.contains(['\u{a0}', '\u{202f}']) {
+        Cow::Owned(
+            value
+                .replace('\u{a0}', &NBSPACE.to_string())
+                .replace('\u{202f}', &NARROW_NBSPACE.to_string()),
+        )
+    } else {
+        Cow::Borrowed(value)
+    };
+    let value = text.as_ref();
     let bare_month = name == "month" && MONTHS.iter().any(|(abbr, _)| *abbr == value);
     out.push_str("  ");
     out.push_str(name);
@@ -922,9 +983,8 @@ fn render_field(out: &mut String, name: &str, value: &str) {
         out.push_str(value);
     } else {
         out.push('{');
-        // Keep biblatex as the sole owner of verbatim escape/group decoding,
-        // shielding only dashes so its unconditional `--` conversion cannot
-        // change a URL or DOI. Original placeholder characters are encoded.
+        // Keep the parser's canonical verbatim field intact too; final URL/DOI
+        // decoding uses the resolved source rather than decoding these twice.
         let verbatim = matches!(name, "url" | "doi");
         let value = if verbatim {
             Cow::Owned(value.replace('-', &HYPHEN.to_string()))
@@ -1070,14 +1130,15 @@ mod tests {
 
         // Golden transcripts include exact canonical bytes, diagnostics, remaining
         // work credits and the final records/fingerprints published to consumers.
-        // Pin them before changing allocation ownership; hashes keep the many
+        // Title casing and source-warning fingerprints were updated for #1530;
+        // subsequent allocation changes must preserve them. Pinned hashes keep the many
         // partial-budget outcomes small without keeping a second resolver.
         let cases = [
             (
                 "plain",
                 "@article{plain,title={Synthetic Signals},author={Avery Researcher and Ann Morgan},year=2024,\
                  journal={Invented Letters},pages={1--20},doi={10.1234/synthetic}}",
-                "b8be92d43a8d538588daa3c9980d7d864ae15c7414c6c4ce77c9373833b982cc",
+                "d5e789fc6d54bf6cd06b96ca2e47e98d923593daaa6b0e23a43ea699686fe777",
             ),
             (
                 "escaped",
@@ -1086,13 +1147,13 @@ mod tests {
                     "\u{E000}\u{E001}\u{E002}\u{E003}",
                     r"},note={\i nt \item \j and \\{group\\}}}",
                 ),
-                "f1d5987d1850b8b056cf93e986b6040d4e0d7aeed6e2aeee365fcea9cc985011",
+                "fdc59daef7f3aeeb0ba25480257f87aad94f53dbebe42fa7220b218e90a560ea",
             ),
             (
                 "unicode-and-verbatim-url",
                 r"@book{unicode,title={২০২০ পর্যবেক্ষণ},year={۲۰۲۴},month=mar,day={৫},
                   url={https://example.invalid/\textbackslash/a\{kept\}},urldate={２０２５-０２-０３}}",
-                "b072b65627381cb78ff0bc5fa3017ed76bd72f2b15283389f388dde25087af17",
+                "130d8502623b3b55ba4e4c58e619650ed1d0cefb3b36db5bacdb9a60b566d3f6",
             ),
             (
                 "epochs-and-shared-inheritance",
@@ -1108,7 +1169,7 @@ mod tests {
                 "@proceedings(parent,title=\"x}, date = {1999-01-01}, author = {Injected Person}\",year=2024)\n\
                  @inproceedings{safe,title={First},title={Safe},crossref={parent},note=undefined}\n\
                  @book{broken,title={Unclosed\n@book{last,title={Still Visible}}",
-                "7bfbfce8c7ad8464116da90674c220707281fc0a672009b471115194137fd317",
+                "94ffe578592bc82b40de81a7572c0d654d8c2953281e7551a4960e484ab2a91c",
             ),
         ];
         let mut mismatches = Vec::new();

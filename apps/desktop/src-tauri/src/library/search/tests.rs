@@ -230,6 +230,7 @@ fn container_fallback_uses_trimmed_visible_text() {
             csl: Default::default(),
             citation_keys: Vec::new(),
             aliases: Vec::new(),
+            warnings: Vec::new(),
             identifiers: Vec::new(),
         };
         for (field, value) in [("container-title", container), ("publisher", publisher)] {

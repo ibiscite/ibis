@@ -27,6 +27,29 @@ pub fn citable_fields(fields: &mut Map<String, Value>) {
         apply_overrides(fields, &note);
         private_url(fields);
     }
+    if let Some(Value::String(doi)) = fields.get_mut("DOI") {
+        // CSL styles supply their own resolver prefix. Strip only recognized
+        // wrappers, retaining the identifier's spelling, punctuation and case.
+        let value = doi.trim();
+        let prefixes = [
+            "https://doi.org/",
+            "http://doi.org/",
+            "https://dx.doi.org/",
+            "http://dx.doi.org/",
+            "doi.org/",
+            "dx.doi.org/",
+            "doi:",
+        ];
+        let bare = prefixes.iter().find_map(|prefix| {
+            value
+                .get(..prefix.len())
+                .filter(|head| head.eq_ignore_ascii_case(prefix))
+                .map(|_| value[prefix.len()..].trim())
+        });
+        if let Some(bare) = bare {
+            *doi = bare.to_owned();
+        }
+    }
     // Zotero's names for the short titles, which citeproc copies in when the
     // CSL ones are missing.
     for (alias, canonical) in [

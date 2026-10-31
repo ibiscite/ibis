@@ -233,7 +233,7 @@
         }
         xml = tree;
       }
-      engine = new CSL.Engine({ retrieveLocale: () => __ibisLocale, retrieveItem: (id) => activeItems.get(id) }, xml, request.locale ?? undefined, request.locale !== null);
+      engine = new CSL.Engine({ retrieveLocale: () => __ibisLocale, retrieveItem: (id) => activeItems.get(id), uppercase_subtitles: request.style === "apa" }, xml, request.locale ?? undefined, request.locale !== null);
       engine.opt.development_extensions.throw_on_empty = true;
       if (request.keep_order) engine.citation_sort.tokens = [];
       engines.set(key, engine);

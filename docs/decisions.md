@@ -79,6 +79,12 @@ literal dates and year letters are retained as data (2026-10-30, #1519).
 Literal years retain numeric date order independently of their rendered letters.
 Ordinary ALM/LRM/RLM direction marks retain their text meaning; embedding,
 override and isolate controls are neutralized before output (2026-10-30, #1522).
+BibTeX imports retain stored title capitalization, including unprotected proper
+nouns. Styles and citeproc own presentation; APA enables the pinned processor's
+subtitle capitalization and reports that titles need sentence case. Fixed-code,
+item-indexed citation warnings carry source conversion uncertainty without field
+text or paths; that uncertainty participates in citation fingerprints
+(2026-10-31, #1530).
 
 ## 0008 Offline by default
 

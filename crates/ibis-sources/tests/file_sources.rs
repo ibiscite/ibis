@@ -160,6 +160,22 @@ fn csl_json_uses_citation_key_then_id_and_reports_exact_lines() -> Result<(), Bo
 }
 
 #[test]
+fn nonbreaking_spaces_in_attachment_names_remain_filename_characters() -> Result<(), Box<dyn std::error::Error>> {
+    let directory = tempfile::tempdir()?;
+    let filename = "Invented\u{a0}Paper.pdf";
+    std::fs::write(directory.path().join(filename), b"invented attachment")?;
+    let bibliography = directory.path().join("invented.bib");
+    std::fs::write(
+        &bibliography,
+        format!("@book{{one,title={{Invented rivers}},file={{{filename}}}}}"),
+    )?;
+    let loaded = ibis_sources::load_file(&bibliography)?;
+    assert!(loaded.snapshot.objects().iter().any(|object| matches!(&object.object,
+        LibraryObject::Attachment(attachment) if attachment.availability == Availability::OnDisk)));
+    Ok(())
+}
+
+#[test]
 fn file_identity_survives_edits_and_follows_the_canonical_location() -> Result<(), Box<dyn std::error::Error>> {
     let dir = tempfile::tempdir()?;
     let path = dir.path().join("synthetic.bib");
@@ -201,9 +217,9 @@ fn preserved_parser_keeps_exact_csl_meaning_of_invented_examples() -> Result<(),
     ];
     // Fixed CSL expectations keep this regression independent of the removed parser.
     let expected = [
-        serde_json::json!({"ISBN":"9780000000002","author":[{"family":"Example","given":"Ada"},{"literal":"Synthetic Organization"},{"literal":"others"}],"citation-key":"one","id":"one","issued":{"date-parts":[[2024,2,29]]},"language":"en-US","publisher":"Invented Press","title":"An invented <span class=\"nocase\">DNA</span> study","type":"book"}),
-        serde_json::json!({"DOI":"10.0000/synthetic","URL":"https://example.invalid/synthetic","author":[{"dropping-particle":"van","family":"Example","given":"Ada"}],"citation-key":"two","container-title":"Invented Journal","id":"two","issue":"3","issued":{"date-parts":[[2023,2]]},"keyword":"one, two","page":"12–20","title":"Synthetic <i>in vivo</i> study","type":"article-journal","volume":"2"}),
-        serde_json::json!({"citation-key":"three","container-title":"Synthetic Book","editor":[{"family":"Example","given":"Bert"}],"id":"three","issued":{"date-parts":[[2020,3,5]]},"publisher":"Synthetic Press","title":"Invented chapter","translator":[{"family":"Example","given":"Cora"}],"type":"chapter"}),
+        serde_json::json!({"ISBN":"9780000000002","author":[{"family":"Example","given":"Ada"},{"literal":"Synthetic Organization"},{"literal":"others"}],"citation-key":"one","id":"one","issued":{"date-parts":[[2024,2,29]]},"language":"en-US","publisher":"Invented Press","title":"An Invented <span class=\"nocase\">DNA</span> Study","type":"book"}),
+        serde_json::json!({"DOI":"10.0000/synthetic","URL":"https://example.invalid/synthetic","author":[{"dropping-particle":"van","family":"Example","given":"Ada"}],"citation-key":"two","container-title":"Invented Journal","id":"two","issue":"3","issued":{"date-parts":[[2023,2]]},"keyword":"one, two","page":"12–20","title":"Synthetic <i>in vivo</i> Study","type":"article-journal","volume":"2"}),
+        serde_json::json!({"citation-key":"three","container-title":"Synthetic Book","editor":[{"family":"Example","given":"Bert"}],"id":"three","issued":{"date-parts":[[2020,3,5]]},"publisher":"Synthetic Press","title":"Invented Chapter","translator":[{"family":"Example","given":"Cora"}],"type":"chapter"}),
         serde_json::json!({"accessed":{"date-parts":[[2026,10,26]]},"citation-key":"four","id":"four","issued":{"date-parts":[[2001],[2003]]},"original-date":{"circa":true,"date-parts":[[1900]]},"publisher":"Invented Press","title":"Synthetic","type":"book"}),
         serde_json::json!({"abstract":"Invented abstract","author":[{"family":"范","given":"明"}],"citation-key":"five","id":"five","language":"fr-FR","title":"Étude fictive","title-short":"Fictive","type":"book"}),
     ];

@@ -17,5 +17,8 @@
   {"type":"book","title":"<i>Synthetic <span class=\"nodecor\">plain text</span></i>","author":[{"family":"Styling","given":"Blake"}],"issued":{"date-parts":[[2027]]}},
   {"type":"book","title":"Synthetic <span style=\"font-variant: small-caps;\">small caps</span>","author":[{"family":"Styling","given":"Casey"}],"issued":{"date-parts":[[2028]]}},
   {"type":"book","title":"מחיר \u200e-12","author":[{"family":"Direction","given":"Avery"}],"issued":{"date-parts":[[2026]]},"language":"he"},
-  {"type":"book","title":"علامة \u061c-12 \u200f","author":[{"family":"Direction","given":"Blake"}],"issued":{"date-parts":[[2027]]},"language":"ar"}
+  {"type":"book","title":"علامة \u061c-12 \u200f","author":[{"family":"Direction","given":"Blake"}],"issued":{"date-parts":[[2027]]},"language":"ar"},
+  {"type":"article-journal","title":"Climate Change in Japan and Germany","author":[{"family":"Okafor","given":"Ada"}],"issued":{"date-parts":[[2026]]},"container-title":"Invented Journal"},
+  {"type":"article-journal","title":"Mapping rivers: a field guide","author":[{"family":"Okafor","given":"Bea"}],"issued":{"date-parts":[[2027]]},"container-title":"Invented Journal"},
+  {"type":"article-journal","title":"“Rivers” and Figure\u00a01","author":[{"family":"Okafor","given":"Cora"}],"issued":{"date-parts":[[2028]]},"container-title":"Invented Journal"}
 ]

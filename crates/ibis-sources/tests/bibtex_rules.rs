@@ -12,7 +12,7 @@ use ibis_sources::WarningCode;
 use serde_json::{Value, json};
 use unicode_normalization::UnicodeNormalization;
 
-// --- language tags and title case (#331) ---------------------------------
+// --- language tags and stored title case (#331, #1530) --------------------
 
 #[test]
 fn english_language_tag_case_does_not_change_title_conversion() {
@@ -20,16 +20,16 @@ fn english_language_tag_case_does_not_change_title_conversion() {
         load("@book{a,title={The Second Title},langid={EN-US}}\n@book{b,title={The Second Title},langid={en-US}}");
     assert!(loaded.warnings.is_empty(), "{:?}", loaded.warnings);
     assert_eq!(keys(&loaded), ["a", "b"]);
-    assert_eq!(plain(&loaded, "a", "title").as_deref(), Some("The second title"));
-    assert_eq!(plain(&loaded, "b", "title").as_deref(), Some("The second title"));
+    assert_eq!(plain(&loaded, "a", "title").as_deref(), Some("The Second Title"));
+    assert_eq!(plain(&loaded, "b", "title").as_deref(), Some("The Second Title"));
 }
 
 #[test]
 fn mixed_case_primary_tags_keep_language_spelling_and_non_english_titles() {
     for (tag, expected) in [
-        ("EN", "The second title"),
-        ("En-Latn-US", "The second title"),
-        ("eN-gB", "The second title"),
+        ("EN", "The Second Title"),
+        ("En-Latn-US", "The Second Title"),
+        ("eN-gB", "The Second Title"),
         ("DE-de", "The Second Title"),
         ("enm", "The Second Title"),
     ] {
@@ -49,7 +49,7 @@ fn language_names_become_bcp47_tags() {
     assert_eq!(text(&r, "us", "language"), Some("en-US"));
     assert_eq!(text(&r, "de", "language"), Some("de-DE"));
     assert_eq!(text(&r, "tag", "language"), Some("pt-BR"));
-    assert_eq!(text(&r, "odd", "language"), None);
+    assert_eq!(text(&r, "odd", "language"), Some("und"));
     assert_eq!(warned_at(&r, WarningCode::Field, 4), 1, "{:?}", r.warnings);
 }
 
@@ -58,11 +58,11 @@ fn protected_capitalization_survives_into_csl() {
     let r = load("@article{p, title={Using {iPhone} Apps for {NASA} Missions}, langid={american}}");
     assert_eq!(
         text(&r, "p", "title"),
-        Some("Using <span class=\"nocase\">iPhone</span> apps for <span class=\"nocase\">NASA</span> missions")
+        Some("Using <span class=\"nocase\">iPhone</span> Apps for <span class=\"nocase\">NASA</span> Missions")
     );
     assert_eq!(
         plain(&r, "p", "title").as_deref(),
-        Some("Using iPhone apps for NASA missions")
+        Some("Using iPhone Apps for NASA Missions")
     );
 }
 
@@ -70,6 +70,22 @@ fn protected_capitalization_survives_into_csl() {
 fn non_english_titles_keep_their_capitalization() {
     let r = load("@article{g, title={Schlaf und Gedächtnis}, langid={ngerman}}");
     assert_eq!(text(&r, "g", "title"), Some("Schlaf und Gedächtnis"));
+}
+
+#[test]
+fn legacy_hyphenation_is_the_langid_fallback_and_unknown_languages_are_undetermined() {
+    for (fields, language) in [
+        ("hyphenation={german}", "de-DE"),
+        ("hyphenation={german},language={english}", "de-DE"),
+        ("langid={english},hyphenation={german}", "en-US"),
+        ("language={Deutsch}", "de-DE"),
+        ("langid={},hyphenation={german}", "de-DE"),
+        ("language={unreadable-language}", "und"),
+    ] {
+        let loaded = load(&format!("@book{{a,title={{Invented German Nouns}},{fields}}}"));
+        assert_eq!(text(&loaded, "a", "language"), Some(language), "{fields}");
+        assert_eq!(text(&loaded, "a", "title"), Some("Invented German Nouns"));
+    }
 }
 
 // --- names -----------------------------------------------------------------
@@ -386,6 +402,38 @@ fn errors_in_inherited_xdata_fields_are_reported_on_the_consumer() {
 }
 
 #[test]
+fn original_spacing_marker_characters_are_literal_in_inheritance_keys() {
+    for marker in ['\u{e005}', '\u{e006}'] {
+        let loaded = load(&format!(
+            "@book{{parent{marker},title={{Invented parent}},publisher={{Invented Press}}}}\n@xdata{{shared{marker},year={{2026}}}}\n@inbook{{child,title={{Invented child}},crossref={{parent{marker}}},xdata={{shared{marker}}}}}"
+        ));
+        assert_eq!(text(&loaded, "child", "publisher"), Some("Invented Press"));
+        assert_eq!(year(&loaded, "child"), Some(2026));
+    }
+}
+
+#[test]
+fn nonbreaking_spaces_remain_semantic_in_names_and_inheritance_keys() {
+    let loaded = load(
+        "@book{parent,title={Invented parent},publisher={Invented Press}}\n@xdata{shared,year={2026}}\n@inbook{child,title={Invented child},author={Ada\u{a0}Okafor},crossref={\u{a0}parent\u{a0}},xdata={\u{a0}shared\u{a0}}}",
+    );
+    let author = &csl(&loaded, "child")["author"][0];
+    assert_eq!(author["family"], "Okafor");
+    assert_eq!(author["given"], "Ada");
+    assert_eq!(text(&loaded, "child", "publisher"), Some("Invented Press"));
+    assert_eq!(year(&loaded, "child"), Some(2026));
+}
+
+#[test]
+fn nonbreaking_date_whitespace_retains_era_and_day_meaning() {
+    let loaded = load(
+        "@book{era,title={Invented era},year={2026\u{a0}BC}}\n@book{day,title={Invented day},year={2026},month={March\u{a0}2}}",
+    );
+    assert_eq!(year(&loaded, "era"), Some(-2025));
+    assert_eq!(date(&loaded, "day", "issued"), Some((2026, Some(3), Some(2))));
+}
+
+#[test]
 fn explicit_child_dates_win_over_inherited_dates() {
     let r = load("@xdata{shared,year=2000}\n@book{a,title={T},date={2024},xdata={shared}}");
     assert_eq!(year(&r, "a"), Some(2024));
@@ -614,7 +662,7 @@ fn subtitles_are_part_of_the_title() {
     );
     assert_eq!(
         plain(&r, "s", "title").as_deref(),
-        Some("Sleep: A very short introduction")
+        Some("Sleep: A Very Short Introduction")
     );
     assert_eq!(text(&r, "j", "container-title"), Some("Memory: Theory and Practice"));
 }
@@ -653,7 +701,7 @@ fn comments_between_fields_do_not_lose_the_record() {
 #[test]
 fn escaped_braces_are_literal_text() {
     let r = load("@book{a,title={The Set \\{x,y\\}}, publisher={A \\{B\\} Press}, langid={american}}");
-    assert_eq!(plain(&r, "a", "title").as_deref(), Some("The set {x,y}"));
+    assert_eq!(plain(&r, "a", "title").as_deref(), Some("The Set {x,y}"));
     assert_eq!(text(&r, "a", "publisher"), Some("A {B} Press"));
 }
 
@@ -670,8 +718,8 @@ fn multi_volume_titles_keep_the_whole_work() {
     let r = load(
         "@book{volume,title={Volume One},maintitle={Collected Works},volume={2},year={2020},langid={american}}\n@inbook{part,title={A Letter},booktitle={Early Letters},maintitle={Collected Works},volume={2},year={2020}}",
     );
-    assert_eq!(plain(&r, "volume", "title").as_deref(), Some("Collected works"));
-    assert_eq!(text(&r, "volume", "volume-title"), Some("Volume one"));
+    assert_eq!(plain(&r, "volume", "title").as_deref(), Some("Collected Works"));
+    assert_eq!(text(&r, "volume", "volume-title"), Some("Volume One"));
     assert_eq!(text(&r, "part", "container-title"), Some("Collected Works"));
     assert_eq!(text(&r, "part", "volume-title"), Some("Early Letters"));
 }
@@ -689,11 +737,16 @@ fn series_numbers_and_report_numbers_keep_their_meaning() {
 #[test]
 fn private_use_characters_in_text_are_not_mistaken_for_braces() {
     let r = load(
-        "@book{pua,title={A \u{E000} and \u{E001} \u{E004} test \\{x\\}},url={https://example.org/\u{E004}a--b},year={2024}}",
+        "@book{pua,title={A \u{E000} and \u{E001} \u{E004} \u{E005} \u{E006} test \\{x\\}},url={https://example.org/\u{E004}a--b},year={2024}}",
     );
     let title = text(&r, "pua", "title").unwrap_or_default();
     assert!(
-        title.contains('\u{E000}') && title.contains('\u{E001}') && title.contains('\u{E004}') && title.contains("{x}"),
+        title.contains('\u{E000}')
+            && title.contains('\u{E001}')
+            && title.contains('\u{E004}')
+            && title.contains('\u{E005}')
+            && title.contains('\u{E006}')
+            && title.contains("{x}"),
         "{title:?}"
     );
     assert_eq!(text(&r, "pua", "URL"), Some("https://example.org/\u{E004}a--b"));
