@@ -89,11 +89,6 @@ export const commands = {
 	 */
 	setPinned: (on: boolean) => __TAURI_INVOKE<void>("set_pinned", { on }),
 	/**
-	 *  Fit the picker to `height` CSS px of content, or to the results height.
-	 *  A synchronous command, so it runs on the main thread.
-	 */
-	fitPicker: (height: number | null, animate: boolean) => __TAURI_INVOKE<void>("fit_picker", { height, animate }),
-	/**
 	 *  End the app. Closing the window only hides it, so this is the way out on
 	 *  Windows and Linux, which have no application menu with Quit.
 	 */
@@ -158,6 +153,9 @@ export const commands = {
 	 *  Every window and the menu bar item show the change at once.
 	 */
 	setShortcut: (shortcut: string | null) => __TAURI_INVOKE<ShortcutStatus_Serialize>("set_shortcut", { shortcut }),
+	readWindowPositionUndo: () => __TAURI_INVOKE<number | null>("read_window_position_undo"),
+	undoWindowPosition: (revision: number) => __TAURI_INVOKE<boolean>("undo_window_position", { revision }),
+	dismissWindowPositionUndo: (revision: number) => __TAURI_INVOKE<void>("dismiss_window_position_undo", { revision }),
 };
 
 /* Types */
