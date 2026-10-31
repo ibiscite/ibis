@@ -4,8 +4,8 @@ The one current rule book for how Ibis looks and behaves: picker, first run,
 Settings, preview, brand and website. [Decisions](decisions.md) win over it. Values live in
 [`apps/desktop/src/tokens.css`](../apps/desktop/src/tokens.css): this page names
 tokens by role and gives numbers only where no token exists. Settings has
-General, Shortcuts and About. The Settings
-window's remaining pages wait in #776; scope is
+General, Look, Citations, Shortcuts and About. The Settings
+window's remaining controls wait in #776; scope is
 in [ROADMAP.md](../ROADMAP.md) and progress in the issues. Tags such as [C9]
 (design canvas) and [D7] (token foundations) are cited by code and tests; keep
 each beside its rule. This page, `tokens.css` and the components in
@@ -71,7 +71,7 @@ them before any later delivery; it sends no new paste while they remain blocked.
 |---|---|---|
 | Surfaces [D4] | `--surface-window` < `--surface` < `--surface-raised` < `--surface-overlay`; `--surface-field`, `--scrim` | Base, content sheet, band/cards/shelf, menus and dialogs. On the macOS glass panel the levels share one material (`--surface`) and layers separate by fills and hairlines. |
 | Text [D5] | `--text`, `--muted`, `--text-tertiary`, `--text-disabled` | `--muted` always 4.5:1; tertiary only for glyphs and hints at rest (3:1), never sentences. |
-| Accent [D6] | `--accent`, `--accent-text`, `--text-on-accent` | The system accent by default; Look's Accent row can override it (maintainer, 2026-10-30). Selected rows and the menu highlight use `--selected-text`, the platform's own selected-text colour (white), as native lists do; never black. `--text-on-accent` (primary button, tiles on the accent) is picked per accent to reach 4.5:1. |
+| Accent [D6] | `--accent`, `--accent-text`, `--text-on-accent` | The system accent by default; Look's Accent row can override it (maintainer, 2026-10-30). Selected rows and the menu highlight use `--selected-text`, paired to the chosen accent; the system and existing fixed accents use white, while Ibis scarlet uses dark ink in dark mode (maintainer, 2026-10-31). `--text-on-accent` (primary button, tiles on the accent) is picked per accent to reach 4.5:1. |
 | Selection [D7] | `--row-active-*`, `--row-inactive-background`, `--selected-*` | See **Selection and focus**. |
 | Focus [D8] | `--focus-ring-*` | See **Selection and focus**. |
 | Fills | `--fill-control(-hover/-pressed)`, `--fill-subtle-*`, `--fill-primary-*`, `--fill-disabled` | Pressed is darker on macOS and GNOME, lighter on Windows. |
@@ -88,19 +88,26 @@ them before any later delivery; it sends no new paste while they remain blocked.
 
 **Colour roles.** The system accent means "you are here, act on this":
 selection, focus, the primary button, switches and the macOS menu highlight.
-Scarlet means "this is what gets pasted" and marks only the citation: the
-shelf's beak mark, the added tile, the Copied notice's citation, the format
-preview, and the logo [C14]. It never appears on a control, link, toggle,
-progress, badge, counter, selection, focus ring, error, Stop status, Settings
-control or the shortcut recorder. Brand scarlet itself (no app token) is for the
-logo, app icon, website and store art. On an accent-filled row the added tile
-becomes a `--text-on-accent` tile with a scarlet check, so a red or orange
-accent never meets scarlet fill on fill. Ibis offers Appearance (System, Light,
-Dark; System by default) and Accent (maintainer, 2026-10-30): a row of Mac-style
-colour dots, the first one "Follow the Mac" (the default), then blue, purple,
-pink, red, orange, yellow, green and graphite at the Mac's own values. A chosen
-accent overrides the system's in Ibis only and is never scarlet. Ibis offers no
-brand colour, per-element colours, fonts, radius, spacing, custom CSS or themes.
+Scarlet marks the citation by default: the shelf's beak mark, the added tile,
+the Copied notice's citation, the format preview and the logo [C14]. It also
+serves as a control accent when the person explicitly chooses **Ibis scarlet**
+in Look (maintainer, 2026-10-31). Status and errors retain their own roles.
+On an accent-filled row the added tile becomes a `--text-on-accent` tile with
+a scarlet check, keeping citation and selection legible even with a warm accent.
+Ibis offers Appearance (System, Light, Dark; System by default) and Accent:
+Mac-style colour dots, first **Follow the Mac** (the default), then prominently
+labelled **Ibis scarlet**, then blue, purple, pink, red, orange, yellow, green
+and graphite. All swatches have Fluent names and tooltips. The Ibis swatch uses
+the real `scarlet` and `scarlet_dark` from `brand/settings.json`, through
+`--settings-accent-ibis`: `#C23A1C` light, `#FF7A5C` dark. Its
+`--settings-accent-ibis-on` pairs white in light mode and `#171717` ink in dark
+mode. Text on the accent, including selected rows and hover/pressed primary
+buttons, passes 4.5:1. Selected switch thumbs use the same paired foreground,
+including the permission-guide illustration; white must never disappear into
+the brighter dark-mode scarlet. Meaningful accent fills, rings and glyphs pass 3:1 on
+their adjacent surfaces in both themes. Contrast modes retain system pairs.
+A chosen accent overrides the system's in Ibis only. Ibis offers no per-element
+colours, fonts, radius, spacing, custom CSS or themes.
 
 **Contrast.** Text, placeholder, footer and key-cap labels: 4.5:1 against
 rendered pixels on every look and theme, the 22 px query included; over the
@@ -806,7 +813,7 @@ system demands it for correctness.
 |---|---|
 | Material [C13] | One glass sheet for the whole panel (Liquid Glass; popover vibrancy fallback) under a veil of the surface colour; menus on glass. Elsewhere, an opaque surface. |
 | Accent [C14] | The accent chosen in Look; with "Follow the Mac", the system accent where the webview reads it, else the `--accent` fallback in `tokens.css`. Each accent pairs with a `--text-on-accent` that keeps 4.5:1. |
-| Selected row [C4] | Accent fill with white selected text. |
+| Selected row [C4] | Accent fill with its contrast-safe paired selected text. |
 | Search box | Frameless, large. |
 | Format pop-up | Borderless pop-up, ⌃⌄, 28 px in a 32 px target, capsule. |
 | Switch | 38 × 22. |
@@ -1294,21 +1301,31 @@ control at the end, at least `--settings-row-height` (48 px) or
 `--surface-grouped-card` over `--surface-grouped` [D17]. Controls are the
 shared `Switch` (38 × 22), `Segmented` and shortcut recorder in `ui/`. Changes
 apply at once and reach an open picker; preference resets offer Undo. Built so
-far: seven searchable pages, with General (opening-shortcut link, login and
+far: five searchable pages, with General (opening-shortcut recorder, login and
 pasting), Look (real picker pictures, rows, Ibis mark or magnifier,
 Default/Larger text and paste preview), Shortcuts (opening shortcut and an
-expandable key list and Undo for restoring the default), Citations (default
+always-open grouped key list and Undo for restoring the default), Citations (default
 key syntax or style through the shared Ibis menu) and About Ibis (version and
 update checks). Appearance and Accent apply in both Settings and the picker
-through the same root-level roles. Largest text, None, window presets including
-Compact, menu-bar visibility, welcome replay and the remaining Libraries, Citations and Advanced
-actions appear disabled with Coming soon. Ordinary Settings presentations open
+through the same root-level roles. Unfinished controls, choices, rows and their
+sentences stay out of Settings and its search index: no disabled promises or
+"Coming soon" placeholders (maintainer, 2026-10-31). This includes menu-bar
+visibility, welcome replay, window presets, None, Largest, and the unfinished
+Libraries, Citations, Advanced and About actions. A page with no built controls
+stays out of navigation. Ordinary Settings presentations open
 General at the top; explicit page requests select that page and reset its scroller.
 The shared shell uses the root's full height at Default, Larger and 200% text.
 The page and navigation scrollers contain absolutely positioned descendants,
 so focusing a control never scrolls the document or moves the window chrome.
-General shows desktop-owned shortcut triggers verbatim, or Not assigned, with
-the desktop's guidance.
+General and Shortcuts share `ui/ShortcutSetting`: the same real recorder,
+recording prompt, refusal and read-error messages beside the cause, default
+reset and eight-second Undo. General edits in place; it never sends the person
+to Shortcuts to record. Both consume the one Settings shortcut owner and save
+queue, with no second subscription, persisted state or migration. Escape, Tab,
+blur and leaving the page cancel recording; pending writes remain owned by
+Settings across page changes. Desktop-owned triggers stay verbatim, or Not
+assigned, with the desktop's guidance; Change opens the desktop configuration
+only where supported, on either page (maintainer, 2026-10-31).
 Preference notifications retire older replies immediately and refresh after
 the queue actually completes; only closing uses the two-second limit. Both
 windows request a ticket from one synchronous native counter when a choice is
@@ -1331,8 +1348,12 @@ window; every drawing and board uses it, and it is kept in step with the app as
 both change. The Rows and Search icon pictures are the real picker drawn small
 (sample references, the current appearance), never a separate sketch, so they
 can't drift from it. Look opens with Appearance: System, Light and Dark as
-pictures of the picker (System split diagonally), System by default, then
-Accent as colour dots, Follow the Mac by default. The
+pictures of the picker (System split diagonally), in one row at default and
+minimum window widths, including Larger text. `ui/PictureChoice` gives every
+picture an equal grid column and scales the contents inside the available
+padding; never wrap three choices as two plus one. System is the default, then
+Accent as colour dots, Follow the Mac by default, with Ibis scarlet immediately
+after it and visibly named (maintainer, 2026-10-31). The
 website shows the app as it currently is. Each Appearance picture owns the
 labelled theme for its body and controls; System is split across the whole
 picture diagonally. Rows and Search icon use a crop of the real components at
@@ -1341,7 +1362,7 @@ The crop and its contents shrink together within the available row padding at
 minimum width and 200% text.
 
 **Pages for everyone** (2026-10-30). Most people never open Settings, so
-defaults carry the product (principle 9). Seven pages, each with one job, in this
+defaults carry the product (principle 9). The eventual seven pages, each with one job, in this
 order: **General** (the opening shortcut, Open at Login, Show in Menu Bar,
 pasting), **Look** (appearance, accent, rows, text size, window size, search icon, show what will
 be pasted; each visual choice a row of small pictures), **Libraries**
@@ -1362,7 +1383,8 @@ descriptions and common words ("dark", "startup", "paste"), opens the page and
 tints the matching row for two seconds. A setting lives in one place; the
 picker keeps only actions with their own keys.
 
-**Show in Menu Bar** is on by default. Turned off, the shortcut still opens
+**Show in Menu Bar** is planned and stays hidden until implemented. Its intended
+behaviour is on by default. Turned off, the shortcut still opens
 the picker, and opening Ibis from Applications (or Start, or the app grid)
 opens Settings; the switch's description says so. The menu bar icon is a
 16-point one-colour bird the system tints, from `brand/`, and opens a menu,
@@ -1376,9 +1398,11 @@ runs the full height; its navigation starts below the window buttons.
 page is an option, with exactly one selected option and `aria-current="page"`,
 drawn with the shared selected fill and paired text. One Tab stop enters the
 list; arrows and Home/End move focus and select the page. Typeahead moves
-focus to a matching page; Enter chooses it. Its width is
-`--settings-sidebar-width`, capped in proportion to the window so the page
-still fits at the minimum 480 × 400 size.
+focus to a matching page; Enter chooses it. The native window defaults to
+920 × 560 points and has a minimum of 800 × 400 (maintainer, 2026-10-31).
+`--settings-sidebar-width` is 12 rem, capped at 26% of the window to preserve
+content space with larger type. The page keeps its readable
+`--settings-group-width` cap rather than stretching rows across spare width.
 
 The content page and bounded navigation list scroll independently. The
 document, shell, sidebar background and reserved window-button area stay
@@ -1390,7 +1414,12 @@ bar or traffic lights. Never reserve that space with a sticky spacer or a
 negative margin.
 Opening Settings normally, selecting a page or requesting General again
 starts that page at the top, with a large `--type-page-title-*` heading and
-`--settings-page-inset` around the content. A single click on the current
+`--settings-page-inset` on the sides and bottom. Above the heading, use only
+`--settings-page-top-inset` below the reserved title bar, avoiding a second
+large blank band. `--settings-section-gap` keeps the heading, cards and titled
+groups apart; groups never touch. The page reserves a stable scrollbar gutter
+in addition to the content inset, so an overlay scrollbar cannot cover text
+or controls (maintainer, 2026-10-31). A single click on the current
 sidebar page also returns that page to the top. An explicit Pasting deep link
 may reveal that group, after its data loads, by moving only the page scroller.
 Presenting an existing Settings window without a page (shortcut or tray)
@@ -1399,11 +1428,23 @@ emits the General page event too, selecting General and resetting its scroll.
 `ui/SettingsGroup` owns grouped cards (`--r-card`, `--settings-group-width`)
 and inset rows. Groups and cards keep their natural height; the page must
 never shrink them to squeeze a long form into the window. Row heights are
-minima, include their padding, and grow in rem with text. Labels wrap, controls
-wrap below when necessary, buttons inherit the surrounding type and wrap
+minima, include their padding, and grow in rem with text. Every row shares
+`--settings-row-pad-block`; wrapped descriptions and controls retain the same
+side and vertical inset. `--settings-row-text-gap` separates a label from its
+description. Row buttons keep `--space-1` of block padding, including when a
+recording prompt wraps. Labels wrap, controls move below when necessary,
+buttons inherit the surrounding type and wrap
 their labels, and switches keep their shape. This holds at the minimum window
 size and with system text scaled up to 2×; no fixed row heights or clipped
-labels to make the form fit.
+labels to make the form fit. Check default and minimum widths at both Default
+and Larger text; keep the last control reachable without moving the shell.
+
+**No browser disclosure controls** (maintainer, 2026-10-31). Never use native
+`details` or `summary` elements, raw disclosure triangles, or screen-specific
+imitations anywhere in the app. Related settings and shortcut references use
+always-open `ui/SettingsGroup` rows with a heading; the Shortcuts page's
+**In the picker** group is always visible. Any future collapsible pattern must
+first belong to the shared design system.
 
 Permission-guide artwork, numbered instructions and actions form one column
 at every width. Instructions and **Open System Settings** start at the card's
