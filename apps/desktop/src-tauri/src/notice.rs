@@ -113,12 +113,13 @@ struct ReceiptOwner {
 
 impl ReceiptOwner {
     fn claim(&mut self, token: Option<u32>) -> Option<u64> {
-        if token.is_some_and(|token| self.latest_token.is_some_and(|latest| token <= latest)) {
+        let token = token?;
+        if self.latest_token.is_some_and(|latest| token <= latest) {
             return None;
         }
         let generation = self.generation.checked_add(1)?;
         self.generation = generation;
-        self.latest_token = token.or(self.latest_token);
+        self.latest_token = Some(token);
         Some(generation)
     }
 
@@ -551,6 +552,35 @@ mod tests {
     use super::*;
 
     #[test]
+    fn an_unidentified_notice_cannot_replace_a_successful_copy_receipt() {
+        let mut owner = ReceiptOwner::default();
+        let b = owner.claim(Some(2));
+        assert_eq!(owner.claim(None), None);
+        assert!(owner.current(b));
+    }
+
+    #[test]
+    fn copies_without_native_paste_proofs_keep_write_order_with_delayed_claims() {
+        let last = crate::paste::LastTarget::default();
+        let copy = || {
+            last.write_copy("[@invented]", |_| Ok(None), || Ok(None))
+                .unwrap_or_else(|e| panic!("{e}"))
+        };
+        let a = copy();
+        let b = copy();
+        let mut owner = ReceiptOwner::default();
+        let b_receipt = owner.claim(b);
+        assert!(b_receipt.is_some(), "a successful copy still reports its outcome");
+        assert_eq!(owner.claim(a), None, "delayed A cannot replace B");
+        assert!(owner.current(b_receipt));
+        let c = copy();
+        let c_receipt = owner.claim(c);
+        assert!(c_receipt.is_some(), "a fresh copy can replace a dismissed receipt");
+        assert_eq!(owner.claim(b), None);
+        assert!(owner.current(c_receipt));
+    }
+
+    #[test]
     fn only_the_latest_delivery_can_publish_its_receipt_in_either_completion_order() {
         for delayed_claim in [false, true] {
             let mut owner = ReceiptOwner::default();
@@ -565,7 +595,7 @@ mod tests {
             );
             assert_eq!(owner.claim(Some(2)), None, "a duplicate request never takes ownership");
             assert!(owner.current(b));
-            let c = owner.claim(None); // Linux / successful copy without a native proof.
+            let c = owner.claim(Some(3)); // Every successful copy has its own write identity.
             assert!(owner.current(c));
             assert!(!owner.current(b));
         }
