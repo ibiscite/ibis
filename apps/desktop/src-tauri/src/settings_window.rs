@@ -9,8 +9,8 @@ use crate::diagnostics::{NativeIssue, checked, report};
 pub(crate) const LABEL: &str = "settings";
 const TITLE: &str = "Ibis Settings";
 /// The design canvas's size (docs/design.md).
-const SIZE: (f64, f64) = (720.0, 560.0);
-const MIN_SIZE: (f64, f64) = (480.0, 400.0);
+const SIZE: (f64, f64) = (920.0, 560.0);
+const MIN_SIZE: (f64, f64) = (800.0, 400.0);
 
 /// Where Settings opens.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
