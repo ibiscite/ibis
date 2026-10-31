@@ -10,7 +10,7 @@ use block2::RcBlock;
 use objc2_app_kit::NSWorkspace;
 use objc2_foundation::{NSDistributedNotificationCenter, NSNotificationCenter, NSString, NSThread};
 
-use super::super::SafetyStamp;
+use super::super::{SafetyFailure, SafetyStamp};
 
 static INSTALLED: Once = Once::new();
 static EPOCH: AtomicU64 = AtomicU64::new(0);
@@ -159,6 +159,80 @@ pub(super) fn stamp() -> SafetyStamp {
     }
 }
 
+/// Used for AX's aggregate budget, even while the awake clock is suspended.
+pub(super) fn elapsed() -> Duration {
+    // SAFETY: SDK CLOCK_MONOTONIC_RAW=4; local, thread-safe, sleep-inclusive.
+    Duration::from_nanos(unsafe { clock_gettime_nsec_np(4) })
+}
+
+/// Prepare shared state before AX; notification checks precede the last live
+/// focus read. Finishing uses only atomics/clocks, never CHECKS' mutex or IPC.
+pub(super) struct PostProbe {
+    epoch: u64,
+    offset: Option<(i128, i128)>,
+    tokens: Vec<c_int>,
+}
+
+impl PostProbe {
+    pub(super) fn new() -> Result<Self, SafetyFailure> {
+        let stamp = stamp();
+        if stamp.epoch == 0 || stamp.epoch == u64::MAX {
+            return Err(SafetyFailure::Unavailable);
+        }
+        let checks = CHECKS.get().ok_or(SafetyFailure::Unavailable)?;
+        let checks = checks.try_lock().map_err(|_| SafetyFailure::Unavailable)?;
+        let state = checks.as_ref().ok_or(SafetyFailure::Unavailable)?;
+        Ok(Self {
+            epoch: stamp.epoch,
+            offset: state.clock_offset,
+            tokens: state.tokens.clone(),
+        })
+    }
+
+    pub(super) fn before_focus(&self) -> Result<(), SafetyFailure> {
+        for token in &self.tokens {
+            match changed(*token) {
+                Some(true) => invalidate(),
+                Some(false) => {}
+                None => return Err(SafetyFailure::Unavailable),
+            }
+        }
+        Ok(())
+    }
+
+    pub(super) fn finish(&self) -> Result<SafetyStamp, SafetyFailure> {
+        // SAFETY: Same bracketed SDK clocks as stamp(), but the correlation
+        // is against this probe's owned offset, without shared-state access.
+        let (before, awake, after) = unsafe {
+            (
+                clock_gettime_nsec_np(4),
+                clock_gettime_nsec_np(8),
+                clock_gettime_nsec_np(4),
+            )
+        };
+        self.check_sample(EPOCH.load(Ordering::SeqCst), before, awake, after)
+    }
+
+    fn check_sample(&self, epoch: u64, before: u64, awake: u64, after: u64) -> Result<SafetyStamp, SafetyFailure> {
+        let mut offset = self.offset;
+        match clock_changed(&mut offset, before, awake, after) {
+            Some(true) => return Err(SafetyFailure::Expired),
+            Some(false) => {}
+            None => return Err(SafetyFailure::Unavailable),
+        }
+        if epoch == 0 || epoch == u64::MAX {
+            return Err(SafetyFailure::Unavailable);
+        }
+        if epoch != self.epoch {
+            return Err(SafetyFailure::Expired);
+        }
+        Ok(SafetyStamp {
+            epoch,
+            elapsed: Duration::from_nanos(after),
+        })
+    }
+}
+
 fn clock_changed(offset: &mut Option<(i128, i128)>, before: u64, awake: u64, after: u64) -> Option<bool> {
     // A slow/inconsistent sample cannot prove continuity. Refuse this check.
     if before == 0 || awake == 0 || after.checked_sub(before)? > 100_000 {
@@ -201,5 +275,41 @@ mod tests {
         let mut offset = None;
         assert_eq!(clock_changed(&mut offset, 100, 95, 110), Some(false));
         assert_eq!(clock_changed(&mut offset, 200, 195, 100_000_210), None);
+    }
+
+    #[test]
+    fn a_sub_deadline_sleep_inside_ax_expires_without_waiting_for_an_epoch_callback() {
+        let probe = PostProbe {
+            epoch: 3,
+            offset: Some((4, 16)),
+            tokens: Vec::new(),
+        };
+        assert!(probe.check_sample(3, 250, 245, 260).is_ok());
+        // Just 1 ms, shorter than even the final AX tail; awake time paused.
+        assert!(matches!(
+            probe.check_sample(3, 1_000_250, 245, 1_000_260),
+            Err(SafetyFailure::Expired)
+        ));
+    }
+
+    #[test]
+    fn post_read_lifecycle_and_unavailable_sampling_keep_distinct_reasons() {
+        let probe = PostProbe {
+            epoch: 3,
+            offset: Some((4, 16)),
+            tokens: Vec::new(),
+        };
+        assert!(matches!(
+            probe.check_sample(4, 250, 245, 260),
+            Err(SafetyFailure::Expired)
+        ));
+        assert!(matches!(
+            probe.check_sample(0, 250, 245, 260),
+            Err(SafetyFailure::Unavailable)
+        ));
+        assert!(matches!(
+            probe.check_sample(3, 0, 245, 260),
+            Err(SafetyFailure::Unavailable)
+        ));
     }
 }

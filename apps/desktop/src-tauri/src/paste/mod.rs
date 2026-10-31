@@ -445,14 +445,16 @@ enum PostResult {
     KeyReleaseFailed,
 }
 
-/// These calls run in one main-thread task; none reads clipboard contents,
-/// the AX tree or a remote provider. Event creation/layout work runs first.
+/// These calls run in one main-thread task. The only AX query is the bounded,
+/// identity-only focused-window proof (ADR 0029); never clipboard contents.
 #[cfg(any(target_os = "macos", test))]
 trait PostDesk {
     fn now(&self) -> Instant;
     fn stamp(&self) -> SafetyStamp;
     fn current(&self, presentation: u64) -> bool;
-    fn frontmost(&self) -> Option<Front>;
+    /// Run refresh after the initial provider reads, before the tightly
+    /// bounded final window/global-focus pair. No lock follows that pair.
+    fn frontmost(&self, refresh: impl FnOnce() -> Result<(), CopyReason>) -> Result<Option<Front>, CopyReason>;
     fn change_count(&self) -> isize;
     fn secure_input(&self) -> Option<bool>;
     fn post(&self, pid: i32) -> bool;
@@ -469,16 +471,52 @@ fn checked_post(desk: &impl PostDesk, request: &PostRequest) -> PostResult {
     if !desk.current(request.presentation) {
         return PostResult::Refused;
     }
-    let target_matches = || {
-        desk.frontmost().is_some_and(|front| {
+    let target_matches = |refresh: bool| {
+        let front = desk
+            .frontmost(|| {
+                if !refresh {
+                    return Ok(());
+                }
+                // AX provider messaging can wait. Refresh clipboard/security after
+                // it, then allow only the bounded final identity pair before post.
+                request.stamp.check(desk.stamp()).map_err(|failure| failure.reason())?;
+                let secure = desk.secure_input();
+                if desk.now() >= request.deadline {
+                    return Err(CopyReason::PasteUnavailable);
+                }
+                match secure {
+                    Some(true) => return Err(CopyReason::SecureInput),
+                    None => return Err(CopyReason::PasteUnavailable),
+                    Some(false) => {}
+                }
+                if desk.change_count() != request.change_count {
+                    return Err(CopyReason::ClipboardChanged);
+                }
+                if desk.now() >= request.deadline {
+                    return Err(CopyReason::PasteUnavailable);
+                }
+                Ok(())
+            })
+            .map_err(|reason| match reason {
+                CopyReason::TargetChanged => PostResult::TargetChanged,
+                CopyReason::PasteExpired => PostResult::Expired,
+                CopyReason::SecureInput => PostResult::SecureInput,
+                CopyReason::ClipboardChanged => PostResult::ClipboardChanged,
+                _ => PostResult::Unavailable,
+            })?;
+        if front.is_some_and(|front| {
             front.pid == request.pid
                 && front.id.as_deref() == Some(&request.id)
                 && request.window.is_some()
                 && front.window == request.window
-        })
+        }) {
+            Ok(())
+        } else {
+            Err(PostResult::TargetChanged)
+        }
     };
-    if !target_matches() {
-        return PostResult::TargetChanged;
+    if let Err(failure) = target_matches(false) {
+        return failure;
     }
     let secure_input = desk.secure_input();
     if desk.now() >= request.deadline {
@@ -501,11 +539,12 @@ fn checked_post(desk: &impl PostDesk, request: &PostRequest) -> PostResult {
     if desk.now() >= request.deadline {
         return PostResult::Unavailable;
     }
-    // All locks, clock and lifecycle queries precede this last target check.
+    // All shared-state locks precede this last target check. Its bounded AX
+    // read includes lock-free completion/continuity checks before comparison.
     // Posting is still process-directed: public macOS APIs cannot atomically
     // bind Command-V to a foreign window. Keep this remaining gap explicit.
-    if !target_matches() {
-        return PostResult::TargetChanged;
+    if let Err(failure) = target_matches(true) {
+        return failure;
     }
     if desk.post(request.pid) {
         PostResult::Pasted
@@ -1161,6 +1200,7 @@ mod tests {
         clock: Cell<Instant>,
         stamp: Cell<SafetyStamp>,
         window: Cell<Option<u32>>,
+        focus_error: Cell<Option<CopyReason>>,
         presentation: Cell<u64>,
         hidden: bool,
         change_count: Cell<isize>,
@@ -1171,6 +1211,9 @@ mod tests {
         front_after_queue: Option<i32>,
         replace_during_check: bool,
         after_check: Option<fn(&Fake)>,
+        after_window_query: Option<fn(&Fake)>,
+        in_final_query: Cell<bool>,
+        replace_on_refresh_stamp: bool,
         focus_after_final_check: bool,
         posted_windows: RefCell<Vec<Option<u32>>>,
         checks: RefCell<Vec<&'static str>>,
@@ -1190,6 +1233,7 @@ mod tests {
                     elapsed: Duration::ZERO,
                 }),
                 window: Cell::new(Some(100)),
+                focus_error: Cell::new(None),
                 presentation: Cell::new(PRESENTATION),
                 hidden: true,
                 change_count: Cell::new(COUNT),
@@ -1200,6 +1244,9 @@ mod tests {
                 front_after_queue: None,
                 replace_during_check: false,
                 after_check: None,
+                after_window_query: None,
+                in_final_query: Cell::new(false),
+                replace_on_refresh_stamp: false,
                 focus_after_final_check: false,
                 posted_windows: RefCell::default(),
                 checks: RefCell::default(),
@@ -1255,13 +1302,15 @@ mod tests {
         }
     }
 
-    // Deliberately no clipboard-content or AX API: neither is needed by
-    // ordinary controls without subroles, denied AX trust or lazy providers.
+    // The fake never needs role, title, value or clipboard-content APIs.
     impl PostDesk for Fake {
         fn now(&self) -> Instant {
             self.clock.get()
         }
         fn stamp(&self) -> SafetyStamp {
+            if self.replace_on_refresh_stamp && self.in_final_query.get() {
+                self.change_count.set(COUNT + 1);
+            }
             if self.focus_after_final_check
                 && self
                     .checks
@@ -1278,9 +1327,21 @@ mod tests {
         fn current(&self, presentation: u64) -> bool {
             self.hidden && self.presentation.get() == presentation
         }
-        fn frontmost(&self) -> Option<Front> {
+        fn frontmost(&self, refresh: impl FnOnce() -> Result<(), CopyReason>) -> Result<Option<Front>, CopyReason> {
+            if self.checks.borrow().contains(&"foreground") {
+                self.in_final_query.set(true);
+            }
+            if self.checks.borrow().contains(&"foreground")
+                && let Some(change) = self.after_window_query
+            {
+                change(self);
+            }
+            if let Some(reason) = self.focus_error.get() {
+                return Err(reason);
+            }
+            refresh()?;
             self.checks.borrow_mut().push("foreground");
-            self.front()
+            Ok(self.front())
         }
         fn change_count(&self) -> isize {
             self.checks.borrow_mut().push("change-count");
@@ -1409,15 +1470,51 @@ mod tests {
 
     #[test]
     #[cfg_attr(target_os = "linux", ignore = "Linux never pastes")]
-    fn ordinary_editor_without_subrole_or_ax_trust_pastes_once_after_returning() {
+    fn an_editor_with_verified_window_identity_pastes_once_after_returning() {
         let desk = Fake::new();
         desk.fronts.replace(vec![7, 7, 42]);
         assert_eq!(deliver(&desk, Some(&proof()), true), pasted());
         assert_eq!(*desk.posts.borrow(), [42]);
         assert_eq!(
             *desk.checks.borrow(),
-            ["foreground", "secure-input", "change-count", "foreground", "post"]
+            [
+                "foreground",
+                "secure-input",
+                "change-count",
+                "secure-input",
+                "change-count",
+                "foreground",
+                "post"
+            ]
         );
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn repeated_show_from_our_key_panel_still_pastes_once_into_the_original_external_window() {
+        let desk = Fake::new();
+        let last = LastTarget::default();
+        last.begin_presentation(Some(writer("com.microsoft.word")));
+        let active_external = Front {
+            id: Some("com.microsoft.word".into()),
+            pid: 42,
+            window: None,
+            name: Some("Writer".into()),
+            elevated: false,
+        };
+        let own_key = macos::capture_front(Some(active_external), 7, true, |_| {
+            panic!("own panel must keep AX bank")
+        });
+        last.begin_presentation(capture::captured(SYSTEM, own_key, 7));
+        let token = last
+            .write_copy_at(TEXT, desk.stamp.get(), || Ok(Some(COUNT)))
+            .unwrap_or_else(|error| panic!("{error}"));
+        let proof = last.take_copy(TEXT, token).unwrap_or_else(|| panic!("proof"));
+        desk.presentation.set(proof.presentation);
+        assert_eq!(deliver(&desk, Some(&proof), true), pasted());
+        assert_eq!(*desk.posts.borrow(), [42]);
+        assert_eq!(*desk.posted_windows.borrow(), [Some(100)]);
+        assert_eq!(proof.text, TEXT);
     }
 
     #[test]
@@ -1459,6 +1556,31 @@ mod tests {
             assert_eq!(deliver(&desk, Some(&proof()), true), copied(Some("paste-unavailable")));
             assert!(desk.posts.borrow().is_empty());
         }
+    }
+
+    #[test]
+    #[cfg_attr(target_os = "linux", ignore = "Linux never pastes")]
+    fn final_window_proof_failure_keeps_its_own_delivery_reason() {
+        for (failure, reason) in [
+            (CopyReason::PasteUnavailable, "paste-unavailable"),
+            (CopyReason::TargetChanged, "target-changed"),
+            (CopyReason::PasteExpired, "paste-expired"),
+        ] {
+            let desk = Fake {
+                focus_error: Cell::new(Some(failure)),
+                ..Fake::new()
+            };
+            let proof = proof();
+            assert_eq!(deliver(&desk, Some(&proof), true), copied(Some(reason)));
+            assert_eq!(proof.text, TEXT);
+            assert!(desk.posts.borrow().is_empty());
+        }
+        let desk = Fake {
+            after_check: Some(|desk| desk.focus_error.set(Some(CopyReason::PasteUnavailable))),
+            ..Fake::new()
+        };
+        assert_eq!(deliver(&desk, Some(&proof()), true), copied(Some("paste-unavailable")));
+        assert!(desk.posts.borrow().is_empty());
     }
 
     #[test]
@@ -1669,6 +1791,36 @@ mod tests {
         assert_eq!(deliver(&desk, Some(&proof()), true), copied(Some("clipboard-changed")));
         assert!(desk.posts.borrow().is_empty());
         assert_eq!(*desk.checks.borrow(), ["foreground", "secure-input", "change-count"]);
+    }
+
+    #[test]
+    #[cfg_attr(target_os = "linux", ignore = "Linux never pastes")]
+    fn clipboard_and_secure_input_are_refreshed_after_the_final_ax_provider_wait() {
+        for (change, reason) in [
+            (
+                (|desk: &Fake| desk.change_count.set(COUNT + 1)) as fn(&Fake),
+                "clipboard-changed",
+            ),
+            ((|desk: &Fake| desk.secure.set(Some(true))) as fn(&Fake), "secure-input"),
+        ] {
+            let desk = Fake {
+                after_window_query: Some(change),
+                ..Fake::new()
+            };
+            assert_eq!(deliver(&desk, Some(&proof()), true), copied(Some(reason)));
+            assert!(desk.posts.borrow().is_empty());
+        }
+    }
+
+    #[test]
+    #[cfg_attr(target_os = "linux", ignore = "Linux never pastes")]
+    fn lifecycle_refresh_cannot_leave_an_older_clipboard_snapshot_before_the_final_focus_pair() {
+        let desk = Fake {
+            replace_on_refresh_stamp: true,
+            ..Fake::new()
+        };
+        assert_eq!(deliver(&desk, Some(&proof()), true), copied(Some("clipboard-changed")));
+        assert!(desk.posts.borrow().is_empty());
     }
 
     #[test]

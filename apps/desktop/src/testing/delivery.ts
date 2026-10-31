@@ -69,7 +69,12 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
     app: "Example Writer", text, selection,
     pastes: [] as { app: string; text: string; start: number; end: number; delivery: number }[],
   };
-  const target = { window: 100 as number | null, verified: true, available: true };
+  const documents = new Map<number, Pick<typeof document, "text" | "selection">>([
+    [100, document],
+    [200, { text: "Second: [citation].", selection: [8, 18] }],
+  ]);
+  const target = { window: 100 as number | null, verified: true, available: true,
+    focusedPid: 42, focusAvailable: true, focusTimedOut: false };
   const lifecycle = { epoch: 1, elapsed: 0, available: true };
   // Detached to keep this second window out of the picker's DOM and focus scope.
   const receiptRoot = globalThis.document.createElement("div");
@@ -91,13 +96,17 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
     if (owned.window === null) return { outcome: "copied", reason: "paste-unavailable" };
     if (!lifecycle.available) return { outcome: "copied", reason: "paste-unavailable" };
     if (owned.epoch !== lifecycle.epoch || lifecycle.elapsed - owned.written >= 1500) return { outcome: "copied", reason: "paste-expired" };
+    if (!target.focusAvailable || target.focusTimedOut) return { outcome: "copied", reason: "paste-unavailable" };
+    if (target.focusedPid !== 42) return { outcome: "copied", reason: "target-changed" };
     if (clipboard.owner !== "ibis" || owned.sequence !== clipboard.sequence) return { outcome: "copied", reason: "clipboard-changed" };
     if (!target.available || owned.window !== target.window) return { outcome: "copied", reason: "target-changed" };
     if (visible || owned.presentation !== presentation || clipboard.owner !== "ibis"
       || owned.sequence !== clipboard.sequence || owned.app !== document.app) return { outcome: "copied", reason: null };
-    const [start, end] = document.selection;
-    document.text = document.text.slice(0, start) + clipboard.text + document.text.slice(end);
-    document.selection = [start + clipboard.text.length, start + clipboard.text.length];
+    const destination = documents.get(owned.window);
+    if (!destination) return { outcome: "copied", reason: "target-changed" };
+    const [start, end] = destination.selection;
+    destination.text = destination.text.slice(0, start) + clipboard.text + destination.text.slice(end);
+    destination.selection = [start + clipboard.text.length, start + clipboard.text.length];
     document.pastes.push({ app: owned.app, text: clipboard.text, start, end, delivery: owned.delivery });
     return { outcome: "pasted", app: owned.app };
   };
@@ -137,7 +146,7 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
   });
 
   return {
-    search, preview, copy, delivery, notice, calls, clipboard, document, target, lifecycle, receipt: receiptRoot,
+    search, preview, copy, delivery, notice, calls, clipboard, document, documents, target, lifecycle, receipt: receiptRoot,
     get visible() { return visible; },
     async reopen() {
       presentation += 1;

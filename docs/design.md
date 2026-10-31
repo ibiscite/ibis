@@ -1076,10 +1076,18 @@ that owns its area in ROADMAP.md.
    A refusal never retries or replaces another clipboard owner's contents.
    No window title or document text is read. Window count and front-to-back
    order cannot establish keyboard focus, including with nonactivating panels.
-   Under decision 0029's current PostEvent-only contract, macOS copies with
-   `paste-unavailable` until a permitted focused-window proof is agreed; this
-   applies to single- and multiwindow apps and does not call an unchanged window
-   "changed". Restoring multiwindow auto-paste needs that maintainer decision.
+   On macOS, Enter uses the captured system-wide focused window, including when
+   several windows of an app are open. An identity-only AX check uses existing
+   Accessibility trust without a prompt (decision 0029, maintainer 2026-10-30).
+   It verifies global keyboard ownership as well as the active app, so a foreign
+   nonactivating panel cannot borrow that app's target. Missing trust, failed
+   reads and the bounded 50 ms query timeout copy with `paste-unavailable`.
+   No field roles, values or secure-field attributes, window titles or document
+   text are read. The final comparison is followed immediately by
+   process-directed posting, without a
+   lock; a small OS focus-change gap remains and is not atomic window binding.
+   Showing the picker again while it owns the keyboard keeps the original
+   external destination.
 4. Open in under 100 ms with the last snapshot; text received by Search during
    opening is kept (see **Opening** for X11 input routing). The Linux smoke
    types once as soon as the picker is mapped, without waiting for focus.

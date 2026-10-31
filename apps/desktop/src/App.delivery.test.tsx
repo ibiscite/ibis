@@ -57,6 +57,9 @@ test.each([
   ["lock and unlock", (h: Harness) => { h.lifecycle.epoch += 2; }, "Copied. The paste expired; paste it yourself"],
   ["long delay", (h: Harness) => { h.lifecycle.elapsed += 1500; }, "Copied. The paste expired; paste it yourself"],
   ["safety check unavailable", (h: Harness) => { h.lifecycle.available = false; }, "Copied. Press ⌘V to paste."],
+  ["AX unavailable", (h: Harness) => { h.target.focusAvailable = false; }, "Copied. Press ⌘V to paste."],
+  ["AX timeout", (h: Harness) => { h.target.focusTimedOut = true; }, "Copied. Press ⌘V to paste."],
+  ["foreign nonactivating panel holds keyboard focus", (h: Harness) => { h.target.focusedPid = 99; }, "Copied. The target app or window changed"],
   ["clipboard changed", (h: Harness) => { h.clipboard.sequence += 1; }, "Copied. The clipboard changed; copy the citation again"],
   ["another window", (h: Harness) => { h.target.window = 200; }, "Copied. The target app or window changed"],
   ["closed window", (h: Harness) => { h.target.window = null; }, "Copied. The target app or window changed"],
@@ -75,9 +78,9 @@ test.each([
   expectReceipt(harness, message, "[@a]");
 });
 
-test.each(["one document window", "multiple document windows", "a foreign nonactivating panel"])("unproven macOS focus with %s copies with an unavailable reason", async () => {
+test("unproven macOS focus copies with an unavailable reason", async () => {
   const harness = await open();
-  // PostEvent-only capture cannot prove the globally focused window.
+  // Missing identity at capture is unavailable, not a changed target.
   harness.target.window = null;
   await choose(harness, "first");
   await enter();
@@ -86,6 +89,20 @@ test.each(["one document window", "multiple document windows", "a foreign nonact
   expectReceipt(harness, "Copied. Press ⌘V to paste.", "[@a]");
   expect(harness.clipboard.text).toBe("[@a]");
   expect(harness.document.pastes).toEqual([]);
+});
+
+test.each([100, 200])("Enter pastes into focused window %s with two document windows open", async (window) => {
+  const harness = await open();
+  harness.target.window = window;
+  await choose(harness, "first");
+  await enter();
+  await finishCopy(harness);
+  await finishDelivery(harness);
+  expect(harness.documents.get(window)?.text).toBe(window === 100 ? "Draft: [@a]." : "Second: [@a].");
+  expect(harness.documents.get(window === 100 ? 200 : 100)?.text).toBe(window === 100 ? "Second: [citation]." : "Draft: [citation].");
+  expect(harness.document.pastes).toHaveLength(1);
+  expect(harness.clipboard.text).toBe("[@a]");
+  expectReceipt(harness, "Pasted into Example Writer", "[@a]");
 });
 
 test("Enter waits for a preview, then copies and replaces the document selection exactly once", async () => {

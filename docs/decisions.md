@@ -189,10 +189,10 @@ that the destination is a password field. An enabled flag copies with the
 `secure-input` reason: "Copied. Secure typing is on, possibly in another app.
 Press ⌘V to paste." An unavailable or timed-out check uses `paste-unavailable`:
 "Copied. Press ⌘V to paste." Neither outcome claims password-field detection.
-The AX guard is removed: optional subroles, denied AX trust and dormant
-providers must not disable ordinary paste (#1280, #1360). Paste requests
-only PostEvent permission, never Accessibility trust; no AX attributes are
-read or providers activated.
+The AX password/subrole guard is removed (#1280, #1360). Paste requests only
+PostEvent permission; it never requests Accessibility trust or prompts for it.
+The identity-only exception below uses an existing grant. Without a usable
+focused-window proof, Enter copies with `paste-unavailable` instead of guessing.
 
 On macOS, Ibis snapshots the pasteboard change count immediately after writing
 every format, checking that ownership did not change during publication. A
@@ -222,28 +222,72 @@ The WindowServer window-count heuristic is removed after #1529 review. Neither
 the active app nor front-to-back ordering proves keyboard ownership: a foreign
 nonactivating text panel can be key while Word stays active. Refusing every
 multiwindow app is also not an acceptable focused-window implementation.
-The public Accessibility focused-window/owner queries require an AX read and
-trust, which this decision and #1241's PostEvent-only contract do not authorize.
-Pending an explicit maintainer decision, the macOS adapter supplies no focused
-window proof and copies with `paste-unavailable`, for single- and multiwindow
-apps, without requesting permission or claiming an unchanged target changed.
-The maintainer options are a bounded, identity-only AX exception using existing
-grants with a copied fallback, or retaining PostEvent-only copy-only behavior.
-No exception or new permission prompt has been implemented.
+On 2026-10-30 the maintainer chose option A: narrowly amend this decision and
+#1241's PostEvent-only contract to allow a focused-window identity proof using
+existing Accessibility trust, with no new permission or prompt. The complete
+AX attribute allowlist is `AXFocusedApplication`, its `AXFocusedWindow`, the
+system-wide `AXFocusedUIElement`, and that element's containing `AXWindow`.
+Only opaque AX object equality and their PIDs are used. The element read
+establishes the actual global focus owner, including a foreign nonactivating
+panel; it reads no field roles, values or secure-field attributes. The app,
+focused window and containing
+window must agree with the captured target, and global focus is read again
+after the provider queries. The containing-window relation is reread just
+before that last global-focus read to catch a control moving between windows
+while keeping its identity. No titles, roles/subroles, document text, values,
+tree traversal, attribute enumeration, descriptions or logs are allowed.
+Single- and multiwindow apps follow the same focused-window identity contract.
+At capture, Ibis first checks whether one of its own native windows is key.
+A repeated show while its nonactivating picker owns the keyboard keeps the
+previous external capture and AX identity bank, even if NSWorkspace still
+names that external app. This reads only Ibis's own AppKit window state.
 
-Even with an approved focused-window proof, public `CGEventPostToPid` addresses
+Each query has one 50 ms sleep-inclusive budget. Every queried AX object gets
+the remaining messaging timeout; the system object's process-default timeout
+is restored on exit. After the initial provider reads, notification, Secure
+Event Input and clipboard-count checks are refreshed; the final adjacent
+containing-window/global-focus pair has a tighter 5 ms budget, including late
+successes or errors. Slow providers copy instead of extending stale evidence.
+Missing existing trust, unsupported reads, errors, timeouts or unstable focus
+copy with `paste-unavailable`; a proven changed/lost owner or window uses
+`target-changed`. A failed capture cannot invent a changed target.
+Captured AX references stay on the main thread, retained only in memory with a
+nonwrapping token; workers carry the token, never the reference. A final query
+only compares and cannot replace the captured identity. There is no idle or
+hidden polling; queries run only during capture and delivery. Provider latency
+adds at most the bounded capture wait to opening and bounded checks to delivery;
+native latency remains to be measured.
+
+Even with this focused-window proof, public `CGEventPostToPid` addresses
 a process, not a window. Public APIs do not provide an atomic foreign-window
-binding for this shortcut. All ownership locks, lifecycle checks and clock
-queries now precede the final target check, which immediately precedes posting;
-Ibis takes no lock or additional guard query in that interval. This narrows the
-check-to-post gap; it does not eliminate an OS focus change between the check
-and PID-directed dispatch, and Ibis must not claim otherwise.
+binding for this shortcut. All ownership locks and shared lifecycle state are
+acquired before the final AX identity pair; synchronous notification checks
+also precede that pair. Completion checks use only sleep-inclusive time,
+a locally owned awake-clock correlation and the atomic epoch, so suspension
+during the read also expires delivery without taking a mutex or querying a
+provider. The final local identity comparison immediately precedes posting;
+Ibis takes no lock or extra provider query after it. There remains a small
+interval between the last OS
+focus read and PID-directed dispatch, including local validation. Public APIs
+cannot eliminate a focus change in that interval. AX also samples global focus
+and its containing-window relation sequentially, not in an atomic OS snapshot;
+movement during that final adjacent pair remains part of the gap. This is not
+atomic binding.
 
-There is no AX provider access, window-name lookup, screen capture, new
-permission or hidden polling. `paste/macos/safety.rs` remains a scoped unsafe
-exception for SDK clocks and observer registration. It uses already-locked
+The focus, clipboard and session state are also separate OS observations.
+A complete lock/unlock/session cycle wholly inside that final tail can evade
+the notification fence if main-thread callbacks have not run and focus returns
+unchanged; local clock correlation independently catches sleep. These narrow
+intervals remain native qualification limits, not guarantees of atomic input.
+
+There is no window-name lookup, screen capture, new permission or hidden
+polling. `paste/macos/focus/native.rs` is a scoped unsafe exception for the
+public AX APIs; CF ownership/equality use the already-locked
+`objc2-core-foundation` safe binding directly. `paste/macos/safety.rs` remains a
+scoped unsafe exception for SDK clocks and observer registration. It uses already-locked
 `block2` directly. Clock/notification logic has synthetic coverage; real OS
-producers and any future native keyboard placement still require qualification.
+producers, focused-window providers and native keyboard placement still
+require qualification.
 Clock sampling has its stated 100 µs resolution limit.
 
 Other macOS native calls use objc2's generated AppKit and Core Graphics

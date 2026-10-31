@@ -1,6 +1,6 @@
 //! Which app the picker was opened from, taken before the panel shows (#1241).
 //!
-//! Only app identity, its name for feedback and an opaque window number are
+//! Only app identity, its name for feedback and an opaque window token are
 //! kept in memory. Window titles and document text are never read.
 
 use ibis_core::destination::{AppId, System, Target};
@@ -11,7 +11,7 @@ pub(crate) struct Front {
     /// macOS bundle ID or Windows executable file name; `None` for an app without one.
     pub(crate) id: Option<String>,
     pub(crate) pid: i32,
-    /// Opaque macOS window number; no title or contents.
+    /// Opaque macOS focused-window token; no title or contents.
     pub(crate) window: Option<u32>,
     /// The app's own name, as the Dock or its file description shows it.
     pub(crate) name: Option<String>,

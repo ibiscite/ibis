@@ -53,6 +53,8 @@ objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std"
 objc2-core-graphics = { version = "0.3.2", default-features = false, features = ["std", "libc", "CGEvent", "CGEventSource", "CGEventTypes", "CGRemoteOperation"] }
 # Already locked through Tauri; lifecycle observers.
 block2 = "0.6.2"
+# Already locked through Tauri; owns opaque AX references and attribute names.
+objc2-core-foundation = { version = "0.3.2", default-features = false, features = ["std", "CFString"] }
 # Already locked through Tauri. Reads whether macOS opened Ibis as a login
 # item (#525), so the picker stays hidden then.
 objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSAppleEventManager", "NSAppleEventDescriptor", "NSData", "NSString", "NSThread", "NSArray", "NSBundle", "NSURL", "objc2-core-services", "NSNotification", "NSDistributedNotificationCenter", "NSOperation", "block2"] }
@@ -67,7 +69,7 @@ tempfile = "3.27.0"
 tauri = { version = "2.12", features = ["test"] }
 
 # `forbid` cannot be narrowed by a module allowance. Match the workspace
-# policy, with unsafe allowed only in paste/macos/secure_input.rs and safety.rs,
+# policy, with unsafe allowed only in paste/macos/secure_input.rs, safety.rs and focus/native.rs,
 # paste/permission/drag.rs and cfg(test) paste/windows_bstr_test.rs (ADR 0029).
 [lints.rust]
 unsafe_code = "deny"
