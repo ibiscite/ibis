@@ -876,7 +876,7 @@ enum Piece {
 }
 
 /// Turn parser chunks into text pieces and markup tags. Braced (verbatim)
-/// chunks are protected from case changes and wrapped in a `nocase` span.
+/// and math chunks retain their case inside a `nocase` span.
 fn pieces_from_chunks<'a>(chunks: impl Iterator<Item = &'a Chunk>, unknown: &mut BTreeSet<String>) -> Vec<Piece> {
     let mut pieces = Vec::new();
     for chunk in chunks {
@@ -894,8 +894,10 @@ fn pieces_from_chunks<'a>(chunks: impl Iterator<Item = &'a Chunk>, unknown: &mut
 }
 
 /// Math: symbols as in text, plus `^`/`_` as superscript and subscript.
-/// Math is protected from case changes.
+/// Protect the whole chunk so subtitle processing cannot change its operators
+/// or variable names, including text surrounding superscripts and subscripts.
 fn math_pieces(math: &str, out: &mut Vec<Piece>, unknown: &mut BTreeSet<String>) {
+    out.push(Piece::Tag("<span class=\"nocase\">"));
     let mut rest = math;
     let mut plain = String::new();
     while let Some(pos) = rest.find(['^', '_']) {
@@ -939,6 +941,7 @@ fn math_pieces(math: &str, out: &mut Vec<Piece>, unknown: &mut BTreeSet<String>)
     }
     plain.push_str(rest);
     tex_pieces(&plain, true, out, unknown);
+    out.push(Piece::Tag("</span>"));
 }
 
 /// Commands whose argument is shown as-is.

@@ -533,6 +533,46 @@ fn software_and_dataset_versions_reach_formatted_entries() {
 }
 
 #[test]
+fn math_operators_and_variables_survive_apa_subtitle_capitalization() {
+    let formatter = Formatter::new().unwrap();
+    for (title, plain, html, rtf) in [
+        (
+            "Bounds for $x - y$",
+            "Bounds for x - y",
+            "Bounds for x - y",
+            "Bounds for x - y",
+        ),
+        (
+            "Bounds for $x - y$: a field guide",
+            "Bounds for x - y: A field guide",
+            "Bounds for x - y: A field guide",
+            "Bounds for x - y: A field guide",
+        ),
+        (
+            "Bounds for $x: y$",
+            "Bounds for x: y",
+            "Bounds for x: y",
+            "Bounds for x: y",
+        ),
+        (
+            "Bounds for $x_{i} - y^{2}$",
+            "Bounds for xi - y2",
+            "Bounds for x<sub>i</sub> - y<sup>2</sup>",
+            r"Bounds for x\sub i\nosupersub{} - y\super 2\nosupersub{}",
+        ),
+        ("$x - y$ bounds", "x - y bounds", "x - y bounds", "x - y bounds"),
+    ] {
+        apa_article(
+            &format(&formatter, &article(&format!("title={{{title}}}")), "apa"),
+            plain,
+            html,
+            rtf,
+            "",
+        );
+    }
+}
+
+#[test]
 fn math_does_not_change_the_case_of_adjacent_text() {
     let formatter = Formatter::new().unwrap();
     for source in [
