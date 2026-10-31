@@ -397,6 +397,9 @@ impl SourceWatch {
             .spawn(move || {
                 // Also check once after registration to close the load/watch gap.
                 let mut error_reported = false;
+                // Windows reports one delete as several directory events: the
+                // same failure is one report until a read succeeds again.
+                let mut reported = None;
                 while events.recv().is_ok() && !stop.load(Ordering::SeqCst) {
                     loop {
                         if stop.load(Ordering::SeqCst) {
@@ -443,12 +446,16 @@ impl SourceWatch {
                         match candidate {
                             Ok(Some(loaded)) => {
                                 error_reported = false;
+                                reported = None;
                                 publish_candidate(&mut model, loaded, &mut changed);
                             }
                             Ok(None) => {}
                             Err(error) => {
                                 error_reported = true;
-                                let _ = changed(Err(error));
+                                if reported != Some(error) {
+                                    reported = Some(error);
+                                    let _ = changed(Err(error));
+                                }
                             }
                         }
                     }

@@ -136,7 +136,7 @@ def missing_library_evidence(snapshot, name):
     retained = retained_snapshot_fragments(snapshot, name)
     return {key: fragment if type(fragment) is bool else fragment in text for key, fragment in {
         "failed_source_named": f"The library could not be opened: {name}",
-        "retention_explained": "the library file is unavailable; keeping the last loaded references",
+        "retention_explained": "the library file is unavailable; download any online-only file to this computer first; keeping the last loaded references",
         "recovery_action": "Choose it again or reconnect the drive.",
         # The footer says the library moved or was not updated; its detail, read by
         # screen readers, keeps the retained count. Names are isolated (U+2068/9).
@@ -4001,7 +4001,7 @@ class ContractTests(unittest.TestCase):
     def test_missing_library_requires_both_recovery_message_and_retained_snapshot(self):
         name = "synthetic 引用.bib"
         message = (f"The library could not be opened: {name}. "
-                   "the library file is unavailable; keeping the last loaded references. "
+                   "the library file is unavailable; download any online-only file to this computer first; keeping the last loaded references. "
                    "Choose it again or reconnect the drive.")
         current = {"nodes": [{"name": message}, {"value": name}, {"value": " · not updated"},
                              {"value": f"\u2068{name}\u2069 · 4 references. checked just now, 12:00 PM · the file could not be read"}]}
@@ -4018,7 +4018,7 @@ class ContractTests(unittest.TestCase):
         name = "synthetic 引用.bib"
         detail = (f"\u2068{name}\u2069 · 4 references. \u2068last read 2 hours ago, 12:00 PM\u2069 · "
                   f"The library could not be opened: \u2068{name}\u2069. "
-                  "the library file is unavailable; keeping the last loaded references. "
+                  "the library file is unavailable; download any online-only file to this computer first; keeping the last loaded references. "
                   "Choose it again or reconnect the drive.")
         current = {"nodes": [{"value": f"{name} moved"}, {"value": detail}]}
         self.assertTrue(all(missing_library_evidence(current, name).values()))
@@ -4060,7 +4060,7 @@ class ContractTests(unittest.TestCase):
     def test_missing_library_accepts_isolated_separator_nodes_without_losing_requirements(self):
         name = "synthetic 引用.bib"
         message = (f"The library could not be opened: {name}. "
-                   "the library file is unavailable; keeping the last loaded references. "
+                   "the library file is unavailable; download any online-only file to this computer first; keeping the last loaded references. "
                    "Choose it again or reconnect the drive.")
         current = {"nodes": [{"name": message}, {"value": name}, {"value": " · "},
                              {"value": "not updated"}, {"value": f"{name} · 4 references"}]}
@@ -4076,7 +4076,7 @@ class ContractTests(unittest.TestCase):
     def test_missing_library_rejects_counts_that_only_prefix_other_wording(self):
         name = "synthetic.bib"
         message = (f"The library could not be opened: {name}. "
-                   "the library file is unavailable; keeping the last loaded references. "
+                   "the library file is unavailable; download any online-only file to this computer first; keeping the last loaded references. "
                    "Choose it again or reconnect the drive.")
         for count in ("4 references missing; 3 references retained", "4 references missing",
                       "4 references retained", "4 references · unrelated status",
