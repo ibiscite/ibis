@@ -108,8 +108,13 @@ fn has_references(library: &Library) -> bool {
     library
         .file
         .as_ref()
-        .and_then(|file| file.engine.libraries().ok())
-        .is_some_and(|info| info.libraries.iter().any(|i| i.objects > 0))
+        .and_then(|file| file.engine.snapshot().ok())
+        .is_some_and(|snapshot| {
+            snapshot
+                .objects()
+                .iter()
+                .any(|item| matches!(item.object, ibis_core::contract::LibraryObject::Record(_)))
+        })
 }
 
 pub(crate) fn status(library: &Library) -> LibraryStatus {
@@ -235,6 +240,110 @@ mod tests {
     use crate::library::load::load_library;
     use crate::library::state::{LoadRequests, begin_open, candidate, install};
     use crate::tray::library_line;
+
+    #[test]
+    fn reference_counts_exclude_attachments_in_library_status() -> Result<(), Box<dyn std::error::Error>> {
+        use super::super::engine_file::FileLibrary;
+        use ibis_engine::{Cancellation, Engine};
+        use std::sync::Arc;
+
+        let directory = tempfile::tempdir()?;
+        let path = directory.path().join("invented.bib");
+        std::fs::write(directory.path().join("invented.pdf"), b"invented attachment")?;
+        std::fs::write(&path, "@book{one,title={Invented rivers},file={invented.pdf}}")?;
+        let engine = Engine::new().map_err(|_| "engine")?.without_file_watches();
+        engine
+            .open_file_observed(&path, &Cancellation::default())
+            .map_err(|_| "open library")?;
+        assert_eq!(engine.libraries().map_err(|_| "libraries")?.libraries[0].objects, 2);
+        let mut library = Library {
+            source: Some(Source::File(path.clone())),
+            file: Some(Arc::new(FileLibrary::from_engine(engine))),
+            ..Library::default()
+        };
+        let loaded = status(&library);
+        assert_eq!(loaded.references, 1);
+        assert_eq!(loaded.source_counts.values().copied().collect::<Vec<_>>(), [1]);
+        assert_eq!(library_line(&loaded), "invented.bib: 1 references");
+        let payload = serde_json::to_value(&loaded)?;
+        assert_eq!(payload["references"], 1, "the footer receives the reference count");
+
+        std::fs::remove_file(&path)?;
+        let file = library.file.as_ref().ok_or("file")?;
+        library.error = Some(file.reload().err().ok_or("deleted file reloaded")?);
+        let retained = status(&library);
+        assert_eq!(retained.references, 1);
+        assert_eq!(retained.source_counts, loaded.source_counts);
+        assert!(retained.stale && retained.kept_references);
+        Ok(())
+    }
+
+    #[test]
+    fn non_record_sources_count_as_empty_and_do_not_claim_retained_references() -> Result<(), Box<dyn std::error::Error>>
+    {
+        use super::super::engine_file::FileLibrary;
+        use ibis_core::contract::{LibraryId, LibraryObject, Snapshot};
+        use ibis_engine::Engine;
+        use serde_json::json;
+        use std::sync::Arc;
+
+        let non_records = LibraryId::file(b"invented non-record objects");
+        let records = LibraryId::file(b"invented references");
+        let empty = LibraryId::file(b"invented empty library");
+        let id = |key| json!({"library":non_records,"key":key});
+        let objects: Vec<LibraryObject> = serde_json::from_value(json!([
+            {"kind":"attachment","data":{"id":id("attachment"),"parent":null,"title":"Invented PDF",
+                "media_type":"application/pdf","availability":"unknown","content_hash":null}},
+            {"kind":"note","data":{"id":id("note"),"parent":null,"text":"Invented note"}},
+            {"kind":"annotation","data":{"id":id("annotation"),"parent":id("attachment"),
+                "text":"Invented passage","comment":"","page_label":null,"page_index":null}},
+            {"kind":"collection","data":{"id":id("collection"),"parent":null,"name":"Invented","items":[]}},
+            {"kind":"tag","data":{"id":id("tag"),"name":"Invented","items":[]}},
+            {"kind":"saved-search","data":{"id":id("search"),"name":"Invented","conditions":[]}}
+        ]))?;
+        let engine = Engine::from_snapshot(Arc::new(Snapshot::new(objects)?));
+        engine
+            .publish_library(empty.clone(), Arc::new(Snapshot::new(vec![])?))
+            .map_err(|_| "publish empty library")?;
+        let mut library = Library {
+            source: Some(Source::File(PathBuf::from("invented.bib"))),
+            file: Some(Arc::new(FileLibrary::from_engine(engine.clone()))),
+            error: Some(SourceError::Unavailable.into()),
+            ..Library::default()
+        };
+        let failed = status(&library);
+        assert!(
+            !failed.kept_references,
+            "non-record objects are not searchable references"
+        );
+        assert!(!failed.stale);
+        assert_eq!(failed.error.as_deref(), Some("the library file is unavailable"));
+        assert_eq!(failed.references, 0);
+        assert_eq!(
+            failed.source_counts,
+            BTreeMap::from([(non_records.as_str().into(), 0), (empty.as_str().into(), 0)])
+        );
+
+        let objects = serde_json::from_value(json!([
+            {"kind":"record","data":{"id":{"library":records,"key":"one"},"csl":{"title":"Invented one"}}},
+            {"kind":"record","data":{"id":{"library":records,"key":"two"},"csl":{"title":"Invented two"}}}
+        ]))?;
+        engine
+            .publish_library(records.clone(), Arc::new(Snapshot::new(objects)?))
+            .map_err(|_| "publish references")?;
+        library.error = None;
+        let populated = status(&library);
+        assert_eq!(populated.references, 2);
+        assert_eq!(
+            populated.source_counts,
+            BTreeMap::from([
+                (non_records.as_str().into(), 0),
+                (empty.as_str().into(), 0),
+                (records.as_str().into(), 2)
+            ])
+        );
+        Ok(())
+    }
 
     #[test]
     fn a_failed_choice_does_not_hide_failure_or_recovery_of_the_retained_file() -> Result<(), Box<dyn std::error::Error>>
