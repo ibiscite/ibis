@@ -1,0 +1,5 @@
+# Remove this once actionlint recognizes the concurrency queue key.
+paths:
+  .github/workflows/preview.yml:
+    ignore:
+      - '^unexpected key "queue" for "concurrency" section\. expected one of "cancel-in-progress", "group"$'

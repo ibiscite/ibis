@@ -185,7 +185,7 @@ fn tools() -> Value {
         {
             "name": "cite",
             "title": "Format a citation",
-            "description": "Format one citation for the given items, in a CSL style (default apa) or a citation key syntax such as pandoc, biblatex or typst. Returns the text with notices and losses that say what it cannot show.",
+            "description": "Format one citation for the given items, in a CSL style (default apa) or a citation key syntax such as pandoc, biblatex or typst. Returns the text with item warnings, notices and losses that say what needs checking or cannot be shown.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -399,14 +399,20 @@ fn cite(engine: &Engine, arguments: &Value) -> Result<Value, EngineError> {
     };
     // Only a complete citation is handed on; anything less is an error the
     // agent can see, never a partial text it might paste.
-    // Notices and losses carry no library data; an agent needs them to know
+    // Fixed-code warnings, notices and losses carry no library data; an agent needs them to know
     // what the text cannot say, as `ibis cite --json` reports them.
     match result.copy_content(items.len()) {
-        Some(content) => Ok(json!({
+        Some(content) => {
+            let mut answer = json!({
             "text": content.text,
             "notices": result.notices,
             "losses": result.losses,
-        })),
+            });
+            if !result.warnings.is_empty() {
+                answer["warnings"] = json!(result.warnings);
+            }
+            Ok(answer)
+        }
         None => Err(bad_input()),
     }
 }

@@ -19,6 +19,9 @@ pub(crate) enum Page {
     General,
     /// General, scrolled to pasting and its permission.
     Paste,
+    Look,
+    Libraries,
+    Advanced,
     Shortcuts,
     Citations,
     About,
@@ -29,6 +32,9 @@ impl Page {
         match self {
             Page::General => "general",
             Page::Paste => "paste",
+            Page::Look => "look",
+            Page::Libraries => "libraries",
+            Page::Advanced => "advanced",
             Page::Shortcuts => "shortcuts",
             Page::Citations => "citations",
             Page::About => "about",
@@ -45,7 +51,8 @@ pub(crate) async fn open_settings(app: AppHandle, page: Option<Page>) {
     open(&app, page);
 }
 
-/// Return from the paste guide after a live grant, without replaying Enter.
+/// Close the paste guide after both grants; a fresh external activation opens
+/// the picker again. Granting permission never captures a target or retries Enter.
 #[tauri::command]
 #[specta::specta]
 pub(crate) async fn finish_paste_guide(app: AppHandle) -> Result<bool, String> {
@@ -64,7 +71,6 @@ pub(crate) async fn finish_paste_guide(app: AppHandle) -> Result<bool, String> {
                     closed(&handle);
                     Ok::<_, tauri::Error>(())
                 },
-                || crate::picker::show_picker(&handle),
             )
             .map_err(|_| "The permission guide could not close.".to_string())
         })();
@@ -78,19 +84,14 @@ pub(crate) async fn finish_paste_guide(app: AppHandle) -> Result<bool, String> {
         .ok_or_else(|| "The permission guide could not close.".to_string())?
 }
 
-fn finish_guide_with<E>(
-    granted: bool,
-    focused: bool,
-    close: impl FnOnce() -> Result<(), E>,
-    resume: impl FnOnce(),
-) -> Result<bool, E> {
+fn finish_guide_with<E>(granted: bool, focused: bool, close: impl FnOnce() -> Result<(), E>) -> Result<bool, E> {
     if !granted || !focused {
         return Ok(false);
     }
     close()?;
-    // Normal presentation captures the destination anew and retires the old
-    // one-use clipboard proof. It never attempts to deliver the earlier copy.
-    resume();
+    // Settings and the nonactivating picker can keep Ibis key after a grant.
+    // Do not infer a new external target here: the next deliberate summon
+    // captures it and retires old proofs before a fresh Enter can paste.
     Ok(true)
 }
 
@@ -149,7 +150,7 @@ fn present(app: &AppHandle, page: Option<Page>) {
     }
 }
 
-/// Reopening through the shortcut or tray also resets the existing page.
+/// Every presentation has a page; ordinary Settings opens on General at the top.
 fn present_existing<R: tauri::Runtime>(window: &tauri::WebviewWindow<R>, page: Option<Page>) {
     report(
         window.emit_to(LABEL, "settings:page", page.unwrap_or(Page::General)),
@@ -192,42 +193,25 @@ mod tests {
     use super::*;
 
     #[test]
-    fn returning_requires_a_live_grant_and_focus_then_closes_before_fresh_presentation() {
+    fn returning_requires_both_grants_and_focus_then_waits_for_a_fresh_external_activation() {
         use std::cell::RefCell;
         for (granted, focused) in [(false, false), (false, true), (true, false), (true, true)] {
             let calls = RefCell::new(Vec::new());
-            let result = finish_guide_with(
-                granted,
-                focused,
-                || {
-                    calls.borrow_mut().push("close");
-                    Ok::<_, ()>(())
-                },
-                || calls.borrow_mut().push("show"),
-            );
+            let result = finish_guide_with(granted, focused, || {
+                calls.borrow_mut().push("close");
+                Ok::<_, ()>(())
+            });
             assert_eq!(result, Ok(granted && focused));
-            assert_eq!(
-                *calls.borrow(),
-                if granted && focused {
-                    vec!["close", "show"]
-                } else {
-                    vec![]
-                }
-            );
+            assert_eq!(*calls.borrow(), if granted && focused { vec!["close"] } else { vec![] });
         }
         assert_eq!(
-            finish_guide_with(
-                true,
-                true,
-                || Err("close failed"),
-                || panic!("must not show after a failed close")
-            ),
+            finish_guide_with(true, true, || Err("close failed")),
             Err("close failed")
         );
     }
 
     #[test]
-    fn presenting_existing_settings_emits_general_without_a_page_and_keeps_explicit_requests() {
+    fn presenting_existing_settings_resets_general_without_a_request_and_honours_explicit_requests() {
         use std::sync::mpsc;
         use std::time::Duration;
         use tauri::Listener;
@@ -242,6 +226,7 @@ mod tests {
         window.listen("settings:page", move |event| {
             let _ = sent.send(event.payload().to_string());
         });
+
         for (requested, expected) in [
             (None, "general"),
             (Some(Page::About), "about"),
@@ -249,7 +234,7 @@ mod tests {
             (Some(Page::Paste), "paste"),
             (Some(Page::Shortcuts), "shortcuts"),
             (Some(Page::Citations), "citations"),
-            (None, "general"),
+            (Some(Page::General), "general"),
         ] {
             present_existing(&window, requested);
             let payload = events
@@ -264,6 +249,9 @@ mod tests {
         for (page, name) in [
             (Page::General, "general"),
             (Page::Paste, "paste"),
+            (Page::Look, "look"),
+            (Page::Libraries, "libraries"),
+            (Page::Advanced, "advanced"),
             (Page::Shortcuts, "shortcuts"),
             (Page::Citations, "citations"),
             (Page::About, "about"),

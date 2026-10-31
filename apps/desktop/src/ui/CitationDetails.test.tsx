@@ -19,6 +19,31 @@ function Editor() {
   ] }} onPageChange={setPage} onFormChange={setForm} />;
 }
 
+test("every native form input has the full labelled row as its pointer target", () => {
+  const style = document.createElement("style");
+  style.textContent = readFileSync(new FileURL("./CitationDetails.css", import.meta.url), "utf8");
+  document.head.append(style);
+  try {
+    render(<Editor />);
+    for (const radio of screen.getAllByRole("radio")) {
+      const row = radio.closest("label")!;
+      const wrapper = radio.parentElement!;
+      expect(getComputedStyle(row).position).toBe("relative");
+      expect(getComputedStyle(wrapper).display).toBe("contents");
+      const target = getComputedStyle(radio);
+      expect(target.position).toBe("absolute");
+      expect(target.width).toBe("100%");
+      expect(target.height).toBe("100%");
+      expect(target.opacity).toBe("0");
+    }
+    const year = screen.getByRole<HTMLInputElement>("radio", { name: "Year only" });
+    expect(year.tabIndex).toBe(-1);
+    fireEvent.click(year.closest("label")!.querySelector(".citation-form-example")!);
+    expect(year.checked).toBe(true);
+    expect(screen.getByRole<HTMLInputElement>("radio", { name: "Name in brackets" }).checked).toBe(false);
+  } finally { style.remove(); }
+});
+
 test("Year only uses its own engine form and unsupported choices expose the reason before editing", () => {
   const change = vi.fn();
   render(<CitationDetails label="Synthetic details" page="12" onPageChange={vi.fn()} onFormChange={change} choices={{ current_form: "normal", forms: [
@@ -29,6 +54,8 @@ test("Year only uses its own engine form and unsupported choices expose the reas
   const narrative = screen.getByRole("radio", { name: "Name in the sentence" });
   expect(narrative.matches(":disabled, [aria-disabled=true]")).toBe(true);
   expect(document.getElementById(narrative.getAttribute("aria-describedby")!)?.textContent).toContain("Cite this reference alone");
+  fireEvent.click(narrative.closest("label")!.querySelector(".citation-form-example")!);
+  expect(change).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("radio", { name: "Year only" }));
   expect(change).toHaveBeenCalledExactlyOnceWith("year-only");
 });

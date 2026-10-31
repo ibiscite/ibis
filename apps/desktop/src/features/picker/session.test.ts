@@ -107,15 +107,18 @@ test("search, Enter and receipt use exactly one prepared engine ticket", () => {
   expect(s.state.flights).toHaveLength(0);
 });
 
-test("a paste refusal retains its reason and a permission refusal retains the prepared shelf", () => {
+test.each([
+  ["no-permission", "Copied. Ibis needs your OK to paste"],
+  ["accessibility-required", "Copied. Ibis needs Accessibility access to paste safely. Press Ctrl+V to paste."],
+])("a %s refusal retains its reason and prepared shelf", (reason, message) => {
   const s = scenario();
   s.send({ type: "toggle", result: a, locator: a.locator });
   s.send(s.view());
   s.send({ type: "enter", choice: choiceKey([a]) });
   s.complete(1);
   s.send({ type: "hid", id: 1, session: 0 });
-  s.send({ type: "delivered", id: 1, session: 0, delivered: { outcome: "copied", reason: "no-permission" } });
-  expect(s.state.lastOutcome).toBe("Copied. Ibis needs your OK to paste");
+  s.send({ type: "delivered", id: 1, session: 0, delivered: { outcome: "copied", reason } });
+  expect(s.state.lastOutcome).toBe(message);
   expect([...s.state.selected.values()]).toEqual([a]);
   expect(s.state.permissionDetour).toBe(true);
 });

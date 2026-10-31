@@ -14,8 +14,9 @@ const first = result("a", "First invented reference");
 const second = result("b", "Second invented reference");
 const searchBox = () => screen.getByRole("combobox", { name: "Search references" });
 
-async function open() {
+async function open(configure?: (harness: Harness) => void) {
   const harness = deliveryHarness();
+  configure?.(harness);
   await act(async () => { render(<App />); });
   await act(async () => { harness.search.pending[0]!.complete({ revision: "1", results: [] }); });
   return harness;
@@ -50,6 +51,123 @@ function expectReceipt(harness: Harness, title: string, text: string) {
   expect(receipt.querySelector("strong")?.textContent).toBe(title);
   expect(receipt.querySelector("code")?.textContent).toBe(text);
 }
+
+test.each([
+  ["unknown app", (h: Harness) => { h.target.verified = false; }, "Copied. Automatic paste is not verified for this app"],
+  ["sleep and wake", (h: Harness) => { h.lifecycle.epoch += 2; }, "Copied. The paste expired; paste it yourself"],
+  ["lock and unlock", (h: Harness) => { h.lifecycle.epoch += 2; }, "Copied. The paste expired; paste it yourself"],
+  ["long delay", (h: Harness) => { h.lifecycle.elapsed += 1500; }, "Copied. The paste expired; paste it yourself"],
+  ["safety check unavailable", (h: Harness) => { h.lifecycle.available = false; }, "Copied. Press ⌘V to paste."],
+  ["AX unavailable", (h: Harness) => { h.target.focusAvailable = false; }, "Copied. Press ⌘V to paste."],
+  ["AX timeout", (h: Harness) => { h.target.focusTimedOut = true; }, "Copied. Press ⌘V to paste."],
+  ["foreign nonactivating panel holds keyboard focus", (h: Harness) => { h.target.focusedPid = 99; }, "Copied. The target app or window changed"],
+  ["clipboard changed", (h: Harness) => { h.clipboard.sequence += 1; }, "Copied. The clipboard changed; copy the citation again"],
+  ["another window", (h: Harness) => { h.target.window = 200; }, "Copied. The target app or window changed"],
+  ["closed window", (h: Harness) => { h.target.window = null; }, "Copied. The target app or window changed"],
+  ["minimised window", (h: Harness) => { h.target.available = false; }, "Copied. The target app or window changed"],
+  ["quit app", (h: Harness) => { h.target.available = false; }, "Copied. The target app or window changed"],
+] as const)("%s refuses pending delivery, keeps the copied citation and shows its exact reason", async (_scenario, change, message) => {
+  const harness = await open();
+  await choose(harness, "first");
+  await enter();
+  await finishCopy(harness);
+  change(harness);
+  await finishDelivery(harness);
+  expect(harness.clipboard.text).toBe("[@a]");
+  expect(harness.document.text).toBe("Draft: [citation].");
+  expect(harness.document.pastes).toEqual([]);
+  expectReceipt(harness, message, "[@a]");
+});
+
+test("unproven macOS focus copies with an unavailable reason", async () => {
+  const harness = await open((harness) => { harness.target.window = null; });
+  // Missing identity at capture is unavailable, not a changed target.
+  await choose(harness, "first");
+  await enter();
+  await finishCopy(harness);
+  await finishDelivery(harness);
+  expectReceipt(harness, "Copied. Press ⌘V to paste.", "[@a]");
+  expect(harness.clipboard.text).toBe("[@a]");
+  expect(harness.document.pastes).toEqual([]);
+});
+
+test("a foreign panel present at capture is unavailable evidence, not a changed captured target", async () => {
+  const harness = await open((harness) => { harness.target.focusedPid = 99; });
+  await choose(harness, "first");
+  await enter();
+  await finishCopy(harness);
+  await finishDelivery(harness);
+  expect(harness.document.pastes).toEqual([]);
+  expect(harness.clipboard.text).toBe("[@a]");
+  expectReceipt(harness, "Copied. Press ⌘V to paste.", "[@a]");
+});
+
+test("opening an attached Save sheet keeps the document identity but refuses paste into the new surface", async () => {
+  const harness = await open();
+  const sheet = { text: "invented-name", selection: [0, 13] as [number, number] };
+  harness.documents.set(500, sheet);
+  await choose(harness, "first");
+  await enter();
+  await finishCopy(harness);
+  harness.target.surface = 500;
+  expect(harness.target.window).toBe(100);
+  await finishDelivery(harness);
+  expect(harness.document.text).toBe("Draft: [citation].");
+  expect(sheet.text).toBe("invented-name");
+  expect(harness.document.pastes).toEqual([]);
+  expect(harness.clipboard.text).toBe("[@a]");
+  expectReceipt(harness, "Copied. The target app or window changed", "[@a]");
+});
+
+test.each([false, true])("missing Accessibility with PostEvent granted keeps its own receipt, including a later grant (%s)", async (grantBeforeDelivery) => {
+  const harness = await open((harness) => { harness.authorizations.accessibility = false; });
+  await choose(harness, "first");
+  await enter();
+  await finishCopy(harness);
+  harness.authorizations.accessibility = grantBeforeDelivery;
+  await finishDelivery(harness);
+  expect(harness.document.text).toBe("Draft: [citation].");
+  expect(harness.document.pastes).toEqual([]);
+  expect(harness.clipboard.text).toBe("[@a]");
+  expectReceipt(harness, "Copied. Ibis needs Accessibility access to paste safely. Press ⌘V to paste.", "[@a]");
+  harness.authorizations.accessibility = true;
+  await act(async () => { window.dispatchEvent(new Event("focus")); await vi.advanceTimersByTimeAsync(2000); });
+  expect(harness.delivery.calls).toHaveLength(1);
+  expect(harness.document.pastes).toEqual([]);
+});
+
+test("granting Accessibility needs a fresh external summon and Enter before pasting", async () => {
+  const harness = await open((harness) => { harness.authorizations.accessibility = false; });
+  await choose(harness, "first");
+  await enter();
+  await finishCopy(harness);
+  await finishDelivery(harness);
+  expectReceipt(harness, "Copied. Ibis needs Accessibility access to paste safely. Press ⌘V to paste.", "[@a]");
+  harness.authorizations.accessibility = true;
+  expect(harness.document.pastes).toEqual([]);
+  await act(async () => { await harness.reopen(); });
+  await choose(harness, "second", second, "[@b]");
+  expect(harness.document.pastes).toEqual([]);
+  await enter();
+  await finishCopy(harness);
+  await finishDelivery(harness);
+  expect(harness.document.text).toBe("Draft: [@b].");
+  expect(harness.document.pastes).toHaveLength(1);
+  expectReceipt(harness, "Pasted into Example Writer", "[@b]");
+});
+
+test.each([100, 200])("Enter pastes into focused window %s with two document windows open", async (window) => {
+  const harness = await open((harness) => { harness.target.window = window; });
+  await choose(harness, "first");
+  await enter();
+  await finishCopy(harness);
+  await finishDelivery(harness);
+  expect(harness.documents.get(window)?.text).toBe(window === 100 ? "Draft: [@a]." : "Second: [@a].");
+  expect(harness.documents.get(window === 100 ? 200 : 100)?.text).toBe(window === 100 ? "Second: [citation]." : "Draft: [citation].");
+  expect(harness.document.pastes).toHaveLength(1);
+  expect(harness.clipboard.text).toBe("[@a]");
+  expectReceipt(harness, "Pasted into Example Writer", "[@a]");
+});
 
 test("Enter waits for a preview, then copies and replaces the document selection exactly once", async () => {
   const harness = await open();
@@ -208,13 +326,33 @@ test.each(["different text", "identical text"])("an old notice cannot steal a ne
   await act(async () => { harness.notice.pending[0]!.complete(); });
   expect(harness.document.text).toBe("Draft: [citation].");
   expect(harness.document.pastes).toEqual([]);
-  expectReceipt(harness, "Copied. Press ⌘V to paste", "[@a]");
+  expect(harness.receipt.textContent).toBe("");
   await finishDelivery(harness);
   expect(harness.document.text).toBe(`Draft: ${text}.`);
   expect(harness.document.pastes.map(({ delivery }) => delivery)).toEqual([2]);
   expectReceipt(harness, "Pasted into Example Writer", text);
   expect(harness.copy.calls).toHaveLength(2);
   expect(harness.delivery.calls).toHaveLength(2);
+});
+
+test.each(["[@b]", "[@a]"])("a refused A finishing after B's receipt cannot replace B's delivery message (%s)", async (text) => {
+  const harness = await open();
+  await choose(harness, "first");
+  await enter();
+  await finishCopy(harness);
+  const a = harness.delivery.pending[0]!;
+  await act(async () => { await harness.reopen(); });
+  await choose(harness, "second", second, text);
+  await enter();
+  await finishCopy(harness);
+  await act(async () => { harness.delivery.pending[1]!.complete(); });
+  await act(async () => { harness.notice.pending[0]!.complete(); });
+  expectReceipt(harness, "Pasted into Example Writer", text);
+  await act(async () => { a.complete(); });
+  await act(async () => { harness.notice.pending[0]!.complete(); });
+  expectReceipt(harness, "Pasted into Example Writer", text);
+  expect(harness.clipboard.text).toBe(text);
+  expect(harness.document.pastes.map(({ delivery }) => delivery)).toEqual([2]);
 });
 
 test.each(["different text", "identical text"])("another clipboard owner's write prevents a paste (%s)", async (variant) => {
@@ -228,7 +366,7 @@ test.each(["different text", "identical text"])("another clipboard owner's write
   expect(harness.clipboard).toMatchObject({ text, owner: "external", sequence: 2 });
   expect(harness.document.text).toBe("Draft: [citation].");
   expect(harness.document.pastes).toEqual([]);
-  expectReceipt(harness, "Copied. Press ⌘V to paste", "[@a]");
+  expectReceipt(harness, "Copied. The clipboard changed; copy the citation again", "[@a]");
 });
 
 test.each(["preview", "copy"] as const)("a failed %s leaves the document and clipboard unchanged and gives no success receipt", async (stage) => {

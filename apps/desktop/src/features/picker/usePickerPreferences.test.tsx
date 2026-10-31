@@ -1,9 +1,14 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { usePickerPreferences } from "./usePickerPreferences";
 import type { CopyFormat, PickerPreferences } from "../../api";
+import { commands } from "../../bindings";
 
-afterEach(cleanup);
+beforeEach(() => {
+  let revision = 0;
+  vi.spyOn(commands, "preferenceRevision").mockImplementation(async () => ++revision);
+});
+afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 const preferences: PickerPreferences = { citation_style: null, density: "comfortable", larger_text: false, show_paste_preview: true, search_mark: false, paste: true };
 const deferred = <T,>() => {
   let resolve!: (value: T) => void;
@@ -44,7 +49,7 @@ test("a global key choice during a stale Settings read wins and sends only its f
   await act(async () => { save.resolve({ preferences, copy_format: "cite" }); });
   await act(async () => { old.resolve({ ...preferences, citation_style: "apa" }); });
   expect(result.current.format).toBe("cite");
-  expect(setPickerPreferences).toHaveBeenCalledWith({ citation_style: null }, "cite");
+  expect(setPickerPreferences).toHaveBeenCalledWith({ citation_style: null }, "cite", 1);
 });
 
 test("a queued view save never replays an output acknowledged before it reaches the native lock", async () => {
@@ -61,7 +66,7 @@ test("a queued view save never replays an output acknowledged before it reaches 
   act(() => result.current.chooseFormat("cite"));
   act(() => result.current.toggleLargerText());
   await act(async () => { output.resolve({ preferences, copy_format: "cite" }); });
-  expect(setPickerPreferences.mock.calls[1]).toEqual([{ larger_text: true }, null]);
+  expect(setPickerPreferences.mock.calls[1]).toEqual([{ larger_text: true }, null, 2]);
   expect(result.current.format).toBe("style:ieee");
 });
 

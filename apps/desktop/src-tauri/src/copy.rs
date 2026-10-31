@@ -189,6 +189,8 @@ pub(crate) fn copy_file_citation(
     app: AppHandle,
     library: State<'_, Mutex<Library>>,
 ) -> Result<Copied, CommandError> {
+    #[cfg(target_os = "windows")]
+    let attempt = crate::paste::begin_copy(&app);
     // The library lock is held only to take the engine; the engine's own
     // commit barrier guards the write.
     let file = {
@@ -198,14 +200,12 @@ pub(crate) fn copy_file_citation(
         }
         library.file.clone().ok_or(CommandError::SnapshotChanged)?
     };
-    #[cfg(target_os = "windows")]
-    let target = crate::paste::copy_target(&app);
     let mut delivery = None;
     let mut copied = file.copy(&ticket, &content_hash, |content| {
         #[cfg(target_os = "windows")]
         {
             let sequence = clipboard::write(&app, content)?;
-            delivery = crate::paste::remember_copy(&app, target, sequence);
+            delivery = crate::paste::remember_copy(&app, attempt, sequence);
         }
         #[cfg(not(target_os = "windows"))]
         {

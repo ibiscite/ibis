@@ -239,7 +239,12 @@ fn load_entry(
     if crate::urls::remove_private_urls(&mut record.csl) {
         problems.push("private URL omitted".into());
     }
-    let file = resolved.fields.get("file").map(|value| convert::file_value(value));
+    let file = resolved.fields.get("file").map(|value| convert::literal_value(value));
+    if !problems.is_empty() {
+        record
+            .warnings
+            .push(ibis_core::contract::CitationWarningCode::SourceField);
+    }
     Ok((record, file, problems))
 }
 

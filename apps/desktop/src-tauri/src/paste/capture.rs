@@ -1,9 +1,9 @@
 //! Which app the picker was opened from, taken before the panel shows (#1241).
 //!
-//! Only the app's ID, its process and its name for "Pasted into …" are kept,
-//! in memory. Window titles and document text are never read.
+//! Only app identity, its name for feedback and an opaque window token are
+//! kept in memory. Window titles and document text are never read.
 
-use ibis_core::destination::{AppId, System, Target};
+use ibis_core::destination::{AppId, CopyReason, System, Target};
 
 /// What the system reports about the app in front.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -11,6 +11,10 @@ pub(crate) struct Front {
     /// macOS bundle ID or Windows executable file name; `None` for an app without one.
     pub(crate) id: Option<String>,
     pub(crate) pid: i32,
+    /// Opaque macOS document/surface identity token; no title or contents.
+    pub(crate) window: Option<u32>,
+    /// Capture-time refusal, kept even if an authorization changes later.
+    pub(crate) focus_failure: Option<CopyReason>,
     /// The app's own name, as the Dock or its file description shows it.
     pub(crate) name: Option<String>,
     /// The app runs with more rights than Ibis (Windows integrity level).
@@ -22,6 +26,8 @@ pub(crate) struct Front {
 pub(crate) struct Captured {
     pub(crate) target: Target,
     pub(crate) pid: Option<i32>,
+    pub(crate) window: Option<u32>,
+    pub(crate) focus_failure: Option<CopyReason>,
     pub(crate) name: Option<String>,
 }
 
@@ -37,6 +43,8 @@ impl Captured {
                 elevated: false,
             },
             pid: None,
+            window: None,
+            focus_failure: None,
             name: None,
         }
     }
@@ -64,6 +72,8 @@ pub(crate) fn captured(system: System, front: Option<Front>, own: i32) -> Option
             elevated: front.elevated,
         },
         pid: Some(front.pid),
+        window: front.window,
+        focus_failure: front.focus_failure,
         name: front.name,
     })
 }
@@ -76,6 +86,8 @@ mod tests {
         Front {
             id: Some("org.example.Writer".into()),
             pid,
+            window: Some(100),
+            focus_failure: None,
             name: Some("Writer".into()),
             elevated: false,
         }
@@ -128,5 +140,20 @@ mod tests {
         assert_eq!(keys, ["app", "elevated", "secure_field", "system"]);
         // The only strings kept are the app ID and the app's own name.
         assert_eq!(format!("{captured:?}").matches('"').count(), 4, "{captured:?}");
+    }
+
+    #[test]
+    fn an_active_app_is_kept_without_inventing_a_keyboard_window_proof() {
+        let front = Front {
+            window: None,
+            ..front(42)
+        };
+        let captured = captured(System::Macos, Some(front), 7).unwrap_or_else(|| panic!("capture"));
+        assert_eq!(captured.pid, Some(42));
+        assert!(captured.target.app.is_some());
+        assert_eq!(
+            captured.window, None,
+            "activation does not establish the global keyboard owner"
+        );
     }
 }

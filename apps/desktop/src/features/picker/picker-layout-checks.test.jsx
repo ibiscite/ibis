@@ -4,13 +4,35 @@ import { App } from "../../App";
 import { CitationShelf } from "./CitationShelf";
 import { pickerText } from "../../messages";
 import { backend, resetApp } from "../../testing/app";
-import { dismissMenu, isAnchoredDetails, isWholeNotice, isWholeShelf, layoutGeometry, noticeText, shelfControl, waitForLayout } from "./picker-layout-checks.mjs";
+import { dismissMenu, isAnchoredDetails, isWholeNotice, isWholeRadioTarget, isWholeShelf, layoutGeometry, noticeText, shelfControl, waitForLayout } from "./picker-layout-checks.mjs";
 
 afterEach(async () => {
   await resetApp();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   document.documentElement.removeAttribute("data-text-size");
+});
+
+test("the radio pointer oracle refuses displaced, clipped and covered controls", () => {
+  const label = document.createElement("label"), radio = document.createElement("input");
+  label.className = "citation-form"; radio.type = "radio"; label.append(radio);
+  const row = new DOMRect(24, 80, 400, 48);
+  let target = new DOMRect(0, 0, 13, 13), hit = label;
+  vi.spyOn(label, "getBoundingClientRect").mockReturnValue(row);
+  vi.spyOn(radio, "getBoundingClientRect").mockImplementation(() => target);
+  const original = Object.getOwnPropertyDescriptor(document, "elementFromPoint");
+  Object.defineProperty(document, "elementFromPoint", { configurable: true, value: () => hit });
+  try {
+    expect(isWholeRadioTarget(radio)).toBe(false);
+    target = row;
+    expect(isWholeRadioTarget(radio)).toBe(false);
+    hit = radio;
+    expect(isWholeRadioTarget(radio)).toBe(true);
+    target = new DOMRect(24, 80, 13, 13);
+    expect(isWholeRadioTarget(radio)).toBe(false);
+  } finally {
+    if (original) Object.defineProperty(document, "elementFromPoint", original); else delete document.elementFromPoint;
+  }
 });
 
 test.each([[720, 480, 1], [480, 360, 1], [480, 360, 2]])("the probe selects one rendered Show all control at %s×%s/%s× text, including with its menu open", async (width, height, scale) => {

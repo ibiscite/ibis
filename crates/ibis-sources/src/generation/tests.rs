@@ -14,6 +14,7 @@ fn item(key: &str, title: &str) -> LibraryObject {
             .unwrap_or_else(|e| panic!("{e}")),
         citation_keys: vec![],
         aliases: vec![],
+        warnings: vec![],
         identifiers: vec![],
     })
 }

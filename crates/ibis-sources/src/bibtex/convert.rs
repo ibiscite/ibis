@@ -7,7 +7,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use biblatex::{Chunk, ChunksExt, DateValue, EditorType, Entry, PermissiveType, RetrievalError};
 
-use super::resolve::{BACKSLASH, ESCAPE, HYPHEN, LEFT_BRACE, RIGHT_BRACE};
+use super::resolve::{BACKSLASH, ESCAPE, HYPHEN, LEFT_BRACE, NARROW_NBSPACE, NBSPACE, RIGHT_BRACE};
 use ibis_core::contract::{CitationKey, CitationKeySource, ItemRef, LibraryId, Record};
 use ibis_core::model::{Issued, Name, OTHERS, PartialDate};
 use serde_json::{Value, json};
@@ -56,7 +56,6 @@ pub(crate) fn convert(
         unknown.borrow_mut().extend(found);
         Some(vec![Piece::Text {
             text: raw_encoded(field).unwrap_or_default(),
-            protected: true,
         }])
     };
     let rich = |main: &str, sub: &[(&str, &str)]| -> Option<Vec<Piece>> {
@@ -65,7 +64,6 @@ pub(crate) fn convert(
             if let Some(more) = field_pieces(field) {
                 pieces.push(Piece::Text {
                     text: (*separator).to_string(),
-                    protected: false,
                 });
                 pieces.extend(more);
             }
@@ -74,15 +72,9 @@ pub(crate) fn convert(
     };
 
     let language = language_tag(entry, problems);
-    let english = language.as_deref().is_none_or(|l| {
-        l.split('-')
-            .next()
-            .is_some_and(|primary| primary.eq_ignore_ascii_case("en"))
-    });
-    let title = rich("title", &[("subtitle", ": "), ("titleaddon", ". ")])
-        .map(|pieces| render(&if english { sentence_case(pieces) } else { pieces }));
+    let title = rich("title", &[("subtitle", ": "), ("titleaddon", ". ")]).map(|pieces| render(&pieces));
     let short_title = rich("shorttitle", &[])
-        .map(|pieces| render(&if english { sentence_case(pieces) } else { pieces }))
+        .map(|pieces| render(&pieces))
         .filter(|s| !s.is_empty());
     // `booktitle` names the containing book only for parts of a book or of
     // proceedings; on a whole book or proceedings volume it repeats the title.
@@ -126,7 +118,7 @@ pub(crate) fn convert(
             container_title = Some(render(&main)).filter(|s| !s.is_empty());
         } else {
             volume_title = title.take();
-            title = Some(render(&if english { sentence_case(main) } else { main }));
+            title = Some(render(&main));
         }
     }
 
@@ -216,6 +208,7 @@ pub(crate) fn convert(
     set("publisher", &["publisher", "institution", "school", "organization"]);
     set("publisher-place", &["location", "address"]);
     set("edition", &["edition"]);
+    set("version", &["version"]);
     set("ISBN", &["isbn"]);
     set("PMID", &["pmid"]);
     set("PMCID", &["pmcid"]);
@@ -263,16 +256,29 @@ pub(crate) fn convert(
 
     let issued = issued(entry, problems);
     let dates = other_dates(entry, problems);
-    // The resolver shields verbatim dashes before parsing. DOI keeps the
-    // existing TeX symbol conversion (for exports using \_ and \&); URL uses
-    // only the parser's limited verbatim escapes.
-    let verbatim = |field| {
-        entry
-            .get(field)
-            .map(|c| clean(&c.format_verbatim()))
-            .filter(|s| !s.is_empty())
-    };
-    let doi = text("doi");
+    // Identifiers and URLs share one limited verbatim decoder over resolved
+    // text, before any parser can consume a backslash or apply typography.
+    let doi = own_fields.get("doi").map(|doi| decode_url(doi));
+    if doi.as_deref().is_some_and(|doi| doi.contains('\\')) {
+        problems.push("DOI contains an unsupported escape; it is kept as written".into());
+    }
+    let url = own_fields
+        .get("url")
+        .map(|url| decode_url(url))
+        .filter(|url| !url.is_empty())
+        .or_else(|| {
+            own_fields
+                .get("howpublished")
+                .and_then(|raw| command_url(raw))
+                .map(decode_url)
+        });
+    if url.is_none()
+        && own_fields
+            .get("howpublished")
+            .is_some_and(|value| !value.trim().is_empty())
+    {
+        problems.push("howpublished could not be represented as a URL".into());
+    }
     let abstract_text = text("abstract");
     let keywords: Vec<String> = text("keywords")
         .map(|k| {
@@ -304,7 +310,7 @@ pub(crate) fn convert(
         ("title", title),
         ("container-title", container_title),
         ("DOI", doi),
-        ("URL", verbatim("url")),
+        ("URL", url),
         ("abstract", abstract_text),
         ("language", language),
     ] {
@@ -341,6 +347,7 @@ pub(crate) fn convert(
             source: CitationKeySource::Bibtex,
         }],
         aliases: vec![],
+        warnings: vec![],
         identifiers: eprints
             .iter()
             .filter_map(|id| ibis_core::identifier::parse_query(id))
@@ -773,14 +780,13 @@ fn describe(date: PartialDate) -> String {
 
 // ---------- Language ----------
 
-/// BCP 47 tag from `langid` or `language`. Babel/polyglossia names are
-/// mapped; tags that already look like BCP 47 are kept; anything else is
-/// reported and left out rather than passed on as a wrong tag.
+/// BCP 47 tag from `langid`, its legacy `hyphenation` alias, or `language`.
+/// Unknown names are reported and become `und`, never implicit English.
 fn language_tag(entry: &Entry, problems: &mut Vec<String>) -> Option<String> {
-    let raw = ["langid", "language"]
+    let raw = ["langid", "hyphenation", "language"]
         .iter()
-        .find_map(|f| entry.get(f).map(|c| clean(&c.format_verbatim())))
-        .filter(|s| !s.is_empty())?;
+        .filter_map(|f| entry.get(f).map(|c| clean(&c.format_verbatim())))
+        .find(|s| !s.is_empty())?;
     let lower = raw.to_ascii_lowercase();
     if let Some(tag) = babel_to_bcp47(&lower) {
         return Some(tag.to_string());
@@ -795,8 +801,10 @@ fn language_tag(entry: &Entry, problems: &mut Vec<String>) -> Option<String> {
     if looks_like_tag {
         return Some(raw);
     }
-    problems.push(format!("language `{raw}` is not recognized; it is left out"));
-    None
+    problems.push(format!(
+        "language `{raw}` is not recognized; it is treated as undetermined"
+    ));
+    Some("und".into())
 }
 
 fn babel_to_bcp47(name: &str) -> Option<&'static str> {
@@ -806,7 +814,7 @@ fn babel_to_bcp47(name: &str) -> Option<&'static str> {
         "australian" => "en-AU",
         "canadian" => "en-CA",
         "newzealand" => "en-NZ",
-        "german" | "ngerman" => "de-DE",
+        "german" | "ngerman" | "deutsch" => "de-DE",
         "austrian" | "naustrian" => "de-AT",
         "swissgerman" | "nswissgerman" => "de-CH",
         "french" | "francais" => "fr-FR",
@@ -862,24 +870,24 @@ fn babel_to_bcp47(name: &str) -> Option<&'static str> {
     })
 }
 
-// ---------- Titles: TeX to CSL rich text, sentence case ----------
+// ---------- Titles: TeX to CSL rich text, retaining stored case ----------
 
 #[derive(Debug, Clone, PartialEq)]
 enum Piece {
-    Text { text: String, protected: bool },
+    Text { text: String },
     Tag(&'static str),
 }
 
 /// Turn parser chunks into text pieces and markup tags. Braced (verbatim)
-/// chunks are protected from case changes and wrapped in a `nocase` span.
+/// and math chunks retain their case inside a `nocase` span.
 fn pieces_from_chunks<'a>(chunks: impl Iterator<Item = &'a Chunk>, unknown: &mut BTreeSet<String>) -> Vec<Piece> {
     let mut pieces = Vec::new();
     for chunk in chunks {
         match chunk {
-            Chunk::Normal(s) => tex_pieces(s, false, true, &mut pieces, unknown),
+            Chunk::Normal(s) => tex_pieces(s, true, &mut pieces, unknown),
             Chunk::Verbatim(s) => {
                 pieces.push(Piece::Tag("<span class=\"nocase\">"));
-                tex_pieces(s, true, true, &mut pieces, unknown);
+                tex_pieces(s, true, &mut pieces, unknown);
                 pieces.push(Piece::Tag("</span>"));
             }
             Chunk::Math(s) => math_pieces(s, &mut pieces, unknown),
@@ -889,8 +897,10 @@ fn pieces_from_chunks<'a>(chunks: impl Iterator<Item = &'a Chunk>, unknown: &mut
 }
 
 /// Math: symbols as in text, plus `^`/`_` as superscript and subscript.
-/// Math is protected from case changes.
+/// Protect the whole chunk so subtitle processing cannot change its operators
+/// or variable names, including text surrounding superscripts and subscripts.
 fn math_pieces(math: &str, out: &mut Vec<Piece>, unknown: &mut BTreeSet<String>) {
+    out.push(Piece::Tag("<span class=\"nocase\">"));
     let mut rest = math;
     let mut plain = String::new();
     while let Some(pos) = rest.find(['^', '_']) {
@@ -926,14 +936,15 @@ fn math_pieces(math: &str, out: &mut Vec<Piece>, unknown: &mut BTreeSet<String>)
             let len = after.chars().next().map_or(0, char::len_utf8);
             (&after[..len], &after[len..])
         };
-        tex_pieces(&std::mem::take(&mut plain), true, true, out, unknown);
+        tex_pieces(&std::mem::take(&mut plain), true, out, unknown);
         out.push(Piece::Tag(open));
-        tex_pieces(script, true, true, out, unknown);
+        tex_pieces(script, true, out, unknown);
         out.push(Piece::Tag(close));
         rest = remainder;
     }
     plain.push_str(rest);
-    tex_pieces(&plain, true, true, out, unknown);
+    tex_pieces(&plain, true, out, unknown);
+    out.push(Piece::Tag("</span>"));
 }
 
 /// Commands whose argument is shown as-is.
@@ -1070,8 +1081,16 @@ fn tex_symbol(name: &str) -> Option<&'static str> {
         "textquoteright" => "’",
         "textquotedblleft" => "“",
         "textquotedblright" => "”",
-        "guillemotleft" => "«",
-        "guillemotright" => "»",
+        "lq" | "grq" => "‘",
+        "rq" => "’",
+        "glqq" | "quotedblbase" | "textquotestraightdblbase" => "„",
+        "grqq" => "“",
+        "glq" | "quotesinglbase" | "textquotestraightbase" => "‚",
+        "guillemotleft" | "flqq" => "«",
+        "guillemotright" | "frqq" => "»",
+        "guilsinglleft" | "flq" => "‹",
+        "guilsinglright" | "frq" => "›",
+        "textquotedbl" | "dq" => "\"",
         "S" | "textsection" => "§",
         "P" | "textparagraph" => "¶",
         "copyright" | "textcopyright" => "©",
@@ -1103,6 +1122,7 @@ fn tex_symbol(name: &str) -> Option<&'static str> {
         "textasciitilde" => "~",
         "textasciicircum" => "^",
         "textunderscore" => "_",
+        "nobreakspace" => "\u{E005}",
         _ => return None,
     })
 }
@@ -1110,13 +1130,7 @@ fn tex_symbol(name: &str) -> Option<&'static str> {
 /// Translate TeX in a field: formatting commands and declarations become CSL
 /// tags, symbol commands become Unicode, wrapper commands keep their
 /// argument, and anything else is kept as written and recorded in `unknown`.
-fn tex_pieces(
-    text: &str,
-    protected: bool,
-    grouping_braces: bool,
-    out: &mut Vec<Piece>,
-    unknown: &mut BTreeSet<String>,
-) {
+fn tex_pieces(text: &str, grouping_braces: bool, out: &mut Vec<Piece>, unknown: &mut BTreeSet<String>) {
     let mut buf = String::new();
     let mut chars = text.char_indices().peekable();
     // Open brace groups; index 0 is the whole text.
@@ -1125,12 +1139,25 @@ fn tex_pieces(
         if !buf.is_empty() {
             out.push(Piece::Text {
                 text: std::mem::take(buf),
-                protected,
             });
         }
     };
     while let Some((i, c)) = chars.next() {
         match c {
+            ESCAPE => {
+                buf.push(c);
+                buf.extend(chars.next().map(|(_, c)| c));
+            }
+            '~' => buf.push(NBSPACE),
+            '`' if chars.peek().is_some_and(|(_, c)| *c == '`') => {
+                chars.next();
+                buf.push('“');
+            }
+            '\'' if chars.peek().is_some_and(|(_, c)| *c == '\'') => {
+                chars.next();
+                buf.push('”');
+            }
+            '`' => buf.push('‘'),
             '\\' => {
                 let name: String = text[i + 1..].chars().take_while(char::is_ascii_alphabetic).collect();
                 if name.is_empty() {
@@ -1258,82 +1285,6 @@ struct Group {
     literal_depth: usize,
 }
 
-/// Convert BibTeX title case to CSL sentence case (English only): capitalized
-/// words become lowercase except at the start of the title or after `:`, `?`
-/// or `!`. Protected text, acronyms, mixed-case words and initials ("E.")
-/// keep their capitalization.
-fn sentence_case(pieces: Vec<Piece>) -> Vec<Piece> {
-    let mut at_start = true;
-    pieces
-        .into_iter()
-        .map(|piece| match piece {
-            Piece::Text { text, protected: true } => {
-                if text.chars().any(|c| !c.is_whitespace()) {
-                    at_start = false;
-                }
-                Piece::Text { text, protected: true }
-            }
-            Piece::Text { text, protected: false } => {
-                let mut out = String::with_capacity(text.len());
-                let mut word = String::new();
-                for c in text.chars() {
-                    if c.is_whitespace() {
-                        out.push_str(&convert_word(&word, &mut at_start));
-                        word.clear();
-                        out.push(c);
-                    } else {
-                        word.push(c);
-                    }
-                }
-                out.push_str(&convert_word(&word, &mut at_start));
-                Piece::Text {
-                    text: out,
-                    protected: false,
-                }
-            }
-            tag => tag,
-        })
-        .collect()
-}
-
-fn convert_word(word: &str, at_start: &mut bool) -> String {
-    if word.is_empty() {
-        return String::new();
-    }
-    let start = *at_start;
-    *at_start = word.ends_with([':', '?', '!']);
-    let mut first_part = true;
-    word.split('-')
-        .map(|part| {
-            let keep = (start && first_part) || !is_plain_capitalized(part);
-            first_part = false;
-            if keep { part.to_string() } else { lowercase_first(part) }
-        })
-        .collect::<Vec<_>>()
-        .join("-")
-}
-
-/// "Memory" or "A": one capital followed only by lowercase letters. Initials
-/// such as "E." are excluded.
-fn is_plain_capitalized(part: &str) -> bool {
-    let mut letters = part.chars().filter(|c| c.is_alphabetic());
-    let Some(first) = letters.next() else { return false };
-    if !first.is_uppercase() || !part.starts_with(first) {
-        return false;
-    }
-    let rest_lower = letters.all(char::is_lowercase);
-    let is_initial = part.chars().filter(|c| c.is_alphabetic()).count() == 1 && part.ends_with('.');
-    rest_lower && !is_initial
-}
-
-fn lowercase_first(part: &str) -> String {
-    let mut chars = part.chars();
-    chars
-        .next()
-        .map(|c| c.to_lowercase().chain(chars).collect())
-        .unwrap_or_default()
-}
-
 /// Render pieces as CSL rich text, escaping markup characters in text.
 fn render(pieces: &[Piece]) -> String {
     let mut out = String::new();
@@ -1358,10 +1309,61 @@ fn render(pieces: &[Piece]) -> String {
 
 // ---------- Small helpers ----------
 
+/// URL fields are verbatim, with a small set of exporter escapes. Never run
+/// general TeX typography or commands over a path (notably `--` and `~`).
+fn decode_url(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    let mut chars = value.chars().peekable();
+    while let Some(ch) = chars.next() {
+        match ch {
+            ESCAPE => {
+                out.push(ch);
+                out.extend(chars.next());
+            }
+            '\\' if chars
+                .peek()
+                .is_some_and(|ch| matches!(ch, '\\' | '_' | '%' | '&' | '#' | '$' | '~' | ':')) =>
+            {
+                out.extend(chars.next())
+            }
+            '{' | '}' => {}
+            _ => out.push(ch),
+        }
+    }
+    clean(&out)
+}
+
+/// Read only a whole, recognized wrapper, never guess an address from prose.
+fn command_url(value: &str) -> Option<&str> {
+    fn group(value: &str) -> Option<(&str, &str)> {
+        let value = value.trim_start().strip_prefix('{')?;
+        let mut depth = 1usize;
+        for (index, ch) in value.char_indices() {
+            match ch {
+                '{' => depth += 1,
+                '}' => depth -= 1,
+                _ => {}
+            }
+            if depth == 0 {
+                return Some((&value[..index], &value[index + 1..]));
+            }
+        }
+        None
+    }
+    let value = value.trim();
+    let (rest, href) = value
+        .strip_prefix("\\url")
+        .map(|s| (s, false))
+        .or_else(|| value.strip_prefix("\\href").map(|s| (s, true)))?;
+    let (url, rest) = group(rest)?;
+    let rest = if href { group(rest)?.1 } else { rest };
+    rest.trim().is_empty().then_some(url)
+}
+
 /// Plain text of a field: TeX symbols decoded, formatting removed.
 fn strip_tex(text: &str, unknown: &mut BTreeSet<String>) -> String {
     let mut pieces = Vec::new();
-    tex_pieces(text, false, true, &mut pieces, unknown);
+    tex_pieces(text, true, &mut pieces, unknown);
     pieces
         .into_iter()
         .filter_map(|p| match p {
@@ -1387,7 +1389,15 @@ fn clean(s: &str) -> String {
         if i != 0 {
             out.push(' ');
         }
-        if !word.contains([ESCAPE, LEFT_BRACE, RIGHT_BRACE, BACKSLASH, HYPHEN]) {
+        if !word.contains([
+            ESCAPE,
+            LEFT_BRACE,
+            RIGHT_BRACE,
+            BACKSLASH,
+            HYPHEN,
+            NBSPACE,
+            NARROW_NBSPACE,
+        ]) {
             out.push_str(word);
             continue;
         }
@@ -1399,6 +1409,8 @@ fn clean(s: &str) -> String {
                 RIGHT_BRACE => out.push('}'),
                 BACKSLASH => out.push('\\'),
                 HYPHEN => out.push('-'),
+                NBSPACE => out.push('\u{a0}'),
+                NARROW_NBSPACE => out.push('\u{202f}'),
                 c => out.push(c),
             }
         }
@@ -1441,7 +1453,8 @@ pub fn csl_type(kind: &str) -> &'static str {
     }
 }
 
-pub(super) fn file_value(encoded: &str) -> String {
+/// Decode literal symbols while retaining internal whitespace in paths/keys.
+pub(super) fn literal_value(encoded: &str) -> String {
     let mut text = String::new();
     let mut chars = encoded.trim().chars();
     while let Some(c) = chars.next() {
@@ -1501,21 +1514,21 @@ mod tests {
         }
     }
 
-    fn title(chunks: &[Chunk], english: bool) -> String {
+    fn title(chunks: &[Chunk]) -> String {
         let pieces = pieces_from_chunks(chunks.iter(), &mut BTreeSet::new());
-        render(&if english { sentence_case(pieces) } else { pieces })
+        render(&pieces)
     }
 
     #[test]
-    fn sentence_case_keeps_protected_words_acronyms_and_initials() {
+    fn stored_case_keeps_protected_words_acronyms_and_initials() {
         let chunks = [
             Chunk::Normal("Using ".into()),
             Chunk::Verbatim("iPhone".into()),
             Chunk::Normal(" Apps for DNA Repair in E. coli: A Self-Supervised Review".into()),
         ];
         assert_eq!(
-            title(&chunks, true),
-            "Using <span class=\"nocase\">iPhone</span> apps for DNA repair in E. coli: A self-supervised review"
+            title(&chunks),
+            "Using <span class=\"nocase\">iPhone</span> Apps for DNA Repair in E. coli: A Self-Supervised Review"
         );
     }
 
@@ -1527,11 +1540,11 @@ mod tests {
             Chunk::Normal(" and \\textit{In Vitro} Tests".into()),
         ];
         assert_eq!(
-            title(&chunks, true),
-            "The role of <span class=\"nocase\"><i>in vivo</i></span> and <i>in vitro</i> tests"
+            title(&chunks),
+            "The Role of <span class=\"nocase\"><i>in vivo</i></span> and <i>In Vitro</i> Tests"
         );
         assert_eq!(
-            title(&[Chunk::Normal("Schlaf und Gedächtnis".into())], false),
+            title(&[Chunk::Normal("Schlaf und Gedächtnis".into())]),
             "Schlaf und Gedächtnis"
         );
     }
@@ -1539,7 +1552,7 @@ mod tests {
     #[test]
     fn markup_characters_in_titles_are_escaped() {
         assert_eq!(
-            title(&[Chunk::Normal("Less <Than> & More".into())], false),
+            title(&[Chunk::Normal("Less <Than> & More".into())]),
             "Less &lt;Than&gt; &amp; More"
         );
     }

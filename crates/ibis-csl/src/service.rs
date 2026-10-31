@@ -235,7 +235,7 @@ mod tests {
     fn prepared(count: usize, bibliography: bool) -> Prepared {
         let items:Vec<_>=(0..count).map(|index|json!({"id":format!("ibis-{index}"),"type":"book","title":format!("Synthetic {index}"),"author":[{"family":format!("Invented{index}"),"given":"Avery"}],"issued":{"date-parts":[[2026]]},"publisher":"Imaginary Press"})).collect();
         let cites: Vec<_> = (0..count).map(|index| json!({"id":format!("ibis-{index}")})).collect();
-        Prepared {json:json!({"style":"apa","items":items,"cites":cites,"bibliography":bibliography,"keep_order":false,"locale":null}).to_string(),outcomes:(0..count).map(|item|ItemOutcome::Rendered {item}).collect(),losses:vec![],notices:vec![Notice::YearSuffixWithheld],empty:false}
+        Prepared {json:json!({"style":"apa","items":items,"cites":cites,"bibliography":bibliography,"keep_order":false,"locale":null}).to_string(),outcomes:(0..count).map(|item|ItemOutcome::Rendered {item}).collect(),losses:vec![],notices:vec![Notice::YearSuffixWithheld],warnings:vec![],empty:false}
     }
     #[test]
     fn cancelling_queued_request_frees_its_slot_and_worker_recovers() {
@@ -307,6 +307,7 @@ mod waiting_tests {
             outcomes: vec![],
             losses: vec![],
             notices: vec![],
+            warnings: vec![],
             empty: true,
         }
     }

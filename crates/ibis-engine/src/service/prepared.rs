@@ -96,6 +96,7 @@ impl PreparedCitation {
             outcomes,
             losses,
             notices,
+            warnings,
             ..
         } = self.result;
         let rtf = rtf
@@ -125,7 +126,8 @@ impl PreparedCitation {
             outcomes,
             losses,
             notices,
-        );
+        )
+        .with_warnings(warnings);
         self.sample = true;
         Ok(self)
     }

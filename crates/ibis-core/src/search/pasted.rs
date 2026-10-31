@@ -181,6 +181,25 @@ mod tests {
     }
 
     #[test]
+    fn multimarkdown_notes_with_unmatched_pandoc_keys_scan_in_linear_work() {
+        for count in [1, 100, 1000] {
+            let query = "[@{section][#a]".repeat(count);
+            let mut work = Work::new(query.len(), &|| false);
+            let parsed = entries(&query, &mut work)
+                .unwrap_or_else(|error| panic!("scan stopped: {error:?}"))
+                .unwrap_or_else(|| panic!("citation list"));
+            assert_eq!(parsed.entries.len(), count);
+            assert!(parsed.entries.iter().all(|entry| entry.text() == "a"));
+            assert!(
+                work.used() <= 8 * query.len(),
+                "{} visits for {} bytes",
+                work.used(),
+                query.len()
+            );
+        }
+    }
+
+    #[test]
     fn nested_scans_share_cancellation_and_work_limits() {
         let query = format!("@a {}", "[".repeat(60_000));
         let polls = std::cell::Cell::new(0);

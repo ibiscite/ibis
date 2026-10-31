@@ -45,6 +45,7 @@ pub(crate) fn refused(input: &Prepared) -> CitationResult {
         input.losses.clone(),
         input.notices.clone(),
     )
+    .with_warnings(input.warnings.clone())
 }
 pub(crate) fn result(
     json: &str,
@@ -156,7 +157,8 @@ pub(crate) fn result(
         input.outcomes.clone(),
         input.losses.clone(),
         input.notices.clone(),
-    ))
+    )
+    .with_warnings(input.warnings.clone()))
 }
 
 /// Unicode paragraph/line separators and conventional text whitespace remain data.
@@ -489,6 +491,7 @@ mod review_tests {
             outcomes: vec![ItemOutcome::Rendered { item: 0 }],
             losses: vec![],
             notices: vec![],
+            warnings: vec![],
             empty: false,
         }
     }

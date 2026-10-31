@@ -97,9 +97,43 @@ pub(crate) fn summary(text: &str) -> String {
 pub(crate) struct Notice {
     text: Mutex<Option<NoticeMessage>>,
     showing: AtomicU64,
+    receipts: Mutex<ReceiptOwner>,
     /// Held while the window is looked up or created, so two quick copies
     /// cannot both create it.
     window: Mutex<()>,
+}
+
+/// Delivery workers may finish out of order. A notice belongs to its immutable
+/// request, and a delayed old write token cannot retire a newer receipt.
+#[derive(Default)]
+struct ReceiptOwner {
+    generation: u64,
+    latest_token: Option<u32>,
+}
+
+impl ReceiptOwner {
+    fn claim(&mut self, token: Option<u32>) -> Option<u64> {
+        if token.is_some_and(|token| self.latest_token.is_some_and(|latest| token <= latest)) {
+            return None;
+        }
+        let generation = self.generation.checked_add(1)?;
+        self.generation = generation;
+        self.latest_token = token.or(self.latest_token);
+        Some(generation)
+    }
+
+    fn current(&self, receipt: Option<u64>) -> bool {
+        receipt == Some(self.generation)
+    }
+}
+
+#[cfg(any(not(target_os = "windows"), test))]
+fn deliver_receipt(receipt: Option<u64>, deliver: impl FnOnce() -> Delivered) -> Delivered {
+    if receipt.is_some() {
+        deliver()
+    } else {
+        Delivered::Copied { reason: None }
+    }
 }
 
 /// What the notice says: whether the citation was pasted or only copied, and
@@ -135,8 +169,14 @@ pub(crate) async fn show_copied_notice(
     delivery: Option<u32>,
     summary: Option<crate::copy::ReceiptSummary>,
 ) -> Delivered {
+    let receipt = app
+        .state::<Notice>()
+        .receipts
+        .lock()
+        .ok()
+        .and_then(|mut owner| owner.claim(delivery));
     #[cfg(target_os = "windows")]
-    let ticket = crate::paste::take_copy(&app, delivery);
+    let ticket = receipt.and_then(|_| crate::paste::take_copy(&app, delivery));
     // A paste may wait up to a second for the app to come back to the front.
     let delivered = {
         let (app, text) = (app.clone(), text.clone());
@@ -147,7 +187,7 @@ pub(crate) async fn show_copied_notice(
             }
             #[cfg(not(target_os = "windows"))]
             {
-                crate::paste::deliver_copy(&app, &text, delivery)
+                deliver_receipt(receipt, || crate::paste::deliver_copy(&app, &text, delivery))
             }
         })
         .await
@@ -162,20 +202,25 @@ pub(crate) async fn show_copied_notice(
                 .map_or_else(|| self::summary(&text), |receipt| self::summary(&receipt.text)),
             more: summary.map(|receipt| receipt.more),
         },
+        receipt,
     );
     delivered
 }
 
-fn show(app: &AppHandle, text: NoticeMessage) {
+fn show(app: &AppHandle, text: NoticeMessage, receipt: Option<u64>) {
     let notice = app.state::<Notice>();
+    // Check after acquiring the publication lock. If B publishes while A
+    // waits here, A cannot replace B's text, restart its timer or show itself.
+    let Ok(_creating) = notice.window.lock() else { return };
+    let Ok(owner) = notice.receipts.lock() else { return };
+    if !owner.current(receipt) {
+        return;
+    }
     if let Ok(mut current) = notice.text.lock() {
         *current = Some(text.clone());
     }
     let showing = notice.showing.fetch_add(1, Ordering::SeqCst).wrapping_add(1);
     let timer = {
-        let Ok(_creating) = notice.window.lock() else {
-            return;
-        };
         match app.get_webview_window(LABEL) {
             Some(window) => {
                 // Already open (or, on macOS, kept hidden): move it to the
@@ -514,6 +559,52 @@ mod macos {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_the_latest_delivery_can_publish_its_receipt_in_either_completion_order() {
+        for delayed_claim in [false, true] {
+            let mut owner = ReceiptOwner::default();
+            let a = if delayed_claim { None } else { owner.claim(Some(1)) };
+            let b = owner.claim(Some(2));
+            assert!(owner.current(b));
+            let a = if delayed_claim { owner.claim(Some(1)) } else { a };
+            assert!(!owner.current(a));
+            assert!(
+                owner.current(b),
+                "a refused A cannot replace B's exact delivery message"
+            );
+            assert_eq!(owner.claim(Some(2)), None, "a duplicate request never takes ownership");
+            assert!(owner.current(b));
+            let c = owner.claim(None); // Linux / successful copy without a native proof.
+            assert!(owner.current(c));
+            assert!(!owner.current(b));
+        }
+    }
+
+    #[test]
+    fn a_rejected_duplicate_worker_cannot_steal_the_accepted_workers_paste_proof() {
+        let mut owner = ReceiptOwner::default();
+        let accepted = owner.claim(Some(1));
+        let duplicate = owner.claim(Some(1));
+        let mut proof = Some("[@invented]");
+        let mut pastes = 0;
+        let mut deliver = || {
+            assert_eq!(proof.take(), Some("[@invented]"));
+            pastes += 1;
+            Delivered::Pasted {
+                app: Some("Writer".into()),
+            }
+        };
+        // The rejected worker runs first. Only the accepted request can take proof.
+        assert_eq!(
+            deliver_receipt(duplicate, &mut deliver),
+            Delivered::Copied { reason: None }
+        );
+        let delivered = deliver_receipt(accepted, &mut deliver);
+        assert!(matches!(delivered, Delivered::Pasted { .. }));
+        assert!(owner.current(accepted));
+        assert_eq!(pastes, 1);
+    }
 
     const fn rect(x: f64, y: f64, width: f64, height: f64) -> Area {
         Area { x, y, width, height }

@@ -211,8 +211,16 @@ pub(super) fn citation_report(data: &Value, citing: &Citing, printed: bool) -> V
     let outcomes: Vec<ItemOutcome> = serde_json::from_value(parse("outcomes")).unwrap_or_default();
     let losses: Vec<Loss> = serde_json::from_value(parse("losses")).unwrap_or_default();
     let notices: Vec<Notice> = serde_json::from_value(parse("notices")).unwrap_or_default();
+    let warnings: Vec<CitationWarning> = serde_json::from_value(parse("warnings")).unwrap_or_default();
     let output = field(&citing.output);
     let mut lines = Vec::new();
+    for warning in warnings {
+        let label = citing.label(warning.item);
+        lines.push(match warning.code {
+            CitationWarningCode::SourceField => format!("warning: a source field for {label} could not be fully converted; check the library entry."),
+            CitationWarningCode::SentenceCaseExpected => format!("note: APA expects sentence case for the title of {label}; stored capitalization was preserved, so check it in your document."),
+        });
+    }
     let refused: Vec<_> = outcomes
         .into_iter()
         .filter_map(|outcome| match outcome {

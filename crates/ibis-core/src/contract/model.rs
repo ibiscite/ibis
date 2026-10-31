@@ -123,6 +123,9 @@ pub struct Record {
     pub citation_keys: Vec<CitationKey>,
     #[serde(default)]
     pub aliases: Vec<String>,
+    /// Item-local conversion uncertainty, independent of CSL and source paths.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<super::CitationWarningCode>,
     /// Search-only identifiers (for example arXiv eprints), never invented as
     /// printed CSL fields. They invalidate display/search, not citation picks.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -263,6 +266,8 @@ impl LibraryObject {
                     csl: &'a BTreeMap<String, Value>,
                     citation_keys: &'a [CitationKey],
                     aliases: &'a [String],
+                    #[serde(skip_serializing_if = "<[super::CitationWarningCode]>::is_empty")]
+                    warnings: &'a [super::CitationWarningCode],
                 }
                 #[derive(Serialize)]
                 struct CiteObject<'a> {
@@ -276,6 +281,7 @@ impl LibraryObject {
                         csl: &record.csl,
                         citation_keys: &record.citation_keys,
                         aliases: &record.aliases,
+                        warnings: &record.warnings,
                     },
                 })?
             }
@@ -383,6 +389,12 @@ impl Snapshot {
             // serde_json::Value's ordinary destructor is recursive too. A
             // rejected payload must be dismantled without using that stack.
             drop_objects_iteratively(objects);
+            return Err(ModelError::InvalidObject);
+        }
+        // Source uncertainty is one bounded fixed flag. Style expectations
+        // belong to the formatter and cannot be supplied as source metadata.
+        if objects.iter().any(|object| matches!(object, LibraryObject::Record(record)
+            if record.warnings.len() > 1 || record.warnings.iter().any(|code| *code != super::CitationWarningCode::SourceField))) {
             return Err(ModelError::InvalidObject);
         }
         objects.sort_by(|left, right| left.id().cmp(right.id()));
@@ -762,7 +774,34 @@ mod tests {
                 source: CitationKeySource::Bibtex,
             }],
             aliases: vec!["Earlier2026".into()],
+            warnings: vec![],
             identifiers: vec![],
+        }
+    }
+
+    #[test]
+    fn source_uncertainty_invalidates_citations_with_or_without_search_identifiers() {
+        for identifiers in [
+            vec![],
+            vec![crate::identifier::parse_query("arXiv:2601.12345").unwrap()],
+        ] {
+            let mut clean = record();
+            clean.identifiers = identifiers;
+            let original = Snapshot::new(vec![LibraryObject::Record(clean.clone())]).unwrap();
+            clean.warnings = vec![super::super::CitationWarningCode::SourceField];
+            let uncertain = Snapshot::new(vec![LibraryObject::Record(clean.clone())]).unwrap();
+            assert_ne!(original.fingerprints().cite, uncertain.fingerprints().cite);
+            round_trip(&uncertain);
+            for warnings in [
+                vec![super::super::CitationWarningCode::SentenceCaseExpected],
+                vec![super::super::CitationWarningCode::SourceField; 2],
+            ] {
+                clean.warnings = warnings;
+                assert_eq!(
+                    Snapshot::new(vec![LibraryObject::Record(clean.clone())]),
+                    Err(ModelError::InvalidObject)
+                );
+            }
         }
     }
 

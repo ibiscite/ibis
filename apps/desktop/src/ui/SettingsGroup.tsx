@@ -12,14 +12,15 @@ export function SettingsGroup({ id, title, children }: { id: string; title?: str
 }
 
 /** An inset label and description, with a trailing control that can wrap below. */
-export function SettingsRow({ id, label, description, children }: { id: string; label: string; description?: string; children?: ReactNode }) {
+export function SettingsRow({ id, label, description, children, problem, highlighted }: { id: string; label: string; description?: string; children?: ReactNode; problem?: string; highlighted?: boolean }) {
   return (
-    <div className="ui-settings-row" data-described={description ? true : undefined}>
+    <div className="ui-settings-row" data-described={description ? true : undefined} data-highlighted={highlighted || undefined}>
       <div className="ui-settings-row-text">
         <span id={id}>{label}</span>
         {description && <span id={`${id}-description`} className="ui-settings-description">{description}</span>}
       </div>
       {children}
+      {problem && <p className="ui-settings-row-problem" role="alert">{problem}</p>}
     </div>
   );
 }

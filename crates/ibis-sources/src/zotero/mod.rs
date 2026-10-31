@@ -265,6 +265,11 @@ pub fn map_item(library: LibraryId, item: &ZoteroItem) -> Result<MappedItem, Map
             citation_keys,
             aliases,
             identifiers,
+            warnings: if warnings.is_empty() {
+                vec![]
+            } else {
+                vec![ibis_core::contract::CitationWarningCode::SourceField]
+            },
         },
         warnings,
     })

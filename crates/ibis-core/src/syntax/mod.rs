@@ -325,11 +325,16 @@ pub fn cite(snapshot: &Snapshot, request: &CitationRequest) -> Result<CitationRe
     let mut outcomes = Vec::with_capacity(request.items.len());
     let mut picks = Vec::with_capacity(request.items.len());
     let mut losses = Vec::new();
+    let mut warnings = Vec::new();
     let mut key_bytes = 0_usize;
     for (index, item) in request.items.iter().enumerate() {
         match resolve(snapshot, item, request.form, caps, request.items.len(), &owners) {
             Err(error) => outcomes.push(ItemOutcome::Refused { item: index, error }),
             Ok((record, key, form)) => {
+                warnings.extend(record.warnings.iter().map(|code| CitationWarning {
+                    item: index,
+                    code: *code,
+                }));
                 // A MyST role applies one form to every key it contains.
                 if caps.syntax == KeySyntax::Myst && picks.first().is_some_and(|first: &Pick<'_>| first.form != form) {
                     outcomes.push(ItemOutcome::Refused {
@@ -421,7 +426,7 @@ pub fn cite(snapshot: &Snapshot, request: &CitationRequest) -> Result<CitationRe
     if text.len() > MAX_OUTPUT_BYTES {
         return Err(CitationError::OutputTooLarge);
     }
-    Ok(CitationResult::new(text, None, None, display, outcomes, losses, vec![]))
+    Ok(CitationResult::new(text, None, None, display, outcomes, losses, vec![]).with_warnings(warnings))
 }
 
 fn key_owners(snapshot: &Snapshot) -> HashMap<&str, Option<&ItemRef>> {

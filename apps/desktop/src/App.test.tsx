@@ -1982,11 +1982,11 @@ test("rapid A-B-A choices keep the last failed choice for retry without replayin
   await chooseFromMore("Rows: Comfortable");
   await waitFor(() => expect(screen.queryByText(/could not read or save your picker choices/)).toBeNull());
   expect(remembered).toBe("cite");
-  expect(keys).toEqual(["cite", "pandoc", "cite", "cite"]);
+  expect(keys).toEqual(["cite", "pandoc", "cite", "cite", null]);
   remembered = "keys"; // A hand edit after a successful save must survive.
   await chooseFromMore("Larger text", "menuitemcheckbox");
-  await waitFor(() => expect(keys).toHaveLength(5));
-  expect(keys[4]).toBeNull();
+  await waitFor(() => expect(keys).toHaveLength(6));
+  expect(keys[5]).toBeNull();
   expect(remembered).toBe("keys");
 });
 

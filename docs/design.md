@@ -32,9 +32,12 @@ canvas mirrors them (see **How the design changes**).
    sure?"; destructive actions apply at once with an 8 s Undo [D16].
 7. **Calm motion.** Movement only explains where something came from, and it
    switches off when the system asks for reduced motion.
-8. **No glow, no edge rings.** Selection is a fill, never an outline. No
-   coloured borders, outer glows or bright rims. A focus ring appears only when
-   the keyboard moved focus.
+8. **No glow, no edge rings.** Selection is a fill, never an outline.
+   Exception: picture choices in Settings (Appearance, Rows, Search icon
+   miniatures) use a soft accent tint plus a 2 px accent ring, because a fill
+   would hide the picture, as in macOS System Settings. No other coloured
+   borders, outer glows or bright rims. A focus ring appears only when the
+   keyboard moved focus.
 9. **Great defaults, then choice.** Every setting starts from one default that
    works for most people on every platform, so most never open Settings.
    Customising is there for those who want it, never required. No setting
@@ -310,11 +313,17 @@ forced colours; it never resembles a partially completed download.
 | Switch | No change | Accent track | Ring |
 | Search box | None | None | None: the caret (Windows: its accent underline) |
 
-- **Selection is a fill** [D7]. Every OS: the full accent with paired text (a
-  tint reaches only about 1.2:1 beside other rows), no side pill. On the
+- **Selection is a fill** [D7]. Result rows use the full accent with paired
+  text on every OS (a tint reaches only about 1.2:1 beside other rows), no side
+  pill. On the
   selected row an added tile is the paired text colour with a scarlet check
   [D9]. A kept-open picker without focus uses `--row-inactive-background`. Menu highlight: accent on macOS, a subtle fill on
-  Windows and GNOME.
+  Windows and GNOME. Selected picture choices use a soft accent tint plus a
+  2 px accent ring, with normal text (`--choice-selected-background`,
+  `--choice-selected-text` and `--choice-selection-ring-width`). This selection
+  mark stays visible at rest. The separate keyboard focus ring draws farther
+  inward, with a gap from the selection ring, only on keyboard focus. Rows keep
+  their full accent fill; the full accent primary action remains one per view.
 - **Focus ring only on keyboard focus** [D8] (`:focus-visible`), never after a
   click, and **drawn inside the item it marks**, so no scroll area clips it and
   it never covers a neighbour. macOS 2 px accent with a 1 px gap; Windows 2 px
@@ -590,9 +599,14 @@ page", where the Page field lives beside the page itself.
   remain visible with the paste preview hidden. Engine losses name the reference
   and field beside the preview; an unsupported form explains the refusal there
   and blocks copying until corrected. Enter leaves that explanation visible.
+  Source-field and sentence-case warnings name the reference and appear in both
+  preview details and copy feedback. A copy carrying either warning stays open
+  with its warnings until dismissed; it never becomes a clean-copy receipt.
   Mixed narrative clusters, other locator controls, prefixes and suffixes
   remain in #24/#1315. The menu keeps the shared keyboard focus and touch
-  targets.
+  targets. A form's whole row, including its label and example, is clickable;
+  its native radio stays inside that row with the same pointer target even
+  when it is outside the group's Tab sequence.
 - **Year-only citations.** Keep supported style forms available through conditional
   layouts. Each selected item's output must show its issued year, or the style's
   own no-date term for an undated or zero-year item; otherwise refuse the citation.
@@ -1031,8 +1045,9 @@ that owns its area in ROADMAP.md.
    named apart: "read your references" and "paste".
    References, locators, search and the prepared output survive the detour,
    including longer than the usual minute away. On return after a read-back
-   grant, the guide closes and the picker captures the destination again;
-   it never replays the earlier Enter. Its prepared output applies once, even
+   grant, the guide closes. The person returns to the external document and
+   summons Ibis again to capture the destination; no earlier Enter is replayed.
+   Its prepared output applies once after a fresh Enter, even
    if the destination changed, without changing that app's remembered format.
    Reopening before the grant keeps the detour active; destination refreshes
    in the same opening keep its prepared output. A successful copy clears
@@ -1064,6 +1079,36 @@ that owns its area in ROADMAP.md.
    delivery and receipt. Every activation goes through the same readiness
    checks before starting or joining a copy. A failed reconciliation status
    read cancels waiting Enter; a later library update never replays it.
+   Automatic paste is limited to recognised apps with a verified paste shortcut;
+   an unknown app copies with "Copied. Automatic paste is not verified for this app".
+   A format choice never grants paste safety. A proven target that changes,
+   closes or is minimised copies with "Copied. The target app or window changed".
+   An unavailable focus or safety proof uses `paste-unavailable` and the system's
+   manual-paste key; it never claims that the target changed or the paste expired.
+   A replaced clipboard says "Copied. The clipboard changed; copy the citation again".
+   On macOS, sleep, lock and session changes expire pending delivery. Expired
+   deliveries copy with "Copied. The paste expired; paste it yourself".
+   A refusal never retries or replaces another clipboard owner's contents.
+   No window title or document text is read. Window count and front-to-back
+   order cannot establish keyboard focus, including with nonactivating panels.
+   On macOS, Enter uses the captured document and top-level input surface,
+   including when several windows of an app are open. Attached sheets/drawers
+   have their own surface identity; opening a Save sheet cannot borrow its
+   parent document's paste proof. An identity-only AX check requires
+   Accessibility access as well as the separate PostEvent authorization
+   (decision 0029, maintainer 2026-10-30 and #1529 review).
+   It verifies global keyboard ownership as well as the active app, so a foreign
+   nonactivating panel cannot borrow that app's target. Missing Accessibility
+   copies with "Copied. Ibis needs Accessibility access to paste safely. Press
+   ⌘V to paste." Failed/unsupported reads and the bounded 50 ms query timeout
+   copy with `paste-unavailable`. Granting access never retries the old paste;
+   return to the document, open Ibis again and press Enter to try again.
+   No field roles, values or secure-field attributes, window titles or document
+   text are read. The final comparison is followed immediately by
+   process-directed posting, without a
+   lock; a small OS focus-change gap remains and is not atomic window binding.
+   Showing the picker again while it owns the keyboard keeps the original
+   external destination.
 4. Open in under 100 ms with the last snapshot; text received by Search during
    opening is kept (see **Opening** for X11 input routing). The Linux smoke
    types once as soon as the picker is mapped, without waiting for focus.
@@ -1235,8 +1280,37 @@ control at the end, at least `--settings-row-height` (48 px) or
 `--surface-grouped-card` over `--surface-grouped` [D17]. Controls are the
 shared `Switch` (38 × 22), `Segmented` and shortcut recorder in `ui/`. Changes
 apply at once and reach an open picker; preference resets offer Undo. Built so
-far: General (login, pasting, picker look), Shortcuts (open Ibis and the picker's
-key list) and About (version, updates); Libraries and Citations follow (#776).
+far: seven searchable pages, with General (opening-shortcut link, login and
+pasting), Look (real picker pictures, rows, Ibis mark or magnifier,
+Default/Larger text and paste preview), Shortcuts (opening shortcut and an
+expandable key list and Undo for restoring the default), Citations (default
+key syntax or style through the shared Ibis menu) and About Ibis (version and
+update checks). Appearance and Accent apply in both Settings and the picker
+through the same root-level roles. Largest text, None, window presets including
+Compact, menu-bar visibility, welcome replay and the remaining Libraries, Citations and Advanced
+actions appear disabled with Coming soon. Ordinary Settings presentations open
+General at the top; explicit page requests select that page and reset its scroller.
+The shared shell uses the root's full height at Default, Larger and 200% text.
+The page and navigation scrollers contain absolutely positioned descendants,
+so focusing a control never scrolls the document or moves the window chrome.
+General shows desktop-owned shortcut triggers verbatim, or Not assigned, with
+the desktop's guidance.
+Preference notifications retire older replies immediately and refresh after
+the queue actually completes; only closing uses the two-second limit. Both
+windows request a ticket from one synchronous native counter when a choice is
+made, before waiting for earlier saves. The locked writer compares the last
+successfully written ticket per field and returns current saved values when
+an older field is dropped. Retries keep their original tickets; unused tickets
+block nothing and unissued tickets are rejected.
+Notifications carry the publishing write's ticket. A self-notification keeps
+that write's successful acknowledgement available for rollback, including
+when the next save and recovery reads fail; other writes still retire stale replies.
+One preference state owns the shown values and explanation: known saved value,
+save refused, or saved value unknown. Any other window's notification moves it
+to unknown until a real read succeeds, retiring an earlier refusal's saved-value
+claim immediately. A failed read while unknown shows the read-uncertainty error;
+edits and save acknowledgements cannot clear it. A refusal says the saved value
+is shown only while that value is known.
 
 **One Settings design** (maintainer, 2026-10-30). There is one Settings
 window; every drawing and board uses it, and it is kept in step with the app as
@@ -1245,7 +1319,12 @@ both change. The Rows and Search icon pictures are the real picker drawn small
 can't drift from it. Look opens with Appearance: System, Light and Dark as
 pictures of the picker (System split diagonally), System by default, then
 Accent as colour dots, Follow the Mac by default. The
-website shows the app as it currently is.
+website shows the app as it currently is. Each Appearance picture owns the
+labelled theme for its body and controls; System is split across the whole
+picture diagonally. Rows and Search icon use a crop of the real components at
+about 60%, with readable sample titles, rather than shrinking the whole window.
+The crop and its contents shrink together within the available row padding at
+minimum width and 200% text.
 
 **Pages for everyone** (2026-10-30). Most people never open Settings, so
 defaults carry the product (principle 9). Seven pages, each with one job, in this
@@ -1379,11 +1458,14 @@ says why in one sentence, names the exact list in the system's current words
 (macOS 27: "Device Control and Data Access"; earlier: "Accessibility"), shows
 a picture of the switch to turn on, opens that pane with one button, and
 notices the change on its own (read again every second and on return), then
-confirms in words. It never claims success it has not read back. The guide
-opens by itself once per run, the first time a paste is refused, and lives in
-Settings › General › Pasting afterwards. Because macOS keys the permission to
-the code signature, opening the guide first clears Ibis's own entry when the
-permission is not working, so the list shows one fresh switch (#1292, #1242).
+confirms in words. Auto-paste on Mac requires both PostEvent and Accessibility;
+Settings says allowed only after both passive checks succeed. A missing
+Accessibility grant has its own copied receipt; provider failure is not a
+permission denial. The guide lives in Settings › General › Pasting; the
+existing PostEvent refusal also opens it once per run. Because macOS keys
+permissions to the code signature, an explicit Open System Settings click can
+repair Ibis's stale PostEvent entry and request it (#1292, #1242). Permission
+reads never prompt, and the guide never requests or resets Accessibility.
 Automatic listing stays first. Beside **Open System Settings**, the Ibis app
 icon is a file drag source, followed by one line: "If Ibis is not in the list,
 drag it there." It drags the running bundle's file URL, including a renamed,
@@ -1393,10 +1475,11 @@ button states; clicking or pressing it opens System Settings as the keyboard
 alternative. An unbundled development executable cannot be dragged; a failed
 drag points to the list's **+** button. Neither starting nor completing a drag
 claims a grant: the same live permission read must confirm it (#1390).
-Only the guide opened after a refused paste returns to the picker on grant;
-an ordinary Settings visit stays open and confirms the grant in words. A
-background grant never brings Ibis forward: completion waits for the person
-to return. Hidden pages make no permission reads; pasting switched off stops
+The guide opened after a refused paste closes after both grants are read back
+on return. It does not reopen the picker or replay Enter: return to the external
+document and open Ibis again, then press Enter to try again. An ordinary
+Settings visit stays open and confirms the grants in words. A background
+grant never brings Ibis forward. Hidden pages make no permission reads; pasting switched off stops
 the one-second checks, keeping the capability read on return.
 Zotero's sharing line explains reading references; the macOS guide's line
 explains pasting. These are separate grants, never instructions to give both.

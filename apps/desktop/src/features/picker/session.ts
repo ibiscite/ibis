@@ -216,7 +216,9 @@ export function reduceSession(s: SessionState, event: SessionEvent): [SessionSta
     case "delivered": {
       if (f.phase !== "notice") return [s, []];
       if (event.delivered && f.id === s.lastSuccessfulCopy) s = { ...s, lastOutcome: noticeTitle({ delivered: event.delivered, text: "" }) };
-      return event.delivered?.outcome === "copied" && event.delivered.reason === "no-permission" ? [finish(s, f), []] : complete(s);
+      const permissionRefused = event.delivered?.outcome === "copied"
+        && (event.delivered.reason === "no-permission" || event.delivered.reason === "accessibility-required");
+      return permissionRefused ? [finish(s, f), []] : complete(s);
     }
   }
 }

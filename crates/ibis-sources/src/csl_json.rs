@@ -45,6 +45,7 @@ pub(crate) fn load_str(library: &LibraryId, text: &str) -> Result<ParsedLibrary,
     let mut result = ParsedLibrary::default();
     let mut seen = HashSet::new();
     for (index, raw) in items.into_iter().take(crate::MAX_LIBRARY_RECORDS).enumerate() {
+        let warnings_before = result.warnings.len();
         let line = spans.get(index).map(|(_, _, line)| *line);
         let warning = |code| SourceWarning { code, line };
         if raw.get().len() > 1024 * 1024 {
@@ -153,6 +154,11 @@ pub(crate) fn load_str(library: &LibraryId, text: &str) -> Result<ParsedLibrary,
                 },
             }],
             aliases: vec![],
+            warnings: if result.warnings.len() == warnings_before {
+                vec![]
+            } else {
+                vec![ibis_core::contract::CitationWarningCode::SourceField]
+            },
             identifiers: vec![],
         });
     }

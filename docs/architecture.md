@@ -30,6 +30,9 @@ This is the target architecture for the rebuild agreed on 2026-10-26 ([decision 
 - **Keep private data private.** Paths never reach the webview; fixtures are synthetic; diagnostics use fixed codes, never raw text or payloads.
 - **Local endpoints** bind to `127.0.0.1`, require a token and reject browser `Origin` headers.
 - **Links** (`ibis://`) are untrusted input: they only fill in the picker and never copy, paste, change settings or read files ([decision 0030](decisions.md#0030-links-and-launchers)).
+- **Speed is a feature, shown by numbers.** Every speed or memory claim has a measurement that runs. Optimise the hot path the measurement finds, not a guessed one. Limits block at the size people have and stretch beyond it with the same numbers, so a miss teaches without blocking (decision 0032).
+- **Opinionated defaults, sharp knives on request.** The first run works with no setup and good choices already made. Anyone can change any choice, but nothing asks a person to configure what a good default can decide.
+- **Fewer moving parts.** Prefer one process, standard formats and code Ibis already ships over new services, dependencies and custom infrastructure. When a simpler option makes code unnecessary, delete the code.
 - **Long-lived foundations.** Standards and widely used open source first (CSL 1.0.2, CSL-JSON, BibTeX, SQLite, Zotero's APIs, PDF.js). Each dependency that could fade sits behind one Ibis module so it can be replaced: Tauri, React Aria, PDF.js, citeproc-js, the BibTeX parser.
 
 ## Data model (ibis-core)
@@ -67,6 +70,12 @@ queries; malformed or oversized values are ignored before arXiv/DOI equivalence.
 - **CSL-JSON:** `citation-key`, then `id`, is the key. An `id` only proves a match against a bibliography made from that same file, which the item's details say.
 
 ### Saved source generations (#1298, first storage slice #1468)
+
+Provisional (2026-10-31, maintainer): this flat-file design is being compared with
+no cache and with SQLite as a private record/generation store before more of it is
+built (#1534); bundled SQLite
+already ships for reading Zotero, so "no new dependency" is no reason to prefer either.
+Same records, scorer and public behaviour; the result is recorded in decisions.
 
 Adopt #1298's revised immutable flat-file design. One `Arc<PreparedLibrary>`
 owns one source generation: opaque library identity, source observation, content
@@ -182,12 +191,11 @@ annotation relationships, exact global key ownership and preview hash must agree
 
 Scenarios precede code: reopen/search/show/cite parity, corrupt-cache refusal,
 failed writes, lease contention, stale completion and close/reopen. Qualify the
-integrated app with at least five fresh-process runs at 10k and 100k, preserving
-every result and reporting startup and process-tree memory medians. Target 100k
-<3 s/<400 MB and instant cached 10k results. Report cache-hit startup separately
-from first import/rebuild; neither storage tests nor cached results qualify the
-other. #1298 stays open until the app uses compact generations and lazy objects
-and meets these targets, with existing search/copy correctness still enforced.
+integrated app with at least five fresh-process runs at 10k and 50k, preserving
+every result and reporting startup and process-tree memory medians, against the
+limits in decision 0032. Report cache-hit startup separately from first
+import/rebuild; neither storage tests nor cached results qualify the other.
+#1534 decides whether compact generations and lazy objects (#1298) are still needed.
 
 ## Citations (ibis-core, ibis-csl)
 
@@ -279,11 +287,11 @@ the formatter task, and exhaustion remains a typed resource-limit error.
 
 ### Large-library measurement (#1251)
 
-At 100,000 references the release budgets are load/refresh < 3 s, memory <
-400 MB, summon p95 ≤ 100 ms and typing p95 ≤ 50 ms (engine search p95 ≤ 20 ms).
-These are fixed limits, per decision 0032. Pull request CI fails on search
-p95 > 20 ms and picker assets > 400 KiB gzipped. The 100k open/refresh gate
-fails Preview's nightly/release build above the unchanged < 3 s limit.
+The release limits are in decision 0032 (2026-10-31): they block at 10,000
+generated realistic records and a 50,000-record check reports on nightly. 100k is
+no longer a target. Pull request CI fails on search p95 > 20 ms and picker assets
+> 400 KiB gzipped. The rest of this section records the earlier 100k checks and
+measurements, which still run until #1536 moves them to the new sizes.
 
 The explicitly invoked `ibis-engine` test `refresh_budget` generates its own 21.05 MB
 BibTeX file (two authors, journal, date, pages, DOI, volume and issue per entry).
@@ -344,7 +352,7 @@ Enforcement is split by measured margin (maintainer, 2026-10-28):
 |---|---|---|
 | Search p95 ≤ 20 ms, each query | `ci.yml` → `test` (`Test (ubuntu-24.04)`), release `search_budget` | At least 61% measured margin |
 | Picker JS/CSS ≤ 400 KiB gzipped | `ci.yml` → `changes` and `web`, both picker build paths | Deterministic asset bytes |
-| 100k open and refresh < 3 s each | `preview.yml` → Linux `build`, release `open_refresh_budget` | Only 224 ms open margin; shared PR-runner noise can exceed it |
+| 100k open and refresh < 3 s each | `preview.yml` → Linux `build`: `open_refresh_report` on branches and 0.2.x, `open_refresh_budget` on tags from 0.3 | Only 224 ms open margin; shared PR-runner noise can exceed it |
 
 Preview's build covers nightly packages from `main`, tagged releases and manual
 package builds; the scheduled update-test-only run retains its existing build
@@ -433,19 +441,21 @@ still needs further work.
 - **State:** the citation session uses one pure reducer read through `useSyncExternalStore` and a headless controller with session and operation identities; search/preview I/O, destination choices and preferences remain in their adapters; no state library.
 - **Output per app:** the destination table classifies known browser and code-editor app IDs as needing an output question, without inferring document syntax. The native destination reply carries only this category alongside the existing app ID/name and outputs. The first copy with no remembered app output holds its citation in the picker and opens the existing chooser; a pick or dismissal resumes it once when its preview is ready. Search/citation changes, hide/reopen and menu commands cancel the held action. Picks use the existing bounded, atomic `apps.json`; no new file, polling or document inspection. Only macOS currently captures an app; other systems retain the global fallback. Classification adds one bounded table lookup per destination read and no hidden activity.
 - **Keys:** one command registry (id, default chord per system, user override) drives the keys sheet, footer, menus and docs. Conflicts are checked against Ibis's own keys, a reserved list per system and a real registration attempt. Escape, Tab, Enter and arrows cannot be rebound.
-- **Pasting into the previous app:** a pure decision in the engine and thin per-system code. macOS: the app in front is captured (bundle ID, process, name; never window titles) before the picker shows. A successful copy records the pasteboard change count, target, picker presentation and write time in a one-use proof. After the picker hides, one layout-aware ⌘V is posted only to that process. The final foreground, Secure Event Input, change-count and deadline checks run together with posting in one main-thread task. Secure Event Input is system-wide, may be enabled by another app, and does not identify the destination's field or detect every password control. An enabled flag copies with `secure-input`; unavailable checks or expired tasks copy with `paste-unavailable`. Both notices offer ⌘V; neither claims the destination is a password field (decisions 0009, 0029). A replacement clipboard or changed picker also only copies. Paste reads no AX attributes or clipboard contents and requires only PostEvent permission, independent of AX trust. Terminals, remote desktops and VMs are also refused. Windows: the window in front is captured the same way (executable file name, process, integrity level), the picker shows above always-on-top windows, and the keyboard is handed back to that window. A one-use delivery ticket freezes the target, HWND and picker generation before copying, then records the final clipboard sequence after Ibis's own write. One atomic Ctrl+V `SendInput` goes in only while that window and process are in front, no key is held and that sequence is unchanged; apps with more rights than Ibis and UI Automation password fields copy instead. Password checks have a 250 ms caller deadline, no queue and at most one outstanding query per target process (four total); a stuck provider blocks only its own process. Display names are read off the UI thread with a bounded wait and executable-name fallback. Partial `SendInput` releases every key it left down, retries failed releases and retains them for recovery before any later paste. Linux copies and says why. Every refusal leaves a copied outcome. macOS keys PostEvent permission to the signing identity, so builds need a stable signing certificate.
+- **Pasting into the previous app:** a pure decision in the engine and thin per-system code. macOS captures the active app (bundle ID, process, name) and opaque document and top-level input-surface identities before the picker shows. Decision 0029 requires Accessibility access for identity-only AX reads, separately from PostEvent. The globally focused application/window and the focused element's containing document/PID must agree; AXTopLevelUIElement also identifies sheets/drawers, so they cannot borrow the document's proof. Both identities must match at delivery, including when another process has a nonactivating panel. Several windows of an app are supported without enumerating windows or reading titles, field roles, values or secure-field attributes. Each query has one 50 ms sleep-inclusive budget with per-message remaining timeouts; after refreshing authorization, clipboard and security checks, its final document/surface/global-focus reads share at most 5 ms. Missing Accessibility uses `accessibility-required`; failed/unsupported reads or timeout use `paste-unavailable`. Retained AX references stay on the main thread; workers carry only immutable tokens. A repeated show while an Ibis native window is key preserves the external capture/bank, even while NSWorkspace still reports the external app active. Bounded capture latency adds up to 50 ms to opening; native provider latency remains to be measured. A successful copy records the pasteboard change count, target, picker presentation and write time in a one-use proof. After the picker hides, one layout-aware ⌘V is posted only to that process. The final foreground, Secure Event Input, change-count and deadline checks run together with posting in one main-thread task. Secure Event Input is system-wide, may be enabled by another app, and does not identify the destination's field or detect every password control. An enabled flag copies with `secure-input`; unavailable checks copy with `paste-unavailable`; expired delivery uses `paste-expired`. Both notices offer ⌘V; neither claims the destination is a password field (decisions 0009, 0029). A replacement clipboard or changed picker also only copies. Paste reads no clipboard contents. Auto-paste needs both PostEvent and Accessibility; passive checks never prompt. Settings reports granted only when both are authorized and guides the person to the version-specific Accessibility list. Granting never revives a failed capture or retries delivery: return to the external document, summon Ibis again and activate the citation afresh. All ownership locks precede the final identity reads; lock-free lifecycle/time validation detects sleep during it, then the final local identity comparison immediately precedes posting. PID-directed posting cannot atomically bind to a foreign window: a small sequential focus/session/clipboard observation and focus-read-to-post gap remains (decision 0029). Terminals, remote desktops and VMs are also refused. Windows: the window in front is captured the same way (executable file name, process, integrity level), the picker shows above always-on-top windows, and the keyboard is handed back to that window. A one-use delivery ticket freezes the target, HWND and picker generation before copying, then records the final clipboard sequence after Ibis's own write. One atomic Ctrl+V `SendInput` goes in only while that window and process are in front, no key is held and that sequence is unchanged; apps with more rights than Ibis and UI Automation password fields copy instead. Password checks have a 250 ms caller deadline, no queue and at most one outstanding query per target process (four total); a stuck provider blocks only its own process. Display names are read off the UI thread with a bounded wait and executable-name fallback. Partial `SendInput` releases every key it left down, retries failed releases and retains them for recovery before any later paste. Linux copies and says why. Every refusal leaves a copied outcome. macOS keys PostEvent permission to the signing identity, so builds need a stable signing certificate.
 - **Reader (Later; 0.5 cites from annotations and existing PDFs first):** PDF.js (`pdfjs-dist`, legacy build) behind a small adapter. File bytes arrive over IPC from a command that checks the item and never exposes paths; PDF scripting and eval are off; a plain page-text view backs up accessibility. Ibis keeps the physical page index, the printed page label and an annotation's own page label apart. The printed label comes from the PDF's page labels, a Zotero annotation on that page, or an offset the user confirms; a confirmed offset covers a page range (front matter, missing pages and supplements break a single offset), is tied to the file's content hash and is dropped when the file changes. The record's page range is only a hint.
 - **Accessibility:** combobox and listbox (not grid) for results, `TagGroup` for the shelf, one announcer, native announcements after the picker hides. Tested with axe in jsdom, Playwright WebKit snapshots, native accessibility trees and screen-reader runs per release.
 - **Paste permission detour:** delivery returns its typed outcome to the picker.
-  A `no-permission` result keeps the prepared shelf and output in memory rather
-  than consuming them. Settings rechecks permission every second while its
+  A `no-permission` or `accessibility-required` result keeps the prepared shelf
+  and output in memory rather than consuming them. Settings rechecks both
+  authorizations every second while its
   General page is visible and pasting is on, and immediately on return; older
-  reads cannot replace newer ones. Only a refused-paste deep link resumes the
-  picker, after another native permission and focus check and queued settings
-  saves. Normal picker presentation captures the current destination and
-  retires the old clipboard proof. No paste is attempted until a fresh Enter.
+  reads cannot replace newer ones. A refused-paste deep link closes after a
+  native grant/focus check and queued settings saves; it never reopens the
+  picker. The person returns to the external document and summons Ibis again.
+  That presentation captures the destination and retires the old clipboard
+  proof. No paste is attempted until a fresh Enter.
 - **Language:** the engine returns message codes; the app words them through Fluent from 0.3, so German and one right-to-left language can follow in 0.4. Interface language, citation language and text direction are separate; mixed-direction names are isolated in the preview and on the clipboard.
-- **Budgets (release builds, limits from 0.3; decision 0032):** picker interactive p95 ≤ 100 ms after the shortcut; typing to results p95 ≤ 50 ms at 100,000 references (engine search ≤ 20 ms of it); hidden idle CPU ≤ 0.2 % of one core and at most one wakeup a second, so no polling loops; hidden memory ≤ 200 MiB at 10,000 references; initial picker JS and CSS ≤ 400 KiB gzipped. Engine search and picker asset size fail pull request CI; 100k open/refresh fails Preview’s Linux nightly/release build; open latency, idle CPU, wakeups and whole-app memory (web view processes included) are measured warm and cold, at least 30 samples after a 60 s settle, on the named release machines before each release. All use invented libraries, report p50/p95/p99 and compare against fixed limits rather than only against `main`. Superseded previews and searches are cancelled, not ignored.
+- **Budgets (release builds, limits from 0.3):** the limits and sizes are in decision 0032; #1536 gives each its check and channel. No polling loops while hidden. Engine search and picker asset size fail pull request CI; open latency, idle CPU, wakeups and whole-app memory (web view processes included) are measured warm and cold, at least 30 samples after a 60 s settle, on the named release machines before each release. All use invented libraries, report p50/p95/p99 and compare against fixed limits rather than only against `main`. Superseded previews and searches are cancelled, not ignored.
 
 The picker asset gate (`node scripts/picker-budget.mjs`) reads Vite's manifest
 and sums gzip level-9 bytes for `index.html`'s JS, static imports and CSS,

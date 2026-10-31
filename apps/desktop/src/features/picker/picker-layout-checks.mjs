@@ -20,6 +20,16 @@ export function shelfControl(page, name) {
     .and(page.locator("main > .shelf button:visible"));
 }
 
+// A visible/enabled hidden radio can still resolve outside its label or be
+// covered by it. Test the native control's real hit area, not just its name.
+export function isWholeRadioTarget(input) {
+  const label = input.closest(".citation-form");
+  if (!label || input.type !== "radio") return false;
+  const target = input.getBoundingClientRect(), row = label.getBoundingClientRect();
+  return row.width > 0 && row.height > 0 && ["left", "right", "top", "bottom"].every((edge) => Math.abs(target[edge] - row[edge]) <= 1) &&
+    document.elementFromPoint(target.left + target.width / 2, target.top + target.height / 2) === input;
+}
+
 // Keep this function self-contained: Playwright serializes it into the page.
 export function isWholeNotice(text) {
   const node = [...document.querySelectorAll('.notices [role="alert"]')].find((node) => node.textContent === text);
@@ -80,6 +90,8 @@ export function layoutGeometry() {
     notices: [...document.querySelectorAll(".notices")].map(box),
     alerts: [...document.querySelectorAll('.notices [role="alert"]')].map(box),
     segments: [...document.querySelectorAll(".shelf-segment")].map(box),
+    radios: [...document.querySelectorAll(".citation-form input")].map(box),
+    radioRows: [...document.querySelectorAll(".citation-form")].map(box),
   };
 }
 

@@ -27,6 +27,54 @@ fn changed(case: &GoldenCase, change: impl FnOnce(&mut Record)) -> Snapshot {
 }
 
 #[test]
+fn reference_segments_and_source_warnings_survive_together() {
+    let mut case = seed();
+    let LibraryObject::Record(first) = &case.library.objects()[0].object else {
+        panic!("synthetic seed record");
+    };
+    let mut first = first.clone();
+    first.warnings = vec![CitationWarningCode::SourceField];
+    let mut second = first.clone();
+    second.id.key = "work-2".into();
+    second.citation_keys[0].value = "Other2024".into();
+    second.warnings.clear();
+    case.request.items.push(CitationItem {
+        item: second.id.clone(),
+        ..case.request.items[0].clone()
+    });
+    let snapshot = Snapshot::new(vec![LibraryObject::Record(first), LibraryObject::Record(second)]).unwrap();
+    let result = syntax::cite(&snapshot, &case.request).unwrap();
+    assert_eq!(result.text, "[@Example2026; @Other2024]");
+    assert_eq!(
+        result.warnings,
+        [CitationWarning {
+            item: 0,
+            code: CitationWarningCode::SourceField
+        }]
+    );
+    assert_eq!(
+        result
+            .display
+            .nodes
+            .iter()
+            .filter_map(|node| node.item)
+            .collect::<Vec<_>>(),
+        [0, 1]
+    );
+    assert_eq!(
+        result
+            .display
+            .nodes
+            .iter()
+            .flat_map(|node| &node.content)
+            .map(|run| run.text.as_str())
+            .collect::<String>(),
+        result.text
+    );
+    assert!(result.copy_content(2).is_some());
+}
+
+#[test]
 fn key_golden_cases_render_exactly() -> Result<(), Box<dyn std::error::Error>> {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/cases");
     for entry in std::fs::read_dir(root)? {

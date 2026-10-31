@@ -1,7 +1,7 @@
 // Real built picker + invented IPC. Browser layout evidence, not native input/engine proof.
 // Serve `pnpm build` with `pnpm exec vite preview`; reuse an installed Playwright.
 import assert from "node:assert/strict";
-import { dismissMenu, isAnchoredDetails, isWholeNotice, isWholeShelf, noticeText, shelfControl, waitForLayout } from "./picker-layout-checks.mjs";
+import { dismissMenu, isAnchoredDetails, isWholeNotice, isWholeRadioTarget, isWholeShelf, noticeText, shelfControl, waitForLayout } from "./picker-layout-checks.mjs";
 const { chromium } = await import(process.env.IBIS_PLAYWRIGHT_MODULE || "playwright");
 const base = new URL(process.argv[2] || "http://127.0.0.1:4173");
 assert.ok(["127.0.0.1", "localhost"].includes(base.hostname), "Use a loopback fixture server");
@@ -217,6 +217,7 @@ try {
       const token = page.getByRole("group", { name: "Using page 12", exact: true });
       await token.waitFor();
       assert.equal(await token.evaluate((node) => Boolean(node.closest(".search-field"))), true, "query Page token stays beside Search");
+      for (const apply of await token.getByRole("button", { name: /^Apply locator to/ }).all()) await apply.click({ trial: true });
       await token.getByRole("button", { name: "Search as typed", exact: true }).click();
       await token.waitFor({ state: "detached" });
       assert.deepEqual(await scan(), [], "recents and the query-page token keep the fixed bands whole");
@@ -311,9 +312,20 @@ try {
       await dialog.getByRole("button", { name: "Close", exact: true }).click();
       await dialog.waitFor({ state: "detached" });
     };
+    const checkFormPointers = async (dialog) => {
+      for (const radio of await dialog.getByRole("radio").all()) {
+        if (await radio.isDisabled()) continue;
+        await radio.scrollIntoViewIfNeeded();
+        assert.equal(await radio.evaluate(isWholeRadioTarget), true, "the enabled native radio fills its row and receives pointer hits");
+        await radio.click({ trial: true });
+      }
+      const remove = dialog.getByRole("button", { name: /^Remove from citation/ });
+      if (await remove.isEnabled()) await remove.click({ trial: true });
+    };
     if (shelfDetails === "forms") {
       const dialog = await openEditor();
       await dialog.locator(".citation-forms").getByText("(Aster, 2026)", { exact: true }).waitFor();
+      await checkFormPointers(dialog);
       const year = dialog.getByRole("radio", { name: "Year only", exact: true });
       await year.check();
       await page.locator('.shelf .preview-text[title="(2026)"]').waitFor();
@@ -325,6 +337,7 @@ try {
       const narrative = mixed.getByRole("radio", { name: "Name in the sentence", exact: true });
       assert.equal(await narrative.isDisabled(), true, "unsupported group form is disabled before editing");
       await mixed.getByText("Cite this reference alone for Name in the sentence.", { exact: true }).waitFor();
+      await checkFormPointers(mixed);
       await closeEditor(mixed);
       assert.deepEqual(await scan(), [], "current-style examples and true Year only keep one shelf line");
       assert.deepEqual(resizes, [], "forms never request native sizing");
@@ -421,6 +434,7 @@ try {
       assert.equal(await reachable(fullCitation), true, "the complete long/RTL citation is reachable in the menu");
       await dialog.getByRole("textbox", { name: "Page", exact: true }).fill("iv–vi");
       for (const control of await dialog.getByRole("radio").all()) assert.equal(await reachable(control), true, "all name forms stay whole and reachable");
+      await checkFormPointers(dialog);
       assert.deepEqual(await page.locator("main > .shelf").boundingBox(), band, "the long citation and menu never grow the shelf");
       await closeEditor(dialog);
       const reopened = await openEditor();
@@ -456,11 +470,15 @@ try {
         await anchoredMenu(count);
         const controls = dialog.getByRole("button", { name: /^Edit / });
         assert.equal(await controls.count(), 9, "every chosen reference has its own editor in the overlay");
-        for (const control of await controls.all()) assert.equal(await reachable(control), true, "every reference menu is reachable");
+        for (const control of await controls.all()) {
+          assert.equal(await reachable(control), true, "every reference menu is reachable");
+          await control.click({ trial: true });
+        }
       } else if (shelfDetails === "warnings") {
         await search.press("Shift+Enter");
         const warnings = shelfControl(page, /2 warnings.*Reference entry.*Closest matches/);
         await warnings.waitFor();
+        await warnings.click({ trial: true });
         beforeShelf = await page.locator("main > .shelf").boundingBox();
         assert.equal(await reachable(warnings), true, "the warnings control stays reachable from the shelf");
         const folded = await page.locator("main > .shelf").getAttribute("data-folded") !== null;

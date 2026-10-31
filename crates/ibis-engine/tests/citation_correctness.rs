@@ -31,6 +31,7 @@ fn csl(fields: Value) -> Snapshot {
         csl: serde_json::from_value(fields).unwrap(),
         citation_keys: vec![],
         aliases: vec![],
+        warnings: vec![],
         identifiers: vec![],
     })])
     .unwrap()
