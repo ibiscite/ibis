@@ -16,7 +16,7 @@ const step = (name, prefix) => {
   return text.split("        run: |\n")[1].replace(/^          /gm, "");
 };
 
-// Execute the workflow's shell and real version comparator; only GitHub is fake.
+// Execute the workflow's shell and real version comparator with fake GitHub and jq.
 function fakeGithub() {
   const fs = require("node:fs");
   const args = process.argv.slice(2);
@@ -66,6 +66,17 @@ function fakeGithub() {
   save();
 }
 
+function fakeJq() {
+  const fs = require("node:fs");
+  const [option, field, file, ...extra] = process.argv.slice(2);
+  if (option !== "-r" || ![".body", ".isDraft", ".version"].includes(field) || extra.length) {
+    console.error("unsupported fixture jq arguments");
+    process.exit(2);
+  }
+  const value = JSON.parse(fs.readFileSync(file ?? 0, "utf8"))[field.slice(1)];
+  console.log(typeof value === "string" ? value : JSON.stringify(value ?? null));
+}
+
 function fixture(t, initial = {}) {
   const dir = mkdtempSync(join(tmpdir(), "ibis-release-config-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
@@ -74,6 +85,7 @@ function fixture(t, initial = {}) {
     copyFileSync(new URL(name, import.meta.url), join(dir, "scripts", name));
   }
   writeFileSync(join(dir, "gh"), `#!/usr/bin/env node\n(${fakeGithub.toString()})();\n`, { mode: 0o755 });
+  writeFileSync(join(dir, "jq"), `#!/usr/bin/env node\n(${fakeJq.toString()})();\n`, { mode: 0o755 });
   writeFileSync(join(dir, "dist/Ibis-synthetic.zip"), "invented package");
   const hash = createHash("sha256").update("invented package").digest("hex");
   writeFileSync(join(dir, "dist/SHA256SUMS-synthetic.txt"), `${hash}  Ibis-synthetic.zip\n`);
@@ -87,6 +99,12 @@ function fixture(t, initial = {}) {
   });
   return { dir, state, run };
 }
+
+test("numbered publishes serialize the Latest read and publish without cancelling an active job", () => {
+  const publish = job("publish");
+  assert.match(publish, /^    concurrency:\n      group: publish-numbered-release\n      cancel-in-progress: false$/m);
+  assert.doesNotMatch(publish, /^\s+cancel-in-progress:\s*true\b/m);
+});
 
 test("numbered releases publish fully with a versioned title and explicit Latest choice", (t) => {
   for (const releases of [undefined, {}]) for (const latest of ["v0.2.2", "v0.2.3", "v0.2.10"]) {
