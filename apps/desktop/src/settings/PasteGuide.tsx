@@ -40,7 +40,8 @@ export function usePastePermission(api: Pick<SettingsApi, "pastePermission">, ac
 }
 
 /** The steps to allow pasting: what macOS asks, where the switch is, and a
- * live answer once it is on. Clicking Open clears Ibis's stale switch first. */
+ * live answer once both grants are on. Only a deliberate Open action navigates
+ * to System Settings; permission reads never request a grant. */
 export function PasteGuide({ name, permission, onOpen, onDrag }: {
   name: string; permission: PastePermission; onOpen: () => void; onDrag: () => Promise<void>;
 }) {

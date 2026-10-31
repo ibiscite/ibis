@@ -463,19 +463,19 @@ test("the paste guide names the list, opens it, notices the grant on its own and
   const guide = await screen.findByRole("heading", { name: "Allow Ibis to paste for you" });
   const card = guide.closest(".paste-guide") as HTMLElement;
   expect(card.textContent).toContain("In Privacy & Security › Device Control and Data Access, turn on Ibis Nightly.");
-  expect(card.textContent).toContain("To paste, allow Ibis in macOS;");
+  expect(card.textContent).toContain("Ibis needs Accessibility access to check which window has the keyboard");
   expect(card.textContent).not.toContain("Zotero");
   fireEvent.click(within(card).getByRole("button", { name: "Open System Settings" }));
   expect(state.opened).toBe(1);
   expect(within(card).getByRole("status").textContent).toBe("Waiting for your OK…");
   // Still waiting after a while: say how to clear a stale switch.
   await act(async () => { await vi.advanceTimersByTimeAsync(STALE_HINT_MS); });
-  expect(card.textContent).toContain("Ibis clears the old switch");
+  expect(card.textContent).toContain("remove Ibis Nightly from the list, add this copy again, then turn it on");
   state.permission = { ...state.permission, granted: true };
   await act(async () => { await vi.advanceTimersByTimeAsync(RECHECK_MS); });
   expect(within(card).getByRole("status").textContent).toBe("Ibis can paste now.");
   expect(within(card).queryByRole("button", { name: "Open System Settings" })).toBeNull();
-  expect(card.textContent).not.toContain("Ibis clears the old switch");
+  expect(card.textContent).not.toContain("remove Ibis Nightly from the list");
   // Once allowed, Settings stops asking every second.
   const reads = state.reads;
   await act(async () => { await vi.advanceTimersByTimeAsync(RECHECK_MS * 5); });

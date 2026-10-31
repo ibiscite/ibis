@@ -112,7 +112,7 @@ nothing leaves the app.
 ## 0009 Insertion
 
 Every insertion ends in exactly one visible state: pasted, or copied with a
-reason. Ibis captures the target app, writes every clipboard format, restores
+reason. Ibis captures the target app and window, writes every clipboard format, restores
 focus and pastes with a layout-aware shortcut. The citation stays on the
 clipboard: restoring the previous contents could paste them into a slow app, so
 restoring and per-app rules wait until after 1.0. On macOS it refuses while
@@ -124,6 +124,11 @@ password detection. Terminals, remote desktops, VMs and lost targets are
 refused on both platforms. Pasting is on by default (maintainer,
 2026-10-25, #27); Settings › General › Pasting turns it off, saved as
 `paste: false` (absent means on), and Enter then only copies.
+
+Unrecognised apps only copy with `unknown-app` (#1520). Recognising an output
+syntax or remembering a format does not establish that an app's paste key is
+safe. This deliberately refuses unlisted remote viewers, terminals and editors
+whose shortcuts are unverified, without growing a guessed app-ID denylist.
 
 The footer names the intended action and output together, from that same
 native policy. Enter during search or preview loading waits for its current
@@ -143,6 +148,12 @@ Fresh activations share one ready-citation owner: they either start a copy
 or join its outstanding operation, renewing completion ownership without
 another clipboard write or delivery. Status-read failures end reconciliation
 and cancel queued Enter; recovery requires fresh activation (#1401 round 2).
+
+The native receipt also owns an immutable request generation (#1520 review).
+It rechecks ownership under the notice publication lock before changing text,
+showing the window or starting a timer. A refused A finishing after B cannot
+replace B's delivery message; delayed or duplicate write tokens cannot claim
+the latest receipt. Copies without native paste proofs use request ordering.
 
 When the shortcut opens the picker with short text selected in the target app,
 that text becomes the search and the paste replaces it (macOS and Windows, on
@@ -176,17 +187,21 @@ It never moves/frees the borrowed BSTR or exposes a reference; odd binary byte
 counts and malformed UTF16 refuse. The SDK-owned odd-byte fixture uses the
 same scoped module. No production allowance or native-input policy changes.
 
-For paste safety on macOS, the boundary is just `IsSecureEventInputEnabled`,
+For secure typing on macOS, the boundary is `IsSecureEventInputEnabled`,
 whose SDK result is a Boolean (`u8`). It is read on the main thread, as Carbon requires. The
 flag is system-wide and can be enabled by another app; it does not establish
 that the destination is a password field. An enabled flag copies with the
 `secure-input` reason: "Copied. Secure typing is on, possibly in another app.
 Press ⌘V to paste." An unavailable or timed-out check uses `paste-unavailable`:
 "Copied. Press ⌘V to paste." Neither outcome claims password-field detection.
-The AX guard is removed: optional subroles, denied AX trust and dormant
-providers must not disable ordinary paste (#1280, #1360). Paste requests
-only PostEvent permission, never Accessibility trust; no AX attributes are
-read or providers activated.
+The AX password/subrole guard remains removed (#1280, #1360). macOS auto-paste
+requires two separate authorizations: PostEvent to send the shortcut and
+Accessibility to prove its destination. The identity-only proof below adds an
+Accessibility requirement compared with the old PostEvent-only contract.
+Both checks are passive; they never request trust or show a permission prompt.
+Without Accessibility, Enter copies with `accessibility-required`:
+"Copied. Ibis needs Accessibility access to paste safely. Press ⌘V to paste."
+Provider errors, unsupported attributes and timeouts remain `paste-unavailable`.
 
 On macOS, Ibis snapshots the pasteboard change count immediately after writing
 every format, checking that ownership did not change during publication. A
@@ -199,6 +214,106 @@ task has at most 250 ms and delivery at most 1,500 ms from the write; expired
 or cancelled queued tasks cannot post later. Cancellation and posting share
 a lock so a completed paste is never reported as merely copied.
 
+For #1520, the proof also freezes a lifecycle epoch before the clipboard write
+and a sleep-inclusive monotonic timestamp. Workspace sleep, display sleep,
+wake and session changes, and screen lock/unlock notifications retire the epoch.
+Synchronous libnotify check tokens cover lock/unlock and Core Graphics session
+changes before delayed observer callbacks. A bracketed comparison of the SDK's
+sleep-inclusive and awake-only monotonic clocks also retires the epoch when
+their offset changes; unavailable or wider-than-100 µs samples refuse. The
+1,500 ms lifetime is checked against both active and sleep-inclusive time.
+A measured timeout or known lifecycle change uses `paste-expired`; missing,
+failed, backwards or exhausted safety evidence uses `paste-unavailable` (#1529).
+Own writes and the final checks/post share the target-state lock, with a unique
+current write token, so superseded work cannot post even with reused counters.
+
+The WindowServer window-count heuristic is removed after #1529 review. Neither
+the active app nor front-to-back ordering proves keyboard ownership: a foreign
+nonactivating text panel can be key while Word stays active. Refusing every
+multiwindow app is also not an acceptable focused-window implementation.
+On 2026-10-30 the maintainer chose option A: narrowly amend this decision and
+#1241's PostEvent-only contract to require Accessibility for a focused-window
+identity proof. Round 2 of #1529 explicitly distinguishes the two grants and
+extends surface identity to sheets/drawers. The complete
+AX attribute allowlist is `AXFocusedApplication`, its `AXFocusedWindow`, the
+system-wide `AXFocusedUIElement`, and that element's `AXWindow` and
+`AXTopLevelUIElement` relations.
+Only opaque AX object equality and their PIDs are used. The element read
+establishes the actual global focus owner, including a foreign nonactivating
+panel; it reads no field roles, values or secure-field attributes. The app,
+focused window and containing window must agree. Both the document window and
+top-level input surface are retained and compared to the capture. `AXWindow`
+excludes attached sheets/drawers; `AXTopLevelUIElement` distinguishes those
+surfaces even while the parent document stays focused. Both relations are
+reread before the last global-focus read, including when a control keeps its
+identity while moving to a different surface. Missing top-level evidence never
+falls back to the document alone. No titles, roles/subroles, document text, values,
+tree traversal, attribute enumeration, descriptions or logs are allowed.
+Single- and multiwindow apps follow the same focused-window identity contract.
+At capture, Ibis first checks whether one of its own native windows is key.
+A repeated show while its nonactivating picker owns the keyboard keeps the
+previous external capture and AX identity bank, even if NSWorkspace still
+names that external app. This reads only Ibis's own AppKit window state.
+
+Each query has one 50 ms sleep-inclusive budget. Every queried AX object gets
+the remaining messaging timeout; the system object's process-default timeout
+is restored on exit. After the initial provider reads, notification, PostEvent,
+Secure Event Input and clipboard-count checks are refreshed; the final adjacent
+document/surface/global-focus reads share a tighter 5 ms budget, including late
+successes or errors. Slow providers copy instead of extending stale evidence.
+Missing Accessibility uses its own typed reason at capture and final checks.
+Unsupported reads, errors, timeouts or unstable focus copy with
+`paste-unavailable`; a proven changed/lost owner or window/surface uses
+`target-changed`. A failed capture cannot invent a changed target.
+Captured AX references stay on the main thread, retained only in memory with a
+nonwrapping token; workers carry the token, never the reference. A final query
+only compares and cannot replace the captured identity. There is no idle or
+hidden polling; queries run only during capture and delivery. Provider latency
+adds at most the bounded capture wait to opening and bounded checks to delivery;
+native latency remains to be measured.
+
+Settings reports permission granted only when both passive preflights succeed,
+including PostEvent=true/Accessibility=false. Its guide names Privacy &
+Security's Accessibility list ("Device Control and Data Access" on macOS 27+).
+The existing Open System Settings action can request/repair PostEvent only on
+that explicit click; it never requests or resets Accessibility. A missing
+capture authorization stays in its one-use proof after a later grant. Granting
+does not replay delivery or summon the picker: the guide closes on a granted
+return, and the person returns to the external document, opens Ibis again and
+presses Enter. Only that fresh external capture can establish a new proof.
+
+Even with this focused-window proof, public `CGEventPostToPid` addresses
+a process, not a window. Public APIs do not provide an atomic foreign-window
+binding for this shortcut. All ownership locks and shared lifecycle state are
+acquired before the final AX identity reads; synchronous notification checks
+also precede those reads. Completion checks use only sleep-inclusive time,
+a locally owned awake-clock correlation and the atomic epoch, so suspension
+during the read also expires delivery without taking a mutex or querying a
+provider. The final local identity comparison immediately precedes posting;
+Ibis takes no lock or extra provider query after it. There remains a small
+interval between the last OS focus read and PID-directed dispatch, including
+local validation. Public APIs
+cannot eliminate a focus change in that interval. AX also samples global focus
+and its document/surface relations sequentially, not in an atomic OS snapshot;
+movement during those final adjacent reads remains part of the gap. This is not
+atomic binding.
+
+The focus, authorizations, clipboard and session state are separate OS observations.
+A complete lock/unlock/session cycle wholly inside that final tail can evade
+the notification fence if main-thread callbacks have not run and focus returns
+unchanged; local clock correlation independently catches sleep. These narrow
+intervals remain native qualification limits, not guarantees of atomic input.
+
+There is no window-name lookup, screen capture, automatic permission prompt or
+hidden polling. `paste/macos/focus/native.rs` is a scoped unsafe exception for the
+public AX APIs; CF ownership/equality use the already-locked
+`objc2-core-foundation` safe binding directly. `paste/macos/safety.rs` remains a
+scoped unsafe exception for SDK clocks and observer registration. It uses already-locked
+`block2` directly. Clock/notification logic has synthetic coverage; real OS
+producers, focused-window providers and native keyboard placement still
+require qualification.
+Clock sampling has its stated 100 µs resolution limit.
+
 Other macOS native calls use objc2's generated AppKit and Core Graphics
 bindings. On Windows, `winsafe` supplies safe Win32 calls (the foreground
 window, its process, name and integrity level, and `SendInput`), and
@@ -208,15 +323,31 @@ does one small module get a scoped `#[allow(unsafe_code)]`, with its crate's
 lint relaxed to `deny`, a safety comment on every block and independent
 security-boundary review (2026-10-27, #1133).
 
-A Windows copy freezes its target, HWND and picker generation before writing.
+A Windows copy freezes its target, HWND, picker generation and both safety
+timestamps at native request entry, before waiting on target state or clipboard
+I/O (#1529). Clipboard publication only adds the proved final sequence and write
+token; it never mints a new timestamp after a suspension or delay.
 Its one-use delivery ticket records the final clipboard sequence only after
 closing Ibis's own successful write and proving that no foreign write took
 over, including writes that keep the owner HWND. Neither a notice nor its
 worker adopts a later capture or clipboard baseline, and delivery expires
-1,500 ms after the write receipt. Final checks revalidate that sequence,
+1,500 ms after the frozen pre-I/O start. Final checks revalidate that sequence,
 generation, hidden picker, HWND and process after the password query and
 again after the injection lock and any key-release recovery waits. Windows
 never reads clipboard contents to prove ownership.
+Changed clipboard sequence uses `clipboard-changed`: "Copied. The clipboard
+changed; copy the citation again". Unavailable sequence evidence uses
+`paste-unavailable`, with the platform's manual-paste key. The failure that
+refused injection is retained rather than re-querying mutable state to word it.
+
+The #1520 audit also moves Windows expiry before foreground restoration and
+refuses invalid, hidden or minimised HWNDs. A sleep-inclusive `GetTickCount64`
+age check runs before restoration and after UI Automation and injection-lock
+waits. Windows still lacks a short lock/unlock/session epoch; its targetless
+`SendInput` has an unavoidable final check-to-send gap, and HWND/PID reuse and
+focused-field changes remain qualification/follow-up limits. This change does
+not certify those cases. Linux has no automatic paste/input adapter and always
+copies with `unsupported-system`, so no pending native paste can survive there.
 
 On both systems, a notice carries a unique write token from the successful
 copy. Only a matching token can consume its one-use proof; a delayed earlier

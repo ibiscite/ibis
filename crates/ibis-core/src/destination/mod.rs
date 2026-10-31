@@ -117,6 +117,11 @@ pub enum CopyReason {
     PasteOff,
     UnsupportedSystem,
     NoTarget,
+    /// The target's paste shortcut has not been verified.
+    UnknownApp,
+    TargetChanged,
+    ClipboardChanged,
+    PasteExpired,
     SecureField,
     /// System-wide secure typing is enabled, possibly by another app.
     SecureInput,
@@ -127,6 +132,8 @@ pub enum CopyReason {
     RemoteDesktop,
     VirtualMachine,
     NoPermission,
+    /// macOS Accessibility trust is required for the identity-only focus proof.
+    AccessibilityRequired,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -160,8 +167,9 @@ pub fn decide(target: &Target, permission: PastePermission) -> Decision {
             Some(PasteSafety::Terminal) => CopyReason::Terminal,
             Some(PasteSafety::RemoteDesktop) => CopyReason::RemoteDesktop,
             Some(PasteSafety::VirtualMachine) => CopyReason::VirtualMachine,
-            Some(PasteSafety::Normal) | None if !permission.granted => CopyReason::NoPermission,
-            Some(PasteSafety::Normal) | None => return Decision::Paste,
+            None => CopyReason::UnknownApp,
+            Some(PasteSafety::Normal) if !permission.granted => CopyReason::NoPermission,
+            Some(PasteSafety::Normal) => return Decision::Paste,
         }
     };
     Decision::Copy(reason)
