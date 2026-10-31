@@ -34,8 +34,9 @@ pub(super) fn to_csl(value: &str, accessed: bool) -> Value {
     natural_date(text).unwrap_or_else(|| json!({"literal": text}))
 }
 
-/// Zotero handles only quoted literals and valid EDTF here. Other Extra date
-/// lines remain in `note` for citeproc-js's own field-hack parser.
+/// Quoted literals and valid EDTF follow Zotero. Source year letters and
+/// publication status also stay literal, avoiding citeproc's numeric truncation.
+/// Other Extra date lines remain in `note` for its field-hack parser.
 pub(super) fn extra_date(value: &str) -> Option<Value> {
     if value.len() > MAX_PARSE_BYTES {
         return None;
@@ -47,6 +48,9 @@ pub(super) fn extra_date(value: &str) -> Option<Value> {
         if !literal.is_empty() && !literal.contains(['\r', '\n', '\u{2028}', '\u{2029}']) {
             return Some(json!({"literal": literal}));
         }
+    }
+    if ibis_core::citable::literal_date(text) {
+        return Some(json!({"literal":text}));
     }
     edtf(text)
 }
