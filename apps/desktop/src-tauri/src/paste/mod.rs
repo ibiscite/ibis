@@ -64,6 +64,7 @@ impl SafetyFailure {
         }
     }
 
+    #[cfg(any(target_os = "macos", target_os = "windows", test))]
     fn result(self) -> PostResult {
         match self {
             Self::Expired => PostResult::Expired,
@@ -1382,12 +1383,13 @@ mod tests {
         }
     }
 
+    // This fake exercises macOS capture and PostEvent on every test host.
     fn writer(id: &str) -> Captured {
         Captured {
             target: Target {
-                system: SYSTEM,
+                system: System::Macos,
                 app: Some(AppId {
-                    system: SYSTEM,
+                    system: System::Macos,
                     id: id.into(),
                 }),
                 secure_field: false,
@@ -1407,14 +1409,9 @@ mod tests {
             granted: true,
         };
         let writer = writer("com.microsoft.word");
-        assert_eq!(intended_paste(Some(&writer), permission), SYSTEM != System::Linux);
+        assert!(intended_paste(Some(&writer), permission));
         assert!(!intended_paste(None, permission));
         let mut unproven_window = writer.clone();
-        unproven_window.target.system = System::Macos;
-        unproven_window.target.app = Some(AppId {
-            system: System::Macos,
-            id: "com.microsoft.word".into(),
-        });
         unproven_window.window = None;
         assert!(!intended_paste(Some(&unproven_window), permission));
         assert!(!intended_paste(
@@ -1486,7 +1483,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg_attr(target_os = "linux", ignore = "Linux never pastes")]
     fn an_editor_with_verified_window_identity_pastes_once_after_returning() {
         let desk = Fake::new();
         desk.fronts.replace(vec![7, 7, 42]);
@@ -1579,7 +1575,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg_attr(target_os = "linux", ignore = "Linux never pastes")]
     fn nothing_that_can_wait_runs_between_the_last_window_check_and_posting() {
         let desk = Fake {
             focus_after_final_check: true,
@@ -1598,7 +1593,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg_attr(target_os = "linux", ignore = "Linux never pastes")]
     fn unavailable_safety_evidence_is_not_reported_as_expiry() {
         for stamp in [
             SafetyStamp {
@@ -1620,7 +1614,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg_attr(target_os = "linux", ignore = "Linux never pastes")]
     fn final_window_proof_failure_keeps_its_own_delivery_reason() {
         for (failure, reason) in [
             (CopyReason::PasteUnavailable, "paste-unavailable"),
@@ -1646,7 +1639,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg_attr(target_os = "linux", ignore = "Linux never pastes")]
     fn a_changed_closed_minimised_or_unproven_window_never_receives_the_paste() {
         for window in [Some(200), None] {
             let desk = Fake {
@@ -1685,7 +1677,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg_attr(target_os = "linux", ignore = "Linux never pastes")]
     fn sleep_lock_and_user_switch_end_a_pending_paste_even_if_instant_did_not_advance() {
         for _event in ["sleep", "lock", "user-switch"] {
             let desk = Fake::new();
@@ -1701,7 +1692,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg_attr(target_os = "linux", ignore = "Linux never pastes")]
     fn a_sleep_aware_clock_expires_delivery_when_the_active_clock_pauses() {
         let desk = Fake::new();
         let proof = proof();
@@ -1776,7 +1766,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg_attr(target_os = "linux", ignore = "Linux never pastes")]
     fn target_and_lifecycle_are_rechecked_after_the_native_queries() {
         for change in [
             (|desk: &Fake| desk.window.set(Some(200))) as fn(&Fake),
@@ -1819,7 +1808,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg_attr(target_os = "linux", ignore = "Linux never pastes")]
     fn secure_typing_and_unavailable_checks_have_distinct_copy_reasons() {
         for (secure, reason) in [(Some(true), "secure-input"), (None, "paste-unavailable")] {
             let desk = Fake {
@@ -1832,7 +1820,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg_attr(target_os = "linux", ignore = "Linux never pastes")]
     fn secure_input_enabled_while_the_final_task_waits_refuses_the_paste() {
         let desk = Fake {
             queue_delay: Duration::from_millis(100),
@@ -1844,7 +1831,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg_attr(target_os = "linux", ignore = "Linux never pastes")]
     fn clipboard_replaced_during_the_final_check_is_never_read_or_pasted() {
         let desk = Fake {
             replace_during_check: true,
@@ -1856,7 +1842,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg_attr(target_os = "linux", ignore = "Linux never pastes")]
     fn clipboard_and_secure_input_are_refreshed_after_the_final_ax_provider_wait() {
         for (change, reason) in [
             (
@@ -1875,7 +1860,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg_attr(target_os = "linux", ignore = "Linux never pastes")]
     fn lifecycle_refresh_cannot_leave_an_older_clipboard_snapshot_before_the_final_focus_pair() {
         let desk = Fake {
             replace_on_refresh_stamp: true,
@@ -1886,7 +1870,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg_attr(target_os = "linux", ignore = "Linux never pastes")]
     fn revoking_post_event_during_provider_wait_preserves_its_permission_refusal() {
         let desk = Fake {
             after_window_query: Some(|desk| desk.post_event_granted.set(false)),
@@ -1897,7 +1880,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg_attr(target_os = "linux", ignore = "Linux never pastes")]
     fn an_expired_main_thread_task_or_slow_flag_check_cannot_paste() {
         for (queue_delay, query_delay, secure) in [
             (POST_LIMIT, Duration::ZERO, Some(false)),
@@ -1932,7 +1914,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg_attr(target_os = "linux", ignore = "Linux never pastes")]
     fn final_task_revalidates_foreground_picker_presentation_and_visibility() {
         for (desk, reason) in [
             (
@@ -1967,13 +1948,7 @@ mod tests {
         for text_a in ["[@first]", TEXT] {
             let last = LastTarget::default();
             let desk = Fake::new();
-            let mut captured = writer("com.microsoft.word");
-            // Exercise macOS policy on every test host, like the Windows fake.
-            captured.target.system = System::Macos;
-            if let Some(app) = &mut captured.target.app {
-                app.system = System::Macos;
-            }
-            last.begin_presentation(Some(captured));
+            last.begin_presentation(Some(writer("com.microsoft.word")));
             let token_a = last
                 .write_copy_at(text_a, desk.stamp.get(), || Ok(Some(COUNT)))
                 .unwrap_or_else(|e| panic!("{e}"));
@@ -2035,7 +2010,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg_attr(target_os = "linux", ignore = "Linux never pastes")]
     fn delivery_deadline_starts_at_the_own_write_not_at_notice_or_queue_time() {
         let mut stale = proof();
         stale.written -= LATE;
@@ -2068,18 +2042,18 @@ mod tests {
 
     #[test]
     fn unsafe_unproven_and_disabled_targets_only_copy() {
+        let no_target = if SYSTEM == System::Linux {
+            "unsupported-system"
+        } else {
+            "no-target"
+        };
         for (captured, enabled, reason) in [
             (Some(writer("org.example.other")), true, Some("unknown-app")),
             (Some(writer("com.microsoft.word")), false, Some("paste-off")),
-            (None, true, Some("no-target")),
+            (None, true, Some(no_target)),
         ] {
             let desk = Fake::new();
             let ticket = CopyProof { captured, ..proof() };
-            let reason = if enabled && SYSTEM == System::Linux {
-                Some("unsupported-system")
-            } else {
-                reason
-            };
             assert_eq!(deliver(&desk, Some(&ticket), enabled), copied(reason));
             assert!(desk.posts.borrow().is_empty());
         }
@@ -2107,7 +2081,7 @@ mod tests {
 #[cfg(test)]
 mod windows_tests {
     use super::*;
-    use ibis_core::destination::{AppId, Target};
+    use ibis_core::destination::AppId;
     use std::cell::{Cell, RefCell};
     use std::collections::VecDeque;
 
@@ -2309,16 +2283,10 @@ mod windows_tests {
     }
 
     fn ticket() -> DeliveryTicket<usize> {
-        let mut captured = writer("winword.exe");
-        // Exercise Windows policy even on a Linux test host.
-        captured.target.system = System::Windows;
-        if let Some(app) = &mut captured.target.app {
-            app.system = System::Windows;
-        }
         DeliveryTicket {
             token: 17,
             target: CopyTarget {
-                captured: Some(captured),
+                captured: Some(writer("winword.exe")),
                 window: Some(100),
                 generation: 10,
             },
@@ -2343,21 +2311,20 @@ mod windows_tests {
     }
 
     fn writer(id: &str) -> Captured {
-        Captured {
-            target: Target {
-                system: System::Windows,
-                app: Some(AppId {
-                    system: System::Windows,
-                    id: id.into(),
-                }),
-                secure_field: false,
+        // Match windows::front: its HWND belongs to CopyTarget, not Front.
+        capture::captured(
+            System::Windows,
+            Some(Front {
+                id: Some(id.into()),
+                pid: 42,
+                window: None,
+                focus_failure: None,
+                name: Some("Writer".into()),
                 elevated: false,
-            },
-            pid: Some(42),
-            window: Some(100),
-            focus_failure: None,
-            name: Some("Writer".into()),
-        }
+            }),
+            7,
+        )
+        .unwrap_or_else(|| panic!("external Windows capture"))
     }
 
     fn copied(reason: Option<&str>) -> Delivered {
@@ -2367,28 +2334,47 @@ mod windows_tests {
     }
 
     #[test]
-    #[cfg_attr(target_os = "linux", ignore = "Linux never pastes")]
     fn enter_posts_exactly_one_paste_to_the_captured_app_once_it_is_back_in_front() {
-        let desk = Fake::new("[@synthetic]");
-        // The picker is still in front for two checks.
-        desk.fronts.replace(vec![7, 7, 42]);
-        let delivered = deliver(&desk, Some(&writer("winword.exe")), "[@synthetic]", true);
-        assert_eq!(
-            delivered,
-            Delivered::Pasted {
-                app: Some("Writer".into())
-            }
-        );
-        assert_eq!(*desk.posts.borrow(), [(42, 0x09)]);
+        for id in ["winword.exe", "WINWORD.EXE", "notepad.exe"] {
+            let desk = Fake::new("[@synthetic]");
+            desk.front_id.set(id);
+            // The picker is still in front for two checks.
+            desk.fronts.replace(vec![7, 7, 42]);
+            let captured = writer(id);
+            assert_eq!(captured.window, None, "Windows keeps its HWND in the ticket");
+            assert!(intended_paste(
+                Some(&captured),
+                PastePermission {
+                    enabled: true,
+                    granted: true,
+                }
+            ));
+            assert_eq!(
+                deliver(&desk, Some(&captured), "[@synthetic]", true),
+                Delivered::Pasted {
+                    app: Some("Writer".into())
+                }
+            );
+            assert_eq!(*desk.restores.borrow(), [(100, 42)]);
+            assert_eq!(*desk.posts.borrow(), [(42, 0x09)]);
+            assert_eq!(desk.asked.get(), 0);
+        }
     }
 
     #[test]
     fn nothing_is_posted_when_the_paste_is_unsafe_or_unproven() {
-        let cases: [(Fake, Captured, bool, Delivered); 5] = [
+        let cases: [(Fake, Captured, bool, Delivered); 6] = [
             // The process number now belongs to another app.
             (
                 Fake::new("[@synthetic]"),
                 writer("org.example.other"),
+                true,
+                copied(Some("unknown-app")),
+            ),
+            // A macOS bundle ID does not describe a known Windows executable.
+            (
+                Fake::new("[@synthetic]"),
+                writer("com.microsoft.word"),
                 true,
                 copied(Some("unknown-app")),
             ),
@@ -2431,7 +2417,6 @@ mod windows_tests {
     }
 
     #[test]
-    #[cfg_attr(target_os = "linux", ignore = "Linux never pastes")]
     fn password_fields_and_apps_with_more_rights_copy_with_a_reason() {
         let desk = Fake {
             password: Some(true),
