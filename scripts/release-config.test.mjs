@@ -26,6 +26,13 @@ function fakeGithub() {
   const value = (flag) => args[args.indexOf(flag) + 1];
   const response = (status, body, network = false) => {
     if (network) { console.log("partial response"); process.exit(1); }
+    if (status === 200 && args.includes("--jq")) {
+      if (value("--jq") !== 'if type == "array" then map({id, tag_name, draft}) else error("expected release array") end') process.exit(2);
+      const entries = JSON.parse(body);
+      if (!Array.isArray(entries)) process.exit(1);
+      // gh applies its projection before writing the response to stdout.
+      body = JSON.stringify(entries.map((entry) => ({ id: entry?.id, tag_name: entry?.tag_name, draft: entry?.draft })));
+    }
     console.log(`HTTP/2.0 ${status} Test\r\nContent-Type: application/json\r\n\r\n${body}`);
     if (status !== 200) process.exit(1);
   };
@@ -297,6 +304,34 @@ test("stable release absence requires a complete successful release listing", (t
       assert.ok(f.state().calls.every((args) => args[0] === "api"));
     }
     assert.equal(f.state().calls.filter((args) => args[1]?.includes("/releases?")).length, 2);
+  }
+});
+
+test("oversized release pages are projected by gh before buffering without losing pagination or draft protection", (t) => {
+  const firstPage = Array.from({ length: 100 }, (_, index) => ({
+    id: 100 + index, tag_name: `synthetic-${index}`, draft: false, body: "invented notes ".repeat(2048),
+  }));
+  assert.ok(Buffer.byteLength(JSON.stringify(firstPage)) > 1024 * 1024, "the unprojected page exceeds the lookup buffer");
+  for (const current of [undefined, "0.2.10"]) {
+    const assets = { "latest.json": JSON.stringify({ version: current }), "Ibis-synthetic.zip": "newer package" };
+    const f = fixture(t, {
+      releases: current === undefined ? {} : { stable: { isDraft: true, assets } },
+      releasePages: [firstPage, current === undefined ? [] : [{ id: 12, tag_name: "stable", draft: true }]],
+    });
+    const result = f.run("stable-feed", "Move the stable update feed to this release");
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    const state = f.state();
+    const listing = state.calls.filter((args) => args[1]?.includes("/releases?"));
+    assert.equal(listing.length, 2, "the entire listing must still be read");
+    assert.ok(listing.every((args) => args.includes("--jq")), "projection must happen in gh, before Node buffers output");
+    if (current === undefined) {
+      assert.equal(state.releases.stable.isDraft, false);
+      assert.equal(JSON.parse(state.releases.stable.assets["latest.json"]).version, "0.2.3");
+    } else {
+      assert.equal(state.releases.stable.isDraft, true);
+      assert.deepEqual(state.releases.stable.assets, assets);
+      assert.ok(state.calls.every((args) => args[0] === "api" || args[1] === "download"));
+    }
   }
 });
 

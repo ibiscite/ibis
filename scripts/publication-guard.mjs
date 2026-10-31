@@ -17,10 +17,10 @@ function run(command, args) {
   return result;
 }
 
-function githubJson(repository, path, missing = false) {
+function githubJson(repository, path, missing = false, projection) {
   // gh includes the actual response status even when the API returns an error.
   // Never infer absence from stderr, an empty body or an unsuccessful command.
-  const result = run("gh", ["api", `repos/${repository}/${path}`, "--include"]);
+  const result = run("gh", ["api", `repos/${repository}/${path}`, "--include", ...(projection ? ["--jq", projection] : [])]);
   const separator = /\r?\n\r?\n/.exec(result.stdout);
   const status = /^HTTP\/[\d.]+ (\d{3})(?:[ \t][^\r\n]*)?$/.exec(result.stdout.split(/\r?\n/)[0])?.[1];
   if (!separator || !status) throw new Error("GitHub response has no confirmed HTTP status.");
@@ -45,7 +45,10 @@ function stableRelease(repository) {
   if (release !== undefined) return release;
   let found;
   for (let page = 1; ; page++) {
-    const releases = githubJson(repository, `releases?per_page=100&page=${page}`);
+    // Release bodies can exceed the subprocess buffer. Project in gh, before
+    // buffering, while retaining one entry per release for pagination.
+    const releases = githubJson(repository, `releases?per_page=100&page=${page}`, false,
+      'if type == "array" then map({id, tag_name, draft}) else error("expected release array") end');
     if (!Array.isArray(releases) || releases.length > 100 || releases.some((entry) =>
       typeof entry?.tag_name !== "string" || !entry.tag_name || !Number.isSafeInteger(entry.id) || entry.id <= 0)) {
       throw new Error("Invalid release listing response.");
