@@ -421,23 +421,11 @@ pub fn cite(snapshot: &Snapshot, request: &CitationRequest) -> Result<CitationRe
             }
         }
     }
-    let text = render::render(caps, &picks, request.items.len())?;
+    let display = render::display(caps, &picks, request.items.len())?;
+    let text = render::flatten(&display);
     if text.len() > MAX_OUTPUT_BYTES {
         return Err(CitationError::OutputTooLarge);
     }
-    let display = if text.is_empty() {
-        DisplayTree::default()
-    } else {
-        DisplayTree {
-            nodes: vec![DisplayNode {
-                item: (picks.len() == 1).then(|| picks[0].index),
-                content: vec![TextRun {
-                    text: text.clone(),
-                    ..TextRun::default()
-                }],
-            }],
-        }
-    };
     Ok(CitationResult::new(text, None, None, display, outcomes, losses, vec![]).with_warnings(warnings))
 }
 

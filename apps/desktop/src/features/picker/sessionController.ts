@@ -47,7 +47,7 @@ export function createSessionController(initial = initialSession()) {
         break;
       case "notice": {
         let delivered: Delivered | null = null;
-        try { delivered = await ports.showCopiedNotice?.(effect.outcome.text, effect.outcome.delivery ?? null) ?? null; }
+        try { delivered = await ports.showCopiedNotice?.(effect.outcome.text, effect.outcome.delivery ?? null, effect.outcome.summary ?? null) ?? null; }
         catch { console.error(copiedNoticeText.noticeFailed); }
         dispatch({ type: "delivered", id: effect.id, session: effect.session, delivered });
         break;

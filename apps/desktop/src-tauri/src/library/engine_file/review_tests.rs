@@ -36,7 +36,7 @@ fn item_warnings_reach_both_native_preview_and_copy_feedback() -> Result<(), Box
     ];
     let file = FileLibrary::from_engine(engine);
     let preview = file
-        .publish_preview(file.reserve_preview(), citation)
+        .publish_preview(file.reserve_preview(), citation, request.output)
         .map_err(|error| error.to_string())?;
     assert_eq!(preview.warnings, expected);
     let mut writes = 0;
@@ -458,6 +458,207 @@ fn a_key_another_record_also_has_is_named_and_not_copied() -> Result<(), Box<dyn
             }
         );
     }
+    Ok(())
+}
+
+#[test]
+fn shelf_form_metadata_uses_the_prepared_snapshot_and_true_year_only() -> Result<(), Box<dyn std::error::Error>> {
+    let directory = tempfile::tempdir()?;
+    let path = directory.path().join("synthetic-shelf.bib");
+    std::fs::write(
+        &path,
+        "@book{Synthetic2021, author={Garcia, Avery}, title={Synthetic work}, year={2021}}",
+    )?;
+    let file = FileLibrary::open(&path).map_err(|_| "open")?;
+    let reply = file.search(
+        &SearchQuery {
+            text: "Synthetic".into(),
+            interpret_locators: true,
+        },
+        10,
+        None,
+        &Cancellation::default(),
+    )?;
+    let row = reply.results.first().ok_or("row")?;
+    let preview = file
+        .preview(
+            file.reserve_preview(),
+            vec![FileSelection {
+                id: serde_json::from_value(row.id.clone())?,
+                cite: serde_json::from_value(json!(row.cite))?,
+                locator: None,
+                page_input: None,
+                form: None,
+            }],
+            KeyFormat::Pandoc,
+            Some(CitationStyle::Apa),
+        )
+        .map_err(|_| "preview")?;
+    assert_eq!(
+        preview.spans.iter().map(|span| span.text.as_str()).collect::<String>(),
+        preview.text
+    );
+    let choices = file
+        .details(&preview.ticket, &preview.content_hash, 0)
+        .map_err(|_| "details")?;
+    assert_eq!(choices.forms.len(), 3);
+    let year = &choices.forms[2];
+    assert_eq!(year.form, ReferenceForm::YearOnly);
+    assert_eq!(year.example.as_deref(), Some("(2021)"));
+    assert!(year.reason.is_none());
+    // Metadata is read-only: opening it cannot replace the authoritative copy ticket.
+    assert!(file.copy(&preview.ticket, &preview.content_hash, |_| Ok(())).is_ok());
+    file.reserve_preview();
+    assert!(file.details(&preview.ticket, &preview.content_hash, 0).is_err());
+    Ok(())
+}
+
+#[test]
+fn shelf_biblatex_examples_keep_the_original_family_after_narrative() -> Result<(), Box<dyn std::error::Error>> {
+    let directory = tempfile::tempdir()?;
+    let path = directory.path().join("synthetic-shelf.bib");
+    std::fs::write(
+        &path,
+        "@book{Synthetic2021, author={Garcia, Avery}, title={Synthetic work}, year={2021}}",
+    )?;
+    let file = FileLibrary::open(&path).map_err(|_| "open")?;
+    let reply = file.search(
+        &SearchQuery {
+            text: "Synthetic".into(),
+            interpret_locators: true,
+        },
+        10,
+        None,
+        &Cancellation::default(),
+    )?;
+    let row = reply.results.first().ok_or("row")?;
+    for (format, command) in [(KeyFormat::Autocite, "autocite"), (KeyFormat::Parencite, "parencite")] {
+        let preview = file
+            .preview(
+                file.reserve_preview(),
+                vec![FileSelection {
+                    id: serde_json::from_value(row.id.clone())?,
+                    cite: serde_json::from_value(json!(row.cite))?,
+                    locator: None,
+                    page_input: None,
+                    form: Some(ReferenceForm::Narrative),
+                }],
+                format,
+                None,
+            )
+            .map_err(|_| "preview")?;
+        assert_eq!(preview.text, "\\textcite{Synthetic2021}");
+        let details = file
+            .details(&preview.ticket, &preview.content_hash, 0)
+            .map_err(|_| "details")?;
+        assert_eq!(
+            details.forms[0].example.as_deref(),
+            Some(format!("\\{command}{{Synthetic2021}}").as_str())
+        );
+        assert_eq!(
+            details.forms[2].example.as_deref(),
+            Some(format!("\\{command}*{{Synthetic2021}}").as_str())
+        );
+        assert!(details.forms[2].reason.is_none());
+    }
+    Ok(())
+}
+
+#[test]
+fn shelf_semantic_forms_do_not_mislabel_textcite_keys_or_reference_entries() -> Result<(), Box<dyn std::error::Error>> {
+    let directory = tempfile::tempdir()?;
+    let path = directory.path().join("synthetic-forms.bib");
+    std::fs::write(
+        &path,
+        "@book{Synthetic2021,author={Garcia, Avery},title={Synthetic work},year={2021}}",
+    )?;
+    let file = FileLibrary::open(&path).map_err(|_| "open")?;
+    let reply = file.search(
+        &SearchQuery {
+            text: "Synthetic".into(),
+            interpret_locators: true,
+        },
+        10,
+        None,
+        &Cancellation::default(),
+    )?;
+    let row = reply.results.first().ok_or("row")?;
+    for (format, style) in [
+        (KeyFormat::Textcite, None),
+        (KeyFormat::Keys, None),
+        (KeyFormat::Pandoc, Some(CitationStyle::Ieee)),
+    ] {
+        let preview = file
+            .preview(
+                file.reserve_preview(),
+                vec![FileSelection {
+                    id: serde_json::from_value(row.id.clone())?,
+                    cite: serde_json::from_value(json!(row.cite))?,
+                    locator: None,
+                    page_input: None,
+                    form: None,
+                }],
+                format,
+                style,
+            )
+            .map_err(|_| "preview")?;
+        let details = file
+            .details(&preview.ticket, &preview.content_hash, 0)
+            .map_err(|_| "details")?;
+        if format == KeyFormat::Textcite {
+            assert_eq!(details.current_form, Some(ReferenceForm::Narrative));
+            assert!(
+                details.forms[0]
+                    .reason
+                    .as_deref()
+                    .is_some_and(|reason| reason.contains("Textcite"))
+            );
+            assert_eq!(details.forms[1].example.as_deref(), Some("\\textcite{Synthetic2021}"));
+        } else {
+            assert_eq!(details.current_form, None);
+            assert!(
+                details
+                    .forms
+                    .iter()
+                    .all(|choice| choice.reason.is_some() && choice.example.is_none())
+            );
+        }
+        assert!(file.copy(&preview.ticket, &preview.content_hash, |_| Ok(())).is_ok());
+    }
+    Ok(())
+}
+
+#[test]
+fn shelf_recents_resolve_current_records_and_source_added_order_without_old_pages()
+-> Result<(), Box<dyn std::error::Error>> {
+    let directory = tempfile::tempdir()?;
+    let path = directory.path().join("synthetic-recents.json");
+    std::fs::write(
+        &path,
+        r#"[{"id":"a","type":"book","title":"Synthetic A","date-added":"2026-10-01"},{"id":"b","type":"book","title":"Synthetic B","date-added":"2026-10-30"},{"id":"c","type":"book","title":"Synthetic C","date-added":"2026-10-15"}]"#,
+    )?;
+    let file = FileLibrary::open(&path).map_err(|_| "open")?;
+    let rows = file.search(
+        &SearchQuery {
+            text: "Synthetic A".into(),
+            interpret_locators: true,
+        },
+        10,
+        None,
+        &Cancellation::default(),
+    )?;
+    let id: ItemRef = serde_json::from_value(rows.results.first().ok_or("row")?.id.clone())?;
+    let recent = serde_json::to_value(file.recents(&[id], true)?)?;
+    let rows = recent["results"].as_array().ok_or("results")?;
+    assert_eq!(
+        rows.iter()
+            .map(|row| row["title"].as_str().unwrap_or_default())
+            .collect::<Vec<_>>(),
+        ["Synthetic A", "Synthetic B", "Synthetic C"]
+    );
+    assert_eq!(rows[0]["recent"], "cited");
+    assert_eq!(rows[1]["recent"], "added");
+    assert!(rows.iter().all(|row| row.get("locator").is_none()));
     Ok(())
 }
 

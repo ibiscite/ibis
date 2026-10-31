@@ -5,8 +5,9 @@ import type { LibraryStatus, LocatorQuery, PastedList, SearchResult } from "../.
 import { pickerText } from "../../messages";
 import { choiceKey } from "./choice";
 
-export function useLibrarySearch({ search, query, interpretLocators, library, statusFailed, libraryVersion, sessionId = 0, isCurrentSession, setActive, refreshSnapshot }: {
+export function useLibrarySearch({ search, emptySearch, query, interpretLocators, library, statusFailed, libraryVersion, sessionId = 0, isCurrentSession, setActive, refreshSnapshot }: {
   search: typeof nativeApi.search;
+  emptySearch?: () => ReturnType<typeof nativeApi.search>;
   query: string;
   interpretLocators: boolean;
   /** Undefined while loading; null means the status request itself failed. */
@@ -32,14 +33,15 @@ export function useLibrarySearch({ search, query, interpretLocators, library, st
   const currentSession = useRef(sessionId);
   currentSession.current = sessionId;
   const [error, setError] = useState<string | null>(null);
-  const [settled, setSettled] = useState<{ queryKey: string; library: typeof library; version: number; sessionId: number } | null>(null);
+  const [settled, setSettled] = useState<{ queryKey: string; library: typeof library; version: number; sessionId: number; emptySearch: typeof emptySearch } | null>(null);
+  const recentSearch = query.trim() ? undefined : emptySearch;
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: searches when the query (queryKey covers query and locator mode) or the library changes. The earlier results are read only to keep the user's row when a reply repeats them.
   useEffect(() => {
-    const request = { queryKey, library, version: libraryVersion, sessionId };
+    const request = { queryKey, library, version: libraryVersion, sessionId, emptySearch: recentSearch };
     // Already settled results can be adopted by a new opening. An unfinished
     // request is replaced, and its old completion cannot publish into it.
-    if (settled && settled.sessionId !== sessionId && settled.queryKey === queryKey && settled.library === library && settled.version === libraryVersion) {
+    if (settled && settled.sessionId !== sessionId && settled.queryKey === queryKey && settled.library === library && settled.version === libraryVersion && settled.emptySearch === recentSearch) {
       setSettled(request);
       return;
     }
@@ -59,7 +61,7 @@ export function useLibrarySearch({ search, query, interpretLocators, library, st
     let current = true;
     const owns = () => current && currentSession.current === sessionId && (isCurrentSession?.(sessionId) ?? true);
     let announcementTimer: number | undefined;
-    search(query, undefined, undefined, interpretLocators)
+    (recentSearch ? recentSearch() : search(query, undefined, undefined, interpretLocators))
       .then(({ revision, results: found, interpretation: interpreted, list: pasted }) => {
         if (owns()) {
           setResults(found);
@@ -95,16 +97,16 @@ export function useLibrarySearch({ search, query, interpretLocators, library, st
       current = false;
       window.clearTimeout(announcementTimer);
     };
-  }, [queryKey, library, libraryVersion, sessionId]);
+  }, [queryKey, library, libraryVersion, sessionId, recentSearch]);
 
   // Results belong to the query that produced them. While a newer search is
   // pending, the rows still on screen are not acted on or offered by any key,
   // click or footer hint; only these current results are.
-  const current = resultsQuery === queryKey && resultsRevision === library?.revision && results.every((record) => record.revision === resultsRevision) ? results : [];
+  const current = resultsQuery === queryKey && resultsRevision === library?.revision && settled?.emptySearch === recentSearch && results.every((record) => record.revision === resultsRevision) ? results : [];
   // A reply ahead of status is not actionable yet, even though its request
   // finished. Keep Enter waiting through the status read and refreshed search.
   const reconciling = !error && Boolean(library?.has_snapshot) && resultsQuery === queryKey && resultsRevision !== library?.revision;
   const pending = !statusFailed && (library === undefined || library?.state === "loading" || settled?.queryKey !== queryKey
-    || settled.library !== library || settled.version !== libraryVersion || settled.sessionId !== sessionId || reconciling);
+    || settled.library !== library || settled.version !== libraryVersion || settled.sessionId !== sessionId || settled.emptySearch !== recentSearch || reconciling);
   return { queryKey, results, current, interpretation, list: current === results ? list : null, announcement, resultsQuery, error, pending };
 }

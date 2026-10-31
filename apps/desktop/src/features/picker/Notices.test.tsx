@@ -3,9 +3,35 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { Notices } from "./Notices";
 
 afterEach(cleanup);
+const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
+const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
+const noticeStyles = readFileSync(new FileURL("./Notices.css", import.meta.url), "utf8");
 const copied = { text: "[@example2026]", warnings: ["Missing year — 研究 العربية <literal>"] };
 const props = { library: null, failures: {}, error: null, copyError: null,
-  copied, showCopiedText: true, onDismissCopied: vi.fn() };
+  copied, confirmation: copied, onDismissCopied: vi.fn() };
+
+test("a long citation refusal is a complete keyboard-reachable notice before Details opens", () => {
+  const reason = "Reference 1: Choose another form or clear Page. ".repeat(30);
+  const style = document.createElement("style"); style.textContent = noticeStyles; document.head.append(style);
+  try {
+    render(<div className="picker-content"><Notices {...props} copied={null} citationProblem={reason} /></div>);
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toBe(reason);
+    expect(alert.tabIndex).toBe(0);
+    expect(alert.classList.contains("citation-problem")).toBe(true);
+    const appearance = getComputedStyle(alert);
+    expect(appearance.whiteSpace).toBe("normal");
+    expect(appearance.overflow).toBe("visible");
+    expect(appearance.overflowWrap).toBe("anywhere");
+    expect(appearance.maxBlockSize).toBe("none");
+    expect(appearance.inlineSize).toBe("100%");
+    expect(appearance.boxSizing).toBe("border-box");
+    expect(getComputedStyle(alert.parentElement!).inlineSize).toBe("100%");
+    expect(getComputedStyle(alert.closest(".picker-content")!).scrollBehavior).toBe("auto");
+    alert.focus(); expect(document.activeElement).toBe(alert);
+    expect(screen.queryByRole("dialog")).toBeNull();
+  } finally { style.remove(); }
+});
 
 test.each(["Enter", " "])("warning dismissal uses shared states and activates once with %s", (key) => {
   const dismiss = vi.fn();
@@ -28,6 +54,15 @@ test("clean confirmations have no dismissal action or warning list", () => {
   expect(screen.getByRole("status", { name: "" })).toBeTruthy();
   expect(screen.queryByRole("button")).toBeNull();
   expect(screen.queryByLabelText("Copy warnings")).toBeNull();
+});
+
+test("retiring a confirmation leaves its warnings without announcing Copied again", () => {
+  const { rerender } = render(<Notices {...props} />);
+  expect(screen.getByRole("status", { name: "" }).textContent).toContain("Copied");
+  rerender(<Notices {...props} confirmation={null} />);
+  expect(screen.queryByRole("status", { name: "" })).toBeNull();
+  expect(screen.getByLabelText("Copy warnings").textContent).toBe(copied.warnings[0]);
+  expect(screen.queryByText("Copied")).toBeNull();
 });
 
 // Download completion is not installation success: verification still follows.

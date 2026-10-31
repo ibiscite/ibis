@@ -13,6 +13,7 @@ fn sample() -> (Snapshot, CitationRequest) {
     };
     let csl=serde_json::from_value(json!({"type":"book","title":"Synthetic signals","author":[{"family":"Taylor","given":"Avery"}],"issued":{"date-parts":[[2026]]},"publisher":"Imaginary Press"})).unwrap();
     let snapshot = Snapshot::new(vec![LibraryObject::Record(Record {
+        added_at: None,
         id: id.clone(),
         csl,
         citation_keys: vec![],
@@ -40,6 +41,103 @@ fn sample() -> (Snapshot, CitationRequest) {
         output_locale: None,
     };
     (snapshot, request)
+}
+
+#[test]
+fn shelf_spans_follow_processor_order_without_changing_citation_meaning() {
+    let _guard = FORMAT_TESTS.lock().unwrap();
+    let snapshot = library(&[
+        json!({"type":"book","title":"Synthetic Z","author":[{"family":"Zulu"}],"issued":{"date-parts":[[2024]]}}),
+        json!({"type":"book","title":"Synthetic A","author":[{"family":"Alpha"}],"issued":{"date-parts":[[2021]]}}),
+    ]);
+    let formatter = Formatter::new().unwrap();
+    for (style, _) in ibis_csl::STYLES {
+        let request = selection(&snapshot, style, false);
+        let result = formatter.format(&snapshot, &request).unwrap();
+        let plain: String = result
+            .display
+            .nodes
+            .iter()
+            .flat_map(|node| &node.content)
+            .map(|run| run.text.as_str())
+            .collect();
+        assert_eq!(plain, result.text, "{style}: every character belongs to the display");
+        for item in 0..2 {
+            let owned: String = result
+                .display
+                .nodes
+                .iter()
+                .filter(|node| node.item == Some(item))
+                .flat_map(|node| &node.content)
+                .map(|run| run.text.as_str())
+                .collect();
+            let id = &request.items[item].item;
+            let LibraryObject::Record(record) = &snapshot.get(id).unwrap().object else {
+                panic!("record")
+            };
+            let family = record.csl["author"][0]["family"].as_str().unwrap();
+            assert!(owned.contains(family), "{style}: item {item} owns its rendered name");
+        }
+        assert!(result.copy_content(2).is_some());
+    }
+}
+
+#[test]
+fn shelf_multi_reference_spans_preserve_passive_title_styles() {
+    let _guard = FORMAT_TESTS.lock().unwrap();
+    let snapshot = library(&[
+        json!({"type":"book","title":"Synthetic <span style=\"font-variant: small-caps;\">Caps</span>","issued":{"date-parts":[[2026]]}}),
+        json!({"type":"book","title":"Other invented title","issued":{"date-parts":[[2024]]}}),
+    ]);
+    let result = Formatter::new()
+        .unwrap()
+        .format(&snapshot, &selection(&snapshot, "modern-language-association", false))
+        .unwrap();
+    assert!(result.html.as_deref().unwrap().contains("small-caps"));
+    assert!(result.copy_content(2).is_some());
+    let display = serde_json::to_value(&result.display).unwrap();
+    assert!(
+        display["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .flat_map(|node| node["content"].as_array().unwrap())
+            .any(|run| run["text"] == "Caps" && run["small_caps"] == true)
+    );
+}
+
+#[test]
+fn shelf_repeated_bibliography_occurrences_keep_deduplicated_output_and_each_owner() {
+    let _guard = FORMAT_TESTS.lock().unwrap();
+    let (snapshot, mut request) = sample();
+    request.output = OutputSpec::Csl { style: "ieee".into() };
+    let formatter = Formatter::new().unwrap();
+    let single = formatter.format(&snapshot, &request).unwrap();
+    request.items[0].locator = Some(Locator {
+        term: LocatorTerm::Page,
+        value: "12".into(),
+    });
+    let mut second = request.items[0].clone();
+    second.locator.as_mut().unwrap().value = "30".into();
+    request.items.push(second);
+    let result = formatter.format(&snapshot, &request).unwrap();
+    assert_eq!(result.text, single.text);
+    assert_eq!(result.html, single.html);
+    assert_eq!(result.rtf, single.rtf);
+    assert!(result.copy_content(2).is_some());
+    for item in 0..2 {
+        assert!(result.display.nodes.iter().any(|node| node.item == Some(item)));
+    }
+    assert_eq!(
+        result
+            .display
+            .nodes
+            .iter()
+            .flat_map(|node| &node.content)
+            .map(|run| run.text.as_str())
+            .collect::<String>(),
+        result.text
+    );
 }
 #[test]
 fn formats_canonical_text_html_rtf_and_numeric_fallback() {
@@ -93,6 +191,7 @@ fn library(items: &[serde_json::Value]) -> Snapshot {
             .enumerate()
             .map(|(index, csl)| {
                 LibraryObject::Record(Record {
+                    added_at: None,
                     id: ItemRef {
                         library: LibraryId::file(b"synthetic-format-library"),
                         // Snapshot sorts identities; preserve fixture order beyond ten records.

@@ -18,7 +18,6 @@ test("Enter waits for a reloaded picker's native identity before copying and pas
   render(<App />);
   await screen.findByText("Invented reference");
   await waitFor(() => expect(read).toHaveBeenCalledOnce());
-  await screen.findByText("@a");
   await act(async () => { fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" }); });
   expect(copy).not.toHaveBeenCalled();
   await act(async () => { finish(41); });
@@ -35,7 +34,7 @@ test("Enter recovers a failed initialization without another show event", async 
   backend({ picker_presentation: read, hide_picker: hide, show_copied_notice: paste,
     search: () => [result("a", "Invented reference")] });
   render(<App />);
-  await screen.findByText("@a");
+  await screen.findByText("Invented reference");
   await act(async () => { fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" }); });
   await waitFor(() => expect(paste).toHaveBeenCalledOnce());
   expect(read).toHaveBeenCalledTimes(2);
@@ -51,7 +50,7 @@ test("a failed read with Enter already queued retries once and pastes once", asy
   backend({ picker_presentation: read, copy_file_citation: copy, hide_picker: ({ presentation }) => presentation === 41,
     show_copied_notice: paste, search: () => [result("a", "Invented reference")] });
   render(<App />);
-  await screen.findByText("@a");
+  await screen.findByText("Invented reference");
   await act(async () => {
     fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
     fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
@@ -72,7 +71,7 @@ test("a late initialization cannot copy A after close and reopen B", async () =>
   backend({ picker_presentation: read, copy_file_citation: copy, hide_picker: hide,
     search: () => [result("a", "Invented reference")] });
   render(<App />);
-  await screen.findByText("@a");
+  await screen.findByText("Invented reference");
   await act(async () => {
     fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
     await emit("picker:hidden");
@@ -81,7 +80,7 @@ test("a late initialization cannot copy A after close and reopen B", async () =>
   });
   expect(copy).not.toHaveBeenCalled();
   expect(hide).not.toHaveBeenCalled();
-  await screen.findByText("@a");
+  await screen.findByText("Invented reference");
   await act(async () => { fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" }); });
   await waitFor(() => expect(hide).toHaveBeenCalledExactlyOnceWith({ presentation: 43 }));
 });
@@ -103,7 +102,7 @@ test("persistent initialization failures report that nothing was copied, then an
   backend({ picker_presentation: read, copy_file_citation: copy, hide_picker: ({ presentation }) => presentation === 41,
     show_copied_notice: paste, search: () => [result("a", "Invented reference")] });
   render(<App />);
-  await screen.findByText("@a");
+  await screen.findByText("Invented reference");
   await act(async () => { fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" }); });
   expect(read).toHaveBeenCalledTimes(3); // initial read, action read, one recovery
   const failure = await screen.findByText("Nothing was copied. Try again, or use Reload.");

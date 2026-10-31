@@ -10,7 +10,51 @@
                 "bold": false,
                 "italic": false,
                 "script": "normal",
-                "text": "[@Example2026, p. 12; @Example2026, p. 30]"
+                "text": "["
+              }
+            ],
+            "item": null
+          },
+          {
+            "content": [
+              {
+                "bold": false,
+                "italic": false,
+                "script": "normal",
+                "text": "@Example2026, p. 12"
+              }
+            ],
+            "item": 0
+          },
+          {
+            "content": [
+              {
+                "bold": false,
+                "italic": false,
+                "script": "normal",
+                "text": "; "
+              }
+            ],
+            "item": null
+          },
+          {
+            "content": [
+              {
+                "bold": false,
+                "italic": false,
+                "script": "normal",
+                "text": "@Example2026, p. 30"
+              }
+            ],
+            "item": 1
+          },
+          {
+            "content": [
+              {
+                "bold": false,
+                "italic": false,
+                "script": "normal",
+                "text": "]"
               }
             ],
             "item": null

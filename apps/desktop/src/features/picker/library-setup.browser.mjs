@@ -65,7 +65,7 @@ try {
             if (command === "choose_library" || command === "use_zotero") return null;
             if (command === "find_sources") { discoveries += 1; return { zotero: "absent", list: discoveries, files: [{ name: "example.bib", folder: "Documents" }], cut_short: false }; }
             if (command === "use_sample_library") { window.fixtureStatus({ state: "loaded", name: "Sample references", snapshot_name: "Sample references", has_snapshot: true, references: 3, sample: true }); return; }
-            if (command === "search") return { revision: "1", results: [{ revision: "1", id: { library: "invented.bib", key: "lantern" }, cite: "synthetic-lantern", source: "invented.bib", key: "lantern", title: "Invented lantern gardens reference", authors: "Aster", first_author: "Aster", author_count: 1, year: 2026, container: null, item_type: "article-journal", partial: false, matched: ["title"] }] };
+            if (command === "search" || command === "recent_references") return { revision: "1", results: [{ revision: "1", id: { library: "invented.bib", key: "lantern" }, cite: "synthetic-lantern", source: "invented.bib", key: "lantern", title: "Invented lantern gardens reference", authors: "Aster", first_author: "Aster", author_count: 1, year: 2026, container: null, item_type: "article-journal", partial: false, matched: ["title"] }] };
             if (command === "preview_file_citation") return { ticket: "synthetic-ticket", content_hash: "synthetic-hash", text: "[@lantern]", html: null, warnings: [] };
             if (command === "login_item") return { name: "Ibis", enabled: false, problem: null };
             if (command === "update_checks") return null;

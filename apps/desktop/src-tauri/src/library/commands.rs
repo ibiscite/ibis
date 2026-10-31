@@ -97,6 +97,34 @@ pub(crate) fn library_status(app: AppHandle) -> LibraryStatus {
     current_status(&app)
 }
 
+/// Resolve opaque history IDs against the current snapshot, with source-added
+/// dates for the second group. Never searches document text or reads new sources.
+#[derive(serde::Deserialize, specta::Type)]
+#[serde(transparent)]
+pub(crate) struct RecentIdentity(#[specta(type = specta_typescript::Unknown)] ibis_core::contract::ItemRef);
+
+#[tauri::command]
+#[specta::specta]
+pub(crate) async fn recent_references(
+    ids: Vec<RecentIdentity>,
+    include_added: bool,
+    library: State<'_, Mutex<Library>>,
+) -> Result<SearchReply, String> {
+    if ids.len() > 30 {
+        return Err("Too many recent references.".into());
+    }
+    let ids: Vec<_> = ids.into_iter().map(|id| id.0).collect();
+    let file = library
+        .lock()
+        .map_err(|_| "The library is unavailable.")?
+        .file
+        .clone()
+        .ok_or("No library is open.")?;
+    tauri::async_runtime::spawn_blocking(move || file.recents(&ids, include_added))
+        .await
+        .map_err(|_| "Recent references are unavailable.".to_owned())?
+}
+
 /// Search the open library. An empty query returns no results. Async so it
 /// runs off the main thread. `page` identifies the interface page and
 /// `request` increases with every search it sends; a search older than that

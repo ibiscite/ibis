@@ -700,7 +700,6 @@ fn item_data(data: &serde_json::Map<String, Value>, key: &str, kind: &str) -> Re
                 | "collections"
                 | "relations"
                 | "itemType"
-                | "dateAdded"
                 | "dateModified"
                 | "parentItem"
                 | "version"

@@ -12,13 +12,14 @@ import type { AppPaste } from "../../api";
 
 /** The search bar: the search box and the copy format. It is also
  * the window's drag region; the editable box itself is not. */
-export function PickerHeader({ inputRef, query, onQueryChange, onSearchKeyDown, expanded, activeDescendant, format, formatButtonRef, app = null, formatScope, onFormatOpenChange, onceOnly = false, onToggleOnce = () => undefined, onAutomatic = () => undefined, onDefault = () => undefined, pasteChoices, onPasteChange, formatDisabled = false, showFormat, styles, onFormatChange, onFormatCommand, pinned, onTogglePin, mark }: {
+export function PickerHeader({ inputRef, query, pageToken, onQueryChange, onSearchKeyDown, expanded, activeDescendant, format, formatButtonRef, app = null, formatScope, onFormatOpenChange, onceOnly = false, onToggleOnce = () => undefined, onAutomatic = () => undefined, onDefault = () => undefined, pasteChoices, onPasteChange, formatDisabled = false, showFormat, styles, onFormatChange, onFormatCommand, pinned, onTogglePin, mark }: {
   inputRef: React.RefObject<HTMLInputElement | null>;
   pinned: boolean;
   /** The Ibis mark in place of the magnifier, a person's choice in More. */
   mark?: boolean;
   onTogglePin: () => void;
   query: string;
+  pageToken?: React.ReactNode;
   onQueryChange: (query: string) => void;
   onSearchKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void;
   /** Whether the result list has rows. */
@@ -57,6 +58,7 @@ export function PickerHeader({ inputRef, query, onQueryChange, onSearchKeyDown, 
       <div className="search-field" title=""
         onKeyDownCapture={(e) => { if (composing(e)) e.stopPropagation(); }}
         onKeyUpCapture={(e) => { if (composing(e)) e.stopPropagation(); }}>
+        <div className="query-input">
         <input
           id="search"
           type="search"
@@ -90,6 +92,8 @@ export function PickerHeader({ inputRef, query, onQueryChange, onSearchKeyDown, 
         />
         {query !== "" && <Button variant="icon" glyph="close" className="search-clear" aria-label={pickerText.clearSearch}
           onPress={() => { onQueryChange(""); inputRef.current?.focus(); }} />}
+        </div>
+        {pageToken}
       </div>
       {showFormat && <FormatMenu format={format} buttonRef={formatButtonRef} app={app} scope={formatScope} onOpenChange={onFormatOpenChange} onceOnly={onceOnly} onToggleOnce={onToggleOnce} onAutomatic={onAutomatic} onDefault={onDefault} pasteChoices={pasteChoices} onPasteChange={onPasteChange} disabled={formatDisabled} styles={styles} onChange={onFormatChange} searchRef={inputRef} onCommand={onFormatCommand} />}
       <ToggleButton variant="icon" className="pin-button" aria-label={pickerText.keepOpen} aria-keyshortcuts={ariaKeys(keysFor("pin"), currentPlatform() === "macos")}

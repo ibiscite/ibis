@@ -110,6 +110,10 @@ pub(crate) fn load_str(library: &LibraryId, text: &str) -> Result<ParsedLibrary,
                 result.warnings.push(warning(WarningCode::InvalidAttachment));
             }
         }
+        let added_at = fields
+            .remove("date-added")
+            .and_then(|value| serde_json::from_str::<String>(value.get()).ok())
+            .and_then(|date| ibis_core::contract::added_date(&date));
         let mut csl = BTreeMap::new();
         for (name, value) in fields {
             // Test the vocabulary before parsing its payload. In particular,
@@ -138,6 +142,7 @@ pub(crate) fn load_str(library: &LibraryId, text: &str) -> Result<ParsedLibrary,
             }
         }
         result.records.push(Record {
+            added_at,
             id: item,
             csl,
             citation_keys: vec![CitationKey {

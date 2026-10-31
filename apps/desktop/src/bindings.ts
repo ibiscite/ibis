@@ -52,7 +52,10 @@ export const commands = {
 	 *  omitted/null searches all, an empty list searches none. It never reloads sources.
 	 */
 	search: (query: SearchQuery, limit: number, page: number, request: number, scope: string[] | null) => __TAURI_INVOKE<SearchReply_Serialize>("search", { query, limit, page, request, scope }),
-	previewFileCitation: (items: FileSelection[], format: KeyFormat, style: "apa" | "chicago-author-date" | "harvard-cite-them-right" | "ieee" | "modern-language-association" | null, expectedRevision: string, intent: PreviewIntent) => __TAURI_INVOKE<FilePreview>("preview_file_citation", { items, format, style, expectedRevision, intent }),
+	recentReferences: (ids: RecentIdentity[], includeAdded: boolean) => __TAURI_INVOKE<SearchReply_Serialize>("recent_references", { ids, includeAdded }),
+	previewFileCitation: (items: FileSelection[], format: KeyFormat, style: "apa" | "chicago-author-date" | "harvard-cite-them-right" | "ieee" | "modern-language-association" | null, expectedRevision: string, intent: PreviewIntent) => __TAURI_INVOKE<FilePreview_Serialize>("preview_file_citation", { items, format, style, expectedRevision, intent }),
+	/**  Read-only examples owned by a prepared preview; never publishes a new ticket. */
+	citationDetails: (ticket: string, contentHash: string, item: number) => __TAURI_INVOKE<ReferenceDetails>("citation_details", { ticket, contentHash, item }),
 	copyFileCitation: (ticket: string, contentHash: string) => __TAURI_INVOKE<Copied_Serialize>("copy_file_citation", { ticket, contentHash }),
 	/**  The format the picker starts with: the last one chosen, or Pandoc. */
 	copyFormat: () => __TAURI_INVOKE<KeyFormat>("copy_format"),
@@ -114,7 +117,10 @@ export const commands = {
 	 *  citation is on the clipboard either way.
 	 *  Returns the delivery outcome so a permission detour keeps the prepared shelf.
 	 */
-	showCopiedNotice: (text: string, delivery: number | null) => __TAURI_INVOKE<Delivered>("show_copied_notice", { text, delivery }),
+	showCopiedNotice: (text: string, delivery: number | null, summary: {
+	text: string,
+	more: number,
+} | null) => __TAURI_INVOKE<Delivered>("show_copied_notice", { text, delivery, summary }),
 	/**
 	 *  The notice being shown, for a notice page that has just loaded and missed
 	 *  the event that announced it.
@@ -122,6 +128,7 @@ export const commands = {
 	copiedNotice: () => __TAURI_INVOKE<{
 	delivered: Delivered,
 	text: string,
+	more?: number | null,
 } | null>("copied_notice"),
 	/**  Initial command runs asynchronously; native mutations stay on the main thread. */
 	nativeAppearance: () => __TAURI_INVOKE<string>("native_appearance"),
@@ -181,6 +188,20 @@ export type AppPaste = "paste" | "copy-only";
 /**  Settings owns these choices until the picker consumes the same event fields. */
 export type Appearance = "system" | "light" | "dark";
 
+export type CitationSpan = CitationSpan_Serialize | CitationSpan_Deserialize;
+
+export type CitationSpan_Deserialize = {
+	item: number | null,
+	text: string,
+	runs?: DisplayRun_Deserialize[] | null,
+};
+
+export type CitationSpan_Serialize = {
+	item: number | null,
+	text: string,
+	runs?: DisplayRun_Serialize[] | null,
+};
+
 /**  A bundled citation style the picker can format with (ADR 0020). */
 export type CitationStyle = "apa" | "chicago-author-date" | "harvard-cite-them-right" | "ieee" | "modern-language-association";
 
@@ -205,6 +226,7 @@ export type Copied_Deserialize = {
 	text: string,
 	/**  What the chosen syntax could not express, and other problems the user should see. */
 	warnings: string[],
+	summary?: ReceiptSummary | null,
 	/**  Unique clipboard-write identity for receipts, even without a native paste proof. */
 	delivery?: number | null,
 };
@@ -213,6 +235,7 @@ export type Copied_Serialize = {
 	text: string,
 	/**  What the chosen syntax could not express, and other problems the user should see. */
 	warnings: string[],
+	summary?: ReceiptSummary | null,
 	/**  Unique clipboard-write identity for receipts, even without a native paste proof. */
 	delivery?: number | null,
 };
@@ -235,12 +258,58 @@ export type DesktopShortcut = {
 	guidance: string,
 };
 
-export type FilePreview = {
+/**
+ *  Output-only passive presentation. The smaller request TextRun contract stays
+ *  independent of the additional styles a citation processor may produce.
+ */
+export type DisplayRun = DisplayRun_Serialize | DisplayRun_Deserialize;
+
+/**
+ *  Output-only passive presentation. The smaller request TextRun contract stays
+ *  independent of the additional styles a citation processor may produce.
+ */
+export type DisplayRun_Deserialize = {
+	text: string,
+	italic?: boolean,
+	bold?: boolean,
+	script?: Script,
+	small_caps?: boolean,
+	underline?: boolean,
+};
+
+/**
+ *  Output-only passive presentation. The smaller request TextRun contract stays
+ *  independent of the additional styles a citation processor may produce.
+ */
+export type DisplayRun_Serialize = {
+	text: string,
+	italic: boolean,
+	bold: boolean,
+	script: Script,
+	small_caps?: boolean,
+	underline?: boolean,
+};
+
+export type FilePreview = FilePreview_Serialize | FilePreview_Deserialize;
+
+export type FilePreview_Deserialize = {
 	ticket: string,
 	content_hash: string,
 	text: string,
 	html: string | null,
 	warnings: string[],
+	spans: CitationSpan_Deserialize[],
+	problem?: string | null,
+};
+
+export type FilePreview_Serialize = {
+	ticket: string,
+	content_hash: string,
+	text: string,
+	html: string | null,
+	warnings: string[],
+	spans: CitationSpan_Serialize[],
+	problem?: string | null,
 };
 
 export type FileSelection = {
@@ -251,6 +320,12 @@ export type FileSelection = {
 	/**  Raw Page editor text, mutually exclusive with a captured locator. */
 	page_input?: string | null,
 	form?: ReferenceForm | null,
+};
+
+export type FormOption = {
+	form: ReferenceForm,
+	example: string | null,
+	reason: string | null,
 };
 
 /**  A `.bib` file found on this computer. */
@@ -393,6 +468,7 @@ export type MatchField = "citekey" | "title" | "author" | "year" | "doi" | "keyw
 export type NoticeMessage = {
 	delivered: Delivered,
 	text: string,
+	more?: number | null,
 };
 
 /**  An app ID that cannot tell Ibis which output its document needs. */
@@ -553,9 +629,29 @@ export type PreviewIntent = {
 	cancel: boolean,
 };
 
-export type ReferenceForm = "normal" | "narrative" | "author-omitted";
+export type ReceiptSummary = {
+	text: string,
+	more: number,
+};
+
+export type RecentGroup = "cited" | "added";
+
+/**
+ *  Resolve opaque history IDs against the current snapshot, with source-added
+ *  dates for the second group. Never searches document text or reads new sources.
+ */
+export type RecentIdentity = unknown;
+
+export type ReferenceDetails = {
+	forms: FormOption[],
+	current_form: ReferenceForm | null,
+};
+
+export type ReferenceForm = "normal" | "narrative" | "year-only";
 
 export type RowAction = "copy" | "toggle";
+
+export type Script = "normal" | "subscript" | "superscript";
 
 /**  Query text and the explicit choice to read a trailing locator. */
 export type SearchQuery = {
@@ -569,7 +665,7 @@ export type SearchReply = SearchReply_Serialize | SearchReply_Deserialize;
 /**  A search keeps its snapshot identity even when no references match. */
 export type SearchReply_Deserialize = {
 	revision: string,
-	results: SearchResult[],
+	results: SearchResult_Deserialize[],
 	interpretation?: LocatorQuery | null,
 	list?: PastedList | null,
 };
@@ -577,12 +673,51 @@ export type SearchReply_Deserialize = {
 /**  A search keeps its snapshot identity even when no references match. */
 export type SearchReply_Serialize = {
 	revision: string,
-	results: SearchResult[],
+	results: SearchResult_Serialize[],
 	interpretation?: LocatorQuery | null,
 	list?: PastedList | null,
 };
 
-export type SearchResult = {
+export type SearchResult = SearchResult_Serialize | SearchResult_Deserialize;
+
+export type SearchResult_Deserialize = {
+	recent?: RecentGroup | null,
+	/**  This row comes from the bundled invented library, including while a replacement search is pending. */
+	sample?: boolean,
+	/**  Revision captured with the index used for this result. */
+	revision: string,
+	/**  Identity of the record; selection and copying use this, not the key. */
+	id: unknown,
+	cite?: string,
+	source?: string,
+	key: string,
+	title: string,
+	authors: string,
+	year: number | null,
+	matched: MatchField[],
+	/**  Only some query words matched; shown under "Closest matches". */
+	partial: boolean,
+	/**
+	 *  Family name of the first author (or the whole name of an
+	 *  organization); empty when the record names no authors.
+	 */
+	first_author: string,
+	/**
+	 *  How many creators the record names (an organization counts as one),
+	 *  so a row can name two authors and shorten three or more.
+	 */
+	author_count: number,
+	/**
+	 *  Journal, book or proceedings title, else the publisher; capped at
+	 *  120 characters.
+	 */
+	container: string | null,
+	/**  CSL item type, such as `article-journal`. */
+	item_type: string,
+};
+
+export type SearchResult_Serialize = {
+	recent?: RecentGroup | null,
 	/**  This row comes from the bundled invented library, including while a replacement search is pending. */
 	sample?: boolean,
 	/**  Revision captured with the index used for this result. */
