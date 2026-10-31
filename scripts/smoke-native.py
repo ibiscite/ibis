@@ -152,7 +152,7 @@ MENU_ACTIONS = {"Choose Library…": "Library", "Use Zotero": "Library",
                 "Reload Library": "Library", "Quit Ibis": "More"}
 # ATK_ROLE_PUSH_BUTTON_MENU is how AT-SPI exposes a button with aria-haspopup.
 # Both Library and More use the same native HTML button/MenuTrigger contract.
-MENU_BUTTON_ROLES = {"button", "pushbutton", "pushbuttonmenu"}
+MENU_BUTTON_ROLES = {"button", "pushbutton", "pushbuttonmenu", "combobox"}
 MENU_ITEM_ROLES = {"menuitem", "checkmenuitem", "radiomenuitem", "menuitemcheckbox", "menuitemradio"}
 
 
@@ -2114,13 +2114,14 @@ class ContractTests(unittest.TestCase):
         # ATK_ROLE_PUSH_BUTTON_MENU is a button with a popup, not a menu or
         # region. aria-haspopup on the real HTML button supplies that role.
         for name in ("Library", "More"):
-            with self.subTest(name=name):
-                native, desktop, owned, target, foreign = self.linux_click_fixture()
-                target.name, target.role = name, "push button menu"
-                native.click(name)
-                target.queryAction.assert_called_once_with()
-                target.queryAction.return_value.doAction.assert_called_once_with(0)
-                foreign.queryAction.assert_not_called()
+            for role in ("push button menu", "combo box"):
+                with self.subTest(name=name, role=role):
+                    native, desktop, owned, target, foreign = self.linux_click_fixture()
+                    target.name, target.role = name, role
+                    native.click(name)
+                    target.queryAction.assert_called_once_with()
+                    target.queryAction.return_value.doAction.assert_called_once_with(0)
+                    foreign.queryAction.assert_not_called()
 
     def test_every_native_menu_route_activates_the_popup_button_then_its_item(self):
         # Exercise the real Linux discovery/activation code, including repeated
