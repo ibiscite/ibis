@@ -198,6 +198,37 @@ refuses unbundled executables, and allows only copy even with modifier keys.
 Its stateless source stays on the main thread for the session's lifetime.
 Changes to these modules need independent security-boundary review.
 
+`sizing/display_events.rs` is also a scoped exception (2026-10-31): the locked
+bindings provide only unsafe registration for AppKit screen-parameter
+notifications and Win32 window subclasses. It uses the existing objc2/block2
+and winsafe bindings (enabling winsafe's `comctl` feature), retains only an app
+scheduling handle and the sizing owner, reads no native notification payload, and forwards
+Windows messages unchanged, removing its subclass at native destruction.
+These events request one settled geometry read; they add no timer or second
+geometry owner. GDK monitor signals use safe bindings. Failed registration
+defers work-area refresh to the next show; it never falls back to polling.
+Work-area changes that produce no platform notification also wait for the next
+geometry event or show; live constraints cannot track an unannounced change.
+In locked tauri-runtime-wry 2.12.2/tao 0.37.1 on macOS, cloning window/webview
+handles clones Tao's proxy, which adds a CFRunLoop source and wakes the loop.
+An unconditional `get_webview_window` from `MainEventsCleared` therefore
+perpetuates itself even while hidden. The sizing owner must consume its pending
+read before that lookup, independently of whether the read succeeds, so a
+getter's wakeup cannot schedule another read.
+
+Display notifications also request one coalesced app-queue task. Tao 0.37.1 on
+Linux emits `MainEventsCleared` only after its own event queue becomes nonempty;
+a GDK signal alone does not advance it. Windows display/work-area messages can
+also leave Tao's event runner idle when no theme/window event is emitted.
+macOS's before-waiting observer already emits cleared events, but all three
+adapters use the same bounded task. Locked Wry executes `run_on_main_thread`
+inline on its main thread, so dispatch starts on Tauri's existing blocking pool
+to enqueue a real Tao event. The sizing owner coalesces notifications until that
+task drains, even if an earlier cleared event, hide or show consumes the read.
+The task reads current geometry only when still pending and never marks a new
+change. Failed enqueue releases coalescing without scheduling a retry; a later
+notification may try again. No timer or per-notification thread is added.
+
 The Windows-only qualification module `paste/windows_bstr_test.rs` is a
 cfg(test) exception (2026-10-30, #1452). Safe wrappers either decode lossily or
 truncate embedded NUL through PROPVARIANT conversion (actual Windows proof in
