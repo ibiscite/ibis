@@ -159,8 +159,24 @@ pub(crate) fn show_picker(app: &AppHandle) {
             |show| report(app.run_on_main_thread(show), NativeIssue::Show),
         );
     }
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    #[cfg(target_os = "windows")]
+    {
+        let handle = app.clone();
+        show_windows_picker_with(
+            move || show_picker_on_thread(&handle, owner),
+            |show| report(app.run_on_main_thread(show), NativeIssue::Show),
+        );
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
     show_picker_on_thread(app, owner);
+}
+
+#[cfg(any(target_os = "windows", test))]
+fn show_windows_picker_with<A: FnOnce()>(action: A, dispatch: impl FnOnce(A)) {
+    // A worker must not acquire the appearance cache before synchronously
+    // requesting an HWND from a main thread that can be waiting on that cache.
+    // Keep frame preparation, appearance refresh and show in one native task.
+    dispatch(action);
 }
 
 #[cfg(any(target_os = "macos", target_os = "linux", test))]
@@ -187,6 +203,7 @@ fn show_picker_on_thread(app: &AppHandle, owner: u64) {
         if !crate::sizing::prepare(app, &window, false, false) || !visits.owns(owner) {
             return;
         }
+        crate::native_feel::before_show(app);
         report(window.unminimize(), NativeIssue::Unminimize);
         #[cfg(target_os = "macos")]
         crate::panel::show(app);
@@ -199,7 +216,7 @@ fn show_picker_on_thread(app: &AppHandle, owner: u64) {
             present_window(&window, true, owner);
             crate::updater::picker_presented(app);
         }
-        report(window.emit("picker:shown", ()), NativeIssue::PickerEvent);
+        report(window.emit("picker:shown", owner), NativeIssue::PickerEvent);
     }
     crate::library::refresh_zotero(app);
 }
@@ -421,19 +438,65 @@ fn foreground_full_screen() -> Option<bool> {
     None
 }
 
-/// Hide the picker (Escape in the interface).
+/// Read the native presentation after subscribing, including on webview reload.
 #[tauri::command]
 #[specta::specta]
-pub(crate) fn hide_picker(app: AppHandle) {
-    dismiss_picker(&app);
+pub(crate) fn picker_presentation(visits: State<'_, PickerGeneration>) -> u64 {
+    visits.current()
+}
+
+/// Hide only the originating presentation; a delayed request cannot dismiss a reopen.
+#[tauri::command]
+#[specta::specta]
+pub(crate) fn hide_picker<R: PickerHideUi>(app: AppHandle<R>, presentation: Option<u64>) -> Result<bool, &'static str> {
+    // This command must stay synchronous: Tauri spawns async commands before
+    // running their bodies. Capture an unknown owner at IPC receipt, before
+    // either that runtime scheduling gap or a native-thread dispatch.
+    let presentation = app.state::<PickerGeneration>().originating(presentation);
+    let (send, receive) = std::sync::mpsc::sync_channel(1);
+    let handle = app.clone();
+    app.run_on_main_thread(move || {
+        let hidden = dismiss_presented_with(&handle.state::<PickerGeneration>(), presentation, || {
+            R::dismiss(&handle);
+        });
+        let _ = send.send(hidden);
+    })
+    .map_err(|_| "The picker could not be hidden.")?;
+    // Wry runs main-thread tasks inline when already on that thread. A worker
+    // waits without holding application state; the one-slot buffer also lets
+    // an inline hide complete before we receive its result.
+    receive.recv().map_err(|_| "The picker could not be hidden.")
+}
+
+/// Keep receipt and ownership checks real in tests; replace only native hiding.
+pub(crate) trait PickerHideUi: tauri::Runtime {
+    fn dismiss(app: &AppHandle<Self>);
+}
+
+impl PickerHideUi for tauri::Wry {
+    fn dismiss(app: &AppHandle<Self>) {
+        finish_dismiss(app);
+    }
+}
+
+fn dismiss_presented_with(visits: &PickerGeneration, presentation: u64, dismiss: impl FnOnce()) -> bool {
+    if !visits.retire(presentation) {
+        return false;
+    }
+    dismiss();
+    true
 }
 
 /// A window hide alone leaves Ibis active on macOS, swallowing the next paste.
 /// Every dismissal path must also release application focus, unless Settings
 /// is open.
 pub(crate) fn dismiss_picker(app: &AppHandle) {
-    crate::updater::picker_activity(app);
     app.state::<PickerGeneration>().advance();
+    finish_dismiss(app);
+}
+
+fn finish_dismiss(app: &AppHandle) {
+    crate::updater::picker_activity(app);
     #[cfg(target_os = "macos")]
     crate::panel::cancel_initial_presentation(app);
     crate::sizing::flush(app, false);
@@ -512,11 +575,25 @@ pub(crate) fn hides_on_blur(release_build: bool, chooser_open: bool, pinned: boo
 pub(crate) struct PickerGeneration(AtomicU64);
 
 impl PickerGeneration {
+    fn originating(&self, presentation: Option<u64>) -> u64 {
+        presentation.unwrap_or_else(|| self.current())
+    }
+
     pub(crate) fn current(&self) -> u64 {
         self.0.load(Ordering::SeqCst)
     }
     fn advance(&self) -> u64 {
         self.0.fetch_add(1, Ordering::SeqCst).wrapping_add(1)
+    }
+    fn retire(&self, generation: u64) -> bool {
+        self.0
+            .compare_exchange(
+                generation,
+                generation.wrapping_add(1),
+                Ordering::SeqCst,
+                Ordering::SeqCst,
+            )
+            .is_ok()
     }
     fn still_owns_after(&self, generation: u64, query: impl FnOnce() -> bool) -> bool {
         query() && self.owns(generation)
@@ -619,6 +696,184 @@ fn finish_blur(app: &AppHandle, blur: u64, generation: u64) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[derive(Default)]
+    struct HideUi {
+        visible: AtomicBool,
+    }
+
+    impl PickerHideUi for tauri::test::MockRuntime {
+        fn dismiss(app: &AppHandle<Self>) {
+            app.state::<HideUi>().visible.store(false, Ordering::SeqCst);
+        }
+    }
+
+    #[test]
+    fn picker_unknown_hide_received_before_reopen_cannot_capture_b_when_its_response_runs_late() -> tauri::Result<()> {
+        use tauri::ipc::private::*;
+        let app = tauri::test::mock_builder()
+            .manage(PickerGeneration(AtomicU64::new(41)))
+            .manage(HideUi {
+                visible: AtomicBool::new(true),
+            })
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))?;
+        // Call the actual command at receipt, then leave any returned future
+        // unpolled until A has closed and B has reopened. Tauri's async wrapper
+        // adds this same scheduling gap before executing an async command body.
+        let response = hide_picker(app.handle().clone(), None);
+        let visits = app.state::<PickerGeneration>();
+        visits.advance(); // close A
+        let b = visits.advance(); // reopen B
+        app.state::<HideUi>().visible.store(true, Ordering::SeqCst);
+        let kind = (&response).async_kind();
+        tauri::async_runtime::block_on(kind.future(response)).unwrap_or_else(|e| panic!("{e:?}"));
+        assert!(
+            app.state::<HideUi>().visible.load(Ordering::SeqCst),
+            "A's Escape must leave B visible"
+        );
+        assert_eq!(visits.current(), b, "A's late response must not retire B's owner");
+        Ok(())
+    }
+
+    #[test]
+    fn picker_unknown_hide_snapshots_its_native_owner_before_dispatch_and_cannot_dismiss_a_reopen() {
+        use std::cell::Cell;
+        let visits = PickerGeneration(AtomicU64::new(41));
+        let visible = Cell::new(true);
+        let unknown = visits.originating(None);
+        assert_eq!(unknown, 41);
+        assert!(dismiss_presented_with(&visits, unknown, || visible.set(false)));
+        assert!(!visible.get(), "Escape works before webview initialization");
+
+        let b = visits.advance();
+        visible.set(true);
+        let delayed = visits.originating(None);
+        assert_eq!(delayed, b);
+        let c = visits.advance();
+        assert!(!dismiss_presented_with(&visits, delayed, || visible.set(false)));
+        assert!(
+            visible.get(),
+            "B's unknown hide cannot dismiss C after native dispatch is delayed"
+        );
+        assert_eq!(visits.current(), c);
+        assert_eq!(
+            visits.originating(Some(41)),
+            41,
+            "known hides keep their original owner"
+        );
+        assert!(!dismiss_presented_with(&visits, 41, || visible.set(false)));
+        assert!(dismiss_presented_with(&visits, visits.originating(None), || visible.set(false)));
+        assert!(!visible.get());
+    }
+
+    #[test]
+    fn picker_windows_refused_show_dispatch_never_touches_the_cache_or_presents_late() {
+        use std::cell::Cell;
+        let refreshed = Cell::new(false);
+        let visible = Cell::new(false);
+        show_windows_picker_with(
+            || {
+                refreshed.set(true);
+                visible.set(true);
+            },
+            drop, // a failed native dispatch drops its task
+        );
+        assert!(!refreshed.get());
+        assert!(!visible.get());
+        show_windows_picker_with(
+            || {
+                refreshed.set(true);
+                visible.set(true);
+            },
+            |show| show(),
+        );
+        assert!(refreshed.get());
+        assert!(visible.get(), "a later successful show remains usable");
+    }
+
+    #[test]
+    fn picker_windows_worker_show_cannot_lock_out_an_earlier_main_thread_appearance_refresh() {
+        use std::cell::{Cell, RefCell};
+        let cache = Mutex::new(());
+        let on_main = Cell::new(false);
+        let stalled = Cell::new(false);
+        let visible = Cell::new(false);
+        let pending = RefCell::new(Vec::new());
+        let queued_refresh = || {
+            // A real main-thread refresh would block on this cache while a
+            // worker holding it synchronously waits for the HWND response.
+            // Detect the cycle without letting the regression hang the suite.
+            if cache.try_lock().is_err() {
+                stalled.set(true);
+            }
+        };
+        show_windows_picker_with(
+            || {
+                let _cache = cache.try_lock().unwrap_or_else(|e| panic!("{e}"));
+                if !on_main.get() {
+                    queued_refresh();
+                }
+                if !stalled.get() {
+                    visible.set(true);
+                }
+            },
+            |show| pending.borrow_mut().push(show),
+        );
+        on_main.set(true);
+        queued_refresh();
+        for show in pending.into_inner() {
+            show();
+        }
+        assert!(
+            !stalled.get(),
+            "appearance refresh and synchronous HWND lookup must make progress"
+        );
+        assert!(visible.get(), "the picker opens after its appearance has refreshed");
+    }
+
+    #[test]
+    fn ipc_hide_retires_only_its_presentation_including_failed_io_and_reopen() {
+        use std::cell::Cell;
+        let visits = PickerGeneration::default();
+        let visible = Cell::new(true);
+        let a = visits.current();
+        assert!(dismiss_presented_with(&visits, a, || visible.set(false)));
+        assert!(!visible.get(), "the current picker hides");
+        let b = visits.advance();
+        visible.set(true);
+        assert!(!dismiss_presented_with(&visits, a, || visible.set(false)));
+        assert!(visible.get(), "A's delayed hide cannot dismiss reopened B");
+        assert_eq!(visits.current(), b, "refusal cannot retire B's activation work");
+        assert!(dismiss_presented_with(&visits, b, || {
+            // Native hide I/O fails, so the window is still visible. B's
+            // ticket is nevertheless retired and cannot later hide C.
+        }));
+        assert!(visible.get());
+        let c = visits.advance();
+        assert!(!dismiss_presented_with(&visits, b, || visible.set(false)));
+        assert!(visible.get());
+        assert!(dismiss_presented_with(&visits, c, || visible.set(false)));
+        assert!(!visible.get(), "a fresh hide still works after the refusal");
+    }
+
+    #[test]
+    fn windows_shortcut_uses_the_exact_foreground_owner_even_after_webview_focus_and_reopen() {
+        // Cached top-level focus is false when WebView2 owns keyboard input.
+        // A foreign Ibis window is still a different HWND, even in this process.
+        for (picker, foreground, focused, action) in [
+            (Some(41), Some(41), Some(true), ToggleAction::Hide),
+            (Some(41), Some(43), Some(false), ToggleAction::Show),
+            (None, Some(41), None, ToggleAction::Show),
+            (Some(41), None, None, ToggleAction::Show),
+            (Some(0), Some(0), None, ToggleAction::Show),
+            // Close/recreate B: a delayed foreground sample of A cannot hide B.
+            (Some(43), Some(41), Some(false), ToggleAction::Show),
+            (Some(43), Some(43), Some(true), ToggleAction::Hide),
+        ] {
+            assert_eq!(foreground_focus(picker, foreground), focused);
+            assert_eq!(toggle_action(Some(true), focused), action);
+        }
+    }
 
     // Model the two GLib priorities, not automatic focus on map: tao queues
     // frame/visibility at DEFAULT; our GTK activation runs at DEFAULT_IDLE.

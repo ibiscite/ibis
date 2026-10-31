@@ -53,7 +53,7 @@ const noSelection = new Map<string, CitationReference>();
 // Formatted citations are offered only when the provider can supply them.
 export type PickerApi = Pick<typeof nativeApi,
   "chooseLibrary" | "useZotero" | "libraryStatus" | "reloadLibrary" | "previewFileCitation" | "copyFileCitation" | "copyFormat" | "pickerPreferences" | "setPickerPreferences" |
-  "hidePicker" | "pickerVisible" | "setPinned" | "onLibraryChanged" | "onPickerShown" | "onPickerHidden" | "quit" | "search" | "shortcutStatus"> &
+  "hidePicker" | "pickerPresentation" | "pickerVisible" | "setPinned" | "onLibraryChanged" | "onPickerShown" | "onPickerHidden" | "quit" | "search" | "shortcutStatus"> &
   Partial<Pick<typeof nativeApi, "openLibrarySource" | "librarySource" | "useSampleLibrary" | "useZoteroLibraries" | "zoteroGroups" | "pickerDestination" | "rememberAppOutput" | "onWindowSizeSaved" | "readWindowPositionUndo" | "undoWindowPosition" | "dismissWindowPositionUndo" | "onWindowReset" | "findSources" | "openFoundLibrary" | "rowContext" | "showCopiedNotice" | "loginItem" | "setLoginItem" | "onUpdateProgress" | "updateChecks" | "setUpdateChecks" | "onUpdateChecks" | "updateAvailable" | "onUpdateAvailable" | "updatePickerActivity" | "checkForUpdates" | "onShortcutStatus" | "openSettings" | "onPreferencesChanged">>;
 
 export type PickerPreview = { query?: string; copied?: Copied };
@@ -174,7 +174,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   // The controller receives readiness from the existing search/preview I/O
   // adapters. Session and interaction tickets reject an obsolete render.
   useLayoutEffect(() => {
-    session.connect({ copyFileCitation, hidePicker, showCopiedNotice, output: destination.copyToken,
+    session.connect({ copyFileCitation, hidePicker, pickerPresentation: api.pickerPresentation, showCopiedNotice, output: destination.copyToken,
       pinned: () => currentPin.current, consume: destination.consumeOnce, refresh: refreshSnapshot,
       askFormat: () => formatButtonRef.current?.click(), reportHide: (failed) => report("hide", failed) });
     send({ type: "view", session: state.session, interaction: state.interaction,
@@ -197,8 +197,9 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   }, [sample, send]);
   const requestCopy = (choice: string | null) => send({ type: "enter", choice, output: destination.copyToken() });
   const hide = () => {
+    const presentation = session.getSnapshot().presentation;
     send({ type: "hiding" });
-    void perform("hide", hidePicker);
+    void perform("hide", () => hidePicker(presentation));
   };
   const chooseFormat = (choice: Choice) => {
     destination.choose(choice);
@@ -252,11 +253,11 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
       else search.setSelectionRange(search.value.length, search.value.length);
     };
     window.addEventListener("focus", activated);
-    const focusSearch = () => {
+    const focusSearch = (presentation: number) => {
       searchAtShow = input.current?.value ?? "";
       resetPointer();
       const previousQuery = session.getSnapshot().query;
-      send({ type: "shown", now: performance.now() });
+      send({ type: "shown", now: performance.now(), presentation });
       if (session.getSnapshot().query !== previousQuery) searchAtShow = session.getSnapshot().query;
       destination.read(true, session.getSnapshot().permissionDetour);
       readShortcut();
@@ -281,14 +282,15 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
       setAltHeld(false);
     })
       .catch(() => subscriptionFailure("pickerEvents"));
-    const unlisten = onPickerShown(() => {
+    const unlisten = onPickerShown((presentation) => {
       if (!mounted) return;
       visibilityEvents += 1;
       delete document.documentElement.dataset.pickerHidden;
-      focusSearch();
+      focusSearch(presentation);
     }).catch(() => subscriptionFailure("pickerEvents"));
     void Promise.all([unlistenHidden, unlisten]).then(async () => {
       if (!mounted) return;
+      send({ type: "initialize" });
       const events = visibilityEvents;
       const visible = await pickerVisible();
       // A newer event wins over this read; failed reads leave the flag alone.

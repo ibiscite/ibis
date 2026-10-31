@@ -1431,6 +1431,7 @@ class Tests(unittest.TestCase):
 
     def linux_native_offer(self, scenario):
         native = Linux.__new__(Linux)
+        clock = {"now": 0.0}
         events, reads, tabs, controls = [], 0, 0, 0
         def query(command, **kwargs):
             nonlocal reads, tabs, controls
@@ -1483,7 +1484,9 @@ class Tests(unittest.TestCase):
                 self.assertIn(args, values, "activation must use only the verified native window, without AT-SPI")
                 value = values[args]
             return subprocess.CompletedProcess(command, 0, stdout=value.encode(), stderr=b"")
-        with patch("subprocess.run", side_effect=query):
+        with patch("subprocess.run", side_effect=query), \
+                patch("time.monotonic", side_effect=lambda: clock["now"]), \
+                patch("time.sleep", side_effect=lambda step: clock.update(now=clock["now"] + step)):
             try:
                 result = native.look({42}, BUTTON, timeout=3)
             except AssertionError as error:
@@ -1512,6 +1515,21 @@ class Tests(unittest.TestCase):
                 self.assertIsInstance(result, LinuxActivationFailure)
                 self.assertFalse(any(event[1] == "key" and event[-1] in ("space", "Return") for event in events))
                 self.assertLessEqual(sum(event[1] == "key" for event in events), 6)
+
+    def test_linux_offer_fake_does_not_consult_the_runner_clock(self):
+        with patch("time.monotonic", side_effect=AssertionError("runner clock was consulted")):
+            for scenario in ("success", "missing-control", "wrong-control", "io", "reopened"):
+                with self.subTest(scenario=scenario):
+                    result, events = self.linux_native_offer(scenario)
+                    if scenario == "success":
+                        self.assertNotIsInstance(result, Exception)
+                        self.assertTrue(result[0])
+                    elif scenario in ("missing-control", "wrong-control"):
+                        self.assertIsInstance(result, LinuxActivationFailure)
+                    else:
+                        self.assertIsInstance(result, AssertionError)
+                    if scenario != "success":
+                        self.assertFalse(any(event[1] == "key" and event[-1] in ("space", "Return") for event in events))
 
     def test_linux_native_offer_refuses_absence_ambiguity_and_stale_or_foreign_window(self):
         for scenario in ("absent", "hidden", "unfocused", "duplicate", "foreign", "io", "reopened", "renamed", "focus-lost", "owner-changed"):

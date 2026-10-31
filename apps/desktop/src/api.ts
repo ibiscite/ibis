@@ -23,6 +23,7 @@ export const {
   openLibrarySource,
   librarySource,
   hidePicker,
+  pickerPresentation,
   setPinned,
   quit,
   shortcutStatus,
@@ -99,8 +100,8 @@ export function pickerVisible(): Promise<boolean> {
 }
 
 /** Called whenever the picker is shown by the global shortcut or a second launch. */
-export function onPickerShown(handler: () => void): Promise<UnlistenFn> {
-  return listen("picker:shown", handler);
+export function onPickerShown(handler: (presentation: number) => void): Promise<UnlistenFn> {
+  return listen<number>("picker:shown", (event) => handler(event.payload));
 }
 
 /** Called when the shortcut's status changes, such as after a keyboard layout switch on macOS. */
