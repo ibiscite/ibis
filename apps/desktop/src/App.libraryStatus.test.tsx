@@ -31,6 +31,45 @@ test("a fresh closed Zotero snapshot stays quiet and the footer opens its librar
   await waitFor(() => expect(calls).toContain("reload_library"));
 });
 
+test("Reload retires the Library menu before publishing a missing-file error, so empty and restored files can be reloaded next", async () => {
+  const file = library({ zotero: false, snapshot_zotero: false, name: "thesis.bib", snapshot_name: "thesis.bib", references: 4 });
+  let current = file;
+  const replies = [
+    { ...file, state: "error" as const, stale: true, problem: "missing" as const,
+      error: "the library file is unavailable; keeping the last loaded references" },
+    { ...file, references: 0 },
+    { ...file, references: 3 },
+  ];
+  const menusAtDispatch: boolean[] = [];
+  backend({ library_status: () => current, reload_library: async () => {
+    menusAtDispatch.push(document.getElementById("library-menu") !== null);
+    current = replies.shift()!;
+    await emit("library:changed", current);
+  } });
+  render(<App />);
+  await waitFor(() => expect(status().textContent).toContain("4 references"));
+  let finishExit!: () => void;
+  const finished = new Promise<void>((resolve) => { finishExit = resolve; });
+  try {
+    for (const [index, expected] of ["thesis.bib moved", "thesis.bib · no references", "thesis.bib · 3 references"].entries()) {
+      fireEvent.click(within(footer()).getByRole("button", { name: "Library" }));
+      const menu = await screen.findByRole("menu", { name: "Library" });
+      const popover = menu.closest(".menu-popover")!;
+      // Model a native exit still in progress when the next recovery step runs.
+      // Its modal scope and same-named menu must be gone before the reload I/O.
+      Object.defineProperty(popover, "getAnimations", { value: () => popover.hasAttribute("data-exiting")
+        ? [{ playState: "running", finished }] : [] });
+      fireEvent.click(within(menu).getByRole("menuitem", { name: "Reload Library" }));
+      await waitFor(() => expect(status().textContent).toBe(expected));
+      expect(menusAtDispatch).toEqual(Array(index + 1).fill(false));
+      expect(popover.isConnected).toBe(false);
+      expect(within(footer()).getByRole("button", { name: "Library" }).getAttribute("aria-expanded")).toBe("false");
+    }
+  } finally {
+    await act(async () => { finishExit(); });
+  }
+});
+
 test("a stale snapshot has one footer problem and action, and a successful read clears it", async () => {
   const opened = vi.fn(() => null);
   let current = stale();

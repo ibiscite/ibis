@@ -38,7 +38,9 @@ export function PickerLibraryStatus({ library, groupName, isOpen, onOpenChange, 
     menu={{ label: pickerText.libraryRegion, id: "library-menu",
       isOpen, onOpenChange, tabFocusRef: searchRef, placement: "top end", children: <>
         <MenuSection id="library-detail" label={detail.filter(Boolean).join(". ")} header={<LibraryDetail lines={detail} />}>
-          {library?.name && <MenuItem id="reload" label={pickerText.reloadLibrary} onAction={actions.reload} />}
+          {/* A reload can publish a recovery screen before an animated exit
+              ends. Retire the modal and its same-named menu before that I/O. */}
+          {library?.name && <MenuItem id="reload" label={pickerText.reloadLibrary} closeOnSelect onAction={actions.reload} />}
           <MenuItem id="choose" label={pickerText.chooseLibraryMenu} keys={keyLabel(keysFor("chooseSource"), isMac)} onAction={actions.choose} />
           {!library?.zotero && <MenuItem id="zotero" label={pickerText.useZotero} onAction={actions.useZotero} />}
         </MenuSection>
