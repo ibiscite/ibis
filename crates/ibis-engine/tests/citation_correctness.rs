@@ -191,6 +191,16 @@ fn extra_and_note_date_overrides_preserve_literal_dates_and_year_letters() {
 fn quoted_literal_dates_keep_the_text_inside_the_quotes() {
     let formatter = Formatter::new().unwrap();
     for date in ["in press", "forthcoming", "2020a"] {
+        let curly = bib(&format!(
+            "@article{{work,title={{Imagined rivers}},author={{Okafor, Ada}},note={{issued: “{date}”}}}}"
+        ));
+        let expected = format!("(Okafor, {date})");
+        paste(
+            &format(&formatter, &curly, CitationForm::Normal),
+            &expected,
+            &expected,
+            &expected,
+        );
         let source = bib(&format!(
             "@article{{work,title={{Imagined rivers}},author={{Okafor, Ada}},note={{issued: \"{date}\"}}}}"
         ));
@@ -483,8 +493,8 @@ fn bidi_controls_in_entities_affixes_and_locators_are_removed_but_rtl_text_is_ke
     let expected = formatter.format(&clean, &clean_request).unwrap();
     assert_eq!(expected.text, "(see Okafor, 2026, p. 12, note)");
     for control in [
-        '\u{061c}', '\u{200e}', '\u{200f}', '\u{202a}', '\u{202b}', '\u{202c}', '\u{202d}', '\u{202e}', '\u{2066}',
-        '\u{2067}', '\u{2068}', '\u{2069}', '\u{206a}', '\u{206f}',
+        '\u{202a}', '\u{202b}', '\u{202c}', '\u{202d}', '\u{202e}', '\u{2066}', '\u{2067}', '\u{2068}', '\u{2069}',
+        '\u{206a}', '\u{206f}',
     ] {
         let mut dirty_request = clean_request.clone();
         dirty_request.items[0].prefix[0].text.push(control);
@@ -528,4 +538,377 @@ fn explicit_year_letters_survive_clusters_and_never_generate_new_letters() {
         "(Okafor, 2020, 2020)",
     );
     assert!(result.notices.contains(&Notice::YearSuffixWithheld));
+}
+
+#[test]
+fn decoded_line_breaks_are_inline_in_every_paste_flavour() {
+    let formatter = Formatter::new().unwrap();
+    let source = csl(json!({"type":"article-journal","title":"Imagined&#10;rivers",
+        "container-title":"Invented Journal",
+        "issued":{"date-parts":[[2026]]}}));
+    paste(
+        &format(&formatter, &source, CitationForm::Normal),
+        "(“Imagined Rivers,” 2026)",
+        "(“Imagined Rivers,” 2026)",
+        r"(\uc0\u8220{}Imagined Rivers,\uc0\u8221{} 2026)",
+    );
+}
+
+#[test]
+fn literal_year_letters_keep_numeric_citation_and_bibliography_order() {
+    let formatter = Formatter::new().unwrap();
+    let source_text = "@article{a,title={Invented earlier},author={Okafor, Ada},journal={Invented Journal},year={2019}}\n\
+        @article{b,title={Invented middle},author={Okafor, Ada},journal={Invented Journal},year={2020a}}\n\
+        @article{c,title={Invented later},author={Okafor, Ada},journal={Invented Journal},year={2021}}";
+    let bibtex = bib(source_text);
+    let quoted_notes = bib(&source_text
+        .replace("year={2019}", "note={issued: \"2019\"}")
+        .replace("year={2020a}", "note={issued: \"2020a\"}")
+        .replace("year={2021}", "note={issued: \"2021\"}"));
+    let zotero = Snapshot::new([("SYN00001", "Invented earlier", "2019"), ("SYN00002", "Invented middle", "2020a"), ("SYN00003", "Invented later", "2021")]
+        .into_iter().flat_map(|(key, title, date)| {
+            zotero(json!({"key":key,"itemType":"journalArticle","title":title,"date":date,
+                "publicationTitle":"Invented Journal","creators":[{"creatorType":"author","firstName":"Ada","lastName":"Okafor"}]}))
+                .objects().iter().map(|object| object.object.clone()).collect::<Vec<_>>()
+        }).collect()).unwrap();
+    for (source_index, source) in [bibtex, zotero, quoted_notes].into_iter().enumerate() {
+        let normal = format(&formatter, &source, CitationForm::Normal);
+        assert_eq!(normal.text, "(Okafor, 2019, 2020a, 2021)", "source {source_index}");
+        paste(
+            &normal,
+            "(Okafor, 2019, 2020a, 2021)",
+            "(Okafor, 2019, 2020a, 2021)",
+            "(Okafor, 2019, 2020a, 2021)",
+        );
+        paste(
+            &format(&formatter, &source, CitationForm::BibliographyOnly),
+            "Okafor, A. (2019). Invented earlier. Invented Journal.\nOkafor, A. (2020a). Invented middle. Invented Journal.\nOkafor, A. (2021). Invented later. Invented Journal.",
+            "<div class=\"csl-entry\">Okafor, A. (2019). Invented earlier. <i>Invented Journal</i>.</div>\n<div class=\"csl-entry\">Okafor, A. (2020a). Invented middle. <i>Invented Journal</i>.</div>\n<div class=\"csl-entry\">Okafor, A. (2021). Invented later. <i>Invented Journal</i>.</div>",
+            "Okafor, A. (2019). Invented earlier. {\\i{}Invented Journal}.\\par\nOkafor, A. (2020a). Invented middle. {\\i{}Invented Journal}.\\par\nOkafor, A. (2021). Invented later. {\\i{}Invented Journal}.",
+        );
+    }
+}
+
+#[test]
+fn explicit_year_letters_sort_in_the_processors_letter_sequence() {
+    let formatter = Formatter::new().unwrap();
+    let dates = [
+        ("2020aa", "Invented fourth"),
+        ("2020z", "Invented third"),
+        ("2020b", "Invented second"),
+        ("2020a", "Invented first"),
+    ];
+    let source = bib(&dates.iter().enumerate().map(|(index, (date, title))| format!(
+        "@article{{k{index},title={{{title}}},author={{Okafor, Ada}},journal={{Invented Journal}},year={{{date}}}}}"
+    )).collect::<Vec<_>>().join("\n"));
+    paste(
+        &format(&formatter, &source, CitationForm::Normal),
+        "(Okafor, 2020a, 2020b, 2020z, 2020aa)",
+        "(Okafor, 2020a, 2020b, 2020z, 2020aa)",
+        "(Okafor, 2020a, 2020b, 2020z, 2020aa)",
+    );
+    let expected = [
+        ("2020a", "Invented first"),
+        ("2020b", "Invented second"),
+        ("2020z", "Invented third"),
+        ("2020aa", "Invented fourth"),
+    ];
+    paste(
+        &format(&formatter, &source, CitationForm::BibliographyOnly),
+        &expected
+            .iter()
+            .map(|(date, title)| format!("Okafor, A. ({date}). {title}. Invented Journal."))
+            .collect::<Vec<_>>()
+            .join("\n"),
+        &expected
+            .iter()
+            .map(|(date, title)| {
+                format!("<div class=\"csl-entry\">Okafor, A. ({date}). {title}. <i>Invented Journal</i>.</div>")
+            })
+            .collect::<Vec<_>>()
+            .join("\n"),
+        &expected
+            .iter()
+            .map(|(date, title)| format!("Okafor, A. ({date}). {title}. {{\\i{{}}Invented Journal}}."))
+            .collect::<Vec<_>>()
+            .join("\\par\n"),
+    );
+}
+
+#[test]
+fn ordinary_direction_marks_preserve_a_signed_number_in_rtl_text() {
+    let formatter = Formatter::new().unwrap();
+    let source = csl(json!({"type":"article-journal","title":"מחיר \u{200e}-12",
+        "author":[{"family":"Okafor","given":"Ada"}],"container-title":"Invented Journal",
+        "issued":{"date-parts":[[2026]]}}));
+    paste(
+        &format(&formatter, &source, CitationForm::BibliographyOnly),
+        "Okafor, A. (2026). מחיר \u{200e}-12. Invented Journal.",
+        "<div class=\"csl-entry\">Okafor, A. (2026). מחיר \u{200e}-12. <i>Invented Journal</i>.</div>",
+        r"Okafor, A. (2026). \uc0\u1502{}\uc0\u1495{}\uc0\u1497{}\uc0\u1512{} \uc0\u8206{}-12. {\i{}Invented Journal}.",
+    );
+}
+
+#[test]
+fn processor_tag_removal_cannot_form_a_reserved_placeholder() {
+    let formatter = Formatter::new().unwrap();
+    let source = csl(
+        json!({"type":"article-journal","title":"\u{e002}<span class=\"nocase\">\u{e003}</span>",
+        "author":[{"family":"Okafor","given":"Ada"}],"container-title":"Invented Journal",
+        "issued":{"date-parts":[[2026]]}}),
+    );
+    paste(
+        &format(&formatter, &source, CitationForm::BibliographyOnly),
+        "Okafor, A. (2026). \u{e002}\u{e003}. Invented Journal.",
+        "<div class=\"csl-entry\">Okafor, A. (2026). \u{e002}\u{e003}. <i>Invented Journal</i>.</div>",
+        r"Okafor, A. (2026). \uc0\u57346{}\uc0\u57347{}. {\i{}Invented Journal}.",
+    );
+}
+
+#[test]
+fn decoded_whitespace_and_controls_follow_the_same_inline_rules_as_source_text() {
+    let formatter = Formatter::new().unwrap();
+    for separator in [
+        "&#10;",
+        "&#13;",
+        "&#13;&#10;",
+        "&#133;",
+        "&#8232;",
+        "&#8233;",
+        "&#0;",
+        "&#8;",
+        "&#127;",
+    ] {
+        for source in [
+            csl(
+                json!({"type":"article-journal","title":format!("Imagined{separator}rivers"),"container-title":"Invented Journal","issued":{"date-parts":[[2026]]}}),
+            ),
+            zotero(
+                json!({"key":"SYN00001","itemType":"journalArticle","title":format!("Imagined{separator}rivers"),"publicationTitle":"Invented Journal","date":"2026"}),
+            ),
+        ] {
+            paste(
+                &format(&formatter, &source, CitationForm::Normal),
+                "(“Imagined Rivers,” 2026)",
+                "(“Imagined Rivers,” 2026)",
+                r"(\uc0\u8220{}Imagined Rivers,\uc0\u8221{} 2026)",
+            );
+        }
+    }
+    let encoded = csl(
+        json!({"type":"article-journal","title":"&#10;Imagined&#13;<i>rivers</i>&#10;","container-title":"Invented Journal","issued":{"date-parts":[[2026]]}}),
+    );
+    let clean = csl(
+        json!({"type":"article-journal","title":"Imagined <i>rivers</i>","container-title":"Invented Journal","issued":{"date-parts":[[2026]]}}),
+    );
+    same_paste(
+        &format(&formatter, &encoded, CitationForm::Normal),
+        &format(&formatter, &clean, CitationForm::Normal),
+    );
+}
+
+#[test]
+fn raw_and_encoded_ordinary_direction_marks_keep_their_meaning() {
+    let formatter = Formatter::new().unwrap();
+    for (mark, code) in [('\u{061c}', 1564), ('\u{200e}', 8206), ('\u{200f}', 8207)] {
+        for title in [format!("מחיר {mark}-12"), format!("מחיר &#{code};-12")] {
+            let source = csl(
+                json!({"type":"article-journal","title":title,"author":[{"family":"Okafor","given":"Ada"}],"container-title":"Invented Journal","issued":{"date-parts":[[2026]]}}),
+            );
+            paste(
+                &format(&formatter, &source, CitationForm::BibliographyOnly),
+                &format!("Okafor, A. (2026). מחיר {mark}-12. Invented Journal."),
+                &format!("<div class=\"csl-entry\">Okafor, A. (2026). מחיר {mark}-12. <i>Invented Journal</i>.</div>"),
+                &format!(
+                    r"Okafor, A. (2026). \uc0\u1502{{}}\uc0\u1495{{}}\uc0\u1497{{}}\uc0\u1512{{}} \uc0\u{code}{{}}-12. {{\i{{}}Invented Journal}}."
+                ),
+            );
+        }
+    }
+}
+
+#[test]
+fn exhausting_private_code_points_refuses_and_the_next_request_recovers() {
+    let formatter = Formatter::new().unwrap();
+    let title: String = (0xe100..=0xf8ff)
+        .chain(0xf0000..=0xffffd)
+        .chain(0x100000..=0x10fffd)
+        .filter_map(char::from_u32)
+        .collect();
+    let source = csl(json!({"type":"article-journal","title":title,"container-title":"Invented Journal"}));
+    let result = format(&formatter, &source, CitationForm::Normal);
+    assert_eq!(
+        result.outcomes,
+        [ItemOutcome::Refused {
+            item: 0,
+            error: CitationError::UnsupportedForm
+        }]
+    );
+    assert_eq!(result.text, "");
+    assert!(result.html.is_none() && result.rtf.is_none());
+    assert!(result.copy_content(1).is_none());
+    let source = csl(
+        json!({"type":"article-journal","title":"Imagined &lt;i&gt;rivers&lt;/i&gt;","author":[{"family":"Okafor","given":"Ada"}],"container-title":"Invented Journal","issued":{"date-parts":[[2026]]}}),
+    );
+    paste(
+        &format(&formatter, &source, CitationForm::BibliographyOnly),
+        "Okafor, A. (2026). Imagined <i>rivers</i>. Invented Journal.",
+        "<div class=\"csl-entry\">Okafor, A. (2026). Imagined &#60;i&#62;rivers&#60;/i&#62;. <i>Invented Journal</i>.</div>",
+        r"Okafor, A. (2026). Imagined <i>rivers</i>. {\i{}Invented Journal}.",
+    );
+}
+
+#[test]
+fn date_sort_projection_is_private_fresh_and_obeys_keep_order() {
+    let formatter = Formatter::new().unwrap();
+    let source = bib(
+        "@article{a,title={Invented earlier},author={Okafor, Ada},journal={Invented Journal},year={2019}}\n\
+        @article{b,title={Invented middle},author={Okafor, Ada},journal={Invented Journal},year={2020a}}\n\
+        @article{c,title={Invented later},author={Okafor, Ada},journal={Invented Journal},year={2021}}",
+    );
+    let original = format(&formatter, &source, CitationForm::Normal);
+    paste(
+        &original,
+        "(Okafor, 2019, 2020a, 2021)",
+        "(Okafor, 2019, 2020a, 2021)",
+        "(Okafor, 2019, 2020a, 2021)",
+    );
+    let forged = Snapshot::new(
+        source
+            .objects()
+            .iter()
+            .map(|object| {
+                let LibraryObject::Record(mut record) = object.object.clone() else {
+                    unreachable!()
+                };
+                record.csl.insert(
+                    "ibis-date-sort".into(),
+                    json!({"issued":{"year":9000,"suffix":"FORGED SORT"}}),
+                );
+                LibraryObject::Record(record)
+            })
+            .collect(),
+    )
+    .unwrap();
+    same_paste(&format(&formatter, &forged, CitationForm::Normal), &original);
+    let edited = Snapshot::new(
+        source
+            .objects()
+            .iter()
+            .map(|object| {
+                let LibraryObject::Record(mut record) = object.object.clone() else {
+                    unreachable!()
+                };
+                if record.id.key == "record:b" {
+                    record.csl.insert("issued".into(), json!({"date-parts":[[2020]]}));
+                }
+                LibraryObject::Record(record)
+            })
+            .collect(),
+    )
+    .unwrap();
+    paste(
+        &format(&formatter, &edited, CitationForm::Normal),
+        "(Okafor, 2019, 2020, 2021)",
+        "(Okafor, 2019, 2020, 2021)",
+        "(Okafor, 2019, 2020, 2021)",
+    );
+    same_paste(&format(&formatter, &source, CitationForm::Normal), &original);
+    let mut keep = request(&source, "apa", CitationForm::Normal);
+    keep.items.reverse();
+    keep.keep_order = true;
+    paste(
+        &formatter.format(&source, &keep).unwrap(),
+        "(Okafor, 2021, 2020a, 2019)",
+        "(Okafor, 2021, 2020a, 2019)",
+        "(Okafor, 2021, 2020a, 2019)",
+    );
+}
+
+#[test]
+fn raw_curly_quoted_dates_are_literal_but_cannot_replace_structured_dates() {
+    let formatter = Formatter::new().unwrap();
+    for date in [json!({"raw":"“2020a”"}), json!({"date-parts":[],"raw":"“2020a”"})] {
+        let source = csl(
+            json!({"type":"article-journal","title":"Invented title","author":[{"family":"Okafor"}],"issued":date}),
+        );
+        paste(
+            &format(&formatter, &source, CitationForm::Normal),
+            "(Okafor, 2020a)",
+            "(Okafor, 2020a)",
+            "(Okafor, 2020a)",
+        );
+    }
+    let source = csl(
+        json!({"type":"article-journal","title":"Invented title","author":[{"family":"Okafor"}],
+        "issued":{"date-parts":[[2019]],"raw":"“2020a”"}}),
+    );
+    paste(
+        &format(&formatter, &source, CitationForm::Normal),
+        "(Okafor, 2019)",
+        "(Okafor, 2019)",
+        "(Okafor, 2019)",
+    );
+}
+
+#[test]
+fn raw_date_priority_controls_both_rendered_and_sorted_years() {
+    let formatter = Formatter::new().unwrap();
+    for raw in ["\"2022b\"", "“2022b”"] {
+        let source = bib(
+            "@article{a,title={Invented earlier},author={Okafor, Ada},journal={Invented Journal},year={2019}}\n\
+            @article{b,title={Invented middle},author={Okafor, Ada},journal={Invented Journal},year={2020a}}\n\
+            @article{c,title={Invented later},author={Okafor, Ada},journal={Invented Journal},year={2021}}",
+        );
+        let source = Snapshot::new(
+            source
+                .objects()
+                .iter()
+                .map(|object| {
+                    let LibraryObject::Record(mut record) = object.object.clone() else {
+                        unreachable!()
+                    };
+                    if record.id.key == "record:b" {
+                        record.csl.insert(
+                            "issued".into(),
+                            json!({"raw":raw,"literal":"2020a","circa":true,"season":"Spring","date-parts":[]}),
+                        );
+                    }
+                    LibraryObject::Record(record)
+                })
+                .collect(),
+        )
+        .unwrap();
+        paste(
+            &format(&formatter, &source, CitationForm::Normal),
+            "(Okafor, 2019, 2021, 2022b)",
+            "(Okafor, 2019, 2021, 2022b)",
+            "(Okafor, 2019, 2021, 2022b)",
+        );
+        paste(
+            &format(&formatter, &source, CitationForm::BibliographyOnly),
+            "Okafor, A. (2019). Invented earlier. Invented Journal.\nOkafor, A. (2021). Invented later. Invented Journal.\nOkafor, A. (2022b). Invented middle. Invented Journal.",
+            "<div class=\"csl-entry\">Okafor, A. (2019). Invented earlier. <i>Invented Journal</i>.</div>\n<div class=\"csl-entry\">Okafor, A. (2021). Invented later. <i>Invented Journal</i>.</div>\n<div class=\"csl-entry\">Okafor, A. (2022b). Invented middle. <i>Invented Journal</i>.</div>",
+            "Okafor, A. (2019). Invented earlier. {\\i{}Invented Journal}.\\par\nOkafor, A. (2021). Invented later. {\\i{}Invented Journal}.\\par\nOkafor, A. (2022b). Invented middle. {\\i{}Invented Journal}.",
+        );
+    }
+}
+
+#[test]
+fn raw_date_replaces_ignored_metadata_including_when_raw_is_whitespace() {
+    let formatter = Formatter::new().unwrap();
+    for raw in [" ", "\"2022b\"", "“2022b”", "2022"] {
+        let fields = json!({"type":"article-journal","title":"Invented title","author":[{"family":"Okafor"}],"issued":{"raw":raw}});
+        let clean = csl(fields.clone());
+        let mut fields = fields;
+        fields["issued"] = json!({"raw":raw,"literal":"2020a","circa":true,"season":"Spring","date-parts":[]});
+        let stale = csl(fields);
+        for form in [CitationForm::Normal, CitationForm::BibliographyOnly] {
+            assert_eq!(
+                formatter.format(&stale, &request(&stale, "apa", form)),
+                formatter.format(&clean, &request(&clean, "apa", form)),
+                "raw date {raw:?}"
+            );
+        }
+    }
 }

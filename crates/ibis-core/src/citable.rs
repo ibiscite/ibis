@@ -57,6 +57,9 @@ pub fn citable_fields(fields: &mut Map<String, Value>) {
         for object in objects {
             if let Value::Object(object) = object {
                 object.retain(|part, _| parts.contains(&part.as_str()));
+                if DATES.contains(&name.as_str()) {
+                    normalize_raw_date(object);
+                }
             }
         }
     }
@@ -75,53 +78,61 @@ const NAME_PARTS: [&str; 9] = [
 ];
 const DATE_PARTS: [&str; 5] = ["date-parts", "season", "circa", "literal", "raw"];
 
+/// The numeric year and optional source letters of a literal year. Calendar
+/// month/season and era names remain the source date parser's responsibility.
+pub fn literal_year(value: &str) -> Option<(i32, &str)> {
+    let (year, suffix) = value.trim().split_at_checked(4)?;
+    let suffix = suffix.trim();
+    if !(year.bytes().all(|byte| byte.is_ascii_digit())
+        && suffix.bytes().all(|byte| byte.is_ascii_alphabetic())
+        && !matches!(
+            suffix.to_ascii_lowercase().as_str(),
+            "ad" | "bc"
+                | "bce"
+                | "ce"
+                | "jan"
+                | "january"
+                | "feb"
+                | "february"
+                | "mar"
+                | "march"
+                | "apr"
+                | "april"
+                | "may"
+                | "jun"
+                | "june"
+                | "jul"
+                | "july"
+                | "aug"
+                | "august"
+                | "sep"
+                | "sept"
+                | "september"
+                | "oct"
+                | "october"
+                | "nov"
+                | "november"
+                | "dec"
+                | "december"
+                | "spring"
+                | "summer"
+                | "autumn"
+                | "fall"
+                | "winter"
+        ))
+    {
+        return None;
+    }
+    Some((year.parse().ok()?, suffix))
+}
+
 /// Dates with source-supplied year letters or publication status must not go
 /// through a permissive parser that silently keeps only their numeric year.
 /// Shared by source dates and note/Extra date overrides; this does not generate
 /// document-level disambiguation letters.
 pub fn literal_date(value: &str) -> bool {
     let text = value.trim().to_ascii_lowercase();
-    let suffix = text.split_at_checked(4).is_some_and(|(year, suffix)| {
-        let suffix = suffix.trim();
-        year.bytes().all(|byte| byte.is_ascii_digit())
-            && !suffix.is_empty()
-            && suffix.bytes().all(|byte| byte.is_ascii_alphabetic())
-            && !matches!(
-                suffix,
-                "ad" | "bc"
-                    | "bce"
-                    | "ce"
-                    | "jan"
-                    | "january"
-                    | "feb"
-                    | "february"
-                    | "mar"
-                    | "march"
-                    | "apr"
-                    | "april"
-                    | "may"
-                    | "jun"
-                    | "june"
-                    | "jul"
-                    | "july"
-                    | "aug"
-                    | "august"
-                    | "sep"
-                    | "sept"
-                    | "september"
-                    | "oct"
-                    | "october"
-                    | "nov"
-                    | "november"
-                    | "dec"
-                    | "december"
-                    | "spring"
-                    | "summer"
-                    | "autumn"
-                    | "fall"
-                    | "winter"
-            )
-    });
+    let suffix = literal_year(&text).is_some_and(|(_, suffix)| !suffix.is_empty());
     let mut previous = "";
     suffix
         || text
@@ -133,6 +144,35 @@ pub fn literal_date(value: &str) -> bool {
                 previous = word;
                 status
             })
+}
+
+// Raw parsing replaces the whole date when structured parts are absent/empty.
+// Resolve that priority once for note overrides and CSL dates, before projecting
+// sort data. Curly delimiters need explicit normalization; ASCII stays native.
+fn normalize_raw_date(date: &mut Map<String, Value>) {
+    if date
+        .get("date-parts")
+        .is_some_and(|parts| !parts.as_array().is_some_and(Vec::is_empty))
+    {
+        return;
+    }
+    let Some(raw) = date.get("raw").and_then(Value::as_str).filter(|raw| !raw.is_empty()) else {
+        return;
+    };
+    // Whitespace-only raw is still truthy to the pinned processor.
+    let literal = raw
+        .trim()
+        .strip_prefix('“')
+        .and_then(|raw| raw.strip_suffix('”'))
+        .map(|text| Value::String(text.into()));
+    if let Some(literal) = literal {
+        date.clear();
+        date.insert("literal".into(), literal);
+    } else {
+        // Keep the exact raw string for native parsing, discarding only fields
+        // that processor would replace (literal, circa, season, empty parts).
+        date.retain(|part, _| part == "raw");
+    }
 }
 
 /// A CSL variable a note may set and an agent may see. Fields a source keeps
@@ -315,8 +355,8 @@ fn apply_overrides(fields: &mut Map<String, Value>, note: &str) {
         if key == "type" {
             fields.insert(key.into(), json!(value));
         } else if DATES.contains(&key) {
-            // The existing raw-date parser owns explicit quoted literals and
-            // strips their delimiters. Do not make those quotes visible data.
+            // ASCII quotes use native raw-date parsing; curly delimiters are
+            // normalized with all other date fields below.
             let quoted = value.len() > 1
                 && ((value.starts_with('"') && value.ends_with('"'))
                     || (value.starts_with('“') && value.ends_with('”')));

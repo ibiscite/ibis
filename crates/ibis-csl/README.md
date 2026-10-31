@@ -21,15 +21,27 @@ including the processor's exact native-error forwarding forms, return the fixed
 `ResourceLimit` code; arbitrary exception text never crosses the boundary.
 
 Canonical rich title fields retain the source adapters' escaped text and allowed
-markup. The bridge decodes entities once before processor casing and sorting;
-escaped less-than signs stay inert until each output format escapes its text.
-A request-specific sentinel is checked against both raw and decoded input, so
-literal tags cannot become formatting and source text cannot consume a sentinel.
-Plain fields, names and typed affixes do not undergo entity decoding. Directional
-formatting controls are removed from fields, locators and affixes before rendering,
-including controls encoded as rich-text entities; RTL letters and shaping
-characters remain unchanged. A raw control inside tag-looking text refuses the
-request, since removing it could create a formatting instruction.
+markup. The bridge decodes entities once and normalizes decoded line breaks and
+controls before processor casing and sorting. Escaped less-than signs stay inert
+until each output format escapes its text. One unused private-use code point is
+reserved against both raw and decoded input; processor tag removal cannot assemble
+it from adjacent characters. Exhausting the available code points refuses output.
+Plain fields, names and typed affixes do not undergo entity decoding. Ordinary
+ALM, LRM and RLM direction marks retain their meaning, including signs in RTL text.
+Embedding, override and isolate controls are removed from fields, locators and
+affixes before rendering, including encoded controls; RTL letters and shaping
+characters remain unchanged. A raw unsafe control inside tag-looking text refuses
+the request, since removing it could create a formatting instruction.
+
+Literal years keep their numeric sort order separately from their rendered text.
+The shared year parser supplies private formatter sort data after source custom
+fields are removed. Only the processor's date-sort call sees a scratch numeric
+date; the registered literal remains unchanged. Explicit year letters sort in the
+processor's `a` through `z`, then `aa` sequence, without generating new letters.
+Curly-quoted raw dates become literals at the shared citable-field boundary;
+ASCII-quoted raw dates retain the pinned parser's quote handling. Nonempty
+structured date parts take precedence; otherwise a nonempty raw string replaces
+ignored literal, season and circa values, including when raw is only whitespace.
 
 One worker thread owns a QuickJS runtime and a bounded FIFO queue. Queued
 cancellation releases its slot immediately; running work is cancelled through

@@ -318,6 +318,13 @@ fn prepare_with_traits(
         } else {
             let id = format!("ibis-{}", items.len());
             let mut value = record.clone();
+            // Private sort metadata never changes the canonical source date or
+            // its rendering. The same year-letter parser owns source detection
+            // and this numeric sort projection; source custom fields were removed.
+            let sorts = date_sorts(record);
+            if !sorts.is_empty() {
+                value.insert("ibis-date-sort".into(), Value::Object(sorts));
+            }
             // Source identities and keys never become JavaScript object lookup keys.
             value.insert("id".into(), json!(id));
             items.push(Value::Object(value));
@@ -616,7 +623,38 @@ fn normalize_strings<'a>(values: impl Iterator<Item = &'a mut Value>) -> Result<
 }
 
 fn bidi_control(ch: char) -> bool {
-    matches!(ch, '\u{061c}' | '\u{200e}' | '\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{206f}')
+    matches!(ch, '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{206f}')
+}
+
+fn date_sorts(fields: &serde_json::Map<String, Value>) -> serde_json::Map<String, Value> {
+    fields
+        .iter()
+        .filter_map(|(field, date)| {
+            if !matches!(
+                field.as_str(),
+                "issued"
+                    | "event-date"
+                    | "accessed"
+                    | "original-date"
+                    | "publication-date"
+                    | "available-date"
+                    | "submitted"
+                    | "container"
+            ) || date
+                .get("date-parts")
+                .is_some_and(|parts| !parts.as_array().is_some_and(Vec::is_empty))
+            {
+                return None;
+            }
+            let literal = date.get("literal").and_then(Value::as_str).or_else(|| {
+                // A quoted raw override is a literal to the pinned date parser.
+                let raw = date.get("raw")?.as_str()?.trim();
+                raw.strip_prefix('"').and_then(|s| s.strip_suffix('"'))
+            })?;
+            let (year, suffix) = ibis_core::citable::literal_year(literal)?;
+            (year != 0).then(|| (field.clone(), json!({"year":year,"suffix":suffix.to_ascii_lowercase()})))
+        })
+        .collect()
 }
 
 /// Abort serialization at the boundary instead of allocating an unbounded JSON copy.

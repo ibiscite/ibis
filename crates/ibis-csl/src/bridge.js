@@ -17,13 +17,40 @@
   const styles = new Map(__ibisStyles);
   const engines = new Map();
   let activeItems = new Map();
+  const dateAsSortKey = CSL.dateAsSortKey;
+  CSL.dateAsSortKey = function (state, item, isMacro) {
+    const variable = this.variables[0];
+    const sort = activeItems.get(String(item.id))?.["ibis-date-sort"]?.[variable];
+    if (!sort) return dateAsSortKey.call(this, state, item, isMacro);
+    // Only the sort call sees a numeric year. The registered date remains a
+    // literal, so rendering never duplicates its year or drops its letters.
+    const date = { ...item[variable], year: sort.year };
+    delete date.raw;
+    delete date["date-parts"];
+    dateAsSortKey.call(this, state, { ...item, [variable]: date }, isMacro);
+    // Source letters follow the processor's a..z, aa.. sequence. Length-first
+    // ordering avoids both lexicographic aa-before-b and numeric overflow.
+    // Numeric collation ignores punctuation: an alphabetic boundary prevents
+    // the length digits from enlarging the processor's numeric date key.
+    const suffix = sort.suffix ? "s" + String(sort.suffix.length).padStart(8, "0") + sort.suffix : "";
+    state.output.append(suffix, isMacro && state.tmp.extension ? "macro-with-date" : "empty");
+  };
   // The source adapters' canonical rich fields escape text separately from
   // markup. citeproc expects decoded text, but must never parse an escaped
   // literal `<i>` as an instruction. Decode once before casing/sorting and
   // restore only literal less-than signs at the final text-escaping boundary.
   const richFields = ["title", "title-short", "container-title", "container-title-short", "volume-title", "volume-title-short"];
   const entities = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: "\u00a0" };
-  const bidi = /[\u061c\u200e\u200f\u202a-\u202e\u2066-\u206f]/g;
+  // Direction marks carry ordinary RTL/LTR meaning. Remove only embedding,
+  // override and isolate controls that can escape the field's text.
+  const bidi = /[\u202a-\u202e\u2066-\u206f]/g;
+  // Entity decoding creates new characters after Rust's inline normalization.
+  // Apply the same line/control rules before citeproc sees those characters.
+  const inline = (text) => text
+    .replace(/^[\r\n\u0085\u2028\u2029]+|[\r\n\u0085\u2028\u2029]+$/g, "")
+    .replace(/[\r\n\u0085\u2028\u2029]+/g, " ")
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u0084\u0086-\u009f]/g, " ")
+    .replace(bidi, "");
   const decodeText = (text, lessThan) => text.replace(/&(?:amp|lt|gt|quot|apos|nbsp|#[0-9]{1,7}|#x[0-9a-fA-F]{1,6});/g, (entity) => {
     const name = entity.slice(1, -1);
     let decoded = entities[name];
@@ -32,30 +59,36 @@
       if (code > 0x10ffff || (code >= 0xd800 && code <= 0xdfff)) return entity;
       decoded = String.fromCodePoint(code);
     }
-    return decoded.replace(bidi, "");
+    return decoded;
   }).replace(/</g, () => lessThan);
   // Match the pinned processor's existing tag spellings/normalization before
   // decoding text. An entity in an unrecognized tag or attribute cannot create
   // a new formatting instruction. Keep native sc/nodecor support for CSL-JSON.
   const markup = /(<\/?(?:i|b|sc|sub|sup)>|<span\s+class="no(?:case|decor)"[^>]*>|<span\s+style="font-variant:\s*small-caps;?"[^>]*>|<\/span>)/g;
-  const decodeRich = (text, lessThan = "<") => text.split(markup)
-    .map((part, index) => index % 2 ? part : decodeText(part, lessThan)).join("");
+  const decodeRich = (text, lessThan = "<") => inline(text.split(markup)
+    .map((part, index) => index % 2 ? part : decodeText(part, lessThan)).join(""));
   let literalLessThan = null;
   for (const format of ["text", "html", "rtf"]) {
     const escape = CSL.Output.Formats[format].text_escape;
     CSL.Output.Formats[format].text_escape = (text) => escape(literalLessThan && text ? text.split(literalLessThan).join("<") : text);
   }
   const processorItems = (request) => {
-    // Include decoded data in the collision check: numeric entities can spell
-    // the sentinel too. This non-overlapping sentinel cannot consume a suffix
-    // of adjacent source text. Doubling bounds the total collision-scan work.
+    // A single unused private-use code point cannot be assembled by removing
+    // markup between source characters, and casing cannot change it. Include
+    // decoded data too: numeric entities can spell an existing private symbol.
     const decoded = request.items.map((item) => Object.fromEntries(richFields
       .filter((field) => typeof item[field] === "string")
       .map((field) => [field, decodeRich(item[field])])));
-    const source = JSON.stringify([request, decoded]);
-    let prefix = "\uE002";
-    while (source.includes(prefix + "\uE003")) prefix += prefix;
-    literalLessThan = prefix + "\uE003";
+    const used = new Set(JSON.stringify([request, decoded]));
+    literalLessThan = null;
+    for (const [start, end] of [[0xe100, 0xf8ff], [0xf0000, 0xffffd], [0x100000, 0x10fffd]]) {
+      for (let code = start; code <= end; code++) {
+        const candidate = String.fromCodePoint(code);
+        if (!used.has(candidate)) { literalLessThan = candidate; break; }
+      }
+      if (literalLessThan) break;
+    }
+    if (!literalLessThan) return null;
     return request.items.map((item) => ({ ...item, ...Object.fromEntries(richFields
       .filter((field) => typeof item[field] === "string")
       .map((field) => [field, decodeRich(item[field], literalLessThan)])) }));
@@ -157,7 +190,9 @@
   const wrapRtf = (text, bibliography) => `{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Times New Roman;}}\\f0\n${bibliography ? text.split("\n").join("\\par\n") : text}\n}`;
   globalThis.__ibisFormat = (request) => {
     let xml = styles.get(request.style).replace(/disambiguate-add-year-suffix="true"/g, 'disambiguate-add-year-suffix="false"');
-    activeItems = new Map(processorItems(request).map((item) => [item.id, item]));
+    const converted = processorItems(request);
+    if (!converted) return JSON.stringify({ status: "refused" });
+    activeItems = new Map(converted.map((item) => [item.id, item]));
     const key = JSON.stringify([request.style, request.locale, request.keep_order]);
     let engine = engines.get(key);
     if (!engine) {

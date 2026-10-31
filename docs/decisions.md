@@ -76,6 +76,9 @@ Ibis copies only what one citation can get right: numeric styles copy the
 entry without its number, note styles the full first note (never ibid.), and
 generated author-date year suffixes wait for a document-level view. Source-supplied
 literal dates and year letters are retained as data (2026-10-30, #1519).
+Literal years retain numeric date order independently of their rendered letters.
+Ordinary ALM/LRM/RLM direction marks retain their text meaning; embedding,
+override and isolate controls are neutralized before output (2026-10-30, #1522).
 
 ## 0008 Offline by default
 
