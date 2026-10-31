@@ -244,6 +244,22 @@ says so, and it never silently overwrites a file it could not read. Existing
 migration code is deleted, not extended, when its area is rebuilt. From 1.0 a
 format change needs an upgrade path.
 
+Planned copied-key warnings (#1092; maintainer-approved, 2026-10-30) may keep a
+bounded private local record of library/item identity and its last successfully
+copied key. This is not document or research history: no queries, document text,
+quotations or personal comments. Failed or superseded copies cannot update it;
+failed storage keeps the previous durable record and reports that it was not
+updated. The implementation defines the capacity and file format under the
+existing atomic-write and single-owner rules. Users can forget the record.
+Only native identities that survive a key rename qualify; never infer continuity
+from titles/DOIs when a `.bib` entry key changes its identity. A successful new
+key copy replaces the baseline, not the keys in any manuscript. Clipboard success
+is the commit event; diagnostic old/new-key copies, previews, CLI stdout and MCP
+formatting do not count. Batch history writes occur outside the source/clipboard
+barrier and preserve successful copy order rather than disk-completion order.
+Stable and Nightly stay isolated.
+This permission does not change MCP's exclusion of notes, annotations and private links.
+
 ## 0031 What Ibis remembers per app
 
 The output chooser remembers a format picked for the captured app unless the

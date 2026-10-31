@@ -1118,6 +1118,112 @@ Customisation follows "defaults first, then choice": automatic (from the app
 and the system) → one key in the picker → the Settings window → a documented,
 validated config file for power users → the command line.
 
+### Source checks and passage reuse (planned)
+
+The five source workflows in ROADMAP.md were approved on 2026-10-30; this section
+is planned behaviour. Research on 2026-10-30 refined the limits below before
+implementation. It adds no new notebook, source writer, cloud access or agent
+permission.
+
+**Check the bibliography.** This answers “Does the exact key I am about to insert
+occur in the file I chose?” It is optional for key workflows, with no setup for
+formatted references in Word or Google Docs. Start with one explicitly chosen
+read-only `.bib`; name that file, not “the whole document”. Multiple-file or
+Overleaf ZIP support must expose the checked file set rather than infer which
+bibliographies a document uses. A downloaded copy is a dated snapshot, not a
+connection to the online project.
+
+| Checked-file state | What the person sees |
+| --- | --- |
+| One exact occurrence, no known identity conflict | In thesis.bib; inspect the project entry |
+| No occurrence after a complete coherent scan | Missing from thesis.bib; copy an available entry or re-export from the manager |
+| Unreadable, incomplete, changing or uncertain read | Couldn't check thesis.bib; retry or find the file |
+| Several occurrences of the key | Key appears more than once; inspect its locations |
+| Key exists but bibliographic identifiers or fields conflict | Key may name another reference; compare the entries |
+
+Presence is not proof of matching metadata, the intended edition, a current
+manager export or successful compilation. Do not silently replace a key with a
+similar record's key. The check is informational; warnings follow the existing
+Copy-with-reason policy instead of suggesting a verified automatic paste. Existing
+engine key-conflict refusals still apply. An unknown result is never “missing”.
+
+Keep the checked bibliography separate from loaded search libraries: loading a
+Zotero export again would create artificial duplicate key ownership. Retain exact
+key occurrences and scan diagnostics; successfully converted records alone cannot
+prove absence or uniqueness. Bind reads, status and any prepared action to the
+chosen file/context generation; a delayed earlier file cannot replace a newer one.
+Refresh uses bounded existing source-reading rules, without hidden polling.
+
+**Copy bibliography entry** retains the existing key and never edits a source.
+A raw entry may need `@string`, `crossref` or `xdata` definitions. Supply a validated
+self-contained entry/dependency closure or a qualified maintained export in the
+chosen BibTeX/BibLaTeX dialect; do not silently recreate it from reduced CSL data.
+When unavailable, explain how to export it from the source manager. Zotero-only
+export needs version/key-parity qualification; documented API support is not proof
+that every supported Zotero/Better BibTeX configuration emits the intended key.
+
+**Find a passage.** Search existing Zotero highlights, notes and personal comments.
+Label a result Highlight, Comment or Note; show matched text, separate comment,
+parent reference when known, and location. A note can combine several papers or
+have no parent: never treat its text as a quotation from a guessed reference.
+Image/ink and comment-only annotations have “No text quotation”; no silent OCR or
+fabricated excerpt. Source-adapter support and open/closed parity precede picker
+wiring, with supported Zotero versions and library kinds stated explicitly.
+
+**Open passage** resolves the annotation, attachment and library identities in the
+engine. Prefer a verified Zotero annotation target; label page-only opening as
+page-only. External-reader exact-page support needs its own qualification. A
+successful app launch alone does not prove the intended passage was reached.
+Distinguish missing, not-downloaded, cloud-placeholder, unreadable and unknown
+attachments. Changed/deleted attachments or annotations invalidate prepared
+locations; delayed work and close/reopen cannot restore obsolete targets.
+
+Show physical and printed pages separately, e.g. “PDF page 8 · cite p. 417”. Unknown
+printed labels show “Citation page unknown” and are omitted from output. Implement
+an explicit validated unknown-page quote/export path; never bypass source/annotation
+validation or substitute a physical index for a citation page.
+
+**Copy quote with reference** is an explicit action for a text quotation. Preserve
+its stored text and paragraph meaning, accurate printed page when known, reference
+and source link as plain text or escaped Markdown. Keep personal comments separate;
+never silently summarize, truncate or turn note HTML into trusted markup. The quote
+is the saved annotation text, not a claim of verification against the current PDF.
+Reuse engine identity, escaping and final source-validation contracts; quotation
+and comment output must not use CSL note fields.
+
+**Export evidence brief.** Select several passages in order, optionally enter a
+question, and export one Markdown file containing quotations, separate comments,
+references, pages and source links. Two passages from the same paper retain their
+own locations. Include only chosen material, preserving each source relationship.
+Label local Zotero links apart from public identifier links; neither exports private
+attachments. Never include private paths or bypass the existing link policy.
+Default to a new chosen output file, never a source library/export or an alias of
+one. Atomic publication preserves any prior destination on failure/cancellation;
+keep the selection for retry, and reject partial or obsolete output. This export
+creates no persistent notebook or hosted share.
+
+**Changed copied key.** Show “You previously copied oldKey; this item's current
+key is newKey”. Offer Copy old/new keys, Open reference and Forget remembered key.
+This is informational: an old project export or alias may still accept the old key.
+Track only sources whose native identity survives the rename: Zotero, or CSL-JSON
+with a stable `id` and separate changing `citation-key`. Plain `.bib` renames change
+the current adapter's identity; do not infer continuity from a title or DOI.
+
+Remember the actual emitted key after successful native clipboard publication,
+including a copied fallback when paste is unavailable. Previews, failed copies,
+formatted-only output, brief exports, Copy old/new keys, CLI stdout and MCP
+formatting do not count. Copying the diagnostic explanation leaves the remembered
+baseline and warning intact.
+Several keys update as one successful-copy batch; older asynchronous storage cannot
+overwrite a newer successful copy. Copying the new key replaces the remembered
+baseline; it does not repair old documents or produce an “all clear” claim. Deleted
+items, conflicting keys and failed refreshes keep their specific meanings. Planned
+storage limits are in decision 0016.
+
+These features retain the current agent-data boundary: MCP does not gain notes,
+annotations or private links. Decision memory, resume workflows and an AI
+companion remain deferred.
+
 ## Settings
 
 [C18] Its own window (Dock, taskbar and Alt+Tab while open), opened with
@@ -1346,7 +1452,7 @@ scheduled.
 | `ibis://` links, Show in Zotero, Open PDF in Zotero (0.4) | A link opens the picker filled in, like the shortcut; the Zotero actions sit in More and the row's context menu |
 | Settings window (0.4, #776) | **Settings**; General, Shortcuts, Libraries and Citations first |
 | Browse, "Selected in Zotero", passages (0.5) | Collections and tags as search filters; a reference's highlights and notes unfold under its row, and choosing one fills in its page ("PDF page 8 · cite p. 417") |
-| Bibliography, "References used this session", project `.bib` (0.4) | More and the format pop-up; the session list is editable with Undo; with a project `.bib` chosen, rows say "In refs.bib" or "Not in refs.bib" and More offers its missing entry |
+| Bibliography, "References used this session", project `.bib` (0.4) | More and the format pop-up; the session list is editable with Undo; with a project `.bib` chosen, rows say "In refs.bib" or "Missing from refs.bib" and More offers its missing entry |
 | `ibis check`, DOI lookup (0.6) | Command line first; DOI lookup as a no-results fallback, opt-in |
 
 ## How the design changes
