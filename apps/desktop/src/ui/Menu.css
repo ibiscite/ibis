@@ -75,6 +75,8 @@
    one start, and after the label on GNOME. */
 .menu-check { flex: 0 0 var(--menu-check-width); display: inline-flex; justify-content: center; }
 :root:not([data-platform="linux"]) .menu:has([role="menuitemcheckbox"]) :is(.menu-item:not([role="menuitemcheckbox"]), .menu-header) { padding-inline-start: var(--menu-label-start); }
+/* An icon shares the check column, so its label still starts with the others. */
+:root:not([data-platform="linux"]) .menu:has([role="menuitemcheckbox"]) .menu-item:has(> .source-icon) { padding-inline-start: calc(var(--menu-item-pad) + var(--menu-check-width) - var(--icon-size)); }
 :root[data-platform="linux"] .menu-check { order: 1; }
 /* Grow to the intrinsic label width first; at the viewport limit full action
    labels wrap while checks and shortcut units retain their columns. */

@@ -482,7 +482,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
     : source.kind === "zotero" ? sourceItem ? pickerText.showInZotero : pickerText.openZotero
     : altHeld ? pickerText.showSourceFolder(isMac) : pickerText.openSource(source.name);
   const sourceAction: SourceActionProps = { label: sourceLabel, keys: keysFor(altHeld && source.kind === "file" ? "revealSource" : "source"), icon: source.icon,
-    file: source.kind === "file", open: () => openSource() };
+    file: source.kind === "file", busy: sourceOpen.busy, open: () => openSource() };
   const sourceChoice = { ...sourceAction, icon: <SourceIcon icon={source.icon} file={source.kind === "file"} /> };
   const openKeys = () => {
     cancelCopy();
