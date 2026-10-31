@@ -1,0 +1,5823 @@
+{
+  "samples": [
+    {
+      "citations": [
+        {
+          "html": "(林0x0 et al., 1950)",
+          "style": "apa",
+          "text": "(林0x0 et al., 1950)"
+        },
+        {
+          "html": "(林0x0 et al. 1950)",
+          "style": "chicago-author-date",
+          "text": "(林0x0 et al. 1950)"
+        },
+        {
+          "html": "(林0x0 <i>et al.</i>, 1950)",
+          "style": "harvard-cite-them-right",
+          "text": "(林0x0 et al., 1950)"
+        },
+        {
+          "html": "<div class=\"csl-entry\">明 林0x0 <i>et al.</i>, “Invented signals seed1534 orbit 0 星図 天文,” <i>Invented Letters</i>, vol. 1, no. 1, pp. 1–12, 1950, doi: 10.1000/spike1534.0.</div>",
+          "style": "ieee",
+          "text": "明 林0x0 et al., “Invented signals seed1534 orbit 0 星図 天文,” Invented Letters, vol. 1, no. 1, pp. 1–12, 1950, doi: 10.1000/spike1534.0."
+        },
+        {
+          "html": "(林0x0 et al.)",
+          "style": "modern-language-association",
+          "text": "(林0x0 et al.)"
+        }
+      ],
+      "key": "sp1534r0",
+      "pandoc": [
+        91,
+        64,
+        115,
+        112,
+        49,
+        53,
+        51,
+        52,
+        114,
+        48,
+        93
+      ],
+      "show": {
+        "fingerprints": {
+          "cite": "30fbc2a6f6e6ab7c48149a808d77c5f9cf91efa174fa274c158acf164fc61416",
+          "full": "30fbc2a6f6e6ab7c48149a808d77c5f9cf91efa174fa274c158acf164fc61416"
+        },
+        "object": {
+          "data": {
+            "aliases": [],
+            "citation_keys": [
+              {
+                "source": "bibtex",
+                "value": "sp1534r0"
+              }
+            ],
+            "csl": {
+              "DOI": "10.1000/spike1534.0",
+              "URL": "https://example.org/invented/1534/0",
+              "abstract": "light orbit cell model orbit spin cell field flow star flow orbit field model dust spin light phase wave spin dust orbit mass spin mass dust phase wave space model wave maps maps dust wave data dust maps wave spin light light dust field time maps light flow spin star star light phase time star time spin flow spin orbit spin cell light cell model spin cell field cell orbit dust orbit wave mass maps field maps time maps wave spin flow data data time star cell phase flow light light dust model model dust field dust mass flow light cell spin wave space orbit mass phase cell cell flow flow data cell mass orbit cell time star spin wave spin model space star time mass dust space data time cell field light orbit data light time field maps flow mass model light wave spin data cell maps mass flow model wave space space spin mass dust wave mass data time wave mass star star orbit wave mass star spin time space wave dust space model data orbit model flow mass wave star cell field orbit spin phase space cell maps orbit mass time flow space cell space spin phase dust space data mass mass mass flow orbit dust field data wave star orbit dust mass mass mass cell dust time space field spin mass flow data data flow dust spin data flow orbit data data space.",
+              "author": [
+                {
+                  "family": "林0x0",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x1",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x2",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x3",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x4",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x5",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x6",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x7",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x8",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x9",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x10",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x11",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x12",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x13",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x14",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x15",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x16",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x17",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x18",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x19",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x20",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x21",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x22",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x23",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x24",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x25",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x26",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x27",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x28",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x29",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x30",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x31",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x32",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x33",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x34",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x35",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x36",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x37",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x38",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x39",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x40",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x41",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x42",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x43",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x44",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x45",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x46",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x47",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x48",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x49",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x50",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x51",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x52",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x53",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x54",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x55",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x56",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x57",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x58",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x59",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x60",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x61",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x62",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x63",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x64",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x65",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x66",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x67",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x68",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x69",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x70",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x71",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x72",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x73",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x74",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x75",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x76",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x77",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x78",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x79",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x80",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x81",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x82",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x83",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x84",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x85",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x86",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x87",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x88",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x89",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x90",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x91",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x92",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x93",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x94",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x95",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x96",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x97",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x98",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x99",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x100",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x101",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x102",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x103",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x104",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x105",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x106",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x107",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x108",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x109",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x110",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x111",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x112",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x113",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x114",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x115",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x116",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x117",
+                  "given": "明"
+                },
+                {
+                  "family": "林0x118",
+                  "given": "明"
+                }
+              ],
+              "citation-key": "sp1534r0",
+              "container-title": "Invented Letters",
+              "id": "sp1534r0",
+              "issue": "1",
+              "issued": {
+                "date-parts": [
+                  [
+                    1950
+                  ]
+                ]
+              },
+              "keyword": "invented-topic-1",
+              "note": "Invented observation 0 of stellar phase.",
+              "page": "1-12",
+              "title": "Invented signals seed1534 orbit 0 星図 天文",
+              "type": "article-journal",
+              "volume": "1"
+            },
+            "id": {
+              "key": "record:sp1534r0",
+              "library": "file:b484581567dbda02db042a636a45a5b2e073c1ff3e1730fdc70acb4fd8676aed"
+            }
+          },
+          "kind": "record"
+        }
+      }
+    },
+    {
+      "citations": [
+        {
+          "html": "(Müller1x0 et al., 1951)",
+          "style": "apa",
+          "text": "(Müller1x0 et al., 1951)"
+        },
+        {
+          "html": "(Müller1x0 et al. 1951)",
+          "style": "chicago-author-date",
+          "text": "(Müller1x0 et al. 1951)"
+        },
+        {
+          "html": "(Müller1x0 <i>et al.</i>, 1951)",
+          "style": "harvard-cite-them-right",
+          "text": "(Müller1x0 et al., 1951)"
+        },
+        {
+          "html": "<div class=\"csl-entry\">Z. Müller1x0 <i>et al.</i>, “Invented signals seed1534 orbit 1 überblick,” <i>Invented Letters</i>, vol. 2, no. 2, pp. 2–13, 1951, doi: 10.1000/spike1534.1.</div>",
+          "style": "ieee",
+          "text": "Z. Müller1x0 et al., “Invented signals seed1534 orbit 1 überblick,” Invented Letters, vol. 2, no. 2, pp. 2–13, 1951, doi: 10.1000/spike1534.1."
+        },
+        {
+          "html": "(Müller1x0 et al.)",
+          "style": "modern-language-association",
+          "text": "(Müller1x0 et al.)"
+        }
+      ],
+      "key": "sp1534r1",
+      "pandoc": [
+        91,
+        64,
+        115,
+        112,
+        49,
+        53,
+        51,
+        52,
+        114,
+        49,
+        93
+      ],
+      "show": {
+        "fingerprints": {
+          "cite": "63ecd2399f1f65da4c21bf65d6635c895c418eed4910e6b7906a23b359f926d5",
+          "full": "63ecd2399f1f65da4c21bf65d6635c895c418eed4910e6b7906a23b359f926d5"
+        },
+        "object": {
+          "data": {
+            "aliases": [],
+            "citation_keys": [
+              {
+                "source": "bibtex",
+                "value": "sp1534r1"
+              }
+            ],
+            "csl": {
+              "DOI": "10.1000/spike1534.1",
+              "abstract": "wave mass flow flow orbit mass flow flow maps time phase cell dust model space mass cell phase light maps wave data maps model star dust maps mass field cell wave spin star spin flow maps dust spin time spin model mass cell mass phase phase field data phase star spin maps star flow star star dust field time time star data mass flow orbit mass light model wave spin field maps spin mass light light model orbit star data phase star dust wave model model star star cell maps time.",
+              "author": [
+                {
+                  "family": "Müller1x0",
+                  "given": "Zoé"
+                },
+                {
+                  "family": "García1x1",
+                  "given": "René"
+                },
+                {
+                  "family": "Sørensen1x2",
+                  "given": "Áda"
+                },
+                {
+                  "family": "Dvořák1x3",
+                  "given": "Zoé"
+                },
+                {
+                  "family": "Müller1x4",
+                  "given": "René"
+                },
+                {
+                  "family": "García1x5",
+                  "given": "Áda"
+                },
+                {
+                  "family": "Sørensen1x6",
+                  "given": "Zoé"
+                },
+                {
+                  "family": "Dvořák1x7",
+                  "given": "René"
+                },
+                {
+                  "family": "Müller1x8",
+                  "given": "Áda"
+                },
+                {
+                  "family": "García1x9",
+                  "given": "Zoé"
+                },
+                {
+                  "family": "Sørensen1x10",
+                  "given": "René"
+                },
+                {
+                  "family": "Dvořák1x11",
+                  "given": "Áda"
+                },
+                {
+                  "family": "Müller1x12",
+                  "given": "Zoé"
+                },
+                {
+                  "family": "García1x13",
+                  "given": "René"
+                },
+                {
+                  "family": "Sørensen1x14",
+                  "given": "Áda"
+                },
+                {
+                  "family": "Dvořák1x15",
+                  "given": "Zoé"
+                },
+                {
+                  "family": "Müller1x16",
+                  "given": "René"
+                },
+                {
+                  "family": "García1x17",
+                  "given": "Áda"
+                },
+                {
+                  "family": "Sørensen1x18",
+                  "given": "Zoé"
+                },
+                {
+                  "family": "Dvořák1x19",
+                  "given": "René"
+                },
+                {
+                  "family": "Müller1x20",
+                  "given": "Áda"
+                },
+                {
+                  "family": "García1x21",
+                  "given": "Zoé"
+                },
+                {
+                  "family": "Sørensen1x22",
+                  "given": "René"
+                },
+                {
+                  "family": "Dvořák1x23",
+                  "given": "Áda"
+                },
+                {
+                  "family": "Müller1x24",
+                  "given": "Zoé"
+                }
+              ],
+              "citation-key": "sp1534r1",
+              "container-title": "Invented Letters",
+              "id": "sp1534r1",
+              "issue": "2",
+              "issued": {
+                "date-parts": [
+                  [
+                    1951
+                  ]
+                ]
+              },
+              "page": "2-13",
+              "title": "Invented signals seed1534 orbit 1 überblick",
+              "type": "article-journal",
+              "volume": "2"
+            },
+            "id": {
+              "key": "record:sp1534r1",
+              "library": "file:b484581567dbda02db042a636a45a5b2e073c1ff3e1730fdc70acb4fd8676aed"
+            }
+          },
+          "kind": "record"
+        }
+      }
+    },
+    {
+      "citations": [
+        {
+          "html": "(Müller2x0 et al., 1952)",
+          "style": "apa",
+          "text": "(Müller2x0 et al., 1952)"
+        },
+        {
+          "html": "(Müller2x0 et al. 1952)",
+          "style": "chicago-author-date",
+          "text": "(Müller2x0 et al. 1952)"
+        },
+        {
+          "html": "(Müller2x0 <i>et al.</i>, 1952)",
+          "style": "harvard-cite-them-right",
+          "text": "(Müller2x0 et al., 1952)"
+        },
+        {
+          "html": "<div class=\"csl-entry\">Z. Müller2x0 <i>et al.</i>, “Invented signals seed1534 orbit 2 órbita,” <i>Invented Letters</i>, vol. 3, no. 3, pp. 3–14, 1952, doi: 10.1000/spike1534.2.</div>",
+          "style": "ieee",
+          "text": "Z. Müller2x0 et al., “Invented signals seed1534 orbit 2 órbita,” Invented Letters, vol. 3, no. 3, pp. 3–14, 1952, doi: 10.1000/spike1534.2."
+        },
+        {
+          "html": "(Müller2x0 et al.)",
+          "style": "modern-language-association",
+          "text": "(Müller2x0 et al.)"
+        }
+      ],
+      "key": "sp1534r2",
+      "pandoc": [
+        91,
+        64,
+        115,
+        112,
+        49,
+        53,
+        51,
+        52,
+        114,
+        50,
+        93
+      ],
+      "show": {
+        "fingerprints": {
+          "cite": "0d2ab69fc32b654180f36a7734f76d6d9b6d7674015180a7c871be9e9234327f",
+          "full": "0d2ab69fc32b654180f36a7734f76d6d9b6d7674015180a7c871be9e9234327f"
+        },
+        "object": {
+          "data": {
+            "aliases": [],
+            "citation_keys": [
+              {
+                "source": "bibtex",
+                "value": "sp1534r2"
+              }
+            ],
+            "csl": {
+              "DOI": "10.1000/spike1534.2",
+              "abstract": "maps flow star flow orbit time cell light time cell flow spin maps space space model model maps field star phase spin orbit maps wave orbit dust spin phase field time field field star orbit space phase field flow data star data model model cell field spin star orbit flow light space spin star wave space cell flow phase maps maps wave spin data dust space spin field space field phase wave space orbit spin mass cell light phase star spin mass data mass star light light mass dust time wave field cell spin maps model wave dust star spin phase flow light model spin star phase time light space cell field spin star star mass model wave cell maps model space.",
+              "author": [
+                {
+                  "family": "Müller2x0",
+                  "given": "Zoé"
+                },
+                {
+                  "family": "García2x1",
+                  "given": "René"
+                },
+                {
+                  "family": "Sørensen2x2",
+                  "given": "Áda"
+                },
+                {
+                  "family": "Dvořák2x3",
+                  "given": "Zoé"
+                },
+                {
+                  "family": "Müller2x4",
+                  "given": "René"
+                },
+                {
+                  "family": "García2x5",
+                  "given": "Áda"
+                },
+                {
+                  "family": "Sørensen2x6",
+                  "given": "Zoé"
+                },
+                {
+                  "family": "Dvořák2x7",
+                  "given": "René"
+                },
+                {
+                  "family": "Müller2x8",
+                  "given": "Áda"
+                },
+                {
+                  "family": "García2x9",
+                  "given": "Zoé"
+                },
+                {
+                  "family": "Sørensen2x10",
+                  "given": "René"
+                },
+                {
+                  "family": "Dvořák2x11",
+                  "given": "Áda"
+                },
+                {
+                  "family": "Müller2x12",
+                  "given": "Zoé"
+                },
+                {
+                  "family": "García2x13",
+                  "given": "René"
+                },
+                {
+                  "family": "Sørensen2x14",
+                  "given": "Áda"
+                },
+                {
+                  "family": "Dvořák2x15",
+                  "given": "Zoé"
+                }
+              ],
+              "citation-key": "sp1534r2",
+              "container-title": "Invented Letters",
+              "id": "sp1534r2",
+              "issue": "3",
+              "issued": {
+                "date-parts": [
+                  [
+                    1952
+                  ]
+                ]
+              },
+              "page": "3-14",
+              "title": "Invented signals seed1534 orbit 2 órbita",
+              "type": "article-journal",
+              "volume": "3"
+            },
+            "id": {
+              "key": "record:sp1534r2",
+              "library": "file:b484581567dbda02db042a636a45a5b2e073c1ff3e1730fdc70acb4fd8676aed"
+            }
+          },
+          "kind": "record"
+        }
+      }
+    },
+    {
+      "citations": [
+        {
+          "html": "(Müller3x0 et al., 1953)",
+          "style": "apa",
+          "text": "(Müller3x0 et al., 1953)"
+        },
+        {
+          "html": "(Müller3x0 et al. 1953)",
+          "style": "chicago-author-date",
+          "text": "(Müller3x0 et al. 1953)"
+        },
+        {
+          "html": "(Müller3x0 <i>et al.</i>, 1953)",
+          "style": "harvard-cite-them-right",
+          "text": "(Müller3x0 et al., 1953)"
+        },
+        {
+          "html": "<div class=\"csl-entry\">Z. Müller3x0 <i>et al.</i>, “Invented signals seed1534 orbit 3 ångström,” <i>Invented Letters</i>, vol. 4, no. 4, pp. 4–15, 1953, doi: 10.1000/spike1534.3.</div>",
+          "style": "ieee",
+          "text": "Z. Müller3x0 et al., “Invented signals seed1534 orbit 3 ångström,” Invented Letters, vol. 4, no. 4, pp. 4–15, 1953, doi: 10.1000/spike1534.3."
+        },
+        {
+          "html": "(Müller3x0 et al.)",
+          "style": "modern-language-association",
+          "text": "(Müller3x0 et al.)"
+        }
+      ],
+      "key": "sp1534r3",
+      "pandoc": [
+        91,
+        64,
+        115,
+        112,
+        49,
+        53,
+        51,
+        52,
+        114,
+        51,
+        93
+      ],
+      "show": {
+        "fingerprints": {
+          "cite": "e6fbd780cc1084c27c3a0d883d21ec32861935ee04d7dc53d9675b8f11d2be21",
+          "full": "e6fbd780cc1084c27c3a0d883d21ec32861935ee04d7dc53d9675b8f11d2be21"
+        },
+        "object": {
+          "data": {
+            "aliases": [],
+            "citation_keys": [
+              {
+                "source": "bibtex",
+                "value": "sp1534r3"
+              }
+            ],
+            "csl": {
+              "DOI": "10.1000/spike1534.3",
+              "author": [
+                {
+                  "family": "Müller3x0",
+                  "given": "Zoé"
+                },
+                {
+                  "family": "García3x1",
+                  "given": "René"
+                },
+                {
+                  "family": "Sørensen3x2",
+                  "given": "Áda"
+                },
+                {
+                  "family": "Dvořák3x3",
+                  "given": "Zoé"
+                },
+                {
+                  "family": "Müller3x4",
+                  "given": "René"
+                },
+                {
+                  "family": "García3x5",
+                  "given": "Áda"
+                },
+                {
+                  "family": "Sørensen3x6",
+                  "given": "Zoé"
+                },
+                {
+                  "family": "Dvořák3x7",
+                  "given": "René"
+                },
+                {
+                  "family": "Müller3x8",
+                  "given": "Áda"
+                },
+                {
+                  "family": "García3x9",
+                  "given": "Zoé"
+                },
+                {
+                  "family": "Sørensen3x10",
+                  "given": "René"
+                },
+                {
+                  "family": "Dvořák3x11",
+                  "given": "Áda"
+                },
+                {
+                  "family": "Müller3x12",
+                  "given": "Zoé"
+                },
+                {
+                  "family": "García3x13",
+                  "given": "René"
+                },
+                {
+                  "family": "Sørensen3x14",
+                  "given": "Áda"
+                },
+                {
+                  "family": "Dvořák3x15",
+                  "given": "Zoé"
+                },
+                {
+                  "family": "Müller3x16",
+                  "given": "René"
+                },
+                {
+                  "family": "García3x17",
+                  "given": "Áda"
+                },
+                {
+                  "family": "Sørensen3x18",
+                  "given": "Zoé"
+                },
+                {
+                  "family": "Dvořák3x19",
+                  "given": "René"
+                },
+                {
+                  "family": "Müller3x20",
+                  "given": "Áda"
+                },
+                {
+                  "family": "García3x21",
+                  "given": "Zoé"
+                },
+                {
+                  "family": "Sørensen3x22",
+                  "given": "René"
+                },
+                {
+                  "family": "Dvořák3x23",
+                  "given": "Áda"
+                },
+                {
+                  "family": "Müller3x24",
+                  "given": "Zoé"
+                },
+                {
+                  "family": "García3x25",
+                  "given": "René"
+                },
+                {
+                  "family": "Sørensen3x26",
+                  "given": "Áda"
+                },
+                {
+                  "family": "Dvořák3x27",
+                  "given": "Zoé"
+                }
+              ],
+              "citation-key": "sp1534r3",
+              "container-title": "Invented Letters",
+              "id": "sp1534r3",
+              "issue": "4",
+              "issued": {
+                "date-parts": [
+                  [
+                    1953
+                  ]
+                ]
+              },
+              "keyword": "invented-topic-4",
+              "page": "4-15",
+              "title": "Invented signals seed1534 orbit 3 ångström",
+              "type": "article-journal",
+              "volume": "4"
+            },
+            "id": {
+              "key": "record:sp1534r3",
+              "library": "file:b484581567dbda02db042a636a45a5b2e073c1ff3e1730fdc70acb4fd8676aed"
+            }
+          },
+          "kind": "record"
+        }
+      }
+    },
+    {
+      "citations": [
+        {
+          "html": "(Müller4x0 et al., 1954)",
+          "style": "apa",
+          "text": "(Müller4x0 et al., 1954)"
+        },
+        {
+          "html": "(Müller4x0 et al. 1954)",
+          "style": "chicago-author-date",
+          "text": "(Müller4x0 et al. 1954)"
+        },
+        {
+          "html": "(Müller4x0 <i>et al.</i>, 1954)",
+          "style": "harvard-cite-them-right",
+          "text": "(Müller4x0 et al., 1954)"
+        },
+        {
+          "html": "<div class=\"csl-entry\">Z. Müller4x0 <i>et al.</i>, “Invented signals seed1534 orbit 4 lumière,” <i>Invented Letters</i>, vol. 5, no. 5, pp. 5–16, 1954, doi: 10.1000/spike1534.4.</div>",
+          "style": "ieee",
+          "text": "Z. Müller4x0 et al., “Invented signals seed1534 orbit 4 lumière,” Invented Letters, vol. 5, no. 5, pp. 5–16, 1954, doi: 10.1000/spike1534.4."
+        },
+        {
+          "html": "(Müller4x0 et al.)",
+          "style": "modern-language-association",
+          "text": "(Müller4x0 et al.)"
+        }
+      ],
+      "key": "sp1534r4",
+      "pandoc": [
+        91,
+        64,
+        115,
+        112,
+        49,
+        53,
+        51,
+        52,
+        114,
+        52,
+        93
+      ],
+      "show": {
+        "fingerprints": {
+          "cite": "c805821e32586b209950ef5f1ac2a4085670632e7ebc1ea59c2b5108e75e35db",
+          "full": "c805821e32586b209950ef5f1ac2a4085670632e7ebc1ea59c2b5108e75e35db"
+        },
+        "object": {
+          "data": {
+            "aliases": [],
+            "citation_keys": [
+              {
+                "source": "bibtex",
+                "value": "sp1534r4"
+              }
+            ],
+            "csl": {
+              "DOI": "10.1000/spike1534.4",
+              "URL": "https://example.org/invented/1534/4",
+              "abstract": "spin mass phase mass wave data field time space flow orbit phase star dust phase flow data space spin orbit wave time phase flow model orbit mass orbit maps orbit flow orbit data wave orbit model spin model phase data star flow field flow spin cell star dust wave model space space wave star model data phase light phase star time orbit field spin mass model light space field orbit flow model model model star orbit mass data space field phase orbit model light field maps orbit dust light mass light maps wave flow light mass cell data mass star spin orbit space phase space space time dust light data mass time dust phase maps mass dust wave flow phase space star time star spin data spin flow spin light model phase data wave phase model data dust maps light mass mass model orbit cell star maps wave star space phase data space space model dust star orbit spin time spin light cell space space light space cell light space model field phase phase mass star cell data spin maps model star model flow time cell orbit time star space star flow orbit dust wave cell light mass wave space.",
+              "author": [
+                {
+                  "family": "Müller4x0",
+                  "given": "Zoé"
+                },
+                {
+                  "family": "García4x1",
+                  "given": "René"
+                },
+                {
+                  "family": "Sørensen4x2",
+                  "given": "Áda"
+                },
+                {
+                  "family": "Dvořák4x3",
+                  "given": "Zoé"
+                },
+                {
+                  "family": "Müller4x4",
+                  "given": "René"
+                },
+                {
+                  "family": "García4x5",
+                  "given": "Áda"
+                },
+                {
+                  "family": "Sørensen4x6",
+                  "given": "Zoé"
+                },
+                {
+                  "family": "Dvořák4x7",
+                  "given": "René"
+                },
+                {
+                  "family": "Müller4x8",
+                  "given": "Áda"
+                },
+                {
+                  "family": "García4x9",
+                  "given": "Zoé"
+                },
+                {
+                  "family": "Sørensen4x10",
+                  "given": "René"
+                },
+                {
+                  "family": "Dvořák4x11",
+                  "given": "Áda"
+                },
+                {
+                  "family": "Müller4x12",
+                  "given": "Zoé"
+                },
+                {
+                  "family": "García4x13",
+                  "given": "René"
+                },
+                {
+                  "family": "Sørensen4x14",
+                  "given": "Áda"
+                },
+                {
+                  "family": "Dvořák4x15",
+                  "given": "Zoé"
+                },
+                {
+                  "family": "Müller4x16",
+                  "given": "René"
+                },
+                {
+                  "family": "García4x17",
+                  "given": "Áda"
+                },
+                {
+                  "family": "Sørensen4x18",
+                  "given": "Zoé"
+                },
+                {
+                  "family": "Dvořák4x19",
+                  "given": "René"
+                }
+              ],
+              "citation-key": "sp1534r4",
+              "container-title": "Invented Letters",
+              "id": "sp1534r4",
+              "issue": "5",
+              "issued": {
+                "date-parts": [
+                  [
+                    1954
+                  ]
+                ]
+              },
+              "page": "5-16",
+              "title": "Invented signals seed1534 orbit 4 lumière",
+              "type": "article-journal",
+              "volume": "5"
+            },
+            "id": {
+              "key": "record:sp1534r4",
+              "library": "file:b484581567dbda02db042a636a45a5b2e073c1ff3e1730fdc70acb4fd8676aed"
+            }
+          },
+          "kind": "record"
+        }
+      }
+    },
+    {
+      "citations": [
+        {
+          "html": "(Müller5x0 et al., 1955)",
+          "style": "apa",
+          "text": "(Müller5x0 et al., 1955)"
+        },
+        {
+          "html": "(Müller5x0 et al. 1955)",
+          "style": "chicago-author-date",
+          "text": "(Müller5x0 et al. 1955)"
+        },
+        {
+          "html": "(Müller5x0 <i>et al.</i>, 1955)",
+          "style": "harvard-cite-them-right",
+          "text": "(Müller5x0 et al., 1955)"
+        },
+        {
+          "html": "<div class=\"csl-entry\">Z. Müller5x0 <i>et al.</i>, “Invented signals seed1534 orbit 5 überblick,” <i>Invented Letters</i>, vol. 6, no. 6, pp. 6–17, 1955, doi: 10.1000/spike1534.5.</div>",
+          "style": "ieee",
+          "text": "Z. Müller5x0 et al., “Invented signals seed1534 orbit 5 überblick,” Invented Letters, vol. 6, no. 6, pp. 6–17, 1955, doi: 10.1000/spike1534.5."
+        },
+        {
+          "html": "(Müller5x0 et al.)",
+          "style": "modern-language-association",
+          "text": "(Müller5x0 et al.)"
+        }
+      ],
+      "key": "sp1534r5",
+      "pandoc": [
+        91,
+        64,
+        115,
+        112,
+        49,
+        53,
+        51,
+        52,
+        114,
+        53,
+        93
+      ],
+      "show": {
+        "fingerprints": {
+          "cite": "e744865c21b1f50245f8dc7c6549878f23b7cc1e351520a40ae8709437c9e6f8",
+          "full": "e744865c21b1f50245f8dc7c6549878f23b7cc1e351520a40ae8709437c9e6f8"
+        },
+        "object": {
+          "data": {
+            "aliases": [],
+            "citation_keys": [
+              {
+                "source": "bibtex",
+                "value": "sp1534r5"
+              }
+            ],
+            "csl": {
+              "DOI": "10.1000/spike1534.5",
+              "abstract": "mass flow data dust maps dust star star wave time wave phase flow wave light model field model field space wave field maps wave flow phase model phase orbit model star flow field space space field dust light dust wave spin space time spin space dust star orbit time data maps cell mass spin wave maps model model spin cell dust cell flow maps orbit cell flow field cell model orbit wave light star time space phase wave spin data space mass data mass cell phase wave light model wave dust spin model wave spin flow light light dust model cell dust phase mass field maps phase orbit light star flow orbit data dust maps cell dust wave phase maps model space mass time flow mass light light mass mass orbit time time star light data orbit maps cell light spin wave time orbit wave light flow orbit spin space model space orbit maps cell maps mass dust star star dust data mass data mass mass star flow space space maps space spin space mass data dust star mass time model model maps phase space cell phase flow maps dust maps time phase spin maps phase spin field cell mass cell model mass phase spin time light flow flow mass model cell maps model mass star time wave star time orbit cell cell time data cell data.",
+              "author": [
+                {
+                  "family": "Müller5x0",
+                  "given": "Zoé"
+                },
+                {
+                  "family": "García5x1",
+                  "given": "René"
+                },
+                {
+                  "family": "Sørensen5x2",
+                  "given": "Áda"
+                },
+                {
+                  "family": "Dvořák5x3",
+                  "given": "Zoé"
+                },
+                {
+                  "family": "Müller5x4",
+                  "given": "René"
+                },
+                {
+                  "family": "García5x5",
+                  "given": "Áda"
+                },
+                {
+                  "family": "Sørensen5x6",
+                  "given": "Zoé"
+                },
+                {
+                  "family": "Dvořák5x7",
+                  "given": "René"
+                },
+                {
+                  "family": "Müller5x8",
+                  "given": "Áda"
+                },
+                {
+                  "family": "García5x9",
+                  "given": "Zoé"
+                },
+                {
+                  "family": "Sørensen5x10",
+                  "given": "René"
+                },
+                {
+                  "family": "Dvořák5x11",
+                  "given": "Áda"
+                },
+                {
+                  "family": "Müller5x12",
+                  "given": "Zoé"
+                },
+                {
+                  "family": "García5x13",
+                  "given": "René"
+                },
+                {
+                  "family": "Sørensen5x14",
+                  "given": "Áda"
+                },
+                {
+                  "family": "Dvořák5x15",
+                  "given": "Zoé"
+                },
+                {
+                  "family": "Müller5x16",
+                  "given": "René"
+                },
+                {
+                  "family": "García5x17",
+                  "given": "Áda"
+                },
+                {
+                  "family": "Sørensen5x18",
+                  "given": "Zoé"
+                },
+                {
+                  "family": "Dvořák5x19",
+                  "given": "René"
+                },
+                {
+                  "family": "Müller5x20",
+                  "given": "Áda"
+                },
+                {
+                  "family": "García5x21",
+                  "given": "Zoé"
+                },
+                {
+                  "family": "Sørensen5x22",
+                  "given": "René"
+                },
+                {
+                  "family": "Dvořák5x23",
+                  "given": "Áda"
+                },
+                {
+                  "family": "Müller5x24",
+                  "given": "Zoé"
+                },
+                {
+                  "family": "García5x25",
+                  "given": "René"
+                }
+              ],
+              "citation-key": "sp1534r5",
+              "container-title": "Invented Letters",
+              "id": "sp1534r5",
+              "issue": "6",
+              "issued": {
+                "date-parts": [
+                  [
+                    1955
+                  ]
+                ]
+              },
+              "note": "Invented observation 5 of stellar phase.",
+              "page": "6-17",
+              "title": "Invented signals seed1534 orbit 5 überblick",
+              "type": "article-journal",
+              "volume": "6"
+            },
+            "id": {
+              "key": "record:sp1534r5",
+              "library": "file:b484581567dbda02db042a636a45a5b2e073c1ff3e1730fdc70acb4fd8676aed"
+            }
+          },
+          "kind": "record"
+        }
+      }
+    },
+    {
+      "citations": [
+        {
+          "html": "(Müller9x0 et al., 1959)",
+          "style": "apa",
+          "text": "(Müller9x0 et al., 1959)"
+        },
+        {
+          "html": "(Müller9x0 et al. 1959)",
+          "style": "chicago-author-date",
+          "text": "(Müller9x0 et al. 1959)"
+        },
+        {
+          "html": "(Müller9x0 <i>et al.</i>, 1959)",
+          "style": "harvard-cite-them-right",
+          "text": "(Müller9x0 et al., 1959)"
+        },
+        {
+          "html": "<div class=\"csl-entry\">Z. Müller9x0, R. García9x1, Á. Sørensen9x2, Z. Dvořák9x3, R. Müller9x4, and Á. García9x5, “Invented signals seed1534 orbit 9 überblick,” <i>Invented Letters</i>, vol. 10, no. 10, pp. 10–21, 1959, doi: 10.1000/spike1534.9.</div>",
+          "style": "ieee",
+          "text": "Z. Müller9x0, R. García9x1, Á. Sørensen9x2, Z. Dvořák9x3, R. Müller9x4, and Á. García9x5, “Invented signals seed1534 orbit 9 überblick,” Invented Letters, vol. 10, no. 10, pp. 10–21, 1959, doi: 10.1000/spike1534.9."
+        },
+        {
+          "html": "(Müller9x0 et al.)",
+          "style": "modern-language-association",
+          "text": "(Müller9x0 et al.)"
+        }
+      ],
+      "key": "sp1534r9",
+      "pandoc": [
+        91,
+        64,
+        115,
+        112,
+        49,
+        53,
+        51,
+        52,
+        114,
+        57,
+        93
+      ],
+      "show": {
+        "fingerprints": {
+          "cite": "779fab1965e3ff9d1460d2f3efe8a5fdcff1de74a568ff1ca2bc1ad0ed50daf4",
+          "full": "779fab1965e3ff9d1460d2f3efe8a5fdcff1de74a568ff1ca2bc1ad0ed50daf4"
+        },
+        "object": {
+          "data": {
+            "aliases": [],
+            "citation_keys": [
+              {
+                "source": "bibtex",
+                "value": "sp1534r9"
+              }
+            ],
+            "csl": {
+              "DOI": "10.1000/spike1534.9",
+              "abstract": "data mass flow time orbit dust maps dust spin space dust orbit mass wave flow space spin maps cell phase light flow orbit data data dust mass dust data data flow time wave phase star cell spin wave light wave flow time orbit wave space light light mass wave model orbit wave maps time wave field light dust time orbit wave maps wave maps cell dust time light phase star orbit spin phase cell field phase cell orbit data flow orbit model flow time maps light cell dust phase star light space data phase mass time phase time phase maps space wave cell star dust space cell time dust light dust mass wave phase spin maps spin cell wave light model wave star star space dust space phase mass field phase field data wave maps light.",
+              "author": [
+                {
+                  "family": "Müller9x0",
+                  "given": "Zoé"
+                },
+                {
+                  "family": "García9x1",
+                  "given": "René"
+                },
+                {
+                  "family": "Sørensen9x2",
+                  "given": "Áda"
+                },
+                {
+                  "family": "Dvořák9x3",
+                  "given": "Zoé"
+                },
+                {
+                  "family": "Müller9x4",
+                  "given": "René"
+                },
+                {
+                  "family": "García9x5",
+                  "given": "Áda"
+                }
+              ],
+              "citation-key": "sp1534r9",
+              "container-title": "Invented Letters",
+              "id": "sp1534r9",
+              "issue": "10",
+              "issued": {
+                "date-parts": [
+                  [
+                    1959
+                  ]
+                ]
+              },
+              "keyword": "invented-topic-3",
+              "page": "10-21",
+              "title": "Invented signals seed1534 orbit 9 überblick",
+              "type": "article-journal",
+              "volume": "10"
+            },
+            "id": {
+              "key": "record:sp1534r9",
+              "library": "file:b484581567dbda02db042a636a45a5b2e073c1ff3e1730fdc70acb4fd8676aed"
+            }
+          },
+          "kind": "record"
+        }
+      }
+    },
+    {
+      "citations": [
+        {
+          "html": "(佐藤10x0 et al., 1960)",
+          "style": "apa",
+          "text": "(佐藤10x0 et al., 1960)"
+        },
+        {
+          "html": "(佐藤10x0 et al. 1960)",
+          "style": "chicago-author-date",
+          "text": "(佐藤10x0 et al. 1960)"
+        },
+        {
+          "html": "(佐藤10x0 <i>et al.</i>, 1960)",
+          "style": "harvard-cite-them-right",
+          "text": "(佐藤10x0 et al., 1960)"
+        },
+        {
+          "html": "<div class=\"csl-entry\">葵 佐藤10x0, 葵 佐藤10x1, 葵 佐藤10x2, and 葵 佐藤10x3, “Invented signals seed1534 orbit 10 星図 光の観測,” <i>Invented Letters</i>, vol. 11, no. 11, pp. 11–22, 1960, doi: 10.1000/spike1534.10.</div>",
+          "style": "ieee",
+          "text": "葵 佐藤10x0, 葵 佐藤10x1, 葵 佐藤10x2, and 葵 佐藤10x3, “Invented signals seed1534 orbit 10 星図 光の観測,” Invented Letters, vol. 11, no. 11, pp. 11–22, 1960, doi: 10.1000/spike1534.10."
+        },
+        {
+          "html": "(佐藤10x0 et al.)",
+          "style": "modern-language-association",
+          "text": "(佐藤10x0 et al.)"
+        }
+      ],
+      "key": "sp1534r10",
+      "pandoc": [
+        91,
+        64,
+        115,
+        112,
+        49,
+        53,
+        51,
+        52,
+        114,
+        49,
+        48,
+        93
+      ],
+      "show": {
+        "fingerprints": {
+          "cite": "64460d50789aad9fd9323a3b99061922268bc2abebd1ecbcefbedabaa14b3156",
+          "full": "64460d50789aad9fd9323a3b99061922268bc2abebd1ecbcefbedabaa14b3156"
+        },
+        "object": {
+          "data": {
+            "aliases": [],
+            "citation_keys": [
+              {
+                "source": "bibtex",
+                "value": "sp1534r10"
+              }
+            ],
+            "csl": {
+              "DOI": "10.1000/spike1534.10",
+              "abstract": "light orbit phase orbit data space dust mass model field maps time dust orbit cell field wave data cell orbit cell cell time light orbit star time mass dust time model dust cell dust light time wave field flow maps light time flow data maps light phase wave space field model orbit light data maps field time model dust mass data field spin field cell phase light field space cell star phase cell data wave orbit dust star field dust space phase model phase orbit flow time light model.",
+              "author": [
+                {
+                  "family": "佐藤10x0",
+                  "given": "葵"
+                },
+                {
+                  "family": "佐藤10x1",
+                  "given": "葵"
+                },
+                {
+                  "family": "佐藤10x2",
+                  "given": "葵"
+                },
+                {
+                  "family": "佐藤10x3",
+                  "given": "葵"
+                }
+              ],
+              "citation-key": "sp1534r10",
+              "container-title": "Invented Letters",
+              "id": "sp1534r10",
+              "issue": "11",
+              "issued": {
+                "date-parts": [
+                  [
+                    1960
+                  ]
+                ]
+              },
+              "note": "Invented observation 10 of stellar phase.",
+              "page": "11-22",
+              "title": "Invented signals seed1534 orbit 10 星図 光の観測",
+              "type": "article-journal",
+              "volume": "11"
+            },
+            "id": {
+              "key": "record:sp1534r10",
+              "library": "file:b484581567dbda02db042a636a45a5b2e073c1ff3e1730fdc70acb4fd8676aed"
+            }
+          },
+          "kind": "record"
+        }
+      }
+    },
+    {
+      "citations": [
+        {
+          "html": "(Müller41x0 et al., 1991)",
+          "style": "apa",
+          "text": "(Müller41x0 et al., 1991)"
+        },
+        {
+          "html": "(Müller41x0 et al. 1991)",
+          "style": "chicago-author-date",
+          "text": "(Müller41x0 et al. 1991)"
+        },
+        {
+          "html": "(Müller41x0 <i>et al.</i>, 1991)",
+          "style": "harvard-cite-them-right",
+          "text": "(Müller41x0 et al., 1991)"
+        },
+        {
+          "html": "<div class=\"csl-entry\">Z. Müller41x0, R. García41x1, Á. Sørensen41x2, Z. Dvořák41x3, and R. Müller41x4, “Invented signals seed1534 orbit 41 überblick,” <i>Invented Letters</i>, vol. 42, no. 6, pp. 42–53, 1991, doi: 10.1000/spike1534.41.</div>",
+          "style": "ieee",
+          "text": "Z. Müller41x0, R. García41x1, Á. Sørensen41x2, Z. Dvořák41x3, and R. Müller41x4, “Invented signals seed1534 orbit 41 überblick,” Invented Letters, vol. 42, no. 6, pp. 42–53, 1991, doi: 10.1000/spike1534.41."
+        },
+        {
+          "html": "(Müller41x0 et al.)",
+          "style": "modern-language-association",
+          "text": "(Müller41x0 et al.)"
+        }
+      ],
+      "key": "sp1534r41",
+      "pandoc": [
+        91,
+        64,
+        115,
+        112,
+        49,
+        53,
+        51,
+        52,
+        114,
+        52,
+        49,
+        93
+      ],
+      "show": {
+        "fingerprints": {
+          "cite": "c3032262f4e62b9f1049a18113b1355d2368a7b0fd4adb04281c3a674aa5eb1a",
+          "full": "c3032262f4e62b9f1049a18113b1355d2368a7b0fd4adb04281c3a674aa5eb1a"
+        },
+        "object": {
+          "data": {
+            "aliases": [],
+            "citation_keys": [
+              {
+                "source": "bibtex",
+                "value": "sp1534r41"
+              }
+            ],
+            "csl": {
+              "DOI": "10.1000/spike1534.41",
+              "abstract": "time field orbit time light star phase spin cell cell flow orbit star star space mass mass space time dust space dust spin data star star star data space maps space model space maps mass maps data orbit phase space light space light phase data time light phase model wave wave light star wave field field data orbit field time maps dust wave model orbit time space cell light cell wave wave data phase flow model orbit light flow dust flow cell wave time flow phase light time space space orbit space dust mass star cell time light time dust orbit light wave orbit maps model data orbit model star data maps maps wave star field time data star space spin.",
+              "author": [
+                {
+                  "family": "Müller41x0",
+                  "given": "Zoé"
+                },
+                {
+                  "family": "García41x1",
+                  "given": "René"
+                },
+                {
+                  "family": "Sørensen41x2",
+                  "given": "Áda"
+                },
+                {
+                  "family": "Dvořák41x3",
+                  "given": "Zoé"
+                },
+                {
+                  "family": "Müller41x4",
+                  "given": "René"
+                }
+              ],
+              "citation-key": "sp1534r41",
+              "container-title": "Invented Letters",
+              "id": "sp1534r41",
+              "issue": "6",
+              "issued": {
+                "date-parts": [
+                  [
+                    1991
+                  ]
+                ]
+              },
+              "page": "42-53",
+              "title": "Invented signals seed1534 orbit 41 überblick",
+              "type": "article-journal",
+              "volume": "42"
+            },
+            "id": {
+              "key": "record:sp1534r41",
+              "library": "file:b484581567dbda02db042a636a45a5b2e073c1ff3e1730fdc70acb4fd8676aed"
+            }
+          },
+          "kind": "record"
+        }
+      }
+    },
+    {
+      "citations": [
+        {
+          "html": "(Müller123x0 et al., 1997)",
+          "style": "apa",
+          "text": "(Müller123x0 et al., 1997)"
+        },
+        {
+          "html": "(Müller123x0 et al. 1997)",
+          "style": "chicago-author-date",
+          "text": "(Müller123x0 et al. 1997)"
+        },
+        {
+          "html": "(Müller123x0 <i>et al.</i>, 1997)",
+          "style": "harvard-cite-them-right",
+          "text": "(Müller123x0 et al., 1997)"
+        },
+        {
+          "html": "<div class=\"csl-entry\">Z. Müller123x0, R. García123x1, Á. Sørensen123x2, Z. Dvořák123x3, R. Müller123x4, and Á. García123x5, “Invented signals seed1534 orbit 123 ångström,” <i>Invented Letters</i>, vol. 40, no. 4, pp. 124–135, 1997, doi: 10.1000/spike1534.123.</div>",
+          "style": "ieee",
+          "text": "Z. Müller123x0, R. García123x1, Á. Sørensen123x2, Z. Dvořák123x3, R. Müller123x4, and Á. García123x5, “Invented signals seed1534 orbit 123 ångström,” Invented Letters, vol. 40, no. 4, pp. 124–135, 1997, doi: 10.1000/spike1534.123."
+        },
+        {
+          "html": "(Müller123x0 et al.)",
+          "style": "modern-language-association",
+          "text": "(Müller123x0 et al.)"
+        }
+      ],
+      "key": "sp1534r123",
+      "pandoc": [
+        91,
+        64,
+        115,
+        112,
+        49,
+        53,
+        51,
+        52,
+        114,
+        49,
+        50,
+        51,
+        93
+      ],
+      "show": {
+        "fingerprints": {
+          "cite": "21d74ed421f8497ace5b1cb5bc49f6c8eadd7a99e5f70298f988e4c0204050ef",
+          "full": "21d74ed421f8497ace5b1cb5bc49f6c8eadd7a99e5f70298f988e4c0204050ef"
+        },
+        "object": {
+          "data": {
+            "aliases": [],
+            "citation_keys": [
+              {
+                "source": "bibtex",
+                "value": "sp1534r123"
+              }
+            ],
+            "csl": {
+              "DOI": "10.1000/spike1534.123",
+              "author": [
+                {
+                  "family": "Müller123x0",
+                  "given": "Zoé"
+                },
+                {
+                  "family": "García123x1",
+                  "given": "René"
+                },
+                {
+                  "family": "Sørensen123x2",
+                  "given": "Áda"
+                },
+                {
+                  "family": "Dvořák123x3",
+                  "given": "Zoé"
+                },
+                {
+                  "family": "Müller123x4",
+                  "given": "René"
+                },
+                {
+                  "family": "García123x5",
+                  "given": "Áda"
+                }
+              ],
+              "citation-key": "sp1534r123",
+              "container-title": "Invented Letters",
+              "id": "sp1534r123",
+              "issue": "4",
+              "issued": {
+                "date-parts": [
+                  [
+                    1997
+                  ]
+                ]
+              },
+              "keyword": "invented-topic-5",
+              "page": "124-135",
+              "title": "Invented signals seed1534 orbit 123 ångström",
+              "type": "article-journal",
+              "volume": "40"
+            },
+            "id": {
+              "key": "record:sp1534r123",
+              "library": "file:b484581567dbda02db042a636a45a5b2e073c1ff3e1730fdc70acb4fd8676aed"
+            }
+          },
+          "kind": "record"
+        }
+      }
+    },
+    {
+      "citations": [
+        {
+          "html": "(Müller4567x0 et al., 1957)",
+          "style": "apa",
+          "text": "(Müller4567x0 et al., 1957)"
+        },
+        {
+          "html": "(Müller4567x0 et al. 1957)",
+          "style": "chicago-author-date",
+          "text": "(Müller4567x0 et al. 1957)"
+        },
+        {
+          "html": "(Müller4567x0, García4567x1 and Sørensen4567x2, 1957)",
+          "style": "harvard-cite-them-right",
+          "text": "(Müller4567x0, García4567x1 and Sørensen4567x2, 1957)"
+        },
+        {
+          "html": "<div class=\"csl-entry\">Z. Müller4567x0, R. García4567x1, and Á. Sørensen4567x2, “Invented signals seed1534 orbit 4567 ångström,” <i>Invented Letters</i>, vol. 32, no. 8, pp. 168–179, 1957, doi: 10.1000/spike1534.4567.</div>",
+          "style": "ieee",
+          "text": "Z. Müller4567x0, R. García4567x1, and Á. Sørensen4567x2, “Invented signals seed1534 orbit 4567 ångström,” Invented Letters, vol. 32, no. 8, pp. 168–179, 1957, doi: 10.1000/spike1534.4567."
+        },
+        {
+          "html": "(Müller4567x0 et al.)",
+          "style": "modern-language-association",
+          "text": "(Müller4567x0 et al.)"
+        }
+      ],
+      "key": "sp1534r4567",
+      "pandoc": [
+        91,
+        64,
+        115,
+        112,
+        49,
+        53,
+        51,
+        52,
+        114,
+        52,
+        53,
+        54,
+        55,
+        93
+      ],
+      "show": {
+        "fingerprints": {
+          "cite": "0008f0c004597a3214d5258e4116b8324a01a99478c5ac90115c232c5e00c422",
+          "full": "0008f0c004597a3214d5258e4116b8324a01a99478c5ac90115c232c5e00c422"
+        },
+        "object": {
+          "data": {
+            "aliases": [],
+            "citation_keys": [
+              {
+                "source": "bibtex",
+                "value": "sp1534r4567"
+              }
+            ],
+            "csl": {
+              "DOI": "10.1000/spike1534.4567",
+              "author": [
+                {
+                  "family": "Müller4567x0",
+                  "given": "Zoé"
+                },
+                {
+                  "family": "García4567x1",
+                  "given": "René"
+                },
+                {
+                  "family": "Sørensen4567x2",
+                  "given": "Áda"
+                }
+              ],
+              "citation-key": "sp1534r4567",
+              "container-title": "Invented Letters",
+              "id": "sp1534r4567",
+              "issue": "8",
+              "issued": {
+                "date-parts": [
+                  [
+                    1957
+                  ]
+                ]
+              },
+              "page": "168-179",
+              "title": "Invented signals seed1534 orbit 4567 ångström",
+              "type": "article-journal",
+              "volume": "32"
+            },
+            "id": {
+              "key": "record:sp1534r4567",
+              "library": "file:b484581567dbda02db042a636a45a5b2e073c1ff3e1730fdc70acb4fd8676aed"
+            }
+          },
+          "kind": "record"
+        }
+      }
+    },
+    {
+      "citations": [
+        {
+          "html": "(Müller9999x0, 1993)",
+          "style": "apa",
+          "text": "(Müller9999x0, 1993)"
+        },
+        {
+          "html": "(Müller9999x0 1993)",
+          "style": "chicago-author-date",
+          "text": "(Müller9999x0 1993)"
+        },
+        {
+          "html": "(Müller9999x0, 1993)",
+          "style": "harvard-cite-them-right",
+          "text": "(Müller9999x0, 1993)"
+        },
+        {
+          "html": "<div class=\"csl-entry\">Z. Müller9999x0, “Invented signals seed1534 orbit 9999 ångström,” <i>Invented Letters</i>, vol. 4, no. 4, pp. 200–211, 1993, doi: 10.1000/spike1534.9999.</div>",
+          "style": "ieee",
+          "text": "Z. Müller9999x0, “Invented signals seed1534 orbit 9999 ångström,” Invented Letters, vol. 4, no. 4, pp. 200–211, 1993, doi: 10.1000/spike1534.9999."
+        },
+        {
+          "html": "(Müller9999x0)",
+          "style": "modern-language-association",
+          "text": "(Müller9999x0)"
+        }
+      ],
+      "key": "sp1534r9999",
+      "pandoc": [
+        91,
+        64,
+        115,
+        112,
+        49,
+        53,
+        51,
+        52,
+        114,
+        57,
+        57,
+        57,
+        57,
+        93
+      ],
+      "show": {
+        "fingerprints": {
+          "cite": "7270ccadf1f6d99f42ca7af7228ba0c14c05a8a2691cd43ec2eddb4a8d40e640",
+          "full": "7270ccadf1f6d99f42ca7af7228ba0c14c05a8a2691cd43ec2eddb4a8d40e640"
+        },
+        "object": {
+          "data": {
+            "aliases": [],
+            "citation_keys": [
+              {
+                "source": "bibtex",
+                "value": "sp1534r9999"
+              }
+            ],
+            "csl": {
+              "DOI": "10.1000/spike1534.9999",
+              "author": [
+                {
+                  "family": "Müller9999x0",
+                  "given": "Zoé"
+                }
+              ],
+              "citation-key": "sp1534r9999",
+              "container-title": "Invented Letters",
+              "id": "sp1534r9999",
+              "issue": "4",
+              "issued": {
+                "date-parts": [
+                  [
+                    1993
+                  ]
+                ]
+              },
+              "keyword": "invented-topic-4",
+              "page": "200-211",
+              "title": "Invented signals seed1534 orbit 9999 ångström",
+              "type": "article-journal",
+              "volume": "4"
+            },
+            "id": {
+              "key": "record:sp1534r9999",
+              "library": "file:b484581567dbda02db042a636a45a5b2e073c1ff3e1730fdc70acb4fd8676aed"
+            }
+          },
+          "kind": "record"
+        }
+      }
+    }
+  ],
+  "search_digest": "c6ba19629b58a0664ad15a0bf249174cf63a6d0a5efb98106449ec7ea5d85617",
+  "searches": [
+    {
+      "hits": [],
+      "query": ""
+    },
+    {
+      "hits": [
+        [
+          "record:sp1534r1063",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r1139",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r1215",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r1291",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r1367",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r1443",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r151",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r1519",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r1595",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r1671",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r1747",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r1823",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r1899",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r1975",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2051",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2127",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2203",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r227",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2279",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2355",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2431",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2507",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2583",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2659",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2735",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2811",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2887",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2963",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r303",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3039",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3115",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3191",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3267",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3343",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3419",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3495",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3571",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3647",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3723",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r379",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3799",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3875",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3951",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r4027",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r4103",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r4179",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r4255",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r4331",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r4407",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r4483",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ]
+      ],
+      "query": "signals"
+    },
+    {
+      "hits": [
+        [
+          "record:sp1534r1290",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r150",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r1670",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2050",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2430",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2810",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3190",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3570",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3950",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r4330",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r4710",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r5090",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r530",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r5470",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r5850",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r6230",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r6610",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r6990",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r7370",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r7750",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r8130",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r8510",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r8890",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r910",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r9270",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r9650",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r1060",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r1440",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r1820",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2200",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2580",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2960",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r300",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3340",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3720",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r4100",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r4480",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r4860",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r5240",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r5620",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r6000",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r6380",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r6760",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r680",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r7140",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r7520",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r7900",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r8280",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r8660",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r9040",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ]
+      ],
+      "query": "星図"
+    },
+    {
+      "hits": [
+        [
+          "record:sp1534r1063",
+          10,
+          [
+            "title"
+          ],
+          true,
+          false
+        ],
+        [
+          "record:sp1534r1139",
+          10,
+          [
+            "title"
+          ],
+          true,
+          false
+        ],
+        [
+          "record:sp1534r1215",
+          10,
+          [
+            "title"
+          ],
+          true,
+          false
+        ],
+        [
+          "record:sp1534r1291",
+          10,
+          [
+            "title"
+          ],
+          true,
+          false
+        ],
+        [
+          "record:sp1534r1367",
+          10,
+          [
+            "title"
+          ],
+          true,
+          false
+        ],
+        [
+          "record:sp1534r1443",
+          10,
+          [
+            "title"
+          ],
+          true,
+          false
+        ],
+        [
+          "record:sp1534r151",
+          10,
+          [
+            "title"
+          ],
+          true,
+          false
+        ],
+        [
+          "record:sp1534r1519",
+          10,
+          [
+            "title"
+          ],
+          true,
+          false
+        ],
+        [
+          "record:sp1534r1595",
+          10,
+          [
+            "title"
+          ],
+          true,
+          false
+        ],
+        [
+          "record:sp1534r1671",
+          10,
+          [
+            "title"
+          ],
+          true,
+          false
+        ],
+        [
+          "record:sp1534r1747",
+          10,
+          [
+            "title"
+          ],
+          true,
+          false
+        ],
+        [
+          "record:sp1534r1823",
+          10,
+          [
+            "title"
+          ],
+          true,
+          false
+        ],
+        [
+          "record:sp1534r1899",
+          10,
+          [
+            "title"
+          ],
+          true,
+          false
+        ],
+        [
+          "record:sp1534r1975",
+          10,
+          [
+            "title"
+          ],
+          true,
+          false
+        ],
+        [
+          "record:sp1534r2051",
+          10,
+          [
+            "title"
+          ],
+          true,
+          false
+        ],
+        [
+          "record:sp1534r2127",
+          10,
+          [
+            "title"
+          ],
+          true,
+          false
+        ],
+        [
+          "record:sp1534r2203",
+          10,
+          [
+            "title"
+          ],
+          true,
+          false
+        ],
+        [
+          "record:sp1534r227",
+          10,
+          [
+            "title"
+          ],
+          true,
+          false
+        ],
+        [
+          "record:sp1534r2279",
+          10,
+          [
+            "title"
+          ],
+          true,
+          false
+        ],
+        [
+          "record:sp1534r2355",
+          10,
+          [
+            "title"
+          ],
+          true,
+          false
+        ],
+        [
+          "record:sp1534r2431",
+          10,
+          [
+            "title"
+          ],
+          true,
+          false
+        ],
+        [
+          "record:sp1534r2507",
+          10,
+          [
+            "title"
+          ],
+          true,
+          false
+        ],
+        [
+          "record:sp1534r2583",
+          10,
+          [
+            "title"
+          ],
+          true,
+          false
+        ],
+        [
+          "record:sp1534r2659",
+          10,
+          [
+            "title"
+          ],
+          true,
+          false
+        ],
+        [
+          "record:sp1534r2735",
+          10,
+          [
+            "title"
+          ],
+          true,
+          false
+        ],
+        [
+          "record:sp1534r2811",
+          10,
+          [
+            "title"
+          ],
+          true,
+          false
+        ],
+        [
+          "record:sp1534r2887",
+          10,
+          [
+            "title"
+          ],
+          true,
+          false
+        ],
+        [
+          "record:sp1534r2963",
+          10,
+          [
+            "title"
+          ],
+          true,
+          false
+        ],
+        [
+          "record:sp1534r303",
+          10,
+          [
+            "title"
+          ],
+          true,
+          false
+        ],
+        [
+          "record:sp1534r3039",
+          10,
+          [
+            "title"
+          ],
+          true,
+          false
+        ],
+        [
+          "record:sp1534r3115",
+          10,
+          [
+            "title"
+          ],
+          true,
+          false
+        ],
+        [
+          "record:sp1534r3191",
+          10,
+          [
+            "title"
+          ],
+          true,
+          false
+        ],
+        [
+          "record:sp1534r3267",
+          10,
+          [
+            "title"
+          ],
+          true,
+          false
+        ],
+        [
+          "record:sp1534r3343",
+          10,
+          [
+            "title"
+          ],
+          true,
+          false
+        ],
+        [
+          "record:sp1534r3419",
+          10,
+          [
+            "title"
+          ],
+          true,
+          false
+        ],
+        [
+          "record:sp1534r3495",
+          10,
+          [
+            "title"
+          ],
+          true,
+          false
+        ],
+        [
+          "record:sp1534r3571",
+          10,
+          [
+            "title"
+          ],
+          true,
+          false
+        ],
+        [
+          "record:sp1534r3647",
+          10,
+          [
+            "title"
+          ],
+          true,
+          false
+        ],
+        [
+          "record:sp1534r3723",
+          10,
+          [
+            "title"
+          ],
+          true,
+          false
+        ],
+        [
+          "record:sp1534r379",
+          10,
+          [
+            "title"
+          ],
+          true,
+          false
+        ],
+        [
+          "record:sp1534r3799",
+          10,
+          [
+            "title"
+          ],
+          true,
+          false
+        ],
+        [
+          "record:sp1534r3875",
+          10,
+          [
+            "title"
+          ],
+          true,
+          false
+        ],
+        [
+          "record:sp1534r3951",
+          10,
+          [
+            "title"
+          ],
+          true,
+          false
+        ],
+        [
+          "record:sp1534r4027",
+          10,
+          [
+            "title"
+          ],
+          true,
+          false
+        ],
+        [
+          "record:sp1534r4103",
+          10,
+          [
+            "title"
+          ],
+          true,
+          false
+        ],
+        [
+          "record:sp1534r4179",
+          10,
+          [
+            "title"
+          ],
+          true,
+          false
+        ],
+        [
+          "record:sp1534r4255",
+          10,
+          [
+            "title"
+          ],
+          true,
+          false
+        ],
+        [
+          "record:sp1534r4331",
+          10,
+          [
+            "title"
+          ],
+          true,
+          false
+        ],
+        [
+          "record:sp1534r4407",
+          10,
+          [
+            "title"
+          ],
+          true,
+          false
+        ],
+        [
+          "record:sp1534r4483",
+          10,
+          [
+            "title"
+          ],
+          true,
+          false
+        ]
+      ],
+      "query": "signlas"
+    },
+    {
+      "hits": [
+        [
+          "record:sp1534r1063",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r1139",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r1215",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r1291",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r1367",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r1443",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r151",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r1519",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r1595",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r1671",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r1747",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r1823",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r1899",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r1975",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2051",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2127",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2203",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r227",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2279",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2355",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2431",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2507",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2583",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2659",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2735",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2811",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2887",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2963",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r303",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3039",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3115",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3191",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3267",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3343",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3419",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3495",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3571",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3647",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3723",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r379",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3799",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3875",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3951",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r4027",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r4103",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r4179",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r4255",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r4331",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r4407",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r4483",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ]
+      ],
+      "query": "müller"
+    },
+    {
+      "hits": [
+        [
+          "record:sp1534r1063",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r1139",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r1215",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r1291",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r1367",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r1443",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r151",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r1519",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r1595",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r1671",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r1747",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r1823",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r1899",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r1975",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2051",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2127",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2203",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r227",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2279",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2355",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2431",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2507",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2583",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2659",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2735",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2811",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2887",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2963",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r303",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3039",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3115",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3191",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3267",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3343",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3419",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3495",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3571",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3647",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3723",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r379",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3799",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3875",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3951",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r4027",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r4103",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r4179",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r4255",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r4331",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r4407",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r4483",
+          27,
+          [
+            "author"
+          ],
+          false,
+          false
+        ]
+      ],
+      "query": "mueller"
+    },
+    {
+      "hits": [],
+      "query": "a:avery"
+    },
+    {
+      "hits": [
+        [
+          "record:sp1534r1039",
+          36,
+          [
+            "year",
+            "container"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r1115",
+          36,
+          [
+            "year",
+            "container"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r1191",
+          36,
+          [
+            "year",
+            "container"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r1267",
+          36,
+          [
+            "year",
+            "container"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r127",
+          36,
+          [
+            "year",
+            "container"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r1343",
+          36,
+          [
+            "year",
+            "container"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r1419",
+          36,
+          [
+            "year",
+            "container"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r1495",
+          36,
+          [
+            "year",
+            "container"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r1571",
+          36,
+          [
+            "year",
+            "container"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r1647",
+          36,
+          [
+            "year",
+            "container"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r1723",
+          36,
+          [
+            "year",
+            "container"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r1799",
+          36,
+          [
+            "year",
+            "container"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r1875",
+          36,
+          [
+            "year",
+            "container"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r1951",
+          36,
+          [
+            "year",
+            "container"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2027",
+          36,
+          [
+            "year",
+            "container"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r203",
+          36,
+          [
+            "year",
+            "container"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2103",
+          36,
+          [
+            "year",
+            "container"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2179",
+          36,
+          [
+            "year",
+            "container"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2255",
+          36,
+          [
+            "year",
+            "container"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2331",
+          36,
+          [
+            "year",
+            "container"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2407",
+          36,
+          [
+            "year",
+            "container"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2483",
+          36,
+          [
+            "year",
+            "container"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2559",
+          36,
+          [
+            "year",
+            "container"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2635",
+          36,
+          [
+            "year",
+            "container"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2711",
+          36,
+          [
+            "year",
+            "container"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2787",
+          36,
+          [
+            "year",
+            "container"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r279",
+          36,
+          [
+            "year",
+            "container"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2863",
+          36,
+          [
+            "year",
+            "container"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2939",
+          36,
+          [
+            "year",
+            "container"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3015",
+          36,
+          [
+            "year",
+            "container"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3091",
+          36,
+          [
+            "year",
+            "container"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3167",
+          36,
+          [
+            "year",
+            "container"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3243",
+          36,
+          [
+            "year",
+            "container"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3319",
+          36,
+          [
+            "year",
+            "container"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3395",
+          36,
+          [
+            "year",
+            "container"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3471",
+          36,
+          [
+            "year",
+            "container"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3547",
+          36,
+          [
+            "year",
+            "container"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r355",
+          36,
+          [
+            "year",
+            "container"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3623",
+          36,
+          [
+            "year",
+            "container"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3699",
+          36,
+          [
+            "year",
+            "container"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3775",
+          36,
+          [
+            "year",
+            "container"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3851",
+          36,
+          [
+            "year",
+            "container"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3927",
+          36,
+          [
+            "year",
+            "container"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r4003",
+          36,
+          [
+            "year",
+            "container"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r4079",
+          36,
+          [
+            "year",
+            "container"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r4155",
+          36,
+          [
+            "year",
+            "container"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r4231",
+          36,
+          [
+            "year",
+            "container"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r4307",
+          36,
+          [
+            "year",
+            "container"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r431",
+          36,
+          [
+            "year",
+            "container"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r4383",
+          36,
+          [
+            "year",
+            "container"
+          ],
+          false,
+          false
+        ]
+      ],
+      "query": "j:invented y:2001"
+    },
+    {
+      "hits": [
+        [
+          "record:sp1534r1063",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r1139",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r1215",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r1291",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r1367",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r1443",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r151",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r1519",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r1595",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r1671",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r1747",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r1823",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r1899",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r1975",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2051",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2127",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2203",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r227",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2279",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2355",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2431",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2507",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2583",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2659",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2735",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2811",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2887",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r2963",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r303",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3039",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3115",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3191",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3267",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3343",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3419",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3495",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3571",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3647",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3723",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r379",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3799",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3875",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r3951",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r4027",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r4103",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r4179",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r4255",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r4331",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r4407",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ],
+        [
+          "record:sp1534r4483",
+          40,
+          [
+            "title"
+          ],
+          false,
+          false
+        ]
+      ],
+      "query": "\"signals\""
+    },
+    {
+      "hits": [],
+      "query": "quantum quasar"
+    },
+    {
+      "hits": [],
+      "query": "10.1534/sp1534r41"
+    },
+    {
+      "hits": [
+        [
+          "record:sp1534r9999",
+          2048,
+          [
+            "citekey"
+          ],
+          false,
+          false
+        ]
+      ],
+      "query": "sp1534r9999"
+    },
+    {
+      "hits": [],
+      "query": "β"
+    },
+    {
+      "hits": [],
+      "query": "が"
+    },
+    {
+      "hits": [
+        [
+          "record:sp1534r1063",
+          40,
+          [
+            "title"
+          ],
+          false,
+          true
+        ],
+        [
+          "record:sp1534r1139",
+          40,
+          [
+            "title"
+          ],
+          false,
+          true
+        ],
+        [
+          "record:sp1534r1215",
+          40,
+          [
+            "title"
+          ],
+          false,
+          true
+        ],
+        [
+          "record:sp1534r1291",
+          40,
+          [
+            "title"
+          ],
+          false,
+          true
+        ],
+        [
+          "record:sp1534r1367",
+          40,
+          [
+            "title"
+          ],
+          false,
+          true
+        ],
+        [
+          "record:sp1534r1443",
+          40,
+          [
+            "title"
+          ],
+          false,
+          true
+        ],
+        [
+          "record:sp1534r151",
+          40,
+          [
+            "title"
+          ],
+          false,
+          true
+        ],
+        [
+          "record:sp1534r1519",
+          40,
+          [
+            "title"
+          ],
+          false,
+          true
+        ],
+        [
+          "record:sp1534r1595",
+          40,
+          [
+            "title"
+          ],
+          false,
+          true
+        ],
+        [
+          "record:sp1534r1671",
+          40,
+          [
+            "title"
+          ],
+          false,
+          true
+        ],
+        [
+          "record:sp1534r1747",
+          40,
+          [
+            "title"
+          ],
+          false,
+          true
+        ],
+        [
+          "record:sp1534r1823",
+          40,
+          [
+            "title"
+          ],
+          false,
+          true
+        ],
+        [
+          "record:sp1534r1899",
+          40,
+          [
+            "title"
+          ],
+          false,
+          true
+        ],
+        [
+          "record:sp1534r1975",
+          40,
+          [
+            "title"
+          ],
+          false,
+          true
+        ],
+        [
+          "record:sp1534r2051",
+          40,
+          [
+            "title"
+          ],
+          false,
+          true
+        ],
+        [
+          "record:sp1534r2127",
+          40,
+          [
+            "title"
+          ],
+          false,
+          true
+        ],
+        [
+          "record:sp1534r2203",
+          40,
+          [
+            "title"
+          ],
+          false,
+          true
+        ],
+        [
+          "record:sp1534r227",
+          40,
+          [
+            "title"
+          ],
+          false,
+          true
+        ],
+        [
+          "record:sp1534r2279",
+          40,
+          [
+            "title"
+          ],
+          false,
+          true
+        ],
+        [
+          "record:sp1534r2355",
+          40,
+          [
+            "title"
+          ],
+          false,
+          true
+        ],
+        [
+          "record:sp1534r2431",
+          40,
+          [
+            "title"
+          ],
+          false,
+          true
+        ],
+        [
+          "record:sp1534r2507",
+          40,
+          [
+            "title"
+          ],
+          false,
+          true
+        ],
+        [
+          "record:sp1534r2583",
+          40,
+          [
+            "title"
+          ],
+          false,
+          true
+        ],
+        [
+          "record:sp1534r2659",
+          40,
+          [
+            "title"
+          ],
+          false,
+          true
+        ],
+        [
+          "record:sp1534r2735",
+          40,
+          [
+            "title"
+          ],
+          false,
+          true
+        ],
+        [
+          "record:sp1534r2811",
+          40,
+          [
+            "title"
+          ],
+          false,
+          true
+        ],
+        [
+          "record:sp1534r2887",
+          40,
+          [
+            "title"
+          ],
+          false,
+          true
+        ],
+        [
+          "record:sp1534r2963",
+          40,
+          [
+            "title"
+          ],
+          false,
+          true
+        ],
+        [
+          "record:sp1534r303",
+          40,
+          [
+            "title"
+          ],
+          false,
+          true
+        ],
+        [
+          "record:sp1534r3039",
+          40,
+          [
+            "title"
+          ],
+          false,
+          true
+        ],
+        [
+          "record:sp1534r3115",
+          40,
+          [
+            "title"
+          ],
+          false,
+          true
+        ],
+        [
+          "record:sp1534r3191",
+          40,
+          [
+            "title"
+          ],
+          false,
+          true
+        ],
+        [
+          "record:sp1534r3267",
+          40,
+          [
+            "title"
+          ],
+          false,
+          true
+        ],
+        [
+          "record:sp1534r3343",
+          40,
+          [
+            "title"
+          ],
+          false,
+          true
+        ],
+        [
+          "record:sp1534r3419",
+          40,
+          [
+            "title"
+          ],
+          false,
+          true
+        ],
+        [
+          "record:sp1534r3495",
+          40,
+          [
+            "title"
+          ],
+          false,
+          true
+        ],
+        [
+          "record:sp1534r3571",
+          40,
+          [
+            "title"
+          ],
+          false,
+          true
+        ],
+        [
+          "record:sp1534r3647",
+          40,
+          [
+            "title"
+          ],
+          false,
+          true
+        ],
+        [
+          "record:sp1534r3723",
+          40,
+          [
+            "title"
+          ],
+          false,
+          true
+        ],
+        [
+          "record:sp1534r379",
+          40,
+          [
+            "title"
+          ],
+          false,
+          true
+        ],
+        [
+          "record:sp1534r3799",
+          40,
+          [
+            "title"
+          ],
+          false,
+          true
+        ],
+        [
+          "record:sp1534r3875",
+          40,
+          [
+            "title"
+          ],
+          false,
+          true
+        ],
+        [
+          "record:sp1534r3951",
+          40,
+          [
+            "title"
+          ],
+          false,
+          true
+        ],
+        [
+          "record:sp1534r4027",
+          40,
+          [
+            "title"
+          ],
+          false,
+          true
+        ],
+        [
+          "record:sp1534r4103",
+          40,
+          [
+            "title"
+          ],
+          false,
+          true
+        ],
+        [
+          "record:sp1534r4179",
+          40,
+          [
+            "title"
+          ],
+          false,
+          true
+        ],
+        [
+          "record:sp1534r4255",
+          40,
+          [
+            "title"
+          ],
+          false,
+          true
+        ],
+        [
+          "record:sp1534r4331",
+          40,
+          [
+            "title"
+          ],
+          false,
+          true
+        ],
+        [
+          "record:sp1534r4407",
+          40,
+          [
+            "title"
+          ],
+          false,
+          true
+        ],
+        [
+          "record:sp1534r4483",
+          40,
+          [
+            "title"
+          ],
+          false,
+          true
+        ]
+      ],
+      "query": "abstract:signals"
+    }
+  ],
+  "snapshot": {
+    "cite": "b01b96985c9a242c829d453b1c7ae93837769e60a6bf5415bfb2c9387112dfa5",
+    "full": "b01b96985c9a242c829d453b1c7ae93837769e60a6bf5415bfb2c9387112dfa5"
+  }
+}

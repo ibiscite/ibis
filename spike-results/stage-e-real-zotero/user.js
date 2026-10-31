@@ -1,0 +1,14 @@
+user_pref("extensions.zotero.useDataDir", true);
+user_pref("extensions.zotero.dataDir", "THROWAWAY/data");
+user_pref("extensions.zotero.lastDataDir", "THROWAWAY/data");
+user_pref("extensions.zotero.httpServer.enabled", true);
+user_pref("extensions.zotero.httpServer.port", 23199);
+user_pref("extensions.zotero.httpServer.localAPI.enabled", true);
+user_pref("extensions.zotero.sync.autoSync", false);
+user_pref("extensions.zotero.sync.storage.enabled", false);
+user_pref("extensions.zotero.sync.fulltext.enabled", false);
+user_pref("extensions.zotero.automaticScraperUpdates", false);
+user_pref("app.update.enabled", false);
+user_pref("app.update.auto", false);
+user_pref("extensions.zotero.firstRun2", false);
+user_pref("extensions.zotero.firstRunGuidance", false);

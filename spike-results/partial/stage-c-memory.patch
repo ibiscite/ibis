@@ -1,0 +1,623 @@
+diff --git a/crates/ibis-engine/tests/storage_spike/memory.py b/crates/ibis-engine/tests/storage_spike/memory.py
+new file mode 100644
+index 00000000..3dd81809
+--- /dev/null
++++ b/crates/ibis-engine/tests/storage_spike/memory.py
+@@ -0,0 +1,224 @@
++"""Stage C: exact live Rust allocations, unmodified System malloc, no dependencies.
++
++All source changes are in target/stage-c-source. Never generates fixtures or
++weakens the native acquisition checks. The explicitly named Zotero diagnostic
++uses the production SQLite decoder and mapper, but is NOT an acquisition run.
++"""
++import argparse
++import datetime
++import hashlib
++import json
++import os
++from pathlib import Path
++import platform
++import shutil
++import subprocess
++import sys
++
++ROOT = Path(__file__).resolve().parents[4]
++SUPPORT = Path(__file__).resolve().parent
++OVERLAY = ROOT / "target/stage-c-source"
++
++
++def digest(path):
++    return hashlib.sha256(path.read_bytes()).hexdigest()
++
++
++def build():
++    if OVERLAY.exists():
++        shutil.rmtree(OVERLAY)
++    OVERLAY.mkdir(parents=True)
++    for path in ROOT.iterdir():
++        if path.name in {"target", "crates", ".git", "spike-results", "Cargo.toml"}:
++            continue
++        (OVERLAY / path.name).symlink_to(path, target_is_directory=path.is_dir())
++    # Unsafe is confined to the disposable probe module, never production.
++    (OVERLAY / "Cargo.toml").write_text((ROOT / "Cargo.toml").read_text().replace('unsafe_code = "forbid"', 'unsafe_code = "deny"'))
++    shutil.copytree(ROOT / "crates", OVERLAY / "crates", ignore=shutil.ignore_patterns("__pycache__"))
++    patches = []
++
++    def replace(path, before, after):
++        target = OVERLAY / path
++        text = target.read_text()
++        if text.count(before) != 1:
++            raise RuntimeError(f"anchor mismatch in {path}: {before[:90]}")
++        target.write_text(text.replace(before, after))
++        patches.append({"file": path, "before": before, "after": after})
++
++    def entry(path, anchor, tag, core=False):
++        module = "crate" if core else "ibis_core"
++        replace(path, anchor, anchor + f"\n    let _memory_span = {module}::storage_memory::span({tag});")
++
++    core = "crates/ibis-core/src/"
++    sources = "crates/ibis-sources/src/"
++    local = "crates/ibis-zotero-local/src/"
++    path = OVERLAY / core / "lib.rs"
++    path.write_text(path.read_text() + "\n#[doc(hidden)]\n#[allow(unsafe_code)]\npub mod storage_memory;\n")
++    shutil.copyfile(SUPPORT / "memory_probe.rs", OVERLAY / core / "storage_memory.rs")
++    shutil.copyfile(SUPPORT / "memory_scenario.rs", OVERLAY / "crates/ibis-engine/tests/storage_memory.rs")
++    entry(sources + "bibtex/mod.rs", ") -> (ParsedLibrary, bool) {", 2)
++    entry(sources + "file.rs", "fn read_text(file: impl Read) -> Result<String, SourceError> {", 18)
++    replace(sources + "file.rs", "            text: text.into(),", "            text: { let _guard = ibis_core::storage_memory::span(19); text.into() },")
++    replace(sources + "bibtex/convert.rs", ") -> Record {", ") -> Record {\n    let _memory_record = ibis_core::storage_memory::record();")
++    replace(sources + "bibtex/convert.rs", "    Record {\n        id: ItemRef {", "    let record = Record {\n        id: ItemRef {")
++    replace(sources + "bibtex/convert.rs", "            .collect(),\n    }\n}\n\nfn name_json", "            .collect(),\n    };\n    ibis_core::storage_memory::visit_record(&record);\n    record\n}\n\nfn name_json")
++    replace(sources + "zotero/mod.rs", "pub fn map_item(library: LibraryId, item: &ZoteroItem) -> Result<MappedItem, MappingError> {", "pub fn map_item(library: LibraryId, item: &ZoteroItem) -> Result<MappedItem, MappingError> {\n    let _memory_record = ibis_core::storage_memory::record();")
++    entry(sources + "zotero/mod.rs", "fn schema() -> Result<&'static Schema, MappingError> {", 21)
++    replace(sources + "zotero/mod.rs", "    Ok(MappedItem {\n        record: Record {", "    let mapped = MappedItem {\n        record: Record {")
++    replace(sources + "zotero/mod.rs", "        warnings,\n    })\n}\n\nfn validate", "        warnings,\n    };\n    ibis_core::storage_memory::visit_record(&mapped.record);\n    Ok(mapped)\n}\n\nfn validate")
++    entry(core + "contract/model.rs", "    fn fingerprints(&self) -> Result<Fingerprints, ModelError> {", 8, True)
++    replace(core + "contract/model.rs", "                let fingerprints = object.fingerprints()?;", "                let _memory_owner = crate::storage_memory::owned(9, crate::storage_memory::owner_of(object.id().key.as_ptr()));\n                let fingerprints = object.fingerprints()?;")
++    replace(core + "contract/model.rs", "            objects: objects.into(),", "            objects: { let _guard = crate::storage_memory::span(10); objects.into() },")
++    entry(core + "search/snapshot.rs", "    fn build(snapshot: Arc<Snapshot>, previous: Option<&Self>) -> Self {", 11, True)
++    replace(core + "search/snapshot.rs", "                let keys: Vec<_> = record", "                let _memory_owner = crate::storage_memory::owned(11, crate::storage_memory::owner_of(record.id.key.as_ptr()));\n                let keys: Vec<_> = record")
++    replace(core + "search/snapshot.rs", "        Self {\n            snapshot,\n            entries,\n            texts: texts.shrink(),\n        }", """        let index = Self { snapshot, entries, texts: texts.shrink() };
++        crate::storage_memory::vector(&index.entries, 11);
++        crate::storage_memory::string(&index.texts.meta, 14);
++        crate::storage_memory::string(&index.texts.abstracts, 15);
++        crate::storage_memory::vector(&index.texts.records, 16);
++        for entry in &index.entries {
++            let _owner = crate::storage_memory::owned(12, crate::storage_memory::owner_of(entry.record.id.key.as_ptr()));
++            crate::storage_memory::mark(entry.record.id.library.as_str().as_ptr(), 12);
++            crate::storage_memory::string(&entry.record.id.key, 12);
++            crate::storage_memory::vector(&entry.record.keys, 12);
++            for key in &entry.record.keys { crate::storage_memory::string(key, 12); }
++            crate::storage_memory::vector(&entry.record.identifiers, 13);
++            for id in &entry.record.identifiers {
++                use crate::identifier::Identifier;
++                match id {
++                    Identifier::Doi(value) | Identifier::Arxiv(value) | Identifier::Pmid(value) | Identifier::Isbn(value) => crate::storage_memory::string(value, 13),
++                }
++            }
++        }
++        index""")
++    # An additional read-only accessor for the per-record contribution of the
++    # two global text buffers (there is no allocation per record).
++    replace(core + "search/snapshot.rs", "    pub fn heap_bytes(&self) -> usize {", """    pub fn storage_memory_text_lengths(&self, key: &str) -> [usize; 3] {
++        let n = self.entries.iter().position(|entry| entry.record.id.key == key).unwrap();
++        let (meta, abstracts) = self.texts.starts(n);
++        [self.texts.records[n].ends[6] as usize - meta, self.texts.records[n].abstract_end as usize - abstracts, std::mem::size_of::<super::Bounds>()]
++    }
++    pub fn heap_bytes(&self) -> usize {""")
++    replace("crates/ibis-engine/src/service.rs", "    pub fn snapshot(&self) -> Result<Arc<Snapshot>, EngineError> {", """    pub fn storage_memory_text_lengths(&self, key: &str) -> [usize; 3] {
++        self.state().unwrap().index.storage_memory_text_lengths(key)
++    }
++    pub fn snapshot(&self) -> Result<Arc<Snapshot>, EngineError> {""")
++    # Normal closed acquisition remains completely intact. Its refusal is
++    # recorded separately from the explicitly incomplete diagnostic below.
++    shim = """
++impl ZoteroSource {
++    pub fn storage_memory_closed(&mut self, data: &Path, cache: &Path) -> Result<Vec<Arc<LoadedLibrary>>, ZoteroError> {
++        let _guard = ibis_core::storage_memory::span(20);
++        let acquired = read_closed_at(data, cache, Arc::new(|| false))?;
++        let loaded = self.publish_closed(&acquired, &|| false)?;
++        ibis_core::storage_memory::emit("closed_raw_before_drop", 0);
++        Ok(loaded)
++    }
++    pub fn storage_memory_database_diagnostic(&mut self, path: &Path) -> Result<Vec<Arc<LoadedLibrary>>, ZoteroError> {
++        let _guard = ibis_core::storage_memory::span(20);
++        let acquired = ibis_zotero_local::closed::storage_memory_database_diagnostic(path)?;
++        let loaded = self.publish_closed(&acquired, &|| false)?;
++        ibis_core::storage_memory::emit("closed_raw_before_drop", 0);
++        Ok(loaded)
++    }
++}
++"""
++    path = OVERLAY / sources / "zotero_source.rs"
++    path.write_text(path.read_text() + shim)
++    replace(local + "closed/database.rs", "    let path = copy.database_path();", "    storage_memory_read_path(&copy.database_path(), control)\n}\n\npub(super) fn storage_memory_read_path(path: &std::path::Path, control: &Control) -> Result<(ClosedSnapshot, Option<u32>), ClosedError> {")
++    path = OVERLAY / local / "closed.rs"
++    path.write_text(path.read_text() + """
++/// Incomplete acquisition diagnostic; only ever opens the generated fixture.
++pub fn storage_memory_database_diagnostic(path: &Path) -> Result<ClosedSnapshot, ClosedError> {
++    database::storage_memory_read_path(path, &Control::new(Arc::new(|| false))).map(|(snapshot, _)| snapshot)
++}
++""")
++    # All patched Rust is formatted and clippied in this disposable workspace.
++    env = {**os.environ, "CARGO_TARGET_DIR": str(ROOT / "target"), "CARGO_NET_OFFLINE": "true"}
++    subprocess.run(["cargo", "fmt", "--all"], cwd=OVERLAY, env=env, check=True)
++    binaries = {}
++    for mode in ["counted", "system"]:
++        args = ["cargo", "rustc", "--offline", "--locked", "--release", "-p", "ibis-engine", "--test", "storage_memory", "--message-format=json"]
++        if mode == "counted":
++            args += ["--", "--cfg", "storage_memory_counting"]
++        built = subprocess.run(args, cwd=OVERLAY, env=env, capture_output=True, text=True)
++        (ROOT / f"target/stage-c-build-{mode}.log").write_text(built.stderr)
++        if built.returncode:
++            raise RuntimeError(built.stderr)
++        artifacts = [json.loads(line) for line in built.stdout.splitlines()]
++        binary = next(Path(item["executable"]) for item in artifacts if item.get("reason") == "compiler-artifact" and item["target"]["name"] == "storage_memory" and item.get("executable"))
++        saved = ROOT / f"target/stage-c-{mode}"
++        shutil.copyfile(binary, saved)
++        saved.chmod(0o755)
++        binaries[mode] = saved
++    modified = sorted({patch["file"] for patch in patches} | {core + "lib.rs", sources + "zotero_source.rs", local + "closed.rs"})
++    return binaries, {"patches": patches, "sources": {name: {"original_sha256": digest(ROOT / name), "overlay_sha256": digest(OVERLAY / name)} for name in modified}, "binaries": {mode: digest(binary) for mode, binary in binaries.items()}}
++
++
++def typical_record(directory):
++    # Each generated entry occupies exactly one line. Select near the source
++    # mean, with an abstract and a common creator count.
++    entries = (directory / "library.bib").read_text().splitlines()
++    candidates = []
++    for index, entry in enumerate(entries):
++        if "abstract={" in entry and 1 <= entry.count(" and ") <= 5:
++            candidates.append((abs(len((entry + "\n").encode()) - 1024), index, len((entry + "\n").encode())))
++    _, index, length = min(candidates)
++    return index, length
++
++
++def run(binary, case, records, typical, nano):
++    env = {**os.environ, "IBIS_MEMORY_FIXTURE": str(ROOT / f"target/stage-a-fixtures/{records}"), "IBIS_MEMORY_CASE": case,
++           "IBIS_MEMORY_RECORDS": str(records), "IBIS_MEMORY_TYPICAL": str(typical)}
++    if nano == "off":
++        env["MallocNanoZone"] = "0"
++    result = subprocess.run([str(binary), "--exact", "attributed_memory_scenario", "--ignored", "--nocapture", "--test-threads=1"], env=env, capture_output=True, text=True, timeout=180)
++    samples = [json.loads(line.split("MEMORY_SAMPLE ", 1)[1]) for line in result.stdout.splitlines() if "MEMORY_SAMPLE " in line]
++    refused = [line.split("MEMORY_REFUSED ", 1)[1] for line in result.stdout.splitlines() if "MEMORY_REFUSED " in line]
++    return {"case": case, "records": records, "binary": binary.name, "nano": nano, "returncode": result.returncode,
++            "samples": samples, "refusals": refused, "stdout": result.stdout, "stderr": result.stderr}
++
++
++def main():
++    parser = argparse.ArgumentParser()
++    parser.add_argument("--build-only", action="store_true")
++    parser.add_argument("--reuse-build", action="store_true")
++    args = parser.parse_args()
++    if platform.system() != "Darwin" or platform.machine() != "arm64" or os.sysconf("SC_PAGE_SIZE") != 16384:
++        raise RuntimeError("probe ABI is deliberately limited to macOS arm64, 16 KiB pages")
++    if args.reuse_build:
++        binaries = {mode: ROOT / f"target/stage-c-{mode}" for mode in ["counted", "system"]}
++        provenance = json.loads((ROOT / "target/stage-c-provenance.json").read_text())
++    else:
++        binaries, provenance = build()
++        (ROOT / "target/stage-c-provenance.json").write_text(json.dumps(provenance, indent=2) + "\n")
++    if args.build_only:
++        return
++    fixture = ROOT / "target/stage-a-fixtures/10000"
++    manifest = json.loads((fixture / "manifest.json").read_text())
++    for name in ["library.bib", "lean/zotero.sqlite"]:
++        if digest(fixture / name) != manifest["files"][name]["sha256"]:
++            raise RuntimeError(f"fixture hash changed: {name}")
++    typical, source_bytes = typical_record(fixture)
++    evidence = {"schema": 1, "stage": "C", "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
++                "revision": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
++                "platform": platform.platform(), "provenance": provenance, "fixture": manifest,
++                "typical": {"index": typical, "source_bytes": source_bytes}, "runs": []}
++    output = ROOT / "spike-results/stage-c-memory.json"
++    # Predeclared counterbalanced order; every attempt, including refusals, stays.
++    plan = [("counted", "bib-none", "default"), ("system", "bib-none", "default"),
++            ("system", "zotero-lean", "default"), ("counted", "zotero-lean", "default"),
++            ("counted", "zotero-diagnostic", "default"), ("system", "zotero-diagnostic", "default"),
++            ("system", "zotero-diagnostic", "off"), ("counted", "zotero-diagnostic", "off"),
++            ("system", "bib-none", "off"), ("counted", "bib-none", "off"),
++            ("system", "bib-none", "default"), ("counted", "bib-none", "default")]
++    evidence["plan"] = plan
++    for mode, case, nano in plan:
++        print(f"measuring {mode} {case} nano={nano}", flush=True)
++        evidence["runs"].append(run(binaries[mode], case, 10000, typical, nano))
++        output.write_text(json.dumps(evidence, indent=2) + "\n")
++    print(output)
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/crates/ibis-engine/tests/storage_spike/memory_probe.rs b/crates/ibis-engine/tests/storage_spike/memory_probe.rs
+new file mode 100644
+index 00000000..34203c24
+--- /dev/null
++++ b/crates/ibis-engine/tests/storage_spike/memory_probe.rs
+@@ -0,0 +1,283 @@
++//! Stage C overlay only. System allocations are forwarded unchanged: bookkeeping
++//! lives in a page-aligned BSS table, never in malloc blocks or allocation headers.
++//! The scenario separately runs without this global allocator to check RSS bias.
++#![allow(unsafe_code, clippy::missing_safety_doc, clippy::unwrap_used)]
++
++use std::alloc::{GlobalAlloc, Layout, System};
++use std::cell::{Cell, UnsafeCell};
++use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
++
++pub const LABELS: [&str; 24] = [
++    "harness/runtime",
++    "engine registry, maps and source owners",
++    "BibTeX parser/raw working set",
++    "CSL BTreeMap/Value object nodes",
++    "Record IDs, keys, aliases and identifier metadata",
++    "CSL map keys",
++    "CSL string values",
++    "CSL arrays",
++    "cite/full fingerprints",
++    "SnapshotObject Arc blocks",
++    "Snapshot shared object slice",
++    "SnapshotIndex entries and PreparedRecord Arc blocks",
++    "SnapshotIndex IDs and citation keys",
++    "SnapshotIndex identifiers",
++    "SnapshotIndex normalized metadata text",
++    "SnapshotIndex normalized abstracts",
++    "SnapshotIndex field bounds",
++    "search response/scratch",
++    "source read buffer",
++    "SourceSnapshot shared source text",
++    "Zotero closed raw working set",
++    "Zotero schema cache",
++    "watcher state",
++    "probe output",
++];
++const N: usize = 1 << 22;
++const PAGE: usize = 16384; // This experiment is macOS arm64, checked by runner.
++#[derive(Clone, Copy)]
++struct Slot {
++    ptr: usize,
++    // requested bytes (40), record owner (16), category (8).
++    packed: u64,
++}
++#[repr(align(16384))]
++struct Table(UnsafeCell<[Slot; N]>);
++// All access to the table is under LOCK. No allocator operation while locked.
++unsafe impl Sync for Table {}
++static TABLE: Table = Table(UnsafeCell::new([Slot { ptr: 0, packed: 0 }; N]));
++static LOCK: AtomicBool = AtomicBool::new(false);
++static ACTIVE: AtomicBool = AtomicBool::new(false);
++static LIVE: AtomicU64 = AtomicU64::new(0);
++static PEAK: AtomicU64 = AtomicU64::new(0);
++static ALLOCATED: AtomicU64 = AtomicU64::new(0);
++static FREED: AtomicU64 = AtomicU64::new(0);
++thread_local! {
++    static TAG: Cell<u8> = const { Cell::new(0) };
++    static OWNER: Cell<u16> = const { Cell::new(0) };
++    static NEXT_OWNER: Cell<u16> = const { Cell::new(0) };
++}
++unsafe extern "C" {
++    fn malloc_size(ptr: *const u8) -> usize;
++    fn mincore(address: *mut u8, length: usize, vector: *mut u8) -> i32;
++    fn malloc_zone_statistics(zone: *mut u8, stats: *mut MallocStats);
++    fn malloc_zone_pressure_relief(zone: *mut u8, goal: usize) -> usize;
++    fn proc_pidinfo(pid: i32, flavor: i32, arg: u64, buffer: *mut u8, size: i32) -> i32;
++}
++struct Lock;
++impl Lock {
++    fn take() -> Self {
++        while LOCK.compare_exchange_weak(false, true, Ordering::Acquire, Ordering::Relaxed).is_err() {
++            std::hint::spin_loop();
++        }
++        Self
++    }
++}
++impl Drop for Lock {
++    fn drop(&mut self) {
++        LOCK.store(false, Ordering::Release);
++    }
++}
++fn find(table: &[Slot; N], ptr: usize) -> (usize, bool) {
++    let mut index = ((ptr >> 4).wrapping_mul(0x9e3779b97f4a7c15) >> 32) & (N - 1);
++    let mut tombstone = None;
++    for _ in 0..N {
++        match table[index].ptr {
++            0 => return (tombstone.unwrap_or(index), false),
++            1 => { tombstone.get_or_insert(index); }
++            value if value == ptr => return (index, true),
++            _ => (),
++        }
++        index = (index + 1) & (N - 1);
++    }
++    (tombstone.unwrap_or_else(|| std::process::abort()), false)
++}
++fn add(ptr: *mut u8, size: usize) {
++    if ptr.is_null() { return; }
++    ACTIVE.store(true, Ordering::Relaxed);
++    let tag = TAG.try_with(Cell::get).unwrap_or(0);
++    let owner = OWNER.try_with(Cell::get).unwrap_or(0);
++    if size >= 1 << 40 { std::process::abort(); }
++    let _lock = Lock::take();
++    // SAFETY: protected by the allocator-independent spin lock.
++    let table = unsafe { &mut *TABLE.0.get() };
++    let (index, found) = find(table, ptr as usize);
++    if found { std::process::abort(); }
++    table[index] = Slot { ptr: ptr as usize, packed: ((size as u64) << 24) | ((owner as u64) << 8) | tag as u64 };
++    let live = LIVE.fetch_add(size as u64, Ordering::Relaxed) + size as u64;
++    PEAK.fetch_max(live, Ordering::Relaxed);
++    ALLOCATED.fetch_add(size as u64, Ordering::Relaxed);
++}
++fn remove(ptr: *mut u8, size: usize) {
++    let _lock = Lock::take();
++    // SAFETY: protected by LOCK; the pointer has not been freed yet.
++    let table = unsafe { &mut *TABLE.0.get() };
++    let (index, found) = find(table, ptr as usize);
++    if !found || table[index].packed >> 24 != size as u64 { std::process::abort(); }
++    table[index].ptr = 1;
++    LIVE.fetch_sub(size as u64, Ordering::Relaxed);
++    FREED.fetch_add(size as u64, Ordering::Relaxed);
++}
++pub struct CountingSystem;
++// SAFETY: every System operation receives its original pointer and Layout.
++// The table neither changes requested sizes nor uses malloc for bookkeeping.
++unsafe impl GlobalAlloc for CountingSystem {
++    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
++        let ptr = unsafe { System.alloc(layout) };
++        add(ptr, layout.size());
++        ptr
++    }
++    unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
++        let ptr = unsafe { System.alloc_zeroed(layout) };
++        add(ptr, layout.size());
++        ptr
++    }
++    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
++        remove(ptr, layout.size());
++        unsafe { System.dealloc(ptr, layout) };
++    }
++    unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, size: usize) -> *mut u8 {
++        // System::realloc failure leaves the old allocation intact.
++        let next = unsafe { System.realloc(ptr, layout, size) };
++        if !next.is_null() {
++            remove(ptr, layout.size());
++            add(next, size);
++        }
++        next
++    }
++}
++pub struct Span { tag: u8, owner: u16 }
++pub fn span(tag: u8) -> Span {
++    Span { tag: TAG.with(|value| value.replace(tag)), owner: OWNER.with(Cell::get) }
++}
++pub fn record() -> Span {
++    let guard = span(3);
++    let owner = NEXT_OWNER.with(|value| { let next = value.get().checked_add(1).unwrap(); value.set(next); next });
++    OWNER.with(|value| value.set(owner));
++    guard
++}
++pub fn owned(tag: u8, owner: u16) -> Span {
++    let guard = span(tag);
++    OWNER.with(|value| value.set(owner));
++    guard
++}
++impl Drop for Span {
++    fn drop(&mut self) {
++        TAG.with(|value| value.set(self.tag));
++        OWNER.with(|value| value.set(self.owner));
++    }
++}
++pub fn owner_of(ptr: *const u8) -> u16 {
++    if !ACTIVE.load(Ordering::Relaxed) { return 0; }
++    let _lock = Lock::take();
++    let table = unsafe { &*TABLE.0.get() };
++    let (index, found) = find(table, ptr as usize);
++    if found { ((table[index].packed >> 8) & 0xffff) as u16 } else { 0 }
++}
++pub fn mark(ptr: *const u8, tag: u8) {
++    if !ACTIVE.load(Ordering::Relaxed) { return; }
++    let _lock = Lock::take();
++    let table = unsafe { &mut *TABLE.0.get() };
++    let (index, found) = find(table, ptr as usize);
++    if found {
++        let owner = OWNER.with(Cell::get) as u64;
++        table[index].packed = (table[index].packed & !0xffffff) | (owner << 8) | tag as u64;
++    }
++}
++pub fn string(value: &String, tag: u8) {
++    if value.capacity() > 0 { mark(value.as_ptr(), tag); }
++}
++pub fn vector<T>(value: &Vec<T>, tag: u8) {
++    if value.capacity() > 0 && std::mem::size_of::<T>() > 0 { mark(value.as_ptr().cast(), tag); }
++}
++pub fn visit_record(record: &crate::contract::Record) {
++    mark(record.id.library.as_str().as_ptr(), 4);
++    string(&record.id.key, 4);
++    vector(&record.citation_keys, 4);
++    for key in &record.citation_keys { string(&key.value, 4); }
++    vector(&record.aliases, 4);
++    for alias in &record.aliases { string(alias, 4); }
++    vector(&record.identifiers, 4);
++    for (key, value) in &record.csl { string(key, 5); visit_value(value); }
++}
++fn visit_value(value: &serde_json::Value) {
++    use serde_json::Value;
++    match value {
++        Value::String(value) => string(value, 6),
++        Value::Array(values) => { vector(values, 7); for value in values { visit_value(value); } }
++        Value::Object(values) => { for (key, value) in values { string(key, 5); visit_value(value); } }
++        _ => (),
++    }
++}
++#[derive(Clone, Copy, Default, serde::Serialize)]
++pub struct Bucket { pub bytes: u64, pub allocations: u64, pub malloc_bytes: u64 }
++#[derive(Clone, Copy, Default, serde::Serialize)]
++#[repr(C)]
++pub struct MallocStats {
++    pub blocks_in_use: u32,
++    pub size_in_use: usize,
++    pub max_size_in_use: usize,
++    pub size_allocated: usize,
++}
++#[derive(serde::Serialize)]
++pub struct Sample {
++    pub label: &'static str,
++    pub rss_bytes: u64,
++    pub probe_table_resident_bytes: usize,
++    pub global_live_bytes: u64,
++    pub global_peak_live_bytes: u64,
++    pub cumulative_allocated_bytes: u64,
++    pub cumulative_freed_bytes: u64,
++    pub buckets: [Bucket; 24],
++    pub typical_record: [Bucket; 24],
++    pub malloc: MallocStats,
++}
++pub fn sample(label: &'static str, typical_owner: u16) -> Sample {
++    let mut buckets = [Bucket::default(); 24];
++    let mut typical_record = [Bucket::default(); 24];
++    let lock = Lock::take();
++    if ACTIVE.load(Ordering::Relaxed) {
++        for slot in unsafe { &*TABLE.0.get() } {
++            if slot.ptr > 1 {
++                let tag = (slot.packed & 255) as usize;
++                let owner = ((slot.packed >> 8) & 0xffff) as u16;
++                let bytes = slot.packed >> 24;
++                let malloc_bytes = unsafe { malloc_size(slot.ptr as *const u8) } as u64;
++                buckets[tag].bytes += bytes;
++                buckets[tag].allocations += 1;
++                buckets[tag].malloc_bytes += malloc_bytes;
++                if owner != 0 && owner == typical_owner {
++                    typical_record[tag].bytes += bytes;
++                    typical_record[tag].allocations += 1;
++                    typical_record[tag].malloc_bytes += malloc_bytes;
++                }
++            }
++        }
++    }
++    let live = LIVE.load(Ordering::Relaxed);
++    drop(lock);
++    let mut resident = [0_u8; N * std::mem::size_of::<Slot>() / PAGE];
++    let table_resident = if ACTIVE.load(Ordering::Relaxed) {
++        let result = unsafe { mincore(TABLE.0.get().cast(), std::mem::size_of_val(&TABLE), resident.as_mut_ptr()) };
++        assert_eq!(result, 0);
++        resident.iter().filter(|byte| **byte & 1 != 0).count() * PAGE
++    } else { 0 };
++    let mut malloc = MallocStats::default();
++    unsafe { malloc_zone_statistics(std::ptr::null_mut(), &mut malloc) };
++    let mut task = [0_u64; 12];
++    let count = unsafe { proc_pidinfo(std::process::id() as i32, 4, 0, task.as_mut_ptr().cast(), 96) };
++    assert_eq!(count, 96);
++    Sample { label, rss_bytes: task[1], probe_table_resident_bytes: table_resident,
++        global_live_bytes: live, global_peak_live_bytes: PEAK.load(Ordering::Relaxed),
++        cumulative_allocated_bytes: ALLOCATED.load(Ordering::Relaxed), cumulative_freed_bytes: FREED.load(Ordering::Relaxed),
++        buckets, typical_record, malloc }
++}
++pub fn emit(label: &'static str, typical_owner: u16) -> Sample {
++    let result = sample(label, typical_owner);
++    let _guard = span(23);
++    println!("MEMORY_SAMPLE {}", serde_json::to_string(&result).unwrap());
++    result
++}
++pub fn pressure_relief() -> usize {
++    unsafe { malloc_zone_pressure_relief(std::ptr::null_mut(), 0) }
++}
+diff --git a/crates/ibis-engine/tests/storage_spike/memory_scenario.rs b/crates/ibis-engine/tests/storage_spike/memory_scenario.rs
+new file mode 100644
+index 00000000..eabd2477
+--- /dev/null
++++ b/crates/ibis-engine/tests/storage_spike/memory_scenario.rs
+@@ -0,0 +1,98 @@
++//! Copied into the disposable workspace as an integration test by memory.py.
++#![allow(clippy::unwrap_used, unexpected_cfgs)]
++use ibis_core::{contract::*, storage_memory as mem};
++use ibis_engine::{Cancellation, Engine, Method};
++use serde_json::json;
++use std::{path::PathBuf, sync::Arc, time::Duration};
++
++#[cfg(storage_memory_counting)]
++#[global_allocator]
++static ALLOCATOR: mem::CountingSystem = mem::CountingSystem;
++
++fn pause() { std::thread::sleep(Duration::from_millis(300)); }
++
++#[test]
++#[ignore = "memory.py runs each case in a fresh release process with existing fixtures"]
++fn attributed_memory_scenario() {
++    let directory = PathBuf::from(std::env::var_os("IBIS_MEMORY_FIXTURE").unwrap());
++    let case = std::env::var("IBIS_MEMORY_CASE").unwrap();
++    let records: usize = std::env::var("IBIS_MEMORY_RECORDS").unwrap().parse().unwrap();
++    let typical: usize = std::env::var("IBIS_MEMORY_TYPICAL").unwrap().parse().unwrap();
++    mem::emit("harness_baseline", 0);
++    let engine = { let _guard = mem::span(1); Engine::new().unwrap().without_file_watches() };
++    let mut source = None;
++    {
++        let _guard = mem::span(1);
++        match case.as_str() {
++            "bib-none" => {
++                engine.dispatch(Method::Libraries, &json!({"action":"open-file","path":directory.join("library.bib")}), &Cancellation::default()).unwrap();
++            }
++            "zotero-lean" | "zotero-diagnostic" => {
++                let mut owner = ibis_sources::zotero_source::ZoteroSource::default();
++                let scratch = directory.parent().unwrap().join("stage-c-private-copy");
++                std::fs::create_dir_all(&scratch).unwrap();
++                let loaded = if case == "zotero-lean" {
++                    owner.storage_memory_closed(&directory.join("lean"), &scratch)
++                } else {
++                    owner.storage_memory_database_diagnostic(&directory.join("lean/zotero.sqlite"))
++                };
++                let loaded = match loaded {
++                    Ok(loaded) => loaded,
++                    Err(error) => { println!("MEMORY_REFUSED {error}"); return; }
++                };
++                for library in &loaded {
++                    engine.publish_library(library.library.clone(), Arc::new(library.snapshot.clone())).unwrap();
++                }
++                source = Some(owner);
++            }
++            _ => panic!("unknown case"),
++        }
++    }
++    let snapshot = engine.snapshot().unwrap();
++    assert_eq!(snapshot.objects().len(), records);
++    if let Some(source) = &source {
++        assert_eq!(source.current().len(), 1);
++        // The source owner, engine and index really share the object slice.
++        assert!(std::ptr::eq(source.current()[0].snapshot.objects().as_ptr(), snapshot.objects().as_ptr()));
++    }
++    let expected_key = if case == "bib-none" { format!("record:sp1534r{typical}") } else { format!("S{typical:07}") };
++    let typical_record = snapshot.objects().iter().find(|item| item.object.id().key == expected_key).unwrap();
++    let owner = mem::owner_of(typical_record.object.id().key.as_ptr());
++    let response = {
++        let _guard = mem::span(17);
++        engine.dispatch(Method::Search, &json!({"query":"signals","limit":50}), &Cancellation::default()).unwrap()
++    };
++    assert_eq!(response.data["hits"].as_array().unwrap().len(), 50);
++    pause();
++    mem::emit("first_response_retained_by_harness", owner);
++    drop(response);
++    drop(snapshot);
++    pause();
++    let settled = mem::emit("settled_after_response_drop", owner);
++    if cfg!(storage_memory_counting) {
++        // Independent allocator running counter versus a census of all live
++        // addresses and their tags. Neither a shared Arc nor a freed address
++        // can appear twice in this census.
++        let attributed: u64 = settled.buckets.iter().map(|bucket| bucket.bytes).sum();
++        assert!(attributed.abs_diff(settled.global_live_bytes) <= settled.global_live_bytes / 20,
++            "attribution drift exceeds 5%: {attributed} != {}", settled.global_live_bytes);
++        // These are lifetime claims, not an 'other' bucket hiding the gap.
++        for tag in [2, 17, 18, 19, 20] {
++            assert_eq!(settled.buckets[tag].bytes, 0, "unexpected retained {}", mem::LABELS[tag]);
++        }
++        let engine_bytes: u64 = settled.buckets[1..23].iter().map(|bucket| bucket.bytes).sum();
++        assert!(settled.buckets[1].bytes < engine_bytes / 20, "unclassified owner bookkeeping exceeds 5%");
++    }
++    let released = mem::pressure_relief();
++    println!("MEMORY_RELIEF {released}");
++    pause();
++    mem::emit("settled_after_pressure_relief", owner);
++    drop(engine);
++    drop(source);
++    pause();
++    mem::emit("all_ibis_owners_dropped", 0);
++    let released = mem::pressure_relief();
++    println!("MEMORY_RELIEF {released}");
++    pause();
++    mem::emit("all_dropped_after_pressure_relief", 0);
++}

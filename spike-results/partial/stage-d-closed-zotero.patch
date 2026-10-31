@@ -1,0 +1,446 @@
+diff --git a/crates/ibis-zotero-local/src/closed.rs b/crates/ibis-zotero-local/src/closed.rs
+index e6db90fd..11ce8e84 100644
+--- a/crates/ibis-zotero-local/src/closed.rs
++++ b/crates/ibis-zotero-local/src/closed.rs
+@@ -20,6 +20,8 @@ mod keys;
+ mod mounts;
+ mod platform;
+ mod private_copy;
++#[cfg(test)]
++mod stage_d;
+ 
+ #[cfg(any(target_os = "macos", target_os = "linux"))]
+ use platform::resident;
+diff --git a/crates/ibis-zotero-local/src/closed/copy_tests.rs b/crates/ibis-zotero-local/src/closed/copy_tests.rs
+index e9fb4367..14b77e22 100644
+--- a/crates/ibis-zotero-local/src/closed/copy_tests.rs
++++ b/crates/ibis-zotero-local/src/closed/copy_tests.rs
+@@ -4,6 +4,31 @@ use crate::closed::tests::{control, edit, fixture};
+ fn scratch() -> tempfile::TempDir {
+     tempfile::tempdir().unwrap_or_else(|_| panic!("synthetic scratch"))
+ }
++
++#[cfg(any(target_os = "macos", target_os = "linux"))]
++#[test]
++fn cloned_copy_has_distinct_identity_and_bidirectional_write_isolation() {
++    use std::os::unix::fs::MetadataExt;
++    let source = fixture(10);
++    let original = source.path().join("zotero.sqlite");
++    let file = platform::open_source(&original).unwrap_or_else(|e| panic!("{e}"));
++    let scratch = scratch();
++    let target = scratch.path().join("clone");
++    if !try_clone(&file, &target).unwrap_or_else(|e| panic!("{e}")) {
++        return; // Other filesystems exercise the streamed fallback in normal tests.
++    }
++    assert_ne!(file.metadata().unwrap_or_else(|_| panic!("source stat")).ino(), std::fs::metadata(&target).unwrap_or_else(|_| panic!("clone stat")).ino());
++    let expected = std::fs::read(&target).unwrap_or_default();
++    let mut writer = OpenOptions::new().write(true).open(&original).unwrap_or_else(|_| panic!("source writer"));
++    writer.seek(SeekFrom::Start(200)).unwrap_or_else(|_| panic!("seek"));
++    writer.write_all(b"invented source change").unwrap_or_else(|_| panic!("write"));
++    assert_eq!(std::fs::read(&target).unwrap_or_default(), expected);
++    let source_after = std::fs::read(&original).unwrap_or_default();
++    let mut writer = OpenOptions::new().write(true).open(&target).unwrap_or_else(|_| panic!("clone writer"));
++    writer.seek(SeekFrom::Start(300)).unwrap_or_else(|_| panic!("seek"));
++    writer.write_all(b"invented private change").unwrap_or_else(|_| panic!("write"));
++    assert_eq!(std::fs::read(&original).unwrap_or_default(), source_after);
++}
+ fn candidates(parent: &Path) -> usize {
+     std::fs::read_dir(parent.join(ROOT))
+         .unwrap_or_else(|_| panic!("private root"))
+diff --git a/crates/ibis-zotero-local/src/closed/database.rs b/crates/ibis-zotero-local/src/closed/database.rs
+index fb792f7c..9ee81195 100644
+--- a/crates/ibis-zotero-local/src/closed/database.rs
++++ b/crates/ibis-zotero-local/src/closed/database.rs
+@@ -52,12 +52,7 @@ pub(super) fn read(
+     )
+     .map_err(failure)?;
+     configure(&mut db, control)?;
+-    let check: String = db
+-        .query_row("PRAGMA quick_check(1)", [], |r| r.get(0))
+-        .map_err(failure)?;
+-    if check != "ok" {
+-        return Err(ClosedError::Damaged);
+-    }
++    quick_check(&mut db, false, control)?;
+     validate_table(&db, "version", &["schema", "version"])?;
+     let version: i64 = db
+         .query_row("SELECT version FROM version WHERE schema='userdata'", [], |r| r.get(0))
+@@ -345,14 +340,14 @@ pub(super) fn configure(db: &mut Connection, control: &Control) -> Result<(), Cl
+     Ok(())
+ }
+ 
+-const READ_SQL: [&str; 4] = [
++pub(super) const READ_SQL: [&str; 4] = [
+     "SELECT L.libraryID,L.type,G.groupID FROM libraries L LEFT JOIN groups G USING(libraryID) WHERE L.type IN ('user','group')",
+     "SELECT I.itemID,I.libraryID,I.key,I.version,T.typeName,I.dateAdded,I.dateModified FROM items I LEFT JOIN itemTypesCombined T USING(itemTypeID) WHERE (T.typeName IS NULL OR T.typeName NOT IN ('note','attachment','annotation')) AND NOT EXISTS(SELECT 1 FROM deletedItems D WHERE D.itemID=I.itemID)",
+     "SELECT D.itemID,F.fieldName,CASE WHEN octet_length(V.value)>:max_value THEN NULL ELSE V.value END,V.valueID,octet_length(V.value) FROM itemData D LEFT JOIN fieldsCombined F USING(fieldID) LEFT JOIN itemDataValues V USING(valueID) WHERE EXISTS(SELECT 1 FROM items I JOIN libraries L USING(libraryID) JOIN itemTypesCombined T USING(itemTypeID) WHERE I.itemID=D.itemID AND L.type IN ('user','group') AND T.typeName NOT IN ('note','attachment','annotation') AND NOT EXISTS(SELECT 1 FROM deletedItems X WHERE X.itemID=I.itemID))",
+     "SELECT IC.itemID,CT.creatorType,CASE WHEN octet_length(C.firstName)>:max_value THEN NULL ELSE C.firstName END,CASE WHEN octet_length(C.lastName)>:max_value THEN NULL ELSE C.lastName END,C.fieldMode,IC.orderIndex,octet_length(C.firstName),octet_length(C.lastName) FROM itemCreators IC LEFT JOIN creators C USING(creatorID) LEFT JOIN creatorTypes CT USING(creatorTypeID) WHERE EXISTS(SELECT 1 FROM items I JOIN libraries L USING(libraryID) JOIN itemTypesCombined T USING(itemTypeID) WHERE I.itemID=IC.itemID AND L.type IN ('user','group') AND T.typeName NOT IN ('note','attachment','annotation') AND NOT EXISTS(SELECT 1 FROM deletedItems X WHERE X.itemID=I.itemID))",
+ ];
+ 
+-const TABLES: &[(&str, &[&str])] = &[
++pub(super) const TABLES: &[(&str, &[&str])] = &[
+     ("libraries", &["libraryID", "type"]),
+     ("groups", &["groupID", "libraryID"]),
+     (
+@@ -376,6 +371,21 @@ const TABLES: &[(&str, &[&str])] = &[
+     ("itemCreators", &["itemID", "creatorID", "creatorTypeID", "orderIndex"]),
+     ("deletedItems", &["itemID"]),
+ ];
++
++pub(super) fn quick_check(db: &mut Connection, bbt: bool, control: &Control) -> Result<(), ClosedError> {
++    control.check()?;
++    #[cfg(test)]
++    let _span = super::stage_d::Span::new("quick_check");
++    #[cfg(test)]
++    if let Some(result) = super::stage_d::check(db, bbt, control) {
++        return result;
++    }
++    let _ = bbt;
++    let check: String = db.query_row("PRAGMA quick_check(1)", [], |r| r.get(0)).map_err(failure)?;
++    if check != "ok" { return Err(ClosedError::Damaged); }
++    control.check()
++}
++
+ fn validate_table(db: &Connection, name: &str, columns: &[&str]) -> Result<(), ClosedError> {
+     let sql: String = db
+         .query_row(
+diff --git a/crates/ibis-zotero-local/src/closed/keys.rs b/crates/ibis-zotero-local/src/closed/keys.rs
+index 94941973..c596f440 100644
+--- a/crates/ibis-zotero-local/src/closed/keys.rs
++++ b/crates/ibis-zotero-local/src/closed/keys.rs
+@@ -109,12 +109,7 @@ fn store(copy: &Copy, control: &Control) -> Result<Vec<StoredKey>, ClosedError>
+     )
+     .map_err(database::failure)?;
+     database::configure(&mut db, control)?;
+-    let check: String = db
+-        .query_row("PRAGMA quick_check(1)", [], |r| r.get(0))
+-        .map_err(database::failure)?;
+-    if check != "ok" {
+-        return Err(ClosedError::Damaged);
+-    }
++    database::quick_check(&mut db, true, control)?;
+     let keys = bbt::read_store(&db, 7).map_err(|_| ClosedError::Damaged);
+     control.check()?;
+     keys
+diff --git a/crates/ibis-zotero-local/src/closed/private_copy.rs b/crates/ibis-zotero-local/src/closed/private_copy.rs
+index d4d90dcf..406b797b 100644
+--- a/crates/ibis-zotero-local/src/closed/private_copy.rs
++++ b/crates/ibis-zotero-local/src/closed/private_copy.rs
+@@ -163,31 +163,16 @@ impl Store {
+         // support: process checks and source validation must all remain quiet.
+         for index in COPY_ORDER {
+             if let Some(source) = &mut sources.files[index] {
+-                let mut target = private_file(&copy.path.join(private_name(FILES[index])))?;
+-                source.file.rewind().map_err(|_| ClosedError::Unreadable)?;
+-                let mut remaining = source.metadata.len();
+-                let mut buffer = vec![0; CHUNK];
+-                while remaining > 0 {
+-                    control.check()?;
+-                    platform::passive(&source.file)?;
+-                    let n = remaining.min(CHUNK as u64) as usize;
+-                    source
+-                        .file
+-                        .read_exact(&mut buffer[..n])
+-                        .map_err(|_| ClosedError::Changing)?;
+-                    *left = left.checked_sub(n as u64).ok_or(ClosedError::TooLarge)?;
+-                    target.write_all(&buffer[..n]).map_err(|_| ClosedError::NoSpace)?;
+-                    remaining -= n as u64;
+-                }
+-                if source.file.read(&mut buffer[..1]).map_err(|_| ClosedError::Changing)? != 0 {
+-                    return Err(ClosedError::Changing);
+-                }
+-                target.sync_all().map_err(|_| ClosedError::PrivateStorage)?;
++                copy_source(source, &copy.path.join(private_name(FILES[index])), control, left)?;
+             }
+         }
+         after_copy()?;
+         control.check()?;
+-        sources.validate(input, data, &copy.path, control)?;
++        {
++            #[cfg(test)]
++            let _span = super::stage_d::Span::new("byte_validation");
++            sources.validate(input, data, &copy.path, control)?;
++        }
+         check_closed()?;
+         // Drop *every* source handle before SQLite is opened privately.
+         let skipped = sources.skipped.contains(&true);
+@@ -199,6 +184,91 @@ impl Store {
+     }
+ }
+ 
++fn copy_source(source: &mut Source, path: &Path, control: &Control, left: &mut u64) -> Result<(), ClosedError> {
++    #[cfg(test)]
++    let _span = super::stage_d::Span::new("copy_including_sync");
++    control.check()?;
++    platform::passive(&source.file)?;
++    let length = source.metadata.len();
++    *left = left.checked_sub(length).ok_or(ClosedError::TooLarge)?;
++    let clone_enabled = true;
++    #[cfg(test)]
++    let clone_enabled = clone_enabled && !super::stage_d::streamed();
++    let cloned = clone_enabled && try_clone(&source.file, path)?;
++    control.check()?; // A clone syscall is synchronous, and cannot be interrupted mid-call.
++    let mut target = if cloned {
++        // Clone creates a different inode under the already private directory.
++        // Remove copied permissions/ACLs before any SQLite access.
++        #[cfg(unix)]
++        {
++            use std::os::unix::fs::PermissionsExt;
++            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
++                .map_err(|_| ClosedError::PrivateStorage)?;
++        }
++        // fclonefileat without CLONE_ACL inherits only our secured directory's ACL.
++        platform::secure_file(path, control)?;
++        OpenOptions::new().write(true).open(path).map_err(|_| ClosedError::PrivateStorage)?
++    } else {
++        private_file(path)?
++    };
++    if !cloned {
++        #[cfg(test)]
++        let _span = super::stage_d::Span::new("stream_bytes");
++        source.file.rewind().map_err(|_| ClosedError::Unreadable)?;
++        let mut remaining = length;
++        let mut buffer = vec![0; CHUNK];
++        while remaining > 0 {
++            control.check()?;
++            platform::passive(&source.file)?;
++            let n = remaining.min(CHUNK as u64) as usize;
++            source.file.read_exact(&mut buffer[..n]).map_err(|_| ClosedError::Changing)?;
++            target.write_all(&buffer[..n]).map_err(|_| ClosedError::NoSpace)?;
++            remaining -= n as u64;
++        }
++        if source.file.read(&mut buffer[..1]).map_err(|_| ClosedError::Changing)? != 0 {
++            return Err(ClosedError::Changing);
++        }
++    }
++    if target.metadata().map_err(|_| ClosedError::PrivateStorage)?.len() != length {
++        return Err(ClosedError::Changing);
++    }
++    {
++        #[cfg(test)]
++        let _span = super::stage_d::Span::new("file_sync");
++        target.sync_all().map_err(|_| ClosedError::PrivateStorage)?;
++    }
++    control.check()
++}
++
++/// Clone only from the verified open source handle. Never reopen its path,
++/// hard-link it, or skip the subsequent full byte comparison and sidecar fence.
++fn try_clone(source: &File, path: &Path) -> Result<bool, ClosedError> {
++    #[cfg(target_os = "macos")]
++    {
++        use rustix::fs::{CloneFlags, CWD, fclonefileat};
++        match fclonefileat(source, CWD, path, CloneFlags::NOFOLLOW | CloneFlags::NOOWNERCOPY) {
++            Ok(()) => return Ok(true),
++            Err(rustix::io::Errno::NOTSUP | rustix::io::Errno::XDEV | rustix::io::Errno::INVAL | rustix::io::Errno::NOSYS) => (),
++            Err(rustix::io::Errno::NOSPC | rustix::io::Errno::DQUOT) => return Err(ClosedError::NoSpace),
++            Err(_) => return Err(ClosedError::PrivateStorage),
++        }
++    }
++    #[cfg(target_os = "linux")]
++    {
++        let target = private_file(path)?;
++        match rustix::fs::ioctl_ficlone(&target, source) {
++            Ok(()) => return Ok(true),
++            Err(rustix::io::Errno::OPNOTSUPP | rustix::io::Errno::XDEV | rustix::io::Errno::INVAL | rustix::io::Errno::NOTTY | rustix::io::Errno::NOSYS) => (),
++            Err(rustix::io::Errno::NOSPC | rustix::io::Errno::DQUOT) => return Err(ClosedError::NoSpace),
++            Err(_) => return Err(ClosedError::PrivateStorage),
++        }
++        drop(target);
++        std::fs::remove_file(path).map_err(|_| ClosedError::PrivateStorage)?;
++    }
++    let _ = (source, path);
++    Ok(false)
++}
++
+ fn owned_marker(path: &Path) -> bool {
+     let path = path.join(".ibis-copy");
+     if !std::fs::symlink_metadata(&path)
+@@ -228,6 +298,8 @@ pub(super) struct Copy {
+     path: PathBuf,
+ }
+ impl Copy {
++    #[cfg(test)]
++    pub(super) fn fixture(path: PathBuf) -> Self { Self { path } }
+     pub(super) fn database_path(&self) -> PathBuf {
+         self.path.join("zotero.sqlite")
+     }
+diff --git a/crates/ibis-zotero-local/src/closed/stage_d.rs b/crates/ibis-zotero-local/src/closed/stage_d.rs
+new file mode 100644
+index 00000000..b0c439ae
+--- /dev/null
++++ b/crates/ibis-zotero-local/src/closed/stage_d.rs
+@@ -0,0 +1,173 @@
++//! Throwaway #1534 stage D. Partial checks are deliberately test-only.
++#![allow(clippy::unwrap_used)]
++use super::*;
++use rusqlite::{Connection, hooks::{AuthAction, AuthContext, Authorization}};
++use serde_json::{Value, json};
++use std::{cell::RefCell, collections::BTreeMap, io::BufRead, time::Instant};
++
++#[derive(Default)]
++struct Run {
++    mode: String,
++    ms: BTreeMap<&'static str, f64>,
++}
++thread_local! { static RUN: RefCell<Option<Run>> = const { RefCell::new(None) }; }
++
++pub(super) fn streamed() -> bool {
++    RUN.with_borrow(|r| r.as_ref().is_some_and(|r| r.mode == "full-stream"))
++}
++pub(super) struct Span(&'static str, Instant);
++impl Span {
++    pub(super) fn new(name: &'static str) -> Self { Self(name, Instant::now()) }
++}
++impl Drop for Span {
++    fn drop(&mut self) {
++        RUN.with_borrow_mut(|r| {
++            if let Some(r) = r { *r.ms.entry(self.0).or_default() += self.1.elapsed().as_secs_f64() * 1000.0; }
++        });
++    }
++}
++
++fn run<T>(mode: &str, action: impl FnOnce() -> T) -> (T, BTreeMap<&'static str, f64>) {
++    RUN.with_borrow_mut(|r| { assert!(r.is_none()); *r = Some(Run { mode: mode.into(), ..Run::default() }); });
++    let result = action();
++    let trace = RUN.with_borrow_mut(|r| r.take().unwrap().ms);
++    (result, trace)
++}
++
++/// Return None outside an experiment: production always uses full quick_check.
++pub(super) fn check(db: &mut Connection, bbt: bool, control: &Control) -> Option<Result<(), ClosedError>> {
++    let partial = RUN.with_borrow(|r| r.as_ref().is_some_and(|r| r.mode.starts_with("partial")));
++    partial.then(|| partial_check(db, bbt, control))
++}
++
++fn normalize(sql: &str) -> String { sql.split_whitespace().collect::<String>().to_ascii_lowercase() }
++
++fn partial_check(db: &mut Connection, bbt: bool, control: &Control) -> Result<(), ClosedError> {
++    // These exact DDL contracts support ONLY the invented fixture schemas.
++    // Shipping would need independently reviewed contracts for supported Zotero/BBT schemas.
++    let fixture = include_str!("../../fixtures/closed/schema.sql");
++    let mut tables: Vec<(&str, String)> = if bbt {
++        vec![("citationkey", normalize("CREATE TABLE citationkey(itemID INTEGER PRIMARY KEY,itemKey TEXT,libraryID INTEGER,citationKey TEXT,pinned INTEGER)"))]
++    } else {
++        std::iter::once("version").chain(database::TABLES.iter().map(|(t, _)| *t))
++            .map(|t| {
++                let ddl = fixture.lines().find(|s| s.starts_with(&format!("CREATE TABLE {t}("))).unwrap();
++                (t, normalize(ddl.trim_end_matches(';')))
++            }).collect()
++    };
++    let settings: bool = db.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE name='settings')", [], |r| r.get(0)).map_err(database::failure)?;
++    if !bbt && settings { tables.push(("settings", normalize("CREATE TABLE settings(setting TEXT,key TEXT,value TEXT,PRIMARY KEY(setting,key))"))); }
++    // Root aliases are cheap to reject, but do not detect shared child/overflow pages.
++    let duplicate: bool = db.query_row("SELECT EXISTS(SELECT rootpage FROM sqlite_schema WHERE rootpage>0 GROUP BY rootpage HAVING count(*)>1)", [], |r| r.get(0)).map_err(database::failure)?;
++    if duplicate { return Err(ClosedError::Damaged); }
++    for (table, expected) in &tables {
++        let sql: String = db.query_row("SELECT sql FROM sqlite_schema WHERE type='table' AND rootpage>0 AND name=?1", [table], |r| r.get(0)).map_err(database::failure)?;
++        if normalize(&sql) != *expected { return Err(ClosedError::Damaged); }
++        let triggers: bool = db.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE type='trigger' AND tbl_name=?1)", [table], |r| r.get(0)).map_err(database::failure)?;
++        if triggers { return Err(ClosedError::Damaged); }
++        let indexes: Vec<Option<String>> = db.prepare("SELECT sql FROM sqlite_schema WHERE type='index' AND tbl_name=?1").map_err(database::failure)?
++            .query_map([table], |r| r.get(0)).and_then(Iterator::collect::<rusqlite::Result<_>>).map_err(database::failure)?;
++        for sql in indexes.into_iter().flatten() {
++            if ![
++                "CREATE UNIQUE INDEX itemData_pk ON itemData(itemID,fieldID)",
++                "CREATE UNIQUE INDEX itemCreators_pk ON itemCreators(itemID,orderIndex)",
++                "CREATE UNIQUE INDEX deletedItems_pk ON deletedItems(itemID)",
++                "CREATE UNIQUE INDEX items_library_key ON items(libraryID,key)",
++            ].iter().any(|s| normalize(s) == normalize(&sql)) { return Err(ClosedError::Damaged); }
++        }
++    }
++    db.execute_batch("PRAGMA cell_size_check=ON").map_err(database::failure)?;
++    for table in std::iter::once("sqlite_schema").chain(tables.iter().map(|(t, _)| *t)) {
++        control.check()?;
++        // Table names come exclusively from the code contracts, never input SQL.
++        let check: String = db.query_row(&format!("PRAGMA main.quick_check('{table}')"), [], |r| r.get(0)).map_err(database::failure)?;
++        if check != "ok" { return Err(ClosedError::Damaged); }
++    }
++    let checked: Vec<String> = tables.into_iter().map(|(t, _)| t.into()).collect();
++    db.authorizer(Some(move |ctx: AuthContext<'_>| match ctx.action {
++        AuthAction::Read { table_name, .. } if ctx.accessor.is_some() ||
++            !checked.iter().any(|t| t == table_name) && !["sqlite_schema", "sqlite_master", "pragma_table_xinfo"].contains(&table_name) => Authorization::Deny,
++        _ => Authorization::Allow,
++    })).map_err(database::failure)?;
++    Ok(())
++}
++
++fn read_private(path: &Path, mode: &str, bbt: bool) -> Result<ClosedSnapshot, ClosedError> {
++    let copy = private_copy::Copy::fixture(path.to_owned());
++    let (result, _) = run(mode, || {
++        let control = tests::control();
++        let (mut snapshot, _) = database::read(&copy, &control)?;
++        if bbt { keys::attach(&copy, Some(7), false, &mut snapshot, &control)?; }
++        Ok(snapshot)
++    });
++    // Borrowed fixture directory is owned by the Python driver.
++    std::mem::forget(copy);
++    result
++}
++
++#[test]
++fn partial_contract_refuses_new_dependencies_and_changed_schema() {
++    let source = tests::fixture(10);
++    let path = source.path().join("zotero.sqlite");
++    let mut db = Connection::open(&path).unwrap();
++    database::configure(&mut db, &tests::control()).unwrap();
++    partial_check(&mut db, false, &tests::control()).unwrap();
++    assert!(database::READ_SQL.iter().all(|sql| db.prepare(sql).is_ok()));
++    assert!(db.prepare("SELECT * FROM unanticipated_table").is_err());
++    drop(db);
++    tests::edit(source.path(), "CREATE TABLE unanticipated_table(x); INSERT INTO unanticipated_table VALUES('invented');");
++    let mut db = Connection::open(&path).unwrap();
++    database::configure(&mut db, &tests::control()).unwrap();
++    partial_check(&mut db, false, &tests::control()).unwrap();
++    assert!(db.prepare("SELECT * FROM unanticipated_table").is_err());
++    drop(db);
++    tests::edit(source.path(), "ALTER TABLE items ADD COLUMN unanticipated TEXT;");
++    let mut db = Connection::open(&path).unwrap();
++    database::configure(&mut db, &tests::control()).unwrap();
++    assert_eq!(partial_check(&mut db, false, &tests::control()), Err(ClosedError::Damaged));
++}
++
++/// Each JSON request names only an invented private fixture under target/stage-d.
++#[test]
++#[ignore = "stage D JSON-lines worker, launched by tests/stage_d.py"]
++fn oracle_worker() {
++    for line in std::io::stdin().lock().lines() {
++        let request: Value = serde_json::from_str(&line.unwrap()).unwrap();
++        let path = PathBuf::from(request["path"].as_str().unwrap());
++        assert!(path.starts_with(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/stage-d")));
++        let expected = read_private(Path::new(request["expected"].as_str().unwrap()), "full-clone", request["bbt"] == true).unwrap();
++        let mut outcomes = BTreeMap::new();
++        for mode in ["full-clone", "partial-clone"] {
++            let result = read_private(&path, mode, request["bbt"] == true);
++            let (outcome, reason) = match result {
++                Err(e) => ("refused", Some(format!("{e:?}"))),
++                Ok(s) if request["bbt"] == true && s.better_bibtex_unknown => ("refused", Some("keys-unknown".into())),
++                Ok(s) if s == expected => ("read correctly", None),
++                Ok(_) => ("wrong citation data", None),
++            };
++            outcomes.insert(mode, json!({"outcome":outcome,"reason":reason}));
++        }
++        println!("STAGE_D {}", json!({"name":request["name"],"outcomes":outcomes}));
++    }
++}
++
++#[test]
++#[ignore = "stage D measurement, launched by tests/stage_d.py; synthetic guard only"]
++fn measurement() {
++    let source = PathBuf::from(std::env::var_os("IBIS_STAGE_D_SOURCE").unwrap());
++    assert!(source.starts_with(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/stage-a-fixtures")));
++    let mode = std::env::var("IBIS_STAGE_D_MODE").unwrap();
++    let scratch = tempfile::tempdir_in(source.parent().unwrap()).unwrap();
++    let began = Instant::now();
++    let ((result, native), trace) = run(&mode, || {
++        let control = tests::control();
++        let store = private_copy::Store::open(scratch.path(), &control).unwrap();
++        let result = store.read_with(&source, &control, &mut || Ok(()), &mut || Ok(()));
++        (result, "synthetic closed-process hook; native enumeration is sandbox-denied")
++    });
++    let elapsed = began.elapsed().as_secs_f64()*1000.0;
++    let snapshot = result.unwrap();
++    let items: Vec<_> = snapshot.libraries.iter().flat_map(|l| &l.items).collect();
++    assert!(items.iter().all(|i| i.data.fields["title"].contains("seed1534 ")));
++    println!("STAGE_D {}", json!({"mode":mode,"closed_read_ms":elapsed,"stages_ms":trace,"items":items.len(),"native":native}));
++}

@@ -1,0 +1,503 @@
+diff --git a/crates/ibis-core/src/search.rs b/crates/ibis-core/src/search.rs
+index e7407f1c..1ad7cbe8 100644
+--- a/crates/ibis-core/src/search.rs
++++ b/crates/ibis-core/src/search.rs
+@@ -147,17 +147,17 @@ struct Bounds {
+ 
+ impl Texts {
+     /// Add a record's fields in [`MatchField::ALL`] order. Each of `extras`
+-    /// (a field's index and its raw text, such as the title itself, a short
+-    /// title or a journal abbreviation) adds its [`spelling_aliases`] to that
+-    /// field, and its own words too unless they are already there; the title
++    /// (field index, raw text, whether its normalized text is already present)
++    /// adds its [`spelling_aliases`] to that field, and its own words too
++    /// unless they are already there; the title
+     /// proper ends before them. Two spaces set each addition apart, so a
+     /// quoted phrase never runs from one into the next. Text past 4 GiB in
+     /// either buffer is left out, which no real library comes near.
+-    fn push(&mut self, mut fields: [String; 8], extras: &[(usize, &str)]) {
++    fn push(&mut self, mut fields: [String; 8], extras: &[(usize, &str, bool)]) {
+         let title_len = fields[1].len();
+-        for &(field, extra) in extras {
+-            for extra in [normalize(extra), spelling_aliases(extra)] {
+-                if !extra.is_empty() && !format!(" {} ", fields[field]).contains(&format!(" {extra} ")) {
++        for &(field, extra, included) in extras {
++            for extra in (!included).then(|| normalize(extra)).into_iter().chain([spelling_aliases(extra)]) {
++                if !extra.is_empty() && !contains_words(&fields[field], &extra) {
+                     push_apart(&mut fields[field], &extra);
+                 }
+             }
+@@ -242,6 +242,15 @@ impl Texts {
+     }
+ }
+ 
++/// The same word-boundary check as padding both strings with spaces, without
++/// copying a whole field for each alternate spelling.
++fn contains_words(text: &str, words: &str) -> bool {
++    text == words
++        || text.strip_prefix(words).is_some_and(|rest| rest.starts_with(' '))
++        || text.strip_suffix(words).is_some_and(|rest| rest.ends_with(' '))
++        || text.contains(&format!(" {words} "))
++}
++
+ /// Add `words` to `text` two spaces apart, so no phrase spans the two.
+ fn push_apart(text: &mut String, words: &str) {
+     if !words.is_empty() {
+@@ -300,48 +309,38 @@ fn spelling_aliases(text: &str) -> String {
+     }
+     let greek = |c: char| matches!(c, '\u{0370}'..='\u{03FF}' | '\u{1F00}'..='\u{1FFF}' | 'µ');
+     let chars: Vec<char> = text.nfc().collect();
+-    let words: Vec<&[char]> = chars
+-        .split(|c| c.is_whitespace())
+-        .filter(|word| !word.is_empty())
+-        .collect();
++    if !chars.iter().any(|&c| greek(c) || matches!(c, 'ä' | 'Ä' | 'ö' | 'Ö' | 'ø' | 'Ø' | 'ü' | 'Ü' | 'å' | 'Å')) {
++        return String::new();
++    }
++    let words = || chars.split(|c| c.is_whitespace()).filter(|word| !word.is_empty());
+     // Letters and digits between punctuation, so α/β is two symbols.
+-    let pieces = |word: &'_ [char]| -> Vec<(usize, usize)> {
+-        let mut start = 0;
+-        word.split(|c| !c.is_alphanumeric())
+-            .map(|piece| {
+-                let span = (start, start + piece.len());
+-                start = span.1 + 1;
+-                span
+-            })
+-            .collect()
+-    };
+     let greek_count = |piece: &[char]| piece.iter().filter(|&&c| greek(c)).count();
+     let only_greek = |piece: &[char]| piece.iter().all(|&c| greek(c));
+     // A piece of two or more Greek letters and nothing else makes the text
+     // Greek, so its one-letter words are Greek words too (Η γη), not symbols.
+-    let greek_text = words.iter().any(|word| {
+-        pieces(word)
+-            .into_iter()
++    let greek_text = words().any(|word| {
++        word_pieces(word)
+             .any(|(start, end)| only_greek(&word[start..end]) && greek_count(&word[start..end]) > 1)
+     });
+     let greek_word = |c: char| matches!(c.to_lowercase().next(), Some('ο' | 'η' | 'ω'));
+     let mut aliases = String::new();
+-    for word in words {
++    for word in words() {
+         // A lone Greek letter is a symbol, except the one-letter Greek words
+         // (ο, η, ω) in Greek text; so is any in a piece with other letters.
+-        let mut symbols = vec![false; word.len()];
+-        for (start, end) in pieces(word) {
++        let mut pieces = word_pieces(word).map(|(start, end)| {
+             let piece = &word[start..end];
+-            symbols[start..end]
+-                .fill(!only_greek(piece) || greek_count(piece) == 1 && !(greek_text && greek_word(piece[0])));
+-        }
++            let symbol = !only_greek(piece) || greek_count(piece) == 1 && !(greek_text && greek_word(piece[0]));
++            (start, end, symbol)
++        }).peekable();
+         let mut alias = String::new();
+         let mut changed = false;
+         for (i, &c) in word.iter().enumerate() {
++            while pieces.peek().is_some_and(|&(_, end, _)| i >= end) { pieces.next(); }
++            let symbol_piece = pieces.peek().is_some_and(|&(start, _, symbol)| i >= start && symbol);
+             let next = word.get(i + 1).copied();
+             let beside_greek = i > 0 && greek(word[i - 1]) || next.is_some_and(greek);
+             let unit = matches!(c, 'μ' | 'µ') && next.is_some_and(char::is_alphabetic);
+-            let symbol = symbols[i] && !beside_greek && !unit;
++            let symbol = symbol_piece && !beside_greek && !unit;
+             let spelt = match c.to_lowercase().next().unwrap_or(c) {
+                 'ä' => "ae",
+                 'ö' | 'ø' => "oe",
+@@ -390,6 +389,15 @@ fn spelling_aliases(text: &str) -> String {
+     aliases.trim_start().to_owned()
+ }
+ 
++fn word_pieces(word: &[char]) -> impl Iterator<Item = (usize, usize)> + '_ {
++    let mut start = 0;
++    word.split(|c| !c.is_alphanumeric()).map(move |piece| {
++        let span = (start, start + piece.len());
++        start = span.1 + 1;
++        span
++    })
++}
++
+ /// When the whole query is a DOI, ISBN, PubMed ID or arXiv ID that some
+ /// records in scope carry, those records, newest first. `Some(None)` falls
+ /// back to ordinary search; `None` means cancellation.
+diff --git a/crates/ibis-core/src/search/snapshot.rs b/crates/ibis-core/src/search/snapshot.rs
+index 1cc4784e..3af2a061 100644
+--- a/crates/ibis-core/src/search/snapshot.rs
++++ b/crates/ibis-core/src/search/snapshot.rs
+@@ -146,11 +146,11 @@ impl SnapshotIndex {
+                         normalize(text("abstract")),
+                     ],
+                     &[
+-                        (1, &title),
+-                        (1, &strip_markup(text("title-short"))),
+-                        (5, text("keyword")),
+-                        (6, &container),
+-                        (6, &strip_markup(text("container-title-short"))),
++                        (1, &title, true),
++                        (1, &strip_markup(text("title-short")), false),
++                        (5, text("keyword"), true),
++                        (6, &container, true),
++                        (6, &strip_markup(text("container-title-short")), false),
+                     ],
+                 );
+                 Some(Entry {
+diff --git a/crates/ibis-engine/tests/storage_spike.rs b/crates/ibis-engine/tests/storage_spike.rs
+index a432a7b5..66c370e0 100644
+--- a/crates/ibis-engine/tests/storage_spike.rs
++++ b/crates/ibis-engine/tests/storage_spike.rs
+@@ -9,6 +9,9 @@ use std::{path::Path, process::Command, time::Instant};
+ const PYTHON: &str = "python3";
+ const QUERIES: [&str; 3] = ["signals", "星図", "signlas"];
+ 
++#[path = "storage_spike/stage_b.rs"]
++mod stage_b;
++
+ fn fixture(directory: &Path, count: usize, seed: u64) {
+     assert!(
+         Command::new(PYTHON)
+diff --git a/crates/ibis-engine/tests/storage_spike/instrument.py b/crates/ibis-engine/tests/storage_spike/instrument.py
+index 36c36e3a..ee5ae600 100644
+--- a/crates/ibis-engine/tests/storage_spike/instrument.py
++++ b/crates/ibis-engine/tests/storage_spike/instrument.py
+@@ -13,7 +13,7 @@ import subprocess
+ from fixtures import ROOT, digest
+ 
+ 
+-def build():
++def build(detail=False):
+     overlay = ROOT / "target/stage-a-source"
+     if overlay.exists():
+         shutil.rmtree(overlay)
+@@ -55,6 +55,22 @@ def build():
+         entry(core + "contract/model.rs", anchor, "snapshot_fingerprints", True)
+     entry(core + "search/snapshot.rs", "fn build(snapshot: Arc<Snapshot>, previous: Option<&Self>) -> Self {", "index", True)
+     entry(sources + "file/cache.rs", "pub fn hydrate(generation: &PreparedLibrary) -> Result<LoadedLibrary, StoreError> {", "hydrate")
++    if detail:
++        for relative, anchor, stage in [
++            ("search.rs", "pub fn normalize(text: &str) -> String {", "index_normalize"),
++            ("search.rs", "fn spelling_aliases(text: &str) -> String {", "index_aliases"),
++            ("search.rs", "fn name_text<'a>(names: impl Iterator<Item = &'a Name>) -> String {", "index_names"),
++            ("model.rs", "pub fn strip_markup(rich: &str) -> String {", "index_markup"),
++            ("identifier.rs", "pub fn of_record(record: &crate::contract::Record) -> Vec<Identifier> {", "index_identifiers"),
++        ]:
++            entry(core + relative, anchor, stage, True)
++        for anchor, stage in [
++            ("fn clean(s: &str) -> String {", "convert_clean"),
++            ("fn names(people: Vec<biblatex::Person>, raw: Option<&str>) -> Vec<Name> {", "convert_names"),
++            ("fn sentence_case(pieces: Vec<Piece>) -> Vec<Piece> {", "convert_case"),
++            ("    let mut buf = String::new();\n    let mut chars = text.char_indices().peekable();", "convert_tex"),
++        ]:
++            entry(sources + "bibtex/convert.rs", anchor, stage)
+     # Includes secure file creation, read/write loop and sync_all, but keeps
+     # source validation, native helper checks and copy cleanup in residual.
+     replace(closed + "private_copy.rs", "        for index in COPY_ORDER {",
+@@ -87,7 +103,9 @@ impl ZoteroSource {
+     build_result = subprocess.run(["cargo", "rustc", "--offline", "--locked", "--release", "-p", "ibis-engine", "--test", "storage_spike", "--message-format=json", "--", "--cfg", "storage_spike_probe"],
+                                   cwd=overlay, capture_output=True, text=True, check=False)
+     if build_result.returncode:
+-        raise RuntimeError(build_result.stderr)
++        messages = [json.loads(line) for line in build_result.stdout.splitlines()]
++        rendered = "".join(item["message"].get("rendered", "") for item in messages if item.get("reason") == "compiler-message")
++        raise RuntimeError(build_result.stderr + rendered)
+     artifacts = [json.loads(line) for line in build_result.stdout.splitlines()]
+     binary = next(Path(item["executable"]) for item in artifacts if item.get("reason") == "compiler-artifact" and item["target"]["name"] == "storage_spike" and item.get("executable"))
+     provenance["executable_sha256"] = digest(binary)
+diff --git a/crates/ibis-engine/tests/storage_spike/probe.rs b/crates/ibis-engine/tests/storage_spike/probe.rs
+index dccab9d4..424ba2e2 100644
+--- a/crates/ibis-engine/tests/storage_spike/probe.rs
++++ b/crates/ibis-engine/tests/storage_spike/probe.rs
+@@ -3,7 +3,10 @@
+ use std::{cell::RefCell, collections::BTreeMap, time::Instant};
+ thread_local! {
+     static STATE: RefCell<State> = RefCell::new(State::default());
++    static HOOK: RefCell<Option<Hook>> = RefCell::new(None);
+ }
++type Hook = Box<dyn Fn(&'static str)>;
++pub fn hook(hook: Option<Hook>) { HOOK.with_borrow_mut(|current| *current = hook); }
+ #[derive(Default)]
+ struct State {
+     stack: Vec<(Instant, u64, &'static str)>,
+@@ -11,6 +14,7 @@ struct State {
+ }
+ pub struct Span;
+ pub fn span(label: &'static str) -> Span {
++    HOOK.with_borrow(|hook| { if let Some(hook) = hook { hook(label); } });
+     STATE.with_borrow_mut(|state| state.stack.push((Instant::now(), 0, label)));
+     Span
+ }
+diff --git a/crates/ibis-engine/tests/storage_spike/stage_b.py b/crates/ibis-engine/tests/storage_spike/stage_b.py
+new file mode 100644
+index 00000000..e38e9aa9
+--- /dev/null
++++ b/crates/ibis-engine/tests/storage_spike/stage_b.py
+@@ -0,0 +1,118 @@
++"""Offline stage B: retained binaries, original oracles, counterbalanced runs.
++
++Use the conda base Python. All builds and optional raw sample traces stay in
++target. Published evidence contains only invented data and numeric load/RSS.
++The predeclared baseline validity rule is max/min <= 1.25 for first-results
++and peak RSS. Invalid attempts are kept; no outliers/warmups are discarded.
++"""
++import argparse
++import importlib.util
++import json
++import os
++from pathlib import Path
++import shutil
++import statistics
++import subprocess
++import time
++
++from fixtures import ROOT, digest
++from instrument import build
++
++spec = importlib.util.spec_from_file_location("stage_a", Path(__file__).parent.parent / "storage_spike.py")
++stage_a = importlib.util.module_from_spec(spec)
++spec.loader.exec_module(stage_a)
++OUT = ROOT / "target/stage-b"
++GOLDEN = ROOT / "spike-results/stage-b-original-golden.json"
++
++
++def environment(threads="1"):
++    return dict(os.environ, CARGO_TARGET_DIR=str(ROOT / "target"), CARGO_NET_OFFLINE="true",
++                IBIS_SPIKE_FIXTURE=str(ROOT / "target/stage-a-fixtures/10000"),
++                IBIS_SPIKE_CASE="bib-none", IBIS_SPIKE_RECORDS="10000", IBIS_SPIKE_SEED="1534",
++                IBIS_SPIKE_GOLDEN=str(GOLDEN), IBIS_SPIKE_THREADS=threads)
++
++
++def test(binary, name, env):
++    subprocess.run([str(binary), "--exact", f"stage_b::{name}", "--ignored", "--nocapture", "--test-threads=1"],
++                   env=env, check=True)
++
++
++def distribution(values):
++    return dict(min=min(values), median=statistics.median(values), max=max(values))
++
++
++def main():
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument("--build-label")
++    parser.add_argument("--capture", action="store_true")
++    parser.add_argument("--detail", action="store_true")
++    parser.add_argument("--check", nargs="+")
++    parser.add_argument("--profile", choices=["index", "load"])
++    parser.add_argument("--compare", nargs="+")
++    parser.add_argument("--rounds", type=int, default=5)
++    parser.add_argument("--output", type=Path)
++    args = parser.parse_args()
++    os.environ.update(CARGO_TARGET_DIR=str(ROOT / "target"), CARGO_NET_OFFLINE="true")
++    OUT.mkdir(exist_ok=True)
++    manifest = json.loads((ROOT / "target/stage-a-fixtures/10000/manifest.json").read_text())
++    for path, evidence in manifest["files"].items():
++        assert digest(ROOT / "target/stage-a-fixtures/10000" / path) == evidence["sha256"]
++    if args.build_label:
++        destination = OUT / args.build_label
++        destination.mkdir()  # do not overwrite retained executables/evidence
++        binary, provenance = build(detail=args.detail)
++        shutil.copy2(binary, destination / "storage_spike")
++        (destination / "build.json").write_text(json.dumps(provenance, indent=2))
++    if args.capture:
++        env = environment()
++        env["IBIS_SPIKE_CAPTURE"] = "1"
++        test(OUT / args.build_label / "storage_spike", "realistic_oracle", env)
++    for config in args.check or []:
++        label, _, threads = config.partition(":")
++        for name in ["realistic_oracle", "delayed_a_cannot_replace_b_or_survive_close", "cancelled_stage_cannot_publish"]:
++            test(OUT / label / "storage_spike", name, environment(threads or "1"))
++        subprocess.run([str(OUT / label / "storage_spike"), "--exact", "stage_b::warning_lines_order_duplicates_and_hostile_bounds"],
++                       env=environment(threads or "1"), check=True)
++    if args.profile:
++        binary = OUT / args.build_label / "storage_spike"
++        process = subprocess.Popen([str(binary), "--exact", f"stage_b::profile_{args.profile}", "--ignored", "--nocapture"], env=environment())
++        try:
++            time.sleep(1)
++            subprocess.run(["sample", str(process.pid), "5", "1", "-file", str(OUT / f"sample-{args.profile}.txt")], check=False, timeout=15)
++        finally:
++            process.wait(timeout=20)
++    if not args.compare:
++        return
++    assert args.rounds > 0 and args.output
++    # Alternating forward/reverse order counterbalances drift; preserve every
++    # attempt. Multiple baseline placements expose load excursions.
++    order = [config for r in range(args.rounds) for config in (args.compare if r % 2 == 0 else args.compare[::-1])]
++    report = {"protocol": {"order":order,"rounds":args.rounds,"baseline_max_min_ratio":1.25,
++                           "scope":"fresh release process; warm OS pages; same 10k BibTeX; no Zotero/cache changes"},
++              "fixture_sha256":manifest["files"]["library.bib"]["sha256"], "runs":[], "summaries":[]}
++    with args.output.open("x") as file:
++        json.dump(report, file, indent=2)
++    for config in order:
++        label, _, threads = config.partition(":")
++        load = os.getloadavg()
++        run = stage_a.measure(OUT / label / "storage_spike", environment(threads or "1"), stage_a.Memory())
++        run.update(config=config, records=10000, load_before=load, load_after=os.getloadavg())
++        run["rejections"] = stage_a.validate(run)
++        report["runs"].append(run)
++        args.output.write_text(json.dumps(report, indent=2) + "\n")
++        print(config, round(run.get("first_results_ms",0),1), run["rejections"], flush=True)
++    baseline = [r for r in report["runs"] if r["config"] == args.compare[0]]
++    report["baseline_validity"] = {m: max(r[m] for r in baseline) / min(r[m] for r in baseline)
++                                   for m in ["first_results_ms","peak_process_mib"]}
++    report["valid_comparison"] = all(x <= 1.25 for x in report["baseline_validity"].values()) and not any(r["rejections"] for r in report["runs"])
++    for config in args.compare:
++        runs = [r for r in report["runs"] if r["config"] == config]
++        report["summaries"].append({"config":config,
++            "metrics": {m:distribution([r[m] for r in runs]) for m in ["first_results_ms","first_search_ms","peak_process_mib","spawn_to_first_results_ms"]},
++            "stage_ms": {s:distribution([r["stages_ns"].get(s,0)/1e6 for r in runs]) for s in stage_a.STAGES}})
++    args.output.write_text(json.dumps(report, indent=2) + "\n")
++    print(json.dumps(report["summaries"], indent=2))
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/crates/ibis-engine/tests/storage_spike/stage_b.rs b/crates/ibis-engine/tests/storage_spike/stage_b.rs
+new file mode 100644
+index 00000000..7456eb14
+--- /dev/null
++++ b/crates/ibis-engine/tests/storage_spike/stage_b.rs
+@@ -0,0 +1,144 @@
++//! Stage B oracles are captured once, before optimizing, and never refreshed
++//! by a comparison run. All fixtures contain invented data.
++use super::*;
++use ibis_engine::request::SearchRequest;
++use std::{path::PathBuf, sync::Arc, time::Duration};
++
++fn input() -> PathBuf {
++    PathBuf::from(std::env::var_os("IBIS_SPIKE_FIXTURE").unwrap()).join("library.bib")
++}
++
++fn oracle(engine: &Engine) -> Value {
++    let queries = [
++        "", "signals", "星図", "signlas", "müller", "mueller", "a:avery", "j:invented y:2001",
++        "\"signals\"", "quantum quasar", "10.1534/sp1534r41", "sp1534r9999", "β", "が", "abstract:signals",
++    ];
++    let searches: Vec<_> = queries.iter().map(|query| {
++        let result = engine.search(&SearchRequest { query: (*query).into(), limit: 50,
++            libraries: None, interpret_locator: false }, &Cancellation::default()).unwrap();
++        let hits: Vec<_> = result.hits.iter().map(|hit| json!([
++            hit.item.object.id().key, hit.score, hit.matched, hit.typo, hit.partial
++        ])).collect();
++        json!({"query":query,"hits":hits})
++    }).collect();
++    let mut samples = Vec::new();
++    for index in [0, 1, 2, 3, 4, 5, 9, 10, 41, 123, 4567, 9999] {
++        let key = format!("sp1534r{index}");
++        let shown = call(engine, Method::Show, json!({"item":{"by":"key","value":key}}));
++        let mut citations = Vec::new();
++        for style in ["apa", "chicago-author-date", "harvard-cite-them-right", "ieee", "modern-language-association"] {
++            let request = serde_json::from_value(json!({"keys":[{"key":key}],
++                "output":{"kind":"csl","style":style}})).unwrap();
++            let cited = engine.cite_keys(&request, &Cancellation::default()).unwrap();
++            let content = cited.copy_content(1).unwrap();
++            citations.push(json!({"style":style,"text":content.text,"html":content.html}));
++        }
++        samples.push(json!({"key":key,"show":shown,"citations":citations,"pandoc":cite(engine,1534,index,false)}));
++    }
++    let snapshot = engine.snapshot().unwrap();
++    json!({"searches":searches,"samples":samples,"snapshot":snapshot.fingerprints(),
++        "search_digest":Fingerprint::of_bytes(&serde_json::to_vec(&searches).unwrap())})
++}
++
++#[test]
++#[ignore = "10k fixture; stage_b.py captures the original once before optimization"]
++fn realistic_oracle() {
++    let engine = uncached(&input());
++    check_records(&engine, 10_000, 1534, false).unwrap();
++    let actual = serde_json::to_vec_pretty(&oracle(&engine)).unwrap();
++    let golden = PathBuf::from(std::env::var_os("IBIS_SPIKE_GOLDEN").unwrap());
++    if std::env::var_os("IBIS_SPIKE_CAPTURE").is_some() {
++        use std::io::Write;
++        std::fs::OpenOptions::new().write(true).create_new(true).open(golden).unwrap().write_all(&actual).unwrap();
++    } else {
++        assert_eq!(actual, std::fs::read(golden).unwrap(), "original search/show/cite/fingerprints changed");
++    }
++    let reopened = uncached(&input());
++    assert_eq!(oracle(&engine), oracle(&reopened), "close/reopen changed the result");
++}
++
++#[test]
++fn warning_lines_order_duplicates_and_hostile_bounds() {
++    let root = tempfile::tempdir().unwrap();
++    let path = root.path().join("invented.bib");
++    std::fs::write(&path, "@book{first,title={First}}\n@article{broken, title=\n@book{last,title={Last}}\n@book{dup,title={One}}\n@book{dup,title={Two}}\n").unwrap();
++    let loaded = ibis_sources::load_file(&path).unwrap();
++    assert_eq!(loaded.snapshot.objects().len(), 2);
++    assert_eq!(serde_json::to_value(&loaded.warnings).unwrap(), json!([
++        {"code":"syntax","line":2}, {"code":"duplicate-key","line":5}
++    ]));
++    assert!(loaded.snapshot.objects().iter().all(|item| item.object.id().key != "record:dup"));
++    // A tiny input describes an exponential macro expansion. The existing
++    // global byte/work/depth limits must refuse it before it materializes.
++    let mut hostile = "@string{a={xxxxxxxxxxxxxxxx}}\n".to_owned();
++    for n in 0..30 {
++        let previous = if n == 0 { "a".to_owned() } else { format!("s{}", n-1) };
++        hostile.push_str(&format!("@string{{s{n}={previous}#{previous}}}\n"));
++    }
++    hostile.push_str("@book{bounded,title=s29}\n");
++    std::fs::write(&path, hostile).unwrap();
++    let start = Instant::now();
++    let loaded = ibis_sources::load_file(&path).unwrap();
++    assert!(start.elapsed() < Duration::from_secs(2));
++    assert!(!loaded.warnings.is_empty());
++    assert!(serde_json::to_vec(&loaded.snapshot).unwrap().len() < 256 * 1024);
++}
++
++#[test]
++#[ignore = "10k fixture; deterministic source-selection ownership scenarios"]
++fn delayed_a_cannot_replace_b_or_survive_close() {
++    let session = FileCacheSession::default();
++    session.invalidate(1);
++    let first = empty().prepare_file_load(&input(), false, session.operation(1), &Cancellation::default()).unwrap();
++    session.invalidate(2);
++    let second = empty().prepare_file_load(&input(), false, session.operation(2), &Cancellation::default()).unwrap();
++    let accepted = second.engine().unwrap();
++    accepted.accept_file_load(second).unwrap();
++    let stale = first.engine().unwrap();
++    assert_eq!(stale.accept_file_load(first).unwrap_err().code, ErrorCode::Cancelled);
++    check_records(&accepted, 10_000, 1534, false).unwrap();
++    session.close();
++    assert!(empty().prepare_file_load(&input(), false, session.operation(2), &Cancellation::default()).is_err());
++    assert_eq!(oracle(&accepted), oracle(&uncached(&input())));
++}
++
++#[cfg(storage_spike_probe)]
++#[test]
++#[ignore = "probe hook cancels deterministically inside each real loading stage"]
++fn cancelled_stage_cannot_publish() {
++    for stage in ["read_copy", "parse", "normalize", "snapshot_fingerprints", "index"] {
++        let cancel = Cancellation::default();
++        let token = cancel.clone();
++        ibis_core::storage_spike_probe::hook(Some(Box::new(move |label| {
++            if label == stage { token.cancel(); }
++        })));
++        let session = FileCacheSession::default();
++        session.invalidate(1);
++        let original = empty();
++        let start = Instant::now();
++        let loaded = original.prepare_file_load(&input(), false, session.operation(1), &cancel);
++        ibis_core::storage_spike_probe::hook(None);
++        assert_eq!(loaded.err().unwrap().code, ErrorCode::Cancelled, "{stage}");
++        assert!(original.snapshot().unwrap().objects().is_empty(), "{stage} published");
++        println!("CANCEL {stage} {}ms", start.elapsed().as_millis());
++    }
++}
++
++#[test]
++#[ignore = "offline sample target: repeat the real index for ten seconds"]
++fn profile_index() {
++    let snapshot = uncached(&input()).snapshot().unwrap();
++    let start = Instant::now();
++    while start.elapsed() < Duration::from_secs(10) {
++        std::hint::black_box(ibis_core::search::SnapshotIndex::new(Arc::clone(&snapshot)));
++    }
++}
++
++#[test]
++#[ignore = "offline sample target: repeat the real file load for ten seconds"]
++fn profile_load() {
++    let start = Instant::now();
++    while start.elapsed() < Duration::from_secs(10) {
++        std::hint::black_box(uncached(&input()));
++    }
++}

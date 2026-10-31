@@ -1,0 +1,8 @@
+versions map ms 136.7 bytes 199398
+versions map ms 65.9 bytes 199398
+versions map ms 39.0 bytes 199398
+itemKey 50 serial total ms 4741 requests 200 items 10000 MB 30.8
+itemKey 50 serial again total ms 3863 requests 200 items 10000 MB 30.8
+itemKey 50, 4 workers total ms 2548 requests 200 items 10000 MB 30.8
+paged 100 serial total ms 3829 requests 100 items 10000 MB 30.8
+paged 500 serial total ms 1843 requests 20 items 10000 MB 30.8
