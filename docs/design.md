@@ -599,6 +599,9 @@ page", where the Page field lives beside the page itself.
   remain visible with the paste preview hidden. Engine losses name the reference
   and field beside the preview; an unsupported form explains the refusal there
   and blocks copying until corrected. Enter leaves that explanation visible.
+  Source-field and sentence-case warnings name the reference and appear in both
+  preview details and copy feedback. A copy carrying either warning stays open
+  with its warnings until dismissed; it never becomes a clean-copy receipt.
   Mixed narrative clusters, other locator controls, prefixes and suffixes
   remain in #24/#1315. The menu keeps the shared keyboard focus and touch
   targets.

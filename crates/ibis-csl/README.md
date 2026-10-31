@@ -16,6 +16,13 @@ guessing which capitalized words are proper nouns. Other styles retain their
 native title presentation. DOI wrappers (`doi:` and HTTP(S) DOI resolver URLs)
 are removed at the shared citable-field boundary, preserving identifier bytes.
 
+The adapter constrains APA's title splitting before native extraction and
+capitalization: periods remain data (including abbreviation stops), while
+explicit subtitle punctuation keeps its native presentation. Protected `nocase`
+spans and markup attributes never become split points. Each native call restores
+the processor's original split policy, so other styles and cached requests retain
+their own behavior.
+
 Canonical representations stay byte-identical to the processor's output.
 Validation accepts only known script-glyph presentation equivalents and
 the pinned HTML whitespace-pair conversion, with exact character and space

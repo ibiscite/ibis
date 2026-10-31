@@ -20,5 +20,8 @@
   {"type":"book","title":"علامة \u061c-12 \u200f","author":[{"family":"Direction","given":"Blake"}],"issued":{"date-parts":[[2027]]},"language":"ar"},
   {"type":"article-journal","title":"Climate Change in Japan and Germany","author":[{"family":"Okafor","given":"Ada"}],"issued":{"date-parts":[[2026]]},"container-title":"Invented Journal"},
   {"type":"article-journal","title":"Mapping rivers: a field guide","author":[{"family":"Okafor","given":"Bea"}],"issued":{"date-parts":[[2027]]},"container-title":"Invented Journal"},
-  {"type":"article-journal","title":"“Rivers” and Figure\u00a01","author":[{"family":"Okafor","given":"Cora"}],"issued":{"date-parts":[[2028]]},"container-title":"Invented Journal"}
+  {"type":"article-journal","title":"“Rivers” and Figure\u00a01","author":[{"family":"Okafor","given":"Cora"}],"issued":{"date-parts":[[2028]]},"container-title":"Invented Journal"},
+  {"type":"article-journal","title":"Comparison of x vs. y: a field guide","title-short":"Comparison of x vs","author":[{"family":"Abbreviation","given":"Ada"}],"issued":{"date-parts":[[2026]]},"container-title":"Invented Journal"},
+  {"type":"article-journal","title":"Mapping <span class=\"nocase\">A: a</span> variables","author":[{"family":"Protected","given":"Bea"}],"issued":{"date-parts":[[2027]]},"container-title":"Invented Journal"},
+  {"type":"article-journal","title":"Mapping <span style=\"font-variant: small-caps;\">rivers: a field guide</span>","author":[{"family":"Attributes","given":"Cora"}],"issued":{"date-parts":[[2028]]},"container-title":"Invented Journal"}
 ]

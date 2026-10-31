@@ -153,6 +153,16 @@ fn protect_backslashes(text: &str) -> Cow<'_, str> {
             out.extend(chars.next());
             continue;
         }
+        // An empty tilde accent is the literal symbol. Shield it before the
+        // parser makes it indistinguishable from a typography tie (`~`).
+        if c == '\\' && chars.clone().take(3).eq("~{}".chars()) {
+            out.push(ESCAPE);
+            out.push('~');
+            for _ in 0..3 {
+                chars.next();
+            }
+            continue;
+        }
         let symbol = (c == '\\')
             .then(|| {
                 [

@@ -5,6 +5,27 @@ import { backend, prepared, receipt, resetApp, result, openCitationDetails, clos
 
 afterEach(resetApp);
 
+test("source and sentence-case warnings stay visible in preview and copy feedback", async () => {
+  const warnings = [
+    "Reference 1: A source field could not be fully converted. Check the library entry.",
+    "Reference 1: APA expects sentence case for this title. Stored capitalization was preserved; check it in your document.",
+  ];
+  const calls = backend({ search: () => [result("protected2020", "Using iPhone for NASA")],
+    preview_file_citation: () => receipt("Okafor, A. (2020). Using iPhone for NASA. Invented Journal.", null, warnings),
+    copy_file_citation: (args) => { const saved = prepared(args); return { text: saved.preview.text, warnings: saved.preview.warnings }; },
+  });
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "2 warnings" }));
+  const details = await screen.findByRole("dialog", { name: "Citation warnings" });
+  for (const warning of warnings) expect(within(details).getByText(warning)).toBeTruthy();
+  fireEvent.click(within(details).getByRole("button", { name: "Close" }));
+  fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
+  const feedback = await screen.findByRole("list", { name: "Copy warnings" });
+  for (const warning of warnings) expect(within(feedback).getByText(warning)).toBeTruthy();
+  expect(calls).not.toContain("hide_picker");
+  expect(calls).not.toContain("show_copied_notice");
+});
+
 test.each(["S.12", "pages of notes"])("a form edit preserves the captured page %s as canonical text", async (value) => {
   const previews: PreviewRequest[] = [];
   const locator = { label: "page", value };

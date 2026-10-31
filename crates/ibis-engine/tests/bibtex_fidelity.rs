@@ -330,6 +330,105 @@ fn apa_capitalizes_subtitles_through_the_processor_for_every_source() {
 }
 
 #[test]
+fn apa_abbreviation_stops_preserve_variables_and_only_real_subtitles_capitalize() {
+    let formatter = Formatter::new().unwrap();
+    for (title, expected) in [
+        ("Comparison of x vs. y", "Comparison of x vs. y"),
+        ("Comparison of x e.g. y", "Comparison of x e.g. y"),
+        ("Comparison of x i.e. y", "Comparison of x i.e. y"),
+        ("Comparison by Okafor et al. y", "Comparison by Okafor et al. y"),
+        ("Comparison on p. y", "Comparison on p. y"),
+        ("Comparison with Dr. y", "Comparison with Dr. y"),
+        ("Comparison of x... y", "Comparison of x... y"),
+        (
+            "Comparison of x vs. y: a field guide",
+            "Comparison of x vs. y: A field guide",
+        ),
+        ("Mapping NASA: a field guide", "Mapping NASA: A field guide"),
+        ("Mapping rivers? a field guide", "Mapping rivers? A field guide"),
+        ("Mapping rivers! a field guide", "Mapping rivers! A field guide"),
+    ] {
+        for source in [article(&format!("title={{{title}}}")), zotero_article(title, json!({}))] {
+            apa_article(&format(&formatter, &source, "apa"), expected, expected, expected, "");
+        }
+    }
+}
+
+#[test]
+fn short_titles_and_protected_spans_cannot_reintroduce_abbreviation_boundaries() {
+    let formatter = Formatter::new().unwrap();
+    for short in ["Comparison of x vs", "Comparison of x vs."] {
+        for source in [
+            article(&format!("title={{Comparison of x vs. y}},shorttitle={{{short}}}")),
+            zotero_article("Comparison of x vs. y", json!({"shortTitle":short})),
+        ] {
+            apa_article(
+                &format(&formatter, &source, "apa"),
+                "Comparison of x vs. y",
+                "Comparison of x vs. y",
+                "Comparison of x vs. y",
+                "",
+            );
+            paste(
+                &format(&formatter, &source, "ieee"),
+                "A. Okafor, “Comparison of x vs. y,” Invented Journal, 2026.",
+                "<div class=\"csl-entry\">A. Okafor, “Comparison of x vs. y,” <i>Invented Journal</i>, 2026.</div>",
+                r"A. Okafor, \uc0\u8220{}Comparison of x vs. y,\uc0\u8221{} {\i{}Invented Journal}, 2026.",
+            );
+            apa_article(
+                &format(&formatter, &source, "apa"),
+                "Comparison of x vs. y",
+                "Comparison of x vs. y",
+                "Comparison of x vs. y",
+                "",
+            );
+        }
+    }
+    for (tex, rich, expected) in [
+        (
+            "Mapping {A: a} variables",
+            "Mapping <span class=\"nocase\">A: a</span> variables",
+            "Mapping A: a variables",
+        ),
+        (
+            "Mapping {x: y} variables",
+            "Mapping <span class=\"nocase\">x: y</span> variables",
+            "Mapping x: y variables",
+        ),
+    ] {
+        for source in [article(&format!("title={{{tex}}}")), zotero_article(rich, json!({}))] {
+            apa_article(&format(&formatter, &source, "apa"), expected, expected, expected, "");
+        }
+    }
+}
+
+#[test]
+fn empty_tilde_accents_are_literal_symbols_and_nonempty_accents_still_combine() {
+    let formatter = Formatter::new().unwrap();
+    for (title, plain, rtf) in [
+        (r"Literal \~{} symbol", "Literal ~ symbol", "Literal ~ symbol"),
+        (
+            r"Literal \textasciitilde{} symbol",
+            "Literal ~ symbol",
+            "Literal ~ symbol",
+        ),
+        (
+            r"Literal \~{n} symbol",
+            "Literal ñ symbol",
+            r"Literal \uc0\u241{} symbol",
+        ),
+    ] {
+        apa_article(
+            &format(&formatter, &article(&format!("title={{{title}}}")), "apa"),
+            plain,
+            plain,
+            rtf,
+            "",
+        );
+    }
+}
+
+#[test]
 fn exported_tex_url_escapes_remain_public_urls() {
     let formatter = Formatter::new().unwrap();
     for (tex, expected) in [
