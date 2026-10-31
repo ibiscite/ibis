@@ -1,7 +1,7 @@
 //! Which app the picker was opened from, taken before the panel shows (#1241).
 //!
-//! Only the app's ID, its process and its name for "Pasted into …" are kept,
-//! in memory. Window titles and document text are never read.
+//! Only app identity, its name for feedback and an opaque window number are
+//! kept in memory. Window titles and document text are never read.
 
 use ibis_core::destination::{AppId, System, Target};
 
@@ -11,6 +11,8 @@ pub(crate) struct Front {
     /// macOS bundle ID or Windows executable file name; `None` for an app without one.
     pub(crate) id: Option<String>,
     pub(crate) pid: i32,
+    /// Opaque macOS window number; no title or contents.
+    pub(crate) window: Option<u32>,
     /// The app's own name, as the Dock or its file description shows it.
     pub(crate) name: Option<String>,
     /// The app runs with more rights than Ibis (Windows integrity level).
@@ -22,6 +24,7 @@ pub(crate) struct Front {
 pub(crate) struct Captured {
     pub(crate) target: Target,
     pub(crate) pid: Option<i32>,
+    pub(crate) window: Option<u32>,
     pub(crate) name: Option<String>,
 }
 
@@ -37,6 +40,7 @@ impl Captured {
                 elevated: false,
             },
             pid: None,
+            window: None,
             name: None,
         }
     }
@@ -64,8 +68,34 @@ pub(crate) fn captured(system: System, front: Option<Front>, own: i32) -> Option
             elevated: front.elevated,
         },
         pid: Some(front.pid),
+        window: front.window,
         name: front.name,
     })
+}
+
+#[cfg(any(target_os = "macos", test))]
+pub(super) struct WindowMetadata {
+    pub(super) pid: i32,
+    pub(super) id: u32,
+    pub(super) layer: i32,
+}
+
+/// A single visible window is the only metadata-only proof of the target.
+/// Additional panels at any layer make keyboard ownership ambiguous.
+#[cfg(any(target_os = "macos", test))]
+pub(super) fn unambiguous_window(windows: impl IntoIterator<Item = Option<WindowMetadata>>, pid: i32) -> Option<u32> {
+    let mut found = None;
+    for window in windows {
+        let window = window?;
+        if window.pid != pid {
+            continue;
+        }
+        if found.is_some() || window.layer != 0 || window.id == 0 {
+            return None;
+        }
+        found = Some(window.id);
+    }
+    found
 }
 
 #[cfg(test)]
@@ -76,6 +106,7 @@ mod tests {
         Front {
             id: Some("org.example.Writer".into()),
             pid,
+            window: Some(100),
             name: Some("Writer".into()),
             elevated: false,
         }
@@ -128,5 +159,25 @@ mod tests {
         assert_eq!(keys, ["app", "elevated", "secure_field", "system"]);
         // The only strings kept are the app ID and the app's own name.
         assert_eq!(format!("{captured:?}").matches('"').count(), 4, "{captured:?}");
+    }
+
+    #[test]
+    fn window_metadata_refuses_dialogs_at_every_layer_missing_and_ambiguous_windows() {
+        let window = |pid, id, layer| Some(WindowMetadata { pid, id, layer });
+        assert_eq!(
+            unambiguous_window([window(42, 100, 0), window(7, 200, 0)], 42),
+            Some(100)
+        );
+        for windows in [
+            vec![],
+            vec![None],
+            vec![window(7, 100, 0)],
+            vec![window(42, 0, 0)],
+            vec![window(42, 100, 1)],
+            vec![window(42, 100, 0), window(42, 200, 0)],
+            vec![window(42, 100, 0), window(42, 200, 8)],
+        ] {
+            assert_eq!(unambiguous_window(windows, 42), None);
+        }
     }
 }

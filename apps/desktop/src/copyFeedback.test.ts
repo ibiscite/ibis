@@ -117,6 +117,9 @@ test.each(["macos", "windows", "linux"] as const)("%s receipt updates announce t
 });
 
 test.each([
+  ["unknown-app", "Copied. Automatic paste is not verified for this app"],
+  ["target-changed", "Copied. The target app or window changed"],
+  ["paste-expired", "Copied. The paste expired; paste it yourself"],
   ["secure-input", "Copied. Secure typing is on, possibly in another app. Press ⌘V to paste."],
   ["paste-unavailable", "Copied. Press ⌘V to paste."],
 ])("%s offers manual paste without claiming the target is a password field", (reason, message) => {

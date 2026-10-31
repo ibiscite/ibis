@@ -1064,6 +1064,15 @@ that owns its area in ROADMAP.md.
    delivery and receipt. Every activation goes through the same readiness
    checks before starting or joining a copy. A failed reconciliation status
    read cancels waiting Enter; a later library update never replays it.
+   Automatic paste is limited to recognised apps with a verified paste shortcut;
+   an unknown app copies with "Copied. Automatic paste is not verified for this app".
+   A format choice never grants paste safety. A changed, closed, minimised or
+   unproven target window copies with "Copied. The target app or window changed".
+   On macOS, sleep, lock and session changes expire pending delivery. Expired
+   deliveries copy with "Copied. The paste expired; paste it yourself".
+   Each refusal keeps the citation
+   on the clipboard and never retries the paste. On macOS, ambiguous visible
+   windows in the target app also copy; no window title or document text is read.
 4. Open in under 100 ms with the last snapshot; text received by Search during
    opening is kept (see **Opening** for X11 input routing). The Linux smoke
    types once as soon as the picker is mapped, without waiting for focus.

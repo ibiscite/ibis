@@ -101,7 +101,7 @@ nothing leaves the app.
 ## 0009 Insertion
 
 Every insertion ends in exactly one visible state: pasted, or copied with a
-reason. Ibis captures the target app, writes every clipboard format, restores
+reason. Ibis captures the target app and window, writes every clipboard format, restores
 focus and pastes with a layout-aware shortcut. The citation stays on the
 clipboard: restoring the previous contents could paste them into a slow app, so
 restoring and per-app rules wait until after 1.0. On macOS it refuses while
@@ -113,6 +113,11 @@ password detection. Terminals, remote desktops, VMs and lost targets are
 refused on both platforms. Pasting is on by default (maintainer,
 2026-10-25, #27); Settings › General › Pasting turns it off, saved as
 `paste: false` (absent means on), and Enter then only copies.
+
+Unrecognised apps only copy with `unknown-app` (#1520). Recognising an output
+syntax or remembering a format does not establish that an app's paste key is
+safe. This deliberately refuses unlisted remote viewers, terminals and editors
+whose shortcuts are unverified, without growing a guessed app-ID denylist.
 
 The footer names the intended action and output together, from that same
 native policy. Enter during search or preview loading waits for its current
@@ -132,6 +137,12 @@ Fresh activations share one ready-citation owner: they either start a copy
 or join its outstanding operation, renewing completion ownership without
 another clipboard write or delivery. Status-read failures end reconciliation
 and cancel queued Enter; recovery requires fresh activation (#1401 round 2).
+
+The native receipt also owns an immutable request generation (#1520 review).
+It rechecks ownership under the notice publication lock before changing text,
+showing the window or starting a timer. A refused A finishing after B cannot
+replace B's delivery message; delayed or duplicate write tokens cannot claim
+the latest receipt. Copies without native paste proofs use request ordering.
 
 When the shortcut opens the picker with short text selected in the target app,
 that text becomes the search and the paste replaces it (macOS and Windows, on
@@ -165,7 +176,7 @@ It never moves/frees the borrowed BSTR or exposes a reference; odd binary byte
 counts and malformed UTF16 refuse. The SDK-owned odd-byte fixture uses the
 same scoped module. No production allowance or native-input policy changes.
 
-For paste safety on macOS, the boundary is just `IsSecureEventInputEnabled`,
+For secure typing on macOS, the boundary is `IsSecureEventInputEnabled`,
 whose SDK result is a Boolean (`u8`). It is read on the main thread, as Carbon requires. The
 flag is system-wide and can be enabled by another app; it does not establish
 that the destination is a password field. An enabled flag copies with the
@@ -188,6 +199,31 @@ task has at most 250 ms and delivery at most 1,500 ms from the write; expired
 or cancelled queued tasks cannot post later. Cancellation and posting share
 a lock so a completed paste is never reported as merely copied.
 
+For #1520, the proof also freezes a lifecycle epoch before the clipboard write
+and a sleep-inclusive monotonic timestamp. Workspace sleep, display sleep,
+wake and session changes, and screen lock/unlock notifications retire the epoch.
+Synchronous libnotify check tokens cover lock/unlock and Core Graphics session
+changes before delayed observer callbacks. A bracketed comparison of the SDK's
+sleep-inclusive and awake-only monotonic clocks also retires the epoch when
+their offset changes; unavailable or wider-than-100 µs samples refuse. The
+1,500 ms lifetime is checked against both active and sleep-inclusive time;
+unavailable clocks and epoch exhaustion refuse. Expiry uses `paste-expired`.
+Own writes and the final checks/post share the target-state lock, with a unique
+current write token, so superseded work cannot post even with reused counters.
+
+The macOS capture includes an opaque WindowServer window number. Capture and
+final posting read only numeric PID, window number and layer metadata through
+the already-locked Core Graphics/Core Foundation bindings. More than one visible
+window in that app, an unusual window layer or unavailable metadata is ambiguous
+and only copies. A final app/window mismatch uses `target-changed`. There is no
+AX provider access, window-name lookup, screen capture, new permission or hidden
+polling. `paste/macos/safety.rs` is a scoped unsafe exception for the SDK clock
+and observer registration; each block states its ownership/threading contract.
+It uses already-locked `block2` and `objc2-core-foundation` directly, without a
+new binding package. Clock and notification logic has synthetic coverage;
+real OS notification producers and native keyboard placement still require
+qualification. Clock sampling has its stated 100 µs resolution limit.
+
 Other macOS native calls use objc2's generated AppKit and Core Graphics
 bindings. On Windows, `winsafe` supplies safe Win32 calls (the foreground
 window, its process, name and integrity level, and `SendInput`), and
@@ -206,6 +242,15 @@ worker adopts a later capture or clipboard baseline, and delivery expires
 generation, hidden picker, HWND and process after the password query and
 again after the injection lock and any key-release recovery waits. Windows
 never reads clipboard contents to prove ownership.
+
+The #1520 audit also moves Windows expiry before foreground restoration and
+refuses invalid, hidden or minimised HWNDs. A sleep-inclusive `GetTickCount64`
+age check runs before restoration and after UI Automation and injection-lock
+waits. Windows still lacks a short lock/unlock/session epoch; its targetless
+`SendInput` has an unavoidable final check-to-send gap, and HWND/PID reuse and
+focused-field changes remain qualification/follow-up limits. This change does
+not certify those cases. Linux has no automatic paste/input adapter and always
+copies with `unsupported-system`, so no pending native paste can survive there.
 
 On both systems, a notice carries a unique write token from the successful
 copy. Only a matching token can consume its one-use proof; a delayed earlier

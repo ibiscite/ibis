@@ -56,7 +56,7 @@ class Work<Args, Input = void, Output = void> {
 
 type PreviewContent = Pick<FilePreview, "text"> & Partial<Pick<FilePreview, "html" | "warnings">>;
 type DeliveryRequest = { text: string; delivery: number | null };
-type Proof = DeliveryRequest & { delivery: number; sequence: number; presentation: number; app: string };
+type Proof = DeliveryRequest & { delivery: number; sequence: number; presentation: number; app: string; window: number | null; epoch: number; written: number };
 
 export function deliveryHarness(text = "Draft: [citation].", selection: [number, number] = [7, 17]) {
   const search = new Work<SearchQuery, SearchReply, SearchReply>();
@@ -69,6 +69,8 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
     app: "Example Writer", text, selection,
     pastes: [] as { app: string; text: string; start: number; end: number; delivery: number }[],
   };
+  const target = { window: 100 as number | null, verified: true, available: true };
+  const lifecycle = { epoch: 1, elapsed: 0 };
   // Detached to keep this second window out of the picker's DOM and focus scope.
   const receiptRoot = globalThis.document.createElement("div");
   const showReceipt = renderNotice(receiptRoot, "macos");
@@ -78,12 +80,16 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
   let proof: Proof | null = null;
   let latestPreview = 0;
   let activeTicket: string | null = null;
+  let latestNotice = 0;
 
   const deliver = ({ text, delivery }: DeliveryRequest): Delivered => {
     // Identity precedes consumption: a stale worker must leave a newer proof.
     const owned = proof?.delivery === delivery && proof?.text === text ? proof : null;
     if (!owned) return { outcome: "copied", reason: null };
     proof = null;
+    if (!target.verified) return { outcome: "copied", reason: "unknown-app" };
+    if (owned.epoch !== lifecycle.epoch || lifecycle.elapsed - owned.written >= 1500) return { outcome: "copied", reason: "paste-expired" };
+    if (!target.available || owned.window === null || owned.window !== target.window) return { outcome: "copied", reason: "target-changed" };
     if (visible || owned.presentation !== presentation || clipboard.owner !== "ibis"
       || owned.sequence !== clipboard.sequence || owned.app !== document.app) return { outcome: "copied", reason: null };
     const [start, end] = document.selection;
@@ -111,23 +117,24 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
         if (args.ticket !== activeTicket) throw { code: "snapshot_changed" };
         Object.assign(clipboard, { text: preview.text, html: preview.html, owner: "ibis", sequence: clipboard.sequence + 1 });
         const token = ++nextDelivery;
-        proof = { presentation, app: document.app, text: preview.text, delivery: token, sequence: clipboard.sequence };
+        proof = { presentation, app: document.app, text: preview.text, delivery: token, sequence: clipboard.sequence, window: target.window, epoch: lifecycle.epoch, written: lifecycle.elapsed };
         return { text: clipboard.text, warnings: preview.warnings, delivery: token };
       });
     },
     hide_picker: async () => { visible = false; await emit("picker:hidden"); return null; },
     show_copied_notice: (args) => {
       const request = args as unknown as DeliveryRequest;
+      const noticeOwner = ++latestNotice;
       return delivery.enqueue(request, () => deliver(request))
         .then((delivered) => notice.enqueue({ text: request.text, delivered }, () => {
-          showReceipt({ text: request.text, delivered });
+          if (noticeOwner === latestNotice) showReceipt({ text: request.text, delivered });
           return delivered;
         }));
     },
   });
 
   return {
-    search, preview, copy, delivery, notice, calls, clipboard, document, receipt: receiptRoot,
+    search, preview, copy, delivery, notice, calls, clipboard, document, target, lifecycle, receipt: receiptRoot,
     get visible() { return visible; },
     async reopen() {
       presentation += 1;

@@ -14,16 +14,28 @@ use super::capture::Front;
 use super::{CopyProof, DeliveryRequest, Desk, PendingPost, PostDesk, PostRequest, PostResult, checked_post};
 
 #[allow(unsafe_code)]
+mod safety;
+#[allow(unsafe_code)]
 mod secure_input;
+
+pub(super) fn stamp() -> super::SafetyStamp {
+    safety::stamp()
+}
 
 const ASK_LIMIT: Duration = Duration::from_millis(250);
 
-/// The app in front, by bundle ID, process and name; never its windows.
+/// The app in front and an unambiguous opaque window identity.
 pub(super) fn frontmost() -> Option<Front> {
+    safety::install();
     let app = NSWorkspace::sharedWorkspace().frontmostApplication()?;
+    let window = safety::window(app.processIdentifier());
+    if !app.isActive() || app.isTerminated() {
+        return None;
+    }
     Some(Front {
         id: app.bundleIdentifier().map(|id| id.to_string()),
         pid: app.processIdentifier(),
+        window,
         name: app.localizedName().map(|name| name.to_string()),
         elevated: false,
     })
@@ -100,14 +112,16 @@ impl Desk for Mac {
                 CGEvent::set_flags(Some(event), CGEventFlags::MaskCommand);
             }
             queued.run(|| {
-                checked_post(
-                    &Ready {
-                        app: &app,
-                        down: &down,
-                        up: &up,
-                    },
-                    &request,
-                )
+                app.state::<super::LastTarget>().post_if_current(&request, || {
+                    checked_post(
+                        &Ready {
+                            app: &app,
+                            down: &down,
+                            up: &up,
+                        },
+                        &request,
+                    )
+                })
             })
         })
         .unwrap_or_else(|| pending.cancel())
@@ -130,12 +144,15 @@ impl PostDesk for Ready<'_> {
         Instant::now()
     }
 
-    fn current(&self, presentation: u64) -> bool {
-        self.app.state::<super::LastTarget>().current(presentation)
-            && self
-                .app
-                .get_webview_window("main")
-                .is_some_and(|window| window.is_visible().ok() == Some(false))
+    fn stamp(&self) -> super::SafetyStamp {
+        super::SafetyStamp::now()
+    }
+
+    fn current(&self, _presentation: u64) -> bool {
+        // The caller holds LastTarget's ownership lock through checked_post.
+        self.app
+            .get_webview_window("main")
+            .is_some_and(|window| window.is_visible().ok() == Some(false))
     }
 
     fn frontmost(&self) -> Option<Front> {

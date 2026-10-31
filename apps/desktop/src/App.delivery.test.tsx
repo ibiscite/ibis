@@ -51,6 +51,28 @@ function expectReceipt(harness: Harness, title: string, text: string) {
   expect(receipt.querySelector("code")?.textContent).toBe(text);
 }
 
+test.each([
+  ["unknown app", (h: Harness) => { h.target.verified = false; }, "Copied. Automatic paste is not verified for this app"],
+  ["sleep and wake", (h: Harness) => { h.lifecycle.epoch += 2; }, "Copied. The paste expired; paste it yourself"],
+  ["lock and unlock", (h: Harness) => { h.lifecycle.epoch += 2; }, "Copied. The paste expired; paste it yourself"],
+  ["long delay", (h: Harness) => { h.lifecycle.elapsed += 1500; }, "Copied. The paste expired; paste it yourself"],
+  ["another window", (h: Harness) => { h.target.window = 200; }, "Copied. The target app or window changed"],
+  ["closed window", (h: Harness) => { h.target.window = null; }, "Copied. The target app or window changed"],
+  ["minimised window", (h: Harness) => { h.target.available = false; }, "Copied. The target app or window changed"],
+  ["quit app", (h: Harness) => { h.target.available = false; }, "Copied. The target app or window changed"],
+] as const)("%s refuses pending delivery, keeps the copied citation and shows its exact reason", async (_scenario, change, message) => {
+  const harness = await open();
+  await choose(harness, "first");
+  await enter();
+  await finishCopy(harness);
+  change(harness);
+  await finishDelivery(harness);
+  expect(harness.clipboard.text).toBe("[@a]");
+  expect(harness.document.text).toBe("Draft: [citation].");
+  expect(harness.document.pastes).toEqual([]);
+  expectReceipt(harness, message, "[@a]");
+});
+
 test("Enter waits for a preview, then copies and replaces the document selection exactly once", async () => {
   const harness = await open();
   await type("first");
@@ -207,13 +229,33 @@ test.each(["different text", "identical text"])("an old notice cannot steal a ne
   await act(async () => { harness.notice.pending[0]!.complete(); });
   expect(harness.document.text).toBe("Draft: [citation].");
   expect(harness.document.pastes).toEqual([]);
-  expectReceipt(harness, "Copied. Press ⌘V to paste", "[@a]");
+  expect(harness.receipt.textContent).toBe("");
   await finishDelivery(harness);
   expect(harness.document.text).toBe(`Draft: ${text}.`);
   expect(harness.document.pastes.map(({ delivery }) => delivery)).toEqual([2]);
   expectReceipt(harness, "Pasted into Example Writer", text);
   expect(harness.copy.calls).toHaveLength(2);
   expect(harness.delivery.calls).toHaveLength(2);
+});
+
+test.each(["[@b]", "[@a]"])("a refused A finishing after B's receipt cannot replace B's delivery message (%s)", async (text) => {
+  const harness = await open();
+  await choose(harness, "first");
+  await enter();
+  await finishCopy(harness);
+  const a = harness.delivery.pending[0]!;
+  await act(async () => { await harness.reopen(); });
+  await choose(harness, "second", second, text);
+  await enter();
+  await finishCopy(harness);
+  await act(async () => { harness.delivery.pending[1]!.complete(); });
+  await act(async () => { harness.notice.pending[0]!.complete(); });
+  expectReceipt(harness, "Pasted into Example Writer", text);
+  await act(async () => { a.complete(); });
+  await act(async () => { harness.notice.pending[0]!.complete(); });
+  expectReceipt(harness, "Pasted into Example Writer", text);
+  expect(harness.clipboard.text).toBe(text);
+  expect(harness.document.pastes.map(({ delivery }) => delivery)).toEqual([2]);
 });
 
 test.each(["different text", "identical text"])("another clipboard owner's write prevents a paste (%s)", async (variant) => {
