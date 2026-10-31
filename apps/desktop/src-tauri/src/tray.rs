@@ -270,7 +270,7 @@ mod tests {
         };
         assert_eq!(
             library_line(&kept),
-            "refs.bib: 12 references, not updated: the library file is unavailable"
+            "refs.bib: 12 references, not updated: the library file is unavailable; download any onlin…"
         );
         let long = "x".repeat(200);
         let line = library_line(&status(Some("refs.bib"), 0, Some(&long)));

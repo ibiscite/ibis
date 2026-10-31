@@ -1,5 +1,5 @@
-//! When the open Zotero library is checked for changes, and when a Zotero
-//! choice that failed is tried again.
+//! Picker-open checks for Zotero and files whose notifications are unavailable,
+//! and recovery of a Zotero choice that failed.
 
 use std::sync::Mutex;
 use std::sync::atomic::Ordering;
@@ -21,10 +21,24 @@ pub(super) fn zotero_choice(library: &Library) -> Option<ZoteroLibraries> {
         })
 }
 
-/// Start checking the open Zotero library for changes without showing it:
+/// Start checking the open library for changes without showing it:
 /// the picker keeps its state until Zotero has changed or cannot be reached.
 /// The check is numbered like any request, so a newer choice discards it.
 pub(super) fn begin_check(library: &Mutex<Library>, requests: &LoadRequests) -> Option<(u64, Source)> {
+    begin_check_with(library, requests, |file| {
+        file.engine.libraries().is_ok_and(|info| {
+            info.libraries
+                .iter()
+                .any(|info| info.watch_warning.is_some() || info.refresh_error.is_some())
+        })
+    })
+}
+
+fn begin_check_with(
+    library: &Mutex<Library>,
+    requests: &LoadRequests,
+    file_needs_check: impl FnOnce(&super::engine_file::FileLibrary) -> bool,
+) -> Option<(u64, Source)> {
     let mut library = library.lock().ok()?;
     let source = library.source.clone()?;
     // An installed library has no separate request; a different request is a
@@ -33,10 +47,15 @@ pub(super) fn begin_check(library: &Mutex<Library>, requests: &LoadRequests) -> 
     if library.opening || library.checking || other_request {
         return None;
     }
-    let Source::Zotero(_) = source else {
+    let eligible = matches!(source, Source::Zotero(_))
+        || matches!(source, Source::File(_)) && library.file.as_ref().is_some_and(|file| file_needs_check(file));
+    if !eligible {
         return None;
-    };
+    }
     let request = requests.0.fetch_add(1, Ordering::SeqCst) + 1;
+    if matches!(source, Source::File(_)) {
+        requests.2.invalidate(request);
+    }
     library.checking = true;
     Some((request, source))
 }
@@ -102,6 +121,73 @@ mod tests {
     use crate::library::status::{LibraryState, status};
 
     #[test]
+    fn eventless_files_revalidate_once_on_each_picker_open_and_keep_newer_choices() {
+        let source = Source::File(PathBuf::from("synthetic-network.bib"));
+        let library = Mutex::new(candidate(source.clone(), "@misc{before}"));
+        let requests = LoadRequests::default();
+        // The fake mount delivers no events. Only showing the picker asks again.
+        for _ in 0..2 {
+            let (request, checked) = begin_check_with(&library, &requests, |_| true)
+                .unwrap_or_else(|| panic!("manual-refresh source must be checked on open"));
+            assert_eq!(checked, source);
+            assert!(begin_check_with(&library, &requests, |_| true).is_none());
+            let loaded = candidate(source.clone(), "@misc{after,title={New references}}");
+            let visible = install_loaded(&library, &requests, request, Ok(Loaded::New(Box::new(loaded))))
+                .unwrap_or_else(|| panic!("current open"));
+            assert_eq!(visible.references, 1);
+            assert!(visible.error.is_none());
+            assert!(!library.lock().unwrap_or_else(|e| panic!("{e}")).checking);
+            assert_eq!(
+                requests.0.load(Ordering::SeqCst),
+                request,
+                "closing starts no poll or retry"
+            );
+        }
+        let (old, _) = begin_check_with(&library, &requests, |_| true).unwrap_or_else(|| panic!("open"));
+        let newer = Source::File(PathBuf::from("synthetic-local.bib"));
+        let (request, _, _) = begin_open(&library, &requests, newer.clone()).unwrap_or_else(|| panic!("newer choice"));
+        assert!(install_loaded(&library, &requests, old, Err(SourceError::Unavailable.into())).is_none());
+        let visible = install_loaded(
+            &library,
+            &requests,
+            request,
+            Ok(Loaded::New(Box::new(candidate(newer, "@misc{local}")))),
+        )
+        .unwrap_or_else(|| panic!("newer choice completes"));
+        assert_eq!(visible.name.as_deref(), Some("synthetic-local.bib"));
+        assert!(visible.error.is_none());
+    }
+
+    #[test]
+    fn picker_open_file_checks_reserve_the_cache_operation_and_parse_current_bytes()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let directory = tempfile::tempdir()?;
+        let path = directory.path().join("synthetic.bib");
+        std::fs::write(&path, "@misc{before}")?;
+        let source = Source::File(path.clone());
+        let library = Mutex::new(crate::library::load::load_library(path.clone(), false).map_err(|e| e.to_string())?);
+        let requests = LoadRequests::default();
+        std::fs::write(&path, "@misc{before}\n@misc{fresh,title={Fresh reference}}")?;
+        let (request, checked) = begin_check_with(&library, &requests, |_| true).ok_or("picker-open check")?;
+        let file = library.lock().map_err(|_| "library")?.file.clone();
+        let loaded = crate::library::load::load_source_cached(
+            checked,
+            false,
+            file,
+            &ibis_engine::Cancellation::default(),
+            requests.2.operation(request),
+            || false,
+        )
+        .map_err(|e| e.to_string())?;
+        let visible = install_loaded(&library, &requests, request, Ok(loaded)).ok_or("current result")?;
+        assert_eq!(visible.references, 2);
+        assert!(visible.error.is_none());
+        assert!(visible.checked_at.is_some());
+        assert_eq!(library.lock().map_err(|_| "library")?.source, Some(source));
+        Ok(())
+    }
+
+    #[test]
     fn going_back_to_zotero_after_a_failed_file_keeps_the_groups_that_were_on() {
         let groups = ZoteroLibraries::new(vec![ZoteroLibrary::User, ZoteroLibrary::Group(42)])
             .unwrap_or_else(|| panic!("a valid choice"));
@@ -148,7 +234,9 @@ mod tests {
             .unwrap_or_else(|| panic!("the choice is current"));
         assert_eq!(
             failed.error.as_deref(),
-            Some("the library file is unavailable; keeping the last loaded references")
+            Some(
+                "the library file is unavailable; download any online-only file to this computer first; keeping the last loaded references"
+            )
         );
 
         let file = Mutex::new(candidate(PathBuf::from("synthetic.bib"), ""));

@@ -362,7 +362,11 @@ impl Shared {
         let previous = slot.loaded.library.clone();
         match candidate {
             Err(failure) => {
-                let _ = self.failed(&previous, source_error(failure).code);
+                if failure == SourceError::WatchUnavailable {
+                    let _ = self.file_watch_unavailable(&previous);
+                } else {
+                    let _ = self.failed(&previous, source_error(failure).code);
+                }
                 None
             }
             Ok(mut loaded) => {
@@ -389,12 +393,63 @@ impl Shared {
             }
         }
     }
+
+    fn file_watch_unavailable(&self, library: &LibraryId) -> Result<(), EngineError> {
+        let _publication = self.publication.lock().map_err(|_| error(ErrorCode::Internal))?;
+        let old = self.state_view()?;
+        let mut libraries = old.libraries.clone();
+        let info = libraries.get_mut(library).ok_or_else(|| error(ErrorCode::NotFound))?;
+        info.watch_warning = Some(WatchWarning::LiveRefreshOff);
+        // No source observation completed: observers must not advance their
+        // successful-check time just because watch health changed.
+        info.refresh_error = Some(ErrorCode::SourceUnavailable);
+        *self.state.write().map_err(|_| error(ErrorCode::Internal))? = Arc::new(State {
+            readiness: old.readiness.clone(),
+            index: old.index.clone(),
+            libraries,
+        });
+        self.notify()
+    }
 }
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
+    #[test]
+    fn lost_registration_warns_until_a_new_watch_succeeds() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("synthetic.bib");
+        std::fs::write(&path, "@misc{kept}").unwrap();
+        let engine = Engine::new().unwrap().without_file_watches();
+        engine.open_file(&path, &Cancellation::default()).unwrap();
+        let (id, generation) = {
+            let registry = engine.shared.sources.lock().unwrap();
+            let (id, slot) = registry.slots.iter().next().unwrap();
+            (*id, slot.generation)
+        };
+        engine
+            .shared
+            .file_changed(id, generation, Err(SourceError::WatchUnavailable));
+        let info = engine.libraries().unwrap();
+        assert_eq!(info.libraries[0].objects, 1);
+        assert_eq!(info.libraries[0].watch_warning, Some(WatchWarning::LiveRefreshOff));
+        assert_eq!(info.libraries[0].refresh_error, Some(ErrorCode::SourceUnavailable));
+        // A delayed success belonging to an older registration cannot clear it.
+        engine.shared.file_changed(
+            id,
+            generation.wrapping_sub(1),
+            Ok(ibis_sources::load_file(&path).unwrap()),
+        );
+        assert_eq!(
+            engine.libraries().unwrap().libraries[0].watch_warning,
+            Some(WatchWarning::LiveRefreshOff)
+        );
+        engine
+            .shared
+            .file_changed(id, generation, Ok(ibis_sources::load_file(&path).unwrap()));
+        assert_eq!(engine.libraries().unwrap().libraries[0].watch_warning, None);
+    }
     #[test]
     fn readable_file_still_returns_results_when_watch_creation_fails() {
         let dir = tempfile::tempdir().unwrap();

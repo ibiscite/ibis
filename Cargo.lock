@@ -2111,6 +2111,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.21",
  "unicode-normalization",
+ "winsafe",
 ]
 
 [[package]]

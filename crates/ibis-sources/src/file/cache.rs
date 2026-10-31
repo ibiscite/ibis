@@ -7,8 +7,20 @@ impl SourceSnapshot {
     pub fn source_path(&self) -> &Path {
         &self.source
     }
+    /// Resolve identity without opening a known placeholder. Its saved spelling
+    /// may reopen cached search results, but only `read` can supply fresh bytes.
+    pub fn resolve_path(path: &Path) -> Result<PathBuf, SourceError> {
+        let path = path.to_path_buf();
+        io::bounded(move || {
+            if io::path_needs_download(&path)? {
+                std::path::absolute(path).map_err(|_| SourceError::Unavailable)
+            } else {
+                canonical_path_sync(&path).map_err(|_| SourceError::Unavailable)
+            }
+        })
+    }
     pub fn read(path: &Path) -> Result<Self, SourceError> {
-        let source = canonical_path(path).map_err(|_| SourceError::Unavailable)?;
+        let source = Self::resolve_path(path)?;
         let text = read_library_file(&source)?;
         if canonical_path(path).ok().as_ref() != Some(&source) {
             return Err(SourceError::Changing);
