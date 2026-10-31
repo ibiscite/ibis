@@ -63,6 +63,7 @@ export function testProvider(state: typeof testStates[number]): { api: PickerApi
       reloadLibrary: async () => undefined,
       hidePicker: async () => true,
       pickerVisible: async () => true,
+      pickerPresentation: async () => 0,
       setPinned: async () => undefined,
       loginItem: async () => ({ name: "Ibis", enabled: false, problem: null }),
       setLoginItem: async (enabled) => ({ name: "Ibis", enabled, problem: null }),

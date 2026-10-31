@@ -335,6 +335,15 @@ The webview's library-age timer exists only while the picker is shown. These
 changes remove periodic hidden wakeups; capped unavailable-file retries and
 the updater's six-hour check are unchanged.
 
+A reloaded picker's presentation starts unknown. Enter waits for a native
+identity before starting a copy; initialization failures get one recovery read
+per explicit action, with no timer, and hide/reopen retires old reads. Escape
+can pass an unknown identity: native command entry snapshots the current owner
+before dispatch, so a subsequent reopen still rejects that delayed hide.
+Windows show requests from workers dispatch preparation, appearance refresh
+and presentation together to the main thread. No worker may hold the appearance
+cache while synchronously asking that thread for an HWND (2026-10-31, #1558).
+
 Other macOS native calls use objc2's generated AppKit and Core Graphics
 bindings. On Windows, `winsafe` supplies safe Win32 calls (the foreground
 window, its process, name and integrity level, and `SendInput`), and

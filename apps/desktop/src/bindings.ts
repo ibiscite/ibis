@@ -83,7 +83,7 @@ export const commands = {
 	/**  Start Ibis when the person logs in, or stop doing so. */
 	setLoginItem: (enabled: boolean) => __TAURI_INVOKE<LoginItem>("set_login_item", { enabled }),
 	/**  Hide only the originating presentation; a delayed request cannot dismiss a reopen. */
-	hidePicker: (presentation: number) => __TAURI_INVOKE<boolean>("hide_picker", { presentation }),
+	hidePicker: (presentation: number | null) => __TAURI_INVOKE<boolean>("hide_picker", { presentation }),
 	/**  Read the native presentation after subscribing, including on webview reload. */
 	pickerPresentation: () => __TAURI_INVOKE<number>("picker_presentation"),
 	/**

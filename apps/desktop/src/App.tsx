@@ -52,8 +52,8 @@ const noSelection = new Map<string, CitationReference>();
 // Formatted citations are offered only when the provider can supply them.
 export type PickerApi = Pick<typeof nativeApi,
   "chooseLibrary" | "useZotero" | "libraryStatus" | "reloadLibrary" | "previewFileCitation" | "copyFileCitation" | "copyFormat" | "pickerPreferences" | "setPickerPreferences" |
-  "hidePicker" | "pickerVisible" | "setPinned" | "onLibraryChanged" | "onPickerShown" | "onPickerHidden" | "quit" | "search" | "shortcutStatus"> &
-  Partial<Pick<typeof nativeApi, "pickerPresentation" | "useSampleLibrary" | "useZoteroLibraries" | "zoteroGroups" | "pickerDestination" | "rememberAppOutput" | "forgetAppOutputs" | "onWindowSizeSaved" | "readWindowPositionUndo" | "undoWindowPosition" | "dismissWindowPositionUndo" | "onWindowReset" | "findSources" | "openFoundLibrary" | "rowContext" | "showCopiedNotice" | "loginItem" | "setLoginItem" | "onUpdateProgress" | "updateChecks" | "setUpdateChecks" | "onUpdateChecks" | "updateAvailable" | "onUpdateAvailable" | "updatePickerActivity" | "checkForUpdates" | "onShortcutStatus" | "openSettings" | "onPreferencesChanged">>;
+  "hidePicker" | "pickerPresentation" | "pickerVisible" | "setPinned" | "onLibraryChanged" | "onPickerShown" | "onPickerHidden" | "quit" | "search" | "shortcutStatus"> &
+  Partial<Pick<typeof nativeApi, "useSampleLibrary" | "useZoteroLibraries" | "zoteroGroups" | "pickerDestination" | "rememberAppOutput" | "forgetAppOutputs" | "onWindowSizeSaved" | "readWindowPositionUndo" | "undoWindowPosition" | "dismissWindowPositionUndo" | "onWindowReset" | "findSources" | "openFoundLibrary" | "rowContext" | "showCopiedNotice" | "loginItem" | "setLoginItem" | "onUpdateProgress" | "updateChecks" | "setUpdateChecks" | "onUpdateChecks" | "updateAvailable" | "onUpdateAvailable" | "updatePickerActivity" | "checkForUpdates" | "onShortcutStatus" | "openSettings" | "onPreferencesChanged">>;
 
 export type PickerPreview = { query?: string; copied?: Copied };
 
@@ -170,7 +170,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   // The controller receives readiness from the existing search/preview I/O
   // adapters. Session and interaction tickets reject an obsolete render.
   useLayoutEffect(() => {
-    session.connect({ copyFileCitation, hidePicker, showCopiedNotice, output: destination.copyToken,
+    session.connect({ copyFileCitation, hidePicker, pickerPresentation: api.pickerPresentation, showCopiedNotice, output: destination.copyToken,
       pinned: () => currentPin.current, consume: destination.consumeOnce, refresh: refreshSnapshot,
       askFormat: () => formatButtonRef.current?.click(), reportHide: (failed) => report("hide", failed) });
     send({ type: "view", session: state.session, interaction: state.interaction,
@@ -198,8 +198,8 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
     report("status");
   };
   const hide = () => {
-    send({ type: "hiding" });
     const presentation = session.getSnapshot().presentation;
+    send({ type: "hiding" });
     void perform("hide", () => hidePicker(presentation));
   };
   const chooseFormat = (choice: Choice) => {
@@ -289,11 +289,11 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
     }).catch(() => subscriptionFailure("pickerEvents"));
     void Promise.all([unlistenHidden, unlisten]).then(async () => {
       if (!mounted) return;
+      send({ type: "initialize" });
       const events = visibilityEvents;
-      const [visible, presentation] = await Promise.all([pickerVisible(), api.pickerPresentation?.()]);
+      const visible = await pickerVisible();
       // A newer event wins over this read; failed reads leave the flag alone.
       if (!mounted || events !== visibilityEvents) return;
-      if (presentation !== undefined) send({ type: "presentation", presentation });
       if (visible) delete document.documentElement.dataset.pickerHidden;
       else document.documentElement.dataset.pickerHidden = "";
     }).catch(() => undefined);

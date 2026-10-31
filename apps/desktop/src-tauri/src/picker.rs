@@ -159,8 +159,24 @@ pub(crate) fn show_picker(app: &AppHandle) {
             |show| report(app.run_on_main_thread(show), NativeIssue::Show),
         );
     }
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    #[cfg(target_os = "windows")]
+    {
+        let handle = app.clone();
+        show_windows_picker_with(
+            move || show_picker_on_thread(&handle, owner),
+            |show| report(app.run_on_main_thread(show), NativeIssue::Show),
+        );
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
     show_picker_on_thread(app, owner);
+}
+
+#[cfg(any(target_os = "windows", test))]
+fn show_windows_picker_with<A: FnOnce()>(action: A, dispatch: impl FnOnce(A)) {
+    // A worker must not acquire the appearance cache before synchronously
+    // requesting an HWND from a main thread that can be waiting on that cache.
+    // Keep frame preparation, appearance refresh and show in one native task.
+    dispatch(action);
 }
 
 #[cfg(any(target_os = "macos", target_os = "linux", test))]
@@ -430,7 +446,10 @@ pub(crate) fn picker_presentation(visits: State<'_, PickerGeneration>) -> u64 {
 /// Hide only the originating presentation; a delayed request cannot dismiss a reopen.
 #[tauri::command]
 #[specta::specta]
-pub(crate) async fn hide_picker(app: AppHandle, presentation: u64) -> Result<bool, &'static str> {
+pub(crate) async fn hide_picker(app: AppHandle, presentation: Option<u64>) -> Result<bool, &'static str> {
+    // An uninitialized webview can still dismiss. Freeze its native owner at
+    // command entry, before dispatch: this is never an unqualified queued hide.
+    let presentation = app.state::<PickerGeneration>().originating(presentation);
     let (send, mut receive) = tauri::async_runtime::channel(1);
     let handle = app.clone();
     app.run_on_main_thread(move || {
@@ -539,6 +558,10 @@ pub(crate) fn hides_on_blur(release_build: bool, chooser_open: bool, pinned: boo
 pub(crate) struct PickerGeneration(AtomicU64);
 
 impl PickerGeneration {
+    fn originating(&self, presentation: Option<u64>) -> u64 {
+        presentation.unwrap_or_else(|| self.current())
+    }
+
     pub(crate) fn current(&self) -> u64 {
         self.0.load(Ordering::SeqCst)
     }
@@ -656,6 +679,102 @@ fn finish_blur(app: &AppHandle, blur: u64, generation: u64) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn picker_unknown_hide_snapshots_its_native_owner_before_dispatch_and_cannot_dismiss_a_reopen() {
+        use std::cell::Cell;
+        let visits = PickerGeneration(AtomicU64::new(41));
+        let visible = Cell::new(true);
+        let unknown = visits.originating(None);
+        assert_eq!(unknown, 41);
+        assert!(dismiss_presented_with(&visits, unknown, || visible.set(false)));
+        assert!(!visible.get(), "Escape works before webview initialization");
+
+        let b = visits.advance();
+        visible.set(true);
+        let delayed = visits.originating(None);
+        assert_eq!(delayed, b);
+        let c = visits.advance();
+        assert!(!dismiss_presented_with(&visits, delayed, || visible.set(false)));
+        assert!(
+            visible.get(),
+            "B's unknown hide cannot dismiss C after native dispatch is delayed"
+        );
+        assert_eq!(visits.current(), c);
+        assert_eq!(
+            visits.originating(Some(41)),
+            41,
+            "known hides keep their original owner"
+        );
+        assert!(!dismiss_presented_with(&visits, 41, || visible.set(false)));
+        assert!(dismiss_presented_with(&visits, visits.originating(None), || visible.set(false)));
+        assert!(!visible.get());
+    }
+
+    #[test]
+    fn picker_windows_refused_show_dispatch_never_touches_the_cache_or_presents_late() {
+        use std::cell::Cell;
+        let refreshed = Cell::new(false);
+        let visible = Cell::new(false);
+        show_windows_picker_with(
+            || {
+                refreshed.set(true);
+                visible.set(true);
+            },
+            drop, // a failed native dispatch drops its task
+        );
+        assert!(!refreshed.get());
+        assert!(!visible.get());
+        show_windows_picker_with(
+            || {
+                refreshed.set(true);
+                visible.set(true);
+            },
+            |show| show(),
+        );
+        assert!(refreshed.get());
+        assert!(visible.get(), "a later successful show remains usable");
+    }
+
+    #[test]
+    fn picker_windows_worker_show_cannot_lock_out_an_earlier_main_thread_appearance_refresh() {
+        use std::cell::{Cell, RefCell};
+        let cache = Mutex::new(());
+        let on_main = Cell::new(false);
+        let stalled = Cell::new(false);
+        let visible = Cell::new(false);
+        let pending = RefCell::new(Vec::new());
+        let queued_refresh = || {
+            // A real main-thread refresh would block on this cache while a
+            // worker holding it synchronously waits for the HWND response.
+            // Detect the cycle without letting the regression hang the suite.
+            if cache.try_lock().is_err() {
+                stalled.set(true);
+            }
+        };
+        show_windows_picker_with(
+            || {
+                let _cache = cache.try_lock().unwrap_or_else(|e| panic!("{e}"));
+                if !on_main.get() {
+                    queued_refresh();
+                }
+                if !stalled.get() {
+                    visible.set(true);
+                }
+            },
+            |show| pending.borrow_mut().push(show),
+        );
+        on_main.set(true);
+        queued_refresh();
+        for show in pending.into_inner() {
+            show();
+        }
+        assert!(
+            !stalled.get(),
+            "appearance refresh and synchronous HWND lookup must make progress"
+        );
+        assert!(visible.get(), "the picker opens after its appearance has refreshed");
+    }
 
     #[test]
     fn ipc_hide_retires_only_its_presentation_including_failed_io_and_reopen() {

@@ -8,7 +8,7 @@ const a: CitationReference = { ...testStates[1]!.results[0]!, locator: { label: 
 const b = testStates[1]!.results[1]!;
 const prepared = { text: "canonical engine text", html: "", markup: ["canonical engine text"], warnings: [], fileTicket: "ticket-b", fileHash: "hash-b" };
 function scenario() {
-  let state = initialSession();
+  let state = { ...initialSession(), presentation: 0 as number | null };
   let effects: ReturnType<typeof reduceSession>[1] = [];
   const send = (event: SessionEvent) => { [state, effects] = reduceSession(state, event); return effects; };
   const view = (change: Partial<SessionView> = {}): SessionEvent => ({ type: "view", session: state.session, interaction: state.interaction,

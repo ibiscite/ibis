@@ -21,7 +21,8 @@ type Flight = { id: number; session: number; presentation: number; choice: strin
   owner: { context: number; session: number; visibility: number; output: OutputToken } };
 export type SessionState = {
   query: string; interpretLocators: boolean; active: number; selected: Map<string, CitationReference>; selectionChanged: boolean;
-  session: number; presentation: number; visibility: number; interaction: number; context: number; viewInteraction: number; view: SessionView | null;
+  session: number; presentation: number | null; visibility: number; interaction: number; context: number; viewInteraction: number; view: SessionView | null;
+  presentationSubscribed: boolean; readingPresentation: boolean; retryPresentation: boolean;
   hiddenAt: number | null; escapedQuery: { text: string; interpretLocators: boolean } | null; restored: number; permissionDetour: boolean;
   pendingCopy: Pending | null; flights: Flight[]; activeCopy: number | null; nextCopy: number; lastSuccessfulCopy: number;
   copied: Copied | null; copyError: string | null; lastOutcome: string | null;
@@ -39,7 +40,8 @@ export type SessionEvent =
   | { type: "question"; format?: Choice | null; output?: OutputToken; answer: "open" | "answered" | "cancel" }
   | { type: "hidden"; now: number }
   | { type: "shown"; now: number; presentation: number }
-  | { type: "presentation"; presentation: number }
+  | { type: "initialize" }
+  | { type: "presentation"; visibility: number; presentation: number | null }
   | { type: "hiding" }
   | (Completion & { type: "copied"; outcome: Copied; output: OutputToken; pinned: boolean })
   | (Completion & { type: "copy-failed"; output: OutputToken; message: string; stale: boolean })
@@ -51,11 +53,13 @@ export type SessionEffect =
   | (Completion & { type: "notice"; outcome: Copied })
   | { type: "hide-status"; failed: boolean }
   | { type: "consume"; output: OutputToken }
+  | { type: "read-presentation"; visibility: number }
   | { type: "refresh" | "ask-format" };
 
 export function initialSession(query = "", copied: Copied | null = null): SessionState {
   return { query, interpretLocators: true, active: 0, selected: new Map(), selectionChanged: false,
-    session: 0, presentation: 0, visibility: 0, interaction: 0, context: 0, viewInteraction: -1, view: null,
+    session: 0, presentation: null, visibility: 0, interaction: 0, context: 0, viewInteraction: -1, view: null,
+    presentationSubscribed: false, readingPresentation: false, retryPresentation: false,
     hiddenAt: null, escapedQuery: null, restored: 0, permissionDetour: false,
     pendingCopy: null, flights: [], activeCopy: null, nextCopy: 0, lastSuccessfulCopy: 0, copied, copyError: null, lastOutcome: null };
 }
@@ -66,11 +70,21 @@ const ownsCompletion = (s: SessionState, f: Flight, output: OutputToken) => owns
 const changed = (s: SessionState, change: Partial<SessionState>): SessionState => ({ ...s, ...change, pendingCopy: null, interaction: s.interaction + 1, context: s.context + 1 });
 const finish = (s: SessionState, f: Flight): SessionState => ({ ...s, flights: s.flights.filter(({ id }) => id !== f.id), activeCopy: s.activeCopy === f.id ? null : s.activeCopy });
 
+function readPresentation(s: SessionState, retry = false): [SessionState, SessionEffect[]] {
+  if (s.presentation !== null || !s.presentationSubscribed || s.hiddenAt !== null) return [s, []];
+  if (s.readingPresentation) return retry ? [{ ...s, retryPresentation: true }, []] : [s, []];
+  return [{ ...s, readingPresentation: true, retryPresentation: retry }, [{ type: "read-presentation", visibility: s.visibility }]];
+}
+
 // Readiness is supplied by the search/preview adapters. Their captured session
 // and interaction must still match before they can release a waiting Enter.
 function advance(s: SessionState): [SessionState, SessionEffect[]] {
   const p = s.pendingCopy, v = s.view;
   if (!p || !v || s.viewInteraction !== s.interaction) return [s, []];
+  // A flight must never freeze an invented presentation identity. Keep Enter
+  // pending until initialization or a native show supplies its actual owner.
+  const presentation = s.presentation;
+  if (presentation === null) return [s, []];
   const key = choiceKey(v.chosen);
   if (p.selection !== s.selected || p.queryKey !== sessionQueryKey(s) || p.choice !== null && p.choice !== key ||
     p.format !== null && p.format !== v.format || !sameOutput(p.output, v.output)) return [{ ...s, pendingCopy: null }, []];
@@ -90,7 +104,7 @@ function advance(s: SessionState): [SessionState, SessionEffect[]] {
   const existing = s.flights.find((f) => f.choice === key && f.format === v.format && f.opening === v.output.opening && f.owner.visibility === s.visibility && f.owner.session === s.session);
   if (existing) return [{ ...s, activeCopy: existing.id, flights: s.flights.map((f) => f === existing ? { ...f, owner } : f) }, []];
   const id = s.nextCopy + 1;
-  const flight: Flight = { id, session: s.session, presentation: s.presentation, choice: key, format: v.format, opening: v.output.opening, owner, phase: "copy", warnings: closestMatchWarnings(v.chosen) };
+  const flight: Flight = { id, session: s.session, presentation, choice: key, format: v.format, opening: v.output.opening, owner, phase: "copy", warnings: closestMatchWarnings(v.chosen) };
   return [{ ...s, flights: [...s.flights, flight], activeCopy: id, nextCopy: id, copied: null, copyError: null },
     [{ type: "copy", id, session: s.session, ticket: v.shown.fileTicket, hash: v.shown.fileHash }]];
 }
@@ -131,25 +145,35 @@ export function reduceSession(s: SessionState, event: SessionEvent): [SessionSta
     case "enter": {
       if (s.hiddenAt !== null || !s.view) return [s, []];
       const output = event.output ?? s.view.output;
-      return advance({ ...s, pendingCopy: { choice: event.choice, selection: s.selected, queryKey: sessionQueryKey(s),
-        format: s.view.ready && s.viewInteraction === s.interaction && sameOutput(s.view.output, output) ? s.view.format : null, output } });
+      const next = { ...s, pendingCopy: { choice: event.choice, selection: s.selected, queryKey: sessionQueryKey(s),
+        format: s.view.ready && s.viewInteraction === s.interaction && sameOutput(s.view.output, output) ? s.view.format : null, output } };
+      return s.presentation === null ? readPresentation(next, true) : advance(next);
     }
     case "question": {
       const p = s.pendingCopy;
       if (p?.question !== "open" || event.answer === "cancel") return reduceSession(s, { type: "cancel" });
       return [{ ...s, viewInteraction: -1, pendingCopy: { ...p, question: event.answer, format: event.format === undefined ? p.format : event.format, output: event.output ?? p.output } }, []];
     }
-    case "presentation": return [{ ...s, presentation: event.presentation }, []];
-    case "hiding": return [{ ...s, visibility: s.visibility + 1, pendingCopy: null }, []];
-    case "hidden": return [{ ...s, visibility: s.visibility + 1, hiddenAt: event.now, pendingCopy: null }, []];
+    case "initialize": return readPresentation({ ...s, presentationSubscribed: true }, s.pendingCopy !== null);
+    case "presentation": {
+      if (!s.readingPresentation || event.visibility !== s.visibility || s.presentation !== null) return [s, []];
+      const retry = s.retryPresentation && s.pendingCopy !== null;
+      s = { ...s, readingPresentation: false, retryPresentation: false, presentation: event.presentation };
+      if (event.presentation !== null) return advance(s);
+      // One recovery read for an explicit action; another Enter can retry a
+      // persistent failure. No timer or hidden retry loop owns this work.
+      return retry ? readPresentation(s) : [s, []];
+    }
+    case "hiding": return [{ ...s, readingPresentation: false, retryPresentation: false, visibility: s.visibility + 1, pendingCopy: null }, []];
+    case "hidden": return [{ ...s, presentation: null, readingPresentation: false, retryPresentation: false, visibility: s.visibility + 1, hiddenAt: event.now, pendingCopy: null }, []];
     case "shown": {
       const expired = !s.permissionDetour && s.hiddenAt !== null && event.now - s.hiddenAt > 60_000;
       const escaped = s.hiddenAt !== null ? s.escapedQuery : null;
       s = expired ? changed(s, { query: "", interpretLocators: true, selected: new Map(), active: 0, escapedQuery: null }) :
         escaped ? changed(s, { query: s.query || escaped.text, interpretLocators: escaped.interpretLocators, escapedQuery: null, restored: s.restored + 1 }) : s;
-      return [{ ...s, session: s.session + 1, presentation: event.presentation, visibility: s.visibility + 1, viewInteraction: -1, hiddenAt: null, pendingCopy: null }, []];
+      return [{ ...s, session: s.session + 1, presentation: event.presentation, readingPresentation: false, retryPresentation: false, visibility: s.visibility + 1, viewInteraction: -1, hiddenAt: null, pendingCopy: null }, []];
     }
-    case "retire": return [{ ...s, session: s.session + 1, visibility: s.visibility + 1, viewInteraction: -1, pendingCopy: null, flights: [], activeCopy: null }, []];
+    case "retire": return [{ ...s, presentation: null, presentationSubscribed: false, readingPresentation: false, retryPresentation: false, session: s.session + 1, visibility: s.visibility + 1, viewInteraction: -1, pendingCopy: null, flights: [], activeCopy: null }, []];
   }
   const f = s.flights.find((flight) => flight.id === event.id && flight.session === event.session);
   if (!f) return [s, []];
