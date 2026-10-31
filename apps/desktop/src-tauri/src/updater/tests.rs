@@ -157,11 +157,11 @@ fn gtk_offer_return_declines_and_explicit_install_button_accepts() -> Result<(),
         let (dialog, later) = gtk_offer_dialog("Synthetic update is available".into());
         let install = dialog
             .widget_for_response(gtk::ResponseType::Accept)
-            .expect("Install response button");
+            .ok_or("Install response button is missing")?;
         let button = install
             .clone()
             .downcast::<gtk::Button>()
-            .expect("Install is a native button");
+            .map_err(|_| "Install is not a native button")?;
         assert_eq!(button.label().as_deref(), Some("Install and Restart"));
         let answers = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
         let observed = answers.clone();
