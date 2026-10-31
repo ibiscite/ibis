@@ -55,7 +55,7 @@ pub(super) fn install(app: &AppHandle, _window: &WebviewWindow) -> Option<()> {
 mod windows {
     use super::*;
     use std::sync::OnceLock;
-    use winsafe::{HWND, co, msg::Wm, prelude::*};
+    use winsafe::{HWND, co, msg::Wm};
 
     // No borrowed native pointer; the app handle only schedules the sizing owner.
     static APP: OnceLock<AppHandle> = OnceLock::new();
