@@ -140,6 +140,7 @@ pub(crate) enum Appearance {
 pub(crate) enum Accent {
     #[default]
     System,
+    Ibis,
     Blue,
     Purple,
     Pink,
@@ -876,6 +877,7 @@ mod tests {
         )
         .unwrap_or_else(|e| panic!("{e}"));
         for accent in [
+            Accent::Ibis,
             Accent::Blue,
             Accent::Purple,
             Accent::Pink,
