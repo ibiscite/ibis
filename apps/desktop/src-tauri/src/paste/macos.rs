@@ -509,6 +509,7 @@ impl PostDesk for Ready<'_> {
             InputPress::Key => CGEventType::KeyDown,
             InputPress::LeftMouse => CGEventType::LeftMouseDown,
             InputPress::RightMouse => CGEventType::RightMouseDown,
+            InputPress::OtherMouse => CGEventType::OtherMouseDown,
         };
         CGEventSource::seconds_since_last_event_type(CGEventSourceStateID::CombinedSessionState, event)
     }

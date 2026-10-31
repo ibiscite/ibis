@@ -637,6 +637,7 @@ enum InputPress {
     Key,
     LeftMouse,
     RightMouse,
+    OtherMouse,
 }
 
 /// These calls run in one main-thread task. The only AX query is the bounded,
@@ -661,7 +662,12 @@ trait PostDesk {
 
 #[cfg(any(target_os = "macos", test))]
 fn check_input_since(desk: &(impl PostDesk + ?Sized), began: Instant) -> Result<(), PostResult> {
-    for event in [InputPress::Key, InputPress::LeftMouse, InputPress::RightMouse] {
+    for event in [
+        InputPress::Key,
+        InputPress::LeftMouse,
+        InputPress::RightMouse,
+        InputPress::OtherMouse,
+    ] {
         let age = desk.seconds_since_input(event);
         if !age.is_finite() || age < 0.0 {
             return Err(PostResult::Unavailable);
@@ -1518,7 +1524,7 @@ mod tests {
         posted_windows: RefCell<Vec<Option<u32>>>,
         document: Cell<u32>,
         posted_documents: RefCell<Vec<u32>>,
-        input_events: Cell<[Option<Instant>; 3]>,
+        input_events: Cell<[Option<Instant>; 4]>,
         mouse_moved: Cell<Option<Instant>>,
         input_error: Option<f64>,
         checks: RefCell<Vec<&'static str>>,
@@ -1562,7 +1568,7 @@ mod tests {
                 posted_windows: RefCell::default(),
                 document: Cell::new(1),
                 posted_documents: RefCell::default(),
-                input_events: Cell::new([None; 3]),
+                input_events: Cell::new([None; 4]),
                 mouse_moved: Cell::new(None),
                 input_error: None,
                 checks: RefCell::default(),
@@ -1719,6 +1725,7 @@ mod tests {
                 InputPress::Key => 0,
                 InputPress::LeftMouse => 1,
                 InputPress::RightMouse => 2,
+                InputPress::OtherMouse => 3,
             };
             self.input_events.get()[index]
                 .map_or(f64::MAX, |event| self.clock.get().duration_since(event).as_secs_f64())
@@ -1880,7 +1887,7 @@ mod tests {
 
     #[test]
     fn input_switching_a_tab_or_conversation_while_focus_returns_refuses_even_with_the_same_ax_window() {
-        let events: [fn(&Fake); 3] = [
+        let events: [fn(&Fake); 4] = [
             |desk| {
                 let mut events = desk.input_events.get();
                 events[0] = Some(desk.clock.get());
@@ -1894,6 +1901,11 @@ mod tests {
             |desk| {
                 let mut events = desk.input_events.get();
                 events[2] = Some(desk.clock.get());
+                desk.input_events.set(events);
+            },
+            |desk| {
+                let mut events = desk.input_events.get();
+                events[3] = Some(desk.clock.get());
                 desk.input_events.set(events);
             },
         ];
@@ -1913,7 +1925,8 @@ mod tests {
                     }),
                     ..desk
                 };
-                // Use the same first-wait event for each of the three native types.
+                // Use the same first-wait event for each of the four native types,
+                // including a middle-click that closes the current Chrome tab.
                 // The event itself is emitted by the fake while waiting below.
                 desk.input_on_first_wait.set(Some(event));
                 assert_eq!(deliver(&desk, Some(&proof), true), copied(Some("target-changed")));
@@ -1931,7 +1944,7 @@ mod tests {
             after_window_query: Some(|desk| {
                 desk.clock.set(desk.clock.get() + Duration::from_millis(1));
                 desk.document.set(2);
-                desk.input_events.set([Some(desk.clock.get()), None, None]);
+                desk.input_events.set([Some(desk.clock.get()), None, None, None]);
             }),
             ..Fake::new()
         };
@@ -1954,7 +1967,7 @@ mod tests {
             ..Fake::new()
         };
         desk.input_events
-            .set([Some(desk.clock.get() - Duration::from_millis(1)), None, None]);
+            .set([Some(desk.clock.get() - Duration::from_millis(1)), None, None, None]);
         desk.returning_windows.replace(vec![None, Some(100)]);
         assert_eq!(deliver(&desk, Some(&proof()), true), pasted());
         assert_eq!(*desk.posted_documents.borrow(), [1]);

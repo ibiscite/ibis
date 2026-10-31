@@ -426,7 +426,8 @@ without the grant could not complete the real-Mac test.
   work. This time stays fixed through readiness and the final posting task.
   Immediately before posting, after the final AX comparison, Ibis calls
   `CGEventSourceSecondsSinceLastEventType` on the combined session state for
-  key-down, left-mouse-down and right-mouse-down. Any such input since delivery
+  key-down, left-mouse-down, right-mouse-down and other-mouse-down (including
+  middle-clicks that can close a Chrome tab). Any such input since delivery
   began refuses the paste with the existing `target-changed` copied notice.
   Mouse movement does not count. The Enter that started delivery happened
   before this boundary; held-Enter repeats after it may refuse, which is safe.
@@ -435,7 +436,7 @@ without the grant could not complete the real-Mac test.
   or background monitoring. Local clock/epoch and deadline checks still run
   after these reads without taking locks or dispatching to the UI thread.
   A programmatic tab or conversation change with no input is not detected.
-  The three input reads and posting are sequential OS operations, so an input
+  The four input reads and posting are sequential OS operations, so an input
   in that last small interval is also not an atomic window/document binding.
 - **Diagnostics:** `IBIS_MAC_PASTE_DIAGNOSTICS=1` enables one JSON line to stderr
   per delivery attempt, after its outcome. Otherwise it is off. The closed schema

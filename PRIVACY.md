@@ -16,8 +16,8 @@ and its local data. New Ibis data flows need a recorded decision ([decisions](do
   no document titles, field roles, values or text. A bounded wait after copying
   compares only with the original captured identities; it never adopts another
   window or surface. Tabs and conversations can share those identities. Just
-  before pasting, Ibis checks the time since the last key-down and left/right
-  mouse click and refuses if any happened after delivery began. It reads no keys,
+  before pasting, Ibis checks the time since the last key-down and left, right or other
+  mouse-button press (including middle-click) and refuses if any happened after delivery began. It reads no keys,
   click targets, coordinates or event contents. Mouse movement does not count;
   a programmatic tab or conversation change with no input is not detected.
   Accessibility and permission to send the paste shortcut are separate
