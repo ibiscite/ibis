@@ -347,9 +347,9 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
       return;
     }
     if (moved) followKeyboard.current = true;
-    if (!moved && (selected.size === 0 || document.activeElement !== input.current)) return;
+    if (!moved && (citationProblem || selected.size === 0 || document.activeElement !== input.current)) return;
     document.getElementById(`result-${active}`)?.scrollIntoView?.({ block: "nearest" });
-  }, [active, pointer.cameFrom, selected.size,
+  }, [active, pointer.cameFrom, selected.size, citationProblem,
     selected.size > 0 ? formatted : null, selected.size > 0 ? format : null, selected.size > 0 ? searchFocused : null]);
 
   // Content changes preserve Search's keyboard highlight. A real viewport
@@ -359,6 +359,11 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
     if (!area) return;
     const scrollers = [area, area.parentElement].filter((node): node is HTMLElement => node !== null);
     const reveal = (viewport = false) => {
+      // A refusal owns the middle viewport. Read the committed DOM so even a
+      // queued observer cannot undo its reveal before effects are refreshed,
+      // or scroll past the person's newer reading position. Explicit arrows
+      // still reveal the highlighted row through the effect above.
+      if (area.parentElement?.querySelector(":scope > .notices > .citation-problem")) return;
       if (!viewport && (!followKeyboard.current || document.activeElement !== input.current)) return;
       const row = document.getElementById(`result-${active}`);
       if (!row) return;
@@ -612,7 +617,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
           };
         }}
       />
-      <PickerScroll citationProblem={citationProblem}>
+      <PickerScroll citationProblem={citationProblem} citationProblemIdentity={citationProblem ? formatted?.request : undefined}>
       {shortcut?.error && <div className="notices">
         <p role="status">
           {pickerText.shortcutError(shortcut.registered, shortcut.shortcut, shortcut.error)}

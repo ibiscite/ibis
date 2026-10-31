@@ -38,6 +38,36 @@ export function isWholeNotice(text) {
   return rect.height > 0 && rect.top >= port.top - 1 && rect.bottom <= port.bottom + 1;
 }
 
+// Report the three refusal requirements separately so the built probe identifies
+// whether visibility, complete wrapping or keyboard reach failed. Self-contained
+// because Playwright serializes this function into the page.
+export function refusalPresentation(node) {
+  const style = getComputedStyle(node);
+  const rect = node.getBoundingClientRect(), bounds = node.closest(".picker-content").getBoundingClientRect();
+  return {
+    startsInView: rect.top >= bounds.top - 1 && rect.top < bounds.bottom,
+    wrapsInFull: style.whiteSpace === "normal" && style.overflowY === "visible" &&
+      node.scrollWidth <= node.clientWidth + 1 && node.scrollHeight <= node.clientHeight + 1,
+    keyboardReachable: node.tabIndex === 0,
+  };
+}
+
+// Diagnostic values stay separate from the three pass/fail requirements.
+export function refusalGeometry(node) {
+  const owner = node.closest(".picker-content");
+  const rect = node.getBoundingClientRect(), bounds = owner.getBoundingClientRect();
+  return { rect: { top: rect.top, bottom: rect.bottom, width: rect.width }, bounds: { top: bounds.top, bottom: bounds.bottom }, scrollTop: owner.scrollTop,
+    viewport: { width: innerWidth, height: innerHeight } };
+}
+
+// A long notice cannot be read in a collapsed scrollport, even when its own
+// box is whole and starts at the scrollport's top. Keep this independent of
+// the refusal checks so every picker state must retain a middle viewport.
+export function hasMiddleViewport() {
+  const middle = document.querySelector("main > .picker-content");
+  return Boolean(middle && middle.clientHeight > 0 && middle.getBoundingClientRect().height > 0);
+}
+
 export function isWholeShelf() {
   const shelf = document.querySelector("main > .shelf");
   if (!shelf) return document.querySelector("main .shelf") === null;

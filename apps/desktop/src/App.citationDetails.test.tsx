@@ -6,8 +6,15 @@ import { backend, prepared, receipt, resetApp, result, openCitationDetails, clos
 
 afterEach(resetApp);
 
-test("a delayed long formatting refusal reveals its full notice before Details and Enter leaves it readable", async () => {
+test.each([96, 280].flatMap((height) => [false, true].flatMap((built) =>
+  ["observer", "window"].map((reflow) => ({ height, built, reflow })),
+)))("a delayed long refusal keeps priority over automatic row scrolling (%j)", async ({ height, built, reflow }) => {
   const message = "Reference 1: Choose another form or clear Page. ".repeat(30);
+  const observations: { callback: () => void; nodes: Set<Element> }[] = [];
+  vi.stubGlobal("ResizeObserver", class {
+    nodes = new Set<Element>(); constructor(callback: () => void) { observations.push({ callback, nodes: this.nodes }); }
+    observe(node: Element) { this.nodes.add(node); } unobserve(node: Element) { this.nodes.delete(node); } disconnect() { this.nodes.clear(); }
+  });
   let rejectPreview: ((reason: unknown) => void) | undefined;
   const calls = backend({ search: () => [result("a", "Invented work")],
     preview_file_citation: () => new Promise((_, reject) => { rejectPreview = reject; }),
@@ -22,18 +29,30 @@ test("a delayed long formatting refusal reveals its full notice before Details a
   const boxes = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
     const middle = this.closest(".picker-content");
     const hasRefusal = Boolean(middle?.querySelector(".citation-problem"));
-    if (this.matches(".picker-content")) return new DOMRect(0, 80, 480, 96);
+    if (this.matches(".picker-content")) return new DOMRect(0, 80, 480, height);
     if (this.matches(".notices")) return new DOMRect(0, 80 - middle!.scrollTop, 480, hasRefusal ? 1200 : 0);
     if (this.matches(".citation-problem")) return new DOMRect(24, 92 - middle!.scrollTop, 432, 1176);
-    if (this.matches('[role="option"]')) return new DOMRect(8, 116 + (hasRefusal ? 1200 : 0) - middle!.scrollTop, 464, 58);
+    if (this.matches('[role="option"], .result-title')) return new DOMRect(8, 116 + (hasRefusal ? 1200 : 0) - middle!.scrollTop, 464, this.matches(".result-title") ? 776 : 800);
     return new DOMRect();
   });
+  const heights = vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockImplementation(function (this: HTMLElement) {
+    return this.matches(".picker-content") ? height : 0;
+  });
+  let view: ReturnType<typeof render> | undefined;
   try {
-    render(<App />);
+    view = render(<App />);
     await screen.findByText("Invented work");
     await waitFor(() => expect(rejectPreview).toBeTypeOf("function"));
     const search = screen.getByLabelText("Search references");
     const middle = document.querySelector<HTMLElement>(".picker-content")!;
+    const row = screen.getByRole("option");
+    // jsdom has no layout/native scrolling. Model nearest scrolling of the
+    // probe's tall title so the selected-preview effect can also lose a notice.
+    Object.defineProperty(row, "scrollIntoView", { value: () => {
+      const item = row.getBoundingClientRect(), port = middle.getBoundingClientRect();
+      if (item.top >= port.bottom || item.bottom <= port.top) middle.scrollTop += item.top - port.top;
+    } });
+    if (built) fireEvent.keyDown(search, { key: "Enter", shiftKey: true });
     act(() => search.focus()); middle.scrollTop = 380; fireEvent.scroll(middle);
     await act(async () => rejectPreview!({ code: "failed", message }));
     const refusal = await screen.findByRole("alert");
@@ -42,11 +61,45 @@ test("a delayed long formatting refusal reveals its full notice before Details a
     expect(refusal.tabIndex).toBe(0);
     expect(document.activeElement).toBe(search);
     expect(screen.queryByRole("dialog")).toBeNull();
+    // ResizeObserver runs after React's commit, including its first delivery.
+    // The previous regression stopped before these App observers could scroll
+    // the highlighted result past the refusal. Native resize has the same risk.
+    act(() => {
+      if (reflow === "window") fireEvent.resize(window);
+      else for (const observation of observations) if (observation.nodes.has(middle)) observation.callback();
+    });
+    expect(refusal.getBoundingClientRect().top).toBe(middle.getBoundingClientRect().top);
+    expect(document.activeElement).toBe(search);
+    middle.scrollTop += 240; fireEvent.scroll(middle);
+    const readingTop = refusal.getBoundingClientRect().top;
+    act(() => {
+      if (reflow === "window") fireEvent.resize(window);
+      else for (const observation of observations) if (observation.nodes.has(middle)) observation.callback();
+    });
+    expect(refusal.getBoundingClientRect().top).toBe(readingTop);
     fireEvent.keyDown(search, { key: "Enter" });
     expect(calls).not.toContain("copy_file_citation");
     expect(refusal.textContent).toBe(message);
-    expect(refusal.getBoundingClientRect().top).toBe(middle.getBoundingClientRect().top);
-  } finally { boxes.mockRestore(); styles.mockRestore(); }
+    expect(refusal.getBoundingClientRect().top).toBe(readingTop);
+  } finally { view?.unmount(); boxes.mockRestore(); styles.mockRestore(); heights.mockRestore(); vi.unstubAllGlobals(); }
+});
+
+test("explicit arrows still reveal another result while a built citation is refused", async () => {
+  const message = "Reference 1: Choose another form or clear Page.";
+  backend({ search: () => [result("a", "First invented work"), result("b", "Second invented work")],
+    preview_file_citation: () => { throw { code: "failed", message }; },
+  });
+  render(<App />);
+  const refusal = await screen.findByRole("alert");
+  const search = screen.getByLabelText("Search references");
+  fireEvent.keyDown(search, { key: "Enter", shiftKey: true });
+  const next = screen.getByRole("option", { name: /Second invented work/ });
+  const reveal = vi.fn(); Object.defineProperty(next, "scrollIntoView", { value: reveal });
+  fireEvent.keyDown(search, { key: "ArrowDown" });
+  expect(next.getAttribute("aria-selected")).toBe("true");
+  expect(reveal).toHaveBeenCalledExactlyOnceWith({ block: "nearest" });
+  expect(refusal.textContent).toBe(message);
+  expect(document.activeElement).toBe(search);
 });
 
 test("removing a middle reference and Undo restore its position and page through the real picker", async () => {

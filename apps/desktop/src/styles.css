@@ -18,7 +18,7 @@ main {
   flex-direction: column;
   overflow: hidden;
 }
-/* The frame is native-owned. These bands never shrink when the middle overflows. */
+/* The frame is native-owned. These bands retain their full control targets. */
 main > .search-bar, main > .shelf, main > footer { flex: none; }
 
 .search-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--search-gap); min-height: calc(var(--search-bar-height) + var(--border-width)); padding: var(--inset); border-bottom: var(--border-width) solid var(--separator); cursor: move; user-select: none; }
@@ -200,7 +200,7 @@ kbd { font: inherit; font-size: var(--hint-size); font-weight: 500; display: inl
 }
 /* Notices and results share one middle scroller. Search, shelf and footer are
    separate bands; details open in the shared overlay instead of growing them. */
-.picker-content { position: relative; display: flex; flex: 1; flex-direction: column; min-height: 0; overflow: auto; overscroll-behavior: contain; container-type: size; }
+.picker-content { position: relative; display: flex; flex: 1; flex-direction: column; align-items: stretch; min-width: 0; min-height: var(--type-label-line); overflow: auto; overscroll-behavior: contain; container-type: size; }
 /* Notices keep their full content height and scroll with the middle region. */
 .picker-content > .notices { flex: none; }
 /* Notices have no height bound. Share their scroll owner instead of reserving
@@ -284,7 +284,7 @@ footer .key-hint-label { display: var(--footer-hint-label-display); }
 }
 
 
-.search-page-token { display: flex; flex: none; align-items: center; gap: var(--space-1); min-width: 0; max-width: 50%; }
+.search-page-token { display: flex; flex: none; align-items: center; gap: var(--space-1); min-width: 0; max-width: 50%; font: var(--type-label-size) / var(--type-label-line) var(--font-family); }
 .search-page-token > .ui-button { min-width: 0; max-width: 100%; border-radius: var(--r-full); background: var(--chip-fill); }
 .search-page-token bdi { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
@@ -299,4 +299,14 @@ footer .key-hint-label { display: var(--footer-hint-label-display); }
 @media (max-height: 400px) {
   main { height: var(--picker-height); min-height: 0; overflow: hidden; }
   main > .picker-content .results-area { flex: none; min-height: 0; overflow: visible; }
+  /* The 480x360 frame at 200% text is 15em wide. Keep the normal shelf and
+     footer targets and their insets; omit only the footer hints, whose keys
+     still work and are listed in More. The search rows keep their controls
+     but give up vertical gaps. No second scroll owner is introduced. */
+  @container (max-width: 20em) {
+    .search-bar { padding-block: 0; row-gap: 0; }
+    .search-bar .toolbar-menu-control { min-width: 0; max-width: calc(100% - var(--field-h) - var(--search-gap)); }
+    .enter-hints { display: none; }
+    .library-bar > .more { display: flex; }
+  }
 }

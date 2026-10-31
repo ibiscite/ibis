@@ -929,9 +929,44 @@ test("short windows reserve header/footer controls and compact decoration withou
   const short = styles.slice(styles.indexOf("@media (max-height: 400px)"));
   expect(short).toContain("height: var(--picker-height); min-height: 0; overflow: hidden");
   expect(styles).toContain(".picker-content > .results-area { flex: none; min-height: 0; overflow: visible");
-  expect(styles).toContain("min-height: 0; overflow: auto; overscroll-behavior: contain; container-type: size");
+  expect(styles).toContain("min-height: var(--type-label-line); overflow: auto; overscroll-behavior: contain; container-type: size");
   expect(short).not.toMatch(/font-size:|zoom:|transform:/);
+  expect(rules(short, ".search-bar")).toMatch(/padding-block: 0; row-gap: 0/);
+  expect(rules(short, ".enter-hints")).toMatch(/display: none/);
+  expect(rules(short, ".library-bar > .more")).toMatch(/display: flex/);
+  expect(rules(short, ".search-bar .toolbar-menu-control")).toMatch(/min-width: 0; max-width: calc\(100% - var\(--field-h\) - var\(--search-gap\)\)/);
+  // Folding optional hints must not shrink the footer, shelf or segment
+  // targets, and hidden hints must have no boxes for the geometry scan.
+  for (const selector of ["main > .shelf", "main > .shelf .shelf-segment", "main > footer", ".library-bar"]) expect(rules(short, selector)).toBe("");
+  expect(short).not.toContain("--shelf-line:");
   const compactTokens = tokens.slice(tokens.indexOf("@media (max-height: 400px)"));
   expect(compactTokens).toContain("--empty-icon-size: var(--icon-glyph-size)");
   expect(compactTokens).toContain("--empty-keys-display: none");
+});
+
+test("the doubled-text minimum frame keeps normal shelf/footer targets and room for a text line, including the page token", () => {
+  // The real failing profile has two search rows in 480x360, not a larger
+  // viewport. Read the unchanged control sizes and yielded header gaps from
+  // the shared CSS contract above; browser geometry remains the final oracle.
+  const g = geometry();
+  const remValue = (css: string, property: string) => Number(css.match(new RegExp(`${property}:\\s*([\\d.]+)rem`))?.[1]) * 32;
+  const inset = g["--inset"]! * 2;
+  const line = remValue(tokens, "--type-label-line");
+  const smallButton = remValue(rules(buttons, '.ui-button[data-size="small"]'), "min-height");
+  const field = g["--field-h"]! * 2;
+  // Recents knows the destination app, making the format value long enough
+  // to reach its maximum width. It must leave Pin and the gap on the same
+  // second row instead of adding another full-height control row.
+  const headerWidth = 480 - 2 * inset;
+  const gap = g["--space-1"]! * 2;
+  const formatWidth = headerWidth - field - gap;
+  expect(formatWidth + gap + field).toBeLessThanOrEqual(headerWidth);
+  const header = 2 * field + 1;
+  const shelf = remValue(tokens, "--space-10") + inset;
+  const footer = Math.max(remValue(tokens, "--footer-height"), smallButton + 2 * inset);
+  // The token uses label typography. Even a two-line Apply label fits the
+  // unchanged search control; it must not create a third header row.
+  expect(rules(styles, ".search-page-token")).toMatch(/font: var\(--type-label-size\) \/ var\(--type-label-line\)/);
+  expect(2 * line + 2).toBeLessThanOrEqual(field);
+  expect(360 - header - shelf - footer).toBeGreaterThanOrEqual(line);
 });

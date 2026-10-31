@@ -6,6 +6,7 @@ import { PickerFooter } from "./PickerFooter";
 const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
 const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
 const footerStyles = readFileSync(new FileURL("./PickerFooter.css", import.meta.url), "utf8");
+const pickerStyles = readFileSync(new FileURL("../../styles.css", import.meta.url), "utf8");
 
 const library = testStates.find((state) => state.id === "tray-20")!.library;
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
@@ -47,6 +48,31 @@ function footer(label = "Copy 20 as Pandoc") {
     actions={{ copy: () => undefined, add: () => undefined, escape: () => undefined, keys: () => undefined }}
     more={<button aria-label="More">More</button>} /></main>;
 }
+
+test("the short enlarged layout drops only hints and keeps status and More reachable, then restores actions", () => {
+  const style = document.createElement("style");
+  // jsdom does not evaluate container queries. Apply the actual narrow rule
+  // to the real footer DOM; the probe checks when it applies and its boxes.
+  const short = pickerStyles.slice(pickerStyles.indexOf("@media (max-height: 400px)"));
+  const hints = short.match(/\.enter-hints\s*\{([^}]+)\}/)?.[1];
+  expect(hints).toBeTruthy();
+  render(footer());
+  const copy = screen.getByRole("button", { name: "Copy 20 as Pandoc" });
+  const status = document.querySelector(".library-status")!.textContent;
+  style.textContent = `.enter-hints { ${hints} }`;
+  document.head.append(style);
+  try {
+    expect(screen.queryByRole("button", { name: "Copy 20 as Pandoc" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Shortcuts" })).toBeNull();
+    const more = screen.getByRole("button", { name: "More" });
+    act(() => more.focus());
+    expect(document.activeElement).toBe(more);
+    expect(document.querySelector(".library-status")!.textContent).toBe(status);
+  } finally { style.remove(); }
+  expect(screen.getByRole("button", { name: "Copy 20 as Pandoc" })).toBe(copy);
+  expect(copy.querySelector(".key-hint")?.hasAttribute("data-primary")).toBe(true);
+  expect(copy.getAttribute("aria-keyshortcuts")).toBe("Enter");
+});
 
 test("crowded GNOME controls drop Shortcuts before shortening status, then restore on growth", () => {
   const fit = geometry(); render(footer());

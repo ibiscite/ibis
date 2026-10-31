@@ -3,18 +3,34 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { Notices } from "./Notices";
 
 afterEach(cleanup);
+const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
+const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
+const noticeStyles = readFileSync(new FileURL("./Notices.css", import.meta.url), "utf8");
 const copied = { text: "[@example2026]", warnings: ["Missing year — 研究 العربية <literal>"] };
 const props = { library: null, failures: {}, startAtLogin: null, error: null, copyError: null,
   copied, confirmation: copied, onDismissCopied: vi.fn() };
 
 test("a long citation refusal is a complete keyboard-reachable notice before Details opens", () => {
   const reason = "Reference 1: Choose another form or clear Page. ".repeat(30);
-  render(<Notices {...props} copied={null} citationProblem={reason} />);
-  const alert = screen.getByRole("alert");
-  expect(alert.textContent).toBe(reason);
-  expect(alert.tabIndex).toBe(0);
-  expect(alert.classList.contains("citation-problem")).toBe(true);
-  expect(screen.queryByRole("dialog")).toBeNull();
+  const style = document.createElement("style"); style.textContent = noticeStyles; document.head.append(style);
+  try {
+    render(<div className="picker-content"><Notices {...props} copied={null} citationProblem={reason} /></div>);
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toBe(reason);
+    expect(alert.tabIndex).toBe(0);
+    expect(alert.classList.contains("citation-problem")).toBe(true);
+    const appearance = getComputedStyle(alert);
+    expect(appearance.whiteSpace).toBe("normal");
+    expect(appearance.overflow).toBe("visible");
+    expect(appearance.overflowWrap).toBe("anywhere");
+    expect(appearance.maxBlockSize).toBe("none");
+    expect(appearance.inlineSize).toBe("100%");
+    expect(appearance.boxSizing).toBe("border-box");
+    expect(getComputedStyle(alert.parentElement!).inlineSize).toBe("100%");
+    expect(getComputedStyle(alert.closest(".picker-content")!).scrollBehavior).toBe("auto");
+    alert.focus(); expect(document.activeElement).toBe(alert);
+    expect(screen.queryByRole("dialog")).toBeNull();
+  } finally { style.remove(); }
 });
 
 test.each(["Enter", " "])("warning dismissal uses shared states and activates once with %s", (key) => {

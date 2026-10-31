@@ -209,6 +209,13 @@ scrolls, and only while its content overflows. Content taller than the middle
 area (a small window, 200% text) scrolls there, never under the header or
 footer. A clipped hint or a second scroll bar is a bug, fixed with a
 regression test at normal and Larger text and at the minimum size.
+The middle keeps a minimum of about one text line. In a short frame with
+enlarged text, the header's vertical gaps and the footer hint row give way;
+the shelf, footer and control targets retain their normal sizes. The keys
+still work and More opens their reference. Long format labels shorten within
+their row, preserving space for Pin. The shelf keeps its existing folded counts
+and one-line form. Notices use the full middle content width and the
+body-text size, wrapping naturally.
 
 **Empty search: first time and every day** [C11]. Same frame, different
 content. While no library is chosen, the welcome screen (**First run**). For
@@ -600,9 +607,12 @@ page", where the Page field lives beside the page itself.
   and field beside the preview; an unsupported form explains the refusal there
   and blocks copying until corrected. Enter leaves that explanation visible.
   The full refusal wraps in the middle notice area before Details is opened,
-  with no line clamp or separate scroller. A new refusal reveals its start
-  without taking focus; subsequent scrolling can reach its entire text while
-  the shelf band stays one line.
+  with no line clamp or separate scroller. Each new refusal, even one with
+  repeated wording, instantly reveals its start in the middle scroller after
+  layout without taking focus; subsequent scrolling can reach its entire text while
+  the shelf band stays one line. Automatic result highlighting and layout
+  reflow preserve the refusal's reading position; explicit arrow navigation
+  can reveal a newly highlighted result.
   Source-field and sentence-case warnings name the reference and appear in both
   preview details and copy feedback. A copy carrying either warning stays open
   with its warnings until dismissed; it never becomes a clean-copy receipt.

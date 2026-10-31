@@ -1,7 +1,7 @@
 // Real built picker + invented IPC. Browser layout evidence, not native input/engine proof.
 // Serve `pnpm build` with `pnpm exec vite preview`; reuse an installed Playwright.
 import assert from "node:assert/strict";
-import { dismissMenu, isAnchoredDetails, isWholeNotice, isWholeRadioTarget, isWholeShelf, noticeText, shelfControl, waitForLayout } from "./picker-layout-checks.mjs";
+import { dismissMenu, hasMiddleViewport, isAnchoredDetails, isWholeNotice, isWholeRadioTarget, isWholeShelf, noticeText, refusalGeometry, refusalPresentation, shelfControl, waitForLayout } from "./picker-layout-checks.mjs";
 const { chromium } = await import(process.env.IBIS_PLAYWRIGHT_MODULE || "playwright");
 const base = new URL(process.argv[2] || "http://127.0.0.1:4173");
 assert.ok(["127.0.0.1", "localhost"].includes(base.hostname), "Use a loopback fixture server");
@@ -160,9 +160,11 @@ try {
       if (bounds.top !== 0 || bounds.bottom > innerHeight + 1) issues.push("main exceeds frame");
       return issues;
       });
+      if (!await page.evaluate(hasMiddleViewport)) issues.push("middle viewport collapsed");
       if (!await page.evaluate(isWholeShelf)) issues.push("shelf clipped or scrolling");
       return issues;
     };
+    const checkScan = async (check) => assert.deepEqual(await scan(), [], `${caseLabel}: ${check}`);
     const reachable = async (control) => {
       await control.scrollIntoViewIfNeeded();
       return control.evaluate((node) => {
@@ -196,7 +198,7 @@ try {
         await page.getByRole("option").last().waitFor();
         for (const choice of await page.getByRole("option").all()) assert.equal(await reachable(choice), true, `${caseLabel}: every setup/recovery choice reachable`);
       }
-      assert.deepEqual(await scan(), [], `${caseLabel}: whole search/footer and one scroller`);
+      await checkScan("whole search/footer and one scroller");
       await page.getByRole("button", { name: "More", exact: true }).click();
       await moreMenu.waitFor();
       await dismissMenu(moreMenu);
@@ -220,7 +222,7 @@ try {
       for (const apply of await token.getByRole("button", { name: /^Apply locator to/ }).all()) await apply.click({ trial: true });
       await token.getByRole("button", { name: "Search as typed", exact: true }).click();
       await token.waitFor({ state: "detached" });
-      assert.deepEqual(await scan(), [], "recents and the query-page token keep the fixed bands whole");
+      await checkScan("recents and the query-page token keep the fixed bands whole");
       await page.getByRole("button", { name: "More", exact: true }).click();
       await moreMenu.getByRole("menuitem", { name: "Forget Recent Citations", exact: true }).click();
       await moreMenu.waitFor({ state: "detached" });
@@ -230,7 +232,7 @@ try {
       await page.close(); profiles += 1; continue;
     }
     await page.getByText("Type to find a reference", { exact: true }).waitFor();
-    assert.deepEqual(await scan(), [], `${width}/${larger}/${colorScheme}: steady empty frame`);
+    await checkScan("steady empty frame");
     assert.equal(await reachable(page.locator(".empty-description")), true, "empty hint is reachable without clipping");
     if (!small) assert.equal(await page.locator(".picker-content").evaluate((node) => node.scrollHeight <= node.clientHeight + 1), true, "default empty frame needs no scrollbar");
     const wholeNotice = async (check, text) => {
@@ -240,7 +242,7 @@ try {
       await waitForCheck(check, isWholeNotice, text);
       assert.equal(await notice.isVisible(), true, `${caseLabel}: ${check} visible`);
       assert.equal(await notice.evaluate((node) => /auto|scroll/.test(getComputedStyle(node.closest(".notices")).overflowY)), false, "notices use the middle scroll owner");
-      assert.deepEqual(await scan(), [], "whole notice keeps search/footer and one scroller");
+      await checkScan("whole notice keeps search/footer and one scroller");
     };
     if (startupNotice) await wholeNotice("startup-notice-whole", noticeText.startup);
     const frame = page.viewportSize(), before = resizes.length;
@@ -274,7 +276,7 @@ try {
     assert.deepEqual(page.viewportSize(), frame, "no matches and the pin keep the opening frame");
     await search.fill("invented");
     await page.getByRole("option").last().waitFor();
-    assert.deepEqual(await scan(), [], `${width}/${larger}/${colorScheme}: results`);
+    await checkScan("results");
     assert.deepEqual(page.viewportSize(), frame, "typing results keeps the opening frame");
     const anchoredMenu = async (anchor) => {
       const rect = await anchor.evaluate((node) => {
@@ -339,7 +341,7 @@ try {
       await mixed.getByText("Cite this reference alone for Name in the sentence.", { exact: true }).waitFor();
       await checkFormPointers(mixed);
       await closeEditor(mixed);
-      assert.deepEqual(await scan(), [], "current-style examples and true Year only keep one shelf line");
+      await checkScan("current-style examples and true Year only keep one shelf line");
       assert.deepEqual(resizes, [], "forms never request native sizing");
       assert.deepEqual(errors, [], "no page errors");
       await page.close(); profiles += 1; continue;
@@ -351,7 +353,7 @@ try {
       await receipt.getByText("+4 more", { exact: true }).waitFor();
       assert.equal(await reachable(receipt), true, "the summary and remaining-reference count are reachable");
       assert.equal(await receipt.locator(".copy-receipt-excerpt").evaluate((node) => getComputedStyle(node).webkitLineClamp), "1", "the remaining count has its own second line");
-      assert.deepEqual(await scan(), [], "the receipt summary keeps the shelf one line");
+      await checkScan("the receipt summary keeps the shelf one line");
       assert.deepEqual(errors, [], "no page errors");
       await page.close(); profiles += 1; continue;
     }
@@ -379,7 +381,7 @@ try {
       await removal.waitFor({ state: "detached" });
       assert.equal(await page.locator('[role="option"][data-citation-selected]').count(), 1, "undoing the window leaves the independent reference Undo intact");
       assert.deepEqual(await page.locator("main > .shelf").boundingBox(), band, "Undo feedback does not move the shelf");
-      assert.deepEqual(await scan(), [], "Undo feedback keeps fixed bands and one scroller");
+      await checkScan("Undo feedback keeps fixed bands and one scroller");
       assert.deepEqual(page.viewportSize(), frame, "Undo feedback keeps the fixture's frame");
       assert.deepEqual(resizes, [], "no content-driven native sizing");
       assert.deepEqual(errors, [], "no page errors");
@@ -399,7 +401,7 @@ try {
           Math.abs((text.left - open.right) - (close.left - text.right)) <= 1;
       });
       if (scale === 2) assert.equal(await page.locator(".shelf").evaluate((node) => getComputedStyle(node).animationName), "none", "Reduce Motion shows only the Copied end state");
-      assert.deepEqual(await scan(), [], "Copied keeps one whole shelf line");
+      await checkScan("Copied keeps one whole shelf line");
       await search.fill("newer");
       await page.getByRole("status", { name: "Copied", exact: true }).waitFor({ state: "detached" });
       assert.deepEqual(resizes, [], "Copied never requests native sizing");
@@ -444,7 +446,7 @@ try {
       assert.equal(await remove.isVisible(), false, "keyboard focus never shows the hover badge");
       await segment.press("Backspace");
       await page.getByRole("button", { name: "Undo", exact: true }).waitFor();
-      assert.deepEqual(await scan(), [], "long/RTL text and removal keep the shelf whole");
+      await checkScan("long/RTL text and removal keep the shelf whole");
       assert.deepEqual(resizes, [], "no native size requests from the shelf");
       assert.deepEqual(errors, [], "no page errors");
       await page.close(); profiles += 1; continue;
@@ -494,14 +496,12 @@ try {
       } else {
         const refusal = page.locator(".notices").getByRole("alert").and(page.getByText(noticeText.formatting, { exact: true }));
         await refusal.waitFor();
-        assert.equal(await refusal.evaluate((node) => {
-          const style = getComputedStyle(node);
-          const owner = node.closest(".picker-content");
-          const rect = node.getBoundingClientRect(), bounds = owner.getBoundingClientRect();
-          return node.tabIndex === 0 && style.whiteSpace === "normal" && style.overflowY === "visible" &&
-            node.scrollWidth <= node.clientWidth + 1 && node.scrollHeight <= node.clientHeight + 1 &&
-            rect.top >= bounds.top - 1 && rect.top < bounds.bottom;
-        }), true, "a new refusal starts in view, wraps in full and is keyboard reachable before Details");
+        const refusalState = await refusal.evaluate(refusalPresentation);
+        const refusalDiagnostic = await refusal.evaluate(refusalGeometry);
+        assert.deepEqual(refusalState, {
+          startsInView: true, wrapsInFull: true, keyboardReachable: true,
+        }, `${caseLabel}: a new refusal starts in view, wraps in full and is keyboard reachable before Details; geometry=${JSON.stringify(refusalDiagnostic)}`);
+        assert.equal(await search.evaluate((node) => document.activeElement === node), true, "a refusal never takes focus from Search");
         assert.equal(await reachable(refusal), true, "the full refusal is readable before opening Details");
         const shelfReason = page.locator("main > .shelf .shelf-output p");
         await shelfReason.waitFor();
@@ -514,11 +514,11 @@ try {
         assert.equal(await reachable(dialog.locator(".shelf-detail-title")), true, "both ends of a long reference title are reachable");
         assert.equal(await reachable(dialog.getByText(noticeText.formatting, { exact: true })), true, "both ends of the full refusal are reachable");
       }
-      assert.deepEqual(await scan(), [], "details leave whole fixed bands and one active scroller");
+      await checkScan("details leave whole fixed bands and one active scroller");
       const shelf = await page.locator("main > .shelf").boundingBox();
       assert.deepEqual(shelf, beforeShelf, "opening details does not grow or move the shelf");
       await closeEditor(dialog);
-      assert.deepEqual(await scan(), [], "closing details restores the one browsing scroller");
+      await checkScan("closing details restores the one browsing scroller");
       assert.deepEqual(page.viewportSize(), frame, "shelf details never change the window frame");
       assert.deepEqual(resizes, [], "no native size requests from content");
       assert.deepEqual(errors, [], "no page errors");
@@ -548,7 +548,7 @@ try {
       await waitForCheck("pointer-notice-appeared", () => document.querySelector(".notices").childElementCount > 0);
       await waitForCheck("pointer-notice-appear-anchor", anchored, top);
       assert.deepEqual(await owners(), [1], "notice uses only the middle scroller");
-      assert.deepEqual(await scan(), [], "pointer notice keeps search/footer whole and one scroller");
+      await checkScan("pointer notice keeps search/footer whole and one scroller");
       // Progress has no clear event. Settings notices exercise the real appear /
       // clear path, including browsing to a newer place before they clear.
       if (pointerNotice === "settings") {
@@ -559,7 +559,7 @@ try {
         await waitForCheck("pointer-notice-cleared", () => document.querySelector(".notices").childElementCount === 0);
         await waitForCheck("pointer-notice-clear-anchor", anchored, top);
         assert.deepEqual(await owners(), [2], "clearing restores only the results scroller");
-        assert.deepEqual(await scan(), [], "cleared notice keeps search/footer whole and one scroller");
+        await checkScan("cleared notice keeps search/footer whole and one scroller");
       }
       for (let i = 0; i < 5; i++) await search.press("ArrowDown");
       await waitForCheck("pointer-keyboard-takeover-reveals", () => {
@@ -569,7 +569,7 @@ try {
         const port = owner.getBoundingClientRect();
         return row.getAttribute("aria-selected") === "true" && rect.top >= port.top - 1 && rect.bottom <= port.bottom + 1;
       });
-      assert.deepEqual(await scan(), [], "keyboard reveal keeps search/footer whole and one scroller");
+      await checkScan("keyboard reveal keeps search/footer whole and one scroller");
       assert.deepEqual(resizes, [], "no native size requests from content");
       assert.deepEqual(errors, [], "no page errors");
       await page.close(); profiles += 1; continue;
@@ -593,20 +593,20 @@ try {
       const owners = () => page.evaluate(() => [document.querySelector("main"), ...document.querySelectorAll("main *")]
         .filter((node) => /auto|scroll/.test(getComputedStyle(node).overflowY) && node.clientHeight > 0 && node.scrollHeight > node.clientHeight + 1)
         .map((node) => node.className));
-      assert.deepEqual(await scan(), [], `720x480/${larger}: large notice with selection`);
+      await checkScan("large notice with selection");
       assert.deepEqual(await owners(), ["picker-content scroll-area"], "large notices and results share the middle scroller");
       for (const height of [360, 480, 800, 480]) {
         await page.setViewportSize({ width, height });
         await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
         assert.deepEqual(await selection(), chosen, "layout changes preserve focus, query range and selected references");
         {
-          assert.deepEqual(await scan(), [], "growing the viewport restores the bounded middle");
+          await checkScan("growing the viewport restores the bounded middle");
           assert.deepEqual(await owners(), ["picker-content scroll-area"], "notice fallback survives viewport growth");
         }
       }
       for (const control of [page.getByRole("list", { name: "Copy warnings" }).locator("li").first(), page.getByRole("list", { name: "Copy warnings" }).locator("li").last(), page.getByRole("region", { name: "Preview" })]) {
         assert.equal(await reachable(control), true, "notice ends and the fixed preview remain reachable");
-        assert.deepEqual(await scan(), [], "revealing a notice keeps all three bands whole");
+        await checkScan("revealing a notice keeps all three bands whole");
       }
       const editor = await openEditor();
       for (const control of [page.getByLabel("Page", { exact: true }), page.getByRole("radiogroup", { name: "Citation form" })]) {
@@ -619,7 +619,7 @@ try {
       await page.getByRole("list", { name: "Copy warnings" }).waitFor({ state: "detached" });
       assert.deepEqual(await owners(), ["results-area scroll-area"], "empty notices restore the results scroller");
       assert.deepEqual((await selection()).references, chosen.references, "dismissing warnings keeps selected references");
-      assert.deepEqual(await scan(), [], "dismissed notice leaves one scroller");
+      await checkScan("dismissed notice leaves one scroller");
       assert.deepEqual(resizes, [], "no native size requests from content");
       assert.deepEqual(errors, [], "no page errors");
       await page.close(); profiles += 1; continue;
@@ -630,14 +630,14 @@ try {
       for (const nextHeight of [480, 360]) {
         await page.setViewportSize({ width, height: nextHeight });
         await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-        assert.deepEqual(await scan(), [], "dragging preserves the bounded middle and whole search/footer");
+        await checkScan("dragging preserves the bounded middle and whole search/footer");
       }
     }
     assert.equal(await reachable(page.getByRole("region", { name: "Preview" })), true, "preview is whole in its fixed band");
     let editor = await openEditor();
     for (const control of [page.getByLabel("Page", { exact: true }), page.getByRole("radiogroup", { name: "Citation form" })]) {
       assert.equal(await reachable(control), true, "Page/Form remain reachable in the shared overlay");
-      assert.deepEqual(await scan(), [], "details keep the fixed bands whole and one active scroller");
+      await checkScan("details keep the fixed bands whole and one active scroller");
     }
     await closeEditor(editor);
     await search.press("Shift+Enter");
@@ -647,7 +647,7 @@ try {
     await page.getByLabel("Page", { exact: true }).fill("12");
     await page.setViewportSize({ width: 480, height: 360 });
     await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-    assert.deepEqual(await scan(), [], "resizing while editing keeps fixed bands and one active scroller");
+    await checkScan("resizing while editing keeps fixed bands and one active scroller");
     const anchor = shelfControl(page, /^Edit /).first();
     await anchoredMenu(anchor);
     const heading = editor.getByRole("heading");
@@ -664,13 +664,13 @@ try {
     assert.equal(await page.getByLabel("Page", { exact: true }).inputValue(), "12", "folding preserves the person's edit");
     await closeEditor(editor);
     await page.setViewportSize({ width, height });
-    assert.deepEqual(await scan(), [], `${width}/${larger}/${colorScheme}: shelf`);
+    await checkScan("shelf");
     await search.fill("refuse");
     await page.getByRole("alert").and(page.getByText(noticeText.failedSearch, { exact: true })).first().waitFor();
-    assert.deepEqual(await scan(), [], `${width}/${larger}/${colorScheme}: failed search retains footer and one scroller`);
+    await checkScan("failed search retains footer and one scroller");
     // Consumer oracle must reject a genuinely clipped frame, not only read CSS.
     await page.evaluate(() => { document.querySelector("main").style.height = "1px"; });
-    assert.ok((await scan()).includes("footer action clipped"), "same geometry oracle detects clipped footer");
+    assert.ok((await scan()).includes("footer action clipped"), `${caseLabel}: same geometry oracle detects clipped footer`);
     assert.deepEqual(resizes, [], "no native size requests from content");
     assert.deepEqual(errors, [], "no page errors");
     await page.close(); profiles += 1;

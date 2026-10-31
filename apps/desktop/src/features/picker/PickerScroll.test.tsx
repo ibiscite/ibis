@@ -1,15 +1,69 @@
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
+import { useLayoutEffect } from "react";
 import { PickerScroll } from "./PickerScroll";
 
-afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
-function Picker({ rows, notice, citationProblem, extraNotice, generation = 0 }: { notice?: string; citationProblem?: string; extraNotice?: string; rows: number; generation?: number }) {
-  return <main><header className="search-bar"><input id="search" aria-label="Synthetic search" /></header><PickerScroll citationProblem={citationProblem}>{notice && <div className="notices"><p role="alert" className={citationProblem ? "citation-problem" : undefined}>{notice}</p></div>}{extraNotice && <div className="notices secondary"><p role="alert">{extraNotice}</p></div>}<div className="results-area">{Array.from({ length: rows }, (_, i) => <p role="option" id={`result-${i}`} key={`${generation}/${i}`}>row</p>)}</div></PickerScroll><footer /></main>;
+function Picker({ rows, notice, citationProblem, citationProblemIdentity, extraNotice, generation = 0 }: { notice?: string; citationProblem?: string; citationProblemIdentity?: object; extraNotice?: string; rows: number; generation?: number }) {
+  return <main><header className="search-bar"><input id="search" aria-label="Synthetic search" /></header><PickerScroll citationProblem={citationProblem} citationProblemIdentity={citationProblemIdentity}>{notice && <div className="notices"><p role="alert" className={citationProblem ? "citation-problem" : undefined}>{notice}</p></div>}{extraNotice && <div className="notices secondary"><p role="alert">{extraNotice}</p></div>}<div className="results-area">{Array.from({ length: rows }, (_, i) => <p role="option" id={`result-${i}`} key={`${generation}/${i}`}>row</p>)}</div></PickerScroll><footer /></main>;
 }
+
+test.each([{ scrollTop: 800, offset: 48 }, { scrollTop: 0, offset: 480 }])("a refusal arriving offscreen at doubled text is revealed after layout (%j)", ({ scrollTop, offset }) => {
+  const reason = "Reference 1: Choose another form or clear Page. ".repeat(30);
+  let noticeOffset = 24;
+  const computed = window.getComputedStyle;
+  vi.spyOn(window, "getComputedStyle").mockImplementation((node) => {
+    if (!node.matches(".results-area, .picker-content")) return computed(node);
+    const style = document.createElement("div").style;
+    style.overflowY = node.matches(".picker-content") ? "auto" : "visible";
+    return style;
+  });
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+    const middle = this.closest(".picker-content")!;
+    if (this.matches(".picker-content")) return new DOMRect(0, 208, 480, 24);
+    if (this.matches(".notices")) return new DOMRect(0, 208 - middle.scrollTop, 480, noticeOffset + 1200);
+    if (this.matches(".citation-problem")) return new DOMRect(40, 208 + noticeOffset - middle.scrollTop, 400, 1200);
+    if (this.matches('[role="option"]')) return new DOMRect(16, 240 + (middle.querySelector(".notices") ? noticeOffset + 1200 : 0) - middle.scrollTop, 448, 800);
+    return new DOMRect();
+  });
+  function Arrival({ notice, identity }: { notice?: string; identity?: object }) {
+    // Model the rest of the commit settling the enlarged layout after the
+    // scroller's own layout lifecycle. Its early geometry is not the arrival
+    // position. jsdom has no layout; the real probe supplies the actual boxes.
+    useLayoutEffect(() => { if (notice) noticeOffset = offset; }, [notice]);
+    return <Picker rows={14} notice={notice} citationProblem={notice} citationProblemIdentity={identity} />;
+  }
+  const view = render(<Arrival />);
+  const middle = view.container.querySelector<HTMLElement>(".picker-content")!;
+  const search = view.container.querySelector<HTMLInputElement>("#search")!;
+  search.value = "invented"; search.focus(); search.setSelectionRange(2, 5);
+  middle.scrollTop = scrollTop; fireEvent.scroll(middle);
+  const identity = {};
+  view.rerender(<Arrival notice={reason} identity={identity} />);
+  const refusal = view.container.querySelector<HTMLElement>(".citation-problem")!;
+  expect(refusal.getBoundingClientRect().top).toBe(middle.getBoundingClientRect().top);
+  expect(document.activeElement).toBe(search);
+  expect([search.selectionStart, search.selectionEnd]).toEqual([2, 5]);
+  middle.scrollTop += 240; fireEvent.scroll(middle);
+  const readingTop = refusal.getBoundingClientRect().top;
+  view.rerender(<Arrival notice={reason} identity={identity} />);
+  expect(refusal.getBoundingClientRect().top).toBe(readingTop);
+  // A newer request can refuse with exactly the same words. It is a new
+  // notice, whereas the rerender above must leave the reading position alone.
+  view.rerender(<Arrival notice={reason} identity={{}} />);
+  expect(refusal.getBoundingClientRect().top).toBe(middle.getBoundingClientRect().top);
+  expect(document.activeElement).toBe(search);
+});
 
 test.each([96, 280])("a new long formatting refusal is revealed in the %spx middle viewport without taking focus or resetting later reading", (height) => {
   const reason = "Reference 1: Choose another form or clear Page. ".repeat(30);
+  let noticeHeight = 1200;
+  let resized = () => {};
+  vi.stubGlobal("ResizeObserver", class {
+    constructor(callback: () => void) { resized = callback; }
+    observe() {} disconnect() {}
+  });
   const computed = window.getComputedStyle;
   vi.spyOn(window, "getComputedStyle").mockImplementation((node) => {
     if (!node.matches(".results-area, .picker-content")) return computed(node);
@@ -20,9 +74,9 @@ test.each([96, 280])("a new long formatting refusal is revealed in the %spx midd
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
     const middle = this.closest(".picker-content")!;
     if (this.matches(".picker-content")) return new DOMRect(0, 80, 480, height);
-    if (this.matches(".notices")) return new DOMRect(0, 80 - middle.scrollTop, 480, 1200);
-    if (this.matches(".citation-problem")) return new DOMRect(24, 92 - middle.scrollTop, 432, 1176);
-    if (this.matches('[role="option"]')) return new DOMRect(8, 116 + (middle.querySelector(".notices") ? 1200 : 0) - middle.scrollTop, 464, 58);
+    if (this.matches(".notices")) return new DOMRect(0, 80 - middle.scrollTop, 480, noticeHeight);
+    if (this.matches(".citation-problem")) return new DOMRect(24, 92 - middle.scrollTop, 432, noticeHeight - 24);
+    if (this.matches('[role="option"]')) return new DOMRect(8, 116 + (middle.querySelector(".notices") ? noticeHeight : 0) - middle.scrollTop, 464, 58);
     return new DOMRect();
   });
   const view = render(<Picker rows={14} />);
@@ -38,6 +92,12 @@ test.each([96, 280])("a new long formatting refusal is revealed in the %spx midd
   view.rerender(<Picker rows={14} notice={reason} citationProblem={reason} />);
   expect(middle.scrollTop).toBe(252);
   expect(refusal.textContent).toBe(reason);
+  // Width/text changes can wrap the same refusal onto more lines. Anchoring
+  // the result below it would push the person's reading position out of view.
+  const readingTop = refusal.getBoundingClientRect().top;
+  noticeHeight += 400; resized();
+  expect(refusal.getBoundingClientRect().top).toBe(readingTop);
+  expect(document.activeElement).toBe(search);
 });
 
 test("a second notice line preserves browsing place when the first notice is unchanged", () => {

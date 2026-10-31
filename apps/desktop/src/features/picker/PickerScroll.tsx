@@ -1,13 +1,14 @@
-import { Component, createRef, type ReactNode } from "react";
+import { Component, createRef, useEffect, useRef, type ReactNode } from "react";
 
-type Props = { children: ReactNode; citationProblem?: string | null };
-type Place = { row: HTMLElement; owner: HTMLElement; top: number; noticeHeight: number };
+type Props = { children: ReactNode; citationProblem?: string | null; citationProblemIdentity?: object };
+type Place = { node: HTMLElement; owner: HTMLElement; top: number; noticeHeight: number };
 
 /** Preserve browsing place across notices and scroll-owner changes. The commit
  * snapshot reads the old DOM before layout can clamp its scroll offset, even
  * when the browser has not delivered the person's latest scroll event yet.
- * This geometry only anchors rows; it never chooses or changes a window size. */
-export class PickerScroll extends Component<Props> {
+ * A refusal owns the reading place while present. This geometry never chooses
+ * or changes a window size. */
+class PickerScrollFrame extends Component<Props> {
   private middle = createRef<HTMLDivElement>();
   private anchor: Place | null = null;
   private resized: ResizeObserver | null = null;
@@ -16,23 +17,24 @@ export class PickerScroll extends Component<Props> {
     const middle = this.middle.current;
     if (!middle?.isConnected) return null;
     const area = middle.querySelector<HTMLElement>(":scope > .results-area");
-    // The first row anchors the whole unchanged list, even when offscreen.
-    // Its DOM identity prevents an earlier search from moving replacement rows.
-    const row = area?.querySelector<HTMLElement>('[role="option"]');
-    const owner = [area, middle].find((part) => part && /auto|scroll/.test(getComputedStyle(part).overflowY));
-    if (!row || !owner) return null;
+    // Preserve the refusal's reading place; otherwise anchor the first row of
+    // the unchanged list, even offscreen. DOM identity excludes replaced rows.
+    const problem = middle.querySelector<HTMLElement>(":scope > .notices > .citation-problem");
+    const node = problem ?? area?.querySelector<HTMLElement>('[role="option"]');
+    const owner = problem ? middle : [area, middle].find((part) => part && /auto|scroll/.test(getComputedStyle(part).overflowY));
+    if (!node || !owner) return null;
     const noticeHeight = [...middle.querySelectorAll(":scope > .notices")]
       .reduce((height, part) => height + part.getBoundingClientRect().height, 0);
-    return { row, owner, top: row.getBoundingClientRect().top, noticeHeight };
+    return { node, owner, top: node.getBoundingClientRect().top, noticeHeight };
   };
 
   private restore = (before: Place | null) => {
     let after = this.capture();
-    if (before && after?.row === before.row && (before.owner !== after.owner || before.noticeHeight !== after.noticeHeight)) {
+    if (before && after?.node === before.node && (before.owner !== after.owner || before.noticeHeight !== after.noticeHeight)) {
       // The former owner's offset may already be clamped by the new layout.
       // Transfer the visual position before paint, independently of selection.
       if (before.owner !== after.owner) before.owner.scrollTop = 0;
-      after.owner.scrollTop += after.row.getBoundingClientRect().top - before.top;
+      after.owner.scrollTop += after.node.getBoundingClientRect().top - before.top;
       after = this.capture();
     }
     this.anchor = after;
@@ -43,14 +45,14 @@ export class PickerScroll extends Component<Props> {
     if (event.target === this.anchor?.owner) this.update();
   };
 
-  private revealCitationProblem = () => {
-    if (!this.props.citationProblem) return;
+  revealCitationProblem = (notice: string, identity?: object) => {
+    if (this.props.citationProblem !== notice || this.props.citationProblemIdentity !== identity) return;
     const middle = this.middle.current;
     const problem = middle?.querySelector<HTMLElement>(":scope > .notices > .citation-problem");
     if (!middle || !problem) return;
-    // A refusal explains why Enter cannot continue. Reveal its start instead
-    // of anchoring the results past it; the rest stays in this same scroller.
-    middle.scrollTop += problem.getBoundingClientRect().top - middle.getBoundingClientRect().top - middle.clientTop;
+    // Reveal the new notice after the commit's layout has settled. Only the
+    // middle scroller moves, instantly; Search and its selection keep focus.
+    middle.scrollTop = middle.scrollTop + problem.getBoundingClientRect().top - middle.getBoundingClientRect().top - middle.clientTop;
     this.anchor = this.capture();
   };
 
@@ -61,14 +63,12 @@ export class PickerScroll extends Component<Props> {
     this.resized?.observe(middle);
     window.addEventListener("resize", this.update);
     middle.addEventListener("scroll", this.scrolled, true);
-    this.revealCitationProblem();
   }
 
   getSnapshotBeforeUpdate() { return this.capture(); }
 
-  componentDidUpdate(previous: Props, _state: unknown, snapshot: Place | null) {
+  componentDidUpdate(_previous: Props, _state: unknown, snapshot: Place | null) {
     this.restore(snapshot);
-    if (previous.citationProblem !== this.props.citationProblem) this.revealCitationProblem();
   }
 
   componentWillUnmount() {
@@ -81,4 +81,16 @@ export class PickerScroll extends Component<Props> {
   render() {
     return <div className="picker-content scroll-area" ref={this.middle}>{this.props.children}</div>;
   }
+}
+
+export function PickerScroll(props: Props) {
+  const frame = useRef<PickerScrollFrame>(null);
+  const { citationProblem, citationProblemIdentity } = props;
+  // Arrival has one owner, separate from preserving an existing reading place.
+  // Equal wording from a newer format request is still a new notice. Renders
+  // and later layout changes for the same notice never repeat this scroll.
+  useEffect(() => {
+    if (citationProblem) frame.current?.revealCitationProblem(citationProblem, citationProblemIdentity);
+  }, [citationProblem, citationProblemIdentity]);
+  return <PickerScrollFrame {...props} ref={frame} />;
 }
