@@ -155,16 +155,29 @@ never changes focus, defaults, responses or input. This avoids the documented
 AT-SPI omission. Missing observations share the existing action deadline;
 invalid ownership, ambiguous Install controls and exhausted navigation fail
 before Space. At most six Tabs navigate to a verified Install; Space is sent
-once and never retried. The Linux native CI step runs
+once and never retried. Like native picker smoke, input uses the XTEST server
+keyboard path after proving focus, rather than directed `XSendEvent` input via
+`xdotool --window`. The GTK fixture requires exactly one real Space press and
+release with `send_event` false before accepting an Install response. The Linux native CI step runs
 `update-gtk-probe.test.py` with `IBIS_GTK_CONTROL_TEST=1` under Xvfb/dbus: real GTK
 dialogs exercise both button orders and refusal when Install is absent. Each
 `--layout old|new|missing` invocation gets its own Xvfb server and D-Bus session;
 an exited window manager's root properties cannot carry into the next case.
+CI uses the distro `/usr/bin/python3`, forces `GDK_BACKEND=x11`, and checks the
+wrapper tools before launching. Inside the display, a bounded preflight checks
+the native tools, Python GI/GTK3 and its X11 backend, and the XTEST extension.
+Missing dependencies, a nonlocal DISPLAY or an unavailable display fail rather than skip.
 The real qualification still refuses a desktop with an existing window manager.
 Fixtures write bounded result files and wait for their own PID to exit, so
 accessibility services retaining inherited stdio cannot extend an EOF wait.
 A process regression covers that inherited-pipe failure without requiring GTK. The
 AppImage rerun remains necessary to verify loading against its bundled GTK.
+
+The supplied `ci-1504c.log`, lines 82–98, shows a live fixture PID timing out
+after the attempted activation. That rules out the earlier inherited-pipe
+explanation for that run: availability, dialog observation and display setup
+had already succeeded. The keyboard transport change still needs the real
+Linux GTK run; this source inspection is not a native passing result.
 
 ## Capability matrix
 

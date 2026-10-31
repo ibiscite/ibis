@@ -4,11 +4,93 @@ import importlib
 import os
 from pathlib import Path
 import platform
+import re
+import shutil
 import signal
 import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
+
+
+NATIVE_TOOLS = ("Xvfb", "xvfb-run", "xauth", "dbus-run-session", "cc", "xdotool", "xprop", "openbox", "xdpyinfo")
+GTK_PREFLIGHT = """
+import gi
+gi.require_version('Gtk', '3.0')
+gi.require_version('GdkX11', '3.0')
+from gi.repository import Gdk, GdkX11, Gtk
+result = Gtk.init_check()
+if not (result[0] if isinstance(result, tuple) else result):
+    raise SystemExit(2)
+if not isinstance(Gdk.Display.get_default(), GdkX11.X11Display):
+    raise SystemExit(3)
+print('gtk-ready')
+"""
+
+
+def native_preflight():
+    display = os.environ.get("DISPLAY", "")
+    if not re.fullmatch(r":[0-9]+(?:\.[0-9]+)?", display):
+        raise AssertionError("GTK regression requires a local DISPLAY supplied by xvfb-run")
+    for tool in NATIVE_TOOLS:
+        if shutil.which(tool) is None:
+            raise AssertionError(f"GTK regression requires {tool}")
+    try:
+        # Use the same interpreter and inherited display as the actual fixture;
+        # CI invokes /usr/bin/python3 so distro GI/GTK typelibs are available.
+        result = subprocess.run([sys.executable, "-c", GTK_PREFLIGHT], capture_output=True,
+                                timeout=5, env=dict(os.environ))
+        if result.returncode or result.stdout.strip() != b"gtk-ready":
+            raise AssertionError("GTK regression Python GI/GTK3 initialization failed on DISPLAY")
+        extensions = subprocess.run(["xdpyinfo", "-display", display, "-queryExtensions"], capture_output=True,
+                                    timeout=5, env=dict(os.environ))
+        if extensions.returncode or not re.search(rb"\bXTEST\b", extensions.stdout):
+            raise AssertionError("GTK regression DISPLAY requires the XTEST keyboard extension")
+    except (OSError, subprocess.SubprocessError):
+        raise AssertionError("GTK regression setup probe failed") from None
+
+
+class SetupTests(unittest.TestCase):
+    def test_ci_interpreter_and_display_reach_gtk_and_xtest_probes(self):
+        results = [subprocess.CompletedProcess([], 0, b"gtk-ready\n", b""),
+                   subprocess.CompletedProcess([], 0, b"    XTEST (opcode: 132)\n", b"")]
+        with patch.dict(os.environ, {"DISPLAY": ":77.0"}), patch("shutil.which", return_value="/synthetic/tool"), \
+                patch("subprocess.run", side_effect=results) as run:
+            native_preflight()
+            self.assertEqual(run.call_args_list[0].args[0][:2], [sys.executable, "-c"])
+            self.assertEqual(run.call_args_list[1].args[0], ["xdpyinfo", "-display", ":77.0", "-queryExtensions"])
+            for call in run.call_args_list:
+                self.assertEqual(call.kwargs["env"]["DISPLAY"], ":77.0")
+                self.assertEqual(call.kwargs["timeout"], 5)
+
+    def test_missing_runner_tools_fail_before_launch(self):
+        for missing in NATIVE_TOOLS:
+            with self.subTest(tool=missing), patch.dict(os.environ, {"DISPLAY": ":77"}), \
+                    patch("shutil.which", side_effect=lambda tool: None if tool == missing else "/synthetic/tool"), \
+                    patch("subprocess.run") as run:
+                with self.assertRaisesRegex(AssertionError, "requires " + re.escape(missing)):
+                    native_preflight()
+                run.assert_not_called()
+
+    def test_missing_or_nonlocal_display_fails_before_launch(self):
+        for display in ("", "remote:0"):
+            with self.subTest(display=display), patch.dict(os.environ, {"DISPLAY": display}), patch("subprocess.run") as run:
+                with self.assertRaisesRegex(AssertionError, "local DISPLAY"):
+                    native_preflight()
+                run.assert_not_called()
+
+    def test_unavailable_gi_gtk_or_xtest_and_probe_timeouts_fail(self):
+        ready = subprocess.CompletedProcess([], 0, b"gtk-ready\n", b"")
+        bad = subprocess.CompletedProcess([], 1, b"", b"synthetic-private-sentinel")
+        for results, label in (([bad], "GI/GTK3"), ([ready, bad], "XTEST"),
+                               ([ready, subprocess.CompletedProcess([], 0, b"no extensions", b"")], "XTEST"),
+                               ([subprocess.TimeoutExpired("probe", 5)], "setup probe failed")):
+            with self.subTest(label=label), patch.dict(os.environ, {"DISPLAY": ":77"}), \
+                    patch("shutil.which", return_value="/synthetic/tool"), patch("subprocess.run", side_effect=results):
+                with self.assertRaisesRegex(AssertionError, label) as failure:
+                    native_preflight()
+                self.assertNotIn("synthetic-private-sentinel", str(failure.exception))
 
 
 def fixture_output(child, output, timeout=3):
@@ -44,7 +126,7 @@ class FixtureCompletionTests(unittest.TestCase):
 def fixture(layout):
     import gi
     gi.require_version("Gtk", "3.0")
-    from gi.repository import GLib, Gtk
+    from gi.repository import Gdk, GLib, Gtk
     picker = Gtk.Window(title="Ibis")
     picker.show_all()
     offer = Gtk.MessageDialog(title="An update is available", text="An update is available",
@@ -56,8 +138,17 @@ def fixture(layout):
     if layout == "missing":
         order = [("Later", Gtk.ResponseType.CANCEL)]
     buttons = [offer.add_button(label, response) for label, response in order]
+    keyboard = {"press": 0, "release": 0, "sent": 0}
+    def key_event(_dialog, event):
+        if event.keyval == Gdk.KEY_space:
+            keyboard["press" if event.type == Gdk.EventType.KEY_PRESS else "release"] += 1
+            keyboard["sent"] += int(bool(event.send_event))
+        return False
+    offer.connect("key-press-event", key_event)
+    offer.connect("key-release-event", key_event)
     def answer(_dialog, response):
-        print("install" if response == install_response else "later", flush=True)
+        deliberate = keyboard == {"press": 1, "release": 1, "sent": 0}
+        print("install" if response == install_response and deliberate else "wrong-response-or-keyboard-path", flush=True)
         Gtk.main_quit()
     offer.connect("response", answer)
     offer.show_all()
@@ -74,6 +165,7 @@ class NativeControlTests(unittest.TestCase):
 
     def test_old_and_new_orders_install_once_and_missing_install_refuses(self):
         self.assertTrue(self.layouts, "run each layout on a fresh X display with --layout old|new|missing")
+        native_preflight()
         native = importlib.import_module("update-e2e")
         for layout in self.layouts:
             with self.subTest(layout=layout), tempfile.TemporaryDirectory(dir=Path.cwd()) as temporary:

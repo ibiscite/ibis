@@ -861,7 +861,11 @@ class Linux:
         def key(name, attempted):
             probe.update(stage="x11-key", attempted=attempted)
             try:
-                result = subprocess.run(["xdotool", "key", "--window", scope[2], "--clearmodifiers", name],
+                # Use the same server keyboard path as native smoke. --window
+                # uses directed XSendEvent instead of normal keyboard input;
+                # its successful exit does not prove GTK activated a button.
+                # The owned native focus/control checks above select the target.
+                result = subprocess.run(["xdotool", "key", "--clearmodifiers", name],
                                         capture_output=True, timeout=remaining(deadline), env=dict(os.environ, LC_ALL="C"))
                 if result.returncode or result.stdout or result.stderr:
                     raise RuntimeError("native update key was refused or its outcome is unknown")
@@ -1444,7 +1448,7 @@ class Tests(unittest.TestCase):
                 facts = f"_IBIS_UPDATE_INSTALL_CONTROL(CARDINAL) = 1, {pid}, {installs}, {focused}, {tabs + 1}, {controls}, 1"
                 return subprocess.CompletedProcess(command, 0, stdout=facts.encode(), stderr=b"")
             args = tuple(command[1:])
-            if args in (("key", "--window", "102", "--clearmodifiers", "Tab"), ("key", "--window", "102", "--clearmodifiers", "space")):
+            if args in (("key", "--clearmodifiers", "Tab"), ("key", "--clearmodifiers", "space")):
                 if args[-1] == "Tab":
                     tabs += 1
                 if scenario == "selection-timeout" and args[-1] == "Tab":
@@ -1489,8 +1493,8 @@ class Tests(unittest.TestCase):
         self.assertNotIsInstance(result, Exception)
         self.assertTrue(result[0])
         self.assertEqual([event for event in events if event[1] == "key"],
-                         [("xdotool", "key", "--window", "102", "--clearmodifiers", "Tab"),
-                          ("xdotool", "key", "--window", "102", "--clearmodifiers", "space")])
+                         [("xdotool", "key", "--clearmodifiers", "Tab"),
+                          ("xdotool", "key", "--clearmodifiers", "space")])
 
     def test_linux_old_layout_verifies_install_without_tabbing_to_later(self):
         result, events = self.linux_native_offer("old-layout")
