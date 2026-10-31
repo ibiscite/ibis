@@ -53,7 +53,9 @@ export const commands = {
 	/**  The format the picker starts with: the last one chosen, or Pandoc. */
 	copyFormat: () => __TAURI_INVOKE<KeyFormat>("copy_format"),
 	/**  The preferences the picker starts with. */
-	pickerPreferences: () => __TAURI_INVOKE<PickerPreferences>("picker_preferences"),
+	pickerPreferences: () => __TAURI_INVOKE<PickerPreferences_Serialize>("picker_preferences"),
+	/**  Issue a save identity inline at IPC dispatch; unused identities block nothing. */
+	preferenceRevision: () => __TAURI_INVOKE<number>("preference_revision"),
 	/**  Remember the picker preferences; other settings in the file are kept. */
 	setPickerPreferences: (preferences: PickerPreferencesPatch_Deserialize, copyFormat:
 /**  Pandoc / Quarto / R Markdown / Obsidian: `[@key, p. 12]`. */
@@ -69,7 +71,7 @@ export const commands = {
 /**  Typst `@key[p. 12]`. */
 "typst" |
 /**  Bare keys separated by commas. */
-"keys" | null) => __TAURI_INVOKE<PickerSave>("set_picker_preferences", { preferences, copyFormat }),
+"keys" | null, revision: number) => __TAURI_INVOKE<PickerSave_Serialize>("set_picker_preferences", { preferences, copyFormat, revision }),
 	/**  The app the picker was opened from, its output and what Ibis remembers for it. */
 	pickerDestination: () => __TAURI_INVOKE<PickerDestination>("picker_destination"),
 	/**  Always use `output` for the app the picker was opened from; `None` returns it to Automatic. */
@@ -139,7 +141,7 @@ export const commands = {
 	 */
 	openSettings: (page: "general" |
 /**  General, scrolled to pasting and its permission. */
-"paste" | "shortcuts" | "citations" | "about" | null) => __TAURI_INVOKE<void>("open_settings", { page }),
+"paste" | "look" | "libraries" | "advanced" | "shortcuts" | "citations" | "about" | null) => __TAURI_INVOKE<void>("open_settings", { page }),
 	/**  Return from the paste guide after a live grant, without replaying Enter. */
 	finishPasteGuide: () => __TAURI_INVOKE<boolean>("finish_paste_guide"),
 	/**  Whether Ibis may paste now. Read each time: the person can change it at any moment. */
@@ -159,8 +161,13 @@ export const commands = {
 };
 
 /* Types */
+export type Accent = "system" | "blue" | "purple" | "pink" | "red" | "orange" | "yellow" | "green" | "graphite";
+
 /**  One output the picker can copy: a key syntax or a citation style. */
 export type AppOutput = ({ key: KeyFormat }) & { style?: never } | ({ style: CitationStyle }) & { key?: never };
+
+/**  Settings owns these choices until the picker consumes the same event fields. */
+export type Appearance = "system" | "light" | "dark";
 
 /**  A bundled citation style the picker can format with (ADR 0020). */
 export type CitationStyle = "apa" | "chicago-author-date" | "harvard-cite-them-right" | "ieee" | "modern-language-association";
@@ -382,7 +389,7 @@ export type OutputQuestion = "browser" | "editor";
 /**  Where Settings opens. */
 export type Page = "general" |
 /**  General, scrolled to pasting and its permission. */
-"paste" | "shortcuts" | "citations" | "about";
+"paste" | "look" | "libraries" | "advanced" | "shortcuts" | "citations" | "about";
 
 /**  Whether Ibis may paste, and where the person turns that on. */
 export type PastePermission = {
@@ -425,23 +432,15 @@ export type PickerDestination = {
  *  How the picker looks and what it formats with, remembered across restarts
  *  (ADR 0020). A new key format is saved with the same preference change.
  */
-export type PickerPreferences = {
-	/**  A style chosen in the format menu, or `null` to copy citation keys. */
-	citation_style: CitationStyle | null,
-	density: Density,
-	larger_text: boolean,
-	show_paste_preview: boolean,
-	/**  The Ibis mark in place of the search glyph; off by default. */
-	search_mark: boolean,
-	/**  Enter pastes into the app the picker was opened from; on by default. */
-	paste: boolean,
-};
+export type PickerPreferences = PickerPreferences_Serialize | PickerPreferences_Deserialize;
 
 /**  Only fields deliberately changed in one window cross the write boundary. */
 export type PickerPreferencesPatch = PickerPreferencesPatch_Serialize | PickerPreferencesPatch_Deserialize;
 
 /**  Only fields deliberately changed in one window cross the write boundary. */
 export type PickerPreferencesPatch_Deserialize = {
+	appearance?: Appearance | null,
+	accent?: Accent | null,
 	citation_style?: CitationStyle | null,
 	density?: Density | null,
 	larger_text?: boolean | null,
@@ -452,6 +451,8 @@ export type PickerPreferencesPatch_Deserialize = {
 
 /**  Only fields deliberately changed in one window cross the write boundary. */
 export type PickerPreferencesPatch_Serialize = {
+	appearance?: Appearance | null,
+	accent?: Accent | null,
 	citation_style?: CitationStyle | null,
 	density?: Density | null,
 	larger_text?: boolean | null,
@@ -460,11 +461,71 @@ export type PickerPreferencesPatch_Serialize = {
 	paste?: boolean | null,
 };
 
+/**
+ *  How the picker looks and what it formats with, remembered across restarts
+ *  (ADR 0020). A new key format is saved with the same preference change.
+ */
+export type PickerPreferences_Deserialize = {
+	copy_format?: KeyFormat | null,
+	appearance?: Appearance | null,
+	accent?: Accent | null,
+	/**  A style chosen in the format menu, or `null` to copy citation keys. */
+	citation_style: CitationStyle | null,
+	density: Density,
+	larger_text: boolean,
+	show_paste_preview: boolean,
+	/**  The Ibis mark in place of the search glyph; on by default. */
+	search_mark: boolean,
+	/**  Enter pastes into the app the picker was opened from; on by default. */
+	paste: boolean,
+};
+
+/**
+ *  How the picker looks and what it formats with, remembered across restarts
+ *  (ADR 0020). A new key format is saved with the same preference change.
+ */
+export type PickerPreferences_Serialize = {
+	copy_format?: KeyFormat | null,
+	appearance?: Appearance | null,
+	accent?: Accent | null,
+	/**  A style chosen in the format menu, or `null` to copy citation keys. */
+	citation_style: CitationStyle | null,
+	density: Density,
+	larger_text: boolean,
+	show_paste_preview: boolean,
+	/**  The Ibis mark in place of the search glyph; on by default. */
+	search_mark: boolean,
+	/**  Enter pastes into the app the picker was opened from; on by default. */
+	paste: boolean,
+};
+
 /**  The authoritative state after one locked patch and flush. */
-export type PickerSave = {
-	preferences: PickerPreferences,
+export type PickerSave = PickerSave_Serialize | PickerSave_Deserialize;
+
+/**  The authoritative state after one locked patch and flush. */
+export type PickerSave_Deserialize = {
+	preferences: PickerPreferences_Deserialize,
 	copy_format: KeyFormat,
 };
+
+/**  The authoritative state after one locked patch and flush. */
+export type PickerSave_Serialize = {
+	preferences: PickerPreferences_Serialize,
+	copy_format: KeyFormat,
+};
+
+/**  The saved snapshot and the identity of the write that published it. */
+export type PreferenceChange = PreferenceChange_Serialize | PreferenceChange_Deserialize;
+
+/**  The saved snapshot and the identity of the write that published it. */
+export type PreferenceChange_Deserialize = {
+	revision: number,
+} & PickerPreferences_Deserialize;
+
+/**  The saved snapshot and the identity of the write that published it. */
+export type PreferenceChange_Serialize = {
+	revision: number,
+} & PickerPreferences_Serialize;
 
 export type PreviewIntent = {
 	page: number,
