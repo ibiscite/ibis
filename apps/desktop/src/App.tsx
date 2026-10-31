@@ -405,7 +405,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   // Nothing matched this search, so the empty state offers what to try next.
   const nothingMatched = Boolean(query) && resultsQuery === queryKey && results.length === 0 && !error;
   const { chosenLibraries, severalLibraries, isChosen, toggleLibrary, searchAllLibraries, groupName, offeredGroups, libraryOf, narrowed } =
-    useZoteroScope({ library, libraryVersion, menuOpen: menuOpen || libraryMenuOpen, nothingMatched, zoteroGroups, chooseZoteroLibraries, report, perform,
+    useZoteroScope({ library, libraryVersion, menuOpen: libraryMenuOpen, nothingMatched, zoteroGroups, chooseZoteroLibraries, report, perform,
       focusSearch: () => input.current?.focus() });
   // Read when More opens, the only time it is shown there.
   const libraryDetail = menuOpen ? libraryMessages.detail(library, Date.now(), (status) => zoteroLibraryNames(status, groupName)) : null;
