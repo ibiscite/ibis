@@ -117,6 +117,34 @@ three ignored tests. Native reruns, the missing passing-Mac log, and independent
 review of the updater change remain outstanding. The full script runner also
 invokes Git and is outside this worker's no-Git boundary.
 
+Run 41165132554 qualified `0.2.3-nightly.20261031022408` against
+`0.2.3-nightly.20261031025230`. The maintainer reports the first complete Linux
+pass. The supplied `update5.log` contains the Windows and macOS failures:
+
+| Platform | Evidence and cause |
+|---|---|
+| Windows | Lines 154–183 prove a focused offer, one matching action, no InvokePattern and **no attempted activation**; 194–196 independently prove the visible foreground native offer. The failure is in the harness's activation fallback, after #1504's presentation fix worked. Source already selected the exact Install label and custom ID 1008 (Later is first, Install second); changing button order again would not fix it. The old fallback required a physical native Button HWND. TaskDialog actions can be virtual, so qualification now sends one bounded `TDM_CLICK_BUTTON` for ID 1008 to the verified foreground dialog when InvokePattern is absent. UIA must first resolve and recheck the exact Install label, ownership, ancestry, enabled/visible state and immutable identities. An uncertain send remains terminal; replacement and restart still prove its outcome. The log does not retain the particular failed Win32 observation. |
+| macOS | Lines 466–470 prove one successful automatic check for the expected version, with no failed check. At 33.262 seconds the census changes to three CG windows, one unnamed, and loses picker focus through 184.089 seconds, while still reporting zero sheets/actions (405–422). The observer only searched `AXSheets` and separate `AXWindows`, omitting attached sheets in the picker's standard `AXChildren` tree. Qualification now searches those children too, deduplicates native identities and retains parent/PID, heading, exact action, focus and final identity checks before one AXPress. This source/model diagnosis fits a missed focused sheet; the log has no AX hierarchy to prove that particular runtime representation. |
+
+The harness never types or seeds a query. No evidence here establishes a
+retained-query or idle-readiness product defect, so keep the empty-input and
+1.5-second idle rule and the product unchanged. Do not clear input, reopen
+again, force focus or issue an explicit check to repair automatic qualification.
+The child-only sheet and TaskDialog-action regressions failed before the fixes.
+The macOS model also uses Later as the initially focused first button, checks
+the same sheet exposed through multiple attributes, and refuses changed
+ownership, duplicate child sheets, failed child I/O and close/reopen before
+activation. The Windows provider model runs the production native readiness
+and click code against an OS boundary model, including virtual actions with no
+Button HWND, refusal, timeout, changed ownership/focus and replacement.
+
+Local validation: 69 qualifier self-tests passed; the PowerShell provider
+contract skipped because `pwsh` is absent. All 51 focused workflow, feed,
+macOS-provider and idle-input tests passed with Node 24. Windows provider
+execution and installed Windows/macOS reruns remain necessary; model tests do
+not establish package replacement or restart. No product or workflow files
+changed, and no commits were made.
+
 ## Update consent keyboard safety
 
 PR #1504's foreground fix exposed a pre-existing consent hazard: Return meant
@@ -125,7 +153,7 @@ locally, without changing dependencies:
 
 | Locked source | Keyboard behaviour and resulting implementation |
 |---|---|
-| `rfd 0.16.0`, `backend/win_cid/message_dialog.rs` | TaskDialog uses `nDefaultButton: 0`. Standard Yes/No defaults to Yes. Custom actions preserve vector order: custom Yes=1004, No=1008, Cancel=1001. Ibis now puts Later first, Install second and Cancel third. The qualifier invokes Install or sends one bounded `BM_CLICK` to the verified owned native Button ID 1008; it never presses the default. |
+| `rfd 0.16.0`, `backend/win_cid/message_dialog.rs` | TaskDialog uses `nDefaultButton: 0`. Standard Yes/No defaults to Yes. Custom actions preserve vector order: custom Yes=1004, No=1008, Cancel=1001. Ibis now puts Later first, Install second and Cancel third. The qualifier invokes Install or sends one bounded `TDM_CLICK_BUTTON` for ID 1008 to its verified owned foreground dialog after rechecking the exact Install label; it never presses the default or requires a physical Button HWND. |
 | `rfd 0.16.0`, `backend/macos/message_dialog.rs`; locked AppKit `NSAlert::addButtonWithTitle` documentation | Buttons are added in argument order. The first gets Return; the Cancel title gets Escape. Later is first, Install second, Cancel third. AXPress continues to target only the exact owned Install action. |
 | `rfd 0.16.0`, `backend/gtk3/message_dialog.rs` | Adds custom buttons in argument order but never calls `gtk_dialog_set_default_response`. Ibis owns this small GTK dialog instead, explicitly assigning both the default and initial focus to Later. Only Accept installs; Escape/close cancel. The qualifier observes the actual focused Install control, rechecks the same owned, focused XID, then sends one Space. It supports both the previous nightly’s Install-first order and the new Later-first order. |
 | `tauri-plugin-dialog 2.8.3`, `desktop.rs` and `MessageDialogBuilder::show` | `show(bool)` treats the first custom label as affirmative. The Linux adapter also maps native cancellation to the custom cancel label, including close. Simply reversing a two-button dialog could therefore map Escape/close to Install. Ibis uses `show_with_result` and matches only the exact Install label; a separate Cancel slot remains safe. |

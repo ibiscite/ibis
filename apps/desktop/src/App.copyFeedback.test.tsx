@@ -46,7 +46,10 @@ function expectSameCitation(first: PreviewRequest, next: PreviewRequest) {
   expect(nextIntent.cancel).toBe(false);
 }
 
-test.each([0, 2])("a permission detour keeps the citation past a minute through %i returns before the grant, waiting for a fresh Enter", async (returnsBeforeGrant) => {
+test.each([
+  [0, "no-permission"], [2, "no-permission"],
+  [0, "accessibility-required"], [2, "accessibility-required"],
+] as const)("a permission detour keeps the citation past a minute through %i returns (%s), waiting for a fresh Enter", async (returnsBeforeGrant, reason) => {
   let granted = false;
   const copies: PreviewRequest[] = [];
   const calls = await openPicker({
@@ -57,7 +60,7 @@ test.each([0, 2])("a permission detour keeps the citation past a minute through 
       copies.push(citation.request);
       return { text: citation.preview.text, warnings: [] };
     },
-    show_copied_notice: async () => ({ outcome: granted ? "pasted" : "copied", reason: granted ? null : "no-permission", app: "Writer" }),
+    show_copied_notice: async () => ({ outcome: granted ? "pasted" : "copied", reason: granted ? null : reason, app: "Writer" }),
   });
   const search = screen.getByLabelText("Search references") as HTMLInputElement;
   await act(async () => { fireEvent.change(search, { target: { value: "Smith p.12" } }); });

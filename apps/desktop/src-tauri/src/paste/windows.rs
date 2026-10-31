@@ -53,6 +53,8 @@ fn front(window: &w::HWND, capture: bool) -> Option<Front> {
     Some(Front {
         id,
         pid: i32::try_from(pid).ok()?,
+        window: None,
+        focus_failure: None,
         name,
         elevated: capture && above_ibis(&process),
     })
@@ -185,7 +187,11 @@ impl TicketDesk for Win {
         let Ok(window) = window.0.lock() else {
             return false;
         };
-        if i32::try_from(window.GetWindowThreadProcessId().1).ok() != Some(pid) {
+        if !window.IsWindow()
+            || !window.IsWindowVisible()
+            || window.IsIconic()
+            || i32::try_from(window.GetWindowThreadProcessId().1).ok() != Some(pid)
+        {
             return false;
         }
         if w::HWND::GetForegroundWindow().as_ref() != Some(&*window) {
@@ -195,10 +201,12 @@ impl TicketDesk for Win {
     }
 
     fn window_in_front(&self, window: &Window) -> bool {
-        window
-            .0
-            .lock()
-            .is_ok_and(|window| w::HWND::GetForegroundWindow().as_ref() == Some(&*window))
+        window.0.lock().is_ok_and(|window| {
+            window.IsWindow()
+                && window.IsWindowVisible()
+                && !window.IsIconic()
+                && w::HWND::GetForegroundWindow().as_ref() == Some(&*window)
+        })
     }
 
     fn clipboard_sequence(&self) -> Option<u32> {

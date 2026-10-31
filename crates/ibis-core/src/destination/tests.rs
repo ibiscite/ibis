@@ -84,6 +84,7 @@ fn output_follows_the_app() {
         }
     );
     assert_eq!(output(mac("com.example.unknown")), default);
+    assert_eq!(output(windows("notepad.exe")), default);
     assert_eq!(output(mac("com.apple.Terminal")), default);
     assert_eq!(output_for(None, &default, "apa"), default);
 }
@@ -134,8 +135,20 @@ fn browsers_and_code_editors_ask_without_inferring_a_syntax() {
 #[test]
 fn an_ordinary_app_gets_the_paste() {
     assert_eq!(decide(&target(mac("com.microsoft.Word")), ON), Decision::Paste);
-    assert_eq!(decide(&target(mac("com.example.unknown")), ON), Decision::Paste);
     assert_eq!(decide(&target(windows("obsidian.exe")), ON), Decision::Paste);
+}
+
+#[test]
+fn an_unrecognised_app_never_gets_a_blind_paste() {
+    for app in [mac("org.example.remote"), windows("unknown-viewer.exe")] {
+        for granted in [true, false] {
+            let decision = decide(&target(app.clone()), PastePermission { granted, ..ON });
+            assert_eq!(
+                serde_json::to_value(decision).unwrap_or_default(),
+                serde_json::json!({ "action": "copy", "reason": "unknown-app" })
+            );
+        }
+    }
 }
 
 #[test]

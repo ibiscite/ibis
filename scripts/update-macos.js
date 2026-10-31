@@ -82,6 +82,14 @@ function macosUpdate(pids, press) {
       if (!mains.length) return null;
       const main = mains[0];
       const sheets = list(main, 'AXSheets', 'ax-sheets', 20, true);
+      // AppKit exposes attached sheets as window children. AXSheets is not a
+      // standard AX attribute and can be unsupported even while a sheet owns
+      // keyboard focus; AXWindows need not include that sheet either.
+      for (const child of list(main, 'AXChildren', 'ax-children', 2000, true)) {
+        owned(child);
+        if (text(child, 'AXRole', 'ax-role') === 'AXSheet' && !sheets.some(sheet => same(sheet, child))) sheets.push(child);
+      }
+      if (sheets.length > 20) fail('picker-bounds');
       probe.sheets = sheets.length;
       for (const sheet of sheets) {
         owned(sheet);

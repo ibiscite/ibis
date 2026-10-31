@@ -2031,6 +2031,7 @@ name = "ibis-desktop"
 version = "0.2.2"
 dependencies = [
  "auto-launch",
+ "block2",
  "clipboard-win",
  "dunce",
  "gtk",
@@ -2040,6 +2041,7 @@ dependencies = [
  "ibis-zotero-local",
  "image",
  "objc2-app-kit",
+ "objc2-core-foundation",
  "objc2-core-graphics",
  "objc2-foundation",
  "raw-window-handle",
