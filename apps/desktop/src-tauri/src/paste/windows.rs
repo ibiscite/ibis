@@ -54,6 +54,7 @@ fn front(window: &w::HWND, capture: bool) -> Option<Front> {
         id,
         pid: i32::try_from(pid).ok()?,
         window: None,
+        focus_failure: None,
         name,
         elevated: capture && above_ibis(&process),
     })

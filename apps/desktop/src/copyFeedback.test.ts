@@ -93,6 +93,7 @@ test("the notice says where the citation was pasted, or why it was only copied",
   expect(noticeTitle({ delivered: { outcome: "pasted", app: null }, text: "[@a]" })).toBe("Pasted");
   expect(noticeTitle(copied("[@a]", "terminal"))).toBe("Copied. Not pasted into a terminal");
   expect(noticeTitle(copied("[@a]", "no-permission"))).toBe("Copied. Ibis needs your OK to paste");
+  expect(noticeTitle(copied("[@a]", "accessibility-required"), "macos")).toBe("Copied. Ibis needs Accessibility access to paste safely. Press ⌘V to paste.");
   expect(noticeTitle(copied("[@a]", "key-release-failed"))).toBe("Copied. Press and release Ctrl and V");
   expect(noticeTitle(copied("[@a]", "paste-off"))).toBe("Copied. Pasting is off");
   expect(noticeTitle(copied("[@a]", "unsupported-system"))).toBe("Copied. Paste it into your document");

@@ -5,18 +5,27 @@ use std::time::{Duration, Instant};
 use ibis_core::destination::CopyReason;
 
 const LIMIT: Duration = Duration::from_millis(50);
-// Clipboard/security are refreshed before this adjacent pair. Do not let a
+// Authorization/clipboard/security are refreshed before these adjacent reads. Do not let a
 // slow provider turn that final snapshot into another long stale interval.
 const TAIL_LIMIT: Duration = Duration::from_millis(5);
 
 /// This closed set is the entire attribute allowlist, including the containing
-/// window of the globally focused element to catch foreign nonactivating panels.
+/// document and top-level surface of global focus, including foreign panels.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Attribute {
     Application,
     FocusedWindow,
     FocusedElement,
     Window,
+    TopLevel,
+}
+
+/// The document and the actual input surface are distinct for sheets/drawers.
+/// Neither identity can be refreshed by a later delivery.
+#[derive(Clone, PartialEq, Eq)]
+struct Identity<E> {
+    window: E,
+    surface: E,
 }
 
 trait Provider {
@@ -39,7 +48,7 @@ fn query<P: Provider>(
     pid: i32,
     deadline: Instant,
     before_final_read: impl FnOnce() -> Result<(), CopyReason>,
-) -> Result<P::Element, CopyReason> {
+) -> Result<Identity<P::Element>, CopyReason> {
     let started = provider.elapsed();
     let available = || {
         let age = provider
@@ -54,7 +63,7 @@ fn query<P: Provider>(
     };
     available()?;
     if !provider.trusted() {
-        return Err(CopyReason::PasteUnavailable);
+        return Err(CopyReason::AccessibilityRequired);
     }
     let system = provider.system()?;
     let read_until = |element: &P::Element, attribute, call_deadline: Instant| {
@@ -74,13 +83,19 @@ fn query<P: Provider>(
     let window = read(&app, Attribute::FocusedWindow)?;
     let focused = read(&system, Attribute::FocusedElement)?;
     let containing_window = read(&focused, Attribute::Window)?;
-    for element in [&app, &window, &focused, &containing_window] {
+    let surface = read(&focused, Attribute::TopLevel)?;
+    for element in [&app, &window, &focused, &containing_window, &surface] {
         if provider.pid(element)? != pid {
             return Err(CopyReason::TargetChanged);
         }
     }
     if window != containing_window {
         return Err(CopyReason::TargetChanged);
+    }
+    // Cached/successful provider replies cannot carry a revoked grant into
+    // the final tail. This passive preflight precedes all refreshed guards.
+    if !provider.trusted() {
+        return Err(CopyReason::AccessibilityRequired);
     }
     // Synchronous notification/provider work must finish before observing
     // live focus for the last time. Only local completion checks follow it.
@@ -103,8 +118,11 @@ fn query<P: Provider>(
         value
     };
     // A control can keep its AX identity while moving to another window.
-    // Revalidate the relation immediately before the last global focus read.
+    // Revalidate both relations before the last global focus read.
     if tail_read(&focused, Attribute::Window)? != window {
+        return Err(CopyReason::TargetChanged);
+    }
+    if tail_read(&focused, Attribute::TopLevel)? != surface {
         return Err(CopyReason::TargetChanged);
     }
     let latest = tail_read(&system, Attribute::FocusedElement)?;
@@ -119,7 +137,7 @@ fn query<P: Provider>(
         });
     }
     available()?;
-    Ok(window)
+    Ok(Identity { window, surface })
 }
 
 // No AX object leaves this main-thread module; delivery workers carry only a
@@ -128,8 +146,12 @@ fn query<P: Provider>(
 #[allow(unsafe_code)]
 mod native;
 
-pub(super) fn capture(pid: i32) -> Option<u32> {
+pub(super) fn capture(pid: i32) -> Result<u32, CopyReason> {
     native::capture(pid)
+}
+
+pub(super) fn trusted() -> bool {
+    native::trusted()
 }
 pub(super) fn current(
     pid: i32,
@@ -148,7 +170,7 @@ mod tests {
     struct Fake {
         clock: Cell<Instant>,
         elapsed: Cell<Duration>,
-        trusted: bool,
+        trusted: Cell<bool>,
         active_window: u32,
         focused_window: Cell<u32>,
         focused_element: Cell<u32>,
@@ -159,6 +181,10 @@ mod tests {
         change_during_read: bool,
         sleep_on_last: Duration,
         reparent_during_read: bool,
+        surface: Cell<Option<u32>>,
+        surface_after_read: Option<u32>,
+        unsupported: Option<Attribute>,
+        revoke_trust_after_initial_reads: bool,
     }
 
     impl Fake {
@@ -166,7 +192,7 @@ mod tests {
             Self {
                 clock: Cell::new(Instant::now()),
                 elapsed: Cell::new(Duration::ZERO),
-                trusted: true,
+                trusted: Cell::new(true),
                 active_window: 100,
                 focused_window: Cell::new(100),
                 focused_element: Cell::new(1000),
@@ -177,11 +203,15 @@ mod tests {
                 change_during_read: false,
                 sleep_on_last: Duration::ZERO,
                 reparent_during_read: false,
+                surface: Cell::new(None),
+                surface_after_read: None,
+                unsupported: None,
+                revoke_trust_after_initial_reads: false,
             }
         }
 
         fn query(&self) -> Result<u32, CopyReason> {
-            query(self, 42, self.now() + LIMIT, || Ok(()))
+            query(self, 42, self.now() + LIMIT, || Ok(())).map(|identity| identity.surface)
         }
     }
 
@@ -194,7 +224,7 @@ mod tests {
             self.elapsed.get()
         }
         fn trusted(&self) -> bool {
-            self.trusted
+            self.trusted.get()
         }
         fn system(&self) -> Result<u32, CopyReason> {
             Ok(0)
@@ -203,11 +233,14 @@ mod tests {
             self.reads.borrow_mut().push(attribute);
             self.clock.set(self.clock.get() + self.delay);
             self.elapsed.set(self.elapsed.get() + self.delay);
-            if self.reads.borrow().len() == 6 {
+            if self.reads.borrow().len() == 8 {
                 self.elapsed.set(self.elapsed.get() + self.sleep_on_last);
             }
             if let Some(reason) = self.read_failure {
                 return Err(reason);
+            }
+            if self.unsupported == Some(attribute) {
+                return Err(CopyReason::PasteUnavailable);
             }
             Ok(match attribute {
                 Attribute::Application => 1,
@@ -222,6 +255,16 @@ mod tests {
                         self.focused_window.set(200);
                     }
                     window
+                }
+                Attribute::TopLevel => {
+                    if self.revoke_trust_after_initial_reads {
+                        self.trusted.set(false);
+                    }
+                    let surface = self.surface.get().unwrap_or(self.focused_window.get());
+                    if let Some(next) = self.surface_after_read {
+                        self.surface.set(Some(next));
+                    }
+                    surface
                 }
             })
         }
@@ -247,7 +290,9 @@ mod tests {
                     Attribute::FocusedWindow,
                     Attribute::FocusedElement,
                     Attribute::Window,
+                    Attribute::TopLevel,
                     Attribute::Window,
+                    Attribute::TopLevel,
                     Attribute::FocusedElement
                 ]
             );
@@ -264,12 +309,12 @@ mod tests {
     }
 
     #[test]
-    fn unavailable_ax_does_not_query_a_provider_or_request_trust() {
+    fn missing_accessibility_has_its_own_reason_without_querying_or_requesting_trust() {
         let fake = Fake {
-            trusted: false,
+            trusted: Cell::new(false),
             ..Fake::new()
         };
-        assert_eq!(fake.query(), Err(CopyReason::PasteUnavailable));
+        assert_eq!(fake.query(), Err(CopyReason::AccessibilityRequired));
         assert!(fake.reads.borrow().is_empty());
     }
 
@@ -306,7 +351,7 @@ mod tests {
         let active_time = fake.now();
         assert_eq!(fake.query(), Err(CopyReason::PasteUnavailable));
         assert_eq!(fake.now(), active_time, "the active clock paused across sleep");
-        assert_eq!(fake.reads.borrow().len(), 6);
+        assert_eq!(fake.reads.borrow().len(), 8);
     }
 
     #[test]
@@ -330,11 +375,64 @@ mod tests {
     }
 
     #[test]
-    fn the_final_window_focus_pair_has_a_tighter_budget_than_the_whole_query() {
+    fn the_final_identity_reads_share_a_tighter_budget_than_the_whole_query() {
         let fake = Fake {
             delay: Duration::from_millis(3),
             ..Fake::new()
         };
         assert_eq!(fake.query(), Err(CopyReason::PasteUnavailable));
+    }
+
+    #[test]
+    fn opening_an_attached_sheet_cannot_borrow_the_documents_identity() {
+        let fake = Fake::new();
+        let captured = fake.query();
+        fake.surface.set(Some(500));
+        // The document AXFocusedWindow and AXWindow remain 100; only the
+        // top-level surface distinguishes the attached sheet's input.
+        assert_ne!(fake.query(), captured);
+        assert_eq!(fake.query(), Ok(500));
+    }
+
+    #[test]
+    fn sheets_and_drawers_are_distinct_surfaces_even_when_their_document_is_unchanged() {
+        for (before, after) in [(500, 100), (500, 501), (100, 600), (600, 100)] {
+            let fake = Fake {
+                surface: Cell::new(Some(before)),
+                ..Fake::new()
+            };
+            let captured = fake.query();
+            assert_eq!(captured, Ok(before));
+            fake.surface.set(Some(after));
+            assert_eq!(fake.query(), Ok(after));
+            assert_ne!(fake.query(), captured);
+        }
+    }
+
+    #[test]
+    fn the_same_focused_element_cannot_move_to_a_sheet_during_the_proof() {
+        let fake = Fake {
+            surface_after_read: Some(500),
+            ..Fake::new()
+        };
+        assert_eq!(fake.query(), Err(CopyReason::TargetChanged));
+    }
+
+    #[test]
+    fn an_unsupported_top_level_attribute_is_unavailable_without_falling_back_to_the_document() {
+        let fake = Fake {
+            unsupported: Some(Attribute::TopLevel),
+            ..Fake::new()
+        };
+        assert_eq!(fake.query(), Err(CopyReason::PasteUnavailable));
+    }
+
+    #[test]
+    fn revoking_accessibility_during_successful_provider_reads_keeps_its_permission_reason() {
+        let fake = Fake {
+            revoke_trust_after_initial_reads: true,
+            ..Fake::new()
+        };
+        assert_eq!(fake.query(), Err(CopyReason::AccessibilityRequired));
     }
 }

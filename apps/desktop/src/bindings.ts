@@ -140,11 +140,17 @@ export const commands = {
 	openSettings: (page: "general" |
 /**  General, scrolled to pasting and its permission. */
 "paste" | "shortcuts" | "citations" | "about" | null) => __TAURI_INVOKE<void>("open_settings", { page }),
-	/**  Return from the paste guide after a live grant, without replaying Enter. */
+	/**
+	 *  Close the paste guide after both grants; a fresh external activation opens
+	 *  the picker again. Granting permission never captures a target or retries Enter.
+	 */
 	finishPasteGuide: () => __TAURI_INVOKE<boolean>("finish_paste_guide"),
 	/**  Whether Ibis may paste now. Read each time: the person can change it at any moment. */
 	pastePermission: () => __TAURI_INVOKE<PastePermission>("paste_permission"),
-	/**  Clear a stale entry, ask macOS to list Ibis, then open the pane with the switch. */
+	/**
+	 *  On an explicit user action, repair PostEvent if needed and open the pane.
+	 *  Never requests or resets the separate Accessibility grant.
+	 */
 	openPastePermission: () => __TAURI_INVOKE<void>("open_paste_permission"),
 	/**  Drag only the running app bundle into the permission list. */
 	dragPasteApp: () => __TAURI_INVOKE<null>("drag_paste_app"),

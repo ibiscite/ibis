@@ -56,7 +56,8 @@ class Work<Args, Input = void, Output = void> {
 
 type PreviewContent = Pick<FilePreview, "text"> & Partial<Pick<FilePreview, "html" | "warnings">>;
 type DeliveryRequest = { text: string; delivery: number | null };
-type Proof = DeliveryRequest & { delivery: number; sequence: number; presentation: number; app: string; window: number | null; epoch: number; written: number };
+type Capture = { window: number | null; surface: number | null; reason: string | null };
+type Proof = DeliveryRequest & Capture & { delivery: number; sequence: number; presentation: number; app: string; epoch: number; written: number };
 
 export function deliveryHarness(text = "Draft: [citation].", selection: [number, number] = [7, 17]) {
   const search = new Work<SearchQuery, SearchReply, SearchReply>();
@@ -74,7 +75,8 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
     [200, { text: "Second: [citation].", selection: [8, 18] }],
   ]);
   const target = { window: 100 as number | null, verified: true, available: true,
-    focusedPid: 42, focusAvailable: true, focusTimedOut: false };
+    surface: null as number | null, focusedPid: 42, focusAvailable: true, focusTimedOut: false };
+  const authorizations = { postEvent: true, accessibility: true };
   const lifecycle = { epoch: 1, elapsed: 0, available: true };
   // Detached to keep this second window out of the picker's DOM and focus scope.
   const receiptRoot = globalThis.document.createElement("div");
@@ -86,6 +88,12 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
   let latestPreview = 0;
   let activeTicket: string | null = null;
   let latestNotice = 0;
+  let captured: Capture | null = null;
+  const capture = (): Capture => {
+    const reason = !authorizations.postEvent ? "no-permission" : !authorizations.accessibility ? "accessibility-required"
+      : target.window === null || !target.focusAvailable || target.focusTimedOut || target.focusedPid !== 42 ? "paste-unavailable" : null;
+    return { window: reason ? null : target.window, surface: reason ? null : target.surface ?? target.window, reason };
+  };
 
   const deliver = ({ text, delivery }: DeliveryRequest): Delivered => {
     // Identity precedes consumption: a stale worker must leave a newer proof.
@@ -93,16 +101,19 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
     if (!owned) return { outcome: "copied", reason: null };
     proof = null;
     if (!target.verified) return { outcome: "copied", reason: "unknown-app" };
+    if (owned.reason) return { outcome: "copied", reason: owned.reason };
     if (owned.window === null) return { outcome: "copied", reason: "paste-unavailable" };
     if (!lifecycle.available) return { outcome: "copied", reason: "paste-unavailable" };
     if (owned.epoch !== lifecycle.epoch || lifecycle.elapsed - owned.written >= 1500) return { outcome: "copied", reason: "paste-expired" };
+    if (!authorizations.postEvent) return { outcome: "copied", reason: "no-permission" };
+    if (!authorizations.accessibility) return { outcome: "copied", reason: "accessibility-required" };
     if (!target.focusAvailable || target.focusTimedOut) return { outcome: "copied", reason: "paste-unavailable" };
     if (target.focusedPid !== 42) return { outcome: "copied", reason: "target-changed" };
     if (clipboard.owner !== "ibis" || owned.sequence !== clipboard.sequence) return { outcome: "copied", reason: "clipboard-changed" };
-    if (!target.available || owned.window !== target.window) return { outcome: "copied", reason: "target-changed" };
+    if (!target.available || owned.window !== target.window || owned.surface !== (target.surface ?? target.window)) return { outcome: "copied", reason: "target-changed" };
     if (visible || owned.presentation !== presentation || clipboard.owner !== "ibis"
       || owned.sequence !== clipboard.sequence || owned.app !== document.app) return { outcome: "copied", reason: null };
-    const destination = documents.get(owned.window);
+    const destination = owned.surface === null ? undefined : documents.get(owned.surface);
     if (!destination) return { outcome: "copied", reason: "target-changed" };
     const [start, end] = destination.selection;
     destination.text = destination.text.slice(0, start) + clipboard.text + destination.text.slice(end);
@@ -113,7 +124,10 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
 
   const calls = backend({
     "plugin:window|is_visible": () => visible,
-    picker_destination: () => ({ app: document.app, app_id: "example.writer", automatic: { key: "pandoc" }, remembered: null, unreadable: false, can_paste: true, output_question: null }),
+    picker_destination: () => {
+      captured ??= capture();
+      return { app: document.app, app_id: "example.writer", automatic: { key: "pandoc" }, remembered: null, unreadable: false, can_paste: captured.reason === null, output_question: null };
+    },
     search: ({ query }) => search.enqueue(query, (reply) => reply),
     preview_file_citation: (args) => {
       const request = ++latestPreview;
@@ -129,7 +143,7 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
         if (args.ticket !== activeTicket) throw { code: "snapshot_changed" };
         Object.assign(clipboard, { text: preview.text, html: preview.html, owner: "ibis", sequence: clipboard.sequence + 1 });
         const token = ++nextDelivery;
-        proof = { presentation, app: document.app, text: preview.text, delivery: token, sequence: clipboard.sequence, window: target.window, epoch: lifecycle.epoch, written: lifecycle.elapsed };
+        proof = { ...(captured ?? capture()), presentation, app: document.app, text: preview.text, delivery: token, sequence: clipboard.sequence, epoch: lifecycle.epoch, written: lifecycle.elapsed };
         return { text: clipboard.text, warnings: preview.warnings, delivery: token };
       });
     },
@@ -146,11 +160,12 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
   });
 
   return {
-    search, preview, copy, delivery, notice, calls, clipboard, document, documents, target, lifecycle, receipt: receiptRoot,
+    search, preview, copy, delivery, notice, calls, clipboard, document, documents, target, authorizations, lifecycle, receipt: receiptRoot,
     get visible() { return visible; },
     async reopen() {
       presentation += 1;
       proof = null;
+      captured = capture();
       visible = true;
       await emit("picker:shown");
     },

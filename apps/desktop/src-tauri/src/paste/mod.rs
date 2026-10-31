@@ -309,7 +309,7 @@ fn delivery_decision(captured: &Captured, permission: PastePermission) -> Decisi
         Decision::Paste | Decision::Copy(CopyReason::NoPermission)
             if captured.target.system == System::Macos && captured.window.is_none() =>
         {
-            Decision::Copy(CopyReason::PasteUnavailable)
+            Decision::Copy(captured.focus_failure.unwrap_or(CopyReason::PasteUnavailable))
         }
         decision => decision,
     }
@@ -439,6 +439,8 @@ enum PostResult {
     Expired,
     TargetChanged,
     ClipboardChanged,
+    AccessibilityRequired,
+    NoPermission,
     #[cfg(any(target_os = "windows", test))]
     SecureField,
     #[cfg(any(target_os = "windows", test))]
@@ -451,6 +453,7 @@ enum PostResult {
 trait PostDesk {
     fn now(&self) -> Instant;
     fn stamp(&self) -> SafetyStamp;
+    fn post_event_granted(&self) -> bool;
     fn current(&self, presentation: u64) -> bool;
     /// Run refresh after the initial provider reads, before the tightly
     /// bounded final window/global-focus pair. No lock follows that pair.
@@ -478,8 +481,11 @@ fn checked_post(desk: &impl PostDesk, request: &PostRequest) -> PostResult {
                     return Ok(());
                 }
                 // AX provider messaging can wait. Refresh clipboard/security after
-                // it, then allow only the bounded final identity pair before post.
+                // it, then allow only bounded final identity reads before post.
                 request.stamp.check(desk.stamp()).map_err(|failure| failure.reason())?;
+                if !desk.post_event_granted() {
+                    return Err(CopyReason::NoPermission);
+                }
                 let secure = desk.secure_input();
                 if desk.now() >= request.deadline {
                     return Err(CopyReason::PasteUnavailable);
@@ -502,6 +508,8 @@ fn checked_post(desk: &impl PostDesk, request: &PostRequest) -> PostResult {
                 CopyReason::PasteExpired => PostResult::Expired,
                 CopyReason::SecureInput => PostResult::SecureInput,
                 CopyReason::ClipboardChanged => PostResult::ClipboardChanged,
+                CopyReason::AccessibilityRequired => PostResult::AccessibilityRequired,
+                CopyReason::NoPermission => PostResult::NoPermission,
                 _ => PostResult::Unavailable,
             })?;
         if front.is_some_and(|front| {
@@ -646,6 +654,8 @@ fn deliver<D: Desk>(desk: &D, proof: Option<&D::Proof>, enabled: bool) -> Delive
                 PostResult::Expired => copied(Some(CopyReason::PasteExpired)),
                 PostResult::TargetChanged => copied(Some(CopyReason::TargetChanged)),
                 PostResult::ClipboardChanged => copied(Some(CopyReason::ClipboardChanged)),
+                PostResult::AccessibilityRequired => copied(Some(CopyReason::AccessibilityRequired)),
+                PostResult::NoPermission => copied(Some(CopyReason::NoPermission)),
                 #[cfg(any(target_os = "windows", test))]
                 PostResult::SecureField => copied(Some(CopyReason::SecureField)),
                 #[cfg(any(target_os = "windows", test))]
@@ -1195,6 +1205,7 @@ mod tests {
 
     struct Fake {
         may_post: bool,
+        post_event_granted: Cell<bool>,
         asked: Cell<u32>,
         fronts: RefCell<Vec<i32>>,
         clock: Cell<Instant>,
@@ -1225,6 +1236,7 @@ mod tests {
         fn new() -> Self {
             Self {
                 may_post: true,
+                post_event_granted: Cell::new(true),
                 asked: Cell::new(0),
                 fronts: RefCell::new(vec![42]),
                 clock: Cell::new(Instant::now()),
@@ -1260,6 +1272,7 @@ mod tests {
                 id: Some("com.microsoft.word".into()),
                 pid,
                 window: self.window.get(),
+                focus_failure: None,
                 name: None,
                 elevated: false,
             })
@@ -1304,6 +1317,9 @@ mod tests {
 
     // The fake never needs role, title, value or clipboard-content APIs.
     impl PostDesk for Fake {
+        fn post_event_granted(&self) -> bool {
+            self.post_event_granted.get()
+        }
         fn now(&self) -> Instant {
             self.clock.get()
         }
@@ -1379,6 +1395,7 @@ mod tests {
             },
             pid: Some(42),
             window: Some(100),
+            focus_failure: None,
             name: Some("Writer".into()),
         }
     }
@@ -1499,6 +1516,7 @@ mod tests {
             id: Some("com.microsoft.word".into()),
             pid: 42,
             window: None,
+            focus_failure: None,
             name: Some("Writer".into()),
             elevated: false,
         };
@@ -1515,6 +1533,49 @@ mod tests {
         assert_eq!(*desk.posts.borrow(), [42]);
         assert_eq!(*desk.posted_windows.borrow(), [Some(100)]);
         assert_eq!(proof.text, TEXT);
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn granting_access_cannot_repair_a_failed_capture_without_a_fresh_external_activation() {
+        for (reason, message) in [
+            (CopyReason::AccessibilityRequired, "accessibility-required"),
+            (CopyReason::NoPermission, "no-permission"),
+        ] {
+            let desk = Fake::new(); // both authorizations are now present
+            let last = LastTarget::default();
+            let external = || Front {
+                id: Some("com.microsoft.word".into()),
+                pid: 42,
+                window: None,
+                focus_failure: None,
+                name: Some("Writer".into()),
+                elevated: false,
+            };
+            let failed = macos::capture_front(Some(external()), 7, false, |_| Err(reason));
+            last.begin_presentation(capture::captured(System::Macos, failed, 7));
+            let copy = || {
+                let token = last
+                    .write_copy_at(TEXT, desk.stamp.get(), || Ok(Some(COUNT)))
+                    .unwrap_or_else(|error| panic!("{error}"));
+                last.take_copy(TEXT, token).unwrap_or_else(|| panic!("proof"))
+            };
+            for _fresh_enter_in_failed_presentation in 0..2 {
+                let proof = copy();
+                assert_eq!(deliver(&desk, Some(&proof), true), copied(Some(message)));
+                assert_eq!(proof.text, TEXT);
+                assert!(desk.posts.borrow().is_empty());
+            }
+            if reason == CopyReason::AccessibilityRequired {
+                assert_eq!(desk.asked.get(), 0);
+            }
+            let valid = macos::capture_front(Some(external()), 7, false, |_| Ok(100));
+            last.begin_presentation(capture::captured(System::Macos, valid, 7));
+            let proof = copy();
+            desk.presentation.set(proof.presentation);
+            assert_eq!(deliver(&desk, Some(&proof), true), pasted());
+            assert_eq!(*desk.posted_windows.borrow(), [Some(100)]);
+        }
     }
 
     #[test]
@@ -1565,6 +1626,7 @@ mod tests {
             (CopyReason::PasteUnavailable, "paste-unavailable"),
             (CopyReason::TargetChanged, "target-changed"),
             (CopyReason::PasteExpired, "paste-expired"),
+            (CopyReason::AccessibilityRequired, "accessibility-required"),
         ] {
             let desk = Fake {
                 focus_error: Cell::new(Some(failure)),
@@ -1820,6 +1882,17 @@ mod tests {
             ..Fake::new()
         };
         assert_eq!(deliver(&desk, Some(&proof()), true), copied(Some("clipboard-changed")));
+        assert!(desk.posts.borrow().is_empty());
+    }
+
+    #[test]
+    #[cfg_attr(target_os = "linux", ignore = "Linux never pastes")]
+    fn revoking_post_event_during_provider_wait_preserves_its_permission_refusal() {
+        let desk = Fake {
+            after_window_query: Some(|desk| desk.post_event_granted.set(false)),
+            ..Fake::new()
+        };
+        assert_eq!(deliver(&desk, Some(&proof()), true), copied(Some("no-permission")));
         assert!(desk.posts.borrow().is_empty());
     }
 
@@ -2182,6 +2255,7 @@ mod windows_tests {
                 id: Some(self.front_id.get().into()),
                 pid,
                 window: None,
+                focus_failure: None,
                 name: None,
                 elevated: false,
             });
@@ -2281,6 +2355,7 @@ mod windows_tests {
             },
             pid: Some(42),
             window: Some(100),
+            focus_failure: None,
             name: Some("Writer".into()),
         }
     }

@@ -506,6 +506,7 @@ export const copiedNoticeText = {
     "clipboard-changed": "Copied. The clipboard changed; copy the citation again",
     "paste-expired": "Copied. The paste expired; paste it yourself",
     "no-permission": "Copied. Ibis needs your OK to paste",
+    "accessibility-required": "Copied. Ibis needs Accessibility access to paste safely. Press ⌘V to paste.",
     "terminal": "Copied. Not pasted into a terminal",
     "remote-desktop": "Copied. Not pasted into a remote desktop",
     "virtual-machine": "Copied. Not pasted into a virtual machine",

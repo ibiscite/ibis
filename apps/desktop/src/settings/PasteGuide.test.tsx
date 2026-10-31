@@ -17,6 +17,8 @@ test.each(["Accessibility", "Device Control and Data Access"])("the %s drag is a
   expect(drag.querySelector("img")?.getAttribute("src")).toContain("128x128.png");
   expect(onOpen).not.toHaveBeenCalled();
   expect(onDrag).not.toHaveBeenCalled();
+  expect(screen.getByText(/Accessibility access to check which window has the keyboard/)).toBeTruthy();
+  expect(screen.getByText("Return to your document and open Ibis again. Press Enter to try again.")).toBeTruthy();
   fireEvent.click(open);
   expect(onOpen).toHaveBeenCalledOnce();
   expect(fireEvent.dragStart(drag)).toBe(false); // suppress the webview's image/HTML drag

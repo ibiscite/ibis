@@ -132,6 +132,8 @@ pub enum CopyReason {
     RemoteDesktop,
     VirtualMachine,
     NoPermission,
+    /// macOS Accessibility trust is required for the identity-only focus proof.
+    AccessibilityRequired,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

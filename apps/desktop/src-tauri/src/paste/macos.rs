@@ -24,6 +24,10 @@ pub(super) fn stamp() -> super::SafetyStamp {
     safety::stamp()
 }
 
+pub(super) fn accessibility_granted() -> bool {
+    focus::trusted()
+}
+
 const ASK_LIMIT: Duration = Duration::from_millis(250);
 
 /// The active app for output suggestions. Activation is not keyboard ownership.
@@ -37,6 +41,7 @@ fn active_app() -> Option<Front> {
         id: app.bundleIdentifier().map(|id| id.to_string()),
         pid: app.processIdentifier(),
         window: None,
+        focus_failure: None,
         name: app.localizedName().map(|name| name.to_string()),
         elevated: false,
     })
@@ -50,14 +55,20 @@ pub(super) fn frontmost() -> Option<Front> {
     let own_window_key = NSApplication::sharedApplication(main)
         .keyWindow()
         .is_some_and(|window| window.isKeyWindow());
-    capture_front(active_app(), own, own_window_key, focus::capture)
+    capture_front(active_app(), own, own_window_key, |pid| {
+        // A grant acquired later cannot authorize this earlier presentation.
+        if !CGPreflightPostEventAccess() {
+            return Err(CopyReason::NoPermission);
+        }
+        focus::capture(pid)
+    })
 }
 
 pub(super) fn capture_front(
     active: Option<Front>,
     own: i32,
     own_window_key: bool,
-    capture_window: impl FnOnce(i32) -> Option<u32>,
+    capture_window: impl FnOnce(i32) -> Result<u32, CopyReason>,
 ) -> Option<Front> {
     if own_window_key {
         // Ibis is itself nonactivating: NSWorkspace can still name the prior
@@ -67,13 +78,28 @@ pub(super) fn capture_front(
             id: None,
             pid: own,
             window: None,
+            focus_failure: None,
             name: None,
             elevated: false,
         });
     }
     let mut front = active?;
     if front.pid != own {
-        front.window = capture_window(front.pid);
+        match capture_window(front.pid) {
+            Ok(window) => {
+                front.window = Some(window);
+                front.focus_failure = None;
+            }
+            Err(reason) => {
+                front.window = None;
+                // No surface was ever proved. Keep actionable grant failures,
+                // but do not call an unproven capture a changed target.
+                front.focus_failure = Some(match reason {
+                    CopyReason::NoPermission | CopyReason::AccessibilityRequired => reason,
+                    _ => CopyReason::PasteUnavailable,
+                });
+            }
+        }
     }
     Some(front)
 }
@@ -181,6 +207,9 @@ struct Ready<'a> {
 }
 
 impl PostDesk for Ready<'_> {
+    fn post_event_granted(&self) -> bool {
+        CGPreflightPostEventAccess()
+    }
     fn now(&self) -> Instant {
         Instant::now()
     }
@@ -250,6 +279,7 @@ mod tests {
             id: Some("com.microsoft.word".into()),
             pid: 42,
             window: Some(100),
+            focus_failure: None,
             name: Some("Writer".into()),
             elevated: false,
         };
@@ -257,7 +287,7 @@ mod tests {
         // NSWorkspace still names Word; the key NSPanel belongs to Ibis.
         let front = capture_front(Some(external), 7, true, |_| {
             bank_kept.set(false);
-            None
+            Err(CopyReason::PasteUnavailable)
         });
         assert_eq!(
             super::super::capture::captured(System::Macos, front, 7),
@@ -265,5 +295,21 @@ mod tests {
             "an own key window must keep LastTarget's prior app/window"
         );
         assert!(bank_kept.get(), "a repeated show must not clear the AX identity bank");
+    }
+
+    #[test]
+    fn a_failed_capture_cannot_claim_an_unproven_target_changed() {
+        let active = Front {
+            id: Some("com.microsoft.word".into()),
+            pid: 42,
+            window: None,
+            focus_failure: None,
+            name: Some("Writer".into()),
+            elevated: false,
+        };
+        let front = capture_front(Some(active), 7, false, |_| Err(CopyReason::TargetChanged));
+        let captured = super::super::capture::captured(System::Macos, front, 7).unwrap_or_else(|| panic!("capture"));
+        assert_eq!(captured.window, None);
+        assert_eq!(captured.focus_failure, Some(CopyReason::PasteUnavailable));
     }
 }

@@ -3,7 +3,7 @@
 //! Only app identity, its name for feedback and an opaque window token are
 //! kept in memory. Window titles and document text are never read.
 
-use ibis_core::destination::{AppId, System, Target};
+use ibis_core::destination::{AppId, CopyReason, System, Target};
 
 /// What the system reports about the app in front.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -11,8 +11,10 @@ pub(crate) struct Front {
     /// macOS bundle ID or Windows executable file name; `None` for an app without one.
     pub(crate) id: Option<String>,
     pub(crate) pid: i32,
-    /// Opaque macOS focused-window token; no title or contents.
+    /// Opaque macOS document/surface identity token; no title or contents.
     pub(crate) window: Option<u32>,
+    /// Capture-time refusal, kept even if an authorization changes later.
+    pub(crate) focus_failure: Option<CopyReason>,
     /// The app's own name, as the Dock or its file description shows it.
     pub(crate) name: Option<String>,
     /// The app runs with more rights than Ibis (Windows integrity level).
@@ -25,6 +27,7 @@ pub(crate) struct Captured {
     pub(crate) target: Target,
     pub(crate) pid: Option<i32>,
     pub(crate) window: Option<u32>,
+    pub(crate) focus_failure: Option<CopyReason>,
     pub(crate) name: Option<String>,
 }
 
@@ -41,6 +44,7 @@ impl Captured {
             },
             pid: None,
             window: None,
+            focus_failure: None,
             name: None,
         }
     }
@@ -69,6 +73,7 @@ pub(crate) fn captured(system: System, front: Option<Front>, own: i32) -> Option
         },
         pid: Some(front.pid),
         window: front.window,
+        focus_failure: front.focus_failure,
         name: front.name,
     })
 }
@@ -82,6 +87,7 @@ mod tests {
             id: Some("org.example.Writer".into()),
             pid,
             window: Some(100),
+            focus_failure: None,
             name: Some("Writer".into()),
             elevated: false,
         }

@@ -1031,8 +1031,9 @@ that owns its area in ROADMAP.md.
    named apart: "read your references" and "paste".
    References, locators, search and the prepared output survive the detour,
    including longer than the usual minute away. On return after a read-back
-   grant, the guide closes and the picker captures the destination again;
-   it never replays the earlier Enter. Its prepared output applies once, even
+   grant, the guide closes. The person returns to the external document and
+   summons Ibis again to capture the destination; no earlier Enter is replayed.
+   Its prepared output applies once after a fresh Enter, even
    if the destination changed, without changing that app's remembered format.
    Reopening before the grant keeps the detour active; destination refreshes
    in the same opening keep its prepared output. A successful copy clears
@@ -1076,12 +1077,18 @@ that owns its area in ROADMAP.md.
    A refusal never retries or replaces another clipboard owner's contents.
    No window title or document text is read. Window count and front-to-back
    order cannot establish keyboard focus, including with nonactivating panels.
-   On macOS, Enter uses the captured system-wide focused window, including when
-   several windows of an app are open. An identity-only AX check uses existing
-   Accessibility trust without a prompt (decision 0029, maintainer 2026-10-30).
+   On macOS, Enter uses the captured document and top-level input surface,
+   including when several windows of an app are open. Attached sheets/drawers
+   have their own surface identity; opening a Save sheet cannot borrow its
+   parent document's paste proof. An identity-only AX check requires
+   Accessibility access as well as the separate PostEvent authorization
+   (decision 0029, maintainer 2026-10-30 and #1529 review).
    It verifies global keyboard ownership as well as the active app, so a foreign
-   nonactivating panel cannot borrow that app's target. Missing trust, failed
-   reads and the bounded 50 ms query timeout copy with `paste-unavailable`.
+   nonactivating panel cannot borrow that app's target. Missing Accessibility
+   copies with "Copied. Ibis needs Accessibility access to paste safely. Press
+   ⌘V to paste." Failed/unsupported reads and the bounded 50 ms query timeout
+   copy with `paste-unavailable`. Granting access never retries the old paste;
+   return to the document, open Ibis again and press Enter to try again.
    No field roles, values or secure-field attributes, window titles or document
    text are read. The final comparison is followed immediately by
    process-directed posting, without a
@@ -1403,11 +1410,14 @@ says why in one sentence, names the exact list in the system's current words
 (macOS 27: "Device Control and Data Access"; earlier: "Accessibility"), shows
 a picture of the switch to turn on, opens that pane with one button, and
 notices the change on its own (read again every second and on return), then
-confirms in words. It never claims success it has not read back. The guide
-opens by itself once per run, the first time a paste is refused, and lives in
-Settings › General › Pasting afterwards. Because macOS keys the permission to
-the code signature, opening the guide first clears Ibis's own entry when the
-permission is not working, so the list shows one fresh switch (#1292, #1242).
+confirms in words. Auto-paste on Mac requires both PostEvent and Accessibility;
+Settings says allowed only after both passive checks succeed. A missing
+Accessibility grant has its own copied receipt; provider failure is not a
+permission denial. The guide lives in Settings › General › Pasting; the
+existing PostEvent refusal also opens it once per run. Because macOS keys
+permissions to the code signature, an explicit Open System Settings click can
+repair Ibis's stale PostEvent entry and request it (#1292, #1242). Permission
+reads never prompt, and the guide never requests or resets Accessibility.
 Automatic listing stays first. Beside **Open System Settings**, the Ibis app
 icon is a file drag source, followed by one line: "If Ibis is not in the list,
 drag it there." It drags the running bundle's file URL, including a renamed,
@@ -1417,10 +1427,11 @@ button states; clicking or pressing it opens System Settings as the keyboard
 alternative. An unbundled development executable cannot be dragged; a failed
 drag points to the list's **+** button. Neither starting nor completing a drag
 claims a grant: the same live permission read must confirm it (#1390).
-Only the guide opened after a refused paste returns to the picker on grant;
-an ordinary Settings visit stays open and confirms the grant in words. A
-background grant never brings Ibis forward: completion waits for the person
-to return. Hidden pages make no permission reads; pasting switched off stops
+The guide opened after a refused paste closes after both grants are read back
+on return. It does not reopen the picker or replay Enter: return to the external
+document and open Ibis again, then press Enter to try again. An ordinary
+Settings visit stays open and confirms the grants in words. A background
+grant never brings Ibis forward. Hidden pages make no permission reads; pasting switched off stops
 the one-second checks, keeping the capability read on return.
 Zotero's sharing line explains reading references; the macOS guide's line
 explains pasting. These are separate grants, never instructions to give both.

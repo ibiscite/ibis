@@ -10,7 +10,7 @@ use ibis_core::destination::CopyReason;
 use objc2_core_foundation::{CFGetTypeID, CFRetained, CFString, CFType};
 use objc2_foundation::NSThread;
 
-use super::{Attribute, LIMIT, Provider, query};
+use super::{Attribute, Identity, LIMIT, Provider, query};
 
 // SAFETY: AXUIElement.h declares AXError=int32_t, pid_t=int and Boolean=u8.
 // AXUIElementRef/CFTypeRef/CFStringRef are opaque CF pointers. Copy/Create
@@ -98,6 +98,7 @@ impl Provider for Native {
             Attribute::FocusedWindow => "AXFocusedWindow",
             Attribute::FocusedElement => "AXFocusedUIElement",
             Attribute::Window => "AXWindow",
+            Attribute::TopLevel => "AXTopLevelUIElement",
         };
         let name = CFString::from_static_str(name);
         let mut value = std::ptr::null();
@@ -110,7 +111,11 @@ impl Provider for Native {
         if error != 0 {
             // Missing/invalid attributes and failed messaging are unavailable
             // evidence, not proof that the captured app/window changed.
-            return Err(CopyReason::PasteUnavailable);
+            return Err(if trusted() {
+                CopyReason::PasteUnavailable
+            } else {
+                CopyReason::AccessibilityRequired
+            });
         }
         let value = owned.ok_or(CopyReason::PasteUnavailable)?;
         // SAFETY: A non-null CF object; reject a malformed attribute type
@@ -134,32 +139,36 @@ impl Provider for Native {
 #[derive(Default)]
 struct Saved {
     next: u32,
-    window: Option<(u32, Element)>,
+    window: Option<(u32, Identity<Element>)>,
 }
 
 thread_local! { static SAVED: RefCell<Saved> = RefCell::default(); }
 
-pub(super) fn capture(pid: i32) -> Option<u32> {
+pub(super) fn trusted() -> bool {
+    Native.trusted()
+}
+
+pub(super) fn capture(pid: i32) -> Result<u32, CopyReason> {
     if !NSThread::isMainThread_class() {
-        return None;
+        return Err(CopyReason::PasteUnavailable);
     }
     // Reserve identity before IPC. Reentrant/newer capture cannot be
     // overwritten by this query when it eventually completes.
     let token = SAVED.with(|saved| {
         let mut saved = saved.borrow_mut();
         saved.window = None;
-        saved.next = saved.next.checked_add(1)?;
-        Some(saved.next)
+        saved.next = saved.next.checked_add(1).ok_or(CopyReason::PasteUnavailable)?;
+        Ok(saved.next)
     })?;
-    let window = query(&Native, pid, Instant::now() + LIMIT, || Ok(())).ok();
+    let window = query(&Native, pid, Instant::now() + LIMIT, || Ok(()));
     SAVED.with(|saved| {
         let mut saved = saved.borrow_mut();
         if saved.next != token {
-            return None;
+            return Err(CopyReason::PasteUnavailable);
         }
         let window = window?;
         saved.window = Some((token, window));
-        Some(token)
+        Ok(token)
     })
 }
 
