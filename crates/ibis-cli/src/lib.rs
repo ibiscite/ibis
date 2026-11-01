@@ -592,14 +592,21 @@ fn execute<R: BufRead, W: Write + Send>(
     let mut groups = source_values::<u64>(matches, "zotero-group");
     let mut personal = matches.get_flag("zotero");
     let named = !files.is_empty() || !groups.is_empty() || personal;
-    // Named libraries replace the app's; servers read the app's only when asked.
-    let app = if matches.get_flag("app-libraries")
-        || (defaults == Defaults::App && !named && matches!(name, "search" | "show" | "cite" | "libraries"))
-    {
-        Some(app_libraries::load()?)
-    } else {
-        None
-    };
+    // Named libraries replace the app's; servers read the app's only when asked. A
+    // preloaded engine never reads the app's settings, and says so if asked to.
+    let asked = matches.get_flag("app-libraries");
+    if asked && defaults == Defaults::None {
+        return Err(Failure::new(
+            ErrorCode::Usage,
+            "--app-libraries is not available here; name the libraries to read.",
+        ));
+    }
+    let app =
+        if asked || (defaults == Defaults::App && !named && matches!(name, "search" | "show" | "cite" | "libraries")) {
+            Some(app_libraries::load()?)
+        } else {
+            None
+        };
     let named_files = files.clone();
     if let Some(app) = &app {
         for path in &app.files {
