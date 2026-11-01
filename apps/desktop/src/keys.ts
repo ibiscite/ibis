@@ -1,9 +1,12 @@
+import type { MessageId } from "./i18n";
 import type { keyText } from "./messages";
 
 export type KeyRegion = keyof typeof keyText.regions;
 export type KeyAction = keyof typeof keyText.actions;
 /** One key binding the picker really handles, in accelerator syntax. */
-export type KeyBinding = { region: KeyRegion; action: KeyAction; keys: readonly string[]; displayLabel?: string };
+export type KeyBinding = { region: KeyRegion; action: KeyAction; keys: readonly string[]; displayLabel?: string;
+  /** The action's words right now, when they differ from the table's (Enter that only copies). */
+  label?: MessageId };
 /** The app's unset shortcut setting. */
 export const DEFAULT_PICKER_SHORTCUT = "CmdOrCtrl+Shift+Y";
 

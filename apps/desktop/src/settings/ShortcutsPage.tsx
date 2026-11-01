@@ -6,11 +6,13 @@ import { currentPlatform } from "../platform";
 import { SettingsSearch } from "../ui/SettingsSearch";
 import { ShortcutGroup } from "../ui/ShortcutTable";
 
-export function ShortcutsPage({ opening }: { opening: ReactNode }) {
+/** `enterPastes` names Enter "Paste" only when Ibis is known to paste. */
+export function ShortcutsPage({ opening, enterPastes }: { opening: ReactNode; enterPastes: boolean }) {
   const { text } = useInterfaceMessages();
   const [query, setQuery] = useState("");
   const matches = (label: string) => label.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase());
-  const bindings = KEY_TABLE.filter((binding) => matches(text(SHORTCUT_ACTIONS[binding.action])));
+  const bindings = KEY_TABLE.map((binding) => binding.action === "copy" && !enterPastes ? { ...binding, label: "shortcuts-action-copy-only" as const } : binding)
+    .filter((binding) => matches(text(binding.label ?? SHORTCUT_ACTIONS[binding.action])));
   const showOpen = matches(text("shortcuts-open"));
   return <>
     <SettingsSearch className="ui-shortcut-filter" label={text("shortcuts-filter")} value={query} onChange={setQuery} />

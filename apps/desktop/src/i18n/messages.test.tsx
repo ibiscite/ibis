@@ -69,6 +69,7 @@ const panelEnglish = {
   "shortcuts-action-source": "Open the source",
   "shortcuts-action-preview": "Show what will be pasted",
   "shortcuts-action-copy": "Paste the citation",
+  "shortcuts-action-copy-only": "Copy the citation",
   "shortcuts-action-add": "Add another reference",
   "shortcuts-action-move": "Move through results",
   "shortcuts-action-escape": "Step back or hide",

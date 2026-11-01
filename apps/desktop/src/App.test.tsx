@@ -2798,6 +2798,31 @@ test("the footer names the source and count, the age only when it matters, and t
   expect(plain(item.getAttribute("title"))).toMatch(/^Zotero · 1,205 references\nMy Library, Lab group · last read 2 hours ago, .+ · 2 Zotero libraries could not be read\. Zotero is not running, or it is not accepting connections; keeping the last loaded references\. Open Zotero, then reload\.$/);
 });
 
+test("the keys sheet names what Enter does from the same answer as the footer", async () => {
+  backend({
+    search: () => [result("a", "First")],
+    picker_destination: () => ({ app: "Example Writer", app_id: "example.writer", app_identity: null, automatic: null, remembered: null, unreadable: false, can_paste: true, output_question: null, paste: null, paste_question: false, can_choose_paste: false }),
+  });
+  render(<App />);
+  const box = screen.getByLabelText("Search references");
+  fireEvent.change(box, { target: { value: "first" } });
+  await screen.findByText("First");
+  const enterRow = async () => {
+    fireEvent.keyDown(box, { key: "/", ctrlKey: true });
+    const dialog = await screen.findByRole("dialog", { name: "Keyboard Shortcuts" });
+    const row = within(dialog).getAllByRole("row").find((candidate) => candidate.textContent?.endsWith("Enter") && !candidate.textContent.includes("Shift"))?.firstElementChild?.textContent;
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    return row;
+  };
+  expect(await screen.findByRole("button", { name: /^Paste into Example Writer/ })).toBeTruthy();
+  expect(await enterRow()).toBe("Paste the citation");
+  // A kept-open window copies, and both places say so.
+  fireEvent.click(screen.getByRole("button", { name: "Keep Window Open" }));
+  await waitFor(() => expect(screen.queryByRole("button", { name: /^Paste into/ })).toBeNull());
+  expect(await enterRow()).toBe("Copy the citation");
+});
+
 test("? lists every key in a modal dialog, but a ? typed in the search is text", async () => {
   const calls = backend({ search: () => [result("a", "First")] });
   render(<App />);
@@ -2815,7 +2840,7 @@ test("? lists every key in a modal dialog, but a ? typed in the search is text",
   const groups = within(dialog).getAllByRole("rowgroup").filter((group) => group.tagName === "TBODY").map((group) => within(group).getAllByRole("row").map((row) => [...row.children].map((cell) => cell.textContent)));
   expect(groups.map((group) => group[0])).toEqual([["While searching"], ["From any app"], ["Anywhere in Ibis"]].slice(0, groups.length));
   const rows = groups.flatMap((group) => group.slice(1));
-  expect(groups[0]).toContainEqual(["Paste the citation", "Enter"]);
+  expect(groups[0]).toContainEqual(["Copy the citation", "Enter"]);
   expect(groups[0]).toContainEqual(["Add another reference", "Shift+Enter"]);
   expect(groups.find((group) => group[0]?.[0] === "Anywhere in Ibis")).toContainEqual(["More actions", "Ctrl+K"]);
   expect(rows).toContainEqual(["Show this list", "Ctrl+/ or ?"]);

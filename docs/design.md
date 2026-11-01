@@ -1495,7 +1495,9 @@ that owns its area in ROADMAP.md.
    entry". A full-note label waits for a full-note output.
 8. "Cited here recently": up to three rows at an empty query, per app, local
    only and forgettable. Choosing one picks the reference afresh; it never
-   brings back an old page.
+   brings back an old page. Settings › Citations › Recent citations turns it
+   off: off forgets the history and records nothing, and on again starts
+   empty.
 9. Change the last citation: an explicit action in More (with its key)
    reopens that shelf, pages included. Ibis replaces text only when the old
    citation is selected; otherwise it copies the new one and says so.

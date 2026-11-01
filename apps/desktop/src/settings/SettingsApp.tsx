@@ -172,7 +172,9 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     root.dataset.largerText = String(preferences?.larger_text ?? false);
     return () => { delete root.dataset.largerText; };
   }, [preferences?.larger_text]);
-  const permission = usePastePermission(api, page === "general", preferences?.paste === true);
+  // Shortcuts reads it too, to name what Enter does; only General waits for a grant.
+  const permission = usePastePermission(api, page === "general" || page === "shortcuts", page === "general" && preferences?.paste === true);
+  const enterPastes = permission?.pastes === true && (!permission.needed || permission.granted) && preferences?.paste === true;
 
   useEffect(() => {
     const focus = () => setFocused(true), blur = () => setFocused(false);
@@ -276,7 +278,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     edits.current += 1;
     cause.current = Object.hasOwn(next, "citation_style") || key !== null ? "default-format" : next.appearance !== undefined ? "appearance" : next.accent !== undefined ? "accent"
       : next.density !== undefined ? "rows" : next.larger_text !== undefined ? "text-size"
-      : next.search_icon !== undefined ? "search-icon" : next.paste !== undefined ? "paste-label" : next.menu_bar !== undefined ? "menu-bar" : next.small_surprises !== undefined ? "small-surprises" : "preview";
+      : next.search_icon !== undefined ? "search-icon" : next.paste !== undefined ? "paste-label" : next.menu_bar !== undefined ? "menu-bar" : next.small_surprises !== undefined ? "small-surprises" : next.recent_citations !== undefined ? "recent-citations" : "preview";
     setProblemRow(null);
     dispatchPreference({ type: "change", value: { ...preferences, ...next, ...(key ? { copy_format: key } : {}) } });
     queue.change(next, key);
@@ -457,8 +459,11 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
             <Button aria-describedby="forget-formats-description" isDisabled={forgetStatus === "saving"} onPress={forgetFormats}>{text("citations-forget-button")}</Button>
             {forgetStatus === "done" && <span role="status" className="ui-settings-description">{text("citations-forget-done")}</span>}
           </Row>
+          {preferences && <Row id="recent-citations" {...rowDetails("recent-citations", text)} {...feedback("recent-citations")}>
+            <Switch aria-labelledby="recent-citations" aria-describedby="recent-citations-description" isSelected={preferences.recent_citations ?? true} onChange={(on) => change({ recent_citations: on })} />
+          </Row>}
         </Group>}
-        {page === "shortcuts" && <ShortcutsPage opening={shortcutSetting} />}
+        {page === "shortcuts" && <ShortcutsPage opening={shortcutSetting} enterPastes={enterPastes} />}
         {page === "about" && (
           <>
             <div id="about-ibis" className="ui-about-hero">
