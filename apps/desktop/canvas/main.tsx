@@ -15,6 +15,7 @@ import type { SettingsApi } from "../src/settings/api";
 import "../src/tokens.css";
 import tokenSource from "../src/tokens.css?raw";
 import "../src/ui/Foundation.css";
+import "./board.css";
 // Picker root rules must not leak into the separate Settings window.
 import pickerStyles from "../src/styles.css?inline";
 
