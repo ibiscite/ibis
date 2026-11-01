@@ -12,15 +12,16 @@ const footer = () => within(document.querySelector("footer")!);
 const commandO = (altKey = false) => fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "o", ctrlKey: true, altKey });
 const icon = { mime: "image/png", bytes: [137, 80, 78, 71, 13, 10, 26, 10] };
 
-test("one quiet footer fix has the runtime icon, label and key caps, with a short status and full tooltip", async () => {
+test("one secondary footer fix has the runtime icon, label and keys, with a short status and full tooltip", async () => {
   backend({ library_status: () => ({ ...file, zotero: true, snapshot_zotero: true, name: "Zotero", snapshot_name: "Zotero",
     stale: true, state: "error", error: "Zotero could not be refreshed", problem: "zotero_closed", checked_at: Date.now() - 7_200_000 }),
     library_source: () => ({ kind: "zotero", name: "Zotero", icon, status_icon: icon }) });
   render(<App />);
   const fix = await screen.findByRole("button", { name: "Open Zotero" });
   await waitFor(() => expect(fix.querySelector("img")?.getAttribute("src")).toBe("data:image/png;base64,iVBORw0KGgo="));
+  expect(fix.getAttribute("data-variant")).toBe("secondary");
   expect(fix.getAttribute("aria-keyshortcuts")).toBe("Control+O");
-  expect([...fix.children].map((node) => node.className)).toEqual(["source-icon", "key-hint"]);
+  expect([...fix.children].map((node) => node.className)).toEqual(["ui-button-icon", "key-hint"]);
   expect(fix.querySelector("kbd")?.textContent).toBe("Ctrl");
   expect(screen.getByRole("status", { name: "Library status" }).textContent).toBe("Zotero not updated");
   expect(document.querySelector(".library-age")?.textContent).toBe(" · 2 h");

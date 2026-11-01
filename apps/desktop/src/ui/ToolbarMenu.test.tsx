@@ -33,17 +33,17 @@ function mount(items = sections) {
 }
 
 test.each([
-  ["macos", "0 0 8 12"],
-  ["windows", "0 0 8 12"],
-  ["linux", "0 0 8 12"],
-])("%s popup uses the existing macOS decorative indicator without changing the button name", async (platform, viewBox) => {
+  ["macos", "0 0 20 20"],
+  ["windows", "0 0 20 20"],
+  ["linux", "0 0 20 20"],
+])("%s popup uses the shared Ibis decorative indicator without changing the button name", async (platform, viewBox) => {
   setPlatform(platform === "macos" ? "MacIntel" : platform === "windows" ? "Win32" : "Linux x86_64");
   const { trigger } = mount();
   expect(trigger.classList.contains("ui-button")).toBe(true);
   expect(trigger.getAttribute("data-variant")).toBe("secondary");
   const indicator = trigger.querySelector("svg")!;
   expect(indicator.getAttribute("viewBox")).toBe(viewBox);
-  expect(indicator.querySelector("path")!.getAttribute("d")).toBe("m1 4 3-3 3 3m-6 4 3 3 3-3");
+  expect(indicator.querySelector("path")!.getAttribute("d")).toBe("M7 7l3-3 3 3M7 13l3 3 3-3");
   expect(indicator.getAttribute("aria-hidden")).toBe("true");
   expect(indicator.getAttribute("focusable")).toBe("false");
   const drawing = indicator.outerHTML;

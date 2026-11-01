@@ -40,6 +40,15 @@ M is the height of the bird.
 - **Motion.** The logo animation draws the neck, grows the head and beak out together as one shape, then fades in the wordmark, in about 1.5 s. People who ask their system for reduced motion see the finished logo. Use it once per page or video, never on a loop.
 - **Words.** Use `words.tagline` in `settings.json` for the public headline. Say "early preview" until 1.0, and name only what ships today.
 
+## Interface icons
+
+`icons/*.svg` is the editable outline set: 20 pt grid, 16 pt live area,
+one 1.5 pt stroke with round caps and joins, one path per glyph. The build
+writes `apps/desktop/src/icon-paths.ts`; never edit that output by hand.
+`node scripts/check-icons.mjs` enforces the drawing contract. Inspect every
+source at 1× and 2× after a change. App and file icons supplied by the system
+are not part of this set; no Zotero artwork ships with Ibis.
+
 ## Changing the brand
 
 1. Edit `settings.json` for colours, sizes, depth, motion or words, or `master.svg`

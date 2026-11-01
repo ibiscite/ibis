@@ -2,5 +2,4 @@
 .toolbar-menu-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 :root[data-platform="macos"] .ui-popup-button { min-height: calc(var(--control-h) - var(--space-1)); }
 
-.ui-popup-button .popup-indicator { flex: none; width: var(--icon-small); height: var(--icon-small); color: var(--text-secondary); stroke-width: var(--icon-stroke); }
-.ui-popup-button .popup-indicator-macos { width: var(--space-2); height: var(--space-3); }
+.ui-popup-button .popup-indicator { flex: none; width: var(--icon-small); height: var(--icon-small); color: var(--text-secondary); }

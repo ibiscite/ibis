@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { App, type PickerApi } from "../src/App";
 import { Button } from "../src/ui/Button";
@@ -17,10 +17,14 @@ import tokenSource from "../src/tokens.css?raw";
 import "../src/ui/Foundation.css";
 import "./board.css";
 import { Parts } from "./parts";
+import { renderNotice } from "../src/copyFeedback";
+import { currentPlatform } from "../src/platform";
+import "../src/ui/CopyReceipt.css";
+import "../src/notice.css";
 // Picker root rules must not leak into the separate Settings window.
 import pickerStyles from "../src/styles.css?inline";
 
-export const scenarios = ["results", "first-run", "more", "format-menu", "states", "parts", "empty", "file-drag", "error", "loading", "empty-search", "shelf", "reference-menu", "library-menu", "shortcuts", "pinned", "no-matches", "missing", "zotero-closed", "unreadable", "stale", "compact", "spacious", "larger-text", "right-to-left", "long-titles", "tokens", "settings-general", "settings-look", "settings-citations", "settings-shortcuts", "settings-about"] as const;
+export const scenarios = ["notice", "results", "first-run", "more", "format-menu", "states", "parts", "empty", "file-drag", "error", "loading", "empty-search", "shelf", "reference-menu", "library-menu", "shortcuts", "pinned", "no-matches", "missing", "zotero-closed", "unreadable", "stale", "compact", "spacious", "larger-text", "right-to-left", "long-titles", "tokens", "settings-general", "settings-look", "settings-citations", "settings-shortcuts", "settings-about"] as const;
 type Scenario = typeof scenarios[number];
 type Theme = "light" | "dark";
 
@@ -135,7 +139,7 @@ const family = (...prefixes: string[]) => tokenNames.filter((name) => prefixes.s
 /** The tokens as the app resolves them, so this page cannot drift from the code. */
 function Tokens({ theme }: { theme: Theme }) {
   useAppearance({ appearance: theme });
-  const colours = family("--text", "--surface", "--raised", "--sheet", "--accent", "--selected", "--fill", "--separator", "--scarlet", "--done", "--look", "--stop", "--ring");
+  const colours = family("--text", "--surface", "--raised", "--sheet", "--accent", "--selected", "--fill", "--separator", "--scarlet", "--status", "--ring");
   return <div className="canvas-tokens"><style>{tokensStyle}</style>
     <h2>Colour</h2>
     <div className="canvas-token-grid">{colours.map((name) => <span key={name}><i style={{ background: `var(${name})` }} /><code>{name}</code></span>)}</div>
@@ -151,6 +155,20 @@ function Tokens({ theme }: { theme: Theme }) {
 function ThemedParts({ theme }: { theme: Theme }) {
   useAppearance({ appearance: theme });
   return <><style>{pickerStyles}</style><Parts /></>;
+}
+
+/** The production notice renderer, with an invented citation and no native IPC. */
+function Notice({ theme }: { theme: Theme }) {
+  const root = useRef<HTMLDivElement>(null);
+  useAppearance({ appearance: theme });
+  useEffect(() => {
+    const element = root.current;
+    if (!element) return;
+    renderNotice(element, currentPlatform())({ text: "[Aster, 2026]", more: 0,
+      delivered: { outcome: "copied", reason: "disabled" } });
+    return () => element.replaceChildren();
+  }, []);
+  return <div ref={root} />;
 }
 
 function Canvas({ host, scenario, settings, picker, theme }: { host: HTMLElement; scenario: Scenario; settings: SettingsApi; picker: PickerApi; theme: Theme }) {
@@ -176,6 +194,7 @@ function Canvas({ host, scenario, settings, picker, theme }: { host: HTMLElement
     open();
     return () => observer.disconnect();
   }, [host, scenario]);
+  if (scenario === "notice") return <Notice theme={theme} />;
   if (scenario === "states") return <States theme={theme} />;
   if (scenario === "tokens") return <Tokens theme={theme} />;
   if (scenario === "parts") return <ThemedParts theme={theme} />;
@@ -202,9 +221,10 @@ export function mount(host: HTMLElement, options: { scenario?: string; theme?: s
   // The states and tokens pages use the Settings window's base styles.
   const settingsWindow = scenario.startsWith("settings-") || scenario === "states" || scenario === "tokens" || scenario === "parts";
   document.documentElement.classList.toggle("settings-window", settingsWindow);
+  document.documentElement.classList.toggle("notice-window", scenario === "notice");
   document.documentElement.dataset.nativeAppearance = "opaque";
   document.documentElement.dir = scenario === "right-to-left" ? "rtl" : "ltr";
-  host.id = settingsWindow ? "settings" : "root";
+  host.id = scenario === "notice" ? "notice" : settingsWindow ? "settings" : "root";
   const root = createRoot(host);
   const picker = pickerApi(scenario as Scenario, settings, async (page) => {
     mount(host, { scenario: `settings-${page ?? "general"}`, theme });
@@ -214,7 +234,7 @@ export function mount(host: HTMLElement, options: { scenario?: string; theme?: s
     if (mounts.get(host) !== unmount) return;
     mounts.delete(host);
     root.unmount();
-    document.documentElement.classList.remove("settings-window");
+    document.documentElement.classList.remove("settings-window", "notice-window");
   };
   mounts.set(host, unmount);
   return unmount;

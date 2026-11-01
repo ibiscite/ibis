@@ -6,7 +6,8 @@ const { chromium } = await import(process.env.IBIS_PLAYWRIGHT_MODULE);
 const dist = process.argv[2], out = process.argv[3];
 await mkdir(out, { recursive: true });
 const browser = await chromium.launch({ headless: true });
-const size = (scenario) => scenario === "settings-look" ? { width: 920, height: 1320 }
+const size = (scenario) => scenario === "notice" ? { width: 560, height: 100 }
+  : scenario === "settings-look" ? { width: 920, height: 1320 }
   : scenario === "tokens" ? { width: 920, height: 1000 }
   : scenario === "parts" ? { width: 920, height: 1500 }
   : scenario === "settings-shortcuts" ? { width: 920, height: 900 }

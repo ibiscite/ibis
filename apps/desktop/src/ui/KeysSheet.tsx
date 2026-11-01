@@ -1,7 +1,7 @@
+import { IconButton } from "./IconButton";
 import { useEffect, useRef } from "react";
 import { useInterfaceMessages } from "../i18n";
 import { type KeyBinding } from "../keys";
-import { Button } from "./Button";
 import { ShortcutGroup } from "./ShortcutTable";
 import { useScrollEdges } from "./ScrollArea";
 import "./Overlay.css";
@@ -41,7 +41,7 @@ export function KeysDialog({ bindings, isMac, onClose }: { bindings: readonly Ke
       >
         <div className="keys-heading">
           <h2 id="keys-title">{text("keys-title")}</h2>
-          <Button variant="icon" glyph="close" aria-label={text("keys-close")} title={text("keys-close")} aria-keyshortcuts="Escape" onPress={onClose} />
+          <IconButton aria-label={text("keys-close")} title={text("keys-close")} aria-keyshortcuts="Escape" onPress={onClose} />
         </div>
         <div ref={scroll} className="keys-scroll scroll-area" tabIndex={0} role="group" aria-labelledby="keys-title">
           <div className="keys-groups">

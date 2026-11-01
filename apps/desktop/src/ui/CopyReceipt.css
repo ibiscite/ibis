@@ -2,8 +2,8 @@
 .copy-receipt { box-sizing: border-box; display: grid; grid-template-columns: calc(2 * var(--space-4) + var(--space-1)) minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); align-items: start; column-gap: var(--space-2); padding: var(--space-2); border: var(--border-width) solid var(--separator); border-radius: var(--r-toast); background: var(--surface); color: var(--text); box-shadow: var(--shadow-toast); font: var(--strong) var(--type-body-size) / var(--type-meta-line) var(--font); }
 .copy-receipt > strong { grid-column: 2; min-width: 0; font: inherit; overflow-wrap: anywhere; }
 .copy-receipt > code { grid-column: 2; min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; overflow-wrap: anywhere; white-space: pre-wrap; color: var(--scarlet); font: 400 var(--type-label-size) / var(--type-label-line) var(--mono); }
-.copy-receipt-mark { grid-row: 1 / span 2; width: calc(2 * var(--space-4) + var(--space-1)); height: calc(2 * var(--space-4) + var(--space-1)); box-sizing: border-box; padding: var(--space-2); border-radius: var(--r-receipt-mark); background: var(--fill-control); fill: none; stroke: var(--text-secondary); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
-.copy-receipt[data-outcome="pasted"] > .copy-receipt-mark { background: var(--done); stroke: var(--surface); }
+.copy-receipt-mark { grid-row: 1 / span 2; width: calc(2 * var(--space-4) + var(--space-1)); height: calc(2 * var(--space-4) + var(--space-1)); box-sizing: border-box; padding: var(--space-2); border-radius: var(--r-receipt-mark); background: var(--fill-control); fill: none; stroke: var(--text-secondary); stroke-linecap: round; stroke-linejoin: round; }
+.copy-receipt[data-outcome="pasted"] > .copy-receipt-mark { background: var(--status-ok-fill); stroke: var(--status-ok); }
 @media (prefers-contrast: more), (forced-colors: active) {
   .copy-receipt { border-color: CanvasText; box-shadow: none; }
   .copy-receipt-mark { background: Canvas; stroke: CanvasText; border: var(--border-width) solid CanvasText; }

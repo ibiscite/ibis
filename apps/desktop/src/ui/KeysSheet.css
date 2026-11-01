@@ -22,4 +22,3 @@
 }
 
 .keys-dialog.ui-sheet:focus { outline: none; box-shadow: var(--shadow-overlay); }
-.keys-heading .ui-button[data-glyph="close"] { border-radius: var(--r-control); width: var(--control-h); height: var(--control-h); }

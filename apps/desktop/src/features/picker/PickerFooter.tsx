@@ -6,7 +6,7 @@ import { LibraryStatusLine } from "../../LibraryStatusLine";
 import "./PickerFooter.css";
 import { keyText, pickerText } from "../../messages";
 import { currentPlatform } from "../../platform";
-import { FooterButton } from "../../ui/FooterButton";
+import { Button } from "../../ui/Button";
 import { QuietStatus } from "../../ui/Delights";
 
 export type KeyHints = { enter: string | null; shiftEnter: string | null; escape: string };
@@ -78,5 +78,5 @@ export function PickerFooter({ library, groupName, hints, altHeld, actions, more
 }
 
 function FooterAction({ label, keys, primary, onAction, disabled }: { label: string; keys: string; primary?: boolean; onAction: () => void; disabled?: boolean }) {
-  return <FooterButton variant={primary ? "primary" : "quiet"} className="footer-action" label={label} keys={keys} isDisabled={disabled} onPress={onAction} />;
+  return <Button variant={primary ? "primary" : "secondary"} className="footer-action" label={label} keys={keys} isDisabled={disabled} onPress={onAction} />;
 }

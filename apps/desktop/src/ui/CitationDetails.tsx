@@ -1,3 +1,4 @@
+import { Icon } from "../icons";
 import { Input, Label, Radio, RadioGroup, Text, TextField } from "react-aria-components";
 import { useId, type RefObject } from "react";
 import type { ReferenceDetails, ReferenceForm } from "../bindings";
@@ -25,7 +26,7 @@ export function CitationDetails({ label, page, pageRef, choices, autoFocus = fal
         const description = `${descriptions}-${option.value}`;
         return <Radio key={option.value} className="citation-form" value={option.value} aria-label={option.label}
           isDisabled={Boolean(reason)} aria-describedby={description}>
-          <span className="citation-form-check" aria-hidden="true">{current === option.value ? "✓" : ""}</span>
+          <span className="citation-form-check" aria-hidden="true">{current === option.value ? <Icon name="check" /> : null}</span>
           <span className="citation-form-label">{option.label}</span>
           <span id={description} className="citation-form-example">{reason ?? choice?.example}</span>
         </Radio>;

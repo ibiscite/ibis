@@ -26,11 +26,11 @@
 @media (prefers-contrast: more), (forced-colors: active) { .ui-settings-card { border: var(--border-width) solid CanvasText; } }
 
 .ui-settings-row[data-highlighted] { background: var(--highlight); }
-.ui-settings-row-problem { flex-basis: 100%; margin: 0; color: var(--stop); overflow-wrap: anywhere; }
+.ui-settings-row-problem { flex-basis: 100%; margin: 0; color: var(--text); overflow-wrap: anywhere; }
 .ui-settings-search { position: relative; margin: 0 var(--inset) 10px; min-width: 0; }
 /* The glyph sits on the sidebar's icon column. */
-.ui-settings-search svg { position: absolute; inset-block-start: 50%; inset-inline-start: calc(var(--space-2) + (var(--icon) - var(--icon-compact)) / 2); width: var(--icon-compact); height: var(--icon-compact); translate: 0 -50%; stroke-width: 2; color: var(--text-tertiary); pointer-events: none; }
-.ui-settings-search input { width: 100%; min-width: 0; box-sizing: border-box; min-height: var(--action-h); border-radius: var(--r-row); border: 0; padding: 0 var(--space-2) 0 calc(var(--space-2) + var(--icon) + var(--space-2)); background: var(--surface-field); color: var(--text); font-size: var(--type-meta-size); }
+.ui-settings-search > .ui-settings-search-glyph { position: absolute; inset-block-start: 50%; inset-inline-start: calc(var(--space-2) + (var(--icon) - var(--icon-small)) / 2); width: var(--icon-small); height: var(--icon-small); translate: 0 -50%; color: var(--text-tertiary); pointer-events: none; }
+.ui-settings-search input { width: 100%; min-width: 0; box-sizing: border-box; min-height: var(--action-h); border-radius: var(--r-row); border: 0; padding-block: 0; padding-inline: calc(var(--space-2) + var(--icon) + var(--space-2)) calc(var(--control-small-h) + var(--space-2)); background: var(--surface-field); color: var(--text); font-size: var(--type-meta-size); }
 .ui-settings-search input::placeholder { color: var(--text-tertiary); }
 .ui-settings-search-results { display: flex; flex-direction: column; gap: var(--space-1); }
 .ui-settings-search-results button { text-align: start; }
@@ -49,3 +49,6 @@
   .ui-settings-row[data-highlighted] { background: Highlight; color: HighlightText; }
   .ui-settings-row[data-highlighted] .ui-settings-description { color: inherit; }
 }
+
+.ui-settings-search input::-webkit-search-cancel-button { appearance: none; -webkit-appearance: none; display: none; }
+.ui-settings-search-clear { position: absolute; inset-block-start: 50%; inset-inline-end: var(--space-1); translate: 0 -50%; --ring-offset: calc(-1 * var(--ring-width)); }

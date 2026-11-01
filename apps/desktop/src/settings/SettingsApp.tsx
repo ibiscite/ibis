@@ -1,3 +1,4 @@
+import { StatusMark } from "../ui/StatusMark";
 import { type ReactNode, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { PageIcon } from "../icons";
 import type { KeyFormat, LoginItem, LoginItemProblem, PickerPreferences, ShortcutStatus, WindowSize } from "../bindings";
@@ -40,11 +41,6 @@ const PAGE_TILES: Partial<Record<Page, ReactNode>> = { general: <PageIcon name="
 export function pageOf(name: string | null): { page: Page; focus: "paste" | null } {
   if (name === "paste") return { page: "general", focus: "paste" };
   return { page: PAGES.includes(name as Page) ? name as Page : "general", focus: null };
-}
-
-/** The done mark: the status colour with a tick, as in the Copied notice. */
-function DoneMark() {
-  return <svg className="settings-done" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="10" /><path d="m5.5 10.5 3 3L14.5 7" /></svg>;
 }
 
 /** The Settings window: a sidebar of pages, each a stack of titled groups of
@@ -439,7 +435,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
                   </Row>
                   {preferences.paste && permission?.needed && permission.granted && !guided && (
                     <Row id="paste-allowed" label={text("general-paste-allowed", { list: permission.list })} description={text("general-paste-allowed-note")}>
-                      <DoneMark />
+                      <StatusMark kind="ok" />
                     </Row>
                   )}
                   {preferences.paste && permission?.needed && (!permission.granted || guided) && (

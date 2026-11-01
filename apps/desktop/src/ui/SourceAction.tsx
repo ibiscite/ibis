@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import type { SystemIcon } from "../bindings";
 import { ChoiceIcon } from "../icons";
-import { FooterButton } from "./FooterButton";
+import { Button } from "./Button";
 import "./SourceAction.css";
 
 /** Native raster bytes only; the source name and action survive missing or
@@ -36,7 +36,7 @@ export function shortenedLabel(label: string, limit = 44): string {
 /** The footer source/fix action shares Copy's component. */
 export function SourceAction({ label, keys, icon, file, busy = false, open }: SourceActionProps) {
   const shown = shortenedLabel(label);
-  return <FooterButton label={shown} keys={keys} className="source-action library-inline-action"
+  return <Button label={shown} keys={keys} className="source-action library-inline-action"
     aria-busy={busy || undefined} title={shown === label ? undefined : label}
     aria-label={label} onPress={open} icon={busy ? <span className="source-spinner" aria-hidden="true" /> : <SourceIcon icon={icon} file={file} />} />;
 }

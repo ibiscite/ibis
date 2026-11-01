@@ -1,0 +1,6 @@
+.ui-status-mark { --status-colour: var(--status-ok); display: inline-flex; flex: none; align-items: center; justify-content: center; color: var(--status-colour); width: var(--icon-small); height: var(--icon-small); }
+.ui-status-mark[data-status="warning"] { --status-colour: var(--status-warning); }
+.ui-status-mark[data-status="error"] { --status-colour: var(--status-error); }
+.ui-status-mark > svg { width: var(--icon-small); height: var(--icon-small); }
+.ui-status-mark[data-presentation="dot"] { width: var(--status-dot); height: var(--status-dot); border-radius: var(--r-full); background: var(--status-colour); }
+.ui-status-mark[data-presentation="wash"] { width: var(--control-small-h); height: var(--control-small-h); border-radius: var(--r-control); background: color-mix(in srgb, var(--status-colour) 14%, transparent); }

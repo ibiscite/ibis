@@ -2,7 +2,8 @@ import type { SearchIcon } from "../../bindings";
 import type React from "react";
 import type { MouseEvent } from "react";
 import { IbisMark } from "../../ui/IbisMark";
-import { Button, ToggleButton } from "../../ui/Button";
+import { IconButton } from "../../ui/IconButton";
+import { Icon } from "../../icons";
 import { composing } from "./shortcuts";
 import { pickerText } from "../../messages";
 import { ariaKeys, keysFor } from "../../keys";
@@ -59,9 +60,7 @@ export function PickerHeader({ onResetPosition, inputRef, query, pageToken, onQu
     <header className="search-bar" data-icon={icon} data-tauri-drag-region title={pickerText.dragSearchBar}
       onMouseDown={emptyArea} onMouseUp={(event) => { if (emptyArea(event)) onResetPosition?.(); }}>
       {icon === "ibis" && <IbisMark className="search-mark" size="search" />}
-      {icon === "magnifier" && <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-        <path d="M10.5 4a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13zM16 16l5 5" />
-      </svg>}
+      {icon === "magnifier" && <Icon name="find" />}
       <label className="visually-hidden" htmlFor="search">
         {pickerText.searchLabel}
       </label>
@@ -100,18 +99,14 @@ export function PickerHeader({ onResetPosition, inputRef, query, pageToken, onQu
           }}
           onKeyDown={onSearchKeyDown}
         />
-        {query !== "" && <Button variant="icon" glyph="close" className="search-clear" aria-label={pickerText.clearSearch}
+        {query !== "" && <IconButton size="large" className="search-clear" aria-label={pickerText.clearSearch}
           onPress={() => { onQueryChange(""); inputRef.current?.focus(); }} />}
         </div>
         {pageToken}
       </div>
       {showFormat && <FormatMenu format={format} buttonRef={formatButtonRef} app={app} scope={formatScope} onOpenChange={onFormatOpenChange} onceOnly={onceOnly} onToggleOnce={onToggleOnce} onAutomatic={onAutomatic} onDefault={onDefault} pasteChoices={pasteChoices} onPasteChange={onPasteChange} disabled={formatDisabled} styles={styles} onChange={onFormatChange} searchRef={inputRef} onCommand={onFormatCommand} />}
-      <ToggleButton variant="icon" className="pin-button" aria-label={pickerText.keepOpen} aria-keyshortcuts={ariaKeys(keysFor("pin"), currentPlatform() === "macos")}
-        isSelected={pinned} onChange={onTogglePin}>
-        <svg aria-hidden="true" viewBox="0 0 24 24" fill={pinned ? "currentColor" : "none"} stroke={pinned ? "none" : "currentColor"}>
-          <path d={pinned ? "M8.5 3.25h7L14.2 8.7 18 12.5v1.25h-5.25V20.5h-1.5v-6.75H6V12.5l3.8-3.8z" : "M9 4h6l-1 5 4 4H6l4-4zM12 13v7"} />
-        </svg>
-      </ToggleButton>
+      <IconButton icon="pin" size="large" className="pin-button" aria-label={pickerText.keepOpen} aria-keyshortcuts={ariaKeys(keysFor("pin"), currentPlatform() === "macos")}
+        isSelected={pinned} onChange={onTogglePin}/>
     </header>
   );
 }
