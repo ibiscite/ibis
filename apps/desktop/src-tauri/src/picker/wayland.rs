@@ -178,7 +178,7 @@ mod linux {
             let executable = std::env::current_exe().ok();
             let binary = toggle_binary(executable.as_deref(), nightly);
             let result = async {
-                let portal = Portal::connect(&app.config().identifier).await?;
+                let portal = Portal::connect().await?;
                 let configure = portal.configure.clone();
                 let configurable = configure.version >= 2;
                 let guidance = if configurable {
