@@ -286,6 +286,16 @@ fn tools() -> Value {
         "doi",
         "csl"
     ]);
+    let mut search_hit = summary;
+    search_hit["properties"]["partial"] = json!({
+        "type": "boolean", "description": "True when only part of the query matched; ask the user before citing."
+    });
+    search_hit["properties"]["typo"] = json!({
+        "type": "boolean", "description": "True when spelling was corrected; ask the user before citing."
+    });
+    if let Some(required) = search_hit["required"].as_array_mut() {
+        required.extend([json!("partial"), json!("typo")]);
+    }
     json!([
         {
             "name": "search",
@@ -302,7 +312,7 @@ fn tools() -> Value {
             "outputSchema": {
                 "type": "object",
                 "properties": {
-                    "hits": {"type": "array", "items": summary},
+                    "hits": {"type": "array", "items": search_hit},
                     "complete": {"type": "boolean", "description": "False when the answer size bound cut the list short."}
                 },
                 "required": ["hits", "complete"]
@@ -444,14 +454,16 @@ fn search(engine: &Engine, arguments: &Value) -> Result<Value, EngineError> {
         let LibraryObject::Record(record) = &hit.item.object else {
             continue;
         };
-        let hit = summary(&citable(record));
-        size += hit.to_string().len() + 1;
+        let mut data = summary(&citable(record));
+        data["partial"] = json!(hit.partial);
+        data["typo"] = json!(hit.typo);
+        size += data.to_string().len() + 1;
         // Leave room for the envelope; a shorter list is still a true answer.
         if size > MAX_ANSWER - 1024 {
             complete = false;
             break;
         }
-        hits.push(hit);
+        hits.push(data);
     }
     Ok(json!({"hits": hits, "complete": complete}))
 }

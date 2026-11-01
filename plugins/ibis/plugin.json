@@ -10,6 +10,23 @@
   "homepage": "https://ibiscite.org",
   "repository": "https://github.com/ibiscite/ibis",
   "license": "AGPL-3.0-or-later",
+  "extensions": {
+    "com.openai": {
+      "requires_local_executor": true,
+      "interface": {
+        "displayName": "Ibis",
+        "shortDescription": "Cite from your own library",
+        "longDescription": "Search your Zotero, BibTeX or CSL-JSON reference library and format citations from real records. Ibis reads the library chosen in the Ibis app, stays read-only and works offline. Requires the ibis command on PATH with support for --app-libraries and a connected Ibis MCP server.",
+        "developerName": "Ibis contributors",
+        "category": "Productivity",
+        "websiteURL": "https://ibiscite.org",
+        "supportURL": "https://github.com/ibiscite/ibis/issues",
+        "privacyPolicyURL": "https://github.com/ibiscite/ibis/blob/main/PRIVACY.md",
+        "logo": "./.claude-plugin/icon.png",
+        "composerIcon": "./.claude-plugin/icon.png"
+      }
+    }
+  },
   "keywords": [
     "citations",
     "references",

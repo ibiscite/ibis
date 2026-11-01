@@ -2,6 +2,7 @@
 //! read-only, and stop with the reason when those settings cannot be used.
 #![allow(clippy::unwrap_used)]
 
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -201,6 +202,95 @@ fn no_settings_ask_for_a_library_by_name() {
     let (status, stdout, stderr) = home.run(&["search", "invented", "--json"]);
     assert_eq!((status, code(&stdout).as_str()), (2, "usage"));
     assert!(stderr.contains("name one with --file PATH"), "{stderr}");
+}
+
+#[test]
+fn the_plugin_declares_local_execution_and_ships_its_listing_icons() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../plugins/ibis");
+    let manifest: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(root.join("plugin.json")).unwrap()).unwrap();
+    let openai = &manifest["extensions"]["com.openai"];
+    assert_eq!(openai["requires_local_executor"], true);
+    let interface = &openai["interface"];
+    for (field, limit) in [("displayName", 30), ("shortDescription", 30), ("longDescription", 4000)] {
+        let text = interface[field].as_str().unwrap();
+        assert!(!text.is_empty() && text.chars().count() <= limit, "{field}");
+    }
+    for field in ["logo", "composerIcon"] {
+        let path = interface[field].as_str().unwrap();
+        assert!(path.starts_with("./"));
+        assert!(root.join(path).is_file(), "missing {field}");
+    }
+}
+
+/// Launch exactly what each plugin manifest declares, using a synthetic app choice.
+fn plugin_citation(home: &Home, config: &str, key: &str) -> String {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../plugins/ibis");
+    let manifest: serde_json::Value = serde_json::from_slice(&std::fs::read(root.join(config)).unwrap()).unwrap();
+    let server = &manifest["mcpServers"]["ibis"];
+    assert_eq!(server["command"], "ibis");
+    let args: Vec<&str> = server["args"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|arg| arg.as_str().unwrap())
+        .collect();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_ibis"))
+        .args(args)
+        .env("HOME", &home.root)
+        .env("USERPROFILE", &home.root)
+        .env("APPDATA", home.root.join("AppData"))
+        .env("XDG_CONFIG_HOME", home.root.join("config"))
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let input = [
+        serde_json::json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{
+            "protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"synthetic","version":"1"}
+        }}),
+        serde_json::json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{
+            "name":"cite","arguments":{"items":[{"key":key}],"syntax":"pandoc"}
+        }}),
+    ]
+    .iter()
+    .map(|message| format!("{message}\n"))
+    .collect::<String>();
+    child.stdin.take().unwrap().write_all(input.as_bytes()).unwrap();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    while child.try_wait().unwrap().is_none() {
+        if std::time::Instant::now() >= deadline {
+            child.kill().unwrap();
+            child.wait().unwrap();
+            panic!("plugin did not stop after stdin closed");
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    let output = child.wait_with_output().unwrap();
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    assert!(output.stderr.is_empty());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let replies: Vec<serde_json::Value> = stdout.lines().map(|line| serde_json::from_str(line).unwrap()).collect();
+    assert_eq!(replies.len(), 2);
+    assert_eq!(replies[1]["result"]["isError"], false, "{stdout}");
+    assert!(!stdout.contains("refs.bib"), "app-chosen paths must stay private");
+    stdout
+}
+
+#[test]
+fn both_plugins_cite_the_app_choice_and_reopening_reads_the_new_choice() {
+    let home = Home::new("plugin");
+    let first = home.library("refs.bib");
+    let second = home.root.join("other.bib");
+    std::fs::write(&second, BIB.replace("lee2024", "kim2023")).unwrap();
+    for config in [".mcp.json", "mcp.json"] {
+        home.choose(STABLE, &first);
+        assert!(plugin_citation(&home, config, "lee2024").contains("[@lee2024]"));
+        home.choose(STABLE, &second);
+        let reopened = plugin_citation(&home, config, "kim2023");
+        assert!(reopened.contains("[@kim2023]") && !reopened.contains("lee2024"));
+    }
 }
 
 #[cfg(unix)]
