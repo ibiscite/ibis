@@ -27,8 +27,8 @@ Examples:
   ibis cite garcia2021 --file refs.bib --style apa
   ibis search memory --zotero --json
 
-Add --json to any command for one versioned JSON envelope on stdout. Messages go
-to stderr. Exit codes: 0 ok, 1 findings, 2 usage, 3 bad input, 4 not found,
+Add --json to any command for one versioned JSON envelope on stdout (serve and
+mcp speak their own protocols instead). Messages go to stderr. Exit codes: 0 ok, 1 findings, 2 usage, 3 bad input, 4 not found,
 5 source unavailable or resource limit, 6 newer format, 70 internal, 130 cancelled.
 
 Reference for scripts and agents: https://github.com/ibiscite/ibis/blob/main/docs/cli.md";
@@ -342,7 +342,19 @@ pub fn run_with<R: BufRead, W: Write + Send, E: Write>(
         Err(error) => {
             // `ibis help search --json`: the help command takes no flags of its own,
             // so ask again without --json and keep the answer only if it is help.
-            let error = if json {
+            let help_command = arguments.get(1..).is_some_and(|rest| {
+                rest.iter()
+                    .find(|argument| *argument != "--json")
+                    .is_some_and(|first| first == "help")
+            });
+            let error = if json
+                && help_command
+                && matches!(
+                    error.kind(),
+                    clap::error::ErrorKind::UnknownArgument | clap::error::ErrorKind::InvalidSubcommand
+                )
+                && arguments.iter().filter(|argument| *argument == "--json").count() == 1
+            {
                 command()
                     .try_get_matches_from(arguments.iter().filter(|argument| *argument != "--json"))
                     .err()
@@ -379,10 +391,14 @@ pub fn run_with<R: BufRead, W: Write + Send, E: Write>(
             // clap names the argument and prints the usage line; keep its words,
             // but a line break typed in an argument must not start a forged line.
             let mut message = error.to_string();
+            // clap may quote a whole argument or only the value after `--flag=`.
             for argument in &arguments {
                 let text = argument.to_string_lossy();
-                if text.contains(['\n', '\r']) {
-                    message = message.replace(text.as_ref(), &text.escape_debug().to_string());
+                let value = text.split_once('=').map(|(_, value)| value);
+                for fragment in std::iter::once(text.as_ref()).chain(value) {
+                    if fragment.contains(['\n', '\r']) {
+                        message = message.replace(fragment, &fragment.escape_debug().to_string());
+                    }
                 }
             }
             return emit(
@@ -858,8 +874,19 @@ fn emit(
     errors: &mut impl Write,
     mode: OutputMode,
 ) -> u8 {
+    // Continuation lines are indented, so no text inside a message can pass
+    // for a separate `ibis:` diagnostic.
     let mut say = |line: &str| {
-        let _ = writeln!(errors, "ibis: {}", terminal_display(line));
+        let text = terminal_display(line);
+        let mut lines = text.split('\n');
+        let _ = writeln!(errors, "ibis: {}", lines.next().unwrap_or_default());
+        for line in lines {
+            let _ = if line.is_empty() {
+                writeln!(errors)
+            } else {
+                writeln!(errors, "  {line}")
+            };
+        }
     };
     if result.as_ref().is_ok_and(|result| result.source_findings) {
         say(if json {

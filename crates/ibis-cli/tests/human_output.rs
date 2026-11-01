@@ -292,6 +292,48 @@ fn help_and_version_are_envelopes_under_json() -> Result<(), Box<dyn std::error:
     let (code, _, errors) = run(engine()?, &["ibis", "help", "invented", "--json"])?;
     assert_eq!(code, 2);
     assert!(errors.starts_with("ibis: "), "{errors}");
+    // Only the help command is asked again: a repeated --json stays a usage error.
+    for args in [
+        &["ibis", "--json", "--json", "--help"][..],
+        &["ibis", "help", "search", "--json", "--json"],
+        &["ibis", "search", "--json", "--json", "x"],
+    ] {
+        let (code, text, _) = run(engine()?, args)?;
+        assert_eq!(code, 2, "{args:?}");
+        assert_eq!(
+            text, "{\"error\":{\"code\":\"usage\"},\"ibis\":1,\"ok\":false}\n",
+            "{args:?}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn a_line_break_in_any_argument_cannot_forge_a_diagnostic() -> Result<(), Box<dyn std::error::Error>> {
+    for json in [false, true] {
+        for args in [
+            vec!["ibis", "search", "x", "--limit=bad\nibis: forged"],
+            vec!["ibis", "search", "x", "--limit", "bad\nibis: forged"],
+            vec!["ibis", "cite", "k", "--format=bad\r\nibis: forged"],
+            vec!["ibis", "invented\nibis: forged"],
+        ] {
+            let mut args = args;
+            if json {
+                args.push("--json");
+            }
+            let (code, _, errors) = run(engine()?, &args)?;
+            assert_eq!(code, 2, "{args:?}");
+            let starts = errors.lines().filter(|line| line.starts_with("ibis: ")).count();
+            assert_eq!(starts, 1, "{args:?}: {errors}");
+            assert!(
+                errors
+                    .lines()
+                    .skip(1)
+                    .all(|line| line.is_empty() || line.starts_with("  ")),
+                "{errors}"
+            );
+        }
+    }
     Ok(())
 }
 

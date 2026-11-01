@@ -51,7 +51,8 @@ watch no files. Library IDs in the output are opaque digests, never paths.
 
 Without `--json`, commands print short lines for people. Add `--json` to any
 command, including `--help`, `--version` and argument errors, and stdout holds exactly
-one JSON envelope followed by a newline:
+one JSON envelope followed by a newline. The exceptions are `serve` and `mcp`, which
+stream their own protocols on stdout (below) and ignore `--json`:
 
 ```json
 {"ibis":1,"ok":true,"data":{…}}
@@ -146,7 +147,8 @@ claude mcp add ibis -- ibis mcp --file /path/to/refs.bib
 
 Agents see bibliographic fields and citations only: never notes, annotations, source
 paths, file locations or local links. Long values are shortened and each answer is at
-most 256 KiB. Nothing opens a network connection.
+most 256 KiB. Nothing connects beyond your computer; reading a running Zotero uses
+its local API on `127.0.0.1` only.
 
 Agents that run shell commands can also use the command line directly with `--json`;
 the envelope, error codes and exit codes above are the contract.

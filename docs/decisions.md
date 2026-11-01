@@ -797,6 +797,27 @@ gzipped. A 50,000-record check reports on nightly against the same numbers as a 
 goal and must not grow faster than the library; a miss is studied, not blocking. The 100k limits and the 400-entry bibliography timing are dropped; document
 tools set their own later. Where each check runs: #1536.
 
+## 0033 The engine for agents and tools
+
+The `ibis` command is a complete, independent way into a person's references,
+for scripts, other tools and AI agents, whatever manager or file holds them;
+the app is one client of the same engine. Its public contract is
+[docs/cli.md](cli.md). Decided by the maintainer on 2026-11-01:
+
+- Every citation comes from a real record: the person's library first, and an
+  identifier lookup (DOI, arXiv and similar) only once that network use is
+  approved. Agents pass the keys or ids Ibis returned; Ibis refuses anything
+  changed, missing or ambiguous and never fills a gap with a guess.
+- The command line, `ibis serve` and `ibis mcp` stay read-only until 1.0.
+- `ibis mcp` follows the current MCP revision (2026-07-28) and keeps answering
+  older clients; Ibis follows each standard's latest official guidance.
+- With no library named, one-shot commands read the libraries chosen in the app,
+  read-only. Named libraries replace them; `serve` and `mcp` still need libraries
+  named; unreadable or newer settings stop with that reason.
+- The command is `ibis`; package names use `ibiscite` where `ibis` is taken. The
+  app ships the matching `ibis` and offers to install it; the standalone download
+  stays. Packages: a Homebrew tap, winget and `cargo binstall`; others on request.
+
 ## 0027 Process until 1.0 (with 0011, 0015 and 0017)
 
 Agents have standing engineering and merge authority and work by
