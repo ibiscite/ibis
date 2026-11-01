@@ -2,7 +2,7 @@
 name: ibis-cite
 description: Find references in the user's own library (Zotero, BibTeX, BibLaTeX or CSL-JSON) and write citations or bibliography entries from real records with Ibis. Use when the user asks to cite, reference or look up a paper or book, add a citation key, or format a reference in a style such as APA, Chicago, IEEE or MLA.
 license: AGPL-3.0-or-later
-compatibility: Needs the ibis command (https://github.com/ibiscite/ibis) on PATH, or its MCP server. Works offline and reads libraries only.
+compatibility: Needs a connected Ibis MCP server and the ibis command (https://github.com/ibiscite/ibis) on PATH with support for --app-libraries. Works offline and reads libraries only.
 metadata:
   author: ibiscite
   homepage: https://github.com/ibiscite/ibis/blob/main/docs/cli.md
@@ -20,6 +20,9 @@ write is a record the user actually has.
   that Ibis returned in this conversation, by the key or id it returned.
 - If Ibis finds nothing, say so and show what you searched for. Do not guess a near
   match: offer the closest results and let the user choose.
+- A search hit with `partial: true` matches only part of the query; `typo: true`
+  means spelling was corrected. Offer those results as suggestions and ask the user
+  to choose before citing them.
 - When a result lists `notices`, `losses` or item warnings, tell the user what needs
   checking. A refused item (changed, missing or ambiguous) is not cited; search again.
 - Ibis is read-only. It cannot add or change references; ask the user to do that in
@@ -37,34 +40,21 @@ If the `ibis` MCP server is connected, use its four read-only tools:
    `keys`) that matches the document being written.
 4. `styles` lists the bundled styles.
 
-## With the command line
+## If the MCP server is unavailable
 
-If the MCP server is not connected but you can run commands, use `ibis` with `--json`
-and branch on `error.code`, never on the wording. With no library named, `ibis` reads
-the one chosen in the Ibis app. To read another, name it with `--file PATH`, `--zotero`
-or `--zotero-group ID`, for example the `.bib` file of the project being written.
+Stop and explain that Ibis must be connected before you can search or cite. Ask the
+user to install the current `ibis` command on PATH, choose a library in Ibis, and
+start a new agent session. `ibis mcp --help` must list `--app-libraries`; a command
+that rejects that option is too old for this plugin.
 
-```sh
-ibis search "garcia 2021 memory" --limit 5 --json
-ibis show garcia2021 --json
-ibis cite garcia2021 --format pandoc             # [@garcia2021]
-ibis cite garcia2021 --style apa                 # (García, 2021)
-ibis cite garcia2021 --style apa --bibliography  # the reference entry
-ibis cite garcia2021 --locator "p. 12" --prefix see lee2019 --format autocite
-ibis search "garcia" --file thesis.bib --json    # a named library instead
-```
-
-Exit code 0 is success (an empty search is a success), 1 means done with findings to
-report, 2 a wrong command line or no library to read, 4 a key that is not there and 5
-a library that cannot be read right now. Pass on the `ibis:` sentence from stderr when
-a command fails; it says what to fix. `ibis --help`, `ibis <command> --help` and
-`ibis schema <command>` describe everything else.
+Do not fall back to reading library files or raw `ibis search` / `ibis show` JSON.
+Those outputs can contain private notes and local paths that MCP deliberately
+removes. Do not bypass that boundary by reading the app's settings yourself.
 
 ## Choosing the output
 
-- Markdown for Pandoc or Quarto: `pandoc`. LaTeX with BibLaTeX: `biblatex` in MCP, or
-  `--format autocite`, `parencite` or `textcite` on the command line; with natbib:
-  `natbib`. Typst: `typst`. `ibis cite --help` lists every command-line format.
-- Writing prose or a document without a citation processor: a `--style`, plus
-  `--bibliography` for the reference list.
+- Markdown for Pandoc or Quarto: `syntax: "pandoc"`. LaTeX with BibLaTeX:
+  `syntax: "biblatex"`; with natbib: `syntax: "natbib"`. Typst: `syntax: "typst"`.
+- Writing prose or a document without a citation processor: a `style`, plus
+  `form: "bibliography-only"` for the reference list.
 - Match what the document already uses before choosing one yourself.
