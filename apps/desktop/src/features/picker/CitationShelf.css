@@ -42,11 +42,13 @@ main:has(> .shelf) > footer { border-top-color: var(--clear); }
 .shelf-actions > .shelf-warnings.ui-button { width: auto; padding-inline: var(--space-2); border-radius: var(--r-full); background: var(--chip-fill); }
 .shelf[data-folded] .shelf-actions > .shelf-warnings.ui-button { width: var(--shelf-target); padding-inline: 0; }
 .shelf-pill { flex: none; padding-inline: var(--space-2); border-radius: var(--r-full); background: var(--chip-fill); color: var(--muted); font-size: var(--type-label-size); line-height: var(--chip-height); white-space: nowrap; }
-.shelf-details-list { display: flex; flex-direction: column; gap: var(--row-spacing); margin: 0 calc(-1 * var(--space-2)); padding: 0; list-style: none; }
+.shelf-details-list { display: flex; flex-direction: column; gap: var(--row-spacing); margin: 0; padding: 0; list-style: none; }
 .shelf-details-list .ui-button { justify-content: start; text-align: start; width: 100%; height: auto; min-height: var(--control-min-size); padding: var(--space-2); border-radius: var(--r-mi); color: var(--text); }
 .shelf-detail-locator { color: var(--muted); }
 .shelf-reference-summary { display: flex; flex: 1; flex-direction: column; gap: var(--space-1); min-width: 0; }
 .shelf-reference-title { color: var(--muted); font-size: var(--type-label-size); }
+/* The menu closes when one row cannot fit, so short windows keep each row to a line. */
+@media (max-height: 400px) { .shelf-reference-title { display: none; } }
 .shelf-problem, .shelf-detail-title { margin: 0 0 var(--space-2); overflow-wrap: anywhere; }
 .shelf-menu-remove.ui-button { justify-content: space-between; width: 100%; text-align: start; }
 .shelf-menu-remove > :last-child { color: var(--muted); }
@@ -77,5 +79,5 @@ main:has(> .shelf) > footer { border-top-color: var(--clear); }
 .shelf-shared { flex: none; white-space: pre; }
 .shelf-punctuation { color: var(--muted); }
 .shelf-segment-button[data-focus-visible] .shelf-punctuation { color: inherit; }
-.shelf-full-citation { margin-block-start: var(--space-3); padding: var(--space-2) var(--space-3); border-radius: var(--r-mi); background: var(--fill-control); font-size: var(--type-citation-size); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
+.shelf-full-citation { margin: var(--space-3) var(--space-2) 0; padding: var(--space-2) var(--space-3); border-radius: var(--r-mi); background: var(--fill-control); font-size: var(--type-citation-size); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
 
