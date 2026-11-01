@@ -57,7 +57,6 @@
   --shadow-dialog: 0 24px 48px rgb(0 0 0 / 22%);
   --shadow-toast: 0 8px 16px rgb(0 0 0 / 18%);
   --shadow-badge: 0 0 0 .5px color-mix(in srgb, var(--text) 28%, transparent), 0 1px 2px rgb(0 0 0 / 18%);
-  --shadow-segment: 0 0 0 .5px rgb(0 0 0 / 10%), 0 1px 2px rgb(0 0 0 / 12%);
   --shadow-thumb: 0 0 0 .5px rgb(0 0 0 / 12%), 0 1px 2px rgb(0 0 0 / 22%);
   --thumb: var(--white);
   --blur: none;
@@ -178,7 +177,7 @@
 /* Increase Contrast and forced colours: system colours, solid edges, no depth. */
 @media (prefers-contrast: more), (forced-colors: active) {
   :root, :root[data-platform] {
-    --shadow-card: none; --shadow-overlay: none; --shadow-dialog: none; --shadow-toast: none; --shadow-thumb: none; --shadow-segment: none; --shadow-badge: none;
+    --shadow-card: none; --shadow-overlay: none; --shadow-dialog: none; --shadow-toast: none; --shadow-thumb: none; --shadow-badge: none;
     --surface: Canvas; --raised: Canvas; --surface-overlay: Canvas; --sheet: Canvas; --surface-grouped: Canvas;
     --text: CanvasText; --text-secondary: CanvasText; --text-tertiary: CanvasText; --separator: CanvasText; --stroke-field: CanvasText;
     --selected: Highlight; --selected-text: HighlightText; --selected-text-secondary: currentColor;
@@ -230,6 +229,8 @@
   --r-key: max(var(--r-floor-mark), calc(var(--r-action) - var(--key-gap)));
   --r-toast: 18px; --r-receipt-mark: calc(var(--r-toast) - var(--space-2));
   --footer-h: calc(var(--action-h) + 2 * var(--inset));
+  /* Measured from NSSegmentedControl: the chosen fill lands at 19% of the text colour. */
+  --segment-track: var(--fill-2); --segment-selected: color-mix(in srgb, var(--text) 12%, transparent);
   --key-fill: var(--fill-control); --key-fill-hover: var(--fill-control-hover); --key-fill-pressed: var(--fill-control-pressed);
   --primary: var(--accent);
   --accent-hover: color-mix(in srgb, var(--primary) 90%, black);
