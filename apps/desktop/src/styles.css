@@ -158,9 +158,6 @@ footer { display: flex; align-items: center; padding-block: 0; padding-inline: v
 /* More stays at the far end even when the footer wraps, so its menu opens inward. */
 .more { position: relative; margin-inline-start: auto; }
 .quiet-button { background: var(--clear); border-color: var(--clear); color: var(--muted); }
-/* Key caps are filled, never outlined boxes (PowerToys, Raycast, GNOME): a
-   20 px cap on the button fill; contrast modes give it an edge. */
-kbd { font: inherit; font-size: var(--hint-size); font-weight: 500; display: inline-block; min-width: var(--key-cap); height: var(--key-cap); line-height: calc(var(--key-cap) - 2 * var(--border-width)); padding: 0 var(--space-1); text-align: center; background: var(--fill-control); border: var(--border-width) solid var(--stroke-control); border-radius: var(--hint-radius); margin-inline-start: var(--hint-margin); }
 
 @media (prefers-contrast: more) {
 
@@ -272,7 +269,6 @@ footer .key-hint-label { display: var(--footer-hint-label-display); }
 .keys-scroll th, .keys-scroll td { padding: var(--space-1) 0; vertical-align: baseline; overflow-wrap: break-word; border-bottom: var(--border-width) solid var(--line); }
 .keys-scroll th { text-align: start; font-weight: inherit; }
 .keys-scroll th[scope="rowgroup"] { padding-block: var(--space-4) var(--space-1); color: var(--muted); font-weight: var(--type-strong-weight); }
-.keys-scroll tbody:first-of-type th[scope="rowgroup"] { padding-top: var(--space-1); }
 .keys-scroll td { width: 1%; padding-inline-start: var(--space-4); text-align: end; white-space: nowrap; }
 .keys-scroll kbd { margin-inline-start: 0; white-space: nowrap; }
 @media (forced-colors: active) {

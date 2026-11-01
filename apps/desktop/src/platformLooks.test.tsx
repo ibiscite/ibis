@@ -188,7 +188,7 @@ test("shared macOS overlays retain their shapes, easing, scrims and shadow-free 
   expect(base).toContain("--scrim: light-dark(rgb(0 0 0 / 20%), rgb(0 0 0 / 40%));");
   expect(tokens).not.toMatch(/--(?:menu-shadow|motion-ease)\s*:/);
   const contrast = rules(tokens.slice(tokens.indexOf("@media (prefers-contrast: more), (forced-colors: active)")), ":root, :root[data-platform]");
-  for (const level of ["card", "raised", "overlay", "dialog", "toast"]) expect(contrast).toContain(`--shadow-${level}: none;`);
+  for (const level of ["card", "overlay", "dialog", "toast"]) expect(contrast).toContain(`--shadow-${level}: none;`);
   expect(contrast).toContain("--scrim: Canvas;");
 });
 
@@ -562,7 +562,7 @@ test("the search box draws one underline: the header rule never changes on focus
 
 test("buttons and key caps are fills without an outline except in contrast modes", () => {
   expect(rules(buttons, ".ui-button[data-variant]")).toMatch(/border:\s*var\(--border-width\) solid var\(--stroke-control\)/);
-  const kbd = rules(styles, "kbd");
+  const kbd = rules(readFileSync(new FileURL("./ui/KeyCaps.css", import.meta.url), "utf8"), "kbd");
   expect(kbd).toMatch(/background:\s*var\(--fill-control\)/);
   expect(kbd).toMatch(/border:\s*var\(--border-width\) solid var\(--stroke-control\)/);
   expect(kbd).toMatch(/height:\s*var\(--key-cap\)/);
@@ -607,10 +607,10 @@ test("the thicker active-row edge in increased contrast does not move the row's 
 test("the alias-only migration exposes the complete design-system role inventory", () => {
   const roles = `surface-window surface-raised surface-overlay surface-field
     fill-control fill-control-hover fill-control-pressed fill-subtle-hover fill-subtle-pressed fill-disabled
-    text-tertiary text-disabled text-on-accent accent-text row-inactive-background
-    stroke-control stroke-field stroke-overlay scrim status-info
-    shadow-card shadow-raised shadow-overlay shadow-dialog shadow-toast
-    ease-in ease-out motion-exit z-content z-chrome z-overlay z-tooltip z-modal z-toast overlay-margin
+    text-tertiary text-disabled text-on-accent accent-text
+    stroke-control stroke-field stroke-overlay scrim
+    shadow-card shadow-overlay shadow-dialog shadow-toast
+    ease-in ease-out motion-exit z-content z-chrome z-overlay z-modal z-toast overlay-margin
     r-control r-key r-card r-dialog r-full`.split(/\s+/);
   for (const role of roles) expect(tokens, role).toMatch(new RegExp(`--${role}:`));
   // This is the unscaled 16 px/rem baseline, not Larger/system-scaled geometry.

@@ -61,12 +61,11 @@
   --status-dot-size: .5rem;
   /* Scroll areas (ui/ScrollArea.css): the system's own bars, and the depth of
      the fade at an edge with more content beyond it. */
-  --scrollbar-width: auto; --scrollbar-color: auto; --scroll-fade-size: 14px;
+  --scrollbar-thumb: color-mix(in srgb, var(--text) 26%, transparent); --scroll-fade-size: 14px;
   --menu-min-width: 14rem;
   --r-dialog: var(--r-win);
   --scrim: rgb(0 0 0 / 30%);
   --shadow-card: 0 0 0 .5px rgb(0 0 0 / 10%), 0 1px 2px rgb(0 0 0 / 8%), 0 8px 20px -8px rgb(0 0 0 / 18%);
-  --shadow-raised: 0 1px 0 var(--separator), 0 8px 16px -12px rgb(0 0 0 / 22%);
   --shadow-overlay: 0 12px 32px rgb(0 0 0 / 16%);
   --shadow-dialog: 0 24px 48px rgb(0 0 0 / 22%);
   --shadow-toast: 0 8px 16px rgb(0 0 0 / 18%);
@@ -77,7 +76,6 @@
   /* Motion: feedback, panels, layout. No bounce. */
   --motion-feedback: 120ms;
   --motion-panel: 200ms;
-  --motion-layout: 280ms;
   --ease-out: cubic-bezier(.2, .8, .2, 1);
   --ease-in: cubic-bezier(.4, 0, 1, 1); --motion-exit: 80ms;
 
@@ -104,7 +102,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  :root { --motion-feedback: 100ms; --motion-panel: 1ms; --motion-layout: 1ms; }
+  :root { --motion-feedback: 100ms; --motion-panel: 1ms;}
 }
 
 /* System colours follow light/dark mode, the accent and high contrast. */
@@ -204,14 +202,12 @@
   --library-min-width: 14rem;
   --library-notice-margin: var(--space-1) 0;
   --icon-size: 1rem;
-  --icon-padding: var(--space-1) var(--space-2);
   --hint-size: var(--type-label-size);
   --key-cap: 1.25rem;
   --hint-margin: var(--space-1);
   --contrast-border-width: 3px;
   --forced-search-offset: -3px;
   --field-background: var(--fill-control);
-  --field-active-background: var(--surface);
   --clear-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round'%3E%3Cpath d='M7 7l10 10M17 7 7 17'/%3E%3C/svg%3E");
   --field-edge: color-mix(in srgb, var(--line) 35%, var(--surface));
   /* The leading tile of a result row: 32 px, a quiet fill, 20 px icon. */
@@ -304,7 +300,7 @@
 }
 
 @media (prefers-contrast: more), (forced-colors: active) {
-  :root, :root[data-platform] { --shadow-card: none; --shadow-raised: none; --shadow-overlay: none; --shadow-dialog: none; --shadow-toast: none; --shadow-thumb: none; --scrim: Canvas; }
+  :root, :root[data-platform] { --shadow-card: none;--shadow-overlay: none; --shadow-dialog: none; --shadow-toast: none; --shadow-thumb: none; --scrim: Canvas; }
 }
 
 @media (prefers-contrast: more) {
@@ -330,10 +326,8 @@
   --fill-control-pressed: light-dark(rgb(0 0 0 / 13%), rgb(255 255 255 / 18%)); --fill-disabled: var(--fill-control);
   --fill-subtle-pressed: color-mix(in srgb, var(--text) 12%, var(--surface));
   --text-tertiary: var(--muted); --text-disabled: var(--muted); --text-on-accent: var(--selected-text);
-  --accent-text: var(--accent); --status-info: var(--accent-text);
-  --row-inactive-background: var(--fill-subtle-hover);
-  --stroke-field: var(--field-edge); --stroke-overlay: var(--field-edge);
-  --z-content: 0; --z-chrome: 1; --z-overlay: 10; --z-tooltip: 20; --z-modal: 30; --z-toast: 40;
+  --accent-text: var(--accent);  --stroke-field: var(--field-edge); --stroke-overlay: var(--field-edge);
+  --z-content: 0; --z-chrome: 1; --z-overlay: 10;--z-modal: 30; --z-toast: 40;
   --overlay-margin: var(--space-2);
   --r-key: var(--hint-radius);
   --r-card: var(--r-win); --r-full: 999px;

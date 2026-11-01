@@ -111,12 +111,12 @@ function problems(files: [string, string][]): string[] {
 
 test("the design's motion tokens stay within the 280 ms limit", () => {
   const { normal, reduced } = tokens(css("tokens.css"));
-  for (const name of ["--motion-feedback", "--motion-panel", "--motion-layout"]) {
+  for (const name of ["--motion-feedback", "--motion-panel"]) {
     expect(milliseconds(`var(${name})`, normal)[0]).toBeLessThanOrEqual(LONGEST_MS);
   }
   // Panels and layout move; with reduced motion they change at once.
   expect(milliseconds("var(--motion-panel)", reduced)).toEqual([REDUCED_MS]);
-  expect(milliseconds("var(--motion-layout)", reduced)).toEqual([REDUCED_MS]);
+  expect(milliseconds("var(--motion-panel)", reduced)).toEqual([REDUCED_MS]);
 });
 
 test("no transition or animation is longer than 280 ms or moves with reduced motion", () => {
@@ -128,7 +128,7 @@ test("the motion check catches long and moving transitions", () => {
   const tokenSheet = css("tokens.css");
   const check = (rule: string) => problems([["tokens.css", tokenSheet], ["test.css", rule]]);
   expect(check(".a { transition: opacity var(--motion-feedback) var(--ease-out); }")).toEqual([]);
-  expect(check(".a { transition: transform var(--motion-layout) ease; }")).toEqual([]);
+  expect(check(".a { transition: transform var(--motion-panel) ease; }")).toEqual([]);
   expect(check(".a { transition: opacity 300ms; }")).toHaveLength(1);
   expect(check(".a { transition: opacity 200ms 100ms; }")).toHaveLength(1);
   expect(check(".a { transition: opacity 120ms, transform 0.3s; }")).toHaveLength(2);

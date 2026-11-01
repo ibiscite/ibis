@@ -1,0 +1,11 @@
+/* Rules every window shares. A part that needs a variation changes a token, not
+   these rules. */
+
+/* One quiet scrollbar everywhere, on the picker, Settings and every overlay. */
+* { scrollbar-width: thin; scrollbar-color: var(--scrollbar-thumb) transparent; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { border: 2px solid transparent; border-radius: 8px; background: var(--scrollbar-thumb) padding-box; }
+
+/* An icon takes its row's colour, so hover and selection can never strand it. */
+svg { color: inherit; }

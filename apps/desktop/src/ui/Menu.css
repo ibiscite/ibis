@@ -86,8 +86,7 @@
 .menu-submenu-arrow { flex: none; margin-inline-start: var(--space-2); }
 [dir="rtl"] .menu-submenu-arrow { transform: scaleX(-1); }
 .menu-item[data-focused] { background: var(--menu-highlight); color: var(--menu-highlight-text); }
-.menu-item[data-focused] .menu-example { color: inherit; }
-.menu-item[data-focused] .menu-keys { color: inherit; }
+.menu-item[data-focused] :is(.menu-example, .menu-keys, .source-icon) { color: inherit; }
 .menu-item[aria-disabled="true"] { color: var(--muted); }
 @media (prefers-contrast: more) { .menu-item[data-focused] { outline: 1px solid currentColor; outline-offset: -1px; } }
 @media (forced-colors: active) {
