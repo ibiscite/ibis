@@ -12,6 +12,7 @@
 .keys-groups th[scope="rowgroup"] { padding-block: var(--space-3) var(--space-1); }
 .keys-groups tbody:first-of-type th[scope="rowgroup"] { padding-block-start: 0; }
 .keys-groups th, .keys-groups td { overflow-wrap: normal; }
+.keys-groups .ui-settings-keys { flex-wrap: nowrap; }
 /* Keep actions and whole key combinations intact when two columns no longer
    fit at Larger/200% text. The groups still hug their natural heights. */
 @media (max-width: 34em) {

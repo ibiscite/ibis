@@ -9,10 +9,10 @@ import "./ShortcutTable.css";
 /** Read-only combinations are one cap each; alternatives keep separate caps. */
 export function ShortcutKeys({ binding, isMac, system = false }: { binding: KeyBinding; isMac: boolean; system?: boolean }) {
   const { text } = useInterfaceMessages();
-  return <span className="ui-settings-keys">{binding.keys.map((keys, i) => <span className="keys-binding key-caps" key={keys} aria-keyshortcuts={binding.displayLabel ? undefined : ariaKeys(keys, isMac)}>
+  return <span className="ui-settings-keys">{system && <span className="ui-system-note">{text("shortcuts-system")}</span>}{binding.keys.map((keys, i) => <span className="keys-binding key-caps" key={keys} aria-keyshortcuts={binding.displayLabel ? undefined : ariaKeys(keys, isMac)}>
     {i > 0 && <>{" "}<span>{text("shortcuts-or")}</span>{" "}</>}
     <kbd data-system={system || undefined} dir="ltr">{binding.displayLabel ?? keyLabel(keys, isMac)}</kbd>
-  </span>)}{system && <span className="ui-system-note">{text("shortcuts-system")}</span>}</span>;
+  </span>)}</span>;
 }
 
 function ShortcutRow({ binding, isMac, system, ids, echo }: { binding: KeyBinding; isMac: boolean; system: boolean; ids: boolean; echo: boolean }) {

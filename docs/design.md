@@ -1062,7 +1062,9 @@ system demands it for correctness.
 | Selected row [C4] | Accent fill with its contrast-safe paired selected text. |
 | Search box | Frameless, large. |
 | Format pop-up | Borderless pop-up, ⌃⌄, 28 px in a 32 px target, capsule. |
-| Switch | 38 × 22. |
+| Buttons | Large (28 px) are capsules, regular (24 px) keep `--r-control`; measured from `NSButton` on macOS 26. |
+| Search fields | 28 px capsule with a hairline and no fill, like `NSSearchField`. |
+| Switch | 54 × 24 with a 32 × 20 pill thumb, measured from `NSSwitch` on macOS 26. |
 | Follows the system | Modifier keys and their key-cap labels (`KeyCaps`: ⌘K joined on macOS; Ctrl K one cap per key on Windows; Ctrl + K on Linux), the UI font, accessibility settings and window handling, including the picker window's outer corner: 16 px on macOS; on Windows the system's own (Windows 11 rounds it, not yet checked on a Windows 11 PC; square on Windows 10 like its other windows; maintainer, 2026-11-01). |
 
 **Look freeze until 1.0** (maintainer, 2026-10-25). What has shipped stays and
@@ -1843,10 +1845,11 @@ window width and larger system text sizes.
 **Shortcuts page and keys sheet** (2026-11-01). Settings › Shortcuts starts
 with a search field filtering action names, then a compact two-column table
 (Action | Shortcut). Rows are `--control-h` (32 pt), with sticky group headers:
-Open Ibis (global), While searching, Anywhere in Ibis, In a menu. Only the
+Open Ibis (global), While searching, Your library, Anywhere in Ibis, In a menu. Only the
 existing opening-shortcut recorder edits a key. Fixed Return, Esc, arrows,
-⌘Q and ⌘, show plainly with a quiet **System** note. Each shortcut is one
-cap; "or" alternatives keep two whole caps.
+⌘Q and ⌘, show plainly with a quiet **System** note before the key, so every
+key ends on one edge under a right-aligned Shortcut heading. Each shortcut is
+one cap; "or" alternatives keep two whole caps on one line.
 
 The Keyboard Shortcuts sheet has two equal columns: While searching then From
 any app on the left, Anywhere in Ibis on the right. Nothing is pinned below

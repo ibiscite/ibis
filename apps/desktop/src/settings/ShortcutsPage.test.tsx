@@ -8,7 +8,7 @@ test("Shortcuts filters action names, keeps alternatives whole, and edits only O
   const table = screen.getByRole("table", { name: "Keyboard Shortcuts" });
   expect(within(table).getAllByRole("columnheader").map((node) => node.textContent)).toEqual(["Action", "Shortcut"]);
   expect(within(table).getAllByRole("rowgroup").slice(1).map((node) => within(node).getAllByRole("row")[0]!.textContent))
-    .toEqual(["Open Ibis (global)", "While searching", "Anywhere in Ibis", "In a menu"]);
+    .toEqual(["Open Ibis (global)", "While searching", "Your library", "Anywhere in Ibis", "In a menu"]);
   const quit = within(table).getByRole("row", { name: /Quit Ibis/ });
   expect(within(quit).getByText("System")).toBeTruthy();
   expect(quit.querySelector("kbd")?.textContent).toBeTruthy();

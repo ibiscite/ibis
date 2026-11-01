@@ -21,12 +21,14 @@
   --tile: var(--space-8); --icon: var(--space-5); --icon-small: var(--space-4); --icon-stroke: 1.5; --icon-compact: .875rem; --key: var(--space-5);
   --control-h: var(--space-8); --action-h: 1.75rem; --control-small-h: var(--space-6); --field-h: 2.25rem; --touch-target: 2.75rem; --border-width: 1px;
   --status-dot: var(--space-2); --chip-h: var(--control-small-h);
+  /* Measured from NSSwitch on macOS 26: a wide capsule with a pill thumb. */
+  --switch-w: 54px; --switch-h: 24px; --switch-thumb-w: 32px; --switch-thumb-h: 20px;
   /* The search glyph sits on the tile column and the query on the title column. */
   --lead: calc(var(--row-pad) + (var(--tile) - var(--icon)) / 2);
   --lead-gap: calc((var(--tile) - var(--icon)) / 2 + var(--row-gap));
 
   /* Corner roots and floors: no surface below 6, no text-sized mark below 4. */
-  --r-win: 16px; --r-menu: 12px; --r-card: 10px; --r-control: 8px; --r-full: 999px; --r-icon: 22.5%;
+  --r-win: 16px; --r-menu: 12px; --r-card: 10px; --r-control: 8px; --r-full: 999px; --r-button: var(--r-full); --r-icon: 22.5%;
   --r-floor: 6px; --r-floor-mark: 4px; --corner-inset: 8px; --menu-pad: 5px;
 
   /* Type: size / line. Nothing is smaller than 12 px. */

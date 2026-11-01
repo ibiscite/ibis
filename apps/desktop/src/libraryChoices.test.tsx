@@ -83,8 +83,7 @@ test("missing-file Find uses the requested name and cancellation leaves its keyb
   pressRow(find);
   await waitFor(() => expect(calls.filter((call) => call === "choose_library")).toHaveLength(1));
   expect(document.activeElement).toBe(find);
-  expect(screen.getAllByRole("option")).toHaveLength(3);
-  expect(screen.getAllByRole("option").map((row) => row.getAttribute("data-key"))).toEqual(["find", "another", "source"]);
+  expect(screen.getAllByRole("option").map((row) => row.getAttribute("data-key"))).toEqual(["find", "another"]);
   expect(find.getAttribute("data-suggested")).toBe("true");
   expect(screen.queryByRole("region", { name: "Preview" })).toBeNull();
   expect(within(document.querySelector("footer")!).queryByRole("button", { name: /^Copy/ })).toBeNull();

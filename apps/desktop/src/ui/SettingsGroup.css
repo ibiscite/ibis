@@ -30,7 +30,7 @@
 .ui-settings-search { position: relative; margin: 0 var(--inset) 10px; min-width: 0; }
 /* The glyph sits on the sidebar's icon column. */
 .ui-settings-search > .ui-settings-search-glyph { position: absolute; inset-block-start: 50%; inset-inline-start: calc(var(--space-2) + (var(--icon) - var(--icon-small)) / 2); width: var(--icon-small); height: var(--icon-small); translate: 0 -50%; color: var(--text-tertiary); pointer-events: none; }
-.ui-settings-search input { width: 100%; min-width: 0; box-sizing: border-box; min-height: var(--action-h); border-radius: var(--r-row); border: 0; padding-block: 0; padding-inline: calc(var(--space-2) + var(--icon) + var(--space-2)) calc(var(--control-small-h) + var(--space-2)); background: var(--surface-field); color: var(--text); font-size: var(--type-meta-size); }
+.ui-settings-search input { width: 100%; min-width: 0; box-sizing: border-box; min-height: var(--action-h); border-radius: var(--r-full); border: var(--border-width) solid var(--separator); padding-block: 0; padding-inline: calc(var(--space-2) + var(--icon) + var(--space-2)) calc(var(--control-small-h) + var(--space-2)); background: transparent; color: var(--text); font-size: var(--type-meta-size); }
 .ui-settings-search input::placeholder { color: var(--text-tertiary); }
 .ui-settings-search-results { display: flex; flex-direction: column; gap: var(--space-1); }
 .ui-settings-search-results button { text-align: start; }

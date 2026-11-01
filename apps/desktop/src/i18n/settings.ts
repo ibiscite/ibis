@@ -11,7 +11,7 @@ export const SHORTCUT_ACTIONS = {
   menuChoose: "shortcuts-action-menu-choose", menuLeave: "shortcuts-action-menu-leave",
 } as const satisfies Record<KeyAction, MessageId>;
 export const SHORTCUT_REGIONS = {
-  search: "shortcuts-region-search", picker: "shortcuts-region-picker",
+  search: "shortcuts-region-search", library: "shortcuts-region-library", picker: "shortcuts-region-picker",
   menu: "shortcuts-region-menu", system: "shortcuts-region-system",
 } as const satisfies Record<KeyRegion, MessageId>;
 export const SHORTCUT_COMMANDS = {

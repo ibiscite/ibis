@@ -3,13 +3,14 @@
   display: inline-flex; align-items: center; justify-content: center;
   gap: var(--space-2); position: relative; min-height: var(--action-h);
   padding: 0 var(--space-3); border: var(--border-width) solid var(--stroke-field);
-  border-radius: var(--r-control); background: var(--fill-control); color: var(--text);
+  border-radius: var(--r-button); background: var(--fill-control); color: var(--text);
   font: inherit; min-width: 0; max-width: 100%; box-sizing: border-box; overflow-wrap: anywhere; white-space: normal;
   cursor: default; touch-action: manipulation;
 }
 /* Drawn at the Mac's large size; the hit area stays 32 px or more. */
 .ui-button[data-variant]::after { content: ""; position: absolute; inset: calc(-1 * (var(--control-h) - var(--action-h)) / 2 - var(--border-width)) calc(-1 * var(--border-width)); }
-.ui-button[data-size="small"] { min-height: var(--control-small-h); padding-inline: var(--space-2); }
+/* Like the Mac: large buttons are capsules and regular ones rounded rectangles. */
+.ui-button[data-size="small"] { min-height: var(--control-small-h); padding-inline: var(--space-2); border-radius: var(--r-control); }
 /* A 24 px fill still has a 32 px pointer target, inside the footer's padding. */
 .ui-button[data-size="small"]::after { inset: calc(-1 * (var(--control-h) - var(--control-small-h)) / 2 - var(--border-width)) calc(-1 * var(--border-width)); }
 .ui-button[data-variant="quiet"], .ui-button[data-variant="icon"] { background: transparent; border-color: transparent; color: var(--control-icon-color, var(--text-secondary)); }

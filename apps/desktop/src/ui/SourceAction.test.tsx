@@ -6,6 +6,12 @@ import type { SourcePresentation } from "../bindings";
 
 const nativeIcon = { mime: "image/png", bytes: [137, 80, 78, 71] };
 
+test("with no snapshot, a Zotero library is named as Zotero before its source is read", () => {
+  const library = { zotero: true, name: "Zotero", has_snapshot: false, snapshot_zotero: false, snapshot_name: "earlier.bib", revision: "1", source_generation: "1" } as never;
+  const { result } = renderHook(() => useSourceOpen({ librarySource: undefined } as never, library, 0, null, false, () => {}));
+  expect(result.current.source).toMatchObject({ kind: "zotero", name: "Zotero" });
+});
+
 test("a native source icon is decorative; decode failure retains the named, working action", () => {
   const open = vi.fn();
   render(<SourceAction label="Open Zotero" icon={nativeIcon} open={open} />);

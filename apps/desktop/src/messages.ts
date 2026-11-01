@@ -279,6 +279,7 @@ export const keyText = {
   close: "Close",
   regions: {
     search: "While searching",
+    library: "Your library",
     picker: "Anywhere in Ibis",
     menu: "In a menu",
     system: "From any app",
