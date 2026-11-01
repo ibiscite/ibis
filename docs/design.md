@@ -42,8 +42,9 @@ same design and must never differ from them (see **How the design changes**).
    Exception: picture choices in Settings (Appearance, Rows, Search icon,
    Window size) select as macOS System Settings does: a 2 px accent ring 2 px
    outside the picture, following its corner, and a semibold caption; no tinted
-   box behind it, so each choice has one corner. No other coloured
-   borders, outer glows or bright rims. A focus ring appears only when the
+   box behind it, so each choice has one corner. A library file dragged over
+   the window also rings the whole content area as its drop target. No other
+   coloured borders, outer glows or bright rims. A focus ring appears only when the
    keyboard moved focus.
 9. **Great defaults, then choice.** Every setting starts from one default that
    works for most people on every platform, so most never open Settings.
@@ -292,8 +293,9 @@ the search query, the status text and the shelf citation. The search glyph sits
 6 px inside the tile column on each side. It is the Ibis mark by default, as
 Alfred shows its hat (maintainer, 2026-10-30); Settings › Look ›
 **Search icon** offers Ibis mark, Magnifier or None, drawn as small pictures.
-With None the slot stays empty, so the query never moves off the title
-column. It is a person's choice and never a state [C14].
+With **None**, the query starts at the leading inset; nothing is reserved for
+an icon. All three Search icon pictures crop the same complete header at the
+same scale and origin. It is a person's choice and never a state [C14].
 
 ```
 --lead     = row-pad + (tile − icon) / 2       field padding before the icon
@@ -325,7 +327,8 @@ trailing and sits level with the title's first line in every density, size
 and view, so it never moves when rows change; in one-line Compact rows that
 line is the row's centre. Spacious keeps the year there and its third line
 reads only the type ("Article") (maintainer, 2026-10-30; one year position
-everywhere, maintainer, 2026-11-01).
+everywhere, maintainer, 2026-11-01). Spacious uses one `--row-spacing`
+(2 pt) gap between lines; its third line uses `--text-tertiary`.
 
 **One steady window** [C10] (maintainer, 2026-10-30). The picker keeps one
 size the whole time it is open, in every state: first run, empty search,
@@ -430,10 +433,11 @@ in rows) against this before adding it. What the rule covers (settled
 | Citation segment pill | `--r-floor` |
 
 Switches, chips, toasts and capsules use `--r-full`. Settings page icons use
-Apple's icon shape (22.5% of the size), like app icons. About Ibis shows the
-Ibis app icon itself (`brand/exports/ibis-app-icon.svg`, the `-dark` file in
-dark mode) at the same 20 px, on its own with no tile behind it, as Mac apps
-mark their own entry.
+Apple's icon shape (22.5% of the size), like app icons. The About sidebar
+entry uses the white Ibis mark on the same scarlet tile as the other page
+tiles, separated at the foot of the sidebar. The About hero uses the actual
+light or dark app icon. Mac icon layers are flat: the system supplies depth;
+do not add bevels, highlights or shadows to Icon Composer layers.
 
 **Width classes** (container queries, in em). Below 28.75 em: header controls
 wrap and footer hints show keys only. Below 60 em the preview replaces the
@@ -657,11 +661,15 @@ where the platform owns the meaning.
 **Footer and status** [C8]. Status dot and text at the leading edge, then
 "More ⌘K" (quiet), then, last, on the rows' right edge, "Paste into Word · APA ↵"
 or "Copy N as <format> ↵": the one primary action, filled with `--selected`
-with a `--selected-text` label and key cap, because mouse users copy far more
+with its paired foreground and plain key text, because mouse users copy far more
 often than they open anything else (maintainer, 2026-10-30; a Mac puts the
 default button last). Every hint is label first, then keys: 8 px between them,
-16 px between hints, label type on one baseline. Actions are quiet 24 px fills,
-radius `--r-tile`, with 32 px targets; they invoke the same guarded actions as
+16 px between hints, label type on one baseline. Source and Copy use one `ui/FooterButton`, backed by `ui/Button`: the same
+height, `--r-control` radius and padding. Source is secondary, Copy primary;
+keys stay plain inside the button, with no filled cap inside a filled button.
+The source wears its own system icon. Never show an action twice on the same
+screen: a source action already offered as a choice or menu row is hidden
+in the footer. Actions use `--action-h` fills with `--control-h` targets; they invoke the same guarded actions as
 the keys and sit in one group named "Keys". With Alt held: "Add to citation ⇧↵",
 the Escape step ("Clear Search Esc" or "Hide Esc"), then More. When the footer
 does not fit, shorten the status first, then drop the hint labels to keys
@@ -709,14 +717,12 @@ the target** (maintainer, 2026-11-01), never a bare "Open": **Show in Zotero**
 means this reference, selected inside Zotero; **Open thesis.bib** means the
 whole file, whether or not a reference is selected, because editors cannot be
 trusted to jump to an entry; **Open Zotero** means the app alone and appears
-only when no reference is involved (nothing selected, a choice screen, the
-status fix). ⌘O always does what More's first item says at that moment. More lists it first as
+only when Zotero is the current source and is not running. ⌘O always does what More's first item says at that moment. More lists it first as
 "Show in Zotero" or "Open thesis.bib"; a problem's fix and a choice screen's
 row use the same words and show ⌘O. Ibis shows the system's own icon for the
 source app or file at runtime and never ships another app's logo. With
 several libraries ⌘O follows the selected reference, else the library
-searched. With nothing selected, or on a choice screen, it opens Zotero
-itself. Holding ⌥ turns "Open thesis.bib" into "Show in Finder". When the
+searched. With nothing selected, or on a choice screen, it opens the current source. Holding ⌥ turns "Open thesis.bib" into "Show in Finder". When the
 source can't open (Zotero not installed, the file gone) the same place offers
 Choose Library… or Find…, never a key that does nothing.
 A problem shows there in a few words with a qualified age ("Zotero not
@@ -1189,7 +1195,8 @@ without hover.
 
 [C12] First run, no library, an actually empty library and a library that could not be opened share one pattern: a title and
 one line on the tile column's edge, then result-style rows (tile, title, one
-line of help, optional trailing tag, chevron).
+line of help, optional trailing tag). One row per goal: label the outcome,
+start with a verb and never offer two rows reaching the same place.
 
 Rows are 2 px apart (`--row-spacing`) and are a list box: arrow keys move,
 Enter or a click chooses, and ↓ from search enters the list. The focused row
@@ -1243,9 +1250,13 @@ breathe. Rows kept from before stay instead, with only the footer saying
   apps and folders too large to search are one quiet note below. A CSL JSON row
   joins when that source ships (0.2).
 - **Empty library:** only after a successful load reports zero references: "No
-  references in thesis.bib", then "Choose a library with references." Zotero
-  and BibTeX, BibLaTeX or CSL-JSON file are the two rows; a detected Zotero library gets
-  "Found on this Mac/PC/computer". Below: "You can drop a file here too."
+  references in thesis.bib", then "Choose a library with references." **Use Zotero**
+  ("Your Zotero library, open or closed") and **Choose a Library File…**
+  ("BibTeX, BibLaTeX or CSL-JSON") are the first two rows. A file source adds
+  **Open <file> ⌘O**. **Open Zotero** appears only when Zotero is the current
+  source and is not running. Below the list, secondary text says "Or drag a
+  .bib or CSL-JSON file into this window." A dragged file rings the whole
+  content area with the accent, clearing on leave, drop or close/reopen.
   A search with no matches keeps its search actions; a failed refresh keeps
   its searchable snapshot and failure notice. No shelf or Copy is shown on
   these choice screens; they lay out inside the steady frame [C10]. An empty first
@@ -1807,14 +1818,21 @@ When a row's text and control do not fit side by side, the control wraps below
 and its choices or labels wrap within the card, including at the minimum
 window width and larger system text sizes.
 
-**Shortcuts page and keys sheet** (2026-10-30). The opening shortcut comes
-first as its own card: the Ibis mark, "Open Ibis from any app" with one line
-on where it works, the shortcut in key caps and **Change…**. Then the picker's
-keys in short titled groups (While searching, Anywhere in Ibis), each row an
-action in plain words ("Paste the citation", "Add another reference") with its
-keys as `KeyCaps` at the end, never key names as text. Standard menu keys
-(arrows, Home, End, Tab) are left out of the list. The picker's ⌘/ sheet shows
-the same groups.
+**Shortcuts page and keys sheet** (2026-11-01). Settings › Shortcuts starts
+with a search field filtering action names, then a compact two-column table
+(Action | Shortcut). Rows are `--control-h` (32 pt), with sticky group headers:
+Open Ibis (global), While searching, Anywhere in Ibis, In a menu. Only the
+existing opening-shortcut recorder edits a key. Fixed Return, Esc, arrows,
+⌘Q and ⌘, show plainly with a quiet **System** note. Each shortcut is one
+cap; "or" alternatives keep two whole caps.
+
+The Keyboard Shortcuts sheet has two equal columns: While searching then From
+any app on the left, Anywhere in Ibis on the right. Nothing is pinned below
+the groups. The sheet hugs its content; only an overflowing body scrolls,
+with the shared edge fade only where more content exists. Close is round,
+and its focus ring follows that shape. Opening focuses the sheet itself;
+Tab reveals the focus ring. Escape, Close and backdrop dismissal return focus.
+
 
 **Shortcuts.** On Wayland the desktop owns the opening shortcut. There is no
 recorder or **Use Default**: show the desktop's trigger text verbatim, or
@@ -1985,3 +2003,16 @@ scheduled.
 - Code that does not yet match this page is listed in one design-system issue
   and fixed in the code; the rule changes only when the maintainer changes it.
 - Values marked as measured need native evidence on each platform (#774).
+
+**About page** (2026-11-01). A centred hero shows the actual app icon, app
+name, a **Version x** button that copies the version, and the mission line.
+Option reveals and copies the full build. The name line follows in its own
+group, then Updates (automatic checks and Check now), the website/source/
+problem/licences links and the free-software note. Copy success says **Copied**;
+failed I/O explains the failure. A stale copy or About read cannot update a
+new presentation. At 920 × 560 the page fits without scrolling; reduce gaps
+through shared tokens if it grows.
+
+**Pop-up buttons.** Every pop-up shows a chevron using `ui/PopupButton`.
+The shelf count is the same component as the format selector, visibly labelled
+**2 references**, and opens the selected-reference list.

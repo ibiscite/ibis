@@ -8,6 +8,8 @@ import { SETTINGS_IDS } from "./settings";
 export const INTERFACE_LOCALE = "en-US";
 const IDS = [
   ...SETTINGS_IDS,
+  "choice-use-file", "choice-back", "choice-use-zotero", "choice-zotero-help", "choice-library-file", "choice-library-file-help", "choice-drop-file", "shelf-references",
+  "keys-title", "keys-close", "keys-action", "keys-shortcut", "shortcuts-filter", "shortcuts-global", "shortcuts-system", "shortcuts-empty",
   "general-small-surprises-label", "general-small-surprises-description", "delight-name", "delight-fact-touch", "delight-fact-scarlet", "delight-fact-mummies", "delight-fact-national", "delight-fact-flight", "delight-birthday", "undo-action", "undo-remove", "undo-removed", "undo-reset-window", "undo-shortcut",
   "delight-ibis", "delight-thoth", "delight-tip", "delight-library100", "delight-library1000", "delight-library10000", "delight-empty", "delight-loading", "delight-no-library", "delight-zoom", "delight-citation", "delight-anniversary", "delight-about-words", "canvas-hovered", "canvas-pressed", "canvas-focused",
   "settings-pages", "settings-general", "settings-shortcuts", "settings-about",

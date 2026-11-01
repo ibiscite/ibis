@@ -1,22 +1,22 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { PageIcon } from "../icons";
 import type { KeyFormat, LoginItem, LoginItemProblem, PickerPreferences, ShortcutStatus, WindowSize } from "../bindings";
-import { KEY_TABLE } from "../keys";
 import { type MessageId, useInterfaceMessages } from "../i18n";
-import { SHORTCUT_ACTIONS, SHORTCUT_REGIONS, type ShortcutProblem, shortcutRefusalMessage } from "../i18n/settings";
+import { type ShortcutProblem, shortcutRefusalMessage } from "../i18n/settings";
 import { PreferencePatchQueue } from "../preferencePatchQueue";
 import { currentPlatform } from "../platform";
 import { UndoNotice } from "../ui/UndoNotice";
 import { Button } from "../ui/Button";
-import { AboutDelight, ShortcutEcho } from "../ui/Delights";
+import { AboutDelight } from "../ui/Delights";
 import { IbisMark } from "../ui/IbisMark";
 import { localMoment } from "../ui/localMoment";
 import { useAltHeld } from "../features/picker/useAltHeld";
 import type { DelightFact, DelightView } from "../bindings";
-import { KeyCaps } from "../ui/KeyCaps";
+import { ShortcutsPage } from "./ShortcutsPage";
 import { SettingsGroup as Group, SettingsRow as Row } from "../ui/SettingsGroup";
 import { ShortcutSetting } from "../ui/ShortcutSetting";
 import { SideNavigation } from "../ui/SideNavigation";
+import { SettingsSearch } from "../ui/SettingsSearch";
 import { useAppearance } from "../ui/appearance";
 import { DefaultFormat } from "./DefaultFormat";
 import { Switch } from "../ui/Switch";
@@ -333,7 +333,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   };
   useEffect(() => {
     if (!highlighted || !preferences || !pageRef.current) return;
-    const target = document.getElementById(highlighted === "open-shortcut" && page === "general" ? "general-open-shortcut" : highlighted)?.closest(".ui-settings-row");
+    const target = document.getElementById(highlighted === "open-shortcut" && page === "general" ? "general-open-shortcut" : highlighted)?.closest(".ui-settings-row, tr");
     if (target) pageRef.current.scrollTop += target.getBoundingClientRect().top - pageRef.current.getBoundingClientRect().top;
   }, [highlighted, page, preferences]);
   // Look reads on showing, so a size dragged meanwhile appears as Custom.
@@ -373,17 +373,14 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   const undoTicket = shortcutUndoTicket.current;
   const shortcutSetting = <ShortcutSetting key={page} id={page === "general" ? "general-shortcut" : "open-ibis"}
     rowId={page === "general" ? "general-open-shortcut" : "open-shortcut"} status={shortcut} problem={shortcutProblem}
-    saving={shortcutSaving} highlighted={highlighted === "open-shortcut"} echo={page === "shortcuts"}
+    table={page === "shortcuts"} saving={shortcutSaving} highlighted={highlighted === "open-shortcut"} echo={page === "shortcuts"}
     onRecord={changeShortcut} onConfigure={configureShortcut} />;
 
   return (
     <div className="settings">
       <div className="settings-titlebar" data-tauri-drag-region />
       <nav className="settings-sidebar" aria-label={text("settings-pages")}>
-        <div className="ui-settings-search">
-          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M10.5 4a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13zM16 16l5 5" /></svg>
-          <input type="search" aria-label={text("settings-search")} placeholder={text("settings-search")} value={query} onChange={(event) => setQuery(event.target.value)} />
-        </div>
+        <SettingsSearch label={text("settings-search")} value={query} onChange={setQuery} />
         {query.trim() ? <div className="ui-side-navigation ui-settings-search-results" aria-live="polite">
           {matches.length ? matches.map((row) => <Button key={row.id} onPress={() => reveal(row)}>{text(row.label, { platform })}</Button>) : <p>{text("settings-no-results")}</p>}
         </div> : <SideNavigation label={text("settings-pages")} value={page} options={PAGES.map((value) => ({ value, label: text(`settings-${value}`), tile: PAGE_TILES[value], gapBefore: value === "about" }))}
@@ -455,23 +452,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
             {forgetStatus === "done" && <span role="status" className="ui-settings-description">{text("citations-forget-done")}</span>}
           </Row>
         </Group>}
-        {page === "shortcuts" && (
-          <>
-            {shortcutSetting}
-            {[...new Set(KEY_TABLE.map((binding) => binding.region))].map((region) => (
-              <Group key={region} id={`shortcuts-${region}`} title={text(SHORTCUT_REGIONS[region])}>
-                {KEY_TABLE.filter((binding) => binding.region === region).map((binding) => (
-                  <ShortcutEcho key={binding.action} keys={binding.keys}><Row id={`key-${binding.action}`} label={text(SHORTCUT_ACTIONS[binding.action])}>
-                    <span className="ui-settings-keys">{binding.keys.flatMap((keys, index) => [
-                      index > 0 && <span key={`or-${index}`}>{text("shortcuts-or")}</span>,
-                      <KeyCaps key={keys} accelerator={keys} />,
-                    ])}</span>
-                  </Row></ShortcutEcho>
-                ))}
-              </Group>
-            ))}
-          </>
-        )}
+        {page === "shortcuts" && <ShortcutsPage opening={shortcutSetting} />}
         {page === "about" && (
           <>
             <div id="about-ibis" className="ui-about-hero">

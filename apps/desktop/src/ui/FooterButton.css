@@ -1,0 +1,11 @@
+.ui-footer-button { flex: none; }
+.ui-footer-button .key-hint { color: inherit; }
+.ui-footer-button.ui-button kbd, .ui-footer-button.ui-button[data-hovered] kbd, .ui-footer-button.ui-button[data-pressed] kbd {
+  background: transparent; border-color: transparent; color: inherit; padding-inline: 0; font-weight: inherit;
+}
+
+.ui-footer-button.ui-button { height: auto; min-width: var(--control-h); min-height: var(--action-h); border-width: 0; padding-inline: var(--space-2) var(--space-1); }
+.ui-footer-button > .key-hint { flex-wrap: wrap; max-width: 100%; white-space: normal; }
+@media (pointer: coarse) {
+  .ui-footer-button.ui-button { min-width: var(--touch-target); min-height: var(--touch-target); }
+}

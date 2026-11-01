@@ -46,7 +46,7 @@ export function PickerResults({
   const emptyState = choosingLibrary ? <LibrarySetup api={setupApi} perform={performSourceChoice} autoFocus
     shortcut={shortcut} onWelcomeChange={setWelcomeShown} /> : (library !== undefined && (libraryChoices || busy || results.length === 0 && !error && (!library?.error || blocked)) ? (
     <EmptyState library={library} query={query} narrowed={narrowed} peck={peck}
-      source={api.openLibrarySource ? sourceChoice : undefined}
+      source={api.openLibrarySource && source.sourceInChoices ? sourceChoice : undefined}
       onChooseLibrary={() => void perform("choose", chooseLibrary)}
       onClearSearch={() => { setQuery(""); input.current?.focus(); }}
       onSearchAll={searchAllLibraries}

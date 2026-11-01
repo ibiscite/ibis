@@ -21,7 +21,6 @@
 .ui-settings-row-text { display: flex; flex-direction: column; flex: 1 1 14rem; min-width: 0; overflow-wrap: anywhere; }
 .ui-settings-row > :not(.ui-settings-row-text) { max-inline-size: 100%; }
 .ui-settings-row .ui-button { padding-block: var(--space-1); }
-.ui-settings-keys { display: inline-flex; flex: none; align-items: center; gap: var(--space-1); color: var(--text-secondary); }
 .ui-settings-description { color: var(--text-secondary); font-size: var(--type-label-size); line-height: var(--type-body-line); }
 .ui-settings-note { flex-basis: 100%; margin: 0; color: var(--text-secondary); font-size: var(--type-label-size); line-height: var(--type-label-line); }
 @media (prefers-contrast: more), (forced-colors: active) { .ui-settings-card { border: var(--border-width) solid CanvasText; } }
@@ -38,7 +37,7 @@
 .ui-picker-picture { --picture-scale: .21; display: block; position: relative; overflow: hidden; pointer-events: none; width: 9.4375rem; max-width: 100%; min-width: 0; height: 6.3125rem; border-radius: var(--r-tile); box-shadow: 0 0 0 var(--border-width) var(--separator); text-align: start; }
 .ui-picker-picture[data-rows] { --picture-scale: .74; width: 100%; height: 7.375rem; }
 .ui-picker-picture[data-rows] .ui-picker-picture-content { width: calc(100% / var(--picture-scale)); }
-.ui-picker-picture[data-header] { --picture-scale: .54; width: 9.375rem; height: 1.875rem; }
+.ui-picker-picture[data-header] { --picture-scale: .54; width: 9.375rem; height: calc((var(--field-h) + 2 * var(--inset) + var(--border-width)) * var(--picture-scale)); }
 .ui-picker-picture-mask { position: absolute; inset: 0; background: var(--surface); color: var(--text); }
 .ui-picker-picture-mask[data-dark] { clip-path: polygon(100% 0, 100% 100%, 0 100%); }
 .ui-picker-picture-content { position: absolute; inset-block-start: 0; inset-inline-start: 0; width: 45rem; transform: scale(var(--picture-scale)); transform-origin: top left; }

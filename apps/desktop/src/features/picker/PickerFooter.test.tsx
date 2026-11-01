@@ -5,6 +5,7 @@ import { PickerFooter } from "./PickerFooter";
 const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
 const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
 const footerStyles = readFileSync(new FileURL("./PickerFooter.css", import.meta.url), "utf8");
+const footerButtonStyles = readFileSync(new FileURL("../../ui/FooterButton.css", import.meta.url), "utf8");
 const pickerStyles = readFileSync(new FileURL("../../styles.css", import.meta.url), "utf8");
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); document.documentElement.dir = ""; });
@@ -129,7 +130,7 @@ test("RTL at 200% shortens status and hides only labels while core actions keep 
   expect(copy.getAttribute("aria-keyshortcuts")).toBe("Enter");
   expect(bar.textContent).toContain("Library details unavailable");
   expect(footerStyles).toMatch(/\[data-hints-compact\][^{]+\.key-hint-label \{[^}]*clip-path: inset\(50%\)/);
-  expect(pickerStyles).toMatch(/\.footer-action > \.key-hint \{[^}]*flex-wrap: wrap/);
+  expect(footerButtonStyles).toMatch(/\.ui-footer-button > \.key-hint \{[^}]*flex-wrap: wrap/);
   expect(screen.queryByRole("button", { name: "Shortcuts" })).toBeNull();
 });
 

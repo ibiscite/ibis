@@ -133,13 +133,19 @@ fn target(
 ) -> Result<Target, CommandError> {
     // Opening the app itself is independent of a library snapshot. In
     // particular it still works on first run or after a failed status read.
-    if zotero_only || item.is_none() {
+    if zotero_only {
         return Ok(Target::Zotero);
     }
     if library.file.as_ref().map(|file| file.revision()).unwrap_or_default() != expected {
         return Err(CommandError::SnapshotChanged);
     }
-    let item = item.ok_or(FAILED)?;
+    let Some(item) = item else {
+        return match library.source.as_ref().or(library.requested.as_ref()) {
+            Some(Source::File(path) | Source::Samples(path)) => Ok(Target::File(path.clone())),
+            Some(Source::Zotero(_)) => Ok(Target::Zotero),
+            None => Err(FAILED.into()),
+        };
+    };
     let file = library.file.as_ref().ok_or(FAILED)?;
     let snapshot = file.engine.snapshot().map_err(|_| CommandError::SnapshotChanged)?;
     if snapshot.fingerprints().full.as_str() != expected
@@ -330,8 +336,14 @@ mod tests {
         let mut library = candidate(PathBuf::from("retained.bib"), "@misc{synthetic}");
         library.requested = Some(Source::File("missing.bib".into()));
         let revision = library.file.as_ref().map(|file| file.revision()).unwrap_or_default();
-        assert_eq!(target(&library, None, &revision, false).ok(), Some(Target::Zotero));
-        assert_eq!(target(&library, None, "old", false).ok(), Some(Target::Zotero));
+        assert_eq!(
+            target(&library, None, &revision, false).ok(),
+            Some(Target::File("retained.bib".into()))
+        );
+        assert!(matches!(
+            target(&library, None, "old", false),
+            Err(CommandError::SnapshotChanged)
+        ));
         let item = library
             .file
             .as_ref()

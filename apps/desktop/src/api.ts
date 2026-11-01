@@ -178,3 +178,8 @@ export function onUpdateAvailable(handler: (available: boolean) => void): Promis
 export function showCopiedNotice(text: string, delivery: number | null, summary: import("./bindings").ReceiptSummary | null = null) {
   return commands.showCopiedNotice(text, delivery, summary);
 }
+
+/** Presence only: native paths never enter the webview. */
+export function onFileDrag(change: (active: boolean) => void): Promise<UnlistenFn> {
+  return listen<boolean>("library:file-drag", (event) => change(event.payload));
+}

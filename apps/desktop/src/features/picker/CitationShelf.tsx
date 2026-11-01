@@ -10,6 +10,8 @@ import { closestMatchWarnings } from "./rows";
 import type { ShelfCopied } from "./session";
 import { composing } from "../../composition";
 import { Button } from "../../ui/Button";
+import { PopupButton } from "../../ui/PopupButton";
+import { useInterfaceMessages } from "../../i18n";
 import { CitationDetails } from "../../ui/CitationDetails";
 import { DetailsMenu } from "../../ui/DetailsMenu";
 import type { SourceActionProps } from "../../ui/SourceAction";
@@ -66,6 +68,7 @@ export function CitationShelf({ source, onOpenSource, announce, selected, highli
   source?: SourceActionProps;
   onOpenSource?: (reference: CitationReference) => void;
 }) {
+  const { text: interfaceText } = useInterfaceMessages();
   const copied = copiedReceipt && shown && typeof shown === "object" && shown.text === copiedReceipt.text ? copiedReceipt : null;
   const preserveFocus = useCallback((node: HTMLElement | null) => {
     if (!node) return;
@@ -220,10 +223,10 @@ export function CitationShelf({ source, onOpenSource, announce, selected, highli
         </div>
         <div className="shelf-actions">
           {copied && <span role="status" aria-label={pickerText.copied} className="shelf-copied"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 10.5 3.2 3.2L15 6.5" pathLength="1" /></svg>{pickerText.copied}</span>}
-          {!copied && references.length > 1 && <Button ref={count} variant="quiet" size="small" className="shelf-count" aria-haspopup="dialog"
-            aria-label={pickerText.allChosen(references.length)} title={pickerText.allChosen(references.length)} aria-expanded={panel?.kind === "references" || panel?.anchor === count.current}
+          {!copied && references.length > 1 && <PopupButton ref={count} className="shelf-count" aria-haspopup="dialog"
+            aria-label={interfaceText("shelf-references", { count: references.length })} title={pickerText.allChosen(references.length)} aria-expanded={panel?.kind === "references" || panel?.anchor === count.current}
             aria-controls={panel?.kind === "references" || panel?.anchor === count.current ? menuId : undefined}
-            onPress={(event) => open("references", event.target as HTMLElement)}>{references.length}</Button>}
+            onPress={(event) => open("references", event.target as HTMLElement)}>{interfaceText("shelf-references", { count: references.length })}</PopupButton>}
           {statusLabel && <Button variant="quiet" size="small" className="shelf-warnings" aria-label={statusLabel} title={statusLabel}
             aria-haspopup="dialog" aria-expanded={panel?.kind === "warnings"} aria-controls={panel?.kind === "warnings" ? menuId : undefined}
             onPress={(event) => open("warnings", event.target as HTMLElement)}>{compact ? warnings.length > 0 ? `! ${warnings.length}` : "i" : <>

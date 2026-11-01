@@ -459,14 +459,14 @@ try {
         for (let i = 0; i < 9; i++) { if (i) await search.press("ArrowDown"); await search.press("Shift+Enter"); }
         beforeShelf = await page.locator("main > .shelf").boundingBox();
         const segments = page.locator("main > .shelf .shelf-segment-button");
-        await segments.nth(8).waitFor();
+        await segments.nth(8).waitFor({ state: "attached" });
         assert.equal(await segments.count(), 9, "the citation has one engine-owned segment per reference");
         await segments.first().focus(); await segments.first().press("ArrowRight");
         assert.equal(await segments.nth(1).evaluate((node) => document.activeElement === node), true, "arrow selection follows citation order");
         await segments.nth(1).press("Space");
         await page.getByRole("textbox", { name: "Page", exact: true }).waitFor();
         await closeEditor(page.getByRole("dialog", { name: /^Citation details/ }));
-        const count = shelfControl(page, "Show all 9 selected references");
+        const count = shelfControl(page, "9 references");
         await count.click();
         dialog = page.getByRole("dialog", { name: "Selected references", exact: true });
         await dialog.waitFor();
@@ -583,7 +583,7 @@ try {
       await search.press("Shift+Enter");
       await search.press("ArrowDown");
       await search.press("Shift+Enter");
-      await waitForCheck("large-notice-two-selected", () => document.querySelector(".shelf-count")?.getAttribute("aria-label") === "Show all 2 selected references");
+      await waitForCheck("large-notice-two-selected", () => document.querySelector(".shelf-count")?.getAttribute("aria-label") === "2 references");
       assert.deepEqual(page.viewportSize(), { width: 720, height: 480 }, "large-notice fixture uses the reported frame");
       assert.ok(await page.locator(".notices").evaluate((node) => node.getBoundingClientRect().height >= 300), "warnings consume at least 300px");
       assert.equal(await page.evaluate(isWholeShelf), true, "the shelf stays outside the overflowing notice region");

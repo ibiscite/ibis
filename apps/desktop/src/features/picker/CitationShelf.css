@@ -39,7 +39,7 @@ main:has(> .shelf) > footer { border-top-color: transparent; }
 .shelf-actions { display: flex; flex: none; align-items: center; gap: var(--space-1); margin-inline-start: var(--space-1); }
 .shelf-actions:empty { display: none; }
 /* Counts live after the citation in fixed slots; neither shifts its column. */
-.shelf-actions > :is(.shelf-count, .shelf-warnings).ui-button { width: var(--shelf-target); flex: none; padding-inline: 0; font-size: var(--type-label-size); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.shelf-actions > .shelf-warnings.ui-button { width: var(--shelf-target); flex: none; padding-inline: 0; font-size: var(--type-label-size); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .shelf-actions > .shelf-warnings.ui-button { width: auto; padding-inline: var(--space-2); border-radius: var(--r-full); background: var(--chip); }
 .shelf[data-folded] .shelf-actions > .shelf-warnings.ui-button { width: var(--shelf-target); padding-inline: 0; }
 .shelf-pill { flex: none; padding-inline: var(--space-2); border-radius: var(--r-full); background: var(--chip); color: var(--text-secondary); font-size: var(--type-label-size); line-height: var(--chip-h); white-space: nowrap; }

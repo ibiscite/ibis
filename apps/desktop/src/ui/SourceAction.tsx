@@ -1,10 +1,7 @@
 import { useMemo, useState } from "react";
 import type { SystemIcon } from "../bindings";
 import { ChoiceIcon } from "../icons";
-import { ariaKeys } from "../keys";
-import { currentPlatform } from "../platform";
-import { Button } from "./Button";
-import { KeyHint } from "./KeyCaps";
+import { FooterButton } from "./FooterButton";
 import "./SourceAction.css";
 
 /** Native raster bytes only; the source name and action survive missing or
@@ -36,13 +33,10 @@ export function shortenedLabel(label: string, limit = 44): string {
   return `${characters.slice(0, start).join("")}…${characters.slice(-ending).join("")}`;
 }
 
-/** The footer's one quiet, filled source/fix action. */
+/** The footer source/fix action shares Copy's component. */
 export function SourceAction({ label, keys, icon, file, busy = false, open }: SourceActionProps) {
   const shown = shortenedLabel(label);
-  return <Button variant="quiet" size="small" className="source-action library-inline-action" aria-label={label}
+  return <FooterButton label={shown} keys={keys} className="source-action library-inline-action"
     aria-busy={busy || undefined} title={shown === label ? undefined : label}
-    aria-keyshortcuts={keys ? ariaKeys(keys, currentPlatform() === "macos") : undefined} onPress={open}>
-    {busy ? <span className="source-spinner" aria-hidden="true" /> : <SourceIcon icon={icon} file={file} />}
-    {keys ? <KeyHint label={shown} keys={keys} hidden /> : <bdi>{shown}</bdi>}
-  </Button>;
+    aria-label={label} onPress={open} icon={busy ? <span className="source-spinner" aria-hidden="true" /> : <SourceIcon icon={icon} file={file} />} />;
 }

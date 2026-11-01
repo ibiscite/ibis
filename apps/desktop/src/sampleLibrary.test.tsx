@@ -106,9 +106,9 @@ test("Use your own library returns to normal choices, clears sample selection, a
   fireEvent.keyDown(input, { key: "Enter", shiftKey: true });
   await waitFor(() => expect(document.querySelector("main")?.dataset.selection).toBe("true"));
   press(screen.getByRole("option", { name: /^Use your own library/ }));
-  const file = await screen.findByRole("option", { name: /^BibTeX, BibLaTeX or CSL-JSON file/ });
+  const file = await screen.findByRole("option", { name: /^Choose a Library File…/ });
   expect(screen.queryByRole("option", { name: new RegExp(title) })).toBeNull();
-  expect(screen.getByRole("option", { name: /^Zotero/ })).toBeTruthy();
+  expect(screen.getByRole("option", { name: /^Use Zotero/ })).toBeTruthy();
   expect(document.querySelector(".shelf")).toBeNull();
   expect(document.querySelector("main")?.dataset.selection).toBeUndefined();
   press(file);
@@ -124,7 +124,7 @@ test.each(["none", "More", "keys", "keys from More"] as const)("welcome Escape d
   fireEvent.change(input, { target: { value: "lantern" } });
   await screen.findByRole("option", { name: new RegExp(title) });
   press(screen.getByRole("option", { name: /^Use your own library/ }));
-  const zotero = await screen.findByRole("option", { name: /^Zotero/ });
+  const zotero = await screen.findByRole("option", { name: /^Use Zotero/ });
   act(() => zotero.focus());
   expect(input.value).toBe("lantern");
   if (overlay !== "none") {
@@ -158,7 +158,7 @@ test("welcome footer Escape offers Hide Ibis even while a sample query is retain
   fireEvent.change(screen.getByRole("combobox"), { target: { value: "lantern" } });
   await screen.findByRole("option", { name: new RegExp(title) });
   press(screen.getByRole("option", { name: /^Use your own library/ }));
-  const zotero = await screen.findByRole("option", { name: /^Zotero/ });
+  const zotero = await screen.findByRole("option", { name: /^Use Zotero/ });
   fireEvent.keyDown(zotero, { key: "Alt", altKey: true });
   const footer = within(document.querySelector("footer")!);
   expect(footer.queryByRole("button", { name: "Clear Search" })).toBeNull();
@@ -197,7 +197,7 @@ test("leaving samples cancels an Enter waiting for its citation preview", async 
   await waitFor(() => expect(preview).toHaveBeenCalled());
   fireEvent.keyDown(input, { key: "Enter" });
   press(screen.getByRole("option", { name: /^Use your own library/ }));
-  await screen.findByRole("option", { name: /^Zotero/ });
+  await screen.findByRole("option", { name: /^Use Zotero/ });
   await act(async () => { finish(receipt(apa)); });
   expect(copied).not.toHaveBeenCalled();
   expect(document.querySelector(".shelf")).toBeNull();
@@ -224,5 +224,5 @@ test("a sample-command failure reports one visible error and keeps setup availab
   render(<App />);
   press(await screen.findByRole("option", { name: /^Try sample references/ }));
   expect(await screen.findByRole("alert")).toHaveProperty("textContent", "Ibis could not change the sample library. Try again.");
-  expect(screen.getByRole("option", { name: /^Zotero/ })).toBeTruthy();
+  expect(screen.getByRole("option", { name: /^Use Zotero/ })).toBeTruthy();
 });

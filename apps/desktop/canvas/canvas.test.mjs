@@ -52,11 +52,14 @@ test("the built scenario list renders, switches and reopens without Tauri or net
       expect(window.document.querySelector("[src], [href]")).toBeNull();
       if (scenario.startsWith("settings-")) {
         expect(host.querySelector('[aria-current="page"]')?.textContent?.toLowerCase()).toContain(scenario.slice(9));
-        expect(host.querySelector(".ui-settings-row")).not.toBeNull();
+        expect(host.querySelector(scenario === "settings-shortcuts" ? ".ui-shortcut-table" : ".ui-settings-row")).not.toBeNull();
       } else if (scenario === "first-run") expect(host.textContent).toContain("Where do your references live?");
       else if (scenario === "states") {
         for (const state of ["hovered", "pressed", "focus-visible"]) expect(host.querySelector(`[data-${state}]`)).not.toBeNull();
-      } else if (scenario === "empty") expect(host.textContent).toContain("No references in invented.bib");
+      } else if (scenario === "empty" || scenario === "file-drag") {
+        expect(host.textContent).toContain("No references in invented.bib");
+        if (scenario === "file-drag") expect(host.querySelector(".picker-content[data-file-drag]")).not.toBeNull();
+      }
       else if (scenario === "error") expect(host.textContent).toContain("Can't open invented.bib");
       else if (scenario === "loading") expect(host.textContent).toContain("Opening invented.bib");
       else if (scenario === "tokens") for (const token of ["--accent", "--space-8", "--r-card", "--r-key"]) expect(host.textContent).toContain(token);

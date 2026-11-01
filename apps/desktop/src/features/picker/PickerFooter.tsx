@@ -1,13 +1,12 @@
 import type React from "react";
 import { useLayoutEffect, useRef, useState } from "react";
 import type { LibraryStatus } from "../../api";
-import { ariaKeys, keysFor } from "../../keys";
+import { keysFor } from "../../keys";
 import { LibraryStatusLine } from "../../LibraryStatusLine";
 import "./PickerFooter.css";
 import { keyText, pickerText } from "../../messages";
 import { currentPlatform } from "../../platform";
-import { KeyHint } from "../../ui/KeyCaps";
-import { Button } from "../../ui/Button";
+import { FooterButton } from "../../ui/FooterButton";
 import { QuietStatus } from "../../ui/Delights";
 
 export type KeyHints = { enter: string | null; shiftEnter: string | null; escape: string };
@@ -79,9 +78,5 @@ export function PickerFooter({ library, groupName, hints, altHeld, actions, more
 }
 
 function FooterAction({ label, keys, primary, onAction, disabled }: { label: string; keys: string; primary?: boolean; onAction: () => void; disabled?: boolean }) {
-  const platform = currentPlatform();
-  return <Button variant={primary ? "primary" : "quiet"} size="small" className="footer-action" aria-label={label}
-    aria-keyshortcuts={ariaKeys(keys, platform === "macos")} isDisabled={disabled} onPress={onAction}>
-    <KeyHint label={label} keys={keys} primary={primary} platform={platform} hidden echo />
-  </Button>;
+  return <FooterButton variant={primary ? "primary" : "quiet"} className="footer-action" label={label} keys={keys} isDisabled={disabled} onPress={onAction} />;
 }

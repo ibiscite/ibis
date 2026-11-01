@@ -102,6 +102,7 @@ mod tests {
     /// Only Settings asks about paste permission, changes the global shortcut
     /// or chooses a window size.
     const SETTINGS_ONLY: &[&str] = &[
+        "open_about_link",
         "window_size",
         "set_window_size",
         "paste_permission",

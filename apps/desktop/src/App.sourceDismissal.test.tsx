@@ -12,7 +12,7 @@ const search = () => screen.getByLabelText("Search references");
 const press = (key: string, modifiers = {}) => fireEvent.keyDown(document.activeElement!, { key, ...modifiers });
 const commandO = () => press("o", { ctrlKey: true });
 const chooseSources = () => press("o", { ctrlKey: true, shiftKey: true });
-const fileRow = () => screen.getByRole("option", { name: /^BibTeX, BibLaTeX or CSL-JSON/ });
+const fileRow = () => screen.getByRole("option", { name: /^Choose a Library File…/ });
 const frame = () => act(async () => { await new Promise(requestAnimationFrame); });
 
 test("Command-O leaves citation details before exposing a source failure and its keyboard recovery", async () => {
@@ -62,8 +62,9 @@ test.each([false, true])("source opening leaves Copy as before exposing an acces
 });
 
 test("Command-O from Keyboard Shortcuts returns focus to Search so the next command invokes recovery", async () => {
+  const choose = vi.fn(() => null);
   const open = vi.fn(() => { throw { code: "failed" }; });
-  backend({ library_status: () => library, open_library_source: open });
+  backend({ library_status: () => library, open_library_source: open, choose_library: choose });
   render(<App />);
   await waitFor(() => expect(screen.getByRole("status", { name: "Library status" }).textContent).toContain("thesis.bib"));
   act(() => search().focus());
@@ -77,7 +78,8 @@ test("Command-O from Keyboard Shortcuts returns focus to Search so the next comm
   await frame();
   expect(document.activeElement).toBe(search());
   commandO();
-  expect(await screen.findByRole("option", { name: /^Zotero/ })).toBeTruthy();
+  await waitFor(() => expect(choose).toHaveBeenCalledOnce());
+  expect(document.activeElement).toBe(search());
   expect(open).toHaveBeenCalledOnce();
 });
 
@@ -88,10 +90,10 @@ test("Escape from Choose Library restores Search and its source shortcut", async
   await waitFor(() => expect(screen.getByRole("status", { name: "Library status" }).textContent).toContain("thesis.bib"));
   act(() => search().focus());
   chooseSources();
-  await screen.findByRole("option", { name: /^Zotero/ });
+  await screen.findByRole("option", { name: /^Use Zotero/ });
   act(() => fileRow().focus());
   press("Escape");
-  expect(screen.queryByRole("option", { name: /^Zotero/ })).toBeNull();
+  expect(screen.queryByRole("option", { name: /^Use Zotero/ })).toBeNull();
   expect(document.activeElement).toBe(search());
   commandO();
   await waitFor(() => expect(open).toHaveBeenCalledOnce());
@@ -106,7 +108,7 @@ test("watcher updates keep Choose Library and its focus until its own selection 
   await waitFor(() => expect(screen.getByRole("status", { name: "Library status" }).textContent).toContain("thesis.bib"));
   act(() => search().focus());
   chooseSources();
-  const zotero = await screen.findByRole("option", { name: /^Zotero/ });
+  const zotero = await screen.findByRole("option", { name: /^Use Zotero/ });
   const file = fileRow();
   act(() => file.focus());
   current = { ...library, revision: "2", references: 14 };
@@ -120,7 +122,7 @@ test("watcher updates keep Choose Library and its focus until its own selection 
   await act(async () => { await emit("library:changed", current); });
   expect(fileRow()).toBe(file);
   await act(async () => { finish(); });
-  expect(screen.queryByRole("option", { name: /^Zotero/ })).toBeNull();
+  expect(screen.queryByRole("option", { name: /^Use Zotero/ })).toBeNull();
   expect(document.activeElement).toBe(search());
 });
 
@@ -131,7 +133,7 @@ test("a failed source-selection command leaves the chooser available", async () 
   await waitFor(() => expect(screen.getByRole("status", { name: "Library status" }).textContent).toContain("thesis.bib"));
   act(() => search().focus());
   chooseSources();
-  const zotero = await screen.findByRole("option", { name: /^Zotero/ });
+  const zotero = await screen.findByRole("option", { name: /^Use Zotero/ });
   fireEvent.click(zotero);
   await waitFor(() => expect(select).toHaveBeenCalledOnce());
   await frame();
@@ -145,12 +147,12 @@ test("a selection command from a dismissed chooser cannot dismiss a reopened cho
   await waitFor(() => expect(screen.getByRole("status", { name: "Library status" }).textContent).toContain("thesis.bib"));
   act(() => search().focus());
   chooseSources();
-  fireEvent.click(await screen.findByRole("option", { name: /^Zotero/ }));
+  fireEvent.click(await screen.findByRole("option", { name: /^Use Zotero/ }));
   await waitFor(() => expect(finish).toBeTypeOf("function"));
   press("Escape");
   act(() => search().focus());
   chooseSources();
-  const file = await screen.findByRole("option", { name: /^BibTeX, BibLaTeX or CSL-JSON/ });
+  const file = await screen.findByRole("option", { name: /^Choose a Library File…/ });
   act(() => file.focus());
   await act(async () => { finish(); });
   expect(fileRow()).toBe(file);
@@ -163,7 +165,7 @@ test("Choose Library uses the welcome shortcut guidance and Escape restores Sear
   await waitFor(() => expect(screen.getByRole("status", { name: "Library status" }).textContent).toContain("thesis.bib"));
   act(() => search().focus());
   chooseSources();
-  await screen.findByRole("option", { name: /^Zotero/ });
+  await screen.findByRole("option", { name: /^Use Zotero/ });
   expect(screen.getByText("After this, open Ibis from any app with Ctrl+Shift+Y.")).toBeTruthy();
   press("Escape");
   expect(document.querySelector(".library-welcome")).toBeNull();
@@ -175,7 +177,7 @@ test("a source-open failure from the welcome keys sheet returns to visible More 
   backend({ library_status: () => ({ ...library, state: "none", has_snapshot: false, name: null, snapshot_name: null, references: 0 }),
     open_library_source: open });
   render(<App />);
-  const initial = await screen.findByRole("option", { name: /^Zotero/ });
+  const initial = await screen.findByRole("option", { name: /^Use Zotero/ });
   const more = screen.getByRole("button", { name: "More" });
   act(() => more.focus());
   press("/", { ctrlKey: true });

@@ -30,7 +30,6 @@ main > .search-bar, main > .shelf, main > footer { flex: none; }
 /* The search glyph is centred over the tile column and the query starts where
    row titles start (docs/design.md, "Two columns"). */
 /* No icon: the query starts at the leading inset; nothing is reserved. */
-.search-bar[data-icon="none"] > svg { display: none; }
 .pin-button { flex: none; }
 .pin-button svg { width: var(--icon); height: var(--icon); stroke-width: var(--icon-stroke); }
 .search-bar > svg { margin-inline: var(--lead) calc(var(--lead-gap) - var(--space-1)); }
@@ -243,13 +242,11 @@ footer { display: flex; align-items: center; padding-block: 0; padding-inline: c
 /* Footer key hints (#491): what Enter does now, or with Alt held the other
    keys. They stay in narrow windows and wrap instead of overlapping. */
 .enter-hints { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); min-width: 0; color: var(--text-secondary); font-size: var(--type-label-size); overflow-wrap: anywhere; }
-.footer-action { min-width: var(--control-h); max-width: 100%; }
 /* Corners nest: the key sits 4 px inside the action on three sides, and the
    action ends on the same edge as the rows, 8 px inside the window's corner. */
-.library-bar :is(.footer-action, .more > button).ui-button { height: auto; min-height: var(--action-h); border-width: 0; padding-inline: var(--space-2) var(--space-1); }
+.library-bar .more > button.ui-button { height: auto; min-height: var(--action-h); border-width: 0; padding-inline: var(--space-2) var(--space-1); }
 /* At large system text sizes the label and caps may need separate lines;
    their visible content must stay inside the button's actual hit target. */
-.footer-action > .key-hint { flex-wrap: wrap; max-width: 100%; white-space: normal; }
 footer .key-hint-label { display: inline; }
 /* Width classes use the actual text size: at 200% the minimum frame keeps
    one footer line of keys, leaving the middle readable (design C10). */
@@ -257,7 +254,7 @@ footer .key-hint-label { display: inline; }
   footer .key-hint-label { display: none; }
 }
 @media (pointer: coarse) {
-  .library-bar :is(.footer-action, .more > button).ui-button { min-width: 2.75rem; min-height: 2.75rem; }
+  .library-bar .more > button.ui-button { min-width: 2.75rem; min-height: 2.75rem; }
 }
 .empty-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-2); margin-top: var(--space-3); }
 

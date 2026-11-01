@@ -24,12 +24,12 @@ test.each(["macos", "windows", "linux"])("Shortcuts preserves every English name
     const label = shortcutLabel(DEFAULT_PICKER_SHORTCUT, platform === "macos");
     expect(await screen.findByRole("button", { name: `Open Ibis: ${label}` })).toHaveProperty("textContent", label);
     for (const binding of KEY_TABLE) {
-      const row = document.getElementById(`key-${binding.action}`)!.closest(".ui-settings-row")!;
-      expect(row.querySelector(".ui-settings-row-text")?.textContent).toBe(keyText.actions[binding.action]);
-      expect(row.closest("section")?.querySelector("h2")?.textContent).toBe(keyText.regions[binding.region]);
+      const row = document.getElementById(`key-${binding.action}`)!.closest("tr")!;
+      expect(row.querySelector('th[scope="row"]')?.textContent).toBe(keyText.actions[binding.action]);
+      expect(row.closest("tbody")?.querySelector('th[scope="rowgroup"]')?.textContent).toBe(keyText.regions[binding.region]);
       const compact = (text: string | null | undefined) => text?.replace(/[\s+]/g, "");
-      expect(row.querySelectorAll(".key-caps")).toHaveLength(binding.keys.length);
-      expect(compact(row.querySelector(".ui-settings-keys")?.textContent))
+      expect(row.querySelectorAll("kbd")).toHaveLength(binding.keys.length);
+      expect(compact([...row.querySelectorAll("kbd")].map((cap) => cap.textContent).join(" or ")))
         .toBe(compact(binding.keys.map((keys) => keyLabel(keys, platform === "macos")).join(" or ")));
     }
   } finally {
@@ -44,7 +44,7 @@ test.each(["general", "shortcuts"])("localized %s records directly, refuses regi
   const view = () => <InterfaceMessagesProvider messages={pseudo}><SettingsApp api={api} initialPage={page} /></InterfaceMessagesProvider>;
   const mounted = render(view());
   const recorder = await screen.findByRole("button", { name: `${pseudo.text("shortcuts-open")}: ${shortcutLabel(DEFAULT_PICKER_SHORTCUT, currentPlatform() === "macos")}` });
-  const keys = [...document.querySelectorAll(".key-caps")].map((key) => key.textContent?.replaceAll("+", ""));
+  const keys = [...document.querySelectorAll(".ui-settings-keys kbd")].map((key) => key.textContent?.replaceAll("+", ""));
   if (page === "shortcuts") expect(keys).toContain(currentPlatform() === "macos" ? "⌘K" : "CtrlK");
   for (const row of document.querySelectorAll("#picker-shortcuts .ui-settings-row-text")) expect(row.textContent).toContain("⟦");
   vi.spyOn(api, "setShortcut").mockRejectedValueOnce("in-use");
@@ -157,7 +157,7 @@ function fakeApi(permission: Partial<PastePermission> = {}, preferences: Partial
     setLoginItem: async (enabled) => { state.login = enabled; return { name: "Ibis Nightly", enabled, problem: null }; },
     updateChecks: async () => state.updates,
     setUpdateChecks: async (on) => { state.updates = on; for (const changed of state.automatic) changed(on); return undefined as never; },
-    openAboutLink: vi.fn(async () => null),
+    openAboutLink: vi.fn(async () => undefined),
   checkForUpdates: async () => undefined as never,
     pastePermission: async () => { state.reads += 1; return state.permission; },
     openPastePermission: async () => { state.opened += 1; return undefined as never; },
@@ -787,7 +787,7 @@ test("the sidebar switches pages, a page request from the app moves it, and the 
   const { container } = render(<SettingsApp api={api} initialPage="general" />);
   await screen.findByRole("button", { name: /^Open Ibis:/ });
   fireEvent.click(screen.getByRole("option", { name: "About Ibis" }));
-  expect(await screen.findByText("Ibis Nightly 0.3.0")).toBeTruthy();
+  expect(await screen.findByText("Version 0.3.0")).toBeTruthy();
   expect(screen.getByRole("option", { name: "About Ibis" }).getAttribute("aria-current")).toBe("page");
   act(() => state.pages[0]!("paste"));
   expect(await screen.findByRole("switch", { name: "Paste into the app you came from" })).toBeTruthy();
@@ -849,7 +849,7 @@ test("Shortcuts records a change, restores the default, and lists every picker k
   expect(recorder.textContent).toBe(label(DEFAULT_PICKER_SHORTCUT));
   expect(screen.queryByRole("button", { name: "Use Default" })).toBeNull();
   expect(document.querySelector("details, summary")).toBeNull();
-  const lists = [...document.querySelectorAll<HTMLElement>('section[id^="shortcuts-"]')];
+  const lists = [...document.querySelectorAll<HTMLElement>('tbody[id^="shortcuts-"]:not(#shortcuts-system)')];
   for (const binding of KEY_TABLE) expect(screen.getByText(keyText.actions[binding.action])).toBeTruthy();
   expect(lists.flatMap((list) => within(list).queryAllByRole("button"))).toEqual([]);
   expect(lists.flatMap((list) => [...list.querySelectorAll(".ui-settings-keys")])).toHaveLength(KEY_TABLE.length);
@@ -1556,7 +1556,7 @@ test("About copies the version and says so", async () => {
   Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
   const pseudo = createInterfaceMessages(english, true);
   render(<InterfaceMessagesProvider messages={pseudo}><SettingsApp api={fakeApi().api} initialPage="about" /></InterfaceMessagesProvider>);
-  fireEvent.click(await screen.findByRole("button", { name: pseudo.text("about-version", { version: "0.0.0" }) }));
+  fireEvent.click(await screen.findByRole("button", { name: pseudo.text("about-version", { version: "0.3.0" }) }));
   await screen.findByRole("button", { name: pseudo.text("about-copied") });
   expect(writeText).toHaveBeenCalledOnce();
 });

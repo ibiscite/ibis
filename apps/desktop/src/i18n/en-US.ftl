@@ -241,3 +241,21 @@ undo-reset-window = Reset Window Position
 undo-shortcut = Restore Default Shortcut
 
 undo-removed = Removed { $reference } from citation.
+
+choice-use-zotero = Use Zotero
+choice-zotero-help = Your Zotero library, open or closed
+choice-library-file = Choose a Library File…
+choice-library-file-help = BibTeX, BibLaTeX or CSL-JSON
+choice-drop-file = Or drag a .bib or CSL-JSON file into this window.
+shelf-references = { $count } references
+keys-title = Keyboard Shortcuts
+keys-close = Close
+keys-action = Action
+keys-shortcut = Shortcut
+shortcuts-filter = Filter shortcuts
+shortcuts-global = Open Ibis (global)
+shortcuts-system = System
+shortcuts-empty = No matching actions
+
+choice-use-file = Use { $name }
+choice-back = Choose Another Source

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type Keyboar
 import { composing as isComposing } from "../composition";
 import { flushSync } from "react-dom";
 import { Autocomplete, Header, Input, Menu, MenuItem, MenuSection, MenuTrigger, Popover, SearchField, Text, useFilter } from "react-aria-components";
-import { Button } from "./Button";
+import { PopupButton } from "./PopupButton";
 import { MenuCheck, useMenuBoundary, useMenuPlacement, MenuRow, useWholeRows } from "./Menu";
 import { useMenuLifecycle } from "./useMenuLifecycle";
 import "./ToolbarMenu.css";
@@ -118,7 +118,7 @@ export function ToolbarMenu({ buttonRef, buttonShortcut, disabled, label, value,
     }}
     onKeyDown={(event) => { if ((open || popover.current) && !event.ctrlKey && !event.metaKey) event.stopPropagation(); }}>
     <MenuTrigger isOpen={open} onOpenChange={changeOpen}>
-      <Button ref={button} aria-keyshortcuts={buttonShortcut} isDisabled={disabled} className="toolbar-menu-button" aria-label={`${label} ${value}`}><span className="toolbar-menu-value">{value}</span><PopupIndicator /></Button>
+      <PopupButton ref={button} aria-keyshortcuts={buttonShortcut} isDisabled={disabled} className="toolbar-menu-button" aria-label={`${label} ${value}`}>{value}</PopupButton>
       <Popover ref={popoverRef} className="menu-popover toolbar-menu-popover ui-overlay" placement={renderedPlacement} offset={4} containerPadding={8} shouldSkipAnimation={skipExit} {...boundary}>
         {filtered ? <Autocomplete key={opening} filter={contains}><SearchField className="toolbar-menu-filter" aria-label={filterLabel} autoFocus><Input placeholder={filterLabel} /></SearchField>{menu}</Autocomplete> : menu}
       </Popover>
@@ -126,8 +126,3 @@ export function ToolbarMenu({ buttonRef, buttonShortcut, disabled, label, value,
   </span>;
 }
 
-/** The existing macOS popup indicator is shared on every system; opening never turns it. */
-function PopupIndicator() {
-  return <svg className="popup-indicator popup-indicator-macos" aria-hidden="true" focusable="false"
-    viewBox="0 0 8 12" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round"><path d="m1 4 3-3 3 3m-6 4 3 3 3-3" /></svg>;
-}

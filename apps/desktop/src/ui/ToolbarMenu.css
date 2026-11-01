@@ -1,21 +1,9 @@
-/* The toolbar menu's button; its popover and rows are the shared menu (Menu.css). */
 .toolbar-menu-control { display: inline-flex; align-items: center; min-height: var(--control-h); }
-.toolbar-menu-control .toolbar-menu-button {
-  position: relative; gap: var(--space-1); max-width: 12rem;
-  font: var(--type-meta-size)/var(--type-meta-line) var(--font);
-}
-/* A long value, such as "APA · Microsoft Word", ends in an ellipsis; the label names it in full. */
-.toolbar-menu-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .search-bar .toolbar-menu-control, .search-bar .toolbar-menu-button { min-height: var(--field-h); }
-:root[data-platform="macos"] .toolbar-menu-button {
-  min-height: calc(var(--control-h) - var(--space-1)); border-radius: var(--r-control);
-}
 /* The 28 px macOS fill retains its 32 px target inside the toolbar. */
 :root[data-platform="macos"] .toolbar-menu-button::after {
   content: ""; position: absolute; inset: calc(-1 * (var(--space-1) / 2 + var(--border-width))) calc(-1 * var(--border-width));
 }
-.toolbar-menu-button .popup-indicator { flex: none; width: var(--icon-small); height: var(--icon-small); color: var(--text-secondary); stroke-width: var(--icon-stroke); }
-.toolbar-menu-button .popup-indicator-macos { width: var(--space-2); height: var(--space-3); }
 /* Keep a useful minimum while filtering; longer labels may use the viewport. */
 .toolbar-menu-popover { width: max-content; min-width: min(300px, calc(100vw - 16px)); max-width: calc(100vw - 16px); }
 .toolbar-menu-filter { flex: none; }

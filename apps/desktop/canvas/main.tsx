@@ -19,7 +19,7 @@ import "./board.css";
 // Picker root rules must not leak into the separate Settings window.
 import pickerStyles from "../src/styles.css?inline";
 
-export const scenarios = ["results", "first-run", "more", "format-menu", "states", "empty", "error", "loading", "empty-search", "shelf", "reference-menu", "library-menu", "shortcuts", "pinned", "no-matches", "missing", "zotero-closed", "unreadable", "stale", "compact", "spacious", "larger-text", "right-to-left", "long-titles", "tokens", "settings-general", "settings-look", "settings-citations", "settings-shortcuts", "settings-about"] as const;
+export const scenarios = ["results", "first-run", "more", "format-menu", "states", "empty", "file-drag", "error", "loading", "empty-search", "shelf", "reference-menu", "library-menu", "shortcuts", "pinned", "no-matches", "missing", "zotero-closed", "unreadable", "stale", "compact", "spacious", "larger-text", "right-to-left", "long-titles", "tokens", "settings-general", "settings-look", "settings-citations", "settings-shortcuts", "settings-about"] as const;
 type Scenario = typeof scenarios[number];
 type Theme = "light" | "dark";
 
@@ -61,7 +61,7 @@ const fixtures: Partial<Record<Scenario, {
 
 function pickerApi(scenario: Scenario, settings: SettingsApi, openSettings: (page: string | null) => Promise<void>): PickerApi {
   const firstRun = scenario === "first-run";
-  const fixture = ["empty", "error", "loading"].includes(scenario);
+  const fixture = ["empty", "file-drag", "error", "loading"].includes(scenario);
   const fixed = fixtures[scenario];
   const shown = fixed?.rows ?? rows;
   const library: LibraryStatus = {
@@ -108,6 +108,7 @@ function pickerApi(scenario: Scenario, settings: SettingsApi, openSettings: (pag
     findSources: async () => ({ zotero: "absent", list: 1, files: [], cut_short: false }),
     openFoundLibrary: async () => null,
     reloadLibrary: noop, openLibrarySource: async () => null, openSettings,
+    onFileDrag: scenario === "file-drag" ? async (change) => { change(true); return () => {}; } : undefined,
     onLibraryChanged: subscribe, onPickerShown: subscribe, onPickerHidden: subscribe,
   };
 }
@@ -172,7 +173,7 @@ function Canvas({ host, scenario, settings, picker, theme }: { host: HTMLElement
   if (scenario === "tokens") return <Tokens theme={theme} />;
   return scenario.startsWith("settings-")
     ? <SettingsApp api={settings} initialPage={scenario.slice(9)} />
-    : <><style>{pickerStyles}</style><App api={picker} preview={{ query: fixtures[scenario]?.query ?? (["first-run", "empty", "error", "loading"].includes(scenario) ? "" : "invented") }} /></>;
+    : <><style>{pickerStyles}</style><App api={picker} preview={{ query: fixtures[scenario]?.query ?? (["first-run", "empty", "file-drag", "error", "loading"].includes(scenario) ? "" : "invented") }} /></>;
 }
 
 const mounts = new WeakMap<HTMLElement, () => void>();
