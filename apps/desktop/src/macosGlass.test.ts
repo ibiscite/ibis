@@ -110,7 +110,6 @@ test("Acrylic text roles keep contrast over black and white backdrops in both th
       const hover = background.map((c) => theme ? c * .97 + 255 * .03 : c * .97);
       for (const fill of [background, hover]) {
         expect(contrast(painted(rgba(shared, "--text")[theme]!, fill), fill), `--text/${theme}/${under}`).toBeGreaterThanOrEqual(4.5);
-        expect(contrast(painted(rgba(roles, "--text-secondary")[theme]!, fill), fill), `--text-secondary/${theme}/${under}`).toBeGreaterThanOrEqual(4.5);
         for (const role of ["--scarlet", "--done", "--stop"]) {
           expect(contrast(hexes(roles, role)[theme]!, fill), `${role}/${theme}/${under}`).toBeGreaterThanOrEqual(4.5);
         }
@@ -123,22 +122,19 @@ test("Acrylic text roles keep contrast over black and white backdrops in both th
   expect(native.indexOf("@media (prefers-reduced-transparency: reduce)")).toBeGreaterThan(native.indexOf(selector));
 });
 
-test("secondary text keeps 4.5:1 over the veiled material, on the brightest and darkest backdrops", () => {
+test("primary text keeps 7:1 over the veiled material, on the brightest and darkest backdrops", () => {
   const { body } = macBlock();
   const [light, dark] = rgba(body, "--vibrancy-tint");
   // A thin veil let a busy desktop show through the list (hands-on check, 2026-10-27).
   for (const veil of [light!, dark!]) expect(veil[3]).toBeGreaterThanOrEqual(.75);
-  const muted = rgba(body, "--text-secondary");
   const text = rgba(body, "--text");
   // CI's appearance probe (#232) saw the light Popover material lift a black
   // channel to 141; the dark material is assumed no brighter than 120 over white.
   const over = (veil: [number, number, number, number], under: number) => veil.slice(0, 3).map((c) => c * veil[3] + under * (1 - veil[3]));
   for (const under of [141, 255]) {
-    expect(contrast(painted(muted[0]!, over(light!, under)), over(light!, under))).toBeGreaterThanOrEqual(4.5);
     expect(contrast(painted(text[0]!, over(light!, under)), over(light!, under))).toBeGreaterThanOrEqual(7);
   }
   for (const under of [0, 120]) {
-    expect(contrast(painted(muted[1]!, over(dark!, under)), over(dark!, under))).toBeGreaterThanOrEqual(4.5);
     expect(contrast(painted(text[1]!, over(dark!, under)), over(dark!, under))).toBeGreaterThanOrEqual(7);
   }
 });

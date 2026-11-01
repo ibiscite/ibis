@@ -14,3 +14,7 @@ kbd { font: inherit; font-size: var(--type-label-size); font-weight: 500; displa
 .key-caps { direction: ltr; unicode-bidi: isolate; }
 .key-caps kbd { margin: 0; padding-inline: calc(var(--space-1) + var(--border-width)); }
 .key-plus { color: var(--text-secondary); }
+/* A cap steps up one fill when its button is hovered or pressed, and keeps its shape. */
+.ui-button[data-hovered] kbd { background: var(--key-fill-hover); }
+.ui-button:is([data-pressed], [aria-expanded="true"]) kbd { background: var(--key-fill-pressed); }
+.ui-button[data-variant="primary"] kbd { background: var(--on-selected-fill); }

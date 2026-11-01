@@ -34,7 +34,7 @@ export function TypeIcon({ itemType }: { itemType: string | undefined }) {
   return (
     <svg className="type-icon" aria-hidden="true" focusable="false" width="20" height="20" viewBox="0 0 20 20" fill="none"
       stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      {paths.map((d) => <path key={d} d={d} />)}
+      <path d={paths.join(" ")} />
     </svg>
   );
 }
@@ -52,10 +52,10 @@ export function AddGlyph({ added }: { added: boolean }) {
 /** Choice screen tiles, on the same 20 px grid: a library shelf, a file, a
  * magnifier, a retry arrow, a swap and a pen. Zotero's own logo is never drawn. */
 const choicePaths = {
-  library: ["M3 3.5h2.5v13H3zM7.5 3.5H10v13H7.5z", "m12 4.2 2.4-.6 3 12.3-2.4.6z"],
+  library: ["M3 3.5h2.5v13H3zM7.5 3.5H10v13H7.5z", "M12 4.2l2.4-.6 3 12.3-2.4.6z"],
   sample: ["M10 3c.6 3.9 3.1 6.4 7 7-3.9.6-6.4 3.1-7 7-.6-3.9-3.1-6.4-7-7 3.9-.6 6.4-3.1 7-7z"],
   file: ["M5 2.5h7l3 3v12H5z", "M12 2.5v3h3"],
-  find: ["M9 3.5a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11z", "m13 13 4 4"],
+  find: ["M9 3.5a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11z", "M13 13l4 4"],
   retry: ["M16 10a6 6 0 1 1-1.8-4.3", "M16 3.5v3h-3"],
   swap: ["M4 7h11l-3-3", "M16 13H5l3 3"],
   write: ["M13.5 3.5l3 3-9 9H4.5v-3z"],
@@ -67,7 +67,7 @@ export function ChoiceIcon({ name }: { name: ChoiceIconName }) {
   return (
     <svg className="type-icon" aria-hidden="true" focusable="false" width="20" height="20" viewBox="0 0 20 20" fill="none"
       stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      {choicePaths[name].map((d) => <path key={d} d={d} />)}
+      <path d={choicePaths[name].join(" ")} />
     </svg>
   );
 }

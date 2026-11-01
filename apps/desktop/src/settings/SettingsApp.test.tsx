@@ -1254,7 +1254,9 @@ test("Appearance, ten accents, both search icons, both text sizes and preview pe
   const mounted = render(<SettingsApp api={api} initialPage="look" />);
   const accents = within(await screen.findByRole("radiogroup", { name: "Accent" })).getAllByRole("radio");
   expect(accents).toHaveLength(10);
-  expect(accents.slice(0, 2).map((radio) => radio.getAttribute("aria-label"))).toEqual(["Follow the Mac", "Ibis scarlet"]);
+  expect(accents.map((radio) => radio.getAttribute("aria-label"))).toEqual(expect.arrayContaining(["Follow the Mac", "Blue", "Ibis scarlet"]));
+  expect(accents[0]?.getAttribute("aria-label")).toBe("Follow the Mac");
+  expect(accents.at(-1)?.getAttribute("aria-label")).toBe("Ibis scarlet");
   fireEvent.click(screen.getByRole("radio", { name: "Dark" }));
   fireEvent.click(screen.getByRole("radio", { name: "Purple" }));
   fireEvent.click(screen.getByRole("radio", { name: "Ibis mark" }));

@@ -6,7 +6,7 @@ import { SettingsGroup as Group, SettingsRow as Row } from "../ui/SettingsGroup"
 import { Switch } from "../ui/Switch";
 import { PickerPicture } from "./PickerPicture";
 
-const ACCENTS: readonly Accent[] = ["system", "ibis", "blue", "purple", "pink", "red", "orange", "yellow", "green", "graphite"];
+const ACCENTS: readonly Accent[] = ["system", "blue", "purple", "pink", "red", "orange", "yellow", "green", "graphite", "ibis"];
 const APPEARANCES: readonly Appearance[] = ["system", "light", "dark"];
 type Feedback = (id: string) => { highlighted: boolean; problem?: string };
 const SIZES = { small: [64, 40], medium: [72, 48], large: [84, 60], custom: [72, 48] } as const;

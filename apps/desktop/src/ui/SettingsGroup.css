@@ -28,13 +28,16 @@
 
 .ui-settings-row[data-highlighted] { background: var(--highlight); }
 .ui-settings-row-problem { flex-basis: 100%; margin: 0; color: var(--stop); overflow-wrap: anywhere; }
-.ui-settings-search { margin: 0 var(--inset) 10px; min-width: 0; }
-.ui-settings-search input { width: 100%; min-width: 0; box-sizing: border-box; min-height: var(--action-h); border-radius: var(--r-control); border: 0; padding: 0 var(--space-2); background: var(--surface-field); color: var(--text); font-size: var(--type-meta-size); }
+.ui-settings-search { position: relative; margin: 0 var(--inset) 10px; min-width: 0; }
+/* The glyph sits on the sidebar's icon column. */
+.ui-settings-search svg { position: absolute; inset-block-start: 50%; inset-inline-start: calc(var(--space-2) + (var(--icon) - var(--icon-compact)) / 2); width: var(--icon-compact); height: var(--icon-compact); translate: 0 -50%; stroke-width: 2; color: var(--text-tertiary); pointer-events: none; }
+.ui-settings-search input { width: 100%; min-width: 0; box-sizing: border-box; min-height: var(--control-h); border-radius: var(--r-row); border: 0; padding: 0 var(--space-2) 0 calc(var(--space-2) + var(--icon) + var(--space-2)); background: var(--surface-field); color: var(--text); font-size: var(--type-meta-size); }
 .ui-settings-search input::placeholder { color: var(--text-tertiary); }
 .ui-settings-search-results { display: flex; flex-direction: column; gap: var(--space-1); }
 .ui-settings-search-results button { text-align: start; }
 .ui-picker-picture { --picture-scale: .21; display: block; position: relative; overflow: hidden; pointer-events: none; width: 9.4375rem; max-width: 100%; min-width: 0; height: 6.3125rem; border-radius: var(--r-tile); box-shadow: 0 0 0 var(--border-width) var(--separator); text-align: start; }
 .ui-picker-picture[data-rows] { --picture-scale: .74; width: 100%; height: 7.375rem; }
+.ui-picker-picture[data-rows] .ui-picker-picture-content { width: calc(100% / var(--picture-scale)); }
 .ui-picker-picture[data-header] { --picture-scale: .6; width: 9.375rem; height: 1.875rem; }
 .ui-picker-picture-mask { position: absolute; inset: 0; background: var(--surface); color: var(--text); }
 .ui-picker-picture-mask[data-dark] { clip-path: polygon(100% 0, 100% 100%, 0 100%); }

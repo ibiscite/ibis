@@ -1,5 +1,5 @@
 /* The canvas's picture radios: equal columns, captions on one baseline. A 2 px
-   ring on the picture and a soft tint mark the choice. */
+   ring outside the picture marks the choice. */
 .ui-picture-choices { display: grid; grid-template-columns: repeat(var(--choice-columns), minmax(0, 1fr)); align-items: stretch; gap: var(--space-2); width: 100%; min-width: 0; }
 .ui-picture-choice {
   display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 6px; min-width: 0; max-width: 100%; box-sizing: border-box;
@@ -8,8 +8,8 @@
 }
 .ui-picture-choice { justify-content: end; }
 .ui-picture-choice-art { display: contents; }
-.ui-picture-choice[data-selected] :is(.ui-picker-picture, .ui-size-picture) { box-shadow: 0 0 0 2px var(--accent); }
-.ui-picture-choice[data-selected] { background: var(--accent-wash); color: var(--text); font-weight: var(--strong); }
+.ui-picture-choice[data-selected] :is(.ui-picker-picture, .ui-size-picture) { outline: var(--ring-width) solid var(--accent); outline-offset: var(--ring-width); }
+.ui-picture-choice[data-selected] { color: var(--text); font-weight: var(--strong); }
 .ui-picture-choice[data-focus-visible] { outline: var(--ring-width) solid var(--ring); outline-offset: var(--ring-offset); }
 .ui-picture-choice[data-disabled] { color: var(--text-disabled); }
 .ui-picture-choices[data-strips] { grid-template-columns: minmax(0, 1fr); }

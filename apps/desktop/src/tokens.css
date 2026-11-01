@@ -1,29 +1,33 @@
-/* Ibis tokens. These are the canvas's tokens, with the same names and values;
-   change the canvas first, then this file (docs/design.md, "One foundation").
-   Sizes are in rem so the system and Larger text settings scale them; radii
-   stay px, matching the native corner. Every look is built from these: a part
-   that needs a new value changes the canvas, not its own stylesheet. */
+/* Ibis tokens, the same names and values as the canvas (docs/design.md, "Tokens").
+   Three layers, each value declared once:
+     1 Primitives  raw values, named by what they are.
+     2 Semantic    what a value is for, set per mode.
+     3 Component   what a part needs, derived from layer 2 by a rule.
+   Parts read layers 2 and 3 and the space scale. Sizes are in rem so the system
+   and Larger text settings scale them; radii stay px, matching the native corner. */
+
+/* Layer 1: primitives. */
 :root {
   /* Space, on a 4 px grid. S = --inset keeps every fill S from a window edge or divider. */
   --space-1: .25rem; --space-2: .5rem; --space-3: .75rem; --space-4: 1rem;
   --space-5: 1.25rem; --space-6: 1.5rem; --space-8: 2rem; --space-10: 2.5rem;
   --inset: var(--space-2);
   --row-pad: var(--space-3); --row-gap: var(--space-3); --row-spacing: 2px;
-  --row-compact: 2.5rem; --row-comfortable: 3.625rem; --row-spacious: 4.75rem;
+  --row-compact: var(--space-10); --row-comfortable: 3.625rem; --row-spacious: 4.75rem;
   --row-height: var(--row-comfortable);
   --larger-text-scale: 1.15;
 
   /* Sizes. */
-  --tile: 2rem; --icon: 1.25rem; --icon-small: 1rem; --icon-stroke: 1.5; --key: 1.25rem;
-  --control-h: 2rem; --action-h: 1.75rem; --control-small-h: 1.5rem; --field-h: 2.25rem; --footer-h: 2.75rem; --touch-target: 2.75rem; --border-width: 1px;
-  --status-dot: .5rem; --chip-h: 1.5rem;
+  --tile: var(--space-8); --icon: var(--space-5); --icon-small: var(--space-4); --icon-compact: .875rem; --icon-stroke: 1.5; --key: var(--space-5);
+  --control-h: var(--space-8); --action-h: 1.75rem; --control-small-h: var(--space-6); --field-h: 2.25rem; --touch-target: 2.75rem; --border-width: 1px;
+  --status-dot: var(--space-2); --chip-h: var(--control-small-h);
   /* The search glyph sits on the tile column and the query on the title column. */
   --lead: calc(var(--row-pad) + (var(--tile) - var(--icon)) / 2);
   --lead-gap: calc((var(--tile) - var(--icon)) / 2 + var(--row-gap));
 
-  /* Corners nest: each is its container's minus the gap between them. */
-  --r-win: 16px; --r-card: 10px; --r-row: 8px; --r-tile: 6px; --r-control: 8px; --r-key: 5px;
-  --r-menu: 12px; --menu-pad: 5px; --r-mi: 7px; --r-full: 999px;
+  /* Corner roots and floors: no surface below 6, no text-sized mark below 4. */
+  --r-win: 16px; --r-menu: 12px; --r-card: 10px; --r-control: 8px; --r-full: 999px; --r-icon: 22.5%;
+  --r-floor: 6px; --r-floor-mark: 4px; --corner-inset: 8px; --menu-pad: 5px;
 
   /* Type: size / line. Nothing is smaller than 12 px. */
   --type-search-size: 1.375rem; --type-search-line: 1.625rem;
@@ -31,7 +35,7 @@
   --type-lead-size: 1.0625rem; --type-lead-line: 1.375rem;
   --type-title-size: .9375rem; --type-title-line: 1.25rem;
   --type-body-size: .8125rem; --type-body-line: 1rem;
-  --type-meta-size: .8125rem; --type-meta-line: 1rem;
+  --type-meta-size: var(--type-body-size); --type-meta-line: var(--type-body-line);
   --type-label-size: .75rem; --type-label-line: .9375rem;
   --strong: 600;
   --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
@@ -44,6 +48,9 @@
   /* Layers. */
   --z-content: 0; --z-chrome: 1; --z-overlay: 10; --z-modal: 30; --z-toast: 40;
 
+  /* The two colours that are not the system's. */
+  --white: #fff; --ibis: #c23a1c;
+
   /* Depth. */
   --shadow-card: 0 0 0 .5px rgb(0 0 0 / 10%), 0 1px 2px rgb(0 0 0 / 8%), 0 8px 20px -8px rgb(0 0 0 / 18%);
   --shadow-overlay: 0 0 0 .5px rgb(0 0 0 / 12%), 0 12px 32px rgb(0 0 0 / 16%);
@@ -51,7 +58,7 @@
   --shadow-toast: 0 8px 16px rgb(0 0 0 / 18%);
   --shadow-badge: 0 0 0 .5px color-mix(in srgb, var(--text) 28%, transparent), 0 1px 2px rgb(0 0 0 / 18%);
   --shadow-thumb: 0 0 0 .5px rgb(0 0 0 / 12%), 0 1px 2px rgb(0 0 0 / 22%);
-  --thumb: #fff;
+  --thumb: var(--white);
   --blur: none;
 
   /* Focus: one ring, keyboard only. */
@@ -66,7 +73,7 @@
   --accent: Highlight; --accent-text: var(--accent); --text-on-accent: HighlightText;
   --selected: Highlight; --selected-text: HighlightText; --selected-text-secondary: currentColor;
   --ring: var(--accent);
-  --scarlet: CanvasText; --scarlet-tile: CanvasText; --on-scarlet: #fff;
+  --scarlet: CanvasText; --scarlet-tile: CanvasText; --on-scarlet: var(--white);
   --done: CanvasText; --look: CanvasText; --stop: CanvasText;
   /* System, secondary, tertiary, quaternary and quinary fill. */
   --fill-1: color-mix(in srgb, var(--text) 9.8%, transparent);
@@ -79,10 +86,8 @@
   --fill-quiet-hover: var(--fill-4);
   --surface-field: var(--fill-control); --chip: var(--fill-control-hover);
   --on-fill-h: rgb(0 0 0 / 8%); --on-fill-p: rgb(0 0 0 / 16%);
-  --selected-hover: color-mix(in srgb, var(--selected) 90%, black);
-  --selected-pressed: color-mix(in srgb, var(--selected) 80%, black);
   --accent-wash: color-mix(in srgb, var(--accent) 14%, transparent);
-  --on-sel-fill: color-mix(in srgb, var(--selected-text) 22%, transparent);
+  --on-selected-fill: color-mix(in srgb, var(--selected-text) 22%, transparent);
   --done-wash: color-mix(in srgb, var(--done) 9%, transparent);
   --done-fill: color-mix(in srgb, var(--done) 14%, transparent);
   --scrim: rgb(0 0 0 / 30%);
@@ -93,11 +98,11 @@
   --surface-grouped: var(--fill-4);
   --titlebar-height: 3.25rem;
   --sidebar-width: min(12.5rem, 26%);
-  --page-general: #8e8e93; --page-look: #ff9f0a; --page-citations: #0a84ff; --page-shortcuts: #5e5ce6; --page-about: #c23a1c;
+  --page-general: #8e8e93; --page-look: #ff9f0a; --page-citations: #0a84ff; --page-shortcuts: #5e5ce6;
   --highlight: var(--accent-wash);
 
   /* Look's dots show each Mac colour as Apple draws it. */
-  --dot-ibis: #c23a1c; --dot-blue: #007aff; --dot-purple: #953d96; --dot-pink: #f74f9e; --dot-red: #e0383e;
+  --dot-ibis: var(--ibis); --dot-blue: #007aff; --dot-purple: #953d96; --dot-pink: #f74f9e; --dot-red: #e0383e;
   --dot-orange: #f7821b; --dot-yellow: #ffc600; --dot-green: #62ba46; --dot-graphite: #8c8c8c;
 }
 
@@ -106,11 +111,11 @@
 /* The canvas's light and dark values. */
 @supports (color: light-dark(white, black)) {
   :root {
-    --scarlet: light-dark(#c23a1c, #ff7a5c); --scarlet-tile: light-dark(#c23a1c, #d2401f);
+    --scarlet: light-dark(var(--ibis), #ff7a5c); --scarlet-tile: light-dark(var(--ibis), #d2401f);
     --done: light-dark(#1a7f37, #5bc26f); --look: light-dark(#b07a00, #f5c542); --stop: light-dark(#c4314b, #ff8a8a);
     --accent: #007aff; --accent-text: light-dark(#0068da, #419cff);
     --selected: light-dark(#0064e1, #0059d1); --selected-text: #fff; --text-on-accent: var(--selected-text);
-    --selected-text-secondary: color-mix(in srgb, var(--selected-text) 88%, transparent);
+    --selected-text-secondary: color-mix(in srgb, var(--selected-text) 82%, transparent);
     --scrim: light-dark(rgb(0 0 0 / 20%), rgb(0 0 0 / 40%));
   }
 }
@@ -119,9 +124,11 @@
     :root:not(.notice-window) {
       --surface: light-dark(#ffffff, #1e1e1e); --raised: light-dark(#f6f6f6, #282828);
       --surface-overlay: light-dark(#ffffff, #282828); --sheet: var(--surface-overlay);
+      --ring: light-dark(rgb(0 103 244 / 50%), rgb(26 169 255 / 50%));
       --text: light-dark(rgb(0 0 0 / 84.7%), rgb(255 255 255 / 84.7%));
-      --text-secondary: light-dark(rgb(0 0 0 / 56%), rgb(255 255 255 / 54.9%));
-      --text-tertiary: light-dark(rgb(0 0 0 / 45%), rgb(255 255 255 / 38%));
+      --text-secondary: light-dark(rgb(0 0 0 / 49.8%), rgb(255 255 255 / 54.9%));
+      --text-tertiary: light-dark(rgb(0 0 0 / 25.9%), rgb(255 255 255 / 24.7%));
+
       --text-disabled: light-dark(rgb(0 0 0 / 24.7%), rgb(255 255 255 / 24.7%));
       --separator: light-dark(rgb(0 0 0 / 10%), rgb(255 255 255 / 12%));
       --fill-1: light-dark(rgb(0 0 0 / 9.8%), rgb(255 255 255 / 9.8%));
@@ -188,24 +195,44 @@
    4.5:1, never brighter in dark than in light; accent text passes 4.5:1 on the
    surface. Follow the Mac reaches the same roles from nativeAccent.css. */
 :root[data-accent="blue"] { --ac: #007aff; --ac-selected: light-dark(#0064e1, #0059d1); --ac-text: light-dark(#0068da, #419cff); }
-:root[data-accent="ibis"] { --ac: light-dark(#c23a1c, #ff7a5c); --ac-selected: light-dark(#c23a1c, #ff7a5c); --ac-text: light-dark(#c23a1c, #ff7a5c); --ac-on: light-dark(#fff, #171717); }
+:root[data-accent="ibis"] { --ac: light-dark(var(--ibis), #ff7a5c); --ac-selected: light-dark(var(--ibis), #ff7a5c); --ac-text: light-dark(var(--ibis), #ff7a5c); --ac-on: light-dark(#fff, #171717); }
 :root[data-accent="purple"] { --ac: light-dark(#953d96, #a550a7); --ac-selected: light-dark(#953d96, #904291); --ac-text: light-dark(#953d96, #bd71bf); }
 :root[data-accent="pink"] { --ac: light-dark(#f74f9e, #f74f9e); --ac-selected: light-dark(#e4086c, #e4086c); --ac-text: light-dark(#e4086c, #f74f9e); }
 :root[data-accent="red"] { --ac: light-dark(#e0383e, #ff5257); --ac-selected: light-dark(#de3036, #e80005); --ac-text: light-dark(#dd2c32, #ff5257); }
-:root[data-accent="orange"] { --ac: light-dark(#e77008, #f7821b); --ac-selected: light-dark(#b55c08, #b55c08); --ac-text: light-dark(#b55c08, #f7821b); }
-:root[data-accent="yellow"] { --ac: light-dark(#b48a00, #ffc600); --ac-selected: light-dark(#916e00, #916e00); --ac-text: light-dark(#916e00, #ffc600); }
-:root[data-accent="green"] { --ac: light-dark(#56a33f, #62ba46); --ac-selected: light-dark(#468337, #468337); --ac-text: light-dark(#447f35, #62ba46); }
+:root[data-accent="orange"] { --ac: light-dark(#e77008, #f7821b); --ac-selected: light-dark(#b55c08, #b55c08); --ac-text: light-dark(#b55c08, #f7821b); --ac-fill: var(--ac-selected); }
+:root[data-accent="yellow"] { --ac: light-dark(#b48a00, #ffc600); --ac-selected: light-dark(#916e00, #916e00); --ac-text: light-dark(#916e00, #ffc600); --ac-fill: var(--ac-selected); }
+:root[data-accent="green"] { --ac: light-dark(#56a33f, #62ba46); --ac-selected: light-dark(#468337, #468337); --ac-text: light-dark(#447f35, #62ba46); --ac-fill: var(--ac-selected); }
 :root[data-accent="graphite"] { --ac: light-dark(#8c8c8c, #8c8c8c); --ac-selected: light-dark(#747474, #747474); --ac-text: light-dark(#747474, #8c8c8c); }
 @supports (color: light-dark(white, black)) {
   @media (prefers-contrast: no-preference) and (forced-colors: none) {
     :root[data-appearance][data-accent]:not([data-accent="system"]):not(.notice-window) {
-      --accent: var(--ac); --selected: var(--ac-selected); --accent-text: var(--ac-text); --selected-text: var(--ac-on, #fff); --text-on-accent: var(--ac-on, #fff);
+      --accent: var(--ac); --primary: var(--ac-fill, var(--ac)); --selected: var(--ac-selected); --accent-text: var(--ac-text); --ring: color-mix(in srgb, var(--ac) 50%, transparent); --selected-text: var(--ac-on, #fff); --text-on-accent: var(--ac-on, #fff);
     }
   }
 }
 :root[data-appearance="light"] { color-scheme: light; }
 :root[data-appearance="dark"] { color-scheme: dark; }
 :root.settings-window[data-larger-text="true"] { font-size: calc(100% * var(--larger-text-scale)); }
+
+/* Layer 3: components. Nested corners are concentric: a shape near its
+   container's edge keeps the same gap on every side, and its radius is the
+   container's minus that gap, never below the floor; neighbours share a radius.
+     window 16 -8-> row, field, shelf, footer action 8 -4-> key cap 4
+     menu 12 -5-> menu item 7     control 8 -2-> segment 6     row 8 -12-> tile 6 */
+:root {
+  --r-row: max(var(--r-floor), calc(var(--r-win) - var(--corner-inset)));
+  --r-action: var(--r-row);
+  --r-tile: var(--r-floor);
+  --r-mi: max(var(--r-floor), calc(var(--r-menu) - var(--menu-pad)));
+  --r-seg: max(var(--r-floor-mark), calc(var(--r-control) - 2px));
+  --key-gap: calc((var(--action-h) - var(--key)) / 2);
+  --r-key: max(var(--r-floor-mark), calc(var(--r-action) - var(--key-gap)));
+  --footer-h: calc(var(--action-h) + 2 * var(--inset));
+  --key-fill: var(--fill-control); --key-fill-hover: var(--fill-control-hover); --key-fill-pressed: var(--fill-control-pressed);
+  --primary: var(--accent);
+  --accent-hover: color-mix(in srgb, var(--primary) 90%, black);
+  --accent-pressed: color-mix(in srgb, var(--primary) 80%, black);
+}
 
 /* The website's reading rhythm; page composition stays in website/style.css. */
 :root {

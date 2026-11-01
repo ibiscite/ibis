@@ -756,9 +756,11 @@ class Linux:
         self.native_scope = None
         self.picker_probe = probe = {"stage": "scope", "pids": len(pids), "windows": 0, "pickers": 0, "offers": 0,
                                      "visible_pickers": 0, "visible_offers": 0, "focus": "not-observed"}
-        deadline = time.monotonic() + min(5, timeout)
+        budget = min(5, timeout)
+        deadline = time.monotonic() + budget
         def query(*args, program="xdotool"):
-            remaining = deadline - time.monotonic()
+            # Float rounding can make deadline - now exceed the budget by a hair.
+            remaining = min(budget, deadline - time.monotonic())
             if remaining <= 0:
                 raise PickerObservationFailure(dict(probe))
             try:
