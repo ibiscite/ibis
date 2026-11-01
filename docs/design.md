@@ -877,7 +877,7 @@ page", where the Page field lives beside the page itself.
   full-bleed between dividers on GNOME. Without room it scrolls in its own area,
   keeping 24 px of results reachable.
 
-**Preview** [C17]. Until the reader arrives (Later), the preview is Peek: the
+**Preview** [C17]. Until the reader arrives (0.5), the preview is Peek: the
 reference's full details and the full citation text, without the page area.
 At 960 px or wider the list keeps 400 px and the pane takes
 the rest; below that the preview replaces the list. Pane toolbar and bottom row

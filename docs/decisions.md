@@ -797,6 +797,14 @@ gzipped. A 50,000-record check reports on nightly against the same numbers as a 
 goal and must not grow faster than the library; a miss is studied, not blocking. The 100k limits and the 400-entry bibliography timing are dropped; document
 tools set their own later. Where each check runs: #1536.
 
+2026-11-01 (maintainer): every planned feature ships before 1.0, including ideas once
+listed after it; the version numbers before 1.0 are working steps and may be
+renumbered. 1.0 adds no features: people test everything and the maintainer
+moves to 1.0 by hand. 1.0 needs no paid code signing: macOS keeps the stable
+self-signed identity and Windows installers stay unsigned with first-launch
+steps; Developer ID, notarization and Windows signing wait for money or a free
+programme ([ROADMAP](../ROADMAP.md)).
+
 ## 0033 The engine for agents and tools
 
 The `ibis` command is a complete, independent way into a person's references,
