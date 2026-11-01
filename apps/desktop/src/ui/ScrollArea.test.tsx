@@ -88,18 +88,15 @@ test("nonempty notices hand results to the middle scroller independently of the 
   expect(noticeRules()).toBe("");
 });
 
-test("the fade is valid at either edge and every system shares the native scrollbar", () => {
+test("the fade is valid at either edge and one thin scrollbar serves every window", () => {
   const area = css("./ScrollArea.css");
-  expect(area).toMatch(/\.scroll-area \{ overflow: auto; scrollbar-width: var\(--scrollbar-width\); scrollbar-color: var\(--scrollbar-color\);/);
+  expect(css("./Foundation.css")).toMatch(/\* \{ scrollbar-width: thin; scrollbar-color: var\(--scrollbar-thumb\) transparent; \}/);
   for (const edge of ["\\[data-more-above\\]", "\\[data-more-below\\]", "\\[data-more-above\\]\\[data-more-below\\]"]) {
     const rule = area.match(new RegExp(`\\.scroll-area${edge} \\{([^}]*)\\}`))?.[1] ?? "";
     expect(rule).toMatch(/-webkit-mask-image: linear-gradient\(/);
     expect(rule).toMatch(/[^-]mask-image: linear-gradient\(/);
     expect(rule).not.toMatch(/var\(--[\w-]+, 0\)/);
   }
-  const tokens = css("../tokens.css");
-  expect(tokens).toMatch(/--scrollbar-width: auto; --scrollbar-color: auto; --scroll-fade-size: 14px;/);
-  expect(tokens).not.toMatch(/--scrollbar-width: thin/);
 });
 
 test.each(["normal", "prefers-contrast: more", "prefers-reduced-transparency: reduce", "forced-colors: active"])(

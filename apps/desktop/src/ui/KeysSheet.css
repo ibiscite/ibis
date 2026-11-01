@@ -9,7 +9,7 @@
 .ui-sheet .keys-scroll { container-type: inline-size; }
 .keys-scroll .keys-groups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: var(--space-4); }
 .keys-groups > tbody { display: table; width: 100%; min-width: 0; }
-.keys-groups th[scope="rowgroup"] { padding-top: var(--space-1); }
+.keys-groups th[scope="rowgroup"] { padding-block: 0 var(--space-1); }
 .keys-groups th, .keys-groups td { overflow-wrap: normal; }
 .keys-groups .keys-binding { display: inline-flex; align-items: center; gap: var(--space-1); white-space: nowrap; }
 .keys-groups .keys-binding + .keys-binding { margin-inline-start: var(--space-1); }
