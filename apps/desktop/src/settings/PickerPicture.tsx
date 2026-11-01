@@ -1,3 +1,4 @@
+import type { SearchIcon } from "../bindings";
 import { createRef, useLayoutEffect, useRef } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { Density, SearchResult } from "../bindings";
@@ -14,7 +15,7 @@ const styles = (pickerStyles + buttonStyles).replace(/@import[^;]+;/g, "")
   .replace(/color-scheme:\s*light dark;/g, "")
   .replace(/:root(\[[^\]]+\])?/g, (_, attribute: string | undefined) => attribute ? `:host(${attribute})` : ":host");
 export function PickerPicture({ density = "comfortable", icon = "ibis", appearance, split = false, headerOnly = false, rowsOnly = false }: {
-  density?: Density; icon?: "ibis" | "magnifier"; appearance?: string; split?: boolean; headerOnly?: boolean; rowsOnly?: boolean;
+  density?: Density; icon?: SearchIcon; appearance?: string; split?: boolean; headerOnly?: boolean; rowsOnly?: boolean;
 }) {
   const { text } = useInterfaceMessages();
   const frame = useRef<HTMLSpanElement>(null), natural = useRef<HTMLSpanElement>(null);
@@ -41,7 +42,7 @@ export function PickerPicture({ density = "comfortable", icon = "ibis", appearan
   const html = renderToStaticMarkup(<>
     {!rowsOnly && <PickerHeader inputRef={createRef()} query="" onQueryChange={ignore} onSearchKeyDown={ignore}
       expanded={false} activeDescendant={undefined} format="pandoc" showFormat={false} styles={false}
-      onFormatChange={ignore} onFormatCommand={() => ({ run: ignore, isCurrent: () => false })} pinned={false} onTogglePin={ignore} mark={icon === "ibis"} />}
+      onFormatChange={ignore} onFormatCommand={() => ({ run: ignore, isCurrent: () => false })} pinned={false} onTogglePin={ignore} icon={icon} />}
     {!headerOnly && <div className="results-area"><ul id="results">{(["look-sample-title", "look-sample-title-2", "look-sample-title-3"] as const).map((title, index) =>
       <ResultRow key={title} record={{ ...record, title: text(title) }} index={index} active={index === 0} added={false} density={density} hoverAllowed={false} library={null}
         handlers={{ onPointerDown: ignore, onClick: ignore, onContext: ignore, onTileClick: ignore }} />

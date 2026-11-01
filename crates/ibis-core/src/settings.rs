@@ -122,6 +122,16 @@ pub enum Density {
     Spacious,
 }
 
+/// What leads the search field: the Ibis mark, a magnifier or nothing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[serde(rename_all = "lowercase")]
+pub enum SearchIcon {
+    Ibis,
+    Magnifier,
+    None,
+}
+
 /// Picker content size and position relative to a display's work area, in
 /// logical pixels. Display changes clamp these values before presentation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -169,7 +179,7 @@ pub struct Settings {
     pub show_paste_preview: Option<bool>,
     /// The Ibis mark in place of the search glyph. `None` means the magnifier.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub search_mark: Option<bool>,
+    pub search_icon: Option<SearchIcon>,
     /// Whether Enter pastes into the app the picker was opened from. `None`
     /// means on; `false` only copies.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -193,7 +203,7 @@ impl Default for Settings {
             larger_text: None,
             picker_windows: BTreeMap::new(),
             show_paste_preview: None,
-            search_mark: None,
+            search_icon: None,
             paste: None,
             unknown: serde_json::Map::new(),
         }
@@ -917,17 +927,17 @@ mod tests {
             "density",
             "larger_text",
             "show_paste_preview",
-            "search_mark",
+            "search_icon",
             "paste",
         ] {
             assert!(!saved.contains(field), "{field} is written only once chosen");
         }
         let settings = parse(
-            r#"{"schema_version": 2, "citation_style": "chicago-author-date", "density": "compact", "larger_text": true, "show_paste_preview": false, "search_mark": true, "paste": false}"#,
+            r#"{"schema_version": 2, "citation_style": "chicago-author-date", "density": "compact", "larger_text": true, "show_paste_preview": false, "search_icon": "magnifier", "paste": false}"#,
         )
         .unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(settings.paste, Some(false));
-        assert_eq!(settings.search_mark, Some(true));
+        assert_eq!(settings.search_icon, Some(SearchIcon::Magnifier));
         assert_eq!(settings.citation_style, Some(CitationStyle::ChicagoAuthorDate));
         assert_eq!(settings.density, Some(Density::Compact));
         assert_eq!(settings.larger_text, Some(true));

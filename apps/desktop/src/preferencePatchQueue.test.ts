@@ -2,7 +2,7 @@ import { expect, test, vi } from "vitest";
 import type { KeyFormat, PickerPreferences, PickerSave } from "./bindings";
 import { PreferencePatchQueue, type PreferenceRead } from "./preferencePatchQueue";
 
-const defaults: PickerPreferences = { citation_style: null, density: "comfortable", larger_text: false, show_paste_preview: true, search_mark: false, paste: true };
+const defaults: PickerPreferences = { citation_style: null, density: "comfortable", larger_text: false, show_paste_preview: true, search_icon: "magnifier", paste: true };
 const deferred = <T,>() => {
   let resolve!: (value: T) => void;
   let reject!: (error?: unknown) => void;
@@ -198,9 +198,9 @@ test("Settings recovery restores durable state, but cannot overwrite a newer edi
   queue.change({ larger_text: false });
   await queue.finishSaving();
   expect(events).toHaveBeenLastCalledWith({ type: "read", value: saved(), pendingStyle: false });
-  queue.change({ search_mark: true });
+  queue.change({ search_icon: "ibis" });
   await queue.finishSaving();
-  expect(api.write).toHaveBeenLastCalledWith({ search_mark: true }, null);
+  expect(api.write).toHaveBeenLastCalledWith({ search_icon: "ibis" }, null);
 });
 
 test("Settings focus restores saved choices after a failed recovery read and keeps the edit retryable", async () => {

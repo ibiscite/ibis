@@ -119,7 +119,7 @@ function deferred<T>() {
 function fakeApi(permission: Partial<PastePermission> = {}, preferences: Partial<PickerPreferences> = {}) {
   const state = {
     permission: { pastes: true, needed: true, granted: false, list: "Device Control and Data Access", ...permission },
-    preferences: { citation_style: null, density: "comfortable", larger_text: false, show_paste_preview: true, search_mark: false, paste: true, ...preferences } as PickerPreferences,
+    preferences: { citation_style: null, density: "comfortable", larger_text: false, show_paste_preview: true, search_icon: "magnifier", paste: true, ...preferences } as PickerPreferences,
     saved: [] as PickerPreferences[],
     patches: [] as Partial<PickerPreferences>[],
     opened: 0,
@@ -947,7 +947,7 @@ test("Settings shows only built pages, rows and choices, including in search", a
   render(<SettingsApp api={api} initialPage="look" />);
   await screen.findByRole("radiogroup", { name: "Appearance" });
   expect(screen.queryByRole("radiogroup", { name: "Window size" })).toBeNull();
-  expect(screen.queryByRole("radio", { name: /Coming soon|None|Largest/ })).toBeNull();
+  expect(screen.queryByRole("radio", { name: /Coming soon|Largest/ })).toBeNull();
   for (const name of ["General", "Look", "Citations", "Shortcuts", "About Ibis"]) {
     fireEvent.click(screen.getByRole("option", { name }));
     expect(screen.queryByText(/Coming soon/)).toBeNull();
@@ -1172,7 +1172,7 @@ test("Appearance, ten accents, both search icons, both text sizes and preview pe
   fireEvent.click(screen.getByRole("radio", { name: "Larger" }));
   fireEvent.click(screen.getByRole("switch", { name: "Show what will be pasted" }));
   await act(async () => state.closes[0]!());
-  expect(state.preferences).toMatchObject({ appearance: "dark", accent: "purple", search_mark: true, larger_text: true, show_paste_preview: false });
+  expect(state.preferences).toMatchObject({ appearance: "dark", accent: "purple", search_icon: "ibis", larger_text: true, show_paste_preview: false });
   expect(state.patches.at(0)).toEqual({ appearance: "dark" });
   expect(state.patches.at(1)).toEqual({ accent: "purple" });
   mounted.unmount();
@@ -1186,7 +1186,7 @@ test("Appearance, ten accents, both search icons, both text sizes and preview pe
   fireEvent.click(screen.getByRole("radio", { name: "Magnifier" }));
   fireEvent.click(screen.getByRole("radio", { name: "Default" }));
   await act(async () => state.closes.at(-1)!());
-  expect(state.preferences).toMatchObject({ appearance: "system", accent: "system", search_mark: false, larger_text: false });
+  expect(state.preferences).toMatchObject({ appearance: "system", accent: "system", search_icon: "magnifier", larger_text: false });
 });
 
 test("a failed initial preference read explains uncertainty and leaves navigation usable", async () => {

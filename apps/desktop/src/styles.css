@@ -29,6 +29,8 @@ main > .search-bar, main > .shelf, main > footer { flex: none; }
 }
 /* The search glyph is centred over the tile column and the query starts where
    row titles start (docs/design.md, "Two columns"). */
+/* With no icon, the query starts at the window's inset. */
+.search-bar[data-icon="none"] { padding-inline-start: var(--space-4); }
 .pin-button { flex: none; }
 .pin-button svg { width: var(--icon-glyph-size); height: var(--icon-glyph-size); stroke-width: var(--icon-stroke); }
 .search-bar > svg { margin-inline: var(--lead) calc(var(--lead-gap) - var(--search-gap)); }

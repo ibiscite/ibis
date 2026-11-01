@@ -145,6 +145,7 @@ look-accent-graphite = Graphite
 look-search-icon = Search icon
 look-ibis = Ibis mark
 look-magnifier = Magnifier
+look-none = None
 look-text-size = Text size
 look-default-text = Default
 look-larger-text = Larger

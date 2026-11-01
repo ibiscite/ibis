@@ -91,6 +91,7 @@ export const SETTINGS_IDS = [
   "look-search-icon",
   "look-ibis",
   "look-magnifier",
+  "look-none",
   "look-text-size",
   "look-default-text",
   "look-larger-text",

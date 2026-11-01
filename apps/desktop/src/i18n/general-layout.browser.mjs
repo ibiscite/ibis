@@ -21,7 +21,7 @@ try {
         Object.defineProperty(navigator, "platform", { value: "MacIntel" });
         // Persist across a real reload to exercise close/reopen without native I/O.
         const read = (key, fallback) => JSON.parse(sessionStorage.getItem(key) || "null") ?? fallback;
-        let preferences = read("preferences", { citation_style: null, density: "comfortable", larger_text: larger, show_paste_preview: true, search_mark: true, paste: true, appearance: panel === "look-dark" ? "dark" : "light", accent: "system" });
+        let preferences = read("preferences", { citation_style: null, density: "comfortable", larger_text: larger, show_paste_preview: true, search_icon: "ibis", paste: true, appearance: panel === "look-dark" ? "dark" : "light", accent: "system" });
         let shortcut = read("shortcut", { shortcut: "Alt+J", registered: true, error: null });
         let callbackId = 0, revision = 0, shortcutAttempts = 0;
         window.__TAURI_INTERNALS__ = {

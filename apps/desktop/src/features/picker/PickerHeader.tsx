@@ -1,3 +1,4 @@
+import type { SearchIcon } from "../../bindings";
 import type React from "react";
 import { IbisMark } from "../../ui/IbisMark";
 import { Button, ToggleButton } from "../../ui/Button";
@@ -12,11 +13,11 @@ import type { AppPaste } from "../../api";
 
 /** The search bar: the search box and the copy format. It is also
  * the window's drag region; the editable box itself is not. */
-export function PickerHeader({ inputRef, query, pageToken, onQueryChange, onSearchKeyDown, expanded, activeDescendant, format, formatButtonRef, app = null, formatScope, onFormatOpenChange, onceOnly = false, onToggleOnce = () => undefined, onAutomatic = () => undefined, onDefault = () => undefined, pasteChoices, onPasteChange, formatDisabled = false, showFormat, styles, onFormatChange, onFormatCommand, pinned, onTogglePin, mark }: {
+export function PickerHeader({ inputRef, query, pageToken, onQueryChange, onSearchKeyDown, expanded, activeDescendant, format, formatButtonRef, app = null, formatScope, onFormatOpenChange, onceOnly = false, onToggleOnce = () => undefined, onAutomatic = () => undefined, onDefault = () => undefined, pasteChoices, onPasteChange, formatDisabled = false, showFormat, styles, onFormatChange, onFormatCommand, pinned, onTogglePin, icon = "magnifier" }: {
   inputRef: React.RefObject<HTMLInputElement | null>;
   pinned: boolean;
-  /** The Ibis mark in place of the magnifier, a person's choice in More. */
-  mark?: boolean;
+  /** What leads the search field, a person's choice in Look. */
+  icon?: SearchIcon;
   onTogglePin: () => void;
   query: string;
   pageToken?: React.ReactNode;
@@ -46,12 +47,12 @@ export function PickerHeader({ inputRef, query, pageToken, onQueryChange, onSear
   onFormatCommand: (command: FormatCommand) => ToolbarMenuCommand;
 }) {
   return (
-    <header className="search-bar" data-tauri-drag-region title={pickerText.dragSearchBar}>
-      {mark ? <IbisMark className="search-mark" size="search" />
-        : <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-          <circle cx="10.5" cy="10.5" r="6.5" />
-          <path d="m16 16 5 5" />
-        </svg>}
+    <header className="search-bar" data-icon={icon} data-tauri-drag-region title={pickerText.dragSearchBar}>
+      {icon === "ibis" && <IbisMark className="search-mark" size="search" />}
+      {icon === "magnifier" && <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+        <circle cx="10.5" cy="10.5" r="6.5" />
+        <path d="m16 16 5 5" />
+      </svg>}
       <label className="visually-hidden" htmlFor="search">
         {pickerText.searchLabel}
       </label>

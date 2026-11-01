@@ -541,7 +541,7 @@ export type PickerPreferencesPatch_Deserialize = {
 	density?: Density | null,
 	larger_text?: boolean | null,
 	show_paste_preview?: boolean | null,
-	search_mark?: boolean | null,
+	search_icon?: SearchIcon | null,
 	paste?: boolean | null,
 };
 
@@ -553,7 +553,7 @@ export type PickerPreferencesPatch_Serialize = {
 	density?: Density | null,
 	larger_text?: boolean | null,
 	show_paste_preview?: boolean | null,
-	search_mark?: boolean | null,
+	search_icon?: SearchIcon | null,
 	paste?: boolean | null,
 };
 
@@ -570,8 +570,8 @@ export type PickerPreferences_Deserialize = {
 	density: Density,
 	larger_text: boolean,
 	show_paste_preview: boolean,
-	/**  The Ibis mark in place of the search glyph; on by default. */
-	search_mark: boolean,
+	/**  What leads the search field; the Ibis mark by default. */
+	search_icon: SearchIcon,
 	/**  Enter pastes into the app the picker was opened from; on by default. */
 	paste: boolean,
 };
@@ -589,8 +589,8 @@ export type PickerPreferences_Serialize = {
 	density: Density,
 	larger_text: boolean,
 	show_paste_preview: boolean,
-	/**  The Ibis mark in place of the search glyph; on by default. */
-	search_mark: boolean,
+	/**  What leads the search field; the Ibis mark by default. */
+	search_icon: SearchIcon,
 	/**  Enter pastes into the app the picker was opened from; on by default. */
 	paste: boolean,
 };
@@ -652,6 +652,9 @@ export type ReferenceForm = "normal" | "narrative" | "year-only";
 export type RowAction = "copy" | "toggle";
 
 export type Script = "normal" | "subscript" | "superscript";
+
+/**  What leads the search field: the Ibis mark, a magnifier or nothing. */
+export type SearchIcon = "ibis" | "magnifier" | "none";
 
 /**  Query text and the explicit choice to read a trailing locator. */
 export type SearchQuery = {

@@ -7,7 +7,7 @@ import * as nativeApi from "../api";
 import type { PickerPreferences, PickerSave } from "../bindings";
 
 afterEach(resetApp);
-const saved: PickerPreferences = { citation_style: null, density: "comfortable", larger_text: false, show_paste_preview: true, search_mark: true, paste: true, appearance: "dark", accent: "purple" };
+const saved: PickerPreferences = { citation_style: null, density: "comfortable", larger_text: false, show_paste_preview: true, search_icon: "ibis", paste: true, appearance: "dark", accent: "purple" };
 
 test("an open picker applies saved appearance and accent, then a Settings change, using its existing reads", async () => {
   let preferences = saved;
