@@ -60,7 +60,8 @@ and installer network use. Ibis does not track users or upload their libraries.
 SignPath Foundation declined Ibis's application for free Windows signing in
 October 2026 ([#299](https://github.com/ibiscite/ibis/issues/299)); Ibis may
 apply again once it is established. Windows installers remain unsigned.
-Apple Developer ID and notarization remain planned for 1.0
+1.0 ships without paid signing (maintainer, 2026-11-01). Apple Developer ID,
+notarization and Windows signing wait for money or a free programme
 ([ROADMAP.md](../ROADMAP.md)); a paid service or account needs the maintainer's
 decision. The [README](../README.md) gives first-launch steps.
 
