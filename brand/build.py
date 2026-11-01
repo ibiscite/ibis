@@ -288,6 +288,46 @@ def app_icon(dark, uid):
     return doc(side, side, d1 + d2, b1 + b2)
 
 
+def icon_glyph(paint, uid, depth="gradient"):
+    """The bird alone for the macOS icon: the system adds glass, depth and tints."""
+    side = 1024
+    defs, body = centred("mark", side, CONTAINER * side, paint, uid, depth)
+    return doc(side, side, defs, body)
+
+
+def icon_composer(directory):
+    """An Icon Composer document. scripts/macos-icon.sh compiles it to Assets.car."""
+    def fill(colours):
+        stops = []
+        for colour in colours:
+            red, green, blue = (int(colour[index:index + 2], 16) / 255 for index in (1, 3, 5))
+            stops.append(f"srgb:{red:.5f},{green:.5f},{blue:.5f},1.00000")
+        return {"linear-gradient": stops, "orientation": {"start": {"x": .5, "y": 0}, "stop": {"x": .67, "y": 1}}}
+    document = {
+        "fill-specializations": [{"value": fill(TILE)}, {"appearance": "dark", "value": fill(TILE_DARK)}],
+        "groups": [{
+            "layers": [{
+                "name": "Ibis",
+                "image-name-specializations": [
+                    {"value": "ibis-glyph.svg"},
+                    {"appearance": "dark", "value": "ibis-glyph-dark.svg"},
+                    {"appearance": "tinted", "value": "ibis-glyph-mono.svg"},
+                ],
+                "glass": True,
+            }],
+            "shadow": {"kind": "neutral", "opacity": .5},
+            "translucency": {"enabled": False, "value": .5},
+        }],
+        "supported-platforms": {"squares": ["macOS"]},
+    }
+    assets = directory / "Assets"
+    assets.mkdir(parents=True, exist_ok=True)
+    (assets / "ibis-glyph.svg").write_text(icon_glyph(GRADIENT, "ig"), encoding="utf-8")
+    (assets / "ibis-glyph-dark.svg").write_text(icon_glyph(GRADIENT_DARK, "igd"), encoding="utf-8")
+    (assets / "ibis-glyph-mono.svg").write_text(icon_glyph("#FFFFFF", "igm", False), encoding="utf-8")
+    (directory / "icon.json").write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
+
+
 def square_tile(uid):
     """A full square for circle crops and masks: avatars, Apple touch and maskable icons."""
     side = 512
@@ -561,6 +601,7 @@ def main(root=HERE.parent):
         "video/youtube-banner.svg": video_card(2560, 1440, True, "yb", [TAGLINE], L["banner_logo"]),
         "video/thumbnail-template.svg": thumbnail("th"),
     }
+    icon_composer(OUT / "Ibis.icon")
     (OUT / "video").mkdir(exist_ok=True)
     for name, text in files.items():
         (OUT / name).write_text(text, encoding="utf-8")
