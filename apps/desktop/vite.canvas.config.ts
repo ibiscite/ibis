@@ -15,6 +15,11 @@ export default defineConfig({
       return `let revision = 0;
         export async function invoke(command) {
           if (command === "preference_revision") return ++revision;
+          if (command === "citation_details") return { current_form: "normal", forms: [
+            { form: "normal", example: "[@synthetic0]", reason: null },
+            { form: "narrative", example: "@synthetic0", reason: null },
+            { form: "year-only", example: "[-@synthetic0]", reason: null },
+          ] };
           throw new Error("Native command unavailable on canvas: " + command);
         }
         export function listen() { throw new Error("Native events unavailable on canvas"); }

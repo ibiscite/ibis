@@ -1,0 +1,9 @@
+/* The canvas boards' own text and frames, on the app's tokens. */
+.bd { font: var(--type-body-size) / var(--type-body-line) var(--font); color: var(--text); background: var(--surface-grouped); box-sizing: border-box; color-scheme: light; }
+.bd h1 { margin: 0; font-size: var(--type-search-size); line-height: var(--type-search-line); font-weight: 700; }
+.bd h2 { margin: 0; font-size: var(--type-lead-size); line-height: var(--type-lead-line); font-weight: var(--strong); }
+.bd h3 { margin: 0; font-size: var(--type-label-size); line-height: var(--type-label-line); font-weight: var(--strong); color: var(--text-secondary); }
+.bd p { margin: 0; font-size: var(--type-body-size); line-height: var(--type-title-line); color: var(--text); }
+.bd .cap { font-size: var(--type-label-size); line-height: var(--type-body-line); color: var(--text-secondary); }
+.bd .spec { font: var(--type-label-size) / var(--type-body-line) var(--mono); color: var(--text-secondary); }
+.bd .sheet { padding: var(--space-6); border-radius: var(--r-card); background: var(--raised); border: var(--border-width) solid var(--separator); }

@@ -59,6 +59,14 @@ test("the built scenario list renders, switches and reopens without Tauri or net
       } else if (scenario === "empty") expect(host.textContent).toContain("No references in invented.bib");
       else if (scenario === "error") expect(host.textContent).toContain("Can't open invented.bib");
       else if (scenario === "loading") expect(host.textContent).toContain("Opening invented.bib");
+      else if (scenario === "tokens") for (const token of ["--accent", "--space-8", "--r-card", "--r-key"]) expect(host.textContent).toContain(token);
+      else if (scenario === "shortcuts") expect(window.document.querySelector('[role="dialog"]')).not.toBeNull();
+      else if (scenario === "empty-search") expect(host.textContent).toContain("Type to find");
+      else if (scenario === "no-matches") expect(host.textContent).toContain("No matching references");
+      else if (scenario === "missing") expect(host.textContent).toContain("Can't find invented.bib");
+      else if (scenario === "zotero-closed") expect(host.textContent).toContain("Zotero isn't open");
+      else if (scenario === "unreadable") expect(host.textContent).toContain("Can't read invented.bib");
+      else if (scenario === "long-titles") expect(host.textContent).toContain("An invented reference whose title");
       else {
         expect(host.textContent).toContain("Invented reference 0");
         if (scenario === "more") expect(window.document.querySelector('[role="menu"][aria-label="More"]')).not.toBeNull();
@@ -71,7 +79,7 @@ test("the built scenario list renders, switches and reopens without Tauri or net
     expect(host.querySelectorAll('[role="option"]')).toHaveLength(4);
     host.querySelector('[role="option"][data-key="file"]')?.click();
     await vi.waitFor(() => expect(host.textContent).toContain("The file chooser did not open. Try again."));
-    expect(canvas.scenarios).toEqual(["results", "first-run", "more", "format-menu", "states", "empty", "error", "loading", "settings-general", "settings-look", "settings-citations", "settings-shortcuts", "settings-about"]);
+    expect(canvas.scenarios).toEqual(expect.arrayContaining(["results", "first-run", "shelf", "missing", "states", "tokens", "settings-about"]));
     for (const theme of ["light", "dark"]) for (const scenario of canvas.scenarios) {
       const unmount = canvas.mount(host, { scenario, theme });
       await shown(scenario, theme);

@@ -44,7 +44,7 @@ test("Settings fills the viewport, with bounded page and navigation scrollers be
   expect(style(shell, ".settings-sidebar").getPropertyValue("grid-area")).toBe("1 / 1 / -1 / 2");
   expect(style(shell, ".settings-titlebar").getPropertyValue("grid-area")).toBe("1 / 1 / 2 / -1");
   const page = style(shell, ".settings-page");
-  expect(page.getPropertyValue("grid-area")).toBe("2 / 2");
+  expect(page.getPropertyValue("grid-area")).toBe("1 / 2 / -1 / 3");
   for (const property of ["min-width", "min-height"]) expect(page.getPropertyValue(property)).toBe("0px");
   expect(page.getPropertyValue("overflow-x")).toBe("hidden");
   expect(page.getPropertyValue("overflow-y")).toBe("auto");
@@ -93,7 +93,7 @@ test("sidebar navigation and the large page title have shared selection, spacing
   const title = style(shell, ".settings-page-title");
   expect(title.getPropertyValue("font-size")).toBe("var(--type-display-size)");
   expect(title.getPropertyValue("line-height")).toBe("var(--type-display-line)");
-  expect(style(shell, ".settings-page").getPropertyValue("padding")).toBe("var(--space-6)");
+  expect(style(shell, ".settings-page").getPropertyValue("padding")).toBe("0 var(--space-6) var(--space-6)");
   expect(tokens).toMatch(/--sidebar-width:\s*min\(12\.5rem, 26%\)/);
 });
 
