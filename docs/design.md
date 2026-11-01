@@ -184,9 +184,11 @@ Densities (decision 0020): Compact 40 px (one line), Comfortable 58 px (the defa
 two lines) and Spacious 76 px (three lines). Density changes rows only, never
 controls, targets, type or the header. The citation key is not shown in rows
 (it stays in the accessible name and tooltip); the year (or "No date") is
-trailing and vertically centred, except in Spacious, where the third line
-reads "Article · 2021" and the title gets the full width (maintainer,
-2026-10-30).
+trailing and sits level with the title's first line in every density, size
+and view, so it never moves when rows change; in one-line Compact rows that
+line is the row's centre. Spacious keeps the year there and its third line
+reads only the type ("Article") (maintainer, 2026-10-30; one year position
+everywhere, maintainer, 2026-11-01).
 
 **One steady window** [C10] (maintainer, 2026-10-30). The picker keeps one
 size the whole time it is open, in every state: first run, empty search,
@@ -443,12 +445,12 @@ mixed-direction strings are isolated and citation keys stay LTR.
 two or more lines (Larger text, long titles, translations), its container
 grows to fit it with the same padding on every side: text never touches or
 crosses a row's fill, a card's edge or a control. Wrapped lines start where
-the first line starts, the trailing control or year stays centred on the
-block, and in Settings the control moves below the label rather than
+the first line starts, a trailing control stays centred on the
+block (a result's year follows Rows above), and in Settings the control moves below the label rather than
 squeezing it. In results, a title wraps to at most two lines and then ends in
 an ellipsis; the byline stays one line and shortens authors first ("Okonkwo,
 Haddad et al."), then the journal; the year never shrinks and sits level with
-the title's first line (centred with it in one-line Compact rows). **Hover card** (maintainer, 2026-10-30): resting the
+the title's first line. **Hover card** (maintainer, 2026-10-30): resting the
 pointer half a second on a row whose text is cut shows a card beside it, on
 the menus' denser glass and at most 320 px wide, with the full title, all
 authors, journal, year and type. It never takes focus, leaves with the
@@ -972,7 +974,10 @@ visible control, never the hidden search box. A 56 px mark and a 20 px
 title lead. The four starts (Zotero, a .bib
 file, Find them on this computer, Try sample references) are a 2 × 2 grid of
 tiles, 8 px apart and at most 600 px wide, each a tile icon, a title and one
-short line on a quiet fill, so the whole group fits the Medium window with
+short line on a quiet fill. Tiles in a row share one height; each icon is
+centred on its tile's text block, never top-aligned, and each glyph is
+optically centred in its square; every start has its own glyph (maintainer,
+2026-11-01). The whole group fits the Medium window with
 room above and below. Arrow keys move in two dimensions. Once
 found, a library replaces the Find tile ("Use example.bib", "Found in
 Documents"). A choice screen with two or three rows stays a list.
