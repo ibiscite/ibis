@@ -59,6 +59,7 @@ pub(super) struct Owner {
     pub pending_save: Option<Save>,
     pub in_flight: Option<u64>,
     pub completed: u64,
+    pub write_failed: bool,
     pub stopping: bool,
     pub finished: bool,
     pub started: bool,
@@ -234,6 +235,18 @@ impl Owner {
             self.windows.insert(display.to_owned(), frame);
             self.queue_save(now);
         }
+    }
+
+    /// Takes back a chosen size whose save failed, unless something newer replaced it.
+    pub fn unchoose(&mut self, display: &str, chosen: PickerWindow, previous: Option<PickerWindow>, now: Instant) {
+        if self.windows.get(display) != Some(&chosen) {
+            return;
+        }
+        match previous {
+            Some(frame) => self.windows.insert(display.to_owned(), frame),
+            None => self.windows.remove(display),
+        };
+        self.queue_save(now);
     }
 
     pub fn queue_save(&mut self, now: Instant) {

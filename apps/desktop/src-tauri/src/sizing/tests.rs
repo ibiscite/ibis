@@ -103,6 +103,39 @@ fn chosen_size_is_saved_once_and_a_late_write_cannot_replace_it() {
 }
 
 #[test]
+fn a_chosen_size_whose_save_failed_is_taken_back_unless_replaced() {
+    let mut owner = Owner::default();
+    let now = Instant::now();
+    let (small, large, dragged_later) = (dragged(640, 400), dragged(840, 600), dragged(700, 500));
+    owner.windows.insert("synthetic".into(), small);
+    owner.choose("synthetic", large, now);
+    owner.unchoose("synthetic", large, Some(small), now);
+    assert_eq!(owner.windows.get("synthetic"), Some(&small));
+    assert_eq!(
+        owner
+            .pending_save
+            .as_ref()
+            .map(|save| save.windows.get("synthetic").copied()),
+        Some(Some(small))
+    );
+    owner.choose("synthetic", large, now);
+    owner.unchoose("synthetic", large, None, now);
+    assert_eq!(
+        owner.windows.get("synthetic"),
+        None,
+        "a display with no saved size goes back to none"
+    );
+    owner.choose("synthetic", large, now);
+    owner.windows.insert("synthetic".into(), dragged_later);
+    owner.unchoose("synthetic", large, Some(small), now);
+    assert_eq!(
+        owner.windows.get("synthetic"),
+        Some(&dragged_later),
+        "a newer drag stays"
+    );
+}
+
+#[test]
 fn sizing_default_and_minimum_frames_do_not_depend_on_content() {
     let default = plan(None, false, (1400.0, 900.0));
     assert_eq!((default.width, default.height), (720, 480));

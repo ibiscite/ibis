@@ -195,12 +195,18 @@ impl Shared {
             let result = self.persist(file, save);
             if let Ok(mut state) = self.state.lock() {
                 state.complete(revision);
+                state.write_failed = result == Some(false);
                 self.wake.notify_all();
             }
             if let Some(saved) = result {
                 notify(revision, saved);
             }
         }
+    }
+
+    /// Whether everything accepted so far reached the settings file.
+    fn saved(&self) -> bool {
+        self.flush(FLUSH_TIMEOUT, false) && self.state.lock().is_ok_and(|state| !state.write_failed)
     }
 
     fn request_flush(&self, stop: bool) -> Option<u64> {
@@ -706,38 +712,69 @@ pub(crate) fn window_size(app: AppHandle) -> Option<WindowSize> {
     Some(WindowSize::of(app.state::<Sizing>().remembered(&display_key(&monitor))))
 }
 
-#[tauri::command]
-#[specta::specta]
-pub(crate) fn set_window_size(app: AppHandle, size: WindowSize) -> Result<(), String> {
-    const FAILED: &str = "Ibis could not change the window size. Try again.";
-    let size = size.pixels().ok_or(FAILED)?;
-    let (window, monitor) = target(&app).ok_or(FAILED)?;
-    let metrics = metrics(&window).ok_or(FAILED)?;
-    let display = display(&monitor, &metrics).ok_or(FAILED)?;
+/// The display a choice belongs to, what it chose and what it replaced.
+type Chosen = (String, PickerWindow, Option<PickerWindow>);
+
+/// Hidden, the next `prepare` applies the size before the window appears.
+fn choose_window_size(app: &AppHandle, size: (u32, u32)) -> Option<Chosen> {
+    let (window, monitor) = target(app)?;
+    let shown = checked(window.is_visible(), NativeIssue::Visibility) == Some(true);
+    if shown {
+        // Accept a drag that arrived first, so this choice replaces it.
+        sample(app, &window, false);
+    }
+    let metrics = metrics(&window)?;
+    let display = display(&monitor, &metrics)?;
+    let key = display.key.clone();
     let sizing = app.state::<Sizing>();
     let larger = sizing.larger_text.load(Ordering::SeqCst);
-    let frame = chosen(sizing.remembered(&display.key), size, larger, display.room);
-    let shown = checked(window.is_visible(), NativeIssue::Visibility) == Some(true);
-    {
-        let mut state = sizing.shared.state.lock().map_err(|_| FAILED)?;
-        if state.stopping {
-            return Err(FAILED.into());
-        }
-        state.choose(&display.key, frame, Instant::now());
-        state.applying = shown;
-    }
-    sizing.shared.wake.notify_all();
+    let previous = sizing.remembered(&key);
+    let frame = chosen(previous, size, larger, display.room);
     if shown {
-        // Hidden, the next `prepare` applies it before the window appears.
-        let frame = plan(Some(frame), larger, display.room);
-        let applied = apply_frame(&app, &window, &monitor, frame, display.room);
-        let mut state = sizing.shared.state.lock().map_err(|_| FAILED)?;
-        if applied.is_some() {
-            state.prepared(Sample { display, frame });
-        }
+        sizing.shared.state.lock().ok()?.applying = true;
+        let planned = plan(Some(frame), larger, display.room);
+        let applied = apply_frame(app, &window, &monitor, planned, display.room);
+        let mut state = sizing.shared.state.lock().ok()?;
         state.applying = false;
+        applied?;
+        state.prepared(Sample {
+            display,
+            frame: planned,
+        });
     }
-    Ok(())
+    let mut state = sizing.shared.state.lock().ok()?;
+    if state.stopping {
+        return None;
+    }
+    state.choose(&key, frame, Instant::now());
+    Some((key, frame, previous))
+}
+
+#[tauri::command]
+#[specta::specta]
+pub(crate) async fn set_window_size(app: AppHandle, size: WindowSize) -> Result<(), String> {
+    const FAILED: &str = "Ibis could not change the window size. Try again.";
+    let size = size.pixels().ok_or(FAILED)?;
+    let (sent, mut received) = tauri::async_runtime::channel(1);
+    let handle = app.clone();
+    app.run_on_main_thread(move || {
+        let _ = sent.try_send(choose_window_size(&handle, size));
+    })
+    .map_err(|_| FAILED)?;
+    let (key, frame, previous) = received.recv().await.flatten().ok_or(FAILED)?;
+    let shared = app.state::<Sizing>().shared.clone();
+    let writer = shared.clone();
+    if tauri::async_runtime::spawn_blocking(move || writer.saved())
+        .await
+        .unwrap_or(false)
+    {
+        return Ok(());
+    }
+    if let Ok(mut state) = shared.state.lock() {
+        state.unchoose(&key, frame, previous, Instant::now());
+    }
+    shared.wake.notify_all();
+    Err(FAILED.into())
 }
 
 #[tauri::command]

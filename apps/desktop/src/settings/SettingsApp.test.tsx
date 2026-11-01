@@ -256,18 +256,34 @@ test("Window size shows a dragged size as Custom, applies once, and goes back on
   expect(screen.queryByRole("alert")).toBeNull();
 });
 
-test("a window size read that returns late cannot undo a newer choice", async () => {
+test("a window size read waits behind a queued choice and shows it", async () => {
   const { api } = fakeApi({ granted: true });
-  const first = deferred<WindowSize | null>();
-  vi.mocked(api.windowSize).mockReturnValueOnce(first.promise);
+  let current: WindowSize = "medium";
+  const save = deferred<null>();
+  vi.mocked(api.windowSize).mockImplementation(async () => current);
+  vi.mocked(api.setWindowSize).mockImplementationOnce(async (size) => { await save.promise; current = size; return null; });
   render(<SettingsApp api={api} initialPage="look" />);
   const large = await screen.findByRole("radio", { name: "Large" });
-  fireEvent.focus(window); fireEvent.blur(window); fireEvent.focus(window);
   await waitFor(() => expect(large).toHaveProperty("disabled", false));
   fireEvent.click(large);
+  fireEvent.blur(window); fireEvent.focus(window);
   await waitFor(() => expect(large).toHaveProperty("checked", true));
-  await act(async () => first.resolve("small"));
+  await act(async () => { save.resolve(null); });
+  await waitFor(() => expect(api.windowSize).toHaveBeenCalledTimes(2));
+  await act(async () => undefined);
   expect(large).toHaveProperty("checked", true);
+});
+
+test("when two quick choices fail, the size the app still has comes back", async () => {
+  const { api } = fakeApi({ granted: true });
+  vi.mocked(api.setWindowSize).mockRejectedValue(new Error("refused"));
+  render(<SettingsApp api={api} initialPage="look" />);
+  const large = await screen.findByRole("radio", { name: "Large" });
+  await waitFor(() => expect(large).toHaveProperty("disabled", false));
+  fireEvent.click(large);
+  fireEvent.click(screen.getByRole("radio", { name: "Small" }));
+  await waitFor(() => expect(screen.getByRole("radio", { name: "Medium" })).toHaveProperty("checked", true));
+  expect(await screen.findByRole("alert")).toHaveProperty("textContent", englishMessages.text("settings-choice-failed"));
 });
 
 test("a window size that cannot be read says so and offers no choice", async () => {

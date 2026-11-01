@@ -381,6 +381,7 @@ pub(crate) async fn set_picker_preferences<R: tauri::Runtime>(
             current.accepted_larger_text = revision;
         }
     }
+    let changes_menu_bar = intent.preferences.menu_bar.is_some();
     let settings_file = settings_file.inner().clone();
     // A change made in Settings reaches the picker; the picker's own are already shown.
     let from_elsewhere = window.label() != "main";
@@ -388,7 +389,9 @@ pub(crate) async fn set_picker_preferences<R: tauri::Runtime>(
     tauri::async_runtime::spawn_blocking(move || {
         let saved = settings_file.save_reserved_preferences(intent)?;
         let preferences = PickerPreferences::from_settings(&saved);
-        crate::tray::show_in_menu_bar(app.app_handle(), preferences.menu_bar);
+        if changes_menu_bar {
+            crate::tray::show_in_menu_bar(app.app_handle(), preferences.menu_bar, revision);
+        }
         let change = PreferenceChange { revision, preferences };
         crate::library::refresh_settings_notice(&app, &settings_file);
         if from_elsewhere {

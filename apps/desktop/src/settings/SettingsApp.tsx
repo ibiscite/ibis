@@ -60,6 +60,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   const [problemRow, setProblemRow] = useState<{ id: string; message: MessageId } | null>(null);
   const [windowSize, setWindowSize] = useState<WindowSize | null>(null);
   const windowSizes = useRef(0);
+  const windowSizeLine = useRef<Promise<unknown>>(Promise.resolve());
   const cause = useRef<string | null>(null);
   const edits = useRef(0);
   const live = useRef(true);
@@ -288,20 +289,26 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     const target = document.getElementById(highlighted === "open-shortcut" && page === "general" ? "general-open-shortcut" : highlighted)?.closest(".ui-settings-row");
     if (target) pageRef.current.scrollTop += target.getBoundingClientRect().top - pageRef.current.getBoundingClientRect().top;
   }, [highlighted, page, preferences]);
-  // Read when Look shows, so a size dragged while Settings waited appears as Custom.
+  // One line for reads and choices, so a read always answers after every
+  // choice before it. Look reads on showing: a dragged size appears as Custom.
+  const inOrder = useCallback(<T,>(action: () => Promise<T>) => {
+    const next = windowSizeLine.current.then(action);
+    windowSizeLine.current = next.catch(() => undefined);
+    return next;
+  }, []);
+  const readWindowSize = useCallback((request: number) => inOrder(() => api.windowSize()).then((size) => {
+    if (live.current && request === windowSizes.current) { setWindowSize(size); readProblem("window-size", size === null); }
+  }, () => { if (live.current && request === windowSizes.current) readProblem("window-size", true); }), [api, inOrder, readProblem]);
   useEffect(() => {
-    if (!focused || page !== "look") return;
-    const request = ++windowSizes.current;
-    void api.windowSize().then((size) => {
-      if (live.current && request === windowSizes.current) { setWindowSize(size); readProblem("window-size", size === null); }
-    }, () => { if (live.current && request === windowSizes.current) readProblem("window-size", true); });
-  }, [api, focused, page, readProblem]);
+    if (focused && page === "look") void readWindowSize(++windowSizes.current);
+  }, [focused, page, readWindowSize]);
   const chooseWindowSize = (size: WindowSize) => {
-    const request = ++windowSizes.current, previous = windowSize;
+    const request = ++windowSizes.current;
     setProblemRow(null); setWindowSize(size);
-    void queue.enqueue(() => api.setWindowSize(size)).catch(() => {
+    void inOrder(() => api.setWindowSize(size)).catch(() => {
       if (!live.current || request !== windowSizes.current) return;
-      setWindowSize(previous); setProblemRow({ id: "window-size", message: "settings-choice-failed" });
+      setProblemRow({ id: "window-size", message: "settings-choice-failed" });
+      void readWindowSize(request);
     });
   };
   const matches = query.trim() ? ROWS.filter((row) => (row.id !== "menu-bar" || platform === "macos") && [row.label, row.description, row.keywords].some((id) => id && text(id, { platform }).toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()))) : [];
