@@ -5,7 +5,7 @@
 .details-menu-heading { flex: none; padding-block: 6px var(--space-1); padding-inline: var(--menu-label-start) var(--menu-item-pad); font-size: var(--type-meta-size); line-height: var(--type-meta-line); }
 .details-menu-heading h2 { margin: 0; font: inherit; font-weight: var(--strong); overflow-wrap: anywhere; }
 .details-menu-scroll { min-height: 0; font-size: var(--type-meta-size); line-height: var(--type-meta-line); }
-.details-menu-scroll > :is(p, h3, section:not(.citation-details)) { margin-inline: var(--menu-label-start) var(--menu-item-pad); }
+.details-menu-scroll > :is(p, h3, section:not(.citation-details, .shelf-full-citation)) { margin-inline: var(--menu-label-start) var(--menu-item-pad); }
 .details-menu-scroll h3 { margin-block: var(--space-2); font: inherit; font-weight: var(--strong); }
 /* A row of the menu: the check column, the label, then its keys. */
 .details-menu-row.ui-button[data-variant] { justify-content: start; gap: var(--menu-item-gap); width: 100%; min-height: var(--menu-item-height); padding: 0 var(--menu-item-pad) 0 var(--menu-label-start); border: 0; border-radius: var(--menu-item-radius); color: var(--text); text-align: start; }
