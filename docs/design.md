@@ -1119,6 +1119,11 @@ surprises**, on by default; key feedback, haptics and tips are not part of it.
   appearances from `brand/`; the menu bar ibis lowers its head while a library
   reloads, its menu saying so; on the anniversary of 1.0 About reads "Ibis
   turns two today."
+- **Fourth round, small courtesies (proposed):** ⌥-clicking the menu bar ibis
+  adds one line to its menu ("3 libraries · 12,408 references · opened
+  today"); every Undo names its action ("Undo Remove Okafor & Lima, 2018") and
+  ⌘Z works while its notice shows; after Copy a Problem Report or Suggest an
+  Idea the row says "Thank you. It helps Ibis get better." for a few seconds.
 - **Left out:** confetti, sounds, seasonal themes, joke search results, a
   late-night greeting (it comments on when people work), a "what's new" screen, and choosing another app icon (changing a signed app's
   icon breaks its signature).
