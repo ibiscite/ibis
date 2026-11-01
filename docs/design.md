@@ -1082,6 +1082,11 @@ lives only in About, the welcome, status lines or feedback that already exists;
 never changes search results, what is copied or pasted, or focus; happens once,
 quietly, inside the motion cap; shows its end state under Reduce Motion; never
 loops or plays a sound; and is counted only on this Mac.
+Delights stay quiet and grown-up (maintainer, 2026-11-01): plain sentences,
+no exclamation marks, no emoji, no jokes about the person's work, never in the
+way of a task. Everything only for fun (facts, milestones, the night owl line,
+the birthday, blinks) sits behind one switch, Settings › General › **Small
+surprises**, on by default; key feedback, haptics and tips are not part of it.
 
 - **Feel:** a pressed shortcut gives its footer key cap the pressed fill for
   100 ms; the menu bar mark dips its beak once after a paste or copy; a haptic
