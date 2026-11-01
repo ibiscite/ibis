@@ -482,8 +482,8 @@ forced colours; it never resembles a partially completed download.
   pill. On the
   selected row an added tile is the paired text colour with a scarlet check
   [D9]. A kept-open picker without focus uses `--row-inactive-background`. Menu highlight: accent on macOS, a subtle fill on
-  Windows and GNOME. Selected picture choices tint the whole choice with
-  14% of the accent and ring the picture with a 2 px accent ring; the caption
+  Windows and GNOME. Selected picture choices ring the picture with a 2 px
+  accent ring 2 px outside it (principle 8), with no tint behind; the caption
   stays `--text`, semibold. This selection mark stays visible at rest. The separate keyboard focus ring draws farther
   inward, with a gap from the selection ring, only on keyboard focus. **Picture
   choices share their row** (maintainer, 2026-11-01): a group of picture
