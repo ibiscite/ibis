@@ -79,5 +79,5 @@ main:has(> .shelf) > footer { border-top-color: var(--clear); }
 .shelf-shared { flex: none; white-space: pre; }
 .shelf-punctuation { color: var(--muted); }
 .shelf-segment-button[data-focus-visible] .shelf-punctuation { color: inherit; }
-.shelf-full-citation { margin: var(--space-3) 0 0; padding: var(--space-2); border-radius: var(--r-mi); background: var(--fill-control); font-size: var(--type-citation-size); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
+.shelf-full-citation { margin: var(--space-3) calc(-1 * var(--space-2)) 0; padding: var(--space-2); border-radius: var(--r-mi); background: var(--fill-control); font-size: var(--type-citation-size); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
 
