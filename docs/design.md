@@ -421,6 +421,7 @@ How each user-visible item planned before 1.0 in ROADMAP.md fits the components 
 ## How the design changes
 
 - Change `tokens.css` or the shared component in `src/ui/`, never one screen; fix a visual bug in the rule or component that allowed it, with a regression test.
-- Regenerate the canvas from the app (`pnpm -C apps/desktop canvas`); a missing state gets a scenario in `apps/desktop/canvas/main.tsx`, never a hand-drawn copy.
+- The five parameters at the top of `tokens.css` (spacing unit, control radius, body text size, Ibis red light and dark) are the knobs. The canvas's Parameters board turns them live; `node apps/desktop/canvas/apply-params.mjs --radius=10px …` writes chosen values back (then `python3 brand/build.py` for the reds).
+- The canvas boards run the real app live (`pnpm -C apps/desktop build:canvas`, then upload `ibis-canvas.js` and `.css` and point `Screen.dc.html` at them); a missing state gets a scenario in `apps/desktop/canvas/main.tsx`, never a hand-drawn copy.
 - Record maintainer decisions in [decisions.md](decisions.md) and update the rule here in place, deleting the text it replaces.
 - Review this page against Apple's guidelines on each new macOS release.
