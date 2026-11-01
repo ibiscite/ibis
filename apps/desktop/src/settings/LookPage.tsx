@@ -1,5 +1,6 @@
 import type { Accent, Appearance, PickerPreferences, WindowSize } from "../bindings";
 import { useInterfaceMessages } from "../i18n";
+import { currentPlatform } from "../platform";
 import { PictureChoice } from "../ui/PictureChoice";
 import { Segmented } from "../ui/Segmented";
 import { SettingsGroup as Group, SettingsRow as Row } from "../ui/SettingsGroup";
@@ -20,6 +21,7 @@ export function LookPage({ preferences: p, change, feedback, windowSize, chooseW
   preferences: PickerPreferences; change: (patch: Partial<PickerPreferences>) => void; feedback: Feedback;
   windowSize: WindowSize | null; chooseWindowSize: (size: WindowSize) => void;
 }) {
+  const platform = currentPlatform();
   const { text } = useInterfaceMessages();
   const appearance = p.appearance ?? "system", accent = p.accent ?? "system";
   const sample = { density: p.density, icon: p.search_icon };
@@ -32,9 +34,9 @@ export function LookPage({ preferences: p, change, feedback, windowSize, chooseW
       </Row>
     </Group>
     <Group id="look-accent">
-      <Row id="accent" label={text("look-accent")} description={accent === "system" ? text("look-accent-multicolor") : text("look-accent-inside", { name: text(`look-accent-${accent}`) })} {...feedback("accent")}>
+      <Row id="accent" label={text("look-accent")} description={accent === "system" ? text("look-accent-multicolor", { platform }) : text("look-accent-inside", { name: text(`look-accent-${accent}`, { platform }) })} {...feedback("accent")}>
         <PictureChoice dots label={text("look-accent")} description="accent-description" value={accent}
-          options={ACCENTS.map((value) => ({ value, label: text(`look-accent-${value}`), picture: <span className="ui-accent-dot" data-accent={value} /> }))}
+          options={ACCENTS.map((value) => ({ value, label: text(`look-accent-${value}`, { platform }), picture: <span className="ui-accent-dot" data-accent={value} /> }))}
           onChange={(accent) => change({ accent })} />
       </Row>
     </Group>

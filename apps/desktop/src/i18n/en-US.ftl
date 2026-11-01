@@ -32,7 +32,12 @@ general-menu-bar-label = Show in Menu Bar
 general-menu-bar-description = If hidden, open Ibis from Applications to come back here
 general-paste-title = Pasting
 general-paste-label = Paste into the app you came from
-general-paste-description = Otherwise Ibis copies and you press ⌘V
+general-paste-key =
+    { $platform ->
+        [macos] ⌘V
+       *[other] Ctrl+V
+    }
+general-paste-description = Otherwise Ibis copies and you press { general-paste-key }
 # $list is the system's permission-list name, not an interface message code.
 general-paste-allowed = Allowed in Privacy & Security › { $list }
 general-paste-allowed-note = Ibis presses ⌘V once, only in the app you opened it from.
@@ -145,12 +150,20 @@ look-system = System
 look-light = Light
 look-dark = Dark
 look-accent = Accent
-look-accent-multicolor = Follow the Mac · blue when the Mac is on Multicolor
+look-accent-multicolor =
+    { $platform ->
+        [macos] Follow the Mac · blue when the Mac is on Multicolor
+       *[other] Follow the system's accent colour
+    }
 look-accent-inside = { $name } · for Ibis only
 look-density-compact = Title and authors on one line
 look-density-comfortable = Title, then authors and journal
 look-density-spacious = Adds the kind of reference
-look-accent-system = Follow the Mac
+look-accent-system =
+    { $platform ->
+        [macos] Follow the Mac
+       *[other] Follow the system
+    }
 look-accent-ibis = Ibis scarlet
 look-accent-blue = Blue
 look-accent-purple = Purple

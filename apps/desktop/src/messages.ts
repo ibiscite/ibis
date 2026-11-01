@@ -268,9 +268,10 @@ export const pickerText = {
   removeReference: (key: string) => `Remove ${key} from the selection`,
   /** When two chosen references from different libraries share a key. */
   removeReferenceIn: (key: string, library: string) => `Remove ${key} (${library}) from the selection`,
-  shortcutError: (registered: boolean, shortcut: string, reason: string) => registered
-    ? `Your shortcut setting was not used: ${reason}.`
-    : `The shortcut ${shortcut} is not available: ${reason}.`,
+  shortcutError: (registered: boolean, shortcut: string, reason: string) => {
+    const ended = /[.!?]$/.test(reason) ? reason : `${reason}.`;
+    return registered ? `Your shortcut setting was not used: ${ended}` : `The shortcut ${shortcut} is not available: ${ended}`;
+  },
 } as const;
 
 /** The keys overlay and the footer's key hints; see keys.ts for the bindings. */
