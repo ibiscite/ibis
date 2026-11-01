@@ -36,7 +36,7 @@ impl OfferUi for tauri::test::MockRuntime {
         }
     }
 
-    fn show_picker(app: &AppHandle<Self>) {
+    fn reveal_picker(app: &AppHandle<Self>) {
         let picker = app.state::<NativePicker>();
         picker.shows.fetch_add(1, Ordering::SeqCst);
         picker.visible.store(true, Ordering::SeqCst);

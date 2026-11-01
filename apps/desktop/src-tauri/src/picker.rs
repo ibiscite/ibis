@@ -137,6 +137,23 @@ pub(crate) fn configured_shortcut_with(
     }
 }
 
+/// Make sure the picker is on screen for a native dialog or notice it owns. A
+/// hidden picker is shown as a new presentation; a visible one keeps its own,
+/// with the search, selection and library chooser the person is using.
+pub(crate) fn reveal_picker(app: &AppHandle) {
+    let visible = app
+        .get_webview_window("main")
+        .and_then(|window| checked(window.is_visible(), NativeIssue::Visibility));
+    if reveal_shows(visible) {
+        show_picker(app);
+    }
+}
+
+/// Only a picker known to be visible keeps its presentation.
+fn reveal_shows(visible: Option<bool>) -> bool {
+    visible != Some(true)
+}
+
 /// Show the picker on the display with the pointer, focused, and tell the interface to focus the search box.
 pub(crate) fn show_picker(app: &AppHandle) {
     crate::updater::picker_activity(app);
@@ -699,6 +716,16 @@ fn finish_blur(app: &AppHandle, blur: u64, generation: u64) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn revealing_a_visible_picker_keeps_its_presentation() {
+        // A new presentation would start a new picker session, so the open
+        // library chooser could no longer close itself after its selection.
+        assert!(!reveal_shows(Some(true)));
+        assert!(reveal_shows(Some(false)));
+        // Unknown visibility shows: a dialog must never open without its picker.
+        assert!(reveal_shows(None));
+    }
 
     #[derive(Default)]
     struct HideUi {

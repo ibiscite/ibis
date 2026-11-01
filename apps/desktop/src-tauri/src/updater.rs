@@ -508,7 +508,7 @@ fn present_installation_failure(app: &AppHandle, show: bool) {
             if show {
                 // The lease also covers showing the parent; its actual-show
                 // hook sees the owner and cannot recursively present a sheet.
-                crate::picker::show_picker(&handle);
+                crate::picker::reveal_picker(&handle);
             }
             if crate::diagnostics::checked(window.is_visible(), NativeIssue::Visibility) != Some(true) {
                 return;

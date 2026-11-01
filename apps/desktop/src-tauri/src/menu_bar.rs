@@ -130,7 +130,7 @@ define_class!(
             let accepted = dropped.is_some();
             if let Some((path, app)) = dropped {
                 start_open(app, Source::File(path), true);
-                crate::picker::show_picker(app);
+                crate::picker::reveal_picker(app);
             }
             accepted
         }

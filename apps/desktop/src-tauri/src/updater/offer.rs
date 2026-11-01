@@ -87,7 +87,7 @@ pub(crate) fn menu_label(available: bool) -> &'static str {
 pub(super) trait OfferUi: tauri::Runtime {
     fn visible(parent: &tauri::WebviewWindow<Self>) -> bool;
     fn focused(parent: &tauri::WebviewWindow<Self>) -> bool;
-    fn show_picker(app: &AppHandle<Self>);
+    fn reveal_picker(app: &AppHandle<Self>);
     fn refresh(app: &AppHandle<Self>);
     fn availability_changed(app: &AppHandle<Self>, available: bool);
     fn tell(app: &AppHandle<Self>, text: &str);
@@ -112,8 +112,8 @@ impl OfferUi for tauri::Wry {
         crate::picker::focused_for_shortcut(parent) == Some(true)
     }
 
-    fn show_picker(app: &AppHandle<Self>) {
-        crate::picker::show_picker(app);
+    fn reveal_picker(app: &AppHandle<Self>) {
+        crate::picker::reveal_picker(app);
     }
 
     fn refresh(app: &AppHandle<Self>) {
@@ -247,7 +247,7 @@ fn present<R: OfferUi>(app: &AppHandle<R>, candidate: Candidate, asked: bool, bu
             if asked {
                 // Explicit tray/More commands may open their parent. The check and
                 // dialog leases prevent show/focus callbacks from starting a retry.
-                R::show_picker(&handle);
+                R::reveal_picker(&handle);
             }
             publish_available(&handle, false);
             // The dialog belongs to this presentation; a newer one is never hidden.
