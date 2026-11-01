@@ -57,6 +57,7 @@
   --shadow-dialog: 0 24px 48px rgb(0 0 0 / 22%);
   --shadow-toast: 0 8px 16px rgb(0 0 0 / 18%);
   --shadow-badge: 0 0 0 .5px color-mix(in srgb, var(--text) 28%, transparent), 0 1px 2px rgb(0 0 0 / 18%);
+  --shadow-segment: 0 0 0 .5px rgb(0 0 0 / 10%), 0 1px 2px rgb(0 0 0 / 12%);
   --shadow-thumb: 0 0 0 .5px rgb(0 0 0 / 12%), 0 1px 2px rgb(0 0 0 / 22%);
   --thumb: var(--white);
   --blur: none;
@@ -96,7 +97,7 @@
 
   /* Settings: a grouped form beside a sidebar. */
   --surface-grouped: var(--fill-4);
-  --titlebar-height: 3.25rem;
+  --titlebar-height: 2.75rem;
   --sidebar-width: min(12.5rem, 26%);
   --page-general: #8e8e93; --page-look: #ff9f0a; --page-citations: #0a84ff; --page-shortcuts: #5e5ce6;
   --highlight: var(--accent-wash);
@@ -177,7 +178,7 @@
 /* Increase Contrast and forced colours: system colours, solid edges, no depth. */
 @media (prefers-contrast: more), (forced-colors: active) {
   :root, :root[data-platform] {
-    --shadow-card: none; --shadow-overlay: none; --shadow-dialog: none; --shadow-toast: none; --shadow-thumb: none; --shadow-badge: none;
+    --shadow-card: none; --shadow-overlay: none; --shadow-dialog: none; --shadow-toast: none; --shadow-thumb: none; --shadow-segment: none; --shadow-badge: none;
     --surface: Canvas; --raised: Canvas; --surface-overlay: Canvas; --sheet: Canvas; --surface-grouped: Canvas;
     --text: CanvasText; --text-secondary: CanvasText; --text-tertiary: CanvasText; --separator: CanvasText; --stroke-field: CanvasText;
     --selected: Highlight; --selected-text: HighlightText; --selected-text-secondary: currentColor;

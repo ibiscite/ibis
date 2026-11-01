@@ -6,10 +6,10 @@ import path from "node:path";
 const { chromium } = await import(process.env.IBIS_PLAYWRIGHT_MODULE);
 const dist = process.argv[2], out = process.argv[3];
 const browser = await chromium.launch({ headless: true });
-const size = (scenario) => scenario === "settings-look" ? { width: 920, height: 1400 }
+const size = (scenario) => scenario === "settings-look" ? { width: 920, height: 1320 }
   : scenario === "tokens" ? { width: 920, height: 1000 }
-  : scenario === "settings-shortcuts" ? { width: 920, height: 960 }
-  : scenario.startsWith("settings-") || scenario === "states" ? { width: 920, height: 640 } : { width: 720, height: 480 };
+  : scenario === "settings-shortcuts" ? { width: 920, height: 900 }
+  : scenario.startsWith("settings-") || scenario === "states" ? { width: 920, height: 560 } : { width: 720, height: 480 };
 const load = async (viewport) => {
   const page = await browser.newPage({ viewport, deviceScaleFactor: 2 });
   await page.route("**/*", async (route) => {

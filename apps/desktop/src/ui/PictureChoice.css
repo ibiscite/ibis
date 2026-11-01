@@ -2,8 +2,8 @@
    ring outside the picture marks the choice. */
 .ui-picture-choices { display: grid; grid-template-columns: repeat(var(--choice-columns), minmax(0, 1fr)); align-items: stretch; gap: var(--space-2); width: 100%; min-width: 0; }
 .ui-picture-choice {
-  display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 6px; min-width: 0; max-width: 100%; box-sizing: border-box;
-  border-radius: var(--r-card); color: var(--text-secondary); background: transparent; outline: none;
+  display: flex; flex-direction: column; align-items: center; gap: var(--space-2); padding: var(--space-1); min-width: 0; max-width: 100%; box-sizing: border-box;
+  border-radius: var(--r-floor); color: var(--text-secondary); background: transparent; outline: none;
   font-size: var(--type-label-size); line-height: var(--type-label-line); text-align: center; overflow-wrap: anywhere;
 }
 .ui-picture-choice { justify-content: end; }
@@ -19,6 +19,9 @@
 .ui-picture-choice-note { color: var(--text-secondary); font-weight: 400; }
 .ui-picture-choices[data-dots] { display: flex; flex-wrap: wrap; align-items: center; width: auto; gap: 10px; }
 .ui-picture-choices[data-dots] .ui-picture-choice { padding: 0; border-radius: var(--r-full); background: transparent; }
+/* The Mac's own row, then a divider and Ibis scarlet, the one extra. */
+.ui-picture-choices[data-dots] .ui-picture-choice:has([data-accent="ibis"]) { position: relative; margin-inline-start: var(--space-1); }
+.ui-picture-choices[data-dots] .ui-picture-choice:has([data-accent="ibis"])::before { content: ""; position: absolute; inset-block: 0; inset-inline-start: calc(-1 * var(--space-2)); width: var(--border-width); background: var(--separator); }
 .ui-size-picture { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-1); box-sizing: border-box; flex: none; border-radius: var(--space-1); background: var(--surface); box-shadow: 0 0 0 1px var(--fill-control-pressed); }
 .ui-size-picture b { display: block; height: var(--space-1); border-radius: var(--row-spacing); background: var(--fill-control-hover); }
 .ui-size-picture b[data-query] { height: 6px; background: var(--fill-control-pressed); }
