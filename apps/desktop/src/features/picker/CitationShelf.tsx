@@ -38,7 +38,7 @@ function Beak({ closing = false }: { closing?: boolean }) {
 
 /** One line of exact engine output. All editing stays in an anchored menu;
  * a folded citation retains its full text and every reference's identity. */
-export function CitationShelf({ announce, selected, highlightedReference, highlightedReferences, onChangeReference, removeLabel, onRemove, referenceLibrary, style, keys, shown, previewReceipt, outputWarnings, problem, focusable, fallbackFocusRef, presentation, present = false, copied: copiedReceipt }: {
+export function CitationShelf({ announce, selected, highlightedReference, highlightedReferences, onChangeReference, removeLabel, onRemove, referenceLibrary, style, keys, shown, previewReceipt, outputWarnings, problem, focusable, fallbackFocusRef, presentation, present = false, copied: copiedReceipt , searching = false }: {
   presentation?: number;
   present?: boolean;
   announce: boolean;
@@ -59,6 +59,8 @@ export function CitationShelf({ announce, selected, highlightedReference, highli
   fallbackFocusRef?: RefObject<HTMLElement | null>;
   /** The receipt belongs to this interaction, never to an older preview. */
   copied?: ShelfCopied | null;
+  /** A search is running, so an empty highlight is only a gap between results. */
+  searching?: boolean;
 }) {
   const copied = copiedReceipt && shown && typeof shown === "object" && shown.text === copiedReceipt.text ? copiedReceipt : null;
   const preserveFocus = useCallback((node: HTMLElement | null) => {
@@ -138,17 +140,20 @@ export function CitationShelf({ announce, selected, highlightedReference, highli
   const meaning = choiceKey(references);
   const pendingOwner = useMemo(() => ({ meaning, style, keys, presentation }), [meaning, style, keys, presentation]);
   const [expired, setExpired] = useState<object | null>(null);
+  // A running search clears the highlighted row until results return. Hold
+  // the last citation through that gap, so typing never blinks the shelf.
+  const waiting = shown === null || shown === undefined && searching && !output.current?.contains(document.activeElement);
   useEffect(() => {
-    if (shown !== null) { setExpired(null); return; }
+    if (!waiting) { setExpired(null); return; }
     const timer = window.setTimeout(() => setExpired(pendingOwner), 300);
     return () => window.clearTimeout(timer);
-  }, [shown, pendingOwner]);
-  const previous = shown === null && expired !== pendingOwner && retained.current?.presentation === presentation ? retained.current?.value ?? null : null;
+  }, [waiting, pendingOwner]);
+  const previous = waiting && expired !== pendingOwner && retained.current?.presentation === presentation ? retained.current?.value ?? null : null;
   const retainedSegments = Boolean(previous && retained.current?.ids === referenceIds);
   const visible = ready ?? (retainedSegments ? previous : null);
   const text = visible?.text;
   const single = references.length === 1 ? references[0] : undefined;
-  const hasShelf = present || copied || references.length || shown !== undefined;
+  const hasShelf = present || copied || references.length || shown !== undefined || previous;
   const fullCitation = ready && <section aria-label="Full citation" className="shelf-full-citation" tabIndex={0}><bdi dir="auto">{ready.markup.length ? render(ready.markup) : ready.text}</bdi></section>;
   const detailsTitle = panel?.kind === "warnings" ? pickerText.citationWarnings : panel?.kind === "references" ? pickerText.selectedReferences : edited
     ? citationDetailsText.details(edited.title || edited.key) : pickerText.citationDetails;
@@ -207,7 +212,7 @@ export function CitationShelf({ announce, selected, highlightedReference, highli
           {text !== undefined ? singleSegment ? null : manySegments ? <span className="shelf-fragments" dir={keys ? "ltr" : "auto"} title={text}>{manySegments}</span> : <bdi id={citationId} dir="auto" className="preview-text" title={text}>
             {ready?.markup.length && !keys ? render(ready.markup) : keyText(text)}
           </bdi> : shown === "failed" ? <><span className="shelf-state-icon" data-state="failed" aria-hidden="true">!</span><p title={fullProblem}>{fullProblem}</p></> : shown === "stale" ? <><span className="shelf-state-icon" data-state="stale" aria-hidden="true">!</span><p role="status">{pickerText.shelfStale}</p></>
-            : shown === undefined && manySegments ? <span className="shelf-fragments">{manySegments}</span> : shown === null && !previous ? <p role="status">{pickerText.previewPending}</p> : null}
+            : shown === undefined && !previous && manySegments ? <span className="shelf-fragments">{manySegments}</span> : shown === null && !previous ? <p role="status">{pickerText.previewPending}</p> : null}
           {copied && <Beak closing />}
         </div>
         <div className="shelf-actions">
