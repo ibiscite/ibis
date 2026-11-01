@@ -117,6 +117,6 @@ export function LibraryStatusLine({ library, groupName, menu, action, failure }:
 }
 
 /** The library detail at the top of More: a short line, then a quieter one. */
-export function LibraryDetail({ lines }: { lines: [string, string | null] }) {
-  return <MenuDetail title={lines[0]} detail={lines[1]} />;
+export function LibraryDetail({ lines, problem }: { lines: [string, string | null]; problem?: string }) {
+  return <MenuDetail title={lines[0]} detail={problem ? [lines[1], problem].filter(Boolean).join(" ") : lines[1]} />;
 }

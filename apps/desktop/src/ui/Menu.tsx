@@ -62,7 +62,7 @@ export function useMenuBoundary(open: boolean, returnRef?: RefObject<HTMLElement
         let minimum = 0;
         if (overlay && scroll && box && port && box.height > 0) {
           const style = getComputedStyle(overlay);
-          const control = scroll.querySelector<HTMLElement>('input, button, [tabindex="0"]') ?? overlay.querySelector<HTMLElement>("button");
+          const control = scroll.querySelector<HTMLElement>('input:not([type="radio"]), button, [tabindex="0"]') ?? overlay.querySelector<HTMLElement>("button");
           const row = control?.getBoundingClientRect().height ?? 0;
           minimum = Math.max(0, port.top - box.top) + (parseFloat(style.paddingBottom) || 0) + (parseFloat(style.borderBottomWidth) || 0) + Math.min(scroll.scrollHeight, row);
         }
@@ -223,7 +223,7 @@ type ItemProps = {
   onAction: () => void;
 };
 
-/** A drawn check, so it adds no text to the row; Menu.css places it per platform. */
+/** A drawn check, so it adds no text to the row; Menu.css gives it the icon column. */
 export function MenuCheck({ checked }: { checked: boolean }) {
   return <span className="menu-check" aria-hidden="true">
     {checked && <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="m2.5 6.5 2.5 2.5 4.5-6" /></svg>}
@@ -243,8 +243,7 @@ export function MenuItem({ id, label, title, keys, checked, disabled, closeOnSel
     }}
     render={(props) => <MenuRow {...props as ComponentPropsWithRef<"div">} itemId={id} title={title} aria-disabled={disabled || undefined} />}>
     {({ isSelected }) => <>
-      {checked !== undefined && <MenuCheck checked={isSelected} />}
-      {icon}
+      {checked !== undefined ? <MenuCheck checked={isSelected} /> : icon && <span className="menu-check" aria-hidden="true">{icon}</span>}
       <bdi className="menu-label" dir="auto">{label}</bdi>
       {example && <Text slot="description" className="menu-example"><bdi dir="auto">{example}</bdi></Text>}
       {keys && <span className="menu-keys" aria-hidden="true"><bdi dir="ltr">{keys}</bdi></span>}
@@ -257,10 +256,10 @@ export function MenuItem({ id, label, title, keys, checked, disabled, closeOnSel
  * checked keys come from the items themselves. `header` is a visual line
  * above the items that names the group when no `label` is given.
  */
-export function MenuSection({ id, label, header, children, layout, selectionMode = "multiple" }: { id: string; label?: string; header?: ReactNode; children: ReactNode; layout?: "chips"; selectionMode?: "single" | "multiple" }) {
+export function MenuSection({ id, label, header, children, layout, selectionMode = "multiple" }: { id: string; label?: string; header?: ReactNode; children: ReactNode; layout?: "list"; selectionMode?: "single" | "multiple" }) {
   const items = Children.toArray(children).filter(isValidElement) as ReactElement<ItemProps>[];
   const checkable = items.some((item) => item.props.checked !== undefined);
-  return <AriaMenuSection id={id} aria-label={label} className={`menu-section${layout === "chips" ? " menu-section-chips" : ""}`}
+  return <AriaMenuSection id={id} aria-label={label} className={`menu-section${layout === "list" ? " menu-section-list" : ""}`}
     selectionMode={checkable ? selectionMode : undefined}
     selectedKeys={checkable ? items.filter((item) => item.props.checked).map((item) => item.props.id) : undefined}>
     {header && <Header className="menu-header">{label && <span className="visually-hidden">{label}</span>}<div aria-hidden="true">{header}</div></Header>}

@@ -3,7 +3,7 @@ import type { Platform } from "./platform";
 
 export const citationDetailsText = {
   page: "Page",
-  pageExample: "12–15",
+  pageNone: "None",
   pageHint: "A page or range",
   form: "Citation form",
   forms: [
@@ -229,18 +229,18 @@ export const pickerText = {
   closestMatchWarning: (title: string) => `“${title}” is a closest match: only some search words matched.`,
   noMatches: "No matching references",
   noMatchesHint: "Try a surname, year or fewer words.",
-  clearSearch: "Clear search",
-  searchAllLibraries: "Search all Zotero libraries",
+  clearSearch: "Clear Search",
+  searchAllLibraries: "Search All Zotero Libraries",
   typeToFind: "Type to find a reference",
   typeToFindHint: "Search by title, author, year, citation key or DOI.",
   matchedIn: (field: string) => `Matched in ${matchFieldNames[field] ?? field}`,
   more: "More",
   keepOpen: "Keep Window Open",
-  keepOpenMenu: "Keep window open",
+  keepOpenMenu: "Keep Window Open",
   stopKeepingOpen: "Stop keeping open",
-  showPastePreview: "Show what will be pasted",
+  showPastePreview: "Show What Will Be Pasted",
   moreTitle: (keys: string) => `More actions (${keys})`,
-  chooseLibrary: "Choose library…",
+  chooseLibrary: "Choose Library…",
   chooseTitle: "Choose a library",
   useZotero: "Use Zotero",
   useZoteroTitle: "Read your Zotero library, open or closed",
@@ -248,7 +248,7 @@ export const pickerText = {
   pickerActions: "Picker actions",
   libraryStatus: "Library status",
   reload: "Reload",
-  reloadTitle: "Reload library",
+  reloadTitle: "Reload Library",
   reloadLibrary: "Reload Library",
   chooseLibraryMenu: "Choose Library…",
   copyAs: "Copy as",
@@ -264,6 +264,8 @@ export const pickerText = {
   viewChanges: "View changes",
   largerText: "Larger text",
   zoteroLibraries: "Zotero libraries",
+  searchIn: "Search in",
+  allLibraries: "All Libraries",
   myLibrary: "My Library",
   groupLibrary: (id: number) => `Group ${id}`,
   keepOneLibrary: "Keep at least one Zotero library on.",
@@ -279,7 +281,7 @@ export const pickerText = {
 
 /** The keys overlay and the footer's key hints; see keys.ts for the bindings. */
 export const keyText = {
-  title: "Keyboard shortcuts",
+  title: "Keyboard Shortcuts",
   close: "Close",
   keyColumn: "Keys",
   actionColumn: "Action",
@@ -318,9 +320,9 @@ export const keyText = {
   copySeveralAs: (count: number, format: string) => `Copy ${count} as ${format}`,
   copyEntries: (count: number, style: string) => (count === 1 ? `Copy ${style} entry` : `Copy ${count} ${style} entries`),
   addToCitation: "Add to citation",
-  removeFromCitation: "Remove from citation",
+  removeFromCitation: "Remove from Citation",
   closeMenu: "Close menu",
-  clearSearch: "Clear search",
+  clearSearch: "Clear Search",
   hide: "Hide Ibis",
 } as const;
 

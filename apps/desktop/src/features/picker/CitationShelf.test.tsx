@@ -99,7 +99,7 @@ test.each(["click", "Enter", " "])("a single reference is the whole citation seg
   const year = within(menu).getByRole("radio", { name: "Year only" });
   expect(year.matches(":disabled, [aria-disabled=true]")).toBe(true);
   expect(document.getElementById(year.getAttribute("aria-describedby")!)?.textContent).toBe("Preparing examples…");
-  expect(within(menu).getByRole("button", { name: /Remove from citation/ })).toBeTruthy();
+  expect(within(menu).getByRole("button", { name: /Remove from Citation/ })).toBeTruthy();
   fireEvent.keyDown(document.activeElement!, { key: "Escape" });
   await act(async () => { await new Promise(requestAnimationFrame); });
   expect(screen.queryByRole("dialog")).toBeNull();
@@ -198,7 +198,7 @@ test.each(["Backspace", "Delete", "menu", "badge"])("%s removes exactly once; re
   const segment = screen.getByRole("button", { name: "Edit García 2021" });
   if (method === "menu") {
     fireEvent.click(segment);
-    fireEvent.click(screen.getByRole("button", { name: /Remove from citation/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Remove from Citation/ }));
   } else if (method === "badge") fireEvent.click(screen.getByRole("button", { name: "Remove a" }));
   else press(segment, method);
   expect(remove).toHaveBeenCalledExactlyOnceWith(reference);

@@ -19,7 +19,7 @@ const website = strip(readFileSync(new FileURL("../../../website/style.css", imp
 const all = parts.map((name) => [name, strip(read(name))] as const);
 const local = new Set([...all, ["website", website] as const].flatMap(([, css]) => [...css.matchAll(/(--[a-z0-9-]+)\s*:/g)].map((match) => match[1]!)));
 // Set from script at run time: the native accent and how far a list can scroll.
-const fromScript = /^--(native-accent|scroll-fade-)/;
+const fromScript = /^--(native-accent|scroll-fade-|choice-columns)/;
 // These two state each system's own materials, so they hold values as tokens.css does.
 const values = new Set(["nativeAppearance.css", "nativeAccent.css"]);
 
@@ -32,7 +32,7 @@ test("every token a stylesheet reads is defined", () => {
 test("every token is read by something", () => {
   const scripts = readdirSync(root, { recursive: true }).filter((name) => name.endsWith(".tsx")).map(read);
   const used = [tokens, website, ...all.map(([, css]) => css), ...scripts].join("");
-  expect([...defined].filter((token) => !token.startsWith("--website-") && !used.includes(`var(${token}`))).toEqual([]);
+  expect([...defined].filter((token) => !token.startsWith("--website-") && token !== "--fill-5" && !used.includes(`var(${token}`))).toEqual([]);
 });
 
 test("parts take colours, corners and type from tokens", () => {
@@ -43,9 +43,78 @@ test("parts take colours, corners and type from tokens", () => {
   expect(raw).toEqual([]);
 });
 
+type MotionRule = { name: string; selector: string; style: CSSStyleDeclaration; reduced: boolean };
+function motionGaps(sheets: readonly (readonly [string, string])[]) {
+  const rules: MotionRule[] = [];
+  for (const [name, css] of sheets) {
+    const sheet = document.createElement("style");
+    sheet.textContent = css;
+    document.head.append(sheet);
+    const walk = (children: CSSRuleList, reduced = false) => {
+      for (const rule of children) {
+        if (rule.type === CSSRule.STYLE_RULE) {
+          const { selectorText, style } = rule as CSSStyleRule;
+          for (const selector of selectorText.split(",")) rules.push({ name, selector: selector.trim(), style, reduced });
+        } else if (rule.type !== CSSRule.KEYFRAMES_RULE && "cssRules" in rule) {
+          const group = rule as CSSMediaRule;
+          // Rules restricted to no-preference cannot run with Reduce Motion.
+          if (/prefers-reduced-motion:\s*no-preference/.test(group.conditionText ?? "")) continue;
+          walk(group.cssRules, reduced || /prefers-reduced-motion:\s*reduce\b/.test(group.conditionText ?? ""));
+        }
+      }
+    };
+    try { walk(sheet.sheet!.cssRules); } finally { sheet.remove(); }
+  }
+  const reducedTokens = new Set(rules.filter((rule) => rule.reduced && rule.selector === ":root")
+    .flatMap(({ style }) => Array.from(style).filter((property) => property.startsWith("--"))));
+  return rules.flatMap((rule, index) => rule.reduced ? [] : ["animation", "transition"].flatMap((family) => {
+    const declarations = Array.from(rule.style).filter((property) =>
+      property === family || new RegExp(`^${family}-(name|property|duration|delay|iteration-count)$`).test(property));
+    if (!declarations.some((property) => !/^(none|0|0s|initial|unset|revert)$/.test(rule.style.getPropertyValue(property)))) return [];
+    const direct = rules.slice(index + 1).some((answer) => answer.reduced && answer.name === rule.name && answer.selector === rule.selector
+      && Array.from(answer.style).some((property) => property === family || property === `${family}-duration` || property === `${family}-name` || property === `${family}-property`));
+    const token = declarations.some((property) => [...rule.style.getPropertyValue(property).matchAll(/var\((--[\w-]+)/g)]
+      .some((match) => reducedTokens.has(match[1]!)));
+    return direct || token ? [] : [`${rule.name}: ${rule.selector}: ${family}`];
+  }));
+}
+
+test("every motion rule has a reduced-motion answer, including nested rules and stylesheets", () => {
+  expect(motionGaps(names.map((name) => [name, strip(read(name))] as const))).toEqual([]);
+});
+
+test("motion lint rejects missing, unrelated and overridden answers inside nested groups", () => {
+  const motion = "@supports (display: grid) { @media (min-width: 1px) { .fixture { transition: transform 200ms; } } }";
+  const answer = "@media (prefers-reduced-motion: reduce) { .fixture { transition: none; } }";
+  const gaps = ["nested/fixture.css: .fixture: transition"];
+  expect(motionGaps([["nested/fixture.css", motion]])).toEqual(gaps);
+  expect(motionGaps([["nested/fixture.css", motion + answer.replace(".fixture", ".unrelated")]])).toEqual(gaps);
+  expect(motionGaps([["nested/fixture.css", answer + motion]])).toEqual(gaps);
+  expect(motionGaps([["nested/fixture.css", motion + answer]])).toEqual([]);
+});
+
+test("spinner, switch and key-cap geometry each have one shared owner", () => {
+  for (const [selector, owner] of [[".source-spinner", "ui/SourceAction.css"], [".ui-switch-track", "ui/Switch.css"], ["kbd", "ui/KeyCaps.css"]]) {
+    const owners = all.filter(([, css]) => [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+      .some(([, head, body]) => (head!.trim() === selector || head!.trim().endsWith(` ${selector}`)) && /(?:min-width|width|height):/.test(body!)))
+      .map(([name]) => name);
+    expect(owners, selector).toEqual([owner]);
+  }
+  expect(read("ui/SourceAction.css")).toContain("width: var(--icon-small); height: var(--icon-small)");
+  expect(tokens).toContain("--icon-small: 1rem");
+});
+
+test("keyboard-focused choices suppress the global outline and keep their fill", () => {
+  const choice = read("ui/ChoiceList.css");
+  // The extra state selector outranks the global :focus-visible rule even
+  // when the application stylesheet is loaded after this shared part.
+  expect(choice).toMatch(/\.choice-screen \.choice-row\[data-focus-visible\] \{[^}]*outline: none;[^}]*box-shadow: none;/);
+  expect(choice).toMatch(/\.choice-row\[data-focused\] \{ background: var\(--selected\); color: var\(--selected-text\);/);
+});
+
 test("a one-sided edge never marks state", () => {
   const edges = all.flatMap(([name, css]) => css.split("\n")
-    .filter((line) => /border-(inline|block)-(start|end):[^;]*solid/.test(line) && !/separator|--line|--stroke|transparent/.test(line))
+    .filter((line) => /border-(inline|block)-(start|end):[^;]*solid/.test(line) && !/separator|--separator|--stroke-field|transparent/.test(line))
     .map((line) => `${name}: ${line.trim().slice(0, 90)}`));
   expect(edges).toEqual([]);
 });
@@ -59,15 +128,53 @@ const contrast = (a: string, b: string) => {
   const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
   return (hi! + .05) / (lo! + .05);
 };
+/** A role's light and dark colours; translucent text is flattened onto the window surface. */
+const surfaces = ["#ffffff", "#1e1e1e"] as const;
+const flatten = (value: string, mode: number) => {
+  const rgb = value.match(/rgb\((\d+) (\d+) (\d+) \/ ([\d.]+)%\)/);
+  if (!rgb) return value;
+  const alpha = Number(rgb[4]) / 100, under = surfaces[mode]!;
+  return `#${[1, 2, 3].map((i) => Math.round(Number(rgb[i]) * alpha + Number.parseInt(under.slice(2 * i - 1, 2 * i + 1), 16) * (1 - alpha)).toString(16).padStart(2, "0")).join("")}`;
+};
 const pair = (token: string) => {
-  const match = tokens.match(new RegExp(`${token}: light-dark\\((#[0-9a-f]{6}), (#[0-9a-f]{6})\\)`));
+  const match = tokens.match(new RegExp(`${token}: light-dark\\((#[0-9a-f]{6}|rgb\\([^)]*\\)), (#[0-9a-f]{6}|rgb\\([^)]*\\))\\)`));
   expect(match, token).toBeTruthy();
-  return [match![1]!, match![2]!] as const;
+  return [flatten(match![1]!, 0), flatten(match![2]!, 1)] as const;
 };
 
-test.each([["--text", 4.5], ["--muted", 4.5], ["--tertiary", 3], ["--scarlet", 3], ["--done", 3], ["--look", 3], ["--stop", 3]] as const)(
+test.each([["--text", 4.5], ["--text-secondary", 4.5], ["--text-tertiary", 3], ["--scarlet", 3], ["--done", 3], ["--look", 3], ["--stop", 3]] as const)(
   "%s keeps %s:1 on the surface in light and dark", (token, ratio) => {
     const surface = pair("--surface"), value = pair(token);
     expect(contrast(value[0], surface[0])).toBeGreaterThanOrEqual(ratio);
     expect(contrast(value[1], surface[1])).toBeGreaterThanOrEqual(ratio);
   });
+
+const colour = "(#[0-9a-f]{3,6})";
+const roles = [...tokens.matchAll(new RegExp(`:root\\[data-accent="([a-z]+)"\\] \\{ --ac: (?:light-dark\\()?${colour}(?:, ${colour}\\))?; --ac-selected: light-dark\\(${colour}, ${colour}\\); --ac-text: light-dark\\(${colour}, ${colour}\\);( --ac-on: light-dark\\(${colour}, ${colour}\\);)? \\}`, "g"))];
+const white = "#ffffff";
+const full = (hex: string) => hex.length === 4 ? `#${hex[1]}${hex[1]}${hex[2]}${hex[2]}${hex[3]}${hex[3]}` : hex;
+
+test("all nine accents have their three roles", () => expect(roles.map((role) => role[1])).toHaveLength(9));
+
+test.each(roles.map((role) => [role[1]!, role] as const))("%s keeps its roles readable in both modes", (_, role) => {
+  [0, 1].forEach((mode) => {
+    const accent = role[2 + mode] ?? role[2]!, selected = role[4 + mode]!, text = role[6 + mode]!;
+    const on = role[9 + mode] ? full(role[9 + mode]!) : white;
+    expect(contrast(on, selected), `selection text, mode ${mode}`).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(text, surfaces[mode]!), `accent text, mode ${mode}`).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(accent, surfaces[mode]!), `accent as a control, mode ${mode}`).toBeGreaterThanOrEqual(3);
+  });
+});
+
+test("the ladders hold the values measured from AppKit on macOS 27.2", () => {
+  for (const value of ["--text: light-dark(rgb(0 0 0 / 84.7%), rgb(255 255 255 / 84.7%))", "--text-secondary: light-dark(rgb(0 0 0 / 56%), rgb(255 255 255 / 54.9%))",
+    "--text-tertiary: light-dark(rgb(0 0 0 / 45%), rgb(255 255 255 / 38%))", "--text-disabled: light-dark(rgb(0 0 0 / 24.7%), rgb(255 255 255 / 24.7%))",
+    "--fill-1: light-dark(rgb(0 0 0 / 9.8%), rgb(255 255 255 / 9.8%))", "--fill-4: light-dark(rgb(0 0 0 / 2.7%), rgb(255 255 255 / 2.7%))",
+    "--separator: light-dark(rgb(0 0 0 / 10%), rgb(255 255 255 / 12%))", "--surface: light-dark(#ffffff, #1e1e1e)", "--selected: light-dark(#0064e1, #0059d1)"]) expect(tokens).toContain(value);
+});
+
+test("menus and buttons use title case, as the Mac does", () => {
+  const messages = read("messages.ts");
+  for (const label of ["Clear Search", "Keep Window Open", "Show What Will Be Pasted", "Keyboard Shortcuts", "Remove from Citation", "Search All Zotero Libraries", "Choose Library…", "Reload Library"]) expect(messages).toContain(`"${label}"`);
+  for (const label of ["Clear search", "Keep window open", "Keyboard shortcuts", "Remove from citation", "Reload library", "Choose library…"]) expect(messages).not.toContain(`"${label}"`);
+});

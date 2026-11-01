@@ -1,6 +1,6 @@
 /* C7: one band, on the result columns, regardless of selection or open menu. */
-.shelf { --shelf-target: var(--control-h); position: relative; flex: none; min-height: 0; overflow: visible; margin: 0 var(--inset) var(--inset); border-radius: var(--r-row); background: var(--fill); }
-.shelf::before { content: ""; position: absolute; inset: 0; border-radius: inherit; background: color-mix(in srgb, var(--done) 9%, transparent); opacity: 0; pointer-events: none; }
+.shelf { --shelf-target: var(--control-h); position: relative; flex: none; min-height: 0; overflow: visible; margin: 0 var(--inset) var(--inset); border-radius: var(--r-row); background: var(--fill-control); }
+.shelf::before { content: ""; position: absolute; inset: 0; border-radius: inherit; background: var(--done-wash); opacity: 0; pointer-events: none; }
 main:has(> .shelf) > footer { border-top-color: transparent; }
 .shelf-output { position: relative; display: flex; align-items: center; height: max(var(--space-10), var(--shelf-target)); padding-inline: var(--row-pad); font-size: var(--type-meta-size); }
 .shelf-leading { flex: 0 0 var(--tile); display: flex; justify-content: end; margin-inline-end: var(--row-gap); }
@@ -12,7 +12,7 @@ main:has(> .shelf) > footer { border-top-color: transparent; }
 .shelf-citation { display: flex; flex: 1; align-items: center; gap: 0; align-self: stretch; min-width: 0; white-space: nowrap; }
 .shelf .preview-text, .shelf-citation > p { display: block; min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
 .shelf-citation > .preview-text { flex: 1; }
-.shelf-citation > p { flex: 1; color: var(--muted); }
+.shelf-citation > p { flex: 1; color: var(--text-secondary); }
 .shelf-output:is([data-state="failed"], [data-state="stale"]) .shelf-citation > p { color: var(--text); border: 0; padding: 0; }
 .shelf-state-icon { display: inline-flex; justify-content: center; align-items: center; flex: none; width: var(--icon-small); height: var(--icon-small); margin-inline-end: var(--space-1); border: var(--border-width) solid currentColor; border-radius: var(--r-full); font: var(--strong) var(--type-label-size) / 1 var(--font); }
 .shelf-state-icon[data-state="failed"] { color: var(--stop); }
@@ -24,12 +24,12 @@ main:has(> .shelf) > footer { border-top-color: transparent; }
 .shelf-segment-button.ui-button[data-variant] { justify-content: start; flex: 0 1 auto; min-width: 0; min-height: var(--chip-h); max-width: 100%; padding: 0; border-width: 0; border-radius: var(--r-tile); color: var(--text); white-space: nowrap; }
 .shelf-reference-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .shelf-segment-button.ui-button[data-size="small"]::after { inset-inline: 0; }
-.shelf-segment-button.ui-button[data-focus-visible] { background: var(--sel); color: var(--sel-text); outline: none; box-shadow: none; }
+.shelf-segment-button.ui-button[data-focus-visible] { background: var(--selected); color: var(--selected-text); outline: none; box-shadow: none; }
 .shelf-segment-button[data-focus-visible] .preview-text { color: inherit; }
 /* The 16 px disc is above the pill and text; its 24 px target straddles
    the segment's outer corner. It never participates in the text's width. */
 .shelf-remove.ui-button[data-variant] { position: absolute; z-index: var(--z-content); inset-block-start: calc(24px / -2); inset-inline-end: calc(24px / -2); width: 24px; min-width: 24px; height: 24px; min-height: 24px; padding: 0; border: 0; border-radius: var(--r-full); visibility: hidden; background: transparent; }
-.shelf-remove.ui-button::after { inset: calc((24px - 16px) / 2); border-radius: var(--r-full); background: var(--overlay); box-shadow: var(--shadow-badge); }
+.shelf-remove.ui-button::after { inset: calc((24px - 16px) / 2); border-radius: var(--r-full); background: var(--surface-overlay); box-shadow: var(--shadow-badge); }
 .shelf-remove.ui-button[data-glyph="close"]::before { position: relative; z-index: var(--z-chrome); width: 16px; height: 16px; }
 @media (hover: hover) {
   .shelf:not([data-panel]) .shelf-segment:hover:not(:has([data-focus-visible])) > .shelf-remove { visibility: visible; }
@@ -42,22 +42,20 @@ main:has(> .shelf) > footer { border-top-color: transparent; }
 .shelf-actions > :is(.shelf-count, .shelf-warnings).ui-button { width: var(--shelf-target); flex: none; padding-inline: 0; font-size: var(--type-label-size); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .shelf-actions > .shelf-warnings.ui-button { width: auto; padding-inline: var(--space-2); border-radius: var(--r-full); background: var(--chip); }
 .shelf[data-folded] .shelf-actions > .shelf-warnings.ui-button { width: var(--shelf-target); padding-inline: 0; }
-.shelf-pill { flex: none; padding-inline: var(--space-2); border-radius: var(--r-full); background: var(--chip); color: var(--muted); font-size: var(--type-label-size); line-height: var(--chip-h); white-space: nowrap; }
+.shelf-pill { flex: none; padding-inline: var(--space-2); border-radius: var(--r-full); background: var(--chip); color: var(--text-secondary); font-size: var(--type-label-size); line-height: var(--chip-h); white-space: nowrap; }
 .shelf-details-list { display: flex; flex-direction: column; gap: var(--row-spacing); margin: 0; padding: 0; list-style: none; }
 .shelf-details-list .ui-button { justify-content: start; text-align: start; width: 100%; height: auto; border-width: 0; min-height: var(--control-h); padding: var(--space-2); border-radius: var(--r-mi); color: var(--text); }
-.shelf-detail-locator { color: var(--muted); }
+.shelf-detail-locator { color: var(--text-secondary); }
 .shelf-reference-summary { display: flex; flex: 1; flex-direction: column; gap: var(--space-1); min-width: 0; }
-.shelf-reference-title { color: var(--muted); font-size: var(--type-label-size); }
+.shelf-reference-title { color: var(--text-secondary); font-size: var(--type-label-size); }
 /* The menu closes when one row cannot fit, so short windows keep each row to a line. */
 @media (max-height: 400px) { .shelf-reference-title { display: none; } }
-.shelf-problem, .shelf-detail-title { margin: 0 0 var(--space-2); overflow-wrap: anywhere; }
-.shelf-menu-remove.ui-button { justify-content: space-between; width: 100%; text-align: start; }
-.shelf-menu-remove > :last-child { color: var(--muted); }
+.shelf-problem, .shelf-detail-title { margin-block: 0 var(--space-2); color: var(--text-secondary); font-size: var(--type-label-size); line-height: var(--type-label-line); overflow-wrap: anywhere; }
 /* The receipt text owns its intrinsic width: both beaks hug it symmetrically. */
 .shelf[data-copied] .shelf-citation { flex: 0 1 auto; gap: var(--row-gap); }
 .shelf[data-copied] .preview-text { flex: 0 1 auto; }
 .shelf[data-copied]::before { animation: shelf-copy-wash 160ms var(--ease); }
-.shelf-copied { display: inline-flex; flex: none; align-items: center; gap: var(--space-1); height: var(--chip-h); padding-inline: var(--space-2); border-radius: var(--r-full); color: var(--done); background: color-mix(in srgb, var(--done) 14%, transparent); font: var(--strong) var(--type-label-size) / var(--type-label-line) var(--font); white-space: nowrap; }
+.shelf-copied { display: inline-flex; flex: none; align-items: center; gap: var(--space-1); height: var(--chip-h); padding-inline: var(--space-2); border-radius: var(--r-full); color: var(--done); background: var(--done-fill); font: var(--strong) var(--type-label-size) / var(--type-label-line) var(--font); white-space: nowrap; }
 .shelf-copied svg { width: var(--icon-small); height: var(--icon-small); fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .shelf-copied path { animation: shelf-check var(--dur-panel) var(--ease); }
 @keyframes shelf-copy-wash { from { opacity: 1; } to { opacity: 0; } }
@@ -78,7 +76,7 @@ main:has(> .shelf) > footer { border-top-color: transparent; }
 
 .shelf-fragments { display: flex; align-items: center; flex: 0 1 auto; min-width: 0; overflow: hidden; padding-block: var(--row-gap); margin-block: calc(-1 * var(--row-gap)); }
 .shelf-shared { flex: none; white-space: pre; }
-.shelf-punctuation { color: var(--muted); }
+.shelf-punctuation { color: var(--text-secondary); }
 .shelf-segment-button[data-focus-visible] .shelf-punctuation { color: inherit; }
-.details-menu-scroll > .shelf-full-citation { margin: var(--space-3) 0 0; padding: var(--space-2); border-radius: var(--r-mi); background: var(--fill); font-size: var(--type-meta-size); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
+.details-menu-scroll > .shelf-full-citation { margin: var(--menu-pad) 0 0; padding: var(--space-2) var(--menu-item-pad) var(--space-2) var(--menu-label-start); border-radius: var(--r-mi); background: var(--fill-control); font-size: var(--type-meta-size); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
 

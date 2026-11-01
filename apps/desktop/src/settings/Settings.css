@@ -3,39 +3,39 @@
   margin: 0; overflow-wrap: anywhere;
   font-size: var(--type-display-size); line-height: var(--type-display-line); font-weight: 700;
 }
-.settings-description { color: var(--muted); font-size: var(--type-meta-size); line-height: var(--type-meta-line); margin: 0; }
+.settings-description { color: var(--text-secondary); font-size: var(--type-meta-size); line-height: var(--type-meta-line); margin: 0; }
 .settings-problem { margin: 0; color: var(--stop); }
 .settings-done { width: 1.25rem; height: 1.25rem; flex: none; }
 .settings-done circle { fill: var(--done); }
-.settings-done path { fill: none; stroke: var(--grouped-card); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.settings-done path { fill: none; stroke: var(--surface); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
 
 /* The paste permission guide (#1292): a picture of the switch to turn on,
    the steps, one button and a live answer. */
 .paste-guide {
   display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-4); text-align: start;
-  padding: var(--space-4) var(--row-pad); box-shadow: inset 0 var(--border-width) 0 var(--line);
+  padding: var(--space-4) var(--row-pad); box-shadow: inset 0 var(--border-width) 0 var(--separator);
 }
 .paste-guide-text { min-width: 0; overflow-wrap: anywhere; }
 .paste-guide h3 { margin: 0 0 var(--space-1); font-size: var(--type-title-size); line-height: var(--type-title-line); font-weight: var(--strong); }
 .paste-guide ol { margin: var(--space-3) 0; padding-inline-start: var(--space-5); display: flex; flex-direction: column; gap: var(--space-1); }
 .paste-guide-actions { display: flex; justify-content: start; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
-.paste-guide-status { margin: 0; color: var(--muted); font-size: var(--type-meta-size); }
+.paste-guide-status { margin: 0; color: var(--text-secondary); font-size: var(--type-meta-size); }
 .paste-guide-status[data-done] { color: var(--done); font-weight: var(--strong); }
 .paste-guide-art {
   display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3);
   justify-self: start; min-width: 0; width: 100%; max-width: 16rem; box-sizing: border-box;
-  border-radius: var(--r-row); background: var(--grouped);
+  border-radius: var(--r-row); background: var(--surface-grouped);
 }
-.paste-guide-pane { color: var(--muted); font-size: var(--type-label-size); line-height: var(--type-label-line); }
+.paste-guide-pane { color: var(--text-secondary); font-size: var(--type-label-size); line-height: var(--type-label-line); }
 .paste-guide-row {
   display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2);
-  border-radius: var(--r-tile); background: var(--grouped-card); box-shadow: var(--shadow-card);
+  border-radius: var(--r-tile); background: var(--surface); box-shadow: var(--shadow-card);
   font-size: var(--type-meta-size); font-weight: 500;
 }
 .paste-guide-icon { width: var(--icon); height: var(--icon); flex: none; border-radius: var(--r-key); background: center / cover no-repeat; }
 .paste-guide-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .paste-guide-switch {
-  position: relative; width: 26px; height: 15px; flex: none; border-radius: var(--r-full); background: var(--fill-p);
+  position: relative; width: 26px; height: 15px; flex: none; border-radius: var(--r-full); background: var(--fill-control-pressed);
   transition: background-color var(--dur-panel) var(--ease);
 }
 .paste-guide-switch > span {
@@ -43,7 +43,7 @@
   background: var(--thumb); box-shadow: var(--shadow-thumb); transition: transform var(--dur-panel) var(--ease);
 }
 .paste-guide-switch[data-on] { background: var(--accent); }
-.paste-guide-switch[data-on] > span { background: var(--on-accent); transform: translateX(11px); }
+.paste-guide-switch[data-on] > span { background: var(--text-on-accent); transform: translateX(11px); }
 @media (prefers-reduced-motion: reduce) { .paste-guide-switch, .paste-guide-switch > span { transition: none; } }
 @media (prefers-contrast: more), (forced-colors: active) {
   .paste-guide-switch { border: var(--border-width) solid CanvasText; }

@@ -3,7 +3,7 @@
    no overlay chooses a material independently of the picker panel. */
 .ui-overlay,
 :root[data-platform][data-native-appearance]:not(.notice-window) .ui-overlay {
-  background: var(--overlay); color: var(--text);
+  background: var(--surface-overlay); color: var(--text);
   -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur);
 }
 .ui-overlay.ui-sheet,

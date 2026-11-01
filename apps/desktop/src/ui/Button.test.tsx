@@ -29,11 +29,11 @@ test("disabled actions cannot activate, including synthetic clicks", () => {
 
 test("a controlled toggle reports its next state without changing its label", () => {
   const change = vi.fn();
-  const { rerender } = render(<ToggleButton variant="icon" isSelected={false} onChange={change} aria-label="Keep window open">↟</ToggleButton>);
-  const button = screen.getByRole("button", { name: "Keep window open" });
+  const { rerender } = render(<ToggleButton variant="icon" isSelected={false} onChange={change} aria-label="Keep Window Open">↟</ToggleButton>);
+  const button = screen.getByRole("button", { name: "Keep Window Open" });
   fireEvent.click(button);
   expect(change).toHaveBeenCalledWith(true);
-  rerender(<ToggleButton variant="icon" isSelected onChange={change} aria-label="Keep window open">↟</ToggleButton>);
+  rerender(<ToggleButton variant="icon" isSelected onChange={change} aria-label="Keep Window Open">↟</ToggleButton>);
   expect(button.getAttribute("aria-pressed")).toBe("true");
   expect(button.hasAttribute("data-selected")).toBe(true);
 });

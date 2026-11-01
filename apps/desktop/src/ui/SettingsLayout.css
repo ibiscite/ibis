@@ -3,7 +3,7 @@
 :root.settings-window { color-scheme: light dark; }
 :root.settings-window, :root.settings-window body, #settings { height: 100%; min-height: 0; margin: 0; overflow: hidden; }
 :root.settings-window body {
-  background: var(--grouped); color: var(--text);
+  background: var(--surface); color: var(--text);
   font: var(--type-body-size) / var(--type-body-line) var(--font);
   -webkit-user-select: none; user-select: none; cursor: default;
 }
@@ -17,8 +17,8 @@
 .settings-sidebar {
   grid-area: 1 / 1 / -1 / 2; min-width: 0; min-height: 0; box-sizing: border-box;
   display: flex; flex-direction: column; overflow: hidden;
-  padding-block-start: var(--titlebar-height); background: var(--sidebar);
-  border-inline-end: var(--border-width) solid var(--line);
+  padding-block-start: var(--titlebar-height); background: var(--fill-quiet-hover);
+  border-inline-end: var(--border-width) solid var(--separator);
 }
 
 .settings-page {

@@ -15,7 +15,7 @@
 
   /* Sizes. */
   --tile: 2rem; --icon: 1.25rem; --icon-small: 1rem; --icon-stroke: 1.5; --key: 1.25rem;
-  --control-h: 2rem; --action-h: 1.75rem; --field-h: 2.25rem; --footer-h: 2.75rem; --touch-target: 2.75rem; --border-width: 1px;
+  --control-h: 2rem; --action-h: 1.75rem; --control-small-h: 1.5rem; --field-h: 2.25rem; --footer-h: 2.75rem; --touch-target: 2.75rem; --border-width: 1px;
   --status-dot: .5rem; --chip-h: 1.5rem;
   /* The search glyph sits on the tile column and the query on the title column. */
   --lead: calc(var(--row-pad) + (var(--tile) - var(--icon)) / 2);
@@ -23,16 +23,16 @@
 
   /* Corners nest: each is its container's minus the gap between them. */
   --r-win: 16px; --r-card: 10px; --r-row: 8px; --r-tile: 6px; --r-control: 8px; --r-key: 5px;
-  --r-menu: 12px; --menu-pad: 6px; --r-mi: 6px; --r-full: 999px;
+  --r-menu: 12px; --menu-pad: 5px; --r-mi: 7px; --r-full: 999px;
 
   /* Type: size / line. Nothing is smaller than 12 px. */
-  --type-search-size: 1.375rem; --type-search-line: 1.75rem;
+  --type-search-size: 1.375rem; --type-search-line: 1.625rem;
   --type-display-size: 1.25rem; --type-display-line: 1.625rem;
   --type-lead-size: 1.0625rem; --type-lead-line: 1.375rem;
   --type-title-size: .9375rem; --type-title-line: 1.25rem;
-  --type-body-size: .875rem; --type-body-line: 1.25rem;
-  --type-meta-size: .8125rem; --type-meta-line: 1.125rem;
-  --type-label-size: .75rem; --type-label-line: 1rem;
+  --type-body-size: .8125rem; --type-body-line: 1rem;
+  --type-meta-size: .8125rem; --type-meta-line: 1rem;
+  --type-label-size: .75rem; --type-label-line: .9375rem;
   --strong: 600;
   --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
   --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
@@ -57,41 +57,48 @@
   /* Focus: one ring, keyboard only. */
   --ring-width: 2px; --ring-offset: 1px;
 
-  /* Colour, with system colours underneath for older webviews. */
-  --surface: Canvas; --raised: Canvas; --overlay: Canvas; --sheet: Canvas;
-  --text: CanvasText; --muted: CanvasText; --tertiary: CanvasText; --disabled: GrayText;
-  --line: GrayText; --stroke: transparent;
-  --accent: Highlight; --accent-text: var(--accent); --on-accent: HighlightText;
-  --sel: Highlight; --sel-text: HighlightText; --sel-muted: color-mix(in srgb, var(--sel-text) 82%, transparent);
+  /* Colour: Apple's semantic ladders as measured from AppKit on macOS 27.2
+     (docs/design.md, "Exact macOS values"), raised only where Ibis's floors need it.
+     System colours sit underneath for webviews without light-dark(). */
+  --surface: Canvas; --raised: Canvas; --surface-overlay: Canvas; --sheet: Canvas;
+  --text: CanvasText; --text-secondary: CanvasText; --text-tertiary: CanvasText; --text-disabled: GrayText;
+  --separator: GrayText; --stroke-field: transparent;
+  --accent: Highlight; --accent-text: var(--accent); --text-on-accent: HighlightText;
+  --selected: Highlight; --selected-text: HighlightText; --selected-text-secondary: currentColor;
   --ring: var(--accent);
   --scarlet: CanvasText; --scarlet-tile: CanvasText; --on-scarlet: #fff;
   --done: CanvasText; --look: CanvasText; --stop: CanvasText;
-  --hover: color-mix(in srgb, var(--text) 4.5%, transparent);
-  --fill: color-mix(in srgb, var(--text) 5%, transparent);
-  --fill-h: color-mix(in srgb, var(--text) 9%, transparent);
-  --fill-p: color-mix(in srgb, var(--text) 14%, transparent);
-  --field: var(--fill);
-  --chip: color-mix(in srgb, var(--text) 8%, transparent);
+  /* System, secondary, tertiary, quaternary and quinary fill. */
+  --fill-1: color-mix(in srgb, var(--text) 9.8%, transparent);
+  --fill-2: color-mix(in srgb, var(--text) 7.8%, transparent);
+  --fill-3: color-mix(in srgb, var(--text) 4.7%, transparent);
+  --fill-4: color-mix(in srgb, var(--text) 2.7%, transparent);
+  --fill-5: color-mix(in srgb, var(--text) .8%, transparent);
+  /* Controls rest, hover and press on the tertiary, secondary and system fills. */
+  --fill-control: var(--fill-3); --fill-control-hover: var(--fill-2); --fill-control-pressed: var(--fill-1);
+  --fill-quiet-hover: var(--fill-4);
+  --surface-field: var(--fill-control); --chip: var(--fill-control-hover);
   --on-fill-h: rgb(0 0 0 / 8%); --on-fill-p: rgb(0 0 0 / 16%);
-  --key-on-accent: color-mix(in srgb, var(--on-accent) 22%, transparent);
-  --accent-h: color-mix(in srgb, var(--accent) 88%, var(--text));
-  --accent-p: color-mix(in srgb, var(--accent) 80%, var(--text));
+  --selected-hover: color-mix(in srgb, var(--selected) 90%, black);
+  --selected-pressed: color-mix(in srgb, var(--selected) 80%, black);
+  --accent-wash: color-mix(in srgb, var(--accent) 14%, transparent);
+  --on-sel-fill: color-mix(in srgb, var(--selected-text) 22%, transparent);
+  --done-wash: color-mix(in srgb, var(--done) 9%, transparent);
+  --done-fill: color-mix(in srgb, var(--done) 14%, transparent);
   --scrim: rgb(0 0 0 / 30%);
-  --scrollbar-thumb: color-mix(in srgb, var(--text) 26%, transparent);
+  --scrollbar-thumb: var(--text-tertiary);
   --scroll-fade: 14px;
 
   /* Settings: a grouped form beside a sidebar. */
-  --grouped: var(--surface); --grouped-card: var(--surface); --sidebar: var(--surface);
+  --surface-grouped: var(--fill-4);
   --titlebar-height: 3.25rem;
   --sidebar-width: min(12.5rem, 26%);
   --page-general: #8e8e93; --page-look: #ff9f0a; --page-citations: #0a84ff; --page-shortcuts: #5e5ce6; --page-about: #c23a1c;
-  --highlight: color-mix(in srgb, var(--accent) 14%, var(--grouped-card));
+  --highlight: var(--accent-wash);
 
-  /* The accents Look offers; each brings its own text colour. */
-  --accent-choice: var(--accent-blue); --accent-choice-on: #fff;
-  --accent-ibis: light-dark(#c23a1c, #ff7a5c); --accent-ibis-on: light-dark(#ffffff, #171717);
-  --accent-blue: #0064e1; --accent-purple: #953d96; --accent-pink: #c8317d; --accent-red: #c42b30;
-  --accent-orange: #b25300; --accent-yellow: #8a6a00; --accent-green: #3b7f25; --accent-graphite: #6e6e73;
+  /* Look's dots show each Mac colour as Apple draws it. */
+  --dot-ibis: #c23a1c; --dot-blue: #007aff; --dot-purple: #953d96; --dot-pink: #f74f9e; --dot-red: #e0383e;
+  --dot-orange: #f7821b; --dot-yellow: #ffc600; --dot-green: #62ba46; --dot-graphite: #8c8c8c;
 }
 
 @media (prefers-reduced-motion: reduce) { :root { --dur: 100ms; --dur-panel: 1ms; } }
@@ -101,27 +108,28 @@
   :root {
     --scarlet: light-dark(#c23a1c, #ff7a5c); --scarlet-tile: light-dark(#c23a1c, #d2401f);
     --done: light-dark(#1a7f37, #5bc26f); --look: light-dark(#b07a00, #f5c542); --stop: light-dark(#c4314b, #ff8a8a);
-    --sel: light-dark(#0a63d6, #0a6fe0); --sel-text: #fff; --on-accent: #fff;
+    --accent: #007aff; --accent-text: light-dark(#0068da, #419cff);
+    --selected: light-dark(#0064e1, #0059d1); --selected-text: #fff; --text-on-accent: var(--selected-text);
+    --selected-text-secondary: color-mix(in srgb, var(--selected-text) 88%, transparent);
     --scrim: light-dark(rgb(0 0 0 / 20%), rgb(0 0 0 / 40%));
   }
 }
 @supports (color: light-dark(white, black)) {
   @media (prefers-contrast: no-preference) and (forced-colors: none) {
     :root:not(.notice-window) {
-      --surface: light-dark(#fcfcfd, #242426); --raised: light-dark(#f3f3f5, #2d2d30);
-      --overlay: light-dark(#fdfdfe, #2b2b2e); --sheet: var(--overlay);
-      --text: light-dark(#16181d, #f5f5f7); --muted: light-dark(#4c5260, #c0c3cc);
-      --tertiary: light-dark(#747a86, #9a9da6); --disabled: light-dark(#a3a7b0, #6d7079);
-      --line: light-dark(rgb(0 0 0 / 10%), rgb(255 255 255 / 10%));
-      --hover: light-dark(rgb(0 0 0 / 4.5%), rgb(255 255 255 / 6%));
-      --fill: light-dark(rgb(0 0 0 / 5%), rgb(255 255 255 / 8%));
-      --fill-h: light-dark(rgb(0 0 0 / 9%), rgb(255 255 255 / 13%));
-      --fill-p: light-dark(rgb(0 0 0 / 14%), rgb(255 255 255 / 18%));
-      --chip: light-dark(rgb(0 0 0 / 8%), rgb(255 255 255 / 10%));
+      --surface: light-dark(#ffffff, #1e1e1e); --raised: light-dark(#f6f6f6, #282828);
+      --surface-overlay: light-dark(#ffffff, #282828); --sheet: var(--surface-overlay);
+      --text: light-dark(rgb(0 0 0 / 84.7%), rgb(255 255 255 / 84.7%));
+      --text-secondary: light-dark(rgb(0 0 0 / 56%), rgb(255 255 255 / 54.9%));
+      --text-tertiary: light-dark(rgb(0 0 0 / 45%), rgb(255 255 255 / 38%));
+      --text-disabled: light-dark(rgb(0 0 0 / 24.7%), rgb(255 255 255 / 24.7%));
+      --separator: light-dark(rgb(0 0 0 / 10%), rgb(255 255 255 / 12%));
+      --fill-1: light-dark(rgb(0 0 0 / 9.8%), rgb(255 255 255 / 9.8%));
+      --fill-2: light-dark(rgb(0 0 0 / 7.8%), rgb(255 255 255 / 7.8%));
+      --fill-3: light-dark(rgb(0 0 0 / 4.7%), rgb(255 255 255 / 4.7%));
+      --fill-4: light-dark(rgb(0 0 0 / 2.7%), rgb(255 255 255 / 2.7%));
+      --fill-5: light-dark(rgb(0 0 0 / .8%), rgb(255 255 255 / .8%));
       --shadow-overlay: 0 0 0 .5px light-dark(rgb(0 0 0 / 12%), rgb(255 255 255 / 10%)), 0 12px 32px light-dark(rgb(0 0 0 / 16%), rgb(0 0 0 / 45%));
-      --grouped: light-dark(color-mix(in srgb, var(--text) 4%, var(--surface)), var(--surface));
-      --grouped-card: light-dark(var(--surface), color-mix(in srgb, var(--text) 6%, var(--surface)));
-      --sidebar: light-dark(color-mix(in srgb, var(--text) 7%, var(--surface)), color-mix(in srgb, var(--text) 3%, var(--surface)));
       /* The veil over the native material, so text stays legible on any wallpaper. */
       --vibrancy-tint: light-dark(rgb(250 250 252 / 75%), rgb(30 30 34 / 75%));
       --glass-edge: light-dark(rgb(0 0 0 / 10%), rgb(255 255 255 / 10%));
@@ -137,14 +145,13 @@
   }
 }
 
-/* The system's accent; Look's choice, below, replaces it. */
-@supports (color: AccentColor) { :root { --accent: AccentColor; } }
+/* The accent is blue until the Mac's own arrives (nativeAccent.css) or Look chooses one. */
 /* WKWebView resolves AccentColorText to black, so macOS uses its list colours. */
 @supports (background: -apple-system-selected-content-background) and (color: -apple-system-alternate-selected-text) {
-  :root[data-system="macos"] { --sel: -apple-system-selected-content-background; --sel-text: -apple-system-alternate-selected-text; }
+  :root[data-system="macos"] { --selected: -apple-system-selected-content-background; --selected-text: -apple-system-alternate-selected-text; }
 }
 /* Other systems keep their own selection pair. */
-:root[data-system="windows"], :root[data-system="linux"] { --accent: Highlight; --sel: Highlight; --sel-text: HighlightText; }
+:root[data-system="windows"], :root[data-system="linux"] { --accent: Highlight; --selected: Highlight; --selected-text: HighlightText; }
 :root[data-system="windows"] { --font: "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif; }
 :root[data-system="linux"] { --font: system-ui, "Adwaita Sans", Cantarell, sans-serif; }
 
@@ -153,7 +160,7 @@
   @media (prefers-contrast: no-preference) and (forced-colors: none) and (prefers-reduced-transparency: no-preference) {
     :root[data-platform="macos"][data-native-appearance="vibrancy"]:not(.notice-window),
     :root[data-platform="macos"][data-native-appearance="liquid-glass"]:not(.notice-window) {
-      --overlay: light-dark(rgb(250 250 252 / 92%), rgb(44 44 48 / 92%));
+      --surface-overlay: light-dark(rgb(250 250 252 / 92%), rgb(44 44 48 / 92%));
       --sheet: light-dark(rgb(250 250 252 / 96%), rgb(44 44 48 / 96%));
       --blur: blur(40px) saturate(1.6);
     }
@@ -164,42 +171,35 @@
 @media (prefers-contrast: more), (forced-colors: active) {
   :root, :root[data-platform] {
     --shadow-card: none; --shadow-overlay: none; --shadow-dialog: none; --shadow-toast: none; --shadow-thumb: none; --shadow-badge: none;
-    --surface: Canvas; --raised: Canvas; --overlay: Canvas; --sheet: Canvas; --grouped: Canvas; --grouped-card: Canvas; --sidebar: Canvas;
-    --text: CanvasText; --muted: CanvasText; --tertiary: CanvasText; --line: CanvasText; --stroke: CanvasText;
-    --sel: Highlight; --sel-text: HighlightText; --sel-muted: currentColor;
+    --surface: Canvas; --raised: Canvas; --surface-overlay: Canvas; --sheet: Canvas; --surface-grouped: Canvas;
+    --text: CanvasText; --text-secondary: CanvasText; --text-tertiary: CanvasText; --separator: CanvasText; --stroke-field: CanvasText;
+    --selected: Highlight; --selected-text: HighlightText; --selected-text-secondary: currentColor;
     --ring: CanvasText; --ring-offset: 2px; --scrollbar-thumb: CanvasText; --scrim: Canvas;
     --scarlet: CanvasText; --scarlet-tile: CanvasText; --on-scarlet: Canvas;
     --done: CanvasText; --look: CanvasText; --stop: CanvasText;
   }
 }
 @media (forced-colors: active) {
-  :root, :root[data-platform] { --stroke: ButtonText; --line: ButtonText; --on-fill-h: transparent; --on-fill-p: transparent; }
+  :root, :root[data-platform] { --stroke-field: ButtonText; --separator: ButtonText; --on-fill-h: transparent; --on-fill-p: transparent; }
 }
 
-:root[data-accent="system"] { --accent-choice: conic-gradient(var(--accent-pink), var(--accent-red), var(--accent-orange), var(--accent-yellow), var(--accent-green), var(--accent-blue), var(--accent-purple), var(--accent-pink)); }
-:root[data-accent="ibis"] { --accent-choice: var(--accent-ibis); --accent-choice-on: var(--accent-ibis-on); }
-:root[data-accent="blue"] { --accent-choice: var(--accent-blue); }
-:root[data-accent="purple"] { --accent-choice: var(--accent-purple); }
-:root[data-accent="pink"] { --accent-choice: var(--accent-pink); }
-:root[data-accent="red"] { --accent-choice: var(--accent-red); }
-:root[data-accent="orange"] { --accent-choice: var(--accent-orange); }
-:root[data-accent="yellow"] { --accent-choice: var(--accent-yellow); }
-:root[data-accent="green"] { --accent-choice: var(--accent-green); }
-:root[data-accent="graphite"] { --accent-choice: var(--accent-graphite); }
-
-@media (prefers-contrast: no-preference) and (forced-colors: none) {
-  :root[data-appearance][data-accent]:not([data-accent="system"]):not(.notice-window) {
-    --accent: var(--accent-choice); --sel: var(--accent-choice);
-    --sel-text: var(--accent-choice-on); --on-accent: var(--accent-choice-on);
-    --accent-h: color-mix(in srgb, var(--accent) 92%, black);
-    --accent-p: color-mix(in srgb, var(--accent) 84%, black);
-    --accent-text: CanvasText; --ring: var(--accent-text);
-  }
-}
+/* One accent, three roles, both modes: the accent colours controls and the
+   focus ring; the selection is a deeper shade of it that keeps white text at
+   4.5:1, never brighter in dark than in light; accent text passes 4.5:1 on the
+   surface. Follow the Mac reaches the same roles from nativeAccent.css. */
+:root[data-accent="blue"] { --ac: #007aff; --ac-selected: light-dark(#0064e1, #0059d1); --ac-text: light-dark(#0068da, #419cff); }
+:root[data-accent="ibis"] { --ac: light-dark(#c23a1c, #ff7a5c); --ac-selected: light-dark(#c23a1c, #ff7a5c); --ac-text: light-dark(#c23a1c, #ff7a5c); --ac-on: light-dark(#fff, #171717); }
+:root[data-accent="purple"] { --ac: light-dark(#953d96, #a550a7); --ac-selected: light-dark(#953d96, #904291); --ac-text: light-dark(#953d96, #bd71bf); }
+:root[data-accent="pink"] { --ac: light-dark(#f74f9e, #f74f9e); --ac-selected: light-dark(#e4086c, #e4086c); --ac-text: light-dark(#e4086c, #f74f9e); }
+:root[data-accent="red"] { --ac: light-dark(#e0383e, #ff5257); --ac-selected: light-dark(#de3036, #e80005); --ac-text: light-dark(#dd2c32, #ff5257); }
+:root[data-accent="orange"] { --ac: light-dark(#e77008, #f7821b); --ac-selected: light-dark(#b55c08, #b55c08); --ac-text: light-dark(#b55c08, #f7821b); }
+:root[data-accent="yellow"] { --ac: light-dark(#b48a00, #ffc600); --ac-selected: light-dark(#916e00, #916e00); --ac-text: light-dark(#916e00, #ffc600); }
+:root[data-accent="green"] { --ac: light-dark(#56a33f, #62ba46); --ac-selected: light-dark(#468337, #468337); --ac-text: light-dark(#447f35, #62ba46); }
+:root[data-accent="graphite"] { --ac: light-dark(#8c8c8c, #8c8c8c); --ac-selected: light-dark(#747474, #747474); --ac-text: light-dark(#747474, #8c8c8c); }
 @supports (color: light-dark(white, black)) {
   @media (prefers-contrast: no-preference) and (forced-colors: none) {
     :root[data-appearance][data-accent]:not([data-accent="system"]):not(.notice-window) {
-      --accent-text: light-dark(var(--accent-choice), color-mix(in srgb, var(--accent-choice), white 55%));
+      --accent: var(--ac); --selected: var(--ac-selected); --accent-text: var(--ac-text); --selected-text: var(--ac-on, #fff); --text-on-accent: var(--ac-on, #fff);
     }
   }
 }

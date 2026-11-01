@@ -16,11 +16,6 @@ export function CitationDetails({ label, page, pageRef, choices, autoFocus = fal
   const descriptions = useId();
   const current = typeof choices === "object" ? choices.current_form : null;
   return <section className="citation-details" aria-label={label}>
-    <TextField className="citation-page" value={page} onChange={onPageChange}>
-      <Label>{text.page}</Label>
-      <Input ref={pageRef} autoFocus={autoFocus} placeholder={text.pageExample} />
-      <Text slot="description">{text.pageHint}</Text>
-    </TextField>
     <RadioGroup className="citation-forms" aria-label={text.form} orientation="vertical" value={current ?? ""} onChange={(value) => {
       if (value === "normal" || value === "narrative" || value === "year-only") onFormChange(value);
     }}>
@@ -31,10 +26,15 @@ export function CitationDetails({ label, page, pageRef, choices, autoFocus = fal
         return <Radio key={option.value} className="citation-form" value={option.value} aria-label={option.label}
           isDisabled={Boolean(reason)} aria-describedby={description}>
           <span className="citation-form-check" aria-hidden="true">{current === option.value ? "✓" : ""}</span>
-          <span className="citation-form-body"><span>{option.label}</span>
-            <span id={description} className="citation-form-example">{reason ?? choice?.example}</span></span>
+          <span className="citation-form-label">{option.label}</span>
+          <span id={description} className="citation-form-example">{reason ?? choice?.example}</span>
         </Radio>;
       })}
     </RadioGroup>
+    <TextField className="citation-page" value={page} onChange={onPageChange}>
+      <Label>{text.page}</Label>
+      <Input ref={pageRef} autoFocus={autoFocus} placeholder={text.pageNone} />
+      <Text slot="description" className="visually-hidden">{text.pageHint}</Text>
+    </TextField>
   </section>;
 }

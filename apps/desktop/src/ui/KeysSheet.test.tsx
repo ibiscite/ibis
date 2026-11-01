@@ -7,7 +7,7 @@ afterEach(cleanup);
 
 test("the keys sheet presents compact groups with shared key caps and leaves out standard menu navigation", () => {
   render(<KeysDialog bindings={KEY_TABLE} isMac onClose={vi.fn()} />);
-  const dialog = screen.getByRole("dialog", { name: "Keyboard shortcuts" });
+  const dialog = screen.getByRole("dialog", { name: "Keyboard Shortcuts" });
   const groups = within(dialog).getAllByRole("rowgroup").slice(1);
   expect(groups.map((group) => within(group).getAllByRole("row")[0]!.textContent)).toEqual(["While searching", "Anywhere in Ibis"]);
   expect(dialog.querySelector(".keys-groups")).toBeTruthy();
@@ -21,7 +21,7 @@ test("the keys sheet keeps its focus cycle and closes with Escape or its backdro
   const dialog = screen.getByRole("dialog"), close = within(dialog).getByRole("button", { name: "Close" });
   expect(document.activeElement).toBe(close);
   fireEvent.keyDown(close, { key: "Tab" });
-  expect(document.activeElement).toBe(within(dialog).getByRole("group", { name: "Keyboard shortcuts" }));
+  expect(document.activeElement).toBe(within(dialog).getByRole("group", { name: "Keyboard Shortcuts" }));
   fireEvent.keyDown(document.activeElement!, { key: "Tab" });
   expect(document.activeElement).toBe(close);
   fireEvent.keyDown(close, { key: "Tab", shiftKey: true });

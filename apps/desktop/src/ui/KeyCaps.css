@@ -1,6 +1,9 @@
 /* Key caps are filled, never outlined boxes (PowerToys, Raycast, GNOME): a
    20 px cap on the button fill; contrast modes give it an edge. */
-kbd { font: inherit; font-size: var(--type-label-size); font-weight: 500; display: inline-block; min-width: var(--key); height: var(--key); line-height: calc(var(--key) - 2 * var(--border-width)); padding: 0 var(--space-1); text-align: center; background: var(--fill); border: var(--border-width) solid var(--stroke); border-radius: var(--r-key); margin-inline-start: var(--space-1); }
+kbd { font: inherit; font-size: var(--type-label-size); font-weight: 500; display: inline-block; min-width: var(--key); height: var(--key); line-height: calc(var(--key) - 2 * var(--border-width)); padding: 0 var(--space-1); text-align: center; background: var(--fill-control); border: var(--border-width) solid var(--stroke-field); border-radius: var(--r-key); margin-inline-start: var(--space-1); }
+@media (prefers-contrast: no-preference) and (forced-colors: none) {
+  kbd { border-color: transparent; font-weight: var(--strong); }
+}
 /* One hint pattern (docs/design.md, Footer): the label, 8 px, then its keys.
    Caps keep the shared kbd look (20 px fill); only how keys split differs. */
 .key-hint { display: inline-flex; align-items: center; gap: var(--space-2); white-space: nowrap; }
@@ -10,4 +13,4 @@ kbd { font: inherit; font-size: var(--type-label-size); font-weight: 500; displa
    right-to-left page "⌘K" would otherwise show as "K⌘" and "Ctrl K" as "K Ctrl". */
 .key-caps { direction: ltr; unicode-bidi: isolate; }
 .key-caps kbd { margin: 0; padding-inline: calc(var(--space-1) + var(--border-width)); }
-.key-plus { color: var(--muted); }
+.key-plus { color: var(--text-secondary); }

@@ -99,16 +99,15 @@ test.each(["macos", "windows", "linux"])("%s: a pointer opens with nothing highl
   expect(document.activeElement).toBe(screen.getByRole("menuitem", { name: "Open" }));
 });
 
-test("toggles carry a check placed per platform, and shortcuts stay out of names", async () => {
+test("toggles reserve one leading column, and shortcuts stay out of names", async () => {
   const { trigger } = mount();
   fireEvent.click(trigger);
   const menu = await screen.findByRole("menu");
   const rows = [...menu.querySelectorAll("[role^=menuitem]")];
   expect(rows.map((row) => row.firstElementChild?.className)).toEqual(["menu-label", "menu-check", "menu-check"]);
-  // macOS and Windows keep a leading check column for every row; GNOME puts the check last.
+  // The shared look reserves the same column for checks and icons.
   const menuCss = readFileSync(new FileURL("./Menu.css", import.meta.url), "utf8");
-  expect(menuCss).toMatch(/:root:not\(\[data-platform="linux"\]\) \.menu:has\(\[role="menuitemcheckbox"\]\) :is\(\.menu-item:not\(\[role="menuitemcheckbox"\]\), \.menu-header\) \{ padding-inline-start: var\(--menu-label-start\); \}/);
-  expect(menuCss).toMatch(/:root\[data-platform="linux"\] \.menu-check \{ order: 1; \}/);
+  expect(menuCss).toContain(':root .menu:has(.menu-check) :is(.menu-item:not(:has(> .menu-check)), .menu-header) { padding-inline-start: var(--menu-label-start); }');
   expect(screen.getByRole("menuitem", { name: "Open" }).textContent).toBe("OpenCtrl+O");
   // Menu shortcuts are trailing text, so global kbd cap styles cannot apply.
   const shortcut = screen.getByRole("menuitem", { name: "Open" }).querySelector(".menu-keys")!;
@@ -123,6 +122,27 @@ test("toggles carry a check placed per platform, and shortcuts stay out of names
   expect(screen.getByRole("menuitemcheckbox", { name: "First" }).querySelector(".menu-check svg")).not.toBeNull();
   expect(screen.getByRole("menuitemcheckbox", { name: "Second" }).querySelector(".menu-check svg")).toBeNull();
   expect(within(menu).getAllByRole("separator")).toHaveLength(1);
+});
+
+test("icons and checks occupy one slot, including an icon on a toggle", async () => {
+  render(<Menu label="Invented menu" trigger="Open menu" isOpen onOpenChange={vi.fn()}>
+    <MenuSection id="mixed">
+      <MenuItem id="icon" label="Invented library" icon={<span className="source-icon" />} onAction={vi.fn()} />
+      <MenuItem id="plain" label="Invented action" onAction={vi.fn()} />
+    </MenuSection>
+    <MenuSection id="toggles">
+      <MenuItem id="toggle" label="Invented toggle" checked icon={<span className="source-icon" />} onAction={vi.fn()} />
+    </MenuSection>
+  </Menu>);
+  const icon = await screen.findByRole("menuitem", { name: "Invented library" });
+  const toggle = screen.getByRole("menuitemcheckbox", { name: "Invented toggle" });
+  for (const row of [icon, toggle]) {
+    expect(row.querySelectorAll(":scope > .menu-check")).toHaveLength(1);
+    expect(row.children[1]?.className).toBe("menu-label");
+    expect(row.querySelector(":scope > .source-icon")).toBeNull();
+  }
+  expect(icon.querySelector(".menu-check > .source-icon")).not.toBeNull();
+  expect(toggle.querySelector(".menu-check > svg")).not.toBeNull();
 });
 
 test("the last checked item stays focusable and unavailable; toggles keep the menu open; Tab goes to the search box", async () => {
@@ -472,9 +492,10 @@ test("rows keep equal insets, fit intrinsic labels to the viewport and wrap at i
   const toolbar = readFileSync(new FileURL("./ToolbarMenu.css", import.meta.url), "utf8");
   // The filter text and section headings start where the labels do.
   expect(toolbar.match(/padding-inline: var\(--menu-label-start\) var\(--menu-item-pad\)/g)).toHaveLength(2);
-  expect(toolbar).toMatch(/\.toolbar-menu-popover \{[^}]*width: min\(300px, calc\(100vw - 16px\)\); min-width: 0;/);
+  expect(toolbar).toMatch(/\.toolbar-menu-popover \{[^}]*min-width: min\(300px, calc\(100vw - 16px\)\);/);
   expect(toolbar).toMatch(/\.toolbar-menu-sample \{[^}]*min-width: 0;[^}]*white-space: normal;/);
-  expect(`${menuCss}${toolbar}`.match(/\b(10|14|34)px\b/g)).toEqual(["14px"]);
+  expect(menuCss).toContain("--menu-check-width: var(--icon-small)");
+  expect(`${menuCss}${toolbar}`).not.toMatch(/\b(10|14|34)px\b/);
 });
 
 test("the shortcuts table breaks actions only between words and keeps keys on one line at the end", () => {
@@ -581,6 +602,6 @@ test.each([
 
 test("wrapped menu labels retain vertical padding and scalable minimum heights", () => {
   expect(menuCss).toMatch(/\.menu-item \{[^}]*padding-block: var\(--space-1\)/);
-  expect(menuCss).toMatch(/--menu-item-height: 1\.75rem/);
+  expect(menuCss).toMatch(/--menu-item-height: 1\.5rem/);
   expect(menuCss).toMatch(/font: var\(--type-meta-size\) \/ var\(--type-meta-line\)/);
 });

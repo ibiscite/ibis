@@ -29,7 +29,7 @@ try {
     // Exit must finish even if a modal temporarily hides the old menu from ARIA.
     const moreMenu = page.getByRole("menu", { name: "More", exact: true, includeHidden: true });
     const formatMenu = page.getByRole("menu", { name: /^Copy as/, includeHidden: true });
-    const keysDialog = page.getByRole("dialog", { name: "Keyboard shortcuts", exact: true });
+    const keysDialog = page.getByRole("dialog", { name: "Keyboard Shortcuts", exact: true });
     page.setDefaultTimeout(5000);
     page.on("pageerror", (error) => errors.push(error.message));
     await page.exposeFunction("fixtureSizing", (command) => { resizes.push(command); });
@@ -120,7 +120,7 @@ try {
           if (command === "copy_file_citation") {
             const saved = prepared.get(args.ticket);
             return { text: saved.text, summary: shelfDetails === "receipt" ? { text: saved.text.slice(0, 119) + "…", more: saved.items.length - 1 } : null,
-              warnings: largeNotice ? Array.from({ length: 16 }, (_, i) => `Invented copy warning ${i + 1}: check the reference metadata.`) : [] };
+              warnings: largeNotice ? Array.from({ length: 20 }, (_, i) => `Invented copy warning ${i + 1}: check the reference metadata.`) : [] };
           }
           if (command === "login_item") return { name: "Ibis", enabled: false, problem: null };
           if (command === "update_checks") return null;
@@ -312,7 +312,7 @@ try {
       return dialog;
     };
     const closeEditor = async (dialog) => {
-      await dialog.getByRole("button", { name: "Close", exact: true }).click();
+      await dialog.press("Escape");
       await dialog.waitFor({ state: "detached" });
     };
     const checkFormPointers = async (dialog) => {
@@ -322,7 +322,7 @@ try {
         assert.equal(await radio.evaluate(isWholeRadioTarget), true, "the enabled native radio fills its row and receives pointer hits");
         await radio.click({ trial: true });
       }
-      const remove = dialog.getByRole("button", { name: /^Remove from citation/ });
+      const remove = dialog.getByRole("button", { name: /^Remove from Citation/ });
       if (await remove.isEnabled()) await remove.click({ trial: true });
     };
     if (shelfDetails === "forms") {
@@ -431,7 +431,7 @@ try {
       const dialog = await openEditor();
       const fullCitation = dialog.getByRole("region", { name: "Full citation", exact: true });
       assert.equal(await fullCitation.textContent(), await segment.locator(".preview-text").textContent(), "the single-reference menu keeps the entire citation available without hover");
-      await dialog.getByRole("textbox", { name: "Page", exact: true }).press("ArrowUp");
+      await dialog.getByRole("textbox", { name: "Page", exact: true }).press("ArrowDown");
       await page.keyboard.press("End");
       assert.equal(await fullCitation.evaluate((node) => document.activeElement === node), true, "menu keys reach the complete citation without hover");
       assert.equal(await reachable(fullCitation), true, "the complete long/RTL citation is reachable in the menu");

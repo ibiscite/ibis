@@ -61,14 +61,14 @@ test.each([false, true])("source opening leaves Copy as before exposing an acces
   expect(footer.getByRole("button", { name: "Find ⁨thesis.bib⁩…" })).toBeTruthy();
 });
 
-test("Command-O from Keyboard shortcuts returns focus to Search so the next command invokes recovery", async () => {
+test("Command-O from Keyboard Shortcuts returns focus to Search so the next command invokes recovery", async () => {
   const open = vi.fn(() => { throw { code: "failed" }; });
   backend({ library_status: () => library, open_library_source: open });
   render(<App />);
   await waitFor(() => expect(screen.getByRole("status", { name: "Library status" }).textContent).toContain("thesis.bib"));
   act(() => search().focus());
   press("/", { ctrlKey: true });
-  const dialog = await screen.findByRole("dialog", { name: "Keyboard shortcuts" });
+  const dialog = await screen.findByRole("dialog", { name: "Keyboard Shortcuts" });
   expect(dialog.contains(document.activeElement)).toBe(true);
   commandO();
   await waitFor(() => expect(open).toHaveBeenCalledOnce());
@@ -179,7 +179,7 @@ test("a source-open failure from the welcome keys sheet returns to visible More 
   const more = screen.getByRole("button", { name: "More" });
   act(() => more.focus());
   press("/", { ctrlKey: true });
-  expect(await screen.findByRole("dialog", { name: "Keyboard shortcuts" })).toBeTruthy();
+  expect(await screen.findByRole("dialog", { name: "Keyboard Shortcuts" })).toBeTruthy();
   commandO();
   await waitFor(() => expect(open).toHaveBeenCalledOnce());
   await screen.findByRole("alert");

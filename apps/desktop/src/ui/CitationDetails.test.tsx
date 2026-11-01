@@ -81,11 +81,9 @@ test.each(["macos", "windows", "linux"])("%s uses labelled shared controls, plai
 test("fields and segmented choices use role tokens, wrap and retain keyboard and touch targets", () => {
   const css = readFileSync(new FileURL("./CitationDetails.css", import.meta.url), "utf8");
   const segmented = readFileSync(new FileURL("./Segmented.css", import.meta.url), "utf8");
-  expect(css).toContain("flex-wrap: wrap");
-  expect(css).toContain("min-block-size: var(--control-h)");
   expect(css).toContain("input:focus-visible");
   expect(css).toContain("@media (pointer: coarse)");
-  expect(segmented).toContain("min-height: var(--control-h)");
+  expect(segmented).toContain("min-height: var(--control-small-h)");
   expect(segmented).toContain("@media (pointer: coarse)");
   expect(css).not.toMatch(/#[0-9a-f]{3,8}\b|\b\d+px\b/);
 });

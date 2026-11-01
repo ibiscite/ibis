@@ -205,7 +205,7 @@ test("hiding while a first choice saves cancels its pending copy", async () => {
   expect(copies).toEqual([]);
 });
 
-test.each(["More", "Keyboard shortcuts"])("opening %s cancels a dismissed question waiting for its preview", async (overlay) => {
+test.each(["More", "Keyboard Shortcuts"])("opening %s cancels a dismissed question waiting for its preview", async (overlay) => {
   let finish!: (preview: ReturnType<typeof receipt>) => void;
   const rendering = new Promise<ReturnType<typeof receipt>>((resolve) => { finish = resolve; });
   const { copies, calls } = opened(() => BROWSER, { preview_file_citation: () => rendering });
@@ -226,7 +226,7 @@ test.each(["More", "Keyboard shortcuts"])("opening %s cancels a dismissed questi
   expect(copies).toEqual([]);
 });
 
-test.each(["More", "Keyboard shortcuts"])("opening %s cancels a first-paste pick waiting for its save", async (overlay) => {
+test.each(["More", "Keyboard Shortcuts"])("opening %s cancels a first-paste pick waiting for its save", async (overlay) => {
   let finish!: () => void;
   const saving = new Promise<null>((resolve) => { finish = () => resolve(null); });
   const { copies, calls } = opened(() => BROWSER, { remember_app_output: () => saving });

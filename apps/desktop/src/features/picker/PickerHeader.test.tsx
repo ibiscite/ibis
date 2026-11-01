@@ -38,9 +38,9 @@ test.each(["pointer", "Enter", "Space"])("clear acts once with %s and immediatel
   render(<Header changed={changed} />);
   const input = screen.getByRole("combobox", { name: "Search references" }) as HTMLInputElement;
   expect(input.type).toBe("search");
-  expect(screen.queryByRole("button", { name: "Clear search" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Clear Search" })).toBeNull();
   fireEvent.change(input, { target: { value: "研究 العربية" } });
-  const clear = screen.getByRole("button", { name: "Clear search" });
+  const clear = screen.getByRole("button", { name: "Clear Search" });
   expect(clear.getAttribute("data-variant")).toBe("icon");
   expect(clear.hasAttribute("data-tauri-drag-region")).toBe(false);
   clear.focus();
@@ -56,7 +56,7 @@ test.each(["pointer", "Enter", "Space"])("clear acts once with %s and immediatel
   expect(changed.mock.calls).toEqual([[""]]);
   expect(input.value).toBe("");
   expect(document.activeElement).toBe(input);
-  expect(screen.queryByRole("button", { name: "Clear search" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Clear Search" })).toBeNull();
   fireEvent.change(input, { target: { value: "next" } });
   expect(input.value).toBe("next");
   expect(input.getAttribute("aria-activedescendant")).toBe("result-0");
@@ -67,7 +67,7 @@ test.each([{ isComposing: true }, { keyCode: 229 }])("composition confirmation c
   render(<Header changed={changed} />);
   const input = screen.getByRole("combobox", { name: "Search references" });
   fireEvent.change(input, { target: { value: "研究" } });
-  const clear = screen.getByRole("button", { name: "Clear search" });
+  const clear = screen.getByRole("button", { name: "Clear Search" });
   clear.focus();
   changed.mockClear();
   fireEvent.keyDown(clear, { key: "Enter", code: "Enter", ...composition });

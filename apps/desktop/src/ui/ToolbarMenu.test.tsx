@@ -288,10 +288,10 @@ const tokens = readFileSync(new FileURL("../tokens.css", import.meta.url), "utf8
 test("menu role tokens exist, forced colours frame the button, and reduced motion removes movement", () => {
   const definitions = new Set([...(tokens + menuCss + toolbarCss + buttonCss).matchAll(/(--[\w-]+)\s*:/g)].map((match) => match[1]));
   expect([...(menuCss + toolbarCss + buttonCss).matchAll(/var\((--[\w-]+)/g)].map((match) => match[1]).filter((name) => !definitions.has(name))).toEqual([]);
-  expect(buttonCss).toMatch(/border: var\(--border-width\) solid var\(--stroke\)/);
-  expect(tokens).toMatch(/forced-colors: active[\s\S]*--stroke: ButtonText/);
+  expect(buttonCss).toMatch(/border: var\(--border-width\) solid var\(--stroke-field\)/);
+  expect(tokens).toMatch(/forced-colors: active[\s\S]*--stroke-field: ButtonText/);
   expect(menuCss).toMatch(/background: Highlight; color: HighlightText/);
-  expect(menuCss).toMatch(/prefers-reduced-motion: reduce[\s\S]*--menu-enter-transform: none; --menu-open-duration: 100ms/);
+  expect(menuCss).not.toMatch(/menu-enter/);
 });
 
 test("Space on an unavailable choice neither selects nor closes", async () => {
@@ -325,8 +325,7 @@ test("menu popovers use the shared overlay shadow and scalable native row metric
   expect(tokens).toContain("--shadow-overlay: 0 0 0 .5px rgb(0 0 0 / 12%), 0 12px 32px rgb(0 0 0 / 16%);");
   expect(menuCss).toContain("box-shadow: var(--shadow-overlay);");
   expect(tokens + menuCss).not.toMatch(/--menu-shadow\s*:/);
-  expect(menuCss).toMatch(/windows"\] \.menu-popover\s*\{[^}]*--menu-item-height: 2rem/);
-  expect(menuCss).toMatch(/linux"\] \.menu-popover\s*\{[^}]*--menu-item-height: 2rem/);
+  expect(menuCss).toMatch(/--menu-item-height: 1\.5rem/);
 });
 
 test.each(["ctrlKey", "metaKey"])("%s shortcuts reach the picker only outside composition", async (modifier) => {

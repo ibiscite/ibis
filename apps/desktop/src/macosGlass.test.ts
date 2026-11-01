@@ -9,7 +9,7 @@ const native = read("nativeAppearance.css");
 const libraryStatus = read("ui/LibraryStatus.css");
 
 test("readable overlays use the panel surface at 92% for menus and 96% for sheets", () => {
-  expect(tokens).toMatch(/--overlay:\s*light-dark\(rgb\(250 250 252 \/ 92%\), rgb\(44 44 48 \/ 92%\)\)/);
+  expect(tokens).toMatch(/--surface-overlay:\s*light-dark\(rgb\(250 250 252 \/ 92%\), rgb\(44 44 48 \/ 92%\)\)/);
   expect(tokens).toMatch(/--sheet:\s*light-dark\(rgb\(250 250 252 \/ 96%\), rgb\(44 44 48 \/ 96%\)\)/);
 });
 
@@ -39,11 +39,18 @@ function rgba(body: string, token: string): [number, number, number, number][] {
   return [...value!.matchAll(/rgb\((\d+) (\d+) (\d+) \/ ([\d.]+)%\)/g)].map((m) => [+m[1]!, +m[2]!, +m[3]!, +m[4]! / 100]);
 }
 
+/** A role's light and dark colours; translucent text is flattened onto the window surface. */
 function hexes(body: string, token: string): number[][] {
-  const value = body.match(new RegExp(`${token}:\\s*light-dark\\((#[0-9a-f]{6}),\\s*(#[0-9a-f]{6})\\)`));
+  const value = body.match(new RegExp(`${token}:\\s*light-dark\\(([^;]+)\\);`))?.[1];
   expect(value, token).toBeTruthy();
-  return [value![1]!, value![2]!].map((hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)));
+  const surfaces = [[255, 255, 255], [30, 30, 30]];
+  return [...value!.matchAll(/#([0-9a-f]{6})|rgb\((\d+) (\d+) (\d+) \/ ([\d.]+)%\)/g)].map((m, mode) => m[1]
+    ? [1, 3, 5].map((i) => parseInt(`#${m[1]}`.slice(i, i + 2), 16))
+    : [+m[2]!, +m[3]!, +m[4]!].map((c, i) => c * +m[5]! / 100 + surfaces[mode]![i]! * (1 - +m[5]! / 100)));
 }
+
+/** Translucent text as painted on a given background. */
+const painted = (ink: [number, number, number, number], under: number[]) => ink.slice(0, 3).map((c, i) => c * ink[3]! + under[i]! * (1 - ink[3]!));
 
 const luminance = (rgb: number[]) => rgb.map((c) => c / 255).map((c) => c <= .04045 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4)
   .reduce((sum, c, i) => sum + c * [0.2126, 0.7152, 0.0722][i]!, 0);
@@ -68,7 +75,7 @@ test("the shared macOS look keeps native materials guarded by accessibility pref
 
 test("macOS fills and hairlines are translucent so the native material shows through", () => {
   const { body } = macBlock();
-  for (const token of ["--line", "--hover", "--fill", "--fill-h"]) {
+  for (const token of ["--separator", "--fill-4", "--fill-3", "--fill-2"]) {
     for (const [, , , alpha] of rgba(body, token)) expect(alpha, token).toBeLessThan(.2);
   }
 });
@@ -99,11 +106,14 @@ test("Acrylic text roles keep contrast over black and white backdrops in both th
   for (const [theme, tint] of tints.entries()) {
     for (const under of [0, 255]) {
       const background = tint.slice(0, 3).map((c) => c * tint[3]! + under * (1 - tint[3]!));
-      // The shared macOS hover is black 4.5% / white 6%.
-      const hover = background.map((c) => theme ? c * .94 + 255 * .06 : c * .955);
-      for (const role of ["--text", "--muted", "--scarlet", "--done", "--stop"]) {
-        const foreground = hexes(role === "--text" || role === "--muted" ? shared : roles, role)[theme]!;
-        for (const fill of [background, hover]) expect(contrast(foreground, fill), `${role}/${theme}/${under}`).toBeGreaterThanOrEqual(4.5);
+      // The quaternary fill is black or white at 3%.
+      const hover = background.map((c) => theme ? c * .97 + 255 * .03 : c * .97);
+      for (const fill of [background, hover]) {
+        expect(contrast(painted(rgba(shared, "--text")[theme]!, fill), fill), `--text/${theme}/${under}`).toBeGreaterThanOrEqual(4.5);
+        expect(contrast(painted(rgba(roles, "--text-secondary")[theme]!, fill), fill), `--text-secondary/${theme}/${under}`).toBeGreaterThanOrEqual(4.5);
+        for (const role of ["--scarlet", "--done", "--stop"]) {
+          expect(contrast(hexes(roles, role)[theme]!, fill), `${role}/${theme}/${under}`).toBeGreaterThanOrEqual(4.5);
+        }
       }
       expect(hexes(roles, "--look")).toEqual(hexes(tokens, "--look"));
       expect(contrast(hexes(roles, "--look")[theme]!, hexes(tokens, "--surface")[theme]!)).toBeGreaterThanOrEqual(3);
@@ -118,18 +128,18 @@ test("secondary text keeps 4.5:1 over the veiled material, on the brightest and 
   const [light, dark] = rgba(body, "--vibrancy-tint");
   // A thin veil let a busy desktop show through the list (hands-on check, 2026-10-27).
   for (const veil of [light!, dark!]) expect(veil[3]).toBeGreaterThanOrEqual(.75);
-  const muted = hexes(body, "--muted");
-  const text = hexes(body, "--text");
+  const muted = rgba(body, "--text-secondary");
+  const text = rgba(body, "--text");
   // CI's appearance probe (#232) saw the light Popover material lift a black
   // channel to 141; the dark material is assumed no brighter than 120 over white.
   const over = (veil: [number, number, number, number], under: number) => veil.slice(0, 3).map((c) => c * veil[3] + under * (1 - veil[3]));
   for (const under of [141, 255]) {
-    expect(contrast(muted[0]!, over(light!, under))).toBeGreaterThanOrEqual(4.5);
-    expect(contrast(text[0]!, over(light!, under))).toBeGreaterThanOrEqual(7);
+    expect(contrast(painted(muted[0]!, over(light!, under)), over(light!, under))).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(painted(text[0]!, over(light!, under)), over(light!, under))).toBeGreaterThanOrEqual(7);
   }
   for (const under of [0, 120]) {
-    expect(contrast(muted[1]!, over(dark!, under))).toBeGreaterThanOrEqual(4.5);
-    expect(contrast(text[1]!, over(dark!, under))).toBeGreaterThanOrEqual(7);
+    expect(contrast(painted(muted[1]!, over(dark!, under)), over(dark!, under))).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(painted(text[1]!, over(dark!, under)), over(dark!, under))).toBeGreaterThanOrEqual(7);
   }
 });
 
@@ -198,7 +208,7 @@ test("the frameless macOS writing toggles use the shared pressed fill", () => {
   const mac = macSkinRules().filter((rule) => rule.type === CSSRule.STYLE_RULE).map((rule) => rule.cssText).join("\n");
   const sheet = document.createElement("style");
   // jsdom does not resolve custom properties in border colours: substitute them.
-  const values: Record<string, string> = { "--clear": "transparent", "--sel": "rgb(10, 122, 255)", "--sel-text": "rgb(255, 255, 255)", "--line": "rgb(1, 2, 3)", "--border-width": "1px", "--stroke": "transparent", "--fill": "rgb(240, 240, 240)", "--fill-p": "rgb(220, 220, 220)", "--text": "rgb(20, 20, 20)" };
+  const values: Record<string, string> = { "--clear": "transparent", "--selected": "rgb(10, 122, 255)", "--selected-text": "rgb(255, 255, 255)", "--separator": "rgb(1, 2, 3)", "--border-width": "1px", "--stroke-field": "transparent", "--fill-control": "rgb(240, 240, 240)", "--fill-control-pressed": "rgb(220, 220, 220)", "--text": "rgb(20, 20, 20)" };
   sheet.textContent = (mac.replace(/@supports[^{]*\{[^{}]*\{[^{}]*\}\s*\}/g, "") + styles + read("ui/Button.css"))
     .replace(/var\((--[\w-]+)\)/g, (whole, name: string) => values[name] ?? whole);
   document.head.append(sheet);
@@ -262,7 +272,7 @@ test.each([
   const source = read("ui/Overlay.css") + read("styles.css").replace(/@import[^;]+;/g, "") + read("ui/Menu.css") + read("ui/KeysSheet.css") + native;
   const solid = preference !== "normal" || mode !== "vibrancy" && mode !== "liquid-glass";
   sheet.textContent = overlayRules(source, preferences)
-    .replace(/var\(--(?:surface|overlay|sheet)\)/g, "rgb(252, 252, 253)")
+    .replace(/var\(--(?:surface|surface-overlay|sheet)\)/g, "rgb(252, 252, 253)")
     .replace(/var\(--blur\)/g, solid ? "none" : "blur(40px) saturate(1.6)");
   document.head.append(sheet);
   document.documentElement.dataset.platform = "macos";

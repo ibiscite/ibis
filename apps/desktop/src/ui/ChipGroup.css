@@ -1,6 +1,6 @@
 .chip-group { --chip-group-target: var(--control-h); min-width: 0; max-width: 100%; }
 .chip-group-list { display: flex; flex-wrap: wrap; gap: max(var(--space-1), calc(var(--chip-group-target) - var(--chip-h))) var(--space-1); }
-.chip-group-item { display: inline-flex; align-items: center; max-width: 100%; height: var(--chip-h); padding-inline-start: var(--space-2); border: var(--border-width) solid var(--stroke); border-radius: var(--r-control); background: var(--fill); color: var(--text); font-size: var(--type-label-size); }
+.chip-group-item { display: inline-flex; align-items: center; max-width: 100%; height: var(--chip-h); padding-inline-start: var(--space-2); border: var(--border-width) solid var(--stroke-field); border-radius: var(--r-control); background: var(--fill-control); color: var(--text); font-size: var(--type-label-size); }
 .chip-group-item bdi { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chip-group-remove.ui-button { flex: none; width: var(--chip-group-target); height: var(--chip-h); --ring-offset: calc(-1 * var(--ring-width)); }
 .chip-group-item[data-focus-visible] { outline: var(--ring-width) solid var(--ring); outline-offset: var(--ring-offset); }

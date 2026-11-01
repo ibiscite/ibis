@@ -1,7 +1,7 @@
-.empty-state { color: var(--muted); text-align: center; padding: 2rem 1rem; }
+.empty-state { color: var(--text-secondary); text-align: center; padding: 2rem 1rem; }
 .empty-state p:first-child { color: var(--text); font-weight: var(--strong); }
 .empty-template { padding-block: calc(3 * var(--space-4) - var(--inset)); }
-.empty-icon { display: block; width: calc(3 * var(--space-4)); height: calc(3 * var(--space-4)); margin: 0 auto var(--space-3); color: var(--tertiary); }
+.empty-icon { display: block; width: calc(3 * var(--space-4)); height: calc(3 * var(--space-4)); margin: 0 auto var(--space-3); color: var(--text-tertiary); }
 .empty-title { margin: 0; color: var(--text); font-size: var(--type-lead-size); line-height: var(--type-lead-line); font-weight: var(--strong); overflow-wrap: anywhere; }
 .empty-description { max-width: 40ch; margin: var(--space-2) auto 0; font-size: var(--type-meta-size); line-height: var(--type-meta-line); overflow-wrap: anywhere; }
 .empty-keys { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-4); margin-top: var(--space-4); font-size: var(--type-label-size); line-height: var(--type-label-line); }
@@ -16,7 +16,7 @@ main .picker-content .results-area:has(.empty-opening) { display: flex; flex-dir
 .empty-opening { flex: none; width: 100%; max-width: 33.75rem; margin: auto; padding: var(--inset); text-align: center; }
 .opening-mark { width: 2.5rem; height: 2.5rem; margin: 0 auto var(--space-3); animation: opening-breathe calc(8 * var(--dur-panel)) var(--ease) infinite alternate; }
 .opening-title { margin: 0; color: var(--text); font-size: var(--type-title-size); line-height: var(--type-title-line); font-weight: var(--strong); overflow-wrap: anywhere; }
-.opening-line { margin: .375rem 0 0; color: var(--muted); font-size: var(--type-meta-size); line-height: var(--type-meta-line); overflow-wrap: anywhere; }
+.opening-line { margin: .375rem 0 0; color: var(--text-secondary); font-size: var(--type-meta-size); line-height: var(--type-meta-line); overflow-wrap: anywhere; }
 .opening-progress { width: 10rem; max-width: 100%; margin: var(--space-4) auto 0; }
 @keyframes opening-breathe { from { opacity: .65; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) {

@@ -45,7 +45,7 @@ export function useSourceOpen(api: Pick<PickerApi, "openLibrarySource" | "librar
     kind: zoteroOnly || (library?.snapshot_zotero ?? library?.zotero) ? "zotero" : "file",
     name: zoteroOnly ? "Zotero" : library?.snapshot_name ?? library?.name ?? "library", icon: null, status_icon: null,
   };
-  const run = (reveal = false, appOnly = false) => {
+  const run = (reveal = false, appOnly = false, target: unknown = item) => {
     if (!api.openLibrarySource) return;
     const current = ++request.current;
     setFailure(null);
@@ -58,7 +58,7 @@ export function useSourceOpen(api: Pick<PickerApi, "openLibrarySource" | "librar
       setBusy(null);
     };
     const kind = appOnly ? "zotero" : source.kind;
-    void api.openLibrarySource(appOnly ? null : item, library?.revision ?? "", appOnly || zoteroOnly, reveal).then(settled, (error: unknown) => {
+    void api.openLibrarySource(appOnly ? null : target as typeof item, library?.revision ?? "", appOnly || zoteroOnly && target === item, reveal).then(settled, (error: unknown) => {
       settled();
       if (latest.current !== scope || request.current !== current) return;
       const changed = isSnapshotChanged(error);
