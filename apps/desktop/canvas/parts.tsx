@@ -14,7 +14,7 @@ import { Switch } from "../src/ui/Switch";
 const ignore = () => {};
 const states = ["rest", "hovered", "pressed", "focus-visible", "disabled"] as const;
 const variants = ["primary", "secondary", "quiet"] as const;
-const dots = [["#007aff", "Blue"], ["#953d96", "Purple"], ["#e0383e", "Red"], ["#62ba46", "Green"]] as const;
+const dots = [["var(--dot-blue)", "Blue"], ["var(--dot-purple)", "Purple"], ["var(--dot-red)", "Red"], ["var(--dot-green)", "Green"]] as const;
 const choices = [
   { id: "retry", title: "Try again", help: "Read the library again", icon: <ChoiceIcon name="retry" />, suggested: true },
   { id: "another", title: "Use another library", help: "Zotero or another library file", icon: <ChoiceIcon name="swap" /> },

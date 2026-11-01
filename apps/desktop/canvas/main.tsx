@@ -1,6 +1,8 @@
 import { useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { App, type PickerApi } from "../src/App";
+import type { NoticeMessage } from "../src/api";
+import { noticePlatform, renderNotice } from "../src/copyFeedback";
 import { Button } from "../src/ui/Button";
 import { Switch } from "../src/ui/Switch";
 import { KeyCaps } from "../src/ui/KeyCaps";
@@ -15,12 +17,14 @@ import type { SettingsApi } from "../src/settings/api";
 import "../src/tokens.css";
 import tokenSource from "../src/tokens.css?raw";
 import "../src/ui/Foundation.css";
+import "../src/ui/CopyReceipt.css";
+import "../src/notice.css";
 import "./board.css";
 import { Parts } from "./parts";
 // Picker root rules must not leak into the separate Settings window.
 import pickerStyles from "../src/styles.css?inline";
 
-export const scenarios = ["results", "first-run", "more", "format-menu", "states", "parts", "empty", "error", "loading", "empty-search", "shelf", "reference-menu", "library-menu", "shortcuts", "pinned", "no-matches", "missing", "zotero-closed", "unreadable", "stale", "compact", "spacious", "larger-text", "right-to-left", "long-titles", "tokens", "settings-general", "settings-look", "settings-citations", "settings-shortcuts", "settings-about"] as const;
+export const scenarios = ["results", "first-run", "more", "format-menu", "states", "parts", "notice", "empty", "error", "loading", "empty-search", "shelf", "reference-menu", "library-menu", "shortcuts", "pinned", "no-matches", "missing", "zotero-closed", "unreadable", "stale", "compact", "spacious", "larger-text", "right-to-left", "long-titles", "tokens", "settings-general", "settings-look", "settings-citations", "settings-shortcuts", "settings-about"] as const;
 type Scenario = typeof scenarios[number];
 type Theme = "light" | "dark";
 
@@ -146,6 +150,21 @@ function Tokens({ theme }: { theme: Theme }) {
   </div>;
 }
 
+const notices: NoticeMessage[] = [
+  { delivered: { outcome: "pasted", app: "Microsoft Word" }, text: "(Aster & Birch, 2020)" },
+  { delivered: { outcome: "copied", reason: "terminal" }, text: "[@synthetic0]" },
+  { delivered: { outcome: "copied", reason: "secure-field" }, text: "[@synthetic0]" },
+  { delivered: { outcome: "pasted", app: "Notepad" }, text: "An invented reference whose citation runs long enough that it moves to a second line and stops there", more: 4 },
+];
+
+/** The Copied notice, drawn by the code that draws its window, in that window's frame. */
+function Notices({ theme }: { theme: Theme }) {
+  useAppearance({ appearance: theme });
+  return <div className="canvas-notices">{notices.map((message) => <div key={`${message.delivered.outcome}-${message.text}-${"reason" in message.delivered ? message.delivered.reason : ""}`} className="canvas-notice" ref={(frame) => {
+    if (frame && !frame.firstChild) renderNotice(frame, noticePlatform(navigator.platform))(message);
+  }} />)}</div>;
+}
+
 function ThemedParts({ theme }: { theme: Theme }) {
   useAppearance({ appearance: theme });
   return <><style>{pickerStyles}</style><Parts /></>;
@@ -177,6 +196,7 @@ function Canvas({ host, scenario, settings, picker, theme }: { host: HTMLElement
   if (scenario === "states") return <States theme={theme} />;
   if (scenario === "tokens") return <Tokens theme={theme} />;
   if (scenario === "parts") return <ThemedParts theme={theme} />;
+  if (scenario === "notice") return <Notices theme={theme} />;
   return scenario.startsWith("settings-")
     ? <SettingsApp api={settings} initialPage={scenario.slice(9)} />
     : <><style>{pickerStyles}</style><App api={picker} preview={{ query: fixtures[scenario]?.query ?? (["first-run", "empty", "error", "loading"].includes(scenario) ? "" : "invented") }} /></>;
@@ -198,7 +218,7 @@ export function mount(host: HTMLElement, options: { scenario?: string; theme?: s
   const settings = demoApi();
   void settings.setPickerPreferences({ ...fixtures[scenario as Scenario]?.preferences, appearance: theme as Theme, paste: false }, null, 0);
   // The states and tokens pages use the Settings window's base styles.
-  const settingsWindow = scenario.startsWith("settings-") || scenario === "states" || scenario === "tokens" || scenario === "parts";
+  const settingsWindow = scenario.startsWith("settings-") || scenario === "states" || scenario === "tokens" || scenario === "parts" || scenario === "notice";
   document.documentElement.classList.toggle("settings-window", settingsWindow);
   document.documentElement.dataset.nativeAppearance = "opaque";
   document.documentElement.dir = scenario === "right-to-left" ? "rtl" : "ltr";

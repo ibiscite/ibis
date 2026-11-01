@@ -91,7 +91,10 @@ high contrast (decision 0021). Light and dark come from
 `data-system` records the actual OS for fonts, modifier labels and native
 material correctness; it does not choose a different layout. The copied
 notice uses the same 560×100-point frame near the top centre on every OS,
-including its 16-point shadow margin; the frame ignores the pointer. The
+including its 16-point shadow margin; the frame ignores the pointer. Its
+window reads the same tokens as the picker and overrides none of them; only
+its background is transparent (maintainer, 2026-11-01). The canvas draws it
+in the `notice` scenario through the same `renderNotice`. The
 notice never clips its words: a citation that would be cut short moves to a
 second line. The notice is one card (maintainer, 2026-10-30): radius 18, 8 px
 inset, a 36 px tile of radius 10, then the title ("Pasted into Word", 14/18

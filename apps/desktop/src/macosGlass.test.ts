@@ -28,7 +28,7 @@ function macSkinRules(): CSSRule[] {
 
 /** The macOS glass token block: one rule, inside its contrast guard. */
 function macBlock(): { guard: string; body: string } {
-  const match = tokens.match(/@supports \(color: light-dark\(white, black\)\) \{\s*(@media [^{]+)\{(?:\s*\/\*[^]*?\*\/)?\s*:root:not\(\.notice-window\) \{([^{}]*)\}/);
+  const match = tokens.match(/@supports \(color: light-dark\(white, black\)\) \{\s*(@media [^{]+)\{(?:\s*\/\*[^]*?\*\/)?\s*:root \{([^{}]*)\}/);
   expect(match, "macOS glass tokens").toBeTruthy();
   return { guard: match![1]!.trim(), body: match![2]! };
 }
@@ -183,18 +183,19 @@ test.each(["vibrancy", "liquid-glass"])("text keeps 4.5:1 and the Look glyph 3:1
   expect(body).not.toMatch(/--scarlet/);
 });
 
-test("the Copied notice window keeps its own pill border and colours", () => {
-  document.documentElement.className = "notice-window";
-  document.documentElement.dataset.platform = "macos";
-  try {
-    const selector = ':root[data-platform="macos"]:not(.notice-window)';
-    expect(document.documentElement.matches(selector)).toBe(false);
-    document.documentElement.className = "";
-    expect(document.documentElement.matches(selector)).toBe(true);
-  } finally {
-    document.documentElement.className = "";
-    delete document.documentElement.dataset.platform;
-  }
+test("the Copied notice reads the same designed colours as the picker", () => {
+  // The notice is the receipt card (docs/design.md), not a pill of its own:
+  // leaving its window out of this block drew the card in raw system colours.
+  expect(tokens).not.toMatch(/:root:not\(\.notice-window\)\s*\{/);
+  expect(macBlock().body).toMatch(/--separator:/);
+  expect(macBlock().body).toMatch(/--text-secondary:/);
+});
+
+test("the native window corner is the same value as the corner token", () => {
+  const radius = tokens.match(/--r-win:\s*(\d+)px/)?.[1];
+  const mask = read("../src-tauri/src/native_corners.rs").match(/CORNER_RADIUS_POINTS: f64 = (\d+)\.0/)?.[1];
+  expect(radius).toBeTruthy();
+  expect(mask).toBe(radius);
 });
 
 test("the frameless macOS writing toggles use the shared pressed fill", () => {
