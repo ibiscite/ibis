@@ -16,12 +16,16 @@ export function useRecentReferences(recentReferences: typeof nativeApi.recentRef
   latest.current = history;
   const recording = useRef(enabled);
   recording.current = enabled;
+  // The newest saved choice a change event carried. Events arrive in save
+  // order, so an "off" holds until a newer saved "on" replaces it, even while
+  // the re-read that follows is still on its way or fails.
+  const announced = useRef<boolean | null>(null);
   const [forgetFailed, setForgetFailed] = useState(false);
   const [forgotten, setForgotten] = useState(0);
   // Only a new receipt records. Turning the switch on, or Forget, never
   // replays the receipt that was current before.
   useEffect(() => {
-    if (copy?.ids.length && recording.current === true) setHistory((old) => rememberCitation(old, copy.app, copy.ids, storage));
+    if (copy?.ids.length && recording.current === true && announced.current !== false) setHistory((old) => rememberCitation(old, copy.app, copy.ids, storage));
   }, [copy]);
   // A receipt doesn't replace rows under a kept-open picker. Read the newest
   // identities on the next empty search/opening; forgetting refreshes now.
@@ -39,7 +43,9 @@ export function useRecentReferences(recentReferences: typeof nativeApi.recentRef
   useEffect(() => {
     if (!onPreferencesChanged) return;
     const stop = onPreferencesChanged((change) => {
-      if (change?.recent_citations === false) { recording.current = false; forget(); }
+      if (typeof change?.recent_citations !== "boolean") return;
+      announced.current = change.recent_citations;
+      if (!change.recent_citations) forget();
     });
     return () => { void stop.then((unlisten) => unlisten()).catch(() => undefined); };
   }, [onPreferencesChanged, forget]);

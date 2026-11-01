@@ -146,3 +146,22 @@ test("Recent citations turned off and quickly on again still forgets, though the
   await copyB();
   await waitFor(() => expect(saved()).toEqual([{ app: writer, items: [b.id] }]));
 });
+
+test("a copy finished before the re-read after a saved off is not recorded", async () => {
+  seed();
+  let reads = 0;
+  backend({ picker_destination: destination,
+    // The re-read after the change event still reports the old "on".
+    picker_preferences: () => { reads++; return { citation_style: null, density: "comfortable", larger_text: false, show_paste_preview: true, search_icon: "magnifier", paste: true, menu_bar: true, recent_citations: true }; },
+    recent_references: (args) => Array.isArray(args.ids) && args.ids.length ? [{ ...a, recent: "cited" }] : [],
+    search: () => [b],
+  });
+  render(<App />);
+  await screen.findByText("Recent A");
+  fireEvent.click(screen.getByRole("button", { name: "Keep Window Open" }));
+  await act(async () => { await emit("preferences:changed", { revision: 1, recent_citations: false }); });
+  await waitFor(() => expect(saved()).toEqual([]));
+  expect(reads).toBeGreaterThan(1);
+  await copyB();
+  expect(saved()).toEqual([]);
+});
