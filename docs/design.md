@@ -576,13 +576,18 @@ control are rounded rectangles on the concentric chain (`--r-control`, or
 `--r-action` in a band inset by S). Capsules are for shapes that are not
 buttons: switches, count and tag pills, the update progress track and
 toasts. Badges over content, such as the shelf's remove ×, are circles.
+The shelf's reference count is the one bordered control on the shelf: an
+opaque face, a hairline edge and `--r-tile`, with a document glyph, the
+number and the pop-up chevrons, so it reads as a button at a glance
+(maintainer, 2026-11-01).
 Every action shares `--action-h`, `--r-control`, `--space-3` side padding,
-a 16 pt icon slot and plain trailing key text. Inline text editing may use
+a 16 pt icon slot and trailing key caps. Inline text editing may use
 quiet buttons, with the same state table; they are not footer or status actions.
 
 **IconButton.** Icon-only buttons are square and share one size, glyph size and state set.
 The regular square is 24 pt (`--control-small-h`), or 28 pt (`--action-h`)
-in large contexts, with `--r-control`, one 16 pt outline glyph and the set's
+in large contexts, with `--r-control`, one outline glyph (16 pt in the regular
+square, 20 pt in the large one, as a Mac toolbar draws it) and the set's
 one stroke weight. The hit area extends to 32 pt, or 44 pt for touch, without
 changing the drawn square. Rest is transparent with secondary-label ink;
 hover is the quiet hover fill with label ink; pressed is the control hover
@@ -687,12 +692,16 @@ the wrong grid, live area, stroke or path structure.
 **Footer and status** [C8]. Status dot and text at the leading edge, then
 "More ⌘K" (quiet), then, last, on the rows' right edge, "Paste into Word · APA ↵"
 or "Copy N as <format> ↵": the one primary action, filled with `--primary`
-with `--text-on-accent` and plain key text, because mouse users copy far more
+with `--text-on-accent` and its key cap, because mouse users copy far more
 often than they open anything else (maintainer, 2026-10-30; a Mac puts the
 default button last). Every hint is label first, then keys: 8 px between them,
 16 px between hints, label type on one baseline. Source, More and Copy use `ui/Button` directly: the same
 height, `--r-control` radius and padding. Source and More are quiet, Copy primary;
-keys stay plain inside the button, with no filled cap inside a filled button.
+keys keep their cap inside the button (maintainer, 2026-11-01: the earlier caps
+read best): the shared key fill on quiet buttons, a 22% veil of
+`--text-on-accent` on the primary. Menus still write shortcuts as plain text.
+The status trigger's padding sits in the footer inset, so the dot stays on the
+tiles' edge.
 On macOS the source uses the installed app's system icon when available;
 Zotero uses the books fallback elsewhere and on the canvas. Never show an action twice on the same
 screen: a source action already offered as a choice or menu row is hidden

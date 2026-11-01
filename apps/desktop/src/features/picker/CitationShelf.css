@@ -37,6 +37,13 @@ main:has(> .shelf) > footer { border-top-color: transparent; }
 }
 .shelf-actions { display: flex; flex: none; align-items: center; gap: var(--space-1); margin-inline-start: var(--space-1); }
 .shelf-actions:empty { display: none; }
+/* The count is a pop-up on the shelf's fill, so it is the one bordered control
+   there: an opaque face and a hairline edge, a document glyph, the number and
+   the chevrons, as a Mac pop-up button reads. */
+.shelf-actions > .shelf-count.ui-popup-button.ui-button[data-variant] { min-height: var(--control-small-h); padding-inline: var(--space-2) var(--space-1); border: var(--border-width) solid var(--separator); border-radius: var(--r-tile); background: var(--surface-overlay); color: var(--text); font-variant-numeric: tabular-nums; }
+.shelf-actions > .shelf-count.ui-popup-button.ui-button[data-variant]:is([data-hovered], [data-pressed], [aria-expanded="true"]) { background-image: linear-gradient(var(--fill-control-hover), var(--fill-control-hover)); }
+.shelf-count .toolbar-menu-value { display: inline-flex; align-items: center; gap: var(--space-1); }
+.shelf-count-icon { width: var(--icon-small); height: var(--icon-small); color: var(--text-secondary); }
 /* Counts live after the citation in fixed slots; neither shifts its column. */
 .shelf-pill { flex: none; padding-inline: var(--space-2); border-radius: var(--r-full); background: var(--chip); color: var(--text-secondary); font-size: var(--type-label-size); line-height: var(--chip-h); white-space: nowrap; }
 .shelf-details-list { display: flex; flex-direction: column; gap: var(--row-spacing); margin: 0; padding: 0; list-style: none; }

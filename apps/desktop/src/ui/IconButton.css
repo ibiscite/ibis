@@ -3,6 +3,8 @@
 .ui-icon-button.ui-button[data-size="default"] { --icon-button-size: var(--action-h); }
 .ui-icon-button.ui-button::after { inset: calc((var(--icon-button-size) - var(--control-h)) / 2); }
 .ui-icon-button > svg { width: var(--icon-small); height: var(--icon-small); pointer-events: none; }
+/* The large square (search bar) carries the 20 pt glyph, as a Mac toolbar does. */
+.ui-icon-button.ui-button[data-size="default"] > svg { width: var(--icon); height: var(--icon); }
 @media (pointer: coarse) {
   .ui-icon-button.ui-button::after { inset: calc((var(--icon-button-size) - var(--touch-target)) / 2); }
 }

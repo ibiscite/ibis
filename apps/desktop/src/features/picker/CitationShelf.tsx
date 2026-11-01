@@ -222,10 +222,10 @@ export function CitationShelf({ source, onOpenSource, announce, selected, highli
         </div>
         <div className="shelf-actions">
           {copied && <span role="status" aria-label={pickerText.copied} className="shelf-copied"><Icon name="check" />{pickerText.copied}</span>}
-          {!copied && references.length > 1 && <PopupButton ref={count} variant="quiet" className="shelf-count" aria-haspopup="dialog"
+          {!copied && references.length > 1 && <PopupButton ref={count} size="small" className="shelf-count" aria-haspopup="dialog"
             aria-label={interfaceText("shelf-references", { count: references.length })} title={pickerText.allChosen(references.length)} aria-expanded={panel?.kind === "references" || panel?.anchor === count.current}
             aria-controls={panel?.kind === "references" || panel?.anchor === count.current ? menuId : undefined}
-            onPress={(event) => open("references", event.target as HTMLElement)}>{interfaceText("shelf-references", { count: references.length })}</PopupButton>}
+            onPress={(event) => open("references", event.target as HTMLElement)}><Icon name="article" className="shelf-count-icon" />{references.length}</PopupButton>}
           {statusLabel && <Button variant="quiet" className="shelf-warnings" aria-label={statusLabel} title={statusLabel}
             aria-haspopup="dialog" aria-expanded={panel?.kind === "warnings"} aria-controls={panel?.kind === "warnings" ? menuId : undefined}
             onPress={(event) => open("warnings", event.target as HTMLElement)}>{compact ? warnings.length > 0 ? `! ${warnings.length}` : "i" : <>

@@ -3,7 +3,9 @@
 [data-status-compact] > .library-status-controls { min-width: calc(var(--tile) + var(--row-gap)); }
 /* The native button owns its visible status and a non-collapsing hit target. */
 .library-status-target { flex: 1; min-width: var(--control-h); position: relative; isolation: isolate; }
-.ui-button.library-status-trigger { width: 100%; justify-content: start; }
+/* The quiet button's padding sits in the footer's inset, so the dot stays on
+   the tiles' edge (docs/design.md, Footer) and the hover fill still has room. */
+.ui-button.library-status-trigger { width: calc(100% + var(--space-3) + var(--border-width)); margin-inline-start: calc(-1 * (var(--space-3) + var(--border-width))); justify-content: start; }
 .library-announcement > p { margin: 0; }
 .library-status-controls[data-health="stop"] .library-name, .library-status-controls[data-health="look"] .library-name { color: var(--text); }
 .library-status-controls .library-status { min-width: 0; }
