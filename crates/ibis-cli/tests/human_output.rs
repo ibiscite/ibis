@@ -248,15 +248,50 @@ fn errors_name_the_key_file_or_argument_and_keep_their_exit_codes() -> Result<()
     let (code, _, errors) = run(engine()?, &["ibis", "search"])?;
     assert_eq!(code, 2);
     assert!(errors.starts_with("ibis: the following required arguments"), "{errors}");
-    assert!(errors.contains("<query>"), "{errors}");
+    assert!(errors.contains("<WORDS>"), "{errors}");
     let (code, _, errors) = run(engine()?, &["ibis", "show", "--id", "nonsense"])?;
     assert_eq!(code, 3);
     assert!(errors.contains("--id must be an ItemRef"), "{errors}");
 
+    // Scripts and agents get the stable code on stdout and the same sentence on stderr.
+    let (_, _, plain) = run(engine()?, &["ibis", "show", "absent"])?;
     let (code, text, errors) = run(engine()?, &["ibis", "show", "absent", "--json"])?;
     assert_eq!(code, 4);
-    assert!(errors.is_empty());
+    assert_eq!(errors, plain);
+    assert!(
+        errors.starts_with("ibis: no reference has the citation key 'absent'"),
+        "{errors}"
+    );
     assert_eq!(text, "{\"error\":{\"code\":\"not-found\"},\"ibis\":1,\"ok\":false}\n");
+    Ok(())
+}
+
+#[test]
+fn help_and_version_are_envelopes_under_json() -> Result<(), Box<dyn std::error::Error>> {
+    let (code, text, errors) = run(engine()?, &["ibis", "--version", "--json"])?;
+    assert_eq!((code, errors.as_str()), (0, ""));
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&text)?,
+        serde_json::json!({"ibis":1,"ok":true,"data":{"version":env!("CARGO_PKG_VERSION")}})
+    );
+    // The help command takes no flags of its own; --json still wraps its text.
+    for args in [
+        ["ibis", "help", "search", "--json"],
+        ["ibis", "--json", "help", "search"],
+    ] {
+        let (code, text, errors) = run(engine()?, &args)?;
+        assert_eq!((code, errors.as_str()), (0, ""));
+        let value: serde_json::Value = serde_json::from_str(&text)?;
+        assert!(
+            value["data"]["help"]
+                .as_str()
+                .is_some_and(|help| help.contains("ibis search")),
+            "{text}"
+        );
+    }
+    let (code, _, errors) = run(engine()?, &["ibis", "help", "invented", "--json"])?;
+    assert_eq!(code, 2);
+    assert!(errors.starts_with("ibis: "), "{errors}");
     Ok(())
 }
 

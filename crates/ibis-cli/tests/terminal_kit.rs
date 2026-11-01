@@ -321,7 +321,7 @@ fn terminal_kit_usage_errors_keep_the_existing_exit_code_and_envelope() {
             serde_json::from_slice::<Value>(&output.stdout).unwrap_or_default(),
             json!({"ibis":1,"ok":false,"error":{"code":"usage"}})
         );
-        assert!(output.stderr.is_empty());
+        assert!(output.stderr.starts_with(b"ibis: "), "{:?}", output.stderr);
     }
 }
 
