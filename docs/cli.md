@@ -6,7 +6,14 @@ client of the same engine; nothing here needs the app to be installed or running
 
 ## Install
 
-Download `ibis` from the [nightly](https://github.com/ibiscite/ibis/releases/tag/nightly)
+On macOS and Linux, install it with [Homebrew](https://brew.sh):
+
+```sh
+brew install ibiscite/tap/ibis
+```
+
+It comes with bash, zsh and fish completions, and `brew upgrade` brings each new release
+within a day of publication. Or download `ibis` from the [nightly](https://github.com/ibiscite/ibis/releases/tag/nightly)
 or a [release](https://github.com/ibiscite/ibis/releases/latest):
 `ibis-macOS-Apple-silicon.tar.gz`, `ibis-macOS-Intel.tar.gz`, `ibis-Windows.zip` or
 `ibis-Linux.tar.gz`. Unpack it and put `ibis` on your PATH. The macOS binary is not
