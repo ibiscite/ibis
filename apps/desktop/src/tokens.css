@@ -304,6 +304,7 @@
 }
 
 @media (prefers-contrast: more) {
+  :root, :root[data-platform] { --scrollbar-thumb: CanvasText; }
   :root, :root[data-platform] { --progress-track: Canvas; --progress-fill: CanvasText; --progress-border: CanvasText; --progress-border-width: var(--border-width); }
   :root, :root[data-platform] { --separator: CanvasText; --stroke-control: CanvasText; --focus-ring-color: CanvasText; --focus-ring-width: 2px; --focus-ring-offset: var(--focus-ring-search-offset); --focus-ring-shadow: none; --selected-background: Highlight; --selected-text: HighlightText; --row-active-background: Highlight; --row-active-text: HighlightText; --row-active-muted: currentColor; }
   :root { --citation: CanvasText; --citation-tile: CanvasText; --on-citation: Canvas; --status-done: CanvasText; --status-look: CanvasText; --status-stop: CanvasText; --surface: Canvas; --text: CanvasText; --muted: CanvasText; --line: CanvasText; --active-edge: CanvasText; }
