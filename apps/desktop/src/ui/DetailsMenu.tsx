@@ -2,8 +2,6 @@ import { useMemo, useRef, type ReactNode, type RefObject } from "react";
 import { Dialog, Heading, Popover } from "react-aria-components";
 import { flushSync } from "react-dom";
 import { composing } from "../composition";
-import { keyText } from "../messages";
-import { Button } from "./Button";
 import { useScrollEdges } from "./ScrollArea";
 import { useMenuBoundary, useMenuPlacement } from "./Menu";
 import "./Menu.css";
@@ -76,9 +74,7 @@ export function DetailsMenu({ id, anchor, returnFocusRef, title, heading = title
         }
       }}>
       <Dialog id={id} className="details-menu-body" aria-label={title}>
-        <header className="details-menu-heading"><Heading slot="title" title={heading}>{heading}</Heading>
-          <Button variant="icon" size="small" glyph="close" aria-label={keyText.close} onPress={() => close()} />
-        </header>
+        <header className="details-menu-heading"><Heading slot="title">{heading}</Heading></header>
         <div ref={scroll} className="details-menu-scroll scroll-area">{children}</div>
       </Dialog>
       </div>

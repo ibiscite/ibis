@@ -31,7 +31,8 @@ export function PickerLibraryStatus({ library, groupName, isOpen, onOpenChange, 
     : library?.error || library?.stale
     ? !library.zotero && (library.problem === "missing" || !sourceAction.file)
       ? { ...libraryAction, label: pickerText.findSourceFile(library.name), keys: library.stale && sourceAction.file ? sourceAction.keys : undefined, open: actions.find }
-      : library?.zotero ? { ...libraryAction, label: pickerText.openZotero, open: actions.openZotero }
+      // ⌘O appears only where it does the same thing: with a reference selected it means Show in Zotero.
+      : library?.zotero ? { ...libraryAction, label: pickerText.openZotero, keys: sourceAction.label === pickerText.openZotero ? sourceAction.keys : undefined, open: actions.openZotero }
       : sourceAction : failure ? { ...sourceAction, label: pickerText.chooseLibraryMenu, keys: keysFor("chooseSource"), open: actions.choose } : null;
   return <LibraryStatusLine library={library} groupName={groupName} failure={failure}
     action={fix && <SourceAction {...fix} />}

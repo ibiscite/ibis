@@ -133,7 +133,7 @@ test.each(["none", "More", "keys", "keys from More"] as const)("welcome Escape d
     if (overlay === "keys") fireEvent.keyDown(opener, { key: "/", ctrlKey: true });
     else fireEvent.click(opener);
     if (overlay === "keys from More") {
-      const item = await screen.findByRole("menuitem", { name: "Keyboard shortcuts" });
+      const item = await screen.findByRole("menuitem", { name: "Keyboard Shortcuts" });
       act(() => item.focus());
       fireEvent.click(item);
     }
@@ -161,7 +161,7 @@ test("welcome footer Escape offers Hide Ibis even while a sample query is retain
   const zotero = await screen.findByRole("option", { name: /^Zotero/ });
   fireEvent.keyDown(zotero, { key: "Alt", altKey: true });
   const footer = within(document.querySelector("footer")!);
-  expect(footer.queryByRole("button", { name: "Clear search" })).toBeNull();
+  expect(footer.queryByRole("button", { name: "Clear Search" })).toBeNull();
   fireEvent.click(footer.getByRole("button", { name: "Hide Ibis" }));
   await waitFor(() => expect(calls).toContain("hide_picker"));
 });

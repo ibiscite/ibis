@@ -1,6 +1,6 @@
 // The lightweight mocked Rust side and shared steps for whole-picker tests.
 // For clipboard/document outcomes and reordered workers, use ./delivery instead.
-import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { clearMocks, mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { vi } from "vitest";
 import { listen } from "@tauri-apps/api/event";
@@ -76,7 +76,7 @@ export async function openCitationDetails(): Promise<HTMLInputElement> {
 
 export function closeCitationDetails() {
   const dialog = screen.queryByRole("dialog", { name: /^(Citation details|Selected references)/ });
-  if (dialog) fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+  if (dialog) fireEvent.keyDown(dialog, { key: "Escape" });
 }
 
 export function result(key: string, title: string, source = "refs.bib") {

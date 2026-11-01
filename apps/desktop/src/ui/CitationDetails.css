@@ -1,31 +1,23 @@
-.citation-details {
-  display: flex; flex-direction: column; gap: var(--space-2);
-  padding: var(--space-2); color: var(--text);
-  font: var(--type-meta-size) / var(--type-meta-line) var(--font);
-}
-.citation-page { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); min-inline-size: 0; }
-.citation-page input {
-  min-inline-size: 0; inline-size: 8em; max-inline-size: 100%; box-sizing: border-box;
-  min-block-size: var(--control-h); padding: var(--space-1) var(--space-2);
-  border: var(--border-width) solid var(--stroke); border-radius: var(--r-control);
-  background: var(--field); color: var(--text); font: inherit; font-variant-numeric: tabular-nums;
-}
-.citation-page input::placeholder { color: var(--muted); opacity: 1; }
-.citation-page input:focus-visible { outline: var(--ring-width) solid var(--ring); outline-offset: var(--ring-offset); }
-.citation-page [slot="description"] { color: var(--muted); }
-.citation-forms { display: flex; flex-direction: column; gap: var(--space-1); }
-.citation-form { position: relative; display: flex; align-items: center; gap: var(--menu-item-gap, var(--space-2)); min-height: var(--control-h); padding: var(--space-1) var(--space-2); border-radius: var(--r-mi); outline: none; }
+/* Menu rows: Menu.css sets the height, padding and check column. */
+.citation-details { display: flex; flex-direction: column; color: var(--text); }
+.citation-forms { display: flex; flex-direction: column; }
+.citation-form, .citation-page { position: relative; display: flex; align-items: center; gap: var(--menu-item-gap); min-height: var(--menu-item-height); padding-inline: var(--menu-item-pad); border-radius: var(--menu-item-radius); }
 /* Keep the native radio inside its own row and give it the row's whole hit
    area. React Aria's clipped wrapper must not clip or displace that target. */
 .citation-form > span:has(> input[type="radio"]) { display: contents; }
 .citation-form input[type="radio"] { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; box-sizing: border-box; opacity: 0; z-index: var(--z-content); cursor: inherit; }
-.citation-form-check { flex: 0 0 var(--menu-check-width, var(--icon-small)); text-align: center; }
-.citation-form:is([data-hovered], [data-focus-visible]) { background: var(--menu-highlight, var(--sel)); color: var(--menu-highlight-text, var(--sel-text)); }
-.citation-form[data-disabled] { color: var(--muted); }
-.citation-form-body { display: flex; flex-direction: column; min-width: 0; gap: var(--space-1); }
-.citation-form-example { color: var(--muted); overflow-wrap: anywhere; font-size: var(--type-label-size); }
+.citation-form-check { flex: 0 0 var(--menu-check-width); text-align: center; }
+.citation-form-label { flex: none; }
+.citation-form:is([data-hovered], [data-focus-visible]) { background: var(--menu-highlight); color: var(--menu-highlight-text); }
+.citation-form[data-disabled] { color: var(--disabled); }
+.citation-form-example { flex: 1; min-width: 0; padding-inline-start: var(--space-5); color: var(--muted); font-size: var(--type-label-size); line-height: var(--type-label-line); text-align: end; overflow-wrap: anywhere; }
 .citation-form:is([data-hovered], [data-focus-visible]) .citation-form-example { color: inherit; }
+.citation-page { padding-inline-start: var(--menu-label-start); }
+.citation-page label { flex: none; }
+.citation-page input { flex: 1; min-width: 0; border: 0; padding: 0; background: transparent; color: var(--text); font: inherit; font-variant-numeric: tabular-nums; text-align: end; }
+.citation-page input::placeholder { color: var(--muted); opacity: 1; }
+.citation-page:focus-within { background: var(--field); }
+.citation-page input:focus-visible { outline: none; }
 @media (pointer: coarse) {
-  .citation-page input { min-block-size: var(--touch-target); }
-  .citation-form { min-height: var(--touch-target); }
+  .citation-form, .citation-page { min-height: var(--touch-target); }
 }

@@ -86,11 +86,11 @@ main > .search-bar, main > .shelf, main > footer { flex: none; }
 }
 [data-active] .result-tile { background: color-mix(in srgb, var(--sel-text) 22%, transparent); }
 [role="option"][data-citation-selected] .result-tile { background: var(--scarlet-tile); color: var(--on-scarlet); }
-/* Only the year occupies the trailing column, centred across the whole row. */
+/* The year shares the title's first line in every density, size and view. */
 .result-line, .result-meta { display: flex; align-items: baseline; gap: var(--space-3); min-width: 0; }
-.result-title { flex: 1; min-width: 0; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-size: var(--type-title-size); font-weight: var(--strong); line-height: var(--type-title-line); letter-spacing: -.01em; }
+.result-title { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: var(--type-title-size); font-weight: var(--strong); line-height: var(--type-title-line); letter-spacing: -.01em; }
 .result-year, .result-meta, .result-why { color: var(--muted); font-size: var(--type-meta-size); line-height: var(--type-meta-line); }
-.result-year { flex-shrink: 0; align-self: center; font-variant-numeric: tabular-nums; }
+.result-year { flex-shrink: 0; font-variant-numeric: tabular-nums; }
 /* The meta line wraps only when the byline, type and library badge cannot
    all fit at their sizes; then they move under the byline. A body at least
    25em wide (after reserving the tile and year columns) keeps one line, and

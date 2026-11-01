@@ -7,7 +7,7 @@ afterEach(() => { cleanup(); delete document.documentElement.dataset.platform; }
 
 const options = [
   { value: "general", label: "General settings and application preferences", tile: "x" },
-  { value: "shortcuts", label: "Keyboard shortcuts and navigation preferences", tile: "x" },
+  { value: "shortcuts", label: "Keyboard Shortcuts and navigation preferences", tile: "x" },
   { value: "libraries", label: "Libraries", tile: "x" },
   { value: "about", label: "About", tile: "x" },
 ];

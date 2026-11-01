@@ -472,7 +472,7 @@ test("rows keep equal insets, fit intrinsic labels to the viewport and wrap at i
   const toolbar = readFileSync(new FileURL("./ToolbarMenu.css", import.meta.url), "utf8");
   // The filter text and section headings start where the labels do.
   expect(toolbar.match(/padding-inline: var\(--menu-label-start\) var\(--menu-item-pad\)/g)).toHaveLength(2);
-  expect(toolbar).toMatch(/\.toolbar-menu-popover \{[^}]*width: min\(300px, calc\(100vw - 16px\)\); min-width: 0;/);
+  expect(toolbar).toMatch(/\.toolbar-menu-popover \{[^}]*min-width: min\(300px, calc\(100vw - 16px\)\);/);
   expect(toolbar).toMatch(/\.toolbar-menu-sample \{[^}]*min-width: 0;[^}]*white-space: normal;/);
   expect(`${menuCss}${toolbar}`.match(/\b(10|14|34)px\b/g)).toEqual(["14px"]);
 });

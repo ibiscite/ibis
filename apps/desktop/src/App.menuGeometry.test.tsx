@@ -83,7 +83,7 @@ test("More is closed while its exit overlaps the probe's keys-sheet and Copy as 
     // Playwright focuses its search locator before sending the shortcut.
     act(() => search.focus());
     fireEvent.keyDown(search, { key: "/", ctrlKey: true });
-    const keys = await screen.findByRole("dialog", { name: "Keyboard shortcuts" });
+    const keys = await screen.findByRole("dialog", { name: "Keyboard Shortcuts" });
     fireEvent.keyDown(keys, { key: "Escape" });
     const format = screen.getByRole("button", { name: /^Copy as/ });
     fireEvent.click(format);
@@ -125,8 +125,8 @@ test.each([false, true])("empty, controls, results, selection, no matches and ke
   expect(document.querySelector("main")?.hasAttribute("data-selection")).toBe(true);
   fireEvent.change(search, { target: { value: "nothing" } });
   await screen.findByText("No matching references");
-  await chooseFromMore("Keyboard shortcuts");
-  await screen.findByRole("dialog", { name: "Keyboard shortcuts" });
+  await chooseFromMore("Keyboard Shortcuts");
+  await screen.findByRole("dialog", { name: "Keyboard Shortcuts" });
   expect(calls).not.toContain("fit_picker");
   expect(calls.some((call) => /set_size|set_position/.test(call))).toBe(false);
   expect(height.mock.contexts.filter((node) => (node as HTMLElement)?.tagName === "MAIN")).toHaveLength(0);

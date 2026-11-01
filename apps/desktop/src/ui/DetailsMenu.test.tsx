@@ -243,7 +243,7 @@ test.each([false, true])("Tab closes reference details and moves past its trigge
   render(<Picker />);
   const trigger = screen.getByRole("button", { name: "Reference segment" });
   act(() => trigger.focus()); fireEvent.click(trigger);
-  const close = screen.getByRole("button", { name: "Close" });
+  const close = screen.getByRole("dialog");
   act(() => close.focus());
   for (const composition of [{ isComposing: true }, { keyCode: 229 }]) {
     fireEvent.keyDown(close, { key: "Tab", shiftKey: backward, ...composition });

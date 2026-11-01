@@ -18,7 +18,7 @@
 .toolbar-menu-button .popup-indicator { flex: none; width: var(--icon-small); height: var(--icon-small); color: var(--muted); stroke-width: var(--icon-stroke); }
 .toolbar-menu-button .popup-indicator-macos { width: var(--space-2); height: var(--space-3); }
 /* Keep a useful minimum while filtering; longer labels may use the viewport. */
-.toolbar-menu-popover { width: min(300px, calc(100vw - 16px)); min-width: 0; }
+.toolbar-menu-popover { width: max-content; min-width: min(300px, calc(100vw - 16px)); max-width: calc(100vw - 16px); }
 .toolbar-menu-filter { flex: none; }
 .toolbar-menu-heading { color: var(--muted); font-size: var(--type-label-size); font-weight: 600; padding-block: 8px 4px; padding-inline: var(--menu-label-start) var(--menu-item-pad); }
 .toolbar-menu .menu-section + .menu-section::before { content: ""; flex: none; height: 1px; margin: 4px var(--menu-item-pad); background: var(--line); }

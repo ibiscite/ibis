@@ -40,11 +40,9 @@ test.each<Density>(["compact", "comfortable", "spacious"])("%s rows reserve the 
   const row = getByRole("option");
   const year = container.querySelector(".result-year")!;
   const key = container.querySelector(".result-key")!;
-  if (density === "spacious") {
-    expect(year).toBeNull();
-    expect(row.querySelector(".result-type")?.textContent).toBe("Book · No date");
-  } else {
-    expect(year.parentElement).toBe(row);
+  expect(year.parentElement).toBe(row.querySelector(".result-line"));
+  if (density === "spacious") expect(row.querySelector(".result-type")?.textContent).toBe("Book");
+  {
     expect(year.textContent).toBe("No date");
   }
   // C4: the key is not drawn in the row; it stays spoken, in the tooltip and LTR.

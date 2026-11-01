@@ -50,9 +50,7 @@ main:has(> .shelf) > footer { border-top-color: transparent; }
 .shelf-reference-title { color: var(--muted); font-size: var(--type-label-size); }
 /* The menu closes when one row cannot fit, so short windows keep each row to a line. */
 @media (max-height: 400px) { .shelf-reference-title { display: none; } }
-.shelf-problem, .shelf-detail-title { margin: 0 0 var(--space-2); overflow-wrap: anywhere; }
-.shelf-menu-remove.ui-button { justify-content: space-between; width: 100%; text-align: start; }
-.shelf-menu-remove > :last-child { color: var(--muted); }
+.shelf-problem, .shelf-detail-title { margin-block: 0 var(--space-2); color: var(--muted); font-size: var(--type-label-size); line-height: var(--type-label-line); overflow-wrap: anywhere; }
 /* The receipt text owns its intrinsic width: both beaks hug it symmetrically. */
 .shelf[data-copied] .shelf-citation { flex: 0 1 auto; gap: var(--row-gap); }
 .shelf[data-copied] .preview-text { flex: 0 1 auto; }
@@ -80,5 +78,5 @@ main:has(> .shelf) > footer { border-top-color: transparent; }
 .shelf-shared { flex: none; white-space: pre; }
 .shelf-punctuation { color: var(--muted); }
 .shelf-segment-button[data-focus-visible] .shelf-punctuation { color: inherit; }
-.details-menu-scroll > .shelf-full-citation { margin: var(--space-3) 0 0; padding: var(--space-2); border-radius: var(--r-mi); background: var(--fill); font-size: var(--type-meta-size); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
+.details-menu-scroll > .shelf-full-citation { margin: var(--menu-pad) 0 0; padding: var(--space-2) var(--menu-item-pad) var(--space-2) var(--menu-label-start); border-radius: var(--r-mi); background: var(--fill); font-size: var(--type-meta-size); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
 

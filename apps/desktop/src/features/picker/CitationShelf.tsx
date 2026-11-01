@@ -4,7 +4,7 @@ import type { FilePreview, ReferenceDetails } from "../../bindings";
 import type { FormattedCitation, StyleId } from "../../format/styles";
 import { copiesEntry, STYLE_NAMES } from "../../format/styles";
 import { render, renderRuns } from "../../format/markup";
-import { citationDetailsText, pickerText } from "../../messages";
+import { citationDetailsText, keyText as keyWords, pickerText } from "../../messages";
 import { choiceKey, idKey, type CitationDetailsChange, type CitationReference } from "./choice";
 import { closestMatchWarnings } from "./rows";
 import type { ShelfCopied } from "./session";
@@ -12,6 +12,7 @@ import { composing } from "../../composition";
 import { Button } from "../../ui/Button";
 import { CitationDetails } from "../../ui/CitationDetails";
 import { DetailsMenu } from "../../ui/DetailsMenu";
+import type { SourceActionProps } from "../../ui/SourceAction";
 import { keyLabel } from "../../keys";
 import { currentPlatform } from "../../platform";
 import { beak } from "../../brand";
@@ -38,7 +39,7 @@ function Beak({ closing = false }: { closing?: boolean }) {
 
 /** One line of exact engine output. All editing stays in an anchored menu;
  * a folded citation retains its full text and every reference's identity. */
-export function CitationShelf({ announce, selected, highlightedReference, highlightedReferences, onChangeReference, removeLabel, onRemove, referenceLibrary, style, keys, shown, previewReceipt, outputWarnings, problem, focusable, fallbackFocusRef, presentation, present = false, copied: copiedReceipt , searching = false }: {
+export function CitationShelf({ source, announce, selected, highlightedReference, highlightedReferences, onChangeReference, removeLabel, onRemove, referenceLibrary, style, keys, shown, previewReceipt, outputWarnings, problem, focusable, fallbackFocusRef, presentation, present = false, copied: copiedReceipt , searching = false }: {
   presentation?: number;
   present?: boolean;
   announce: boolean;
@@ -61,6 +62,8 @@ export function CitationShelf({ announce, selected, highlightedReference, highli
   copied?: ShelfCopied | null;
   /** A search is running, so an empty highlight is only a gap between results. */
   searching?: boolean;
+  /** More's first item, offered in a reference's menu with the same words and keys. */
+  source?: SourceActionProps;
 }) {
   const copied = copiedReceipt && shown && typeof shown === "object" && shown.text === copiedReceipt.text ? copiedReceipt : null;
   const preserveFocus = useCallback((node: HTMLElement | null) => {
@@ -253,8 +256,11 @@ export function CitationShelf({ announce, selected, highlightedReference, highli
           page={edited.locator?.label === "page" ? edited.locator.value : ""} choices={choices}
           onPageChange={(value) => onChangeReference(edited, { locator: value.trim() ? { label: "page", value, input: "page-editor" } : null })}
           onFormChange={(form) => onChangeReference(edited, { form })} />}
-        {edited && <Button variant="quiet" className="shelf-menu-remove" aria-keyshortcuts="Backspace Delete" isDisabled={!isSelected(edited)} onPress={() => remove(edited)}>
-          <span>Remove from citation</span><span aria-hidden="true">{keyLabel("Backspace", currentPlatform() === "macos")}</span>
+        {edited && source && <Button variant="quiet" className="details-menu-row" isDisabled={source.busy} onPress={() => { setPanel(null); source.open(); }}>
+          <span>{source.label}</span>{source.keys && <span className="details-menu-keys" aria-hidden="true">{keyLabel(source.keys, currentPlatform() === "macos")}</span>}
+        </Button>}
+        {edited && <Button variant="quiet" className="details-menu-row" aria-keyshortcuts="Backspace Delete" isDisabled={!isSelected(edited)} onPress={() => remove(edited)}>
+          <span>{keyWords.removeFromCitation}</span><span className="details-menu-keys" aria-hidden="true">{keyLabel("Backspace", currentPlatform() === "macos")}</span>
         </Button>}
         {fullCitation}
         {warnings.map((warning, i) => <p key={i}>{warning}</p>)}

@@ -117,7 +117,7 @@ test("removing a middle reference and Undo restore its position and page through
   const order = names();
   fireEvent.click(within(list).getByRole("button", { name: "Edit Smith 2020 · b" }));
   fireEvent.change(screen.getByRole("textbox", { name: "Page" }), { target: { value: "iv–vi" } });
-  fireEvent.click(screen.getByRole("button", { name: "Remove from citation" }));
+  fireEvent.click(screen.getByRole("button", { name: "Remove from Citation" }));
   expect(screen.queryByRole("dialog")).toBeNull();
   expect(screen.getByRole("button", { name: "Show all 2 selected references" })).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "Undo" }));
@@ -175,7 +175,7 @@ test("source and sentence-case warnings stay visible in preview and copy feedbac
   fireEvent.click(await screen.findByRole("button", { name: "2 warnings" }));
   const details = await screen.findByRole("dialog", { name: "Citation warnings" });
   for (const warning of warnings) expect(within(details).getByText(warning)).toBeTruthy();
-  fireEvent.click(within(details).getByRole("button", { name: "Close" }));
+  fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
   const feedback = await screen.findByRole("list", { name: "Copy warnings" });
   for (const warning of warnings) expect(within(feedback).getByText(warning)).toBeTruthy();
@@ -356,7 +356,7 @@ test("losses keep a visible count and an unsupported form blocks copying until c
   expect(warnings.textContent).toBe("1 warning");
   fireEvent.click(warnings);
   expect(within(screen.getByRole("dialog", { name: "Citation warnings" })).getByText(warning)).toBeTruthy();
-  fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+  fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
   await openCitationDetails();
   fireEvent.click(screen.getByRole("radio", { name: "Name in the sentence" }));
   expect((await screen.findByRole("alert")).textContent).toContain("Narrative cannot be expressed");

@@ -134,6 +134,7 @@ export const ResultRow = memo(function ResultRow({ record: r, index: i, active, 
         <span className="result-line">
           <strong className="result-title">{r.sample && <><bdi>{setupText.sampleLabel}</bdi>{" · "}</>}{r.title}</strong>
           {compact && r.first_author && <span className="result-first-author" dir="auto">{r.first_author}{r.author_count > 1 && <> {etAl}</>}</span>}
+          <span className="result-year">{r.year ?? pickerText.noDate}</span>
         </span>
         <span className="result-meta">
           {/* Each clipping part takes its own text direction, so Latin text in a
@@ -147,7 +148,7 @@ export const ResultRow = memo(function ResultRow({ record: r, index: i, active, 
           </span>
           {library && <span className="result-library">{library}</span>}
         </span>
-        {itemType && <span className="result-type">{itemType}{" · "}<bdi>{r.year ?? pickerText.noDate}</bdi></span>}
+        {itemType && <span className="result-type">{itemType}</span>}
         {why && <span className="result-why">{pickerText.matchedIn(why)}</span>}
         {/* The type in words where the row does not show it; the tile's icon is decorative. */}
         {!itemType && rowText.itemType(r.item_type) && <span className="visually-hidden">{rowText.itemType(r.item_type)}</span>}
@@ -155,7 +156,6 @@ export const ResultRow = memo(function ResultRow({ record: r, index: i, active, 
         {/* The key is searchable and spoken but not drawn: the shelf shows the citation (C4). */}
         <span className="result-key visually-hidden" dir="ltr">{r.key}</span>
       </span>
-      {density !== "spacious" && <span className="result-year">{r.year ?? pickerText.noDate}</span>}
     </Option>
   );
 });

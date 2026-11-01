@@ -132,8 +132,8 @@ test("a refresh with retained references never adds an opening screen above them
 test("no matches retain clear-search and search-all actions", () => {
   const { container, clear, searchAll } = mount("unmatched");
   expect(container.querySelector(".empty-actions")).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", { name: "Clear search" }));
-  fireEvent.click(screen.getByRole("button", { name: "Search all Zotero libraries" }));
+  fireEvent.click(screen.getByRole("button", { name: "Clear Search" }));
+  fireEvent.click(screen.getByRole("button", { name: "Search All Zotero Libraries" }));
   expect(clear).toHaveBeenCalledOnce();
   expect(searchAll).toHaveBeenCalledOnce();
 });
@@ -141,14 +141,14 @@ test("no matches retain clear-search and search-all actions", () => {
 test("no matches keep one suggested clear-search action and a quieter search-all action", () => {
   const { container } = mount("unmatched");
   expect(container.querySelectorAll('.empty-actions .ui-button[data-variant="primary"]')).toHaveLength(1);
-  expect(container.querySelector('.empty-actions .ui-button[data-variant="primary"]')?.textContent).toBe("Clear search");
-  expect(container.querySelector('.empty-alternative')?.textContent).toBe("Search all Zotero libraries");
+  expect(container.querySelector('.empty-actions .ui-button[data-variant="primary"]')?.textContent).toBe("Clear Search");
+  expect(container.querySelector('.empty-alternative')?.textContent).toBe("Search All Zotero Libraries");
 });
 
-test.each(["Clear search", "Search all Zotero libraries"])("no matches: Enter and Space invoke only %s once", (label) => {
+test.each(["Clear Search", "Search All Zotero Libraries"])("no matches: Enter and Space invoke only %s once", (label) => {
   const { clear, searchAll } = mount("unmatched");
-  const handler = label === "Clear search" ? clear : searchAll;
-  const other = label === "Clear search" ? searchAll : clear;
+  const handler = label === "Clear Search" ? clear : searchAll;
+  const other = label === "Clear Search" ? searchAll : clear;
   const button = screen.getByRole("button", { name: label });
   button.focus();
   for (const key of ["Enter", " "]) {
@@ -215,7 +215,7 @@ test.each([false, true])("C12 zero-reference choices offer Zotero and a file, ne
   expect(screen.getAllByRole("option").map((row) => row.querySelector(".result-title")?.textContent))
     .toEqual(["Zotero", "BibTeX, BibLaTeX or CSL-JSON file"]);
   expect(screen.getByText("You can drop a file here too.")).toBeTruthy();
-  expect(screen.queryByRole("button", { name: "Clear search" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Clear Search" })).toBeNull();
 });
 
 test("C12 missing-file choices name the requested file and keep both actions after cancellation", () => {

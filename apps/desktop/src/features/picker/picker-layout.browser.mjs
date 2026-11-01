@@ -29,7 +29,7 @@ try {
     // Exit must finish even if a modal temporarily hides the old menu from ARIA.
     const moreMenu = page.getByRole("menu", { name: "More", exact: true, includeHidden: true });
     const formatMenu = page.getByRole("menu", { name: /^Copy as/, includeHidden: true });
-    const keysDialog = page.getByRole("dialog", { name: "Keyboard shortcuts", exact: true });
+    const keysDialog = page.getByRole("dialog", { name: "Keyboard Shortcuts", exact: true });
     page.setDefaultTimeout(5000);
     page.on("pageerror", (error) => errors.push(error.message));
     await page.exposeFunction("fixtureSizing", (command) => { resizes.push(command); });
@@ -312,7 +312,7 @@ try {
       return dialog;
     };
     const closeEditor = async (dialog) => {
-      await dialog.getByRole("button", { name: "Close", exact: true }).click();
+      await dialog.press("Escape");
       await dialog.waitFor({ state: "detached" });
     };
     const checkFormPointers = async (dialog) => {
@@ -322,7 +322,7 @@ try {
         assert.equal(await radio.evaluate(isWholeRadioTarget), true, "the enabled native radio fills its row and receives pointer hits");
         await radio.click({ trial: true });
       }
-      const remove = dialog.getByRole("button", { name: /^Remove from citation/ });
+      const remove = dialog.getByRole("button", { name: /^Remove from Citation/ });
       if (await remove.isEnabled()) await remove.click({ trial: true });
     };
     if (shelfDetails === "forms") {
