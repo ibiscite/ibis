@@ -475,7 +475,7 @@ forced colours; it never resembles a partially completed download.
 |---|---|---|---|
 | Result row | Quiet tint | The selected-row fill | The same fill; never a ring |
 | Menu item | The menu highlight | Check in a leading column on macOS and Windows, after the label on GNOME | The menu highlight; never a ring |
-| Segmented choice | Quiet tint | Raised thumb on a recessed track | Ring around the group |
+| Segmented choice | Quiet tint | Darker fill on a quiet track, as AppKit draws it | Ring around the group |
 | Pop-up button, More | Quiet fill | Pressed fill while open | Ring |
 | Buttons | One step darker | Primary: selection fill with `--selected-text` | Ring |
 | Switch | No change | Accent track | Ring |
