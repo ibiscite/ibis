@@ -1,10 +1,11 @@
 import { listen } from "@tauri-apps/api/event";
 import "./nativeAccent.css";
 
+/** White, as macOS draws text on its accent, unless the accent is too bright for it. */
 function onColor(rgb: number[]): string {
   const linear = rgb.map((c) => c <= .04045 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4);
   const l = linear[0]! * .2126 + linear[1]! * .7152 + linear[2]! * .0722;
-  return (l + .05) / .05 >= 1.05 / (l + .05) ? "#000" : "#fff";
+  return 1.05 / (l + .05) >= 3 ? "#fff" : "#000";
 }
 
 /** Only bounded, opaque sRGB reaches CSS; public roles remain in the cascade. */
