@@ -57,6 +57,8 @@ fn command() -> Command {
         .about("Find references and cite them anywhere.")
         .after_help(ROOT_HELP)
         .subcommand_required(true)
+        // Our own help command takes the global options, so `ibis help search --json` works.
+        .disable_help_subcommand(true)
         .arg(
             Arg::new("json")
                 .long("json")
@@ -295,6 +297,16 @@ fn command() -> Command {
             ),
     )
     .subcommand(
+        Command::new("help")
+            .about("Print this message or the help of the given command")
+            .arg(
+                Arg::new("command")
+                    .value_name("COMMAND")
+                    .num_args(0..)
+                    .help("The command to explain, such as cite"),
+            ),
+    )
+    .subcommand(
         Command::new("completions")
             .about("Generate shell completions from the CLI commands")
             .arg(
@@ -340,29 +352,6 @@ pub fn run_with<R: BufRead, W: Write + Send, E: Write>(
     let matches = match command().try_get_matches_from(arguments.iter()) {
         Ok(matches) => matches,
         Err(error) => {
-            // `ibis help search --json`: the help command takes no flags of its own,
-            // so ask again without --json and keep the answer only if it is help.
-            let help_command = arguments.get(1..).is_some_and(|rest| {
-                rest.iter()
-                    .find(|argument| *argument != "--json")
-                    .is_some_and(|first| first == "help")
-            });
-            let error = if json
-                && help_command
-                && matches!(
-                    error.kind(),
-                    clap::error::ErrorKind::UnknownArgument | clap::error::ErrorKind::InvalidSubcommand
-                )
-                && arguments.iter().filter(|argument| *argument == "--json").count() == 1
-            {
-                command()
-                    .try_get_matches_from(arguments.iter().filter(|argument| *argument != "--json"))
-                    .err()
-                    .filter(|retry| retry.kind() == clap::error::ErrorKind::DisplayHelp)
-                    .unwrap_or(error)
-            } else {
-                error
-            };
             if matches!(
                 error.kind(),
                 clap::error::ErrorKind::DisplayHelp | clap::error::ErrorKind::DisplayVersion
@@ -489,6 +478,29 @@ fn execute<R: BufRead, W: Write + Send>(
     let (name, args) = matches.subcommand().ok_or(EngineError { code: ErrorCode::Usage })?;
     if name == "doctor" {
         return Ok(Execution::Result(doctor::run(engine, matches, mode)?, None));
+    }
+    if name == "help" {
+        let mut root = command();
+        root.build();
+        let mut shown = &mut root;
+        for word in args.get_many::<String>("command").into_iter().flatten() {
+            shown = shown.find_subcommand_mut(word).ok_or_else(|| {
+                Failure::new(
+                    ErrorCode::Usage,
+                    format!("there is no command '{}'; see: ibis --help", human::field(word)),
+                )
+            })?;
+        }
+        let help = shown.render_help().to_string();
+        return Ok(Execution::Result(
+            DispatchResult {
+                text: Some(help.trim_end().to_owned()),
+                data: json!({"help":help}),
+                source_findings: false,
+                exit_code: ibis_core::contract::ExitCode::Ok,
+            },
+            None,
+        ));
     }
     if name == "completions" {
         let shell = args

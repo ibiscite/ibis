@@ -276,10 +276,13 @@ fn help_and_version_are_envelopes_under_json() -> Result<(), Box<dyn std::error:
     );
     // The help command takes no flags of its own; --json still wraps its text.
     for args in [
-        ["ibis", "help", "search", "--json"],
-        ["ibis", "--json", "help", "search"],
+        &["ibis", "help", "search", "--json"][..],
+        &["ibis", "--json", "help", "search"],
+        &["ibis", "--zotero", "help", "search", "--json"],
+        &["ibis", "--file=/invented/missing.bib", "help", "search", "--json"],
+        &["ibis", "help", "search", "--zotero-group", "7", "--json"],
     ] {
-        let (code, text, errors) = run(engine()?, &args)?;
+        let (code, text, errors) = run(engine()?, args)?;
         assert_eq!((code, errors.as_str()), (0, ""));
         let value: serde_json::Value = serde_json::from_str(&text)?;
         assert!(
@@ -289,6 +292,15 @@ fn help_and_version_are_envelopes_under_json() -> Result<(), Box<dyn std::error:
             "{text}"
         );
     }
+    // `ibis help X` prints exactly what `ibis X --help` prints.
+    for command in ["search", "cite", "schema"] {
+        let (_, help, _) = run(engine()?, &["ibis", "help", command])?;
+        let (_, flag, _) = run(engine()?, &["ibis", command, "--help"])?;
+        assert_eq!(help, flag, "{command}");
+    }
+    let (_, help, _) = run(engine()?, &["ibis", "help"])?;
+    let (_, flag, _) = run(engine()?, &["ibis", "--help"])?;
+    assert_eq!(help, flag);
     let (code, _, errors) = run(engine()?, &["ibis", "help", "invented", "--json"])?;
     assert_eq!(code, 2);
     assert!(errors.starts_with("ibis: "), "{errors}");
