@@ -26,6 +26,8 @@ struct Fake {
     secure: Cell<Option<bool>>,
     query_delay: Duration,
     queue_delay: Duration,
+    /// How long a readiness check takes, as on a heavily loaded system.
+    ready_stall: Duration,
     secure_after_queue: Option<bool>,
     front_after_queue: Option<i32>,
     replace_during_check: bool,
@@ -70,6 +72,7 @@ impl Fake {
             secure: Cell::new(Some(false)),
             query_delay: Duration::ZERO,
             queue_delay: Duration::ZERO,
+            ready_stall: Duration::ZERO,
             secure_after_queue: None,
             front_after_queue: None,
             replace_during_check: false,
@@ -110,6 +113,10 @@ impl Desk for Fake {
         self.clock.get()
     }
 
+    fn delivery_clock(&self) -> Instant {
+        self.clock.get()
+    }
+
     fn stamp(&self) -> SafetyStamp {
         self.stamp.get()
     }
@@ -128,6 +135,7 @@ impl Desk for Fake {
     }
     fn settle(&self) {}
     fn ready(&self, request: &DeliveryRequest, proof: &CopyProof) -> Result<bool, CopyReason> {
+        self.clock.set(self.clock.get() + self.ready_stall);
         let front = Desk::frontmost(self)?;
         Ok(front.is_some_and(|front| {
             front.pid == request.pid
@@ -528,6 +536,26 @@ fn a_programmatic_interior_document_change_with_no_input_is_not_detected() {
     desk.returning_windows.replace(vec![None, Some(100)]);
     assert_eq!(deliver(&desk, Some(&proof()), true), pasted());
     assert_eq!(*desk.posted_documents.borrow(), [2]);
+}
+
+/// Under a full compile a Windows readiness check took over a second. A
+/// check that proves the right window is in front still pastes inside the
+/// paste's deadline, and never once that deadline has passed.
+#[test]
+fn a_slow_readiness_check_pastes_in_time_and_never_after() {
+    let desk = Fake {
+        ready_stall: RETURN_LIMIT + Duration::from_millis(50),
+        ..Fake::new()
+    };
+    assert_eq!(deliver(&desk, Some(&proof()), true), pasted());
+    assert_eq!(*desk.posts.borrow(), [42]);
+
+    let desk = Fake {
+        ready_stall: LATE + Duration::from_millis(50),
+        ..Fake::new()
+    };
+    assert!(matches!(deliver(&desk, Some(&proof()), true), Delivered::Copied { .. }));
+    assert!(desk.posts.borrow().is_empty());
 }
 
 #[test]

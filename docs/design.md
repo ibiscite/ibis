@@ -1041,7 +1041,7 @@ system demands it for correctness.
 | Search box | Frameless, large. |
 | Format pop-up | Borderless pop-up, ⌃⌄, 28 px in a 32 px target, capsule. |
 | Switch | 38 × 22. |
-| Follows the system | Modifier keys and their key-cap labels (`KeyCaps`: ⌘K joined on macOS; Ctrl K one cap per key on Windows; Ctrl + K on Linux), the UI font, accessibility settings and window handling. |
+| Follows the system | Modifier keys and their key-cap labels (`KeyCaps`: ⌘K joined on macOS; Ctrl K one cap per key on Windows; Ctrl + K on Linux), the UI font, accessibility settings and window handling, including the picker window's outer corner: 16 px on macOS; on Windows the system's own (Windows 11 rounds it, not yet checked on a Windows 11 PC; square on Windows 10 like its other windows; maintainer, 2026-11-01). |
 
 **Look freeze until 1.0** (maintainer, 2026-10-25). What has shipped stays and
 is kept working, but is not extended. Native accent injection, versioned
