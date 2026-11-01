@@ -24,7 +24,7 @@ import "../src/notice.css";
 // Picker root rules must not leak into the separate Settings window.
 import pickerStyles from "../src/styles.css?inline";
 
-export const scenarios = ["notice", "results", "first-run", "more", "format-menu", "states", "parts", "empty", "file-drag", "error", "loading", "empty-search", "shelf", "reference-menu", "library-menu", "shortcuts", "pinned", "no-matches", "missing", "zotero-closed", "unreadable", "stale", "compact", "spacious", "larger-text", "right-to-left", "long-titles", "tokens", "settings-general", "settings-look", "settings-citations", "settings-shortcuts", "settings-about"] as const;
+export const scenarios = ["notice", "results", "first-run", "more", "format-menu", "states", "parts", "empty", "file-drag", "error", "loading", "empty-search", "shelf", "reference-menu", "library-menu", "shortcuts", "pinned", "no-matches", "missing", "zotero-closed", "unreadable", "stale", "compact", "spacious", "larger-text", "right-to-left", "long-titles", "update", "tokens", "settings-general", "settings-look", "settings-citations", "settings-shortcuts", "settings-about"] as const;
 type Scenario = typeof scenarios[number];
 type Theme = "light" | "dark";
 
@@ -115,6 +115,7 @@ function pickerApi(scenario: Scenario, settings: SettingsApi, openSettings: (pag
     openFoundLibrary: async () => null,
     reloadLibrary: noop, openLibrarySource: async () => null, openSettings,
     onFileDrag: scenario === "file-drag" ? async (change) => { change(true); return () => {}; } : undefined,
+    onUpdateProgress: scenario === "update" ? async (progress) => { progress({ attempt: 1, revision: 1, received: 42, total: 100, phase: "downloading" }); return () => {}; } : undefined,
     onLibraryChanged: subscribe, onPickerShown: subscribe, onPickerHidden: subscribe,
   };
 }

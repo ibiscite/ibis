@@ -4,7 +4,7 @@
     "100": "#FFE5DE",
     "200": "#FFC9BC",
     "300": "#FEA793",
-    "400": "#FF7A5C",
+    "400": "#F2552F",
     "500": "#E4583A",
     "600": "#C23A1C",
     "700": "#9F2C12",
@@ -49,8 +49,8 @@
       "line": "#2E2E2E",
       "text": "#F2F2F2",
       "muted": "#B5B5B5",
-      "accent": "#FF7A5C",
-      "accent-soft": "rgb(255 122 92 / .13)"
+      "accent": "#F2552F",
+      "accent-soft": "rgb(242 85 47 / .13)"
     },
     "dim": {
       "bg": "#262626",
@@ -58,8 +58,8 @@
       "line": "#404040",
       "text": "#F2F2F2",
       "muted": "#B5B5B5",
-      "accent": "#FF7A5C",
-      "accent-soft": "rgb(255 122 92 / .13)"
+      "accent": "#F2552F",
+      "accent-soft": "rgb(242 85 47 / .13)"
     }
   }
 }

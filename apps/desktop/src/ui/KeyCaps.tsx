@@ -3,10 +3,8 @@ import { currentPlatform, type Platform } from "../platform";
 import "./KeyCaps.css";
 import { useKeyPulse } from "./Delights";
 
-/** The keys of an accelerator as each system writes them (docs/design.md,
- * Footer): one cap of joined glyphs on macOS (⌘K, as its menus write it), one
- * cap per key on Windows (Ctrl K, as PowerToys does), and on GNOME one cap per
- * key with a "+" between (Ctrl + K, as GTK's shortcut labels do). */
+/** One cap per shortcut on every system (docs/design.md, Footer), written as
+ * that system's menus write it: ⌘K on macOS, Ctrl+K on Windows and Linux. */
 export function KeyCaps({ accelerator, platform = currentPlatform(), hidden, echo = false }: {
   accelerator: string; platform?: Platform;
   /** Hidden from screen readers where the control already names its keys. */
@@ -17,7 +15,7 @@ export function KeyCaps({ accelerator, platform = currentPlatform(), hidden, ech
   const parts = keyCapLabels(accelerator, platform === "macos");
   return <span className="key-caps" data-echo={pressed || undefined} aria-hidden={hidden || undefined}>
     {parts.map((part, i) => <span key={i} className="key-cap">
-      {i > 0 && platform === "linux" && <span className="key-plus">+</span>}<kbd>{part}</kbd>
+<kbd>{part}</kbd>
     </span>)}
   </span>;
 }

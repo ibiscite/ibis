@@ -34,8 +34,8 @@
 .pick.is-selected { background: var(--selected); color: var(--selected-text); }
 .pick .tile { position: relative; flex: none; display: grid; place-items: center; width: var(--tile); height: var(--tile); min-height: 0; padding: 0; border: 0; box-shadow: none; border-radius: var(--r-tile); background: var(--fill-control); color: var(--text-secondary); }
 .pick.is-selected .tile { background: color-mix(in srgb, var(--selected-text) 22%, transparent); color: inherit; }
-.pick .tile.is-added { background: var(--scarlet-tile); color: var(--on-scarlet); }
-.pick.is-selected .tile.is-added { background: var(--selected-text); color: var(--scarlet-tile); }
+.pick .tile.is-added { background: var(--scarlet); color: var(--on-scarlet); }
+.pick.is-selected .tile.is-added { background: var(--selected-text); color: var(--scarlet); }
 .tile svg { width: var(--icon); height: var(--icon); fill: none; stroke: currentColor; stroke-width: var(--icon-stroke); stroke-linecap: round; stroke-linejoin: round; }
 .ref { flex: 1; min-width: 0; }
 .ref strong, .ref .sub { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }

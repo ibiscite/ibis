@@ -263,7 +263,7 @@ export function MenuSection({ id, label, header, children, layout, selectionMode
   return <AriaMenuSection id={id} aria-label={label} className={`menu-section${layout === "list" ? " menu-section-list" : ""}`}
     selectionMode={checkable ? selectionMode : undefined}
     selectedKeys={checkable ? items.filter((item) => item.props.checked).map((item) => item.props.id) : undefined}>
-    {header && <Header className="menu-header">{label && <span className="visually-hidden">{label}</span>}<div aria-hidden="true">{header}</div></Header>}
+    {header && <Header className="menu-header">{label && <span className="visually-hidden">{label}</span>}<div aria-hidden="true" className={typeof header === "string" ? "menu-heading" : undefined}>{header}</div></Header>}
     {children}
   </AriaMenuSection>;
 }
@@ -298,7 +298,7 @@ type MenuProps = {
   /** The menu's accessible name. */
   label: string; id?: string;
   /** The trigger button's content and attributes. */
-  trigger: ReactNode; triggerRef?: Ref<HTMLButtonElement>; triggerClassName?: string; triggerTitle?: string; triggerKeys?: string; triggerLabel?: string;
+  trigger: ReactNode; triggerRef?: Ref<HTMLButtonElement>; triggerClassName?: string; triggerVariant?: "secondary" | "quiet"; triggerTitle?: string; triggerKeys?: string; triggerLabel?: string;
   isOpen: boolean; onOpenChange: (open: boolean) => void;
   /** Where Tab goes: leaving the menu returns there so keys keep working. */
   tabFocusRef?: RefObject<HTMLElement | null>;
@@ -313,7 +313,7 @@ type MenuProps = {
  * opened from the keyboard, including a shortcut that sets `isOpen`, the first
  * item is highlighted, as in native menus.
  */
-export function Menu({ label, id, trigger, triggerRef, triggerClassName, triggerTitle, triggerKeys, triggerLabel, isOpen, onOpenChange, tabFocusRef, placement = "bottom end", children }: MenuProps) {
+export function Menu({ label, id, trigger, triggerRef, triggerClassName, triggerVariant = "secondary", triggerTitle, triggerKeys, triggerLabel, isOpen, onOpenChange, tabFocusRef, placement = "bottom end", children }: MenuProps) {
   const fromTrigger = useRef(false);
   const button = useRef<HTMLButtonElement | null>(null);
   const boundary = useMenuBoundary(isOpen, tabFocusRef, button);
@@ -391,7 +391,7 @@ export function Menu({ label, id, trigger, triggerRef, triggerClassName, trigger
     if (immediate) leave(tabFocusRef?.current, true);
     else pendingFocus.current = tabFocusRef?.current ?? null;
   }}><MenuTrigger isOpen={isOpen} onOpenChange={(open) => { fromTrigger.current = open; onOpenChange(open); }}>
-    <Button variant="secondary" aria-label={label} ref={(node) => {
+    <Button variant={triggerVariant} aria-label={label} ref={(node) => {
       button.current = node;
       if (typeof triggerRef === "function") triggerRef(node);
       else if (triggerRef) triggerRef.current = node;

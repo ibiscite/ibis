@@ -60,9 +60,16 @@ test("welcome, opening and search marks keep distinct, resolvable gradient and e
         if (reference) expect([...svg.querySelectorAll("[id]")].some((target) => target.id === reference)).toBe(true);
       }
     }
-    expect([...svg.querySelectorAll("linearGradient stop")].map((node) => node.getAttribute("stop-color"))).toEqual([
-      "light-dark(#CF4628, #FF7F5E)", "light-dark(#B5331A, #F2552F)",
-    ]);
+  }
+  // The welcome keeps the brand gradient; the smaller marks are flat --scarlet,
+  // the same red as the shelf beak and the citation tile.
+  const [welcome, ...small] = container.querySelectorAll("svg");
+  expect([...welcome!.querySelectorAll("linearGradient stop")].map((node) => node.getAttribute("stop-color"))).toEqual([
+    "light-dark(#CF4628, #FF7F5E)", "light-dark(#B5331A, #F2552F)",
+  ]);
+  for (const svg of small) {
+    expect(svg.querySelector("linearGradient")).toBeNull();
+    expect(svg.querySelector('[fill="currentColor"]')).toBeTruthy();
   }
 });
 

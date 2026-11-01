@@ -109,7 +109,7 @@ test("Acrylic text roles keep contrast over black and white backdrops in both th
       const hover = background.map((c) => theme ? c * .97 + 255 * .03 : c * .97);
       for (const fill of [background, hover]) {
         expect(contrast(painted(rgba(shared, "--text")[theme]!, fill), fill), `--text/${theme}/${under}`).toBeGreaterThanOrEqual(4.5);
-        for (const role of ["--scarlet"]) {
+        for (const role of ["--scarlet-text"]) {
           expect(contrast(hexes(roles, role)[theme]!, fill), `${role}/${theme}/${under}`).toBeGreaterThanOrEqual(4.5);
         }
       }
@@ -163,13 +163,15 @@ test.each(["vibrancy", "liquid-glass"])("citation text keeps 4.5:1 with the qual
   const over = (veil: [number, number, number, number], under: number) => veil.slice(0, 3).map((c) => c * veil[3] + under * (1 - veil[3]));
   const roles = materialRoles(mode);
   expect(roles).not.toMatch(/--status-/);
-  for (const role of ["--scarlet"]) {
+  for (const role of ["--scarlet-text"]) {
     const [onLight, onDark] = hexes(roles, role);
     for (const under of [141, 255]) expect(contrast(onLight!, over(light!, under)), `${role} light over ${under}`).toBeGreaterThanOrEqual(4.5);
     for (const under of [0, 120]) expect(contrast(onDark!, over(dark!, under)), `${role} dark over ${under}`).toBeGreaterThanOrEqual(4.5);
   }
   // The opaque surface keeps Ibis scarlet itself.
   expect(body).not.toMatch(/--scarlet/);
+  // Marks and tiles keep their one red over the material; only text is lightened.
+  expect(roles).not.toMatch(/--scarlet:/);
 });
 
 test("the Copied notice window keeps its own pill border and colours", () => {

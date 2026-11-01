@@ -21,7 +21,7 @@ export function MoreMenu({ isOpen, onOpenChange, buttonRef, searchRef, keys, chi
   const platform = currentPlatform();
   const mac = platform === "macos";
   return <Menu id="more-menu" label={pickerText.more} isOpen={isOpen} onOpenChange={onOpenChange} placement="top end"
-    triggerRef={buttonRef} triggerLabel={pickerText.more} triggerTitle={pickerText.moreTitle(keyLabel(keys, mac))} triggerKeys={ariaKeys(keys, mac)}
+    triggerRef={buttonRef} triggerVariant="quiet" triggerLabel={pickerText.more} triggerTitle={pickerText.moreTitle(keyLabel(keys, mac))} triggerKeys={ariaKeys(keys, mac)}
     tabFocusRef={searchRef}
     trigger={<KeyHint label={pickerText.more} keys={keys} platform={platform} hidden />}>
     {children}

@@ -113,7 +113,7 @@ them before any later delivery; it sends no new paste while they remain blocked.
 | Focus [D8] | `--ring`, `--ring-offset`, `--ring-shadow` | See **Selection and focus**. |
 | Fills | `--fill-1` … `--fill-5`; roles `--fill-control(-hover/-pressed)`, `--fill-quiet-hover`, `--fill-primary-*`, `--fill-disabled` | Apple's fill ladder (system, secondary, tertiary, quaternary, quinary fill), black on light and white on dark at the Mac's own alphas. Roles only point at the ladder: control rest, hover and pressed are tertiary, secondary and system fill; quiet row hover and grouped content are quaternary. Pressed is darker on macOS and GNOME, lighter on Windows. |
 | Strokes | `--separator`, `--stroke-field`, `--border-width`, `--contrast-border-width` | Two strokes: the separator (Apple's separator colour) for hairlines and dividers, and a field edge that meets 3:1. Never a coloured border on a control. **One edge per shape** (maintainer, 2026-11-01, on lines doubling up): a shape's edge is exactly one of a border, an inset shadow or an overlay's shadow ring (on macOS with the glass edge), never two stacked, so translucent edges never paint twice and nested content keeps its exact gap. A divider is one element owned by one side; two neighbours never both draw it. |
-| Citation [D9] | `--scarlet`, `--scarlet-tile`, `--on-scarlet` | Scarlet; see **Colour roles**. |
+| Citation [D9] | `--scarlet`, `--scarlet-text`, `--on-scarlet` | Scarlet; see **Colour roles**. |
 | Status [D10] | `--status-ok`, `--status-warning`, `--status-error` | Mac system green `#34c759` / `#30d158`, yellow `#ffcc00` / `#ffd600`, red `#ff383c` / `#ff4245` (light / dark), measured from AppKit. Colour is a redundant dot or symbol, optionally on a wash; status words always use a label colour. Increase Contrast uses stronger marks; forced colours use system pairs. These hues never colour text or carry meaning alone. |
 | Progress | `--progress-track`, `--progress-fill`, `--progress-border`, `--progress-border-width` | Accent fill on a quiet track; contrast modes use Canvas with CanvasText fill and edge. |
 | Elevation [D11] | `--shadow-card`, `--shadow-overlay`, `--shadow-dialog`, `--shadow-toast` | One overlay shadow for every menu. None in contrast modes, none on rows, chips or inside an overlay; on Linux only cards, overlays and dialogs. In dark mode fills and hairlines separate layers first. |
@@ -141,13 +141,19 @@ serves as a control accent when the person explicitly chooses **Ibis scarlet**
 in Look (maintainer, 2026-10-31). Status and errors retain their own roles.
 On an accent-filled row the added tile becomes a `--selected-text` tile with
 a scarlet check, keeping citation and selection legible even with a warm accent.
+**One red per theme** (maintainer, 2026-11-01: the beak and the search-bar
+logo must match). The search-bar mark, the shelf beak and the added tile are
+all flat `--scarlet`: `#C23A1C` light and `#F2552F` dark, the darker stop of
+the dark logo gradient, so a white check passes 3:1 on it. Only text set in
+scarlet (`--scarlet-text`) is lightened over translucent materials; a mark
+is never recoloured for the window material.
 Ibis offers Appearance (System, Light, Dark; System by default) and Accent:
 the Mac's own row of colour dots, first **Follow the Mac** (the default), then
 blue, purple, pink, red, orange, yellow, green and graphite in Apple's order,
 then a divider and **Ibis scarlet** as the one extra (maintainer, 2026-11-01:
 plain, stock macOS first; Ibis's own styling is secondary). All swatches have Fluent names and tooltips. The Ibis swatch uses
 the real `scarlet` and `scarlet_dark` from `brand/settings.json`, through
-`--accent-ibis`: `#C23A1C` light, `#FF7A5C` dark. Its
+`--accent-ibis`: `#C23A1C` light, `#F2552F` dark. Its
 `--accent-ibis-on` pairs white in light mode and `#171717` ink in dark
 mode. Text on the accent, including selected rows and hover/pressed primary
 buttons, passes 4.5:1. Selected switch thumbs use the same paired foreground,
@@ -233,7 +239,7 @@ is never brighter than light:
 | Accent | Light | Dark |
 | --- | --- | --- |
 | Follow the Mac, Blue | `#007AFF` · `#0064E1` · `#0068DA` | `#007AFF` · `#0059D1` · `#419CFF` |
-| Ibis scarlet | `#C23A1C` · `#C23A1C` · `#C23A1C` | `#FF7A5C` · `#FF7A5C` (ink `#171717`) · `#FF7A5C` |
+| Ibis scarlet | `#C23A1C` · `#C23A1C` · `#C23A1C` | `#F2552F` · `#F2552F` (ink `#171717`) · `#F2552F` |
 | Purple | `#953D96` · `#953D96` · `#953D96` | `#A550A7` · `#904291` · `#BD71BF` |
 | Pink | `#F74F9E` · `#E4086C` · `#E4086C` | `#F74F9E` · `#E4086C` · `#F74F9E` |
 | Red | `#E0383E` · `#DE3036` · `#DD2C32` | `#FF5257` · `#E80005` · `#FF5257` |
@@ -558,6 +564,18 @@ Check each menu side by side with a real one on every platform.
 
 **Buttons.** Primary: `--primary` (the accent) with `--text-on-accent`, one
 per view. Secondary: `--fill-control`. Footer and status actions use the one Button; only the variant changes.
+**Quiet bands** (maintainer, 2026-11-01: the shelf and footer looked right in
+0.2.3 and got heavier since). Inside the shelf and the footer only the main
+action (Copy or Paste) is filled. The library status, the source action, More,
+the reference count, notes and Details are quiet: no fill at rest, the
+shared hover and pressed fills, secondary-label ink. A band that is itself a
+fill never holds another filled control.
+**Corners** (maintainer, 2026-11-01: rounded rectangles, capsules only where
+they fit, one rule everywhere). Buttons, pop-ups, fields and the segmented
+control are rounded rectangles on the concentric chain (`--r-control`, or
+`--r-action` in a band inset by S). Capsules are for shapes that are not
+buttons: switches, count and tag pills, the update progress track and
+toasts. Badges over content, such as the shelf's remove ×, are circles.
 Every action shares `--action-h`, `--r-control`, `--space-3` side padding,
 a 16 pt icon slot and plain trailing key text. Inline text editing may use
 quiet buttons, with the same state table; they are not footer or status actions.
@@ -667,13 +685,13 @@ report, other) stay distinct from attachment drawings. The icon guard rejects
 the wrong grid, live area, stroke or path structure.
 
 **Footer and status** [C8]. Status dot and text at the leading edge, then
-"More ⌘K" (secondary), then, last, on the rows' right edge, "Paste into Word · APA ↵"
+"More ⌘K" (quiet), then, last, on the rows' right edge, "Paste into Word · APA ↵"
 or "Copy N as <format> ↵": the one primary action, filled with `--primary`
 with `--text-on-accent` and plain key text, because mouse users copy far more
 often than they open anything else (maintainer, 2026-10-30; a Mac puts the
 default button last). Every hint is label first, then keys: 8 px between them,
 16 px between hints, label type on one baseline. Source, More and Copy use `ui/Button` directly: the same
-height, `--r-control` radius and padding. Source and More are secondary, Copy primary;
+height, `--r-control` radius and padding. Source and More are quiet, Copy primary;
 keys stay plain inside the button, with no filled cap inside a filled button.
 On macOS the source uses the installed app's system icon when available;
 Zotero uses the books fallback elsewhere and on the canvas. Never show an action twice on the same
@@ -710,7 +728,7 @@ down; citation refusals and settings notices use the middle scroller. The status
 is a button: it opens the
 **library menu**: the library with its count and age; then, when Zotero has
 more than one library, **Search in** (maintainer, 2026-11-01, like Finder and
-Mail): a heading, All Libraries first, then one menu row per library with a
+Mail): a divider, then a section heading in small bold secondary type that never reads as an item, All Libraries first, then one menu row per library with a
 check in the check column, never chips. Ticking several rows searches all of
 them. A long name shortens in the middle, with the full name in its tooltip;
 past eight rows the list scrolls inside the menu. A library that could not be
@@ -1063,7 +1081,7 @@ system demands it for correctness.
 | Search box | Frameless, large. |
 | Format pop-up | Borderless pop-up, ⌃⌄, 28 px in a 32 px target, capsule. |
 | Switch | 38 × 22. |
-| Follows the system | Modifier keys and their key-cap labels (`KeyCaps`: ⌘K joined on macOS; Ctrl K one cap per key on Windows; Ctrl + K on Linux), the UI font, accessibility settings and window handling, including the picker window's outer corner: 16 px on macOS; on Windows the system's own (Windows 11 rounds it, not yet checked on a Windows 11 PC; square on Windows 10 like its other windows; maintainer, 2026-11-01). |
+| Follows the system | Modifier keys and their key-cap labels (`KeyCaps`: one cap per shortcut on every system, written as its menus write it: ⌘K on macOS, Ctrl+K on Windows and Linux; maintainer, 2026-11-01: one keycap per shortcut), the UI font, accessibility settings and window handling, including the picker window's outer corner: 16 px on macOS; on Windows the system's own (Windows 11 rounds it, not yet checked on a Windows 11 PC; square on Windows 10 like its other windows; maintainer, 2026-11-01). |
 
 **Look freeze until 1.0** (maintainer, 2026-10-25). What has shipped stays and
 is kept working, but is not extended. Native accent injection, versioned

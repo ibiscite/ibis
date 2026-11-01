@@ -83,7 +83,7 @@ main > .search-bar, main > .shelf, main > footer { flex: none; }
   .result-tile .tile-button { width: 2.75rem; height: 2.75rem; }
 }
 [data-active] .result-tile { background: var(--on-selected-fill); }
-[role="option"][data-citation-selected] .result-tile { background: var(--scarlet-tile); color: var(--on-scarlet); }
+[role="option"][data-citation-selected] .result-tile { background: var(--scarlet); color: var(--on-scarlet); }
 /* The year shares the title's first line in every density, size and view. */
 .result-line, .result-meta { display: flex; align-items: baseline; gap: var(--space-3); min-width: 0; }
 .result-title { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: var(--type-title-size); font-weight: var(--strong); line-height: var(--type-title-line); letter-spacing: -.01em; }
@@ -116,12 +116,12 @@ main > .search-bar, main > .shelf, main > footer { flex: none; }
 [data-active] .result-meta, [data-active] .result-year, [data-active] .result-why { color: var(--selected-text-secondary); }
 /* An added row that is also selected keeps its tile apart from any accent,
    red and orange included (D9): the selected text colour with a scarlet check. */
-[role="option"][data-active][data-citation-selected] .result-tile { background: var(--selected-text); color: var(--scarlet-tile); }
+[role="option"][data-active][data-citation-selected] .result-tile { background: var(--selected-text); color: var(--scarlet); }
 
 .notices:empty { display: none; }
 .notices { padding: 0 calc(var(--inset) + var(--row-pad)); overflow-wrap: anywhere; }
 .notices p { margin: var(--space-3) 0; }
-.copy-notice code, .shelf-mark { color: var(--scarlet); }
+.copy-notice code { color: var(--scarlet-text); }
 .copy-notice { display: flow-root; padding-bottom: .5rem; }
 .dismiss { float: right; margin: .5rem 0 .5rem .5rem; }
 

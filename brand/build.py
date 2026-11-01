@@ -410,9 +410,9 @@ def palette():
         "light": {"bg": "#FFFFFF", "surface": gray[50], "line": gray[200], "text": INK, "muted": SLATE,
                   "accent": SCARLET, "accent-soft": "rgb(194 58 28 / .08)"},
         "dark": {"bg": gray[950], "surface": gray[900], "line": gray[800], "text": INK_DARK, "muted": gray[300],
-                 "accent": SCARLET_DARK, "accent-soft": "rgb(255 122 92 / .13)"},
+                 "accent": SCARLET_DARK, "accent-soft": "rgb(242 85 47 / .13)"},
         "dim": {"bg": gray[850], "surface": gray[800], "line": gray[700], "text": INK_DARK, "muted": gray[300],
-                "accent": SCARLET_DARK, "accent-soft": "rgb(255 122 92 / .13)"},
+                "accent": SCARLET_DARK, "accent-soft": "rgb(242 85 47 / .13)"},
     }
     return {"scarlet": scarlet, "gray": gray, "neutral": neutral, "themes": themes}
 
@@ -661,8 +661,10 @@ def main(root=HERE.parent):
     box, body = SYM["beak"]
     ui = root / "apps/desktop/src/brand.ts"
     ui.parent.mkdir(parents=True, exist_ok=True)
-    # In-app birds keep the theme's brand gradient. At 24 px the eye needs
-    # a larger cutout to remain at least 2 px across; larger marks use the master.
+    # Small in-app birds are flat and take the page's --scarlet, the same colour
+    # as the quote beak and the citation tile, so the picker shows one red per
+    # theme. At 24 px the eye needs a larger cutout to remain at least 2 px
+    # across; larger marks use the master.
     (mx, my, mw, mh), bird = SYM["mark"]
     side = max(mw, mh) * 4 / 3
     mbox = (mx - (side - mw) / 2, my - (side - mh) / 2, side, side)
@@ -671,11 +673,8 @@ def main(root=HERE.parent):
         eye = SYM["eye"][1].replace("currentColor", "#000")
         if small:
             eye = eye.replace('r="2.1"', f'r="{side / 24:g}"')
-        gradient = (f'<linearGradient id="ibis-mark-gradient" gradientUnits="userSpaceOnUse" x1="0" y1="{my - 1:g}" x2="0" y2="{my + mh:g}">'
-                    f'<stop offset="0" stop-color="light-dark({GRADIENT[0]}, {GRADIENT_DARK[0]})"/>'
-                    f'<stop offset="1" stop-color="light-dark({GRADIENT[1]}, {GRADIENT_DARK[1]})"/></linearGradient>')
-        body = (f'<defs>{gradient}<mask id="ibis-mark-eye" maskUnits="userSpaceOnUse" {rect}><rect {rect} fill="#fff"/>{eye}</mask></defs>'
-                f'<g mask="url(#ibis-mark-eye)">{bird.replace("currentColor", "url(#ibis-mark-gradient)")}</g>')
+        body = (f'<defs><mask id="ibis-mark-eye" maskUnits="userSpaceOnUse" {rect}><rect {rect} fill="#fff"/>{eye}</mask></defs>'
+                f'<g mask="url(#ibis-mark-eye)">{bird}</g>')
         return {"viewBox": " ".join(f"{v:g}" for v in mbox), "body": body}
     # The 56 px welcome uses the ordinary optically centred brand export,
     # including its depth. Smaller in-app marks stay flat.

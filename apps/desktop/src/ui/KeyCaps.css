@@ -13,5 +13,4 @@ kbd { font: inherit; font-size: var(--type-label-size); font-weight: 500; displa
    right-to-left page "⌘K" would otherwise show as "K⌘" and "Ctrl K" as "K Ctrl". */
 .key-caps { direction: ltr; unicode-bidi: isolate; }
 .key-caps kbd { margin: 0; padding-inline: calc(var(--space-1) + var(--border-width)); }
-.key-plus { color: var(--text-secondary); }
 .key-caps[data-echo] kbd { background: var(--key-fill-pressed); }

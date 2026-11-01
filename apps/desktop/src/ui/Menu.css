@@ -39,6 +39,9 @@
 .menu-section-list { max-height: calc(8 * var(--menu-item-height)); overflow-y: auto; }
 .menu-separator { height: 1px; margin: 5px var(--menu-item-pad); border: 0; background: var(--separator); }
 .menu-header { padding-inline: var(--menu-item-pad); }
+/* A section title, as macOS menus write one: small, bold and secondary, so it
+   never reads as an item (docs/design.md, Menus). */
+.menu-heading { padding-block: var(--space-1) 2px; color: var(--text-secondary); font-size: var(--type-label-size); font-weight: var(--strong); }
 .menu-detail { width: 0; min-width: 100%; margin: 0; padding: var(--space-1) 0 var(--space-2); display: flex; flex-direction: column; gap: var(--space-1); color: var(--text-secondary); font-size: var(--type-label-size); overflow-wrap: break-word; }
 .menu-detail-title { color: var(--text); font-weight: var(--strong); }
 .menu-item {

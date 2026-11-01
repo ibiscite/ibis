@@ -1,15 +1,32 @@
-.ui-shortcut-table { width: 100%; border-collapse: collapse; font: var(--type-body-size)/var(--type-body-line) var(--font); }
-.ui-shortcut-table th, .ui-shortcut-table td { height: var(--control-h); box-sizing: border-box; padding: 0 var(--space-2); text-align: start; font-weight: inherit; }
-.ui-shortcut-table td { text-align: end; }
-.ui-shortcut-table th[scope="rowgroup"] { position: sticky; top: 0; z-index: var(--z-content); background: var(--surface); color: var(--text-secondary); font-weight: var(--strong); }
-.ui-shortcut-table thead { color: var(--text-secondary); }
-.ui-shortcut-table tr:not(:first-child) { border-bottom: var(--border-width) solid var(--separator); }
+/* Settings › Shortcuts uses the grouped cards of every other Settings page
+   (docs/design.md, Settings): a small secondary heading over each group, then
+   one card of rows with the action at the start and its keys at the end. One
+   key look: editable keys are filled caps; fixed system keys are plain
+   secondary text, and the word "System" is spoken, not shown. */
+.ui-shortcut-table { width: 100%; border-collapse: separate; border-spacing: 0; font: var(--type-meta-size)/var(--type-meta-line) var(--font); }
+.ui-shortcut-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.ui-shortcut-table th, .ui-shortcut-table td { box-sizing: border-box; padding: 0; text-align: start; font-weight: inherit; }
+.ui-shortcut-table th[scope="rowgroup"] { position: sticky; top: 0; z-index: var(--z-content); padding: var(--space-5) var(--space-1) 6px; background: var(--surface); color: var(--text-secondary); font-size: var(--type-label-size); line-height: var(--type-label-line); font-weight: var(--strong); letter-spacing: .02em; }
+.ui-shortcut-table tbody:first-of-type th[scope="rowgroup"] { padding-block-start: var(--space-4); }
+/* Card rows: the row's cells draw the card, its edges and its corners. */
+.ui-shortcut-table tr:not(:first-child) > * { height: 2.75rem; padding-inline: var(--space-4); background: var(--raised); border-top: var(--border-width) solid var(--separator); }
+.ui-shortcut-table tr:not(:first-child) > :first-child { border-inline-start: var(--border-width) solid var(--separator); }
+.ui-shortcut-table tr:not(:first-child) > :last-child { border-inline-end: var(--border-width) solid var(--separator); text-align: end; }
+.ui-shortcut-table tr:last-child > * { border-bottom: var(--border-width) solid var(--separator); }
+.ui-shortcut-table tr:nth-child(2) > :first-child { border-start-start-radius: var(--r-card); }
+.ui-shortcut-table tr:nth-child(2) > :last-child { border-start-end-radius: var(--r-card); }
+.ui-shortcut-table tr:last-child > :first-child { border-end-start-radius: var(--r-card); }
+.ui-shortcut-table tr:last-child > :last-child { border-end-end-radius: var(--r-card); }
+.ui-shortcut-table tr:not(:first-child) > td[colspan] { height: auto; padding-block: var(--space-2); text-align: start; }
 .keys-binding { display: inline-flex; align-items: center; gap: var(--space-1); white-space: nowrap; }
-.ui-settings-keys { display: inline-flex; align-items: center; gap: var(--space-1); flex-wrap: wrap; justify-content: end; color: var(--text-secondary); }
-.ui-settings-keys kbd[data-system] { background: transparent; border-color: transparent; }
-.ui-system-note { color: var(--text-secondary); font-size: var(--type-label-size); }
+.ui-settings-keys { display: inline-flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; justify-content: end; color: var(--text-secondary); vertical-align: middle; }
+.ui-settings-keys kbd[data-system] { min-width: 0; padding-inline: 0; background: transparent; border-color: transparent; color: var(--text-secondary); font-weight: 400; }
+.ui-system-note { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .ui-shortcut-filter.ui-settings-search { margin: 0; }
 
-.ui-shortcut-table tr[data-highlighted] { background: var(--highlight); }
+.ui-shortcut-table tr[data-highlighted] > * { background: var(--highlight); }
 
-.ui-shortcut-table tr[data-echo] { background: var(--fill-quiet-hover); }
+.ui-shortcut-table tr[data-echo] > * { background: color-mix(in srgb, var(--raised), var(--text) 6%); }
+@media (prefers-contrast: more), (forced-colors: active) {
+  .ui-shortcut-table tr:not(:first-child) > * { border-color: CanvasText; }
+}

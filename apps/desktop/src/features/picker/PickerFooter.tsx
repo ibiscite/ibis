@@ -78,5 +78,5 @@ export function PickerFooter({ library, groupName, hints, altHeld, actions, more
 }
 
 function FooterAction({ label, keys, primary, onAction, disabled }: { label: string; keys: string; primary?: boolean; onAction: () => void; disabled?: boolean }) {
-  return <Button variant={primary ? "primary" : "secondary"} className="footer-action" label={label} keys={keys} isDisabled={disabled} onPress={onAction} />;
+  return <Button variant={primary ? "primary" : "quiet"} className="footer-action" label={label} keys={keys} isDisabled={disabled} onPress={onAction} />;
 }
