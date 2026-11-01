@@ -38,7 +38,7 @@ test("every token is read by something", () => {
 test("parts take colours, corners and type from tokens", () => {
   const raw = all.filter(([name]) => !values.has(name)).flatMap(([name, css]) => css.split("\n").filter((line) =>
     /(^|[\s:(,])#[0-9a-f]{3,8}\b|rgba?\(/i.test(line)
-    || /border-radius:[^;]*\b[1-9]\d*px/.test(line) && !/calc\(/.test(line)
+    || /border-radius:[^;]*\b[1-9]\d*px/.test(line)
     || /font-size:\s*[\d.]+(px|rem)/.test(line)).map((line) => `${name}: ${line.trim().slice(0, 90)}`));
   expect(raw).toEqual([]);
 });
