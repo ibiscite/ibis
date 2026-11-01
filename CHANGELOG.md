@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.6](https://github.com/ibiscite/ibis/compare/v0.2.5...v0.2.6) (2026-11-01)
+
+
+### Features
+
+* **canvas:** render every state from the real app ([#1587](https://github.com/ibiscite/ibis/issues/1587)) ([08d78fb](https://github.com/ibiscite/ibis/commit/08d78fb63cd63387ab719430a3e92bca9fa0e82a))
+
+
+### Bug Fixes
+
+* **desktop:** stop the Mac app crashing at launch ([#1588](https://github.com/ibiscite/ibis/issues/1588)) ([bde315b](https://github.com/ibiscite/ibis/commit/bde315b5f19bb0ec65bd4fe48deec683c9b357cb))
+
 ## [0.2.5](https://github.com/ibiscite/ibis/compare/v0.2.4...v0.2.5) (2026-11-01)
 
 

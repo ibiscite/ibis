@@ -228,6 +228,7 @@
   --r-seg: max(var(--r-floor-mark), calc(var(--r-control) - 2px));
   --key-gap: calc((var(--action-h) - var(--key)) / 2);
   --r-key: max(var(--r-floor-mark), calc(var(--r-action) - var(--key-gap)));
+  --r-toast: 18px; --r-receipt-mark: calc(var(--r-toast) - var(--space-2));
   --footer-h: calc(var(--action-h) + 2 * var(--inset));
   --key-fill: var(--fill-control); --key-fill-hover: var(--fill-control-hover); --key-fill-pressed: var(--fill-control-pressed);
   --primary: var(--accent);

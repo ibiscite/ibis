@@ -103,51 +103,11 @@ cargo run -p ibis -- mcp --file fixtures/bibtex/fidelity.bib
 The [terminal kit](crates/ibis-cli/README.md) includes an fzf picker recipe,
 `ibis completions bash|zsh|fish` and read-only `ibis doctor --json` diagnostics.
 
-The command line calls the same typed engine methods as the app: `libraries`,
-`search`, `show`, `cite`, `styles`, `schema` and `call`. Repeat `--file` to open
-several BibTeX, BibLaTeX or CSL-JSON libraries. Use `--zotero` for the local
-personal library or repeat `--zotero-group GROUP_ID` for chosen groups.
-Both `--file` and `--zotero-group` accumulate before and after the subcommand,
-in that order; duplicate choices are ignored.
-Library IDs are opaque and source paths stay private. `libraries` reports typed
-source warnings; loading never writes to a library.
-
-Every command accepts `--json`, including help and argument errors. It writes
-one versioned envelope to stdout: `{"ibis":1,"ok":true,"data":…}` or
-`{"ibis":1,"ok":false,"error":{"code":…}}`. Diagnostics go to stderr. Exit codes
-are 0 for success (including empty searches), 1 for findings, 2 for usage,
-3 for bad input, 4 for a missing item/library, 5 for an unavailable source or exhausted resources,
-6 for a newer unsupported format, 70 for an internal error and 130 for cancellation.
-
-`cite --request` reads a canonical `CitationRequest` JSON object from stdin.
-Use `schema cite` for its fields and `search --json` or `show --json` for item
-identities and cite fingerprints. Requests preserve order and repeated items,
-carry typed locators and styled affixes, and return the canonical citation text,
-display tree, per-item outcomes, losses and content hash. Incomplete results stay
-inspectable in JSON; plain citation text is printed only after the engine's
-completeness and hash check. Input JSON is bounded to 1 MiB and duplicate members
-are rejected. Responses are bounded to 16 MiB, with space reserved for envelope
-fields; oversized results return `resource-limit` (exit 5). Reduce the selection
-or search limit when that happens. Human key arguments resolve in the engine as well.
-
-Use `--format csl-json` to export selected records. `styles` lists the five bundled
-CSL styles. `cite KEY --style apa` formats a citation; add `--bibliography` for
-bibliography entries, sorted by the style. The same text, HTML, RTF, notices and
-typed refusals are available through `--json`, `cite --request` and `call cite`.
-Plain output reports citation notices and omitted fields on stderr without changing
-canonical stdout. Styles that need a whole document return a full reference entry
-with that explanation. Unsupported styles remain explicit per-item
-`unsupported-output` refusals.
-`ibis call METHOD --stdin` reads method parameters from stdin. The stdio server uses JSON-RPC 2.0 with bounded
-Content-Length frames, library-change notifications and
-`$/cancelRequest`; it writes no terminal text to that stream.
-
-`ibis mcp` serves AI agents over the Model Context Protocol (stdio, revision
-2025-06-18) with four read-only tools: `search`, `show`, `cite` and `styles`.
-Add it to an agent as a stdio server, for example
-`ibis mcp --file references.bib`. Agents see summaries and citations, never
-notes, annotations, source paths or local links. Long values are shortened and
-each answer is at most 256 KiB.
+The command line calls the same typed engine methods as the app. Every command
+accepts `--json` and then writes one versioned envelope to stdout, with stable error
+codes and exit codes. The [command line reference](docs/cli.md) covers libraries,
+commands, JSON output, exit codes, canonical citation requests, the JSON-RPC server
+and `ibis mcp` for AI agents.
 
 ## Contributing
 

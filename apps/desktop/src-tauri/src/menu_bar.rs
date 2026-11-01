@@ -2,8 +2,8 @@
 //! with Ibis from the Services menu, and the trackpad's alignment tick.
 #![allow(unsafe_code)]
 
-use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Once, OnceLock};
 use std::time::Duration;
 
 use objc2_app_kit::{
@@ -33,6 +33,7 @@ const SEARCH_LIMIT: usize = 200;
 static DIPPING: AtomicBool = AtomicBool::new(false);
 static READING: AtomicBool = AtomicBool::new(false);
 static APP: OnceLock<AppHandle> = OnceLock::new();
+static SERVICES: Once = Once::new();
 
 fn pose(app: &AppHandle, bird: Image<'static>) {
     let handle = app.clone();
@@ -179,8 +180,11 @@ pub(crate) fn watch<R: Runtime>(tray: &TrayIcon<R>) {
                     .get_or_init(|| unsafe { msg_send![MenuBarTarget::alloc(main_thread), init] })
                     .clone()
             });
-            // SAFETY: The target lives for the whole app, on the main thread.
-            unsafe { NSRegisterServicesProvider(Some(&target), &NSString::from_str("Ibis")) };
+            // AppKit throws on a second registration, and showing the bird calls this again.
+            SERVICES.call_once(|| {
+                // SAFETY: The target lives for the whole app, on the main thread.
+                unsafe { NSRegisterServicesProvider(Some(&target), &NSString::from_str("Ibis")) };
+            });
             let window = inner
                 .ns_status_item()
                 .and_then(|item| item.button(main_thread))

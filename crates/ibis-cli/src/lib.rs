@@ -5,7 +5,7 @@ use ibis_engine::{Cancellation, DispatchResult, Engine, Method, protocol, reques
 use serde_json::{Value, json};
 use std::{
     io::{BufRead, Read, Write},
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 mod completions;
 mod doctor;
@@ -18,24 +18,47 @@ pub enum OutputMode {
     Plain,
 }
 
+const LIBRARIES: &str = "Libraries";
+const OUTPUT: &str = "Output";
+const PER_KEY: &str = "Per key";
+const ROOT_HELP: &str = "\
+Examples:
+  ibis search \"garcia 2021\" --file refs.bib
+  ibis cite garcia2021 --file refs.bib --style apa
+  ibis search memory --zotero --json
+
+Add --json to any command for one versioned JSON envelope on stdout (serve and
+mcp speak their own protocols instead). Messages go to stderr. Exit codes: 0 ok, 1 findings, 2 usage, 3 bad input, 4 not found,
+5 source unavailable or resource limit, 6 newer format, 70 internal, 130 cancelled.
+
+Reference for scripts and agents: https://github.com/ibiscite/ibis/blob/main/docs/cli.md";
+
 fn command() -> Command {
     // Keep list values in their own scope: clap's global propagation replaces
     // root values when the same flag also appears after the subcommand.
     let file = Arg::new("file")
         .long("file")
+        .value_name("PATH")
         .value_parser(clap::value_parser!(PathBuf))
         .action(ArgAction::Append)
+        .help_heading(LIBRARIES)
+        .display_order(1000)
         .help("Open a BibTeX, BibLaTeX or CSL-JSON file; repeat for several libraries");
     let group = Arg::new("zotero-group")
         .long("zotero-group")
         .value_name("GROUP_ID")
         .value_parser(clap::value_parser!(u64))
         .action(ArgAction::Append)
+        .help_heading(LIBRARIES)
+        .display_order(1002)
         .help("Read a local Zotero group library by its group ID; repeat for several");
     let mut root = Command::new("ibis")
         .version(env!("CARGO_PKG_VERSION"))
         .about("Find references and cite them anywhere.")
+        .after_help(ROOT_HELP)
         .subcommand_required(true)
+        // Our own help command takes the global options, so `ibis help search --json` works.
+        .disable_help_subcommand(true)
         .arg(
             Arg::new("json")
                 .long("json")
@@ -49,6 +72,8 @@ fn command() -> Command {
             .long("zotero")
             .global(true)
             .action(ArgAction::SetTrue)
+            .help_heading(LIBRARIES)
+            .display_order(1001)
             .help("Read the local Zotero personal library, open or closed"),
     );
     root = root.arg(group.clone());
@@ -58,25 +83,50 @@ fn command() -> Command {
             Method::Libraries => subcommand.about("List loaded libraries and source warnings"),
             Method::Search => subcommand
                 .about("Search loaded records")
-                .arg(Arg::new("query").required(true))
+                .after_help("Examples:\n  ibis search \"garcia 2021\" --file refs.bib\n  ibis search memory --file refs.bib --json | jq '.data.hits[].item.object.data.csl.title'")
+                .arg(
+                    Arg::new("query")
+                        .value_name("WORDS")
+                        .required(true)
+                        .help("Words from the author, title, year or citation key; quote several words"),
+                )
                 .arg(
                     Arg::new("limit")
                         .long("limit")
+                        .value_name("N")
                         .value_parser(clap::value_parser!(usize))
-                        .default_value("10"),
+                        .default_value("10")
+                        .help("Return at most N results, up to 1000"),
                 ),
             Method::Show => subcommand
                 .about("Show one object by citation key or ItemRef")
-                .arg(Arg::new("key").required_unless_present("id").conflicts_with("id"))
-                .arg(Arg::new("id").long("id").value_name("ITEM_REF_JSON")),
+                .arg(
+                    Arg::new("key")
+                        .value_name("KEY")
+                        .required_unless_present("id")
+                        .conflicts_with("id")
+                        .help("The citation key of the reference"),
+                )
+                .arg(
+                    Arg::new("id")
+                        .long("id")
+                        .value_name("ITEM_REF_JSON")
+                        .help("An ItemRef JSON object, as ibis search --json prints it"),
+                ),
             Method::Cite => subcommand
                 .about("Render a citation through the shared engine")
                 .after_help(
                     "Options after a key apply to that key, as in the picker:\n  \
-                     ibis cite smith2020 --locator \"p. 12\" --prefix see jones2019 --omit-author",
+                     ibis cite smith2020 --locator \"p. 12\" --prefix see jones2019 --omit-author\n\n\
+                     Examples:\n  \
+                     ibis cite smith2020 --file refs.bib --format autocite\n  \
+                     ibis cite smith2020 --file refs.bib --style apa --bibliography\n  \
+                     ibis schema cite   # the CitationRequest that --request reads",
                 )
                 .arg(
                     Arg::new("keys")
+                        .value_name("KEY")
+                        .help("Citation keys, in the order they appear in the citation")
                         .num_args(1..)
                         .required_unless_present("request")
                         .conflicts_with("request"),
@@ -99,7 +149,7 @@ fn command() -> Command {
                         ])
                         .help("Read a canonical CitationRequest JSON object from stdin"),
                 )
-                .arg(Arg::new("format").long("format").conflicts_with("style").value_parser([
+                .arg(Arg::new("format").long("format").value_name("FORMAT").help_heading(OUTPUT).help("Key syntax to write [default: pandoc]").conflicts_with("style").value_parser([
                     "pandoc",
                     "autocite",
                     "parencite",
@@ -117,16 +167,23 @@ fn command() -> Command {
                     "jekyll-scholar",
                     "cayw-json",
                 ]))
-                .arg(Arg::new("style").long("style").value_name("STYLE_ID"))
+                .arg(
+                    Arg::new("style")
+                        .long("style")
+                        .value_name("STYLE_ID")
+                        .help_heading(OUTPUT)
+                        .help("Format with a CSL style instead, such as apa; list them with: ibis styles"),
+                )
                 .arg(
                     Arg::new("bibliography")
                         .long("bibliography")
                         .action(ArgAction::SetTrue)
                         .requires("style")
                         .conflicts_with("form")
+                        .help_heading(OUTPUT)
                         .help("Format bibliography entries using --style"),
                 )
-                .arg(Arg::new("form").long("form").value_parser([
+                .arg(Arg::new("form").long("form").value_name("FORM").help_heading(OUTPUT).help("Citation form [default: normal]").value_parser([
                     "normal",
                     "narrative",
                     "author-only",
@@ -134,10 +191,17 @@ fn command() -> Command {
                     "full",
                     "bibliography-only",
                 ]))
-                .arg(Arg::new("locale").long("locale").value_name("LOCALE"))
+                .arg(
+                    Arg::new("locale")
+                        .long("locale")
+                        .value_name("LOCALE")
+                        .help_heading(OUTPUT)
+                        .help("Language for --style output, such as en-GB or de-DE"),
+                )
                 .arg(
                     Arg::new("locator")
                         .long("locator")
+                        .help_heading(PER_KEY)
                         .value_name("LOCATOR")
                         .action(ArgAction::Append)
                         .help("Pinpoint the key before it, such as \"p. 12\", \"ch. 3\" or \"12-14\""),
@@ -145,6 +209,7 @@ fn command() -> Command {
                 .arg(
                     Arg::new("prefix")
                         .long("prefix")
+                        .help_heading(PER_KEY)
                         .value_name("TEXT")
                         .action(ArgAction::Append)
                         .help("Text before the key before it, such as \"see\""),
@@ -152,6 +217,7 @@ fn command() -> Command {
                 .arg(
                     Arg::new("suffix")
                         .long("suffix")
+                        .help_heading(PER_KEY)
                         .value_name("TEXT")
                         .action(ArgAction::Append)
                         .help("Text after the key before it"),
@@ -159,6 +225,7 @@ fn command() -> Command {
                 .arg(
                     Arg::new("omit-author")
                         .long("omit-author")
+                        .help_heading(PER_KEY)
                         // Append keeps every occurrence's index; Count keeps only the last.
                         .num_args(0)
                         .default_missing_value("true")
@@ -168,15 +235,26 @@ fn command() -> Command {
             Method::Styles => subcommand.about("List available bundled CSL styles"),
             Method::Schema => subcommand
                 .about("Print generated method JSON schemas")
-                .arg(Arg::new("method")),
+                .arg(
+                    Arg::new("method")
+                        .value_name("METHOD")
+                        .help("Print only this method's schema; leave out for every method"),
+                ),
             Method::Call => subcommand
                 .about("Call any typed engine method")
-                .arg(Arg::new("method").required(true))
+                .after_help("Example:\n  ibis call search --params '{\"query\":\"garcia\",\"limit\":5}' --file refs.bib --json")
+                .arg(
+                    Arg::new("method")
+                        .value_name("METHOD")
+                        .required(true)
+                        .help("The engine method, as ibis schema lists them"),
+                )
                 .arg(
                     Arg::new("params")
                         .long("params")
                         .value_name("JSON")
-                        .conflicts_with("stdin"),
+                        .conflicts_with("stdin")
+                        .help("The method's parameters as one JSON object"),
                 )
                 .arg(
                     Arg::new("stdin")
@@ -186,36 +264,68 @@ fn command() -> Command {
                 ),
         });
     }
-    root.subcommand(
-        Command::new("serve")
-            .about("Serve JSON-RPC over Content-Length framed stdio")
-            .arg(
-                Arg::new("stdio")
-                    .long("stdio")
-                    .required(true)
-                    .action(ArgAction::SetTrue),
-            ),
-    )
-    .subcommand(Command::new("mcp").about("Serve read-only search and citation tools to AI agents (MCP over stdio)"))
-    .subcommand(
-        Command::new("toggle")
-            .about("Show or hide the desktop picker")
-            .arg(Arg::new("app").long("app").value_parser(clap::value_parser!(PathBuf))),
-    )
-    .subcommand(
-        Command::new("doctor")
-            .about("Report source health offline, without writing or sending anything")
-            .arg(
-                Arg::new("config")
-                    .long("config")
+    root = root
+        .subcommand(
+            Command::new("serve")
+                .about("Serve JSON-RPC over Content-Length framed stdio")
+                .arg(
+                    Arg::new("stdio")
+                        .long("stdio")
+                        .required(true)
+                        .action(ArgAction::SetTrue)
+                        .help("Use stdin and stdout, the only transport"),
+                ),
+        )
+        .subcommand(
+            Command::new("mcp").about("Serve read-only search and citation tools to AI agents (MCP over stdio)"),
+        )
+        .subcommand(
+            Command::new("toggle").about("Show or hide the desktop picker").arg(
+                Arg::new("app")
+                    .long("app")
+                    .value_name("PATH")
                     .value_parser(clap::value_parser!(PathBuf))
-                    .help("Check a chosen Ibis settings file without repairing it or loading its libraries"),
+                    .help("The Ibis app to start when it is not running"),
             ),
-    )
-    .subcommand(
-        Command::new("completions")
-            .about("Generate shell completions from the CLI commands")
-            .arg(Arg::new("shell").required(true).value_parser(["bash", "zsh", "fish"])),
+        )
+        .subcommand(
+            Command::new("doctor")
+                .about("Report source health offline, without writing or sending anything")
+                .arg(
+                    Arg::new("config")
+                        .long("config")
+                        .value_name("PATH")
+                        .value_parser(clap::value_parser!(PathBuf))
+                        .help("Check a chosen Ibis settings file without repairing it or loading its libraries"),
+                ),
+        )
+        .subcommand(
+            Command::new("completions")
+                .about("Generate shell completions from the CLI commands")
+                .arg(
+                    Arg::new("shell")
+                        .value_name("SHELL")
+                        .required(true)
+                        .value_parser(["bash", "zsh", "fish"])
+                        .help("The shell to generate completions for"),
+                ),
+        );
+    // The command list comes from the tree itself, so completions offer every help target.
+    let mut targets: Vec<String> = root
+        .get_subcommands()
+        .map(|command| command.get_name().to_owned())
+        .collect();
+    targets.push("help".to_owned());
+    root.subcommand(
+        Command::new("help")
+            .about("Print this message or the help of the given command")
+            .arg(
+                Arg::new("command")
+                    .value_name("COMMAND")
+                    .value_parser(clap::builder::PossibleValuesParser::new(targets))
+                    .hide_possible_values(true)
+                    .help("The command to explain, such as cite"),
+            ),
     )
     .mut_subcommands(|subcommand| subcommand.arg(file.clone()).arg(group.clone()))
 }
@@ -249,7 +359,8 @@ pub fn run_with<R: BufRead, W: Write + Send, E: Write>(
     mode: OutputMode,
 ) -> u8 {
     let json = arguments.iter().any(|argument| argument == "--json");
-    let matches = match command().try_get_matches_from(arguments.iter()) {
+    let program = program_name(arguments.first());
+    let matches = match command().bin_name(&program).try_get_matches_from(arguments.iter()) {
         Ok(matches) => matches,
         Err(error) => {
             if matches!(
@@ -260,7 +371,11 @@ pub fn run_with<R: BufRead, W: Write + Send, E: Write>(
                     return emit(
                         true,
                         Ok(DispatchResult {
-                            data: json!({"help":error.to_string()}),
+                            data: if error.kind() == clap::error::ErrorKind::DisplayVersion {
+                                json!({"version":env!("CARGO_PKG_VERSION")})
+                            } else {
+                                json!({"help":error.to_string()})
+                            },
                             text: None,
                             source_findings: false,
                             exit_code: ibis_core::contract::ExitCode::Ok,
@@ -276,10 +391,14 @@ pub fn run_with<R: BufRead, W: Write + Send, E: Write>(
             // clap names the argument and prints the usage line; keep its words,
             // but a line break typed in an argument must not start a forged line.
             let mut message = error.to_string();
+            // clap may quote a whole argument or only the value after `--flag=`.
             for argument in &arguments {
                 let text = argument.to_string_lossy();
-                if text.contains(['\n', '\r']) {
-                    message = message.replace(text.as_ref(), &text.escape_debug().to_string());
+                let value = text.split_once('=').map(|(_, value)| value);
+                for fragment in std::iter::once(text.as_ref()).chain(value) {
+                    if fragment.contains(['\n', '\r']) {
+                        message = message.replace(fragment, &fragment.escape_debug().to_string());
+                    }
                 }
             }
             return emit(
@@ -300,6 +419,10 @@ pub fn run_with<R: BufRead, W: Write + Send, E: Write>(
     } else {
         engine.without_file_watches()
     };
+    if let Some(("help", args)) = matches.subcommand() {
+        let help = command_help(&program, args.get_one::<String>("command"));
+        return emit(json, Ok(help), None, &mut output, &mut errors, mode);
+    }
     match execute(&engine, &matches, &mut input, &mut output, mode) {
         Ok(Execution::Stdio(code)) => code,
         Ok(Execution::Result(result, citing)) => {
@@ -314,6 +437,34 @@ pub fn run_with<R: BufRead, W: Write + Send, E: Write>(
             }
         }
         Err(failure) => emit(json, Err(failure), None, &mut output, &mut errors, mode),
+    }
+}
+
+/// The name this program was started as, such as `ibis.exe`; `ibis` when that name is
+/// empty or not text, so parsing and help always show the same one.
+fn program_name(program: Option<&std::ffi::OsString>) -> String {
+    program
+        .and_then(|program| Path::new(program).file_name())
+        .and_then(|name| name.to_str())
+        .filter(|name| !name.is_empty())
+        .unwrap_or("ibis")
+        .to_owned()
+}
+
+/// The help `ibis <command> --help` prints.
+fn command_help(program: &str, target: Option<&String>) -> DispatchResult {
+    let mut root = command().bin_name(program);
+    root.build();
+    // The parser only accepts names from the tree, so an unknown target cannot get here.
+    let mut shown = target
+        .and_then(|target| root.find_subcommand(target).cloned())
+        .unwrap_or(root);
+    let help = shown.render_help().to_string();
+    DispatchResult {
+        text: Some(help.trim_end().to_owned()),
+        data: json!({"help":help}),
+        source_findings: false,
+        exit_code: ibis_core::contract::ExitCode::Ok,
     }
 }
 
@@ -755,8 +906,19 @@ fn emit(
     errors: &mut impl Write,
     mode: OutputMode,
 ) -> u8 {
+    // Continuation lines are indented, so no text inside a message can pass
+    // for a separate `ibis:` diagnostic.
     let mut say = |line: &str| {
-        let _ = writeln!(errors, "ibis: {}", terminal_display(line));
+        let text = terminal_display(line);
+        let mut lines = text.split('\n');
+        let _ = writeln!(errors, "ibis: {}", lines.next().unwrap_or_default());
+        for line in lines {
+            let _ = if line.is_empty() {
+                writeln!(errors)
+            } else {
+                writeln!(errors, "  {line}")
+            };
+        }
     };
     if result.as_ref().is_ok_and(|result| result.source_findings) {
         say(if json {
@@ -777,11 +939,12 @@ fn emit(
     let (code, envelope, text) = match result.and_then(|result| result.bounded().map_err(Failure::from)) {
         Ok(result) => (result.exit_code, Envelope::success(result.data), result.text),
         Err(failure) => {
+            // The sentence goes to stderr in both modes; --json adds the stable code on stdout.
+            say(failure
+                .message
+                .as_deref()
+                .unwrap_or_else(|| human::code_sentence(failure.code)));
             if !json {
-                say(failure
-                    .message
-                    .as_deref()
-                    .unwrap_or_else(|| human::code_sentence(failure.code)));
                 return failure.code.exit_code().value();
             }
             (failure.code.exit_code(), Envelope::failure(failure.code), None)
@@ -887,6 +1050,24 @@ mod tests {
             emit(true, Ok(result), None, &mut Broken, &mut Vec::new(), OutputMode::Plain),
             70
         );
+    }
+    #[test]
+    fn every_argument_and_option_explains_itself_in_help() {
+        fn check(command: &Command, path: &str) {
+            for argument in command.get_arguments() {
+                assert!(
+                    argument.get_help().is_some(),
+                    "{path} {} has no help text",
+                    argument.get_id()
+                );
+            }
+            for subcommand in command.get_subcommands() {
+                check(subcommand, &format!("{path} {}", subcommand.get_name()));
+            }
+        }
+        let mut root = command();
+        root.build();
+        check(&root, "ibis");
     }
     #[test]
     fn toggle_arguments_are_explicit_and_never_launched_by_parser_tests() {
