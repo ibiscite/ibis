@@ -55,7 +55,7 @@ const noSelection = new Map<string, CitationReference>();
 export type PickerApi = Pick<typeof nativeApi,
   "chooseLibrary" | "useZotero" | "libraryStatus" | "reloadLibrary" | "previewFileCitation" | "copyFileCitation" | "copyFormat" | "pickerPreferences" | "setPickerPreferences" |
   "hidePicker" | "pickerPresentation" | "pickerVisible" | "setPinned" | "onLibraryChanged" | "onPickerShown" | "onPickerHidden" | "quit" | "search" | "shortcutStatus"> &
-  Partial<Pick<typeof nativeApi, "recentReferences" | "openLibrarySource" | "librarySource" | "useSampleLibrary" | "useZoteroLibraries" | "zoteroGroups" | "pickerDestination" | "rememberAppOutput" | "onWindowSizeSaved" | "readWindowPositionUndo" | "undoWindowPosition" | "dismissWindowPositionUndo" | "onWindowReset" | "findSources" | "openFoundLibrary" | "rowContext" | "showCopiedNotice" | "loginItem" | "setLoginItem" | "onUpdateProgress" | "updateChecks" | "setUpdateChecks" | "onUpdateChecks" | "updateAvailable" | "onUpdateAvailable" | "updatePickerActivity" | "checkForUpdates" | "onShortcutStatus" | "openSettings" | "onPreferencesChanged">>;
+  Partial<Pick<typeof nativeApi, "onPickerPreparing" | "recentReferences" | "openLibrarySource" | "librarySource" | "useSampleLibrary" | "useZoteroLibraries" | "zoteroGroups" | "pickerDestination" | "rememberAppOutput" | "onWindowSizeSaved" | "readWindowPositionUndo" | "undoWindowPosition" | "dismissWindowPositionUndo" | "onWindowReset" | "findSources" | "openFoundLibrary" | "rowContext" | "showCopiedNotice" | "loginItem" | "setLoginItem" | "onUpdateProgress" | "updateChecks" | "setUpdateChecks" | "onUpdateChecks" | "updateAvailable" | "onUpdateAvailable" | "updatePickerActivity" | "checkForUpdates" | "onShortcutStatus" | "openSettings" | "onPreferencesChanged">>;
 
 export type PickerPreview = { query?: string; copied?: Copied };
 
@@ -69,7 +69,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   }, []);
   const api = usePickerAppearance(sourceApi);
   const { chooseLibrary, useZotero, reloadLibrary,
-    hidePicker, pickerVisible, setPinned, onPickerShown, onPickerHidden, search, shortcutStatus, previewFileCitation, copyFileCitation,
+    hidePicker, pickerVisible, setPinned, onPickerPreparing, onPickerShown, onPickerHidden, search, shortcutStatus, previewFileCitation, copyFileCitation,
     useZoteroLibraries: chooseZoteroLibraries, zoteroGroups } = api;
   const { rowContext, findSources, openFoundLibrary, showCopiedNotice, onWindowSizeSaved, onShortcutStatus, openSettings, onPreferencesChanged } = api;
   const [updateProgress, setUpdateProgress] = useState<nativeApi.UpdateProgress | null>(null);
@@ -256,13 +256,15 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
       else search.setSelectionRange(search.value.length, search.value.length);
     };
     window.addEventListener("focus", activated);
+    let prepared = false;
     const focusSearch = (presentation: number) => {
       searchAtShow = input.current?.value ?? "";
       resetPointer();
       const previousQuery = session.getSnapshot().query;
       send({ type: "shown", now: performance.now(), presentation });
       if (session.getSnapshot().query !== previousQuery) searchAtShow = session.getSnapshot().query;
-      destination.read(true, session.getSnapshot().permissionDetour);
+      if (!prepared) destination.read(true, session.getSnapshot().permissionDetour);
+      prepared = false;
       readShortcut();
       // On X11, showing can precede native activation. WebKit restores the
       // previous control then, so finish Search focus once activation arrives.
@@ -285,6 +287,13 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
       setAltHeld(false);
     })
       .catch(() => subscriptionFailure("pickerEvents"));
+    // The window appears after this: settle what its first frame shows.
+    const unlistenPreparing = onPickerPreparing?.(() => {
+      if (!mounted) return;
+      prepared = true;
+      send({ type: "preparing", now: performance.now() });
+      destination.read(true, session.getSnapshot().permissionDetour);
+    }).catch(() => subscriptionFailure("pickerEvents"));
     const unlisten = onPickerShown((presentation) => {
       if (!mounted) return;
       visibilityEvents += 1;
@@ -312,6 +321,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
       send({ type: "retire" });
       void unlistenHidden.then((stop) => stop()).catch(() => console.error("Picker event cleanup failed."));
       void unlisten.then((stop) => stop()).catch(() => console.error("Picker event cleanup failed."));
+      void unlistenPreparing?.then((stop) => stop?.());
       void unlistenPreferences?.then((stop) => stop?.());
     };
   }, [resetPointer]);

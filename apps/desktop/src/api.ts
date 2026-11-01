@@ -116,6 +116,11 @@ export function onPreferencesChanged(handler: () => void): Promise<UnlistenFn> {
 }
 
 /** Called whenever the picker is hidden, by any route. */
+/** Fires before the window appears, so its first frame is already current. */
+export function onPickerPreparing(handler: () => void): Promise<UnlistenFn> {
+  return listen("picker:preparing", handler);
+}
+
 export function onPickerHidden(handler: () => void): Promise<UnlistenFn> {
   return listen("picker:hidden", handler);
 }

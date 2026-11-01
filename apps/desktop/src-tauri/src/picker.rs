@@ -203,6 +203,8 @@ fn show_picker_on_thread(app: &AppHandle, owner: u64) {
         if !crate::sizing::prepare(app, &window, false, false) || !visits.owns(owner) {
             return;
         }
+        // Before the window appears, so its first frame is already current.
+        report(window.emit("picker:preparing", ()), NativeIssue::PickerEvent);
         crate::native_feel::before_show(app);
         report(window.unminimize(), NativeIssue::Unminimize);
         #[cfg(target_os = "macos")]
