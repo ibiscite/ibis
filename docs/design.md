@@ -141,9 +141,10 @@ in Look (maintainer, 2026-10-31). Status and errors retain their own roles.
 On an accent-filled row the added tile becomes a `--selected-text` tile with
 a scarlet check, keeping citation and selection legible even with a warm accent.
 Ibis offers Appearance (System, Light, Dark; System by default) and Accent:
-Mac-style colour dots, first **Follow the Mac** (the default), then prominently
-labelled **Ibis scarlet**, then blue, purple, pink, red, orange, yellow, green
-and graphite. All swatches have Fluent names and tooltips. The Ibis swatch uses
+the Mac's own row of colour dots, first **Follow the Mac** (the default), then
+blue, purple, pink, red, orange, yellow, green and graphite in Apple's order,
+then a divider and **Ibis scarlet** as the one extra (maintainer, 2026-11-01:
+plain, stock macOS first; Ibis's own styling is secondary). All swatches have Fluent names and tooltips. The Ibis swatch uses
 the real `scarlet` and `scarlet_dark` from `brand/settings.json`, through
 `--accent-ibis`: `#C23A1C` light, `#FF7A5C` dark. Its
 `--accent-ibis-on` pairs white in light mode and `#171717` ink in dark
@@ -167,8 +168,8 @@ white text keeps 4.5:1 (mixing toward the text colour would lighten them in
 dark mode). The System page of the design canvas
 shows these roles labelled side by side in light and dark.
 The accents are a fixed, tuned set rather than a free colour picker
-(maintainer, 2026-11-01): Follow the Mac stays the default, Ibis scarlet comes
-first after it, then the Mac's colours, each with values chosen to look right
+(maintainer, 2026-11-01): Follow the Mac stays the default, then the Mac's
+colours in Apple's order, then Ibis scarlet, each with values chosen to look right
 and pass contrast in both light and dark; an arbitrary colour could not keep
 those pairs.
 **Selection and the default button, as on the Mac** (maintainer,
@@ -1602,10 +1603,9 @@ pictures of the picker (System split diagonally), in one row at default and
 minimum window widths, including Larger text. `ui/PictureChoice` gives every
 picture an equal grid column and scales the contents inside the available
 padding; never wrap three choices as two plus one. System is the default, then
-Accent as colour dots, Follow the Mac by default, with Ibis scarlet immediately
-after it and visibly named (maintainer, 2026-10-31); those two are the first
-choices, then a thin divider and the other hues as smaller dots (maintainer,
-2026-11-01). The
+Accent as the Mac's row of colour dots, Follow the Mac by default, then
+Apple's hues, then a divider and Ibis scarlet, named in its tooltip
+(maintainer, 2026-11-01: stock macOS first). The
 website shows the app as it currently is. Each Appearance picture owns the
 labelled theme for its body and controls; System is split across the whole
 picture diagonally. Rows and Search icon use a crop of the real components at
