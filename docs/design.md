@@ -71,7 +71,7 @@ them before any later delivery; it sends no new paste while they remain blocked.
 |---|---|---|
 | Surfaces [D4] | `--surface`, `--surface-grouped`, `--surface-overlay`; `--surface-field`, `--scrim` | Three levels, as on the Mac: the window material, grouped content on it (the quinary fill over `--surface`, as System Settings groups rows), and the menu material for every overlay. Fields keep their own background. No other surface colours. |
 | Text [D5] | `--text`, `--text-secondary`, `--text-tertiary`, `--text-disabled` | Apple's label ladder (label, secondary, tertiary, quaternary), with Ibis's contrast floors: secondary always 4.5:1; tertiary only for glyphs and hints at rest (3:1), never sentences. |
-| Accent [D6] | `--accent`, `--accent-text`, `--text-on-accent` | The system accent by default; Look's Accent row can override it (maintainer, 2026-10-30). Selected rows and the menu highlight use `--selected-text`, paired to the chosen accent; the system and existing fixed accents use white, while Ibis scarlet uses dark ink in dark mode (maintainer, 2026-10-31). `--text-on-accent` (primary button, tiles on the accent) is picked per accent to reach 4.5:1. |
+| Accent [D6] | `--accent`, `--accent-text`, `--selected`, `--selected-text`, `--text-on-accent` | The system accent by default; Look's Accent row can override it (maintainer, 2026-10-30). Selected rows and the menu highlight use `--selected-text`, paired to the chosen accent; the system and existing fixed accents use white, while Ibis scarlet uses dark ink in dark mode (maintainer, 2026-10-31). Filled controls that carry words (primary button, Copy, the menu highlight) use the selection fill and `--selected-text`; `--text-on-accent` is only for glyphs on the accent (checkbox ticks, switch thumbs) and matches `--selected-text`. |
 | Selection [D7] | `--row-active-*`, `--row-inactive-background`, `--selected-*` | See **Selection and focus**. |
 | Focus [D8] | `--focus-ring-*` | See **Selection and focus**. |
 | Fills | `--fill-1` … `--fill-5`; roles `--fill-control(-hover/-pressed)`, `--fill-quiet-hover`, `--fill-primary-*`, `--fill-disabled` | Apple's fill ladder (system, secondary, tertiary, quaternary, quinary fill), black on light and white on dark at the Mac's own alphas. Roles only point at the ladder: control rest, hover and pressed are tertiary, secondary and system fill; quiet row hover is quaternary; grouped content is quinary. Pressed is darker on macOS and GNOME, lighter on Windows. |
@@ -97,7 +97,8 @@ own colour; it names a role, and the role names a ladder step. New needs pick
 an existing step before adding a token.
 
 **Colour roles.** The system accent means "you are here, act on this":
-selection, focus, the primary button, switches and the macOS menu highlight.
+selection, focus, the primary button, switches and the macOS menu highlight
+(the ones carrying words use its deeper selection shade).
 Scarlet marks the citation by default: the shelf's beak mark, the added tile,
 the Copied notice's citation, the format preview and the logo [C14]. It also
 serves as a control accent when the person explicitly chooses **Ibis scarlet**
@@ -132,6 +133,53 @@ The accents are a fixed, tuned set rather than a free colour picker
 first after it, then the Mac's colours, each with values chosen to look right
 and pass contrast in both light and dark; an arbitrary colour could not keep
 those pairs.
+**Words on colour use the selection fill** (2026-11-01). Anything filled that
+carries words (selected rows, the macOS menu highlight, the primary button,
+Copy, a focused citation) uses `--selected` with `--selected-text`. The
+lighter `--accent` is for what carries no words: switches, checkboxes, the
+focus ring, progress and indicators. Apple's own accent fails 4.5:1 under
+white text (#007AFF is 4.0:1), so this is how Ibis keeps its floor without
+inventing colours.
+
+**Exact macOS values** (Apple's AppKit values; bold where Ibis's floor raises
+them). Light / dark, black or white at the given alpha unless a hex:
+
+| Token | Apple role | Light | Dark |
+| --- | --- | --- | --- |
+| `--text` | label | .85 | .85 |
+| `--text-secondary` | secondary label | **.58** (Apple .50 is 3.9:1) | .55 |
+| `--text-tertiary` | tertiary label | **.45** (Apple .26) | **.40** (Apple .25) |
+| `--text-disabled` | disabled control text | .25 | .25 |
+| `--fill-1` … `--fill-5` | system … quinary fill | .10, .08, .05, .03, .02 | .10, .08, .05, .03, .02 |
+| `--separator` | separator | .10 | .10 |
+| `--accent` | control accent (blue) | `#007AFF` | `#0A84FF` |
+| `--selected` | selected content background | `#0064E1` | `#0058D0` |
+| `--accent-text` | link | `#0068DA` | `#419CFF` |
+| `--selected-text-secondary` | text on selection, secondary | **.90 white** | **.90 white** |
+
+The fill alphas are the values the canvas uses; confirm them against Apple's
+current documentation when building `tokens.css`. Surfaces stay as they are:
+`#FCFCFD` / `#242426` window, `#FDFDFE` / `#2B2B2E` overlay.
+
+**Accent choices, per mode** (accent · selection · accent text; selection
+text is white unless noted). Mac colours, darkened in light or lightened in
+dark only where they miss 3:1 as a control or 4.5:1 as text; dark selection
+is never brighter than light:
+
+| Accent | Light | Dark |
+| --- | --- | --- |
+| Follow the Mac, Blue | `#007AFF` · `#0064E1` · `#0068DA` | `#0A84FF` · `#0058D0` · `#419CFF` |
+| Ibis scarlet | `#C23A1C` · `#C23A1C` · `#C23A1C` | `#FF7A5C` · `#FF7A5C` (ink `#171717`) · `#FF7A5C` |
+| Purple | `#953D96` · `#953D96` · `#953D96` | `#A550A7` · `#904291` · `#BD71BF` |
+| Pink | `#F74F9E` · `#E4086C` · `#E4086C` | `#F74F9E` · `#E4086C` · `#F74F9E` |
+| Red | `#E0383E` · `#DE3036` · `#DD2C32` | `#FF5257` · `#E80005` · `#FF5257` |
+| Orange | `#E77008` · `#B55C08` · `#B55C08` | `#F7821B` · `#B55C08` · `#F7821B` |
+| Yellow | `#B48A00` · `#916E00` · `#916E00` | `#FFC600` · `#916E00` · `#FFC600` |
+| Green | `#56A33F` · `#468337` · `#447F35` | `#62BA46` · `#468337` · `#62BA46` |
+| Graphite | `#8C8C8C` · `#747474` · `#747474` | `#8C8C8C` · `#747474` · `#8C8C8C` |
+
+The dots in Look show each Mac colour as Apple draws it; the table is what
+Ibis paints.
 A chosen accent overrides the system's in Ibis only. Ibis offers no per-element
 colours, fonts, radius, spacing, custom CSS or themes.
 
@@ -352,7 +400,7 @@ forced colours; it never resembles a partially completed download.
 | Menu item | The menu highlight | Check in a leading column on macOS and Windows, after the label on GNOME | The menu highlight; never a ring |
 | Segmented choice | Quiet tint | Raised thumb on a recessed track | Ring around the group |
 | Pop-up button, More | Quiet fill | Pressed fill while open | Ring |
-| Buttons | One step darker | Primary: accent fill with `--text-on-accent` | Ring |
+| Buttons | One step darker | Primary: selection fill with `--selected-text` | Ring |
 | Switch | No change | Accent track | Ring |
 | Search box | None | None | None: the caret (Windows: its accent underline) |
 
@@ -429,7 +477,7 @@ intact. A shortcut in a menu is plain trailing text in native modifier order
 (⇧⌘C), never a key cap.
 Check each menu side by side with a real one on every platform.
 
-**Buttons.** Primary: `--accent` with `--text-on-accent`, one per view.
+**Buttons.** Primary: `--selected` with `--selected-text`, one per view.
 Secondary: `--fill-control` (plus the Windows stroke). Quiet: no fill, `--text-secondary`
 text, subtle hover. Icon button: a 20 px glyph in a 32 px square whose tooltip
 names the action and key; a toggle shows a filled glyph on the pressed fill,
