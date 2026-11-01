@@ -48,6 +48,7 @@ export type SessionEvent =
   | { type: "enter"; choice: string | null; output?: OutputToken }
   | { type: "question"; format?: Choice | null; output?: OutputToken; answer: "open" | "answered" | "cancel" }
   | { type: "hidden"; now: number }
+  | { type: "preparing"; now: number }
   | { type: "shown"; now: number; presentation: number }
   | { type: "initialize" }
   | { type: "presentation"; visibility: number; presentation: number | null }
@@ -77,6 +78,14 @@ const sameOutput = (a: OutputToken, b: OutputToken) => a.opening === b.opening &
 const ownsClipboard = (s: SessionState, f: Flight) => s.activeCopy === f.id && s.context === f.owner.context && s.session === f.owner.session;
 const ownsInteraction = (s: SessionState, f: Flight) => ownsClipboard(s, f) && s.view?.output.delivery === f.delivery;
 const ownsCompletion = (s: SessionState, f: Flight, output: OutputToken) => ownsInteraction(s, f) && s.visibility === f.owner.visibility && sameOutput(f.owner.output, output);
+/** After a minute away the search starts clean; otherwise an escaped query returns. */
+const returning = (s: SessionState, now: number): SessionState => {
+  const expired = !s.permissionDetour && s.hiddenAt !== null && now - s.hiddenAt > 60_000;
+  const escaped = s.hiddenAt !== null ? s.escapedQuery : null;
+  return expired ? changed(s, { query: "", interpretLocators: true, selected: new Map(), removed: null, active: 0, escapedQuery: null }) :
+    escaped ? changed(s, { query: s.query || escaped.text, interpretLocators: escaped.interpretLocators, escapedQuery: null, restored: s.restored + 1 }) : s;
+};
+
 const changed = (s: SessionState, change: Partial<SessionState>): SessionState => ({ ...s, shelfCopied: null, copyNotice: null, ...change, pendingCopy: null, interaction: s.interaction + 1, context: s.context + 1 });
 const finish = (s: SessionState, f: Flight): SessionState => ({ ...s, flights: s.flights.filter(({ id }) => id !== f.id), activeCopy: s.activeCopy === f.id ? null : s.activeCopy });
 
@@ -206,11 +215,9 @@ export function reduceSession(s: SessionState, event: SessionEvent): [SessionSta
     }
     case "hiding": return [{ ...s, readingPresentation: false, retryPresentation: false, visibility: s.visibility + 1, pendingCopy: null, shelfCopied: null, copyNotice: null }, []];
     case "hidden": return [{ ...s, presentation: null, readingPresentation: false, retryPresentation: false, visibility: s.visibility + 1, hiddenAt: event.now, pendingCopy: null, shelfCopied: null, copyNotice: null }, []];
+    case "preparing": return [{ ...returning(s, event.now), hiddenAt: null }, []];
     case "shown": {
-      const expired = !s.permissionDetour && s.hiddenAt !== null && event.now - s.hiddenAt > 60_000;
-      const escaped = s.hiddenAt !== null ? s.escapedQuery : null;
-      s = expired ? changed(s, { query: "", interpretLocators: true, selected: new Map(), removed: null, active: 0, escapedQuery: null }) :
-        escaped ? changed(s, { query: s.query || escaped.text, interpretLocators: escaped.interpretLocators, escapedQuery: null, restored: s.restored + 1 }) : s;
+      s = returning(s, event.now);
       return [{ ...s, session: s.session + 1, presentation: event.presentation, readingPresentation: false, retryPresentation: false, visibility: s.visibility + 1, viewInteraction: -1, hiddenAt: null, pendingCopy: null, shelfCopied: null, copyNotice: null }, []];
     }
     case "retire": return [{ ...s, presentation: null, presentationSubscribed: false, readingPresentation: false, retryPresentation: false, session: s.session + 1, visibility: s.visibility + 1, viewInteraction: -1, pendingCopy: null, flights: [], activeCopy: null }, []];

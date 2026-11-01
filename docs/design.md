@@ -542,6 +542,7 @@ While references are usable nothing else interrupts. Names and ages are isolated
 age ticks every 30 s outside the live region.
 
 **One foundation.** Rules every window shares live in `ui/Foundation.css`: one thin scrollbar, and icons that take their row's colour, so hover and selection cannot strand them. An overlay keeps 16 px from its edge to its text, its rows reach 8 px from the edge, and a status line is words, never a filled band. Short windows drop a row's second line rather than losing the menu (maintainer, 2026-10-31). Check a visual change against the screenshots from `apps/desktop/gallery/`.
+**The picker settles before it appears.** The search reset and the paste target are ready before the window shows, so its first frame is already current. While typing, the shelf holds the last citation through a running search and keeps one height; it never blanks between keystrokes (maintainer, 2026-10-31).
 
 **Notices.** No notice or alert carries a side bar or one-sided border: its words and its place say what it is (maintainer, 2026-10-31). "Copied" or "Inserted" shows after the picker hides, in a window
 that never takes focus: the same card near the top centre on every system. In-window toasts ("Removed · Undo") last 8 s and pause

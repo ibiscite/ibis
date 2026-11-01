@@ -9,7 +9,7 @@ main:has(> .shelf) > footer { border-top-color: var(--clear); }
 [dir="rtl"] .shelf-mark { transform: scaleX(-1); }
 .shelf-mark-close { transform: rotate(180deg); }
 [dir="rtl"] .shelf-mark-close { transform: scaleX(-1) rotate(180deg); }
-.shelf-citation { display: flex; flex: 1; align-items: center; gap: 0; min-width: 0; white-space: nowrap; }
+.shelf-citation { display: flex; flex: 1; align-items: center; gap: 0; align-self: stretch; min-width: 0; white-space: nowrap; }
 .shelf .preview-text, .shelf-citation > p { display: block; min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
 .shelf-citation > .preview-text { flex: 1; }
 .shelf-citation > p { flex: 1; color: var(--muted); }

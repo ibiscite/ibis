@@ -77,6 +77,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   const loginBusy = useRef(false);
   const [loginSaving, setLoginSaving] = useState(false);
   const [updatesSaving, setUpdatesSaving] = useState(false);
+  const [versionCopied, setVersionCopied] = useState(false);
   const [forgetStatus, setForgetStatus] = useState<"idle" | "saving" | "done" | "failed">("idle");
   const forgetBusy = useRef(false);
   const updateIntent = useRef<boolean | null>(null);
@@ -220,7 +221,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     edits.current += 1;
     cause.current = Object.hasOwn(next, "citation_style") || key !== null ? "default-format" : next.appearance !== undefined ? "appearance" : next.accent !== undefined ? "accent"
       : next.density !== undefined ? "rows" : next.larger_text !== undefined ? "text-size"
-      : next.search_mark !== undefined ? "search-icon" : next.paste !== undefined ? "paste-label" : "preview";
+      : next.search_icon !== undefined ? "search-icon" : next.paste !== undefined ? "paste-label" : "preview";
     setProblemRow(null);
     dispatchPreference({ type: "change", value: { ...preferences, ...next, ...(key ? { copy_format: key } : {}) } });
     queue.change(next, key);
@@ -378,6 +379,12 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
             <Group id="version">
               <Row id="version-label" label={text("about-version", { name, version })}
                 description={updates === null && !readProblems.has("automatic") ? text("about-unavailable") : undefined} {...feedback("version-label")}>
+                <Button onPress={() => {
+                  void navigator.clipboard.writeText(`${name} ${version}`).then(() => {
+                    setVersionCopied(true);
+                    window.setTimeout(() => { if (live.current) setVersionCopied(false); }, 1500);
+                  }, () => setProblemRow({ id: "version-label", message: "about-copy-failed" }));
+                }}>{text(versionCopied ? "about-copied" : "about-copy")}</Button>
                 {updates !== null && <Button onPress={() => { void api.checkForUpdates().then(() => readProblem("version-label", false)).catch(() => readProblem("version-label", true)); }}>{text("about-check")}</Button>}
               </Row>
             </Group>

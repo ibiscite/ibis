@@ -263,7 +263,6 @@ export const pickerText = {
   densityTitle: "Show less or more of each reference",
   viewChanges: "View changes",
   largerText: "Larger text",
-  searchMark: "Ibis mark in search",
   zoteroLibraries: "Zotero libraries",
   myLibrary: "My Library",
   groupLibrary: (id: number) => `Group ${id}`,

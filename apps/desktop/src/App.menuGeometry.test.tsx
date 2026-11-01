@@ -104,7 +104,7 @@ test("More is closed while its exit overlaps the probe's keys-sheet and Copy as 
 
 test.each([false, true])("empty, controls, results, selection, no matches and keys never measure or resize (Larger=%s)", async (larger) => {
   const calls = backend({
-    picker_preferences: () => ({ citation_style: null, density: "comfortable", larger_text: larger, show_paste_preview: true, search_mark: false, paste: false }),
+    picker_preferences: () => ({ citation_style: null, density: "comfortable", larger_text: larger, show_paste_preview: true, search_icon: "magnifier", paste: false }),
     search: ({ query }) => query.text === "work" ? [result("a", "First invented work")] : [],
   });
   const height = vi.spyOn(HTMLElement.prototype, "offsetHeight", "get");
