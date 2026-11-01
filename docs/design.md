@@ -1081,8 +1081,10 @@ lives only in About, the welcome, status lines or feedback that already exists;
 never changes search results, what is copied or pasted, or focus; happens once,
 quietly, inside the motion cap; shows its end state under Reduce Motion; never
 loops or plays a sound; and is counted only on this Mac.
-Delights stay quiet and grown-up (maintainer, 2026-11-01): plain sentences,
-no exclamation marks, no emoji, no jokes about the person's work or habits;
+Delights are warm, never childish (maintainer, 2026-11-01): Ibis serves
+students and senior academics alike, so a little warmth is welcome in a healthy
+balance: at most one short warm sentence, no slang, no exclamation marks, no
+emoji, no jokes about the person's work or habits;
 subtle and found rather than announced; never interrupts or sits in the way of
 a task. Everything only for fun (facts, milestones, the birthday,
 blinks) sits behind one switch, Settings › General › **Small
@@ -1100,8 +1102,8 @@ surprises**, on by default; key feedback, haptics and tips are not part of it.
 - **Fun:** clicking the About icon makes the ibis blink once, and five clicks
   show "Ancient Egyptians linked the ibis with Thoth, god of writing."; the
   mark pecks once when a library first finishes opening; a library's status line
-  notes its first 100, 1,000 and 10,000 references once, plainly ("example.bib
-  now holds 1,000 references.").
+  notes its first 100, 1,000 and 10,000 references once ("100 references in
+  example.bib. A good start.", "… A solid library.", "… A remarkable library.").
 - **Second round (approved):** Enter with nothing to paste shakes the footer
   action once (240 ms) and says why; ⌘+ and ⌘− show the size for one second
   where Copied shows; double-clicking the search bar's empty area returns Ibis
