@@ -15,8 +15,11 @@ export function iconProblems(svg) {
   const expected = { xmlns: "http://www.w3.org/2000/svg", width: "20", height: "20", viewBox: "0 0 20 20", fill: "none", stroke: "currentColor", "stroke-width": "1.5", "stroke-linecap": "round", "stroke-linejoin": "round" };
   const root = svg.match(/^<svg\s+([^>]+)><path d="([^"]+)"\s*\/><\/svg>\s*$/);
   if (!root) return ["one svg and one untransformed path required"];
-  const attributes = [...root[1].matchAll(/([\w:-]+)="([^"]*)"/g)];
-  if (attributes.length !== Object.keys(expected).length || attributes.some(([, key, value]) => expected[key] !== value)) problems.push("20 pt grid, no fill, 1.5 pt stroke, round caps and joins required");
+  // Every attribute counts, however it is quoted: nothing unread can move the drawing.
+  const attribute = /([\w:-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
+  const attributes = [...root[1].matchAll(attribute)].map(([, key, double, single]) => [key, double ?? single]);
+  const unread = root[1].replace(attribute, "").trim();
+  if (unread || attributes.length !== Object.keys(expected).length || new Set(attributes.map(([key]) => key)).size !== attributes.length || attributes.some(([key, value]) => expected[key] !== value)) problems.push("20 pt grid, no fill, 1.5 pt stroke, round caps and joins required");
   const tokens = root[2].match(/[a-z]|[-+]?(?:\d*\.\d+|\d+\.?\d*)/gi) ?? [];
   if (root[2].replace(/[a-z]|[-+]?(?:\d*\.\d+|\d+\.?\d*)|[\s,]/gi, "")) problems.push("invalid path data");
   const counts = { M: 2, L: 2, H: 1, V: 1, C: 6, S: 4, Q: 4 };

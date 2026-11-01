@@ -35,7 +35,7 @@
 .ui-button > svg { flex: none; width: var(--icon-small); height: var(--icon-small); }
 .ui-button-icon { display: inline-flex; flex: none; width: var(--icon-small); height: var(--icon-small); }
 .ui-button-icon > :is(svg, img, span) { width: 100%; height: 100%; }
-.ui-button > .key-hint { color: inherit; flex-wrap: wrap; max-width: 100%; white-space: normal; }
+.ui-button[data-variant] > .key-hint { color: inherit; flex-wrap: wrap; max-width: 100%; white-space: normal; }
 .ui-button[data-variant] .key-caps kbd { background: transparent; border-color: transparent; color: inherit; padding-inline: 0; font-weight: inherit; }
 @media (pointer: coarse) {
   .ui-button[data-variant], .settings-page .ui-button[data-variant] { min-width: var(--touch-target); min-height: var(--touch-target); }
