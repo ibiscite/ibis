@@ -312,7 +312,7 @@ test("the status dot sits at the footer edge, 12 px before the text and centred 
   expect(styles).toMatch(/^\.library-status \{[^}]*align-items: baseline; gap: var\(--space-3\);/m);
   const dot = styles.match(/^\.status-dot \{([^}]*)\}/m)?.[1];
   expect(dot).not.toMatch(/margin/);
-  expect(dot).toMatch(/translate: 0 calc\(var\(--status-dot-size\) \/ 2 - \.5ex\);/);
+  expect(dot).toMatch(/translate: 0 calc\(var\(--status-dot\) \/ 2 - \.5ex\);/);
 });
 
 test.each(["ltr", "rtl"])("the native Library trigger reserves its own hit area beside Find in a narrow %s footer", (dir) => {
@@ -333,7 +333,7 @@ test.each(["ltr", "rtl"])("the native Library trigger reserves its own hit area 
   const trigger = screen.getByRole("button", { name: "Library" });
   expect(trigger.textContent).toContain("thesis.bib moved");
   expect(getComputedStyle(trigger).position).toBe("relative");
-  expect(getComputedStyle(trigger.parentElement!).minWidth).toBe("var(--control-min-size)");
+  expect(getComputedStyle(trigger.parentElement!).minWidth).toBe("var(--control-h)");
   fireEvent.click(trigger, { detail: 0 });
   expect(open).toHaveBeenCalledWith(true);
   expect(find).not.toHaveBeenCalled();

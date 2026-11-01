@@ -4,16 +4,16 @@
    picker, which scrolls as a whole when Larger text leaves it short. */
 .scroll-area { overflow: auto; }
 .scroll-area[data-more-above] {
-  -webkit-mask-image: linear-gradient(transparent, currentColor min(var(--scroll-fade-size), var(--scroll-fade-above-space, var(--scroll-fade-size))));
-  mask-image: linear-gradient(transparent, currentColor min(var(--scroll-fade-size), var(--scroll-fade-above-space, var(--scroll-fade-size))));
+  -webkit-mask-image: linear-gradient(transparent, currentColor min(var(--scroll-fade), var(--scroll-fade-above-space, var(--scroll-fade))));
+  mask-image: linear-gradient(transparent, currentColor min(var(--scroll-fade), var(--scroll-fade-above-space, var(--scroll-fade))));
 }
 .scroll-area[data-more-below] {
-  -webkit-mask-image: linear-gradient(currentColor calc(100% - min(var(--scroll-fade-size), var(--scroll-fade-below-space, var(--scroll-fade-size)))), transparent);
-  mask-image: linear-gradient(currentColor calc(100% - min(var(--scroll-fade-size), var(--scroll-fade-below-space, var(--scroll-fade-size)))), transparent);
+  -webkit-mask-image: linear-gradient(currentColor calc(100% - min(var(--scroll-fade), var(--scroll-fade-below-space, var(--scroll-fade)))), transparent);
+  mask-image: linear-gradient(currentColor calc(100% - min(var(--scroll-fade), var(--scroll-fade-below-space, var(--scroll-fade)))), transparent);
 }
 .scroll-area[data-more-above][data-more-below] {
-  -webkit-mask-image: linear-gradient(transparent, currentColor min(var(--scroll-fade-size), var(--scroll-fade-above-space, var(--scroll-fade-size))), currentColor calc(100% - min(var(--scroll-fade-size), var(--scroll-fade-below-space, var(--scroll-fade-size)))), transparent);
-  mask-image: linear-gradient(transparent, currentColor min(var(--scroll-fade-size), var(--scroll-fade-above-space, var(--scroll-fade-size))), currentColor calc(100% - min(var(--scroll-fade-size), var(--scroll-fade-below-space, var(--scroll-fade-size)))), transparent);
+  -webkit-mask-image: linear-gradient(transparent, currentColor min(var(--scroll-fade), var(--scroll-fade-above-space, var(--scroll-fade))), currentColor calc(100% - min(var(--scroll-fade), var(--scroll-fade-below-space, var(--scroll-fade)))), transparent);
+  mask-image: linear-gradient(transparent, currentColor min(var(--scroll-fade), var(--scroll-fade-above-space, var(--scroll-fade))), currentColor calc(100% - min(var(--scroll-fade), var(--scroll-fade-below-space, var(--scroll-fade)))), transparent);
 }
 @media (prefers-contrast: more), (prefers-reduced-transparency: reduce), (forced-colors: active) {
   .scroll-area[data-more-above], .scroll-area[data-more-below], .scroll-area[data-more-above][data-more-below] { -webkit-mask-image: none; mask-image: none; }

@@ -3,13 +3,13 @@
 :root.settings-window { color-scheme: light dark; }
 :root.settings-window, :root.settings-window body, #settings { height: 100%; min-height: 0; margin: 0; overflow: hidden; }
 :root.settings-window body {
-  background: var(--surface-grouped); color: var(--text);
-  font: var(--type-body-size) / var(--type-body-line) var(--font-family);
+  background: var(--grouped); color: var(--text);
+  font: var(--type-body-size) / var(--type-body-line) var(--font);
   -webkit-user-select: none; user-select: none; cursor: default;
 }
 .settings {
   display: grid; height: 100%; min-height: 0; min-width: 0; overflow: hidden;
-  grid-template-columns: var(--settings-sidebar-width) minmax(0, 1fr);
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
   grid-template-rows: var(--titlebar-height) minmax(0, 1fr);
 }
 /* A separate, non-scrolling band reserves the native traffic-light area. */
@@ -17,15 +17,15 @@
 .settings-sidebar {
   grid-area: 1 / 1 / -1 / 2; min-width: 0; min-height: 0; box-sizing: border-box;
   display: flex; flex-direction: column; overflow: hidden;
-  padding-block-start: var(--titlebar-height); background: var(--surface-sidebar);
-  border-inline-end: var(--border-width) solid var(--separator);
+  padding-block-start: var(--titlebar-height); background: var(--sidebar);
+  border-inline-end: var(--border-width) solid var(--line);
 }
 
 .settings-page {
   /* Hidden radio inputs must stay inside this scroller's coordinate space. */
   position: relative;
   grid-area: 2 / 2; min-width: 0; min-height: 0; overflow-y: auto; overflow-x: hidden; box-sizing: border-box;
-  display: grid; align-content: start; grid-auto-rows: max-content; gap: var(--settings-section-gap);
-  padding: var(--settings-page-inset); padding-block-start: var(--settings-page-top-inset);
-  scrollbar-gutter: stable; scroll-padding-block: var(--settings-page-inset); overscroll-behavior: contain;
+  display: grid; align-content: start; grid-auto-rows: max-content; gap: 1.125rem;
+  padding: var(--space-6); padding-block-start: var(--space-2);
+  scrollbar-gutter: stable; scroll-padding-block: var(--space-6); overscroll-behavior: contain;
 }

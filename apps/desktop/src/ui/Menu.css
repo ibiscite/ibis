@@ -4,19 +4,19 @@
    ADR 0021 §5). These are the look-layer tokens for menus. */
 .menu-popover {
   --menu-radius: var(--r-menu); --menu-padding: var(--menu-pad); --menu-item-radius: var(--r-mi); --menu-item-height: 1.75rem;
-  /* Labels start after the 10 px item padding, an 18 px check column and the 6 px gap. */
-  --menu-item-pad: 10px; --menu-check-width: 18px; --menu-item-gap: 6px;
+  /* Labels start after the 8 px item padding, a 14 px check column and the 6 px gap. */
+  --menu-item-pad: var(--space-2); --menu-check-width: 14px; --menu-item-gap: 6px;
   --menu-label-start: calc(var(--menu-item-pad) + var(--menu-check-width) + var(--menu-item-gap));
-  --menu-highlight: var(--selected-background); --menu-highlight-text: var(--selected-text);
+  --menu-highlight: var(--sel); --menu-highlight-text: var(--sel-text);
   --menu-enter-transform: none;
   --menu-open-duration: 90ms;
 }
 @supports (color: light-dark(white, black)) {
   :root[data-platform="windows"] .menu-popover {
-    --menu-highlight: light-dark(rgb(0 0 0 / 5.6%), rgb(255 255 255 / 8%));
+    --menu-highlight: var(--hover);
   }
   :root[data-platform="linux"] .menu-popover {
-    --menu-highlight: light-dark(rgb(0 0 6 / 8%), rgb(255 255 255 / 10%));
+    --menu-highlight: var(--fill);
   }
 }
 /* Fluent MenuFlyout: 8 px flyout and 4 px rows from the geometry chain, 32 px high, sliding in from its button. */
@@ -40,14 +40,14 @@
 }
 
 .menu-popover {
-  box-sizing: border-box; width: max-content; min-width: min(var(--menu-min-width), calc(100vw - 16px)); max-width: calc(100vw - 16px);
+  box-sizing: border-box; width: max-content; min-width: min(14rem, calc(100vw - 16px)); max-width: calc(100vw - 16px);
   max-height: calc(100vh - 16px);
   display: flex; flex-direction: column; padding-block: var(--menu-padding); overflow: hidden; overflow-wrap: anywhere;
-  border: 1px solid var(--field-edge); border-radius: var(--menu-radius); box-shadow: var(--shadow-overlay);
-  font: var(--metadata-size) / var(--metadata-line-height) var(--font-family);
+  border: 1px solid color-mix(in srgb, var(--line) 35%, var(--surface)); border-radius: var(--menu-radius); box-shadow: var(--shadow-overlay);
+  font: var(--type-meta-size) / var(--type-meta-line) var(--font);
 }
-.menu-popover[data-entering] { animation: menu-enter var(--menu-open-duration) var(--ease-out); }
-.menu-popover[data-exiting] { animation: menu-exit var(--motion-exit) var(--ease-in); }
+.menu-popover[data-entering] { animation: menu-enter var(--menu-open-duration) var(--ease); }
+.menu-popover[data-exiting] { animation: menu-exit var(--dur-exit) var(--ease-in); }
 @keyframes menu-enter { from { opacity: 0; transform: var(--menu-enter-transform); } to { opacity: 1; transform: none; } }
 @keyframes menu-exit { to { opacity: 0; } }
 .menu-frame { display: contents; }
@@ -60,12 +60,12 @@
 .menu-popover [role="menu"]:focus-visible { outline: none; box-shadow: none; }
 .menu-section { display: flex; flex: none; flex-direction: column; }
 .menu-section-chips { flex-direction: row; flex-wrap: wrap; gap: var(--space-1); padding-block: var(--space-2); }
-.menu-section-chips .menu-item { min-height: var(--control-min-size); background: var(--fill-control); border-radius: var(--r-full); }
-.menu-section-chips .menu-item[aria-checked="true"] { background: var(--selected-background); color: var(--selected-text); }
-.menu-separator { height: 1px; margin: 4px var(--menu-item-pad); border: 0; background: var(--separator); }
+.menu-section-chips .menu-item { min-height: var(--control-h); background: var(--fill); border-radius: var(--r-full); }
+.menu-section-chips .menu-item[aria-checked="true"] { background: var(--sel); color: var(--sel-text); }
+.menu-separator { height: 1px; margin: 4px var(--menu-item-pad); border: 0; background: var(--line); }
 .menu-header { padding-inline: var(--menu-item-pad); }
-.menu-detail { width: 0; min-width: 100%; margin: 0; padding: var(--space-1) 0 var(--space-2); display: flex; flex-direction: column; gap: var(--space-1); color: var(--muted); font-size: var(--hint-size); overflow-wrap: break-word; }
-.menu-detail-title { color: var(--text); font-weight: var(--type-strong-weight); }
+.menu-detail { width: 0; min-width: 100%; margin: 0; padding: var(--space-1) 0 var(--space-2); display: flex; flex-direction: column; gap: var(--space-1); color: var(--muted); font-size: var(--type-label-size); overflow-wrap: break-word; }
+.menu-detail-title { color: var(--text); font-weight: var(--strong); }
 .menu-item {
   display: flex; flex: none; align-items: center; min-height: var(--menu-item-height); padding-block: var(--space-1); padding-inline: var(--menu-item-pad); gap: var(--menu-item-gap);
   border-radius: var(--menu-item-radius); outline: none; cursor: default; text-align: start;
@@ -76,7 +76,7 @@
 .menu-check { flex: 0 0 var(--menu-check-width); display: inline-flex; justify-content: center; }
 :root:not([data-platform="linux"]) .menu:has([role="menuitemcheckbox"]) :is(.menu-item:not([role="menuitemcheckbox"]), .menu-header) { padding-inline-start: var(--menu-label-start); }
 /* An icon shares the check column, so its label still starts with the others. */
-:root:not([data-platform="linux"]) .menu:has([role="menuitemcheckbox"]) .menu-item:has(> .source-icon) { padding-inline-start: calc(var(--menu-item-pad) + var(--menu-check-width) - var(--icon-size)); }
+:root:not([data-platform="linux"]) .menu:has([role="menuitemcheckbox"]) .menu-item:has(> .source-icon) { padding-inline-start: calc(var(--menu-item-pad) + var(--menu-check-width) - var(--icon-small)); }
 :root[data-platform="linux"] .menu-check { order: 1; }
 /* Grow to the intrinsic label width first; at the viewport limit full action
    labels wrap while checks and shortcut units retain their columns. */

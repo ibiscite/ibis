@@ -1,43 +1,44 @@
 /* Settings [C18, D17]: natural-height grouped cards and inset rows at every text size. */
 .ui-settings-group {
-  min-width: 0; max-width: var(--settings-group-width); flex: none;
-  display: flex; flex-direction: column; gap: var(--space-2);
-  scroll-margin-block: var(--settings-page-inset);
+  min-width: 0; max-width: 40rem; flex: none;
+  display: flex; flex-direction: column;
+  scroll-margin-block: var(--space-6);
 }
 .ui-settings-group-title {
-  margin: 0; padding-inline: var(--space-1); font-size: var(--type-meta-size);
-  line-height: var(--type-meta-line); font-weight: var(--type-strong-weight);
+  margin: 0; padding: 0 var(--space-1) 6px; color: var(--muted); font-size: var(--type-label-size);
+  line-height: var(--type-label-line); font-weight: var(--strong); letter-spacing: .02em;
 }
 .ui-settings-card {
-  flex: none; min-width: 0; border-radius: var(--r-card); background: var(--surface-grouped-card);
+  flex: none; min-width: 0; border-radius: var(--r-card); background: var(--grouped-card);
   box-shadow: var(--shadow-card); overflow: hidden;
 }
 .ui-settings-row {
-  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3);
-  min-height: var(--settings-row-height); padding: var(--settings-row-pad-block) var(--row-pad); box-sizing: border-box;
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-4);
+  min-height: 3rem; padding: var(--space-2) var(--space-4); box-sizing: border-box; font-size: var(--type-meta-size); line-height: var(--type-meta-line);
 }
-.ui-settings-row[data-described] { min-height: var(--settings-described-row-height); }
-.ui-settings-row + .ui-settings-row { box-shadow: inset 0 var(--border-width) 0 var(--separator); }
-.ui-settings-row-text { display: flex; flex-direction: column; gap: var(--settings-row-text-gap); flex: 1 1 14rem; min-width: 0; overflow-wrap: anywhere; }
+.ui-settings-row[data-bare] { padding: .875rem var(--space-4); }
+.ui-settings-row + .ui-settings-row { border-top: var(--border-width) solid var(--line); }
+.ui-settings-row-text { display: flex; flex-direction: column; flex: 1 1 14rem; min-width: 0; overflow-wrap: anywhere; }
 .ui-settings-row > :not(.ui-settings-row-text) { max-inline-size: 100%; }
 .ui-settings-row .ui-button { padding-block: var(--space-1); }
 .ui-settings-keys { display: inline-flex; flex: none; align-items: center; gap: var(--space-1); color: var(--muted); }
-.ui-settings-description { color: var(--muted); font-size: var(--type-meta-size); line-height: var(--type-meta-line); }
+.ui-settings-description { color: var(--muted); font-size: var(--type-label-size); line-height: var(--type-label-line); }
+.ui-settings-note { flex-basis: 100%; margin: 0; color: var(--muted); font-size: var(--type-label-size); line-height: var(--type-label-line); }
 @media (prefers-contrast: more), (forced-colors: active) { .ui-settings-card { border: var(--border-width) solid CanvasText; } }
 
-.ui-settings-row[data-highlighted] { background: var(--settings-search-highlight); }
-.ui-settings-row-problem { flex-basis: 100%; margin: 0; color: var(--status-stop); overflow-wrap: anywhere; }
-.ui-settings-search { margin: var(--inset); min-width: 0; }
-.ui-settings-search input { width: 100%; min-width: 0; box-sizing: border-box; min-height: var(--control-min-size); border-radius: var(--r-control); border: var(--border-width) solid var(--stroke-field); padding: var(--space-1) var(--space-2); background: var(--surface-field); color: var(--text); font: inherit; }
+.ui-settings-row[data-highlighted] { background: var(--highlight); }
+.ui-settings-row-problem { flex-basis: 100%; margin: 0; color: var(--stop); overflow-wrap: anywhere; }
+.ui-settings-search { margin: 0 var(--inset) 10px; min-width: 0; }
+.ui-settings-search input { width: 100%; min-width: 0; box-sizing: border-box; min-height: var(--action-h); border-radius: var(--r-control); border: 0; padding: 0 var(--space-2); background: var(--field); color: var(--text); font-size: var(--type-meta-size); }
+.ui-settings-search input::placeholder { color: var(--tertiary); }
 .ui-settings-search-results { display: flex; flex-direction: column; gap: var(--space-1); }
 .ui-settings-search-results button { text-align: start; }
-.ui-picker-picture { display: block; position: relative; overflow: hidden; pointer-events: none; width: var(--settings-picture-width); max-width: 100%; min-width: 0; aspect-ratio: var(--settings-picture-aspect); border-radius: var(--r-min); text-align: start; }
-.ui-picker-picture[data-header] { width: var(--settings-search-picture-width); aspect-ratio: var(--settings-search-picture-aspect); }
-.ui-picker-picture-natural { position: absolute; visibility: hidden; width: var(--settings-picture-width); }
-.ui-picker-picture[data-header] .ui-picker-picture-natural { width: var(--settings-search-picture-width); }
+.ui-picker-picture { --picture-scale: .21; display: block; position: relative; overflow: hidden; pointer-events: none; width: 9.4375rem; max-width: 100%; min-width: 0; height: 6.3125rem; border-radius: var(--r-tile); box-shadow: 0 0 0 var(--border-width) var(--line); text-align: start; }
+.ui-picker-picture[data-rows] { --picture-scale: .74; width: 100%; height: 7.375rem; }
+.ui-picker-picture[data-header] { --picture-scale: .6; width: 9.375rem; height: 1.875rem; }
 .ui-picker-picture-mask { position: absolute; inset: 0; background: var(--surface); color: var(--text); }
 .ui-picker-picture-mask[data-dark] { clip-path: polygon(100% 0, 100% 100%, 0 100%); }
-.ui-picker-picture-content { position: absolute; inset-block-start: 0; inset-inline-start: 0; width: var(--settings-picture-source-width); transform: scale(var(--settings-snapshot-scale)); transform-origin: top left; }
+.ui-picker-picture-content { position: absolute; inset-block-start: 0; inset-inline-start: 0; width: 45rem; transform: scale(var(--picture-scale)); transform-origin: top left; }
 :dir(rtl) .ui-picker-picture-content { transform-origin: top right; }
 @media (pointer: coarse) {
   .ui-settings-search input { min-height: var(--touch-target); }

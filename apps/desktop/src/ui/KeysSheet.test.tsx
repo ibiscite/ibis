@@ -9,7 +9,7 @@ test("the keys sheet presents compact groups with shared key caps and leaves out
   render(<KeysDialog bindings={KEY_TABLE} isMac onClose={vi.fn()} />);
   const dialog = screen.getByRole("dialog", { name: "Keyboard shortcuts" });
   const groups = within(dialog).getAllByRole("rowgroup").slice(1);
-  expect(groups.map((group) => within(group).getAllByRole("row")[0]!.textContent)).toEqual(["In the search box", "Anywhere in Ibis"]);
+  expect(groups.map((group) => within(group).getAllByRole("row")[0]!.textContent)).toEqual(["While searching", "Anywhere in Ibis"]);
   expect(dialog.querySelector(".keys-groups")).toBeTruthy();
   expect(dialog.querySelectorAll(".key-caps").length).toBeGreaterThan(4);
   expect(within(dialog).queryByText("Go to the first or last item")).toBeNull();

@@ -1,21 +1,21 @@
 /* One switch (docs/design.md, "Per platform": 38 × 22): the accent when on, a
    quiet fill when off, and a contrast-paired thumb on the accent with a soft shadow. */
 /* Anchor React Aria's hidden input to its label, so focus scrolls its pane. */
-.ui-switch { position: relative; display: inline-flex; flex: none; align-items: center; min-height: var(--control-min-size); cursor: default; }
+.ui-switch { position: relative; display: inline-flex; flex: none; align-items: center; min-height: var(--control-h); cursor: default; }
 .ui-switch-track {
   position: relative; box-sizing: border-box; width: 38px; height: 22px; border-radius: var(--r-full);
-  background: var(--fill-control-pressed); border: var(--border-width) solid var(--stroke-control);
-  transition: background-color var(--motion-feedback) var(--ease-out);
+  background: var(--fill-p); border: var(--border-width) solid var(--stroke);
+  transition: background-color var(--dur) var(--ease);
 }
 .ui-switch-thumb {
   position: absolute; top: 1px; inset-inline-start: 1px; width: 18px; height: 18px; border-radius: 50%;
-  background: var(--control-thumb); box-shadow: var(--shadow-thumb);
-  transition: transform var(--motion-feedback) var(--ease-out);
+  background: var(--thumb); box-shadow: var(--shadow-thumb);
+  transition: transform var(--dur) var(--ease);
 }
 .ui-switch[data-selected] .ui-switch-track { background: var(--accent); }
-.ui-switch[data-selected] .ui-switch-thumb { background: var(--text-on-accent); transform: translateX(16px); }
+.ui-switch[data-selected] .ui-switch-thumb { background: var(--on-accent); transform: translateX(16px); }
 .ui-switch[data-selected]:dir(rtl) .ui-switch-thumb { transform: translateX(-16px); }
-.ui-switch[data-focus-visible] .ui-switch-track { outline: var(--focus-ring-width) solid var(--focus-ring-color); outline-offset: var(--focus-ring-offset); }
+.ui-switch[data-focus-visible] .ui-switch-track { outline: var(--ring-width) solid var(--ring); outline-offset: var(--ring-offset); }
 .ui-switch[data-disabled] { opacity: .5; }
 @media (prefers-reduced-motion: reduce) { .ui-switch-track, .ui-switch-thumb { transition: none; } }
 @media (prefers-contrast: more), (forced-colors: active) {

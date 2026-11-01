@@ -19,13 +19,13 @@
 
 /* 2.8 s in view, as in the prototype: a 120 ms fade in when shown, then a
    200 ms fade out when the app's timer marks it as leaving (notice.rs). */
-:root { --notice-rise: var(--motion-feedback); }
+:root { --notice-rise: var(--dur); }
 .copied-notice.showing {
   animation:
-    copied-notice-in var(--motion-feedback) var(--ease-out) both,
-    copied-notice-rise var(--notice-rise) var(--ease-out) both;
+    copied-notice-in var(--dur) var(--ease) both,
+    copied-notice-rise var(--notice-rise) var(--ease) both;
 }
-.copied-notice.showing.leaving { animation: copied-notice-out var(--motion-panel) var(--ease-in) both; }
+.copied-notice.showing.leaving { animation: copied-notice-out var(--dur-panel) var(--ease-in) both; }
 @keyframes copied-notice-in {
   from { opacity: 0; }
   to { opacity: 1; }
@@ -48,4 +48,4 @@
   .copied-notice { background: var(--surface); }
 }
 /* An opaque native surface still contains the same inset card. */
-:root.notice-window[data-surface="opaque"] body { background: var(--surface-window); }
+:root.notice-window[data-surface="opaque"] body { background: var(--surface); }

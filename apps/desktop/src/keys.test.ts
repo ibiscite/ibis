@@ -5,7 +5,7 @@ import pickerCommands from "./testing/picker-command-shortcuts.json";
 
 test("Enter's description follows the footer in both delivery modes", () => {
   expect(keysFor("copy")).toBe("Enter");
-  expect(keyText.actions.copy).toBe("Paste or copy the highlighted reference, or the ones added to the citation, as the footer says");
+  expect(keyText.actions.copy).toBe("Paste the citation");
 });
 
 test("key labels follow the platform", () => {

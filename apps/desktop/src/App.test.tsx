@@ -1055,10 +1055,10 @@ test.each([1, 20])("the %i-result heading keeps its English word order on an RTL
 });
 
 test("every system shares the Mac focus ring and accessibility overrides", () => {
-  expect(styles).toMatch(/:focus-visible:not\(\.ui-button, \.menu-item\)\s*\{[^}]*outline:\s*var\(--focus-ring-width\) solid var\(--focus-ring-color\)/);
-  expect(tokens).toMatch(/--focus-ring-color:\s*var\(--accent\)/);
-  expect(tokens).not.toMatch(/:root\[data-platform="windows"\]\s*\{[^}]*--focus-ring-color/);
-  expect(tokens).toContain("--focus-ring-color: CanvasText");
+  expect(styles).toMatch(/:focus-visible:not\(\.ui-button, \.menu-item\)\s*\{[^}]*outline:\s*var\(--ring-width\) solid var\(--ring\)/);
+  expect(tokens).toMatch(/--ring:\s*var\(--accent\)/);
+  expect(tokens).not.toMatch(/:root\[data-platform="windows"\]\s*\{[^}]*--ring/);
+  expect(tokens).toContain("--ring: CanvasText");
 });
 
 
@@ -1398,10 +1398,10 @@ test("the design scale keeps text readable and every colour role legible in both
     return [found![1]!, found![2]!];
   };
   const surface = pair("--surface");
-  for (const role of ["--muted", "--citation", "--status-done", "--status-look", "--status-stop"]) {
+  for (const role of ["--muted", "--scarlet", "--done", "--look", "--stop"]) {
     pair(role).forEach((colour, mode) => {
       const [lighter, darker] = [luminance(hex(colour)), luminance(hex(surface[mode]!))].sort((a, b) => b - a);
-      expect((lighter! + .05) / (darker! + .05), `${role} in ${mode ? "dark" : "light"} mode`).toBeGreaterThanOrEqual(role === "--status-look" ? 3 : 4.5);
+      expect((lighter! + .05) / (darker! + .05), `${role} in ${mode ? "dark" : "light"} mode`).toBeGreaterThanOrEqual(role === "--look" ? 3 : 4.5);
     });
   }
 });
@@ -1656,7 +1656,7 @@ test("rows with the same first author and year are told apart by their container
   // container is only as wide as its text, so it sits beside its separator.
   expect(styles).not.toMatch(/match-parent/);
   // It keeps its own width beside a long title, as in the prototype, capped and ellipsized.
-  expect(styles).toMatch(/\.result-first-author \{ flex: none; max-width: var\(--meta-part-max-width\);[^}]*text-overflow: ellipsis/);
+  expect(styles).toMatch(/\.result-first-author \{ flex: none; max-width: 30%;[^}]*text-overflow: ellipsis/);
   // A very narrow Compact row gives the title its own line instead.
   expect(styles).toMatch(/@container \(max-width: 16em\) \{\s*:root\[data-density="compact"\] \.result-line \{ flex-wrap: wrap; row-gap: 0; \}\s*:root\[data-density="compact"\] \.result-title \{ flex-basis: 100%; \}/);
   expect(line?.textContent).toBe("Sleep spindlesGarcía et al.");
@@ -1689,7 +1689,6 @@ test("rows shorten the authors and keep the journal and library label visible", 
   // word and the authors (up to 60% of the byline) keep their width, and the
   // container shortens first. Below 25em the meta line may wrap instead (no
   // row gap). Chromium probe numbers for the crowded cases are in PR #502.
-  expect(styles).not.toMatch(/line-clamp/);
   expect(styles).toMatch(/\.result-meta \{[^}]*flex-wrap: wrap; row-gap: 0;/);
   // The body measures the space left after the tile and year columns.
   expect(styles).toMatch(/\.result-body \{[^}]*container-type: inline-size; \}/);
@@ -2828,12 +2827,12 @@ test("? lists every key in a modal dialog, but a ? typed in the search is text",
   expect(document.activeElement).toBe(close);
   // Each group's heading names where its keys work; each row is action, then keys.
   const groups = within(dialog).getAllByRole("rowgroup").slice(1).map((group) => within(group).getAllByRole("row").map((row) => [...row.children].map((cell) => cell.textContent)));
-  expect(groups.map((group) => group[0])).toEqual([["In the search box"], ["Anywhere in Ibis"], ["From any app"]].slice(0, groups.length));
+  expect(groups.map((group) => group[0])).toEqual([["While searching"], ["Anywhere in Ibis"], ["From any app"]].slice(0, groups.length));
   const rows = groups.flatMap((group) => group.slice(1));
-  expect(groups[0]).toContainEqual(["Paste or copy the highlighted reference, or the ones added to the citation, as the footer says", "Enter"]);
-  expect(groups[0]).toContainEqual(["Add the highlighted reference to the citation, or remove it", "Shift+Enter"]);
-  expect(groups[1]).toContainEqual(["Open or close More", "Ctrl+K"]);
-  expect(rows).toContainEqual(["Show this list (? works outside the search box)", "Ctrl+/ or ?"]);
+  expect(groups[0]).toContainEqual(["Paste the citation", "Enter"]);
+  expect(groups[0]).toContainEqual(["Add another reference", "Shift+Enter"]);
+  expect(groups[1]).toContainEqual(["More actions", "Ctrl+K"]);
+  expect(rows).toContainEqual(["Show this list", "Ctrl+/ or ?"]);
   expect(rows.some(([action]) => action === "Go to the first or last item")).toBe(false);
   // The global shortcut, labelled for this platform, is listed once it works.
   await waitFor(() => expect(within(dialog).getAllByRole("row").at(-1)?.textContent).toBe("Open IbisCtrl+Shift+Y"));

@@ -1,10 +1,10 @@
 /* C7: one band, on the result columns, regardless of selection or open menu. */
-.shelf { --shelf-target: var(--control-min-size); position: relative; flex: none; min-height: 0; overflow: visible; margin: 0 var(--inset) var(--inset); border-radius: var(--r-row); background: var(--shelf-fill); }
-.shelf::before { content: ""; position: absolute; inset: 0; border-radius: inherit; background: var(--shelf-copy-wash); opacity: 0; pointer-events: none; }
-main:has(> .shelf) > footer { border-top-color: var(--clear); }
-.shelf-output { position: relative; display: flex; align-items: center; height: max(var(--shelf-line), var(--shelf-target)); padding-inline: var(--row-pad); font-size: var(--type-citation-size); }
-.shelf-leading { flex: 0 0 var(--tile-size); display: flex; justify-content: end; margin-inline-end: var(--row-gap); }
-.shelf-mark { display: block; flex: none; height: var(--space-5); width: auto; color: var(--citation); }
+.shelf { --shelf-target: var(--control-h); position: relative; flex: none; min-height: 0; overflow: visible; margin: 0 var(--inset) var(--inset); border-radius: var(--r-row); background: var(--fill); }
+.shelf::before { content: ""; position: absolute; inset: 0; border-radius: inherit; background: color-mix(in srgb, var(--done) 9%, transparent); opacity: 0; pointer-events: none; }
+main:has(> .shelf) > footer { border-top-color: transparent; }
+.shelf-output { position: relative; display: flex; align-items: center; height: max(var(--space-10), var(--shelf-target)); padding-inline: var(--row-pad); font-size: var(--type-meta-size); }
+.shelf-leading { flex: 0 0 var(--tile); display: flex; justify-content: end; margin-inline-end: var(--row-gap); }
+.shelf-mark { display: block; flex: none; height: var(--space-5); width: auto; color: var(--scarlet); }
 .shelf-output[data-state="pending"] .shelf-mark { opacity: .45; }
 [dir="rtl"] .shelf-mark { transform: scaleX(-1); }
 .shelf-mark-close { transform: rotate(180deg); }
@@ -14,36 +14,37 @@ main:has(> .shelf) > footer { border-top-color: var(--clear); }
 .shelf-citation > .preview-text { flex: 1; }
 .shelf-citation > p { flex: 1; color: var(--muted); }
 .shelf-output:is([data-state="failed"], [data-state="stale"]) .shelf-citation > p { color: var(--text); border: 0; padding: 0; }
-.shelf-state-icon { display: inline-flex; justify-content: center; align-items: center; flex: none; width: var(--icon-size); height: var(--icon-size); margin-inline-end: var(--space-1); border: var(--border-width) solid currentColor; border-radius: var(--r-full); font: var(--type-strong-weight) var(--type-label-size) / 1 var(--font-family); }
-.shelf-state-icon[data-state="failed"] { color: var(--status-stop); }
-.shelf-state-icon[data-state="stale"] { color: var(--status-look); }
-.shelf-output[data-keys] .preview-text { font-family: var(--font-mono); }
+.shelf-state-icon { display: inline-flex; justify-content: center; align-items: center; flex: none; width: var(--icon-small); height: var(--icon-small); margin-inline-end: var(--space-1); border: var(--border-width) solid currentColor; border-radius: var(--r-full); font: var(--strong) var(--type-label-size) / 1 var(--font); }
+.shelf-state-icon[data-state="failed"] { color: var(--stop); }
+.shelf-state-icon[data-state="stale"] { color: var(--look); }
+.shelf-output[data-keys] .preview-text { font-family: var(--mono); }
 .shelf-output .preview-text .csl-entry { display: inline; }
 .shelf-output .preview-text .csl-entry + .csl-entry { margin-inline-start: var(--space-4); }
-.shelf-segment { position: relative; display: flex; flex: 0 1 auto; min-width: 0; padding-block: var(--space-2); padding-inline: var(--shelf-segment-inset); }
-.shelf-segment-button.ui-button[data-variant] { justify-content: start; flex: 0 1 auto; min-width: 0; min-height: var(--chip-height); max-width: 100%; padding: 0; border-width: 0; border-radius: var(--shelf-segment-radius); color: var(--text); white-space: nowrap; }
+.shelf-segment { position: relative; display: flex; flex: 0 1 auto; min-width: 0; padding-block: var(--space-2); padding-inline: 1px; }
+.shelf-segment-button.ui-button[data-variant] { justify-content: start; flex: 0 1 auto; min-width: 0; min-height: var(--chip-h); max-width: 100%; padding: 0; border-width: 0; border-radius: var(--r-tile); color: var(--text); white-space: nowrap; }
 .shelf-reference-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .shelf-segment-button.ui-button[data-size="small"]::after { inset-inline: 0; }
-.shelf-segment-button.ui-button[data-focus-visible] { background: var(--selected-background); color: var(--selected-text); outline: none; box-shadow: none; }
+.shelf-segment-button.ui-button[data-focus-visible] { background: var(--sel); color: var(--sel-text); outline: none; box-shadow: none; }
 .shelf-segment-button[data-focus-visible] .preview-text { color: inherit; }
 /* The 16 px disc is above the pill and text; its 24 px target straddles
    the segment's outer corner. It never participates in the text's width. */
-.shelf-remove.ui-button[data-variant] { position: absolute; z-index: var(--z-content); inset-block-start: calc(var(--shelf-remove-target) / -2); inset-inline-end: calc(var(--shelf-remove-target) / -2); width: var(--shelf-remove-target); min-width: var(--shelf-remove-target); height: var(--shelf-remove-target); min-height: var(--shelf-remove-target); padding: 0; border: 0; border-radius: var(--r-full); visibility: hidden; background: var(--clear); }
-.shelf-remove.ui-button::after { inset: calc((var(--shelf-remove-target) - var(--shelf-remove-size)) / 2); border-radius: var(--r-full); background: var(--fill-control); }
-.shelf-remove.ui-button[data-glyph="close"]::before { position: relative; z-index: var(--z-content); width: var(--shelf-remove-size); height: var(--shelf-remove-size); }
+.shelf-remove.ui-button[data-variant] { position: absolute; z-index: var(--z-content); inset-block-start: calc(24px / -2); inset-inline-end: calc(24px / -2); width: 24px; min-width: 24px; height: 24px; min-height: 24px; padding: 0; border: 0; border-radius: var(--r-full); visibility: hidden; background: transparent; }
+.shelf-remove.ui-button::after { inset: calc((24px - 16px) / 2); border-radius: var(--r-full); background: var(--overlay); box-shadow: var(--shadow-badge); }
+.shelf-remove.ui-button[data-glyph="close"]::before { position: relative; z-index: var(--z-chrome); width: 16px; height: 16px; }
 @media (hover: hover) {
-  .shelf-segment:hover:not(:has([data-focus-visible]), [data-menu-open]) > .shelf-remove { visibility: visible; }
-  .shelf-remove.ui-button[data-hovered]::after { background: var(--fill-control-hover); }
+  .shelf:not([data-panel]) .shelf-segment:hover:not(:has([data-focus-visible])) > .shelf-remove { visibility: visible; }
+  .shelf-remove.ui-button[data-hovered]::after { background: var(--text); }
+  .shelf-remove.ui-button[data-hovered]::before { color: var(--raised); }
 }
 .shelf-actions { display: flex; flex: none; align-items: center; gap: var(--space-1); margin-inline-start: var(--space-1); }
 .shelf-actions:empty { display: none; }
 /* Counts live after the citation in fixed slots; neither shifts its column. */
 .shelf-actions > :is(.shelf-count, .shelf-warnings).ui-button { width: var(--shelf-target); flex: none; padding-inline: 0; font-size: var(--type-label-size); white-space: nowrap; font-variant-numeric: tabular-nums; }
-.shelf-actions > .shelf-warnings.ui-button { width: auto; padding-inline: var(--space-2); border-radius: var(--r-full); background: var(--chip-fill); }
+.shelf-actions > .shelf-warnings.ui-button { width: auto; padding-inline: var(--space-2); border-radius: var(--r-full); background: var(--chip); }
 .shelf[data-folded] .shelf-actions > .shelf-warnings.ui-button { width: var(--shelf-target); padding-inline: 0; }
-.shelf-pill { flex: none; padding-inline: var(--space-2); border-radius: var(--r-full); background: var(--chip-fill); color: var(--muted); font-size: var(--type-label-size); line-height: var(--chip-height); white-space: nowrap; }
+.shelf-pill { flex: none; padding-inline: var(--space-2); border-radius: var(--r-full); background: var(--chip); color: var(--muted); font-size: var(--type-label-size); line-height: var(--chip-h); white-space: nowrap; }
 .shelf-details-list { display: flex; flex-direction: column; gap: var(--row-spacing); margin: 0; padding: 0; list-style: none; }
-.shelf-details-list .ui-button { justify-content: start; text-align: start; width: 100%; height: auto; border-width: 0; min-height: var(--control-min-size); padding: var(--space-2); border-radius: var(--r-mi); color: var(--text); }
+.shelf-details-list .ui-button { justify-content: start; text-align: start; width: 100%; height: auto; border-width: 0; min-height: var(--control-h); padding: var(--space-2); border-radius: var(--r-mi); color: var(--text); }
 .shelf-detail-locator { color: var(--muted); }
 .shelf-reference-summary { display: flex; flex: 1; flex-direction: column; gap: var(--space-1); min-width: 0; }
 .shelf-reference-title { color: var(--muted); font-size: var(--type-label-size); }
@@ -55,16 +56,16 @@ main:has(> .shelf) > footer { border-top-color: var(--clear); }
 /* The receipt text owns its intrinsic width: both beaks hug it symmetrically. */
 .shelf[data-copied] .shelf-citation { flex: 0 1 auto; gap: var(--row-gap); }
 .shelf[data-copied] .preview-text { flex: 0 1 auto; }
-.shelf[data-copied]::before { animation: shelf-copy-wash var(--shelf-copy-duration) var(--ease-out); }
-.shelf-copied { display: inline-flex; flex: none; align-items: center; gap: var(--space-1); height: var(--chip-height); padding-inline: var(--space-2); border-radius: var(--r-full); color: var(--status-done); background: var(--shelf-copied-fill); font: var(--type-strong-weight) var(--type-label-size) / var(--type-label-line) var(--font-family); white-space: nowrap; }
-.shelf-copied svg { width: var(--icon-size); height: var(--icon-size); fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.shelf-copied path { animation: shelf-check var(--motion-panel) var(--ease-out); }
+.shelf[data-copied]::before { animation: shelf-copy-wash 160ms var(--ease); }
+.shelf-copied { display: inline-flex; flex: none; align-items: center; gap: var(--space-1); height: var(--chip-h); padding-inline: var(--space-2); border-radius: var(--r-full); color: var(--done); background: color-mix(in srgb, var(--done) 14%, transparent); font: var(--strong) var(--type-label-size) / var(--type-label-line) var(--font); white-space: nowrap; }
+.shelf-copied svg { width: var(--icon-small); height: var(--icon-small); fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.shelf-copied path { animation: shelf-check var(--dur-panel) var(--ease); }
 @keyframes shelf-copy-wash { from { opacity: 1; } to { opacity: 0; } }
 @keyframes shelf-check { from { stroke-dasharray: 1; stroke-dashoffset: 1; } to { stroke-dasharray: 1; stroke-dashoffset: 0; } }
 @media (pointer: coarse) {
   .shelf { --shelf-target: var(--touch-target); }
   .shelf-segment-button.ui-button[data-variant] { min-width: var(--touch-target); }
-  .shelf-segment-button.ui-button[data-size="small"]::after { inset-block: calc((var(--touch-target) - var(--chip-height)) / -2); }
+  .shelf-segment-button.ui-button[data-size="small"]::after { inset-block: calc((var(--touch-target) - var(--chip-h)) / -2); }
 }
 @media (prefers-reduced-motion: reduce) {
   .shelf[data-copied]::before, .shelf-copied path { animation: none; }
@@ -79,5 +80,5 @@ main:has(> .shelf) > footer { border-top-color: var(--clear); }
 .shelf-shared { flex: none; white-space: pre; }
 .shelf-punctuation { color: var(--muted); }
 .shelf-segment-button[data-focus-visible] .shelf-punctuation { color: inherit; }
-.details-menu-scroll > .shelf-full-citation { margin: var(--space-3) 0 0; padding: var(--space-2); border-radius: var(--r-mi); background: var(--fill-control); font-size: var(--type-citation-size); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
+.details-menu-scroll > .shelf-full-citation { margin: var(--space-3) 0 0; padding: var(--space-2); border-radius: var(--r-mi); background: var(--fill); font-size: var(--type-meta-size); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
 

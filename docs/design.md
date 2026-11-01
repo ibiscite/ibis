@@ -60,7 +60,7 @@ notice never clips its words: a citation that would be cut short moves to a
 second line. The notice is one card (maintainer, 2026-10-30): radius 18, 8 px
 inset, a 36 px tile of radius 10, then the title ("Pasted into Word", 14/18
 semibold) and at most two lines of the citation (12/16 mono), ending "+4 more"
-when longer. Pasted shows a `--status-done` tile with a `--surface` check;
+when longer. Pasted shows a `--done` tile with a `--surface` check;
 copied without a paste shows a `--fill` tile with a `--muted` check and the
 reason in words.
 If Windows cannot release the keys Ibis injected, the notice says "Copied.
@@ -69,22 +69,22 @@ them before any later delivery; it sends no new paste while they remain blocked.
 
 | Role | Tokens | Rule |
 |---|---|---|
-| Surfaces [D4] | `--surface-window` < `--surface` < `--surface-raised` < `--surface-overlay`; `--surface-field`, `--scrim` | Base, content sheet, band/cards/shelf, menus and dialogs. On the macOS glass panel the levels share one material (`--surface`) and layers separate by fills and hairlines. |
-| Text [D5] | `--text`, `--muted`, `--text-tertiary`, `--text-disabled` | `--muted` always 4.5:1; tertiary only for glyphs and hints at rest (3:1), never sentences. |
-| Accent [D6] | `--accent`, `--accent-text`, `--text-on-accent` | The system accent by default; Look's Accent row can override it (maintainer, 2026-10-30). Selected rows and the menu highlight use `--selected-text`, paired to the chosen accent; the system and existing fixed accents use white, while Ibis scarlet uses dark ink in dark mode (maintainer, 2026-10-31). `--text-on-accent` (primary button, tiles on the accent) is picked per accent to reach 4.5:1. |
-| Selection [D7] | `--row-active-*`, `--row-inactive-background`, `--selected-*` | See **Selection and focus**. |
-| Focus [D8] | `--focus-ring-*` | See **Selection and focus**. |
-| Fills | `--fill-control(-hover/-pressed)`, `--fill-subtle-*`, `--fill-primary-*`, `--fill-disabled` | Pressed is darker on macOS and GNOME, lighter on Windows. |
-| Strokes | `--separator`, `--stroke-control`, `--stroke-field`, `--stroke-overlay`, `--line`, `--border-width`, `--contrast-border-width` | Never a coloured border on a control. On macOS a hairline or a shadow, never both with a fill. |
-| Citation [D9] | `--citation`, `--citation-tile`, `--on-citation` | Scarlet; see **Colour roles**. |
-| Status [D10] | `--status-done`, `--status-look`, `--status-stop`, `--status-info` | Ibis-owned hues, always with words or an icon. Look is a golden amber, `#b07a00` light and `#f5c542` dark (maintainer asked for lighter, 2026-10-30), at least 3:1 as a glyph. Stop is a rose kept apart from scarlet and from Fluent's and Adwaita's red. Info is `--accent-text`. |
+| Surfaces [D4] | `--surface` < `--raised` < `--overlay`, `--sheet`; `--field`, `--scrim` | Base, cards and shelf, menus and sheets. |
+| Text [D5] | `--text`, `--muted`, `--tertiary`, `--disabled` | `--muted` always 4.5:1; tertiary only for placeholders, section headings and glyphs at rest (3:1), never sentences. |
+| Accent [D6] | `--accent`, `--accent-text`, `--on-accent`, `--accent-h`, `--accent-p` | The system accent by default; Look's Accent row can override it (maintainer, 2026-10-30). Selected rows and the menu highlight use it too. |
+| Selection [D7] | `--sel`, `--sel-text`, `--sel-muted` | See **Selection and focus**. |
+| Focus [D8] | `--ring`, `--ring-width`, `--ring-offset` | See **Selection and focus**. |
+| Fills | `--hover`, `--fill`, `--fill-h`, `--fill-p`, `--chip` | Hover is the quietest; a control rests on `--fill`, hovers on `--fill-h`, presses on `--fill-p`. |
+| Strokes | `--line`, `--stroke`, `--border-width` | Never a coloured border on a control. |
+| Citation [D9] | `--scarlet`, `--scarlet-tile`, `--on-scarlet` | Scarlet; see **Colour roles**. |
+| Status [D10] | `--done`, `--look`, `--stop` | Ibis-owned hues, always with words or an icon. Look is a golden amber, `#b07a00` light and `#f5c542` dark (maintainer asked for lighter, 2026-10-30), at least 3:1 as a glyph. Stop is a rose kept apart from scarlet and from Fluent's and Adwaita's red. Info is `--accent-text`. |
 | Progress | `--progress-track`, `--progress-fill`, `--progress-border`, `--progress-border-width` | Accent fill on a quiet track; contrast modes use Canvas with CanvasText fill and edge. |
-| Elevation [D11] | `--shadow-card`, `--shadow-raised`, `--shadow-overlay`, `--shadow-dialog`, `--shadow-toast` | One overlay shadow for every menu. None in contrast modes, none on rows, chips or inside an overlay; on Linux only cards, overlays and dialogs. In dark mode fills and hairlines separate layers first. |
+| Elevation [D11] | `--shadow-card`, `--shadow-overlay`, `--shadow-dialog`, `--shadow-toast` | One overlay shadow for every menu. None in contrast modes, none on rows, chips or inside an overlay; on Linux only cards, overlays and dialogs. In dark mode fills and hairlines separate layers first. |
 | Space [D12] | `--space-1…10`, `--inset`, `--row-pad`, `--row-gap`, `--row-spacing` | 4 px grid; 2 px only as an optical nudge or between rows. |
-| Shape [D2] | `--r-win`, `--r-min`, `--r-row`, `--r-tile`, `--r-menu`, `--menu-pad`, `--r-mi`, `--r-control`, `--r-key`, `--r-card`, `--r-dialog`, `--r-full` | See **Corners**. |
-| Type [D13] | `--type-*`, `--font-family`, `--font-mono` | See **Type**. |
-| Motion [D14] | `--motion-feedback/-panel/-layout/-exit`, `--ease-out`, `--ease-in` | See **Motion**. |
-| Layers [D15] | `--z-content`, `--z-chrome`, `--z-overlay`, `--z-tooltip`, `--z-modal`, `--z-toast`, `--overlay-margin` | One z-order; overlays keep 8 px from the window edge and never leave the webview. |
+| Shape [D2] | `--r-win`, `--r-tile`, `--r-row`, `--r-tile`, `--r-menu`, `--menu-pad`, `--r-mi`, `--r-control`, `--r-key`, `--r-win`, `--r-win`, `--r-full` | See **Corners**. |
+| Type [D13] | `--type-*`, `--font`, `--mono` | See **Type**. |
+| Motion [D14] | `--dur/-panel/-layout/-exit`, `--ease`, `--ease-in` | See **Motion**. |
+| Layers [D15] | `--z-content`, `--z-chrome`, `--z-overlay`, `--z-modal`, `--z-toast`, `--inset` | One z-order; overlays keep 8 px from the window edge and never leave the webview. |
 
 **Colour roles.** The system accent means "you are here, act on this":
 selection, focus, the primary button, switches and the macOS menu highlight.
@@ -92,15 +92,15 @@ Scarlet marks the citation by default: the shelf's beak mark, the added tile,
 the Copied notice's citation, the format preview and the logo [C14]. It also
 serves as a control accent when the person explicitly chooses **Ibis scarlet**
 in Look (maintainer, 2026-10-31). Status and errors retain their own roles.
-On an accent-filled row the added tile becomes a `--text-on-accent` tile with
+On an accent-filled row the added tile becomes a `--on-accent` tile with
 a scarlet check, keeping citation and selection legible even with a warm accent.
 Ibis offers Appearance (System, Light, Dark; System by default) and Accent:
 Mac-style colour dots, first **Follow the Mac** (the default), then prominently
 labelled **Ibis scarlet**, then blue, purple, pink, red, orange, yellow, green
 and graphite. All swatches have Fluent names and tooltips. The Ibis swatch uses
 the real `scarlet` and `scarlet_dark` from `brand/settings.json`, through
-`--settings-accent-ibis`: `#C23A1C` light, `#FF7A5C` dark. Its
-`--settings-accent-ibis-on` pairs white in light mode and `#171717` ink in dark
+`--accent-ibis`: `#C23A1C` light, `#FF7A5C` dark. Its
+`--accent-ibis-on` pairs white in light mode and `#171717` ink in dark
 mode. Text on the accent, including selected rows and hover/pressed primary
 buttons, passes 4.5:1. Selected switch thumbs use the same paired foreground,
 including the permission-guide illustration; white must never disappear into
@@ -124,10 +124,10 @@ or the GNOME interface font), never another platform's. One scale of roles,
 `--type-search-*` (large and frameless on macOS like Spotlight, a framed box
 elsewhere), `--type-title-*` (semibold), `--type-body-*`, `--type-meta-*`
 (menus, descriptions, footer, shelf) and `--type-label-*`, the smallest;
-`--type-page-title-*` (28/36) for Settings page headings. Dialog headings
+`--type-display-*` (20/26) for Settings page headings and the welcome. Dialog headings
 (20/28) have no token yet.
 Weights 400, 500 and 600; no uppercase transforms; italics only for "why it
-matched". Monospace (`--font-mono`) only for citation keys and key-format
+matched". Monospace (`--mono`) only for citation keys and key-format
 output. `tabular-nums` on years, counts and pages.
 
 **Text size.** Type and vertical sizes are rem; radii and hairlines stay px.
@@ -175,7 +175,7 @@ drawn glyph. Controls in one bar share a centre line, text a baseline.
 |---|---|---|
 | `--inset` | 8 px on every OS | [C1] |
 | `--row-pad` / `--row-gap` | 12 px / 12 px | Row side padding; tile to text. |
-| `--tile-size` / `--icon-glyph-size` | 32 px / 20 px | Compact draws a 24 px tile with no fill, centred in the column. |
+| `--tile` / `--icon` | 32 px / 20 px | Compact draws a 24 px tile with no fill, centred in the column. |
 | Footer | 40 px | 24 px actions + 2S; Windows and GNOME add a 1 px top divider outside it. |
 | Smallest target | 32 px, 44 px on touch | A smaller drawn control keeps the target with `::before`. |
 
@@ -263,28 +263,28 @@ in rows) against this before adding it. What the rule covers (settled
 - **Parents:** a shape's container is the nearest surface it sits on. Menus,
   sheets and popovers float on their own layer, so they keep `--r-menu` and do
   not derive from the window; their items derive from them. Every overlay
-  stays inside the window (`--overlay-margin`), the Compact bar included,
+  stays inside the window (`--inset`), the Compact bar included,
   opening upward or shrinking to fit rather than spilling out.
 - **Fields** with a fill derive from their container with equal gaps: in the
   52 px header that means a 36 px field, 8 px from each edge, radius 8.
 
 ```
---r-row  = max(--r-min, --r-win  − 8px)        rows, search field, shelf card
---r-tile = max(--r-min, --r-row  − 12px)       type tile
---r-mi   = max(--r-min, --r-menu − --menu-pad) menu items
+--r-row  = max(--r-tile, --r-win  − 8px)        rows, search field, shelf card
+--r-tile = max(--r-tile, --r-row  − 12px)       type tile
+--r-mi   = max(--r-tile, --r-menu − --menu-pad) menu items
 ```
 
 | Token | Value |
 |---|---|
 | `--r-win` | 16 (every macOS version; the native panel mask) |
-| `--r-min` | 6 |
+| `--r-tile` | 6 |
 | `--r-row` | 8 |
 | `--r-tile` | 6 |
 | `--r-control` | 8 |
 | `--r-menu` · `--menu-pad` · `--r-mi` | 12 · 6 · 6 |
 | Citation segment pill | 6 |
 
-Key caps use `--r-key`, Settings cards `--r-card`, switches, toasts and capsules
+Key caps use `--r-key`, Settings cards `--r-win`, switches, toasts and capsules
 `--r-full`.
 
 **Width classes** (container queries, in em). Below 28.75 em: header controls
@@ -308,13 +308,12 @@ with its rule on this page first.
 
 **States.** Hover (`--fill-*-hover`, only under `@media (hover: hover)`) never
 moves or resizes anything; pressed has no scale on Windows and GNOME. Disabled
-uses `--text-disabled`, `--fill-disabled` and `aria-disabled` (menu items stay
+uses `--disabled`, `--fill` and `aria-disabled` (menu items stay
 focusable). Busy shows a 16 px spinner after 400 ms with `aria-busy`. Invalid
 fields show words and an icon, never a red ring.
 
 **Progress.** Known downloads show their percentage through completion. Unknown
-totals and checking/installing use a moving segment (`--progress-segment-width`,
-`--progress-travel`, `--progress-duration`) without `aria-valuenow`. Reduced
+totals and checking/installing use a moving segment without `aria-valuenow`. Reduced
 motion replaces it with a static full-width dashed indicator, including in
 forced colours; it never resembles a partially completed download.
 
@@ -326,7 +325,7 @@ forced colours; it never resembles a partially completed download.
 | Menu item | The menu highlight | Check in a leading column on macOS and Windows, after the label on GNOME | The menu highlight; never a ring |
 | Segmented choice | Quiet tint | Raised thumb on a recessed track | Ring around the group |
 | Pop-up button, More | Quiet fill | Pressed fill while open | Ring |
-| Buttons | One step darker | Primary: accent fill with `--text-on-accent` | Ring |
+| Buttons | One step darker | Primary: accent fill with `--on-accent` | Ring |
 | Switch | No change | Accent track | Ring |
 | Search box | None | None | None: the caret (Windows: its accent underline) |
 
@@ -334,12 +333,9 @@ forced colours; it never resembles a partially completed download.
   text on every OS (a tint reaches only about 1.2:1 beside other rows), no side
   pill. On the
   selected row an added tile is the paired text colour with a scarlet check
-  [D9]. A kept-open picker without focus uses `--row-inactive-background`. Menu highlight: accent on macOS, a subtle fill on
-  Windows and GNOME. Selected picture choices use a soft accent tint plus a
-  2 px accent ring, with normal text (`--choice-selected-background`,
-  `--choice-selected-text` and `--choice-selection-ring-width`). This selection
-  mark stays visible at rest. The separate keyboard focus ring draws farther
-  inward, with a gap from the selection ring, only on keyboard focus. Rows keep
+  [D9]. Menu highlight: accent on macOS, a subtle fill on
+  Windows and GNOME. Selected picture choices use a 14% accent fill with normal text.
+  The keyboard focus ring draws inward, only on keyboard focus. Rows keep
   their full accent fill; the full accent primary action remains one per view.
 - **Focus ring only on keyboard focus** [D8] (`:focus-visible`), never after a
   click, and **drawn inside the item it marks**, so no scroll area clips it and
@@ -397,8 +393,8 @@ intact. A shortcut in a menu is plain trailing text in native modifier order
 (⇧⌘C), never a key cap.
 Check each menu side by side with a real one on every platform.
 
-**Buttons.** Primary: `--accent` with `--text-on-accent`, one per view.
-Secondary: `--fill-control` (plus the Windows stroke). Quiet: no fill, `--muted`
+**Buttons.** Primary: `--accent` with `--on-accent`, one per view.
+Secondary: `--fill` (plus the Windows stroke). Quiet: no fill, `--muted`
 text, subtle hover. Icon button: a 20 px glyph in a 32 px square whose tooltip
 names the action and key; a toggle shows a filled glyph on the pressed fill,
 never the accent. Buttons size to content (at least 64 px wide) and never hold a
@@ -411,7 +407,7 @@ on. Named by what it sets and its value ("Copy as Pandoc"); items are
 `menuitemradio`. Hidden until a library is chosen.
 
 **Key caps.** Only in the footer and in lists of keys, never in buttons or menus
-[C8]. A 20 px fill (`--key-cap` on `--fill-control`), `--r-key`, label-type
+[C8]. A 20 px fill (`--key` on `--fill`), `--r-key`, label-type
 UI-font text, never an outline and never scarlet. macOS joins glyphs in one cap (⌘K;
 the Return cap is the ↵ glyph); Windows gives each key a cap 4 px apart (Ctrl
 K); GNOME adds "+" between caps (Ctrl + K). Decorative caps are hidden from
@@ -421,7 +417,7 @@ screen readers; `aria-keyshortcuts` names the keys.
 Shortcuts and notices: the system's own scroll bars (overlay on macOS and
 GNOME) and Fluent's thin bar on Windows, from `--scrollbar-width` and
 `--scrollbar-color`. The side inset sits inside the bar, so a classic bar never
-takes it. An edge with more content beyond it fades over `--scroll-fade-size`,
+takes it. An edge with more content beyond it fades over `--scroll-fade`,
 so a list that ends on a whole row still shows there is more; the results list
 needs no fade, as a cut row already shows it. **Edges fade only while there
 is more** (maintainer, 2026-10-30): a 14 px fade appears at an edge only while
@@ -490,7 +486,7 @@ radius `--r-tile`, with 32 px targets; they invoke the same guarded actions as
 the keys and sit in one group named "Keys". With Alt held: "Add to citation ⇧↵",
 the Escape step ("Clear search Esc" or "Hide Esc"), then More. When the footer
 does not fit, shorten the status first, then drop the hint labels to keys
-only. The status dot is `--status-dot-size`, at the footer's leading edge
+only. The status dot is `--status-dot`, at the footer's leading edge
 (in line with the tiles' edge) and centred on the text's x-height; the status
 text follows 12 px after it, as system status bars place an indicator.
 
@@ -544,6 +540,10 @@ screen instead.
 While references are usable nothing else interrupts. Names and ages are isolated for RTL; the
 age ticks every 30 s outside the live region.
 
+**Welcome.** A choice tile's icon is centred on the tile's text block, never top-aligned; glyphs are optically centred in their tile.
+
+**One pipeline.** The canvas is the design and `apps/desktop/src/tokens.css` carries its token names and values. A change starts on the canvas, then goes into `tokens.css` or the part's own stylesheet in `ui/`; a screen never styles a shared part. `design.test.ts` keeps this honest: every token read is defined, every token is read, parts take colours, corners and type sizes from tokens, no one-sided edge marks state, and text keeps its contrast. `apps/desktop/gallery/` screenshots every state in light and dark, and the browser probes check every layout, so a change is judged by its picture, not its source. Text never carries a system tooltip: what is cut off is whole in its menu.
+
 **One foundation.** Rules every window shares live in `ui/Foundation.css`: one thin scrollbar, and icons that take their row's colour, so hover and selection cannot strand them. An overlay keeps 16 px from its edge to its text, its rows reach 8 px from the edge, and a status line is words, never a filled band. Short windows drop a row's second line rather than losing the menu (maintainer, 2026-10-31). Check a visual change against the screenshots from `apps/desktop/gallery/`.
 **The picker settles before it appears.** The search reset and the paste target are ready before the window shows, so its first frame is already current. While typing, the shelf holds the last citation through a running search and keeps one height; it never blanks between keystrokes (maintainer, 2026-10-31).
 
@@ -559,7 +559,7 @@ password field.
 
 **Empty states.** First run, no library, an actually empty library and a library that could not be opened
 use the choice screen [C12]. Otherwise one template, centred: a 48 px symbolic icon in
-`--text-tertiary`, a title (title type), one line of at most 40 characters
+`--tertiary`, a title (title type), one line of at most 40 characters
 (meta type, `--muted`, up to three rows), then one suggested action 16 px below;
 quieter text buttons for alternatives. No skeletons or illustrations; the opening screen
 only after 400 ms (**Opening a library**). The result heading appears only
@@ -583,7 +583,7 @@ the whole text is in the reference's menu. From the keyboard ← → select a
 segment as an accent-filled token and Delete removes it. On copy
 (maintainer, 2026-10-30) the shelf shows a closing beak that is the opening
 one turned 180°, the same size and the same 12 px from the citation, so the
-pair is symmetric; a capsule "Copied" (24 px, radius 12, `--status-done` on
+pair is symmetric; a capsule "Copied" (24 px, radius 12, `--done` on
 14% of itself) with a check that draws in 200 ms; and a 9% green wash over the
 shelf for 160 ms. Reduce Motion shows the end state.
 
@@ -650,7 +650,7 @@ page", where the Page field lives beside the page itself.
   A matching phrase in a title or locator, or another item's year, does not
   establish a year-only result.
 - **Beak mark** (#888). The supplied two-head SVG in `currentColor` from
-  `--citation`, 20 px tall (`--space-5`), scaled with text, `aria-hidden`,
+  `--scarlet`, 20 px tall (`--space-5`), scaled with text, `aria-hidden`,
   mirrored in RTL, 45 % while pending, `CanvasText` in contrast modes [C16].
 - **States.** Pending: the old text dims for 300 ms, then "Formatting…"; Enter
   waits. Resolving the destination can refresh recents; a waiting Enter keeps
@@ -830,7 +830,7 @@ system demands it for correctness.
 | | Rule |
 |---|---|
 | Material [C13] | One glass sheet for the whole panel (Liquid Glass; popover vibrancy fallback) under a veil of the surface colour; menus on glass. Elsewhere, an opaque surface. |
-| Accent [C14] | The accent chosen in Look; with "Follow the Mac", the system accent where the webview reads it, else the `--accent` fallback in `tokens.css`. Each accent pairs with a `--text-on-accent` that keeps 4.5:1. |
+| Accent [C14] | The accent chosen in Look; with "Follow the Mac", the system accent where the webview reads it, else the `--accent` fallback in `tokens.css`. Each accent pairs with a `--on-accent` that keeps 4.5:1. |
 | Selected row [C4] | Accent fill with its contrast-safe paired selected text. |
 | Search box | Frameless, large. |
 | Format pop-up | Borderless pop-up, ⌃⌄, 28 px in a 32 px target, capsule. |
@@ -865,8 +865,8 @@ checks after the label. Until then they are not built or extended.
 
 ## Motion
 
-Feedback, panel, layout and exit durations come from `--motion-*`; layout is
-the 280 ms hard cap. Entrances use the look's `--ease-out`, exits `--ease-in`. No
+Feedback, panel, layout and exit durations come from `--dur`, `--dur-panel` and `--dur-exit`; layout is
+the 280 ms hard cap. Entrances use the look's `--ease`, exits `--ease-in`. No
 bounce. Windows menus slide 8 px and fade; macOS and GNOME menus appear at
 once. Chevrons never rotate. Reduced motion: no translate, scale or slide,
 fades of at most 100 ms. Never animated: list content while typing, row height,
@@ -1356,9 +1356,8 @@ companion remain deferred.
 **Settings…** (⌘, / Ctrl+,) in More and the menu bar or tray. A sidebar of
 pages runs under the window buttons, as in System Settings; each page is a
 stack of titled groups of rows: a label and optional description, then one
-control at the end, at least `--settings-row-height` (48 px) or
-`--settings-described-row-height` (56 px with a description), on
-`--surface-grouped-card` over `--surface-grouped` [D17]. Controls are the
+control at the end, at least 48 px, or 56 px with a description, on
+`--grouped-card` over `--grouped` [D17]. Controls are the
 shared `Switch` (38 × 22), `Segmented` and shortcut recorder in `ui/`. Changes
 apply at once and reach an open picker; preference resets offer Undo. Built so
 far: five searchable pages, with General (opening-shortcut recorder, login and
@@ -1464,9 +1463,9 @@ drawn with the shared selected fill and paired text. One Tab stop enters the
 list; arrows and Home/End move focus and select the page. Typeahead moves
 focus to a matching page; Enter chooses it. The native window defaults to
 920 × 560 points and has a minimum of 800 × 400 (maintainer, 2026-10-31).
-`--settings-sidebar-width` is 12 rem, capped at 26% of the window to preserve
+`--sidebar-width` is 12 rem, capped at 26% of the window to preserve
 content space with larger type. The page keeps its readable
-`--settings-group-width` cap rather than stretching rows across spare width.
+40 rem cap rather than stretching rows across spare width.
 
 The content page and bounded navigation list scroll independently. The
 document, shell, sidebar background and reserved window-button area stay
@@ -1477,10 +1476,10 @@ scrollers. Neither text nor controls may slide behind the transparent title
 bar or traffic lights. Never reserve that space with a sticky spacer or a
 negative margin.
 Opening Settings normally, selecting a page or requesting General again
-starts that page at the top, with a large `--type-page-title-*` heading and
-`--settings-page-inset` on the sides and bottom. Above the heading, use only
-`--settings-page-top-inset` below the reserved title bar, avoiding a second
-large blank band. `--settings-section-gap` keeps the heading, cards and titled
+starts that page at the top, with a `--type-display-*` heading and
+24 px on the sides and bottom. Above the heading, use only
+8 px below the reserved title bar, avoiding a second
+large blank band. A 24 px gap keeps the heading, cards and titled
 groups apart; groups never touch. The page reserves a stable scrollbar gutter
 in addition to the content inset, so an overlay scrollbar cannot cover text
 or controls (maintainer, 2026-10-31). A single click on the current
@@ -1489,12 +1488,12 @@ may reveal that group, after its data loads, by moving only the page scroller.
 Presenting an existing Settings window without a page (shortcut or tray)
 emits the General page event too, selecting General and resetting its scroll.
 
-`ui/SettingsGroup` owns grouped cards (`--r-card`, `--settings-group-width`)
+`ui/SettingsGroup` owns grouped cards (`--r-card`, 40 rem wide at most)
 and inset rows. Groups and cards keep their natural height; the page must
 never shrink them to squeeze a long form into the window. Row heights are
 minima, include their padding, and grow in rem with text. Every row shares
-`--settings-row-pad-block`; wrapped descriptions and controls retain the same
-side and vertical inset. `--settings-row-text-gap` separates a label from its
+12 px; wrapped descriptions and controls retain the same
+side and vertical inset. 4 px separates a label from its
 description. Row buttons keep `--space-1` of block padding, including when a
 recording prompt wraps. Labels wrap, controls move below when necessary,
 buttons inherit the surrounding type and wrap
