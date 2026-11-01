@@ -295,6 +295,12 @@ fn main() {
                 // Opened in the background so the window appears at once.
                 start_open(app.handle(), source, false);
             }
+            // With no menu bar item, opening Ibis opens Settings, as reopening does.
+            #[cfg(target_os = "macos")]
+            if loaded.settings.menu_bar == Some(false) && !login_item::launched_at_login(std::env::args_os()) {
+                panel::cancel_initial_presentation(app.handle());
+                settings_window::open(app.handle(), None);
+            }
             #[cfg(target_os = "macos")]
             panel::frame_ready(app.handle());
             #[cfg(not(target_os = "macos"))]

@@ -230,6 +230,7 @@ test("Show in Menu Bar is a Mac choice that saves as a patch and goes back on fa
   fireEvent.click(choice);
   await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
   await waitFor(() => expect((choice as HTMLInputElement).checked).toBe(true));
+  expect((await screen.findByRole("alert")).closest(".ui-settings-row")?.textContent).toContain("Show in Menu Bar");
   fireEvent.click(choice);
   await waitFor(() => expect(state.patches).toEqual([{ menu_bar: false }]));
   expect((choice as HTMLInputElement).checked).toBe(false);
