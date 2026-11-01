@@ -18,7 +18,13 @@
 .ui-side-navigation-tile[data-page="look"] { --page: var(--page-look); }
 .ui-side-navigation-tile[data-page="citations"] { --page: var(--page-citations); }
 .ui-side-navigation-tile[data-page="shortcuts"] { --page: var(--page-shortcuts); }
-.ui-side-navigation-tile[data-page="about"] { --page: var(--page-about); }
+/* About is the app itself: Ibis's own icon, on no tile, as Mac apps mark their entry. */
+.ui-side-navigation-tile[data-page="about"] { background: url("../../../../brand/exports/ibis-app-icon.svg") center / contain no-repeat; border-radius: 0; }
+.ui-side-navigation-tile[data-page="about"]::before { content: none; }
+:root[data-appearance="dark"] .ui-side-navigation-tile[data-page="about"] { background-image: url("../../../../brand/exports/ibis-app-icon-dark.svg"); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-appearance="light"]) .ui-side-navigation-tile[data-page="about"] { background-image: url("../../../../brand/exports/ibis-app-icon-dark.svg"); }
+}
 @media (hover: hover) {
   .ui-side-navigation-item[data-hovered]:not([aria-current]) { background: var(--fill-quiet-hover); }
 }
@@ -26,5 +32,5 @@
 .ui-side-navigation-item[data-focus-visible] { outline: var(--ring-width) solid var(--ring); outline-offset: calc(-1 * var(--ring-width)); }
 .ui-side-navigation-item[data-gap-before] { margin-block-start: var(--space-4); }
 @media (prefers-contrast: more), (forced-colors: active) {
-  .ui-side-navigation-tile { forced-color-adjust: none; background: Canvas; color: CanvasText; box-shadow: inset 0 0 0 1px CanvasText; }
+  .ui-side-navigation-tile:not([data-page="about"]) { forced-color-adjust: none; background: Canvas; color: CanvasText; box-shadow: inset 0 0 0 1px CanvasText; }
 }

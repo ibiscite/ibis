@@ -34,7 +34,7 @@ export function TypeIcon({ itemType }: { itemType: string | undefined }) {
   return (
     <svg className="type-icon" aria-hidden="true" focusable="false" width="20" height="20" viewBox="0 0 20 20" fill="none"
       stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      {paths.map((d) => <path key={d} d={d} />)}
+      <path d={paths.join(" ")} />
     </svg>
   );
 }
@@ -67,7 +67,7 @@ export function ChoiceIcon({ name }: { name: ChoiceIconName }) {
   return (
     <svg className="type-icon" aria-hidden="true" focusable="false" width="20" height="20" viewBox="0 0 20 20" fill="none"
       stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      {choicePaths[name].map((d) => <path key={d} d={d} />)}
+      <path d={choicePaths[name].join(" ")} />
     </svg>
   );
 }

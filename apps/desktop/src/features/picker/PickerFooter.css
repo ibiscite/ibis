@@ -5,4 +5,4 @@
 .library-bar[data-status-compact] .library-status { min-width: calc(var(--tile) + var(--row-gap)); }
 .library-bar[data-hints-compact] :is(.enter-hints, .more) .key-hint-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .footer-action[data-variant="primary"] .key-hint { color: inherit; }
-.footer-action[data-variant="primary"] kbd { background: var(--on-sel-fill); color: inherit; font-weight: inherit; }
+.footer-action[data-variant="primary"] kbd { background: var(--on-selected-fill); color: inherit; font-weight: inherit; }

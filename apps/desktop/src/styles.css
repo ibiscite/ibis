@@ -84,7 +84,7 @@ main > .search-bar, main > .shelf, main > footer { flex: none; }
   [role="option"] { min-height: max(var(--row-height), 2.75rem); }
   .result-tile .tile-button { width: 2.75rem; height: 2.75rem; }
 }
-[data-active] .result-tile { background: var(--on-sel-fill); }
+[data-active] .result-tile { background: var(--on-selected-fill); }
 [role="option"][data-citation-selected] .result-tile { background: var(--scarlet-tile); color: var(--on-scarlet); }
 /* The year shares the title's first line in every density, size and view. */
 .result-line, .result-meta { display: flex; align-items: baseline; gap: var(--space-3); min-width: 0; }
@@ -247,7 +247,6 @@ footer { display: flex; align-items: center; padding-block: 0; padding-inline: c
 /* Corners nest: the key sits 4 px inside the action on three sides, and the
    action ends on the same edge as the rows, 8 px inside the window's corner. */
 .library-bar :is(.footer-action, .more > button).ui-button { height: auto; min-height: var(--action-h); border-width: 0; padding-inline: var(--space-2) var(--space-1); }
-.library-bar :is(.footer-action, .more > button) kbd { border-radius: calc(var(--r-control) - var(--space-1)); }
 /* At large system text sizes the label and caps may need separate lines;
    their visible content must stay inside the button's actual hit target. */
 .footer-action > .key-hint { flex-wrap: wrap; max-width: 100%; white-space: normal; }

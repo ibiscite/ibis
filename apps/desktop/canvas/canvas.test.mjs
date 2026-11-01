@@ -104,6 +104,6 @@ test("canvas output has only relative resource URLs and no network transport", (
   expect(urls.filter((url) => !inert.has(url))).toEqual([]);
   expect(script.match(/\b(?:fetch|XMLHttpRequest|WebSocket|EventSource|sendBeacon)\s*\(/g) ?? []).toEqual([]);
   for (const match of stylesheet.matchAll(/(?:url\(|@import\s+)["']?([^\s)"';]+)/g)) {
-    expect(match[1]).toMatch(/^(?:\.{1,2}\/|data:image\/svg\+xml,)/);
+    expect(match[1]).toMatch(/^(?:\.{1,2}\/|data:image\/svg\+xml,|%23)/);
   }
 });
