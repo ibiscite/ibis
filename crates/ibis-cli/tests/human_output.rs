@@ -447,3 +447,21 @@ fn call_cite_explains_its_findings_too() -> Result<(), Box<dyn std::error::Error
     assert!(errors.contains("with --form narrative"), "{errors}");
     Ok(())
 }
+
+#[test]
+fn a_preloaded_engine_never_reads_the_app_settings() -> Result<(), Box<dyn std::error::Error>> {
+    // With no library named it searches what it was given, never the app's choice.
+    let (code, _, errors) = run(engine()?, &["ibis", "search", "x", "--json"])?;
+    assert_eq!((code, errors.as_str()), (0, ""));
+    // Asked for the app's libraries, it refuses instead of reading or ignoring them.
+    for args in [
+        &["ibis", "search", "x", "--app-libraries", "--json"][..],
+        &["ibis", "mcp", "--app-libraries", "--json"],
+    ] {
+        let (code, text, errors) = run(engine()?, args)?;
+        assert_eq!(code, 2, "{args:?}");
+        assert_eq!(text, "{\"error\":{\"code\":\"usage\"},\"ibis\":1,\"ok\":false}\n");
+        assert!(errors.contains("--app-libraries is not available here"), "{errors}");
+    }
+    Ok(())
+}

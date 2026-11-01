@@ -1,0 +1,12 @@
+{
+  "name": "ibiscite",
+  "description": "Plugins from the Ibis project",
+  "owner": { "name": "Ibis contributors", "url": "https://github.com/ibiscite" },
+  "plugins": [
+    {
+      "name": "ibis",
+      "source": "./plugins/ibis",
+      "description": "Cite from your own reference library, read-only and offline."
+    }
+  ]
+}

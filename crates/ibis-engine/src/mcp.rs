@@ -1,7 +1,9 @@
 //! `ibis mcp`: the engine for AI agents over the Model Context Protocol.
 //!
-//! Newline-delimited JSON-RPC 2.0 on stdio, as MCP's stdio transport defines,
-//! pinned to protocol revision [`PROTOCOL_VERSION`]. Four read-only tools
+//! Newline-delimited JSON-RPC 2.0 on stdio, as MCP's stdio transport defines.
+//! Requests that name revision [`PROTOCOL_VERSION`] in `_meta` are served
+//! statelessly; older clients that open with `initialize` get one of
+//! [`LEGACY_VERSIONS`], as the revision's dual-era rules allow. Four read-only tools
 //! (search, show, cite, styles) call the same engine methods as the command
 //! line. Agents see records only as [`citable_fields`] leaves them: never notes
 //! or annotations, a record's `note` or `annote` fields, file locations,
@@ -18,9 +20,15 @@ use ibis_core::contract::{
 use serde_json::{Map, Value, json};
 use std::io::{self, BufRead, Read, Write};
 
-/// The MCP revision this server implements. A client asking for another is
-/// answered with this one, as the protocol's version negotiation requires.
-pub const PROTOCOL_VERSION: &str = "2025-06-18";
+/// The current MCP revision: no handshake, the version travels in each request's `_meta`.
+pub const PROTOCOL_VERSION: &str = "2026-07-28";
+/// Handshake revisions still answered after `initialize`, newest first.
+pub const LEGACY_VERSIONS: [&str; 2] = ["2025-11-25", "2025-06-18"];
+const VERSION_KEY: &str = "io.modelcontextprotocol/protocolVersion";
+const SERVER_INFO_KEY: &str = "io.modelcontextprotocol/serverInfo";
+/// The tool list only changes with the binary, so clients may keep it for an hour.
+const LIST_TTL_MS: u64 = 3_600_000;
+const INSTRUCTIONS: &str = "Search the user's reference libraries and format citations. Read-only; cite items by the citation key or id that search returns.";
 /// Search results returned to an agent at most.
 pub const MAX_HITS: usize = 25;
 /// Characters kept of any one text value.
@@ -43,6 +51,7 @@ const SYNTAXES: [KeySyntax; 6] = [
 
 /// Serves until the client closes stdin.
 pub fn serve<R: BufRead, W: Write>(engine: &Engine, mut reader: R, mut writer: W) -> io::Result<()> {
+    let mut session = Session::default();
     let mut line = Vec::new();
     loop {
         line.clear();
@@ -63,7 +72,7 @@ pub fn serve<R: BufRead, W: Write>(engine: &Engine, mut reader: R, mut writer: W
                 continue;
             }
             match protocol::parse_json(text) {
-                Ok(message) => handle(engine, &message),
+                Ok(message) => handle(engine, &mut session, &message),
                 Err(_) => Some(error(Value::Null, -32700, "Parse error")),
             }
         };
@@ -95,8 +104,17 @@ fn skip_line(reader: &mut impl BufRead) -> io::Result<()> {
     }
 }
 
+/// What one stdio process remembers: only whether an older client opened it with
+/// `initialize`. Requests that name the 2026-07-28 revision never depend on it.
+#[derive(Debug, Default)]
+pub struct Session {
+    legacy: bool,
+}
+
+const CAPABILITIES_KEY: &str = "io.modelcontextprotocol/clientCapabilities";
+
 /// One message in, at most one message out. Notifications get no answer.
-pub fn handle(engine: &Engine, message: &Value) -> Option<Value> {
+pub fn handle(engine: &Engine, session: &mut Session, message: &Value) -> Option<Value> {
     let Some(object) = message.as_object() else {
         // Batches are not part of this revision.
         return Some(error(Value::Null, -32600, "Invalid Request"));
@@ -120,15 +138,86 @@ pub fn handle(engine: &Engine, message: &Value) -> Option<Value> {
     if !valid_id {
         return Some(error(Value::Null, -32600, "Invalid Request"));
     }
+    // MCP params and their _meta are objects; any other shape is refused before a
+    // revision is chosen, so a malformed request never takes the pre-handshake path.
+    if object.get("params").is_some_and(|params| !params.is_object())
+        || object
+            .get("params")
+            .and_then(|params| params.get("_meta"))
+            .is_some_and(|meta| !meta.is_object())
+    {
+        return Some(error(id, -32602, "Invalid params: params and _meta must be objects"));
+    }
     let params = object.get("params").cloned().unwrap_or(Value::Null);
-    let result = match method {
-        "initialize" => json!({
-            "protocolVersion": PROTOCOL_VERSION,
+    // A request that names its revision is a stateless 2026-07-28 request and must
+    // carry the fields that revision requires; one that does not is served only to a
+    // client that opened this process with `initialize`.
+    let meta = params.get("_meta");
+    let modern = match meta.and_then(|meta| meta.get(VERSION_KEY)) {
+        // Older clients may ping before their handshake finishes.
+        None if method == "initialize" || method == "ping" || session.legacy => false,
+        None => return Some(error(id, -32602, "Invalid params: name the protocol version in _meta")),
+        Some(Value::String(version)) if version == PROTOCOL_VERSION => {
+            if !meta
+                .and_then(|meta| meta.get(CAPABILITIES_KEY))
+                .is_some_and(Value::is_object)
+            {
+                return Some(error(id, -32602, "Invalid params: _meta needs client capabilities"));
+            }
+            true
+        }
+        Some(Value::String(requested)) => {
+            return Some(json!({"jsonrpc": "2.0", "id": id, "error": {
+                "code": -32022,
+                "message": "Unsupported protocol version",
+                "data": {"supported": supported_versions(), "requested": requested},
+            }}));
+        }
+        Some(_) => {
+            return Some(error(
+                id,
+                -32602,
+                "Invalid params: the protocol version must be a string",
+            ));
+        }
+    };
+    let mut result = match method {
+        "server/discover" => json!({
+            "supportedVersions": supported_versions(),
             "capabilities": {"tools": {}},
-            "serverInfo": {"name": "ibis", "title": "Ibis", "version": env!("CARGO_PKG_VERSION")},
-            "instructions": "Search the user's reference libraries and format citations. Read-only; cite items by the citation key or id that search returns.",
+            "instructions": INSTRUCTIONS,
+            "ttlMs": LIST_TTL_MS,
+            "cacheScope": "public",
         }),
-        "ping" => json!({}),
+        "initialize" if !modern => {
+            let requested = params.get("protocolVersion").and_then(Value::as_str);
+            // Only a complete handshake opens the process to requests without a revision.
+            if requested.is_none()
+                || !params.get("capabilities").is_some_and(Value::is_object)
+                || !params.get("clientInfo").is_some_and(|client| {
+                    client.get("name").is_some_and(Value::is_string)
+                        && client.get("version").is_some_and(Value::is_string)
+                })
+            {
+                return Some(error(
+                    id,
+                    -32602,
+                    "Invalid params: initialize needs protocolVersion, capabilities and clientInfo with name and version",
+                ));
+            }
+            session.legacy = true;
+            json!({
+                "protocolVersion": LEGACY_VERSIONS
+                    .into_iter()
+                    .find(|version| Some(*version) == requested)
+                    .unwrap_or(LEGACY_VERSIONS[0]),
+                "capabilities": {"tools": {}},
+                "serverInfo": server_info(),
+                "instructions": INSTRUCTIONS,
+            })
+        }
+        "ping" if !modern => json!({}),
+        "tools/list" if modern => json!({"tools": tools(), "ttlMs": LIST_TTL_MS, "cacheScope": "public"}),
         "tools/list" => json!({"tools": tools()}),
         "tools/call" => {
             let name = params.get("name").and_then(Value::as_str);
@@ -140,7 +229,19 @@ pub fn handle(engine: &Engine, message: &Value) -> Option<Value> {
         }
         _ => return Some(error(id, -32601, "Method not found")),
     };
+    if modern || method == "server/discover" {
+        result["resultType"] = json!("complete");
+        result["_meta"] = json!({SERVER_INFO_KEY: server_info()});
+    }
     Some(json!({"jsonrpc": "2.0", "id": id, "result": result}))
+}
+
+fn supported_versions() -> Vec<&'static str> {
+    std::iter::once(PROTOCOL_VERSION).chain(LEGACY_VERSIONS).collect()
+}
+
+fn server_info() -> Value {
+    json!({"name": "ibis", "title": "Ibis", "version": env!("CARGO_PKG_VERSION")})
 }
 
 fn error(id: Value, code: i64, message: &str) -> Value {
@@ -160,6 +261,31 @@ fn tools() -> Value {
             "id": {"type": "object", "properties": {"library": {"type": "string"}, "key": {"type": "string"}}, "required": ["library", "key"]}
         }
     });
+    // Output schemas promise only what every successful answer holds; values
+    // copied from a library keep whatever JSON type the library gave them.
+    let summary = json!({
+        "type": "object",
+        "properties": {
+            "key": {"type": ["string", "null"]},
+            "id": {"type": "object", "properties": {"library": {"type": "string"}, "key": {"type": "string"}}, "required": ["library", "key"]},
+            "type": {}, "title": {}, "year": {}, "container": {}, "doi": {},
+            "authors": {"type": "array", "items": {"type": "string"}}
+        },
+        "required": ["key", "id", "type", "title", "authors", "year", "container", "doi"]
+    });
+    let mut shown = summary.clone();
+    shown["properties"]["csl"] = json!({"type": "object"});
+    shown["required"] = json!([
+        "key",
+        "id",
+        "type",
+        "title",
+        "authors",
+        "year",
+        "container",
+        "doi",
+        "csl"
+    ]);
     json!([
         {
             "name": "search",
@@ -173,6 +299,14 @@ fn tools() -> Value {
                 },
                 "required": ["query"]
             },
+            "outputSchema": {
+                "type": "object",
+                "properties": {
+                    "hits": {"type": "array", "items": summary},
+                    "complete": {"type": "boolean", "description": "False when the answer size bound cut the list short."}
+                },
+                "required": ["hits", "complete"]
+            },
             "annotations": read_only
         },
         {
@@ -180,6 +314,7 @@ fn tools() -> Value {
             "title": "Show a reference",
             "description": "Show one reference's bibliographic data.",
             "inputSchema": {"type": "object", "properties": {"item": item}, "required": ["item"]},
+            "outputSchema": shown,
             "annotations": read_only
         },
         {
@@ -196,6 +331,16 @@ fn tools() -> Value {
                 },
                 "required": ["items"]
             },
+            "outputSchema": {
+                "type": "object",
+                "properties": {
+                    "text": {"type": "string"},
+                    "notices": {"type": "array"},
+                    "losses": {"type": "array"},
+                    "warnings": {"type": "array"}
+                },
+                "required": ["text", "notices", "losses"]
+            },
             "annotations": read_only
         },
         {
@@ -203,6 +348,16 @@ fn tools() -> Value {
             "title": "List citation styles",
             "description": "List the citation styles Ibis can format.",
             "inputSchema": {"type": "object", "properties": {}},
+            "outputSchema": {
+                "type": "object",
+                "properties": {
+                    "styles": {
+                        "type": "array",
+                        "items": {"type": "object", "properties": {"id": {"type": "string"}, "title": {"type": "string"}}, "required": ["id", "title"]}
+                    }
+                },
+                "required": ["styles"]
+            },
             "annotations": read_only
         }
     ])

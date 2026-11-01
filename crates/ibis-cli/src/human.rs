@@ -341,24 +341,46 @@ pub(super) fn code_sentence(code: ErrorCode) -> &'static str {
 }
 
 pub(super) fn file_failure(path: &Path, code: ErrorCode) -> String {
-    let shown = field(&path.display().to_string());
-    let reason = if std::fs::symlink_metadata(path).is_err() {
-        "there is no file at that path; check the spelling or give the full path."
-    } else if path.is_dir() {
-        "it is a folder; give the library file inside it."
-    } else {
-        match code {
-            ErrorCode::BadInput => {
-                "it cannot be read, or it is not a BibTeX, BibLaTeX or CSL-JSON library; check its permissions and contents."
-            }
-            ErrorCode::SourceUnavailable => "it is being written or cannot be read right now; try again in a moment.",
-            ErrorCode::ResourceLimit => {
-                "it is larger than Ibis reads, or too many files are open at once; split the library or open fewer files."
-            }
-            code => code_sentence(code),
+    format!(
+        "cannot open {}: {}",
+        field(&path.display().to_string()),
+        file_reason(path, code)
+    )
+}
+
+/// Why a library file did not open, without naming it.
+pub(super) fn file_reason(path: &Path, code: ErrorCode) -> &'static str {
+    // The bounded read has already failed; looking again is bounded too, so a
+    // stalled disk or a path just replaced by a pipe cannot hold the command.
+    // Without an answer in time, the read's own reason stands.
+    let probed = path.to_owned();
+    let found = crate::bounded(move || path_reason(&probed)).flatten();
+    found.unwrap_or(match code {
+        ErrorCode::BadInput => {
+            "it cannot be read, or it is not a BibTeX, BibLaTeX or CSL-JSON library; check its permissions and contents."
         }
-    };
-    format!("cannot open {shown}: {reason}")
+        ErrorCode::SourceUnavailable => "it is being written or cannot be read right now; try again in a moment.",
+        ErrorCode::ResourceLimit => {
+            "it is larger than Ibis reads, or too many files are open at once; split the library or open fewer files."
+        }
+        code => code_sentence(code),
+    })
+}
+
+/// What the path itself shows: missing, a folder, or a file this program may not read.
+fn path_reason(path: &Path) -> Option<&'static str> {
+    if std::fs::symlink_metadata(path).is_err() {
+        Some("there is no file at that path; check the spelling or give the full path.")
+    } else if path.is_dir() {
+        Some("it is a folder; give the library file inside it.")
+    } else if std::fs::metadata(path).is_ok_and(|metadata| metadata.is_file())
+        // Only a regular file is opened to check: opening a pipe or a device can block.
+        && std::fs::File::open(path).is_err_and(|error| error.kind() == std::io::ErrorKind::PermissionDenied)
+    {
+        Some("this program is not allowed to read it; check its permissions, or run it outside the sandbox.")
+    } else {
+        None
+    }
 }
 
 pub(super) fn zotero_failure(code: ErrorCode) -> String {
