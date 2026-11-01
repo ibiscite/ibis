@@ -541,6 +541,8 @@ screen instead.
 While references are usable nothing else interrupts. Names and ages are isolated for RTL; the
 age ticks every 30 s outside the live region.
 
+**The picker settles before it appears.** The search reset and the paste target are ready before the window shows, so its first frame is already current. While typing, the shelf holds the last citation through a running search and keeps one height; it never blanks between keystrokes (maintainer, 2026-10-31).
+
 **Notices.** No notice or alert carries a side bar or one-sided border: its words and its place say what it is (maintainer, 2026-10-31). "Copied" or "Inserted" shows after the picker hides, in a window
 that never takes focus: the same card near the top centre on every system. In-window toasts ("Removed · Undo") last 8 s and pause
 on hover and focus. Errors are one sentence beside their cause, never a modal.

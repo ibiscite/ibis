@@ -111,6 +111,9 @@ about-updates = Updates
 about-automatic = Check for updates automatically
 about-automatic-description = Reads a small update file from GitHub a few times a day
 about-check = Check now
+about-copy = Copy Version
+about-copied = Copied
+about-copy-failed = The version could not be copied.
 about-version = { $name } { $version }
 about-unavailable = This build does not update itself.
 

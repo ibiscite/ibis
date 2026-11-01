@@ -339,3 +339,13 @@ test("an old receipt never replaces the live copy target or confirms a different
   expect(document.querySelector(".preview-text")?.textContent).toBe("New citation");
   expect(screen.queryByRole("status", { name: "Copied" })).toBeNull();
 });
+
+test("a running search holds the last citation, and the hold ends when nothing is searching", () => {
+  const a = record("a");
+  const { rerender, container } = render(shelf({ highlightedReference: a, shown: output() }));
+  expect(container.textContent).toContain("(García, 2021)");
+  rerender(shelf({ shown: undefined, searching: true }));
+  expect(container.textContent).toContain("(García, 2021)");
+  rerender(shelf({ shown: undefined, searching: false }));
+  expect(container.querySelector(".shelf")).toBeNull();
+});

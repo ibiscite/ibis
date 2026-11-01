@@ -360,3 +360,14 @@ test("an older confirmation timer cannot dismiss a newer copy's warnings", () =>
   s.send({ type: "dismiss", copied });
   expect(s.state.copied?.warnings).toEqual(["Invented warning"]);
 });
+
+test("preparing clears an expired search before the window appears, and showing does not repeat it", () => {
+  const s = scenario();
+  s.send({ type: "query", value: "old" });
+  s.send({ type: "hidden", now: 0 });
+  s.send({ type: "preparing", now: 61_000 });
+  expect(s.state.query).toBe("");
+  expect(s.state.hiddenAt).toBeNull();
+  s.send({ type: "shown", now: 61_100, presentation: 2 });
+  expect(s.state.presentation).toBe(2);
+});
