@@ -137,10 +137,21 @@ pub(crate) fn configured_shortcut_with(
     }
 }
 
-/// Make sure the picker is on screen for a native dialog or notice it owns. A
-/// hidden picker is shown as a new presentation; a visible one keeps its own,
-/// with the search, selection and library chooser the person is using.
+/// Make sure the picker is on screen for a command from the tray, menu bar or
+/// More, or a native dialog it owns. A hidden picker is shown as a new
+/// presentation; a visible one keeps its own, with the search, selection and
+/// library chooser the person is using, and is given the keyboard.
 pub(crate) fn reveal_picker(app: &AppHandle) {
+    reveal(app, true);
+}
+
+/// Make sure a background notice is seen: show a hidden picker, but leave a
+/// visible one where it is, so typing in another app stays there.
+pub(crate) fn reveal_picker_quietly(app: &AppHandle) {
+    reveal(app, false);
+}
+
+fn reveal(app: &AppHandle, focus: bool) {
     let visible = app
         .get_webview_window("main")
         .and_then(|window| checked(window.is_visible(), NativeIssue::Visibility));
@@ -148,14 +159,33 @@ pub(crate) fn reveal_picker(app: &AppHandle) {
         show_picker(app);
         return;
     }
-    // A command from the tray or menu bar still brings a visible picker
-    // forward with the keyboard, as showing it would.
+    if focus {
+        // Activate on the native thread, and only while this presentation is
+        // still shown: a dismissal in between must not bring back a picker
+        // the interface already treats as hidden.
+        let owner = app.state::<PickerGeneration>().current();
+        let handle = app.clone();
+        report(
+            app.run_on_main_thread(move || focus_presented(&handle, owner)),
+            NativeIssue::Focus,
+        );
+    }
+}
+
+fn focus_presented(app: &AppHandle, owner: u64) {
+    let Some(window) = app.get_webview_window("main") else {
+        return;
+    };
+    if !app
+        .state::<PickerGeneration>()
+        .still_owns_after(owner, || window.is_visible().ok() == Some(true))
+    {
+        return;
+    }
     #[cfg(target_os = "macos")]
     crate::panel::show(app);
     #[cfg(not(target_os = "macos"))]
-    if let Some(window) = app.get_webview_window("main") {
-        report(window.set_focus(), NativeIssue::Focus);
-    }
+    report(window.set_focus(), NativeIssue::Focus);
 }
 
 /// Give the picker the keyboard back when a dialog owned by presentation
@@ -165,9 +195,6 @@ pub(crate) fn return_focus(app: &AppHandle, generation: u64) {
         return;
     }
     reveal_picker(app);
-    if let Some(window) = app.get_webview_window("main") {
-        report(window.set_focus(), NativeIssue::Focus);
-    }
 }
 
 /// Only a picker known to be visible keeps its presentation.

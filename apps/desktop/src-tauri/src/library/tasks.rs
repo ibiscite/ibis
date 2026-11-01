@@ -521,7 +521,7 @@ fn open_one(app: AppHandle, open: OpenRequest) -> impl std::future::Future<Outpu
             }
             if show_note {
                 // The choice may have come from the tray; make sure it is seen.
-                reveal_picker(&app);
+                crate::picker::reveal_picker_quietly(&app);
             }
             #[cfg(debug_assertions)]
             let publishing = std::time::Instant::now();
