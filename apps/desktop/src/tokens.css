@@ -62,7 +62,7 @@
   --text: CanvasText; --muted: CanvasText; --tertiary: CanvasText; --disabled: GrayText;
   --line: GrayText; --stroke: transparent;
   --accent: Highlight; --accent-text: var(--accent); --on-accent: HighlightText;
-  --sel: Highlight; --sel-text: HighlightText; --sel-muted: currentColor;
+  --sel: Highlight; --sel-text: HighlightText; --sel-muted: color-mix(in srgb, var(--sel-text) 82%, transparent);
   --ring: var(--accent);
   --scarlet: CanvasText; --scarlet-tile: CanvasText; --on-scarlet: #fff;
   --done: CanvasText; --look: CanvasText; --stop: CanvasText;
@@ -83,7 +83,8 @@
   /* Settings: a grouped form beside a sidebar. */
   --grouped: var(--surface); --grouped-card: var(--surface); --sidebar: var(--surface);
   --titlebar-height: 3.25rem;
-  --sidebar-width: min(12rem, 26%);
+  --sidebar-width: min(12.5rem, 26%);
+  --page-general: #8e8e93; --page-look: #ff9f0a; --page-citations: #0a84ff; --page-shortcuts: #5e5ce6; --page-about: #c23a1c;
   --highlight: color-mix(in srgb, var(--accent) 14%, var(--grouped-card));
 
   /* The accents Look offers; each brings its own text colour. */
@@ -100,7 +101,7 @@
   :root {
     --scarlet: light-dark(#c23a1c, #ff7a5c); --scarlet-tile: light-dark(#c23a1c, #d2401f);
     --done: light-dark(#1a7f37, #5bc26f); --look: light-dark(#b07a00, #f5c542); --stop: light-dark(#c4314b, #ff8a8a);
-    --sel: light-dark(#0a63d6, #0a6fe0); --sel-text: #fff; --on-accent: #fff; --sel-muted: rgb(255 255 255 / 82%);
+    --sel: light-dark(#0a63d6, #0a6fe0); --sel-text: #fff; --on-accent: #fff;
     --scrim: light-dark(rgb(0 0 0 / 20%), rgb(0 0 0 / 40%));
   }
 }
@@ -192,7 +193,14 @@
     --sel-text: var(--accent-choice-on); --on-accent: var(--accent-choice-on);
     --accent-h: color-mix(in srgb, var(--accent) 92%, black);
     --accent-p: color-mix(in srgb, var(--accent) 84%, black);
-    --accent-text: light-dark(var(--accent-choice), color-mix(in srgb, var(--accent-choice), white 55%));
+    --accent-text: CanvasText; --ring: var(--accent-text);
+  }
+}
+@supports (color: light-dark(white, black)) {
+  @media (prefers-contrast: no-preference) and (forced-colors: none) {
+    :root[data-appearance][data-accent]:not([data-accent="system"]):not(.notice-window) {
+      --accent-text: light-dark(var(--accent-choice), color-mix(in srgb, var(--accent-choice), white 55%));
+    }
   }
 }
 :root[data-appearance="light"] { color-scheme: light; }

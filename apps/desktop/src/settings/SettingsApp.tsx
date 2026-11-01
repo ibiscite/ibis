@@ -27,6 +27,8 @@ const LOGIN_PROBLEMS = {
 } as const satisfies Record<LoginItemProblem, MessageId>;
 
 /** A page asked for by name; "paste" is General, scrolled to pasting. */
+const PAGE_TILES = { general: "⚙", look: "Aa", citations: "¶", shortcuts: "⌘", about: "i" } as const;
+
 export function pageOf(name: string | null): { page: Page; focus: "paste" | null } {
   if (name === "paste") return { page: "general", focus: "paste" };
   return { page: PAGES.includes(name as Page) ? name as Page : "general", focus: null };
@@ -326,7 +328,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
         </div>
         {query.trim() ? <div className="ui-side-navigation ui-settings-search-results" aria-live="polite">
           {matches.length ? matches.map((row) => <Button key={row.id} onPress={() => reveal(row)}>{text(row.label, { platform })}</Button>) : <p>{text("settings-no-results")}</p>}
-        </div> : <SideNavigation label={text("settings-pages")} value={page} options={PAGES.map((value) => ({ value, label: text(`settings-${value}`), gapBefore: value === "about" }))}
+        </div> : <SideNavigation label={text("settings-pages")} value={page} options={PAGES.map((value) => ({ value, label: text(`settings-${value}`), tile: PAGE_TILES[value], gapBefore: value === "about" }))}
           onChange={selectPage} />}
       </nav>
       <main ref={pageRef} className="settings-page" aria-labelledby="settings-page-title">
@@ -390,16 +392,18 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
         {page === "shortcuts" && (
           <>
             {shortcutSetting}
-            <Group id="picker-shortcuts" title={text("shortcuts-in-picker")}>
-              {KEY_TABLE.map((binding) => (
-                <Row key={binding.action} id={`key-${binding.action}`} label={text(SHORTCUT_ACTIONS[binding.action])} description={text(SHORTCUT_REGIONS[binding.region])}>
-                  <span className="ui-settings-keys">{binding.keys.flatMap((keys, index) => [
-                    index > 0 && <span key={`or-${index}`}>{text("shortcuts-or")}</span>,
-                    <KeyCaps key={keys} accelerator={keys} />,
-                  ])}</span>
-                </Row>
-              ))}
-            </Group>
+            {[...new Set(KEY_TABLE.map((binding) => binding.region))].map((region) => (
+              <Group key={region} id={`shortcuts-${region}`} title={text(SHORTCUT_REGIONS[region])}>
+                {KEY_TABLE.filter((binding) => binding.region === region).map((binding) => (
+                  <Row key={binding.action} id={`key-${binding.action}`} label={text(SHORTCUT_ACTIONS[binding.action])}>
+                    <span className="ui-settings-keys">{binding.keys.flatMap((keys, index) => [
+                      index > 0 && <span key={`or-${index}`}>{text("shortcuts-or")}</span>,
+                      <KeyCaps key={keys} accelerator={keys} />,
+                    ])}</span>
+                  </Row>
+                ))}
+              </Group>
+            ))}
           </>
         )}
         {page === "about" && (
@@ -415,9 +419,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
                 }}>{text(versionCopied ? "about-copied" : "about-copy")}</Button>
                 {updates !== null && <Button onPress={() => { void api.checkForUpdates().then(() => readProblem("version-label", false)).catch(() => readProblem("version-label", true)); }}>{text("about-check")}</Button>}
               </Row>
-            </Group>
             {(updates !== null || readProblems.has("automatic")) && (
-              <Group id="updates" title={text("about-updates")}>
                 <Row id="automatic" label={text("about-automatic")} description={text("about-automatic-description")} {...feedback("automatic")}>
                   <Switch aria-labelledby="automatic" aria-describedby="automatic-description" isSelected={updates ?? false}
                     isDisabled={updatesSaving || updates === null} onChange={(on) => {
@@ -428,8 +430,8 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
                       }).finally(() => { if (live.current) setUpdatesSaving(false); });
                     }} />
                 </Row>
-              </Group>
             )}
+            </Group>
           </>
         )}
       </main>

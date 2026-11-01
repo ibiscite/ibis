@@ -25,7 +25,8 @@ test.each(["macos", "windows", "linux"])("Shortcuts preserves every English name
     expect(await screen.findByRole("button", { name: `Open Ibis: ${label}` })).toHaveProperty("textContent", label);
     for (const binding of KEY_TABLE) {
       const row = document.getElementById(`key-${binding.action}`)!.closest(".ui-settings-row")!;
-      expect(row.querySelector(".ui-settings-row-text")?.textContent).toBe(keyText.actions[binding.action] + keyText.regions[binding.region]);
+      expect(row.querySelector(".ui-settings-row-text")?.textContent).toBe(keyText.actions[binding.action]);
+      expect(row.closest("section")?.querySelector("h2")?.textContent).toBe(keyText.regions[binding.region]);
       const compact = (text: string | null | undefined) => text?.replace(/[\s+]/g, "");
       expect(row.querySelectorAll(".key-caps")).toHaveLength(binding.keys.length);
       expect(compact(row.querySelector(".ui-settings-keys")?.textContent))
@@ -847,10 +848,10 @@ test("Shortcuts records a change, restores the default, and lists every picker k
   expect(recorder.textContent).toBe(label(DEFAULT_PICKER_SHORTCUT));
   expect(screen.queryByRole("button", { name: "Use Default" })).toBeNull();
   expect(document.querySelector("details, summary")).toBeNull();
-  const list = screen.getByRole("region", { name: "In the picker" });
-  for (const binding of KEY_TABLE) expect(within(list).getByText(keyText.actions[binding.action])).toBeTruthy();
-  expect(within(list).queryAllByRole("button")).toEqual([]);
-  expect(list.querySelectorAll(".ui-settings-keys")).toHaveLength(KEY_TABLE.length);
+  const lists = [...document.querySelectorAll<HTMLElement>('section[id^="shortcuts-"]')];
+  for (const binding of KEY_TABLE) expect(screen.getByText(keyText.actions[binding.action])).toBeTruthy();
+  expect(lists.flatMap((list) => within(list).queryAllByRole("button"))).toEqual([]);
+  expect(lists.flatMap((list) => [...list.querySelectorAll(".ui-settings-keys")])).toHaveLength(KEY_TABLE.length);
   fireEvent.click(recorder);
   fireEvent.keyDown(recorder, { key: "k", code: "KeyK", altKey: true, shiftKey: true });
   await waitFor(() => expect(recorder.textContent).toBe(label("Alt+Shift+K")));

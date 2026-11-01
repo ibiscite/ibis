@@ -19,7 +19,7 @@ const IDS = [
   "general-rows", "general-density-compact", "general-density-comfortable", "general-density-spacious",
   "general-preview", "general-preview-description",
   "shortcuts-open", "shortcuts-description", "shortcuts-record", "shortcuts-use-default", "shortcuts-change", "shortcuts-not-assigned",
-  "shortcuts-configure-failed", "shortcuts-in-picker", "shortcuts-failed", "shortcuts-read-failed",
+  "shortcuts-configure-failed", "shortcuts-failed", "shortcuts-read-failed",
   "shortcuts-refusal-invalid", "shortcuts-refusal-needs-modifier", "shortcuts-refusal-app-shortcut", "shortcuts-refusal-alt-gr",
   "shortcuts-refusal-in-use", "shortcuts-refusal-unavailable", "shortcuts-refusal-not-saved",
   "shortcuts-command-format", "shortcuts-command-pin", "shortcuts-command-keys", "shortcuts-command-more",
@@ -28,7 +28,7 @@ const IDS = [
   "shortcuts-action-choose-source", "shortcuts-action-reveal-source", "shortcuts-action-source", "shortcuts-action-preview", "shortcuts-action-copy", "shortcuts-action-add", "shortcuts-action-move", "shortcuts-action-escape",
   "shortcuts-action-format", "shortcuts-action-more", "shortcuts-action-pin", "shortcuts-action-keys", "shortcuts-action-settings", "shortcuts-action-quit",
   "shortcuts-action-menu-move", "shortcuts-action-menu-ends", "shortcuts-action-menu-choose", "shortcuts-action-menu-leave", "shortcuts-or",
-  "about-updates", "about-automatic", "about-automatic-description", "about-check", "about-copy", "about-copied", "about-copy-failed", "about-version", "about-unavailable",
+  "about-automatic", "about-automatic-description", "about-check", "about-copy", "about-copied", "about-copy-failed", "about-version", "about-unavailable",
 ] as const;
 export type MessageId = typeof IDS[number];
 type Variables = Readonly<Record<string, string | number>>;

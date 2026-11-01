@@ -1,19 +1,30 @@
 /* The navigation list alone scrolls; its shell reserves the native title bar. */
 .ui-side-navigation {
-  position: relative;
-  display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; gap: var(--row-spacing);
+  position: relative; display: flex; flex-direction: column; flex: 1; gap: var(--row-spacing); min-width: 0; min-height: 0;
   overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scroll-padding-block: var(--inset);
-  padding: var(--inset); box-sizing: border-box; outline: none;
+  padding: 0 var(--inset) var(--space-3); box-sizing: border-box; outline: none;
 }
 .ui-side-navigation-item {
-  flex: none; width: 100%; min-width: 0; box-sizing: border-box; min-height: var(--control-h);
-  padding: var(--space-1) var(--space-2); border-radius: var(--r-row); overflow-wrap: anywhere;
-  background: transparent; color: var(--text); font: inherit; text-align: start; cursor: default; outline: none;
+  flex: none; display: flex; align-items: center; gap: var(--space-2); width: 100%; min-width: 0; min-height: 1.875rem; box-sizing: border-box;
+  padding: var(--row-spacing) var(--space-2); border-radius: var(--r-row); overflow-wrap: anywhere;
+  background: transparent; color: var(--text); font-size: var(--type-meta-size); line-height: var(--type-meta-line); text-align: start; cursor: default; outline: none;
 }
+.ui-side-navigation-tile {
+  flex: none; display: grid; place-items: center; width: var(--icon); height: var(--icon); border-radius: var(--r-key);
+  background: var(--page); color: var(--thumb); font-size: var(--type-label-size); font-weight: var(--strong); line-height: 1;
+}
+.ui-side-navigation-tile::before { content: attr(data-tile); }
+.ui-side-navigation-tile[data-page="general"] { --page: var(--page-general); }
+.ui-side-navigation-tile[data-page="look"] { --page: var(--page-look); }
+.ui-side-navigation-tile[data-page="citations"] { --page: var(--page-citations); }
+.ui-side-navigation-tile[data-page="shortcuts"] { --page: var(--page-shortcuts); }
+.ui-side-navigation-tile[data-page="about"] { --page: var(--page-about); }
 @media (hover: hover) {
   .ui-side-navigation-item[data-hovered]:not([aria-current]) { background: var(--hover); }
 }
-.ui-side-navigation-item[aria-current="page"] { background: var(--sel); color: var(--sel-text); font-weight: 500; }
+.ui-side-navigation-item[aria-current="page"] { background: var(--sel); color: var(--sel-text); }
 .ui-side-navigation-item[data-focus-visible] { outline: var(--ring-width) solid var(--ring); outline-offset: var(--ring-offset); }
-
-.ui-side-navigation-item[data-gap-before] { margin-block-start: var(--space-5); }
+.ui-side-navigation-item[data-gap-before] { margin-block-start: var(--space-4); }
+@media (prefers-contrast: more), (forced-colors: active) {
+  .ui-side-navigation-tile { forced-color-adjust: none; background: Canvas; color: CanvasText; box-shadow: inset 0 0 0 1px CanvasText; }
+}

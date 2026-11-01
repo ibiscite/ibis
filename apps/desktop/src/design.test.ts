@@ -15,21 +15,21 @@ const parts = names.filter((name) => name !== "tokens.css");
 const strip = (css: string) => css.replace(/\/\*[^]*?\*\//g, "");
 const tokens = strip(read("tokens.css"));
 const defined = new Set([...tokens.matchAll(/(--[a-z0-9-]+)\s*:/g)].map((match) => match[1]!));
+const website = strip(readFileSync(new FileURL("../../../website/style.css", import.meta.url), "utf8")) + strip(readFileSync(new FileURL("../../../website/demo.css", import.meta.url), "utf8"));
 const all = parts.map((name) => [name, strip(read(name))] as const);
-const local = new Set(all.flatMap(([, css]) => [...css.matchAll(/(--[a-z0-9-]+)\s*:/g)].map((match) => match[1]!)));
+const local = new Set([...all, ["website", website] as const].flatMap(([, css]) => [...css.matchAll(/(--[a-z0-9-]+)\s*:/g)].map((match) => match[1]!)));
 // Set from script at run time: the native accent and how far a list can scroll.
 const fromScript = /^--(native-accent|scroll-fade-)/;
 // These two state each system's own materials, so they hold values as tokens.css does.
 const values = new Set(["nativeAppearance.css", "nativeAccent.css"]);
 
 test("every token a stylesheet reads is defined", () => {
-  const unknown = all.flatMap(([name, css]) => [...css.matchAll(/var\((--[a-z0-9-]+)/g)]
+  const unknown = [...all, ["website", website] as const].flatMap(([name, css]) => [...css.matchAll(/var\((--[a-z0-9-]+)/g)]
     .filter((match) => !defined.has(match[1]!) && !local.has(match[1]!) && !fromScript.test(match[1]!)).map((match) => `${name}: ${match[1]}`));
   expect([...new Set(unknown)]).toEqual([]);
 });
 
 test("every token is read by something", () => {
-  const website = readFileSync(new FileURL("../../../website/style.css", import.meta.url), "utf8");
   const scripts = readdirSync(root, { recursive: true }).filter((name) => name.endsWith(".tsx")).map(read);
   const used = [tokens, website, ...all.map(([, css]) => css), ...scripts].join("");
   expect([...defined].filter((token) => !token.startsWith("--website-") && !used.includes(`var(${token}`))).toEqual([]);

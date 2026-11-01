@@ -17,7 +17,6 @@
 :root[data-platform="linux"] .toolbar-menu-button { font-weight: bold; }
 .toolbar-menu-button .popup-indicator { flex: none; width: var(--icon-small); height: var(--icon-small); color: var(--muted); stroke-width: var(--icon-stroke); }
 .toolbar-menu-button .popup-indicator-macos { width: var(--space-2); height: var(--space-3); }
-.toolbar-menu-button .popup-indicator-windows { width: var(--space-3); height: var(--space-3); stroke-width: var(--border-width); }
 /* Keep a useful minimum while filtering; longer labels may use the viewport. */
 .toolbar-menu-popover { width: min(300px, calc(100vw - 16px)); min-width: 0; }
 .toolbar-menu-filter { flex: none; }

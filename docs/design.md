@@ -538,6 +538,8 @@ screen instead.
 While references are usable nothing else interrupts. Names and ages are isolated for RTL; the
 age ticks every 30 s outside the live region.
 
+**Welcome.** A choice tile's icon is centred on the tile's text block, never top-aligned; glyphs are optically centred in their tile.
+
 **One pipeline.** The canvas is the design and `apps/desktop/src/tokens.css` carries its token names and values. A change starts on the canvas, then goes into `tokens.css` or the part's own stylesheet in `ui/`; a screen never styles a shared part. `design.test.ts` keeps this honest: every token read is defined, every token is read, parts take colours, corners and type sizes from tokens, no one-sided edge marks state, and text keeps its contrast. `apps/desktop/gallery/` screenshots every state in light and dark, and the browser probes check every layout, so a change is judged by its picture, not its source. Text never carries a system tooltip: what is cut off is whole in its menu.
 
 **One foundation.** Rules every window shares live in `ui/Foundation.css`: one thin scrollbar, and icons that take their row's colour, so hover and selection cannot strand them. An overlay keeps 16 px from its edge to its text, its rows reach 8 px from the edge, and a status line is words, never a filled band. Short windows drop a row's second line rather than losing the menu (maintainer, 2026-10-31). Check a visual change against the screenshots from `apps/desktop/gallery/`.

@@ -119,7 +119,6 @@ main > .search-bar, main > .shelf, main > footer { flex: none; }
 /* An added row that is also selected keeps its tile apart from any accent,
    red and orange included (D9): the selected text colour with a scarlet check. */
 [role="option"][data-active][data-citation-selected] .result-tile { background: var(--sel-text); color: var(--scarlet-tile); }
-.empty-hint { font-size: var(--type-meta-size); }
 
 .notices:empty { display: none; }
 .notices { padding: 0 calc(var(--inset) + var(--row-pad)); overflow-wrap: anywhere; }

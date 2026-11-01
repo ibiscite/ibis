@@ -86,7 +86,7 @@ export function LibrarySetup({ api, perform, autoFocus = false, empty, shortcut,
       icon: <ChoiceIcon name="find" />,
     }] : []),
     ...(!empty && changeSamples ? [{ id: "samples", title: setupText.samples, help: setupText.samplesHelp,
-      icon: <ChoiceIcon name="library" /> }] : []),
+      icon: <ChoiceIcon name="sample" /> }] : []),
   ];
   const openFile = (index: number) => {
     if (!sources || !openFoundLibrary) return;

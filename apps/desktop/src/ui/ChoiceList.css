@@ -33,7 +33,7 @@ main .picker-content .results-area:has(.choice-screen) { display: flex; flex-dir
    keep both columns reachable without introducing a nested scroller. */
 .choice-screen[data-grid] { max-width: 37.5rem; }
 .choice-screen[data-grid] .choice-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); }
-.choice-screen[data-grid] .choice-row { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: var(--space-2); background: var(--fill); padding: var(--space-2); }
+.choice-screen[data-grid] .choice-row { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: var(--space-2); margin: 0; min-height: 4rem; background: var(--fill); padding: var(--space-3); }
 .choice-screen[data-grid] .choice-tile { background: transparent; }
 .choice-screen[data-grid] .result-title { font-size: var(--type-body-size); line-height: var(--type-body-line); }
 .choice-screen[data-grid] .choice-chevron { display: none; }

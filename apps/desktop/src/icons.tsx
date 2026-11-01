@@ -52,7 +52,8 @@ export function AddGlyph({ added }: { added: boolean }) {
 /** Choice screen tiles, on the same 20 px grid: a library shelf, a file, a
  * magnifier, a retry arrow, a swap and a pen. Zotero's own logo is never drawn. */
 const choicePaths = {
-  library: ["M4 3.5h2.5v13H4zM8.5 3.5H11v13H8.5z", "m13 4.2 2.4-.6 3 12.3-2.4.6z"],
+  library: ["M3 3.5h2.5v13H3zM7.5 3.5H10v13H7.5z", "m12 4.2 2.4-.6 3 12.3-2.4.6z"],
+  sample: ["M10 3c.6 3.9 3.1 6.4 7 7-3.9.6-6.4 3.1-7 7-.6-3.9-3.1-6.4-7-7 3.9-.6 6.4-3.1 7-7z"],
   file: ["M5 2.5h7l3 3v12H5z", "M12 2.5v3h3"],
   find: ["M9 3.5a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11z", "m13 13 4 4"],
   retry: ["M16 10a6 6 0 1 1-1.8-4.3", "M16 3.5v3h-3"],

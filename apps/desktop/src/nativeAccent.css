@@ -30,3 +30,8 @@
 @media (prefers-contrast: more), (forced-colors: active) {
   :root, :root[data-platform] { --accent: Highlight; --accent-text: CanvasText; --on-accent: HighlightText; }
 }
+
+/* A chosen accent keeps its own text colour on hover and press. */
+@media (prefers-contrast: no-preference) and (forced-colors: none) {
+  :root[data-appearance][data-accent]:not([data-accent="system"]):not(.notice-window) .ui-button[data-variant="primary"]:is([data-hovered], [data-pressed], [data-selected], [aria-expanded="true"]):not([data-disabled], [aria-disabled="true"]) { color: var(--on-accent); }
+}

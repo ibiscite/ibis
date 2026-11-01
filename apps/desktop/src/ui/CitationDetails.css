@@ -22,7 +22,6 @@
 .citation-form-check { flex: 0 0 var(--menu-check-width, var(--icon-small)); text-align: center; }
 .citation-form:is([data-hovered], [data-focus-visible]) { background: var(--menu-highlight, var(--sel)); color: var(--menu-highlight-text, var(--sel-text)); }
 .citation-form[data-disabled] { color: var(--muted); }
-.citation-form-reason { margin: 0; color: var(--muted); overflow-wrap: anywhere; }
 .citation-form-body { display: flex; flex-direction: column; min-width: 0; gap: var(--space-1); }
 .citation-form-example { color: var(--muted); overflow-wrap: anywhere; font-size: var(--type-label-size); }
 .citation-form:is([data-hovered], [data-focus-visible]) .citation-form-example { color: inherit; }
