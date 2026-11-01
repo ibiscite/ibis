@@ -34,13 +34,14 @@ test.each([false, true])("a successful reply stays pending until its revision is
     statusFailed: false, libraryVersion: 0, query: "same query", interpretLocators: true, setActive, refreshSnapshot }), { initialProps: { library } });
   await act(async () => { await Promise.resolve(); });
   expect(refreshSnapshot).toHaveBeenCalledOnce();
-  expect(result.current.current).toEqual([]);
+  expect(result.current.ready).toBe(false);
   expect(result.current.pending).toBe(true);
   rerender({ library: { ...library, revision: "2" } });
   expect(result.current.pending).toBe(true);
   await act(async () => { finish(reply); });
   expect(result.current.pending).toBe(false);
-  expect(result.current.current).toEqual(reply.results);
+  expect(result.current.ready).toBe(true);
+  expect(result.current.results).toEqual(reply.results);
   unmount();
 });
 
@@ -55,10 +56,11 @@ test("a failed status read ends reconciliation until a later update recovers the
   expect(result.current.pending).toBe(true);
   rerender({ library, statusFailed: true });
   expect(result.current.pending).toBe(false);
-  expect(result.current.current).toEqual([]);
+  expect(result.current.ready).toBe(false);
   rerender({ library: { ...library, revision: "2" }, statusFailed: false });
   await act(async () => { await Promise.resolve(); });
-  expect(result.current.current).toEqual(reply.results);
+  expect(result.current.ready).toBe(true);
+  expect(result.current.results).toEqual(reply.results);
   expect(result.current.pending).toBe(false);
   unmount();
 });
@@ -72,9 +74,10 @@ test("reopening replaces an unfinished search and ignores its late reply", async
     setActive: vi.fn(), refreshSnapshot: vi.fn() }), { initialProps: { sessionId: 0 } });
   rerender({ sessionId: 1 });
   await act(async () => { finishes[1]!({ revision: "1", results: [{ ...testStates[1]!.results[0]!, revision: "1" }] }); });
-  const current = result.current.current;
+  const shown = result.current.results;
   await act(async () => { finishes[0]!({ revision: "1", results: [] }); });
-  expect(result.current.current).toBe(current);
+  expect(result.current.results).toBe(shown);
+  expect(result.current.ready).toBe(true);
   expect(result.current.pending).toBe(false);
   unmount();
 });

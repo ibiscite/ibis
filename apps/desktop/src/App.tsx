@@ -94,14 +94,17 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
     search: api.search, emptySearch: recents.load, query, interpretLocators, library, statusFailed: failures.status ?? false,
     libraryVersion, sessionId: state.session, isCurrentSession, setActive, refreshSnapshot,
   });
-  const { queryKey, results, current, interpretation, list, error, pending: searchPending } = searchState;
+  const { queryKey, results, sameSnapshot, ready, interpretation, list, error, pending: searchPending } = searchState;
   // biome-ignore lint/correctness/useExhaustiveDependencies: new results are the trigger: the pointer must move again before it counts.
   useEffect(resetPointer, [results, resetPointer]);
-  // The selection, otherwise the current pasted list or highlighted result.
-  const chosen = !showCitations ? [] : selected.size > 0 ? [...selected.values()] : list ? current
-    : current.slice(active, active + 1).map((r) => ({ ...r, locator: interpretation?.locator }));
+  // What the screen shows: the selection, otherwise the shown pasted list or
+  // highlighted result. It stays put while a newer search runs.
+  const shownChoice = !showCitations ? [] : selected.size > 0 ? [...selected.values()] : !sameSnapshot ? [] : list ? results
+    : results.slice(active, active + 1).map((r) => ({ ...r, locator: interpretation?.locator }));
+  // What may be copied: the same, once the shown results answer the current query.
+  const chosen = selected.size > 0 || ready ? shownChoice : [];
   const output = useCitationOutput({
-    chosen, library, libraryVersion, sessionId: state.session, isCurrentSession, format, style: styleOf(format),
+    chosen: shownChoice, library, libraryVersion, sessionId: state.session, isCurrentSession, format, style: styleOf(format),
     showPastePreview, previewFileCitation: api.previewFileCitation, refreshSnapshot,
   });
   const { formatted, shown, previewProblem, displayedOutput } = output;
@@ -113,7 +116,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   const snapshotRevision = library?.revision;
   const highlightedChoice = choiceKey(results.slice(active, active + 1)
     .map((r) => ({ ...r, locator: interpretation?.locator })));
-  const defaultChoice = list ? choiceKey(current) : highlightedChoice;
+  const defaultChoice = list && ready ? choiceKey(results) : highlightedChoice;
   const { requestCopy, chooseFormat, questionScope, onFormatOpenChange } = useCitationCopy({
     api, session, state, destination, currentPin, formatButtonRef, refreshSnapshot, report, setFormatOpen,
     view: {
@@ -139,9 +142,11 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
     zoteroGroups: api.zoteroGroups, chooseZoteroLibraries: api.useZoteroLibraries, report, perform,
     focusSearch: () => input.current?.focus(),
   });
-  const source = usePickerSource({ api, pickerSession, libraryState, menus, current, altHeld, perform });
+  const source = usePickerSource({ api, pickerSession, libraryState, menus, results: sameSnapshot ? results : [], altHeld, perform });
   const actions = usePickerActions({
-    api, pickerSession, menus, libraryState, searchState, destination, shown, chosen, canPaste: deliveryTarget.canPaste,
+    api, pickerSession, menus, libraryState, searchState, destination, shown,
+    // The footer names what Enter copies now, or after the running search.
+    offered: chosen.length > 0 || searchPending ? shownChoice : [], canPaste: deliveryTarget.canPaste,
     shortcut, perform, dismissChooser: source.dismissChooser, toggle: rows.toggle,
   });
   const keys = usePickerKeys({
@@ -196,7 +201,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
           </p>
         </div>}
         <Notices feedback={zoomFeedback} densityAnnouncement={preferences.densityAnnouncement} updateProgress={updateProgress} library={library} failures={failures}
-          error={error} copyError={copyError} copied={copied} missing={list?.missing}
+          error={error} copyError={copyError} copied={copied} missing={ready ? list?.missing : undefined}
           citationProblem={citationProblem} confirmation={state.copyNotice}
           onDismissCopied={() => send({ type: "dismiss" })} />
         <PickerResults
@@ -206,9 +211,8 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
       </PickerScroll>
       {/* Keep the selection live region mounted when choices remove citation controls. */}
       <PickerCitationShelf
-        state={state} send={send} showCitations={showCitations} results={results} output={output} chosen={chosen}
-        changeReference={rows.changeReference} libraryOf={scope.libraryOf} format={format} searchPending={searchPending}
-        showPastePreview={showPastePreview} input={input} sourceState={source} />
+        state={state} send={send} showCitations={showCitations} results={results} output={output} chosen={shownChoice}
+        changeReference={rows.changeReference} libraryOf={scope.libraryOf} format={format} input={input} sourceState={source} />
       <PickerStatusFooter
         api={api} library={library} scope={scope} sourceState={source} menus={menus} actions={actions}
         copyChosen={rows.copyChosen} destination={destination} recents={recents} preferences={preferences}

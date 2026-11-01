@@ -99,14 +99,19 @@ export function useLibrarySearch({ search, emptySearch, query, interpretLocators
     };
   }, [queryKey, library, libraryVersion, sessionId, recentSearch]);
 
-  // Results belong to the query that produced them. While a newer search is
-  // pending, the rows still on screen are not acted on or offered by any key,
-  // click or footer hint; only these current results are.
-  const current = resultsQuery === queryKey && resultsRevision === library?.revision && settled?.emptySearch === recentSearch && results.every((record) => record.revision === resultsRevision) ? results : [];
+  // The screen keeps showing the last answer while a newer search runs, so
+  // typing never blanks rows, the shelf or the footer. Only actions wait:
+  // rows are acted on, and a pasted list or its missing keys are trusted,
+  // only when they answer the current query on the current snapshot.
+  // Rows of an older snapshot are never formatted or offered; the next reply replaces them.
+  const sameSnapshot = resultsRevision === library?.revision && results.every((record) => record.revision === resultsRevision);
+  const ready = sameSnapshot && resultsQuery === queryKey && settled?.emptySearch === recentSearch;
   // A reply ahead of status is not actionable yet, even though its request
   // finished. Keep Enter waiting through the status read and refreshed search.
   const reconciling = !error && Boolean(library?.has_snapshot) && resultsQuery === queryKey && resultsRevision !== library?.revision;
   const pending = !statusFailed && (library === undefined || library?.state === "loading" || settled?.queryKey !== queryKey
     || settled.library !== library || settled.version !== libraryVersion || settled.sessionId !== sessionId || settled.emptySearch !== recentSearch || reconciling);
-  return { queryKey, results, current, interpretation, list: current === results ? list : null, announcement, resultsQuery, error, pending };
+  // The query text the shown results answer; "" before the first reply.
+  const answered = resultsQuery === null ? "" : (JSON.parse(resultsQuery) as [string, boolean])[0];
+  return { queryKey, results, sameSnapshot, ready, answered, interpretation, list, announcement, resultsQuery, error, pending };
 }
