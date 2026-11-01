@@ -62,7 +62,7 @@ added here in the same change, or it is a bug.
 | Filled buttons and Copy | Accent fill (#007AFF) with white text | The selection shade (#0064E1) with white text | White on #007AFF is 4.0:1; the selection shade is Apple's own colour and passes. |
 | Text on a selected row, secondary | About .82 white | .88 white | .82 is 4.1:1 on the light selection. |
 | Focus ring | Keyboard focus indicator at 50% (`#0067F4` / `#1AA9FF`) | The accent, solid, 2 px with a 1 px gap | A 50% ring is about 2:1; a focus indicator needs 3:1. |
-| Hit areas | Regular controls are 24 px | Drawn at Apple's size, hit area at least 32 px | Principle 4, easy to hit. |
+| Hit areas | Regular controls are 24 px | Drawn at Apple's size, hit area at least 32 px; full-width menu rows keep Apple's 24 px | Principle 4, easy to hit. |
 | Smallest text | Apple uses 10 and 11 pt captions | Nothing under 12 px | Principle 3, readable first. |
 | Accent choices | System accent only for apps that follow it | Follow the Mac by default, plus Ibis scarlet and tuned Mac colours | Maintainer's choice (2026-10-30); every choice keeps the same three roles and contrast. |
 
@@ -197,7 +197,11 @@ and title 1 for the search field; nothing below callout (principle 3).
 28 for push buttons, pop-ups and segmented controls. The picker uses large
 (28) and the Settings window uses regular (24), as Spotlight and System
 Settings do. Hit areas stay at least 32 px (principle 4) without changing the
-drawn size.
+drawn size. Measured with `docs/macos-metrics.swift` on macOS 27.2: menu items
+24 px with 5 px above the first and below the last, separators 11 px in all;
+sidebar rows 24 small, 32 medium (the default) and 40 large; checkboxes and
+radio buttons 16 px at regular size; the window title bar 32 px with 14 px
+window buttons 9 px from the corner; search field text 13 pt.
 
 **Accent choices, per mode** (accent · selection · accent text; selection
 text is white unless noted). Mac colours, darkened in light or lightened in
@@ -479,8 +483,8 @@ markup-only values do not hide the fallback or leave an empty meta label.
 **Menus** [C9]. The operating system's own menus only where the system owns
 them: menu bar, tray and native right-click (decision 0021). In-window menus (format,
 library scope, More) are Ibis's but match native metrics: `--r-menu`,
-`--menu-pad`, items padded 10 px on both sides, `--menu-item-height` high (28 px macOS, 32 px Windows and GNOME),
-separators inset 10 px with 4 px above and below, native open and close motion.
+`--menu-pad` (5 px macOS, the Mac's own), items padded 10 px on both sides, `--menu-item-height` high (24 px macOS, as AppKit draws it; 32 px Windows and GNOME),
+separators inset 10 px with 5 px above and below (11 px in all on macOS), native open and close motion. A menu row's full width is its target, so the 32 px floor applies to standalone controls, not to menu rows.
 Checks sit where each system puts them: on macOS and Windows a menu with any
 choice or toggle keeps a leading check column for every row, so labels share one
 start and shortcuts line up at the end; on GNOME the check follows the label.
@@ -1635,7 +1639,8 @@ reserved `--titlebar-height` row above the content. The sidebar background
 runs the full height; its navigation starts below the window buttons.
 `ui/SideNavigation` uses React Aria's single-selection listbox: every built
 page is an option, with exactly one selected option and `aria-current="page"`,
-drawn with the shared selected fill and paired text. One Tab stop enters the
+drawn with the shared selected fill and paired text. Rows are 32 px, the Mac's
+default sidebar row. One Tab stop enters the
 list; arrows and Home/End move focus and select the page. Typeahead moves
 focus to a matching page; Enter chooses it. The native window defaults to
 920 × 560 points and has a minimum of 800 × 400 (maintainer, 2026-10-31).

@@ -1,4 +1,4 @@
-// Prints the Mac's own design values (colours, type, control sizes) as JSON.
+// Prints the Mac's own design values (colours, type, control sizes, menus, sidebar rows, window chrome) as JSON.
 // Run on a Mac: swift docs/macos-metrics.swift > /tmp/macos-metrics.json (see docs/design.md, "Exact macOS values")
 // Reads only system values; no files, no network, no personal data.
 import AppKit
@@ -60,6 +60,32 @@ for (k, cs) in controlSizes {
   sizes[k] = ["pushButton": h(push), "popUp": h(pop), "segmented": h(seg), "searchField": h(search), "textField": h(field), "switch": h(sw), "checkbox": h(check)]
 }
 out["controls"] = sizes
+
+// Menus: one item against five gives the item height and the menu's own padding.
+func sz(_ s: NSSize) -> String { String(format: "%.1f×%.1f", s.width, s.height) }
+func menu(_ n: Int, separator: Bool = false) -> NSMenu {
+  let m = NSMenu(); for i in 0..<n { m.addItem(withTitle: "Item \(i)", action: nil, keyEquivalent: "") }
+  if separator { m.addItem(.separator()); m.addItem(withTitle: "Last", action: nil, keyEquivalent: "") }
+  return m
+}
+let m1 = menu(1).size, m5 = menu(5).size, m5s = menu(5, separator: true).size
+let item = (m5.height - m1.height) / 4
+out["menu"] = ["itemHeight": String(format: "%.1f", item), "verticalPadding": String(format: "%.1f", m1.height - item),
+               "separatorHeight": String(format: "%.1f", m5s.height - m5.height - item)]
+
+// Sidebar (source list) rows per size style. A plain table reports 24 for every style, so it is left out.
+var rows: [String: String] = [:]
+for (k, st) in [("small", NSTableView.RowSizeStyle.small), ("medium", .medium), ("large", .large), ("default", .default)] {
+  let t = NSTableView(); t.style = .sourceList; t.rowSizeStyle = st; t.addTableColumn(NSTableColumn(identifier: .init("c")))
+  rows[k] = String(format: "%.0f", t.rowHeight)
+}
+out["sidebarRows"] = rows
+
+// Window chrome of a titled window (created, not shown).
+let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 400), styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: true)
+let close = w.standardWindowButton(.closeButton)
+out["window"] = ["titlebarHeight": String(format: "%.0f", w.frame.height - w.contentLayoutRect.height),
+                 "closeButton": sz(close?.frame.size ?? .zero), "closeOrigin": String(format: "%.0f,%.0f", close?.frame.origin.x ?? 0, close?.frame.origin.y ?? 0)]
 
 let data = try! JSONSerialization.data(withJSONObject: out, options: [.prettyPrinted, .sortedKeys])
 print(String(data: data, encoding: .utf8)!)
