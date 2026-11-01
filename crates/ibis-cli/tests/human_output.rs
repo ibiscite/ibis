@@ -302,11 +302,14 @@ fn help_and_version_are_envelopes_under_json() -> Result<(), Box<dyn std::error:
     let (_, flag, _) = run(engine()?, &["ibis", "--help"])?;
     assert_eq!(help, flag);
     // Help keeps the name the program was started as, such as ibis.exe on Windows.
-    for program in ["ibis.exe", "/invented/bin/renamed"] {
+    for (program, name) in [
+        ("ibis.exe", "ibis.exe"),
+        ("/invented/bin/renamed", "renamed"),
+        ("", "ibis"),
+    ] {
         let (_, help, _) = run(engine()?, &[program, "help", "search"])?;
         let (_, flag, _) = run(engine()?, &[program, "search", "--help"])?;
         assert_eq!(help, flag, "{program}");
-        let name = program.rsplit('/').next().unwrap_or(program);
         assert!(help.contains(&format!("Usage: {name} search ")), "{help}");
     }
     let (code, _, errors) = run(engine()?, &["ibis", "help", "invented", "--json"])?;

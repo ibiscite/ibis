@@ -359,7 +359,8 @@ pub fn run_with<R: BufRead, W: Write + Send, E: Write>(
     mode: OutputMode,
 ) -> u8 {
     let json = arguments.iter().any(|argument| argument == "--json");
-    let matches = match command().try_get_matches_from(arguments.iter()) {
+    let program = program_name(arguments.first());
+    let matches = match command().bin_name(&program).try_get_matches_from(arguments.iter()) {
         Ok(matches) => matches,
         Err(error) => {
             if matches!(
@@ -419,7 +420,7 @@ pub fn run_with<R: BufRead, W: Write + Send, E: Write>(
         engine.without_file_watches()
     };
     if let Some(("help", args)) = matches.subcommand() {
-        let help = command_help(arguments.first(), args.get_one::<String>("command"));
+        let help = command_help(&program, args.get_one::<String>("command"));
         return emit(json, Ok(help), None, &mut output, &mut errors, mode);
     }
     match execute(&engine, &matches, &mut input, &mut output, mode) {
@@ -439,15 +440,20 @@ pub fn run_with<R: BufRead, W: Write + Send, E: Write>(
     }
 }
 
-/// The help `ibis <command> --help` prints, under the name this program was started as.
-fn command_help(program: Option<&std::ffi::OsString>, target: Option<&String>) -> DispatchResult {
-    let mut root = command();
-    if let Some(name) = program
+/// The name this program was started as, such as `ibis.exe`; `ibis` when that name is
+/// empty or not text, so parsing and help always show the same one.
+fn program_name(program: Option<&std::ffi::OsString>) -> String {
+    program
         .and_then(|program| Path::new(program).file_name())
         .and_then(|name| name.to_str())
-    {
-        root = root.bin_name(name);
-    }
+        .filter(|name| !name.is_empty())
+        .unwrap_or("ibis")
+        .to_owned()
+}
+
+/// The help `ibis <command> --help` prints.
+fn command_help(program: &str, target: Option<&String>) -> DispatchResult {
+    let mut root = command().bin_name(program);
     root.build();
     // The parser only accepts names from the tree, so an unknown target cannot get here.
     let mut shown = target
