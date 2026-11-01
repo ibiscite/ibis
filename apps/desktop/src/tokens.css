@@ -39,6 +39,7 @@
   --row-spacing: 2px; /* between rows in results, Recently added and choice lists [C4] */
   --search-bar-height: calc(var(--field-h) + 2 * var(--inset)); /* band only; divider outside */
   --footer-height: 2.5rem;
+  --footer-action-height: 1.75rem;
   --footer-hint-label-display: inline;
   --control-min-size: 2rem;
   --touch-target: 2.75rem;

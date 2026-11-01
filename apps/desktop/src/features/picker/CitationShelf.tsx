@@ -182,7 +182,7 @@ export function CitationShelf({ announce, selected, highlightedReference, highli
         aria-describedby={`${citationId}-${index}`} aria-keyshortcuts={isSelected(reference) ? "Backspace Delete" : undefined}
         aria-haspopup="dialog" aria-expanded={panel?.kind === "reference" && panel.reference === idKey(reference.id)}
         onKeyDown={(event) => segmentKeys(event, reference)} onPress={(event) => edit(reference, event.target as HTMLElement)}>
-        <bdi id={`${citationId}-${index}`} dir="auto" className="preview-text" title={span.text}>{contents}</bdi>
+        <bdi id={`${citationId}-${index}`} dir="auto" className="preview-text">{contents}</bdi>
       </Button>
       {isSelected(reference) && <Button variant="icon" size="small" className="shelf-remove" glyph="close" excludeFromTabOrder aria-label={removeLabel(reference)} onPress={() => remove(reference)} />}
     </span>;
@@ -193,7 +193,7 @@ export function CitationShelf({ announce, selected, highlightedReference, highli
               aria-describedby={text !== undefined ? citationId : undefined}
               aria-haspopup="dialog" aria-expanded={panel?.kind === "reference"} aria-controls={panel?.kind === "reference" ? menuId : undefined}
               onKeyDown={(event) => segmentKeys(event, single)} onPress={(event) => edit(single, event.target as HTMLElement)}>
-              <bdi id={text !== undefined ? citationId : undefined} dir="auto" className={text !== undefined ? "preview-text" : "shelf-reference-name"} title={text ?? single.title}>{text !== undefined ? keys ? keyText(text) : visible && visible.markup.length ? render(visible.markup) : text : labels[0]}</bdi>
+              <bdi id={text !== undefined ? citationId : undefined} dir="auto" className={text !== undefined ? "preview-text" : "shelf-reference-name"}>{text !== undefined ? keys ? keyText(text) : visible && visible.markup.length ? render(visible.markup) : text : labels[0]}</bdi>
             </Button>
             {isSelected(single) && <Button variant="icon" size="small" className="shelf-remove" glyph="close" excludeFromTabOrder
               aria-label={removeLabel(single)} onPress={() => remove(single)} />}
@@ -208,8 +208,8 @@ export function CitationShelf({ announce, selected, highlightedReference, highli
         className="shelf-output" data-keys={keys || undefined} data-state={!copied && (shown === null || typeof shown === "string") ? shown ?? "pending" : undefined}>
         <span className="shelf-leading"><Beak /></span>
         <div className="shelf-citation" role={selected.size ? "group" : undefined} aria-label={selected.size ? pickerText.selectedReferences : undefined}>
-          {previous && !retainedSegments ? <bdi className="preview-text shelf-retained" dir="auto" title={previous.text}>{keyText(previous.text)}</bdi> : shown !== "failed" && shown !== "stale" && singleSegment}
-          {text !== undefined ? singleSegment ? null : manySegments ? <span className="shelf-fragments" dir={keys ? "ltr" : "auto"} title={text}>{manySegments}</span> : <bdi id={citationId} dir="auto" className="preview-text" title={text}>
+          {previous && !retainedSegments ? <bdi className="preview-text shelf-retained" dir="auto">{keyText(previous.text)}</bdi> : shown !== "failed" && shown !== "stale" && singleSegment}
+          {text !== undefined ? singleSegment ? null : manySegments ? <span className="shelf-fragments" dir={keys ? "ltr" : "auto"}>{manySegments}</span> : <bdi id={citationId} dir="auto" className="preview-text">
             {ready?.markup.length && !keys ? render(ready.markup) : keyText(text)}
           </bdi> : shown === "failed" ? <><span className="shelf-state-icon" data-state="failed" aria-hidden="true">!</span><p title={fullProblem}>{fullProblem}</p></> : shown === "stale" ? <><span className="shelf-state-icon" data-state="stale" aria-hidden="true">!</span><p role="status">{pickerText.shelfStale}</p></>
             : shown === undefined && !previous && manySegments ? <span className="shelf-fragments">{manySegments}</span> : shown === null && !previous ? <p role="status">{pickerText.previewPending}</p> : null}

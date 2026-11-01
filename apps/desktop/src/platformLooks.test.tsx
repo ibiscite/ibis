@@ -592,7 +592,7 @@ test("a wrapped footer keeps breathing room above and below its lines", () => {
   // The footer has no block padding of its own (its 40 px is a min-height), so
   // the library bar carries it: 1 px divider + 3 + 32 px More + 4 = 40 px, and
   // wrapped lines never touch the divider or the window's bottom corners.
-  expect(rules(styles, ".library-bar")).toMatch(/padding-block:\s*var\(--inset\)/);
+  expect(rules(styles, ".library-bar")).toMatch(/padding-block:\s*var\(--space-1\)/);
   const buttons = readFileSync(new FileURL("./ui/Button.css", import.meta.url), "utf8");
   expect(rules(buttons, '.ui-button[data-size="small"]')).toMatch(/min-height:\s*1\.5rem/);
   expect(rules(tokens, ":root")).toMatch(/--control-min-size:\s*2rem/);
