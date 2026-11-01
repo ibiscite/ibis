@@ -37,7 +37,7 @@ raw-window-handle = "0.6.2"
 # using GTK's safe window API; never an environment variable or a WebView event.
 gtk = "0.18.2"
 # Already locked through Tauri; bounded local session-bus portal calls.
-zbus = "5.19.0"
+zbus = "6.1.0"
 tokio = { version = "1.52", features = ["time"] }
 x11rb = { version = "0.14.0", default-features = false, features = ["xkb"] }
 
