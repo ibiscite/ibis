@@ -462,8 +462,11 @@ forced colours; it never resembles a partially completed download.
   placeholder). The ring sits on the picture, the tint on the whole choice. Rows keep
   their full accent fill; the full accent primary action remains one per view.
 - **Focus ring only on keyboard focus** [D8] (`:focus-visible`), never after a
-  click, and **drawn inside the item it marks**, so no scroll area clips it and
-  it never covers a neighbour. macOS 2 px accent with a 1 px gap; Windows 2 px
+  click. **Controls** (buttons, switches, segmented controls, picture choices,
+  fields) take it outside, as the Mac draws it; **rows** (results, choice rows,
+  the Settings sidebar, chips' remove buttons) draw it inside (offset −2 px), so
+  no scroll area clips it and it never covers a neighbour. macOS 2 px accent
+  with a 1 px gap; Windows 2 px
   text colour around 1 px surface; GNOME 2 px accent mixed half toward the text;
   contrast modes 2 px `CanvasText`.
 
