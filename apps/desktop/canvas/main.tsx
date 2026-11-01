@@ -45,7 +45,7 @@ const fixtures: Partial<Record<Scenario, {
   shelf: { keys: [{ key: "Enter", shiftKey: true }, { key: "ArrowDown" }, { key: "Enter", shiftKey: true }] },
   "reference-menu": { keys: [{ key: "Enter", shiftKey: true }], click: 'button[aria-label^="Edit "]' },
   "library-menu": { click: ".library-bar button" },
-  shortcuts: { keys: [{ key: "/", metaKey: true }] },
+  shortcuts: { keys: [{ key: "/", [navigator.platform.startsWith("Mac") ? "metaKey" : "ctrlKey"]: true }] },
   pinned: { click: ".pin-button" },
   "no-matches": { rows: [] },
   missing: { query: "", library: { state: "error", has_snapshot: false, references: 0, problem: "missing", error: "The invented library file is unavailable" } },
@@ -126,7 +126,7 @@ function States({ theme }: { theme: Theme }) {
   return <SettingsGroup id="canvas-states">{(["hovered", "pressed", "focus-visible"] as const).map((state, index) => <SettingsRow key={state} id={`canvas-${state}`} label={englishMessages.text((["canvas-hovered", "canvas-pressed", "canvas-focused"] as const)[index]!)}><Switch aria-label={englishMessages.text((["canvas-hovered", "canvas-pressed", "canvas-focused"] as const)[index]!)} isSelected={index === 1} onChange={() => {}} {...{ [`data-${state}`]: true }} /><Button variant={index === 1 ? "primary" : index === 2 ? "quiet" : "secondary"} render={(native) => <button {...native} {...{ [`data-${state}`]: true }} />}><KeyCaps accelerator="CmdOrCtrl+K" /></Button></SettingsRow>)}</SettingsGroup>;
 }
 
-const tokenNames = [...new Set([...tokenSource.matchAll(/^\s*(--[a-z][\w-]*):/gm)].map((match) => match[1]!))];
+const tokenNames = [...new Set([...tokenSource.matchAll(/(--[a-z][\w-]*):/g)].map((match) => match[1]!))];
 const family = (...prefixes: string[]) => tokenNames.filter((name) => prefixes.some((prefix) => name === prefix || name.startsWith(`${prefix}-`)));
 
 /** The tokens as the app resolves them, so this page cannot drift from the code. */

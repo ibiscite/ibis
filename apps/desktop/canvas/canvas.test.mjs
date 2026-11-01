@@ -59,7 +59,8 @@ test("the built scenario list renders, switches and reopens without Tauri or net
       } else if (scenario === "empty") expect(host.textContent).toContain("No references in invented.bib");
       else if (scenario === "error") expect(host.textContent).toContain("Can't open invented.bib");
       else if (scenario === "loading") expect(host.textContent).toContain("Opening invented.bib");
-      else if (scenario === "tokens") expect(host.textContent).toContain("--accent");
+      else if (scenario === "tokens") for (const token of ["--accent", "--space-8", "--r-card", "--r-key"]) expect(host.textContent).toContain(token);
+      else if (scenario === "shortcuts") expect(window.document.querySelector('[role="dialog"]')).not.toBeNull();
       else if (scenario === "empty-search") expect(host.textContent).toContain("Type to find");
       else if (scenario === "no-matches") expect(host.textContent).toContain("No matching references");
       else if (scenario === "missing") expect(host.textContent).toContain("Can't find invented.bib");
