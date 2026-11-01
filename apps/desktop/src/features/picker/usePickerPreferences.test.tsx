@@ -9,7 +9,7 @@ beforeEach(() => {
   vi.spyOn(commands, "preferenceRevision").mockImplementation(async () => ++revision);
 });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
-const preferences: PickerPreferences = { citation_style: null, density: "comfortable", larger_text: false, show_paste_preview: true, search_icon: "magnifier", paste: true };
+const preferences: PickerPreferences = { citation_style: null, density: "comfortable", larger_text: false, show_paste_preview: true, search_icon: "magnifier", paste: true, menu_bar: true };
 const deferred = <T,>() => {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((done) => { resolve = done; });

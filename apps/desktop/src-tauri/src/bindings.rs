@@ -50,6 +50,8 @@ pub(crate) fn commands() -> tauri_specta::Builder<tauri::Wry> {
             crate::paste::permission::open_paste_permission,
             crate::paste::permission::drag_paste_app,
             crate::shortcut_setting::set_shortcut,
+            crate::sizing::window_size,
+            crate::sizing::set_window_size,
             crate::sizing::read_window_position_undo,
             crate::sizing::undo_window_position,
             crate::sizing::dismiss_window_position_undo
@@ -73,6 +75,8 @@ mod tests {
         "picker_preferences",
         "preference_revision",
         "set_picker_preferences",
+        "window_size",
+        "set_window_size",
         "forget_app_outputs",
         "login_item",
         "set_login_item",
@@ -88,8 +92,11 @@ mod tests {
         "configure_shortcuts",
     ];
 
-    /// Only Settings asks about paste permission or changes the global shortcut.
+    /// Only Settings asks about paste permission, changes the global shortcut
+    /// or chooses a window size.
     const SETTINGS_ONLY: &[&str] = &[
+        "window_size",
+        "set_window_size",
         "paste_permission",
         "open_paste_permission",
         "drag_paste_app",

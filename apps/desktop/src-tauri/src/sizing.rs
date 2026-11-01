@@ -11,6 +11,8 @@ use std::time::{Duration, Instant};
 
 use ibis_core::settings::{PickerWindow, Settings};
 use owner::{Display, Event, MINIMUM, Owner, Sample, Save, content_room};
+use serde::{Deserialize, Serialize};
+use specta::Type;
 use tauri::{AppHandle, Emitter, Manager, Monitor, WebviewWindow, WindowEvent};
 
 #[cfg(not(target_os = "macos"))]
@@ -24,6 +26,37 @@ const DEFAULT: (u32, u32) = (720, 480);
 // Kept equal to --larger-text-scale; the regression checks the shared token.
 const LARGER_TEXT_SCALE: f64 = 1.15;
 const FLUSH_TIMEOUT: Duration = Duration::from_secs(1);
+
+/// Settings › Look's window size. Any other dragged size is Custom.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum WindowSize {
+    Small,
+    Medium,
+    Large,
+    Custom,
+}
+
+impl WindowSize {
+    fn pixels(self) -> Option<(u32, u32)> {
+        match self {
+            Self::Small => Some((640, 400)),
+            Self::Medium => Some(DEFAULT),
+            Self::Large => Some((840, 600)),
+            Self::Custom => None,
+        }
+    }
+
+    fn of(saved: Option<PickerWindow>) -> Self {
+        let size = saved
+            .filter(|frame| frame.custom_size)
+            .map_or(DEFAULT, |frame| (frame.width, frame.height));
+        [Self::Small, Self::Medium, Self::Large]
+            .into_iter()
+            .find(|choice| choice.pixels() == Some(size))
+            .unwrap_or(Self::Custom)
+    }
+}
 
 #[derive(Default)]
 pub(crate) struct Sizing {
@@ -66,6 +99,20 @@ fn plan(saved: Option<PickerWindow>, larger: bool, room: (f64, f64)) -> PickerWi
         custom_size: custom.is_some(),
         x: saved.map_or(x, |frame| f64::from(frame.x)).clamp(0.0, spare_x).floor() as i32,
         y: saved.map_or(y, |frame| f64::from(frame.y)).clamp(0.0, spare_y).floor() as i32,
+    }
+}
+
+/// Medium is the default again, so larger text still applies to it. The window
+/// grows around its centre and keeps its top; `plan` fits it to the display.
+fn chosen(saved: Option<PickerWindow>, size: (u32, u32), larger: bool, room: (f64, f64)) -> PickerWindow {
+    let current = plan(saved, larger, room);
+    let centre = current.x + (i64::from(current.width) - i64::from(size.0)) as i32 / 2;
+    PickerWindow {
+        width: size.0,
+        height: size.1,
+        custom_size: size != DEFAULT,
+        x: centre.max(0),
+        y: current.y,
     }
 }
 
@@ -202,14 +249,16 @@ pub(crate) fn start(app: &AppHandle) -> bool {
         .spawn(move || {
             shared.run(&file, |revision, saved| {
                 if handle.state::<Sizing>().revision() == revision {
-                    report(
-                        handle.emit_to(
-                            "main",
-                            "picker:window-saved",
-                            serde_json::json!({ "revision": revision, "saved": saved }),
-                        ),
-                        NativeIssue::PickerEvent,
-                    );
+                    for target in ["main", "settings"] {
+                        report(
+                            handle.emit_to(
+                                target,
+                                "picker:window-saved",
+                                serde_json::json!({ "revision": revision, "saved": saved }),
+                            ),
+                            NativeIssue::PickerEvent,
+                        );
+                    }
                 }
             });
         });
@@ -643,6 +692,61 @@ fn emit_reset_undo(app: &AppHandle) {
             NativeIssue::PickerEvent,
         );
     }
+}
+
+/// The display the picker opens on next; Settings is normally on it too.
+fn target(app: &AppHandle) -> Option<(WebviewWindow, Monitor)> {
+    let window = app.get_webview_window("main")?;
+    let (monitor, _) = placement::active_monitor(app, &window, false)?;
+    Some((window, monitor))
+}
+
+#[tauri::command]
+#[specta::specta]
+pub(crate) fn window_size(app: AppHandle) -> Option<WindowSize> {
+    let (_, monitor) = target(&app)?;
+    Some(WindowSize::of(app.state::<Sizing>().remembered(&display_key(&monitor))))
+}
+
+/// Kept like a dragged size: the one writer saves it and reports the outcome.
+/// Hidden, the next `prepare` applies it before the window appears.
+#[tauri::command]
+#[specta::specta]
+pub(crate) fn set_window_size(app: AppHandle, size: WindowSize) -> Result<(), String> {
+    const FAILED: &str = "Ibis could not change the window size. Try again.";
+    let size = size.pixels().ok_or(FAILED)?;
+    let (window, monitor) = target(&app).ok_or(FAILED)?;
+    let shown = checked(window.is_visible(), NativeIssue::Visibility) == Some(true);
+    if shown {
+        // Accept a drag that arrived first, so this choice replaces it.
+        sample(&app, &window, false);
+    }
+    let metrics = metrics(&window).ok_or(FAILED)?;
+    let display = display(&monitor, &metrics).ok_or(FAILED)?;
+    let key = display.key.clone();
+    let sizing = app.state::<Sizing>();
+    let larger = sizing.larger_text.load(Ordering::SeqCst);
+    let frame = chosen(sizing.remembered(&key), size, larger, display.room);
+    if shown {
+        sizing.shared.state.lock().map_err(|_| FAILED)?.applying = true;
+        let planned = plan(Some(frame), larger, display.room);
+        let applied = apply_frame(&app, &window, &monitor, planned, display.room);
+        let mut state = sizing.shared.state.lock().map_err(|_| FAILED)?;
+        state.applying = false;
+        applied.ok_or(FAILED)?;
+        state.prepared(Sample {
+            display,
+            frame: planned,
+        });
+    }
+    let mut state = sizing.shared.state.lock().map_err(|_| FAILED)?;
+    if state.stopping {
+        return Err(FAILED.into());
+    }
+    state.choose(&key, frame, Instant::now());
+    drop(state);
+    sizing.shared.wake.notify_all();
+    Ok(())
 }
 
 #[tauri::command]

@@ -4,7 +4,7 @@ import type { SettingsApi } from "./api";
 
 /** Explicit development-only fixture: no native commands, files or network. */
 export function demoApi(): SettingsApi {
-  let preferences: PickerPreferences = { citation_style: null, density: "comfortable", larger_text: false, show_paste_preview: true, search_icon: "ibis", paste: true, appearance: "system", accent: "system" };
+  let preferences: PickerPreferences = { citation_style: null, density: "comfortable", larger_text: false, show_paste_preview: true, search_icon: "ibis", paste: true, menu_bar: true, appearance: "system", accent: "system" };
   let shortcut: ShortcutStatus = { shortcut: DEFAULT_PICKER_SHORTCUT, registered: true, error: null };
   let enabled = false, automatic = false;
   let revision = 0;
@@ -16,6 +16,9 @@ export function demoApi(): SettingsApi {
     pickerPreferences: async () => preferences,
     preferenceRevision: async () => ++revision,
     setPickerPreferences: async (patch, key, revision) => { preferences = { ...preferences, ...patch, ...(key ? { copy_format: key } : {}) }; for (const changed of listeners) changed(revision); return { preferences, copy_format: preferences.copy_format ?? "pandoc" }; },
+    windowSize: async () => "medium",
+    setWindowSize: async () => null,
+    onWindowSaved: subscribe,
     forgetAppOutputs: async () => null,
     loginItem: async () => ({ name: "Ibis", enabled, problem: null }),
     setLoginItem: async (on) => { enabled = on; return { name: "Ibis", enabled, problem: null }; },

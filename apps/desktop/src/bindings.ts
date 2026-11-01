@@ -171,6 +171,12 @@ export const commands = {
 	 *  Every window and the menu bar item show the change at once.
 	 */
 	setShortcut: (shortcut: string | null) => __TAURI_INVOKE<ShortcutStatus_Serialize>("set_shortcut", { shortcut }),
+	windowSize: () => __TAURI_INVOKE<"small" | "medium" | "large" | "custom" | null>("window_size"),
+	/**
+	 *  Kept like a dragged size: the one writer saves it and reports the outcome.
+	 *  Hidden, the next `prepare` applies it before the window appears.
+	 */
+	setWindowSize: (size: WindowSize) => __TAURI_INVOKE<null>("set_window_size", { size }),
 	readWindowPositionUndo: () => __TAURI_INVOKE<number | null>("read_window_position_undo"),
 	undoWindowPosition: (revision: number) => __TAURI_INVOKE<boolean>("undo_window_position", { revision }),
 	dismissWindowPositionUndo: (revision: number) => __TAURI_INVOKE<void>("dismiss_window_position_undo", { revision }),
@@ -543,6 +549,7 @@ export type PickerPreferencesPatch_Deserialize = {
 	show_paste_preview?: boolean | null,
 	search_icon?: SearchIcon | null,
 	paste?: boolean | null,
+	menu_bar?: boolean | null,
 };
 
 /**  Only fields deliberately changed in one window cross the write boundary. */
@@ -555,6 +562,7 @@ export type PickerPreferencesPatch_Serialize = {
 	show_paste_preview?: boolean | null,
 	search_icon?: SearchIcon | null,
 	paste?: boolean | null,
+	menu_bar?: boolean | null,
 };
 
 /**
@@ -574,6 +582,8 @@ export type PickerPreferences_Deserialize = {
 	search_icon: SearchIcon,
 	/**  Enter pastes into the app the picker was opened from; on by default. */
 	paste: boolean,
+	/**  The menu bar item; on by default. */
+	menu_bar: boolean,
 };
 
 /**
@@ -593,6 +603,8 @@ export type PickerPreferences_Serialize = {
 	search_icon: SearchIcon,
 	/**  Enter pastes into the app the picker was opened from; on by default. */
 	paste: boolean,
+	/**  The menu bar item; on by default. */
+	menu_bar: boolean,
 };
 
 /**  The authoritative state after one locked patch and flush. */
@@ -824,6 +836,9 @@ export type SystemIcon = {
 	mime: string,
 	bytes: number[],
 };
+
+/**  Settings › Look's window size. Any other dragged size is Custom. */
+export type WindowSize = "small" | "medium" | "large" | "custom";
 
 /**  A Zotero group library the user can choose. */
 export type ZoteroGroup = {
