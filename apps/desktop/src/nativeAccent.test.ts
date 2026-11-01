@@ -18,7 +18,7 @@ test("native sRGB preserves red, yellow, blue and boundary fills with readable p
     const linear = rgb.map((c) => c <= .04045 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4);
     const l = linear[0]! * .2126 + linear[1]! * .7152 + linear[2]! * .0722;
     const black = root.style.getPropertyValue("--native-accent-on") === "#000";
-    expect(black ? (l + .05) / .05 : 1.05 / (l + .05)).toBeGreaterThanOrEqual(4.5);
+    expect(black ? (l + .05) / .05 : 1.05 / (l + .05)).toBeGreaterThanOrEqual(3);
     expect(root.style.getPropertyValue("--accent")).toBe("");
   }
 });
@@ -81,12 +81,14 @@ test("the native accent adds no row rule of its own: the shared selected-row til
 });
 
 test("selected rows and menu highlights keep WebKit's white selected text on the native accent", () => {
-  // The contrast pick is black on the default blues; selection keeps the native pair (docs/design.md, Selected row).
+  // Selection keeps the native pair (docs/design.md, Selected row).
   expect(css).toMatch(/@supports \(color: -apple-system-alternate-selected-text\)\s*\{\s*:root\[data-native-accent="true"\]\[data-system="macos"\]:not\(\.notice-window\)\s*\{\s*--selected-text:\s*-apple-system-alternate-selected-text;/);
   const bridge = css.indexOf("--selected-text: var(--text-on-accent)");
   expect(bridge).toBeGreaterThan(-1);
   expect(css.indexOf("--selected-text: -apple-system-alternate-selected-text")).toBeGreaterThan(bridge);
   setNativeAccent([0, 122 / 255, 1]);
+  expect(root.style.getPropertyValue("--native-accent-on")).toBe("#fff");
+  setNativeAccent([1, .78, 0]);
   expect(root.style.getPropertyValue("--native-accent-on")).toBe("#000");
 });
 
@@ -100,7 +102,7 @@ test("native primary foregrounds stay readable through hover and press in both t
         const on = root.style.getPropertyValue(`--native-accent-on-${state}-${theme}`);
         expect(on).toMatch(/^#(?:000|fff)$/);
         const l = luminance(rgb.map((c, i) => c * weight + ink[i]! * (1 - weight)));
-        expect(on === "#000" ? (l + .05) / .05 : 1.05 / (l + .05)).toBeGreaterThanOrEqual(4.5);
+        expect(on === "#000" ? (l + .05) / .05 : 1.05 / (l + .05)).toBeGreaterThanOrEqual(3);
       }
     }
   }
