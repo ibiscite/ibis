@@ -494,15 +494,17 @@ fn installation_failed(app: &AppHandle) {
 pub(crate) fn picker_presented(app: &AppHandle) {
     publish_progress(app);
     picker_focused(app);
-    #[cfg(target_os = "macos")]
-    present_installation_failure(app, false);
 }
 
 /// Windows/Linux may deliver focus after the show hook has already run.
-/// A focus event re-checks pending availability, never showing or focusing a window.
+/// A focus event re-checks pending availability, never showing or focusing a
+/// window. On macOS it also presents an installation failure that waited
+/// while the person worked in another app, on the picker they came back to.
 pub(crate) fn picker_focused(app: &AppHandle) {
     offer::ask_first_run(app);
     offer::refresh_pending(app);
+    #[cfg(target_os = "macos")]
+    present_installation_failure(app, false);
 }
 
 #[cfg(target_os = "macos")]
@@ -534,6 +536,11 @@ fn present_installation_failure(app: &AppHandle, show: bool) {
                 crate::picker::reveal_picker_quietly(&handle);
             }
             if crate::diagnostics::checked(window.is_visible(), NativeIssue::Visibility) != Some(true) {
+                return;
+            }
+            // A picker left open beside another app stays out of the way: the
+            // notice waits for the person to come back to it.
+            if crate::picker::focused_for_shortcut(&window) != Some(true) {
                 return;
             }
             // Same fallible AppKit handle path as parent(); Tao's display
