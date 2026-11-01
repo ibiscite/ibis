@@ -106,6 +106,17 @@ buttons, passes 4.5:1. Selected switch thumbs use the same paired foreground,
 including the permission-guide illustration; white must never disappear into
 the brighter dark-mode scarlet. Meaningful accent fills, rings and glyphs pass 3:1 on
 their adjacent surfaces in both themes. Contrast modes retain system pairs.
+**One accent, three roles, both modes** (maintainer, 2026-11-01). Every
+Accent choice, Follow the Mac included, resolves to the same three roles, each
+with its own light and dark value: the accent (controls, switches, the focus
+ring, progress) uses the Mac's colour for that mode, such as blue `#007AFF`
+light and `#0A84FF` dark; the selection fill is the deeper shade of the same
+hue that keeps its paired text at 4.5:1, such as `#0064E1` light and
+`#0058D0` dark, never brighter in dark mode than in light; and accent text on
+surfaces passes 4.5:1. The focus ring is always the accent, 2 px with a 1 px
+gap, for every choice. Hover and pressed accent fills move toward the text
+colour by the same amounts in both modes. The System page of the design canvas
+shows these roles labelled side by side in light and dark.
 A chosen accent overrides the system's in Ibis only. Ibis offers no per-element
 colours, fonts, radius, spacing, custom CSS or themes.
 
@@ -522,7 +533,13 @@ Zotero libraries as toggle chips when there are several, Choose Library… ⇧�
 Reload Library). **Open the source** (maintainer, 2026-10-30): ⌘O (Ctrl+O)
 works on every screen and opens where the references come from: the selected
 reference in Zotero (Zotero's own `zotero://select` link, starting Zotero if
-it is closed), or the .bib file in its default app. More lists it first as
+it is closed), or the .bib file in its default app. **The words always name
+the target** (maintainer, 2026-11-01), never a bare "Open": **Show in Zotero**
+means this reference, selected inside Zotero; **Open thesis.bib** means the
+whole file, whether or not a reference is selected, because editors cannot be
+trusted to jump to an entry; **Open Zotero** means the app alone and appears
+only when no reference is involved (nothing selected, a choice screen, the
+status fix). ⌘O always does what More's first item says at that moment. More lists it first as
 "Show in Zotero" or "Open thesis.bib"; a problem's fix and a choice screen's
 row use the same words and show ⌘O. Ibis shows the system's own icon for the
 source app or file at runtime and never ships another app's logo. With
@@ -532,8 +549,10 @@ itself. Holding ⌥ turns "Open thesis.bib" into "Show in Finder". When the
 source can't open (Zotero not installed, the file gone) the same place offers
 Choose Library… or Find…, never a key that does nothing.
 A problem shows there in a few words with a qualified age ("Zotero not
-updated · 2 h"; the full sentence in its tooltip) and one fix: "Open Zotero
-⌘O", "Find thesis.bib…". **The fix is a button, not link text** (maintainer,
+updated · 2 h"; the full sentence in its tooltip) and one fix: "Open Zotero",
+"Find thesis.bib…". The fix shows ⌘O only when ⌘O does the same thing at
+that moment; with a reference selected ⌘O means Show in Zotero, so the fix
+shows no keys. **The fix is a button, not link text** (maintainer,
 2026-10-30): the footer's one quiet action with a resting `--fill`, led by the
 source's 16 px system icon and followed by its keys, right after the status.
 It is never accent text, so Copy stays the only accent in the footer. "2 h" is
@@ -589,10 +608,16 @@ shelf for 160 ms. Reduce Motion shows the end state.
 
 **One line, details on demand** (maintainer, 2026-10-30). The shelf is always
 one line: no Page field or form choices beneath it. Clicking a segment (or
-Return or Space on a selected one) opens its menu: the reference's short name
-as a heading, **Page** with a field, then **Name in brackets**, **Name in the
+Return or Space on a selected one) opens its menu. It is an ordinary menu,
+the same overlay as More and Copy as: the same glass, `--r-menu`, shadow, row
+height, check column and type, with no extra border, card or field chrome
+(maintainer, 2026-11-01). Every label starts at the check column. In order:
+the reference's short name as a heading; **Name in brackets**, **Name in the
 sentence** and **Year only**, each with a quiet example of what it pastes in
-the current style, then **Remove from citation ⌫**. With one reference the
+the current style; **Page…** with the current page or "None" trailing,
+editing in place when chosen; then the source action with the same words and
+keys as More ("Show in Zotero ⌘O" or "Open thesis.bib ⌘O"); then **Remove
+from citation ⌫**. With one reference the
 whole citation is its segment. Removing needs no click into the menu
 (maintainer, 2026-10-30): a pointed segment shows a 16 px round × badge in a
 24 px target on its top-end corner, outside the text and the pill, so the key
