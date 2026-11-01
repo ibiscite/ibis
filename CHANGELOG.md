@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.2.4](https://github.com/ibiscite/ibis/compare/v0.2.3...v0.2.4) (2026-11-01)
+
+
+### Features
+
+* **desktop:** build the real app for the design canvas and split App ([#1577](https://github.com/ibiscite/ibis/issues/1577)) ([67452cc](https://github.com/ibiscite/ibis/commit/67452ccdda213e47e678175d334b501767b4cb3c))
+* **desktop:** follow macOS and the canvas exactly ([#1576](https://github.com/ibiscite/ibis/issues/1576)) ([8b51470](https://github.com/ibiscite/ibis/commit/8b51470ddade1a11b3b03a526ac5376177a6fab3))
+* **settings:** add Show in Menu Bar and window sizes ([#1570](https://github.com/ibiscite/ibis/issues/1570)) ([fb41d82](https://github.com/ibiscite/ibis/commit/fb41d825d01a12bf214330cb8ba6500d5d0f7928))
+* **settings:** offer no search icon ([#1567](https://github.com/ibiscite/ibis/issues/1567)) ([c502138](https://github.com/ibiscite/ibis/commit/c502138c8ea0772f7244594d791d03dccf93f634))
+
+
+### Bug Fixes
+
+* **desktop:** nest the footer corners and drop shelf tooltips ([#1571](https://github.com/ibiscite/ibis/issues/1571)) ([145988e](https://github.com/ibiscite/ibis/commit/145988e238e8f56c9d726a6862204b0b0ce89ea3))
+* **desktop:** stop the picker changing after it appears ([#1566](https://github.com/ibiscite/ibis/issues/1566)) ([c73773f](https://github.com/ibiscite/ibis/commit/c73773f8ffdff6307f383dd59fab9aa6b7fdd6a9))
+* **library:** give large libraries time to load ([#1565](https://github.com/ibiscite/ibis/issues/1565)) ([63c4c3a](https://github.com/ibiscite/ibis/commit/63c4c3a0356eac4b18234ca337a5ce97c70d2153))
+
+
+### Documentation
+
+* **design:** one year position and aligned welcome icons ([#1573](https://github.com/ibiscite/ibis/issues/1573)) ([b541715](https://github.com/ibiscite/ibis/commit/b541715288d413a45c27d3572f9c12aed4cba7e0))
+
 ## [0.2.3](https://github.com/ibiscite/ibis/compare/v0.2.2...v0.2.3) (2026-10-31)
 
 
