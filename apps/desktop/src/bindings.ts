@@ -102,6 +102,12 @@ export const commands = {
 	 */
 	setPinned: (on: boolean) => __TAURI_INVOKE<void>("set_pinned", { on }),
 	/**
+	 *  The interface reports a move or resize of `presentation` starting, and
+	 *  its end once the pointer is back. A blur held during the move is then
+	 *  checked against live focus, as after a native dialog.
+	 */
+	pickerMoving: (presentation: number, moving: boolean) => __TAURI_INVOKE<void>("picker_moving", { presentation, moving }),
+	/**
 	 *  End the app. Closing the window only hides it, so this is the way out on
 	 *  Windows and Linux, which have no application menu with Quit.
 	 */

@@ -641,6 +641,60 @@ pub(crate) fn set_pinned(app: AppHandle, pinned: State<'_, Pinned>, on: bool) {
     let _ = app;
 }
 
+/// Set while the person moves or resizes the picker. A Linux compositor can
+/// take focus away for its move or resize grab, and that blur must not hide
+/// the window being moved. Holds the presentation plus one; 0 when no move
+/// is in progress.
+#[derive(Default)]
+pub(crate) struct Moving(AtomicU64);
+
+impl Moving {
+    fn begin(&self, visits: &PickerGeneration, presentation: u64) {
+        if visits.owns(presentation) {
+            self.0.store(presentation.wrapping_add(1), Ordering::SeqCst);
+        }
+    }
+
+    /// End any move and return the presentation it belonged to.
+    pub(crate) fn end(&self) -> Option<u64> {
+        match self.0.swap(0, Ordering::SeqCst) {
+            0 => None,
+            held => Some(held.wrapping_sub(1)),
+        }
+    }
+
+    /// Whether the shown presentation is being moved now.
+    #[cfg(any(target_os = "linux", test))]
+    pub(crate) fn holds(&self, visits: &PickerGeneration) -> bool {
+        let held = self.0.load(Ordering::SeqCst);
+        held != 0 && held.wrapping_sub(1) == visits.current()
+    }
+}
+
+/// The interface reports a move or resize of `presentation` starting, and
+/// its end once the pointer is back. A blur held during the move is then
+/// checked against live focus, as after a native dialog.
+#[tauri::command]
+#[specta::specta]
+pub(crate) fn picker_moving(app: AppHandle, presentation: u64, moving: bool) {
+    let state = app.state::<Moving>();
+    if moving {
+        state.begin(&app.state(), presentation);
+        return;
+    }
+    if let Some(generation) = state.end() {
+        let handle = app.clone();
+        report(
+            app.run_on_main_thread(move || {
+                if let Some(window) = handle.get_webview_window("main") {
+                    reconcile_suppressed_blur(&window, generation);
+                }
+            }),
+            NativeIssue::Window,
+        );
+    }
+}
+
 /// Whether the picker hides when it loses focus. Release builds hide it, like
 /// other launchers, except while its file chooser has the focus or it is
 /// pinned; development builds never do, so the developer tools stay usable.
@@ -776,6 +830,20 @@ fn finish_blur(app: &AppHandle, blur: u64, generation: u64) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_move_belongs_to_its_presentation_and_ends_once() {
+        let visits = PickerGeneration(AtomicU64::new(41));
+        let moving = Moving::default();
+        moving.begin(&visits, 40); // a stale start is ignored
+        assert!(!moving.holds(&visits));
+        moving.begin(&visits, 41);
+        assert!(moving.holds(&visits));
+        visits.advance(); // hidden or reopened: the move no longer holds
+        assert!(!moving.holds(&visits));
+        assert_eq!(moving.end(), Some(41));
+        assert_eq!(moving.end(), None);
+    }
 
     #[test]
     fn revealing_a_visible_picker_keeps_its_presentation() {

@@ -156,6 +156,7 @@ fn main() {
         .manage(row_context::RowContext::default())
         .on_menu_event(row_context::selected)
         .manage(Pinned::default())
+        .manage(picker::Moving::default())
         .manage(sizing::Sizing::default())
         .manage(picker_generation)
         .manage(picker::Registered::default())
@@ -215,6 +216,8 @@ fn main() {
                     dismiss_picker(window.app_handle());
                 }
                 WindowEvent::Focused(true) => {
+                    // Focus is back after any move grab; nothing is left to check.
+                    window.state::<picker::Moving>().end();
                     #[cfg(target_os = "windows")]
                     window.state::<picker::FocusChanges>().record();
                     updater::picker_focused(window.app_handle());
@@ -231,7 +234,14 @@ fn main() {
                     let startup_allows_blur = true;
                     #[cfg(target_os = "windows")]
                     let blur = window.state::<picker::FocusChanges>().record();
-                    if startup_allows_blur && hides_on_blur(!cfg!(debug_assertions), chooser_open, pinned) {
+                    // The compositor's move or resize grab; checked when the move ends.
+                    #[cfg(target_os = "linux")]
+                    let moving = window
+                        .state::<picker::Moving>()
+                        .holds(&window.state::<picker::PickerGeneration>());
+                    #[cfg(not(target_os = "linux"))]
+                    let moving = false;
+                    if startup_allows_blur && !moving && hides_on_blur(!cfg!(debug_assertions), chooser_open, pinned) {
                         #[cfg(target_os = "windows")]
                         picker::dismiss_unless_refocused(
                             window.app_handle(),
