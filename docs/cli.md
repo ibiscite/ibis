@@ -24,10 +24,21 @@ Each run reads the libraries you name and nothing else:
 | `--file PATH` | A BibTeX, BibLaTeX or CSL-JSON file. Repeat for several. |
 | `--zotero` | The local Zotero personal library, whether Zotero is open or closed. |
 | `--zotero-group GROUP_ID` | A local Zotero group library. Repeat for several. |
+| `--app-libraries` | The library chosen in the Ibis app. |
 
 Library options may come before or after the command; they add up in that order and
 duplicates are ignored. Reading never writes to a library, and one-shot commands
 watch no files. Library IDs in the output are opaque digests, never paths.
+
+When you name no library, `search`, `show`, `cite` and `libraries` read the one chosen
+in the Ibis app, as if you had given `--app-libraries`. They read the stable app's
+settings, or Ibis Nightly's when only Nightly is installed, and never change them.
+`ibis libraries` says which app the library came from. Messages never show the path
+or contents of the app's settings, because agents read them too. If those settings
+cannot be used as they are (missing, damaged, from a newer Ibis, not readable by this
+program, or naming a file by a relative path), the command stops and says why; it
+never falls back to a backup or to the other app. Naming any library replaces the app's choice. `serve` and `mcp` read the
+app's choice only when given `--app-libraries`.
 
 ## Commands
 
@@ -137,19 +148,43 @@ behind a queue of eight; a long request delays the ones after it.
 
 ## AI agents (MCP)
 
-`ibis mcp` serves the Model Context Protocol over stdio (revision 2025-06-18) with four
-read-only tools: `search`, `show`, `cite` and `styles`. Add it to an agent as a local
-stdio server with the libraries it may read, for example:
+`ibis mcp` serves the Model Context Protocol over stdio with four read-only tools:
+`search`, `show`, `cite` and `styles`. It speaks revision 2026-07-28, in which every
+request names its revision and the client's capabilities and `server/discover`
+describes the server, and it still answers clients that start with `initialize` on
+2025-11-25 or 2025-06-18. A request
+for any other revision is refused with the list of revisions Ibis supports.
+
+The Ibis plugin for Claude Code and Codex adds the server and a skill that tells the
+agent to cite only what Ibis returns. It reads the library chosen in the Ibis app and
+needs `ibis` on your PATH:
 
 ```sh
 # Claude Code
-claude mcp add ibis -- ibis mcp --file /path/to/refs.bib
+/plugin marketplace add ibiscite/ibis
+/plugin install ibis@ibiscite
+
+# Codex, then start a new session
+codex plugin marketplace add ibiscite/ibis
+codex plugin add ibis@ibiscite
+```
+
+Or add the server by hand with the libraries it may read:
+
+```sh
+# Claude Code
+claude mcp add ibis -- ibis mcp --app-libraries
 
 # Codex: ~/.codex/config.toml
 # [mcp_servers.ibis]
 # command = "ibis"
-# args = ["mcp", "--zotero"]
+# args = ["mcp", "--file", "/path/to/refs.bib"]
 ```
+
+The skill on its own is
+[plugins/ibis/skills/ibis-cite](../plugins/ibis/skills/ibis-cite/SKILL.md), in the
+open Agent Skills format; copy that folder into an agent's skills folder to use it
+without the plugin.
 
 Agents see bibliographic fields and citations only: never notes, annotations, source
 paths, file locations or local links. Long values are shortened and each answer is at

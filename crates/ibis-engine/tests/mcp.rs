@@ -43,12 +43,34 @@ fn request(id: u64, method: &str, params: Value) -> Value {
 }
 
 fn tool(engine: &Engine, name: &str, arguments: Value) -> Value {
-    let reply = mcp::handle(
+    let reply = handle(
         engine,
-        &request(9, "tools/call", json!({"name":name,"arguments":arguments})),
+        &modern(9, "tools/call", json!({"name":name,"arguments":arguments})),
     )
     .unwrap();
     reply["result"].clone()
+}
+
+/// One stateless request, as a 2026-07-28 client sends it.
+fn handle(engine: &Engine, message: &Value) -> Option<Value> {
+    mcp::handle(engine, &mut mcp::Session::default(), message)
+}
+
+/// A process an older client opened with `initialize`.
+fn initialized(engine: &Engine) -> mcp::Session {
+    let mut session = mcp::Session::default();
+    let opened = mcp::handle(
+        engine,
+        &mut session,
+        &request(
+            0,
+            "initialize",
+            json!({"protocolVersion":mcp::LEGACY_VERSIONS[0],"capabilities":{},"clientInfo":{"name":"t","version":"1"}}),
+        ),
+    )
+    .unwrap();
+    assert_eq!(opened["result"]["protocolVersion"], mcp::LEGACY_VERSIONS[0]);
+    session
 }
 
 #[test]
@@ -78,7 +100,9 @@ fn a_session_runs_over_newline_delimited_stdio() {
         .collect();
     // The notification gets no answer; everything else gets exactly one.
     assert_eq!(replies.len(), 5);
-    assert_eq!(replies[0]["result"]["protocolVersion"], mcp::PROTOCOL_VERSION);
+    // An unknown requested revision is answered with the newest handshake revision.
+    assert_eq!(replies[0]["result"]["protocolVersion"], mcp::LEGACY_VERSIONS[0]);
+    assert!(replies[0]["result"].get("resultType").is_none());
     assert_eq!(replies[0]["result"]["serverInfo"]["name"], "ibis");
     let names: Vec<&str> = replies[1]["result"]["tools"]
         .as_array()
@@ -119,7 +143,7 @@ fn agents_never_see_private_notes_and_long_text_is_cut() {
     );
     assert_eq!(exported["isError"], true);
     assert!(!exported.to_string().contains("private"));
-    let tools = mcp::handle(&engine, &request(3, "tools/list", json!({}))).unwrap();
+    let tools = handle(&engine, &modern(3, "tools/list", json!({}))).unwrap();
     let syntaxes = &tools["result"]["tools"][2]["inputSchema"]["properties"]["syntax"]["enum"];
     assert_eq!(
         syntaxes,
@@ -214,13 +238,13 @@ fn bad_calls_are_tool_errors_without_library_text() {
     assert_eq!(both["isError"], true);
     let limit = tool(&engine, "search", json!({"query":"sleep","limit":1000}));
     assert_eq!(limit["isError"], true);
-    let unknown = mcp::handle(
+    let unknown = handle(
         &engine,
-        &request(5, "tools/call", json!({"name":"delete","arguments":{}})),
+        &modern(5, "tools/call", json!({"name":"delete","arguments":{}})),
     )
     .unwrap();
     assert_eq!(unknown["error"]["code"], -32602);
-    let batch = mcp::handle(&engine, &json!([request(6, "ping", json!({}))])).unwrap();
+    let batch = handle(&engine, &json!([request(6, "ping", json!({}))])).unwrap();
     assert_eq!(batch["error"]["code"], -32600);
 }
 
@@ -316,20 +340,20 @@ fn every_answer_is_bounded() {
 #[test]
 fn malformed_messages_are_answered() {
     let (_dir, engine) = engine();
-    let bad_method = mcp::handle(&engine, &json!({"jsonrpc":"2.0","id":7,"method":123})).unwrap();
+    let bad_method = handle(&engine, &json!({"jsonrpc":"2.0","id":7,"method":123})).unwrap();
     assert_eq!(
         bad_method,
         json!({"jsonrpc":"2.0","id":7,"error":{"code":-32600,"message":"Invalid Request"}})
     );
-    let no_method = mcp::handle(&engine, &json!({"jsonrpc":"2.0","id":"eight"})).unwrap();
+    let no_method = handle(&engine, &json!({"jsonrpc":"2.0","id":"eight"})).unwrap();
     assert_eq!(no_method["id"], "eight");
     assert_eq!(no_method["error"]["code"], -32600);
-    let bad_id = mcp::handle(&engine, &json!({"jsonrpc":"2.0","id":[1],"method":7})).unwrap();
+    let bad_id = handle(&engine, &json!({"jsonrpc":"2.0","id":[1],"method":7})).unwrap();
     assert_eq!(bad_id["id"], Value::Null);
-    let old_version = mcp::handle(&engine, &json!({"id":{"invented":1},"method":"ping"})).unwrap();
+    let old_version = handle(&engine, &json!({"id":{"invented":1},"method":"ping"})).unwrap();
     assert_eq!(old_version["id"], Value::Null);
     // A response to a request the server never sent needs no answer.
-    assert_eq!(mcp::handle(&engine, &json!({"jsonrpc":"2.0","id":1,"result":{}})), None);
+    assert_eq!(handle(&engine, &json!({"jsonrpc":"2.0","id":1,"result":{}})), None);
 }
 
 #[test]
@@ -342,4 +366,209 @@ fn an_override_cannot_slip_past_the_formatter_checks() {
     );
     let cited = tool(&engine, "cite", json!({"items":[{"id":item_id(&engine)}]}));
     assert_eq!(cited["isError"], true);
+}
+
+fn modern(id: u64, method: &str, mut params: Value) -> Value {
+    params["_meta"] = json!({
+        "io.modelcontextprotocol/protocolVersion": mcp::PROTOCOL_VERSION,
+        "io.modelcontextprotocol/clientInfo": {"name": "test", "version": "1"},
+        "io.modelcontextprotocol/clientCapabilities": {}
+    });
+    request(id, method, params)
+}
+
+#[test]
+fn a_2026_client_works_without_a_handshake() {
+    let (_dir, engine) = engine();
+    let discover = handle(&engine, &modern(1, "server/discover", json!({}))).unwrap();
+    let result = &discover["result"];
+    assert_eq!(result["resultType"], "complete");
+    assert_eq!(
+        result["supportedVersions"],
+        json!([mcp::PROTOCOL_VERSION, mcp::LEGACY_VERSIONS[0], mcp::LEGACY_VERSIONS[1]])
+    );
+    assert_eq!(result["capabilities"], json!({"tools": {}}));
+    assert_eq!(result["_meta"]["io.modelcontextprotocol/serverInfo"]["name"], "ibis");
+    assert_eq!(result["cacheScope"], "public");
+    assert!(result["ttlMs"].as_u64().is_some());
+
+    let list = handle(&engine, &modern(2, "tools/list", json!({}))).unwrap();
+    assert_eq!(list["result"]["resultType"], "complete");
+    assert!(list["result"]["ttlMs"].as_u64().is_some());
+    assert_eq!(list["result"]["cacheScope"], "public");
+    // The same tools in the same order as for older clients, so caches agree.
+    let legacy = mcp::handle(&engine, &mut initialized(&engine), &request(3, "tools/list", json!({}))).unwrap();
+    assert_eq!(list["result"]["tools"], legacy["result"]["tools"]);
+    assert!(legacy["result"].get("ttlMs").is_none());
+
+    let call = handle(
+        &engine,
+        &modern(4, "tools/call", json!({"name":"search","arguments":{"query":"sleep"}})),
+    )
+    .unwrap();
+    assert_eq!(call["result"]["resultType"], "complete");
+    assert_eq!(call["result"]["structuredContent"]["hits"][0]["key"], "demo2026");
+    assert_eq!(
+        call["result"]["_meta"]["io.modelcontextprotocol/serverInfo"]["name"],
+        "ibis"
+    );
+
+    // Handshake-only methods do not exist for a stateless request.
+    for method in ["initialize", "ping"] {
+        let reply = handle(&engine, &modern(5, method, json!({}))).unwrap();
+        assert_eq!(reply["error"]["code"], -32601, "{method}");
+    }
+}
+
+#[test]
+fn an_unknown_revision_is_refused_with_the_supported_list() {
+    let (_dir, engine) = engine();
+    for requested in [json!("1900-01-01"), json!("2025-06-18")] {
+        let mut message = modern(1, "tools/list", json!({}));
+        message["params"]["_meta"]["io.modelcontextprotocol/protocolVersion"] = requested.clone();
+        let reply = handle(&engine, &message).unwrap();
+        assert_eq!(reply["id"], 1);
+        assert_eq!(reply["error"]["code"], -32022);
+        assert_eq!(reply["error"]["data"]["requested"], requested);
+        assert_eq!(reply["error"]["data"]["supported"][0], mcp::PROTOCOL_VERSION);
+        assert!(reply.get("result").is_none());
+    }
+    // A notification with an unknown revision still gets no answer.
+    let mut notification = modern(1, "notifications/cancelled", json!({}));
+    notification.as_object_mut().unwrap().remove("id");
+    notification["params"]["_meta"]["io.modelcontextprotocol/protocolVersion"] = json!("1900-01-01");
+    assert_eq!(handle(&engine, &notification), None);
+}
+
+#[test]
+fn a_request_without_the_fields_its_revision_requires_is_refused() {
+    let (_dir, engine) = engine();
+    let mut no_capabilities = modern(1, "tools/list", json!({}));
+    no_capabilities["params"]["_meta"]
+        .as_object_mut()
+        .unwrap()
+        .remove("io.modelcontextprotocol/clientCapabilities");
+    let mut numeric = modern(2, "tools/list", json!({}));
+    numeric["params"]["_meta"]["io.modelcontextprotocol/protocolVersion"] = json!(20260728);
+    // Without a version, a request belongs to an older client, which must open with initialize.
+    let unversioned = request(3, "tools/call", json!({"name":"styles","arguments":{}}));
+    for message in [no_capabilities, numeric, unversioned.clone()] {
+        let reply = handle(&engine, &message).unwrap();
+        assert_eq!(reply["error"]["code"], -32602, "{message}");
+        assert!(reply.get("result").is_none());
+    }
+    let reply = mcp::handle(&engine, &mut initialized(&engine), &unversioned).unwrap();
+    assert!(reply["result"]["content"].is_array(), "{reply}");
+}
+
+#[test]
+fn older_clients_negotiate_a_revision_they_asked_for() {
+    let (_dir, engine) = engine();
+    for version in mcp::LEGACY_VERSIONS {
+        let reply = handle(
+            &engine,
+            &request(
+                1,
+                "initialize",
+                json!({"protocolVersion":version,"capabilities":{},"clientInfo":{"name":"t","version":"1"}}),
+            ),
+        )
+        .unwrap();
+        assert_eq!(reply["result"]["protocolVersion"], version);
+        assert_eq!(reply["result"]["serverInfo"]["name"], "ibis");
+    }
+    // The 2026 revision has no handshake, so asking for it there gets the newest handshake revision.
+    let mut session = mcp::Session::default();
+    let reply = mcp::handle(
+        &engine,
+        &mut session,
+        &request(
+            2,
+            "initialize",
+            json!({"protocolVersion":mcp::PROTOCOL_VERSION,"capabilities":{},"clientInfo":{"name":"t","version":"1"}}),
+        ),
+    )
+    .unwrap();
+    assert_eq!(reply["result"]["protocolVersion"], mcp::LEGACY_VERSIONS[0]);
+    assert_eq!(
+        mcp::handle(&engine, &mut session, &request(3, "ping", json!({}))).unwrap()["result"],
+        json!({})
+    );
+}
+
+#[test]
+fn only_a_complete_handshake_opens_the_process_to_older_requests() {
+    let (_dir, engine) = engine();
+    let unversioned = request(9, "tools/call", json!({"name":"styles","arguments":{}}));
+    let client = json!({"name":"t","version":"1"});
+    for params in [
+        json!({}),
+        json!({"protocolVersion":20250618,"capabilities":{},"clientInfo":client}),
+        json!({"protocolVersion":mcp::LEGACY_VERSIONS[0],"clientInfo":client}),
+        json!({"protocolVersion":mcp::LEGACY_VERSIONS[0],"capabilities":{}}),
+        json!({"protocolVersion":mcp::LEGACY_VERSIONS[0],"capabilities":{},"clientInfo":{}}),
+        json!({"protocolVersion":mcp::LEGACY_VERSIONS[0],"capabilities":{},"clientInfo":{"name":5,"version":[]}}),
+    ] {
+        let mut session = mcp::Session::default();
+        let reply = mcp::handle(&engine, &mut session, &request(1, "initialize", params.clone())).unwrap();
+        assert_eq!(reply["error"]["code"], -32602, "{params}");
+        let reply = mcp::handle(&engine, &mut session, &unversioned).unwrap();
+        assert_eq!(
+            reply["error"]["code"], -32602,
+            "a refused handshake opened the process: {params}"
+        );
+    }
+    // An older client may check the server is alive before it opens.
+    let reply = handle(&engine, &request(2, "ping", json!({}))).unwrap();
+    assert_eq!(reply["result"], json!({}));
+    let mut bare = request(3, "ping", json!({}));
+    bare.as_object_mut().unwrap().remove("params");
+    assert_eq!(handle(&engine, &bare).unwrap()["result"], json!({}));
+    // A ping of the wrong shape is refused, and opens nothing either way.
+    for params in [json!(null), json!([]), json!({"_meta":[]})] {
+        let mut session = mcp::Session::default();
+        let reply = mcp::handle(&engine, &mut session, &request(4, "ping", params.clone())).unwrap();
+        assert_eq!(reply["error"]["code"], -32602, "{params}");
+        let reply = mcp::handle(&engine, &mut session, &unversioned).unwrap();
+        assert_eq!(reply["error"]["code"], -32602, "{params}");
+    }
+}
+
+#[test]
+fn every_tool_answer_has_the_fields_its_output_schema_requires() {
+    let (_dir, engine) = engine();
+    let tools = handle(&engine, &modern(1, "tools/list", json!({}))).unwrap()["result"]["tools"].clone();
+    let id = tool(&engine, "search", json!({"query":"sleep"}))["structuredContent"]["hits"][0]["id"].clone();
+    let calls = [
+        ("search", json!({"query":"sleep"})),
+        ("show", json!({"item":{"key":"demo2026"}})),
+        ("show", json!({"item":{"id":id}})),
+        ("cite", json!({"items":[{"key":"demo2026"}]})),
+        ("cite", json!({"items":[{"key":"demo2026"}],"syntax":"pandoc"})),
+        ("styles", json!({})),
+    ];
+    for (name, arguments) in calls {
+        let schema = tools
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|tool| tool["name"] == name)
+            .unwrap()["outputSchema"]
+            .clone();
+        assert_eq!(schema["type"], "object", "{name}");
+        let answer = tool(&engine, name, arguments);
+        assert_eq!(answer["isError"], false, "{name}: {answer}");
+        let content = &answer["structuredContent"];
+        for field in schema["required"].as_array().unwrap() {
+            assert!(content.get(field.as_str().unwrap()).is_some(), "{name} lacks {field}");
+        }
+        if name == "search" {
+            for field in schema["properties"]["hits"]["items"]["required"].as_array().unwrap() {
+                assert!(
+                    content["hits"][0].get(field.as_str().unwrap()).is_some(),
+                    "hit lacks {field}"
+                );
+            }
+        }
+    }
 }

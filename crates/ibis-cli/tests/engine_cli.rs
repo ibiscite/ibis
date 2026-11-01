@@ -95,12 +95,21 @@ fn schema_matches_the_published_contract() {
 
 #[test]
 fn search_and_call_use_the_same_versioned_results() {
-    let search = ibis(&["search", "no matches", "--json"]);
-    let call = ibis(&["call", "search", "--params", r#"{"query":"no matches"}"#, "--json"]);
+    // Named, so the test never reads the app's settings on the machine running it.
+    let empty = "--file=../../fixtures/bibtex/empty.bib";
+    let search = ibis(&["search", "no matches", "--json", empty]);
+    let call = ibis(&[
+        "call",
+        "search",
+        "--params",
+        r#"{"query":"no matches"}"#,
+        "--json",
+        empty,
+    ]);
     assert!(search.status.success());
     assert!(call.status.success());
     assert_eq!(search.stdout, call.stdout);
-    let missing = ibis(&["show", "missing", "--json"]);
+    let missing = ibis(&["show", "missing", "--json", empty]);
     assert_eq!(missing.status.code(), Some(4));
 }
 
@@ -112,7 +121,7 @@ fn request_input_is_bounded_and_rejects_ambiguous_json_without_echoing_it() {
         "x".repeat(1024 * 1024 + 1),
     ] {
         let mut child = Command::new(env!("CARGO_BIN_EXE_ibis"))
-            .args(["cite", "--request", "--json"])
+            .args(["cite", "--request", "--json", "--file=../../fixtures/bibtex/empty.bib"])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -300,9 +309,11 @@ fn mcp_serves_agents_from_the_files_given() -> Result<(), Box<dyn std::error::Er
         .spawn()?;
     let mut stdin = child.stdin.take().ok_or("stdin")?;
     for message in [
-        json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":ibis_engine::mcp::PROTOCOL_VERSION,"capabilities":{},"clientInfo":{"name":"test","version":"1"}}}),
+        json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":ibis_engine::mcp::LEGACY_VERSIONS[0],"capabilities":{},"clientInfo":{"name":"test","version":"1"}}}),
         json!({"jsonrpc":"2.0","method":"notifications/initialized"}),
         json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"cite","arguments":{"items":[{"key":"accents2021"}],"syntax":"pandoc"}}}),
+        // A 2026-07-28 client in the same process: no handshake, the revision in `_meta`.
+        json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"cite","arguments":{"items":[{"key":"accents2021"}],"syntax":"pandoc"},"_meta":{"io.modelcontextprotocol/protocolVersion":ibis_engine::mcp::PROTOCOL_VERSION,"io.modelcontextprotocol/clientCapabilities":{}}}}),
     ] {
         writeln!(stdin, "{message}")?;
     }
@@ -314,8 +325,14 @@ fn mcp_serves_agents_from_the_files_given() -> Result<(), Box<dyn std::error::Er
         .lines()
         .map(serde_json::from_str)
         .collect::<Result<_, _>>()?;
-    assert_eq!(replies.len(), 2);
+    assert_eq!(replies.len(), 3);
+    assert_eq!(
+        replies[0]["result"]["protocolVersion"],
+        ibis_engine::mcp::LEGACY_VERSIONS[0]
+    );
     assert_eq!(replies[1]["result"]["structuredContent"]["text"], "[@accents2021]");
+    assert_eq!(replies[2]["result"]["structuredContent"]["text"], "[@accents2021]");
+    assert_eq!(replies[2]["result"]["resultType"], "complete");
     Ok(())
 }
 
