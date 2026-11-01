@@ -111,7 +111,7 @@ them before any later delivery; it sends no new paste while they remain blocked.
 | Selection [D7] | `--selected`, `--selected-text`, `--selected-text-secondary`, `--row-inactive-background` | See **Selection and focus**. |
 | Focus [D8] | `--ring`, `--ring-offset`, `--ring-shadow` | See **Selection and focus**. |
 | Fills | `--fill-1` … `--fill-5`; roles `--fill-control(-hover/-pressed)`, `--fill-quiet-hover`, `--fill-primary-*`, `--fill-disabled` | Apple's fill ladder (system, secondary, tertiary, quaternary, quinary fill), black on light and white on dark at the Mac's own alphas. Roles only point at the ladder: control rest, hover and pressed are tertiary, secondary and system fill; quiet row hover and grouped content are quaternary. Pressed is darker on macOS and GNOME, lighter on Windows. |
-| Strokes | `--separator`, `--stroke-field`, `--border-width`, `--contrast-border-width` | Two strokes: the separator (Apple's separator colour) for hairlines and dividers, and a field edge that meets 3:1. Never a coloured border on a control. On macOS a hairline or a shadow, never both with a fill. |
+| Strokes | `--separator`, `--stroke-field`, `--border-width`, `--contrast-border-width` | Two strokes: the separator (Apple's separator colour) for hairlines and dividers, and a field edge that meets 3:1. Never a coloured border on a control. **One edge per shape** (maintainer, 2026-11-01, on lines doubling up): a shape's edge is exactly one of a border, an inset shadow or an overlay's shadow ring (on macOS with the glass edge), never two stacked, so translucent edges never paint twice and nested content keeps its exact gap. A divider is one element owned by one side; two neighbours never both draw it. |
 | Citation [D9] | `--scarlet`, `--scarlet-tile`, `--on-scarlet` | Scarlet; see **Colour roles**. |
 | Status [D10] | `--done`, `--look`, `--stop` | Ibis-owned hues, always with words or an icon. Look is a golden amber, `#b07a00` light and `#f5c542` dark (maintainer asked for lighter, 2026-10-30), at least 3:1 as a glyph. Stop is a rose kept apart from scarlet and from Fluent's and Adwaita's red. Info is `--accent-text`. |
 | Progress | `--progress-track`, `--progress-fill`, `--progress-border`, `--progress-border-width` | Accent fill on a quiet track; contrast modes use Canvas with CanvasText fill and edge. |
@@ -642,7 +642,12 @@ appears on a control.
 
 **Icons.** Ibis's own drawings on every platform: 20 px grid, 1.5 px rounded
 stroke (1.6 px macOS, 1 px Windows, 16 px symbolic `ibis-…-symbolic` on GNOME);
-"on" is the filled form. Seven type icons (article, book, chapter, thesis, web
+"on" is the filled form. Each icon is **one path** from one icon source
+(maintainer, 2026-11-01): an outline icon is a single stroked path, and a
+filled icon is a single filled path with no stroke on top. Apple's label
+colours are translucent, so two overlapping strokes, or a stroke over a fill,
+paint twice and show a brighter seam; a test rejects icons with more than one
+shape. Brand marks from `brand/` are opaque and exempt. Seven type icons (article, book, chapter, thesis, web
 page, report, other) never reuse an attachment drawing. Platform icons only
 where the platform owns the meaning.
 
