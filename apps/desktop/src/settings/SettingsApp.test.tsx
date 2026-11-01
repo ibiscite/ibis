@@ -1458,3 +1458,13 @@ test("a delayed accent read cannot replace the newer Ibis choice or its reopened
   render(<SettingsApp api={api} initialPage="look" />);
   expect(await screen.findByRole("radio", { name: "Ibis scarlet" })).toHaveProperty("checked", true);
 });
+
+test("About copies the version and says so", async () => {
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+  const pseudo = createInterfaceMessages(english, true);
+  render(<InterfaceMessagesProvider messages={pseudo}><SettingsApp api={fakeApi().api} initialPage="about" /></InterfaceMessagesProvider>);
+  fireEvent.click(await screen.findByRole("button", { name: pseudo.text("about-copy") }));
+  await screen.findByRole("button", { name: pseudo.text("about-copied") });
+  expect(writeText).toHaveBeenCalledOnce();
+});
