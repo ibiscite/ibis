@@ -1073,6 +1073,28 @@ fades of at most 100 ms. Never animated: list content while typing, row height,
 the caret, layout on hover, the citation text, ticking counts, focus rings,
 anything over 280 ms, anything that loops except a busy indicator.
 
+## Small delights
+
+Proposed 2026-11-01; the canvas's Small delights board lists them. Every delight
+lives only in About, the welcome, status lines or feedback that already exists;
+never changes search results, what is copied or pasted, or focus; happens once,
+quietly, inside the motion cap; shows its end state under Reduce Motion; never
+loops or plays a sound; and is counted only on this Mac.
+
+- **Feel:** a pressed shortcut gives its footer key cap the pressed fill for
+  100 ms; the menu bar mark dips its beak once after a paste or copy; a haptic
+  alignment tick when a citation segment or the window snaps into place; holding
+  ⌘ for one second shows every visible action's key.
+- **Saves time:** Services › Search with Ibis from selected text; a `.bib` or
+  CSL-JSON file dropped on the Dock icon becomes a library; ⌥ on About shows
+  the full version, build and date, and a click copies it; one next-step tip
+  after the first paste, shown once.
+- **Fun:** clicking the About icon makes the ibis blink once, and five clicks
+  show "Ancient Egyptians linked the ibis with Thoth, god of writing."; the
+  mark pecks once when a library first finishes opening; a library's status line
+  notes its first 1,000 and 10,000 references once.
+- **Left out:** confetti, sounds, seasonal themes and joke search results.
+
 ## Accessibility
 
 Every action has a key, discoverable on screen; focus, contrast and screen
