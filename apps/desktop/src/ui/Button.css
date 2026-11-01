@@ -15,7 +15,7 @@
 .ui-button[data-variant="quiet"], .ui-button[data-variant="icon"] { background: transparent; border-color: transparent; color: var(--control-icon-color, var(--text-secondary)); }
 .ui-button[data-variant="primary"], .ui-button[data-variant="secondary"] { min-width: 4rem; }
 .ui-button[data-variant="icon"] { min-width: var(--control-h); padding: 0; }
-.ui-button[data-variant="primary"] { background: var(--accent); color: var(--text-on-accent); border-color: transparent; font-weight: var(--strong); }
+.ui-button[data-variant="primary"] { background: var(--primary); color: var(--text-on-accent); border-color: transparent; font-weight: var(--strong); }
 @media (hover: hover) {
   .ui-button[data-hovered]:not([data-disabled], [aria-disabled="true"]) { background: var(--fill-control-hover); }
   .ui-button:is([data-variant="quiet"], [data-variant="icon"])[data-hovered]:not([data-disabled], [aria-disabled="true"]) { background: var(--fill-quiet-hover); color: var(--control-icon-hover-color, var(--text)); }

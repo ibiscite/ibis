@@ -150,7 +150,7 @@ test.each([["--text", 4.5], ["--scarlet", 3], ["--done", 3], ["--look", 3], ["--
   });
 
 const colour = "(#[0-9a-f]{3,6})";
-const roles = [...tokens.replaceAll("var(--ibis)", "#c23a1c").matchAll(new RegExp(`:root\\[data-accent="([a-z]+)"\\] \\{ --ac: (?:light-dark\\()?${colour}(?:, ${colour}\\))?; --ac-selected: light-dark\\(${colour}, ${colour}\\); --ac-text: light-dark\\(${colour}, ${colour}\\);( --ac-on: light-dark\\(${colour}, ${colour}\\);)? \\}`, "g"))];
+const roles = [...tokens.replaceAll("var(--ibis)", "#c23a1c").matchAll(new RegExp(`:root\\[data-accent="([a-z]+)"\\] \\{ --ac: (?:light-dark\\()?${colour}(?:, ${colour}\\))?; --ac-selected: light-dark\\(${colour}, ${colour}\\); --ac-text: light-dark\\(${colour}, ${colour}\\);( --ac-on: light-dark\\(${colour}, ${colour}\\);)?(?: --ac-fill: var\\(--ac-selected\\);)? \\}`, "g"))];
 const white = "#ffffff";
 const full = (hex: string) => hex.length === 4 ? `#${hex[1]}${hex[1]}${hex[2]}${hex[2]}${hex[3]}${hex[3]}` : hex;
 
@@ -163,6 +163,8 @@ test.each(roles.map((role) => [role[1]!, role] as const))("%s keeps its roles re
     expect(contrast(on, selected), `selection text, mode ${mode}`).toBeGreaterThanOrEqual(4.5);
     expect(contrast(text, surfaces[mode]!), `accent text, mode ${mode}`).toBeGreaterThanOrEqual(4.5);
     expect(contrast(accent, surfaces[mode]!), `accent as a control, mode ${mode}`).toBeGreaterThanOrEqual(3);
+    const line = tokens.match(new RegExp(`\\[data-accent="${role[1]}"\\][^\\n]*`))![0];
+    expect(contrast(on, line.includes("--ac-fill") ? selected : accent), `primary button, mode ${mode}`).toBeGreaterThanOrEqual(3);
   });
 });
 

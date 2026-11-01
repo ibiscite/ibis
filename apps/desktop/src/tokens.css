@@ -199,14 +199,14 @@
 :root[data-accent="purple"] { --ac: light-dark(#953d96, #a550a7); --ac-selected: light-dark(#953d96, #904291); --ac-text: light-dark(#953d96, #bd71bf); }
 :root[data-accent="pink"] { --ac: light-dark(#f74f9e, #f74f9e); --ac-selected: light-dark(#e4086c, #e4086c); --ac-text: light-dark(#e4086c, #f74f9e); }
 :root[data-accent="red"] { --ac: light-dark(#e0383e, #ff5257); --ac-selected: light-dark(#de3036, #e80005); --ac-text: light-dark(#dd2c32, #ff5257); }
-:root[data-accent="orange"] { --ac: light-dark(#e77008, #f7821b); --ac-selected: light-dark(#b55c08, #b55c08); --ac-text: light-dark(#b55c08, #f7821b); }
-:root[data-accent="yellow"] { --ac: light-dark(#b48a00, #ffc600); --ac-selected: light-dark(#916e00, #916e00); --ac-text: light-dark(#916e00, #ffc600); }
-:root[data-accent="green"] { --ac: light-dark(#56a33f, #62ba46); --ac-selected: light-dark(#468337, #468337); --ac-text: light-dark(#447f35, #62ba46); }
+:root[data-accent="orange"] { --ac: light-dark(#e77008, #f7821b); --ac-selected: light-dark(#b55c08, #b55c08); --ac-text: light-dark(#b55c08, #f7821b); --ac-fill: var(--ac-selected); }
+:root[data-accent="yellow"] { --ac: light-dark(#b48a00, #ffc600); --ac-selected: light-dark(#916e00, #916e00); --ac-text: light-dark(#916e00, #ffc600); --ac-fill: var(--ac-selected); }
+:root[data-accent="green"] { --ac: light-dark(#56a33f, #62ba46); --ac-selected: light-dark(#468337, #468337); --ac-text: light-dark(#447f35, #62ba46); --ac-fill: var(--ac-selected); }
 :root[data-accent="graphite"] { --ac: light-dark(#8c8c8c, #8c8c8c); --ac-selected: light-dark(#747474, #747474); --ac-text: light-dark(#747474, #8c8c8c); }
 @supports (color: light-dark(white, black)) {
   @media (prefers-contrast: no-preference) and (forced-colors: none) {
     :root[data-appearance][data-accent]:not([data-accent="system"]):not(.notice-window) {
-      --accent: var(--ac); --selected: var(--ac-selected); --accent-text: var(--ac-text); --ring: color-mix(in srgb, var(--ac) 50%, transparent); --selected-text: var(--ac-on, #fff); --text-on-accent: var(--ac-on, #fff);
+      --accent: var(--ac); --primary: var(--ac-fill, var(--ac)); --selected: var(--ac-selected); --accent-text: var(--ac-text); --ring: color-mix(in srgb, var(--ac) 50%, transparent); --selected-text: var(--ac-on, #fff); --text-on-accent: var(--ac-on, #fff);
     }
   }
 }
@@ -229,8 +229,9 @@
   --r-key: max(var(--r-floor-mark), calc(var(--r-action) - var(--key-gap)));
   --footer-h: calc(var(--action-h) + 2 * var(--inset));
   --key-fill: var(--fill-control); --key-fill-hover: var(--fill-control-hover); --key-fill-pressed: var(--fill-control-pressed);
-  --accent-hover: color-mix(in srgb, var(--accent) 90%, black);
-  --accent-pressed: color-mix(in srgb, var(--accent) 80%, black);
+  --primary: var(--accent);
+  --accent-hover: color-mix(in srgb, var(--primary) 90%, black);
+  --accent-pressed: color-mix(in srgb, var(--primary) 80%, black);
 }
 
 /* The website's reading rhythm; page composition stays in website/style.css. */
