@@ -324,7 +324,6 @@ fn refusal(error: CitationError, label: &str, output: &str, form: CitationForm, 
     }
 }
 
-/// The fallback sentence for each contract error code.
 /// Fixed words for output that could not be written; the OS message is not repeated.
 pub(super) fn write_failure(error: &std::io::Error) -> &'static str {
     if error.kind() == std::io::ErrorKind::StorageFull {
@@ -334,6 +333,7 @@ pub(super) fn write_failure(error: &std::io::Error) -> &'static str {
     }
 }
 
+/// The fallback sentence for each contract error code.
 pub(super) fn code_sentence(code: ErrorCode) -> &'static str {
     match code {
         ErrorCode::Usage => "the command is not valid; see: ibis --help",

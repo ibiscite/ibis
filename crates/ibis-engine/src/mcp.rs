@@ -422,7 +422,7 @@ fn call(engine: &Engine, name: &str, arguments: &Value) -> Value {
 fn tool_error_hint(code: ErrorCode) -> &'static str {
     match code {
         ErrorCode::Usage | ErrorCode::BadInput => {
-            "The arguments do not fit this tool's input schema; check names, types and limits, and give cite either a style or a syntax, not both."
+            "The arguments do not fit this tool's input schema; check the names, types, limits and combinations it allows."
         }
         ErrorCode::NotFound => "No reference matched; use a key or id that search returned.",
         ErrorCode::SourceUnavailable => "The library could not be read right now; try again shortly.",

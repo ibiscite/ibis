@@ -103,7 +103,7 @@ The envelope looks like this:
 | 5 | `source-unavailable` | A library could not be read right now. |
 | 5 | `resource-limit` | The request or its result is too large. |
 | 6 | `newer-format` | A newer Ibis wrote this data. |
-| 70 | `internal` | The output could not be written (stderr says why), or a bug in Ibis; please [report it](https://github.com/ibiscite/ibis/issues). |
+| 70 | `internal` | The output could not be written (stderr says why, unless the reader closed the pipe), or a bug in Ibis; please [report it](https://github.com/ibiscite/ibis/issues). |
 | 130 | `cancelled` | The request was cancelled. |
 
 Input JSON is at most 1 MiB and duplicate members are refused. A response is at most
@@ -122,10 +122,10 @@ ibis search "memory" --file refs.bib --limit 5 --json | jq -r '.data.hits[].item
 key=$(ibis search "garcia 2021" --file refs.bib --json | jq -r '.data.hits[0].item.object.data.citation_keys[0].value')
 ibis cite "$key" --file refs.bib --style apa
 
-# Branch on the exit status, not on the wording; 1 still printed a result
+# Branch on the exit status, not on the wording; 1 may still hold a citation
 out=$(ibis cite smith2020 --file refs.bib --json)
 case $? in
-  0 | 1) jq -r .data.text <<<"$out" ;;
+  0 | 1) jq -er '.data.text | select(. != "")' <<<"$out" || echo "refused; see .data.outcomes" ;;
   4) echo "no such key" ;;
   *) jq -r .error.code <<<"$out" ;;
 esac

@@ -126,11 +126,13 @@ fn config_check(path: Option<&Path>) -> Value {
     // Within the filesystem deadline: a stalled disk reports unreadable, never hangs.
     let owned = path.to_owned();
     let Some(loaded) = crate::bounded(move || settings::load(&owned)) else {
-        return check(
+        let mut result = check(
             "failed",
             "config-unreadable",
             "The chosen config could not be read in time. It was left unchanged.",
         );
+        result["from_backup"] = json!(false);
+        return result;
     };
     let mut result = match loaded.problem.as_ref() {
         None if loaded.primary_read == settings::PrimaryRead::Missing => {
