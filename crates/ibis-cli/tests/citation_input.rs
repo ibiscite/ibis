@@ -61,7 +61,17 @@ fn canonical_citation_golden_cases_replay_through_the_cli() -> Result<(), Box<dy
         let mut expected = ibis_engine::wire::encode(&serde_json::to_value(&case.expected)?, 16 * 1024 * 1024)?;
         expected.push(b'\n');
         assert_eq!(output, expected, "{}", case.name);
-        assert!(errors.is_empty(), "{}", case.name);
+        // Errors also say what went wrong on stderr, in one line; successes stay silent there.
+        if case.expected.error().is_some() {
+            let errors = String::from_utf8(errors)?;
+            assert!(
+                errors.starts_with("ibis: ") && errors.ends_with('\n') && errors.lines().count() == 1,
+                "{}: {errors}",
+                case.name
+            );
+        } else {
+            assert!(errors.is_empty(), "{}", case.name);
+        }
     }
     Ok(())
 }

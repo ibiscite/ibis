@@ -27,7 +27,12 @@ fn cli(engine: Engine) -> (u8, Vec<u8>) {
         &mut errors,
         ibis::OutputMode::Plain,
     );
-    assert!(errors.is_empty());
+    // Only a failure explains itself on stderr, in one line.
+    assert_eq!(errors.is_empty(), code == 0);
+    assert!(
+        errors.is_empty()
+            || (errors.starts_with(b"ibis: ") && errors.iter().filter(|byte| **byte == b'\n').count() == 1)
+    );
     (code, output)
 }
 fn rpc(engine: Engine) -> Value {
@@ -174,7 +179,7 @@ fn renderer_and_transport_quotas_are_resource_errors_on_real_cli_and_stdio() {
         );
         let output = native_cite(&path, &params);
         let response = native_cite_rpc(&path, &params);
-        assert!(output.stderr.is_empty());
+        assert_eq!(output.stderr.is_empty(), count == 1, "{count}");
         if count == 1 {
             assert!(output.status.success());
             assert!(response.get("result").is_some());

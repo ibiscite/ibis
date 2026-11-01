@@ -70,7 +70,8 @@ fn every_method_is_listed_and_json_usage_errors_are_envelopes() {
         let value: Value =
             serde_json::from_slice(&output.stdout).unwrap_or_else(|error| panic!("{error}: {:?}", output.stdout));
         assert_eq!(value, json!({"ibis":1,"ok":false,"error":{"code":"usage"}}));
-        assert!(output.stderr.is_empty());
+        // The stable code is on stdout; the sentence that names the argument is on stderr.
+        assert!(output.stderr.starts_with(b"ibis: "), "{:?}", output.stderr);
     }
 }
 #[test]
@@ -128,7 +129,10 @@ fn request_input_is_bounded_and_rejects_ambiguous_json_without_echoing_it() {
             serde_json::from_slice::<Value>(&output.stdout).unwrap_or_else(|error| panic!("{error}")),
             json!({"ibis":1,"ok":false,"error":{"code":"bad-input"}})
         );
-        assert!(output.stderr.is_empty());
+        assert_eq!(
+            output.stderr,
+            b"ibis: stdin must hold one CitationRequest JSON object; see: ibis schema cite\n"
+        );
     }
 }
 
