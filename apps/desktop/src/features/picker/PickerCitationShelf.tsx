@@ -11,8 +11,8 @@ import type { useZoteroScope } from "./useZoteroScope";
 const noSelection = new Map<string, CitationReference>();
 
 export function PickerCitationShelf({
-  state, send, showCitations, results, output, chosen, changeReference, libraryOf, format, searchPending,
-  showPastePreview, input, sourceState,
+  state, send, showCitations, results, output, chosen, changeReference, libraryOf, format,
+  input, sourceState,
 }: {
   state: ReturnType<typeof usePickerSession>["state"];
   send: ReturnType<typeof usePickerSession>["send"];
@@ -23,8 +23,6 @@ export function PickerCitationShelf({
   changeReference: ReturnType<typeof useCitationRows>["changeReference"];
   libraryOf: ReturnType<typeof useZoteroScope>["libraryOf"];
   format: Choice;
-  searchPending: boolean;
-  showPastePreview: boolean;
   input: RefObject<HTMLInputElement | null>;
   sourceState: ReturnType<typeof usePickerSource>;
 }) {
@@ -43,7 +41,7 @@ export function PickerCitationShelf({
     input.current?.focus({ preventScroll: true });
   }} highlightedReferences={selected.size === 0 ? chosen : undefined} previewReceipt={previewReceipt}
     onChangeReference={changeReference} referenceLibrary={(r) => libraryOf(r.source ?? "")} style={style} keys={keyFormat !== null}
-    shown={showCitations ? displayedOutput : undefined} searching={searchPending && showPastePreview} outputWarnings={shown && typeof shown === "object" ? shown.warnings : []}
+    shown={showCitations ? displayedOutput : undefined} outputWarnings={shown && typeof shown === "object" ? shown.warnings : []}
     problem={previewProblem} copied={showCitations ? state.shelfCopied : null} focusable={selected.size > 0} fallbackFocusRef={input}
     source={source.kind === "zotero" ? { ...sourceAction, label: pickerText.showInZotero } : sourceAction} onOpenSource={(reference) => sourceState.openReference(reference.id)} />;
 }

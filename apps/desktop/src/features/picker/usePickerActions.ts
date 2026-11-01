@@ -15,7 +15,7 @@ import type { useShortcutStatus } from "./useShortcutStatus";
 import type { useOperations } from "./useOperations";
 
 export function usePickerActions({
-  api, pickerSession, menus, libraryState, searchState, destination, shown, chosen, canPaste, shortcut,
+  api, pickerSession, menus, libraryState, searchState, destination, shown, offered, canPaste, shortcut,
   perform, dismissChooser, toggle,
 }: {
   api: PickerApi;
@@ -25,7 +25,8 @@ export function usePickerActions({
   searchState: ReturnType<typeof useLibrarySearch>;
   destination: ReturnType<typeof useDestination>;
   shown: ReturnType<typeof useCitationOutput>["shown"];
-  chosen: CitationReference[];
+  /** The citation on screen that Enter copies; it stays while a newer search runs, and Enter waits for that search. */
+  offered: CitationReference[];
   canPaste: boolean;
   shortcut: ReturnType<typeof useShortcutStatus>["shortcut"];
   perform: ReturnType<typeof useOperations>["perform"];
@@ -35,7 +36,7 @@ export function usePickerActions({
   const { session, state, send, cancelCopy } = pickerSession;
   const { pinned, input, keysOpen, menuOpen, closeKeys, closeMenu } = menus;
   const { choosingLibrary, welcomeShown, showCitations } = libraryState;
-  const { current, results, list, interpretation } = searchState;
+  const { ready, results, list, interpretation } = searchState;
   const { query, active, selected, interpretLocators } = state;
   const { format } = destination;
   const { hidePicker } = api;
@@ -50,11 +51,12 @@ export function usePickerActions({
     : KEY_TABLE;
   // What Enter does now, from the same state the copy uses; null when it does nothing.
   // A refused or stale engine preview cannot be copied.
-  const enterAction = chosen.length === 0 || shown === "stale" || shown === "failed" ? null
-    : enterLabel(format, chosen.length, destination.app, canPaste,
-      pinned || Boolean(shown && typeof shown === "object" && (shown.warnings.length || closestMatchWarnings(chosen).length)), Boolean(list && selected.size === 0));
-  const highlighted = current[active];
-  const usingLocator = current === results && interpretLocators && showCitations ? interpretation?.locator : null;
+  const enterAction = offered.length === 0 || shown === "stale" || shown === "failed" ? null
+    : enterLabel(format, offered.length, destination.app, canPaste,
+      pinned || Boolean(shown && typeof shown === "object" && (shown.warnings.length || closestMatchWarnings(offered).length)), Boolean(list && selected.size === 0));
+  // Only a row that answers the current query can be added or given a locator.
+  const highlighted = ready ? results[active] : undefined;
+  const usingLocator = ready && interpretLocators && showCitations ? interpretation?.locator : null;
   const prepared = highlighted && selected.get(idKey(highlighted.id));
   const canApplyLocator = usingLocator && prepared && prepared.revision === highlighted.revision &&
     choiceKey([prepared]) !== choiceKey([{ ...highlighted, locator: usingLocator, form: prepared.form }]);
