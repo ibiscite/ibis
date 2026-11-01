@@ -55,12 +55,23 @@ pub struct ItemRef {
     pub key: String,
 }
 
+/// Lowercase hexadecimal, the form every fingerprint has always used.
+fn hex(bytes: &[u8]) -> String {
+    use std::fmt::Write;
+    bytes
+        .iter()
+        .fold(String::with_capacity(bytes.len() * 2), |mut out, byte| {
+            let _ = write!(out, "{byte:02x}");
+            out
+        })
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
 pub struct Fingerprint(#[schemars(regex(pattern = r"^[0-9a-f]{64}$"))] String);
 
 impl Fingerprint {
     pub fn of_bytes(bytes: &[u8]) -> Self {
-        Self(format!("{:x}", Sha256::digest(bytes)))
+        Self(hex(&Sha256::digest(bytes)))
     }
     pub fn as_str(&self) -> &str {
         &self.0
@@ -559,7 +570,7 @@ fn digest_json(value: &impl Serialize) -> Result<Fingerprint, ModelError> {
     let mut digest = std::io::BufWriter::new(Digest(Sha256::new()));
     serde_json::to_writer(&mut digest, value).map_err(|_| ModelError::InvalidObject)?;
     let digest = digest.into_inner().map_err(|_| ModelError::InvalidObject)?;
-    Ok(Fingerprint(format!("{:x}", digest.0.finalize())))
+    Ok(Fingerprint(hex(&digest.0.finalize())))
 }
 
 fn validate_value_depth(value: &Value) -> Result<(), ModelError> {
