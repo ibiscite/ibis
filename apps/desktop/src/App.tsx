@@ -758,7 +758,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
         input.current?.focus({ preventScroll: true });
       }} highlightedReferences={selected.size === 0 ? chosen : undefined} previewReceipt={previewReceipt}
         onChangeReference={changeReference} referenceLibrary={(r) => libraryOf(r.source ?? "")} style={style} keys={keyFormat !== null}
-        shown={showCitations ? displayedOutput : undefined} searching={searchPending} outputWarnings={shown && typeof shown === "object" ? shown.warnings : []}
+        shown={showCitations ? displayedOutput : undefined} searching={searchPending && showPastePreview} outputWarnings={shown && typeof shown === "object" ? shown.warnings : []}
         problem={previewProblem} copied={showCitations ? state.shelfCopied : null} focusable={selected.size > 0} fallbackFocusRef={input} />
       <PickerFooter library={library} groupName={groupName}
         status={<PickerLibraryStatus library={library} groupName={groupName} isOpen={libraryMenuOpen}
