@@ -30,7 +30,7 @@ export function PickerCitationShelf({
 }) {
   const { selected, selectionChanged } = state;
   const { previewReceipt, keyFormat, displayedOutput, shown, previewProblem } = output;
-  const { source, sourceAction, sourceOpen } = sourceState;
+  const { source, sourceAction } = sourceState;
   const style = styleOf(format);
   /** Names the library too when another chosen reference has the same key. */
   const removeLabel = (r: SearchResult) => {
