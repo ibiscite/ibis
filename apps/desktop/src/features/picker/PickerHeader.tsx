@@ -49,7 +49,7 @@ export function PickerHeader({ inputRef, query, pageToken, onQueryChange, onSear
   return (
     <header className="search-bar" data-icon={icon} data-tauri-drag-region title={pickerText.dragSearchBar}>
       {icon === "ibis" && <IbisMark className="search-mark" size="search" />}
-      {icon === "magnifier" && <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+      {icon !== "ibis" && <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor">
         <circle cx="10.5" cy="10.5" r="6.5" />
         <path d="m16 16 5 5" />
       </svg>}
