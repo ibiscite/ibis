@@ -149,6 +149,14 @@ pub(crate) fn reveal_picker(app: &AppHandle) {
     }
 }
 
+/// Give the picker the keyboard back when a dialog it owns closes.
+pub(crate) fn return_focus(app: &AppHandle) {
+    reveal_picker(app);
+    if let Some(window) = app.get_webview_window("main") {
+        report(window.set_focus(), NativeIssue::Focus);
+    }
+}
+
 /// Only a picker known to be visible keeps its presentation.
 fn reveal_shows(visible: Option<bool>) -> bool {
     visible != Some(true)

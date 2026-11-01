@@ -37,6 +37,8 @@ Nothing from your library is sent, and updates install only when you agree.";
 #[derive(Default)]
 pub(crate) struct Updates {
     automatic: AtomicBool,
+    /// The first-run question, waiting for the picker to be shown and focused.
+    question: AtomicBool,
     /// One check, consent dialog or installation at a time.
     busy: Arc<AtomicBool>,
     /// A version the person chose not to install; automatic checks don't offer it again.
@@ -118,7 +120,7 @@ pub(crate) fn start(app: &AppHandle, saved: Option<bool>, can_save: bool) {
     }
     match saved {
         Some(on) => setting::set_automatic(app, on),
-        None if can_save => ask(app),
+        None if can_save => app.state::<Updates>().question.store(true, Ordering::SeqCst),
         None => {}
     }
     let app = app.clone();
@@ -131,16 +133,6 @@ pub(crate) fn start(app: &AppHandle, saved: Option<bool>, can_save: bool) {
             std::thread::sleep(CHECK_EVERY);
         }
     });
-}
-
-/// Asked once setup has presented the picker, so the question has a window to
-/// return to.
-fn ask(app: &AppHandle) {
-    let handle = app.clone();
-    report(
-        app.run_on_main_thread(move || offer::ask_first_run(&handle)),
-        NativeIssue::Window,
-    );
 }
 
 fn present_question(
@@ -157,10 +149,15 @@ fn present_question(
             "Check Automatically".into(),
             "Not Now".into(),
         ));
-    // As with an offer, the picker stays on top of other windows on Windows.
+    // Owned by the picker like an offer, so it opens above the picker.
+    #[cfg(target_os = "macos")]
+    let dialog = {
+        crate::panel::activate_for_dialog(app);
+        dialog.parent(parent)
+    };
     #[cfg(target_os = "windows")]
     let dialog = dialog.parent(parent);
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "linux")]
     let _ = parent;
     let handle = app.clone();
     dialog.show(move |yes| {
@@ -504,6 +501,7 @@ pub(crate) fn picker_presented(app: &AppHandle) {
 /// Windows/Linux may deliver focus after the show hook has already run.
 /// A focus event re-checks pending availability, never showing or focusing a window.
 pub(crate) fn picker_focused(app: &AppHandle) {
+    offer::ask_first_run(app);
     offer::refresh_pending(app);
 }
 

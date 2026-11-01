@@ -108,6 +108,7 @@ pub(super) trait OfferUi: tauri::Runtime {
         answer: impl FnOnce(bool) + Send + 'static,
     );
     fn save_automatic(app: &AppHandle<Self>, on: bool);
+    fn return_focus(app: &AppHandle<Self>);
 }
 
 impl OfferUi for tauri::Wry {
@@ -164,21 +165,33 @@ impl OfferUi for tauri::Wry {
     fn save_automatic(app: &AppHandle<Self>, on: bool) {
         super::setting::change(app, on);
     }
+
+    fn return_focus(app: &AppHandle<Self>) {
+        crate::picker::return_focus(app);
+    }
 }
 
-/// The first-run question has no picker to fall back on: its lease keeps the
-/// picker through the blur, and answering always leaves Ibis on screen.
+/// Asked from a shown, focused picker, so a hidden start at login stays hidden.
+/// The lease keeps the picker through the dialog's blur, and the answer gives it
+/// the keyboard back. A chooser that is open leaves it for the next focus.
 pub(super) fn ask_first_run<R: OfferUi>(app: &AppHandle<R>) {
+    let updates = app.state::<Updates>();
+    if !updates.question.load(Ordering::SeqCst) {
+        return;
+    }
     let Some(parent) = app.get_webview_window("main") else {
         return;
     };
     let Some(owner) = app.state::<ChooserOpen>().begin() else {
         return;
     };
+    if !updates.question.swap(false, Ordering::SeqCst) {
+        return;
+    }
     let handle = app.clone();
     R::present_question(app, &parent, owner, move |yes| {
         R::save_automatic(&handle, yes);
-        R::reveal_picker(&handle);
+        R::return_focus(&handle);
     });
 }
 
