@@ -163,12 +163,16 @@ pub(super) fn deliver<D: Desk>(desk: &D, proof: Option<&D::Proof>, enabled: bool
                 if let Err(failure) = proof.check_age(desk.stamp()) {
                     return copied(Some(failure.reason()));
                 }
+                // A check that proved the target ready counts even when a busy
+                // system made it finish after the limit; the final guards and
+                // the paste's own deadline still decide. Only a target that is
+                // not back in time has changed.
+                if ready {
+                    break;
+                }
                 if started.elapsed() >= RETURN_LIMIT {
                     desk.stage("readiness.timeout");
                     return copied(Some(CopyReason::TargetChanged));
-                }
-                if ready {
-                    break;
                 }
                 if checks >= RETURN_CHECKS {
                     desk.stage("readiness.timeout");

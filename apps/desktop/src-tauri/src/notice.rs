@@ -3,9 +3,8 @@
 //!
 //! It is a second, small window drawn by Ibis. It never takes focus, so the
 //! editor that focus was just returned to keeps it, and it is left out of the
-//! taskbar, the Dock and Alt+Tab. Each platform shows it where its own
-//! notices appear: a pill near the top on macOS, a card at the bottom right
-//! on Windows and a toast at the bottom on Linux, on the picker's display.
+//! taskbar, the Dock and Alt+Tab. It is the same card near the top centre of
+//! the picker's display on every system (docs/design.md).
 
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
