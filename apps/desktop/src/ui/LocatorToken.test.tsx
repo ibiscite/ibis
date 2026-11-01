@@ -24,5 +24,5 @@ test.each(["Enter", " "])("a long mixed-script locator retains its full name and
   expect(css).toContain("text-overflow: ellipsis");
   expect(css).toContain("--locator-token-hit-size: var(--control-h)");
   expect(css).toContain("--locator-token-hit-size: var(--touch-target)");
-  expect(css).toContain("padding-inline-end: calc(var(--locator-token-hit-size) - var(--chip-h))");
+  expect(css).toContain("padding-inline-end: calc(var(--locator-token-hit-size) - var(--control-small-h))");
 });

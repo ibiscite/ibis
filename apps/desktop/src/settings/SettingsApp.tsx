@@ -398,7 +398,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
         onUndo={() => changeShortcut(shortcutUndo, true, undoTicket)}
         onExpire={() => { if (undoTicket === shortcutUndoTicket.current) clearShortcutUndo(); }} />}
       <main ref={pageRef} className="settings-page" aria-labelledby="settings-page-title">
-        <h1 id="settings-page-title" className={page === "about" ? "ui-visually-hidden" : "settings-page-title"}>{text(`settings-${page}`)}</h1>
+        <h1 id="settings-page-title" className={page === "about" ? "visually-hidden" : "settings-page-title"}>{text(`settings-${page}`)}</h1>
         {preference.status === "unknown" && preference.message && <p className="settings-problem" role="alert">{text(preference.message)}</p>}
         {detour && returnFailed && <p className="settings-problem" role="alert">{text("general-paste-return-failed")}</p>}
         {page === "general" && (

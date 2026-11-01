@@ -491,7 +491,8 @@ test("rows keep equal insets, fit intrinsic labels to the viewport and wrap at i
   expect(menuCss).toMatch(/--menu-label-start: calc\(var\(--menu-item-pad\) \+ var\(--menu-check-width\) \+ var\(--menu-item-gap\)\);/);
   const toolbar = readFileSync(new FileURL("./ToolbarMenu.css", import.meta.url), "utf8");
   // The filter text and section headings start where the labels do.
-  expect(toolbar.match(/padding-inline: var\(--menu-label-start\) var\(--menu-item-pad\)/g)).toHaveLength(2);
+  expect(toolbar).toMatch(/\.toolbar-menu-filter input \{[^}]*padding-inline: var\(--menu-label-start\) var\(--menu-item-pad\)/);
+  expect(menuCss).toMatch(/\.menu-heading \{[^}]*padding-inline: var\(--menu-label-start\) var\(--menu-item-pad\)/);
   expect(toolbar).toMatch(/\.toolbar-menu-popover \{[^}]*min-width: min\(300px, calc\(100vw - 16px\)\);/);
   expect(toolbar).toMatch(/\.toolbar-menu-sample \{[^}]*min-width: 0;[^}]*white-space: normal;/);
   expect(menuCss).toContain("--menu-check-width: var(--icon-small)");
@@ -603,5 +604,5 @@ test.each([
 test("wrapped menu labels retain vertical padding and scalable minimum heights", () => {
   expect(menuCss).toMatch(/\.menu-item \{[^}]*padding-block: var\(--space-1\)/);
   expect(menuCss).toMatch(/--menu-item-height: 1\.5rem/);
-  expect(menuCss).toMatch(/font: var\(--type-meta-size\) \/ var\(--type-meta-line\)/);
+  expect(menuCss).toMatch(/font: var\(--type-body-size\) \/ var\(--type-body-line\)/);
 });

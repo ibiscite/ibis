@@ -263,7 +263,7 @@ export function MenuSection({ id, label, header, children, layout, selectionMode
   return <AriaMenuSection id={id} aria-label={label} className={`menu-section${layout === "list" ? " menu-section-list" : ""}`}
     selectionMode={checkable ? selectionMode : undefined}
     selectedKeys={checkable ? items.filter((item) => item.props.checked).map((item) => item.props.id) : undefined}>
-    {header && <Header className="menu-header">{label && <span className="visually-hidden">{label}</span>}<div aria-hidden="true" className={typeof header === "string" ? "menu-heading" : undefined}>{header}</div></Header>}
+    {header && <Header className={typeof header === "string" ? "menu-header menu-heading" : "menu-header"}>{label && <span className="visually-hidden">{label}</span>}<div aria-hidden="true">{header}</div></Header>}
     {children}
   </AriaMenuSection>;
 }

@@ -65,9 +65,8 @@ export function keyLabel(accelerator: string, mac: boolean): string {
   }), mac);
 }
 
-/** One label per cap: joined glyphs on macOS, separate keys elsewhere. */
+/** One cap per shortcut on every system, written as its menus write it. */
 export function keyCapLabels(accelerator: string, mac: boolean): string[] {
-  // One cap per shortcut on every system, written as its menus write it.
   return [keyLabel(accelerator, mac)];
 }
 

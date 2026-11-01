@@ -49,7 +49,6 @@ main > .search-bar, main > .shelf, main > footer { flex: none; }
   .search-field { --search-clear-size: var(--touch-target); }
 }
 :root[data-platform] #search { padding-inline-end: calc(var(--search-clear-size) + var(--space-1)); }
-.visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
 .results-area { flex: 1; min-height: 0; margin-block: var(--inset); padding-inline: var(--inset); }
 .results-heading { display: flex; justify-content: space-between; padding: var(--space-1) var(--row-pad) var(--space-2); color: var(--text-tertiary); font-size: var(--type-label-size); line-height: var(--type-label-line); font-weight: var(--strong); letter-spacing: .02em; }
@@ -87,7 +86,7 @@ main > .search-bar, main > .shelf, main > footer { flex: none; }
 /* The year shares the title's first line in every density, size and view. */
 .result-line, .result-meta { display: flex; align-items: baseline; gap: var(--space-3); min-width: 0; }
 .result-title { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: var(--type-title-size); font-weight: var(--strong); line-height: var(--type-title-line); letter-spacing: -.01em; }
-.result-year, .result-meta, .result-why { color: var(--text-secondary); font-size: var(--type-meta-size); line-height: var(--type-meta-line); }
+.result-year, .result-meta, .result-why { color: var(--text-secondary); font-size: var(--type-body-size); line-height: var(--type-body-line); }
 .result-year { flex-shrink: 0; margin-inline-start: auto; font-variant-numeric: tabular-nums; }
 /* The meta line wraps only when the byline, type and library badge cannot
    all fit at their sizes; then they move under the byline. A body at least
@@ -225,7 +224,7 @@ footer { display: flex; align-items: center; padding-block: 0; padding-inline: c
    rows show shortened authors and the container on one line; Spacious adds
    the item type; Compact puts the first author after the title. */
 .result-type { flex: none; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.result-first-author { flex: none; max-width: 30%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); font-size: var(--type-meta-size); line-height: var(--type-meta-line); }
+.result-first-author { flex: none; max-width: 30%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); font-size: var(--type-body-size); line-height: var(--type-body-line); }
 [data-active] .result-first-author { color: var(--selected-text-secondary); }
 :root[data-density="compact"] .result-title { flex: 0 1 auto; }
 /* In a very narrow Compact row (large text in a small window) the title takes
@@ -261,7 +260,7 @@ footer .key-hint-label { display: inline; }
 .keys-heading h2 { margin: 0; font-size: inherit; font-weight: var(--strong); }
 .keys-heading button { min-height: var(--control-h); }
 .keys-scroll { min-height: 0; padding: var(--space-2) var(--space-4) var(--space-4); }
-.keys-scroll table { width: 100%; border-collapse: collapse; font-size: var(--type-meta-size); }
+.keys-scroll table { width: 100%; border-collapse: collapse; font-size: var(--type-body-size); }
 /* Grouped by where the keys work (#1034): a muted heading per group, the
    action at the start breaking only between words, its keys at the end on
    one line. */
@@ -285,7 +284,7 @@ footer .key-hint-label { display: inline; }
 .recent-heading h2 { margin: 0; font: inherit; }
 [data-active] .result-body > .result-type { color: var(--selected-text-secondary); }
 :root[data-density="spacious"] .result-meta { margin-top: var(--row-spacing); }
-.result-body > .result-type { color: var(--text-tertiary); margin-top: var(--row-spacing); font-size: var(--type-meta-size); line-height: var(--type-meta-line); }
+.result-body > .result-type { color: var(--text-tertiary); margin-top: var(--row-spacing); font-size: var(--type-body-size); line-height: var(--type-body-line); }
 
 .query-input { position: relative; display: flex; flex: 1; min-width: 0; }
 

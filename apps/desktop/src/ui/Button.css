@@ -13,6 +13,8 @@
 /* A 24 px fill still has a 32 px pointer target, inside the footer's padding. */
 .ui-button[data-size="small"]::after { inset: calc(-1 * (var(--control-h) - var(--control-small-h)) / 2 - var(--border-width)) calc(-1 * var(--border-width)); }
 .ui-button[data-variant="quiet"], .ui-button[data-variant="icon"] { background: transparent; border-color: transparent; color: var(--control-icon-color, var(--text-secondary)); }
+/* A quiet button's words are label colour, as a Mac borderless button's title, so they keep 4.5:1. */
+.ui-button[data-variant="quiet"] { color: var(--control-icon-color, var(--text)); }
 .ui-button[data-variant="primary"], .ui-button[data-variant="secondary"] { min-width: 4rem; }
 .ui-button[data-variant="icon"] { min-width: var(--control-h); padding: 0; }
 .ui-button[data-variant="primary"] { background: var(--primary); color: var(--text-on-accent); border-color: transparent; }

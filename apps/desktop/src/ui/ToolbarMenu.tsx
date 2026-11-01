@@ -99,7 +99,7 @@ export function ToolbarMenu({ buttonRef, buttonShortcut, disabled, label, value,
       onAction(String(key));
     }}>
     {sections.map((section) => <MenuSection key={section.id} id={section.id} className="menu-section">
-      <Header className="toolbar-menu-heading">{section.label}</Header>
+      <Header className="menu-heading">{section.label}</Header>
       {section.items.map((item) => <MenuItem className="menu-item" id={item.id} key={item.id} textValue={item.label} shouldCloseOnSelect={false}
         render={(props) => <MenuRow {...props as ComponentPropsWithRef<"div">} itemId={item.id} aria-disabled={disabled || item.disabled || undefined}
           {...item.checked !== undefined ? { role: "menuitemcheckbox", "aria-checked": item.checked } : item.command ? { role: "menuitem", "aria-checked": undefined } : {}} />}>

@@ -14,6 +14,10 @@ const names = readdirSync(root, { recursive: true }).filter((name) => name.endsW
 const parts = names.filter((name) => name !== "tokens.css");
 const strip = (css: string) => css.replace(/\/\*[^]*?\*\//g, "");
 const tokens = strip(read("tokens.css"));
+/** The tokens with the colour parameters written out, for the contrast checks. */
+const param = (name: string) => tokens.match(new RegExp(`${name}: (#[0-9a-f]{6});`))![1]!;
+const resolved = tokens.replaceAll("var(--ibis-dark)", param("--ibis-dark")).replaceAll("var(--ibis)", param("--ibis"))
+  .replace(/(--ac: (light-dark\([^)]*\));) --ac-selected: var\(--ac\); --ac-text: var\(--ac\);/, "$1 --ac-selected: $2; --ac-text: $2;");
 const defined = new Set([...tokens.matchAll(/(--[a-z0-9-]+)\s*:/g)].map((match) => match[1]!));
 const website = strip(readFileSync(new FileURL("../../../website/style.css", import.meta.url), "utf8")) + strip(readFileSync(new FileURL("../../../website/demo.css", import.meta.url), "utf8"));
 const all = parts.map((name) => [name, strip(read(name))] as const);
@@ -32,7 +36,7 @@ test("every token a stylesheet reads is defined", () => {
 test("every token is read by something", () => {
   const scripts = readdirSync(root, { recursive: true }).filter((name) => name.endsWith(".tsx")).map(read);
   const used = [tokens, website, ...all.map(([, css]) => css), ...scripts].join("");
-  expect([...defined].filter((token) => !token.startsWith("--website-") && token !== "--fill-5" && !used.includes(`var(${token}`))).toEqual([]);
+  expect([...defined].filter((token) => !token.startsWith("--website-") && !used.includes(`var(${token}`))).toEqual([]);
 });
 
 test("parts take colours, corners and type from tokens", () => {
@@ -137,7 +141,7 @@ const flatten = (value: string, mode: number) => {
   return `#${[1, 2, 3].map((i) => Math.round(Number(rgb[i]) * alpha + Number.parseInt(under.slice(2 * i - 1, 2 * i + 1), 16) * (1 - alpha)).toString(16).padStart(2, "0")).join("")}`;
 };
 const pair = (token: string) => {
-  const match = tokens.match(new RegExp(`${token}: light-dark\\((#[0-9a-f]{6}|rgb\\([^)]*\\)), (#[0-9a-f]{6}|rgb\\([^)]*\\))\\)`));
+  const match = resolved.match(new RegExp(`${token}: light-dark\\((#[0-9a-f]{6}|rgb\\([^)]*\\)), (#[0-9a-f]{6}|rgb\\([^)]*\\))\\)`));
   expect(match, token).toBeTruthy();
   return [flatten(match![1]!, 0), flatten(match![2]!, 1)] as const;
 };
@@ -150,7 +154,7 @@ test.each([["--text", 4.5], ["--scarlet", 3]] as const)(
   });
 
 const colour = "(#[0-9a-f]{3,6})";
-const roles = [...tokens.replaceAll("var(--ibis)", "#c23a1c").matchAll(new RegExp(`:root\\[data-accent="([a-z]+)"\\] \\{ --ac: (?:light-dark\\()?${colour}(?:, ${colour}\\))?; --ac-selected: light-dark\\(${colour}, ${colour}\\); --ac-text: light-dark\\(${colour}, ${colour}\\);( --ac-on: light-dark\\(${colour}, ${colour}\\);)?(?: --ac-fill: var\\(--ac-selected\\);)? \\}`, "g"))];
+const roles = [...resolved.matchAll(new RegExp(`:root\\[data-accent="([a-z]+)"\\] \\{ --ac: (?:light-dark\\()?${colour}(?:, ${colour}\\))?; --ac-selected: light-dark\\(${colour}, ${colour}\\); --ac-text: light-dark\\(${colour}, ${colour}\\);( --ac-on: light-dark\\(${colour}, ${colour}\\);)?(?: --ac-fill: var\\(--ac-selected\\);)? \\}`, "g"))];
 const white = "#ffffff";
 const full = (hex: string) => hex.length === 4 ? `#${hex[1]}${hex[1]}${hex[2]}${hex[2]}${hex[3]}${hex[3]}` : hex;
 
@@ -213,4 +217,10 @@ test("status colours use the measured system hues only for marks and preserve st
   expect(all.map(([, css]) => css).join("")).not.toMatch(/color: var\(--(?:done|look|stop)\)/);
   expect(read("ui/SettingsGroup.css")).toMatch(/ui-settings-row-problem[^}]+color: var\(--text\)/);
   expect(read("features/picker/CitationShelf.css")).toMatch(/\.shelf-copied \{[^}]+color: var\(--text\)/);
+});
+
+test("the Ibis red parameters are the brand's scarlet", () => {
+  const brand = JSON.parse(readFileSync(new FileURL("../../../brand/settings.json", import.meta.url), "utf8")) as { colors?: Record<string, string> } & Record<string, unknown>;
+  const scarlet = JSON.stringify(brand).match(/"scarlet":\s*"(#[0-9A-Fa-f]{6})"/)![1]!, dark = JSON.stringify(brand).match(/"scarlet_dark":\s*"(#[0-9A-Fa-f]{6})"/)![1]!;
+  expect([param("--ibis"), param("--ibis-dark")]).toEqual([scarlet.toLowerCase(), dark.toLowerCase()]);
 });

@@ -10,4 +10,4 @@
 .library-status-controls[data-health="stop"] .library-name, .library-status-controls[data-health="look"] .library-name { color: var(--text); }
 .library-status-controls .library-status { min-width: 0; }
 .library-status-controls .library-inline-action { flex: none; }
-.library-action-error { flex-basis: 100%; margin: 0; color: var(--text); font-size: var(--type-meta-size); }
+.library-action-error { flex-basis: 100%; margin: 0; color: var(--text); font-size: var(--type-body-size); }

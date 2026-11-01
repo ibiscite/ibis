@@ -209,7 +209,10 @@ const mounts = new WeakMap<HTMLElement, () => void>();
 /** One board per iframe/document, as in the app's separate native windows.
  * Load ibis-canvas.css and ibis-canvas.js, then mount or use data-ibis-canvas.
  * URL: ?scenario=settings-look&theme=dark; attributes override the URL. */
-export function mount(host: HTMLElement, options: { scenario?: string; theme?: string } = {}): () => void {
+/** The design parameters a canvas board may turn (tokens.css, "Parameters"). */
+export const parameters = ["--unit", "--radius", "--type-base", "--ibis", "--ibis-dark"] as const;
+
+export function mount(host: HTMLElement, options: { scenario?: string; theme?: string; params?: Partial<Record<typeof parameters[number], string>> } = {}): () => void {
   const params = new URLSearchParams(window.location.search);
   const scenario = options.scenario ?? (host.dataset.ibisCanvas || params.get("scenario") || "results");
   const theme = options.theme ?? host.dataset.theme ?? params.get("theme") ?? "light";
@@ -217,6 +220,12 @@ export function mount(host: HTMLElement, options: { scenario?: string; theme?: s
   if (theme !== "light" && theme !== "dark") throw new Error(`Unknown canvas theme: ${theme}`);
   mounts.get(host)?.();
   setPlatform();
+  // Parameters override tokens.css live; everything derived from them follows.
+  for (const name of parameters) {
+    const value = options.params?.[name]?.trim();
+    if (value) document.documentElement.style.setProperty(name, value);
+    else document.documentElement.style.removeProperty(name);
+  }
   const settings = demoApi();
   void settings.setPickerPreferences({ ...fixtures[scenario as Scenario]?.preferences, appearance: theme as Theme, paste: false }, null, 0);
   // The states and tokens pages use the Settings window's base styles.

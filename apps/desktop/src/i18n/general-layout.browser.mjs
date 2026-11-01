@@ -111,7 +111,7 @@ try {
           let node;
           while ((node = walker.nextNode())) {
             const value = node.textContent.trim();
-            if (!value || node.parentElement.closest(".ui-visually-hidden")) continue;
+            if (!value || node.parentElement.closest(".visually-hidden")) continue;
             // Chords keep their platform formatter; IPC app names remain literal.
             const native = ["Synthetic App", "⌥J", "⌥L", "⇧⌘Y", "Ctrl+Shift+Y"];
             if (!value.includes("⟦") && !native.includes(value) && !node.parentElement.closest("kbd")) failures.push(`untranslated: ${value}`);

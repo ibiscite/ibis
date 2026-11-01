@@ -3,13 +3,12 @@
    one card of rows with the action at the start and its keys at the end. One
    key look: editable keys are filled caps; fixed system keys are plain
    secondary text, and the word "System" is spoken, not shown. */
-.ui-shortcut-table { width: 100%; border-collapse: separate; border-spacing: 0; font: var(--type-meta-size)/var(--type-meta-line) var(--font); }
-.ui-shortcut-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.ui-shortcut-table { width: 100%; border-collapse: separate; border-spacing: 0; font: var(--type-body-size)/var(--type-body-line) var(--font); }
 .ui-shortcut-table th, .ui-shortcut-table td { box-sizing: border-box; padding: 0; text-align: start; font-weight: inherit; }
-.ui-shortcut-table th[scope="rowgroup"] { position: sticky; top: 0; z-index: var(--z-content); padding: var(--space-5) var(--space-1) 6px; background: var(--surface); color: var(--text-secondary); font-size: var(--type-label-size); line-height: var(--type-label-line); font-weight: var(--strong); letter-spacing: .02em; }
+.ui-shortcut-table tbody th[scope="rowgroup"] { position: sticky; top: 0; z-index: var(--z-content); padding-block-start: var(--space-5); background: var(--surface); }
 .ui-shortcut-table tbody:first-of-type th[scope="rowgroup"] { padding-block-start: var(--space-4); }
 /* Card rows: the row's cells draw the card, its edges and its corners. */
-.ui-shortcut-table tr:not(:first-child) > * { height: 2.75rem; padding-inline: var(--space-4); background: var(--raised); border-top: var(--border-width) solid var(--separator); }
+.ui-shortcut-table tr:not(:first-child) > * { height: var(--settings-row-h); padding-inline: var(--space-4); background: var(--raised); border-top: var(--border-width) solid var(--separator); }
 .ui-shortcut-table tr:not(:first-child) > :first-child { border-inline-start: var(--border-width) solid var(--separator); }
 .ui-shortcut-table tr:not(:first-child) > :last-child { border-inline-end: var(--border-width) solid var(--separator); text-align: end; }
 .ui-shortcut-table tr:last-child > * { border-bottom: var(--border-width) solid var(--separator); }
@@ -21,7 +20,6 @@
 .keys-binding { display: inline-flex; align-items: center; gap: var(--space-1); white-space: nowrap; }
 .ui-settings-keys { display: inline-flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; justify-content: end; color: var(--text-secondary); vertical-align: middle; }
 .ui-settings-keys kbd[data-system] { min-width: 0; padding-inline: 0; background: transparent; border-color: transparent; color: var(--text-secondary); font-weight: 400; }
-.ui-system-note { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .ui-shortcut-filter.ui-settings-search { margin: 0; }
 
 .ui-shortcut-table tr[data-highlighted] > * { background: var(--highlight); }

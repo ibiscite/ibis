@@ -3,7 +3,7 @@
   margin: 0; overflow-wrap: anywhere;
   font-size: var(--type-display-size); line-height: var(--type-display-line); font-weight: 700;
 }
-.settings-description { color: var(--text-secondary); font-size: var(--type-meta-size); line-height: var(--type-meta-line); margin: 0; }
+.settings-description { color: var(--text-secondary); font-size: var(--type-body-size); line-height: var(--type-body-line); margin: 0; }
 .settings-problem { margin: 0; color: var(--text); }
 /* The paste permission guide (#1292): a picture of the switch to turn on,
    the steps, one button and a live answer. */
@@ -15,7 +15,7 @@
 .paste-guide h3 { margin: 0 0 var(--space-1); font-size: var(--type-title-size); line-height: var(--type-title-line); font-weight: var(--strong); }
 .paste-guide ol { margin: var(--space-3) 0; padding-inline-start: var(--space-5); display: flex; flex-direction: column; gap: var(--space-1); }
 .paste-guide-actions { display: flex; justify-content: start; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
-.paste-guide-status { margin: 0; color: var(--text-secondary); font-size: var(--type-meta-size); }
+.paste-guide-status { margin: 0; color: var(--text-secondary); font-size: var(--type-body-size); }
 .paste-guide-status[data-done] { color: var(--text); font-weight: var(--strong); }
 .paste-guide-art {
   display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3);
@@ -26,7 +26,7 @@
 .paste-guide-row {
   display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2);
   border-radius: var(--r-tile); background: var(--surface); box-shadow: var(--shadow-card);
-  font-size: var(--type-meta-size); font-weight: 500;
+  font-size: var(--type-body-size); font-weight: 500;
 }
 .paste-guide-icon { width: var(--icon); height: var(--icon); flex: none; border-radius: var(--r-key); background: center / cover no-repeat; }
 .paste-guide-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
