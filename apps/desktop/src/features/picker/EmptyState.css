@@ -12,7 +12,7 @@
 .empty-alternative { text-decoration: underline; }
 
 /* Opening shares the choice screen's middle-area centring and scroll owner. */
-main .picker-content .results-area:has(.empty-opening) { display: flex; flex-direction: column; flex: 1 0 auto; overflow: visible; min-height: min-content; }
+main .picker-content .results-area:has(.empty-opening) { display: flex; flex-direction: column; flex: 1 0 auto; margin-block: 0; overflow: visible; min-height: min-content; }
 .empty-opening { flex: none; width: 100%; max-width: 33.75rem; margin: auto; padding: var(--inset); text-align: center; }
 .opening-mark { width: 2.5rem; height: 2.5rem; margin: 0 auto var(--space-3); animation: opening-breathe calc(8 * var(--dur-panel)) var(--ease) infinite alternate; }
 .opening-title { margin: 0; color: var(--text); font-size: var(--type-title-size); line-height: var(--type-title-line); font-weight: var(--strong); overflow-wrap: anywhere; }
