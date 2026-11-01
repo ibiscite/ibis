@@ -313,7 +313,7 @@ fn mcp_serves_agents_from_the_files_given() -> Result<(), Box<dyn std::error::Er
         json!({"jsonrpc":"2.0","method":"notifications/initialized"}),
         json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"cite","arguments":{"items":[{"key":"accents2021"}],"syntax":"pandoc"}}}),
         // A 2026-07-28 client in the same process: no handshake, the revision in `_meta`.
-        json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"cite","arguments":{"items":[{"key":"accents2021"}],"syntax":"pandoc"},"_meta":{"io.modelcontextprotocol/protocolVersion":ibis_engine::mcp::PROTOCOL_VERSION}}}),
+        json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"cite","arguments":{"items":[{"key":"accents2021"}],"syntax":"pandoc"},"_meta":{"io.modelcontextprotocol/protocolVersion":ibis_engine::mcp::PROTOCOL_VERSION,"io.modelcontextprotocol/clientCapabilities":{}}}}),
     ] {
         writeln!(stdin, "{message}")?;
     }

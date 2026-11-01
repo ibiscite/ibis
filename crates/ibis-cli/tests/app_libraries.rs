@@ -85,7 +85,11 @@ fn the_library_chosen_in_the_app_is_read_when_none_is_named() {
     assert!(stdout.contains("Lee"), "{stdout}");
     let (status, stdout, _) = home.run(&["libraries"]);
     assert_eq!(status, 0);
-    assert!(stdout.contains("(chosen in Ibis Nightly)"), "{stdout}");
+    assert!(stdout.contains("Library chosen in Ibis Nightly"), "{stdout}");
+    assert!(
+        !stdout.contains("refs.bib"),
+        "an app-chosen path is never shown: {stdout}"
+    );
     // The stable app wins when both have settings, even when Nightly chose something else.
     let other = home.root.join("other.bib");
     std::fs::write(&other, BIB.replace("lee2024", "kim2023")).unwrap();
@@ -131,10 +135,28 @@ fn unusable_settings_stop_with_their_reason_and_never_fall_back() {
         ("{not json", "bad-input", 3, "Open Ibis to repair"),
         ("{\"schema_version\":2}", "usage", 2, "no library is chosen in Ibis yet"),
         (
-            "{\"schema_version\":2,\"library\":{\"bibtex\":\"/invented/elsewhere/refs.bib\"}}",
+            "{\"schema_version\":2,\"library\":{\"bibtex\":\"/invented/private-project/refs.bib\"}}",
             "source-unavailable",
             5,
-            "It is the library chosen in Ibis;",
+            "cannot open the library chosen in Ibis: there is no file",
+        ),
+        (
+            "{\"schema_version\":2,\"library\":{\"bibtex\":\"private-project/refs.bib\"}}",
+            "bad-input",
+            3,
+            "not a full path",
+        ),
+        (
+            "{\"schema_version\":2,\"density\":\"PRIVATE_SETTINGS_VALUE\"}",
+            "bad-input",
+            3,
+            "its settings file is not valid",
+        ),
+        (
+            "{\"schema_version\":2,\"library\":{\"zotero\":\"user\"}}",
+            "source-unavailable",
+            5,
+            "cannot read the Zotero library",
         ),
     ] {
         home.settings(STABLE, text);
@@ -145,6 +167,11 @@ fn unusable_settings_stop_with_their_reason_and_never_fall_back() {
             "{text}: {stderr}"
         );
         assert_eq!(stderr.lines().count(), 1, "{stderr}");
+        // Nothing from inside the settings reaches stderr, which agents read too.
+        assert!(
+            !stderr.contains("private-project") && !stderr.contains("PRIVATE"),
+            "{stderr}"
+        );
         assert_eq!(found, expected, "{text}: {stderr}");
         assert_eq!(status, exit, "{text}");
     }

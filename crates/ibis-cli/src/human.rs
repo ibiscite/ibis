@@ -341,8 +341,16 @@ pub(super) fn code_sentence(code: ErrorCode) -> &'static str {
 }
 
 pub(super) fn file_failure(path: &Path, code: ErrorCode) -> String {
-    let shown = field(&path.display().to_string());
-    let reason = if std::fs::symlink_metadata(path).is_err() {
+    format!(
+        "cannot open {}: {}",
+        field(&path.display().to_string()),
+        file_reason(path, code)
+    )
+}
+
+/// Why a library file did not open, without naming it.
+pub(super) fn file_reason(path: &Path, code: ErrorCode) -> &'static str {
+    if std::fs::symlink_metadata(path).is_err() {
         "there is no file at that path; check the spelling or give the full path."
     } else if path.is_dir() {
         "it is a folder; give the library file inside it."
@@ -357,8 +365,7 @@ pub(super) fn file_failure(path: &Path, code: ErrorCode) -> String {
             }
             code => code_sentence(code),
         }
-    };
-    format!("cannot open {shown}: {reason}")
+    }
 }
 
 pub(super) fn zotero_failure(code: ErrorCode) -> String {

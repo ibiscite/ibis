@@ -93,6 +93,13 @@ fn read(app: &'static str, path: &Path) -> Result<Option<AppLibraries>, Failure>
                 format!("no library is chosen in {app} yet; choose one there, or {NAME_ONE}."),
             ));
         }
+        // A relative path would mean a different file in every folder; ask again instead.
+        Some(LibrarySetting::Bibtex(file)) if !file.is_absolute() => {
+            return Err(Failure::new(
+                ErrorCode::BadInput,
+                format!("the library chosen in {app} is not a full path; choose it again there, or {NAME_ONE}."),
+            ));
+        }
         Some(LibrarySetting::Bibtex(file)) => (vec![file], Vec::new()),
         Some(LibrarySetting::Zotero(libraries)) => (
             Vec::new(),
@@ -109,13 +116,24 @@ fn read(app: &'static str, path: &Path) -> Result<Option<AppLibraries>, Failure>
     Ok(Some(AppLibraries { app, files, zotero }))
 }
 
+/// A fixed description: never the settings' own text, which may hold private values.
 fn problem_text(problem: &SettingsError) -> String {
     match problem {
         SettingsError::Unreadable(error) if error.kind() == std::io::ErrorKind::PermissionDenied => {
             "this program is not allowed to read its settings file; allow it to, or run it outside the sandbox".into()
         }
+        SettingsError::Unreadable(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            "its settings file is missing".into()
+        }
+        SettingsError::Unreadable(_) => "its settings file could not be read".into(),
+        SettingsError::Invalid(_) => "its settings file is not valid".into(),
+        SettingsError::InvalidZoteroLibraryEntry { position } => {
+            format!("its settings file is not valid (Zotero library entry {position})")
+        }
+        SettingsError::NewerVersion(version) => {
+            format!("its settings were written by a newer version of Ibis (format {version})")
+        }
         SettingsError::Backup(inner) => problem_text(inner),
-        problem => problem.to_string(),
     }
 }
 

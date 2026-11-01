@@ -40,7 +40,8 @@ fn golden_cases_replay_through_mcp() {
         }
         let reply = mcp::handle(
             &engine,
-            &json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"cite","arguments":arguments}}),
+            &mut mcp::Session::default(),
+            &json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"cite","arguments":arguments,"_meta":{"io.modelcontextprotocol/protocolVersion":mcp::PROTOCOL_VERSION,"io.modelcontextprotocol/clientCapabilities":{}}}}),
         )
         .unwrap();
         let answer = &reply["result"];
@@ -104,7 +105,8 @@ fn arguments(request: &CitationRequest) -> Option<Value> {
             let syntax = serde_json::to_value(syntax).unwrap();
             let offered = mcp::handle(
                 &Engine::new().unwrap(),
-                &json!({"jsonrpc":"2.0","id":1,"method":"tools/list"}),
+                &mut mcp::Session::default(),
+                &json!({"jsonrpc":"2.0","id":1,"method":"tools/list","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":mcp::PROTOCOL_VERSION,"io.modelcontextprotocol/clientCapabilities":{}}}}),
             )
             .unwrap()["result"]["tools"][2]["inputSchema"]["properties"]["syntax"]["enum"]
                 .as_array()

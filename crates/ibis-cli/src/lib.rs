@@ -631,12 +631,13 @@ fn execute<R: BufRead, W: Write + Send>(
             })?;
         let before = engine.libraries()?.libraries;
         let chosen = chosen_in(&path);
+        // A path the app chose is never shown: agents read these messages too.
         explain(
             engine.dispatch(Method::Libraries, &params, &cancel),
             |code| match chosen {
                 Some(app) => format!(
-                    "{} It is the library chosen in {app}; choose another there, or {}.",
-                    human::file_failure(&path, code),
+                    "cannot open the library chosen in {app}: {} Choose it again there, or {}.",
+                    human::file_reason(&path, code),
                     app_libraries::NAME_ONE
                 ),
                 None => human::file_failure(&path, code),
@@ -646,7 +647,7 @@ fn execute<R: BufRead, W: Write + Send>(
         for library in engine.libraries()?.libraries {
             if !before.iter().any(|old| old.id == library.id) {
                 let shown = match chosen {
-                    Some(app) => format!("{} (chosen in {app})", path.display()),
+                    Some(app) => format!("Library chosen in {app}"),
                     None => path.display().to_string(),
                 };
                 names.insert(library.id.as_str().to_owned(), shown);
@@ -665,10 +666,27 @@ fn execute<R: BufRead, W: Write + Send>(
         .map_err(|_| EngineError {
             code: ErrorCode::BadInput,
         })?;
+        let before = engine.libraries()?.libraries;
         explain(
             engine.dispatch(Method::Libraries, &params, &cancel),
             human::zotero_failure,
         )?;
+        // Zotero libraries are the app's when the command line named none.
+        let zotero_named = matches.get_flag("zotero") || !source_values::<u64>(matches, "zotero-group").is_empty();
+        if let Some(app) = app.as_ref().filter(|_| !zotero_named) {
+            for library in engine.libraries()?.libraries {
+                if !before.iter().any(|old| old.id == library.id) {
+                    let group = serde_json::to_value(&library)
+                        .ok()
+                        .and_then(|value| value.pointer("/zotero/group").and_then(Value::as_u64));
+                    let shown = match group {
+                        Some(group) => format!("Zotero group {group} (chosen in {})", app.app),
+                        None => format!("Zotero (chosen in {})", app.app),
+                    };
+                    names.insert(library.id.as_str().to_owned(), shown);
+                }
+            }
+        }
     }
     if name == "mcp" {
         return Ok(Execution::Stdio(match ibis_engine::mcp::serve(engine, input, output) {

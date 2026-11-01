@@ -51,6 +51,7 @@ const SYNTAXES: [KeySyntax; 6] = [
 
 /// Serves until the client closes stdin.
 pub fn serve<R: BufRead, W: Write>(engine: &Engine, mut reader: R, mut writer: W) -> io::Result<()> {
+    let mut session = Session::default();
     let mut line = Vec::new();
     loop {
         line.clear();
@@ -71,7 +72,7 @@ pub fn serve<R: BufRead, W: Write>(engine: &Engine, mut reader: R, mut writer: W
                 continue;
             }
             match protocol::parse_json(text) {
-                Ok(message) => handle(engine, &message),
+                Ok(message) => handle(engine, &mut session, &message),
                 Err(_) => Some(error(Value::Null, -32700, "Parse error")),
             }
         };
@@ -103,8 +104,17 @@ fn skip_line(reader: &mut impl BufRead) -> io::Result<()> {
     }
 }
 
+/// What one stdio process remembers: only whether an older client opened it with
+/// `initialize`. Requests that name the 2026-07-28 revision never depend on it.
+#[derive(Debug, Default)]
+pub struct Session {
+    legacy: bool,
+}
+
+const CAPABILITIES_KEY: &str = "io.modelcontextprotocol/clientCapabilities";
+
 /// One message in, at most one message out. Notifications get no answer.
-pub fn handle(engine: &Engine, message: &Value) -> Option<Value> {
+pub fn handle(engine: &Engine, session: &mut Session, message: &Value) -> Option<Value> {
     let Some(object) = message.as_object() else {
         // Batches are not part of this revision.
         return Some(error(Value::Null, -32600, "Invalid Request"));
@@ -129,17 +139,35 @@ pub fn handle(engine: &Engine, message: &Value) -> Option<Value> {
         return Some(error(Value::Null, -32600, "Invalid Request"));
     }
     let params = object.get("params").cloned().unwrap_or(Value::Null);
-    // A request that names its revision is a stateless 2026-07-28 request;
-    // one that does not belongs to a client that opened with `initialize`.
-    let modern = match params.get("_meta").and_then(|meta| meta.get(VERSION_KEY)) {
-        None => false,
-        Some(Value::String(version)) if version == PROTOCOL_VERSION => true,
-        Some(requested) => {
+    // A request that names its revision is a stateless 2026-07-28 request and must
+    // carry the fields that revision requires; one that does not is served only to a
+    // client that opened this process with `initialize`.
+    let meta = params.get("_meta");
+    let modern = match meta.and_then(|meta| meta.get(VERSION_KEY)) {
+        None if method == "initialize" || session.legacy => false,
+        None => return Some(error(id, -32602, "Invalid params: name the protocol version in _meta")),
+        Some(Value::String(version)) if version == PROTOCOL_VERSION => {
+            if !meta
+                .and_then(|meta| meta.get(CAPABILITIES_KEY))
+                .is_some_and(Value::is_object)
+            {
+                return Some(error(id, -32602, "Invalid params: _meta needs client capabilities"));
+            }
+            true
+        }
+        Some(Value::String(requested)) => {
             return Some(json!({"jsonrpc": "2.0", "id": id, "error": {
                 "code": -32022,
                 "message": "Unsupported protocol version",
                 "data": {"supported": supported_versions(), "requested": requested},
             }}));
+        }
+        Some(_) => {
+            return Some(error(
+                id,
+                -32602,
+                "Invalid params: the protocol version must be a string",
+            ));
         }
     };
     let mut result = match method {
@@ -152,6 +180,7 @@ pub fn handle(engine: &Engine, message: &Value) -> Option<Value> {
         }),
         "initialize" if !modern => {
             let requested = params.get("protocolVersion").and_then(Value::as_str);
+            session.legacy = true;
             json!({
                 "protocolVersion": LEGACY_VERSIONS
                     .into_iter()
