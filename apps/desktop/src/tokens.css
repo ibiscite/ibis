@@ -28,7 +28,7 @@
   --lead-gap: calc((var(--tile) - var(--icon)) / 2 + var(--row-gap));
 
   /* Corner roots and floors: no surface below 6, no text-sized mark below 4. */
-  --r-win: 16px; --r-menu: 12px; --r-card: 10px; --r-control: 8px; --r-full: 999px; --r-button: var(--r-full); --r-icon: 22.5%;
+  --r-win: 16px; --r-menu: 12px; --r-card: 10px; --r-control: 8px; --r-full: 999px; --r-icon: 22.5%;
   --r-floor: 6px; --r-floor-mark: 4px; --corner-inset: 8px; --menu-pad: 5px;
 
   /* Type: size / line. Nothing is smaller than 12 px. */
