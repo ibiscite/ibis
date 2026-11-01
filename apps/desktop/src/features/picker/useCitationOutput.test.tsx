@@ -13,7 +13,7 @@ type Preview = NonNullable<Options["previewFileCitation"]>;
 
 function library(revision = "1"): LibraryStatus {
   return {
-    revision, state: "loaded", has_snapshot: true,
+    source_generation: "1", revision, state: "loaded", has_snapshot: true,
     name: "synthetic.bib", snapshot_name: "synthetic.bib", references: 1,
     zotero: false, zotero_libraries: [], snapshot_zotero: false,
     source_counts: { "file:synthetic": 1 }, warnings: 0, error: null,

@@ -92,6 +92,9 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   const [loginSaving, setLoginSaving] = useState(false);
   const [updatesSaving, setUpdatesSaving] = useState(false);
   const [versionCopied, setVersionCopied] = useState(false);
+  const [versionCopyFailed, setVersionCopyFailed] = useState(false);
+  const [manualCheckFailed, setManualCheckFailed] = useState(false);
+  const manualCheck = useRef(0);
   const versionCopy = useRef(0);
   const { altHeld } = useAltHeld();
   const [about, setAbout] = useState<DelightView | null>(null);
@@ -102,7 +105,8 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     let active = true;
     let reads = 0;
     let timer: number | undefined;
-    setAbout(null); setVersionCopied(false); versionCopy.current += 1;
+    setAbout(null); setVersionCopied(false); setVersionCopyFailed(false); versionCopy.current += 1;
+    setManualCheckFailed(false); manualCheck.current += 1;
     const read = (click = false) => {
       if (page !== "about" || !api.delightView) return;
       const operation = ++reads;
@@ -124,7 +128,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     clickAbout.current = () => read(true);
     read();
     window.addEventListener("focus", focusRead);
-    return () => { active = false; window.clearTimeout(timer); window.removeEventListener("focus", focusRead); clickAbout.current = () => {}; versionCopy.current += 1; };
+    return () => { active = false; window.clearTimeout(timer); window.removeEventListener("focus", focusRead); clickAbout.current = () => {}; versionCopy.current += 1; manualCheck.current += 1; };
   }, [page, api.delightView, preferences?.small_surprises]);
   useEffect(() => { if (about?.fun === false) setBlink(0); }, [about?.fun]);
   const [forgetStatus, setForgetStatus] = useState<"idle" | "saving" | "done" | "failed">("idle");
@@ -361,12 +365,12 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   const copyVersion = () => {
     const operation = ++versionCopy.current;
     setVersionCopied(false);
-    setProblemRow(null);
+    setVersionCopyFailed(false);
     void navigator.clipboard.writeText(`${name} ${altHeld && about?.build ? about.build : version}`).then(() => {
       if (!live.current || operation !== versionCopy.current) return;
       setVersionCopied(true);
       window.setTimeout(() => { if (live.current && operation === versionCopy.current) setVersionCopied(false); }, 1500);
-    }, () => { if (live.current && operation === versionCopy.current) setProblemRow({ id: "automatic", message: "about-copy-failed" }); });
+    }, () => { if (live.current && operation === versionCopy.current) setVersionCopyFailed(true); });
   };
   const matches = query.trim() ? ROWS.filter((row) => (row.id !== "menu-bar" || platform === "macos") && [row.label, row.description, row.keywords].some((id) => id && text(id, { platform }).toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()))) : [];
   const name = login?.name ?? "Ibis";
@@ -461,6 +465,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
               <Button variant="quiet" size="small" preventFocusOnPress onPress={copyVersion}>
                 {text(versionCopied ? "about-copied" : "about-version", { version: altHeld && about?.build ? about.build : version })}
               </Button>
+              {versionCopyFailed && <p className="settings-problem" role="alert">{text("about-copy-failed")}</p>}
               <p className="ui-about-mission">{text("about-mission")}</p>
             </div>
             <Group id="about-why" title={text("about-why")}>
@@ -472,7 +477,11 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
             <Group id="about-updates" title={text("about-updates")}>
               <Row id="automatic" label={text("about-automatic")} description={updates === null && !readProblems.has("automatic") ? text("about-unavailable") : text("about-automatic-description")} {...feedback("automatic")}>
                 {(updates !== null || readProblems.has("automatic")) && <>
-                  <Button onPress={() => { void api.checkForUpdates().then(() => readProblem("automatic", false)).catch(() => readProblem("automatic", true)); }}>{text("about-check")}</Button>
+                  <Button onPress={() => {
+                    const operation = ++manualCheck.current;
+                    setManualCheckFailed(false);
+                    void api.checkForUpdates().catch(() => { if (live.current && operation === manualCheck.current) setManualCheckFailed(true); });
+                  }}>{text("about-check")}</Button>
                   <Switch aria-labelledby="automatic" aria-describedby="automatic-description" isSelected={updates ?? false}
                     isDisabled={updatesSaving || updates === null} onChange={(on) => {
                       setProblemRow(null); updateIntent.current = on; setUpdatesSaving(true); const operation = ++updateReads.current;
@@ -482,6 +491,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
                       }).finally(() => { if (live.current) setUpdatesSaving(false); });
                     }} />
                 </>}
+                {manualCheckFailed && <p className="ui-settings-row-problem" role="alert">{text("about-check-failed")}</p>}
               </Row>
             </Group>
             <div className="ui-about-links" role="group" aria-label={text("about-links")}>

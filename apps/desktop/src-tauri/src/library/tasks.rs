@@ -658,6 +658,7 @@ pub(crate) fn current_status(app: &AppHandle) -> LibraryStatus {
         .map(|l| status(&l))
         .unwrap_or_else(|_| LibraryStatus {
             revision: String::new(),
+            source_generation: String::new(),
             state: LibraryState::Error,
             zotero: false,
             zotero_libraries: Vec::new(),

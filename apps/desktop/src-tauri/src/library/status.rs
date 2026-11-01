@@ -15,6 +15,7 @@ use super::state::Library;
 pub(crate) struct LibraryStatus {
     pub(crate) state: LibraryState,
     pub(crate) revision: String,
+    pub(crate) source_generation: String,
     /// Whether the requested library is Zotero rather than a file.
     pub(crate) zotero: bool,
     /// The Zotero libraries requested, in order; empty for a file.
@@ -121,6 +122,7 @@ pub(crate) fn status(library: &Library) -> LibraryStatus {
     let has_references = has_references(library);
     let mut result = LibraryStatus {
         revision: String::new(),
+        source_generation: library.source_generation.to_string(),
         state: if library.opening {
             if library.source.is_some() && library.source == library.requested {
                 LibraryState::Reloading
@@ -386,6 +388,7 @@ mod tests {
         let expected = [
             "state",
             "revision",
+            "source_generation",
             "zotero",
             "zotero_libraries",
             "has_snapshot",
@@ -405,6 +408,7 @@ mod tests {
             "checked_at",
         ];
         let keys = payload.as_object().unwrap_or_else(|| panic!("status object"));
+        assert_eq!(payload["source_generation"], library.source_generation.to_string());
         assert_eq!(keys.len(), expected.len());
         assert!(expected.iter().all(|key| keys.contains_key(*key)));
         assert_eq!(

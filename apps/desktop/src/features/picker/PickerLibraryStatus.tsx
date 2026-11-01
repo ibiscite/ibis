@@ -11,7 +11,7 @@ import { MenuItem, MenuSection } from "../../ui/Menu";
 export type LibraryScope = { offered: ZoteroLibrary[]; isChosen: (choice: ZoteroLibrary) => boolean; chosenCount: number;
   name: (choice: ZoteroLibrary) => string; toggle: (choice: ZoteroLibrary) => void; all: () => void };
 
-export function PickerLibraryStatus({ library, groupName, isOpen, onOpenChange, searchRef, zotero, actions, failure, groupsFailed = false, sourceFailure, sourceAction, statusIcon, hideAction = false }: {
+export function PickerLibraryStatus({ library, groupName, isOpen, onOpenChange, searchRef, zotero, actions, failure, groupsFailed = false, sourceFailure, sourceAction, statusIcon, hideAction = false, rowAction }: {
   library: LibraryStatus | null | undefined; groupName: (id: number) => string;
   isOpen: boolean; onOpenChange: (open: boolean) => void; searchRef: RefObject<HTMLElement | null>;
   zotero: LibraryScope | null;
@@ -23,6 +23,7 @@ export function PickerLibraryStatus({ library, groupName, isOpen, onOpenChange, 
   sourceFailure: boolean;
   statusIcon: SystemIcon | null;
   hideAction?: boolean;
+  rowAction?: string;
 }) {
   const detail = libraryMessages.detail(library, Date.now(), (status) => zoteroLibraryNames(status, groupName));
   // The engine's problem code chooses the action. A closed Zotero with a
@@ -38,7 +39,7 @@ export function PickerLibraryStatus({ library, groupName, isOpen, onOpenChange, 
       : library?.zotero && library.problem === "zotero_closed" ? { ...libraryAction, label: pickerText.openZotero, keys: sourceAction.label === pickerText.openZotero ? sourceAction.keys : undefined, open: actions.openZotero }
       : library?.zotero ? { ...libraryAction, label: pickerText.chooseLibraryMenu, keys: keysFor("chooseSource"), open: actions.choose } : sourceAction : failure ? { ...sourceAction, label: pickerText.chooseLibraryMenu, keys: keysFor("chooseSource"), open: actions.choose } : null;
   return <LibraryStatusLine library={library} groupName={groupName} failure={failure}
-    action={!hideAction && fix && <SourceAction {...fix} />}
+    action={!hideAction && fix && fix.label !== rowAction && <SourceAction {...fix} />}
     menu={{ label: pickerText.libraryRegion, id: "library-menu",
       isOpen, onOpenChange, tabFocusRef: searchRef, placement: "top end", children: <>
         <MenuSection id="library-detail" label={detail.filter(Boolean).join(". ")} header={<LibraryDetail lines={detail} problem={groupsFailed ? operationFailures.zoteroGroups : undefined} />}>

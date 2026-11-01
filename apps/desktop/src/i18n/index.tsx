@@ -32,7 +32,7 @@ const IDS = [
   "shortcuts-action-choose-source", "shortcuts-action-reveal-source", "shortcuts-action-source", "shortcuts-action-preview", "shortcuts-action-copy", "shortcuts-action-add", "shortcuts-action-move", "shortcuts-action-escape",
   "shortcuts-action-format", "shortcuts-action-more", "shortcuts-action-pin", "shortcuts-action-keys", "shortcuts-action-settings", "shortcuts-action-quit",
   "shortcuts-action-menu-move", "shortcuts-action-menu-ends", "shortcuts-action-menu-choose", "shortcuts-action-menu-leave", "shortcuts-or",
-  "about-automatic", "about-automatic-description", "about-check", "about-mission", "about-why", "about-updates", "about-links", "about-website", "about-source", "about-problem", "about-licences", "about-free", "about-copied", "about-copy-failed", "about-version", "about-unavailable",
+  "about-automatic", "about-automatic-description", "about-check", "about-check-failed", "about-mission", "about-why", "about-updates", "about-links", "about-website", "about-source", "about-problem", "about-licences", "about-free", "about-copied", "about-copy-failed", "about-version", "about-unavailable",
 ] as const;
 export type MessageId = typeof IDS[number];
 type Variables = Readonly<Record<string, string | number>>;

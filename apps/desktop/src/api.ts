@@ -132,6 +132,11 @@ export function onPickerHidden(handler: () => void): Promise<UnlistenFn> {
 }
 
 /** Called when a library finishes opening, or fails to open. */
+/** A native-accepted drop supersedes the explicit source chooser. */
+export function onLibraryFileDropped(handler: () => void): Promise<UnlistenFn> {
+  return listen("library:file-dropped", handler);
+}
+
 export function onLibraryChanged(handler: (status: LibraryStatus) => void): Promise<UnlistenFn> {
   return listen<LibraryStatus>("library:changed", (event) => handler(event.payload));
 }

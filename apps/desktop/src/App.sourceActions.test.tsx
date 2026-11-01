@@ -5,7 +5,7 @@ import { App } from "./App";
 import { backend, resetApp, result } from "./testing/app";
 
 afterEach(resetApp);
-const file = { revision: "1", state: "loaded", has_snapshot: true, zotero: false, snapshot_zotero: false,
+const file = { source_generation: "source-1", revision: "1", state: "loaded", has_snapshot: true, zotero: false, snapshot_zotero: false,
   name: "thesis.bib", snapshot_name: "thesis.bib", references: 12, warnings: 0, error: null, problem: null, stale: false,
   zotero_libraries: [], source_counts: { "synthetic-file": 12 }, checked_at: null, updated_at: null };
 const footer = () => within(document.querySelector("footer")!);
@@ -29,7 +29,7 @@ test("one quiet footer fix has the runtime icon, label and key caps, with a shor
   expect(document.querySelector(".notices")?.textContent).toBe("");
 });
 
-test("a missing file's fix keeps its file icon and Command-O opens its current source", async () => {
+test("a missing file's Find recovery keeps its file icon in the footer and More", async () => {
   const fileIcon = { mime: "image/png", bytes: [1, 2, 3] };
   const choose = vi.fn(() => null);
   backend({ library_status: () => ({ ...file, state: "error", stale: true, problem: "missing", error: "The file moved" }),
@@ -39,7 +39,7 @@ test("a missing file's fix keeps its file icon and Command-O opens its current s
   await waitFor(() => expect(fix.querySelector("img")?.getAttribute("src")).toBe("data:image/png;base64,AQID"));
   expect(fix.getAttribute("aria-keyshortcuts")).toBe("Control+O");
   fireEvent.click(footer().getByRole("button", { name: "More" }));
-  const source = await screen.findByRole("menuitem", { name: "Open ⁨thesis.bib⁩" });
+  const source = await screen.findByRole("menuitem", { name: "Find ⁨thesis.bib⁩…" });
   expect(source.querySelector("img")?.getAttribute("src")).toBe("data:image/png;base64,AQID");
   fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
   fireEvent.click(await screen.findByRole("button", { name: "Find ⁨thesis.bib⁩…" }));
@@ -55,13 +55,13 @@ test("Command-O follows the selected reference; Option reveals the file without 
   await screen.findByText("Selected source reference");
   commandO();
   await waitFor(() => expect(open).toHaveBeenCalledTimes(1));
-  expect(open.mock.calls[0]).toEqual([{ item: picked.id, expectedRevision: "1", zoteroOnly: false, reveal: false }]);
+  expect(open.mock.calls[0]).toEqual([{ item: picked.id, expectedRevision: "1", expectedSourceGeneration: "source-1", zoteroOnly: false, reveal: false }]);
   fireEvent.keyDown(window, { key: "Alt", altKey: true });
   fireEvent.click(footer().getByRole("button", { name: "More" }));
   expect(await screen.findByRole("menuitem", { name: "Show in folder" })).toBeTruthy();
   fireEvent.keyDown(screen.getByRole("menu"), { key: "o", ctrlKey: true, altKey: true });
   await waitFor(() => expect(open).toHaveBeenCalledTimes(2));
-  expect(open.mock.calls[1]).toEqual([{ item: picked.id, expectedRevision: "1", zoteroOnly: false, reveal: true }]);
+  expect(open.mock.calls[1]).toEqual([{ item: picked.id, expectedRevision: "1", expectedSourceGeneration: "source-1", zoteroOnly: false, reveal: true }]);
 });
 
 test("with no reference selected Command-O opens the current file source", async () => {
@@ -71,7 +71,7 @@ test("with no reference selected Command-O opens the current file source", async
   await waitFor(() => expect(screen.getByRole("status", { name: "Library status" }).textContent).toContain("thesis.bib"));
   commandO();
   await waitFor(() => expect(open).toHaveBeenCalledOnce());
-  expect(open.mock.calls[0]).toEqual([{ item: null, expectedRevision: "1", zoteroOnly: false, reveal: false }]);
+  expect(open.mock.calls[0]).toEqual([{ item: null, expectedRevision: "1", expectedSourceGeneration: "source-1", zoteroOnly: false, reveal: false }]);
 });
 
 test("several Zotero libraries follow the highlighted reference rather than the first library", async () => {
@@ -85,7 +85,7 @@ test("several Zotero libraries follow the highlighted reference rather than the 
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "ArrowDown" });
   commandO();
   await waitFor(() => expect(open).toHaveBeenCalledOnce());
-  expect(open.mock.calls[0]).toEqual([{ item: group.id, expectedRevision: "1", zoteroOnly: false, reveal: false }]);
+  expect(open.mock.calls[0]).toEqual([{ item: group.id, expectedRevision: "1", expectedSourceGeneration: "source-1", zoteroOnly: false, reveal: false }]);
 });
 
 test("Shift-Command-O offers files and Zotero, while Command-O there opens the current source", async () => {
@@ -98,7 +98,7 @@ test("Shift-Command-O offers files and Zotero, while Command-O there opens the c
   expect(screen.getByRole("option", { name: /^Choose a Library File…/ })).toBeTruthy();
   commandO();
   await waitFor(() => expect(open).toHaveBeenCalledOnce());
-  expect(open.mock.calls[0]).toEqual([{ item: null, expectedRevision: "1", zoteroOnly: false, reveal: false }]);
+  expect(open.mock.calls[0]).toEqual([{ item: null, expectedRevision: "1", expectedSourceGeneration: "source-1", zoteroOnly: false, reveal: false }]);
 });
 
 test("AltGr typing cannot trigger source opening", async () => {
@@ -208,7 +208,7 @@ test.each(["file", "zotero-running", "zotero-closed"])("empty choices show each 
   expect(goals).toEqual(["Use Zotero", "Choose a Library File…", ...kind === "file" ? ["Open ⁨thesis.bib⁩"] : kind === "zotero-closed" ? ["Open Zotero"] : []]);
   expect(footer().queryByRole("button", { name: /Open Zotero|Open .*thesis/ })).toBeNull();
   commandO();
-  await waitFor(() => expect(open).toHaveBeenCalledExactlyOnceWith({ item: null, expectedRevision: "1", zoteroOnly: false, reveal: false }));
+  await waitFor(() => expect(open).toHaveBeenCalledExactlyOnceWith({ item: null, expectedRevision: "1", expectedSourceGeneration: "source-1", zoteroOnly: false, reveal: false }));
 });
 
 test("an empty file's failed open leaves one file-choice goal and keeps cancellation usable", async () => {
@@ -238,4 +238,26 @@ test("a source action shown in More hides the matching footer button until the m
   expect(document.querySelector("footer .source-action")).toBeNull();
   fireEvent.keyDown(row, { key: "Escape" });
   expect(await screen.findByRole("button", { name: "Open ⁨thesis.bib⁩" })).toBeTruthy();
+});
+
+test("itemless Command-O uses the missing-file Find recovery without attempting an open", async () => {
+  const choose = vi.fn(() => null), open = vi.fn(() => null);
+  backend({ library_status: () => ({ ...file, state: "error", stale: true, problem: "missing", error: "Invented file moved" }),
+    choose_library: choose, open_library_source: open });
+  render(<App />);
+  const find = await screen.findByRole("button", { name: "Find ⁨thesis.bib⁩…" });
+  expect(find.getAttribute("aria-keyshortcuts")).toBe("Control+O");
+  commandO();
+  await waitFor(() => expect(choose).toHaveBeenCalledOnce());
+  expect(open).not.toHaveBeenCalled();
+});
+
+test("More keeps a different footer recovery visible after a failed source switch", async () => {
+  backend({ library_status: () => ({ ...file, state: "error", stale: false, name: "missing.bib", problem: "missing", error: "Invented replacement file moved" }),
+    library_source: () => ({ kind: "file", name: "thesis.bib", icon: null }) });
+  render(<App />);
+  await screen.findByRole("button", { name: "Choose Library…" });
+  fireEvent.click(footer().getByRole("button", { name: "More" }));
+  await screen.findByRole("menuitem", { name: "Open ⁨thesis.bib⁩" });
+  expect(document.querySelector("footer .source-action")?.textContent).toContain("Choose Library…");
 });

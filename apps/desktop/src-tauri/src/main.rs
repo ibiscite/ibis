@@ -178,6 +178,7 @@ fn main() {
                 tauri::WebviewEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) => {
                     let _ = webview.emit("library:file-drag", false);
                     if paths.len() == 1 && library::accepts_library_file(&paths[0]) {
+                        let _ = webview.emit("library:file-dropped", ());
                         library::start_open(webview.app_handle(), library::Source::File(paths[0].clone()), true);
                     }
                 }

@@ -51,7 +51,8 @@ export function PickerStatusFooter({
     status={<PickerLibraryStatus library={library} groupName={groupName} isOpen={libraryMenuOpen}
       onOpenChange={(open) => { if (open) { cancelCopy(); setMenuOpen(false); } setLibraryMenuOpen(open); }}
       searchRef={input} sourceAction={sourceAction} sourceFailure={sourceOpen.failure !== null}
-      statusIcon={source.status_icon ?? null} hideAction={sourceState.libraryChoices || menuOpen && sourceState.sourceAvailable}
+      statusIcon={source.status_icon ?? null} hideAction={sourceState.libraryChoices}
+      rowAction={menuOpen && api.openLibrarySource && sourceState.sourceAvailable ? sourceAction.label : undefined}
       zotero={library?.zotero && chooseZoteroLibraries ? {
         offered: ["user" as const, ...offeredGroups.map((group) => ({ group }))], isChosen, chosenCount: chosenLibraries.length,
         name: (choice) => typeof choice === "object" ? groupName(choice.group) : pickerText.myLibrary, toggle: toggleLibrary, all: searchAllLibraries,

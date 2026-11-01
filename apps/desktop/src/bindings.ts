@@ -40,9 +40,9 @@ export const commands = {
 	/**  The library as it is now, for the interface when it starts. */
 	libraryStatus: () => __TAURI_INVOKE<LibraryStatus>("library_status"),
 	/**  Open the searched source or launch Zotero for a reported Zotero problem. */
-	openLibrarySource: (item: unknown | null, expectedRevision: string, zoteroOnly: boolean, reveal: boolean) => __TAURI_INVOKE<null>("open_library_source", { item, expectedRevision, zoteroOnly, reveal }),
+	openLibrarySource: (item: unknown | null, expectedRevision: string, expectedSourceGeneration: string, zoteroOnly: boolean, reveal: boolean) => __TAURI_INVOKE<null>("open_library_source", { item, expectedRevision, expectedSourceGeneration, zoteroOnly, reveal }),
 	/**  Resolve the selected source and its system icon, never exposing its path. */
-	librarySource: (item: unknown | null, expectedRevision: string, zoteroOnly: boolean, withStatusIcon: boolean) => __TAURI_INVOKE<SourcePresentation>("library_source", { item, expectedRevision, zoteroOnly, withStatusIcon }),
+	librarySource: (item: unknown | null, expectedRevision: string, expectedSourceGeneration: string, zoteroOnly: boolean, withStatusIcon: boolean) => __TAURI_INVOKE<SourcePresentation>("library_source", { item, expectedRevision, expectedSourceGeneration, zoteroOnly, withStatusIcon }),
 	/**
 	 *  Search the open library. An empty query returns no results. Async so it
 	 *  runs off the main thread. `page` identifies the interface page and
@@ -405,6 +405,7 @@ export type LibraryState = "none" | "loading" | "loaded" | "reloading" | "error"
 export type LibraryStatus = {
 	state: LibraryState,
 	revision: string,
+	source_generation: string,
 	/**  Whether the requested library is Zotero rather than a file. */
 	zotero: boolean,
 	/**  The Zotero libraries requested, in order; empty for a file. */

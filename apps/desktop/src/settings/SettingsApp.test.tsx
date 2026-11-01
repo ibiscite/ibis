@@ -1560,3 +1560,46 @@ test("About copies the version and says so", async () => {
   await screen.findByRole("button", { name: pseudo.text("about-copied") });
   expect(writeText).toHaveBeenCalledOnce();
 });
+
+test("a successful manual update check cannot turn an unreadable update setting into an unavailable build", async () => {
+  const { api } = fakeApi();
+  vi.spyOn(api, "updateChecks").mockRejectedValue(new Error("invented settings read failure"));
+  const check = vi.spyOn(api, "checkForUpdates").mockResolvedValue(undefined as never);
+  render(<SettingsApp api={api} initialPage="about" />);
+  await screen.findByText("Ibis could not read your settings; reopen Settings to try again.");
+  const button = screen.getByRole("button", { name: "Check now" });
+  await act(async () => fireEvent.click(button));
+  expect(check).toHaveBeenCalledOnce();
+  expect(screen.getByRole("button", { name: "Check now" })).toBe(button);
+  expect(screen.getByRole("switch", { name: "Check for updates automatically" })).toHaveProperty("disabled", true);
+  expect(screen.getByText("Ibis could not read your settings; reopen Settings to try again.")).toBeTruthy();
+  expect(screen.queryByText("This build does not update itself.")).toBeNull();
+});
+
+test("version-copy failure stays visible under the version when the update-setting read also fails", async () => {
+  const { api } = fakeApi();
+  vi.spyOn(api, "updateChecks").mockRejectedValue(new Error("invented settings read failure"));
+  Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: vi.fn().mockRejectedValue(new Error("invented clipboard failure")) } });
+  render(<SettingsApp api={api} initialPage="about" />);
+  await screen.findByText("Ibis could not read your settings; reopen Settings to try again.");
+  const version = await screen.findByRole("button", { name: "Version 0.3.0" });
+  fireEvent.click(version);
+  const failure = await screen.findByText("The version could not be copied.");
+  expect(version.nextElementSibling).toBe(failure);
+  expect(failure.getAttribute("role")).toBe("alert");
+  expect(screen.getByText("Ibis could not read your settings; reopen Settings to try again.")).toBeTruthy();
+});
+
+test("manual update-check failure and retry leave the known automatic setting intact", async () => {
+  const { api } = fakeApi();
+  vi.spyOn(api, "checkForUpdates").mockRejectedValueOnce(new Error("invented manual check failure")).mockResolvedValue(undefined as never);
+  render(<SettingsApp api={api} initialPage="about" />);
+  const automatic = await screen.findByRole("switch", { name: "Check for updates automatically" });
+  fireEvent.click(screen.getByRole("button", { name: "Check now" }));
+  await screen.findByText("Ibis could not check for updates. Try again.");
+  expect(screen.queryByText("Ibis could not read your settings; reopen Settings to try again.")).toBeNull();
+  expect(automatic).toHaveProperty("disabled", false);
+  await act(async () => fireEvent.click(screen.getByRole("button", { name: "Check now" })));
+  expect(screen.queryByText("Ibis could not check for updates. Try again.")).toBeNull();
+  expect(screen.getByRole("switch", { name: "Check for updates automatically" })).toBe(automatic);
+});

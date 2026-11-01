@@ -55,20 +55,20 @@ export function usePickerSource({ api, pickerSession, libraryState, menus, curre
     });
   };
   const chooseFile = () => runFromMenu("choose", chooseLibrary);
-  const missingSelected = sourceItem !== null && library?.stale && library.problem === "missing" && !library.zotero;
+  const missingSource = library?.stale && library.problem === "missing" && !library.zotero;
   const openSource = (appOnly = false, reveal = altHeld) => {
     cancelCopy();
     closeMenu(false);
     setKeysOpen(false);
     focusPicker();
-    if (missingSelected && !appOnly) { chooseFile(); return; }
+    if (missingSource && !appOnly) { chooseFile(); return; }
     if (sourceOpen.failure && !sourceOpen.failure.changed && !appOnly) {
       if (sourceOpen.failure.kind === "file" && library?.name) chooseFile();
       else chooseSources();
     } else sourceOpen.run(reveal, appOnly);
   };
   const source = sourceOpen.source;
-  const sourceLabel = missingSelected ? pickerText.findSourceFile(library?.name ?? null) : sourceOpen.failure && !sourceOpen.failure.changed ? sourceOpen.failure.kind === "file" && library?.name ? pickerText.findSourceFile(source.name) : pickerText.chooseLibraryMenu
+  const sourceLabel = missingSource ? pickerText.findSourceFile(library?.name ?? null) : sourceOpen.failure && !sourceOpen.failure.changed ? sourceOpen.failure.kind === "file" && library?.name ? pickerText.findSourceFile(source.name) : pickerText.chooseLibraryMenu
     : source.kind === "zotero" ? sourceItem ? pickerText.showInZotero : pickerText.openZotero
     : altHeld ? pickerText.showSourceFolder(isMac) : pickerText.openSource(source.name);
   const sourceAction: SourceActionProps = { label: sourceLabel, keys: keysFor(altHeld && source.kind === "file" ? "revealSource" : "source"), icon: source.icon,
@@ -78,7 +78,7 @@ export function usePickerSource({ api, pickerSession, libraryState, menus, curre
   const sourceChoice = { ...sourceAction, icon: <SourceIcon icon={source.icon} file={source.kind === "file"} /> };
   /** A reference's menu opens that reference, and recovers its file like More does. */
   const openReference = (id: unknown) => {
-    if (missingSelected || sourceOpen.failure) openSource();
+    if (missingSource || sourceOpen.failure) openSource();
     else sourceOpen.run(false, false, id);
   };
   return { sourceAvailable, libraryChoices, sourceInChoices, sourceOpen, source, sourceAction, sourceChoice, chooseSources, dismissChooser, performSourceChoice, chooseFile, openSource, openReference };

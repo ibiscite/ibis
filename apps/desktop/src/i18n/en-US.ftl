@@ -111,6 +111,7 @@ shortcuts-or = or
 about-automatic = Check for updates automatically
 about-automatic-description = Reads a small update file from GitHub a few times a day
 about-check = Check now
+about-check-failed = Ibis could not check for updates. Try again.
 about-copied = Copied
 about-copy-failed = The version could not be copied.
 about-version = Version { $version }

@@ -146,6 +146,7 @@ test("a failed size save is visible and a later successful save clears it withou
 
 test("clearing a settings notice keeps the pointer's newer place even before its scroll event", async () => {
   const library: api.LibraryStatus = {
+    source_generation: "1",
     state: "loaded", revision: "1", has_snapshot: true, zotero: false, zotero_libraries: [],
     name: "invented.bib", snapshot_name: "invented.bib", references: 14, source_counts: {},
     warnings: 0, error: null, problem: null, note: null, settings_notice: null,
