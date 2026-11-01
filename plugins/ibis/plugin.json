@@ -22,6 +22,7 @@
         "websiteURL": "https://ibiscite.org",
         "supportURL": "https://github.com/ibiscite/ibis/issues",
         "privacyPolicyURL": "https://github.com/ibiscite/ibis/blob/main/PRIVACY.md",
+        "termsOfServiceURL": "https://github.com/ibiscite/ibis/blob/main/docs/plugin-terms.md",
         "logo": "./.claude-plugin/icon.png",
         "composerIcon": "./.claude-plugin/icon.png"
       }
