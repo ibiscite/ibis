@@ -1107,8 +1107,17 @@ loops or plays a sound; and is counted only on this Mac.
   once a week; the paste receipt marks the first, 100th and 1,000th citation
   once each, and About reads "One year with Ibis" on the first anniversary;
   "ibis" in the Settings search opens About with a blink.
-- **Left out:** confetti, sounds, seasonal themes, joke search results and a
-  "what's new" screen.
+- **Third round, the ibis itself (proposed):** About carries one line on the
+  name ("Named for the bird ancient Egyptians linked with Thoth, god of writing
+  and keeper of records."); each later run of five clicks shows the next of
+  six short, true ibis facts; "thoth" in the Settings search opens About with
+  that line tinted; the app icon ships Default, Dark, Clear and Tinted
+  appearances from `brand/`; the menu bar ibis lowers its head while a library
+  reloads, its menu saying so; on the anniversary of 1.0 About reads "Ibis
+  turns two today."
+- **Left out:** confetti, sounds, seasonal themes, joke search results, a
+  "what's new" screen, and choosing another app icon (changing a signed app's
+  icon breaks its signature).
 
 ## Accessibility
 
