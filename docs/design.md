@@ -148,8 +148,10 @@ in both modes on macOS 27; the selection fill is the deeper shade of the same
 hue that keeps its paired text at 4.5:1, such as `#0064E1` light and
 `#0059D1` dark, never brighter in dark mode than in light; and accent text on
 surfaces passes 4.5:1. The focus ring is always the accent, 2 px with a 1 px
-gap, for every choice. Hover and pressed accent fills move toward the text
-colour by the same amounts in both modes. The System page of the design canvas
+gap, for every choice. Hover and pressed selection fills (`--selected-hover`,
+`--selected-pressed`) darken toward black by 10% and 20% in both modes, so
+white text keeps 4.5:1 (mixing toward the text colour would lighten them in
+dark mode). The System page of the design canvas
 shows these roles labelled side by side in light and dark.
 The accents are a fixed, tuned set rather than a free colour picker
 (maintainer, 2026-11-01): Follow the Mac stays the default, Ibis scarlet comes
@@ -656,8 +658,9 @@ check in the check column, never chips. Ticking several rows searches all of
 them. A long name shortens in the middle, with the full name in its tooltip;
 past eight rows the list scrolls inside the menu. A library that could not be
 loaded stays in the list, dimmed, with "Couldn't load" as its trailing text and
-the reason in its tooltip: these problems live here, never in the footer, so
-the footer stays one line. Last, Choose Library… ⇧⌘O (the Mac's "Open…": pick a
+the reason in its tooltip (later: needs the engine to report each library's
+failure). These problems live here, never in the footer, so the footer stays
+one line. Last, Choose Library… ⇧⌘O (the Mac's "Open…": pick a
 .bib file or a Zotero library) and Reload Library, the menu's only reload. **Open the source** (maintainer, 2026-10-30): ⌘O (Ctrl+O)
 works on every screen and opens where the references come from: the selected
 reference in Zotero (Zotero's own `zotero://select` link, starting Zotero if
