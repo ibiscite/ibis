@@ -16,10 +16,11 @@ import "../src/tokens.css";
 import tokenSource from "../src/tokens.css?raw";
 import "../src/ui/Foundation.css";
 import "./board.css";
+import { Parts } from "./parts";
 // Picker root rules must not leak into the separate Settings window.
 import pickerStyles from "../src/styles.css?inline";
 
-export const scenarios = ["results", "first-run", "more", "format-menu", "states", "empty", "file-drag", "error", "loading", "empty-search", "shelf", "reference-menu", "library-menu", "shortcuts", "pinned", "no-matches", "missing", "zotero-closed", "unreadable", "stale", "compact", "spacious", "larger-text", "right-to-left", "long-titles", "tokens", "settings-general", "settings-look", "settings-citations", "settings-shortcuts", "settings-about"] as const;
+export const scenarios = ["results", "first-run", "more", "format-menu", "states", "parts", "empty", "file-drag", "error", "loading", "empty-search", "shelf", "reference-menu", "library-menu", "shortcuts", "pinned", "no-matches", "missing", "zotero-closed", "unreadable", "stale", "compact", "spacious", "larger-text", "right-to-left", "long-titles", "tokens", "settings-general", "settings-look", "settings-citations", "settings-shortcuts", "settings-about"] as const;
 type Scenario = typeof scenarios[number];
 type Theme = "light" | "dark";
 
@@ -146,6 +147,11 @@ function Tokens({ theme }: { theme: Theme }) {
   </div>;
 }
 
+function ThemedParts({ theme }: { theme: Theme }) {
+  useAppearance({ appearance: theme });
+  return <><style>{pickerStyles}</style><Parts /></>;
+}
+
 function Canvas({ host, scenario, settings, picker, theme }: { host: HTMLElement; scenario: Scenario; settings: SettingsApi; picker: PickerApi; theme: Theme }) {
   useEffect(() => {
     const fixed = fixtures[scenario];
@@ -171,6 +177,7 @@ function Canvas({ host, scenario, settings, picker, theme }: { host: HTMLElement
   }, [host, scenario]);
   if (scenario === "states") return <States theme={theme} />;
   if (scenario === "tokens") return <Tokens theme={theme} />;
+  if (scenario === "parts") return <ThemedParts theme={theme} />;
   return scenario.startsWith("settings-")
     ? <SettingsApp api={settings} initialPage={scenario.slice(9)} />
     : <><style>{pickerStyles}</style><App api={picker} preview={{ query: fixtures[scenario]?.query ?? (["first-run", "empty", "file-drag", "error", "loading"].includes(scenario) ? "" : "invented") }} /></>;
@@ -192,7 +199,7 @@ export function mount(host: HTMLElement, options: { scenario?: string; theme?: s
   const settings = demoApi();
   void settings.setPickerPreferences({ ...fixtures[scenario as Scenario]?.preferences, appearance: theme as Theme, paste: false }, null, 0);
   // The states and tokens pages use the Settings window's base styles.
-  const settingsWindow = scenario.startsWith("settings-") || scenario === "states" || scenario === "tokens";
+  const settingsWindow = scenario.startsWith("settings-") || scenario === "states" || scenario === "tokens" || scenario === "parts";
   document.documentElement.classList.toggle("settings-window", settingsWindow);
   document.documentElement.dataset.nativeAppearance = "opaque";
   document.documentElement.dir = scenario === "right-to-left" ? "rtl" : "ltr";

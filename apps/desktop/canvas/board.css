@@ -7,3 +7,11 @@
 .bd .cap { font-size: var(--type-label-size); line-height: var(--type-body-line); color: var(--text-secondary); }
 .bd .spec { font: var(--type-label-size) / var(--type-body-line) var(--mono); color: var(--text-secondary); }
 .bd .sheet { padding: var(--space-6); border-radius: var(--r-card); background: var(--raised); border: var(--border-width) solid var(--separator); }
+.canvas-parts { height: 100%; box-sizing: border-box; overflow: auto; padding: var(--space-6); display: flex; flex-direction: column; gap: var(--space-5); color: var(--text); }
+.canvas-parts section > h2 { margin: 0 0 var(--space-2); color: var(--text-secondary); font-size: var(--type-label-size); line-height: var(--type-label-line); font-weight: var(--strong); }
+.canvas-parts-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-4); }
+.canvas-part { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-1); }
+.canvas-part-items { display: flex; align-items: center; min-height: var(--control-h); }
+.canvas-part code { font: var(--type-label-size) var(--mono); color: var(--text-secondary); }
+.canvas-part svg { width: var(--icon); height: var(--icon); }
+.canvas-part .canvas-part-mark { width: var(--space-10); height: var(--space-10); }
