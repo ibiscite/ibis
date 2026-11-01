@@ -649,10 +649,16 @@ libraries, check times and problems. **One place for each status**
 library state lives. Library problems stay there, so they never push the list
 down; citation refusals and settings notices use the middle scroller. The status
 is a button: it opens the
-**library menu** (the library with its count and age, a Reload button, the
-Zotero libraries as toggle chips when there are several, Choose Library… ⇧⌘O
-(the Mac's "Open…": pick a .bib file or a Zotero library),
-Reload Library). **Open the source** (maintainer, 2026-10-30): ⌘O (Ctrl+O)
+**library menu**: the library with its count and age; then, when Zotero has
+more than one library, **Search in** (maintainer, 2026-11-01, like Finder and
+Mail): a heading, All Libraries first, then one menu row per library with a
+check in the check column, never chips. Ticking several rows searches all of
+them. A long name shortens in the middle, with the full name in its tooltip;
+past eight rows the list scrolls inside the menu. A library that could not be
+loaded stays in the list, dimmed, with "Couldn't load" as its trailing text and
+the reason in its tooltip: these problems live here, never in the footer, so
+the footer stays one line. Last, Choose Library… ⇧⌘O (the Mac's "Open…": pick a
+.bib file or a Zotero library) and Reload Library, the menu's only reload. **Open the source** (maintainer, 2026-10-30): ⌘O (Ctrl+O)
 works on every screen and opens where the references come from: the selected
 reference in Zotero (Zotero's own `zotero://select` link, starting Zotero if
 it is closed), or the .bib file in its default app. **The words always name
