@@ -62,11 +62,11 @@
 .picker-actions kbd { display: inline-block; min-width: var(--key); height: var(--key); margin: 0; padding: 0 calc(var(--space-1) + var(--border-width)); border: var(--border-width) solid var(--stroke-field); border-radius: var(--r-key); background: var(--fill-control); box-shadow: none; text-align: center; font: var(--type-label-size)/calc(var(--key) - 2 * var(--border-width)) var(--font); font-weight: 500; }
 .picker-library { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--row-gap); }
 .picker-library > span:last-child { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.picker-dot { flex: none; width: var(--status-dot); height: var(--status-dot); border-radius: var(--r-full); background: var(--done); }
+.picker-dot { flex: none; width: var(--status-dot); height: var(--status-dot); border-radius: var(--r-full); background: var(--status-ok); }
 .picker .picker-primary { background: var(--accent); color: var(--text-on-accent); }
 .picker-primary kbd { background: var(--on-fill-h); color: inherit; box-shadow: none; border-radius: var(--r-key); }
 .demo-hint kbd { font-size: .95em; }
-.picker-shelf .picker-status { flex: none; display: inline-flex; align-items: center; gap: var(--space-1); height: var(--chip-h); padding-inline: var(--space-2); border-radius: var(--r-full); background: color-mix(in srgb, var(--done) 14%, transparent); color: var(--done); font: var(--strong) var(--type-label-size)/var(--type-label-line) var(--font); white-space: nowrap; }
+.picker-shelf .picker-status { flex: none; display: inline-flex; align-items: center; gap: var(--space-1); height: var(--chip-h); padding-inline: var(--space-2); border-radius: var(--r-full); background: color-mix(in srgb, var(--status-ok) 14%, transparent); color: var(--text); font: var(--strong) var(--type-label-size)/var(--type-label-line) var(--font); white-space: nowrap; }
 .picker-status:empty { display: none; }
 .picker-status:not(:empty)::before { content: "✓"; }
 .demo-hint { display: block; margin-top: var(--space-2); color: var(--text-secondary); font: var(--type-meta-size)/1.5 var(--font); }
@@ -119,7 +119,7 @@
   /* The brief's 160 ms wash sits halfway between the shared feedback/panel timings. */
   .picker-shelf[data-copied] { animation: shelf-copied calc((var(--dur) + var(--dur-panel)) / 2) var(--ease); }
 }
-@keyframes shelf-copied { from { background: color-mix(in srgb, var(--done) 9%, var(--fill-control)); } }
+@keyframes shelf-copied { from { background: color-mix(in srgb, var(--status-ok) 9%, var(--fill-control)); } }
 @media (forced-colors: active) {
   .pick.is-selected, .picker .picker-primary { forced-color-adjust: none; background: Highlight; color: HighlightText; }
   .pick.is-selected .sub, .pick.is-selected .tile { color: HighlightText; }

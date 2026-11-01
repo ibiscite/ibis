@@ -30,11 +30,11 @@ export function usePickerAppearance<T extends PreferencesApi>(api: T): T {
   }, []);
   return useMemo(() => ({
     ...api,
-    ...(api.onPreferencesChanged ? { onPreferencesChanged: (handler: () => void) => api.onPreferencesChanged!(() => {
+    ...(api.onPreferencesChanged ? { onPreferencesChanged: (handler: Parameters<typeof nativeApi.onPreferencesChanged>[0]) => api.onPreferencesChanged!((change) => {
       // The queue reserves this refresh before it waits for pending saves.
       // Retire older appearance reads at notification time, before queued I/O.
       operation.current += 1;
-      handler();
+      handler(change);
     }) } : {}),
     pickerPreferences: async () => {
       const request = ++operation.current;

@@ -1,9 +1,12 @@
+import type { MessageId } from "./i18n";
 import type { keyText } from "./messages";
 
 export type KeyRegion = keyof typeof keyText.regions;
 export type KeyAction = keyof typeof keyText.actions;
 /** One key binding the picker really handles, in accelerator syntax. */
-export type KeyBinding = { region: KeyRegion; action: KeyAction; keys: readonly string[]; displayLabel?: string };
+export type KeyBinding = { region: KeyRegion; action: KeyAction; keys: readonly string[]; displayLabel?: string;
+  /** The action's words right now, when they differ from the table's (Enter that only copies). */
+  label?: MessageId };
 /** The app's unset shortcut setting. */
 export const DEFAULT_PICKER_SHORTCUT = "CmdOrCtrl+Shift+Y";
 
@@ -19,9 +22,9 @@ export const KEY_TABLE: readonly KeyBinding[] = [
   { region: "picker", action: "more", keys: ["CmdOrCtrl+K"] },
   { region: "picker", action: "pin", keys: ["CmdOrCtrl+Shift+P"] },
   { region: "picker", action: "preview", keys: ["CmdOrCtrl+I"] },
-  { region: "picker", action: "source", keys: ["CmdOrCtrl+O"] },
-  { region: "picker", action: "chooseSource", keys: ["CmdOrCtrl+Shift+O"] },
-  { region: "picker", action: "revealSource", keys: ["Alt+CmdOrCtrl+O"] },
+  { region: "library", action: "source", keys: ["CmdOrCtrl+O"] },
+  { region: "library", action: "chooseSource", keys: ["CmdOrCtrl+Shift+O"] },
+  { region: "library", action: "revealSource", keys: ["Alt+CmdOrCtrl+O"] },
   { region: "picker", action: "keys", keys: ["CmdOrCtrl+/", "?"] },
   { region: "picker", action: "settings", keys: ["CmdOrCtrl+,"] },
   { region: "picker", action: "quit", keys: ["CmdOrCtrl+Q"] },

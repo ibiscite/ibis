@@ -281,6 +281,7 @@ fn the_chooser_accepts_each_library_file_format_the_engine_reads() {
             "chooser hides .{extension}"
         );
         let path = directory.path().join(format!("synthetic.{extension}"));
+        assert!(accepts_library_file(&path), "drop hides .{extension}");
         std::fs::write(&path, contents).unwrap_or_else(|e| panic!("{e}"));
         let file = super::super::engine_file::FileLibrary::open(&path).unwrap_or_else(|e| panic!("{e}"));
         let reply = file

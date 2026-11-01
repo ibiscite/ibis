@@ -39,6 +39,7 @@ pub const APP_COMMANDS: &[&str] = &[
     "update_checks",
     "set_update_checks",
     "check_for_updates",
+    "open_about_link",
     "update_available",
     "update_picker_activity",
     "open_settings",

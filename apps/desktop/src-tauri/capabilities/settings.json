@@ -23,6 +23,7 @@
     "allow-update-checks",
     "allow-set-update-checks",
     "allow-check-for-updates",
+    "allow-open-about-link",
     "allow-paste-permission",
     "allow-open-paste-permission",
     "allow-drag-paste-app",

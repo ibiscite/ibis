@@ -32,6 +32,7 @@ export function demoApi(): SettingsApi {
     updateChecks: async () => automatic,
     setUpdateChecks: async (on) => { automatic = on; for (const changed of updateListeners) changed(on); return undefined as never; },
     checkForUpdates: noop,
+    openAboutLink: noop,
     pastePermission: async () => ({ pastes: true, needed: true, granted: true, list: "Accessibility" }),
     openPastePermission: noop, dragPasteApp: noop, finishPasteGuide: async () => true,
     shortcutStatus: async () => shortcut,

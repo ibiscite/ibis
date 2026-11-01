@@ -1,0 +1,5 @@
+.ui-popup-button.ui-button { gap: var(--space-1); max-width: 12rem; font: var(--type-meta-size)/var(--type-meta-line) var(--font); }
+.toolbar-menu-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+:root[data-platform="macos"] .ui-popup-button { min-height: calc(var(--control-h) - var(--space-1)); }
+
+.ui-popup-button .popup-indicator { flex: none; width: var(--icon-small); height: var(--icon-small); color: var(--text-secondary); }

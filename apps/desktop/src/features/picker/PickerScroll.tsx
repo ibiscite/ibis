@@ -1,6 +1,8 @@
 import { Component, createRef, useEffect, useRef, type ReactNode } from "react";
 
-type Props = { children: ReactNode; citationProblem?: string | null; citationProblemIdentity?: object };
+import { useFileDrag } from "../../ui/useFileDrag";
+
+type Props = { onFileDrag?: (change: (active: boolean) => void) => Promise<() => void>; presentation?: number; drag?: ReturnType<typeof useFileDrag>; children: ReactNode; citationProblem?: string | null; citationProblemIdentity?: object };
 type Place = { node: HTMLElement; owner: HTMLElement; top: number; noticeHeight: number };
 
 /** Preserve browsing place across notices and scroll-owner changes. The commit
@@ -79,12 +81,13 @@ class PickerScrollFrame extends Component<Props> {
   }
 
   render() {
-    return <div className="picker-content scroll-area" ref={this.middle}>{this.props.children}</div>;
+    return <div {...this.props.drag} className="picker-content scroll-area" ref={this.middle}>{this.props.children}</div>;
   }
 }
 
 export function PickerScroll(props: Props) {
   const frame = useRef<PickerScrollFrame>(null);
+  const drag = useFileDrag(props.onFileDrag, props.presentation);
   const { citationProblem, citationProblemIdentity } = props;
   // Arrival has one owner, separate from preserving an existing reading place.
   // Equal wording from a newer format request is still a new notice. Renders
@@ -92,5 +95,5 @@ export function PickerScroll(props: Props) {
   useEffect(() => {
     if (citationProblem) frame.current?.revealCitationProblem(citationProblem, citationProblemIdentity);
   }, [citationProblem, citationProblemIdentity]);
-  return <PickerScrollFrame {...props} ref={frame} />;
+  return <PickerScrollFrame {...props} drag={drag} ref={frame} />;
 }

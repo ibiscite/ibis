@@ -8,10 +8,10 @@ afterEach(cleanup);
 test("the keys sheet presents compact groups with shared key caps and leaves out standard menu navigation", () => {
   render(<KeysDialog bindings={KEY_TABLE} isMac onClose={vi.fn()} />);
   const dialog = screen.getByRole("dialog", { name: "Keyboard Shortcuts" });
-  const groups = within(dialog).getAllByRole("rowgroup").slice(1);
-  expect(groups.map((group) => within(group).getAllByRole("row")[0]!.textContent)).toEqual(["While searching", "Anywhere in Ibis"]);
+  const groups = within(dialog).getAllByRole("rowgroup").filter((group) => group.tagName === "TBODY");
+  expect(groups.map((group) => within(group).getAllByRole("row")[0]!.textContent)).toEqual(["While searching", "Your library", "Anywhere in Ibis"]);
   expect(dialog.querySelector(".keys-groups")).toBeTruthy();
-  expect(dialog.querySelectorAll(".key-caps").length).toBeGreaterThan(4);
+  expect(dialog.querySelectorAll("kbd").length).toBeGreaterThan(4);
   expect(within(dialog).queryByText("Go to the first or last item")).toBeNull();
 });
 
@@ -19,6 +19,8 @@ test("the keys sheet keeps its focus cycle and closes with Escape or its backdro
   const onClose = vi.fn();
   const view = render(<KeysDialog bindings={KEY_TABLE} isMac onClose={onClose} />);
   const dialog = screen.getByRole("dialog"), close = within(dialog).getByRole("button", { name: "Close" });
+  expect(document.activeElement).toBe(dialog);
+  fireEvent.keyDown(dialog, { key: "Tab" });
   expect(document.activeElement).toBe(close);
   fireEvent.keyDown(close, { key: "Tab" });
   expect(document.activeElement).toBe(within(dialog).getByRole("group", { name: "Keyboard Shortcuts" }));
@@ -34,5 +36,5 @@ test("the keys sheet keeps its focus cycle and closes with Escape or its backdro
   expect(onClose).toHaveBeenCalledTimes(2);
   view.unmount();
   render(<KeysDialog bindings={KEY_TABLE} isMac onClose={onClose} />);
-  expect(document.activeElement).toBe(screen.getByRole("button", { name: "Close" }));
+  expect(document.activeElement).toBe(screen.getByRole("dialog"));
 });

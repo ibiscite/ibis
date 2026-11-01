@@ -2,7 +2,7 @@
 import { copyFormatLabels } from "./messages";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { commands, type CommandError, type KeyFormat, type LibraryStatus, type PickerPreferences, type ShortcutStatus } from "./bindings";
+import { commands, type CommandError, type KeyFormat, type LibraryStatus, type PickerPreferences, type PreferenceChange, type ShortcutStatus } from "./bindings";
 
 export type { Sources } from "./bindings";
 export type {
@@ -117,8 +117,8 @@ export function onShortcutStatus(handler: (status: ShortcutStatus) => void): Pro
 }
 
 /** Called when Settings changes a picker preference, with the saved preferences. */
-export function onPreferencesChanged(handler: () => void): Promise<UnlistenFn> {
-  return listen("preferences:changed", handler);
+export function onPreferencesChanged(handler: (change: Partial<PreferenceChange> | null) => void): Promise<UnlistenFn> {
+  return listen<Partial<PreferenceChange> | null>("preferences:changed", (event) => handler(event.payload));
 }
 
 /** Called whenever the picker is hidden, by any route. */
@@ -132,6 +132,11 @@ export function onPickerHidden(handler: () => void): Promise<UnlistenFn> {
 }
 
 /** Called when a library finishes opening, or fails to open. */
+/** A native-accepted drop supersedes the explicit source chooser. */
+export function onLibraryFileDropped(handler: () => void): Promise<UnlistenFn> {
+  return listen("library:file-dropped", handler);
+}
+
 export function onLibraryChanged(handler: (status: LibraryStatus) => void): Promise<UnlistenFn> {
   return listen<LibraryStatus>("library:changed", (event) => handler(event.payload));
 }
@@ -177,4 +182,9 @@ export function onUpdateAvailable(handler: (available: boolean) => void): Promis
 /** Delivery still receives the full canonical text; only the receipt is shortened. */
 export function showCopiedNotice(text: string, delivery: number | null, summary: import("./bindings").ReceiptSummary | null = null) {
   return commands.showCopiedNotice(text, delivery, summary);
+}
+
+/** Presence only: native paths never enter the webview. */
+export function onFileDrag(change: (active: boolean) => void): Promise<UnlistenFn> {
+  return listen<boolean>("library:file-drag", (event) => change(event.payload));
 }

@@ -6,7 +6,14 @@ client of the same engine; nothing here needs the app to be installed or running
 
 ## Install
 
-Download `ibis` from the [nightly](https://github.com/ibiscite/ibis/releases/tag/nightly)
+On macOS and Linux, install it with [Homebrew](https://brew.sh):
+
+```sh
+brew install ibiscite/tap/ibis
+```
+
+It comes with bash, zsh and fish completions, and `brew upgrade` brings each new release
+within a day of publication. Or download `ibis` from the [nightly](https://github.com/ibiscite/ibis/releases/tag/nightly)
 or a [release](https://github.com/ibiscite/ibis/releases/latest):
 `ibis-macOS-Apple-silicon.tar.gz`, `ibis-macOS-Intel.tar.gz`, `ibis-Windows.zip` or
 `ibis-Linux.tar.gz`. Unpack it and put `ibis` on your PATH. The macOS binary is not
@@ -157,14 +164,19 @@ for any other revision is refused with the list of revisions Ibis supports.
 
 The Ibis plugin for Claude Code and Codex adds the server and a skill that tells the
 agent to cite only what Ibis returns. It reads the library chosen in the Ibis app and
-needs `ibis` on your PATH:
+needs a current `ibis` on your PATH. Check `ibis mcp --help`: it must list
+`--app-libraries`. If that option is missing, the command predates the plugin;
+use a newer nightly or build the command from the current source. Installing the
+plugin does not install the command.
+
+Then install the plugin and start a new session:
 
 ```sh
 # Claude Code
 /plugin marketplace add ibiscite/ibis
 /plugin install ibis@ibiscite
 
-# Codex, then start a new session
+# Codex
 codex plugin marketplace add ibiscite/ibis
 codex plugin add ibis@ibiscite
 ```
@@ -186,10 +198,22 @@ The skill on its own is
 open Agent Skills format; copy that folder into an agent's skills folder to use it
 without the plugin.
 
-Agents see bibliographic fields and citations only: never notes, annotations, source
+Through MCP, agents see bibliographic fields and citations only: never notes, annotations, source
 paths, file locations or local links. Long values are shortened and each answer is at
 most 256 KiB. Nothing connects beyond your computer; reading a running Zotero uses
 its local API on `127.0.0.1` only.
 
-Agents that run shell commands can also use the command line directly with `--json`;
-the envelope, error codes and exit codes above are the contract.
+Search results preserve `partial` (only some query words matched) and `typo`
+(spelling was corrected). The skill asks the user to choose those suggestions
+before citing them.
+
+Raw command-line `search` and `show` JSON includes source records and is not the
+MCP privacy projection. The plugin stops when MCP is unavailable; it never falls
+back to those commands or reads the library files itself.
+
+Directory publication is separate from marketplace installation. See
+[Anthropic's publishing guide](https://claude.com/docs/directory/publish) and
+[OpenAI's desktop-only submission requirements](https://developers.openai.com/plugins/deploy/desktop-only).
+OpenAI requires developer verification and partner approval for local MCP
+submissions. The plugin declares desktop execution and reuses the Ibis brand icon
+for its listing.

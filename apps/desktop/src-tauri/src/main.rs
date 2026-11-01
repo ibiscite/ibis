@@ -43,7 +43,7 @@ use std::sync::Mutex;
 use std::sync::atomic::Ordering;
 
 use ibis_core::settings;
-use tauri::{Manager, WindowEvent};
+use tauri::{Emitter, Manager, WindowEvent};
 use tauri_plugin_global_shortcut::ShortcutState;
 
 use crate::diagnostics::{NativeIssue, application_message, checked, report};
@@ -166,6 +166,28 @@ fn main() {
         .manage(Mutex::new(ShortcutStatus::default()))
         .manage(updater::Updates::default())
         .invoke_handler(bindings::commands().invoke_handler())
+        .on_webview_event(|webview, event| {
+            if webview.label() != "main" {
+                return;
+            }
+            match event {
+                tauri::WebviewEvent::DragDrop(tauri::DragDropEvent::Enter { paths, .. }) => {
+                    let accepted = paths.len() == 1 && library::accepts_library_file(&paths[0]);
+                    let _ = webview.emit("library:file-drag", accepted);
+                }
+                tauri::WebviewEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) => {
+                    let _ = webview.emit("library:file-drag", false);
+                    if paths.len() == 1 && library::accepts_library_file(&paths[0]) {
+                        let _ = webview.emit("library:file-dropped", ());
+                        library::start_open(webview.app_handle(), library::Source::File(paths[0].clone()), true);
+                    }
+                }
+                tauri::WebviewEvent::DragDrop(tauri::DragDropEvent::Leave) => {
+                    let _ = webview.emit("library:file-drag", false);
+                }
+                _ => {}
+            }
+        })
         .on_window_event(|window, event| {
             if window.label() == settings_window::LABEL {
                 if let WindowEvent::Destroyed = event {

@@ -82,7 +82,7 @@ Ask questions and suggest ideas in [GitHub Discussions](https://github.com/ibisc
 
 ## Command line
 
-`ibis` is the engine itself, for people, scripts and AI agents. Download it from the [nightly](https://github.com/ibiscite/ibis/releases/tag/nightly) or a [release](https://github.com/ibiscite/ibis/releases/latest): `ibis-macOS-Apple-silicon.tar.gz`, `ibis-macOS-Intel.tar.gz`, `ibis-Windows.zip` or `ibis-Linux.tar.gz`. Unpack it and put `ibis` somewhere on your PATH. The macOS binary is not signed yet; if macOS refuses to run a downloaded copy, run `xattr -d com.apple.quarantine ibis` once.
+`ibis` is the engine itself, for people, scripts and AI agents. On macOS and Linux, install it with `brew install ibiscite/tap/ibis`. Or download it from the [nightly](https://github.com/ibiscite/ibis/releases/tag/nightly) or a [release](https://github.com/ibiscite/ibis/releases/latest): `ibis-macOS-Apple-silicon.tar.gz`, `ibis-macOS-Intel.tar.gz`, `ibis-Windows.zip` or `ibis-Linux.tar.gz`. Unpack it and put `ibis` somewhere on your PATH. The macOS binary is not signed yet; if macOS refuses to run a downloaded copy, run `xattr -d com.apple.quarantine ibis` once.
 
 ```sh
 ibis search "garcia" --file refs.bib
@@ -107,8 +107,9 @@ The command line calls the same typed engine methods as the app. Every command
 accepts `--json` and then writes one versioned envelope to stdout, with stable error
 codes and exit codes. The [command line reference](docs/cli.md) covers libraries,
 commands, JSON output, exit codes, canonical citation requests, the JSON-RPC server
-and `ibis mcp` for AI agents. In Claude Code, `/plugin install ibis --marketplace ibiscite/ibis`
-adds the Ibis plugin: the MCP server and a skill that cites only what your library holds.
+and `ibis mcp` for AI agents. The [Ibis plugin for Claude Code and Codex](docs/cli.md#ai-agents-mcp)
+adds the MCP server and a skill that cites only what your library holds. Install a
+current `ibis` command first: `ibis mcp --help` must list `--app-libraries`.
 
 ## Contributing
 

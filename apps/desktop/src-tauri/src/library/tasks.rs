@@ -567,7 +567,6 @@ pub(super) fn remembered_choice(source: &Source, loaded: &Result<Loaded, LoadErr
 const LIBRARY_FILE_EXTENSIONS: &[&str] = &["bib", "bibtex", "json", "csljson"];
 
 /// Whether a dropped file's name says it is a library.
-#[cfg(target_os = "macos")]
 pub(crate) fn accepts_library_file(path: &std::path::Path) -> bool {
     path.extension()
         .and_then(|extension| extension.to_str())
@@ -672,6 +671,8 @@ pub(crate) fn current_status(app: &AppHandle) -> LibraryStatus {
         .map(|l| status(&l))
         .unwrap_or_else(|_| LibraryStatus {
             revision: String::new(),
+            source_generation: String::new(),
+            source_is_requested: false,
             state: LibraryState::Error,
             zotero: false,
             zotero_libraries: Vec::new(),

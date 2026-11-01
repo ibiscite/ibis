@@ -14,18 +14,20 @@ test("About reveals full build with Option and uses the same copy path, includin
   expect(await screen.findByText("One year with Ibis")).toBeTruthy();
   expect(screen.queryByText(/invented-build/)).toBeNull();
   fireEvent.keyDown(window, { key: "Alt", altKey: true });
-  const row = await screen.findByRole("button", { name: `Ibis ${details.build}` });
+  const row = await screen.findByRole("button", { name: `Version ${details.build}` });
   fireEvent.click(row);
   await waitFor(() => expect(write).toHaveBeenLastCalledWith(`Ibis ${details.build}`));
+  await screen.findByRole("button", { name: "Copied" });
   fireEvent.keyUp(window, { key: "Alt" });
-  expect(screen.queryByRole("button", { name: `Ibis ${details.build}` })).toBeNull();
+  expect(screen.queryByRole("button", { name: `Version ${details.build}` })).toBeNull();
   write.mockRejectedValueOnce(new Error("invented clipboard failure"));
-  fireEvent.click(screen.getByRole("button", { name: "Ibis 0.2.1" }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Version 0.2.1" })).toBeTruthy(), { timeout: 2500 });
+  fireEvent.click(screen.getByRole("button", { name: "Version 0.2.1" }));
   expect(await screen.findByRole("alert")).toHaveProperty("textContent", "The version could not be copied.");
-  expect(screen.getByRole("button", { name: "Copy Version" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: /^Version/ })).toBeTruthy();
   mounted.unmount();
   render(<SettingsApp api={{ ...api, delightView: vi.fn().mockResolvedValue({ ...details, anniversary: false }) }} initialPage="about" />);
-  await screen.findByRole("button", { name: "Ibis 0.2.1" });
+  await screen.findByRole("button", { name: "Version 0.2.1" });
   expect(screen.queryByText("One year with Ibis")).toBeNull();
 });
 
@@ -34,10 +36,10 @@ test("a search blink cannot replay when About opens later from navigation", asyn
   const { container } = await act(async () => render(<SettingsApp api={api} initialPage="general" />));
   fireEvent.change(screen.getByRole("searchbox"), { target: { value: "ibis" } });
   await act(async () => fireEvent.click(screen.getByRole("button", { name: "About Ibis" })));
-  expect(container.querySelector('[data-motion="blink"]')).not.toBeNull();
+  expect(container.querySelector('[data-blink]')).not.toBeNull();
   fireEvent.click(screen.getByRole("option", { name: "General" }));
   fireEvent.click(screen.getByRole("option", { name: "About Ibis" }));
-  expect(container.querySelector('[data-motion="blink"]')).toBeNull();
+  expect(container.querySelector('[data-blink]')).toBeNull();
 });
 
 test("the anniversary expires at local midnight and a delayed older read cannot restore it", async () => {
@@ -56,7 +58,7 @@ test("ibis search offers About, blinks on opening, and a stale About read cannot
   const { container } = await act(async () => render(<SettingsApp api={api} initialPage="general" />));
   fireEvent.change(screen.getByRole("searchbox"), { target: { value: "ibis" } });
   await act(async () => fireEvent.click(screen.getByRole("button", { name: "About Ibis" })));
-  expect(container.querySelector('[data-motion="blink"]')).toBeNull();
+  expect(container.querySelector('[data-blink]')).toBeNull();
   fireEvent.click(screen.getByRole("option", { name: "General" }));
   await act(async () => { complete(details); });
   expect(screen.queryByText("One year with Ibis")).toBeNull();

@@ -1,0 +1,16 @@
+.ui-shortcut-table { width: 100%; border-collapse: collapse; font: var(--type-body-size)/var(--type-body-line) var(--font); }
+.ui-shortcut-table th, .ui-shortcut-table td { height: var(--control-h); box-sizing: border-box; padding: 0 var(--space-2); text-align: start; font-weight: inherit; }
+.ui-shortcut-table td { text-align: end; }
+.ui-shortcut-table th[scope="rowgroup"] { position: sticky; top: 0; z-index: var(--z-content); background: var(--surface); color: var(--text-secondary); font-weight: var(--strong); }
+.ui-shortcut-table thead { color: var(--text-secondary); }
+.ui-shortcut-table thead th:last-child { text-align: end; }
+.ui-shortcut-table tr:not(:first-child) { border-bottom: var(--border-width) solid var(--separator); }
+.keys-binding { display: inline-flex; align-items: center; gap: var(--space-1); white-space: nowrap; }
+.ui-settings-keys { display: inline-flex; align-items: center; gap: var(--space-1); flex-wrap: wrap; justify-content: end; color: var(--text-secondary); }
+.ui-settings-keys kbd[data-system] { background: transparent; border-color: transparent; }
+.ui-system-note { color: var(--text-secondary); font-size: var(--type-label-size); }
+.ui-shortcut-filter.ui-settings-search { margin: 0; }
+
+.ui-shortcut-table tr[data-highlighted] { background: var(--highlight); }
+
+.ui-shortcut-table tr[data-echo] { background: var(--fill-quiet-hover); }

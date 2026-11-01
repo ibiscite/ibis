@@ -32,7 +32,7 @@ export function useSourceOpen(api: Pick<PickerApi, "openLibrarySource" | "librar
   useEffect(() => {
     if (!visible || !read || !library) return;
     let current = true;
-    void read(item, library.revision, zoteroOnly, withStatusIcon).then((source) => {
+    void read(item, library.revision, library.source_generation, zoteroOnly, withStatusIcon).then((source) => {
       if (current && latest.current === scope) setResolved({ scope, source });
     // Presentation is optional. Retrying it by refreshing status could loop
     // on a retired reference; the explicit open owns any actionable refusal.
@@ -42,8 +42,8 @@ export function useSourceOpen(api: Pick<PickerApi, "openLibrarySource" | "librar
   const busyTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => { request.current += 1; clearTimeout(busyTimer.current); }, []);
   const source: SourcePresentation = resolved?.scope === scope ? resolved.source : {
-    kind: zoteroOnly || (library?.snapshot_zotero ?? library?.zotero) ? "zotero" : "file",
-    name: zoteroOnly ? "Zotero" : library?.snapshot_name ?? library?.name ?? "library", icon: null, status_icon: null,
+    kind: zoteroOnly || (library?.has_snapshot ? library.snapshot_zotero : library?.zotero) ? "zotero" : "file",
+    name: zoteroOnly ? "Zotero" : (library?.has_snapshot ? library.snapshot_name : null) ?? library?.name ?? "library", icon: null, status_icon: null,
   };
   const run = (reveal = false, appOnly = false, target: unknown = item) => {
     if (!api.openLibrarySource) return;
@@ -58,7 +58,7 @@ export function useSourceOpen(api: Pick<PickerApi, "openLibrarySource" | "librar
       setBusy(null);
     };
     const kind = appOnly ? "zotero" : source.kind;
-    void api.openLibrarySource(appOnly ? null : target as typeof item, library?.revision ?? "", appOnly || zoteroOnly && target === item, reveal).then(settled, (error: unknown) => {
+    void api.openLibrarySource(appOnly ? null : target as typeof item, library?.revision ?? "", library?.source_generation ?? "", appOnly || zoteroOnly && target === item, reveal).then(settled, (error: unknown) => {
       settled();
       if (latest.current !== scope || request.current !== current) return;
       const changed = isSnapshotChanged(error);

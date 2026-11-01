@@ -13,17 +13,13 @@
   flex: none; display: grid; place-items: center; width: var(--icon); height: var(--icon); border-radius: var(--r-icon);
   background: var(--page); color: var(--thumb); font-size: var(--type-label-size); font-weight: var(--strong); line-height: 1;
 }
-.ui-side-navigation-tile::before { content: attr(data-tile); }
+.ui-side-navigation-tile svg { display: block; width: var(--icon-compact); height: var(--icon-compact); }
 .ui-side-navigation-tile[data-page="general"] { --page: var(--page-general); }
 .ui-side-navigation-tile[data-page="look"] { --page: var(--page-look); }
 .ui-side-navigation-tile[data-page="citations"] { --page: var(--page-citations); }
 .ui-side-navigation-tile[data-page="shortcuts"] { --page: var(--page-shortcuts); }
-/* About is the app itself: Ibis's own icon, on no tile, as Mac apps mark their entry. */
-.ui-side-navigation-tile[data-page="about"] { background: url("../../../../brand/exports/ibis-app-icon.svg") center / contain no-repeat; border-radius: 0; }
-:root[data-appearance="dark"] .ui-side-navigation-tile[data-page="about"] { background-image: url("../../../../brand/exports/ibis-app-icon-dark.svg"); }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-appearance="light"]) .ui-side-navigation-tile[data-page="about"] { background-image: url("../../../../brand/exports/ibis-app-icon-dark.svg"); }
-}
+/* About wears the white mark on a scarlet tile, so it reads like the other pages on every surface. */
+.ui-side-navigation-tile[data-page="about"] { --page: var(--page-about); background-image: url("../../../../brand/exports/ibis-mark-white.svg"); background-position: center; background-size: 90%; background-repeat: no-repeat; }
 @media (hover: hover) {
   .ui-side-navigation-item[data-hovered]:not([aria-current]) { background: var(--fill-quiet-hover); }
 }
@@ -32,5 +28,5 @@
 /* About sits at the foot of the sidebar. */
 .ui-side-navigation-item[data-gap-before] { margin-block-start: auto; }
 @media (prefers-contrast: more), (forced-colors: active) {
-  .ui-side-navigation-tile:not([data-page="about"]) { forced-color-adjust: none; background: Canvas; color: CanvasText; box-shadow: inset 0 0 0 1px CanvasText; }
+  .ui-side-navigation-tile { forced-color-adjust: none; background: Canvas; color: CanvasText; box-shadow: inset 0 0 0 1px CanvasText; }
 }

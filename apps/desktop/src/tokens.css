@@ -18,9 +18,11 @@
   --larger-text-scale: 1.15;
 
   /* Sizes. */
-  --tile: var(--space-8); --icon: var(--space-5); --icon-small: var(--space-4); --icon-compact: .875rem; --icon-stroke: 1.5; --key: var(--space-5);
+  --tile: var(--space-8); --icon: var(--space-5); --icon-small: var(--space-4); --icon-stroke: 1.5; --icon-compact: .875rem; --key: var(--space-5);
   --control-h: var(--space-8); --action-h: 1.75rem; --control-small-h: var(--space-6); --field-h: 2.25rem; --touch-target: 2.75rem; --border-width: 1px;
   --status-dot: var(--space-2); --chip-h: var(--control-small-h);
+  /* Measured from NSSwitch on macOS 26: a wide capsule with a pill thumb. */
+  --switch-w: 54px; --switch-h: 24px; --switch-thumb-w: 32px; --switch-thumb-h: 20px;
   /* The search glyph sits on the tile column and the query on the title column. */
   --lead: calc(var(--row-pad) + (var(--tile) - var(--icon)) / 2);
   --lead-gap: calc((var(--tile) - var(--icon)) / 2 + var(--row-gap));
@@ -56,8 +58,6 @@
   --shadow-overlay: 0 0 0 .5px rgb(0 0 0 / 12%), 0 12px 32px rgb(0 0 0 / 16%);
   --shadow-dialog: 0 24px 48px rgb(0 0 0 / 22%);
   --shadow-toast: 0 8px 16px rgb(0 0 0 / 18%);
-  --shadow-badge: 0 0 0 .5px color-mix(in srgb, var(--text) 28%, transparent), 0 1px 2px rgb(0 0 0 / 18%);
-  --shadow-segment: 0 0 0 .5px rgb(0 0 0 / 10%), 0 1px 2px rgb(0 0 0 / 12%);
   --shadow-thumb: 0 0 0 .5px rgb(0 0 0 / 12%), 0 1px 2px rgb(0 0 0 / 22%);
   --thumb: var(--white);
   --blur: none;
@@ -75,7 +75,7 @@
   --selected: Highlight; --selected-text: HighlightText; --selected-text-secondary: currentColor;
   --ring: var(--accent);
   --scarlet: CanvasText; --scarlet-tile: CanvasText; --on-scarlet: var(--white);
-  --done: CanvasText; --look: CanvasText; --stop: CanvasText;
+  --status-ok: CanvasText; --status-warning: CanvasText; --status-error: CanvasText;
   /* System, secondary, tertiary, quaternary and quinary fill. */
   --fill-1: color-mix(in srgb, var(--text) 9.8%, transparent);
   --fill-2: color-mix(in srgb, var(--text) 7.8%, transparent);
@@ -89,8 +89,8 @@
   --on-fill-h: rgb(0 0 0 / 8%); --on-fill-p: rgb(0 0 0 / 16%);
   --accent-wash: color-mix(in srgb, var(--accent) 14%, transparent);
   --on-selected-fill: color-mix(in srgb, var(--selected-text) 22%, transparent);
-  --done-wash: color-mix(in srgb, var(--done) 9%, transparent);
-  --done-fill: color-mix(in srgb, var(--done) 14%, transparent);
+  --status-ok-wash: color-mix(in srgb, var(--status-ok) 9%, transparent);
+  --status-ok-fill: color-mix(in srgb, var(--status-ok) 14%, transparent);
   --scrim: rgb(0 0 0 / 30%);
   --scrollbar-thumb: var(--text-tertiary);
   --scroll-fade: 14px;
@@ -99,7 +99,7 @@
   --surface-grouped: var(--fill-4);
   --titlebar-height: 2.75rem;
   --sidebar-width: min(12.5rem, 26%);
-  --page-general: #8e8e93; --page-look: #ff9f0a; --page-citations: #0a84ff; --page-shortcuts: #5e5ce6;
+  --page-general: #8e8e93; --page-look: #ff9f0a; --page-citations: #0a84ff; --page-shortcuts: #5e5ce6; --page-about: var(--ibis);
   --highlight: var(--accent-wash);
 
   /* Look's dots show each Mac colour as Apple draws it. */
@@ -113,7 +113,7 @@
 @supports (color: light-dark(white, black)) {
   :root {
     --scarlet: light-dark(var(--ibis), #ff7a5c); --scarlet-tile: light-dark(var(--ibis), #d2401f);
-    --done: light-dark(#1a7f37, #5bc26f); --look: light-dark(#b07a00, #f5c542); --stop: light-dark(#c4314b, #ff8a8a);
+    --status-ok: light-dark(#34c759, #30d158); --status-warning: light-dark(#ffcc00, #ffd600); --status-error: light-dark(#ff383c, #ff4245);
     --accent: #007aff; --accent-text: light-dark(#0068da, #419cff);
     --selected: light-dark(#0064e1, #0059d1); --selected-text: #fff; --text-on-accent: var(--selected-text);
     --selected-text-secondary: color-mix(in srgb, var(--selected-text) 82%, transparent);
@@ -122,7 +122,7 @@
 }
 @supports (color: light-dark(white, black)) {
   @media (prefers-contrast: no-preference) and (forced-colors: none) {
-    :root:not(.notice-window) {
+    :root {
       --surface: light-dark(#ffffff, #1e1e1e); --raised: light-dark(#f6f6f6, #282828);
       --surface-overlay: light-dark(#ffffff, #282828); --sheet: var(--surface-overlay);
       --ring: light-dark(rgb(0 103 244 / 50%), rgb(26 169 255 / 50%));
@@ -146,9 +146,6 @@
     :root[data-platform="macos"][data-native-appearance="vibrancy"]:not(.notice-window),
     :root[data-platform="macos"][data-native-appearance="liquid-glass"]:not(.notice-window) {
       --scarlet: light-dark(#982d16, #ff9d87);
-      --done: light-dark(#135f29, #6fca81);
-      --look: light-dark(#b07a00, #f5c542);
-      --stop: light-dark(#9b273b, #ff9c9c);
     }
   }
 }
@@ -178,17 +175,27 @@
 /* Increase Contrast and forced colours: system colours, solid edges, no depth. */
 @media (prefers-contrast: more), (forced-colors: active) {
   :root, :root[data-platform] {
-    --shadow-card: none; --shadow-overlay: none; --shadow-dialog: none; --shadow-toast: none; --shadow-thumb: none; --shadow-segment: none; --shadow-badge: none;
+    --shadow-card: none; --shadow-overlay: none; --shadow-dialog: none; --shadow-toast: none; --shadow-thumb: none;
     --surface: Canvas; --raised: Canvas; --surface-overlay: Canvas; --sheet: Canvas; --surface-grouped: Canvas;
     --text: CanvasText; --text-secondary: CanvasText; --text-tertiary: CanvasText; --separator: CanvasText; --stroke-field: CanvasText;
     --selected: Highlight; --selected-text: HighlightText; --selected-text-secondary: currentColor;
     --ring: CanvasText; --ring-offset: 2px; --scrollbar-thumb: CanvasText; --scrim: Canvas;
     --scarlet: CanvasText; --scarlet-tile: CanvasText; --on-scarlet: Canvas;
-    --done: CanvasText; --look: CanvasText; --stop: CanvasText;
+    --status-ok: CanvasText; --status-warning: CanvasText; --status-error: CanvasText;
   }
 }
 @media (forced-colors: active) {
   :root, :root[data-platform] { --stroke-field: ButtonText; --separator: ButtonText; --on-fill-h: transparent; --on-fill-p: transparent; }
+}
+
+@supports (color: light-dark(white, black)) {
+  @media (prefers-contrast: more) and (forced-colors: none) {
+    :root, :root[data-platform] {
+      --status-ok: light-dark(#1a7f37, #5bdf7d);
+      --status-warning: light-dark(#8a6400, #ffe14c);
+      --status-error: light-dark(#b91c35, #ff6961);
+    }
+  }
 }
 
 /* One accent, three roles, both modes: the accent colours controls and the
@@ -228,8 +235,11 @@
   --r-seg: max(var(--r-floor-mark), calc(var(--r-control) - 2px));
   --key-gap: calc((var(--action-h) - var(--key)) / 2);
   --r-key: max(var(--r-floor-mark), calc(var(--r-action) - var(--key-gap)));
+  --r-toast: 18px; --r-receipt-mark: calc(var(--r-toast) - var(--space-2));
   --footer-h: calc(var(--action-h) + 2 * var(--inset));
-  --key-fill: var(--fill-control); --key-fill-hover: var(--fill-control-hover); --key-fill-pressed: var(--fill-control-pressed);
+  /* Measured from NSSegmentedControl: the chosen fill lands at 19% of the text colour. */
+  --segment-track: var(--fill-2); --segment-selected: color-mix(in srgb, var(--text) 12%, transparent);
+  --key-fill: var(--fill-control); --key-fill-pressed: var(--fill-control-pressed);
   --primary: var(--accent);
   --accent-hover: color-mix(in srgb, var(--primary) 90%, black);
   --accent-pressed: color-mix(in srgb, var(--primary) 80%, black);

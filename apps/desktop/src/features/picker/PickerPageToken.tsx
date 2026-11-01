@@ -1,3 +1,4 @@
+import { Icon } from "../../icons";
 import type { RefObject } from "react";
 import { Button } from "../../ui/Button";
 import { pickerText } from "../../messages";
@@ -17,7 +18,7 @@ export function PickerPageToken({ usingLocator, prepared, canApplyLocator, chang
   return usingLocator && <span className="search-page-token" role="group" aria-label={pickerText.usingLocator(usingLocator.label, usingLocator.value)}>
     <Button variant="quiet" size="small" aria-label={pickerText.searchAsTyped} title={pickerText.searchAsTyped}
       onPress={() => { send({ type: "literal" }); input.current?.focus({ preventScroll: true }); }}>
-      <bdi>{usingLocator.label === "page" ? "p." : usingLocator.label} {usingLocator.value}</bdi><span aria-hidden="true">×</span>
+      <bdi>{usingLocator.label === "page" ? "p." : usingLocator.label} {usingLocator.value}</bdi><Icon name="close" />
     </Button>
     {canApplyLocator && prepared && <Button variant="quiet" size="small" onPress={() => { changeLocator(prepared, usingLocator); input.current?.focus(); }} aria-label={pickerText.applyLocator(prepared.key)} title={pickerText.applyLocator(prepared.key)}>Apply</Button>}
   </span>;

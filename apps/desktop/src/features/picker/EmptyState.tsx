@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import type { EmptyLibraryChoices, SourceChoice } from "../../LibrarySetup";
 import type { LibraryStatus } from "../../api";
-import { ChoiceIcon } from "../../icons";
+import { ChoiceIcon, Icon } from "../../icons";
 import { keysFor } from "../../keys";
 import { keyText, libraryMessages, pickerText, setupText } from "../../messages";
 import { ChoiceList, type Choice } from "../../ui/ChoiceList";
@@ -67,10 +67,12 @@ function Recovery({ library, onFind, onReload, setup, source }: {
     : [setupText.otherTitle(name), reason];
   const tryAgain: Choice = { id: "retry", title: setupText.tryAgain, help: setupText.tryAgainHelp, icon: <ChoiceIcon name="retry" /> };
   const another: Choice = { id: "another", title: setupText.another, help: setupText.anotherHelp, icon: <ChoiceIcon name="swap" /> };
-  const choices: Choice[] = problem === "missing" && !library.zotero
-    ? [{ id: "find", title: setupText.find(name), help: setupText.findFileHelp, icon: <ChoiceIcon name="find" />, suggested: true }, another]
+  // Finding the file is what ⌘O does here, so it stays one row.
+  const finding = problem === "missing" && !library.zotero;
+  const choices: Choice[] = finding
+    ? [{ id: "find", title: setupText.find(name), help: setupText.findFileHelp, icon: <ChoiceIcon name="find" />, suggested: true, keys: keysFor("source") }, another]
     : [{ ...tryAgain, suggested: true }, another];
-  if (source) choices.push({ id: "source", title: source.label, icon: source.icon ?? <ChoiceIcon name={library.zotero ? "library" : "file"} />,
+  if (!finding && source && source.label !== pickerText.chooseLibraryMenu && !choices.some((choice) => choice.title === source.label)) choices.push({ id: "source", title: source.label, icon: source.icon ?? <ChoiceIcon name={library.zotero ? "library" : "file"} />,
     keys: keysFor("source") });
   return (
     <div className="empty-state">
@@ -120,14 +122,12 @@ export function EmptyState({ library, query, narrowed, onChooseLibrary, onClearS
   const description = query ? pickerText.noMatchesHint : library.sample ? setupText.sampleSearchHelp : pickerText.typeToFindHint;
   return (
     <div className="empty-state empty-template">
-      {peck && !query ? <IbisMark className="opened-mark" size="welcome" motion="peck" /> : <svg className="empty-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M10.5 4a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13zM16 16l5 5" />
-      </svg>}
+      {peck && !query ? <IbisMark className="opened-mark" size="welcome" motion="peck" /> : <Icon name="find" className="empty-icon" />}
       <p className="empty-title" dir="auto">{title}</p>
       <p className="empty-description">{description}</p>
       {query ? <div className="empty-actions">
         <Button variant="primary" className="empty-primary" onPress={onClearSearch}>{pickerText.clearSearch}</Button>
-        {narrowed && <Button variant="quiet" className="empty-alternative" onPress={onSearchAll}>{pickerText.searchAllLibraries}</Button>}
+        {narrowed && <Button variant="secondary" className="empty-alternative" onPress={onSearchAll}>{pickerText.searchAllLibraries}</Button>}
       </div> : null}
       {!query && <div className="empty-keys" aria-hidden="true">
         <KeyHint label={keyText.copy} keys={keysFor("copy")} />

@@ -61,6 +61,7 @@ const panelEnglish = {
   "shortcuts-command-settings": "Settings",
   "shortcuts-command-quit": "Quit Ibis",
   "shortcuts-region-search": "While searching",
+  "shortcuts-region-library": "Your library",
   "shortcuts-region-picker": "Anywhere in Ibis",
   "shortcuts-region-menu": "In a menu",
   "shortcuts-region-system": "From any app",
@@ -69,6 +70,7 @@ const panelEnglish = {
   "shortcuts-action-source": "Open the source",
   "shortcuts-action-preview": "Show what will be pasted",
   "shortcuts-action-copy": "Paste the citation",
+  "shortcuts-action-copy-only": "Copy the citation",
   "shortcuts-action-add": "Add another reference",
   "shortcuts-action-move": "Move through results",
   "shortcuts-action-escape": "Step back or hide",
@@ -86,7 +88,6 @@ const panelEnglish = {
   "about-automatic": "Check for updates automatically",
   "about-automatic-description": "Reads a small update file from GitHub a few times a day",
   "about-check": "Check now",
-  "about-copy": "Copy Version",
   "about-copied": "Copied",
   "about-copy-failed": "The version could not be copied.",
   "about-unavailable": "This build does not update itself.",
@@ -98,8 +99,8 @@ test.each(Object.entries(panelEnglish))("%s preserves exact English and expands 
 });
 
 test("panel variables preserve exact English and formatting errors refuse without partial copy", () => {
-  expect(englishMessages.text("about-version", { name: "Synthetic App", version: "0.3.0" })).toBe("Synthetic App 0.3.0");
-  expect(englishMessages.text("about-version", { name: "Ibis", version: "" })).toBe("Ibis ");
+  expect(englishMessages.text("about-version", { name: "Synthetic App", version: "0.3.0" })).toBe("Version 0.3.0");
+  expect(englishMessages.text("about-version", { name: "Ibis", version: "" })).toBe("Version ");
   expect(englishMessages.text("shortcuts-picker-conflict", { command: "Choose Output Format" })).toBe("That shortcut is used for Choose Output Format. Try another shortcut.");
   for (const id of ["about-version", "shortcuts-picker-conflict"] as const) expect(() => englishMessages.text(id)).toThrow("Invalid interface message");
   const child = vi.fn(() => <p>Partial panel</p>);

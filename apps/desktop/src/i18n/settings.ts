@@ -11,7 +11,7 @@ export const SHORTCUT_ACTIONS = {
   menuChoose: "shortcuts-action-menu-choose", menuLeave: "shortcuts-action-menu-leave",
 } as const satisfies Record<KeyAction, MessageId>;
 export const SHORTCUT_REGIONS = {
-  search: "shortcuts-region-search", picker: "shortcuts-region-picker",
+  search: "shortcuts-region-search", library: "shortcuts-region-library", picker: "shortcuts-region-picker",
   menu: "shortcuts-region-menu", system: "shortcuts-region-system",
 } as const satisfies Record<KeyRegion, MessageId>;
 export const SHORTCUT_COMMANDS = {
@@ -48,7 +48,7 @@ export const SETTINGS_IDS = [
   "settings-shortcut-restored",
   "citations-default-description",
   "citations-forget", "citations-forget-description", "citations-forget-button",
-  "citations-forget-failed", "citations-forget-done",
+  "citations-forget-failed", "citations-forget-done", "citations-recent", "citations-recent-description", "citations-recent-words",
   "citations-format-pandoc",
   "citations-format-autocite",
   "citations-format-parencite",

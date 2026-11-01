@@ -57,7 +57,7 @@ try {
       const url = new URL("settings.html", base);
       url.searchParams.set("page", target);
       await page.goto(url.href);
-      await page.locator(".ui-settings-row").first().waitFor();
+      await page.locator(".ui-settings-row, .ui-shortcut-table").first().waitFor();
       if (panel === "shortcuts" || panel === "general-refusal") {
         const recorder = page.locator(".settings-page button[aria-pressed]");
         await recorder.waitFor();
@@ -66,7 +66,7 @@ try {
         await recorder.press("Alt+K");
         await page.getByRole("alert").waitFor();
         assert.equal(await recorder.textContent(), saved, "refusal retains working shortcut");
-        assert.equal(await page.locator(".ui-settings-row:has([role=alert]) button[aria-pressed]").count(), 1, "refusal beside its recorder");
+        assert.equal(await page.locator(".ui-settings-row:has([role=alert]) button[aria-pressed], tr:has(button[aria-pressed]) + tr [role=alert]").count(), 1, "refusal beside its recorder");
         // Success and reopening go through the same General/Shortcuts owner.
         await recorder.click();
         await recorder.press("Alt+L");

@@ -9,7 +9,7 @@ The logo, app icon and other brand files for Ibis. Use the files in [`exports/`]
 | The logo on a web page or README | `exports/ibis-logo.svg` (light backgrounds), `exports/ibis-logo-on-dark.svg` (dark) |
 | The logo where SVG is not accepted (slides, documents) | `exports/png/ibis-logo-800.png`, `exports/png/ibis-logo-on-dark-800.png` |
 | The bird alone | `exports/ibis-mark.svg`, `exports/ibis-mark-on-dark.svg` |
-| The Mac app icon's appearances | `exports/Ibis.icon`; after changing it, run `scripts/macos-icon.sh` on a Mac with Xcode 26 |
+| The Mac app icon's appearances | `exports/Ibis.icon`; after changing it, run `scripts/macos-icon.sh` on a Mac with Xcode 26. Its layers are flat because macOS adds its own glass and depth; every other platform keeps our soft depth |
 | One colour (print, stickers, monochrome) | `exports/ibis-mark-flat.svg`, `-black.svg`, `-white.svg` |
 | A profile picture (GitHub, social sites) | `exports/png/ibis-avatar-512.png` |
 | GitHub's link preview | `exports/png/github-social-preview.png`: repository Settings, General, Social preview, Edit, Upload |
@@ -39,6 +39,15 @@ M is the height of the bird.
 - **Themes.** `brand/build.py` generates website colour roles in the app’s `tokens.css` and the portable `colors.css`: light by default, dark when the system is dark, and an optional dim theme (`data-theme="dim"`) for a softer charcoal. Each theme names the same roles: `bg`, `surface`, `line`, `text`, `muted`, `accent`, `accent-soft`.
 - **Motion.** The logo animation draws the neck, grows the head and beak out together as one shape, then fades in the wordmark, in about 1.5 s. People who ask their system for reduced motion see the finished logo. Use it once per page or video, never on a loop.
 - **Words.** Use `words.tagline` in `settings.json` for the public headline. Say "early preview" until 1.0, and name only what ships today.
+
+## Interface icons
+
+`icons/*.svg` is the editable outline set: 20 pt grid, 16 pt live area,
+one 1.5 pt stroke with round caps and joins, one path per glyph. The build
+writes `apps/desktop/src/icon-paths.ts`; never edit that output by hand.
+`node scripts/check-icons.mjs` enforces the drawing contract. Inspect every
+source at 1× and 2× after a change. App and file icons supplied by the system
+are not part of this set; no Zotero artwork ships with Ibis.
 
 ## Changing the brand
 

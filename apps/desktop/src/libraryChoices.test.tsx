@@ -6,7 +6,7 @@ import { backend, resetApp, result } from "./testing/app";
 
 afterEach(resetApp);
 const choiceRow = (name: RegExp) => screen.getByRole("option", { name });
-const FILE_ROW = /^BibTeX, BibLaTeX or CSL-JSON file/;
+const FILE_ROW = /^Choose a Library File…/;
 function pressRow(row: HTMLElement) {
   act(() => row.focus());
   fireEvent.keyDown(row, { key: "Enter", code: "Enter" });
@@ -50,14 +50,10 @@ test("empty-library choices use arrows and Enter, keep focus after cancelling an
     choose_library: () => null,
   });
   render(<App />);
-  const zotero = await screen.findByRole("option", { name: /^Zotero/ });
+  const zotero = await screen.findByRole("option", { name: /^Use Zotero/ });
   const search = screen.getByLabelText("Search references");
   act(() => search.focus());
   fireEvent.keyDown(search, { key: "ArrowDown", code: "ArrowDown" });
-  const source = choiceRow(/^Open Zotero/);
-  expect(document.activeElement).toBe(source);
-  expect(source.getAttribute("aria-keyshortcuts")).toBe("Control+O");
-  fireEvent.keyDown(source, { key: "ArrowDown", code: "ArrowDown" });
   expect(document.activeElement).toBe(zotero);
   fireEvent.keyDown(zotero, { key: "ArrowDown", code: "ArrowDown" });
   const file = choiceRow(FILE_ROW);
@@ -68,6 +64,8 @@ test("empty-library choices use arrows and Enter, keep focus after cancelling an
   pressRow(file);
   await waitFor(() => expect(calls.filter((call) => call === "choose_library")).toHaveLength(1));
   expect(document.activeElement).toBe(file);
+  const source = choiceRow(/^Open .*empty.bib/);
+  expect(source.getAttribute("aria-keyshortcuts")).toBe("Control+O");
   expect(screen.getAllByRole("option")).toHaveLength(3);
   expect(screen.queryByRole("region", { name: "Preview" })).toBeNull();
   expect(within(document.querySelector("footer")!).queryByRole("button", { name: /^Copy/ })).toBeNull();
@@ -85,8 +83,7 @@ test("missing-file Find uses the requested name and cancellation leaves its keyb
   pressRow(find);
   await waitFor(() => expect(calls.filter((call) => call === "choose_library")).toHaveLength(1));
   expect(document.activeElement).toBe(find);
-  expect(screen.getAllByRole("option")).toHaveLength(3);
-  expect(screen.getAllByRole("option").map((row) => row.getAttribute("data-key"))).toEqual(["find", "another", "source"]);
+  expect(screen.getAllByRole("option").map((row) => row.getAttribute("data-key"))).toEqual(["find", "another"]);
   expect(find.getAttribute("data-suggested")).toBe("true");
   expect(screen.queryByRole("region", { name: "Preview" })).toBeNull();
   expect(within(document.querySelector("footer")!).queryByRole("button", { name: /^Copy/ })).toBeNull();
@@ -94,7 +91,7 @@ test("missing-file Find uses the requested name and cancellation leaves its keyb
   const another = choiceRow(/^Use another library/);
   expect(document.activeElement).toBe(another);
   pressRow(another);
-  await waitFor(() => expect(document.activeElement).toBe(choiceRow(/^Zotero/)));
+  await waitFor(() => expect(document.activeElement).toBe(choiceRow(/^Use Zotero/)));
 });
 
 test("a valid empty replacement hides old citation controls and Enter does nothing", async () => {
