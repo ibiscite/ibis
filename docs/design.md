@@ -430,7 +430,10 @@ in rows) against this before adding it. What the rule covers (settled
 | Citation segment pill | `--r-floor` |
 
 Switches, chips, toasts and capsules use `--r-full`. Settings page icons use
-Apple's icon shape (22.5% of the size), like app icons.
+Apple's icon shape (22.5% of the size), like app icons. About Ibis shows the
+Ibis app icon itself (`brand/exports/ibis-app-icon.svg`, the `-dark` file in
+dark mode) at the same 20 px, on its own with no tile behind it, as Mac apps
+mark their own entry.
 
 **Width classes** (container queries, in em). Below 28.75 em: header controls
 wrap and footer hints show keys only. Below 60 em the preview replaces the
