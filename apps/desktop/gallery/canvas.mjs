@@ -1,10 +1,10 @@
 // Renders every canvas scenario from the real bundle, in light and dark, for the design canvas.
-// pnpm -C apps/desktop build:canvas
-// IBIS_PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs node apps/desktop/gallery/canvas.mjs apps/desktop/dist-canvas OUT_DIR
-import { readFile } from "node:fs/promises";
+// IBIS_PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs pnpm -C apps/desktop canvas
+import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 const { chromium } = await import(process.env.IBIS_PLAYWRIGHT_MODULE);
 const dist = process.argv[2], out = process.argv[3];
+await mkdir(out, { recursive: true });
 const browser = await chromium.launch({ headless: true });
 const size = (scenario) => scenario === "settings-look" ? { width: 920, height: 1320 }
   : scenario === "tokens" ? { width: 920, height: 1000 }
