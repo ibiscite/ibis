@@ -190,7 +190,7 @@ drawn glyph. Controls in one bar share a centre line, text a baseline.
 | Footer | 40 px | 24 px actions + 2S; Windows and GNOME add a 1 px top divider outside it. |
 | Smallest target | 32 px, 44 px on touch | A smaller drawn control keeps the target with `::before`. |
 
-**Rows** [C4]. Rows are 2 px apart in results, Recently added and choice lists.
+**Rows** [C4]. Rows are 2 px apart in results and Recently added; choice screens keep their own 4 px (see choice screens).
 Densities (decision 0020): Compact 40 px (one line), Comfortable 58 px (the default,
 two lines) and Spacious 76 px (three lines). Density changes rows only, never
 controls, targets, type or the header. The citation key is not shown in rows
@@ -446,6 +446,16 @@ without taking scroll ownership from React Aria.
 content and never break a word; a table that does not fit scrolls or drops a
 column, it does not hyphenate.
 
+**Capitalisation** (maintainer, 2026-11-01: consistent everywhere, from
+platform guidance). On macOS, menu items, buttons, window and sheet titles use
+title-style capitalisation, as Apple's guidelines ask: "Keep Window Open",
+"Show in Zotero", "Remove from Citation", "Clear Search", "Keyboard
+Shortcuts". Everything else uses sentence case: choice-screen rows ("Try
+sample references", "Use another library"), descriptions, the keys list's
+action descriptions, notes, status, settings labels and headings. One string
+never appears in both styles; a keys-list line describes an action and stays
+sentence case even when it names a menu item.
+
 **Labels and long strings.** Menu action labels remain readable by widening
 then wrapping at the viewport limit. Outside menus, action labels stay on one
 line: the layout widens, or the label truncates with a tooltip.
@@ -499,7 +509,7 @@ default button last). Every hint is label first, then keys: 8 px between them,
 16 px between hints, label type on one baseline. Actions are quiet 24 px fills,
 radius `--r-tile`, with 32 px targets; they invoke the same guarded actions as
 the keys and sit in one group named "Keys". With Alt held: "Add to citation ⇧↵",
-the Escape step ("Clear search Esc" or "Hide Esc"), then More. When the footer
+the Escape step ("Clear Search Esc" or "Hide Esc"), then More. When the footer
 does not fit, shorten the status first, then drop the hint labels to keys
 only. The status dot is `--status-dot-size`, at the footer's leading edge
 (in line with the tiles' edge) and centred on the text's x-height; the status
@@ -586,7 +596,7 @@ above rows.
 
 | Case | Title | Line | Below |
 |---|---|---|---|
-| No matches | No matching references | Try a surname, year or fewer words. | Clear search; quieter Search all libraries when some are left out |
+| No matches | No matching references | Try a surname, year or fewer words. | Clear Search; a quieter Search All Libraries when some are left out |
 | Loading or reloading | Opening thesis.bib… / Reloading thesis.bib… | None | Nothing for 400 ms, then the opening screen; retained rows stay |
 
 **Shelf** [C7]. What Enter pastes, one 40 px line above the footer's Copy
@@ -617,7 +627,7 @@ sentence** and **Year only**, each with a quiet example of what it pastes in
 the current style; **Page…** with the current page or "None" trailing,
 editing in place when chosen; then the source action with the same words and
 keys as More ("Show in Zotero ⌘O" or "Open thesis.bib ⌘O"); then **Remove
-from citation ⌫**. With one reference the
+from Citation ⌫**. With one reference the
 whole citation is its segment. Removing needs no click into the menu
 (maintainer, 2026-10-30): a pointed segment shows a 16 px round × badge in a
 24 px target on its top-end corner, outside the text and the pill, so the key
@@ -684,7 +694,7 @@ page", where the Page field lives beside the page itself.
   copy keys.", no Enter hint. Stale: a Look icon, "The library changed. Reading
   it again…". Warnings: a trailing pill ("1 warning"; "Reference entry" for a numeric
   style, which copies the entry because its number depends on the document).
-- **Show what will be pasted.** On by default (`show_paste_preview`, decision 0020),
+- **Show What Will Be Pasted.** On by default (`show_paste_preview`, decision 0020),
   ⌘I / Ctrl+I, in More and Settings › General. Off hides only the line and
   closes the wide pane; the chosen references and copy readiness stay. If the
   output had focus, Search receives it first. Formatting refusals stay visible
@@ -1047,7 +1057,7 @@ breathe. Rows kept from before stay instead, with only the footer saying
   never asks "What do you write in?". The format pop-up beside search names
   the exact output and the captured app, such as `\cite · Browser` or
   `APA · Word`; a long value ends with an ellipsis but keeps its full accessible
-  name. ⇧⌘F (Ctrl+Shift+F elsewhere) opens the chooser from anywhere in the picker and closes it again; Escape or a pick returns to search with the query kept. Tab keeps its usual meaning. Items read as plain names with the output as a quiet example ("BibLaTeX brackets   \parencite{key}"), never three rows with the same name; the menu stays 300 px wide and ends on a whole row. A format
+  name. ⇧⌘F (Ctrl+Shift+F elsewhere) opens the chooser from anywhere in the picker and closes it again; Escape or a pick returns to search with the query kept. Tab keeps its usual meaning. Items read as plain names with the output as a quiet example ("BibLaTeX brackets   \parencite{key}"), never three rows with the same name; the menu is at least 300 px wide, widens for longer labels (translations, Larger text) and wraps only at the viewport limit, as every menu does, and ends on a whole row. A format
   pick is remembered for that app. "Just this once" makes the
   next pick apply to one successful copy, then restores the app's output;
   reopening also clears it. "Automatic" removes only that app's remembered
