@@ -65,7 +65,7 @@ fn initialized(engine: &Engine) -> mcp::Session {
         &request(
             0,
             "initialize",
-            json!({"protocolVersion":mcp::LEGACY_VERSIONS[0],"capabilities":{}}),
+            json!({"protocolVersion":mcp::LEGACY_VERSIONS[0],"capabilities":{},"clientInfo":{"name":"t","version":"1"}}),
         ),
     )
     .unwrap();
@@ -485,7 +485,7 @@ fn older_clients_negotiate_a_revision_they_asked_for() {
         &request(
             2,
             "initialize",
-            json!({"protocolVersion":mcp::PROTOCOL_VERSION,"capabilities":{}}),
+            json!({"protocolVersion":mcp::PROTOCOL_VERSION,"capabilities":{},"clientInfo":{"name":"t","version":"1"}}),
         ),
     )
     .unwrap();
@@ -494,6 +494,31 @@ fn older_clients_negotiate_a_revision_they_asked_for() {
         mcp::handle(&engine, &mut session, &request(3, "ping", json!({}))).unwrap()["result"],
         json!({})
     );
+}
+
+#[test]
+fn only_a_complete_handshake_opens_the_process_to_older_requests() {
+    let (_dir, engine) = engine();
+    let unversioned = request(9, "tools/call", json!({"name":"styles","arguments":{}}));
+    let client = json!({"name":"t","version":"1"});
+    for params in [
+        json!({}),
+        json!({"protocolVersion":20250618,"capabilities":{},"clientInfo":client}),
+        json!({"protocolVersion":mcp::LEGACY_VERSIONS[0],"clientInfo":client}),
+        json!({"protocolVersion":mcp::LEGACY_VERSIONS[0],"capabilities":{}}),
+    ] {
+        let mut session = mcp::Session::default();
+        let reply = mcp::handle(&engine, &mut session, &request(1, "initialize", params.clone())).unwrap();
+        assert_eq!(reply["error"]["code"], -32602, "{params}");
+        let reply = mcp::handle(&engine, &mut session, &unversioned).unwrap();
+        assert_eq!(
+            reply["error"]["code"], -32602,
+            "a refused handshake opened the process: {params}"
+        );
+    }
+    // An older client may check the server is alive before it opens.
+    let reply = handle(&engine, &request(2, "ping", json!({}))).unwrap();
+    assert_eq!(reply["result"], json!({}));
 }
 
 #[test]

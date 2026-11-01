@@ -144,7 +144,8 @@ pub fn handle(engine: &Engine, session: &mut Session, message: &Value) -> Option
     // client that opened this process with `initialize`.
     let meta = params.get("_meta");
     let modern = match meta.and_then(|meta| meta.get(VERSION_KEY)) {
-        None if method == "initialize" || session.legacy => false,
+        // Older clients may ping before their handshake finishes.
+        None if method == "initialize" || method == "ping" || session.legacy => false,
         None => return Some(error(id, -32602, "Invalid params: name the protocol version in _meta")),
         Some(Value::String(version)) if version == PROTOCOL_VERSION => {
             if !meta
@@ -180,6 +181,17 @@ pub fn handle(engine: &Engine, session: &mut Session, message: &Value) -> Option
         }),
         "initialize" if !modern => {
             let requested = params.get("protocolVersion").and_then(Value::as_str);
+            // Only a complete handshake opens the process to requests without a revision.
+            if requested.is_none()
+                || !params.get("capabilities").is_some_and(Value::is_object)
+                || !params.get("clientInfo").is_some_and(Value::is_object)
+            {
+                return Some(error(
+                    id,
+                    -32602,
+                    "Invalid params: initialize needs protocolVersion, capabilities and clientInfo",
+                ));
+            }
             session.legacy = true;
             json!({
                 "protocolVersion": LEGACY_VERSIONS

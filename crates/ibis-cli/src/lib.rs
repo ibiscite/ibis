@@ -608,6 +608,7 @@ fn execute<R: BufRead, W: Write + Send>(
             None
         };
     let named_files = files.clone();
+    let (named_personal, named_groups) = (personal, groups.clone());
     if let Some(app) = &app {
         for path in &app.files {
             if !files.contains(path) {
@@ -671,18 +672,26 @@ fn execute<R: BufRead, W: Write + Send>(
             engine.dispatch(Method::Libraries, &params, &cancel),
             human::zotero_failure,
         )?;
-        // Zotero libraries are the app's when the command line named none.
-        let zotero_named = matches.get_flag("zotero") || !source_values::<u64>(matches, "zotero-group").is_empty();
-        if let Some(app) = app.as_ref().filter(|_| !zotero_named) {
+        // Each Zotero library is the app's only when the app chose it and the command line did not.
+        if let Some(app) = &app {
             for library in engine.libraries()?.libraries {
-                if !before.iter().any(|old| old.id == library.id) {
-                    let group = serde_json::to_value(&library)
-                        .ok()
-                        .and_then(|value| value.pointer("/zotero/group").and_then(Value::as_u64));
-                    let shown = match group {
-                        Some(group) => format!("Zotero group {group} (chosen in {})", app.app),
-                        None => format!("Zotero (chosen in {})", app.app),
-                    };
+                if before.iter().any(|old| old.id == library.id) {
+                    continue;
+                }
+                let group = serde_json::to_value(&library)
+                    .ok()
+                    .and_then(|value| value.pointer("/zotero/group").and_then(Value::as_u64));
+                let (chosen, shown) = match group {
+                    Some(group) => (
+                        app.zotero.contains(&ZoteroLibrary::Group(group)) && !named_groups.contains(&group),
+                        format!("Zotero group {group} (chosen in {})", app.app),
+                    ),
+                    None => (
+                        app.zotero.contains(&ZoteroLibrary::Personal) && !named_personal,
+                        format!("Zotero (chosen in {})", app.app),
+                    ),
+                };
+                if chosen {
                     names.insert(library.id.as_str().to_owned(), shown);
                 }
             }
