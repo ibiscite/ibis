@@ -17,7 +17,7 @@
 .settings-sidebar {
   grid-area: 1 / 1 / -1 / 2; min-width: 0; min-height: 0; box-sizing: border-box;
   display: flex; flex-direction: column; overflow: hidden;
-  padding-block-start: var(--titlebar-height); background: var(--fill-4);
+  padding-block-start: var(--titlebar-height); background: var(--fill-quiet-hover);
   border-inline-end: var(--border-width) solid var(--separator);
 }
 

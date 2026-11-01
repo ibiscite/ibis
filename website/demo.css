@@ -18,7 +18,7 @@
 /* The static query wraps inside its reserved column at large text sizes. */
 .picker-query { overflow-wrap: anywhere; }
 .picker input:focus-visible { border-radius: var(--r-row); }
-.picker select, .picker button, .picker-static-control, .draft button { min-height: var(--control-h); padding: var(--space-1) var(--space-2); border: 0; border-radius: var(--r-control); background: var(--fill-3); color: var(--text); font: var(--type-meta-size)/var(--type-meta-line) var(--font); cursor: pointer; box-shadow: inset 0 0 0 var(--border-width) var(--stroke-field); }
+.picker select, .picker button, .picker-static-control, .draft button { min-height: var(--control-h); padding: var(--space-1) var(--space-2); border: 0; border-radius: var(--r-control); background: var(--fill-control); color: var(--text); font: var(--type-meta-size)/var(--type-meta-line) var(--font); cursor: pointer; box-shadow: inset 0 0 0 var(--border-width) var(--stroke-field); }
 .picker-static-control { display: inline-flex; align-items: center; gap: var(--space-2); cursor: default; }
 /* Native select semantics, with one local chevron (including on iOS). */
 .picker-format { position: relative; display: inline-flex; flex: none; min-width: 0; max-width: 100%; }
@@ -26,13 +26,13 @@
 .picker-format svg { position: absolute; right: var(--space-2); top: 50%; width: 1em; height: 1em; translate: 0 -50%; fill: none; stroke: var(--text-secondary); stroke-width: var(--icon-stroke); stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
 .picker input::-webkit-search-cancel-button { appearance: none; }
 .picker .picker-clear { display: grid; place-items: center; flex: none; width: var(--control-h); padding: 0; border: 0; background: none; box-shadow: none; color: var(--text-secondary); font-size: var(--type-heading-size); }
-.picker button:disabled { color: var(--text-disabled); background: var(--fill-3); cursor: default; }
+.picker button:disabled { color: var(--text-disabled); background: var(--fill-control); cursor: default; }
 .picker-middle { flex: 1; min-height: 0; display: flex; flex-direction: column; padding-block: var(--inset); }
 .picker-meta { flex: none; margin: 0; display: flex; justify-content: space-between; gap: var(--space-2); padding: var(--space-2) var(--row-pad) var(--space-1); margin-inline: var(--inset); color: var(--text-secondary); font-size: var(--type-label-size); }
 .picker-results { list-style: none; display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--row-spacing); padding: 0 var(--inset); margin: 0; flex: 1; min-height: 0; align-content: start; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
 .pick { position: relative; display: flex; align-items: center; gap: var(--row-gap); min-height: var(--row-comfortable); padding: var(--space-2) var(--row-pad); border-radius: var(--r-row); color: var(--text); cursor: pointer; }
 .pick.is-selected { background: var(--selected); color: var(--selected-text); }
-.pick .tile { position: relative; flex: none; display: grid; place-items: center; width: var(--tile); height: var(--tile); min-height: 0; padding: 0; border: 0; box-shadow: none; border-radius: var(--r-tile); background: var(--fill-3); color: var(--text-secondary); }
+.pick .tile { position: relative; flex: none; display: grid; place-items: center; width: var(--tile); height: var(--tile); min-height: 0; padding: 0; border: 0; box-shadow: none; border-radius: var(--r-tile); background: var(--fill-control); color: var(--text-secondary); }
 .pick.is-selected .tile { background: color-mix(in srgb, var(--selected-text) 22%, transparent); color: inherit; }
 .pick .tile.is-added { background: var(--scarlet-tile); color: var(--on-scarlet); }
 .pick.is-selected .tile.is-added { background: var(--selected-text); color: var(--scarlet-tile); }
@@ -43,7 +43,7 @@
 .ref .sub { font-size: var(--type-meta-size); line-height: var(--type-meta-line); color: var(--text-secondary); }
 .is-selected .sub { color: var(--selected-text-secondary); }
 .ref-year { flex: none; font-size: var(--type-meta-size); font-variant-numeric: tabular-nums; }
-.picker-shelf { flex: none; display: flex; align-items: center; gap: var(--row-gap); margin: 0 var(--inset); height: var(--space-10); padding-inline: var(--row-pad); background: var(--fill-3); border-radius: var(--r-row); }
+.picker-shelf { flex: none; display: flex; align-items: center; gap: var(--row-gap); margin: 0 var(--inset); height: var(--space-10); padding-inline: var(--row-pad); background: var(--fill-control); border-radius: var(--r-row); }
 .picker-citation { flex: 0 1 auto; min-width: 0; display: grid; grid-template-columns: minmax(0, var(--tile)) minmax(1ch, 1fr); align-items: center; gap: var(--row-gap); font: .8125rem/var(--type-meta-line) var(--mono); }
 .picker-shelf[data-copied] .picker-citation { grid-template-columns: minmax(0, var(--tile)) minmax(1ch, 1fr) minmax(0, var(--tile)); }
 .picker-beak { min-width: 0; height: var(--space-5); background: var(--scarlet); mask: url("assets/ibis-quote-beak.svg") right / contain no-repeat; }
@@ -59,7 +59,7 @@
 .picker-actions .key-caps, .picker-actions .key-cap { display: inline-flex; align-items: center; gap: var(--space-1); }
 .picker-actions .key-caps { direction: ltr; unicode-bidi: isolate; white-space: nowrap; }
 .picker-actions .key-plus { color: var(--text-secondary); }
-.picker-actions kbd { display: inline-block; min-width: var(--key); height: var(--key); margin: 0; padding: 0 calc(var(--space-1) + var(--border-width)); border: var(--border-width) solid var(--stroke-field); border-radius: var(--r-key); background: var(--fill-3); box-shadow: none; text-align: center; font: var(--type-label-size)/calc(var(--key) - 2 * var(--border-width)) var(--font); font-weight: 500; }
+.picker-actions kbd { display: inline-block; min-width: var(--key); height: var(--key); margin: 0; padding: 0 calc(var(--space-1) + var(--border-width)); border: var(--border-width) solid var(--stroke-field); border-radius: var(--r-key); background: var(--fill-control); box-shadow: none; text-align: center; font: var(--type-label-size)/calc(var(--key) - 2 * var(--border-width)) var(--font); font-weight: 500; }
 .picker-library { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--row-gap); }
 .picker-library > span:last-child { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .picker-dot { flex: none; width: var(--status-dot); height: var(--status-dot); border-radius: var(--r-full); background: var(--done); }
@@ -83,14 +83,14 @@
 .draft .paste-slot::after { content: ""; position: absolute; inset: calc(-1 * var(--space-2)) 0; }
 .draft .paste-slot kbd { background: none; box-shadow: none; padding: 0; }
 @media (hover: hover) {
-  .pick:not(.is-selected):hover { background: var(--fill-4); }
+  .pick:not(.is-selected):hover { background: var(--fill-quiet-hover); }
   .pick .tile:not(.is-added):hover svg { visibility: hidden; }
   .pick .tile:not(.is-added):hover::after { content: "+"; position: absolute; inset: 0; display: grid; place-items: center; font-size: var(--type-heading-size); }
-  .picker button:not(.tile):not(.picker-clear):not(.picker-primary):not(:disabled):hover, .draft button:hover { background: var(--fill-2); }
+  .picker button:not(.tile):not(.picker-clear):not(.picker-primary):not(:disabled):hover, .draft button:hover { background: var(--fill-control-hover); }
   .picker .picker-primary:not(:disabled):hover { background: var(--accent-h); }
   .draft .paste-slot:hover { background: var(--website-accent-soft); border-style: solid; }
 }
-.picker button:not(.tile):not(.picker-clear):not(:disabled):active, .draft button:active { background: var(--fill-1); }
+.picker button:not(.tile):not(.picker-clear):not(:disabled):active, .draft button:active { background: var(--fill-control-pressed); }
 .picker .picker-primary:not(:disabled):active { background: var(--accent-p); }
 @container picker (max-width: 28.75em) {
   .picker-shelf { padding-inline: var(--space-1); gap: var(--space-1); }
@@ -119,7 +119,7 @@
   /* The brief's 160 ms wash sits halfway between the shared feedback/panel timings. */
   .picker-shelf[data-copied] { animation: shelf-copied calc((var(--dur) + var(--dur-panel)) / 2) var(--ease); }
 }
-@keyframes shelf-copied { from { background: color-mix(in srgb, var(--done) 9%, var(--fill-3)); } }
+@keyframes shelf-copied { from { background: color-mix(in srgb, var(--done) 9%, var(--fill-control)); } }
 @media (forced-colors: active) {
   .pick.is-selected, .picker .picker-primary { forced-color-adjust: none; background: Highlight; color: HighlightText; }
   .pick.is-selected .sub, .pick.is-selected .tile { color: HighlightText; }

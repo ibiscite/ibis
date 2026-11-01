@@ -43,7 +43,7 @@ function rgba(body: string, token: string): [number, number, number, number][] {
 function hexes(body: string, token: string): number[][] {
   const value = body.match(new RegExp(`${token}:\\s*light-dark\\(([^;]+)\\);`))?.[1];
   expect(value, token).toBeTruthy();
-  const surfaces = [[252, 252, 253], [36, 36, 38]];
+  const surfaces = [[255, 255, 255], [30, 30, 30]];
   return [...value!.matchAll(/#([0-9a-f]{6})|rgb\((\d+) (\d+) (\d+) \/ ([\d.]+)%\)/g)].map((m, mode) => m[1]
     ? [1, 3, 5].map((i) => parseInt(`#${m[1]}`.slice(i, i + 2), 16))
     : [+m[2]!, +m[3]!, +m[4]!].map((c, i) => c * +m[5]! / 100 + surfaces[mode]![i]! * (1 - +m[5]! / 100)));
@@ -208,7 +208,7 @@ test("the frameless macOS writing toggles use the shared pressed fill", () => {
   const mac = macSkinRules().filter((rule) => rule.type === CSSRule.STYLE_RULE).map((rule) => rule.cssText).join("\n");
   const sheet = document.createElement("style");
   // jsdom does not resolve custom properties in border colours: substitute them.
-  const values: Record<string, string> = { "--clear": "transparent", "--selected": "rgb(10, 122, 255)", "--selected-text": "rgb(255, 255, 255)", "--separator": "rgb(1, 2, 3)", "--border-width": "1px", "--stroke-field": "transparent", "--fill-3": "rgb(240, 240, 240)", "--fill-1": "rgb(220, 220, 220)", "--text": "rgb(20, 20, 20)" };
+  const values: Record<string, string> = { "--clear": "transparent", "--selected": "rgb(10, 122, 255)", "--selected-text": "rgb(255, 255, 255)", "--separator": "rgb(1, 2, 3)", "--border-width": "1px", "--stroke-field": "transparent", "--fill-control": "rgb(240, 240, 240)", "--fill-control-pressed": "rgb(220, 220, 220)", "--text": "rgb(20, 20, 20)" };
   sheet.textContent = (mac.replace(/@supports[^{]*\{[^{}]*\{[^{}]*\}\s*\}/g, "") + styles + read("ui/Button.css"))
     .replace(/var\((--[\w-]+)\)/g, (whole, name: string) => values[name] ?? whole);
   document.head.append(sheet);

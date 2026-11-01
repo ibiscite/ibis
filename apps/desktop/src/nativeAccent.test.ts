@@ -82,10 +82,10 @@ test("the native accent adds no row rule of its own: the shared selected-row til
 
 test("selected rows and menu highlights keep WebKit's white selected text on the native accent", () => {
   // The contrast pick is black on the default blues; selection keeps the native pair (docs/design.md, Selected row).
-  expect(css).toMatch(/@supports \(color: -apple-system-alternate-selected-text\)\s*\{\s*:root\[data-native-accent="true"\]\[data-system="macos"\]:not\(\.notice-window\)\s*\{\s*--sel-text:\s*-apple-system-alternate-selected-text;/);
-  const bridge = css.indexOf("--sel-text: var(--on-accent)");
+  expect(css).toMatch(/@supports \(color: -apple-system-alternate-selected-text\)\s*\{\s*:root\[data-native-accent="true"\]\[data-system="macos"\]:not\(\.notice-window\)\s*\{\s*--selected-text:\s*-apple-system-alternate-selected-text;/);
+  const bridge = css.indexOf("--selected-text: var(--text-on-accent)");
   expect(bridge).toBeGreaterThan(-1);
-  expect(css.indexOf("--sel-text: -apple-system-alternate-selected-text")).toBeGreaterThan(bridge);
+  expect(css.indexOf("--selected-text: -apple-system-alternate-selected-text")).toBeGreaterThan(bridge);
   setNativeAccent([0, 122 / 255, 1]);
   expect(root.style.getPropertyValue("--native-accent-on")).toBe("#000");
 });
@@ -94,7 +94,7 @@ test("native primary foregrounds stay readable through hover and press in both t
   const luminance = (rgb: number[]) => rgb.reduce((l, c, i) => l + (c <= .04045 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4) * [.2126, .7152, .0722][i]!, 0);
   for (const rgb of [[.4, .55, .5], [0, 122 / 255, 1], [119 / 255, 119 / 255, 119 / 255], [.6, .4, 0], [1, 0, 0], [0, 0, 0], [1, 1, 1]]) {
     setNativeAccent(rgb);
-    for (const [theme, grey] of [["light", 38], ["dark", 222]] as const) {
+    for (const [theme, grey] of [["light", 39], ["dark", 221]] as const) {
       const ink = [grey, grey, grey].map((c) => c / 255);
       for (const [state, weight] of [["hover", .88], ["pressed", .8]] as const) {
         const on = root.style.getPropertyValue(`--native-accent-on-${state}-${theme}`);

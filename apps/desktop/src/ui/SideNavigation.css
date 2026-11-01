@@ -20,7 +20,7 @@
 .ui-side-navigation-tile[data-page="shortcuts"] { --page: var(--page-shortcuts); }
 .ui-side-navigation-tile[data-page="about"] { --page: var(--page-about); }
 @media (hover: hover) {
-  .ui-side-navigation-item[data-hovered]:not([aria-current]) { background: var(--fill-4); }
+  .ui-side-navigation-item[data-hovered]:not([aria-current]) { background: var(--fill-quiet-hover); }
 }
 .ui-side-navigation-item[aria-current="page"] { background: var(--selected); color: var(--selected-text); }
 .ui-side-navigation-item[data-focus-visible] { outline: var(--ring-width) solid var(--ring); outline-offset: var(--ring-offset); }

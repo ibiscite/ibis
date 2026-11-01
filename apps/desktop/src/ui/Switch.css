@@ -4,7 +4,7 @@
 .ui-switch { position: relative; display: inline-flex; flex: none; align-items: center; min-height: var(--control-h); cursor: default; }
 .ui-switch-track {
   position: relative; box-sizing: border-box; width: 38px; height: 22px; border-radius: var(--r-full);
-  background: var(--fill-1); border: var(--border-width) solid var(--stroke-field);
+  background: var(--fill-control-pressed); border: var(--border-width) solid var(--stroke-field);
   transition: background-color var(--dur) var(--ease);
 }
 .ui-switch-thumb {

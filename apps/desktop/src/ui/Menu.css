@@ -13,10 +13,10 @@
 }
 @supports (color: light-dark(white, black)) {
   :root[data-platform="windows"] .menu-popover {
-    --menu-highlight: var(--fill-4);
+    --menu-highlight: var(--fill-quiet-hover);
   }
   :root[data-platform="linux"] .menu-popover {
-    --menu-highlight: var(--fill-3);
+    --menu-highlight: var(--fill-control);
   }
 }
 /* Fluent MenuFlyout: 8 px flyout and 4 px rows from the geometry chain, 32 px high, sliding in from its button. */
@@ -60,7 +60,7 @@
 .menu-popover [role="menu"]:focus-visible { outline: none; box-shadow: none; }
 .menu-section { display: flex; flex: none; flex-direction: column; }
 .menu-section-chips { flex-direction: row; flex-wrap: wrap; gap: var(--space-1); padding-block: var(--space-2); }
-.menu-section-chips .menu-item { min-height: var(--control-h); background: var(--fill-3); border-radius: var(--r-full); }
+.menu-section-chips .menu-item { min-height: var(--control-h); background: var(--fill-control); border-radius: var(--r-full); }
 .menu-section-chips .menu-item[aria-checked="true"] { background: var(--selected); color: var(--selected-text); }
 .menu-separator { height: 1px; margin: 4px var(--menu-item-pad); border: 0; background: var(--separator); }
 .menu-header { padding-inline: var(--menu-item-pad); }

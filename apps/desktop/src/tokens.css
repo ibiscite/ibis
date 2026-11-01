@@ -15,7 +15,7 @@
 
   /* Sizes. */
   --tile: 2rem; --icon: 1.25rem; --icon-small: 1rem; --icon-stroke: 1.5; --key: 1.25rem;
-  --control-h: 2rem; --action-h: 1.75rem; --field-h: 2.25rem; --footer-h: 2.75rem; --touch-target: 2.75rem; --border-width: 1px;
+  --control-h: 2rem; --action-h: 1.75rem; --control-small-h: 1.5rem; --field-h: 2.25rem; --footer-h: 2.75rem; --touch-target: 2.75rem; --border-width: 1px;
   --status-dot: .5rem; --chip-h: 1.5rem;
   /* The search glyph sits on the tile column and the query on the title column. */
   --lead: calc(var(--row-pad) + (var(--tile) - var(--icon)) / 2);
@@ -26,13 +26,13 @@
   --r-menu: 12px; --menu-pad: 6px; --r-mi: 6px; --r-full: 999px;
 
   /* Type: size / line. Nothing is smaller than 12 px. */
-  --type-search-size: 1.375rem; --type-search-line: 1.75rem;
+  --type-search-size: 1.375rem; --type-search-line: 1.625rem;
   --type-display-size: 1.25rem; --type-display-line: 1.625rem;
   --type-lead-size: 1.0625rem; --type-lead-line: 1.375rem;
   --type-title-size: .9375rem; --type-title-line: 1.25rem;
-  --type-body-size: .875rem; --type-body-line: 1.25rem;
-  --type-meta-size: .8125rem; --type-meta-line: 1.125rem;
-  --type-label-size: .75rem; --type-label-line: 1rem;
+  --type-body-size: .8125rem; --type-body-line: 1rem;
+  --type-meta-size: .8125rem; --type-meta-line: 1rem;
+  --type-label-size: .75rem; --type-label-line: .9375rem;
   --strong: 600;
   --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
   --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
@@ -57,8 +57,8 @@
   /* Focus: one ring, keyboard only. */
   --ring-width: 2px; --ring-offset: 1px;
 
-  /* Colour: Apple's semantic ladders with AppKit's values (docs/design.md,
-     "Exact macOS values"), raised only where Ibis's contrast floors need it.
+  /* Colour: Apple's semantic ladders as measured from AppKit on macOS 27.2
+     (docs/design.md, "Exact macOS values"), raised only where Ibis's floors need it.
      System colours sit underneath for webviews without light-dark(). */
   --surface: Canvas; --raised: Canvas; --surface-overlay: Canvas; --sheet: Canvas;
   --text: CanvasText; --text-secondary: CanvasText; --text-tertiary: CanvasText; --text-disabled: GrayText;
@@ -69,12 +69,15 @@
   --scarlet: CanvasText; --scarlet-tile: CanvasText; --on-scarlet: #fff;
   --done: CanvasText; --look: CanvasText; --stop: CanvasText;
   /* System, secondary, tertiary, quaternary and quinary fill. */
-  --fill-1: color-mix(in srgb, var(--text) 10%, transparent);
-  --fill-2: color-mix(in srgb, var(--text) 8%, transparent);
-  --fill-3: color-mix(in srgb, var(--text) 5%, transparent);
-  --fill-4: color-mix(in srgb, var(--text) 3%, transparent);
-  --fill-5: color-mix(in srgb, var(--text) 2%, transparent);
-  --surface-field: var(--fill-3); --chip: var(--fill-2);
+  --fill-1: color-mix(in srgb, var(--text) 9.8%, transparent);
+  --fill-2: color-mix(in srgb, var(--text) 7.8%, transparent);
+  --fill-3: color-mix(in srgb, var(--text) 4.7%, transparent);
+  --fill-4: color-mix(in srgb, var(--text) 2.7%, transparent);
+  --fill-5: color-mix(in srgb, var(--text) .8%, transparent);
+  /* Controls rest, hover and press on the tertiary, secondary and system fills. */
+  --fill-control: var(--fill-3); --fill-control-hover: var(--fill-2); --fill-control-pressed: var(--fill-1);
+  --fill-quiet-hover: var(--fill-4);
+  --surface-field: var(--fill-control); --chip: var(--fill-control-hover);
   --on-fill-h: rgb(0 0 0 / 8%); --on-fill-p: rgb(0 0 0 / 16%);
   --accent-h: color-mix(in srgb, var(--selected) 88%, var(--text));
   --accent-p: color-mix(in srgb, var(--selected) 80%, var(--text));
@@ -87,7 +90,7 @@
   --scroll-fade: 14px;
 
   /* Settings: a grouped form beside a sidebar. */
-  --surface-grouped: var(--fill-5);
+  --surface-grouped: var(--fill-4);
   --titlebar-height: 3.25rem;
   --sidebar-width: min(12.5rem, 26%);
   --page-general: #8e8e93; --page-look: #ff9f0a; --page-citations: #0a84ff; --page-shortcuts: #5e5ce6; --page-about: #c23a1c;
@@ -105,27 +108,27 @@
   :root {
     --scarlet: light-dark(#c23a1c, #ff7a5c); --scarlet-tile: light-dark(#c23a1c, #d2401f);
     --done: light-dark(#1a7f37, #5bc26f); --look: light-dark(#b07a00, #f5c542); --stop: light-dark(#c4314b, #ff8a8a);
-    --accent: light-dark(#007aff, #0a84ff); --accent-text: light-dark(#0068da, #419cff);
-    --selected: light-dark(#0064e1, #0058d0); --selected-text: #fff; --text-on-accent: var(--selected-text);
-    --selected-text-secondary: color-mix(in srgb, var(--selected-text) 90%, transparent);
+    --accent: #007aff; --accent-text: light-dark(#0068da, #419cff);
+    --selected: light-dark(#0064e1, #0059d1); --selected-text: #fff; --text-on-accent: var(--selected-text);
+    --selected-text-secondary: color-mix(in srgb, var(--selected-text) 88%, transparent);
     --scrim: light-dark(rgb(0 0 0 / 20%), rgb(0 0 0 / 40%));
   }
 }
 @supports (color: light-dark(white, black)) {
   @media (prefers-contrast: no-preference) and (forced-colors: none) {
     :root:not(.notice-window) {
-      --surface: light-dark(#fcfcfd, #242426); --raised: light-dark(#f3f3f5, #2d2d30);
+      --surface: light-dark(#ffffff, #1e1e1e); --raised: light-dark(#f6f6f6, #282828);
       --surface-overlay: light-dark(#fdfdfe, #2b2b2e); --sheet: var(--surface-overlay);
-      --text: light-dark(rgb(0 0 0 / 85%), rgb(255 255 255 / 85%));
-      --text-secondary: light-dark(rgb(0 0 0 / 58%), rgb(255 255 255 / 55%));
-      --text-tertiary: light-dark(rgb(0 0 0 / 45%), rgb(255 255 255 / 40%));
-      --text-disabled: light-dark(rgb(0 0 0 / 25%), rgb(255 255 255 / 25%));
-      --separator: light-dark(rgb(0 0 0 / 10%), rgb(255 255 255 / 10%));
-      --fill-1: light-dark(rgb(0 0 0 / 10%), rgb(255 255 255 / 10%));
-      --fill-2: light-dark(rgb(0 0 0 / 8%), rgb(255 255 255 / 8%));
-      --fill-3: light-dark(rgb(0 0 0 / 5%), rgb(255 255 255 / 5%));
-      --fill-4: light-dark(rgb(0 0 0 / 3%), rgb(255 255 255 / 3%));
-      --fill-5: light-dark(rgb(0 0 0 / 2%), rgb(255 255 255 / 2%));
+      --text: light-dark(rgb(0 0 0 / 84.7%), rgb(255 255 255 / 84.7%));
+      --text-secondary: light-dark(rgb(0 0 0 / 56%), rgb(255 255 255 / 54.9%));
+      --text-tertiary: light-dark(rgb(0 0 0 / 45%), rgb(255 255 255 / 38%));
+      --text-disabled: light-dark(rgb(0 0 0 / 24.7%), rgb(255 255 255 / 24.7%));
+      --separator: light-dark(rgb(0 0 0 / 10%), rgb(255 255 255 / 12%));
+      --fill-1: light-dark(rgb(0 0 0 / 9.8%), rgb(255 255 255 / 9.8%));
+      --fill-2: light-dark(rgb(0 0 0 / 7.8%), rgb(255 255 255 / 7.8%));
+      --fill-3: light-dark(rgb(0 0 0 / 4.7%), rgb(255 255 255 / 4.7%));
+      --fill-4: light-dark(rgb(0 0 0 / 2.7%), rgb(255 255 255 / 2.7%));
+      --fill-5: light-dark(rgb(0 0 0 / .8%), rgb(255 255 255 / .8%));
       --shadow-overlay: 0 0 0 .5px light-dark(rgb(0 0 0 / 12%), rgb(255 255 255 / 10%)), 0 12px 32px light-dark(rgb(0 0 0 / 16%), rgb(0 0 0 / 45%));
       /* The veil over the native material, so text stays legible on any wallpaper. */
       --vibrancy-tint: light-dark(rgb(250 250 252 / 75%), rgb(30 30 34 / 75%));
@@ -184,7 +187,7 @@
    focus ring; the selection is a deeper shade of it that keeps white text at
    4.5:1, never brighter in dark than in light; accent text passes 4.5:1 on the
    surface. Follow the Mac reaches the same roles from nativeAccent.css. */
-:root[data-accent="blue"] { --ac: light-dark(#007aff, #0a84ff); --ac-selected: light-dark(#0064e1, #0058d0); --ac-text: light-dark(#0068da, #419cff); }
+:root[data-accent="blue"] { --ac: #007aff; --ac-selected: light-dark(#0064e1, #0059d1); --ac-text: light-dark(#0068da, #419cff); }
 :root[data-accent="ibis"] { --ac: light-dark(#c23a1c, #ff7a5c); --ac-selected: light-dark(#c23a1c, #ff7a5c); --ac-text: light-dark(#c23a1c, #ff7a5c); --ac-on: light-dark(#fff, #171717); }
 :root[data-accent="purple"] { --ac: light-dark(#953d96, #a550a7); --ac-selected: light-dark(#953d96, #904291); --ac-text: light-dark(#953d96, #bd71bf); }
 :root[data-accent="pink"] { --ac: light-dark(#f74f9e, #f74f9e); --ac-selected: light-dark(#e4086c, #e4086c); --ac-text: light-dark(#e4086c, #f74f9e); }

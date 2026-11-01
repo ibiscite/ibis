@@ -1,5 +1,5 @@
 /* C7: one band, on the result columns, regardless of selection or open menu. */
-.shelf { --shelf-target: var(--control-h); position: relative; flex: none; min-height: 0; overflow: visible; margin: 0 var(--inset) var(--inset); border-radius: var(--r-row); background: var(--fill-3); }
+.shelf { --shelf-target: var(--control-h); position: relative; flex: none; min-height: 0; overflow: visible; margin: 0 var(--inset) var(--inset); border-radius: var(--r-row); background: var(--fill-control); }
 .shelf::before { content: ""; position: absolute; inset: 0; border-radius: inherit; background: var(--done-wash); opacity: 0; pointer-events: none; }
 main:has(> .shelf) > footer { border-top-color: transparent; }
 .shelf-output { position: relative; display: flex; align-items: center; height: max(var(--space-10), var(--shelf-target)); padding-inline: var(--row-pad); font-size: var(--type-meta-size); }
@@ -78,5 +78,5 @@ main:has(> .shelf) > footer { border-top-color: transparent; }
 .shelf-shared { flex: none; white-space: pre; }
 .shelf-punctuation { color: var(--text-secondary); }
 .shelf-segment-button[data-focus-visible] .shelf-punctuation { color: inherit; }
-.details-menu-scroll > .shelf-full-citation { margin: var(--menu-pad) 0 0; padding: var(--space-2) var(--menu-item-pad) var(--space-2) var(--menu-label-start); border-radius: var(--r-mi); background: var(--fill-3); font-size: var(--type-meta-size); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
+.details-menu-scroll > .shelf-full-citation { margin: var(--menu-pad) 0 0; padding: var(--space-2) var(--menu-item-pad) var(--space-2) var(--menu-label-start); border-radius: var(--r-mi); background: var(--fill-control); font-size: var(--type-meta-size); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
 

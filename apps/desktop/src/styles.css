@@ -68,7 +68,7 @@ main > .search-bar, main > .shelf, main > footer { flex: none; }
    scarlet tile with a white check, the only scarlet on the row. Fills only, no
    rings (rule 8). Compact rows draw a 24 px tile without a fill whose control
    still covers 32 px. */
-.result-tile { position: relative; flex: none; display: grid; place-items: center; width: var(--tile); height: var(--tile); border-radius: var(--r-tile); background: var(--fill-3); color: var(--text-secondary); }
+.result-tile { position: relative; flex: none; display: grid; place-items: center; width: var(--tile); height: var(--tile); border-radius: var(--r-tile); background: var(--fill-control); color: var(--text-secondary); }
 .result-tile .type-icon { width: var(--icon); height: var(--icon); }
 .result-tile .tile-button { position: absolute; inset: 50% auto auto 50%; transform: translate(-50%, -50%); width: var(--control-h); height: var(--control-h); border-radius: var(--r-tile); opacity: 0; }
 [data-active] .tile-button, [data-citation-selected] .tile-button { opacity: 1; }
@@ -78,7 +78,7 @@ main > .search-bar, main > .shelf, main > footer { flex: none; }
   [role="option"][data-hovered] .tile-button { opacity: 1; }
   [role="option"][data-hovered] .type-icon { opacity: 0; }
   [role="option"][data-hovered] .result-tile { color: inherit; }
-  [role="option"][data-hovered]:not([data-active]) { background: var(--fill-4); }
+  [role="option"][data-hovered]:not([data-active]) { background: var(--fill-quiet-hover); }
 }
 @media (pointer: coarse) {
   [role="option"] { min-height: max(var(--row-height), 2.75rem); }

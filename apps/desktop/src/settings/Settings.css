@@ -35,7 +35,7 @@
 .paste-guide-icon { width: var(--icon); height: var(--icon); flex: none; border-radius: var(--r-key); background: center / cover no-repeat; }
 .paste-guide-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .paste-guide-switch {
-  position: relative; width: 26px; height: 15px; flex: none; border-radius: var(--r-full); background: var(--fill-1);
+  position: relative; width: 26px; height: 15px; flex: none; border-radius: var(--r-full); background: var(--fill-control-pressed);
   transition: background-color var(--dur-panel) var(--ease);
 }
 .paste-guide-switch > span {

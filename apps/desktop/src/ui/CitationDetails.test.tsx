@@ -83,7 +83,7 @@ test("fields and segmented choices use role tokens, wrap and retain keyboard and
   const segmented = readFileSync(new FileURL("./Segmented.css", import.meta.url), "utf8");
   expect(css).toContain("input:focus-visible");
   expect(css).toContain("@media (pointer: coarse)");
-  expect(segmented).toContain("min-height: var(--control-h)");
+  expect(segmented).toContain("min-height: var(--control-small-h)");
   expect(segmented).toContain("@media (pointer: coarse)");
   expect(css).not.toMatch(/#[0-9a-f]{3,8}\b|\b\d+px\b/);
 });
