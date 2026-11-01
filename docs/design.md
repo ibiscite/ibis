@@ -1076,7 +1076,7 @@ anything over 280 ms, anything that loops except a busy indicator.
 ## Small delights
 
 Approved (maintainer, 2026-11-01): every pick below except Search with Ibis
-and the second round, which are proposed. The canvas's Small delights board
+and the third round, which are proposed. The canvas's Small delights board
 lists them. Every delight
 lives only in About, the welcome, status lines or feedback that already exists;
 never changes search results, what is copied or pasted, or focus; happens once,
@@ -1098,7 +1098,7 @@ loops or plays a sound; and is counted only on this Mac.
   notes its first 100, 1,000 and 10,000 references once ("100 references. A
   library is taking shape.", "1,000 references. That's a real library.",
   "10,000 references. A scholar's library.").
-- **Second round (proposed):** Enter with nothing to paste shakes the footer
+- **Second round (approved):** Enter with nothing to paste shakes the footer
   action once (240 ms) and says why; ⌘+ and ⌘− show the size for one second
   where Copied shows; double-clicking the search bar's empty area returns Ibis
   to its place; a dragged `.bib` held over Settings › Libraries opens it;
