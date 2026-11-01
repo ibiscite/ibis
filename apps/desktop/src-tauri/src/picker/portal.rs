@@ -201,9 +201,27 @@ impl Configure {
     }
 }
 
+/// Tell the portal who this unsandboxed connection is before any other
+/// portal call. Without an app id, GNOME's portal refuses CreateSession, as
+/// when Ibis runs from an AppImage instead of its installed desktop entry.
+/// Portals older than this interface, or that already know the app, refuse
+/// the call; Ibis then goes on as before.
+async fn register(connection: &Connection, app_id: &str) {
+    // A plain call: a proxy would first read properties, itself a portal call.
+    let _ = bounded(connection.call_method(
+        Some(SERVICE),
+        ROOT,
+        Some("org.freedesktop.host.portal.Registry"),
+        "Register",
+        &(app_id, Dict::new()),
+    ))
+    .await;
+}
+
 impl Portal {
-    pub(super) async fn connect() -> Result<Self, Failure> {
+    pub(super) async fn connect(app_id: &str) -> Result<Self, Failure> {
         let connection = bounded(Connection::session()).await?;
+        register(&connection, app_id).await;
         let bus = bounded(zbus::fdo::DBusProxy::new(&connection)).await?;
         // Subscribe before activation/owner resolution/session creation: even
         // a still-live unique connection may stop owning the portal meanwhile.
@@ -729,19 +747,28 @@ mod tests {
                         .serve_at(ROOT, Fake(code.clone()))?
                         .build()
                         .await?;
-                    let portal = Portal::connect().await.map_err(|_| "session failed")?;
+                    let portal = Portal::connect("com.ibiscite.ibis.test")
+                        .await
+                        .map_err(|_| "session failed")?;
                     assert_eq!(portal.session.as_str(), format!("{ROOT}/session/fake"));
                     assert_eq!(portal.configure.version, 2);
                     assert_eq!(portal.configure.open().await, Ok(()));
                     code.store(13, Ordering::Relaxed);
-                    let v1 = Portal::connect().await.map_err(|_| "version 1 session failed")?;
+                    let v1 = Portal::connect("com.ibiscite.ibis.test")
+                        .await
+                        .map_err(|_| "version 1 session failed")?;
                     assert_eq!(v1.configure.version, 1);
                     assert_eq!(v1.configure.open().await, Err(Failure::Unavailable));
                     code.store(14, Ordering::Relaxed);
-                    assert!(matches!(Portal::connect().await, Err(Failure::Unavailable)));
+                    assert!(matches!(
+                        Portal::connect("com.ibiscite.ibis.test").await,
+                        Err(Failure::Unavailable)
+                    ));
                     for response in [0, 1, 2, 3, 4, 5, 10, 11, 12, 15] {
                         code.store(0, Ordering::Relaxed);
-                        let portal = Portal::connect().await.map_err(|_| "session failed")?;
+                        let portal = Portal::connect("com.ibiscite.ibis.test")
+                            .await
+                            .map_err(|_| "session failed")?;
                         code.store(response, Ordering::Relaxed);
                         let mut events = Vec::new();
                         let mut close_task = None;
@@ -796,9 +823,15 @@ mod tests {
                         );
                     }
                     code.store(1, Ordering::Relaxed);
-                    assert!(matches!(Portal::connect().await, Err(Failure::Denied)));
+                    assert!(matches!(
+                        Portal::connect("com.ibiscite.ibis.test").await,
+                        Err(Failure::Denied)
+                    ));
                     code.store(2, Ordering::Relaxed);
-                    assert!(matches!(Portal::connect().await, Err(Failure::Unavailable)));
+                    assert!(matches!(
+                        Portal::connect("com.ibiscite.ibis.test").await,
+                        Err(Failure::Unavailable)
+                    ));
                     ownership_changes_end_managed_sessions(&server, &code).await?;
                     Ok(())
                 })
@@ -818,7 +851,9 @@ mod tests {
                     .request_name_with_flags(SERVICE, zbus::fdo::RequestNameFlags::AllowReplacement.into())
                     .await?;
                 code.store(if phase <= 7 { phase } else { 0 }, Ordering::Relaxed);
-                let portal = Portal::connect().await.map_err(|_| "owner-loss setup failed")?;
+                let portal = Portal::connect("com.ibiscite.ibis.test")
+                    .await
+                    .map_err(|_| "owner-loss setup failed")?;
                 code.store(0, Ordering::Relaxed);
                 if phase >= 8 {
                     server.request_name("org.example.Unrelated").await?;
