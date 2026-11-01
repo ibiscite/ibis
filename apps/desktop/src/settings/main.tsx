@@ -6,6 +6,7 @@ import { SettingsApp } from "./SettingsApp";
 import { createInterfaceMessages, englishMessages, InterfaceMessagesProvider } from "../i18n";
 import english from "../i18n/en-US.ftl?raw";
 import "../tokens.css";
+import "../ui/Foundation.css";
 
 setPlatform();
 // `pnpm build:pseudo` exercises the same General panel with expanded labels.

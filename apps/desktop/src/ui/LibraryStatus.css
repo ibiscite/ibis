@@ -3,7 +3,9 @@
 [data-status-compact] > .library-status-controls { min-width: calc(var(--tile-size) + var(--row-gap)); }
 /* The native button owns its visible status and a non-collapsing hit target. */
 .library-status-target { flex: 1; min-width: var(--control-min-size); position: relative; isolation: isolate; }
-.ui-button.library-status-trigger { position: relative; width: 100%; padding-inline: 0; border-radius: var(--r-tile); color: var(--muted); }
+/* Text, not a band: hovering it brightens the words and paints no fill. */
+.ui-button.library-status-trigger[data-variant] { position: relative; width: 100%; padding-inline: 0; border-radius: var(--r-tile); color: var(--muted); background: transparent; }
+.ui-button.library-status-trigger[data-variant]:is([data-hovered], [data-pressed], [aria-expanded="true"]) { color: var(--text); background: transparent; }
 .library-announcement > p { margin: 0; }
 .library-status-controls[data-health="stop"] .library-name, .library-status-controls[data-health="look"] .library-name { color: var(--text); }
 .library-status-controls .library-status { min-width: 0; }
