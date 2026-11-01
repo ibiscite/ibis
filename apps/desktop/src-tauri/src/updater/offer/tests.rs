@@ -104,6 +104,30 @@ impl OfferUi for tauri::test::MockRuntime {
                 }),
             ));
     }
+
+    fn present_question(
+        app: &AppHandle<Self>,
+        parent: &tauri::WebviewWindow<Self>,
+        owner: ChooserLease,
+        answer: impl FnOnce(bool) + Send + 'static,
+    ) {
+        assert_eq!(parent.label(), "main");
+        app.state::<NativePicker>()
+            .offers
+            .lock()
+            .unwrap_or_else(|e| panic!("{e}"))
+            .push((
+                "first-run question".into(),
+                Box::new(move |yes| {
+                    drop(owner);
+                    answer(yes);
+                }),
+            ));
+    }
+
+    fn save_automatic(app: &AppHandle<Self>, on: bool) {
+        app.state::<Updates>().automatic.store(on, Ordering::SeqCst);
+    }
 }
 
 fn app(automatic: bool) -> tauri::Result<tauri::App<tauri::test::MockRuntime>> {
@@ -124,6 +148,52 @@ fn app(automatic: bool) -> tauri::Result<tauri::App<tauri::test::MockRuntime>> {
     assert!(input.settle(ticket));
     drop(input);
     Ok(app)
+}
+
+#[test]
+fn first_run_question_keeps_the_picker_through_its_blur_and_answering_leaves_ibis_on_screen() -> tauri::Result<()> {
+    for yes in [true, false] {
+        let app = app(!yes)?;
+        let picker = app.state::<NativePicker>();
+        picker.visible.store(true, Ordering::SeqCst);
+        ask_first_run(app.handle());
+        // The open question is what suppresses the picker's hide on blur.
+        assert!(app.state::<ChooserOpen>().is_open());
+        assert!(!crate::picker::hides_on_blur(
+            true,
+            app.state::<ChooserOpen>().is_open(),
+            false
+        ));
+        // The picker can still go away while it waits, as Windows reported.
+        picker.visible.store(false, Ordering::SeqCst);
+        let (_, answer) = picker
+            .offers
+            .lock()
+            .unwrap_or_else(|e| panic!("{e}"))
+            .pop()
+            .unwrap_or_else(|| panic!("the question must be asked"));
+        answer(yes);
+        assert!(!app.state::<ChooserOpen>().is_open());
+        assert_eq!(app.state::<Updates>().automatic.load(Ordering::SeqCst), yes);
+        assert!(picker.visible.load(Ordering::SeqCst), "nothing left on screen");
+    }
+    Ok(())
+}
+
+#[test]
+fn first_run_question_waits_for_a_chooser_that_is_already_open() -> tauri::Result<()> {
+    let app = app(false)?;
+    let chooser = app.state::<ChooserOpen>().begin();
+    ask_first_run(app.handle());
+    assert!(
+        app.state::<NativePicker>()
+            .offers
+            .lock()
+            .unwrap_or_else(|e| panic!("{e}"))
+            .is_empty()
+    );
+    drop(chooser);
+    Ok(())
 }
 
 #[test]

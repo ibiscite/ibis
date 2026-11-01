@@ -133,18 +133,43 @@ pub(crate) fn start(app: &AppHandle, saved: Option<bool>, can_save: bool) {
     });
 }
 
+/// Asked once setup has presented the picker, so the question has a window to
+/// return to.
 fn ask(app: &AppHandle) {
     let handle = app.clone();
-    app.dialog()
+    report(
+        app.run_on_main_thread(move || offer::ask_first_run(&handle)),
+        NativeIssue::Window,
+    );
+}
+
+fn present_question(
+    app: &AppHandle,
+    parent: &tauri::WebviewWindow,
+    owner: crate::picker::ChooserLease,
+    answer: impl FnOnce(bool) + Send + 'static,
+) {
+    let dialog = app
+        .dialog()
         .message(QUESTION)
         .title("Check for updates automatically?")
         .buttons(MessageDialogButtons::OkCancelCustom(
             "Check Automatically".into(),
             "Not Now".into(),
-        ))
-        .show(move |yes| {
-            setting::change(&handle, yes);
+        ));
+    // As with an offer, the picker stays on top of other windows on Windows.
+    #[cfg(target_os = "windows")]
+    let dialog = dialog.parent(parent);
+    #[cfg(not(target_os = "windows"))]
+    let _ = parent;
+    let handle = app.clone();
+    dialog.show(move |yes| {
+        let result = handle.run_on_main_thread(move || {
+            drop(owner);
+            answer(yes);
         });
+        report(result, NativeIssue::Window);
+    });
 }
 
 /// "Check for Updates…" in the menu.

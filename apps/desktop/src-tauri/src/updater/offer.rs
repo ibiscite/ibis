@@ -101,6 +101,13 @@ pub(super) trait OfferUi: tauri::Runtime {
         text: String,
         answer: impl FnOnce(bool) + Send + 'static,
     );
+    fn present_question(
+        app: &AppHandle<Self>,
+        parent: &tauri::WebviewWindow<Self>,
+        owner: ChooserLease,
+        answer: impl FnOnce(bool) + Send + 'static,
+    );
+    fn save_automatic(app: &AppHandle<Self>, on: bool);
 }
 
 impl OfferUi for tauri::Wry {
@@ -144,6 +151,35 @@ impl OfferUi for tauri::Wry {
     ) {
         present_offer(app, parent, owner, text, answer);
     }
+
+    fn present_question(
+        app: &AppHandle<Self>,
+        parent: &tauri::WebviewWindow<Self>,
+        owner: ChooserLease,
+        answer: impl FnOnce(bool) + Send + 'static,
+    ) {
+        super::present_question(app, parent, owner, answer);
+    }
+
+    fn save_automatic(app: &AppHandle<Self>, on: bool) {
+        super::setting::change(app, on);
+    }
+}
+
+/// The first-run question has no picker to fall back on: its lease keeps the
+/// picker through the blur, and answering always leaves Ibis on screen.
+pub(super) fn ask_first_run<R: OfferUi>(app: &AppHandle<R>) {
+    let Some(parent) = app.get_webview_window("main") else {
+        return;
+    };
+    let Some(owner) = app.state::<ChooserOpen>().begin() else {
+        return;
+    };
+    let handle = app.clone();
+    R::present_question(app, &parent, owner, move |yes| {
+        R::save_automatic(&handle, yes);
+        R::reveal_picker(&handle);
+    });
 }
 
 fn publish_available<R: OfferUi>(app: &AppHandle<R>, available: bool) {
