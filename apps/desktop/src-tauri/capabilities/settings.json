@@ -14,6 +14,8 @@
     "allow-picker-preferences",
     "allow-preference-revision",
     "allow-set-picker-preferences",
+    "allow-window-size",
+    "allow-set-window-size",
     "allow-forget-app-outputs",
     "allow-login-item",
     "allow-set-login-item",

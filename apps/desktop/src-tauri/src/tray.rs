@@ -1,8 +1,10 @@
 //! The menu bar (macOS) or tray (Windows, Linux) item.
 
+#[cfg(target_os = "macos")]
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use tauri::menu::{CheckMenuItem, IsMenuItem, Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Manager, Runtime};
 
 use crate::diagnostics::{NativeIssue, report};
 use crate::feedback::{idea_url, open_in_browser, problem_url};
@@ -71,6 +73,40 @@ pub(crate) fn show_shortcut(app: &AppHandle, shortcut: Option<&str>) {
     if let Some(item) = app.try_state::<OpenMenuItem>() {
         report(item.0.set_text(open_label(shortcut)), NativeIssue::Shortcut);
     }
+}
+
+#[cfg(target_os = "macos")]
+static HIDDEN: AtomicBool = AtomicBool::new(false);
+#[cfg(target_os = "macos")]
+static APPLIED: AtomicU64 = AtomicU64::new(0);
+
+/// Off, the shortcut still opens the picker and opening Ibis opens Settings.
+/// Saves can finish out of order, so `revision` decides; only the main thread
+/// reads or changes it. Other systems always keep their tray.
+#[cfg(target_os = "macos")]
+pub(crate) fn show_in_menu_bar<R: Runtime>(app: &AppHandle<R>, shown: bool, revision: u64) {
+    let handle = app.clone();
+    report(
+        app.run_on_main_thread(move || {
+            if revision < APPLIED.load(Ordering::SeqCst) {
+                return;
+            }
+            APPLIED.store(revision, Ordering::SeqCst);
+            HIDDEN.store(!shown, Ordering::SeqCst);
+            if let Some(tray) = handle.tray_by_id("ibis") {
+                report(tray.set_visible(shown), NativeIssue::TrayCreation);
+            }
+        }),
+        NativeIssue::TrayCreation,
+    );
+}
+
+#[cfg(not(target_os = "macos"))]
+pub(crate) fn show_in_menu_bar<R: Runtime>(_: &AppHandle<R>, _: bool, _: u64) {}
+
+#[cfg(target_os = "macos")]
+pub(crate) fn hidden() -> bool {
+    HIDDEN.load(Ordering::SeqCst)
 }
 
 /// The disabled menu item that shows the library line.

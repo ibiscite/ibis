@@ -10,6 +10,8 @@ export const settingsApi = {
   pickerPreferences: commands.pickerPreferences,
   preferenceRevision: commands.preferenceRevision,
   setPickerPreferences: (preferences: Partial<PickerPreferences>, copyFormat: KeyFormat | null, revision: number) => commands.setPickerPreferences(preferences, copyFormat, revision),
+  windowSize: commands.windowSize,
+  setWindowSize: commands.setWindowSize,
   forgetAppOutputs: commands.forgetAppOutputs,
   loginItem: commands.loginItem,
   setLoginItem: commands.setLoginItem,
@@ -27,6 +29,8 @@ export const settingsApi = {
   version: getVersion,
   /** Settings is asked to show a page, such as the paste guide after a refused paste. */
   onPreferencesChanged: (handler: (revision: number) => void): Promise<UnlistenFn> => listen<PreferenceChange>("preferences:changed", (event) => handler(event.payload.revision)),
+  /** The window size writer's outcome; a refused write is the only news here. */
+  onWindowSaved: (handler: (saved: boolean) => void): Promise<UnlistenFn> => listen<{ saved: boolean }>("picker:window-saved", (event) => handler(event.payload.saved)),
   onPage: (handler: (page: string) => void): Promise<UnlistenFn> => listen<string>("settings:page", (event) => handler(event.payload)),
   /** The saved automatic update choice, after a change from any menu. */
   onUpdateChecks: (handler: (on: boolean) => void): Promise<UnlistenFn> => listen<boolean>("update:automatic", (event) => handler(event.payload)),

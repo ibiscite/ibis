@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import axe from "axe-core";
 import { afterEach, expect, test, vi } from "vitest";
-import type { KeyFormat, PickerPreferences, ShortcutStatus } from "../bindings";
+import type { KeyFormat, PickerPreferences, ShortcutStatus, WindowSize } from "../bindings";
 import { DEFAULT_PICKER_SHORTCUT, KEY_TABLE, keyLabel, shortcutLabel } from "../keys";
 import { keyText } from "../messages";
 import { currentPlatform } from "../platform";
@@ -11,7 +11,7 @@ import type { PastePermission, SettingsApi } from "./api";
 import recordings from "../testing/shortcut-recordings.json";
 import pickerConflicts from "../testing/picker-shortcut-conflicts.json";
 import english from "../i18n/en-US.ftl?raw";
-import { createInterfaceMessages, InterfaceMessagesProvider } from "../i18n";
+import { createInterfaceMessages, englishMessages, InterfaceMessagesProvider } from "../i18n";
 
 afterEach(() => { vi.useRealTimers(); localStorage.clear(); });
 
@@ -119,13 +119,14 @@ function deferred<T>() {
 function fakeApi(permission: Partial<PastePermission> = {}, preferences: Partial<PickerPreferences> = {}) {
   const state = {
     permission: { pastes: true, needed: true, granted: false, list: "Device Control and Data Access", ...permission },
-    preferences: { citation_style: null, density: "comfortable", larger_text: false, show_paste_preview: true, search_icon: "magnifier", paste: true, ...preferences } as PickerPreferences,
+    preferences: { citation_style: null, density: "comfortable", larger_text: false, show_paste_preview: true, search_icon: "magnifier", paste: true, menu_bar: true, ...preferences } as PickerPreferences,
     saved: [] as PickerPreferences[],
     patches: [] as Partial<PickerPreferences>[],
     opened: 0,
     reads: 0,
     revision: 0,
     finished: 0,
+    windowSaved: undefined as ((saved: boolean) => void) | undefined,
     pages: [] as ((page: string) => void)[],
     closes: [] as (() => Promise<void>)[],
     shortcut: { shortcut: DEFAULT_PICKER_SHORTCUT, registered: true, error: null } as ShortcutStatus,
@@ -145,6 +146,9 @@ function fakeApi(permission: Partial<PastePermission> = {}, preferences: Partial
   };
   const api: SettingsApi = {
     pickerPreferences: async () => state.preferences,
+    windowSize: vi.fn(async (): Promise<WindowSize | null> => "medium"),
+    setWindowSize: vi.fn(async (): Promise<null> => null),
+    onWindowSaved: vi.fn(async (handler: (saved: boolean) => void) => { state.windowSaved = handler; return () => undefined; }),
     preferenceRevision: async () => ++state.revision,
     setPickerPreferences: commit,
     forgetAppOutputs: async () => null,
@@ -213,6 +217,92 @@ test("localized General rejects delayed A after B without changing settings or l
   expect(choice).toHaveProperty("checked", true);
   expect(screen.getByRole("heading", { level: 1 })).toHaveProperty("textContent", pseudo.text("settings-look"));
   expect(state.patches).toEqual([]);
+});
+
+test("Show in Menu Bar is a Mac choice that saves as a patch and goes back on failure", async () => {
+  document.documentElement.dataset.system = "macos";
+  const { api, state, commit } = fakeApi({ granted: true });
+  const save = vi.spyOn(api, "setPickerPreferences").mockRejectedValueOnce(new Error("refused")).mockImplementation(commit);
+  const mounted = render(<SettingsApp api={api} initialPage="general" />);
+  const choice = await screen.findByRole("switch", { name: "Show in Menu Bar" });
+  await waitFor(() => expect((choice as HTMLInputElement).disabled).toBe(false));
+  expect((choice as HTMLInputElement).checked).toBe(true);
+  fireEvent.click(choice);
+  await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+  await waitFor(() => expect((choice as HTMLInputElement).checked).toBe(true));
+  expect((await screen.findByRole("alert")).closest(".ui-settings-row")?.textContent).toContain("Show in Menu Bar");
+  fireEvent.click(choice);
+  await waitFor(() => expect(state.patches).toEqual([{ menu_bar: false }]));
+  expect((choice as HTMLInputElement).checked).toBe(false);
+  mounted.unmount();
+  document.documentElement.dataset.system = "linux";
+  try {
+    render(<SettingsApp api={api} initialPage="general" />);
+    await screen.findByText("Start on Login");
+    expect(screen.queryByRole("switch", { name: "Show in Menu Bar" })).toBeNull();
+  } finally { delete document.documentElement.dataset.system; }
+});
+
+test("Window size shows a dragged size as Custom, applies once, and goes back on failure", async () => {
+  const { api } = fakeApi({ granted: true });
+  vi.mocked(api.windowSize).mockResolvedValue("custom");
+  const choose = vi.mocked(api.setWindowSize).mockRejectedValueOnce(new Error("refused"));
+  render(<SettingsApp api={api} initialPage="look" />);
+  await waitFor(() => expect(screen.getByRole("radio", { name: "Custom" })).toHaveProperty("checked", true));
+  fireEvent.click(screen.getByRole("radio", { name: "Large" }));
+  expect(await screen.findByRole("alert")).toHaveProperty("textContent", englishMessages.text("settings-choice-failed"));
+  await waitFor(() => expect(screen.getByRole("radio", { name: "Custom" })).toHaveProperty("checked", true));
+  fireEvent.click(screen.getByRole("radio", { name: "Small" }));
+  await waitFor(() => expect(screen.getByRole("radio", { name: "Small" })).toHaveProperty("checked", true));
+  expect(screen.queryByRole("radio", { name: "Custom" })).toBeNull();
+  expect(choose.mock.calls).toEqual([["large"], ["small"]]);
+  expect(screen.queryByRole("alert")).toBeNull();
+});
+
+test("a window size read that returns late cannot undo a newer choice", async () => {
+  const { api } = fakeApi({ granted: true });
+  const late = deferred<WindowSize | null>();
+  render(<SettingsApp api={api} initialPage="look" />);
+  const large = await screen.findByRole("radio", { name: "Large" });
+  await waitFor(() => expect(large).toHaveProperty("disabled", false));
+  vi.mocked(api.windowSize).mockReturnValueOnce(late.promise);
+  fireEvent.blur(window); fireEvent.focus(window);
+  await waitFor(() => expect(api.windowSize).toHaveBeenCalledTimes(2));
+  fireEvent.click(large);
+  await act(async () => late.resolve("small"));
+  expect(large).toHaveProperty("checked", true);
+});
+
+test("a size the disk refused says so and keeps showing what the window has", async () => {
+  const { api, state } = fakeApi({ granted: true });
+  render(<SettingsApp api={api} initialPage="look" />);
+  const large = await screen.findByRole("radio", { name: "Large" });
+  await waitFor(() => expect(large).toHaveProperty("disabled", false));
+  fireEvent.click(large);
+  await waitFor(() => expect(state.windowSaved).toBeDefined());
+  act(() => state.windowSaved!(false));
+  expect(await screen.findByRole("alert")).toHaveProperty("textContent", englishMessages.text("settings-choice-failed"));
+  expect(large).toHaveProperty("checked", true);
+});
+
+test("when two quick choices fail, the size the app still has comes back", async () => {
+  const { api } = fakeApi({ granted: true });
+  vi.mocked(api.setWindowSize).mockRejectedValue(new Error("refused"));
+  render(<SettingsApp api={api} initialPage="look" />);
+  const large = await screen.findByRole("radio", { name: "Large" });
+  await waitFor(() => expect(large).toHaveProperty("disabled", false));
+  fireEvent.click(large);
+  fireEvent.click(screen.getByRole("radio", { name: "Small" }));
+  await waitFor(() => expect(screen.getByRole("radio", { name: "Medium" })).toHaveProperty("checked", true));
+  expect(await screen.findByRole("alert")).toHaveProperty("textContent", englishMessages.text("settings-choice-failed"));
+});
+
+test("a window size that cannot be read says so and offers no choice", async () => {
+  const { api } = fakeApi({ granted: true });
+  vi.mocked(api.windowSize).mockResolvedValue(null);
+  render(<SettingsApp api={api} initialPage="look" />);
+  expect(await screen.findByRole("radio", { name: "Large" })).toHaveProperty("disabled", true);
+  await waitFor(() => expect(screen.getByText(englishMessages.text("settings-read-failed"))).toBeTruthy());
 });
 
 test("pages are opened by name, and the paste guide is General's pasting group", () => {
@@ -946,17 +1036,15 @@ test("Settings shows only built pages, rows and choices, including in search", a
   const { api, state } = fakeApi({ granted: true });
   render(<SettingsApp api={api} initialPage="look" />);
   await screen.findByRole("radiogroup", { name: "Appearance" });
-  expect(screen.queryByRole("radiogroup", { name: "Window size" })).toBeNull();
   expect(screen.queryByRole("radio", { name: /Coming soon|Largest/ })).toBeNull();
   for (const name of ["General", "Look", "Citations", "Shortcuts", "About Ibis"]) {
     fireEvent.click(screen.getByRole("option", { name }));
     expect(screen.queryByText(/Coming soon/)).toBeNull();
-    expect(screen.queryByRole("switch", { name: "Show in Menu Bar" })).toBeNull();
     expect(screen.queryByText("Show the welcome again")).toBeNull();
     expect(document.querySelector("details, summary")).toBeNull();
   }
   expect(screen.queryByRole("option", { name: /Libraries|Advanced/ })).toBeNull();
-  for (const query of ["Menu Bar", "welcome", "Window size", "Install the ibis command", "Coming soon"]) {
+  for (const query of ["welcome", "Install the ibis command", "Coming soon"]) {
     fireEvent.change(screen.getByRole("searchbox"), { target: { value: query } });
     expect(await screen.findByText("No matching settings")).toBeTruthy();
   }

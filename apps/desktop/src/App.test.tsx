@@ -4328,7 +4328,7 @@ test("Ctrl+, opens Settings from the picker, and a change made there reaches the
   const pages: unknown[] = [];
   const calls = backend({
     open_settings: ({ page }) => { pages.push(page); return null; },
-    picker_preferences: () => ({ citation_style: null, density: "comfortable", larger_text: largerText, show_paste_preview: true, search_icon: "magnifier", paste: true }),
+    picker_preferences: () => ({ citation_style: null, density: "comfortable", larger_text: largerText, show_paste_preview: true, search_icon: "magnifier", paste: true, menu_bar: true }),
   });
   render(<App />);
   const box = screen.getByLabelText("Search references");

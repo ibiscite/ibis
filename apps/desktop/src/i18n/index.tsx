@@ -11,6 +11,7 @@ const IDS = [
   "settings-pages", "settings-general", "settings-shortcuts", "settings-about",
   "general-login-label", "general-login-description", "general-login-place", "general-login-when",
   "general-login-unsupported", "general-login-needs-approval", "general-login-refused", "general-login-unreadable",
+  "general-menu-bar-label", "general-menu-bar-description",
   "general-paste-title", "general-paste-label", "general-paste-description", "general-paste-allowed", "general-paste-allowed-note",
   "general-paste-guide-title", "general-paste-guide-why", "general-paste-step-open", "general-paste-step-allow", "general-paste-step-return",
   "general-paste-pane", "general-paste-open", "general-paste-drag", "general-paste-drag-keyboard", "general-paste-drag-fallback",

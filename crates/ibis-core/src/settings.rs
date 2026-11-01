@@ -184,6 +184,9 @@ pub struct Settings {
     /// means on; `false` only copies.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub paste: Option<bool>,
+    /// The menu bar item; absent means shown.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub menu_bar: Option<bool>,
     /// Fields this build does not know, written by another version of Ibis
     /// or by hand. Kept as they are and written back on save.
     #[serde(flatten)]
@@ -205,6 +208,7 @@ impl Default for Settings {
             show_paste_preview: None,
             search_icon: None,
             paste: None,
+            menu_bar: None,
             unknown: serde_json::Map::new(),
         }
     }

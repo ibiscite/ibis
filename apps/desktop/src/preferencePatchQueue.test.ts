@@ -2,7 +2,7 @@ import { expect, test, vi } from "vitest";
 import type { KeyFormat, PickerPreferences, PickerSave } from "./bindings";
 import { PreferencePatchQueue, type PreferenceRead } from "./preferencePatchQueue";
 
-const defaults: PickerPreferences = { citation_style: null, density: "comfortable", larger_text: false, show_paste_preview: true, search_icon: "magnifier", paste: true };
+const defaults: PickerPreferences = { citation_style: null, density: "comfortable", larger_text: false, show_paste_preview: true, search_icon: "magnifier", paste: true, menu_bar: true };
 const deferred = <T,>() => {
   let resolve!: (value: T) => void;
   let reject!: (error?: unknown) => void;
