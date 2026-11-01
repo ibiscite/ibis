@@ -62,6 +62,7 @@ export function UndoNotice({ message, action, onUndo, onExpire, paused = false, 
     onFocusCapture={() => setFocused(true)} onBlurCapture={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocused(false); }}>
     <span id={description} role={error ? "alert" : "status"}>{error ? pickerText.undoFailed : noticeText(message)}</span>
     {/* Retain native focus while waiting, so dismissal can return it to Search. */}
-    <Button variant="quiet" size="small" aria-describedby={description} aria-keyshortcuts={currentPlatform() === "macos" ? "Meta+Z" : "Control+Z"} isPending={pending} onPress={() => invoke.current()}>{label}</Button>
+    {/* The message names the action; the short word keeps two notices on a small window. */}
+    <Button variant="quiet" size="small" aria-label={label} aria-describedby={description} aria-keyshortcuts={currentPlatform() === "macos" ? "Meta+Z" : "Control+Z"} isPending={pending} onPress={() => invoke.current()}>{pickerText.undo}</Button>
   </div>;
 }

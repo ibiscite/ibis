@@ -363,9 +363,9 @@ try {
       await search.press("Shift+Enter");
       await shelfControl(page, /^Edit /).first().press("Backspace");
       const removal = page.locator(".undo-notices > .undo-notice").first();
-      await removal.getByText("Removed from citation.", { exact: true }).waitFor();
+      await removal.getByText(/^Removed .* from citation\.$/).waitFor();
       await page.evaluate(() => window.fixtureWindowReset());
-      const undo = page.locator(".undo-notices > .undo-notice").nth(1).getByRole("button", { name: "Undo", exact: true });
+      const undo = page.locator(".undo-notices > .undo-notice").nth(1).getByRole("button", { name: /^Undo/ });
       await undo.waitFor();
       assert.equal(await search.evaluate((node) => document.activeElement === node), true, "Reset's Undo notice leaves typing focus in Search");
       await waitForCheck("independent-undo-actions-whole-and-uncovered", () => {
@@ -378,7 +378,7 @@ try {
       await undo.click();
       await undo.waitFor({ state: "detached" });
       assert.equal(await search.evaluate((node) => document.activeElement === node), true, "successful retry returns focus to Search");
-      await removal.getByRole("button", { name: "Undo", exact: true }).click();
+      await removal.getByRole("button", { name: /^Undo/ }).click();
       await removal.waitFor({ state: "detached" });
       assert.equal(await page.locator('[role="option"][data-citation-selected]').count(), 1, "undoing the window leaves the independent reference Undo intact");
       assert.deepEqual(await page.locator("main > .shelf").boundingBox(), band, "Undo feedback does not move the shelf");
@@ -426,7 +426,7 @@ try {
       }), true, "the 16 px badge and 24 px target stay outside the long key's text at every text size/direction");
       await remove.click();
       assert.equal(await page.getByRole("dialog").count(), 0, "the remove badge never opens the menu");
-      await page.getByRole("button", { name: "Undo", exact: true }).click();
+      await page.getByRole("button", { name: /^Undo/ }).click();
       assert.equal(await page.locator('[role="option"][data-citation-selected]').count(), 1, "Undo restores the removed reference");
       const dialog = await openEditor();
       const fullCitation = dialog.getByRole("region", { name: "Full citation", exact: true });
@@ -446,7 +446,7 @@ try {
       await segment.focus();
       assert.equal(await remove.isVisible(), false, "keyboard focus never shows the hover badge");
       await segment.press("Backspace");
-      await page.getByRole("button", { name: "Undo", exact: true }).waitFor();
+      await page.getByRole("button", { name: /^Undo/ }).waitFor();
       await checkScan("long/RTL text and removal keep the shelf whole");
       assert.deepEqual(resizes, [], "no native size requests from the shelf");
       assert.deepEqual(errors, [], "no page errors");

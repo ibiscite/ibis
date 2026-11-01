@@ -120,7 +120,7 @@ export function EmptyState({ library, query, narrowed, onChooseLibrary, onClearS
   const description = query ? pickerText.noMatchesHint : library.sample ? setupText.sampleSearchHelp : pickerText.typeToFindHint;
   return (
     <div className="empty-state empty-template">
-      {peck && !query ? <IbisMark className="welcome-mark" size="welcome" motion="peck" /> : <svg className="empty-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      {peck && !query ? <IbisMark className="opened-mark" size="welcome" motion="peck" /> : <svg className="empty-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
         <path d="M10.5 4a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13zM16 16l5 5" />
       </svg>}
       <p className="empty-title" dir="auto">{title}</p>

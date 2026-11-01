@@ -8,7 +8,7 @@ afterEach(() => { cleanup(); vi.useRealTimers(); });
 
 test("long action names remain bounded and contain no native-menu control characters", () => {
   render(<UndoNotice message="Removed an invented reference." action={`Remove ${"Invented ".repeat(100)}\u0000\n2018`} onUndo={async () => {}} onExpire={() => {}} />);
-  const label = screen.getByRole("button").textContent!;
+  const label = screen.getByRole("button").getAttribute("aria-label")!;
   expect([...label].length).toBeLessThanOrEqual(180);
   expect(label).toContain("2018");
   expect(label).not.toContain("\u0000");

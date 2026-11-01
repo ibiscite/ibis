@@ -1,6 +1,7 @@
 /* Normal modes keep the generated brand colours and orientation, including RTL. */
 .ibis-mark { display: block; flex: none; transform: none; forced-color-adjust: none; }
-.ibis-mark.welcome-mark { width: var(--space-10); height: var(--space-10); margin: 0 auto var(--space-2); }
+.ibis-mark.welcome-mark { width: 3.5rem; height: 3.5rem; margin: 0 auto var(--space-2); }
+.ibis-mark.opened-mark { width: var(--space-10); height: var(--space-10); margin: 0 auto var(--space-2); }
 .ibis-mark[data-motion="blink"] mask circle { transform-box: fill-box; transform-origin: center; animation: ibis-blink var(--dur) var(--ease); }
 .ibis-mark[data-motion="peck"] { transform-origin: center bottom; animation: ibis-peck var(--dur-panel) var(--ease); }
 @keyframes ibis-blink { 0%, 100% { transform: scaleY(1); } 50% { transform: scaleY(0.05); } }
