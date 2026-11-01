@@ -760,7 +760,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
         onChangeReference={changeReference} referenceLibrary={(r) => libraryOf(r.source ?? "")} style={style} keys={keyFormat !== null}
         shown={showCitations ? displayedOutput : undefined} searching={searchPending && showPastePreview} outputWarnings={shown && typeof shown === "object" ? shown.warnings : []}
         problem={previewProblem} copied={showCitations ? state.shelfCopied : null} focusable={selected.size > 0} fallbackFocusRef={input}
-        source={source.kind === "zotero" ? { ...sourceAction, label: pickerText.showInZotero } : sourceAction} onOpenSource={(reference) => sourceOpen.run(false, false, reference.id)} />
+        source={source.kind === "zotero" ? { ...sourceAction, label: pickerText.showInZotero } : sourceAction} onOpenSource={(reference) => missingSelected || sourceOpen.failure ? openSource() : sourceOpen.run(false, false, reference.id)} />
       <PickerFooter library={library} groupName={groupName}
         status={<PickerLibraryStatus library={library} groupName={groupName} isOpen={libraryMenuOpen}
           onOpenChange={(open) => { if (open) { cancelCopy(); setMenuOpen(false); } setLibraryMenuOpen(open); }}
