@@ -7,6 +7,7 @@ use std::{
     io::{BufRead, Read, Write},
     path::{Path, PathBuf},
 };
+mod app_libraries;
 mod completions;
 mod doctor;
 mod human;
@@ -76,7 +77,17 @@ fn command() -> Command {
             .display_order(1001)
             .help("Read the local Zotero personal library, open or closed"),
     );
-    root = root.arg(group.clone());
+    root = root.arg(group.clone()).arg(
+        Arg::new("app-libraries")
+            .long("app-libraries")
+            .global(true)
+            .action(ArgAction::SetTrue)
+            .help_heading(LIBRARIES)
+            .display_order(1003)
+            .help(
+                "Read the libraries chosen in the Ibis app, read-only; search, show, cite and libraries do this when no library is named",
+            ),
+    );
     for method in Method::ALL {
         let subcommand = Command::new(method.as_str());
         root = root.subcommand(match method {
@@ -338,7 +349,7 @@ pub fn run<R: BufRead, W: Write + Send, E: Write>(
     mode: OutputMode,
 ) -> u8 {
     match Engine::new() {
-        Ok(engine) => run_with(engine, arguments, input, output, errors, mode),
+        Ok(engine) => run_engine(engine, arguments, input, output, errors, mode, Defaults::App),
         Err(error) => emit(
             arguments.iter().any(|argument| argument == "--json"),
             Err(error.into()),
@@ -349,14 +360,36 @@ pub fn run<R: BufRead, W: Write + Send, E: Write>(
         ),
     }
 }
-/// The same parser and dispatcher can run over a preloaded engine without reading user files.
+/// The same parser and dispatcher can run over a preloaded engine without reading user
+/// files: with no library named, it uses the engine as given, never the app's choice.
 pub fn run_with<R: BufRead, W: Write + Send, E: Write>(
+    engine: Engine,
+    arguments: Vec<std::ffi::OsString>,
+    input: R,
+    output: W,
+    errors: E,
+    mode: OutputMode,
+) -> u8 {
+    run_engine(engine, arguments, input, output, errors, mode, Defaults::None)
+}
+
+/// What a command that reads libraries uses when none is named.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Defaults {
+    /// The libraries chosen in the Ibis app.
+    App,
+    /// Only what the engine already holds.
+    None,
+}
+
+fn run_engine<R: BufRead, W: Write + Send, E: Write>(
     engine: Engine,
     arguments: Vec<std::ffi::OsString>,
     mut input: R,
     mut output: W,
     mut errors: E,
     mode: OutputMode,
+    defaults: Defaults,
 ) -> u8 {
     let json = arguments.iter().any(|argument| argument == "--json");
     let program = program_name(arguments.first());
@@ -423,7 +456,7 @@ pub fn run_with<R: BufRead, W: Write + Send, E: Write>(
         let help = command_help(&program, args.get_one::<String>("command"));
         return emit(json, Ok(help), None, &mut output, &mut errors, mode);
     }
-    match execute(&engine, &matches, &mut input, &mut output, mode) {
+    match execute(&engine, &matches, defaults, &mut input, &mut output, mode) {
         Ok(Execution::Stdio(code)) => code,
         Ok(Execution::Result(result, citing)) => {
             emit(json, Ok(result), citing.as_ref(), &mut output, &mut errors, mode)
@@ -486,6 +519,20 @@ fn source_values<T: Clone + Eq + Send + Sync + 'static>(matches: &ArgMatches, id
 }
 
 /// A failure keeps its contract code, and so its exit code; the message is for people only.
+/// Runs a filesystem wait on its own thread for at most the two seconds that
+/// docs/architecture.md allows, so a stalled disk cannot hold a command. A
+/// one-shot command leaves at most one such call behind before it exits.
+pub(crate) fn bounded<T: Send + 'static>(operation: impl FnOnce() -> T + Send + 'static) -> Option<T> {
+    let (sender, receiver) = std::sync::mpsc::channel();
+    std::thread::Builder::new()
+        .name("ibis-bounded-io".into())
+        .spawn(move || {
+            let _ = sender.send(operation());
+        })
+        .ok()?;
+    receiver.recv_timeout(std::time::Duration::from_secs(2)).ok()
+}
+
 struct Failure {
     code: ErrorCode,
     message: Option<String>,
@@ -514,6 +561,7 @@ fn explain<T>(result: Result<T, EngineError>, message: impl FnOnce(ErrorCode) ->
 fn execute<R: BufRead, W: Write + Send>(
     engine: &Engine,
     matches: &ArgMatches,
+    defaults: Defaults,
     input: &mut R,
     output: &mut W,
     mode: OutputMode,
@@ -554,25 +602,82 @@ fn execute<R: BufRead, W: Write + Send>(
     }
     let cancel = Cancellation::default();
     let mut names = std::collections::BTreeMap::new();
-    for path in source_values::<PathBuf>(matches, "file") {
+    let mut files = source_values::<PathBuf>(matches, "file");
+    let mut groups = source_values::<u64>(matches, "zotero-group");
+    let mut personal = matches.get_flag("zotero");
+    let named = !files.is_empty() || !groups.is_empty() || personal;
+    // Named libraries replace the app's; servers read the app's only when asked. A
+    // preloaded engine never reads the app's settings, and says so if asked to.
+    let asked = matches.get_flag("app-libraries");
+    if asked && defaults == Defaults::None {
+        return Err(Failure::new(
+            ErrorCode::Usage,
+            "--app-libraries is not available here; name the libraries to read.",
+        ));
+    }
+    let app =
+        if asked || (defaults == Defaults::App && !named && matches!(name, "search" | "show" | "cite" | "libraries")) {
+            Some(bounded(app_libraries::load).unwrap_or_else(|| {
+                Err(Failure::new(
+                    ErrorCode::SourceUnavailable,
+                    format!(
+                        "the Ibis app's settings could not be read in time; try again, or {}.",
+                        app_libraries::NAME_ONE
+                    ),
+                ))
+            })?)
+        } else {
+            None
+        };
+    let named_files = files.clone();
+    let (named_personal, named_groups) = (personal, groups.clone());
+    if let Some(app) = &app {
+        for path in &app.files {
+            if !files.contains(path) {
+                files.push(path.clone());
+            }
+        }
+        for library in &app.zotero {
+            match library {
+                ZoteroLibrary::Personal => personal = true,
+                ZoteroLibrary::Group(id) if !groups.contains(id) => groups.push(*id),
+                ZoteroLibrary::Group(_) => {}
+            }
+        }
+    }
+    // A path named on the command line is the person's own, even if the app chose it too.
+    let chosen_in = |path: &PathBuf| app.as_ref().filter(|_| !named_files.contains(path)).map(|app| app.app);
+    for path in files {
         let params =
             serde_json::to_value(LibrariesRequest::OpenFile { path: path.clone() }).map_err(|_| EngineError {
                 code: ErrorCode::BadInput,
             })?;
         let before = engine.libraries()?.libraries;
-        explain(engine.dispatch(Method::Libraries, &params, &cancel), |code| {
-            human::file_failure(&path, code)
-        })?;
+        let chosen = chosen_in(&path);
+        // A path the app chose is never shown: agents read these messages too.
+        explain(
+            engine.dispatch(Method::Libraries, &params, &cancel),
+            |code| match chosen {
+                Some(app) => format!(
+                    "cannot open the library chosen in {app}: {} Choose it again there, or {}.",
+                    human::file_reason(&path, code),
+                    app_libraries::NAME_ONE
+                ),
+                None => human::file_failure(&path, code),
+            },
+        )?;
         // Library ids are digests, never locations; people see the path they gave.
         for library in engine.libraries()?.libraries {
             if !before.iter().any(|old| old.id == library.id) {
-                names.insert(library.id.as_str().to_owned(), path.display().to_string());
+                let shown = match chosen {
+                    Some(app) => format!("Library chosen in {app}"),
+                    None => path.display().to_string(),
+                };
+                names.insert(library.id.as_str().to_owned(), shown);
             }
         }
     }
-    let groups = source_values::<u64>(matches, "zotero-group");
-    let zotero: Vec<_> = matches
-        .get_flag("zotero")
+    let zotero: Vec<_> = personal
         .then_some(ZoteroLibrary::Personal)
         .into_iter()
         .chain(groups.into_iter().map(ZoteroLibrary::Group))
@@ -584,10 +689,35 @@ fn execute<R: BufRead, W: Write + Send>(
         .map_err(|_| EngineError {
             code: ErrorCode::BadInput,
         })?;
+        let before = engine.libraries()?.libraries;
         explain(
             engine.dispatch(Method::Libraries, &params, &cancel),
             human::zotero_failure,
         )?;
+        // Each Zotero library is the app's only when the app chose it and the command line did not.
+        if let Some(app) = &app {
+            for library in engine.libraries()?.libraries {
+                if before.iter().any(|old| old.id == library.id) {
+                    continue;
+                }
+                let group = serde_json::to_value(&library)
+                    .ok()
+                    .and_then(|value| value.pointer("/zotero/group").and_then(Value::as_u64));
+                let (chosen, shown) = match group {
+                    Some(group) => (
+                        app.zotero.contains(&ZoteroLibrary::Group(group)) && !named_groups.contains(&group),
+                        format!("Zotero group {group} (chosen in {})", app.app),
+                    ),
+                    None => (
+                        app.zotero.contains(&ZoteroLibrary::Personal) && !named_personal,
+                        format!("Zotero (chosen in {})", app.app),
+                    ),
+                };
+                if chosen {
+                    names.insert(library.id.as_str().to_owned(), shown);
+                }
+            }
+        }
     }
     if name == "mcp" {
         return Ok(Execution::Stdio(match ibis_engine::mcp::serve(engine, input, output) {
@@ -1001,6 +1131,15 @@ fn terminal_display(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn a_stalled_wait_gives_up_at_its_deadline() {
+        assert_eq!(bounded(|| 7), Some(7));
+        let started = std::time::Instant::now();
+        let stalled = bounded(|| std::thread::sleep(std::time::Duration::from_secs(30)));
+        assert_eq!(stalled, None);
+        assert!(started.elapsed() < std::time::Duration::from_secs(5));
+    }
+
     #[test]
     fn source_flags_preserve_order_across_positions_and_ignore_duplicates() -> Result<(), clap::Error> {
         let matches = command().try_get_matches_from([

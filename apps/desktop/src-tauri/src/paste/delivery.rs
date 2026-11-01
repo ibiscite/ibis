@@ -27,6 +27,10 @@ pub(super) trait Desk {
     fn stamp(&self) -> SafetyStamp {
         SafetyStamp::now()
     }
+    /// The clock the readiness limit is measured on.
+    fn delivery_clock(&self) -> Instant {
+        Instant::now()
+    }
     /// Ibis may post key events (macOS PostEvent, independent of AX trust;
     /// Windows requires no permission).
     fn may_post(&self) -> bool;
@@ -142,7 +146,7 @@ pub(super) fn deliver<D: Desk>(desk: &D, proof: Option<&D::Proof>, enabled: bool
             };
             // The same process and app: a process number alone can be reused.
             let id = captured.target.app.as_ref().map(|app| app.id.as_str());
-            let started = Instant::now();
+            let started = desk.delivery_clock();
             let request = DeliveryRequest {
                 pid,
                 id: id.unwrap_or_default().to_owned(),
@@ -163,12 +167,16 @@ pub(super) fn deliver<D: Desk>(desk: &D, proof: Option<&D::Proof>, enabled: bool
                 if let Err(failure) = proof.check_age(desk.stamp()) {
                     return copied(Some(failure.reason()));
                 }
-                if started.elapsed() >= RETURN_LIMIT {
-                    desk.stage("readiness.timeout");
-                    return copied(Some(CopyReason::TargetChanged));
-                }
+                // A check that proved the target ready counts even when a busy
+                // system made it finish after the limit; the final guards and
+                // the paste's own deadline still decide. Only a target that is
+                // not back in time has changed.
                 if ready {
                     break;
+                }
+                if desk.delivery_clock().duration_since(started) >= RETURN_LIMIT {
+                    desk.stage("readiness.timeout");
+                    return copied(Some(CopyReason::TargetChanged));
                 }
                 if checks >= RETURN_CHECKS {
                     desk.stage("readiness.timeout");

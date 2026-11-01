@@ -1,0 +1,5 @@
+{
+  "mcpServers": {
+    "ibis": { "command": "ibis", "args": ["mcp", "--app-libraries"] }
+  }
+}

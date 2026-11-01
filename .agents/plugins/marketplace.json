@@ -1,0 +1,12 @@
+{
+  "name": "ibiscite",
+  "interface": { "displayName": "Ibis" },
+  "plugins": [
+    {
+      "name": "ibis",
+      "source": { "source": "local", "path": "./plugins/ibis" },
+      "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL" },
+      "category": "Productivity"
+    }
+  ]
+}

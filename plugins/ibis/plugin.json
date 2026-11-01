@@ -1,0 +1,21 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "ibis",
+  "version": "0.2.6",
+  "description": "Cite from your own reference library: search Zotero, BibTeX or CSL-JSON and format citations from real records, read-only and offline.",
+  "author": {
+    "name": "Ibis contributors",
+    "url": "https://github.com/ibiscite"
+  },
+  "homepage": "https://ibiscite.org",
+  "repository": "https://github.com/ibiscite/ibis",
+  "license": "AGPL-3.0-or-later",
+  "keywords": [
+    "citations",
+    "references",
+    "zotero",
+    "bibtex",
+    "csl",
+    "mcp"
+  ]
+}

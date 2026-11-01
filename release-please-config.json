@@ -32,7 +32,9 @@
         { "type": "toml", "path": "Cargo.lock", "jsonpath": "$.package[?(@.name.value=='ibis-sources')].version" },
         { "type": "toml", "path": "Cargo.lock", "jsonpath": "$.package[?(@.name.value=='ibis-desktop')].version" },
         { "type": "toml", "path": "Cargo.lock", "jsonpath": "$.package[?(@.name.value=='ibis-zotero-local')].version" },
-        { "type": "json", "path": "apps/desktop/package.json", "jsonpath": "$.version" }
+        { "type": "json", "path": "apps/desktop/package.json", "jsonpath": "$.version" },
+        { "type": "json", "path": "plugins/ibis/plugin.json", "jsonpath": "$.version" },
+        { "type": "json", "path": "plugins/ibis/.claude-plugin/plugin.json", "jsonpath": "$.version" }
       ]
     }
   }

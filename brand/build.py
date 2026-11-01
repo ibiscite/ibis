@@ -25,6 +25,7 @@ from xml.etree import ElementTree
 
 HERE = Path(__file__).resolve().parent
 OUT = HERE / "exports"
+PLUGIN_ICON = "plugins/ibis/.claude-plugin/icon.png"
 # Match fc-match and Linux CI on every host; macOS otherwise chooses CoreText.
 RENDER_ENV = {**os.environ, "PANGOCAIRO_BACKEND": "fc"}
 
@@ -630,6 +631,10 @@ def main(root=HERE.parent):
     for size in (1024, 512, 256, 128):
         png("ibis-app-icon.svg", f"ibis-app-icon-{size}.png", size)
     png("ibis-app-icon-dark.svg", "ibis-app-icon-dark-1024.png", 1024)
+    # The agent plugin's listing icon is the app icon.
+    plugin_icon = root / PLUGIN_ICON
+    plugin_icon.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(OUT / "png" / "ibis-app-icon-512.png", plugin_icon)
     png("ibis-avatar.svg", "ibis-avatar-512.png", 512)
     for name in ("ibis-menu-bar", "ibis-menu-bar-dip-1", "ibis-menu-bar-dip-2"):
         png(f"{name}.svg", f"{name}.png", 36)
@@ -697,7 +702,7 @@ def generated_files(root):
         for path in (root / directory).rglob("*"):
             if (path.is_file() or path.is_symlink()) and (directory == "brand/exports" or path.suffix in {".svg", ".png", ".ico", ".icns", ".json", ".desktop"}):
                 files.add(path.relative_to(root))
-    for name in ("apps/desktop/src/brand.ts", "apps/desktop/src/tokens.css", "apps/desktop/src/icon-paths.ts"):
+    for name in ("apps/desktop/src/brand.ts", "apps/desktop/src/tokens.css", "apps/desktop/src/icon-paths.ts", PLUGIN_ICON):
         path = root / name
         if path.exists() or path.is_symlink():
             files.add(Path(name))
