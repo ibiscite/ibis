@@ -585,8 +585,8 @@ with `key-release-failed`, asking the person to press and release Ctrl and V.
 
 Proposed, awaiting measurements. Keyword search is instant, ignores accents and case, works in every script and
 says why each result matched; exact key and title matches rank first.
-Meaning-based search, after 1.0, runs a small local model only while the picker
-is open. No cloud.
+Meaning-based search (0.7) runs a small local model only while the picker is
+open. No cloud.
 
 ## 0016 Settings (with 0018, 0020, 0022, 0023 and 0027)
 
@@ -781,9 +781,9 @@ dispatcher.
 A link is untrusted input: it never copies, pastes, changes settings or reads
 files; only the person's Enter acts. Launchers (Spotlight through Shortcuts,
 Alfred, Stream Deck, notes apps) reach Ibis through these links and the `ibis`
-command, with recipes in the docs. No native App Intents or launcher
-extensions before 1.0: they would add a second language or codebase for what
-the global shortcut already does (maintainer, 2026-10-28).
+command, with recipes in the docs. A Raycast extension and other launcher
+extensions follow in 0.7, built on the same links and command (maintainer,
+2026-11-01, replacing the 2026-10-28 deferral).
 
 ## 0032 Release gates
 
