@@ -1824,6 +1824,10 @@ scheduled.
   as is. Its components use the names in `src/ui/`. If a mismatch slips
   through, fix whichever side is wrong the same day, so both show the same
   thing.
+- Each new macOS release (macOS 27 shipped in autumn 2026) gets one review of
+  this page against Apple's Human Interface Guidelines and the shipped system:
+  changed values, materials, menus and sidebars are recorded here and in the
+  canvas in one change.
 - Code that does not yet match this page is listed in one design-system issue
   and fixed in the code; the rule changes only when the maintainer changes it.
 - Values marked as measured need native evidence on each platform (#774).
