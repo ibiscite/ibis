@@ -26,6 +26,14 @@ export function usePickerMenus(api: PickerApi, { perform }: Pick<ReturnType<type
     const welcome = input.current?.closest("main")?.querySelector(".library-welcome");
     (welcome ? moreButton.current : input.current)?.focus();
   }, [choosingLibrary]);
+  // Setup's chosen choice leaves with setup. If nothing else took focus, the
+  // keyboard goes to Search; otherwise keys would reach no handler at all.
+  const welcomeWasShown = useRef(welcomeShown);
+  useLayoutEffect(() => {
+    const left = welcomeWasShown.current && !welcomeShown;
+    welcomeWasShown.current = welcomeShown;
+    if (left && (document.activeElement === null || document.activeElement === document.body)) input.current?.focus();
+  }, [welcomeShown]);
   const windowUndo = useWindowResetUndo(api);
   useEffect(() => { if (windowUndo.ticket !== null) { setKeysOpen(false); setMenuOpen(false); setLibraryMenuOpen(false); } }, [windowUndo.ticket]);
   // Where focus goes back to when the keys overlay closes.

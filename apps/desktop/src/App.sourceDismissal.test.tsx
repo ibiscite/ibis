@@ -214,3 +214,21 @@ test("a stale found-file completion cannot clear the explicit chooser's newer re
   expect(await screen.findByRole("option", { name: /^Use example\.bib/ })).toBeTruthy();
   expect(select).toHaveBeenCalledTimes(2);
 });
+
+test("a file chosen on first-run setup hands the keyboard to Search when the results replace setup", async () => {
+  let current: Record<string, unknown> = { ...library, state: "none", has_snapshot: false, name: null, snapshot_name: null, references: 0, source_counts: {} };
+  const choose = vi.fn(() => null);
+  backend({ library_status: () => current, search: () => [result("picked", "Invented reference")], choose_library: choose });
+  render(<App />);
+  const file = await screen.findByRole("option", { name: /^BibTeX, BibLaTeX or CSL-JSON/ });
+  act(() => file.focus());
+  fireEvent.click(file);
+  await waitFor(() => expect(choose).toHaveBeenCalledOnce());
+  // The native chooser opened and closed; the engine then reports the library.
+  current = library;
+  await act(async () => { await emit("library:changed", current); });
+  await screen.findByText("Invented reference");
+  expect(screen.queryByRole("option", { name: /^BibTeX, BibLaTeX or CSL-JSON/ })).toBeNull();
+  await frame();
+  expect(document.activeElement).toBe(search());
+});
