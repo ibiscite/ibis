@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.2.5](https://github.com/ibiscite/ibis/compare/v0.2.4...v0.2.5) (2026-11-01)
+
+
+### Features
+
+* **desktop:** small delights and Mac icon appearances ([#1581](https://github.com/ibiscite/ibis/issues/1581)) ([ad18ecd](https://github.com/ibiscite/ibis/commit/ad18ecd5b216cdd0698ea9c32a28be04e074e469))
+* **desktop:** stock macOS colours, three token layers, one corner rule ([#1578](https://github.com/ibiscite/ibis/issues/1578)) ([a9b8615](https://github.com/ibiscite/ibis/commit/a9b86159c1373f2229071cb4d90d3e3c9ff37e00))
+
+
+### Bug Fixes
+
+* **desktop:** keep white text on the Mac's blue accent ([#1582](https://github.com/ibiscite/ibis/issues/1582)) ([0438a65](https://github.com/ibiscite/ibis/commit/0438a65abcfee97668bc5bb5132e647a0f6f2157))
+
+
+### Documentation
+
+* **design:** follow macOS exactly, with layered tokens ([#1574](https://github.com/ibiscite/ibis/issues/1574)) ([2e81bd5](https://github.com/ibiscite/ibis/commit/2e81bd5f5aee656e25785a12d681719c7656f0e2))
+
 ## [0.2.4](https://github.com/ibiscite/ibis/compare/v0.2.3...v0.2.4) (2026-11-01)
 
 
