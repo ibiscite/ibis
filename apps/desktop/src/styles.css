@@ -257,7 +257,7 @@ footer .key-hint-label { display: var(--footer-hint-label-display); }
   footer { --footer-hint-label-display: none; }
 }
 @media (pointer: coarse) {
-  .footer-action, .more > button { min-width: 2.75rem; min-height: 2.75rem; }
+  .library-bar :is(.footer-action, .more > button).ui-button { min-width: 2.75rem; min-height: 2.75rem; }
 }
 .empty-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-2); margin-top: var(--space-3); }
 
