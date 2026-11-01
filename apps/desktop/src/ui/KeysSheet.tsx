@@ -45,7 +45,7 @@ export function KeysDialog({ bindings, isMac, onClose }: { bindings: readonly Ke
         </div>
         <div ref={scroll} className="keys-scroll scroll-area" tabIndex={0} role="group" aria-labelledby="keys-title">
           <div className="keys-groups">
-            {([ ["search", "system"], ["picker"] ] as const).map((regions, column) => <table key={column}>
+            {([ ["search", "library", "system"], ["picker"] ] as const).map((regions, column) => <table key={column}>
               <thead className="visually-hidden"><tr><th scope="col">{text("keys-action")}</th><th scope="col">{text("keys-shortcut")}</th></tr></thead>
               {regions.filter((region) => bindings.some((binding) => binding.region === region)).map((region) => <ShortcutGroup key={region} region={region} bindings={bindings} isMac={isMac} />)}
             </table>)}

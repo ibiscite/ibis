@@ -2838,7 +2838,7 @@ test("? lists every key in a modal dialog, but a ? typed in the search is text",
   expect(document.activeElement).toBe(dialog);
   // Each group's heading names where its keys work; each row is action, then keys.
   const groups = within(dialog).getAllByRole("rowgroup").filter((group) => group.tagName === "TBODY").map((group) => within(group).getAllByRole("row").map((row) => [...row.children].map((cell) => cell.textContent)));
-  expect(groups.map((group) => group[0])).toEqual([["While searching"], ["From any app"], ["Anywhere in Ibis"]].slice(0, groups.length));
+  expect(groups.map((group) => group[0])).toEqual([["While searching"], ["Your library"], ["From any app"], ["Anywhere in Ibis"]].slice(0, groups.length));
   const rows = groups.flatMap((group) => group.slice(1));
   expect(groups[0]).toContainEqual(["Copy the citation", "Enter"]);
   expect(groups[0]).toContainEqual(["Add another reference", "Shift+Enter"]);

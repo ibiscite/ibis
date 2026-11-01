@@ -63,7 +63,7 @@ try {
   await sheet.waitFor();
   assert.equal(await sheet.evaluate((node) => document.activeElement === node), true, "opening focuses the sheet itself");
   const left = sheet.locator(".keys-groups > table").first();
-  assert.deepEqual(await left.locator('th[scope="rowgroup"]').allTextContents(), ["While searching", "From any app"]);
+  assert.deepEqual(await left.locator('th[scope="rowgroup"]').allTextContents(), ["While searching", "Your library", "From any app"]);
   assert.deepEqual(await sheet.locator(".keys-groups > table").last().locator('th[scope="rowgroup"]').allTextContents(), ["Anywhere in Ibis"]);
   const close = sheet.getByRole("button", { name: "Close", exact: true });
   assert.equal(await close.getAttribute("data-focus-visible"), null, "opening has no close-button ring");

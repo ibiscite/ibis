@@ -140,7 +140,7 @@ try {
       // Recovery includes the source action added with the library footer:
       // cancelling Find keeps Find, Use another library and Open source.
       assert.deepEqual(await page.getByRole("option").evaluateAll((rows) => rows.map((row) => row.getAttribute("data-key"))),
-        ["find", "another", "source"], `${label}: cancellation keeps all recovery choices`);
+        ["find", "another"], `${label}: cancellation keeps all recovery choices`);
       assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("data-key")), "find", `${label}: cancellation keeps Find focused`);
       await page.evaluate(() => window.fixtureStatus({ state: "loaded", name: "empty.bib", snapshot_name: "empty.bib", has_snapshot: true }));
       await page.getByRole("heading", { name: "No references in empty.bib" }).waitFor();

@@ -1088,8 +1088,10 @@ system demands it for correctness.
 | Accent [C14] | The accent chosen in Look; with "Follow the Mac", the system accent where the webview reads it, else the `--accent` fallback in `tokens.css`. Each accent pairs with a `--selected-text` that keeps 4.5:1 on `--selected`. |
 | Selected row [C4] | Accent fill with its contrast-safe paired selected text. |
 | Search box | Frameless, large. |
-| Format pop-up | Borderless pop-up, ⌃⌄, 28 px in a 32 px target, capsule. |
-| Switch | 38 × 22. |
+| Format pop-up | Borderless pop-up, ⌃⌄, 28 px in a 32 px target, `--r-control`. |
+| Buttons | Rounded rectangles with `--r-control` at every size, on every screen (maintainer, 2026-11-01). macOS 26 draws its large `NSButton` as a capsule; Ibis does not follow it, because capsules stay for switches, chips, the Copied notice and dots. |
+| Search fields | 28 px with `--r-control`, a hairline and no fill. |
+| Switch | 54 × 24 with a 32 × 20 pill thumb, measured from `NSSwitch` on macOS 26. |
 | Follows the system | Modifier keys and their key-cap labels (`KeyCaps`: one cap per shortcut on every system, written as its menus write it: ⌘K on macOS, Ctrl+K on Windows and Linux; maintainer, 2026-11-01: one keycap per shortcut), the UI font, accessibility settings and window handling, including the picker window's outer corner: 16 px on macOS; on Windows the system's own (Windows 11 rounds it, not yet checked on a Windows 11 PC; square on Windows 10 like its other windows; maintainer, 2026-11-01). |
 
 **Look freeze until 1.0** (maintainer, 2026-10-25). What has shipped stays and
@@ -1870,12 +1872,12 @@ and its choices or labels wrap within the card, including at the minimum
 window width and larger system text sizes.
 
 **Shortcuts page and keys sheet** (2026-11-01). Settings › Shortcuts starts
-with a search field filtering action names, then a compact two-column table
-(Action | Shortcut). Rows are `--control-h` (32 pt), with sticky group headers:
-Open Ibis (global), While searching, Anywhere in Ibis, In a menu. Only the
-existing opening-shortcut recorder edits a key. Fixed Return, Esc, arrows,
-⌘Q and ⌘, show plainly with a quiet **System** note. Each shortcut is one
-cap; "or" alternatives keep two whole caps.
+with a search field filtering action names, then the grouped cards of every
+Settings page: a small secondary heading (Open Ibis, While searching, Your
+library, Anywhere in Ibis, In a menu) over one card of 44 pt rows, action at the
+start and keys at the end. Only the opening-shortcut recorder edits a key. Fixed
+Return, Esc, arrows, ⌘Q and ⌘, are plain secondary text, with "System" spoken
+to screen readers. Each shortcut is one cap; "or" alternatives keep two caps.
 
 The Keyboard Shortcuts sheet has two equal columns: While searching then From
 any app on the left, Anywhere in Ibis on the right. Nothing is pinned below

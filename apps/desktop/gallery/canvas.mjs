@@ -10,7 +10,7 @@ const size = (scenario) => scenario === "notice" ? { width: 560, height: 100 }
   : scenario === "settings-look" ? { width: 920, height: 1320 }
   : scenario === "tokens" ? { width: 920, height: 1000 }
   : scenario === "parts" ? { width: 920, height: 1500 }
-  : scenario === "settings-shortcuts" ? { width: 920, height: 900 }
+  : scenario === "settings-shortcuts" ? { width: 920, height: 940 }
   : scenario.startsWith("settings-") || scenario === "states" ? { width: 920, height: 560 } : { width: 720, height: 480 };
 const load = async (viewport) => {
   const page = await browser.newPage({ viewport, deviceScaleFactor: 2 });

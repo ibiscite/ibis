@@ -42,8 +42,8 @@ export function useSourceOpen(api: Pick<PickerApi, "openLibrarySource" | "librar
   const busyTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => { request.current += 1; clearTimeout(busyTimer.current); }, []);
   const source: SourcePresentation = resolved?.scope === scope ? resolved.source : {
-    kind: zoteroOnly || (library?.snapshot_zotero ?? library?.zotero) ? "zotero" : "file",
-    name: zoteroOnly ? "Zotero" : library?.snapshot_name ?? library?.name ?? "library", icon: null, status_icon: null,
+    kind: zoteroOnly || (library?.has_snapshot ? library.snapshot_zotero : library?.zotero) ? "zotero" : "file",
+    name: zoteroOnly ? "Zotero" : (library?.has_snapshot ? library.snapshot_name : null) ?? library?.name ?? "library", icon: null, status_icon: null,
   };
   const run = (reveal = false, appOnly = false, target: unknown = item) => {
     if (!api.openLibrarySource) return;
