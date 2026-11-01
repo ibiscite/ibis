@@ -12,6 +12,7 @@ node_modules/
 # Desktop app
 /apps/desktop/node_modules/
 /apps/desktop/dist/
+/apps/desktop/dist-canvas/
 /apps/desktop/src-tauri/gen/
 
 # Agent worktrees

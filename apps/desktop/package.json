@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
+    "build:canvas": "vite build --config vite.canvas.config.ts",
     "build:pseudo": "tsc --noEmit && vite build --mode pseudolocale",
     "typecheck": "tsc --noEmit",
     "lint": "biome lint",
