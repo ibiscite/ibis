@@ -102,8 +102,9 @@ file data, and check descriptor metadata again before reading. Legacy iCloud
 person to download online-only files first; known placeholders are refused
 without requesting hydration.
 Filesystem read/probe waits have a two-second deadline and at most eight detached
-calls. The desktop supervises an entire load with a ten-second deadline and
-waits for completion, cancellation or that single deadline; it does not poll.
+calls. The desktop supervises an entire load, parsing included, with a two-minute
+deadline, because a large library on a slow machine needs longer than a stuck read,
+and waits for completion, cancellation or that single deadline; it does not poll.
 Blocked metadata or provider I/O cannot serialize newer choices behind it.
 Request reservation records the
 chosen spelling without filesystem access; canonical resolution belongs to the
