@@ -1,0 +1,5 @@
+/* Sits on the control it names, above everything, and takes no clicks. */
+.held-key {
+  position: fixed; z-index: var(--z-overlay); translate: -50% -50%; pointer-events: none;
+  border-radius: var(--r-key); background: var(--surface-overlay); box-shadow: var(--shadow-overlay);
+}

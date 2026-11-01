@@ -2,6 +2,8 @@
 
 #[cfg(target_os = "macos")]
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+#[cfg(target_os = "macos")]
+use tauri::image::Image;
 use tauri::menu::{CheckMenuItem, IsMenuItem, Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Manager, Runtime};
@@ -79,6 +81,8 @@ pub(crate) fn show_shortcut(app: &AppHandle, shortcut: Option<&str>) {
 static HIDDEN: AtomicBool = AtomicBool::new(false);
 #[cfg(target_os = "macos")]
 static APPLIED: AtomicU64 = AtomicU64::new(0);
+#[cfg(target_os = "macos")]
+static DIPPING: AtomicBool = AtomicBool::new(false);
 
 /// Off, the shortcut still opens the picker and opening Ibis opens Settings.
 /// Saves can finish out of order, so `revision` decides; only the main thread
@@ -103,6 +107,44 @@ pub(crate) fn show_in_menu_bar<R: Runtime>(app: &AppHandle<R>, shown: bool, revi
 
 #[cfg(not(target_os = "macos"))]
 pub(crate) fn show_in_menu_bar<R: Runtime>(_: &AppHandle<R>, _: bool, _: u64) {}
+
+/// The bird the system tints, from `brand/`.
+#[cfg(target_os = "macos")]
+const BIRD: Image<'static> = tauri::include_image!("../../../brand/exports/png/ibis-menu-bar.png");
+#[cfg(target_os = "macos")]
+const BIRD_LOWERING: Image<'static> = tauri::include_image!("../../../brand/exports/png/ibis-menu-bar-dip-1.png");
+#[cfg(target_os = "macos")]
+const BIRD_LOWERED: Image<'static> = tauri::include_image!("../../../brand/exports/png/ibis-menu-bar-dip-2.png");
+
+/// The bird dips its beak once after a paste or copy, in 200 ms. A second
+/// citation inside the dip does not restart it, and Reduce Motion keeps it still.
+#[cfg(target_os = "macos")]
+pub(crate) fn dip(app: &AppHandle) {
+    const FRAME: std::time::Duration = std::time::Duration::from_millis(50);
+    let reduced = objc2_app_kit::NSWorkspace::sharedWorkspace().accessibilityDisplayShouldReduceMotion();
+    if reduced || hidden() || DIPPING.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let app = app.clone();
+    std::thread::spawn(move || {
+        for bird in [BIRD_LOWERING, BIRD_LOWERED, BIRD_LOWERING, BIRD] {
+            let handle = app.clone();
+            report(
+                app.run_on_main_thread(move || {
+                    if let Some(tray) = handle.tray_by_id("ibis") {
+                        report(tray.set_icon_with_as_template(Some(bird), true), NativeIssue::TrayCreation);
+                    }
+                }),
+                NativeIssue::TrayCreation,
+            );
+            std::thread::sleep(FRAME);
+        }
+        DIPPING.store(false, Ordering::SeqCst);
+    });
+}
+
+#[cfg(not(target_os = "macos"))]
+pub(crate) fn dip(_: &AppHandle) {}
 
 #[cfg(target_os = "macos")]
 pub(crate) fn hidden() -> bool {
@@ -226,6 +268,11 @@ pub(crate) fn create_tray(app: &AppHandle, shortcut: Option<&str>) -> tauri::Res
                 tauri::async_runtime::spawn_blocking(move || login_item::current(&app));
             }
         });
+    #[cfg(target_os = "macos")]
+    {
+        tray = tray.icon(BIRD).icon_as_template(true);
+    }
+    #[cfg(not(target_os = "macos"))]
     if let Some(icon) = app.default_window_icon() {
         tray = tray.icon(icon.clone());
     }

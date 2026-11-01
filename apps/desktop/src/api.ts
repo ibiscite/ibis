@@ -58,7 +58,7 @@ export function onWindowSizeSaved(handler: (saved: boolean) => void): Promise<Un
   });
 }
 
-export const { readWindowPositionUndo, undoWindowPosition, dismissWindowPositionUndo } = commands;
+export const { resetWindowPosition, readWindowPositionUndo, undoWindowPosition, dismissWindowPositionUndo } = commands;
 export function onWindowReset(handler: (state: { revision: number; undo: number | null }) => void): Promise<UnlistenFn> {
   return listen<{ revision: number; undo: number | null }>("picker:window-reset", ({ payload }) => handler(payload));
 }

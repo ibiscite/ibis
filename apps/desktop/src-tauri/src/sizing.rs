@@ -765,6 +765,13 @@ pub(crate) fn dismiss_window_position_undo(app: AppHandle, revision: u64) {
     emit_reset_undo(&app);
 }
 
+/// Double-clicking the search bar's empty area returns Ibis to its place.
+#[tauri::command]
+#[specta::specta]
+pub(crate) fn reset_window_position(app: AppHandle) {
+    reset_position(&app);
+}
+
 #[tauri::command]
 #[specta::specta]
 pub(crate) async fn undo_window_position(app: AppHandle, revision: u64) -> Result<bool, String> {

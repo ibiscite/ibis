@@ -52,6 +52,7 @@ pub(crate) fn commands() -> tauri_specta::Builder<tauri::Wry> {
             crate::shortcut_setting::set_shortcut,
             crate::sizing::window_size,
             crate::sizing::set_window_size,
+            crate::sizing::reset_window_position,
             crate::sizing::read_window_position_undo,
             crate::sizing::undo_window_position,
             crate::sizing::dismiss_window_position_undo

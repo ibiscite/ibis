@@ -50,6 +50,7 @@
     "allow-update-available",
     "allow-update-picker-activity",
     "allow-open-settings",
+    "allow-reset-window-position",
     "allow-read-window-position-undo",
     "allow-undo-window-position",
     "allow-dismiss-window-position-undo"

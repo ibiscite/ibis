@@ -75,6 +75,11 @@ export function ariaKeys(accelerator: string, mac: boolean): string {
     part === "CmdOrCtrl" ? (mac ? "Meta" : "Control") : part.length === 1 ? part.toUpperCase() : part).join("+");
 }
 
+/** The accelerator behind an `aria-keyshortcuts` value. */
+export function keyFromAria(aria: string): string {
+  return aria.split(/\+(?!$)/).map((part) => part === "Meta" || part === "Control" ? "CmdOrCtrl" : part).join("+");
+}
+
 /** A shortcut as people read it: `⇧⌘Y` on macOS, `Ctrl+Shift+Y` elsewhere. */
 export function shortcutLabel(shortcut: string, mac: boolean): string {
   // Settings may spell keys in any case and with the aliases the shortcut

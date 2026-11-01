@@ -238,6 +238,18 @@ def mark(paint, uid, depth=True):
     return doc(side, side, defs, body, (512, 512))
 
 
+def menu_bar(turn, uid):
+    """The one-colour bird the system tints, 16 points tall in the 18 point
+    slot. `turn` lowers the beak about the base of the neck for its dip."""
+    box, body = re.fullmatch(r'<svg[^>]* viewBox="([^"]+)">(.*)</svg>\n', mark("#000000", uid, False), re.S).groups()
+    x, y, side, _ = (float(value) for value in box.split())
+    # The bird's centre sits at (.545, .495) of its export; 0.8 leaves room for the dip.
+    frame = f"{x + side * .145:g} {y + side * .095:g} {side * .8:g} {side * .8:g}"
+    pivot = f"{x + side * .4:g} {y + side * .8:g}"
+    return (f'<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="{frame}">'
+            f'<g transform="rotate({turn} {pivot})">{body}</g></svg>\n')
+
+
 def logo(dark, uid, depth="gradient"):
     m = 100
     pad = PAD * m
@@ -529,6 +541,9 @@ def main(root=HERE.parent):
         "ibis-app-icon.svg": app_icon(False, "a"),
         "ibis-app-icon-dark.svg": app_icon(True, "ad"),
         "ibis-avatar.svg": square_tile("av"),
+        "ibis-menu-bar.svg": menu_bar(0, "mbr"),
+        "ibis-menu-bar-dip-1.svg": menu_bar(6, "mb1"),
+        "ibis-menu-bar-dip-2.svg": menu_bar(12, "mb2"),
         "ibis-quote-beak.svg": beak(),
         "favicon.svg": favicon("currentColor", dark_style),
         "github-social-preview.svg": card(1280, 640, "s"),
@@ -553,6 +568,8 @@ def main(root=HERE.parent):
         png("ibis-app-icon.svg", f"ibis-app-icon-{size}.png", size)
     png("ibis-app-icon-dark.svg", "ibis-app-icon-dark-1024.png", 1024)
     png("ibis-avatar.svg", "ibis-avatar-512.png", 512)
+    for name in ("ibis-menu-bar", "ibis-menu-bar-dip-1", "ibis-menu-bar-dip-2"):
+        png(f"{name}.svg", f"{name}.png", 36)
     png("ibis-mark.svg", "ibis-mark-512.png", 512)
     png("ibis-mark-on-dark.svg", "ibis-mark-on-dark-512.png", 512)
     png("ibis-logo.svg", "ibis-logo-800.png", 800, "auto")

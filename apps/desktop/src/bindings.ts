@@ -177,6 +177,8 @@ export const commands = {
 	 *  Hidden, the next `prepare` applies it before the window appears.
 	 */
 	setWindowSize: (size: WindowSize) => __TAURI_INVOKE<null>("set_window_size", { size }),
+	/**  Double-clicking the search bar's empty area returns Ibis to its place. */
+	resetWindowPosition: () => __TAURI_INVOKE<void>("reset_window_position"),
 	readWindowPositionUndo: () => __TAURI_INVOKE<number | null>("read_window_position_undo"),
 	undoWindowPosition: (revision: number) => __TAURI_INVOKE<boolean>("undo_window_position", { revision }),
 	dismissWindowPositionUndo: (revision: number) => __TAURI_INVOKE<void>("dismiss_window_position_undo", { revision }),
