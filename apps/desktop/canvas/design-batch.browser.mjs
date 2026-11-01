@@ -68,7 +68,7 @@ try {
   const close = sheet.getByRole("button", { name: "Close", exact: true });
   assert.equal(await close.getAttribute("data-focus-visible"), null, "opening has no close-button ring");
   await page.keyboard.press("Tab");
-  assert.equal(await close.evaluate((node) => document.activeElement === node && node.hasAttribute("data-focus-visible")), true, "Tab reveals the round close button's ring");
+  assert.equal(await close.evaluate((node) => document.activeElement === node && node.hasAttribute("data-focus-visible")), true, "Tab reveals the close button's ring");
   const closeShape = await close.evaluate((node) => { const style = getComputedStyle(node); return { radius: parseFloat(style.borderRadius), size: node.clientWidth }; });
   assert.ok(/^(6|7|8)px$/.test(await page.locator(".keys-heading .ui-button").evaluate((node) => getComputedStyle(node).borderTopLeftRadius)), "the close button is the square icon button");
   for (const frame of [{ width: 720, height: 560 }, { width: 480, height: 360 }]) {
