@@ -6,10 +6,11 @@
 //! WebView and effect-view descendants; the WindowServer shadow is separate and
 //! must remain enabled on the window.
 //!
-//! Windows 11 rounds ordinary windows itself but leaves a transparent,
-//! undecorated one square, so Ibis asks for the system's own round corner
-//! (8 px, as on every Windows 11 window). Windows 10 has no rounded windows
-//! and refuses the request; the picker stays square there like its neighbours.
+//! Windows 11: ask for the system's own round window corner (8 px, as on
+//! other Windows 11 windows) rather than rely on the default for an
+//! undecorated, transparent window; Windows treats it as a preference.
+//! Windows 10 has no rounded windows and refuses the request; the picker
+//! stays square there like its neighbours (docs/design.md).
 
 #![deny(clippy::print_stderr)]
 

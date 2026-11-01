@@ -27,6 +27,10 @@ pub(super) trait Desk {
     fn stamp(&self) -> SafetyStamp {
         SafetyStamp::now()
     }
+    /// The clock the readiness limit is measured on.
+    fn delivery_clock(&self) -> Instant {
+        Instant::now()
+    }
     /// Ibis may post key events (macOS PostEvent, independent of AX trust;
     /// Windows requires no permission).
     fn may_post(&self) -> bool;
@@ -142,7 +146,7 @@ pub(super) fn deliver<D: Desk>(desk: &D, proof: Option<&D::Proof>, enabled: bool
             };
             // The same process and app: a process number alone can be reused.
             let id = captured.target.app.as_ref().map(|app| app.id.as_str());
-            let started = Instant::now();
+            let started = desk.delivery_clock();
             let request = DeliveryRequest {
                 pid,
                 id: id.unwrap_or_default().to_owned(),
@@ -170,7 +174,7 @@ pub(super) fn deliver<D: Desk>(desk: &D, proof: Option<&D::Proof>, enabled: bool
                 if ready {
                     break;
                 }
-                if started.elapsed() >= RETURN_LIMIT {
+                if desk.delivery_clock().duration_since(started) >= RETURN_LIMIT {
                     desk.stage("readiness.timeout");
                     return copied(Some(CopyReason::TargetChanged));
                 }

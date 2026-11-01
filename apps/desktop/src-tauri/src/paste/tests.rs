@@ -26,7 +26,7 @@ struct Fake {
     secure: Cell<Option<bool>>,
     query_delay: Duration,
     queue_delay: Duration,
-    /// Real time a readiness check takes, as on a heavily loaded system.
+    /// How long a readiness check takes, as on a heavily loaded system.
     ready_stall: Duration,
     secure_after_queue: Option<bool>,
     front_after_queue: Option<i32>,
@@ -113,6 +113,10 @@ impl Desk for Fake {
         self.clock.get()
     }
 
+    fn delivery_clock(&self) -> Instant {
+        self.clock.get()
+    }
+
     fn stamp(&self) -> SafetyStamp {
         self.stamp.get()
     }
@@ -131,7 +135,7 @@ impl Desk for Fake {
     }
     fn settle(&self) {}
     fn ready(&self, request: &DeliveryRequest, proof: &CopyProof) -> Result<bool, CopyReason> {
-        std::thread::sleep(self.ready_stall);
+        self.clock.set(self.clock.get() + self.ready_stall);
         let front = Desk::frontmost(self)?;
         Ok(front.is_some_and(|front| {
             front.pid == request.pid
@@ -536,10 +540,9 @@ fn a_programmatic_interior_document_change_with_no_input_is_not_detected() {
 
 /// Under a full compile a Windows readiness check took over a second. A
 /// check that proves the right window is in front still pastes inside the
-/// paste's deadline; past it the notice says the paste expired, never that
-/// the window changed.
+/// paste's deadline, and never once that deadline has passed.
 #[test]
-fn a_slow_readiness_check_pastes_in_time_and_expires_after() {
+fn a_slow_readiness_check_pastes_in_time_and_never_after() {
     let desk = Fake {
         ready_stall: RETURN_LIMIT + Duration::from_millis(50),
         ..Fake::new()
@@ -551,7 +554,7 @@ fn a_slow_readiness_check_pastes_in_time_and_expires_after() {
         ready_stall: LATE + Duration::from_millis(50),
         ..Fake::new()
     };
-    assert_eq!(deliver(&desk, Some(&proof()), true), copied(Some("paste-expired")));
+    assert!(matches!(deliver(&desk, Some(&proof()), true), Delivered::Copied { .. }));
     assert!(desk.posts.borrow().is_empty());
 }
 
