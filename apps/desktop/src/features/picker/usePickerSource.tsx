@@ -74,5 +74,10 @@ export function usePickerSource({ api, pickerSession, libraryState, menus, curre
   const sourceAction: SourceActionProps = { label: sourceLabel, keys: keysFor(altHeld && source.kind === "file" ? "revealSource" : "source"), icon: source.icon,
     file: source.kind === "file", busy: sourceOpen.busy, open: () => openSource() };
   const sourceChoice = { ...sourceAction, icon: <SourceIcon icon={source.icon} file={source.kind === "file"} /> };
-  return { sourceOpen, source, sourceAction, sourceChoice, chooseSources, dismissChooser, performSourceChoice, chooseFile, openSource };
+  /** A reference's menu opens that reference, and recovers its file like More does. */
+  const openReference = (id: unknown) => {
+    if (missingSelected || sourceOpen.failure) openSource();
+    else sourceOpen.run(false, false, id);
+  };
+  return { sourceOpen, source, sourceAction, sourceChoice, chooseSources, dismissChooser, performSourceChoice, chooseFile, openSource, openReference };
 }
