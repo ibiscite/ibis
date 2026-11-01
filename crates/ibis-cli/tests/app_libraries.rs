@@ -130,12 +130,18 @@ fn unusable_settings_stop_with_their_reason_and_never_fall_back() {
     let library = home.library("refs.bib");
     // A good Nightly choice must not hide a broken stable one.
     home.choose(NIGHTLY, &library);
+    // A full path on every platform; "/invented/..." is relative on Windows.
+    let missing = serde_json::json!({
+        "schema_version": 2,
+        "library": {"bibtex": home.root.join("private-project").join("refs.bib")},
+    })
+    .to_string();
     for (text, expected, exit, words) in [
         ("{\"schema_version\":99}", "newer-format", 6, "Update this ibis command"),
         ("{not json", "bad-input", 3, "Open Ibis to repair"),
         ("{\"schema_version\":2}", "usage", 2, "no library is chosen in Ibis yet"),
         (
-            "{\"schema_version\":2,\"library\":{\"bibtex\":\"/invented/private-project/refs.bib\"}}",
+            missing.as_str(),
             "source-unavailable",
             5,
             "cannot open the library chosen in Ibis: there is no file",
