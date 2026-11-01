@@ -837,6 +837,12 @@ the app is one client of the same engine. Its public contract is
   app ships the matching `ibis` and offers to install it; the standalone download
   stays. Packages: a Homebrew tap, winget and `cargo binstall`; others on request.
 
+2026-11-01: The maintainer authorized accepting Anthropic's Software Directory
+Terms and Directory Policy and submitting the Ibis plugin with its two disclosed
+policy holds (external command and name similarity). Submitted for review, with
+scheduled checks and manual publication. Temporary client installations and
+marketplaces used for validation are removed after testing.
+
 ## 0027 Process until 1.0 (with 0011, 0015 and 0017)
 
 Agents have standing engineering and merge authority and work by

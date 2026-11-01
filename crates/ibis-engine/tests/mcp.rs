@@ -152,6 +152,21 @@ fn agents_never_see_private_notes_and_long_text_is_cut() {
 }
 
 #[test]
+fn search_preserves_partial_and_typo_matches_for_the_agent() {
+    let (_dir, engine) = engine();
+    let exact = tool(&engine, "search", json!({"query":"sleep"}));
+    assert_eq!(exact["structuredContent"]["hits"][0]["partial"], false);
+    assert_eq!(exact["structuredContent"]["hits"][0]["typo"], false);
+    let partial = tool(&engine, "search", json!({"query":"sleep neutron"}));
+    assert_eq!(partial["structuredContent"]["hits"][0]["key"], "demo2026");
+    assert_eq!(partial["structuredContent"]["hits"][0]["partial"], true);
+    assert_eq!(partial["structuredContent"]["hits"][0]["typo"], false);
+    let typo = tool(&engine, "search", json!({"query":"synthetiq"}));
+    assert_eq!(typo["structuredContent"]["hits"][0]["key"], "demo2026");
+    assert_eq!(typo["structuredContent"]["hits"][0]["typo"], true);
+}
+
+#[test]
 fn cite_formats_by_key_or_by_id() {
     let (_dir, engine) = engine();
     let pandoc = tool(&engine, "cite", json!({"items":[{"key":"demo2026"}],"syntax":"pandoc"}));
