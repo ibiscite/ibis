@@ -1075,8 +1075,7 @@ anything over 280 ms, anything that loops except a busy indicator.
 
 ## Small delights
 
-Approved (maintainer, 2026-11-01): every pick below except Search with Ibis
-and the third round, which are proposed. The canvas's Small delights board
+Approved (maintainer, 2026-11-01): every pick below. The canvas's Small delights board
 lists them. Every delight
 lives only in About, the welcome, status lines or feedback that already exists;
 never changes search results, what is copied or pasted, or focus; happens once,
@@ -1110,7 +1109,7 @@ surprises**, on by default; key feedback, haptics and tips are not part of it.
   pressing a listed shortcut on Settings › Shortcuts tints its row; the paste receipt marks the first, 100th and 1,000th citation
   once each, and About reads "One year with Ibis" on the first anniversary;
   "ibis" in the Settings search opens About with a blink.
-- **Third round, the ibis itself (proposed):** About carries one line on the
+- **Third round, the ibis itself (approved):** About carries one line on the
   name ("Named for the bird ancient Egyptians linked with Thoth, god of writing
   and keeper of records."); each later run of five clicks shows the next of
   six short, true ibis facts; "thoth" in the Settings search opens About with
