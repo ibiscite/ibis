@@ -21,7 +21,13 @@ same design and must never differ from them (see **How the design changes**).
    radii, controls, selection and layout. Only what is correctness, not look,
    follows the system: modifier keys and their labels (Ctrl on Windows and
    Linux), the system font and accessibility settings. Ibis keeps its anatomy,
-   icon drawings, wording and citation scarlet everywhere.
+   icon drawings, wording and citation scarlet everywhere. The macOS design
+   follows Apple's Human Interface Guidelines and the shipped system exactly:
+   Apple's sizes, type styles, colours, materials, controls and wording
+   conventions (maintainer, 2026-11-01). Ibis departs from them only where
+   Apple's own accessibility guidance asks for more (text at 4.5:1), and each
+   departure is named in **Where Ibis departs from Apple**. Windows and GNOME
+   designs come later as their own value layers on the same components.
 3. **Readable first.** Nothing smaller than 12 px; secondary text passes 4.5:1.
 4. **Easy to hit.** Every target is at least 32 px; 44 px under `pointer: coarse`.
 5. **Show less, reveal more.** An element appears when it becomes useful and
@@ -42,6 +48,21 @@ same design and must never differ from them (see **How the design changes**).
    works for most people on every platform, so most never open Settings.
    Customising is there for those who want it, never required. No setting
    exists because a choice was hard to make.
+
+
+## Where Ibis departs from Apple
+
+Every place Ibis's macOS design differs from Apple's guidelines or the shipped
+system, and why. Anything not listed here follows Apple; a new departure is
+added here in the same change, or it is a bug.
+
+| Where | Apple | Ibis | Why |
+| --- | --- | --- | --- |
+| Secondary and tertiary text | Secondary label .50, tertiary .26 | .58 and .45 light, .55 and .40 dark | Apple's guidance asks for 4.5:1 text; its light secondary is 3.9:1 on Ibis's window. Tertiary is kept for glyphs and hints at 3:1. |
+| Filled buttons and Copy | Accent fill (#007AFF) with white text | The selection shade (#0064E1) with white text | White on #007AFF is 4.0:1; the selection shade is Apple's own colour and passes. |
+| Text on a selected row, secondary | About .82 white | .90 white | .82 is 4.1:1 on the light selection. |
+| Smallest text | Apple uses 10 and 11 pt captions | Nothing under 12 px | Principle 3, readable first. |
+| Accent choices | System accent only for apps that follow it | Follow the Mac by default, plus Ibis scarlet and tuned Mac colours | Maintainer's choice (2026-10-30); every choice keeps the same three roles and contrast. |
 
 ## Tokens
 
