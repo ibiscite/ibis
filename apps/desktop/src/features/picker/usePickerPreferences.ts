@@ -1,3 +1,4 @@
+import type { SearchIcon } from "../../bindings";
 // The picker's saved formatting and view preferences.
 import { useCallback, useEffect, useRef, useState } from "react";
 import type * as nativeApi from "../../api";
@@ -25,7 +26,7 @@ export function usePickerPreferences(
   const [density, setDensity] = useState<Density>("comfortable");
   const [densityFeedback, setDensityFeedback] = useState<{ presentation: number; density: Density } | null>(null);
   const [largerText, setLargerText] = useState(false);
-  const [searchMark, setSearchMark] = useState(false);
+  const [searchIcon, setSearchIcon] = useState<SearchIcon>("magnifier");
   const [showPastePreview, setShowPastePreview] = useState(true);
   const previewVisibility = useRef(true);
   const [queue] = useState(() => new PreferencePatchQueue({
@@ -44,7 +45,7 @@ export function usePickerPreferences(
     // A silent external view change retires its label so the next user choice can repeat it.
     setDensityFeedback((current) => current?.density === value.density ? current : null);
     setLargerText(value.larger_text);
-    setSearchMark(value.search_mark ?? false);
+    setSearchIcon(value.search_icon ?? "magnifier");
     previewVisibility.current = value.show_paste_preview;
     setShowPastePreview(value.show_paste_preview);
   }, []);
@@ -87,10 +88,6 @@ export function usePickerPreferences(
     setLargerText(!largerText);
     savePreferences({ larger_text: !largerText });
   };
-  const toggleSearchMark = () => {
-    setSearchMark(!searchMark);
-    savePreferences({ search_mark: !searchMark });
-  };
   const togglePastePreview = () => {
     const next = !previewVisibility.current;
     previewVisibility.current = next;
@@ -109,5 +106,5 @@ export function usePickerPreferences(
    * mount effect, after the library status, so the calls keep their order. */
   const loadPreferences = (mounted: () => boolean) => { void queue.load(mounted); };
 
-  return { ready, available, format, density, densityAnnouncement: densityFeedback?.presentation === presentation ? densityFeedback.density : undefined, largerText, searchMark, showPastePreview, chooseFormat, changeDensity, toggleLargerText, toggleSearchMark, togglePastePreview, quitAfterSaving, loadPreferences };
+  return { ready, available, format, density, densityAnnouncement: densityFeedback?.presentation === presentation ? densityFeedback.density : undefined, largerText, searchIcon, showPastePreview, chooseFormat, changeDensity, toggleLargerText, togglePastePreview, quitAfterSaving, loadPreferences };
 }

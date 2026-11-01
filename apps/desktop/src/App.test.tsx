@@ -3739,7 +3739,7 @@ test("hiding output keeps chips and pending copy checks, and remembers the choic
 
 test("the search glyph follows Settings on first load and when its saved choice changes", async () => {
   let mark = true;
-  backend({ search: () => [], picker_preferences: () => ({ citation_style: null, density: "comfortable", larger_text: false, show_paste_preview: true, search_mark: mark, paste: true }) });
+  backend({ search: () => [], picker_preferences: () => ({ citation_style: null, density: "comfortable", larger_text: false, show_paste_preview: true, search_icon: mark ? "ibis" : "magnifier", paste: true }) });
   render(<App />);
   await waitFor(() => expect(document.querySelector(".search-mark")).toBeTruthy());
   mark = false;
@@ -4329,7 +4329,7 @@ test("Ctrl+, opens Settings from the picker, and a change made there reaches the
   const pages: unknown[] = [];
   const calls = backend({
     open_settings: ({ page }) => { pages.push(page); return null; },
-    picker_preferences: () => ({ citation_style: null, density: "comfortable", larger_text: largerText, show_paste_preview: true, search_mark: false, paste: true }),
+    picker_preferences: () => ({ citation_style: null, density: "comfortable", larger_text: largerText, show_paste_preview: true, search_icon: "magnifier", paste: true }),
   });
   render(<App />);
   const box = screen.getByLabelText("Search references");

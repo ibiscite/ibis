@@ -18,7 +18,7 @@ export function LookPage({ preferences: p, change, feedback }: {
   return <Group id="look-choices">
     <Row id="appearance" {...rowDetails("appearance", text)} {...feedback("appearance")}>
       <PictureChoice label={text("look-appearance")} description="appearance-description" value={appearance}
-        options={APPEARANCES.map((value) => ({ value, label: text(`look-${value}`), picture: <PickerPicture density={p.density} icon={p.search_mark ? "ibis" : "magnifier"} appearance={value === "system" ? "light" : value} split={value === "system"} /> }))}
+        options={APPEARANCES.map((value) => ({ value, label: text(`look-${value}`), picture: <PickerPicture density={p.density} icon={p.search_icon} appearance={value === "system" ? "light" : value} split={value === "system"} /> }))}
         onChange={(appearance) => change({ appearance })} />
     </Row>
     <Row id="accent" {...rowDetails("accent", text)} {...feedback("accent")}>
@@ -28,15 +28,16 @@ export function LookPage({ preferences: p, change, feedback }: {
     </Row>
     <Row id="rows" label={text("general-rows")} {...feedback("rows")}>
       <PictureChoice label={text("general-rows")} value={p.density}
-        options={(["compact", "comfortable", "spacious"] as const).map((value) => ({ value, label: text(`general-density-${value}`), picture: <PickerPicture rowsOnly density={value} icon={p.search_mark ? "ibis" : "magnifier"} /> }))}
+        options={(["compact", "comfortable", "spacious"] as const).map((value) => ({ value, label: text(`general-density-${value}`), picture: <PickerPicture rowsOnly density={value} icon={p.search_icon} /> }))}
         onChange={(density) => change({ density })} />
     </Row>
     <Row id="search-icon" label={text("look-search-icon")} {...feedback("search-icon")}>
-      <PictureChoice label={text("look-search-icon")} value={p.search_mark ? "ibis" : "magnifier"}
+      <PictureChoice label={text("look-search-icon")} value={p.search_icon}
         options={([
           { value: "ibis", label: text("look-ibis"), picture: <PickerPicture headerOnly icon="ibis" /> },
           { value: "magnifier", label: text("look-magnifier"), picture: <PickerPicture headerOnly icon="magnifier" /> },
-        ] as const)} onChange={(value) => change({ search_mark: value === "ibis" })} />
+          { value: "none", label: text("look-none"), picture: <PickerPicture headerOnly icon="none" /> },
+        ] as const)} onChange={(search_icon) => change({ search_icon })} />
     </Row>
     <Row id="text-size" label={text("look-text-size")} {...feedback("text-size")}>
       <Segmented label={text("look-text-size")} value={p.larger_text ? "larger" : "default"}

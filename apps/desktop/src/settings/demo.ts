@@ -4,7 +4,7 @@ import type { SettingsApi } from "./api";
 
 /** Explicit development-only fixture: no native commands, files or network. */
 export function demoApi(): SettingsApi {
-  let preferences: PickerPreferences = { citation_style: null, density: "comfortable", larger_text: false, show_paste_preview: true, search_mark: true, paste: true, appearance: "system", accent: "system" };
+  let preferences: PickerPreferences = { citation_style: null, density: "comfortable", larger_text: false, show_paste_preview: true, search_icon: "ibis", paste: true, appearance: "system", accent: "system" };
   let shortcut: ShortcutStatus = { shortcut: DEFAULT_PICKER_SHORTCUT, registered: true, error: null };
   let enabled = false, automatic = false;
   let revision = 0;

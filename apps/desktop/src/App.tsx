@@ -102,7 +102,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
     };
   }, [api, setFailures]);
   const preferences = usePickerPreferences(api, { styles: true, report, perform, presentation: state.visibility });
-  const { density, searchMark, showPastePreview, togglePastePreview, changeDensity, quitAfterSaving: quitPreferences } = preferences;
+  const { density, searchIcon, showPastePreview, togglePastePreview, changeDensity, quitAfterSaving: quitPreferences } = preferences;
   const deliveryTarget = useDeliveryTarget(api);
   const destination = useDestination(deliveryTarget.api, { fallback: preferences.format, fallbackReady: preferences.available, chooseDefault: preferences.chooseFormat, report });
   const { format } = destination;
@@ -614,7 +614,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
       }}
     >
       <PickerHeader
-        pinned={pinned} mark={searchMark} onTogglePin={() => { togglePin(); input.current?.focus(); }}
+        pinned={pinned} icon={searchIcon} onTogglePin={() => { togglePin(); input.current?.focus(); }}
         inputRef={input}
         query={query}
         pageToken={usingLocator && <span className="search-page-token" role="group" aria-label={pickerText.usingLocator(usingLocator.label, usingLocator.value)}>

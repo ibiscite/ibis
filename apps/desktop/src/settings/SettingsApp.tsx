@@ -221,7 +221,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     edits.current += 1;
     cause.current = Object.hasOwn(next, "citation_style") || key !== null ? "default-format" : next.appearance !== undefined ? "appearance" : next.accent !== undefined ? "accent"
       : next.density !== undefined ? "rows" : next.larger_text !== undefined ? "text-size"
-      : next.search_mark !== undefined ? "search-icon" : next.paste !== undefined ? "paste-label" : "preview";
+      : next.search_icon !== undefined ? "search-icon" : next.paste !== undefined ? "paste-label" : "preview";
     setProblemRow(null);
     dispatchPreference({ type: "change", value: { ...preferences, ...next, ...(key ? { copy_format: key } : {}) } });
     queue.change(next, key);

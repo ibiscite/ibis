@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use ibis_core::cite::KeyFormat;
-use ibis_core::settings::{self, CitationStyle, Density};
+use ibis_core::settings::{self, CitationStyle, Density, SearchIcon};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
 
@@ -188,8 +188,8 @@ pub(crate) struct PickerPreferences {
     pub(crate) density: Density,
     pub(crate) larger_text: bool,
     pub(crate) show_paste_preview: bool,
-    /// The Ibis mark in place of the search glyph; on by default.
-    pub(crate) search_mark: bool,
+    /// What leads the search field; the Ibis mark by default.
+    pub(crate) search_icon: SearchIcon,
     /// Enter pastes into the app the picker was opened from; on by default.
     pub(crate) paste: bool,
 }
@@ -205,7 +205,7 @@ impl PickerPreferences {
             density: settings.density.unwrap_or(Density::Comfortable),
             larger_text: settings.larger_text.unwrap_or(false),
             show_paste_preview: settings.show_paste_preview.unwrap_or(true),
-            search_mark: settings.search_mark.unwrap_or(true),
+            search_icon: settings.search_icon.unwrap_or(SearchIcon::Ibis),
             paste: settings.paste.unwrap_or(true),
         }
     }
@@ -244,7 +244,7 @@ pub(crate) struct PickerPreferencesPatch {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) show_paste_preview: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) search_mark: Option<bool>,
+    pub(crate) search_icon: Option<SearchIcon>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) paste: Option<bool>,
 }
@@ -270,8 +270,8 @@ impl PickerPreferencesPatch {
         if self.show_paste_preview.is_some() && !keep("show_paste_preview") {
             self.show_paste_preview = None;
         }
-        if self.search_mark.is_some() && !keep("search_mark") {
-            self.search_mark = None;
+        if self.search_icon.is_some() && !keep("search_icon") {
+            self.search_icon = None;
         }
         if self.paste.is_some() && !keep("paste") {
             self.paste = None;
@@ -294,7 +294,7 @@ impl From<PickerPreferences> for PickerPreferencesPatch {
             density: Some(value.density),
             larger_text: Some(value.larger_text),
             show_paste_preview: Some(value.show_paste_preview),
-            search_mark: Some(value.search_mark),
+            search_icon: Some(value.search_icon),
             paste: Some(value.paste),
         }
     }
@@ -532,8 +532,8 @@ impl SettingsFile {
             if let Some(shown) = preferences.show_paste_preview {
                 s.show_paste_preview = Some(shown).filter(|shown| !shown);
             }
-            if let Some(mark) = preferences.search_mark {
-                s.search_mark = Some(mark).filter(|mark| !*mark);
+            if let Some(icon) = preferences.search_icon {
+                s.search_icon = Some(icon).filter(|icon| *icon != SearchIcon::Ibis);
             }
             if let Some(paste) = preferences.paste {
                 s.paste = Some(paste).filter(|paste| !paste);
@@ -821,7 +821,7 @@ mod tests {
             ("density", serde_json::json!("spacious")),
             ("larger_text", serde_json::json!(false)),
             ("show_paste_preview", serde_json::json!(true)),
-            ("search_mark", serde_json::json!(true)),
+            ("search_icon", serde_json::json!("ibis")),
             ("paste", serde_json::json!(true)),
             ("copy_format", serde_json::json!("cite")),
         ] {
@@ -830,7 +830,7 @@ mod tests {
             let mut expected = serde_json::json!({
                 "appearance": "dark", "accent": "purple", "citation_style": "apa",
                 "density": "compact", "larger_text": true, "show_paste_preview": false,
-                "search_mark": false, "paste": false,
+                "search_icon": "magnifier", "paste": false,
             });
             let older = file
                 .reserve_preferences(
@@ -898,7 +898,7 @@ mod tests {
             let loaded = read_preferences(&path).unwrap_or_else(|e| panic!("{e}"));
             assert_eq!(loaded.appearance, Some(Appearance::Dark));
             assert_eq!(loaded.accent, Some(accent));
-            assert!(loaded.search_mark, "the Ibis mark is the default");
+            assert_eq!(loaded.search_icon, SearchIcon::Ibis, "the Ibis mark is the default");
         }
         file.save_preferences(
             PickerPreferencesPatch {
@@ -1047,7 +1047,7 @@ mod tests {
             density: Density::Spacious,
             larger_text: true,
             show_paste_preview: false,
-            search_mark: false,
+            search_icon: SearchIcon::Magnifier,
             paste: true,
         };
         let (dispatched, dispatch) = mpsc::channel();
@@ -1477,7 +1477,7 @@ mod tests {
             density: Density::Spacious,
             larger_text: true,
             show_paste_preview: false,
-            search_mark: false,
+            search_icon: SearchIcon::Magnifier,
             paste: false,
         };
         let saved = file.save_preferences(chosen, None).unwrap_or_else(|e| panic!("{e}"));
@@ -1498,7 +1498,7 @@ mod tests {
             density: Density::Comfortable,
             larger_text: false,
             show_paste_preview: true,
-            search_mark: false,
+            search_icon: SearchIcon::Magnifier,
             paste: true,
         };
         let saved = file.save_preferences(defaults, None).unwrap_or_else(|e| panic!("{e}"));
@@ -1578,7 +1578,7 @@ mod tests {
             density: Density::Compact,
             larger_text: true,
             show_paste_preview: false,
-            search_mark: false,
+            search_icon: SearchIcon::Magnifier,
             paste: true,
         };
         for format in [
@@ -1627,7 +1627,7 @@ mod tests {
             density: Density::Comfortable,
             larger_text: false,
             show_paste_preview: false,
-            search_mark: false,
+            search_icon: SearchIcon::Magnifier,
             paste: true,
         };
         for text in [

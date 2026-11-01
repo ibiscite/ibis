@@ -31,7 +31,7 @@ try {
       await page.addInitScript(({ text }) => {
         Object.defineProperty(navigator, "platform", { value: "MacIntel" });
         if (text === "200%") document.addEventListener("DOMContentLoaded", () => { document.documentElement.style.fontSize = "200%"; });
-        const preferences = { citation_style: null, density: "comfortable", larger_text: text === "larger", show_paste_preview: true, search_mark: true, paste: false };
+        const preferences = { citation_style: null, density: "comfortable", larger_text: text === "larger", show_paste_preview: true, search_icon: "ibis", paste: false };
         const none = { state: "none", revision: "1", has_snapshot: false, zotero: false, name: null, snapshot_name: null, references: 0, warnings: 0, error: null, problem: null, note: null };
         let library = none, callback = 0, discoveries = 0, presentation = 0;
         const callbacks = new Map(), listeners = new Map();
