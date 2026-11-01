@@ -39,7 +39,7 @@ function Beak({ closing = false }: { closing?: boolean }) {
 
 /** One line of exact engine output. All editing stays in an anchored menu;
  * a folded citation retains its full text and every reference's identity. */
-export function CitationShelf({ source, onOpenSource, announce, selected, highlightedReference, highlightedReferences, onChangeReference, removeLabel, onRemove, referenceLibrary, style, keys, shown, previewReceipt, outputWarnings, problem, focusable, fallbackFocusRef, presentation, present = false, copied: copiedReceipt , searching = false }: {
+export function CitationShelf({ source, onOpenSource, announce, selected, highlightedReference, highlightedReferences, onChangeReference, removeLabel, onRemove, referenceLibrary, style, keys, shown, previewReceipt, outputWarnings, problem, focusable, fallbackFocusRef, presentation, present = false, copied: copiedReceipt }: {
   presentation?: number;
   present?: boolean;
   announce: boolean;
@@ -60,8 +60,6 @@ export function CitationShelf({ source, onOpenSource, announce, selected, highli
   fallbackFocusRef?: RefObject<HTMLElement | null>;
   /** The receipt belongs to this interaction, never to an older preview. */
   copied?: ShelfCopied | null;
-  /** A search is running, so an empty highlight is only a gap between results. */
-  searching?: boolean;
   /** More's first item, offered in a reference's menu with the same words and keys. */
   source?: SourceActionProps;
   onOpenSource?: (reference: CitationReference) => void;
@@ -144,9 +142,8 @@ export function CitationShelf({ source, onOpenSource, announce, selected, highli
   const meaning = choiceKey(references);
   const pendingOwner = useMemo(() => ({ meaning, style, keys, presentation }), [meaning, style, keys, presentation]);
   const [expired, setExpired] = useState<object | null>(null);
-  // A running search clears the highlighted row until results return. Hold
-  // the last citation through that gap, so typing never blinks the shelf.
-  const waiting = shown === null || shown === undefined && searching && !output.current?.contains(document.activeElement);
+  // While the next preview is made, hold the last citation for 300 ms.
+  const waiting = shown === null;
   useEffect(() => {
     if (!waiting) { setExpired(null); return; }
     const timer = window.setTimeout(() => setExpired(pendingOwner), 300);
