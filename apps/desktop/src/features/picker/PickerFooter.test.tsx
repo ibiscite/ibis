@@ -130,7 +130,7 @@ test("RTL at 200% shortens status and hides only labels while core actions keep 
   expect(copy.getAttribute("aria-keyshortcuts")).toBe("Enter");
   expect(bar.textContent).toContain("Library details unavailable");
   expect(footerStyles).toMatch(/\[data-hints-compact\][^{]+\.key-hint-label \{[^}]*clip-path: inset\(50%\)/);
-  expect(buttonStyles).toMatch(/\.ui-button > \.key-hint \{[^}]*flex-wrap: wrap/);
+  expect(buttonStyles).toMatch(/\.ui-button\[data-variant\] > \.key-hint \{[^}]*flex-wrap: wrap/);
   expect(screen.queryByRole("button", { name: "Shortcuts" })).toBeNull();
 });
 
