@@ -1,7 +1,7 @@
 /* One scroll area for the results, menus, Shortcuts and notices (#1034). An edge with more content beyond it fades,
    so a list that ends on a whole row still shows there is more. A mask reads
-   only alpha, so the opaque text colour serves. Scrolling still chains to the
-   picker, which scrolls as a whole when Larger text leaves it short. */
+   only alpha, so the opaque text colour serves. In a short picker, results
+   yield to the middle scroll area; the header, shelf and footer stay put. */
 .scroll-area { overflow: auto; }
 .scroll-area[data-more-above] {
   -webkit-mask-image: linear-gradient(transparent, currentColor min(var(--scroll-fade), var(--scroll-fade-above-space, var(--scroll-fade))));

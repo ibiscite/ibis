@@ -53,7 +53,7 @@ main > .search-bar, main > .shelf, main > footer { flex: none; }
 :root[data-platform] #search { padding-inline-end: calc(var(--search-clear-size) + var(--space-1)); }
 .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
-.results-area { flex: 1; min-height: calc(var(--row-height) + var(--type-label-line) + 3 * var(--space-2)); margin-block: var(--inset); padding-inline: var(--inset); }
+.results-area { flex: 1; min-height: 0; margin-block: var(--inset); padding-inline: var(--inset); }
 .results-heading { display: flex; justify-content: space-between; padding: var(--space-1) var(--row-pad) var(--space-2); color: var(--text-tertiary); font-size: var(--type-label-size); line-height: var(--type-label-line); font-weight: var(--strong); letter-spacing: .02em; }
 #results { list-style: none; padding: 0; margin: 0; }
 /* Rows are exactly --row-height and --row-spacing apart in every list of
@@ -209,7 +209,7 @@ footer { display: flex; align-items: center; padding-block: 0; padding-inline: c
   .picker-content > .results-area { flex: none; min-height: 0; overflow: visible; }
 }
 /* Setup/recovery/hints always contribute their whole natural height. */
-.picker-content > .results-area:not(:has([role="option"])) { flex: 1 0 auto; overflow: visible; }
+.picker-content > .results-area:not(:has([role="option"])) { flex: 1 0 auto; min-height: min-content; overflow: visible; }
 
 /* No animation: reduced-motion users get the same immediate feedback. */
 

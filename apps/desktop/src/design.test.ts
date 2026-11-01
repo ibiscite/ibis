@@ -43,6 +43,75 @@ test("parts take colours, corners and type from tokens", () => {
   expect(raw).toEqual([]);
 });
 
+type MotionRule = { name: string; selector: string; style: CSSStyleDeclaration; reduced: boolean };
+function motionGaps(sheets: readonly (readonly [string, string])[]) {
+  const rules: MotionRule[] = [];
+  for (const [name, css] of sheets) {
+    const sheet = document.createElement("style");
+    sheet.textContent = css;
+    document.head.append(sheet);
+    const walk = (children: CSSRuleList, reduced = false) => {
+      for (const rule of children) {
+        if (rule.type === CSSRule.STYLE_RULE) {
+          const { selectorText, style } = rule as CSSStyleRule;
+          for (const selector of selectorText.split(",")) rules.push({ name, selector: selector.trim(), style, reduced });
+        } else if (rule.type !== CSSRule.KEYFRAMES_RULE && "cssRules" in rule) {
+          const group = rule as CSSMediaRule;
+          // Rules restricted to no-preference cannot run with Reduce Motion.
+          if (/prefers-reduced-motion:\s*no-preference/.test(group.conditionText ?? "")) continue;
+          walk(group.cssRules, reduced || /prefers-reduced-motion:\s*reduce\b/.test(group.conditionText ?? ""));
+        }
+      }
+    };
+    try { walk(sheet.sheet!.cssRules); } finally { sheet.remove(); }
+  }
+  const reducedTokens = new Set(rules.filter((rule) => rule.reduced && rule.selector === ":root")
+    .flatMap(({ style }) => Array.from(style).filter((property) => property.startsWith("--"))));
+  return rules.flatMap((rule, index) => rule.reduced ? [] : ["animation", "transition"].flatMap((family) => {
+    const declarations = Array.from(rule.style).filter((property) =>
+      property === family || new RegExp(`^${family}-(name|property|duration|delay|iteration-count)$`).test(property));
+    if (!declarations.some((property) => !/^(none|0|0s|initial|unset|revert)$/.test(rule.style.getPropertyValue(property)))) return [];
+    const direct = rules.slice(index + 1).some((answer) => answer.reduced && answer.name === rule.name && answer.selector === rule.selector
+      && Array.from(answer.style).some((property) => property === family || property === `${family}-duration` || property === `${family}-name` || property === `${family}-property`));
+    const token = declarations.some((property) => [...rule.style.getPropertyValue(property).matchAll(/var\((--[\w-]+)/g)]
+      .some((match) => reducedTokens.has(match[1]!)));
+    return direct || token ? [] : [`${rule.name}: ${rule.selector}: ${family}`];
+  }));
+}
+
+test("every motion rule has a reduced-motion answer, including nested rules and stylesheets", () => {
+  expect(motionGaps(names.map((name) => [name, strip(read(name))] as const))).toEqual([]);
+});
+
+test("motion lint rejects missing, unrelated and overridden answers inside nested groups", () => {
+  const motion = "@supports (display: grid) { @media (min-width: 1px) { .fixture { transition: transform 200ms; } } }";
+  const answer = "@media (prefers-reduced-motion: reduce) { .fixture { transition: none; } }";
+  const gaps = ["nested/fixture.css: .fixture: transition"];
+  expect(motionGaps([["nested/fixture.css", motion]])).toEqual(gaps);
+  expect(motionGaps([["nested/fixture.css", motion + answer.replace(".fixture", ".unrelated")]])).toEqual(gaps);
+  expect(motionGaps([["nested/fixture.css", answer + motion]])).toEqual(gaps);
+  expect(motionGaps([["nested/fixture.css", motion + answer]])).toEqual([]);
+});
+
+test("spinner, switch and key-cap geometry each have one shared owner", () => {
+  for (const [selector, owner] of [[".source-spinner", "ui/SourceAction.css"], [".ui-switch-track", "ui/Switch.css"], ["kbd", "ui/KeyCaps.css"]]) {
+    const owners = all.filter(([, css]) => [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+      .some(([, head, body]) => (head!.trim() === selector || head!.trim().endsWith(` ${selector}`)) && /(?:min-width|width|height):/.test(body!)))
+      .map(([name]) => name);
+    expect(owners, selector).toEqual([owner]);
+  }
+  expect(read("ui/SourceAction.css")).toContain("width: var(--icon-small); height: var(--icon-small)");
+  expect(tokens).toContain("--icon-small: 1rem");
+});
+
+test("keyboard-focused choices suppress the global outline and keep their fill", () => {
+  const choice = read("ui/ChoiceList.css");
+  // The extra state selector outranks the global :focus-visible rule even
+  // when the application stylesheet is loaded after this shared part.
+  expect(choice).toMatch(/\.choice-screen \.choice-row\[data-focus-visible\] \{[^}]*outline: none;[^}]*box-shadow: none;/);
+  expect(choice).toMatch(/\.choice-row\[data-focused\] \{ background: var\(--selected\); color: var\(--selected-text\);/);
+});
+
 test("a one-sided edge never marks state", () => {
   const edges = all.flatMap(([name, css]) => css.split("\n")
     .filter((line) => /border-(inline|block)-(start|end):[^;]*solid/.test(line) && !/separator|--separator|--stroke-field|transparent/.test(line))

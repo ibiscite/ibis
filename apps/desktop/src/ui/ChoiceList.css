@@ -18,6 +18,7 @@ main .picker-content .results-area:has(.choice-screen) { display: flex; flex-dir
 .choice-chevron:dir(rtl) { transform: scaleX(-1); }
 .choice-row[data-suggested] .choice-tile { background: var(--accent); color: var(--text-on-accent); }
 /* The focused row is the active one, filled as a selected result row. */
+.choice-screen .choice-row[data-focus-visible] { outline: none; box-shadow: none; }
 .choice-row[data-focused] { background: var(--selected); color: var(--selected-text); }
 .choice-row[data-focused] .choice-help, .choice-row[data-focused] .choice-tag, .choice-row[data-focused] .choice-chevron { color: var(--selected-text-secondary); }
 .choice-row[data-focused]:not([data-suggested]) .choice-tile { background: var(--on-sel-fill); color: inherit; }

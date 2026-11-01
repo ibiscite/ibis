@@ -45,6 +45,27 @@ function fireScroll(node: HTMLElement) {
   act(() => { node.dispatchEvent(new Event("scroll")); });
 }
 
+test("the middle owns overflowing hints, while a results viewport can shrink without a second scrollbar", () => {
+  // Layout is not available in jsdom. Check the sizing contract that must hold
+  // at 720×480, 480×360 and 200% text; the browser probe checks actual boxes.
+  const styles = css("../styles.css");
+  const declaration = (selector: string) => {
+    const body = styles.split("\n").find((line) => line.startsWith(`${selector} {`));
+    expect(body, selector).toBeTruthy();
+    const style = document.createElement("div").style;
+    style.cssText = body!.slice(body!.indexOf("{") + 1, body!.lastIndexOf("}"));
+    return style;
+  };
+  expect(declaration("body").overflow).toBe("hidden");
+  expect(declaration(".picker-content").overflow).toBe("auto");
+  // A minimum row height on the inner viewport can overflow its outer owner.
+  expect(parseFloat(declaration(".results-area").minHeight)).toBe(0);
+  const hint = declaration('.picker-content > .results-area:not(:has([role="option"]))');
+  expect(hint.minHeight).toBe("min-content");
+  expect(hint.flex).toBe("1 0 auto");
+  expect(hint.overflow).toBe("visible");
+});
+
 test("results, menus and Shortcuts share the scroll area; picker notices belong to the middle scroller", () => {
   const styles = css("../styles.css");
   for (const selector of [".results-area", ".keys-scroll", ".picker-content > .notices"]) {

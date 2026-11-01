@@ -4,13 +4,10 @@
    ADR 0021 §5). These are the look-layer tokens for menus. */
 .menu-popover {
   --menu-radius: var(--r-menu); --menu-padding: var(--menu-pad); --menu-item-radius: var(--r-mi); --menu-item-height: 1.5rem;
-  /* Labels start after the 8 px item padding, a 14 px check column and the 6 px gap. */
-  --menu-item-pad: var(--space-2); --menu-check-width: 14px; --menu-item-gap: 6px;
+  /* Labels start after the item padding, one icon/check column and the gap. */
+  --menu-item-pad: var(--space-2); --menu-check-width: var(--icon-small); --menu-item-gap: 6px;
   --menu-label-start: calc(var(--menu-item-pad) + var(--menu-check-width) + var(--menu-item-gap));
   --menu-highlight: var(--selected); --menu-highlight-text: var(--selected-text);
-}
-@media (prefers-reduced-motion: reduce) {
-  .menu-popover[data-exiting] { animation-duration: 100ms; }
 }
 @media (prefers-contrast: more), (forced-colors: active) {
   :root .menu-popover, :root[data-platform] .menu-popover { --menu-highlight: Highlight; --menu-highlight-text: HighlightText; }
@@ -25,6 +22,9 @@
 }
 .menu-popover[data-exiting] { animation: menu-exit var(--dur-exit) var(--ease-in); }
 @keyframes menu-exit { to { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .menu-popover[data-exiting] { animation-duration: 100ms; }
+}
 .menu-frame { display: contents; }
 /* The menu and its rows never show a focus ring: the highlight is a fill. */
 /* The side padding is on the scrolling list, so a classic scroll bar sits
@@ -45,13 +45,10 @@
   display: flex; flex: none; align-items: center; min-height: var(--menu-item-height); padding-block: var(--space-1); padding-inline: var(--menu-item-pad); gap: var(--menu-item-gap);
   border-radius: var(--menu-item-radius); outline: none; cursor: default; text-align: start;
 }
-/* Checks sit where each system puts them: in a leading column on macOS and
-   Windows, which a menu with any toggle keeps for every row so labels share
-   one start, and after the label on GNOME. */
-.menu-check { flex: 0 0 var(--menu-check-width); display: inline-flex; justify-content: center; }
-:root .menu:has([role="menuitemcheckbox"]) :is(.menu-item:not([role="menuitemcheckbox"]), .menu-header) { padding-inline-start: var(--menu-label-start); }
-/* An icon shares the check column, so its label still starts with the others. */
-:root .menu:has([role="menuitemcheckbox"]) .menu-item:has(> .source-icon) { padding-inline-start: calc(var(--menu-item-pad) + var(--menu-check-width) - var(--icon-small)); }
+/* Checks and icons share one leading column; plain rows and headings reserve
+   it too, including menus of radio choices or source actions. */
+.menu-check { flex: 0 0 var(--menu-check-width); display: inline-flex; align-items: center; justify-content: center; }
+:root .menu:has(.menu-check) :is(.menu-item:not(:has(> .menu-check)), .menu-header) { padding-inline-start: var(--menu-label-start); }
 /* Grow to the intrinsic label width first; at the viewport limit full action
    labels wrap while checks and shortcut units retain their columns. */
 .menu-label { flex: 1 1 auto; min-width: 0; white-space: normal; overflow-wrap: break-word; }

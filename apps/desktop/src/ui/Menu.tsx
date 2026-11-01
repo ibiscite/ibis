@@ -223,7 +223,7 @@ type ItemProps = {
   onAction: () => void;
 };
 
-/** A drawn check, so it adds no text to the row; Menu.css places it per platform. */
+/** A drawn check, so it adds no text to the row; Menu.css gives it the icon column. */
 export function MenuCheck({ checked }: { checked: boolean }) {
   return <span className="menu-check" aria-hidden="true">
     {checked && <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="m2.5 6.5 2.5 2.5 4.5-6" /></svg>}
@@ -243,8 +243,7 @@ export function MenuItem({ id, label, title, keys, checked, disabled, closeOnSel
     }}
     render={(props) => <MenuRow {...props as ComponentPropsWithRef<"div">} itemId={id} title={title} aria-disabled={disabled || undefined} />}>
     {({ isSelected }) => <>
-      {checked !== undefined && <MenuCheck checked={isSelected} />}
-      {icon}
+      {checked !== undefined ? <MenuCheck checked={isSelected} /> : icon && <span className="menu-check" aria-hidden="true">{icon}</span>}
       <bdi className="menu-label" dir="auto">{label}</bdi>
       {example && <Text slot="description" className="menu-example"><bdi dir="auto">{example}</bdi></Text>}
       {keys && <span className="menu-keys" aria-hidden="true"><bdi dir="ltr">{keys}</bdi></span>}
