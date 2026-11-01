@@ -1075,7 +1075,9 @@ anything over 280 ms, anything that loops except a busy indicator.
 
 ## Small delights
 
-Proposed 2026-11-01; the canvas's Small delights board lists them. Every delight
+Approved (maintainer, 2026-11-01): every pick below except Search with Ibis
+and the second round, which are proposed. The canvas's Small delights board
+lists them. Every delight
 lives only in About, the welcome, status lines or feedback that already exists;
 never changes search results, what is copied or pasted, or focus; happens once,
 quietly, inside the motion cap; shows its end state under Reduce Motion; never
@@ -1086,14 +1088,23 @@ loops or plays a sound; and is counted only on this Mac.
   alignment tick when a citation segment or the window snaps into place; holding
   ⌘ for one second shows every visible action's key.
 - **Saves time:** Services › Search with Ibis from selected text; a `.bib` or
-  CSL-JSON file dropped on the Dock icon becomes a library; ⌥ on About shows
+  CSL-JSON file dropped on the menu bar icon becomes a library (the Dock icon
+  shows only while Settings is open); ⌥ on About shows
   the full version, build and date, and a click copies it; one next-step tip
-  after the first paste, shown once.
+  after the first paste, the first of the footer tips.
 - **Fun:** clicking the About icon makes the ibis blink once, and five clicks
   show "Ancient Egyptians linked the ibis with Thoth, god of writing."; the
   mark pecks once when a library first finishes opening; a library's status line
   notes its first 1,000 and 10,000 references once.
-- **Left out:** confetti, sounds, seasonal themes and joke search results.
+- **Second round (proposed):** Enter with nothing to paste shakes the footer
+  action once (240 ms) and says why; ⌘+ and ⌘− show the size for one second
+  where Copied shows; double-clicking the search bar's empty area returns Ibis
+  to its place; a dragged `.bib` held over Settings › Libraries opens it;
+  pressing a listed shortcut on Settings › Shortcuts tints its row; opening
+  between 2 and 4 am shows "Writing late? Your references are ready." at most
+  once a week; "ibis" in the Settings search opens About with a blink.
+- **Left out:** confetti, sounds, seasonal themes, joke search results and a
+  "what's new" screen.
 
 ## Accessibility
 
@@ -1945,6 +1956,14 @@ scheduled.
   as is. Its components use the names in `src/ui/`. If a mismatch slips
   through, fix whichever side is wrong the same day, so both show the same
   thing.
+- The canvas shows the real app, not a copy (maintainer question,
+  2026-11-01). `pnpm -C apps/desktop build:canvas` builds the app's own code
+  with invented data into two files; the canvas's "real app" board loads them,
+  one screen and theme per board. After a merge that changes how Ibis looks,
+  rebuild and upload them. Each state a board needs is a scenario in
+  `apps/desktop/canvas/main.tsx`, so a hand-drawn copy of a screen or
+  component is deleted once its scenario exists. Hand drawing is only for
+  ideas not yet built, marked as proposed, and deleted when the code lands.
 - Each new macOS release (macOS 27 shipped in autumn 2026) gets one review of
   this page against Apple's Human Interface Guidelines and the shipped system:
   changed values, materials, menus and sidebars are recorded here and in the
