@@ -138,6 +138,16 @@ pub fn handle(engine: &Engine, session: &mut Session, message: &Value) -> Option
     if !valid_id {
         return Some(error(Value::Null, -32600, "Invalid Request"));
     }
+    // MCP params and their _meta are objects; any other shape is refused before a
+    // revision is chosen, so a malformed request never takes the pre-handshake path.
+    if object.get("params").is_some_and(|params| !params.is_object())
+        || object
+            .get("params")
+            .and_then(|params| params.get("_meta"))
+            .is_some_and(|meta| !meta.is_object())
+    {
+        return Some(error(id, -32602, "Invalid params: params and _meta must be objects"));
+    }
     let params = object.get("params").cloned().unwrap_or(Value::Null);
     // A request that names its revision is a stateless 2026-07-28 request and must
     // carry the fields that revision requires; one that does not is served only to a
@@ -184,12 +194,15 @@ pub fn handle(engine: &Engine, session: &mut Session, message: &Value) -> Option
             // Only a complete handshake opens the process to requests without a revision.
             if requested.is_none()
                 || !params.get("capabilities").is_some_and(Value::is_object)
-                || !params.get("clientInfo").is_some_and(Value::is_object)
+                || !params.get("clientInfo").is_some_and(|client| {
+                    client.get("name").is_some_and(Value::is_string)
+                        && client.get("version").is_some_and(Value::is_string)
+                })
             {
                 return Some(error(
                     id,
                     -32602,
-                    "Invalid params: initialize needs protocolVersion, capabilities and clientInfo",
+                    "Invalid params: initialize needs protocolVersion, capabilities and clientInfo with name and version",
                 ));
             }
             session.legacy = true;

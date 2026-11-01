@@ -506,6 +506,8 @@ fn only_a_complete_handshake_opens_the_process_to_older_requests() {
         json!({"protocolVersion":20250618,"capabilities":{},"clientInfo":client}),
         json!({"protocolVersion":mcp::LEGACY_VERSIONS[0],"clientInfo":client}),
         json!({"protocolVersion":mcp::LEGACY_VERSIONS[0],"capabilities":{}}),
+        json!({"protocolVersion":mcp::LEGACY_VERSIONS[0],"capabilities":{},"clientInfo":{}}),
+        json!({"protocolVersion":mcp::LEGACY_VERSIONS[0],"capabilities":{},"clientInfo":{"name":5,"version":[]}}),
     ] {
         let mut session = mcp::Session::default();
         let reply = mcp::handle(&engine, &mut session, &request(1, "initialize", params.clone())).unwrap();
@@ -519,6 +521,17 @@ fn only_a_complete_handshake_opens_the_process_to_older_requests() {
     // An older client may check the server is alive before it opens.
     let reply = handle(&engine, &request(2, "ping", json!({}))).unwrap();
     assert_eq!(reply["result"], json!({}));
+    let mut bare = request(3, "ping", json!({}));
+    bare.as_object_mut().unwrap().remove("params");
+    assert_eq!(handle(&engine, &bare).unwrap()["result"], json!({}));
+    // A ping of the wrong shape is refused, and opens nothing either way.
+    for params in [json!(null), json!([]), json!({"_meta":[]})] {
+        let mut session = mcp::Session::default();
+        let reply = mcp::handle(&engine, &mut session, &request(4, "ping", params.clone())).unwrap();
+        assert_eq!(reply["error"]["code"], -32602, "{params}");
+        let reply = mcp::handle(&engine, &mut session, &unversioned).unwrap();
+        assert_eq!(reply["error"]["code"], -32602, "{params}");
+    }
 }
 
 #[test]
