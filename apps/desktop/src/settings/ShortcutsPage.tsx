@@ -19,7 +19,7 @@ export function ShortcutsPage({ opening, enterPastes }: { opening: ReactNode; en
     <table className="ui-shortcut-table" aria-label={text("keys-title")}>
       <thead><tr><th scope="col">{text("keys-action")}</th><th scope="col">{text("keys-shortcut")}</th></tr></thead>
       {showOpen && <ShortcutGroup ids region="system" title={text("shortcuts-global")} bindings={[]} isMac={currentPlatform() === "macos"}>{opening}</ShortcutGroup>}
-      {(["search", "picker", "menu"] as const).filter((region) => bindings.some((binding) => binding.region === region)).map((region) => <ShortcutGroup key={region} region={region} bindings={bindings} isMac={currentPlatform() === "macos"} systemNotes ids />)}
+      {(["search", "library", "picker", "menu"] as const).filter((region) => bindings.some((binding) => binding.region === region)).map((region) => <ShortcutGroup key={region} region={region} bindings={bindings} isMac={currentPlatform() === "macos"} systemNotes ids />)}
     </table>
     {!showOpen && !bindings.length && <p role="status" className="settings-description">{text("shortcuts-empty")}</p>}
   </>;

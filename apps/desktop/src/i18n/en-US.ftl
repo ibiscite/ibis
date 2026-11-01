@@ -85,6 +85,7 @@ shortcuts-command-settings = Settings
 shortcuts-command-quit = Quit Ibis
 shortcuts-picker-conflict = That shortcut is used for { $command }. Try another shortcut.
 shortcuts-region-search = While searching
+shortcuts-region-library = Your library
 shortcuts-region-picker = Anywhere in Ibis
 shortcuts-region-menu = In a menu
 shortcuts-region-system = From any app

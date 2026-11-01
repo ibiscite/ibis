@@ -1,26 +1,26 @@
-/* One switch (docs/design.md, "Per platform": 38 × 22): the accent when on, a
+/* One switch (docs/design.md, "Per platform"): the accent when on, a
    quiet fill when off, and a contrast-paired thumb on the accent with a soft shadow. */
 /* Anchor React Aria's hidden input to its label, so focus scrolls its pane. */
-.ui-switch { position: relative; display: inline-flex; flex: none; align-items: center; min-height: var(--control-h); cursor: default; }
+.ui-switch { --switch-travel: calc(var(--switch-w) - var(--switch-thumb-w) - 2 * (var(--border-width) + 1px)); position: relative; display: inline-flex; flex: none; align-items: center; min-height: var(--control-h); cursor: default; }
 .ui-switch-track {
-  position: relative; box-sizing: border-box; width: 38px; height: 22px; border-radius: var(--r-full);
+  position: relative; box-sizing: border-box; width: var(--switch-w); height: var(--switch-h); border-radius: var(--r-full);
   background: var(--fill-control-pressed); border: var(--border-width) solid var(--stroke-field);
   transition: background-color var(--dur) var(--ease);
 }
 .ui-switch-thumb {
-  position: absolute; top: 1px; inset-inline-start: 1px; width: 18px; height: 18px; border-radius: 50%;
+  position: absolute; top: 1px; inset-inline-start: 1px; width: var(--switch-thumb-w); height: var(--switch-thumb-h); border-radius: var(--r-full);
   background: var(--thumb); box-shadow: var(--shadow-thumb);
   transition: transform var(--dur) var(--ease);
 }
 .ui-switch[data-selected] .ui-switch-track { background: var(--accent); }
-.ui-switch[data-selected] .ui-switch-thumb { background: var(--text-on-accent); transform: translateX(16px); }
-.ui-switch[data-selected]:dir(rtl) .ui-switch-thumb { transform: translateX(-16px); }
+.ui-switch[data-selected] .ui-switch-thumb { background: var(--text-on-accent); transform: translateX(var(--switch-travel)); }
+.ui-switch[data-selected]:dir(rtl) .ui-switch-thumb { transform: translateX(calc(-1 * var(--switch-travel))); }
 .ui-switch[data-focus-visible] .ui-switch-track { outline: var(--ring-width) solid var(--ring); outline-offset: var(--ring-offset); }
 .ui-switch[data-disabled] { opacity: .5; }
 @media (prefers-reduced-motion: reduce) { .ui-switch-track, .ui-switch-thumb { transition: none; } }
 @media (prefers-contrast: more), (forced-colors: active) {
   .ui-switch-track { background: Canvas; border-color: CanvasText; }
-  .ui-switch-thumb { background: CanvasText; box-shadow: none; top: 2px; inset-inline-start: 2px; width: 16px; height: 16px; }
+  .ui-switch-thumb { background: CanvasText; box-shadow: none; top: 2px; inset-inline-start: 2px; width: calc(var(--switch-thumb-w) - 2px); height: calc(var(--switch-thumb-h) - 2px); }
   .ui-switch[data-selected] .ui-switch-track { background: Highlight; border-color: Highlight; }
   .ui-switch[data-selected] .ui-switch-thumb { background: HighlightText; }
 }

@@ -67,10 +67,12 @@ function Recovery({ library, onFind, onReload, setup, source }: {
     : [setupText.otherTitle(name), reason];
   const tryAgain: Choice = { id: "retry", title: setupText.tryAgain, help: setupText.tryAgainHelp, icon: <ChoiceIcon name="retry" /> };
   const another: Choice = { id: "another", title: setupText.another, help: setupText.anotherHelp, icon: <ChoiceIcon name="swap" /> };
-  const choices: Choice[] = problem === "missing" && !library.zotero
-    ? [{ id: "find", title: setupText.find(name), help: setupText.findFileHelp, icon: <ChoiceIcon name="find" />, suggested: true }, another]
+  // Finding the file is what ⌘O does here, so it stays one row.
+  const finding = problem === "missing" && !library.zotero;
+  const choices: Choice[] = finding
+    ? [{ id: "find", title: setupText.find(name), help: setupText.findFileHelp, icon: <ChoiceIcon name="find" />, suggested: true, keys: keysFor("source") }, another]
     : [{ ...tryAgain, suggested: true }, another];
-  if (source && source.label !== pickerText.chooseLibraryMenu && !choices.some((choice) => choice.title === source.label)) choices.push({ id: "source", title: source.label, icon: source.icon ?? <ChoiceIcon name={library.zotero ? "library" : "file"} />,
+  if (!finding && source && source.label !== pickerText.chooseLibraryMenu && !choices.some((choice) => choice.title === source.label)) choices.push({ id: "source", title: source.label, icon: source.icon ?? <ChoiceIcon name={library.zotero ? "library" : "file"} />,
     keys: keysFor("source") });
   return (
     <div className="empty-state">
