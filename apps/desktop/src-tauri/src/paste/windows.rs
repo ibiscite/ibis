@@ -783,19 +783,16 @@ mod tests {
     #[ignore = "drives Notepad on a desktop session; CI's Windows job runs it"]
     fn one_ctrl_v_pastes_the_clipboard_into_the_app_in_front() {
         let text = "[@synthetic2026]";
-        let set = Command::new("powershell")
-            .args(["-NoProfile", "-Command", &format!("Set-Clipboard -Value '{text}'")])
-            .output()
-            .unwrap_or_else(|error| {
-                panic!(
-                    "{:?}",
-                    Failure {
-                        code: error.raw_os_error(),
-                        ..Failure::new(Stage::Input)
-                    }
-                )
-            });
-        assert!(set.status.success(), "{:?}", Failure::new(Stage::Input));
+        // The clipboard crate Ibis copies with, so no shell needs to be on PATH.
+        clipboard_win::set_clipboard_string(text).unwrap_or_else(|error| {
+            panic!(
+                "{:?}",
+                Failure {
+                    code: Some(error.raw_code()),
+                    ..Failure::new(Stage::Input)
+                }
+            )
+        });
         // Open a new empty file so restored tabs cannot satisfy the readback.
         // Close our file handle before Notepad opens it on Windows.
         let file = tempfile::Builder::new()

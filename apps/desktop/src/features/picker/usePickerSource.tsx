@@ -10,12 +10,13 @@ import type { useOperations } from "./useOperations";
 import type { useLibrarySearch } from "./useLibrarySearch";
 import { useSourceOpen } from "./useSourceOpen";
 
-export function usePickerSource({ api, pickerSession, libraryState, menus, current, altHeld, perform }: {
+export function usePickerSource({ api, pickerSession, libraryState, menus, results, altHeld, perform }: {
   api: PickerApi;
   pickerSession: ReturnType<typeof usePickerSession>;
   libraryState: ReturnType<typeof usePickerLibrary>;
   menus: ReturnType<typeof usePickerMenus>;
-  current: ReturnType<typeof useLibrarySearch>["current"];
+  /** The shown results: the source follows the highlighted row on screen. */
+  results: ReturnType<typeof useLibrarySearch>["results"];
   altHeld: boolean;
   perform: ReturnType<typeof useOperations>["perform"];
 }) {
@@ -24,7 +25,7 @@ export function usePickerSource({ api, pickerSession, libraryState, menus, curre
   const { input, closeMenu, setKeysOpen, restoreChooserFocus, runFromMenu, focusPicker } = menus;
   const { active, selected } = state;
   const { chooseLibrary } = api;
-  const sourceItem = !libraryChoices ? current[active]?.id ?? (selected.size === 1 ? [...selected.values()][0]?.id : null) ?? null : null;
+  const sourceItem = !libraryChoices ? results[active]?.id ?? (selected.size === 1 ? [...selected.values()][0]?.id : null) ?? null : null;
   const sourceOpen = useSourceOpen(api, library, state.visibility, sourceItem, sourceItem === null, refreshSnapshot);
   const chooseSources = () => {
     cancelCopy(); closeMenu(false); setKeysOpen(false);

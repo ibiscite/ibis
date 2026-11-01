@@ -946,6 +946,12 @@ and `a:` take their place while typing.
 **Search rules** (#1204, in `ibis-core` so every front end shares them). The
 index is built once per library change; a keystroke only scans it.
 
+- Typing keeps the picker still. Until the next reply, the rows, their heading
+  or empty message, the shelf and the footer action stay as they were; nothing
+  blanks or flashes between replies. Only actions wait: Enter and the footer
+  action copy the reply's result, and a click or Add on a row of the earlier
+  query does nothing.
+
 - Pasted lists (#1326): every key syntax in the writer's capability table,
   including BibLaTeX multicites, literal Typst `label("…")` constructors,
   Org, MyST, MultiMarkdown, AsciiDoc, HTML and the key-bearing JSON outputs;
@@ -965,7 +971,7 @@ index is built once per library change; a keystroke only scans it.
   are missing. Missing identifiers deduplicate by their canonical value.
   With no explicit selection, the preview, Enter and Copy use every current
   list result; the footer says “Copy N citations”. A selection takes priority.
-  A pending or stale search cannot supply list results or a missing-key notice.
+  A pending or stale search cannot supply list results to a copy, or a missing-key notice.
   A pasted list takes priority over trailing-locator interpretation, so a
   numeric key stays a key. Closest matches never join a recognized list.
   Unclosed citation syntax runs to the end of input.
@@ -1035,7 +1041,7 @@ system demands it for correctness.
 | Search box | Frameless, large. |
 | Format pop-up | Borderless pop-up, ⌃⌄, 28 px in a 32 px target, capsule. |
 | Switch | 38 × 22. |
-| Follows the system | Modifier keys and their key-cap labels (`KeyCaps`: ⌘K joined on macOS; Ctrl K one cap per key on Windows; Ctrl + K on Linux), the UI font, accessibility settings and window handling. |
+| Follows the system | Modifier keys and their key-cap labels (`KeyCaps`: ⌘K joined on macOS; Ctrl K one cap per key on Windows; Ctrl + K on Linux), the UI font, accessibility settings and window handling, including the picker window's outer corner: 16 px on macOS; on Windows the system's own (Windows 11 rounds it, not yet checked on a Windows 11 PC; square on Windows 10 like its other windows; maintainer, 2026-11-01). |
 
 **Look freeze until 1.0** (maintainer, 2026-10-25). What has shipped stays and
 is kept working, but is not extended. Native accent injection, versioned

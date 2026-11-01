@@ -26,7 +26,7 @@ export function useCitationRows({
   report: ReturnType<typeof useOperations>["report"];
 }) {
   const { session, state, send, cancelCopy, setActive } = pickerSession;
-  const { results, current, list, interpretation, queryKey, pending: searchPending } = searchState;
+  const { results, ready, list, interpretation, queryKey, pending: searchPending } = searchState;
   const { active, selected } = state;
   const { rowContext } = api;
   const { resetPointer } = pointer;
@@ -39,10 +39,10 @@ export function useCitationRows({
     input.current?.focus({ preventScroll: true });
   };
   const changeReference = (reference: CitationReference, change: Pick<CitationReference, "locator" | "form">) => {
-    send({ type: "reference", reference, change, initialSelection: list ? current : undefined });
+    send({ type: "reference", reference, change, initialSelection: list && ready ? results : undefined });
   };
 
-  const rowScope = useMemo(() => ({ api, current, selected, queryKey, format, snapshotRevision }), [api, current, selected, queryKey, format, snapshotRevision]);
+  const rowScope = useMemo(() => ({ api, results, ready, selected, queryKey, format, snapshotRevision }), [api, results, ready, selected, queryKey, format, snapshotRevision]);
   const latestRowScope = useRef(rowScope);
   latestRowScope.current = rowScope;
   const contextRequest = useRef(0);
@@ -55,14 +55,14 @@ export function useCitationRows({
     // Rows of an earlier query, still shown while a newer search
     // is pending, are not acted on by a click or Shift+click (#507).
     if (action === "toggle") cancelCopy();
-    if (current !== results) return;
+    if (!ready) return;
     pointer.choose(i);
     if (action === "toggle") toggle(r);
     else if (action === "copy") requestCopy(selected.size > 0 || list ? chosenKey : choiceKey([{ ...r, locator: interpretation?.locator }]));
     input.current?.focus();
   };
   const onContext: NonNullable<ComponentProps<typeof ResultList>["onContext"]> = (i, r) => {
-    if (current !== results || !rowContext) return;
+    if (!ready || !rowContext) return;
     resetPointer();
     setActive(i);
     const scope = rowScope, visibility = session.getSnapshot().visibility, request = ++contextRequest.current;
@@ -77,7 +77,7 @@ export function useCitationRows({
   };
   const onToggle: NonNullable<ComponentProps<typeof ResultList>["onToggle"]> = (i, r) => {
     cancelCopy();
-    if (current !== results) return;
+    if (!ready) return;
     pointer.choose(i);
     toggle(r);
     input.current?.focus();

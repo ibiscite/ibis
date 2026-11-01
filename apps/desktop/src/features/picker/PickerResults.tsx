@@ -38,8 +38,9 @@ export function PickerResults({
   resultArea: RefObject<HTMLDivElement | null>;
 }) {
   const { choosingLibrary, setupApi, setWelcomeShown, library, libraryChoices, busy, blocked, showCitations } = libraryState;
-  const { query, active, selected } = state;
-  const { results, error, list, announcement } = searchState;
+  const { active, selected } = state;
+  // The shown results and empty message answer this query until the next reply.
+  const { results, error, list, announcement, answered: query } = searchState;
   const { narrowed, searchAllLibraries, severalLibraries, libraryOf } = scope;
   const { sourceChoice, performSourceChoice } = source;
   const { chooseLibrary, reloadLibrary } = api;
