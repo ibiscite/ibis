@@ -21,15 +21,14 @@ Finish the existing 0.3/source-storage work first. Project-bibliography checking
 | --- | --- | --- |
 | 1 | Find/open saved PDF highlights and comments (#1208, #54, #359) | Prove source identity, text meaning and locations |
 | 2 | Copy one quote with its reference (#1385), completing the same first slice | A search-only demo is insufficient; prove reusable output before batch export |
-| 3 — validate later | Selected-evidence Markdown brief (#1517) | Recognizable workflow, but demand beyond existing exports is unproven; adds a second selection/file lifecycle |
-| 4 — validate later | Changed copied-key warning (#1092) | Real narrower pain; durable identity/history adds complexity and ordinary .bib renames are not covered |
+| 3 | Selected-evidence Markdown brief (#1517) | Recognizable workflow, but demand beyond existing exports is unproven; adds a second selection/file lifecycle |
+| 4 | Changed copied-key warning (#1092) | Real narrower pain; durable identity/history adds complexity and ordinary .bib renames are not covered |
 
 Prioritize project-bibliography checking and the complete find/open/copy passage
 loop. Qualify their smallest useful paths; broad version/reader/annotation coverage
 must not become a hidden release obligation. Notes and other kinds follow within
-#54 as honest search/open results. The brief and remembered-key warning are
-research candidates, removed from mandatory 0.4/0.5 and pre-1.0 scope. Their
-possible contracts below are retained for evaluation, not implementation orders.
+#54 as honest search/open results. The brief (0.5) and remembered-key warning (0.6) follow and ship before 1.0
+(maintainer, 2026-11-01); their first-version contracts are below.
 Other release scope and quality gates remain unchanged.
 
 The shared passage block contains eligible quotation text, separately selected
@@ -160,7 +159,7 @@ static text must not suggest that the document bibliography will update.
 [Zotero 9](https://www.zotero.org/blog/zotero-9/),
 [EndNote Quote & Cite](https://docs.endnote.com/docs/endnote/2025/v1/macos/en/content/09word/inserting_quotations_from_pdfs.htm).
 
-## Later candidate: save selected evidence as one file
+## Save selected evidence as one file
 
 The strongest current report shows that Zotero's existing export route was hard
 to discover, not recurring demand for an Ibis cross-paper brief. Zotero can
@@ -209,7 +208,7 @@ Markdown itself or a new import/sync promise.
 [Readwise export](https://docs.readwise.io/reader/docs/faqs/exporting),
 [Hypothesis export/import](https://web.hypothes.is/help/exporting-and-importing-annotations/).
 
-## Later candidate: warn about a changed previously copied key
+## Warn about a changed previously copied key
 
 Migration breakage is real, but these reports do not yet establish a recurring
 need for Ibis-managed history. Current BBT defaults leave populated keys alone;
