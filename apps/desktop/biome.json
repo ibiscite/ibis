@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
-  "files": { "includes": ["src/**/*.ts", "src/**/*.tsx"] },
+  "files": { "includes": ["src/**/*.ts", "src/**/*.tsx", "canvas/**/*.ts", "canvas/**/*.tsx", "vite.canvas.config.ts"] },
   "formatter": { "enabled": false },
   "assist": { "enabled": false },
   "linter": {

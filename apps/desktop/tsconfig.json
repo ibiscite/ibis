@@ -14,5 +14,5 @@
     "skipLibCheck": true,
     "types": ["vitest/globals", "vite/client"]
   },
-  "include": ["src", "vite.config.ts"]
+  "include": ["src", "canvas", "vite.config.ts", "vite.canvas.config.ts"]
 }
