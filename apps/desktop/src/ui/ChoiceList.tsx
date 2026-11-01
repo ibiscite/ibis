@@ -64,10 +64,6 @@ export function ChoiceList({ title, line, choices, onChoose, footnote, autoFocus
             </span>
             {choice.tag && <span className="result-year choice-tag" dir="auto" title={choice.tag}>{choice.tag}</span>}
             {choice.keys && <span className="result-year choice-tag" aria-hidden="true"><bdi dir="ltr">{keyLabel(choice.keys, mac)}</bdi></span>}
-            <svg className="choice-chevron" aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 20 20"
-              fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="m8 5 5 5-5 5" />
-            </svg>
           </ListBoxItem>
         ))}
       </ListBox>

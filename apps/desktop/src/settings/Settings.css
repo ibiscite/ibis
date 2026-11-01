@@ -4,11 +4,7 @@
   font-size: var(--type-display-size); line-height: var(--type-display-line); font-weight: 700;
 }
 .settings-description { color: var(--text-secondary); font-size: var(--type-meta-size); line-height: var(--type-meta-line); margin: 0; }
-.settings-problem { margin: 0; color: var(--stop); }
-.settings-done { width: 1.25rem; height: 1.25rem; flex: none; }
-.settings-done circle { fill: var(--done); }
-.settings-done path { fill: none; stroke: var(--surface); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
-
+.settings-problem { margin: 0; color: var(--text); }
 /* The paste permission guide (#1292): a picture of the switch to turn on,
    the steps, one button and a live answer. */
 .paste-guide {
@@ -20,7 +16,7 @@
 .paste-guide ol { margin: var(--space-3) 0; padding-inline-start: var(--space-5); display: flex; flex-direction: column; gap: var(--space-1); }
 .paste-guide-actions { display: flex; justify-content: start; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
 .paste-guide-status { margin: 0; color: var(--text-secondary); font-size: var(--type-meta-size); }
-.paste-guide-status[data-done] { color: var(--done); font-weight: var(--strong); }
+.paste-guide-status[data-done] { color: var(--text); font-weight: var(--strong); }
 .paste-guide-art {
   display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3);
   justify-self: start; min-width: 0; width: 100%; max-width: 16rem; box-sizing: border-box;

@@ -12,7 +12,7 @@ test("picker token changes reach the website without a second palette", async ()
   const changed = tokens.replace("--row-comfortable: 3.625rem", "--row-comfortable: 4.5rem");
   assert.notEqual(changed, tokens);
   assert.match(scopePickerTokens(changed), /--row-comfortable: 4.5rem/);
-  assert.match(scoped, /:where\(\[data-app-tokens\]\):not\(\.notice-window\)/);
+  assert.match(scoped, /:where\(\[data-app-tokens\]\)\[data-platform="macos"\]/);
   assert.match(scoped, /@media \(forced-colors: active\)/);
 });
 

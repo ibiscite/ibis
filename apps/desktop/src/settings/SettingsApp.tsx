@@ -1,20 +1,23 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { StatusMark } from "../ui/StatusMark";
+import { type ReactNode, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { PageIcon } from "../icons";
 import type { KeyFormat, LoginItem, LoginItemProblem, PickerPreferences, ShortcutStatus, WindowSize } from "../bindings";
-import { KEY_TABLE } from "../keys";
 import { type MessageId, useInterfaceMessages } from "../i18n";
-import { SHORTCUT_ACTIONS, SHORTCUT_REGIONS, type ShortcutProblem, shortcutRefusalMessage } from "../i18n/settings";
+import { type ShortcutProblem, shortcutRefusalMessage } from "../i18n/settings";
 import { PreferencePatchQueue } from "../preferencePatchQueue";
 import { currentPlatform } from "../platform";
 import { UndoNotice } from "../ui/UndoNotice";
 import { Button } from "../ui/Button";
-import { AboutDelight, ShortcutEcho } from "../ui/Delights";
+import { AboutDelight } from "../ui/Delights";
+import { IbisMark } from "../ui/IbisMark";
 import { localMoment } from "../ui/localMoment";
 import { useAltHeld } from "../features/picker/useAltHeld";
 import type { DelightFact, DelightView } from "../bindings";
-import { KeyCaps } from "../ui/KeyCaps";
+import { ShortcutsPage } from "./ShortcutsPage";
 import { SettingsGroup as Group, SettingsRow as Row } from "../ui/SettingsGroup";
 import { ShortcutSetting } from "../ui/ShortcutSetting";
 import { SideNavigation } from "../ui/SideNavigation";
+import { SettingsSearch } from "../ui/SettingsSearch";
 import { useAppearance } from "../ui/appearance";
 import { DefaultFormat } from "./DefaultFormat";
 import { Switch } from "../ui/Switch";
@@ -33,16 +36,11 @@ const LOGIN_PROBLEMS = {
 } as const satisfies Record<LoginItemProblem, MessageId>;
 
 /** A page asked for by name; "paste" is General, scrolled to pasting. */
-const PAGE_TILES: Partial<Record<Page, string>> = { general: "⚙", look: "Aa", citations: "¶", shortcuts: "⌘" };
+const PAGE_TILES: Partial<Record<Page, ReactNode>> = { general: <PageIcon name="general" />, look: <PageIcon name="look" />, citations: <PageIcon name="citations" />, shortcuts: <PageIcon name="shortcuts" /> };
 
 export function pageOf(name: string | null): { page: Page; focus: "paste" | null } {
   if (name === "paste") return { page: "general", focus: "paste" };
   return { page: PAGES.includes(name as Page) ? name as Page : "general", focus: null };
-}
-
-/** The done mark: the status colour with a tick, as in the Copied notice. */
-function DoneMark() {
-  return <svg className="settings-done" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="10" /><path d="m5.5 10.5 3 3L14.5 7" /></svg>;
 }
 
 /** The Settings window: a sidebar of pages, each a stack of titled groups of
@@ -90,7 +88,17 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   const [loginSaving, setLoginSaving] = useState(false);
   const [updatesSaving, setUpdatesSaving] = useState(false);
   const [versionCopied, setVersionCopied] = useState(false);
+  const [versionCopyFailed, setVersionCopyFailed] = useState(false);
+  const [manualCheckFailed, setManualCheckFailed] = useState(false);
+  const manualCheck = useRef(0);
   const versionCopy = useRef(0);
+  // Feedback belongs to this page presentation, independently of delight preferences.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: changing pages retires feedback and pending operations.
+  useEffect(() => {
+    setVersionCopied(false); setVersionCopyFailed(false); versionCopy.current += 1;
+    setManualCheckFailed(false); manualCheck.current += 1;
+    return () => { versionCopy.current += 1; manualCheck.current += 1; };
+  }, [page]);
   const { altHeld } = useAltHeld();
   const [about, setAbout] = useState<DelightView | null>(null);
   const [blink, setBlink] = useState(0);
@@ -100,7 +108,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     let active = true;
     let reads = 0;
     let timer: number | undefined;
-    setAbout(null); setVersionCopied(false); versionCopy.current += 1;
+    setAbout(null);
     const read = (click = false) => {
       if (page !== "about" || !api.delightView) return;
       const operation = ++reads;
@@ -122,7 +130,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     clickAbout.current = () => read(true);
     read();
     window.addEventListener("focus", focusRead);
-    return () => { active = false; window.clearTimeout(timer); window.removeEventListener("focus", focusRead); clickAbout.current = () => {}; versionCopy.current += 1; };
+    return () => { active = false; window.clearTimeout(timer); window.removeEventListener("focus", focusRead); clickAbout.current = () => {}; };
   }, [page, api.delightView, preferences?.small_surprises]);
   useEffect(() => { if (about?.fun === false) setBlink(0); }, [about?.fun]);
   const [forgetStatus, setForgetStatus] = useState<"idle" | "saving" | "done" | "failed">("idle");
@@ -331,7 +339,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   };
   useEffect(() => {
     if (!highlighted || !preferences || !pageRef.current) return;
-    const target = document.getElementById(highlighted === "open-shortcut" && page === "general" ? "general-open-shortcut" : highlighted)?.closest(".ui-settings-row");
+    const target = document.getElementById(highlighted === "open-shortcut" && page === "general" ? "general-open-shortcut" : highlighted)?.closest(".ui-settings-row, tr");
     if (target) pageRef.current.scrollTop += target.getBoundingClientRect().top - pageRef.current.getBoundingClientRect().top;
   }, [highlighted, page, preferences]);
   // Look reads on showing, so a size dragged meanwhile appears as Custom.
@@ -359,29 +367,26 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   const copyVersion = () => {
     const operation = ++versionCopy.current;
     setVersionCopied(false);
-    setProblemRow(null);
+    setVersionCopyFailed(false);
     void navigator.clipboard.writeText(`${name} ${altHeld && about?.build ? about.build : version}`).then(() => {
       if (!live.current || operation !== versionCopy.current) return;
       setVersionCopied(true);
       window.setTimeout(() => { if (live.current && operation === versionCopy.current) setVersionCopied(false); }, 1500);
-    }, () => { if (live.current && operation === versionCopy.current) setProblemRow({ id: "version-label", message: "about-copy-failed" }); });
+    }, () => { if (live.current && operation === versionCopy.current) setVersionCopyFailed(true); });
   };
   const matches = query.trim() ? ROWS.filter((row) => (row.id !== "menu-bar" || platform === "macos") && [row.label, row.description, row.keywords].some((id) => id && text(id, { platform }).toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()))) : [];
   const name = login?.name ?? "Ibis";
   const undoTicket = shortcutUndoTicket.current;
   const shortcutSetting = <ShortcutSetting key={page} id={page === "general" ? "general-shortcut" : "open-ibis"}
     rowId={page === "general" ? "general-open-shortcut" : "open-shortcut"} status={shortcut} problem={shortcutProblem}
-    saving={shortcutSaving} highlighted={highlighted === "open-shortcut"} echo={page === "shortcuts"}
+    table={page === "shortcuts"} saving={shortcutSaving} highlighted={highlighted === "open-shortcut"} echo={page === "shortcuts"}
     onRecord={changeShortcut} onConfigure={configureShortcut} />;
 
   return (
     <div className="settings">
       <div className="settings-titlebar" data-tauri-drag-region />
       <nav className="settings-sidebar" aria-label={text("settings-pages")}>
-        <div className="ui-settings-search">
-          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M10.5 4a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13zM16 16l5 5" /></svg>
-          <input type="search" aria-label={text("settings-search")} placeholder={text("settings-search")} value={query} onChange={(event) => setQuery(event.target.value)} />
-        </div>
+        <SettingsSearch label={text("settings-search")} value={query} onChange={setQuery} />
         {query.trim() ? <div className="ui-side-navigation ui-settings-search-results" aria-live="polite">
           {matches.length ? matches.map((row) => <Button key={row.id} onPress={() => reveal(row)}>{text(row.label, { platform })}</Button>) : <p>{text("settings-no-results")}</p>}
         </div> : <SideNavigation label={text("settings-pages")} value={page} options={PAGES.map((value) => ({ value, label: text(`settings-${value}`), tile: PAGE_TILES[value], gapBefore: value === "about" }))}
@@ -391,7 +396,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
         onUndo={() => changeShortcut(shortcutUndo, true, undoTicket)}
         onExpire={() => { if (undoTicket === shortcutUndoTicket.current) clearShortcutUndo(); }} />}
       <main ref={pageRef} className="settings-page" aria-labelledby="settings-page-title">
-        <h1 id="settings-page-title" className="settings-page-title">{text(`settings-${page}`)}</h1>
+        <h1 id="settings-page-title" className={page === "about" ? "ui-visually-hidden" : "settings-page-title"}>{text(`settings-${page}`)}</h1>
         {preference.status === "unknown" && preference.message && <p className="settings-problem" role="alert">{text(preference.message)}</p>}
         {detour && returnFailed && <p className="settings-problem" role="alert">{text("general-paste-return-failed")}</p>}
         {page === "general" && (
@@ -430,7 +435,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
                   </Row>
                   {preferences.paste && permission?.needed && permission.granted && !guided && (
                     <Row id="paste-allowed" label={text("general-paste-allowed", { list: permission.list })} description={text("general-paste-allowed-note")}>
-                      <DoneMark />
+                      <StatusMark kind="ok" />
                     </Row>
                   )}
                   {preferences.paste && permission?.needed && (!permission.granted || guided) && (
@@ -453,37 +458,32 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
             {forgetStatus === "done" && <span role="status" className="ui-settings-description">{text("citations-forget-done")}</span>}
           </Row>
         </Group>}
-        {page === "shortcuts" && (
-          <>
-            {shortcutSetting}
-            {[...new Set(KEY_TABLE.map((binding) => binding.region))].map((region) => (
-              <Group key={region} id={`shortcuts-${region}`} title={text(SHORTCUT_REGIONS[region])}>
-                {KEY_TABLE.filter((binding) => binding.region === region).map((binding) => (
-                  <ShortcutEcho key={binding.action} keys={binding.keys}><Row id={`key-${binding.action}`} label={text(SHORTCUT_ACTIONS[binding.action])}>
-                    <span className="ui-settings-keys">{binding.keys.flatMap((keys, index) => [
-                      index > 0 && <span key={`or-${index}`}>{text("shortcuts-or")}</span>,
-                      <KeyCaps key={keys} accelerator={keys} />,
-                    ])}</span>
-                  </Row></ShortcutEcho>
-                ))}
-              </Group>
-            ))}
-          </>
-        )}
+        {page === "shortcuts" && <ShortcutsPage opening={shortcutSetting} />}
         {page === "about" && (
           <>
-            <div id="about-ibis"><AboutDelight blink={blink} enabled={about?.fun ?? false} onClick={() => clickAbout.current()} /></div>
-            {about?.fun && (about.birthday || about.anniversary) && <p className="ui-about-line">{text(about.birthday ? "delight-birthday" : "delight-anniversary")}</p>}
-            {about?.fun && about.fact && <p className="ui-about-line">{text(FACT_MESSAGES[about.fact])}</p>}
-            <Group id="version">
-              <Row id="version-label" label={<Button variant="quiet" preventFocusOnPress onPress={copyVersion}>{text("about-version", { name, version: altHeld && about?.build ? about.build : version })}</Button>}
-                description={updates === null && !readProblems.has("automatic") ? text("about-unavailable") : undefined} {...feedback("version-label")}>
-                <Button onPress={copyVersion}>{text(versionCopied ? "about-copied" : "about-copy")}</Button>
-                {updates !== null && <Button onPress={() => { void api.checkForUpdates().then(() => readProblem("version-label", false)).catch(() => readProblem("version-label", true)); }}>{text("about-check")}</Button>}
+            <div id="about-ibis" className="ui-about-hero">
+              <AboutDelight blink={blink} enabled={about?.fun ?? false} onClick={() => clickAbout.current()} />
+              <p className="ui-about-name">{name}</p>
+              <Button variant="quiet" size="small" preventFocusOnPress onPress={copyVersion}>
+                {text(versionCopied ? "about-copied" : "about-version", { version: altHeld && about?.build ? about.build : version })}
+              </Button>
+              {versionCopyFailed && <p className="settings-problem" role="alert">{text("about-copy-failed")}</p>}
+              <p className="ui-about-mission">{text("about-mission")}</p>
+            </div>
+            <Group id="about-why" title={text("about-why")}>
+              <Row id="about-name" label={text("delight-name")} highlighted={highlighted === "about-name"}
+                description={about?.fun ? (about.birthday || about.anniversary ? text(about.birthday ? "delight-birthday" : "delight-anniversary") : about.fact ? text(FACT_MESSAGES[about.fact]) : undefined) : undefined}>
+                <IbisMark className="ui-about-mark" size="search" />
               </Row>
-              <Row id="about-name" label={text("delight-name")} highlighted={highlighted === "about-name"} />
-            {(updates !== null || readProblems.has("automatic")) && (
-                <Row id="automatic" label={text("about-automatic")} description={text("about-automatic-description")} {...feedback("automatic")}>
+            </Group>
+            <Group id="about-updates" title={text("about-updates")}>
+              <Row id="automatic" label={text("about-automatic")} description={updates === null && !readProblems.has("automatic") ? text("about-unavailable") : text("about-automatic-description")} {...feedback("automatic")}>
+                {(updates !== null || readProblems.has("automatic")) && <>
+                  <Button onPress={() => {
+                    const operation = ++manualCheck.current;
+                    setManualCheckFailed(false);
+                    void api.checkForUpdates().catch(() => { if (live.current && operation === manualCheck.current) setManualCheckFailed(true); });
+                  }}>{text("about-check")}</Button>
                   <Switch aria-labelledby="automatic" aria-describedby="automatic-description" isSelected={updates ?? false}
                     isDisabled={updatesSaving || updates === null} onChange={(on) => {
                       setProblemRow(null); updateIntent.current = on; setUpdatesSaving(true); const operation = ++updateReads.current;
@@ -492,9 +492,14 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
                         if (live.current && operation === updateReads.current) { setUpdates(saved); setProblemRow({ id: "automatic", message: "settings-choice-failed" }); }
                       }).finally(() => { if (live.current) setUpdatesSaving(false); });
                     }} />
-                </Row>
-            )}
+                </>}
+                {manualCheckFailed && <p className="ui-settings-row-problem" role="alert">{text("about-check-failed")}</p>}
+              </Row>
             </Group>
+            <div className="ui-about-links" role="group" aria-label={text("about-links")}>
+              {(["website", "source", "problem", "licences"] as const).map((link) => <Button key={link} variant="quiet" size="small" onPress={() => { void api.openAboutLink(link); }}>{text(`about-${link}`)}</Button>)}
+            </div>
+            <p className="ui-about-free">{text("about-free")}</p>
           </>
         )}
       </main>

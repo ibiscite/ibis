@@ -15,6 +15,9 @@ use super::state::Library;
 pub(crate) struct LibraryStatus {
     pub(crate) state: LibraryState,
     pub(crate) revision: String,
+    pub(crate) source_generation: String,
+    /// Whether no switch was requested, or its exact native source is the searchable source.
+    pub(crate) source_is_requested: bool,
     /// Whether the requested library is Zotero rather than a file.
     pub(crate) zotero: bool,
     /// The Zotero libraries requested, in order; empty for a file.
@@ -121,6 +124,11 @@ pub(crate) fn status(library: &Library) -> LibraryStatus {
     let has_references = has_references(library);
     let mut result = LibraryStatus {
         revision: String::new(),
+        source_generation: library.source_generation.to_string(),
+        source_is_requested: library
+            .requested
+            .as_ref()
+            .is_none_or(|requested| library.source.as_ref() == Some(requested)),
         state: if library.opening {
             if library.source.is_some() && library.source == library.requested {
                 LibraryState::Reloading
@@ -240,6 +248,25 @@ mod tests {
     use crate::library::load::load_library;
     use crate::library::state::{LoadRequests, begin_open, candidate, install};
     use crate::tray::library_line;
+
+    #[test]
+    fn source_identity_distinguishes_an_empty_reload_from_a_same_named_switch() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let mut library = candidate(PathBuf::from("first/empty.bib"), "");
+        library.error = Some(SourceError::Unavailable.into());
+        let current = status(&library);
+        assert!(current.has_snapshot && !current.stale && current.references == 0);
+        assert_eq!(serde_json::to_value(&current)?["source_is_requested"], true);
+
+        library.requested = Some(Source::File(PathBuf::from("second/empty.bib")));
+        let switched = status(&library);
+        assert_eq!(
+            switched.name, switched.snapshot_name,
+            "display names cannot identify a source"
+        );
+        assert_eq!(serde_json::to_value(&switched)?["source_is_requested"], false);
+        Ok(())
+    }
 
     #[test]
     fn reference_counts_exclude_attachments_in_library_status() -> Result<(), Box<dyn std::error::Error>> {
@@ -386,6 +413,8 @@ mod tests {
         let expected = [
             "state",
             "revision",
+            "source_generation",
+            "source_is_requested",
             "zotero",
             "zotero_libraries",
             "has_snapshot",
@@ -405,6 +434,7 @@ mod tests {
             "checked_at",
         ];
         let keys = payload.as_object().unwrap_or_else(|| panic!("status object"));
+        assert_eq!(payload["source_generation"], library.source_generation.to_string());
         assert_eq!(keys.len(), expected.len());
         assert!(expected.iter().all(|key| keys.contains_key(*key)));
         assert_eq!(

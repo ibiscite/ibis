@@ -66,7 +66,7 @@ test("More holds working actions, leaving preferences and update checks to Setti
   expect(calls).not.toContain("set_picker_preferences");
   const more = screen.getByRole("menu", { name: "More" });
   expect([...more.querySelectorAll('[role^="menuitem"]')].map((item) => item.getAttribute("aria-label") ?? item.textContent))
-    .toEqual(["Open ZoteroCtrl+O", "Rows: Comfortable", "Keep Window OpenCtrl+Shift+P", "Show What Will Be PastedCtrl+I", "Keyboard ShortcutsCtrl+/", "Settings…Ctrl+,", "Quit IbisCtrl+Q"]);
+    .toEqual(["Open ⁨refs.bib⁩Ctrl+O", "Rows: Comfortable", "Keep Window OpenCtrl+Shift+P", "Show What Will Be PastedCtrl+I", "Keyboard ShortcutsCtrl+/", "Settings…Ctrl+,", "Quit IbisCtrl+Q"]);
   expect(within(more).queryByRole("menuitem", { name: "Forget formats for apps" })).toBeNull();
   expect(calls).not.toContain("forget_app_outputs");
 });
@@ -133,10 +133,11 @@ test("Command-O from Rows leaves an accessible failure and working recovery", as
   await chooseFromMore("Rows: Comfortable");
   fireEvent.keyDown(await screen.findByRole("menu", { name: "Rows" }), { key: "o", ctrlKey: true });
   const failure = await screen.findByRole("alert");
-  expect(failure.textContent).toBe("Zotero could not open. Try again.");
+  expect(failure.textContent).toBe("The source file could not open. Try again.");
   expect(screen.queryByRole("menu")).toBeNull();
   await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText("Search references")));
   fireEvent.keyDown(document.activeElement!, { key: "o", ctrlKey: true });
-  await screen.findByRole("heading", { name: "Where do your references live?" });
+  await waitFor(() => expect(calls.filter((call) => call === "choose_library")).toHaveLength(1));
+  expect(document.activeElement).toBe(screen.getByLabelText("Search references"));
   expect(calls.filter((call) => call === "open_library_source")).toHaveLength(1);
 });

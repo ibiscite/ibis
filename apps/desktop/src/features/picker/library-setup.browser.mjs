@@ -75,7 +75,7 @@ try {
         };
       }, { text });
       await page.goto("http://ibis.fixture/");
-      const zotero = page.getByRole("option", { name: /^Zotero/ });
+      const zotero = page.getByRole("option", { name: /^Use Zotero/ });
       await zotero.waitFor();
       await page.evaluate(() => document.fonts.ready);
       await page.waitForFunction(() => document.activeElement?.getAttribute("data-key") === "zotero");

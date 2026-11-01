@@ -2,25 +2,23 @@
    the menu's geometry, edge and shadow. Only its body can scroll. */
 .keys-backdrop:has(.ui-sheet) { z-index: var(--z-modal); padding: var(--inset); }
 .keys-dialog.ui-sheet {
-  box-sizing: border-box; width: min(600px, 100%); max-height: 100%; min-width: 0;
+  box-sizing: border-box; width: min(42rem, 100%); max-height: 100%; min-width: 0;
   border: 0; border-radius: var(--r-menu); box-shadow: var(--shadow-overlay);
 }
 .ui-sheet .keys-heading { flex: none; border-bottom: 0; }
-.ui-sheet .keys-scroll { container-type: inline-size; }
+.ui-sheet .keys-scroll { flex: 0 1 auto; }
 .keys-scroll .keys-groups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: var(--space-4); }
-.keys-groups > tbody { display: table; width: 100%; min-width: 0; }
-.keys-groups th[scope="rowgroup"] { padding-block: 0 var(--space-1); }
+.keys-groups > table { min-width: 0; }
+.keys-groups th[scope="rowgroup"] { padding-block: var(--space-3) var(--space-1); }
+.keys-groups tbody:first-of-type th[scope="rowgroup"] { padding-block-start: 0; }
 .keys-groups th, .keys-groups td { overflow-wrap: normal; }
-.keys-groups .keys-binding { display: inline-flex; align-items: center; gap: var(--space-1); white-space: nowrap; }
-.keys-groups .keys-binding + .keys-binding { margin-inline-start: var(--space-1); }
 /* Keep actions and whole key combinations intact when two columns no longer
    fit at Larger/200% text. The groups still hug their natural heights. */
 @media (max-width: 34em) {
   .keys-scroll .keys-groups { grid-template-columns: minmax(0, 1fr); }
 }
-@container (max-width: 32rem) {
-  .keys-scroll .keys-groups { grid-template-columns: minmax(0, 1fr); }
-}
 @media (prefers-contrast: more), (forced-colors: active) {
   .keys-dialog.ui-sheet { border: var(--border-width) solid CanvasText; }
 }
+
+.keys-dialog.ui-sheet:focus { outline: none; box-shadow: var(--shadow-overlay); }

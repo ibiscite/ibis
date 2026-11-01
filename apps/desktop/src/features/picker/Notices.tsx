@@ -1,3 +1,4 @@
+import { Icon } from "../../icons";
 import type { Copied, Density, LibraryStatus, UpdateProgress } from "../../api";
 import { Progress } from "../../ui/Progress";
 import { Button } from "../../ui/Button";
@@ -44,7 +45,7 @@ export function Notices({ library, failures, error, citationProblem, copyError, 
       {copied && (confirmation || copied.warnings.length > 0) && (
         <div role={confirmation ? "status" : "group"} className="copy-notice">
           {confirmation && !feedback && <p className="copy-receipt" data-outcome="copied">
-            <svg className="copy-receipt-mark" aria-hidden="true" viewBox="0 0 20 20"><path d="m5 10.5 3.2 3.2L15 6.5" /></svg>
+            <Icon name="check" className="copy-receipt-mark" />
             <strong>{pickerText.copied}</strong><code dir="auto" title={confirmation.text}>
               <span className="copy-receipt-excerpt">{confirmation.summary?.text ?? confirmation.text}</span>
               {Boolean(confirmation.summary?.more) && <span className="copy-receipt-more">+{confirmation.summary!.more} more</span>}

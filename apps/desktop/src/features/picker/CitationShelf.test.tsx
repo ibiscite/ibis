@@ -74,7 +74,7 @@ test("colliding keys from different libraries have distinct visible and screen-r
   const change = vi.fn();
   render(shelf({ selected: new Map([["first", first], ["second", second]]), onChangeReference: change,
     referenceLibrary: (r) => r.source === "invented-one" ? "First library" : "Second library", shown: output() }));
-  fireEvent.click(screen.getByRole("button", { name: "Show all 2 selected references" }));
+  fireEvent.click(screen.getByRole("button", { name: "2 references" }));
   const menu = screen.getByRole("dialog", { name: "Selected references" });
   expect(within(menu).getByRole("button", { name: "Edit García 2021 · shared · First library" }).textContent).toContain("First library");
   const edit = within(menu).getByRole("button", { name: "Edit García 2021 · shared · Second library" });
@@ -223,8 +223,8 @@ test.each([1, 2])("many references at the minimum frame and %s× text retain exa
   render(shelf({ selected: chosen(records), shown: output(text) }));
   const preview = screen.getByRole("region", { name: "Preview" });
   expect(preview.querySelector(".preview-text")?.textContent).toBe(text);
-  const count = screen.getByRole("button", { name: "Show all 50 selected references" });
-  expect(count.textContent).toBe("50");
+  const count = screen.getByRole("button", { name: "50 references" });
+  expect(count.textContent).toBe("50 references");
   fireEvent.click(count);
   const menu = screen.getByRole("dialog", { name: "Selected references" });
   expect(document.querySelector(".shelf")!.contains(menu)).toBe(false);

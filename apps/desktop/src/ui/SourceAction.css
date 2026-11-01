@@ -1,7 +1,5 @@
 .source-icon { display: inline-flex; flex: none; width: var(--icon-small); height: var(--icon-small); color: inherit; }
 .source-icon > :is(img, svg) { width: 100%; height: 100%; object-fit: contain; }
-.ui-button.source-action[data-variant] { flex: none; background: var(--fill-control); color: var(--text); border-color: var(--stroke-field); border-radius: var(--r-tile); }
-.source-action > .key-hint { flex-wrap: wrap; }
 .source-spinner { flex: none; box-sizing: border-box; width: var(--icon-small); height: var(--icon-small); border: 2px solid currentColor; border-inline-end-color: transparent; border-radius: 50%; animation: source-spin 800ms linear infinite; }
 @keyframes source-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .source-spinner { animation: none; } }

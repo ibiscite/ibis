@@ -10,7 +10,7 @@ const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
 const now = new Date(2026, 9, 20, 12, 0).getTime();
 const hour = 3_600_000;
 const file = (overrides: Partial<LibraryStatus> = {}): LibraryStatus => ({
-  revision: "1", state: "loaded", zotero: false, zotero_libraries: [], has_snapshot: true, name: "thesis.bib", snapshot_name: "thesis.bib",
+  source_generation: "1", source_is_requested: true, revision: "1", state: "loaded", zotero: false, zotero_libraries: [], has_snapshot: true, name: "thesis.bib", snapshot_name: "thesis.bib",
   references: 1204, source_counts: { "synthetic-file": 1204 }, warnings: 0, error: null, problem: null, note: null, settings_notice: null, snapshot_zotero: false, stale: false,
   updated_at: null, checked_at: now - 3 * hour, ...overrides,
 });

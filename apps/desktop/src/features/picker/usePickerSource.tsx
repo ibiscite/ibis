@@ -1,3 +1,4 @@
+import { useCallback, useEffect } from "react";
 import type { PickerApi } from "../../App";
 import { keysFor } from "../../keys";
 import { pickerText } from "../../messages";
@@ -24,20 +25,27 @@ export function usePickerSource({ api, pickerSession, libraryState, menus, resul
   const { library, libraryChoices, chooserRequest, setChoosingLibrary, refreshSnapshot } = libraryState;
   const { input, closeMenu, setKeysOpen, restoreChooserFocus, runFromMenu, focusPicker } = menus;
   const { active, selected } = state;
-  const { chooseLibrary } = api;
+  const { chooseLibrary, onLibraryFileDropped } = api;
   const sourceItem = !libraryChoices ? results[active]?.id ?? (selected.size === 1 ? [...selected.values()][0]?.id : null) ?? null : null;
-  const sourceOpen = useSourceOpen(api, library, state.visibility, sourceItem, sourceItem === null, refreshSnapshot);
+  const sourceOpen = useSourceOpen(api, library, state.visibility, sourceItem, false, refreshSnapshot);
   const chooseSources = () => {
     cancelCopy(); closeMenu(false); setKeysOpen(false);
     restoreChooserFocus.current = false;
     chooserRequest.current = {};
     setChoosingLibrary(true);
   };
-  const dismissChooser = () => {
+  const dismissChooser = useCallback(() => {
     chooserRequest.current = null;
     restoreChooserFocus.current = true;
     setChoosingLibrary(false);
-  };
+  }, [chooserRequest, restoreChooserFocus, setChoosingLibrary]);
+  useEffect(() => {
+    let active = true;
+    const subscription = onLibraryFileDropped?.(() => {
+      if (active) dismissChooser();
+    }).catch(() => () => undefined);
+    return () => { active = false; void subscription?.then((stop) => stop()).catch(() => undefined); };
+  }, [onLibraryFileDropped, dismissChooser]);
   const performSourceChoice: typeof perform = (operation, action, isCurrent) => {
     if (operation === "findSources") return perform(operation, action, isCurrent);
     const request = {};
@@ -56,29 +64,32 @@ export function usePickerSource({ api, pickerSession, libraryState, menus, resul
     });
   };
   const chooseFile = () => runFromMenu("choose", chooseLibrary);
-  const missingSelected = sourceItem !== null && library?.stale && library.problem === "missing" && !library.zotero;
+  const missingSource = library?.problem === "missing" && !library.zotero && (!library.has_snapshot || library.stale ||
+    library.references === 0 && library.source_is_requested);
   const openSource = (appOnly = false, reveal = altHeld) => {
     cancelCopy();
     closeMenu(false);
     setKeysOpen(false);
     focusPicker();
-    if (missingSelected && !appOnly) { chooseFile(); return; }
+    if (missingSource && !appOnly) { chooseFile(); return; }
     if (sourceOpen.failure && !sourceOpen.failure.changed && !appOnly) {
-      if (sourceOpen.failure.kind === "file") chooseFile();
+      if (sourceOpen.failure.kind === "file" && library?.name) chooseFile();
       else chooseSources();
     } else sourceOpen.run(reveal, appOnly);
   };
   const source = sourceOpen.source;
-  const sourceLabel = missingSelected ? pickerText.findSourceFile(library?.name ?? null) : sourceOpen.failure && !sourceOpen.failure.changed ? sourceOpen.failure.kind === "file" ? pickerText.findSourceFile(source.name) : pickerText.chooseLibraryMenu
+  const sourceLabel = missingSource ? pickerText.findSourceFile(library?.name ?? null) : sourceOpen.failure && !sourceOpen.failure.changed ? sourceOpen.failure.kind === "file" && library?.name ? pickerText.findSourceFile(source.name) : pickerText.chooseLibraryMenu
     : source.kind === "zotero" ? sourceItem ? pickerText.showInZotero : pickerText.openZotero
     : altHeld ? pickerText.showSourceFolder(isMac) : pickerText.openSource(source.name);
   const sourceAction: SourceActionProps = { label: sourceLabel, keys: keysFor(altHeld && source.kind === "file" ? "revealSource" : "source"), icon: source.icon,
     file: source.kind === "file", busy: sourceOpen.busy, open: () => openSource() };
+  const sourceInChoices = !(sourceOpen.failure && !sourceOpen.failure.changed) && !libraryState.choosingLibrary && Boolean(library?.name) && Boolean(libraryChoices) && (!library?.zotero || library.problem === "zotero_closed");
+  const sourceAvailable = source.kind !== "zotero" || sourceItem !== null || Boolean(library?.zotero && library.problem === "zotero_closed");
   const sourceChoice = { ...sourceAction, icon: <SourceIcon icon={source.icon} file={source.kind === "file"} /> };
   /** A reference's menu opens that reference, and recovers its file like More does. */
   const openReference = (id: unknown) => {
-    if (missingSelected || sourceOpen.failure) openSource();
+    if (missingSource || sourceOpen.failure) openSource();
     else sourceOpen.run(false, false, id);
   };
-  return { sourceOpen, source, sourceAction, sourceChoice, chooseSources, dismissChooser, performSourceChoice, chooseFile, openSource, openReference };
+  return { sourceAvailable, libraryChoices, sourceInChoices, sourceOpen, source, sourceAction, sourceChoice, chooseSources, dismissChooser, performSourceChoice, chooseFile, openSource, openReference };
 }

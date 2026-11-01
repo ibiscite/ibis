@@ -92,6 +92,6 @@ test.each(["pointer", "Enter", "Space"])("header pin uses the shared icon toggle
   }
   expect(changed).toHaveBeenCalledOnce();
   expect(pin.getAttribute("aria-pressed")).toBe("true");
-  expect(pin.querySelector("svg")?.getAttribute("fill")).toBe("currentColor");
+  expect(pin.querySelector("svg")?.getAttribute("fill")).toBe("none");
   expect(document.activeElement).toBe(screen.getByRole("combobox"));
 });

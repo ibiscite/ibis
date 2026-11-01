@@ -38,7 +38,7 @@ test("every token is read by something", () => {
 test("parts take colours, corners and type from tokens", () => {
   const raw = all.filter(([name]) => !values.has(name)).flatMap(([name, css]) => css.split("\n").filter((line) =>
     /(^|[\s:(,])#[0-9a-f]{3,8}\b|rgba?\(/i.test(line)
-    || /border-radius:[^;]*\b[1-9]\d*px/.test(line) && !/calc\(/.test(line)
+    || /border-radius:[^;]*\b[1-9]\d*px/.test(line)
     || /font-size:\s*[\d.]+(px|rem)/.test(line)).map((line) => `${name}: ${line.trim().slice(0, 90)}`));
   expect(raw).toEqual([]);
 });
@@ -142,7 +142,7 @@ const pair = (token: string) => {
   return [flatten(match![1]!, 0), flatten(match![2]!, 1)] as const;
 };
 
-test.each([["--text", 4.5], ["--scarlet", 3], ["--done", 3], ["--look", 3], ["--stop", 3]] as const)(
+test.each([["--text", 4.5], ["--scarlet", 3]] as const)(
   "%s keeps %s:1 on the surface in light and dark", (token, ratio) => {
     const surface = pair("--surface"), value = pair(token);
     expect(contrast(value[0], surface[0])).toBeGreaterThanOrEqual(ratio);
@@ -194,8 +194,23 @@ test("a value is declared once: lengths come from the space scale, colours from 
 test("every icon is one shape, so translucent colours paint it once", () => {
   const files = readdirSync(root, { recursive: true }).filter((name) => name.endsWith(".tsx") && !name.includes(".test."));
   const split = files.flatMap((name) => [...read(name).matchAll(/<svg[^]*?<\/svg>/g)]
-    .filter((match) => !match[0].includes("settings-done") && (match[0].match(/<(path|circle|rect|line)\b/g) ?? []).length > 1).map(() => name));
+    .filter((match) => (match[0].match(/<(path|circle|rect|line)\b/g) ?? []).length > 1).map(() => name));
   expect(split).toEqual([]);
   const joined = [...read("icons.tsx").matchAll(/\[("[^\]]*")\]/g)].flatMap(([, list]) => list!.split(/",\s*"/).slice(1));
   expect(joined.filter((path) => path.replace(/^"/, "").startsWith("m"))).toEqual([]);
+});
+
+
+test("status colours use the measured system hues only for marks and preserve stronger contrast values", () => {
+  for (const [name, light, dark] of [["ok", "#34c759", "#30d158"], ["warning", "#ffcc00", "#ffd600"], ["error", "#ff383c", "#ff4245"]]) {
+    expect(pair(`--status-${name}`)).toEqual([light, dark]);
+    const more = tokens.slice(tokens.indexOf("@media (prefers-contrast: more) and (forced-colors: none)"));
+    const match = more.match(new RegExp(`--status-${name}: light-dark\\((#[a-f0-9]{6}), (#[a-f0-9]{6})\\)`));
+    expect(match).toBeTruthy();
+    expect(contrast(match![1]!, surfaces[0])).toBeGreaterThanOrEqual(3);
+    expect(contrast(match![2]!, surfaces[1])).toBeGreaterThanOrEqual(3);
+  }
+  expect(all.map(([, css]) => css).join("")).not.toMatch(/color: var\(--(?:done|look|stop)\)/);
+  expect(read("ui/SettingsGroup.css")).toMatch(/ui-settings-row-problem[^}]+color: var\(--text\)/);
+  expect(read("features/picker/CitationShelf.css")).toMatch(/\.shelf-copied \{[^}]+color: var\(--text\)/);
 });

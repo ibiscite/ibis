@@ -20,6 +20,8 @@ pub(crate) struct Library {
     /// Disconnect the blocked notification worker when its library is replaced.
     pub(super) observer: Option<ibis_engine::LibrarySubscriptionClose>,
     pub(crate) source: Option<Source>,
+    /// Native identity independent of a snapshot fingerprint, including empty libraries.
+    pub(crate) source_generation: u64,
     /// The requested source, including before it has been read.
     pub(crate) requested: Option<Source>,
     pub(crate) opening: bool,
@@ -46,6 +48,11 @@ pub(crate) struct Library {
 }
 
 impl Library {
+    fn advance_source_generation(&mut self) {
+        static NEXT: AtomicU64 = AtomicU64::new(1);
+        self.source_generation = NEXT.fetch_add(1, Ordering::SeqCst);
+    }
+
     pub(super) fn observe_revision(&mut self, now: SystemTime) -> bool {
         let Some(revision) = self.file.as_ref().map(|file| file.revision()).filter(|s| !s.is_empty()) else {
             return false;
@@ -88,6 +95,7 @@ pub(super) fn leave_samples(library: &Mutex<Library>, requests: &LoadRequests) {
         settings_notice: library.settings_notice.take(),
         ..Library::default()
     };
+    library.advance_source_generation();
 }
 
 /// Make a loaded library current, or record why it failed to open. Returns
@@ -166,6 +174,7 @@ pub(super) fn install_result(
             }
         }
     }
+    library.advance_source_generation();
     Some(status(&library))
 }
 
@@ -255,6 +264,7 @@ pub(super) fn record_open(
     source: Source,
 ) -> (u64, bool, LibraryStatus) {
     let request = requests.0.fetch_add(1, Ordering::SeqCst) + 1;
+    library.advance_source_generation();
     let reload = library.source.as_ref() == Some(&source);
     library.observe_revision(SystemTime::now());
     if let Some(file) = &library.file {

@@ -1,7 +1,62 @@
-import { act, render, renderHook, screen } from "@testing-library/react";
+import { act, fireEvent, render, renderHook, screen } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { useSourceOpen } from "../features/picker/useSourceOpen";
-import { SourceAction, shortenedLabel } from "./SourceAction";
+import { SourceAction, SourceIcon, shortenedLabel } from "./SourceAction";
+import type { SourcePresentation } from "../bindings";
+
+const nativeIcon = { mime: "image/png", bytes: [137, 80, 78, 71] };
+
+test("a native source icon is decorative; decode failure retains the named, working action", () => {
+  const open = vi.fn();
+  render(<SourceAction label="Open Zotero" icon={nativeIcon} open={open} />);
+  const button = screen.getByRole("button", { name: "Open Zotero" });
+  const image = button.querySelector("img")!;
+  expect(image.alt).toBe("");
+  expect(image.src).toBe("data:image/png;base64,iVBORw==");
+  fireEvent.error(image);
+  expect(button.querySelector("img")).toBeNull();
+  expect(button.querySelector("svg path")).not.toBeNull();
+  fireEvent.click(button);
+  expect(open).toHaveBeenCalledOnce();
+});
+
+test.each([null, { mime: "image/svg+xml", bytes: [60, 115, 118, 103] }, { mime: "image/png", bytes: [256] }])(
+  "missing or refused artwork shows the books fallback", (icon) => {
+    const { container } = render(<SourceIcon icon={icon} />);
+    expect(container.querySelector("img")).toBeNull();
+    expect(container.querySelector("svg path")).not.toBeNull();
+  });
+
+function deferred<T>() {
+  let resolve!: (value: T) => void, reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; });
+  return { promise, resolve, reject };
+}
+
+test("failed icon I/O, delayed A after B and close/reopen keep the current visible source", async () => {
+  const replies = Array.from({ length: 4 }, () => deferred<SourcePresentation>());
+  const read = vi.fn().mockImplementationOnce(() => replies[0]!.promise).mockImplementationOnce(() => replies[1]!.promise)
+    .mockImplementationOnce(() => replies[2]!.promise).mockImplementationOnce(() => replies[3]!.promise);
+  const library = { revision: "1", source_generation: "1", zotero: true, name: "Zotero" } as never;
+  function Presentation({ visit, item }: { visit: number; item: string }) {
+    const { source } = useSourceOpen({ librarySource: read } as never, library, visit, item, false, () => {});
+    return <SourceAction label="Open Zotero" icon={source.icon} open={() => {}} />;
+  }
+  const view = render(<Presentation visit={0} item="A" />);
+  view.rerender(<Presentation visit={0} item="B" />);
+  await act(async () => replies[1]!.resolve({ kind: "zotero", name: "Zotero", icon: nativeIcon, status_icon: null }));
+  expect(screen.getByRole("button", { name: "Open Zotero" }).querySelector("img")).not.toBeNull();
+  await act(async () => replies[0]!.resolve({ kind: "zotero", name: "Zotero", icon: null, status_icon: null }));
+  expect(screen.getByRole("button", { name: "Open Zotero" }).querySelector("img")).not.toBeNull();
+  view.rerender(<Presentation visit={1} item="A" />);
+  await act(async () => replies[2]!.reject(new Error("invented icon read failure")));
+  expect(screen.getByRole("button", { name: "Open Zotero" }).querySelector("img")).toBeNull();
+  view.unmount();
+  render(<Presentation visit={2} item="B" />);
+  expect(screen.getByRole("button", { name: "Open Zotero" }).querySelector("img")).toBeNull();
+  await act(async () => replies[3]!.resolve({ kind: "zotero", name: "Zotero", icon: nativeIcon, status_icon: null }));
+  expect(screen.getByRole("button", { name: "Open Zotero" }).querySelector("img")).not.toBeNull();
+});
 
 afterEach(() => { vi.useRealTimers(); });
 

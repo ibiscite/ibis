@@ -1,8 +1,8 @@
+import { IconButton } from "./IconButton";
 import { useEffect, useRef } from "react";
-import { keyText } from "../messages";
-import { ariaKeys, type KeyBinding } from "../keys";
-import { Button } from "./Button";
-import { KeyCaps } from "./KeyCaps";
+import { useInterfaceMessages } from "../i18n";
+import { type KeyBinding } from "../keys";
+import { ShortcutGroup } from "./ShortcutTable";
 import { useScrollEdges } from "./ScrollArea";
 import "./Overlay.css";
 import "./KeysSheet.css";
@@ -10,11 +10,11 @@ import "./KeysSheet.css";
 /** The picker's keys in two compact columns of groups, as a modal dialog:
     Escape or Close returns focus. */
 export function KeysDialog({ bindings, isMac, onClose }: { bindings: readonly KeyBinding[]; isMac: boolean; onClose: () => void }) {
-  const regions = [...new Set(bindings.filter((binding) => binding.region !== "menu").map((binding) => binding.region))];
+  const { text } = useInterfaceMessages();
   const dialog = useRef<HTMLDivElement>(null);
   const scroll = useRef<HTMLDivElement>(null);
   useScrollEdges(scroll);
-  useEffect(() => { dialog.current?.querySelector<HTMLElement>("button")?.focus(); }, []);
+  useEffect(() => { dialog.current?.focus(); }, []);
   return (
     <div className="keys-backdrop" onPointerDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div
@@ -35,36 +35,21 @@ export function KeysDialog({ bindings, isMac, onClose }: { bindings: readonly Ke
             const focusable = [...(dialog.current?.querySelectorAll<HTMLElement>("button, [tabindex='0']") ?? [])];
             const at = focusable.indexOf(document.activeElement as HTMLElement);
             e.preventDefault();
-            focusable[(at + (e.shiftKey ? -1 : 1) + focusable.length) % focusable.length]?.focus();
+            focusable[at < 0 ? e.shiftKey ? focusable.length - 1 : 0 : (at + (e.shiftKey ? -1 : 1) + focusable.length) % focusable.length]?.focus();
           }
         }}
       >
         <div className="keys-heading">
-          <h2 id="keys-title">{keyText.title}</h2>
-          <Button variant="icon" glyph="close" aria-label={keyText.close} title={keyText.close} aria-keyshortcuts="Escape" onPress={onClose} />
+          <h2 id="keys-title">{text("keys-title")}</h2>
+          <IconButton aria-label={text("keys-close")} title={text("keys-close")} aria-keyshortcuts="Escape" onPress={onClose} />
         </div>
         <div ref={scroll} className="keys-scroll scroll-area" tabIndex={0} role="group" aria-labelledby="keys-title">
-          <table className="keys-groups">
-            <thead className="visually-hidden">
-              <tr><th scope="col">{keyText.actionColumn}</th><th scope="col">{keyText.keyColumn}</th></tr>
-            </thead>
-            {regions.map((region) => (
-              <tbody key={region}>
-                <tr><th scope="rowgroup" colSpan={2}>{keyText.regions[region]}</th></tr>
-                {bindings.filter((binding) => binding.region === region).map((binding) => (
-                  <tr key={binding.action}>
-                    <th scope="row">{keyText.actions[binding.action]}</th>
-                    <td>{binding.keys.map((keys, i) => (
-                      <span className="keys-binding" key={keys} aria-keyshortcuts={binding.displayLabel ? undefined : ariaKeys(keys, isMac)}>
-                        {i > 0 && <>{" "}<span>{keyText.or}</span>{" "}</>}
-                        {binding.displayLabel ? <kbd dir="ltr">{binding.displayLabel}</kbd> : <KeyCaps accelerator={keys} platform={isMac ? "macos" : undefined} />}
-                      </span>
-                    ))}</td>
-                  </tr>
-                ))}
-              </tbody>
-            ))}
-          </table>
+          <div className="keys-groups">
+            {([ ["search", "system"], ["picker"] ] as const).map((regions, column) => <table key={column}>
+              <thead className="visually-hidden"><tr><th scope="col">{text("keys-action")}</th><th scope="col">{text("keys-shortcut")}</th></tr></thead>
+              {regions.filter((region) => bindings.some((binding) => binding.region === region)).map((region) => <ShortcutGroup key={region} region={region} bindings={bindings} isMac={isMac} />)}
+            </table>)}
+          </div>
         </div>
       </div>
     </div>

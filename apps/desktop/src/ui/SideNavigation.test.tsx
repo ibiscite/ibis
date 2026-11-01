@@ -6,10 +6,10 @@ import { SideNavigation } from "./SideNavigation";
 afterEach(() => { cleanup(); delete document.documentElement.dataset.platform; });
 
 const options = [
-  { value: "general", label: "General settings and application preferences", tile: "x" },
-  { value: "shortcuts", label: "Keyboard Shortcuts and navigation preferences", tile: "x" },
-  { value: "libraries", label: "Libraries", tile: "x" },
-  { value: "about", label: "About", tile: "x" },
+  { value: "general", label: "General settings and application preferences", tile: <svg aria-hidden="true"><path /></svg> },
+  { value: "shortcuts", label: "Keyboard Shortcuts and navigation preferences", tile: <svg aria-hidden="true"><path /></svg> },
+  { value: "libraries", label: "Libraries", tile: <svg aria-hidden="true"><path /></svg> },
+  { value: "about", label: "About", tile: <svg aria-hidden="true"><path /></svg> },
 ];
 
 function mount() {

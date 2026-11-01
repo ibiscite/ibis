@@ -20,10 +20,10 @@ test("initial setup never searches and manual source choices are immediately usa
   await act(async () => {});
   expect(screen.getByRole("listbox", { name: "Where do your references live?" })).toBeTruthy();
   expect(findSources).not.toHaveBeenCalled();
-  expect(option(/^Zotero/).textContent).toContain("Zotero 7–10, open or closed");
-  expect(option(/^BibTeX, BibLaTeX or CSL-JSON file/).textContent).toContain("Choose a .bib or CSL-JSON file");
-  press(option(/^BibTeX, BibLaTeX or CSL-JSON file/));
-  press(option(/^Zotero/));
+  expect(option(/^Use Zotero/).textContent).toContain("Your Zotero library, open or closed");
+  expect(option(/^Choose a Library File…/).textContent).toContain("BibTeX, BibLaTeX or CSL-JSON");
+  press(option(/^Choose a Library File…/));
+  press(option(/^Use Zotero/));
   expect(chooseLibrary).toHaveBeenCalledOnce();
   expect(useZotero).toHaveBeenCalledOnce();
   expect(findSources).not.toHaveBeenCalled();
@@ -33,10 +33,10 @@ test("initial setup never searches and manual source choices are immediately usa
 test("two-row recovery stays a list: arrows move and Enter chooses the focused row", async () => {
   const chooseLibrary = vi.fn(async () => undefined), useZotero = vi.fn(async () => undefined);
   render(<LibrarySetup api={{ chooseLibrary, useZotero }} perform={perform} empty={{ title: "No references in example.bib", zotero: false }} />);
-  const zotero = option(/^Zotero/);
+  const zotero = option(/^Use Zotero/);
   act(() => zotero.focus());
   fireEvent.keyDown(zotero, { key: "ArrowDown", code: "ArrowDown" });
-  const file = option(/^BibTeX, BibLaTeX or CSL-JSON file/);
+  const file = option(/^Choose a Library File…/);
   expect(document.activeElement).toBe(file);
   fireEvent.keyDown(file, { key: "Enter", code: "Enter" });
   fireEvent.keyUp(file, { key: "Enter", code: "Enter" });
@@ -60,15 +60,15 @@ test("first run teaches the basics, focuses Zotero and moves through four tiles 
   expect(screen.getByText(/After this, open Ibis from any app with/)).toBeTruthy();
   expect(container.querySelector('.welcome-mark[aria-hidden="true"]')).toBeTruthy();
   expect(screen.getAllByRole("option")).toHaveLength(4);
-  await waitFor(() => expect(document.activeElement).toBe(option(/^Zotero/)));
+  await waitFor(() => expect(document.activeElement).toBe(option(/^Use Zotero/)));
   fireEvent.keyDown(document.activeElement!, { key: "ArrowRight" });
-  expect(document.activeElement).toBe(option(/^BibTeX/));
+  expect(document.activeElement).toBe(option(/^Choose a Library File…/));
   fireEvent.keyDown(document.activeElement!, { key: "ArrowDown" });
   expect(document.activeElement).toBe(option(/^Try sample references/));
   fireEvent.keyDown(document.activeElement!, { key: "ArrowLeft" });
   expect(document.activeElement).toBe(option(/^Find them on this computer/));
   fireEvent.keyDown(document.activeElement!, { key: "ArrowUp" });
-  expect(document.activeElement).toBe(option(/^Zotero/));
+  expect(document.activeElement).toBe(option(/^Use Zotero/));
   press(option(/^Try sample references/));
   expect(useSampleLibrary).toHaveBeenCalledExactlyOnceWith(true);
   expect(findSources).not.toHaveBeenCalled();
@@ -107,10 +107,10 @@ test("several found libraries open a short list and return to the same tile", as
   const files = await findOption(/^Choose a found library/);
   expect(screen.getAllByRole("option")).toHaveLength(4);
   press(files);
-  await waitFor(() => expect(document.activeElement).toBe(option(/^one\.bib/)));
-  press(option(/^two\.bib/));
+  await waitFor(() => expect(document.activeElement).toBe(option(/^Use one\.bib/)));
+  press(option(/^Use two\.bib/));
   expect(openFoundLibrary).toHaveBeenCalledExactlyOnceWith(7, 1);
-  press(option(/^Back/));
+  press(option(/^Choose Another Source/));
   await waitFor(() => expect(document.activeElement).toBe(option(/^Choose a found library/)));
   expect(option(/^Try sample references/)).toBeTruthy();
 });
@@ -126,7 +126,7 @@ test("closing and reopening drops a pending discovery and focuses the new welcom
   await act(async () => finish(found));
   expect(screen.queryByRole("option", { name: /研究/ })).toBeNull();
   expect(option(/^Find them on this computer/)).toBeTruthy();
-  expect(document.activeElement).toBe(option(/^Zotero/));
+  expect(document.activeElement).toBe(option(/^Use Zotero/));
 });
 
 test.each(["available", "absent", "access_off"] as const)("Zotero %s is told in its row or a note, never as a second suggestion", async (zotero) => {
@@ -134,7 +134,7 @@ test.each(["available", "absent", "access_off"] as const)("Zotero %s is told in 
     findSources: async () => ({ zotero, list: 1, files: [], cut_short: false }) }} perform={perform} />);
   press(option(/^Find them on this computer/));
   await waitFor(() => expect(option(/^Look again/).textContent).not.toContain("Looking"));
-  expect(option(/^Zotero/).textContent?.includes("Found on this")).toBe(zotero === "available");
+  expect(option(/^Use Zotero/).textContent?.includes("Found on this")).toBe(zotero === "available");
   expect(screen.queryByText(/To read your references, in Zotero/) !== null).toBe(zotero === "access_off");
   expect(document.querySelectorAll("[data-suggested]")).toHaveLength(0);
 });
@@ -151,7 +151,7 @@ test("looking for libraries keeps focus while pending and ignores repeated press
   const pending = option(/^Look again/);
   expect(document.activeElement).toBe(pending);
   expect(pending.textContent).toContain("Looking for Zotero and .bib files…");
-  expect(option(/^Zotero/).getAttribute("aria-disabled")).toBeNull();
+  expect(option(/^Use Zotero/).getAttribute("aria-disabled")).toBeNull();
   press(pending);
   expect(findSources).toHaveBeenCalledTimes(1);
   await act(async () => resolve(found));
@@ -188,8 +188,8 @@ test("a refused discovery leaves manual choices and retry available", async () =
   press(option(/^Find them on this computer/));
   await waitFor(() => expect(failed).toHaveBeenCalledOnce());
   expect(option(/^Look again/).getAttribute("aria-disabled")).toBeNull();
-  press(option(/^BibTeX, BibLaTeX or CSL-JSON file/));
-  press(option(/^Zotero/));
+  press(option(/^Choose a Library File…/));
+  press(option(/^Use Zotero/));
   expect(chooseLibrary).toHaveBeenCalledOnce();
   expect(useZotero).toHaveBeenCalledOnce();
 });
@@ -248,7 +248,7 @@ test("empty-library choices show a known Zotero tag without searching or adding 
     perform={perform} empty={{ title: "No references in My Library", zotero: true }} />);
   expect(screen.getByRole("heading", { name: "No references in My Library" })).toBeTruthy();
   expect(screen.getAllByRole("option")).toHaveLength(2);
-  expect(option(/^Zotero/).textContent).toMatch(/Found on this (Mac|PC|computer)/);
-  expect(screen.getByText("You can drop a file here too.")).toBeTruthy();
+  expect(option(/^Use Zotero/).textContent).toMatch(/Found on this (Mac|PC|computer)/);
+  expect(screen.getByText("Or drag a .bib or CSL-JSON file into this window.")).toBeTruthy();
   expect(findSources).not.toHaveBeenCalled();
 });

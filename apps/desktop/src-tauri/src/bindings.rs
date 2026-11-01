@@ -43,6 +43,7 @@ pub(crate) fn commands() -> tauri_specta::Builder<tauri::Wry> {
             crate::updater::setting::update_checks,
             crate::updater::setting::set_update_checks,
             crate::updater::setting::check_for_updates,
+            crate::feedback::open_about_link,
             crate::updater::update_available,
             crate::updater::update_picker_activity,
             crate::settings_window::open_settings,
@@ -88,6 +89,7 @@ mod tests {
         "update_checks",
         "set_update_checks",
         "check_for_updates",
+        "open_about_link",
         "paste_permission",
         "open_paste_permission",
         "drag_paste_app",
@@ -100,6 +102,7 @@ mod tests {
     /// Only Settings asks about paste permission, changes the global shortcut
     /// or chooses a window size.
     const SETTINGS_ONLY: &[&str] = &[
+        "open_about_link",
         "window_size",
         "set_window_size",
         "paste_permission",
