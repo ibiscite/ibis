@@ -2,7 +2,7 @@
 import { copyFormatLabels } from "./messages";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { commands, type CommandError, type KeyFormat, type LibraryStatus, type PickerPreferences, type ShortcutStatus } from "./bindings";
+import { commands, type CommandError, type KeyFormat, type LibraryStatus, type PickerPreferences, type PreferenceChange, type ShortcutStatus } from "./bindings";
 
 export type { Sources } from "./bindings";
 export type {
@@ -117,8 +117,8 @@ export function onShortcutStatus(handler: (status: ShortcutStatus) => void): Pro
 }
 
 /** Called when Settings changes a picker preference, with the saved preferences. */
-export function onPreferencesChanged(handler: () => void): Promise<UnlistenFn> {
-  return listen("preferences:changed", handler);
+export function onPreferencesChanged(handler: (change: Partial<PreferenceChange> | null) => void): Promise<UnlistenFn> {
+  return listen<Partial<PreferenceChange> | null>("preferences:changed", (event) => handler(event.payload));
 }
 
 /** Called whenever the picker is hidden, by any route. */

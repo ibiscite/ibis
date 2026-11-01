@@ -6,8 +6,11 @@ import { readHistory, recentIds, rememberCitation } from "./recentHistory";
 const storageKey = "ibis-citation-history";
 const storage = { getItem: (key: string) => window.localStorage.getItem(key), setItem: (key: string, value: string) => window.localStorage.setItem(key, value) };
 /** `enabled` is the saved Recent citations choice, null until read. Only a
- * known "on" records; a known "off" forgets, so turning it back on starts empty. */
-export function useRecentReferences(recentReferences: typeof nativeApi.recentReferences | undefined, app: string | null, compact: boolean, copy: SessionState["recentCopy"], opening: number, enabled: boolean | null = true) {
+ * known "on" records; a known "off" forgets, so turning it back on starts empty.
+ * Every saved "off" forgets as it arrives, even when a quick "on" follows it
+ * before the picker reads the settings again. */
+export function useRecentReferences(recentReferences: typeof nativeApi.recentReferences | undefined, app: string | null, compact: boolean, copy: SessionState["recentCopy"], opening: number, enabled: boolean | null = true,
+  onPreferencesChanged?: typeof nativeApi.onPreferencesChanged) {
   const [history, setHistory] = useState(() => readHistory(storage));
   const latest = useRef(history);
   latest.current = history;
@@ -33,5 +36,12 @@ export function useRecentReferences(recentReferences: typeof nativeApi.recentRef
   useEffect(() => {
     if (enabled === false) forget();
   }, [enabled, forget]);
+  useEffect(() => {
+    if (!onPreferencesChanged) return;
+    const stop = onPreferencesChanged((change) => {
+      if (change?.recent_citations === false) { recording.current = false; forget(); }
+    });
+    return () => { void stop.then((unlisten) => unlisten()).catch(() => undefined); };
+  }, [onPreferencesChanged, forget]);
   return { load: recentReferences ? load : undefined, forget: enabled !== false && (history.length || forgetFailed) ? forget : null };
 }

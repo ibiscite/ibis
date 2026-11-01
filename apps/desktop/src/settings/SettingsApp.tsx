@@ -166,7 +166,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   }, [preferences?.larger_text]);
   // Shortcuts reads it too, to name what Enter does; only General waits for a grant.
   const permission = usePastePermission(api, page === "general" || page === "shortcuts", page === "general" && preferences?.paste === true);
-  const enterCopies = permission != null && preferences != null && !(permission.pastes && preferences.paste);
+  const enterPastes = permission?.pastes === true && (!permission.needed || permission.granted) && preferences?.paste === true;
 
   useEffect(() => {
     const focus = () => setFocused(true), blur = () => setFocused(false);
@@ -464,7 +464,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
             {[...new Set(KEY_TABLE.map((binding) => binding.region))].map((region) => (
               <Group key={region} id={`shortcuts-${region}`} title={text(SHORTCUT_REGIONS[region])}>
                 {KEY_TABLE.filter((binding) => binding.region === region).map((binding) => (
-                  <ShortcutEcho key={binding.action} keys={binding.keys}><Row id={`key-${binding.action}`} label={text(binding.action === "copy" && enterCopies ? "shortcuts-action-copy-only" : SHORTCUT_ACTIONS[binding.action])}>
+                  <ShortcutEcho key={binding.action} keys={binding.keys}><Row id={`key-${binding.action}`} label={text(binding.action === "copy" && !enterPastes ? "shortcuts-action-copy-only" : SHORTCUT_ACTIONS[binding.action])}>
                     <span className="ui-settings-keys">{binding.keys.flatMap((keys, index) => [
                       index > 0 && <span key={`or-${index}`}>{text("shortcuts-or")}</span>,
                       <KeyCaps key={keys} accelerator={keys} />,

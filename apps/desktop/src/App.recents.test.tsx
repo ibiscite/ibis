@@ -126,3 +126,23 @@ test("after Forget, nothing is recorded until the next citation, which is record
   await copyB();
   await waitFor(() => expect(saved()).toEqual([{ app: writer, items: [b.id] }]));
 });
+
+test("Recent citations turned off and quickly on again still forgets, though the re-read sees on", async () => {
+  seed();
+  backend({ picker_destination: destination,
+    recent_references: (args) => Array.isArray(args.ids) && args.ids.length ? [{ ...a, recent: "cited" }] : [],
+    search: () => [b],
+  });
+  render(<App />);
+  await screen.findByText("Recent A");
+  fireEvent.click(screen.getByRole("button", { name: "Keep Window Open" }));
+  await act(async () => {
+    await emit("preferences:changed", { revision: 1, recent_citations: false });
+    await emit("preferences:changed", { revision: 2, recent_citations: true });
+  });
+  await waitFor(() => expect(saved()).toEqual([]));
+  await act(async () => { await emit("picker:shown", null); });
+  expect(screen.queryByRole("heading", { name: "Cited here recently" })).toBeNull();
+  await copyB();
+  await waitFor(() => expect(saved()).toEqual([{ app: writer, items: [b.id] }]));
+});

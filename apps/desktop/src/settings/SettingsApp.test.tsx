@@ -19,7 +19,7 @@ test.each(["macos", "windows", "linux"])("Shortcuts preserves every English name
   const previous = document.documentElement.dataset.system;
   document.documentElement.dataset.system = platform;
   try {
-    const { api } = fakeApi();
+    const { api } = fakeApi({ granted: true });
     render(<SettingsApp api={api} initialPage="shortcuts" />);
     const label = shortcutLabel(DEFAULT_PICKER_SHORTCUT, platform === "macos");
     expect(await screen.findByRole("button", { name: `Open Ibis: ${label}` })).toHaveProperty("textContent", label);
@@ -245,8 +245,9 @@ test("Show in Menu Bar is a Mac choice that saves as a patch and goes back on fa
 });
 
 test.each([
-  ["pastes", { pastes: true }, { paste: true }, "Paste the citation"],
-  ["paste switched off", { pastes: true }, { paste: false }, "Copy the citation"],
+  ["pastes", { pastes: true, granted: true }, { paste: true }, "Paste the citation"],
+  ["still needs the paste permission", { pastes: true, needed: true, granted: false }, { paste: true }, "Copy the citation"],
+  ["paste switched off", { pastes: true, granted: true }, { paste: false }, "Copy the citation"],
   ["a system that copies", { pastes: false, needed: false }, { paste: true }, "Copy the citation"],
 ])("Shortcuts names what Enter does where Ibis %s", async (_case, permission, preferences, words) => {
   const { api } = fakeApi(permission, preferences);

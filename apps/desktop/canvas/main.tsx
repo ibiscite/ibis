@@ -99,7 +99,7 @@ function pickerApi(scenario: Scenario, settings: SettingsApi, openSettings: (pag
     copyFormat: async () => (await settings.pickerPreferences()).copy_format ?? "pandoc",
     pickerPreferences: settings.pickerPreferences, setPickerPreferences: settings.setPickerPreferences,
     shortcutStatus: settings.shortcutStatus, onShortcutStatus: settings.onShortcutStatus,
-    onPreferencesChanged: async (changed) => settings.onPreferencesChanged(() => changed()),
+    onPreferencesChanged: async (changed) => settings.onPreferencesChanged(() => changed(null)),
     pickerPresentation: async () => 0, pickerVisible: async () => true,
     hidePicker: async () => true, setPinned: noop, quit: noop,
     // No chooser, clipboard, native settings, files or discovery on the canvas.

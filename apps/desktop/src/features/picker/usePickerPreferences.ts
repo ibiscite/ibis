@@ -67,7 +67,11 @@ export function usePickerPreferences(
       if (formatFailed) report("format");
       setAvailable(saved !== null);
       if (saved) applyView(saved);
-      else report("preferences");
+      else {
+        // Unknown again: record nothing, forget nothing.
+        setRecentCitations(null);
+        report("preferences");
+      }
       if (event.pendingStyle) return;
       if (saved?.citation_style && styles) setFormat(`style:${saved.citation_style}`);
       else if (key) setFormat(key);

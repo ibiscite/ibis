@@ -75,13 +75,15 @@ fn bibtex_reads_bibdesk_and_jabref_added_dates_and_skips_malformed_ones() -> Res
 @book{older, title={C}, timestamp={2026-10-28}}
 @book{fallback, title={D}, date-added={yesterday}, creationdate={2026-10-27T09:30:00}}
 @book{invalid, title={E}, date-added={2026-02-30 10:00:00 +0000}, timestamp={private}}
-@book{missing, title={F}, year={1999}}",
+@book{missing, title={F}, year={1999}}
+@book{capitals, title={G}, Date-Added={2026-10-26 08:00:00 +0000}}",
     )?;
     dates.sort();
     assert_eq!(
         dates,
         [
             ("record:bibdesk", Some("2026-10-31T02:15:00Z")),
+            ("record:capitals", Some("2026-10-26T08:00:00Z")),
             ("record:fallback", Some("2026-10-27T09:30:00Z")),
             ("record:invalid", None),
             ("record:jabref", Some("2026-10-29T08:00:00Z")),
