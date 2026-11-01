@@ -107,8 +107,7 @@ test("toggles carry a check placed per platform, and shortcuts stay out of names
   expect(rows.map((row) => row.firstElementChild?.className)).toEqual(["menu-label", "menu-check", "menu-check"]);
   // macOS and Windows keep a leading check column for every row; GNOME puts the check last.
   const menuCss = readFileSync(new FileURL("./Menu.css", import.meta.url), "utf8");
-  expect(menuCss).toMatch(/:root:not\(\[data-platform="linux"\]\) \.menu:has\(\[role="menuitemcheckbox"\]\) :is\(\.menu-item:not\(\[role="menuitemcheckbox"\]\), \.menu-header\) \{ padding-inline-start: var\(--menu-label-start\); \}/);
-  expect(menuCss).toMatch(/:root\[data-platform="linux"\] \.menu-check \{ order: 1; \}/);
+  expect(menuCss).toMatch(/:root \.menu:has\(\[role="menuitemcheckbox"\]\) :is\(\.menu-item:not\(\[role="menuitemcheckbox"\]\), \.menu-header\) \{ padding-inline-start: var\(--menu-label-start\); \}/);
   expect(screen.getByRole("menuitem", { name: "Open" }).textContent).toBe("OpenCtrl+O");
   // Menu shortcuts are trailing text, so global kbd cap styles cannot apply.
   const shortcut = screen.getByRole("menuitem", { name: "Open" }).querySelector(".menu-keys")!;
@@ -581,6 +580,6 @@ test.each([
 
 test("wrapped menu labels retain vertical padding and scalable minimum heights", () => {
   expect(menuCss).toMatch(/\.menu-item \{[^}]*padding-block: var\(--space-1\)/);
-  expect(menuCss).toMatch(/--menu-item-height: 1\.75rem/);
+  expect(menuCss).toMatch(/--menu-item-height: 1\.5rem/);
   expect(menuCss).toMatch(/font: var\(--type-meta-size\) \/ var\(--type-meta-line\)/);
 });

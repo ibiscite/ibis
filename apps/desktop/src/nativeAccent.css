@@ -18,11 +18,11 @@
     }
     @media (hover: hover) {
       :root[data-native-accent="true"][data-platform="macos"]:not(.notice-window) .ui-button[data-variant="primary"][data-hovered]:not([data-disabled], [aria-disabled="true"]) {
-        color: light-dark(var(--native-accent-on-hover-light), var(--native-accent-on-hover-dark));
+        color: light-dark(var(--native-accent-on-hover-light, #fff), var(--native-accent-on-hover-dark, #fff));
       }
     }
     :root[data-native-accent="true"][data-platform="macos"]:not(.notice-window) .ui-button[data-variant="primary"]:is([data-pressed], [data-selected], [aria-expanded="true"]):not([data-disabled], [aria-disabled="true"]) {
-      color: light-dark(var(--native-accent-on-pressed-light), var(--native-accent-on-pressed-dark));
+      color: light-dark(var(--native-accent-on-pressed-light, #fff), var(--native-accent-on-pressed-dark, #fff));
     }
   }
 }

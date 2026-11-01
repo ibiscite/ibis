@@ -23,7 +23,7 @@
 
   /* Corners nest: each is its container's minus the gap between them. */
   --r-win: 16px; --r-card: 10px; --r-row: 8px; --r-tile: 6px; --r-control: 8px; --r-key: 5px;
-  --r-menu: 12px; --menu-pad: 6px; --r-mi: 6px; --r-full: 999px;
+  --r-menu: 12px; --menu-pad: 5px; --r-mi: 7px; --r-full: 999px;
 
   /* Type: size / line. Nothing is smaller than 12 px. */
   --type-search-size: 1.375rem; --type-search-line: 1.625rem;

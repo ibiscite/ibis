@@ -19,7 +19,7 @@ const website = strip(readFileSync(new FileURL("../../../website/style.css", imp
 const all = parts.map((name) => [name, strip(read(name))] as const);
 const local = new Set([...all, ["website", website] as const].flatMap(([, css]) => [...css.matchAll(/(--[a-z0-9-]+)\s*:/g)].map((match) => match[1]!)));
 // Set from script at run time: the native accent and how far a list can scroll.
-const fromScript = /^--(native-accent|scroll-fade-)/;
+const fromScript = /^--(native-accent|scroll-fade-|choice-columns)/;
 // These two state each system's own materials, so they hold values as tokens.css does.
 const values = new Set(["nativeAppearance.css", "nativeAccent.css"]);
 
@@ -102,4 +102,10 @@ test("the ladders hold the values measured from AppKit on macOS 27.2", () => {
     "--text-tertiary: light-dark(rgb(0 0 0 / 45%), rgb(255 255 255 / 38%))", "--text-disabled: light-dark(rgb(0 0 0 / 24.7%), rgb(255 255 255 / 24.7%))",
     "--fill-1: light-dark(rgb(0 0 0 / 9.8%), rgb(255 255 255 / 9.8%))", "--fill-4: light-dark(rgb(0 0 0 / 2.7%), rgb(255 255 255 / 2.7%))",
     "--separator: light-dark(rgb(0 0 0 / 10%), rgb(255 255 255 / 12%))", "--surface: light-dark(#ffffff, #1e1e1e)", "--selected: light-dark(#0064e1, #0059d1)"]) expect(tokens).toContain(value);
+});
+
+test("menus and buttons use title case, as the Mac does", () => {
+  const messages = read("messages.ts");
+  for (const label of ["Clear Search", "Keep Window Open", "Show What Will Be Pasted", "Keyboard Shortcuts", "Remove from Citation", "Search All Zotero Libraries", "Choose Library…", "Reload Library"]) expect(messages).toContain(`"${label}"`);
+  for (const label of ["Clear search", "Keep window open", "Keyboard shortcuts", "Remove from citation", "Reload library", "Choose library…"]) expect(messages).not.toContain(`"${label}"`);
 });
