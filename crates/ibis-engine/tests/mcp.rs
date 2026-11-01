@@ -78,7 +78,9 @@ fn a_session_runs_over_newline_delimited_stdio() {
         .collect();
     // The notification gets no answer; everything else gets exactly one.
     assert_eq!(replies.len(), 5);
-    assert_eq!(replies[0]["result"]["protocolVersion"], mcp::PROTOCOL_VERSION);
+    // An unknown requested revision is answered with the newest handshake revision.
+    assert_eq!(replies[0]["result"]["protocolVersion"], mcp::LEGACY_VERSIONS[0]);
+    assert!(replies[0]["result"].get("resultType").is_none());
     assert_eq!(replies[0]["result"]["serverInfo"]["name"], "ibis");
     let names: Vec<&str> = replies[1]["result"]["tools"]
         .as_array()
@@ -342,4 +344,148 @@ fn an_override_cannot_slip_past_the_formatter_checks() {
     );
     let cited = tool(&engine, "cite", json!({"items":[{"id":item_id(&engine)}]}));
     assert_eq!(cited["isError"], true);
+}
+
+fn modern(id: u64, method: &str, mut params: Value) -> Value {
+    params["_meta"] = json!({
+        "io.modelcontextprotocol/protocolVersion": mcp::PROTOCOL_VERSION,
+        "io.modelcontextprotocol/clientInfo": {"name": "test", "version": "1"},
+        "io.modelcontextprotocol/clientCapabilities": {}
+    });
+    request(id, method, params)
+}
+
+#[test]
+fn a_2026_client_works_without_a_handshake() {
+    let (_dir, engine) = engine();
+    let discover = mcp::handle(&engine, &modern(1, "server/discover", json!({}))).unwrap();
+    let result = &discover["result"];
+    assert_eq!(result["resultType"], "complete");
+    assert_eq!(
+        result["supportedVersions"],
+        json!([mcp::PROTOCOL_VERSION, mcp::LEGACY_VERSIONS[0], mcp::LEGACY_VERSIONS[1]])
+    );
+    assert_eq!(result["capabilities"], json!({"tools": {}}));
+    assert_eq!(result["_meta"]["io.modelcontextprotocol/serverInfo"]["name"], "ibis");
+    assert_eq!(result["cacheScope"], "public");
+    assert!(result["ttlMs"].as_u64().is_some());
+
+    let list = mcp::handle(&engine, &modern(2, "tools/list", json!({}))).unwrap();
+    assert_eq!(list["result"]["resultType"], "complete");
+    assert!(list["result"]["ttlMs"].as_u64().is_some());
+    assert_eq!(list["result"]["cacheScope"], "public");
+    // The same tools in the same order as for older clients, so caches agree.
+    let legacy = mcp::handle(&engine, &request(3, "tools/list", json!({}))).unwrap();
+    assert_eq!(list["result"]["tools"], legacy["result"]["tools"]);
+    assert!(legacy["result"].get("ttlMs").is_none());
+
+    let call = mcp::handle(
+        &engine,
+        &modern(4, "tools/call", json!({"name":"search","arguments":{"query":"sleep"}})),
+    )
+    .unwrap();
+    assert_eq!(call["result"]["resultType"], "complete");
+    assert_eq!(call["result"]["structuredContent"]["hits"][0]["key"], "demo2026");
+    assert_eq!(
+        call["result"]["_meta"]["io.modelcontextprotocol/serverInfo"]["name"],
+        "ibis"
+    );
+
+    // Handshake-only methods do not exist for a stateless request.
+    for method in ["initialize", "ping"] {
+        let reply = mcp::handle(&engine, &modern(5, method, json!({}))).unwrap();
+        assert_eq!(reply["error"]["code"], -32601, "{method}");
+    }
+}
+
+#[test]
+fn an_unknown_revision_is_refused_with_the_supported_list() {
+    let (_dir, engine) = engine();
+    for requested in [json!("1900-01-01"), json!("2025-06-18"), json!(7)] {
+        let mut message = modern(1, "tools/list", json!({}));
+        message["params"]["_meta"]["io.modelcontextprotocol/protocolVersion"] = requested.clone();
+        let reply = mcp::handle(&engine, &message).unwrap();
+        assert_eq!(reply["id"], 1);
+        assert_eq!(reply["error"]["code"], -32022);
+        assert_eq!(reply["error"]["data"]["requested"], requested);
+        assert_eq!(reply["error"]["data"]["supported"][0], mcp::PROTOCOL_VERSION);
+        assert!(reply.get("result").is_none());
+    }
+    // A notification with an unknown revision still gets no answer.
+    let mut notification = modern(1, "notifications/cancelled", json!({}));
+    notification.as_object_mut().unwrap().remove("id");
+    notification["params"]["_meta"]["io.modelcontextprotocol/protocolVersion"] = json!("1900-01-01");
+    assert_eq!(mcp::handle(&engine, &notification), None);
+}
+
+#[test]
+fn older_clients_negotiate_a_revision_they_asked_for() {
+    let (_dir, engine) = engine();
+    for version in mcp::LEGACY_VERSIONS {
+        let reply = mcp::handle(
+            &engine,
+            &request(
+                1,
+                "initialize",
+                json!({"protocolVersion":version,"capabilities":{},"clientInfo":{"name":"t","version":"1"}}),
+            ),
+        )
+        .unwrap();
+        assert_eq!(reply["result"]["protocolVersion"], version);
+        assert_eq!(reply["result"]["serverInfo"]["name"], "ibis");
+    }
+    // The 2026 revision has no handshake, so asking for it there gets the newest handshake revision.
+    let reply = mcp::handle(
+        &engine,
+        &request(
+            2,
+            "initialize",
+            json!({"protocolVersion":mcp::PROTOCOL_VERSION,"capabilities":{}}),
+        ),
+    )
+    .unwrap();
+    assert_eq!(reply["result"]["protocolVersion"], mcp::LEGACY_VERSIONS[0]);
+    assert_eq!(
+        mcp::handle(&engine, &request(3, "ping", json!({}))).unwrap()["result"],
+        json!({})
+    );
+}
+
+#[test]
+fn every_tool_answer_has_the_fields_its_output_schema_requires() {
+    let (_dir, engine) = engine();
+    let tools = mcp::handle(&engine, &request(1, "tools/list", json!({}))).unwrap()["result"]["tools"].clone();
+    let id = tool(&engine, "search", json!({"query":"sleep"}))["structuredContent"]["hits"][0]["id"].clone();
+    let calls = [
+        ("search", json!({"query":"sleep"})),
+        ("show", json!({"item":{"key":"demo2026"}})),
+        ("show", json!({"item":{"id":id}})),
+        ("cite", json!({"items":[{"key":"demo2026"}]})),
+        ("cite", json!({"items":[{"key":"demo2026"}],"syntax":"pandoc"})),
+        ("styles", json!({})),
+    ];
+    for (name, arguments) in calls {
+        let schema = tools
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|tool| tool["name"] == name)
+            .unwrap()["outputSchema"]
+            .clone();
+        assert_eq!(schema["type"], "object", "{name}");
+        let answer = tool(&engine, name, arguments);
+        assert_eq!(answer["isError"], false, "{name}: {answer}");
+        let content = &answer["structuredContent"];
+        for field in schema["required"].as_array().unwrap() {
+            assert!(content.get(field.as_str().unwrap()).is_some(), "{name} lacks {field}");
+        }
+        if name == "search" {
+            for field in schema["properties"]["hits"]["items"]["required"].as_array().unwrap() {
+                assert!(
+                    content["hits"][0].get(field.as_str().unwrap()).is_some(),
+                    "hit lacks {field}"
+                );
+            }
+        }
+    }
 }

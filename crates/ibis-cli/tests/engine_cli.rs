@@ -300,9 +300,11 @@ fn mcp_serves_agents_from_the_files_given() -> Result<(), Box<dyn std::error::Er
         .spawn()?;
     let mut stdin = child.stdin.take().ok_or("stdin")?;
     for message in [
-        json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":ibis_engine::mcp::PROTOCOL_VERSION,"capabilities":{},"clientInfo":{"name":"test","version":"1"}}}),
+        json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":ibis_engine::mcp::LEGACY_VERSIONS[0],"capabilities":{},"clientInfo":{"name":"test","version":"1"}}}),
         json!({"jsonrpc":"2.0","method":"notifications/initialized"}),
         json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"cite","arguments":{"items":[{"key":"accents2021"}],"syntax":"pandoc"}}}),
+        // A 2026-07-28 client in the same process: no handshake, the revision in `_meta`.
+        json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"cite","arguments":{"items":[{"key":"accents2021"}],"syntax":"pandoc"},"_meta":{"io.modelcontextprotocol/protocolVersion":ibis_engine::mcp::PROTOCOL_VERSION}}}),
     ] {
         writeln!(stdin, "{message}")?;
     }
@@ -314,8 +316,14 @@ fn mcp_serves_agents_from_the_files_given() -> Result<(), Box<dyn std::error::Er
         .lines()
         .map(serde_json::from_str)
         .collect::<Result<_, _>>()?;
-    assert_eq!(replies.len(), 2);
+    assert_eq!(replies.len(), 3);
+    assert_eq!(
+        replies[0]["result"]["protocolVersion"],
+        ibis_engine::mcp::LEGACY_VERSIONS[0]
+    );
     assert_eq!(replies[1]["result"]["structuredContent"]["text"], "[@accents2021]");
+    assert_eq!(replies[2]["result"]["structuredContent"]["text"], "[@accents2021]");
+    assert_eq!(replies[2]["result"]["resultType"], "complete");
     Ok(())
 }
 

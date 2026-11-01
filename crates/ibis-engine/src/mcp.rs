@@ -1,7 +1,9 @@
 //! `ibis mcp`: the engine for AI agents over the Model Context Protocol.
 //!
-//! Newline-delimited JSON-RPC 2.0 on stdio, as MCP's stdio transport defines,
-//! pinned to protocol revision [`PROTOCOL_VERSION`]. Four read-only tools
+//! Newline-delimited JSON-RPC 2.0 on stdio, as MCP's stdio transport defines.
+//! Requests that name revision [`PROTOCOL_VERSION`] in `_meta` are served
+//! statelessly; older clients that open with `initialize` get one of
+//! [`LEGACY_VERSIONS`], as the revision's dual-era rules allow. Four read-only tools
 //! (search, show, cite, styles) call the same engine methods as the command
 //! line. Agents see records only as [`citable_fields`] leaves them: never notes
 //! or annotations, a record's `note` or `annote` fields, file locations,
@@ -18,9 +20,15 @@ use ibis_core::contract::{
 use serde_json::{Map, Value, json};
 use std::io::{self, BufRead, Read, Write};
 
-/// The MCP revision this server implements. A client asking for another is
-/// answered with this one, as the protocol's version negotiation requires.
-pub const PROTOCOL_VERSION: &str = "2025-06-18";
+/// The current MCP revision: no handshake, the version travels in each request's `_meta`.
+pub const PROTOCOL_VERSION: &str = "2026-07-28";
+/// Handshake revisions still answered after `initialize`, newest first.
+pub const LEGACY_VERSIONS: [&str; 2] = ["2025-11-25", "2025-06-18"];
+const VERSION_KEY: &str = "io.modelcontextprotocol/protocolVersion";
+const SERVER_INFO_KEY: &str = "io.modelcontextprotocol/serverInfo";
+/// The tool list only changes with the binary, so clients may keep it for an hour.
+const LIST_TTL_MS: u64 = 3_600_000;
+const INSTRUCTIONS: &str = "Search the user's reference libraries and format citations. Read-only; cite items by the citation key or id that search returns.";
 /// Search results returned to an agent at most.
 pub const MAX_HITS: usize = 25;
 /// Characters kept of any one text value.
@@ -121,14 +129,41 @@ pub fn handle(engine: &Engine, message: &Value) -> Option<Value> {
         return Some(error(Value::Null, -32600, "Invalid Request"));
     }
     let params = object.get("params").cloned().unwrap_or(Value::Null);
-    let result = match method {
-        "initialize" => json!({
-            "protocolVersion": PROTOCOL_VERSION,
+    // A request that names its revision is a stateless 2026-07-28 request;
+    // one that does not belongs to a client that opened with `initialize`.
+    let modern = match params.get("_meta").and_then(|meta| meta.get(VERSION_KEY)) {
+        None => false,
+        Some(Value::String(version)) if version == PROTOCOL_VERSION => true,
+        Some(requested) => {
+            return Some(json!({"jsonrpc": "2.0", "id": id, "error": {
+                "code": -32022,
+                "message": "Unsupported protocol version",
+                "data": {"supported": supported_versions(), "requested": requested},
+            }}));
+        }
+    };
+    let mut result = match method {
+        "server/discover" => json!({
+            "supportedVersions": supported_versions(),
             "capabilities": {"tools": {}},
-            "serverInfo": {"name": "ibis", "title": "Ibis", "version": env!("CARGO_PKG_VERSION")},
-            "instructions": "Search the user's reference libraries and format citations. Read-only; cite items by the citation key or id that search returns.",
+            "instructions": INSTRUCTIONS,
+            "ttlMs": LIST_TTL_MS,
+            "cacheScope": "public",
         }),
-        "ping" => json!({}),
+        "initialize" if !modern => {
+            let requested = params.get("protocolVersion").and_then(Value::as_str);
+            json!({
+                "protocolVersion": LEGACY_VERSIONS
+                    .into_iter()
+                    .find(|version| Some(*version) == requested)
+                    .unwrap_or(LEGACY_VERSIONS[0]),
+                "capabilities": {"tools": {}},
+                "serverInfo": server_info(),
+                "instructions": INSTRUCTIONS,
+            })
+        }
+        "ping" if !modern => json!({}),
+        "tools/list" if modern => json!({"tools": tools(), "ttlMs": LIST_TTL_MS, "cacheScope": "public"}),
         "tools/list" => json!({"tools": tools()}),
         "tools/call" => {
             let name = params.get("name").and_then(Value::as_str);
@@ -140,7 +175,19 @@ pub fn handle(engine: &Engine, message: &Value) -> Option<Value> {
         }
         _ => return Some(error(id, -32601, "Method not found")),
     };
+    if modern || method == "server/discover" {
+        result["resultType"] = json!("complete");
+        result["_meta"] = json!({SERVER_INFO_KEY: server_info()});
+    }
     Some(json!({"jsonrpc": "2.0", "id": id, "result": result}))
+}
+
+fn supported_versions() -> Vec<&'static str> {
+    std::iter::once(PROTOCOL_VERSION).chain(LEGACY_VERSIONS).collect()
+}
+
+fn server_info() -> Value {
+    json!({"name": "ibis", "title": "Ibis", "version": env!("CARGO_PKG_VERSION")})
 }
 
 fn error(id: Value, code: i64, message: &str) -> Value {
@@ -160,6 +207,31 @@ fn tools() -> Value {
             "id": {"type": "object", "properties": {"library": {"type": "string"}, "key": {"type": "string"}}, "required": ["library", "key"]}
         }
     });
+    // Output schemas promise only what every successful answer holds; values
+    // copied from a library keep whatever JSON type the library gave them.
+    let summary = json!({
+        "type": "object",
+        "properties": {
+            "key": {"type": ["string", "null"]},
+            "id": {"type": "object", "properties": {"library": {"type": "string"}, "key": {"type": "string"}}, "required": ["library", "key"]},
+            "type": {}, "title": {}, "year": {}, "container": {}, "doi": {},
+            "authors": {"type": "array", "items": {"type": "string"}}
+        },
+        "required": ["key", "id", "type", "title", "authors", "year", "container", "doi"]
+    });
+    let mut shown = summary.clone();
+    shown["properties"]["csl"] = json!({"type": "object"});
+    shown["required"] = json!([
+        "key",
+        "id",
+        "type",
+        "title",
+        "authors",
+        "year",
+        "container",
+        "doi",
+        "csl"
+    ]);
     json!([
         {
             "name": "search",
@@ -173,6 +245,14 @@ fn tools() -> Value {
                 },
                 "required": ["query"]
             },
+            "outputSchema": {
+                "type": "object",
+                "properties": {
+                    "hits": {"type": "array", "items": summary},
+                    "complete": {"type": "boolean", "description": "False when the answer size bound cut the list short."}
+                },
+                "required": ["hits", "complete"]
+            },
             "annotations": read_only
         },
         {
@@ -180,6 +260,7 @@ fn tools() -> Value {
             "title": "Show a reference",
             "description": "Show one reference's bibliographic data.",
             "inputSchema": {"type": "object", "properties": {"item": item}, "required": ["item"]},
+            "outputSchema": shown,
             "annotations": read_only
         },
         {
@@ -196,6 +277,16 @@ fn tools() -> Value {
                 },
                 "required": ["items"]
             },
+            "outputSchema": {
+                "type": "object",
+                "properties": {
+                    "text": {"type": "string"},
+                    "notices": {"type": "array"},
+                    "losses": {"type": "array"},
+                    "warnings": {"type": "array"}
+                },
+                "required": ["text", "notices", "losses"]
+            },
             "annotations": read_only
         },
         {
@@ -203,6 +294,16 @@ fn tools() -> Value {
             "title": "List citation styles",
             "description": "List the citation styles Ibis can format.",
             "inputSchema": {"type": "object", "properties": {}},
+            "outputSchema": {
+                "type": "object",
+                "properties": {
+                    "styles": {
+                        "type": "array",
+                        "items": {"type": "object", "properties": {"id": {"type": "string"}, "title": {"type": "string"}}, "required": ["id", "title"]}
+                    }
+                },
+                "required": ["styles"]
+            },
             "annotations": read_only
         }
     ])
