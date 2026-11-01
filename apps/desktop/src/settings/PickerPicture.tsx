@@ -18,21 +18,6 @@ export function PickerPicture({ density = "comfortable", icon = "ibis", appearan
   density?: Density; icon?: SearchIcon; appearance?: string; split?: boolean; headerOnly?: boolean; rowsOnly?: boolean;
 }) {
   const { text } = useInterfaceMessages();
-  const frame = useRef<HTMLSpanElement>(null), natural = useRef<HTMLSpanElement>(null);
-  useLayoutEffect(() => {
-    const node = frame.current, probe = natural.current;
-    if (!node || !probe) return;
-    const fit = () => {
-      const width = node.getBoundingClientRect().width, desired = probe.getBoundingClientRect().width;
-      const token = rowsOnly || headerOnly ? "--settings-picture-crop-scale" : "--settings-picture-scale";
-      const scale = Number.parseFloat(getComputedStyle(node).getPropertyValue(token));
-      if (width > 0 && desired > 0 && scale > 0) node.style.setProperty("--settings-snapshot-scale", String(scale * Math.min(1, width / desired)));
-    };
-    fit();
-    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(fit);
-    observer?.observe(node); observer?.observe(probe);
-    return () => observer?.disconnect();
-  }, [rowsOnly, headerOnly]);
   const record: SearchResult = {
     revision: "sample", partial: false,
     id: { source: "sample", key: "vale2021" }, key: "vale2021", title: text("look-sample-title"),
@@ -49,8 +34,7 @@ export function PickerPicture({ density = "comfortable", icon = "ibis", appearan
     )}</ul></div>}
   </>);
   const scheme = split ? "light" : appearance === "light" || appearance === "dark" ? appearance : undefined;
-  return <span ref={frame} className="ui-picker-picture" data-header={headerOnly || undefined} data-crop={rowsOnly || headerOnly || undefined} data-density={density} data-split={split || undefined} aria-hidden="true" inert>
-    <span ref={natural} className="ui-picker-picture-natural" />
+  return <span className="ui-picker-picture" data-header={headerOnly || undefined} data-rows={rowsOnly || undefined} data-density={density} data-split={split || undefined} aria-hidden="true" inert>
     <Snapshot html={html} density={density} scheme={scheme} />
     {split && <Snapshot html={html} density={density} scheme="dark" dark />}
   </span>;

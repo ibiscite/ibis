@@ -77,8 +77,8 @@ export function isWholeShelf() {
   const rem = parseFloat(getComputedStyle(document.documentElement).fontSize);
   const pixels = (value) => value.endsWith("rem") ? parseFloat(value) * rem : value.endsWith("px") ? parseFloat(value) : NaN;
   const style = getComputedStyle(shelf);
-  const line = pixels(style.getPropertyValue("--shelf-line").trim());
-  const target = pixels(style.getPropertyValue(matchMedia("(pointer: coarse)").matches ? "--touch-target" : "--control-min-size").trim());
+  const line = pixels(style.getPropertyValue("--space-10").trim());
+  const target = pixels(style.getPropertyValue(matchMedia("(pointer: coarse)").matches ? "--touch-target" : "--control-h").trim());
   const expected = Math.max(line, target);
   if (Number.isFinite(expected) && Math.abs(rect.height - expected) > 1) return false;
   const header = document.querySelector(".search-bar").getBoundingClientRect();

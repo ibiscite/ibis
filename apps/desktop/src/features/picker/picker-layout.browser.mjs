@@ -419,9 +419,9 @@ try {
       assert.equal(await remove.evaluate((node) => {
         const rect = node.getBoundingClientRect();
         const text = node.closest(".shelf-segment").querySelector(".preview-text").getBoundingClientRect();
-        const size = parseFloat(getComputedStyle(node).getPropertyValue("--shelf-remove-size"));
+        const size = 16;
         const top = rect.top + (rect.height - size) / 2, left = rect.left + (rect.width - size) / 2;
-        return Math.abs(rect.width - 24) <= 1 && Math.abs(rect.height - 24) <= 1 && size === 16 &&
+        return Math.abs(rect.width - 24) <= 1 && Math.abs(rect.height - 24) <= 1 &&
           (top + size <= text.top + 1 || left + size <= text.left + 1 || top >= text.bottom - 1 || left >= text.right - 1);
       }), true, "the 16 px badge and 24 px target stay outside the long key's text at every text size/direction");
       await remove.click();

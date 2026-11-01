@@ -1,39 +1,38 @@
 /* The toolbar menu's button; its popover and rows are the shared menu (Menu.css). */
-.toolbar-menu-control { display: inline-flex; align-items: center; min-height: var(--control-min-size); }
+.toolbar-menu-control { display: inline-flex; align-items: center; min-height: var(--control-h); }
 .toolbar-menu-control .toolbar-menu-button {
   position: relative; gap: var(--space-1); max-width: 12rem;
-  font: var(--metadata-size)/var(--metadata-line-height) var(--font-family);
+  font: var(--type-meta-size)/var(--type-meta-line) var(--font);
 }
 /* A long value, such as "APA · Microsoft Word", ends in an ellipsis; the label names it in full. */
 .toolbar-menu-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .search-bar .toolbar-menu-control, .search-bar .toolbar-menu-button { min-height: var(--field-h); }
 :root[data-platform="macos"] .toolbar-menu-button {
-  min-height: calc(var(--control-min-size) - var(--space-1)); border-radius: var(--r-control);
+  min-height: calc(var(--control-h) - var(--space-1)); border-radius: var(--r-control);
 }
 /* The 28 px macOS fill retains its 32 px target inside the toolbar. */
 :root[data-platform="macos"] .toolbar-menu-button::after {
   content: ""; position: absolute; inset: calc(-1 * (var(--space-1) / 2 + var(--border-width))) calc(-1 * var(--border-width));
 }
 :root[data-platform="linux"] .toolbar-menu-button { font-weight: bold; }
-.toolbar-menu-button .popup-indicator { flex: none; width: var(--icon-size); height: var(--icon-size); color: var(--muted); stroke-width: var(--icon-stroke); }
+.toolbar-menu-button .popup-indicator { flex: none; width: var(--icon-small); height: var(--icon-small); color: var(--muted); stroke-width: var(--icon-stroke); }
 .toolbar-menu-button .popup-indicator-macos { width: var(--space-2); height: var(--space-3); }
-.toolbar-menu-button .popup-indicator-windows { width: var(--space-3); height: var(--space-3); stroke-width: var(--border-width); }
 /* Keep a useful minimum while filtering; longer labels may use the viewport. */
 .toolbar-menu-popover { width: min(300px, calc(100vw - 16px)); min-width: 0; }
 .toolbar-menu-filter { flex: none; }
-.toolbar-menu-heading { color: var(--muted); font-size: var(--hint-size); font-weight: 600; padding-block: 8px 4px; padding-inline: var(--menu-label-start) var(--menu-item-pad); }
-.toolbar-menu .menu-section + .menu-section::before { content: ""; flex: none; height: 1px; margin: 4px var(--menu-item-pad); background: var(--separator); }
-.toolbar-menu-sample { margin-inline-start: auto; min-width: 0; max-width: 50%; color: var(--muted); font: var(--hint-size) var(--font-mono); white-space: normal; overflow-wrap: anywhere; text-align: end; }
-.toolbar-menu-sample[data-prose] { font-family: var(--font-family); }
+.toolbar-menu-heading { color: var(--muted); font-size: var(--type-label-size); font-weight: 600; padding-block: 8px 4px; padding-inline: var(--menu-label-start) var(--menu-item-pad); }
+.toolbar-menu .menu-section + .menu-section::before { content: ""; flex: none; height: 1px; margin: 4px var(--menu-item-pad); background: var(--line); }
+.toolbar-menu-sample { margin-inline-start: auto; min-width: 0; max-width: 50%; color: var(--muted); font: var(--type-label-size) var(--mono); white-space: normal; overflow-wrap: anywhere; text-align: end; }
+.toolbar-menu-sample[data-prose] { font-family: var(--font); }
 .menu-item[data-focused] .toolbar-menu-sample { color: inherit; }
 .toolbar-menu-filter input {
   box-sizing: border-box; width: 100%; min-height: 30px; border: 0; border-radius: var(--menu-item-radius);
-  padding-block: var(--space-1); padding-inline: var(--menu-label-start) var(--menu-item-pad); background: var(--field-background); color: var(--text); font: inherit;
+  padding-block: var(--space-1); padding-inline: var(--menu-label-start) var(--menu-item-pad); background: var(--field); color: var(--text); font: inherit;
 }
 /* A text field shows its caret, not a ring, like the search box. */
 .toolbar-menu-filter input:focus-visible { outline: 0; box-shadow: none; }
 @media (prefers-contrast: more), (forced-colors: active) {
-  .toolbar-menu-filter input:focus-visible { outline: var(--focus-ring-width) solid var(--focus-ring-color); outline-offset: var(--focus-ring-offset); }
+  .toolbar-menu-filter input:focus-visible { outline: var(--ring-width) solid var(--ring); outline-offset: var(--ring-offset); }
 }
 @media (pointer: coarse) {
   .toolbar-menu-filter input { min-height: var(--touch-target); }

@@ -1,28 +1,27 @@
 .citation-details {
   display: flex; flex-direction: column; gap: var(--space-2);
   padding: var(--space-2); color: var(--text);
-  font: var(--type-meta-size) / var(--type-meta-line) var(--font-family);
+  font: var(--type-meta-size) / var(--type-meta-line) var(--font);
 }
 .citation-page { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); min-inline-size: 0; }
 .citation-page input {
   min-inline-size: 0; inline-size: 8em; max-inline-size: 100%; box-sizing: border-box;
-  min-block-size: var(--control-min-size); padding: var(--space-1) var(--space-2);
-  border: var(--border-width) solid var(--stroke-field); border-radius: var(--r-control);
-  background: var(--surface-field); color: var(--text); font: inherit; font-variant-numeric: tabular-nums;
+  min-block-size: var(--control-h); padding: var(--space-1) var(--space-2);
+  border: var(--border-width) solid var(--stroke); border-radius: var(--r-control);
+  background: var(--field); color: var(--text); font: inherit; font-variant-numeric: tabular-nums;
 }
 .citation-page input::placeholder { color: var(--muted); opacity: 1; }
-.citation-page input:focus-visible { outline: var(--focus-ring-width) solid var(--focus-ring-color); outline-offset: var(--focus-ring-offset); }
+.citation-page input:focus-visible { outline: var(--ring-width) solid var(--ring); outline-offset: var(--ring-offset); }
 .citation-page [slot="description"] { color: var(--muted); }
 .citation-forms { display: flex; flex-direction: column; gap: var(--space-1); }
-.citation-form { position: relative; display: flex; align-items: center; gap: var(--menu-item-gap, var(--space-2)); min-height: var(--control-min-size); padding: var(--space-1) var(--space-2); border-radius: var(--r-mi); outline: none; }
+.citation-form { position: relative; display: flex; align-items: center; gap: var(--menu-item-gap, var(--space-2)); min-height: var(--control-h); padding: var(--space-1) var(--space-2); border-radius: var(--r-mi); outline: none; }
 /* Keep the native radio inside its own row and give it the row's whole hit
    area. React Aria's clipped wrapper must not clip or displace that target. */
 .citation-form > span:has(> input[type="radio"]) { display: contents; }
 .citation-form input[type="radio"] { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; box-sizing: border-box; opacity: 0; z-index: var(--z-content); cursor: inherit; }
-.citation-form-check { flex: 0 0 var(--menu-check-width, var(--icon-size)); text-align: center; }
-.citation-form:is([data-hovered], [data-focus-visible]) { background: var(--menu-highlight, var(--selected-background)); color: var(--menu-highlight-text, var(--selected-text)); }
+.citation-form-check { flex: 0 0 var(--menu-check-width, var(--icon-small)); text-align: center; }
+.citation-form:is([data-hovered], [data-focus-visible]) { background: var(--menu-highlight, var(--sel)); color: var(--menu-highlight-text, var(--sel-text)); }
 .citation-form[data-disabled] { color: var(--muted); }
-.citation-form-reason { margin: 0; color: var(--muted); overflow-wrap: anywhere; }
 .citation-form-body { display: flex; flex-direction: column; min-width: 0; gap: var(--space-1); }
 .citation-form-example { color: var(--muted); overflow-wrap: anywhere; font-size: var(--type-label-size); }
 .citation-form:is([data-hovered], [data-focus-visible]) .citation-form-example { color: inherit; }

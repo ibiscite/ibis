@@ -102,7 +102,7 @@ try {
             if (group.getBoundingClientRect().top - previous.getBoundingClientRect().bottom < parseFloat(paneStyle.rowGap) - 1) failures.push("sections touching");
             previous = group;
           }
-          const pictures = [...pane.querySelectorAll(".ui-picture-choices:not([data-dots])")];
+          const pictures = [...pane.querySelectorAll(".ui-picture-choices:not([data-dots], [data-strips])")];
           for (const choices of pictures) {
             const cards = [...choices.children].map((card) => card.getBoundingClientRect());
             if (cards.some((card) => Math.abs(card.top - cards[0].top) > 1)) failures.push("picture choices wrapped");

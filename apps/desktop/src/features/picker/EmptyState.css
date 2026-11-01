@@ -1,25 +1,32 @@
-.empty-state { color: var(--muted); text-align: center; padding: var(--empty-padding); }
-.empty-state p:first-child { color: var(--text); font-weight: var(--type-strong-weight); }
-.empty-template { padding-block: var(--empty-template-padding); }
-.empty-icon { display: block; width: var(--empty-icon-size); height: var(--empty-icon-size); margin: 0 auto var(--empty-icon-gap); color: var(--text-tertiary, var(--muted)); }
-.empty-title { margin: 0; color: var(--text); font-size: var(--title-size); line-height: var(--title-line-height); font-weight: var(--type-strong-weight); overflow-wrap: anywhere; }
-.empty-description { max-width: 40ch; margin: var(--space-2) auto 0; font-size: var(--metadata-size); line-height: var(--metadata-line-height); overflow-wrap: anywhere; }
-.empty-keys { display: var(--empty-keys-display); flex-wrap: wrap; justify-content: center; gap: var(--space-4); margin-top: var(--space-4); font-size: var(--hint-size); line-height: var(--type-label-line); }
+.empty-state { color: var(--muted); text-align: center; padding: 2rem 1rem; }
+.empty-state p:first-child { color: var(--text); font-weight: var(--strong); }
+.empty-template { padding-block: calc(3 * var(--space-4) - var(--inset)); }
+.empty-icon { display: block; width: calc(3 * var(--space-4)); height: calc(3 * var(--space-4)); margin: 0 auto var(--space-3); color: var(--tertiary); }
+.empty-title { margin: 0; color: var(--text); font-size: var(--type-lead-size); line-height: var(--type-lead-line); font-weight: var(--strong); overflow-wrap: anywhere; }
+.empty-description { max-width: 40ch; margin: var(--space-2) auto 0; font-size: var(--type-meta-size); line-height: var(--type-meta-line); overflow-wrap: anywhere; }
+.empty-keys { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-4); margin-top: var(--space-4); font-size: var(--type-label-size); line-height: var(--type-label-line); }
 .empty-keys > .key-hint { flex-wrap: wrap; justify-content: center; max-width: 100%; white-space: normal; }
 .empty-template .empty-actions { margin-top: var(--space-4); }
 .empty-template .empty-actions > button { max-width: 100%; overflow-wrap: anywhere; }
-.empty-primary { font-weight: var(--type-strong-weight); }
+.empty-primary { font-weight: var(--strong); }
 .empty-alternative { text-decoration: underline; }
 
 /* Opening shares the choice screen's middle-area centring and scroll owner. */
-main .picker-content .results-area:has(.empty-opening) { display: flex; flex-direction: column; flex: 1 0 auto; overflow: visible; min-height: min-content; }
+main .picker-content .results-area:has(.empty-opening) { display: flex; flex-direction: column; flex: 1 0 auto; margin-block: 0; overflow: visible; min-height: min-content; }
 .empty-opening { flex: none; width: 100%; max-width: 33.75rem; margin: auto; padding: var(--inset); text-align: center; }
-.opening-mark { width: 2.5rem; height: 2.5rem; margin: 0 auto var(--space-3); animation: opening-breathe calc(8 * var(--motion-panel)) var(--ease-out) infinite alternate; }
-.opening-title { margin: 0; color: var(--text); font-size: 1.0625rem; line-height: var(--title-line-height); font-weight: var(--type-strong-weight); overflow-wrap: anywhere; }
-.opening-line { margin: .375rem 0 0; color: var(--muted); font-size: var(--metadata-size); line-height: var(--metadata-line-height); overflow-wrap: anywhere; }
+.opening-mark { width: 2.5rem; height: 2.5rem; margin: 0 auto var(--space-3); animation: opening-breathe calc(8 * var(--dur-panel)) var(--ease) infinite alternate; }
+.opening-title { margin: 0; color: var(--text); font-size: var(--type-title-size); line-height: var(--type-title-line); font-weight: var(--strong); overflow-wrap: anywhere; }
+.opening-line { margin: .375rem 0 0; color: var(--muted); font-size: var(--type-meta-size); line-height: var(--type-meta-line); overflow-wrap: anywhere; }
 .opening-progress { width: 10rem; max-width: 100%; margin: var(--space-4) auto 0; }
 @keyframes opening-breathe { from { opacity: .65; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) {
   .opening-mark { animation: none; }
 }
 :root[data-picker-hidden] .opening-mark { animation-play-state: paused; }
+/* Short windows compact decoration, never text or actions. */
+@media (max-height: 400px) {
+  .empty-state { padding: var(--space-2) var(--space-4); }
+  .empty-template { padding-block: var(--space-2); }
+  .empty-icon { width: var(--icon); height: var(--icon); margin-block-end: var(--space-1); }
+  .empty-keys { display: none; }
+}

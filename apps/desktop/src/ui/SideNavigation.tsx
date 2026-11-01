@@ -6,7 +6,7 @@ import "./SideNavigation.css";
 export function SideNavigation<T extends string>({ label, value, options, onChange }: {
   label: string;
   value: T;
-  options: readonly { value: T; label: string; gapBefore?: boolean }[];
+  options: readonly { value: T; label: string; tile: string; gapBefore?: boolean }[];
   onChange: (value: T) => void;
 }) {
   return (
@@ -22,6 +22,7 @@ export function SideNavigation<T extends string>({ label, value, options, onChan
             if (event.pointerType === "mouse" && option.value === value) onChange(option.value);
           }}
           render={(native) => <div {...native as ComponentPropsWithRef<"div">} aria-current={option.value === value ? "page" : undefined} />}>
+          <span className="ui-side-navigation-tile" data-page={option.value} data-tile={option.tile} aria-hidden="true" />
           {option.label}
         </ListBoxItem>
       ))}

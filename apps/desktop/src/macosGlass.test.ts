@@ -9,8 +9,8 @@ const native = read("nativeAppearance.css");
 const libraryStatus = read("ui/LibraryStatus.css");
 
 test("readable overlays use the panel surface at 92% for menus and 96% for sheets", () => {
-  expect(tokens).toMatch(/--surface-overlay:\s*color-mix\(in srgb, var\(--surface\) 92%, transparent\)/);
-  expect(tokens).toMatch(/--surface-sheet:\s*color-mix\(in srgb, var\(--surface\) 96%, transparent\)/);
+  expect(tokens).toMatch(/--overlay:\s*light-dark\(rgb\(250 250 252 \/ 92%\), rgb\(44 44 48 \/ 92%\)\)/);
+  expect(tokens).toMatch(/--sheet:\s*light-dark\(rgb\(250 250 252 \/ 96%\), rgb\(44 44 48 \/ 96%\)\)/);
 });
 
 function cssRules(source: string): CSSRule[] {
@@ -68,10 +68,9 @@ test("the shared macOS look keeps native materials guarded by accessibility pref
 
 test("macOS fills and hairlines are translucent so the native material shows through", () => {
   const { body } = macBlock();
-  for (const token of ["--line", "--fill-subtle-hover", "--fill-control", "--fill-control-hover"]) {
+  for (const token of ["--line", "--hover", "--fill", "--fill-h"]) {
     for (const [, , , alpha] of rgba(body, token)) expect(alpha, token).toBeLessThan(.2);
   }
-  expect(body).toMatch(/--separator:\s*var\(--line\)/);
 });
 
 test("only native success shows the material, under a veil; reduced transparency stays opaque", () => {
@@ -102,12 +101,12 @@ test("Acrylic text roles keep contrast over black and white backdrops in both th
       const background = tint.slice(0, 3).map((c) => c * tint[3]! + under * (1 - tint[3]!));
       // The shared macOS hover is black 4.5% / white 6%.
       const hover = background.map((c) => theme ? c * .94 + 255 * .06 : c * .955);
-      for (const role of ["--text", "--muted", "--citation", "--status-done", "--status-stop"]) {
+      for (const role of ["--text", "--muted", "--scarlet", "--done", "--stop"]) {
         const foreground = hexes(role === "--text" || role === "--muted" ? shared : roles, role)[theme]!;
         for (const fill of [background, hover]) expect(contrast(foreground, fill), `${role}/${theme}/${under}`).toBeGreaterThanOrEqual(4.5);
       }
-      expect(hexes(roles, "--status-look")).toEqual(hexes(tokens, "--status-look"));
-      expect(contrast(hexes(roles, "--status-look")[theme]!, hexes(tokens, "--surface")[theme]!)).toBeGreaterThanOrEqual(3);
+      expect(hexes(roles, "--look")).toEqual(hexes(tokens, "--look"));
+      expect(contrast(hexes(roles, "--look")[theme]!, hexes(tokens, "--surface")[theme]!)).toBeGreaterThanOrEqual(3);
     }
   }
   // Accessibility overrides follow the material rule, never exposing its tint.
@@ -155,7 +154,7 @@ test("the window edge is a hairline, never a white rim or glow (prototype round 
 });
 
 test("the Look glyph keeps the frozen colours and an opaque adjacent surface for 3:1 contrast", () => {
-  expect(hexes(tokens, "--status-look")).toEqual([[176, 122, 0], [245, 197, 66]]);
+  expect(hexes(tokens, "--look")).toEqual([[176, 122, 0], [245, 197, 66]]);
   expect(libraryStatus).toMatch(/\.status-dot\[data-health="look"\]\s*\{[^}]*outline:\s*var\(--border-width\) solid var\(--surface\)/);
 });
 
@@ -164,18 +163,18 @@ test.each(["vibrancy", "liquid-glass"])("text keeps 4.5:1 and the Look glyph 3:1
   const [light, dark] = rgba(body, "--vibrancy-tint");
   const over = (veil: [number, number, number, number], under: number) => veil.slice(0, 3).map((c) => c * veil[3] + under * (1 - veil[3]));
   const roles = materialRoles(mode);
-  expect(hexes(roles, "--status-look")).toEqual(hexes(tokens, "--status-look"));
+  expect(hexes(roles, "--look")).toEqual(hexes(tokens, "--look"));
   const [surfaceLight, surfaceDark] = hexes(tokens, "--surface");
-  const [lookLight, lookDark] = hexes(roles, "--status-look");
+  const [lookLight, lookDark] = hexes(roles, "--look");
   expect(contrast(lookLight!, surfaceLight!)).toBeGreaterThanOrEqual(3);
   expect(contrast(lookDark!, surfaceDark!)).toBeGreaterThanOrEqual(3);
-  for (const role of ["--citation", "--status-done", "--status-stop"]) {
+  for (const role of ["--scarlet", "--done", "--stop"]) {
     const [onLight, onDark] = hexes(roles, role);
     for (const under of [141, 255]) expect(contrast(onLight!, over(light!, under)), `${role} light over ${under}`).toBeGreaterThanOrEqual(4.5);
     for (const under of [0, 120]) expect(contrast(onDark!, over(dark!, under)), `${role} dark over ${under}`).toBeGreaterThanOrEqual(4.5);
   }
   // The opaque surface keeps Ibis scarlet itself.
-  expect(body).not.toMatch(/--citation/);
+  expect(body).not.toMatch(/--scarlet/);
 });
 
 test("the Copied notice window keeps its own pill border and colours", () => {
@@ -199,7 +198,7 @@ test("the frameless macOS writing toggles use the shared pressed fill", () => {
   const mac = macSkinRules().filter((rule) => rule.type === CSSRule.STYLE_RULE).map((rule) => rule.cssText).join("\n");
   const sheet = document.createElement("style");
   // jsdom does not resolve custom properties in border colours: substitute them.
-  const values: Record<string, string> = { "--clear": "transparent", "--selected-background": "rgb(10, 122, 255)", "--selected-text": "rgb(255, 255, 255)", "--line": "rgb(1, 2, 3)", "--border-width": "1px", "--stroke-control": "transparent", "--fill-control": "rgb(240, 240, 240)", "--fill-control-pressed": "rgb(220, 220, 220)", "--text": "rgb(20, 20, 20)" };
+  const values: Record<string, string> = { "--clear": "transparent", "--sel": "rgb(10, 122, 255)", "--sel-text": "rgb(255, 255, 255)", "--line": "rgb(1, 2, 3)", "--border-width": "1px", "--stroke": "transparent", "--fill": "rgb(240, 240, 240)", "--fill-p": "rgb(220, 220, 220)", "--text": "rgb(20, 20, 20)" };
   sheet.textContent = (mac.replace(/@supports[^{]*\{[^{}]*\{[^{}]*\}\s*\}/g, "") + styles + read("ui/Button.css"))
     .replace(/var\((--[\w-]+)\)/g, (whole, name: string) => values[name] ?? whole);
   document.head.append(sheet);
@@ -263,8 +262,8 @@ test.each([
   const source = read("ui/Overlay.css") + read("styles.css").replace(/@import[^;]+;/g, "") + read("ui/Menu.css") + read("ui/KeysSheet.css") + native;
   const solid = preference !== "normal" || mode !== "vibrancy" && mode !== "liquid-glass";
   sheet.textContent = overlayRules(source, preferences)
-    .replace(/var\(--surface(?:-overlay|-sheet)?\)/g, "rgb(252, 252, 253)")
-    .replace(/var\(--overlay-backdrop-filter\)/g, solid ? "none" : "blur(30px) saturate(180%)");
+    .replace(/var\(--(?:surface|overlay|sheet)\)/g, "rgb(252, 252, 253)")
+    .replace(/var\(--blur\)/g, solid ? "none" : "blur(40px) saturate(1.6)");
   document.head.append(sheet);
   document.documentElement.dataset.platform = "macos";
   document.documentElement.dataset.system = platform;
@@ -277,7 +276,7 @@ test.each([
       if (solid) {
         expect(style.getPropertyValue("backdrop-filter")).toBe("none");
       } else {
-        expect(style.getPropertyValue("backdrop-filter")).toBe("blur(30px) saturate(180%)");
+        expect(style.getPropertyValue("backdrop-filter")).toBe("blur(40px) saturate(1.6)");
       }
     }
   } finally {

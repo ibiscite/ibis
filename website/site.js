@@ -131,7 +131,7 @@ document.addEventListener("DOMContentLoaded", () => {
     for (const image of event.currentTarget.querySelectorAll("img")) image.src = image.src.split("#")[0] + `#again-${++replay}`;
   });
   import("./demo.js").then(async ({ setupDemo }) => {
-    const quiet = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--motion-panel"));
+    const quiet = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--dur-panel"));
     await new Promise(resolve => {
       const wait = () => { if (performance.now() - lastMove < quiet) requestAnimationFrame(wait); else resolve(); };
       requestAnimationFrame(wait);

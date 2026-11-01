@@ -11,7 +11,7 @@ general-login-label =
         [windows] Start when you sign in
        *[linux] Start on Login
     }
-general-login-description = Keeps the shortcut ready after you restart
+general-login-description = Keeps the shortcut ready after a restart
 general-login-place =
     { $platform ->
         [macos] System Settings > General > Login Items
@@ -29,10 +29,10 @@ general-login-refused = The system did not let { $name } change this. You can ch
 general-login-unreadable = { $name } could not check whether it starts when you { general-login-when }. Look in { general-login-place }.
 
 general-menu-bar-label = Show in Menu Bar
-general-menu-bar-description = Off, the shortcut still opens Ibis, and opening Ibis from Applications opens Settings.
+general-menu-bar-description = If hidden, open Ibis from Applications to come back here
 general-paste-title = Pasting
 general-paste-label = Paste into the app you came from
-general-paste-description = Enter pastes the citation where you were typing. Off, Enter only copies it.
+general-paste-description = Otherwise Ibis copies and you press ⌘V
 # $list is the system's permission-list name, not an interface message code.
 general-paste-allowed = Allowed in Privacy & Security › { $list }
 general-paste-allowed-note = Ibis presses ⌘V once, only in the app you opened it from.
@@ -66,7 +66,6 @@ shortcuts-use-default = Use Default
 shortcuts-change = Change…
 shortcuts-not-assigned = Not assigned
 shortcuts-configure-failed = The desktop could not open its shortcut settings. Try again.
-shortcuts-in-picker = In the picker
 shortcuts-failed = Ibis could not change the shortcut. Try again.
 shortcuts-read-failed = Ibis could not check the shortcut. Try reopening Settings.
 shortcuts-refusal-invalid = Ibis cannot use that key combination. Try another shortcut.
@@ -85,7 +84,7 @@ shortcuts-command-source = Open the Source
 shortcuts-command-settings = Settings
 shortcuts-command-quit = Quit Ibis
 shortcuts-picker-conflict = That shortcut is used for { $command }. Try another shortcut.
-shortcuts-region-search = In the search box
+shortcuts-region-search = While searching
 shortcuts-region-picker = Anywhere in Ibis
 shortcuts-region-menu = In a menu
 shortcuts-region-system = From any app
@@ -93,14 +92,14 @@ shortcuts-action-preview = Show what will be pasted
 shortcuts-action-source = Open the source
 shortcuts-action-choose-source = Choose a library
 shortcuts-action-reveal-source = Show the source in its folder
-shortcuts-action-copy = Paste or copy the highlighted reference, or the ones added to the citation, as the footer says
-shortcuts-action-add = Add the highlighted reference to the citation, or remove it
-shortcuts-action-move = Move through the results
-shortcuts-action-escape = Step back: close a menu, clear the search, then hide Ibis
-shortcuts-action-format = Choose the output format and where to remember it
-shortcuts-action-more = Open or close More
-shortcuts-action-pin = Keep Window Open, or stop keeping it open
-shortcuts-action-keys = Show this list (? works outside the search box)
+shortcuts-action-copy = Paste the citation
+shortcuts-action-add = Add another reference
+shortcuts-action-move = Move through results
+shortcuts-action-escape = Step back or hide
+shortcuts-action-format = Choose the format
+shortcuts-action-more = More actions
+shortcuts-action-pin = Keep the window open
+shortcuts-action-keys = Show this list
 shortcuts-action-settings = Open Settings
 shortcuts-action-quit = Quit Ibis
 shortcuts-action-menu-move = Move through the menu
@@ -109,7 +108,6 @@ shortcuts-action-menu-choose = Choose the item
 shortcuts-action-menu-leave = Leave the menu and return to the search
 shortcuts-or = or
 
-about-updates = Updates
 about-automatic = Check for updates automatically
 about-automatic-description = Reads a small update file from GitHub a few times a day
 about-check = Check now
@@ -136,7 +134,11 @@ look-system = System
 look-light = Light
 look-dark = Dark
 look-accent = Accent
-look-accent-description = Applies inside Ibis only.
+look-accent-multicolor = Follow the Mac · blue when the Mac is on Multicolor
+look-accent-inside = { $name } · for Ibis only
+look-density-compact = Title and authors on one line
+look-density-comfortable = Title, then authors and journal
+look-density-spacious = Adds the kind of reference
 look-accent-system = Follow the Mac
 look-accent-ibis = Ibis scarlet
 look-accent-blue = Blue

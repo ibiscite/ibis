@@ -233,7 +233,7 @@ test.each([{ coarse: false, doubled: false }, { coarse: true, doubled: false }, 
     if (this.matches("footer")) return new DOMRect(0, 500, 720, 40);
     return new DOMRect(0, 400, 720, height);
   });
-  render(<main><header className="search-bar" /><div className="shelf" style={{ flexShrink: 0, overflowY: "visible", "--shelf-line": doubled ? "80px" : "40px", "--control-min-size": doubled ? "64px" : "32px", "--touch-target": "44px" }}><section className="shelf-output" /></div><footer /></main>);
+  render(<main><header className="search-bar" /><div className="shelf" style={{ flexShrink: 0, overflowY: "visible", "--space-10": doubled ? "80px" : "40px", "--control-h": doubled ? "64px" : "32px", "--touch-target": "44px" }}><section className="shelf-output" /></div><footer /></main>);
   expect(isWholeShelf()).toBe(true);
   height = doubled ? 96 : 80;
   expect(isWholeShelf()).toBe(false);
