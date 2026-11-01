@@ -406,6 +406,8 @@ export type LibraryStatus = {
 	state: LibraryState,
 	revision: string,
 	source_generation: string,
+	/**  Whether no switch was requested, or its exact native source is the searchable source. */
+	source_is_requested: boolean,
 	/**  Whether the requested library is Zotero rather than a file. */
 	zotero: boolean,
 	/**  The Zotero libraries requested, in order; empty for a file. */

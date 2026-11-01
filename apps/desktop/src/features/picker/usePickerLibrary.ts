@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { PickerApi } from "../../App";
 import type { useOperations } from "./useOperations";
 import { useLibraryStatus } from "./useLibraryStatus";
@@ -10,16 +10,6 @@ export function usePickerLibrary(api: PickerApi, report: ReturnType<typeof useOp
   const { library, libraryVersion, refreshSnapshot } = useLibraryStatus(api, report, cancelCopy);
   const [choosingLibrary, setChoosingLibrary] = useState(false);
   const chooserRequest = useRef<object | null>(null);
-  const { onLibraryFileDropped } = api;
-  useEffect(() => {
-    let active = true;
-    const subscription = onLibraryFileDropped?.(() => {
-      if (!active) return;
-      chooserRequest.current = null;
-      setChoosingLibrary(false);
-    }).catch(() => () => undefined);
-    return () => { active = false; void subscription?.then((stop) => stop()).catch(() => undefined); };
-  }, [onLibraryFileDropped]);
   const [welcomeShown, setWelcomeShown] = useState(false);
   const busy = library?.state === "loading" || library?.state === "reloading";
   const blocked = library?.state === "error" && !library.has_snapshot;

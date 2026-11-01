@@ -1,3 +1,4 @@
+import { useCallback, useEffect } from "react";
 import type { PickerApi } from "../../App";
 import { keysFor } from "../../keys";
 import { pickerText } from "../../messages";
@@ -23,7 +24,7 @@ export function usePickerSource({ api, pickerSession, libraryState, menus, curre
   const { library, libraryChoices, chooserRequest, setChoosingLibrary, refreshSnapshot } = libraryState;
   const { input, closeMenu, setKeysOpen, restoreChooserFocus, runFromMenu, focusPicker } = menus;
   const { active, selected } = state;
-  const { chooseLibrary } = api;
+  const { chooseLibrary, onLibraryFileDropped } = api;
   const sourceItem = !libraryChoices ? current[active]?.id ?? (selected.size === 1 ? [...selected.values()][0]?.id : null) ?? null : null;
   const sourceOpen = useSourceOpen(api, library, state.visibility, sourceItem, false, refreshSnapshot);
   const chooseSources = () => {
@@ -32,11 +33,18 @@ export function usePickerSource({ api, pickerSession, libraryState, menus, curre
     chooserRequest.current = {};
     setChoosingLibrary(true);
   };
-  const dismissChooser = () => {
+  const dismissChooser = useCallback(() => {
     chooserRequest.current = null;
     restoreChooserFocus.current = true;
     setChoosingLibrary(false);
-  };
+  }, [chooserRequest, restoreChooserFocus, setChoosingLibrary]);
+  useEffect(() => {
+    let active = true;
+    const subscription = onLibraryFileDropped?.(() => {
+      if (active) dismissChooser();
+    }).catch(() => () => undefined);
+    return () => { active = false; void subscription?.then((stop) => stop()).catch(() => undefined); };
+  }, [onLibraryFileDropped, dismissChooser]);
   const performSourceChoice: typeof perform = (operation, action, isCurrent) => {
     if (operation === "findSources") return perform(operation, action, isCurrent);
     const request = {};
@@ -55,7 +63,8 @@ export function usePickerSource({ api, pickerSession, libraryState, menus, curre
     });
   };
   const chooseFile = () => runFromMenu("choose", chooseLibrary);
-  const missingSource = library?.stale && library.problem === "missing" && !library.zotero;
+  const missingSource = library?.problem === "missing" && !library.zotero && (!library.has_snapshot || library.stale ||
+    library.references === 0 && library.source_is_requested);
   const openSource = (appOnly = false, reveal = altHeld) => {
     cancelCopy();
     closeMenu(false);

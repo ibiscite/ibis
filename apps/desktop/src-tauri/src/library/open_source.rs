@@ -384,52 +384,35 @@ mod tests {
     fn an_itemless_open_from_empty_a_cannot_open_empty_b_with_the_same_snapshot() {
         use super::super::state::{LoadRequests, begin_open, install};
         let active = Mutex::new(candidate(PathBuf::from("empty-a.bib"), ""));
-        let first = super::super::status::status(&active.lock().unwrap());
+        let first = super::super::status::status(&active.lock().unwrap_or_else(|_| panic!("library lock")));
         let requests = LoadRequests::default();
-        let (request, _, opening) = begin_open(&active, &requests, PathBuf::from("empty-b.bib")).unwrap();
+        let (request, _, opening) =
+            begin_open(&active, &requests, PathBuf::from("empty-b.bib")).unwrap_or_else(|| panic!("open empty B"));
         let second = install(
             &active,
             &requests,
             request,
             Ok(candidate(PathBuf::from("empty-b.bib"), "")),
         )
-        .unwrap();
+        .unwrap_or_else(|| panic!("install empty B"));
+        let library = active.lock().unwrap_or_else(|_| panic!("library lock"));
         assert_eq!(
             first.revision, second.revision,
             "empty snapshots deliberately share their fingerprint"
         );
         assert!(
             matches!(
-                target(
-                    &active.lock().unwrap(),
-                    None,
-                    &first.revision,
-                    &first.source_generation,
-                    false
-                ),
+                target(&library, None, &first.revision, &first.source_generation, false),
                 Err(CommandError::SnapshotChanged)
             ),
             "A's delayed request must refuse instead of opening B"
         );
         assert!(matches!(
-            target(
-                &active.lock().unwrap(),
-                None,
-                &opening.revision,
-                &opening.source_generation,
-                false
-            ),
+            target(&library, None, &opening.revision, &opening.source_generation, false),
             Err(CommandError::SnapshotChanged)
         ));
         assert_eq!(
-            target(
-                &active.lock().unwrap(),
-                None,
-                &second.revision,
-                &second.source_generation,
-                false
-            )
-            .ok(),
+            target(&library, None, &second.revision, &second.source_generation, false).ok(),
             Some(Target::File("empty-b.bib".into()))
         );
     }

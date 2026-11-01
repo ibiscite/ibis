@@ -5,7 +5,7 @@ import { App } from "./App";
 import { backend, resetApp, result } from "./testing/app";
 
 afterEach(resetApp);
-const file = { source_generation: "source-1", revision: "1", state: "loaded", has_snapshot: true, zotero: false, snapshot_zotero: false,
+const file = { source_generation: "source-1", source_is_requested: true, revision: "1", state: "loaded", has_snapshot: true, zotero: false, snapshot_zotero: false,
   name: "thesis.bib", snapshot_name: "thesis.bib", references: 12, warnings: 0, error: null, problem: null, stale: false,
   zotero_libraries: [], source_counts: { "synthetic-file": 12 }, checked_at: null, updated_at: null };
 const footer = () => within(document.querySelector("footer")!);
@@ -250,6 +250,32 @@ test("itemless Command-O uses the missing-file Find recovery without attempting 
   commandO();
   await waitFor(() => expect(choose).toHaveBeenCalledOnce());
   expect(open).not.toHaveBeenCalled();
+});
+
+test.each([false, true])("Command-O finds a missing current file without stale references (snapshot: %s)", async (hasSnapshot) => {
+  const choose = vi.fn(() => null), open = vi.fn(() => null);
+  backend({ library_status: () => ({ ...file, state: "error", has_snapshot: hasSnapshot, references: 0,
+    snapshot_name: hasSnapshot ? file.name : null, stale: false, problem: "missing", error: "Invented file moved" }),
+    choose_library: choose, open_library_source: open });
+  render(<App />);
+  await waitFor(() => expect(screen.getByRole("status", { name: "Library status" }).textContent).toContain("thesis.bib"));
+  commandO();
+  await waitFor(() => expect(choose).toHaveBeenCalledOnce());
+  expect(open).not.toHaveBeenCalled();
+  fireEvent.click(footer().getByRole("button", { name: "More" }));
+  expect(await screen.findByRole("menuitem", { name: "Find ⁨thesis.bib⁩…" })).toBeTruthy();
+});
+
+test.each([0, 12])("Command-O opens the retained file after a same-named missing replacement fails (%s references)", async (references) => {
+  const choose = vi.fn(() => null), open = vi.fn(() => null);
+  backend({ library_status: () => ({ ...file, references, state: "error", stale: false, source_is_requested: false,
+    problem: "missing", error: "Invented replacement file moved" }),
+    library_source: () => ({ kind: "file", name: "thesis.bib", icon: null }), choose_library: choose, open_library_source: open });
+  render(<App />);
+  await waitFor(() => expect(screen.getByRole("status", { name: "Library status" }).textContent).toContain("thesis.bib"));
+  commandO();
+  await waitFor(() => expect(open).toHaveBeenCalledExactlyOnceWith({ item: null, expectedRevision: "1", expectedSourceGeneration: "source-1", zoteroOnly: false, reveal: false }));
+  expect(choose).not.toHaveBeenCalled();
 });
 
 test("More keeps a different footer recovery visible after a failed source switch", async () => {

@@ -9,7 +9,7 @@ import { backend, resetApp, result } from "./testing/app";
 afterEach(resetApp);
 const hour = 3_600_000;
 const library = (overrides: Partial<LibraryStatus> = {}): LibraryStatus => ({
-  source_generation: "1", revision: "1", state: "loaded", has_snapshot: true, zotero: true, snapshot_zotero: true,
+  source_generation: "1", source_is_requested: true, revision: "1", state: "loaded", has_snapshot: true, zotero: true, snapshot_zotero: true,
   zotero_libraries: ["user"], name: "Zotero library", snapshot_name: "Zotero library",
   references: 12, source_counts: { "zotero:user": 12 }, warnings: 0, error: null, problem: null,
   note: null, settings_notice: null, stale: false, checked_at: Date.now() - 2 * hour, updated_at: null, ...overrides,

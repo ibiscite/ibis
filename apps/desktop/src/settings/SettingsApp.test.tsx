@@ -1603,3 +1603,21 @@ test("manual update-check failure and retry leave the known automatic setting in
   expect(screen.queryByText("Ibis could not check for updates. Try again.")).toBeNull();
   expect(screen.getByRole("switch", { name: "Check for updates automatically" })).toBe(automatic);
 });
+
+test.each(["version copy", "manual update check"])("About keeps %s failure when delayed delight preferences finish loading", async (action) => {
+  const { api, state } = fakeApi();
+  const preferences = deferred<PickerPreferences>();
+  vi.spyOn(api, "pickerPreferences").mockReturnValueOnce(preferences.promise);
+  const writeText = vi.fn().mockRejectedValueOnce(new Error("invented clipboard failure")).mockResolvedValue(undefined);
+  Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+  vi.spyOn(api, "checkForUpdates").mockRejectedValueOnce(new Error("invented update failure")).mockResolvedValue(undefined as never);
+  const failureText = action === "version copy" ? "The version could not be copied." : "Ibis could not check for updates. Try again.";
+  const buttonName = action === "version copy" ? "Version 0.3.0" : "Check now";
+  render(<SettingsApp api={api} initialPage="about" />);
+  fireEvent.click(await screen.findByRole("button", { name: buttonName }));
+  await screen.findByText(failureText);
+  await act(async () => preferences.resolve({ ...state.preferences, small_surprises: true }));
+  expect(screen.getByText(failureText)).toBeTruthy();
+  await act(async () => fireEvent.click(screen.getByRole("button", { name: buttonName })));
+  expect(screen.queryByText(failureText)).toBeNull();
+});

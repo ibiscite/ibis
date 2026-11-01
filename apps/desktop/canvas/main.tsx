@@ -66,7 +66,7 @@ function pickerApi(scenario: Scenario, settings: SettingsApi, openSettings: (pag
   const fixed = fixtures[scenario];
   const shown = fixed?.rows ?? rows;
   const library: LibraryStatus = {
-    source_generation: "1",
+    source_generation: "1", source_is_requested: true,
     state: firstRun ? "none" : scenario === "loading" ? "loading" : scenario === "error" ? "error" : "loaded", revision: "1", has_snapshot: !firstRun && !["loading", "error"].includes(scenario),
     zotero: false, snapshot_zotero: false, zotero_libraries: [],
     name: firstRun ? null : "invented.bib", snapshot_name: firstRun ? null : "invented.bib",

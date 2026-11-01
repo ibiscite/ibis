@@ -220,17 +220,23 @@ test("a stale found-file completion cannot clear the explicit chooser's newer re
 test("an accepted file drop leaves Choose Library and shows the dropped library's results", async () => {
   const dropped = { ...library, revision: "2", name: "dropped.bib", snapshot_name: "dropped.bib" };
   let current = library;
+  const open = vi.fn(() => null);
   backend({ library_status: () => current,
+    open_library_source: open,
     search: () => ({ revision: current.revision, results: [{ ...result("dropped", "Invented dropped reference"), revision: current.revision }] }) });
   render(<App />);
   await screen.findByText("Invented dropped reference");
   act(() => search().focus());
   chooseSources();
   await screen.findByRole("option", { name: /^Use Zotero/ });
+  act(() => fileRow().focus());
   await act(async () => { await emit("library:file-dropped"); });
   current = dropped;
   await act(async () => { await emit("library:changed", dropped); });
   expect(await screen.findByText("Invented dropped reference")).toBeTruthy();
   expect(screen.queryByRole("option", { name: /^Use Zotero/ })).toBeNull();
   expect(screen.getByRole("status", { name: "Library status" }).textContent).toContain("dropped.bib");
+  expect(document.activeElement).toBe(search());
+  commandO();
+  await waitFor(() => expect(open).toHaveBeenCalledOnce());
 });

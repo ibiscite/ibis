@@ -96,6 +96,13 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   const [manualCheckFailed, setManualCheckFailed] = useState(false);
   const manualCheck = useRef(0);
   const versionCopy = useRef(0);
+  // Feedback belongs to this page presentation, independently of delight preferences.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: changing pages retires feedback and pending operations.
+  useEffect(() => {
+    setVersionCopied(false); setVersionCopyFailed(false); versionCopy.current += 1;
+    setManualCheckFailed(false); manualCheck.current += 1;
+    return () => { versionCopy.current += 1; manualCheck.current += 1; };
+  }, [page]);
   const { altHeld } = useAltHeld();
   const [about, setAbout] = useState<DelightView | null>(null);
   const [blink, setBlink] = useState(0);
@@ -105,8 +112,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     let active = true;
     let reads = 0;
     let timer: number | undefined;
-    setAbout(null); setVersionCopied(false); setVersionCopyFailed(false); versionCopy.current += 1;
-    setManualCheckFailed(false); manualCheck.current += 1;
+    setAbout(null);
     const read = (click = false) => {
       if (page !== "about" || !api.delightView) return;
       const operation = ++reads;
@@ -128,7 +134,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     clickAbout.current = () => read(true);
     read();
     window.addEventListener("focus", focusRead);
-    return () => { active = false; window.clearTimeout(timer); window.removeEventListener("focus", focusRead); clickAbout.current = () => {}; versionCopy.current += 1; manualCheck.current += 1; };
+    return () => { active = false; window.clearTimeout(timer); window.removeEventListener("focus", focusRead); clickAbout.current = () => {}; };
   }, [page, api.delightView, preferences?.small_surprises]);
   useEffect(() => { if (about?.fun === false) setBlink(0); }, [about?.fun]);
   const [forgetStatus, setForgetStatus] = useState<"idle" | "saving" | "done" | "failed">("idle");

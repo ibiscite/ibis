@@ -354,6 +354,7 @@ mod tests {
         let status = |name: Option<&str>, warnings, error: Option<&str>| LibraryStatus {
             revision: "synthetic".into(),
             source_generation: "1".into(),
+            source_is_requested: true,
             state: LibraryState::Loaded,
             zotero: false,
             zotero_libraries: Vec::new(),
