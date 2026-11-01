@@ -177,6 +177,10 @@ export const commands = {
 	 *  Hidden, the next `prepare` applies it before the window appears.
 	 */
 	setWindowSize: (size: WindowSize) => __TAURI_INVOKE<null>("set_window_size", { size }),
+	/**  The picker collects text from Search with Ibis once. */
+	takeSearchRequest: () => __TAURI_INVOKE<string | null>("take_search_request"),
+	/**  A citation segment took its place: the trackpad's alignment tick. */
+	alignmentTick: () => __TAURI_INVOKE<void>("alignment_tick"),
 	/**  Double-clicking the search bar's empty area returns Ibis to its place. */
 	resetWindowPosition: () => __TAURI_INVOKE<void>("reset_window_position"),
 	readWindowPositionUndo: () => __TAURI_INVOKE<number | null>("read_window_position_undo"),

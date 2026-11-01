@@ -50,6 +50,8 @@
     "allow-update-available",
     "allow-update-picker-activity",
     "allow-open-settings",
+    "allow-take-search-request",
+    "allow-alignment-tick",
     "allow-reset-window-position",
     "allow-read-window-position-undo",
     "allow-undo-window-position",

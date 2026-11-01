@@ -672,6 +672,8 @@ pub(crate) fn reset_position(app: &AppHandle) {
                 && let Some(window) = handle.get_webview_window("main")
                 && prepare(&handle, &window, false, true)
             {
+                #[cfg(target_os = "macos")]
+                crate::menu_bar::tick();
                 crate::picker::show_picker(&handle);
             }
         }),

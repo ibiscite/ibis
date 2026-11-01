@@ -194,7 +194,8 @@ pub(crate) async fn show_copied_notice(
         .await
     }
     .unwrap_or(Delivered::Copied { reason: None });
-    crate::tray::dip(&app);
+    #[cfg(target_os = "macos")]
+    crate::menu_bar::dip(&app);
     show(
         &app,
         NoticeMessage {

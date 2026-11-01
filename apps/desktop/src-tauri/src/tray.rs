@@ -1,9 +1,9 @@
 //! The menu bar (macOS) or tray (Windows, Linux) item.
 
+use std::sync::Mutex;
 #[cfg(target_os = "macos")]
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-#[cfg(target_os = "macos")]
-use tauri::image::Image;
+
 use tauri::menu::{CheckMenuItem, IsMenuItem, Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Manager, Runtime};
@@ -21,7 +21,7 @@ use crate::updater::{self, AutomaticMenuItem, UpdateMenuItem};
 pub(crate) fn library_line(status: &LibraryStatus) -> String {
     let line = match (status.state, &status.error, &status.name) {
         (LibraryState::Loading, _, Some(name)) => format!("Opening {name}…"),
-        (LibraryState::Reloading, _, Some(name)) => format!("Reloading {name}…"),
+        (LibraryState::Reloading, _, Some(name)) => format!("Reading {name}…"),
         // The last loaded references are still searched: say "not updated", not "could not be opened".
         (_, Some(error), _) if status.stale && status.kept_references => {
             let reason = status
@@ -81,8 +81,6 @@ pub(crate) fn show_shortcut(app: &AppHandle, shortcut: Option<&str>) {
 static HIDDEN: AtomicBool = AtomicBool::new(false);
 #[cfg(target_os = "macos")]
 static APPLIED: AtomicU64 = AtomicU64::new(0);
-#[cfg(target_os = "macos")]
-static DIPPING: AtomicBool = AtomicBool::new(false);
 
 /// Off, the shortcut still opens the picker and opening Ibis opens Settings.
 /// Saves can finish out of order, so `revision` decides; only the main thread
@@ -108,47 +106,87 @@ pub(crate) fn show_in_menu_bar<R: Runtime>(app: &AppHandle<R>, shown: bool, revi
 #[cfg(not(target_os = "macos"))]
 pub(crate) fn show_in_menu_bar<R: Runtime>(_: &AppHandle<R>, _: bool, _: u64) {}
 
-/// The bird the system tints, from `brand/`.
-#[cfg(target_os = "macos")]
-const BIRD: Image<'static> = tauri::include_image!("../../../brand/exports/png/ibis-menu-bar.png");
-#[cfg(target_os = "macos")]
-const BIRD_LOWERING: Image<'static> = tauri::include_image!("../../../brand/exports/png/ibis-menu-bar-dip-1.png");
-#[cfg(target_os = "macos")]
-const BIRD_LOWERED: Image<'static> = tauri::include_image!("../../../brand/exports/png/ibis-menu-bar-dip-2.png");
-
-/// The bird dips its beak once after a paste or copy, in 200 ms. A second
-/// citation inside the dip does not restart it, and Reduce Motion keeps it still.
-#[cfg(target_os = "macos")]
-pub(crate) fn dip(app: &AppHandle) {
-    const FRAME: std::time::Duration = std::time::Duration::from_millis(50);
-    let reduced = objc2_app_kit::NSWorkspace::sharedWorkspace().accessibilityDisplayShouldReduceMotion();
-    if reduced || hidden() || DIPPING.swap(true, Ordering::SeqCst) {
-        return;
-    }
-    let app = app.clone();
-    std::thread::spawn(move || {
-        for bird in [BIRD_LOWERING, BIRD_LOWERED, BIRD_LOWERING, BIRD] {
-            let handle = app.clone();
-            report(
-                app.run_on_main_thread(move || {
-                    if let Some(tray) = handle.tray_by_id("ibis") {
-                        report(tray.set_icon_with_as_template(Some(bird), true), NativeIssue::TrayCreation);
-                    }
-                }),
-                NativeIssue::TrayCreation,
-            );
-            std::thread::sleep(FRAME);
-        }
-        DIPPING.store(false, Ordering::SeqCst);
-    });
-}
-
-#[cfg(not(target_os = "macos"))]
-pub(crate) fn dip(_: &AppHandle) {}
-
 #[cfg(target_os = "macos")]
 pub(crate) fn hidden() -> bool {
     HIDDEN.load(Ordering::SeqCst)
+}
+
+/// ⌥-click: the version line becomes one line of local counts.
+#[cfg(target_os = "macos")]
+fn show_stats(app: &AppHandle) {
+    let held = objc2_app_kit::NSEvent::modifierFlags_class().contains(objc2_app_kit::NSEventModifierFlags::Option);
+    let Some(item) = app.try_state::<VersionMenuItem>() else {
+        return;
+    };
+    let line = if held {
+        stats_line(&current_status(app), epoch_days(std::time::SystemTime::now()))
+    } else {
+        item.1.clone()
+    };
+    report(item.0.set_text(line), NativeIssue::TrayLibrary);
+}
+
+#[cfg(target_os = "macos")]
+fn epoch_days(time: std::time::SystemTime) -> u64 {
+    time.duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |since| since.as_secs() / 86_400)
+}
+
+/// "3 libraries · 12,408 references · opened today", from local counts only.
+#[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
+fn stats_line(status: &LibraryStatus, today: u64) -> String {
+    let plural = |count: usize, noun: &str| format!("{} {noun}{}", grouped(count), if count == 1 { "" } else { "s" });
+    let mut line = format!(
+        "{} · {}",
+        plural(status.source_counts.len().max(1), "library").replace("librarys", "libraries"),
+        plural(status.references, "reference")
+    );
+    let opened = status
+        .updated_at
+        .map(|millis| today.saturating_sub(millis as u64 / 86_400_000));
+    match opened {
+        Some(0) => line.push_str(" · opened today"),
+        Some(1) => line.push_str(" · opened yesterday"),
+        Some(days) => line.push_str(&format!(" · opened {days} days ago")),
+        None => {}
+    }
+    line
+}
+
+fn grouped(count: usize) -> String {
+    let digits = count.to_string();
+    let lead = digits.len() % 3;
+    let mut text = digits[..lead].to_string();
+    for group in digits.as_bytes()[lead..].chunks(3) {
+        if !text.is_empty() {
+            text.push(',');
+        }
+        text.push_str(std::str::from_utf8(group).unwrap_or_default());
+    }
+    text
+}
+
+/// The version line and its usual text.
+#[cfg(target_os = "macos")]
+struct VersionMenuItem(MenuItem<tauri::Wry>, String);
+
+/// Text from Search with Ibis waiting for the picker: a launch may beat it.
+#[derive(Default)]
+pub(crate) struct SearchRequest(pub(crate) Mutex<Option<String>>);
+
+/// The picker collects text from Search with Ibis once.
+#[tauri::command]
+#[specta::specta]
+pub(crate) fn take_search_request(request: tauri::State<'_, SearchRequest>) -> Option<String> {
+    request.0.lock().ok().and_then(|mut waiting| waiting.take())
+}
+
+/// A citation segment took its place: the trackpad's alignment tick.
+#[tauri::command]
+#[specta::specta]
+pub(crate) fn alignment_tick() {
+    #[cfg(target_os = "macos")]
+    crate::menu_bar::tick();
 }
 
 /// The disabled menu item that shows the library line.
@@ -169,6 +207,7 @@ pub(crate) fn create_tray(app: &AppHandle, shortcut: Option<&str>) -> tauri::Res
     let name = app.package_info().name.clone();
     let quit = MenuItem::with_id(app, "quit", format!("Quit {name}"), true, None::<&str>)?;
     let version = version_line(&name, &app.package_info().version.to_string());
+    let version_text = version.clone();
     let version = MenuItem::with_id(app, "version", version, false, None::<&str>)?;
     let (first, second, third) = (
         PredefinedMenuItem::separator(app)?,
@@ -233,6 +272,10 @@ pub(crate) fn create_tray(app: &AppHandle, shortcut: Option<&str>) -> tauri::Res
         app.manage(UpdateMenuItem(now));
         app.manage(AutomaticMenuItem::new(menu.clone(), [off, on], automatic_position));
     }
+    #[cfg(target_os = "macos")]
+    app.manage(VersionMenuItem(version.clone(), version_text));
+    #[cfg(not(target_os = "macos"))]
+    let _ = version_text;
     app.manage(LibraryMenuItem(line));
     app.manage(OpenMenuItem(open.clone()));
     if let Some(at_login) = at_login {
@@ -261,6 +304,14 @@ pub(crate) fn create_tray(app: &AppHandle, shortcut: Option<&str>) -> tauri::Res
         })
         // Someone may have changed it in the system's settings since.
         .on_tray_icon_event(|tray, event| {
+            #[cfg(target_os = "macos")]
+            if let TrayIconEvent::Click {
+                button_state: tauri::tray::MouseButtonState::Down,
+                ..
+            } = event
+            {
+                show_stats(tray.app_handle());
+            }
             if matches!(event, TrayIconEvent::Click { .. } | TrayIconEvent::Enter { .. }) {
                 // Registry, file and ServiceManagement reads block: keep them
                 // off the main thread that draws the menu.
@@ -270,13 +321,15 @@ pub(crate) fn create_tray(app: &AppHandle, shortcut: Option<&str>) -> tauri::Res
         });
     #[cfg(target_os = "macos")]
     {
-        tray = tray.icon(BIRD).icon_as_template(true);
+        tray = tray.icon(crate::menu_bar::BIRD).icon_as_template(true);
     }
     #[cfg(not(target_os = "macos"))]
     if let Some(icon) = app.default_window_icon() {
         tray = tray.icon(icon.clone());
     }
-    tray.build(app)?;
+    let _tray = tray.build(app)?;
+    #[cfg(target_os = "macos")]
+    crate::menu_bar::accept_drops(app, &_tray);
     Ok(())
 }
 
@@ -322,7 +375,7 @@ mod tests {
         assert_eq!(library_line(&status(None, 0, None)), "No library chosen");
         for (state, expected) in [
             (LibraryState::Loading, "Opening refs.bib…"),
-            (LibraryState::Reloading, "Reloading refs.bib…"),
+            (LibraryState::Reloading, "Reading refs.bib…"),
         ] {
             assert_eq!(
                 library_line(&LibraryStatus {
@@ -349,6 +402,27 @@ mod tests {
             library_line(&unsaved),
             "refs.bib: 12 references (not saved for next time)"
         );
+        let counted = LibraryStatus {
+            source_counts: [("a.bib".to_string(), 12_000), ("b.bib".to_string(), 408)].into(),
+            references: 12_408,
+            updated_at: Some(20_000.0 * 86_400_000.0),
+            ..status(Some("a.bib"), 0, None)
+        };
+        assert_eq!(
+            stats_line(&counted, 20_000),
+            "2 libraries · 12,408 references · opened today"
+        );
+        assert_eq!(
+            stats_line(&counted, 20_001),
+            "2 libraries · 12,408 references · opened yesterday"
+        );
+        let single = LibraryStatus {
+            updated_at: None,
+            references: 1,
+            source_counts: Default::default(),
+            ..counted
+        };
+        assert_eq!(stats_line(&single, 20_000), "1 library · 1 reference");
         let kept = LibraryStatus {
             state: LibraryState::Error,
             name: Some("refs.bib".into()),

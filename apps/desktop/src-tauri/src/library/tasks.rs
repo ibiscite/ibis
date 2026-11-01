@@ -81,6 +81,8 @@ pub(super) fn refresh_tray(app: &AppHandle) {
             if let Some(item) = handle.try_state::<LibraryMenuItem>() {
                 report(item.0.set_text(library_line(&current)), NativeIssue::TrayLibrary);
             }
+            #[cfg(target_os = "macos")]
+            crate::menu_bar::show_reading(&handle, current.state == LibraryState::Reloading);
         }),
         NativeIssue::TrayLibrary,
     );
@@ -563,6 +565,18 @@ pub(super) fn remembered_choice(source: &Source, loaded: &Result<Loaded, LoadErr
 
 // Extensions recognised by ibis-sources (including CSL-JSON's alternate suffix).
 const LIBRARY_FILE_EXTENSIONS: &[&str] = &["bib", "bibtex", "json", "csljson"];
+
+/// Whether a dropped file's name says it is a library.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub(crate) fn accepts_library_file(path: &std::path::Path) -> bool {
+    path.extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| {
+            LIBRARY_FILE_EXTENSIONS
+                .iter()
+                .any(|known| known.eq_ignore_ascii_case(extension))
+        })
+}
 
 /// Show the system file dialog and open the chosen library. Cancelling
 /// changes nothing.

@@ -48,7 +48,7 @@ tauri-nspanel = "=2.1.1"
 # Already locked through Tauri; converts runtime AppKit icons to bounded PNGs.
 image = { version = "=0.25.10", default-features = false, features = ["png", "tiff"] }
 # Safe AppKit bindings for workspace, appearance, events and the clipboard.
-objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSWorkspace", "NSRunningApplication", "libc", "NSAccessibility", "NSColor", "NSColorSpace", "NSEvent", "NSPasteboard", "NSApplication", "NSView", "NSWindow", "NSDragging", "NSDraggingItem", "NSDraggingSession", "NSImage", "objc2-core-graphics"] }
+objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSWorkspace", "NSRunningApplication", "libc", "NSAccessibility", "NSColor", "NSColorSpace", "NSEvent", "NSPasteboard", "NSApplication", "NSView", "NSWindow", "NSDragging", "NSDraggingItem", "NSDraggingSession", "NSHapticFeedback", "NSImage", "objc2-core-graphics"] }
 # Already locked through Tauri. Reads what a key types on the active layout, so
 # a shortcut letter follows the layout (#196), and posts ⌘V to the app the
 # picker was opened from (#27).

@@ -31,6 +31,7 @@ import { useCitationCopy } from "./features/picker/useCitationCopy";
 import { useLibrarySetup } from "./features/picker/useLibrarySetup";
 import { useAltHeld } from "./features/picker/useAltHeld";
 import { HeldKeys } from "./features/picker/HeldKeys";
+import { useNativeRequests } from "./features/picker/useNativeRequests";
 import { usePickerLifecycle } from "./features/picker/usePickerLifecycle";
 import { useResultScroll } from "./features/picker/useResultScroll";
 import { useCitationFeedback } from "./features/picker/useCitationFeedback";
@@ -46,7 +47,7 @@ import type { Copied } from "./api";
 export type PickerApi = Pick<typeof nativeApi,
   "chooseLibrary" | "useZotero" | "libraryStatus" | "reloadLibrary" | "previewFileCitation" | "copyFileCitation" | "copyFormat" | "pickerPreferences" | "setPickerPreferences" |
   "hidePicker" | "pickerPresentation" | "pickerVisible" | "setPinned" | "onLibraryChanged" | "onPickerShown" | "onPickerHidden" | "quit" | "search" | "shortcutStatus"> &
-  Partial<Pick<typeof nativeApi, "onPickerPreparing" | "recentReferences" | "openLibrarySource" | "librarySource" | "useSampleLibrary" | "useZoteroLibraries" | "zoteroGroups" | "pickerDestination" | "rememberAppOutput" | "onWindowSizeSaved" | "resetWindowPosition" | "readWindowPositionUndo" | "undoWindowPosition" | "dismissWindowPositionUndo" | "onWindowReset" | "findSources" | "openFoundLibrary" | "rowContext" | "showCopiedNotice" | "loginItem" | "setLoginItem" | "onUpdateProgress" | "updateChecks" | "setUpdateChecks" | "onUpdateChecks" | "updateAvailable" | "onUpdateAvailable" | "updatePickerActivity" | "checkForUpdates" | "onShortcutStatus" | "openSettings" | "onPreferencesChanged">>;
+  Partial<Pick<typeof nativeApi, "onPickerPreparing" | "recentReferences" | "openLibrarySource" | "librarySource" | "useSampleLibrary" | "useZoteroLibraries" | "zoteroGroups" | "pickerDestination" | "rememberAppOutput" | "onWindowSizeSaved" | "takeSearchRequest" | "onSearchRequested" | "alignmentTick" | "resetWindowPosition" | "readWindowPositionUndo" | "undoWindowPosition" | "dismissWindowPositionUndo" | "onWindowReset" | "findSources" | "openFoundLibrary" | "rowContext" | "showCopiedNotice" | "loginItem" | "setLoginItem" | "onUpdateProgress" | "updateChecks" | "setUpdateChecks" | "onUpdateChecks" | "updateAvailable" | "onUpdateAvailable" | "updatePickerActivity" | "checkForUpdates" | "onShortcutStatus" | "openSettings" | "onPreferencesChanged">>;
 
 export type PickerPreview = { query?: string; copied?: Copied };
 
@@ -114,6 +115,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   });
   useLibrarySetup(library, setFailures, send, input);
   const { altHeld, setAltHeld } = useAltHeld();
+  useNativeRequests(api, setQuery, state.selected.size);
   usePickerLifecycle({ api, pickerSession, menus, destination, preferences, resetPointer, readShortcut, report, setAltHeld });
   const { resultArea, followKeyboard } = useResultScroll({
     input, active, restored: state.restored, pointer, selectedSize: selected.size, citationProblem, formatted, format, searchFocused,

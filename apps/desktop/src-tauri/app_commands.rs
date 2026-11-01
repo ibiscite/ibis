@@ -48,6 +48,8 @@ pub const APP_COMMANDS: &[&str] = &[
     "set_shortcut",
     "window_size",
     "set_window_size",
+    "take_search_request",
+    "alignment_tick",
     "reset_window_position",
     "read_window_position_undo",
     "undo_window_position",

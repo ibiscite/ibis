@@ -16,6 +16,8 @@ mod login_item;
 #[cfg(target_os = "macos")]
 mod macos_notifications;
 #[cfg(target_os = "macos")]
+mod menu_bar;
+#[cfg(target_os = "macos")]
 mod native_corners;
 mod native_feel;
 mod notice;
@@ -146,6 +148,7 @@ fn main() {
         .manage(Mutex::new(Library::default()))
         .manage(LoadRequests::default())
         .manage(SearchRequests::default())
+        .manage(tray::SearchRequest::default())
         .manage(PreviewRequests::default())
         .manage(setup::Offered::default())
         .manage(ChooserOpen::default())
