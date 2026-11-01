@@ -495,11 +495,7 @@ test("rows keep equal insets, fit intrinsic labels to the viewport and wrap at i
   expect(toolbar).toMatch(/\.toolbar-menu-popover \{[^}]*min-width: min\(300px, calc\(100vw - 16px\)\);/);
   expect(toolbar).toMatch(/\.toolbar-menu-sample \{[^}]*min-width: 0;[^}]*white-space: normal;/);
   expect(menuCss).toContain("--menu-check-width: var(--icon-small)");
-<<<<<<< HEAD
   expect(`${menuCss}${toolbar}`).not.toMatch(/\b(14|34)px\b/);
-=======
-  expect(`${menuCss}${toolbar}`).not.toMatch(/\b(10|14|34)px\b/);
->>>>>>> origin/main
 });
 
 test("the shortcuts table breaks actions only between words and keeps keys on one line at the end", () => {
