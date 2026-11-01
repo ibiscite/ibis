@@ -9,8 +9,8 @@ window's remaining controls wait in #776; scope is
 in [ROADMAP.md](../ROADMAP.md) and progress in the issues. Tags such as [C9]
 (design canvas) and [D7] (token foundations) are cited by code and tests; keep
 each beside its rule. This page, `tokens.css` and the components in
-`apps/desktop/src/ui/` are the single source of truth for design; the design
-canvas mirrors them (see **How the design changes**).
+`apps/desktop/src/ui/` are the design in code; the design canvas shows the
+same design and must never differ from them (see **How the design changes**).
 
 ## Principles
 
@@ -1813,13 +1813,17 @@ scheduled.
   screen.
 - A visual bug is fixed in the rule or component that allowed it, with a check
   (a regression test) so it cannot return.
-- The repository is the single source of truth: this page, `tokens.css` and
-  `src/ui/`. The maintainer's design canvas mirrors them for visual review and
-  is brought up to date after a design change merges; where the two differ,
-  the repository wins and the canvas is fixed. A choice explored on the canvas
-  counts only once it is written here, in place, with a [C] tag; the stale
-  text it replaces is deleted in the same change, never left as a
-  "superseded" layer.
+- The canvas and the repository are one design, never two (maintainer,
+  2026-11-01). The canvas is where the maintainer sees and corrects the design;
+  this page, `tokens.css` and `src/ui/` are what the code uses. Every change
+  lands in both on the same day: a canvas decision is written here, in place,
+  with a [C] tag, and the stale text it replaces is deleted in the same
+  change, never left as a "superseded" layer. To keep them from drifting, the
+  canvas paints with the app's own values: its token names and numbers are
+  those of `tokens.css`, and once `tokens.css` carries them it loads that file
+  as is. Its components use the names in `src/ui/`. If a mismatch slips
+  through, fix whichever side is wrong the same day, so both show the same
+  thing.
 - Code that does not yet match this page is listed in one design-system issue
   and fixed in the code; the rule changes only when the maintainer changes it.
 - Values marked as measured need native evidence on each platform (#774).
