@@ -2,8 +2,8 @@
 //! with Ibis from the Services menu, and the trackpad's alignment tick.
 #![allow(unsafe_code)]
 
-use std::sync::{Once, OnceLock};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Once, OnceLock};
 use std::time::Duration;
 
 use objc2_app_kit::{
