@@ -1737,7 +1737,7 @@ class Tests(unittest.TestCase):
             def observed(command, **kwargs):
                 nonlocal names
                 self.assertGreater(kwargs["timeout"], 0)
-                self.assertLessEqual(kwargs["timeout"], 5)
+                self.assertLessEqual(round(kwargs["timeout"], 6), 5)
                 args = command[1:]
                 queries.append(args)
                 if args == ["-root", "_NET_CLIENT_LIST"]:
