@@ -1055,10 +1055,10 @@ test.each([1, 20])("the %i-result heading keeps its English word order on an RTL
 });
 
 test("every system shares the Mac focus ring and accessibility overrides", () => {
-  expect(styles).toMatch(/:focus-visible:not\(\.ui-button, \.menu-item\)\s*\{[^}]*outline:\s*var\(--focus-ring-width\) solid var\(--focus-ring-color\)/);
-  expect(tokens).toMatch(/--focus-ring-color:\s*var\(--accent\)/);
-  expect(tokens).not.toMatch(/:root\[data-platform="windows"\]\s*\{[^}]*--focus-ring-color/);
-  expect(tokens).toContain("--focus-ring-color: CanvasText");
+  expect(styles).toMatch(/:focus-visible:not\(\.ui-button, \.menu-item\)\s*\{[^}]*outline:\s*var\(--ring-width\) solid var\(--ring\)/);
+  expect(tokens).toMatch(/--ring:\s*var\(--accent\)/);
+  expect(tokens).not.toMatch(/:root\[data-platform="windows"\]\s*\{[^}]*--ring/);
+  expect(tokens).toContain("--ring: CanvasText");
 });
 
 
@@ -1398,10 +1398,10 @@ test("the design scale keeps text readable and every colour role legible in both
     return [found![1]!, found![2]!];
   };
   const surface = pair("--surface");
-  for (const role of ["--muted", "--citation", "--status-done", "--status-look", "--status-stop"]) {
+  for (const role of ["--muted", "--scarlet", "--done", "--look", "--stop"]) {
     pair(role).forEach((colour, mode) => {
       const [lighter, darker] = [luminance(hex(colour)), luminance(hex(surface[mode]!))].sort((a, b) => b - a);
-      expect((lighter! + .05) / (darker! + .05), `${role} in ${mode ? "dark" : "light"} mode`).toBeGreaterThanOrEqual(role === "--status-look" ? 3 : 4.5);
+      expect((lighter! + .05) / (darker! + .05), `${role} in ${mode ? "dark" : "light"} mode`).toBeGreaterThanOrEqual(role === "--look" ? 3 : 4.5);
     });
   }
 });
@@ -1656,7 +1656,7 @@ test("rows with the same first author and year are told apart by their container
   // container is only as wide as its text, so it sits beside its separator.
   expect(styles).not.toMatch(/match-parent/);
   // It keeps its own width beside a long title, as in the prototype, capped and ellipsized.
-  expect(styles).toMatch(/\.result-first-author \{ flex: none; max-width: var\(--meta-part-max-width\);[^}]*text-overflow: ellipsis/);
+  expect(styles).toMatch(/\.result-first-author \{ flex: none; max-width: 30%;[^}]*text-overflow: ellipsis/);
   // A very narrow Compact row gives the title its own line instead.
   expect(styles).toMatch(/@container \(max-width: 16em\) \{\s*:root\[data-density="compact"\] \.result-line \{ flex-wrap: wrap; row-gap: 0; \}\s*:root\[data-density="compact"\] \.result-title \{ flex-basis: 100%; \}/);
   expect(line?.textContent).toBe("Sleep spindlesGarcía et al.");

@@ -288,8 +288,8 @@ const tokens = readFileSync(new FileURL("../tokens.css", import.meta.url), "utf8
 test("menu role tokens exist, forced colours frame the button, and reduced motion removes movement", () => {
   const definitions = new Set([...(tokens + menuCss + toolbarCss + buttonCss).matchAll(/(--[\w-]+)\s*:/g)].map((match) => match[1]));
   expect([...(menuCss + toolbarCss + buttonCss).matchAll(/var\((--[\w-]+)/g)].map((match) => match[1]).filter((name) => !definitions.has(name))).toEqual([]);
-  expect(buttonCss).toMatch(/border: var\(--border-width\) solid var\(--stroke-control\)/);
-  expect(tokens).toMatch(/forced-colors: active[\s\S]*--stroke-control: ButtonText/);
+  expect(buttonCss).toMatch(/border: var\(--border-width\) solid var\(--stroke\)/);
+  expect(tokens).toMatch(/forced-colors: active[\s\S]*--stroke: ButtonText/);
   expect(menuCss).toMatch(/background: Highlight; color: HighlightText/);
   expect(menuCss).toMatch(/prefers-reduced-motion: reduce[\s\S]*--menu-enter-transform: none; --menu-open-duration: 100ms/);
 });
@@ -322,7 +322,7 @@ test("an empty filter keeps the menu open and Escape still contains the layer", 
 });
 
 test("menu popovers use the shared overlay shadow and scalable native row metrics", () => {
-  expect(tokens).toContain("--shadow-overlay: 0 12px 32px rgb(0 0 0 / 16%);");
+  expect(tokens).toContain("--shadow-overlay: 0 0 0 .5px rgb(0 0 0 / 12%), 0 12px 32px rgb(0 0 0 / 16%);");
   expect(menuCss).toContain("box-shadow: var(--shadow-overlay);");
   expect(tokens + menuCss).not.toMatch(/--menu-shadow\s*:/);
   expect(menuCss).toMatch(/windows"\] \.menu-popover\s*\{[^}]*--menu-item-height: 2rem/);
@@ -407,5 +407,5 @@ test.each([[false, "action"], [false, "Escape"], [true, "action"], [true, "Escap
 test("the filter field shows its caret and no ring, except with contrast or forced colours", () => {
   expect(toolbarCss).not.toMatch(/caret-color/);
   expect(toolbarCss).toMatch(/\.toolbar-menu-filter input:focus-visible \{ outline: 0; box-shadow: none; \}/);
-  expect(toolbarCss).toMatch(/prefers-contrast: more\), \(forced-colors: active\) \{\s*\.toolbar-menu-filter input:focus-visible \{ outline: var\(--focus-ring-width\)/);
+  expect(toolbarCss).toMatch(/prefers-contrast: more\), \(forced-colors: active\) \{\s*\.toolbar-menu-filter input:focus-visible \{ outline: var\(--ring-width\)/);
 });

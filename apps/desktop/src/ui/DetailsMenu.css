@@ -1,11 +1,11 @@
-.details-menu { width: min(36rem, calc(100vw - 2 * var(--overlay-margin))); }
+.details-menu { width: min(36rem, calc(100vw - 2 * var(--inset))); }
 .details-menu-events { display: contents; }
 .details-menu-body { display: flex; flex-direction: column; min-height: 0; outline: none; }
 .details-menu-heading { display: flex; flex: none; align-items: center; gap: var(--space-2); padding-block: var(--space-2) 0; padding-inline: var(--space-4) var(--space-2); }
-.details-menu-heading h2 { flex: 1; min-width: 0; margin: 0; font: inherit; font-weight: var(--type-strong-weight); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.details-menu-heading h2 { flex: 1; min-width: 0; margin: 0; font: inherit; font-weight: var(--strong); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .details-menu-scroll { min-height: 0; padding: var(--space-2) var(--space-2) var(--space-4); }
 .details-menu-scroll > :not(ul) { margin-inline: var(--space-2); }
-.details-menu-scroll h3 { margin-block: var(--space-2); font: inherit; font-weight: var(--type-strong-weight); }
+.details-menu-scroll h3 { margin-block: var(--space-2); font: inherit; font-weight: var(--strong); }
 /* The open menu owns input and its scrollbar. The preserved browsing area
    behind it must not paint another bar. */
 [aria-hidden="true"] .picker-content, [aria-hidden="true"] .results-area { scrollbar-width: none; }

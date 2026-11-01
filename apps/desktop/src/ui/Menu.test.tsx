@@ -582,5 +582,5 @@ test.each([
 test("wrapped menu labels retain vertical padding and scalable minimum heights", () => {
   expect(menuCss).toMatch(/\.menu-item \{[^}]*padding-block: var\(--space-1\)/);
   expect(menuCss).toMatch(/--menu-item-height: 1\.75rem/);
-  expect(menuCss).toMatch(/font: var\(--metadata-size\) \/ var\(--metadata-line-height\)/);
+  expect(menuCss).toMatch(/font: var\(--type-meta-size\) \/ var\(--type-meta-line\)/);
 });

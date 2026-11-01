@@ -1,8 +1,8 @@
 /* Shared library status controls use the footer's existing geometry and roles. */
-.library-status-controls { flex: 1; min-width: min(var(--library-min-width), 100%); display: flex; align-items: center; gap: var(--space-1); }
-[data-status-compact] > .library-status-controls { min-width: calc(var(--tile-size) + var(--row-gap)); }
+.library-status-controls { flex: 1; min-width: min(14rem, 100%); display: flex; align-items: center; gap: var(--space-1); }
+[data-status-compact] > .library-status-controls { min-width: calc(var(--tile) + var(--row-gap)); }
 /* The native button owns its visible status and a non-collapsing hit target. */
-.library-status-target { flex: 1; min-width: var(--control-min-size); position: relative; isolation: isolate; }
+.library-status-target { flex: 1; min-width: var(--control-h); position: relative; isolation: isolate; }
 /* Text, not a band: hovering it brightens the words and paints no fill. */
 .ui-button.library-status-trigger[data-variant] { position: relative; width: 100%; padding-inline: 0; border-radius: var(--r-tile); color: var(--muted); background: transparent; }
 .ui-button.library-status-trigger[data-variant]:is([data-hovered], [data-pressed], [aria-expanded="true"]) { color: var(--text); background: transparent; }

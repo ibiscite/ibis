@@ -1,19 +1,202 @@
-/* The design language of the picker (docs/design.md, #223): one type
-   scale, a 4 px grid, three row densities, calm motion and colour roles.
-   Sizes are in rem so the system and "Larger text" settings scale them. */
+/* Ibis tokens. These are the canvas's tokens, with the same names and values;
+   change the canvas first, then this file (docs/design.md, "One foundation").
+   Sizes are in rem so the system and Larger text settings scale them; radii
+   stay px, matching the native corner. Every look is built from these: a part
+   that needs a new value changes the canvas, not its own stylesheet. */
 :root {
-  /* Type: size / line height. Nothing is smaller than 12 px. */
-  --type-search-size: 1.375rem; --type-search-line: 1.75rem;     /* 22/28 */
-  --type-title-size: .9375rem; --type-title-line: 1.25rem;        /* 15/20 */
-  --type-page-title-size: 1.75rem; --type-page-title-line: 2.25rem; /* 28/36 */
-  --type-body-size: .875rem; --type-body-line: 1.25rem;           /* 14/20 */
-  --type-meta-size: .8125rem; --type-meta-line: 1.125rem;         /* 13/18 */
-  --type-label-size: .75rem; --type-label-line: 1rem;             /* 12/16 */
-  --type-citation-size: .8125rem;                                 /* 13 */
-  --type-strong-weight: 600;
-  --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
+  /* Space, on a 4 px grid. S = --inset keeps every fill S from a window edge or divider. */
+  --space-1: .25rem; --space-2: .5rem; --space-3: .75rem; --space-4: 1rem;
+  --space-5: 1.25rem; --space-6: 1.5rem; --space-8: 2rem; --space-10: 2.5rem;
+  --inset: var(--space-2);
+  --row-pad: var(--space-3); --row-gap: var(--space-3); --row-spacing: 2px;
+  --row-compact: 2.5rem; --row-comfortable: 3.625rem; --row-spacious: 4.75rem;
+  --row-height: var(--row-comfortable);
+  --larger-text-scale: 1.15;
 
-  /* Website reading and rhythm; page composition stays in website/style.css. */
+  /* Sizes. */
+  --tile: 2rem; --icon: 1.25rem; --icon-small: 1rem; --icon-stroke: 1.5; --key: 1.25rem;
+  --control-h: 2rem; --field-h: 2.25rem; --touch-target: 2.75rem; --border-width: 1px;
+  --status-dot: .5rem; --chip-h: 1.5rem;
+  /* The search glyph sits on the tile column and the query on the title column. */
+  --lead: calc(var(--row-pad) + (var(--tile) - var(--icon)) / 2);
+  --lead-gap: calc((var(--tile) - var(--icon)) / 2 + var(--row-gap));
+
+  /* Corners nest: each is its container's minus the gap between them. */
+  --r-win: 16px; --r-row: 8px; --r-tile: 6px; --r-control: 8px; --r-key: 5px;
+  --r-menu: 12px; --menu-pad: 6px; --r-mi: 6px; --r-full: 999px;
+
+  /* Type: size / line. Nothing is smaller than 12 px. */
+  --type-search-size: 1.375rem; --type-search-line: 1.75rem;
+  --type-page-title-size: 1.75rem; --type-page-title-line: 2.25rem;
+  --type-title-size: .9375rem; --type-title-line: 1.25rem;
+  --type-body-size: .875rem; --type-body-line: 1.25rem;
+  --type-meta-size: .8125rem; --type-meta-line: 1.125rem;
+  --type-label-size: .75rem; --type-label-line: 1rem;
+  --strong: 600;
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
+
+  /* Motion: feedback, panels, exits. No bounce. */
+  --dur: 120ms; --dur-panel: 200ms; --dur-exit: 80ms;
+  --ease: cubic-bezier(.2, .8, .2, 1); --ease-in: cubic-bezier(.4, 0, 1, 1);
+
+  /* Layers. */
+  --z-content: 0; --z-chrome: 1; --z-overlay: 10; --z-modal: 30; --z-toast: 40;
+
+  /* Depth. */
+  --shadow-card: 0 0 0 .5px rgb(0 0 0 / 10%), 0 1px 2px rgb(0 0 0 / 8%), 0 8px 20px -8px rgb(0 0 0 / 18%);
+  --shadow-overlay: 0 0 0 .5px rgb(0 0 0 / 12%), 0 12px 32px rgb(0 0 0 / 16%);
+  --shadow-dialog: 0 24px 48px rgb(0 0 0 / 22%);
+  --shadow-toast: 0 8px 16px rgb(0 0 0 / 18%);
+  --shadow-thumb: 0 0 0 .5px rgb(0 0 0 / 12%), 0 1px 2px rgb(0 0 0 / 22%);
+  --thumb: #fff;
+  --blur: none;
+
+  /* Focus: one ring, keyboard only. */
+  --ring-width: 2px; --ring-offset: 1px;
+
+  /* Colour, with system colours underneath for older webviews. */
+  --surface: Canvas; --raised: Canvas; --overlay: Canvas; --sheet: Canvas;
+  --text: CanvasText; --muted: CanvasText; --tertiary: CanvasText; --disabled: GrayText;
+  --line: GrayText; --stroke: transparent;
+  --accent: Highlight; --accent-text: var(--accent); --on-accent: HighlightText;
+  --sel: Highlight; --sel-text: HighlightText; --sel-muted: currentColor;
+  --ring: var(--accent);
+  --scarlet: CanvasText; --scarlet-tile: CanvasText; --on-scarlet: #fff;
+  --done: CanvasText; --look: CanvasText; --stop: CanvasText;
+  --hover: color-mix(in srgb, var(--text) 4.5%, transparent);
+  --fill: color-mix(in srgb, var(--text) 5%, transparent);
+  --fill-h: color-mix(in srgb, var(--text) 9%, transparent);
+  --fill-p: color-mix(in srgb, var(--text) 14%, transparent);
+  --field: var(--fill);
+  --chip: color-mix(in srgb, var(--text) 8%, transparent);
+  --on-fill-h: rgb(0 0 0 / 8%); --on-fill-p: rgb(0 0 0 / 16%);
+  --accent-h: color-mix(in srgb, var(--accent) 90%, var(--text));
+  --accent-p: color-mix(in srgb, var(--accent) 80%, var(--text));
+  --scrim: rgb(0 0 0 / 30%);
+  --scrollbar-thumb: color-mix(in srgb, var(--text) 26%, transparent);
+  --scroll-fade: 14px;
+
+  /* Settings: a grouped form beside a sidebar. */
+  --grouped: var(--surface); --grouped-card: var(--surface); --sidebar: var(--surface);
+  --titlebar-height: 3.25rem;
+  --sidebar-width: min(12rem, 26%);
+  --highlight: color-mix(in srgb, var(--accent) 14%, var(--grouped-card));
+
+  /* The accents Look offers; each brings its own text colour. */
+  --accent-choice: var(--accent-blue); --accent-choice-on: #fff;
+  --accent-ibis: light-dark(#c23a1c, #ff7a5c); --accent-ibis-on: light-dark(#ffffff, #171717);
+  --accent-blue: #0064e1; --accent-purple: #953d96; --accent-pink: #c8317d; --accent-red: #c42b30;
+  --accent-orange: #b25300; --accent-yellow: #8a6a00; --accent-green: #3b7f25; --accent-graphite: #6e6e73;
+}
+
+@media (prefers-reduced-motion: reduce) { :root { --dur: 100ms; --dur-panel: 1ms; } }
+
+/* The canvas's light and dark values. */
+@supports (color: light-dark(white, black)) {
+  :root {
+    --scarlet: light-dark(#c23a1c, #ff7a5c); --scarlet-tile: light-dark(#c23a1c, #d2401f);
+    --done: light-dark(#1a7f37, #5bc26f); --look: light-dark(#8a5a00, #e3b341); --stop: light-dark(#c4314b, #ff8a8a);
+    --sel: light-dark(#0a63d6, #0a6fe0); --sel-text: #fff; --on-accent: #fff; --sel-muted: rgb(255 255 255 / 82%);
+    --scrim: light-dark(rgb(0 0 0 / 20%), rgb(0 0 0 / 40%));
+  }
+}
+@supports (color: light-dark(white, black)) {
+  @media (prefers-contrast: no-preference) and (forced-colors: none) {
+    :root:not(.notice-window) {
+      --surface: light-dark(#fcfcfd, #242426); --raised: light-dark(#f3f3f5, #2d2d30);
+      --overlay: light-dark(#fdfdfe, #2b2b2e); --sheet: var(--overlay);
+      --text: light-dark(#16181d, #f5f5f7); --muted: light-dark(#4c5260, #c0c3cc);
+      --tertiary: light-dark(#747a86, #9a9da6); --disabled: light-dark(#a3a7b0, #6d7079);
+      --line: light-dark(rgb(0 0 0 / 10%), rgb(255 255 255 / 10%));
+      --hover: light-dark(rgb(0 0 0 / 4.5%), rgb(255 255 255 / 6%));
+      --fill: light-dark(rgb(0 0 0 / 5%), rgb(255 255 255 / 8%));
+      --fill-h: light-dark(rgb(0 0 0 / 9%), rgb(255 255 255 / 13%));
+      --fill-p: light-dark(rgb(0 0 0 / 14%), rgb(255 255 255 / 18%));
+      --chip: light-dark(rgb(0 0 0 / 8%), rgb(255 255 255 / 10%));
+      --grouped: light-dark(color-mix(in srgb, var(--text) 4%, var(--surface)), var(--surface));
+      --grouped-card: light-dark(var(--surface), color-mix(in srgb, var(--text) 6%, var(--surface)));
+      --sidebar: light-dark(color-mix(in srgb, var(--text) 7%, var(--surface)), color-mix(in srgb, var(--text) 3%, var(--surface)));
+      /* The veil over the native material, so text stays legible on any wallpaper. */
+      --vibrancy-tint: light-dark(rgb(250 250 252 / 75%), rgb(30 30 34 / 75%));
+      --glass-edge: light-dark(rgb(0 0 0 / 10%), rgb(255 255 255 / 10%));
+    }
+    /* Over the veiled material, text roles keep 4.5:1. */
+    :root[data-platform="macos"][data-native-appearance="vibrancy"]:not(.notice-window),
+    :root[data-platform="macos"][data-native-appearance="liquid-glass"]:not(.notice-window) {
+      --scarlet: light-dark(#982d16, #ff9d87);
+      --done: light-dark(#135f29, #6fca81);
+      --look: light-dark(#8a5a00, #e3b341);
+      --stop: light-dark(#9b273b, #ff9c9c);
+    }
+  }
+}
+
+/* The system's accent; Look's choice, below, replaces it. */
+@supports (color: AccentColor) { :root { --accent: AccentColor; } }
+/* WKWebView resolves AccentColorText to black, so macOS uses its list colours. */
+@supports (background: -apple-system-selected-content-background) and (color: -apple-system-alternate-selected-text) {
+  :root[data-system="macos"] { --sel: -apple-system-selected-content-background; --sel-text: -apple-system-alternate-selected-text; }
+}
+/* Other systems keep their own selection pair. */
+:root[data-system="windows"], :root[data-system="linux"] { --accent: Highlight; --sel: Highlight; --sel-text: HighlightText; }
+:root[data-system="windows"] { --font: "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif; }
+:root[data-system="linux"] { --font: system-ui, "Adwaita Sans", Cantarell, sans-serif; }
+
+/* Only a panel material that really applied can supply glass. */
+@supports (color: light-dark(white, black)) and ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  @media (prefers-contrast: no-preference) and (forced-colors: none) and (prefers-reduced-transparency: no-preference) {
+    :root[data-platform="macos"][data-native-appearance="vibrancy"]:not(.notice-window),
+    :root[data-platform="macos"][data-native-appearance="liquid-glass"]:not(.notice-window) {
+      --overlay: color-mix(in srgb, var(--surface) 92%, transparent);
+      --sheet: color-mix(in srgb, var(--surface) 96%, transparent);
+      --blur: blur(30px) saturate(180%);
+    }
+  }
+}
+
+/* Increase Contrast and forced colours: system colours, solid edges, no depth. */
+@media (prefers-contrast: more), (forced-colors: active) {
+  :root, :root[data-platform] {
+    --shadow-card: none; --shadow-overlay: none; --shadow-dialog: none; --shadow-toast: none; --shadow-thumb: none;
+    --surface: Canvas; --raised: Canvas; --overlay: Canvas; --sheet: Canvas; --grouped: Canvas; --grouped-card: Canvas; --sidebar: Canvas;
+    --text: CanvasText; --muted: CanvasText; --tertiary: CanvasText; --line: CanvasText; --stroke: CanvasText;
+    --sel: Highlight; --sel-text: HighlightText; --sel-muted: currentColor;
+    --ring: CanvasText; --ring-offset: 2px; --scrollbar-thumb: CanvasText; --scrim: Canvas;
+    --scarlet: CanvasText; --scarlet-tile: CanvasText; --on-scarlet: Canvas;
+    --done: CanvasText; --look: CanvasText; --stop: CanvasText;
+  }
+}
+@media (forced-colors: active) {
+  :root, :root[data-platform] { --stroke: ButtonText; --line: ButtonText; --on-fill-h: transparent; --on-fill-p: transparent; }
+}
+
+:root[data-accent="system"] { --accent-choice: conic-gradient(var(--accent-pink), var(--accent-red), var(--accent-orange), var(--accent-yellow), var(--accent-green), var(--accent-blue), var(--accent-purple), var(--accent-pink)); }
+:root[data-accent="ibis"] { --accent-choice: var(--accent-ibis); --accent-choice-on: var(--accent-ibis-on); }
+:root[data-accent="blue"] { --accent-choice: var(--accent-blue); }
+:root[data-accent="purple"] { --accent-choice: var(--accent-purple); }
+:root[data-accent="pink"] { --accent-choice: var(--accent-pink); }
+:root[data-accent="red"] { --accent-choice: var(--accent-red); }
+:root[data-accent="orange"] { --accent-choice: var(--accent-orange); }
+:root[data-accent="yellow"] { --accent-choice: var(--accent-yellow); }
+:root[data-accent="green"] { --accent-choice: var(--accent-green); }
+:root[data-accent="graphite"] { --accent-choice: var(--accent-graphite); }
+
+@media (prefers-contrast: no-preference) and (forced-colors: none) {
+  :root[data-appearance][data-accent]:not([data-accent="system"]):not(.notice-window) {
+    --accent: var(--accent-choice); --sel: var(--accent-choice);
+    --sel-text: var(--accent-choice-on); --on-accent: var(--accent-choice-on);
+    --accent-h: color-mix(in srgb, var(--accent) 92%, black);
+    --accent-p: color-mix(in srgb, var(--accent) 84%, black);
+    --accent-text: light-dark(var(--accent-choice), color-mix(in srgb, var(--accent-choice), white 55%));
+  }
+}
+:root[data-appearance="light"] { color-scheme: light; }
+:root[data-appearance="dark"] { color-scheme: dark; }
+:root.settings-window[data-larger-text="true"] { font-size: calc(100% * var(--larger-text-scale)); }
+
+/* The website's reading rhythm; page composition stays in website/style.css. */
+:root {
   --font-reading: "Iowan Old Style", Charter, "Palatino Linotype", Cambria, Georgia, serif;
   --type-reading-size: 1rem; --type-heading-size: 1.25rem;
   --website-margin: 17rem; --website-gap: clamp(2rem, 4.5vw, 4rem);
@@ -22,421 +205,6 @@
   --website-section-pad: clamp(2rem, 4vw, 2.75rem);
   --website-chip-radius: 5px; --website-press: .96; --website-reveal: 12px;
   --website-button-height: 2.25rem;
-  --website-shadow: 0 1.5rem 3.5rem rgb(0 0 0 / 12%), 0 2px 6px rgb(0 0 0 / 5%);
-
-  /* Space and size on a 4 px grid. */
-  --space-1: .25rem; --space-2: .5rem; --space-3: .75rem; --space-4: 1rem;
-  --space-5: 1.25rem; --space-6: 1.5rem; --space-8: 2rem; --space-10: 2.5rem;
-  /* One geometry chain (docs/design.md, "Layout and geometry" and "Corners"):
-     the shared macOS look sets the outer radius and floor; inner radii use
-     fixed shape insets.
-     Radii stay px, matching the native corner; layout sizes and spacing are
-     rem, so Larger text keeps edges aligned without changing the shape. */
-  --inset: var(--space-2);      /* window edge to the field, the list and the footer */
-  --field-h: 2.25rem;           /* tallest header control: macOS pin */
-  --row-pad: var(--space-3);    /* row side padding */
-  --row-gap: var(--space-3);    /* tile to text */
-  --row-spacing: 2px; /* between rows in results, Recently added and choice lists [C4] */
-  --search-bar-height: calc(var(--field-h) + 2 * var(--inset)); /* band only; divider outside */
-  --footer-height: 2.5rem;
-  --footer-action-height: 1.75rem;
-  --footer-hint-label-display: inline;
-  --control-min-size: 2rem;
-  --touch-target: 2.75rem;
-  --icon-glyph-size: 1.25rem;
-  --icon-stroke: 1.5;
-  --row-compact: 2.5rem;       /* one line */
-  --row-comfortable: 3.625rem; /* two lines, the default */
-  --row-spacious: 4.75rem;     /* three lines */
-  --row-height: var(--row-comfortable);
-  --larger-text-scale: 1.15;
-  /* C15 shapes stay fixed as text grows; these are the 8/12 px baseline
-     shape insets, independent of the rem spacing used for layout. */
-  --r-win: 16px; /* matches native_corners.rs on every macOS version */
-  --r-min: 6px;
-  --r-row: max(var(--r-min), calc(var(--r-win) - 8px));  /* rows, search field */
-  --r-tile: max(var(--r-min), calc(var(--r-row) - 12px)); /* type tile */
-  --r-menu: 12px;
-  --menu-pad: 6px;
-  --r-mi: max(var(--r-min), calc(var(--r-menu) - var(--menu-pad)));  /* menu items */
-  --status-dot-size: .5rem;
-  /* Scroll areas (ui/ScrollArea.css): the system's own bars, and the depth of
-     the fade at an edge with more content beyond it. */
-  --scrollbar-thumb: color-mix(in srgb, var(--text) 26%, transparent); --scroll-fade-size: 14px;
-  --menu-min-width: 14rem;
-  --r-dialog: var(--r-win);
-  --scrim: rgb(0 0 0 / 30%);
-  --shadow-card: 0 0 0 .5px rgb(0 0 0 / 10%), 0 1px 2px rgb(0 0 0 / 8%), 0 8px 20px -8px rgb(0 0 0 / 18%);
-  --shadow-overlay: 0 12px 32px rgb(0 0 0 / 16%);
-  --shadow-dialog: 0 24px 48px rgb(0 0 0 / 22%);
-  --shadow-toast: 0 8px 16px rgb(0 0 0 / 18%);
-  /* The white knob of a switch and the raised segment of a segmented control. */
-  --control-thumb: #fff;
-  --shadow-thumb: 0 0 0 .5px rgb(0 0 0 / 12%), 0 1px 2px rgb(0 0 0 / 22%);
-
-  /* Motion: feedback, panels, layout. No bounce. */
-  --motion-feedback: 120ms;
-  --motion-panel: 200ms;
-  --ease-out: cubic-bezier(.2, .8, .2, 1);
-  --ease-in: cubic-bezier(.4, 0, 1, 1); --motion-exit: 80ms;
-
-  /* Colour roles. System accent by default; Look can choose Ibis scarlet. */
-  --citation: CanvasText;
-  /* The fill of a row's added tile behind its white check: the citation
-     scarlet in light mode, the deeper brand scarlet in dark mode, so the
-     check keeps 4.5:1 and the tile still stands 3:1 off the dark surface. */
-  --citation-tile: var(--citation);
-  --status-done: CanvasText;
-  --status-look: CanvasText;
-  --status-stop: CanvasText;
-}
-
-/* Text roles pass 4.5:1; the Look glyph uses its shared opaque edge for 3:1. */
-@supports (color: light-dark(white, black)) {
-  :root {
-    --citation: light-dark(#c23a1c, #ff7a5c);
-    --citation-tile: light-dark(#c23a1c, #d2401f);
-    --status-done: light-dark(#1a7f37, #5bc26f);
-    --status-look: light-dark(#b07a00, #f5c542);
-    --status-stop: light-dark(#c4314b, #ff8a8a);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  :root { --motion-feedback: 100ms; --motion-panel: 1ms;}
-}
-
-/* System colours follow light/dark mode, the accent and high contrast. */
-:root {
-  --surface: Canvas;
-  --text: CanvasText;
-  --muted: CanvasText;
-  --line: GrayText;      /* control edges that need 3:1: fields, contrast modes */
-  --separator: var(--line); /* dividers between regions; quieter per look below */
-  --active-edge: CanvasText;
-  --accent: Highlight;
-  --font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-  --fill: var(--fill-control);
-  --fill-control: color-mix(in srgb, var(--text) 4%, var(--surface));
-  --fill-control-hover: color-mix(in srgb, var(--text) 8%, var(--surface));
-  /* Buttons and key caps are fills without an edge, as in macOS toolbars;
-     contrast modes add a solid stroke. */
-  --stroke-control: var(--clear);
-  --fill-subtle-hover: color-mix(in srgb, var(--text) 3%, var(--surface));
-  --selected-background: Highlight;
-  --selected-text: HighlightText;
-  --clear: transparent;
-  --border-width: 1px;
-  /* The keyboard focus ring, drawn only on :focus-visible: 2 px with a 1 px
-     gap, in the system accent. */
-  --focus-ring-color: var(--accent);
-  --focus-ring-width: 2px;
-  --focus-ring-offset: 1px;
-  --focus-ring-search-offset: 2px; /* Search keeps its existing contrast gap. */
-  --focus-ring-shadow: none;
-  --r-control: 8px;
-  --hint-radius: 4px;
-  --picker-height: 100dvh;
-  /* Between the field and the header's controls. The search glyph sits over
-     the tile column and the query starts where row titles start:
-     inset + lead + icon + lead-gap = inset + row-pad + tile + row-gap. */
-  --search-gap: var(--space-1);
-  --search-icon-width: var(--icon-glyph-size);
-  /* 24 px bird, centred over the 20 px glyph with a 2 px outset. */
-  --search-mark-size: 1.5rem;
-  --search-mark-outset: calc((var(--search-mark-size) - var(--search-icon-width)) / 2);
-  --lead: calc(var(--row-pad) + (var(--tile-size) - var(--icon-glyph-size)) / 2);
-  --lead-gap: calc((var(--tile-size) - var(--icon-glyph-size)) / 2 + var(--row-gap));
-  --search-min-width: 12rem;
-  --search-icon-stroke: var(--icon-stroke);
-  --search-size: var(--type-search-size);
-  --search-line: var(--type-search-line);
-  --search-tracking: -.025em;
-  --search-focus-offset: 4px;
-  --hidden-size: 1px;
-  --hidden-margin: -1px;
-  --hidden-clip: inset(50%);
-  /* A heading plus one whole result, including list insets. */
-  --results-min-height: calc(var(--row-height) + var(--type-label-line) + 3 * var(--space-2));
-  --heading-padding: var(--space-2) var(--row-pad) var(--space-1);
-  --heading-size: var(--type-label-size);
-  --heading-weight: var(--type-strong-weight);
-  --heading-tracking: .02em;
-  --title-size: var(--type-title-size);
-  --title-weight: var(--type-strong-weight);
-  --title-line-height: var(--type-title-line);
-  --title-tracking: -.01em;
-  --metadata-size: var(--type-meta-size);
-  --metadata-line-height: var(--type-meta-line);
-  --metadata-gap: var(--space-1);
-  --meta-part-max-width: 30%; /* library badge and Compact first author */
-  --empty-padding: 2rem 1rem;
-  --empty-template-padding: calc(3 * var(--space-4) - var(--inset));
-  --empty-icon-size: calc(3 * var(--space-4));
-  --empty-icon-gap: var(--space-3);
-  --empty-keys-display: flex;
-  --notice-padding: 0 calc(var(--inset) + var(--row-pad));
-  --notice-margin: var(--space-3) 0;
-  --progress-track: var(--fill-control); --progress-fill: var(--accent-text); --progress-border: var(--clear); --progress-border-width: 0px;
-  --progress-segment-width: 25%; --progress-travel: 300%; --progress-duration: 1s; /* Busy indicator; motion's looping exception. */
-  --copy-padding: .5rem;
-  --dismiss-margin: .5rem 0 .5rem .5rem;
-  /* One citation line; corner badges keep their physical size at larger text. */
-  --shelf-line: var(--space-10);
-  --shelf-fill: var(--tile-background);
-  --shelf-segment-radius: 6px;
-  --shelf-segment-inset: 1px;
-  --shelf-remove-size: 16px;
-  --shelf-remove-target: 24px;
-  --shelf-copied-fill: color-mix(in srgb, var(--status-done) 14%, transparent);
-  --shelf-copy-wash: color-mix(in srgb, var(--status-done) 9%, transparent);
-  --shelf-copy-duration: 160ms;
-  --r-copy-card: 18px;
-  --r-copy-tile: 10px;
-  --copy-tile-size: calc(2 * var(--space-4) + var(--space-1));
-  --chip-height: 1.5rem;
-  --chip-fill: color-mix(in srgb, var(--text) 8%, transparent);
-  --chip-radius: calc(var(--chip-height) / 2);
-  --footer-padding: calc(var(--inset) + var(--row-pad)) var(--inset); /* inline start, end */
-  --footer-size: var(--type-label-size);
-  --footer-gap: var(--space-2);
-  --library-min-width: 14rem;
-  --library-notice-margin: var(--space-1) 0;
-  --icon-size: 1rem;
-  --hint-size: var(--type-label-size);
-  --key-cap: 1.25rem;
-  --hint-margin: var(--space-1);
-  --contrast-border-width: 3px;
-  --forced-search-offset: -3px;
-  --field-background: var(--fill-control);
-  --clear-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round'%3E%3Cpath d='M7 7l10 10M17 7 7 17'/%3E%3C/svg%3E");
-  --field-edge: color-mix(in srgb, var(--line) 35%, var(--surface));
-  /* The leading tile of a result row: 32 px, a quiet fill, 20 px icon. */
-  --tile-size: 2rem;
-  --tile-compact: 1.5rem; /* drawn in Compact, inside the same 32 px column */
-  --tile-background: color-mix(in srgb, var(--text) 5%, transparent);
-  --tile-active-background: color-mix(in srgb, var(--row-active-text) 22%, transparent);
-  --on-citation: #fff;
-  /* The selected (active) row: the accent with its paired text on every OS. */
-  --row-active-background: var(--selected-background);
-  --row-active-text: var(--selected-text);
-  --row-active-muted: currentColor;
-}
-
-/* Older system webviews retain usable system colours. */
-@supports (color: light-dark(white, black)) {
-  :root {
-    --surface: light-dark(#fcfcfd, #242426);
-    --text: light-dark(#27272b, #ededf0);
-    --muted: light-dark(#6b6b75, #a6a6af);
-    --line: light-dark(#85858f, #8b8b95);
-    --active-edge: light-dark(#83838d, #898993);
-  }
-}
-@supports (color: AccentColor) { :root { --accent: AccentColor; } }
-/* Filled accent with its paired text colour, so any system accent stays legible. */
-@supports (color: AccentColorText) { :root { --selected-background: AccentColor; --selected-text: AccentColorText; } }
-
-/* WebKit's AccentColorText can be black even on a dark accent. Until a
-   native accent arrives, keep the existing macOS list pair on every system. */
-@supports (color: light-dark(white, black)) {
-  :root { --selected-background: light-dark(#0064E1, #0058D0); --selected-text: #FFFFFF; }
-}
-
-/* WKWebView accepts AccentColorText but resolves it to black. Use the paired
-   native list colours on macOS; contrast overrides below still take priority. */
-@supports (background: -apple-system-selected-content-background) and (color: -apple-system-alternate-selected-text) {
-  :root[data-system="macos"] { --selected-background: -apple-system-selected-content-background; --selected-text: -apple-system-alternate-selected-text; }
-}
-
-/* Native RGB is currently available only on macOS. Other systems keep their
-   real system selection pair rather than Chromium's fixed AccentColor. The
-   filled macOS selection shape is shared; these are colour correctness facts. */
-:root[data-system="windows"], :root[data-system="linux"] {
-  --accent: Highlight; --selected-background: Highlight; --selected-text: HighlightText;
-}
-
-/* The actual system selects its UI font, independently of the shared look. */
-:root[data-system="windows"] { --font-family: "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif; }
-:root[data-system="linux"] { --font-family: system-ui, "Adwaita Sans", Cantarell, sans-serif; }
-/* The shared macOS look (docs/design.md, principle 2). The native
-   material sits behind the page, so fills and hairlines are translucent and
-   it shows through. Secondary text is darker than elsewhere so it keeps 4.5:1
-   on a bright or colourful backdrop. The web cannot use AppKit's vibrant text
-   blending, so --vibrancy-tint lays a light veil over the native material that
-   keeps text legible over any wallpaper. Increase contrast, forced colours and
-   older webviews keep the system colours above. The Copied notice window keeps
-   its existing pill (notice.css). */
-@supports (color: light-dark(white, black)) {
-  @media (prefers-contrast: no-preference) and (forced-colors: none) {
-    :root:not(.notice-window) {
-      --text: light-dark(#16181d, #f5f5f7);
-      --muted: light-dark(#4c5260, #c0c3cc);
-      --line: light-dark(rgb(0 0 0 / 10%), rgb(255 255 255 / 10%));
-      --fill-subtle-hover: light-dark(rgb(0 0 0 / 4.5%), rgb(255 255 255 / 6%));
-      --fill-control: light-dark(rgb(0 0 0 / 5%), rgb(255 255 255 / 8%));
-      --fill-control-hover: light-dark(rgb(0 0 0 / 9%), rgb(255 255 255 / 13%));
-      --separator: var(--line);
-      --r-control: 8px; --hint-radius: 5px;
-      /* Three quarters veil: the list reads as content, and a busy desktop never competes with it. */
-      --vibrancy-tint: light-dark(rgb(250 250 252 / 75%), rgb(30 30 34 / 75%));
-      /* A hairline, as on a native panel: no white rim or glow (prototype round six). */
-      --glass-edge: light-dark(rgb(0 0 0 / 10%), rgb(255 255 255 / 10%));
-    }
-    /* Over the veiled material, text roles keep 4.5:1. The fixed Look glyph
-       has an opaque edge; the opaque surface keeps Ibis scarlet as it is. */
-    :root[data-platform="macos"][data-native-appearance="vibrancy"]:not(.notice-window),
-    :root[data-platform="macos"][data-native-appearance="liquid-glass"]:not(.notice-window) {
-      --citation: light-dark(#982d16, #ff9d87);
-      --status-done: light-dark(#135f29, #6fca81);
-      --status-look: light-dark(#b07a00, #f5c542);
-      --status-stop: light-dark(#9b273b, #ff9c9c);
-    }
-  }
-}
-
-/* Theme-aware macOS scrim; older engines keep the black fallback. */
-@supports (color: light-dark(white, black)) {
-  :root { --scrim: light-dark(rgb(0 0 0 / 20%), rgb(0 0 0 / 40%)); }
-}
-
-@media (prefers-contrast: more), (forced-colors: active) {
-  :root, :root[data-platform] { --shadow-card: none;--shadow-overlay: none; --shadow-dialog: none; --shadow-toast: none; --shadow-thumb: none; --scrim: Canvas; }
-}
-
-@media (prefers-contrast: more) {
-  :root, :root[data-platform] { --scrollbar-thumb: CanvasText; }
-  :root, :root[data-platform] { --progress-track: Canvas; --progress-fill: CanvasText; --progress-border: CanvasText; --progress-border-width: var(--border-width); }
-  :root, :root[data-platform] { --separator: CanvasText; --stroke-control: CanvasText; --focus-ring-color: CanvasText; --focus-ring-width: 2px; --focus-ring-offset: var(--focus-ring-search-offset); --focus-ring-shadow: none; --selected-background: Highlight; --selected-text: HighlightText; --row-active-background: Highlight; --row-active-text: HighlightText; --row-active-muted: currentColor; }
-  :root { --citation: CanvasText; --citation-tile: CanvasText; --on-citation: Canvas; --status-done: CanvasText; --status-look: CanvasText; --status-stop: CanvasText; --surface: Canvas; --text: CanvasText; --muted: CanvasText; --line: CanvasText; --active-edge: CanvasText; }
-}
-@media (forced-colors: active) {
-  :root, :root[data-platform] { --progress-track: Canvas; --progress-fill: CanvasText; --progress-border: CanvasText; --progress-border-width: var(--border-width); }
-  :root, :root[data-platform] { --separator: CanvasText; --stroke-control: ButtonText; --focus-ring-color: CanvasText; --focus-ring-width: 2px; --focus-ring-offset: var(--focus-ring-search-offset); --focus-ring-shadow: none; --selected-background: Highlight; --selected-text: HighlightText; --row-active-background: Highlight; --row-active-text: HighlightText; --row-active-muted: currentColor; }
-  :root { --citation: CanvasText; --citation-tile: CanvasText; --on-citation: Canvas; --status-done: CanvasText; --status-look: CanvasText; --status-stop: CanvasText; --surface: Canvas; --text: CanvasText; --muted: CanvasText; --line: ButtonText; --active-edge: CanvasText; }
-}
-
-/* Semantic roles share the macOS shape, elevation and motion above.
-   Keep aliases one-way, from semantic roles to their inputs. */
-:root {
-  --surface-window: var(--surface); --surface-raised: var(--surface);
-  --surface-overlay: var(--surface); --surface-sheet: var(--surface); --overlay-backdrop-filter: none;
-  --surface-field: var(--field-background);
-  --fill-on-color-hover: rgb(0 0 0 / 8%); --fill-on-color-pressed: rgb(0 0 0 / 16%);
-  --fill-primary-hover: color-mix(in srgb, var(--accent) 92%, var(--text));
-  --fill-primary-pressed: color-mix(in srgb, var(--accent) 84%, var(--text));
-  --fill-control-pressed: light-dark(rgb(0 0 0 / 13%), rgb(255 255 255 / 18%)); --fill-disabled: var(--fill-control);
-  --fill-subtle-pressed: color-mix(in srgb, var(--text) 12%, var(--surface));
-  --text-tertiary: var(--muted); --text-disabled: var(--muted); --text-on-accent: var(--selected-text);
-  --accent-text: var(--accent);  --stroke-field: var(--field-edge); --stroke-overlay: var(--field-edge);
-  --z-content: 0; --z-chrome: 1; --z-overlay: 10;--z-modal: 30; --z-toast: 40;
-  --overlay-margin: var(--space-2);
-  --r-key: var(--hint-radius);
-  --r-card: var(--r-win); --r-full: 999px;
-  /* Settings [C18]: a grouped form, a step back from its cards in light mode
-     and a step forward in dark mode, as native grouped forms are, beside a
-     sidebar; the title bar band leaves room for the window buttons. */
-  --surface-grouped: color-mix(in srgb, var(--text) 4%, var(--surface));
-  --surface-grouped-card: var(--surface-raised);
-  --surface-sidebar: color-mix(in srgb, var(--text) 6%, var(--surface));
-  --titlebar-height: 3.25rem;
-  --settings-sidebar-width: min(12rem, 26%);
-  --settings-page-inset: var(--space-6);
-  --settings-page-top-inset: var(--space-2);
-  --settings-section-gap: var(--space-6);
-  --settings-row-pad-block: var(--space-3);
-  --settings-row-text-gap: var(--space-1);
-  --settings-group-width: 40rem;
-  --settings-row-height: 3rem;
-  --settings-described-row-height: 3.5rem;
-}
-/* Readable overlays [C13]: only a successfully applied panel material can
-   supply glass. Preferences, unsupported blur and native failure stay solid.
-   These roles never alter the window's own material or its 75% veil. */
-@supports (color: light-dark(white, black)) and ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  @media (prefers-contrast: no-preference) and (forced-colors: none) and (prefers-reduced-transparency: no-preference) {
-    :root[data-platform="macos"][data-native-appearance="vibrancy"]:not(.notice-window),
-    :root[data-platform="macos"][data-native-appearance="liquid-glass"]:not(.notice-window) {
-      --surface-overlay: color-mix(in srgb, var(--surface) 92%, transparent);
-      --surface-sheet: color-mix(in srgb, var(--surface) 96%, transparent);
-      --overlay-backdrop-filter: blur(30px) saturate(180%);
-    }
-  }
-}
-@supports (color: light-dark(white, black)) {
-  :root {
-    --surface-grouped: light-dark(color-mix(in srgb, var(--text) 4%, var(--surface)), var(--surface));
-    --surface-grouped-card: light-dark(var(--surface-raised), color-mix(in srgb, var(--text) 6%, var(--surface)));
-    --surface-sidebar: light-dark(color-mix(in srgb, var(--text) 7%, var(--surface)), color-mix(in srgb, var(--text) 3%, var(--surface)));
-  }
-}
-@media (prefers-contrast: more), (forced-colors: active) {
-  :root { --surface-grouped: Canvas; --surface-grouped-card: Canvas; --surface-sidebar: Canvas; }
-}
-@media (forced-colors: active) { :root { --fill-on-color-hover: var(--clear); --fill-on-color-pressed: var(--clear); } }
-
-/* Short windows compact decoration, never text or actionable targets. */
-@media (max-height: 400px) {
-  :root { --empty-padding: var(--space-2) var(--space-4); --empty-template-padding: var(--space-2);
-    --empty-icon-size: var(--icon-glyph-size); --empty-icon-gap: var(--space-1); --empty-keys-display: none; }
-}
-
-
-/* Settings roles and Mac selected-row accent shades (#1489). */
-:root {
-  --settings-search-highlight: color-mix(in srgb, var(--accent) 14%, var(--surface-grouped-card));
-  --settings-picture-width: 8rem; --settings-picture-aspect: 4 / 3;
-  --settings-search-picture-width: 10rem; --settings-search-picture-aspect: 4;
-  --settings-picture-source-width: 40rem; --settings-picture-scale: .2;
-  --settings-picture-crop-scale: .6; --settings-snapshot-scale: var(--settings-picture-scale);
-  --choice-selected-background: color-mix(in srgb, var(--accent) 12%, var(--surface));
-  --choice-selected-text: var(--text);
-  --choice-selection-ring-width: 2px;
-  --choice-accent: var(--settings-accent-blue);
-  --choice-accent-on: #fff;
-  /* Real brand colours from brand/settings.json; each has its own text pair. */
-  --settings-accent-ibis: light-dark(#c23a1c, #ff7a5c);
-  --settings-accent-ibis-on: light-dark(#ffffff, #171717);
-  --settings-accent-blue: #0064e1; --settings-accent-purple: #953d96;
-  --settings-accent-pink: #c8317d; --settings-accent-red: #c42b30;
-  --settings-accent-orange: #b25300; --settings-accent-yellow: #8a6a00;
-  --settings-accent-green: #3b7f25; --settings-accent-graphite: #6e6e73;
-}
-:root[data-accent="system"] { --choice-accent: conic-gradient(var(--settings-accent-pink), var(--settings-accent-red), var(--settings-accent-orange), var(--settings-accent-yellow), var(--settings-accent-green), var(--settings-accent-blue), var(--settings-accent-purple), var(--settings-accent-pink)); }
-:root[data-accent="ibis"] { --choice-accent: var(--settings-accent-ibis); --choice-accent-on: var(--settings-accent-ibis-on); }
-:root[data-accent="blue"] { --choice-accent: var(--settings-accent-blue); }
-:root[data-accent="purple"] { --choice-accent: var(--settings-accent-purple); }
-:root[data-accent="pink"] { --choice-accent: var(--settings-accent-pink); }
-:root[data-accent="red"] { --choice-accent: var(--settings-accent-red); }
-:root[data-accent="orange"] { --choice-accent: var(--settings-accent-orange); }
-:root[data-accent="yellow"] { --choice-accent: var(--settings-accent-yellow); }
-:root[data-accent="green"] { --choice-accent: var(--settings-accent-green); }
-:root[data-accent="graphite"] { --choice-accent: var(--settings-accent-graphite); }
-
-@media (prefers-contrast: no-preference) and (forced-colors: none) {
-  :root[data-appearance][data-accent]:not([data-accent="system"]):not(.notice-window) {
-    --accent: var(--choice-accent); --selected-background: var(--choice-accent);
-    --selected-text: var(--choice-accent-on); --text-on-accent: var(--choice-accent-on);
-    --fill-primary-hover: color-mix(in srgb, var(--accent) 92%, black);
-    --fill-primary-pressed: color-mix(in srgb, var(--accent) 84%, black);
-    --accent-text: CanvasText;
-    --focus-ring-color: var(--accent-text);
-  }
-}
-:root[data-appearance="light"] { color-scheme: light; }
-:root[data-appearance="dark"] { color-scheme: dark; }
-:root.settings-window[data-larger-text="true"] { font-size: calc(100% * var(--larger-text-scale)); }
-
-@media (prefers-contrast: no-preference) and (forced-colors: none) {
-  :root[data-appearance][data-accent]:not([data-accent="system"]):not(.notice-window) .ui-button[data-variant="primary"]:is([data-hovered], [data-pressed], [data-selected], [aria-expanded="true"]):not([data-disabled], [aria-disabled="true"]) { color: var(--text-on-accent); }
-}
-
-@supports (color: light-dark(white, black)) {
-  @media (prefers-contrast: no-preference) and (forced-colors: none) {
-    :root[data-appearance][data-accent]:not([data-accent="system"]):not(.notice-window) {
-      --accent-text: light-dark(var(--choice-accent), color-mix(in srgb, var(--choice-accent), white 55%));
-    }
-  }
 }
 
 /* BEGIN generated website palette: brand/build.py */

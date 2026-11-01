@@ -1,9 +1,9 @@
-.locator-token { --locator-token-hit-size: var(--control-min-size); padding-inline-end: calc(var(--locator-token-hit-size) - var(--chip-height)); display: inline-flex; align-items: center; min-inline-size: 0; max-inline-size: 50%; margin-inline-start: var(--space-1); }
+.locator-token { --locator-token-hit-size: var(--control-h); padding-inline-end: calc(var(--locator-token-hit-size) - var(--chip-h)); display: inline-flex; align-items: center; min-inline-size: 0; max-inline-size: 50%; margin-inline-start: var(--space-1); }
 .locator-token > bdi { min-inline-size: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.locator-token .locator-token-remove { flex: none; inline-size: var(--chip-height); min-inline-size: var(--chip-height); block-size: var(--chip-height); min-block-size: var(--chip-height); padding: 0; border-width: 0; border-radius: var(--chip-radius); }
-.locator-token .locator-token-remove::after { inset: calc((var(--locator-token-hit-size) - var(--chip-height)) / -2); }
+.locator-token .locator-token-remove { flex: none; inline-size: var(--chip-h); min-inline-size: var(--chip-h); block-size: var(--chip-h); min-block-size: var(--chip-h); padding: 0; border-width: 0; border-radius: calc(var(--chip-h) / 2); }
+.locator-token .locator-token-remove::after { inset: calc((var(--locator-token-hit-size) - var(--chip-h)) / -2); }
 @media (pointer: coarse) { .locator-token { --locator-token-hit-size: var(--touch-target); } }
-.locator-token-remove::before { content: ""; position: absolute; inset: 0; background: currentColor; -webkit-mask: var(--clear-glyph) center / var(--icon-size) no-repeat; mask: var(--clear-glyph) center / var(--icon-size) no-repeat; }
+.locator-token-remove::before { content: ""; position: absolute; inset: 0; background: currentColor; -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round'%3E%3Cpath d='M7 7l10 10M17 7 7 17'/%3E%3C/svg%3E") center / var(--icon-small) no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round'%3E%3Cpath d='M7 7l10 10M17 7 7 17'/%3E%3C/svg%3E") center / var(--icon-small) no-repeat; }
 @media (forced-colors: active) {
   .locator-token-remove::before { forced-color-adjust: none; background: ButtonText; }
 }

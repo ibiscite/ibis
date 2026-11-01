@@ -38,7 +38,7 @@ test("Settings fills the viewport, with bounded page and navigation scrollers be
   // the same coordinate space when browser zoom or text scaling changes it.
   expect(frame.getPropertyValue("height")).toBe("100%");
   expect(frame.getPropertyValue("display")).toBe("grid");
-  expect(frame.getPropertyValue("grid-template-columns")).toBe("var(--settings-sidebar-width) minmax(0, 1fr)");
+  expect(frame.getPropertyValue("grid-template-columns")).toBe("var(--sidebar-width) minmax(0, 1fr)");
   expect(frame.getPropertyValue("grid-template-rows")).toBe("var(--titlebar-height) minmax(0, 1fr)");
   expect(frame.getPropertyValue("overflow")).toBe("hidden");
   expect(style(shell, ".settings-sidebar").getPropertyValue("grid-area")).toBe("1 / 1 / -1 / 2");
@@ -88,27 +88,25 @@ test("long sidebar labels can scroll within the remaining height without moving 
 
 test("sidebar navigation and the large page title have shared selection, spacing and type roles", () => {
   const selected = style(navigation, '.ui-side-navigation-item[aria-current="page"]');
-  expect(selected.getPropertyValue("background")).toBe("var(--selected-background)");
-  expect(selected.getPropertyValue("color")).toBe("var(--selected-text)");
+  expect(selected.getPropertyValue("background")).toBe("var(--sel)");
+  expect(selected.getPropertyValue("color")).toBe("var(--sel-text)");
   const title = style(shell, ".settings-page-title");
   expect(title.getPropertyValue("font-size")).toBe("var(--type-page-title-size)");
   expect(title.getPropertyValue("line-height")).toBe("var(--type-page-title-line)");
-  expect(style(shell, ".settings-page").getPropertyValue("padding")).toBe("var(--settings-page-inset)");
+  expect(style(shell, ".settings-page").getPropertyValue("padding")).toBe("var(--space-6)");
   expect(tokens).toMatch(/--type-page-title-size:\s*1\.75rem/);
-  expect(tokens).toMatch(/--settings-sidebar-width:\s*min\(12rem, 26%\)/);
+  expect(tokens).toMatch(/--sidebar-width:\s*min\(12rem, 26%\)/);
 });
 
 test("grouped rows and shared controls grow and wrap at the minimum window size and larger text", () => {
   const row = style(groups, ".ui-settings-row");
-  expect(row.getPropertyValue("min-height")).toBe("var(--settings-row-height)");
+  expect(row.getPropertyValue("min-height")).toBe("3rem");
   expect(row.getPropertyValue("height")).toBe("");
   expect(row.getPropertyValue("box-sizing")).toBe("border-box");
   expect(row.getPropertyValue("flex-wrap")).toBe("wrap");
-  expect(style(groups, ".ui-settings-row[data-described]").getPropertyValue("min-height")).toBe("var(--settings-described-row-height)");
+  expect(style(groups, ".ui-settings-row[data-described]").getPropertyValue("min-height")).toBe("3.5rem");
   for (const selector of [".ui-settings-group", ".ui-settings-card"]) expect(style(groups, selector).getPropertyValue("flex-shrink")).toBe("0");
-  expect(style(groups, ".ui-settings-card").getPropertyValue("border-radius")).toBe("var(--r-card)");
-  expect(tokens).toMatch(/--settings-row-height:\s*3rem/);
-  expect(tokens).toMatch(/--settings-described-row-height:\s*3\.5rem/);
+  expect(style(groups, ".ui-settings-card").getPropertyValue("border-radius")).toBe("var(--r-win)");
   const button = style(buttons, ".ui-button[data-variant]");
   expect(button.getPropertyValue("font")).toBe("inherit");
   expect(button.getPropertyValue("max-width")).toBe("100%");
@@ -131,7 +129,7 @@ test("permission instructions and actions share the card's leading edge at every
 
 test("the existing eight Settings accents keep white text at 4.5:1", () => {
   const expected = ["0064e1", "953d96", "c8317d", "c42b30", "b25300", "8a6a00", "3b7f25", "6e6e73"];
-  const shades = [...tokens.matchAll(/--settings-accent-[a-z]+:\s*#([0-9a-f]{6})/g)].map((match) => match[1]!);
+  const shades = [...tokens.matchAll(/--accent-[a-z]+:\s*#([0-9a-f]{6})/g)].map((match) => match[1]!);
   expect(shades).toEqual(expected);
   for (const shade of shades) {
     const linear = shade.match(/../g)!.map((channel) => {
@@ -146,13 +144,12 @@ test("the existing eight Settings accents keep white text at 4.5:1", () => {
 
 test("picture choices use a quiet selected surface and an inward keyboard-only ring", () => {
   const choices = read("../ui/PictureChoice.css");
-  expect(style(choices, ".ui-picture-choice[data-selected]").getPropertyValue("background")).toBe("var(--choice-selected-background)");
-  expect(style(choices, ".ui-picture-choice[data-selected]").getPropertyValue("color")).toBe("var(--choice-selected-text)");
-  const selectionRing = "inset 0 0 0 var(--choice-selection-ring-width) var(--accent)";
+  expect(style(choices, ".ui-picture-choice[data-selected]").getPropertyValue("background")).toBe("color-mix(in srgb, var(--accent) 12%, var(--surface))");
+  expect(style(choices, ".ui-picture-choice[data-selected]").getPropertyValue("color")).toBe("var(--text)");
+  const selectionRing = "inset 0 0 0 2px var(--accent)";
   expect(style(choices, ".ui-picture-choice[data-selected]").getPropertyValue("box-shadow")).toBe(selectionRing);
-  expect(tokens).toMatch(/--choice-selection-ring-width:\s*2px/);
-  expect(style(choices, ".ui-picture-choice[data-focus-visible]").getPropertyValue("outline-offset")).toBe("calc(-1 * (var(--focus-ring-width) + var(--focus-ring-offset)))");
-  expect(style(choices, ".ui-picture-choice[data-selected][data-focus-visible]").getPropertyValue("outline-offset")).toBe("calc(-1 * (var(--choice-selection-ring-width) + var(--focus-ring-width) + var(--focus-ring-offset)))");
+  expect(style(choices, ".ui-picture-choice[data-focus-visible]").getPropertyValue("outline-offset")).toBe("calc(-1 * (var(--ring-width) + var(--ring-offset)))");
+  expect(style(choices, ".ui-picture-choice[data-selected][data-focus-visible]").getPropertyValue("outline-offset")).toBe("calc(-1 * (2px + var(--ring-width) + var(--ring-offset)))");
   const sheet = document.createElement("style");
   sheet.textContent = choices;
   const picture = document.createElement("div");
@@ -164,11 +161,11 @@ test("picture choices use a quiet selected surface and an inward keyboard-only r
     expect(getComputedStyle(picture).outline).toBe("none");
     picture.dataset.focusVisible = "true";
     expect(getComputedStyle(picture).boxShadow).toBe(selectionRing);
-    expect(getComputedStyle(picture).outline).toBe("var(--focus-ring-width) solid var(--focus-ring-color)");
-    expect(getComputedStyle(picture).outlineOffset).toBe("calc(-1 * (var(--choice-selection-ring-width) + var(--focus-ring-width) + var(--focus-ring-offset)))");
+    expect(getComputedStyle(picture).outline).toBe("var(--ring-width) solid var(--ring)");
+    expect(getComputedStyle(picture).outlineOffset).toBe("calc(-1 * (2px + var(--ring-width) + var(--ring-offset)))");
   } finally { picture.remove(); sheet.remove(); }
   expect(style(groups, ".ui-picker-picture").getPropertyValue("max-width")).toBe("100%");
-  expect(style(groups, ".ui-picker-picture").getPropertyValue("aspect-ratio")).toBe("var(--settings-picture-aspect)");
+  expect(style(groups, ".ui-picker-picture").getPropertyValue("aspect-ratio")).toBe("4 / 3");
   const media = (source: string) => {
     const sheet = document.createElement("style"); sheet.textContent = source; document.head.append(sheet);
     const rule = [...sheet.sheet!.cssRules].find((rule) => rule.type === CSSRule.MEDIA_RULE && (rule as CSSMediaRule).conditionText === "(pointer: coarse)") as CSSMediaRule;
@@ -182,8 +179,8 @@ test("picture choices use a quiet selected surface and an inward keyboard-only r
 
 test("brand scarlet keeps 3:1 control contrast and 4.5:1 text through both themes and button states", () => {
   const brand = JSON.parse(read("../../../../brand/settings.json")).colours;
-  const shades = tokens.match(/--settings-accent-ibis:\s*light-dark\((#[0-9a-f]{6}), (#[0-9a-f]{6})\)/i)!;
-  const on = tokens.match(/--settings-accent-ibis-on:\s*light-dark\((#[0-9a-f]{6}), (#[0-9a-f]{6})\)/i)!;
+  const shades = tokens.match(/--accent-ibis:\s*light-dark\((#[0-9a-f]{6}), (#[0-9a-f]{6})\)/i)!;
+  const on = tokens.match(/--accent-ibis-on:\s*light-dark\((#[0-9a-f]{6}), (#[0-9a-f]{6})\)/i)!;
   expect(shades, "brand accent must use the brand's two real scarlets").toBeTruthy();
   expect(on, "brand accent must pair a foreground in each theme").toBeTruthy();
   expect(shades.slice(1).map((hex) => hex.toUpperCase())).toEqual([brand.scarlet, brand.scarlet_dark]);
@@ -206,7 +203,7 @@ test("brand scarlet keeps 3:1 control contrast and 4.5:1 text through both theme
   }
   // An on-switch is another meaningful foreground on the accent, so its
   // thumb must consume the same paired colour rather than unconditional white.
-  expect(style(switches, ".ui-switch[data-selected] .ui-switch-thumb").getPropertyValue("background")).toBe("var(--text-on-accent)");
-  expect(tokens).toContain('--choice-accent-on: var(--settings-accent-ibis-on)');
-  expect(tokens).toContain('--selected-text: var(--choice-accent-on); --text-on-accent: var(--choice-accent-on)');
+  expect(style(switches, ".ui-switch[data-selected] .ui-switch-thumb").getPropertyValue("background")).toBe("var(--on-accent)");
+  expect(tokens).toContain('--accent-choice-on: var(--accent-ibis-on)');
+  expect(tokens).toContain('--sel-text: var(--accent-choice-on); --on-accent: var(--accent-choice-on)');
 });

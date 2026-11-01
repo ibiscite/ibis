@@ -5,7 +5,6 @@ import { Progress } from "./Progress";
 const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
 const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
 const css = readFileSync(new FileURL("./Progress.css", import.meta.url), "utf8");
-const tokens = readFileSync(new FileURL("../tokens.css", import.meta.url), "utf8");
 afterEach(() => { cleanup(); delete document.documentElement.dataset.platform; });
 
 test.each(["macos", "windows", "linux"])("%s distinguishes completed downloads from indeterminate phases", (platform) => {
@@ -31,9 +30,8 @@ test.each(["macos", "windows", "linux"])("%s distinguishes completed downloads f
   expect(bar().hasAttribute("data-indeterminate")).toBe(false);
 });
 
-test.each(["@media (prefers-contrast: more) {", "@media (forced-colors: active) {"])("progress keeps a contrasting system pair in %s", (mode) => {
-  expect(tokens).toContain(mode);
-  const block = tokens.slice(tokens.indexOf(mode)).split("\n}")[0]!;
+test("progress keeps a contrasting system pair in contrast modes", () => {
+  const block = css.slice(css.indexOf("@media (prefers-contrast: more), (forced-colors: active) {")).split("\n}")[0]!;
   expect(block).toContain("--progress-track: Canvas;");
   expect(block).toContain("--progress-fill: CanvasText;");
   expect(block).toContain("--progress-border: CanvasText;");
@@ -48,8 +46,8 @@ test("progress uses role colours, preserves them in forced colours", () => {
 });
 
 test("indeterminate motion becomes a full-width dashed indicator with reduced motion", () => {
-  expect(css).toMatch(/\[data-indeterminate\][^{]*\{[^}]*animation: progress-slide var\(--progress-duration\)/);
-  expect(css).toMatch(/@keyframes progress-slide[^]*transform: translateX\(var\(--progress-travel\)\)/);
+  expect(css).toMatch(/\[data-indeterminate\][^{]*\{[^}]*animation: progress-slide 1s/);
+  expect(css).toMatch(/@keyframes progress-slide[^]*transform: translateX\(300%\)/);
   const reduced = css.slice(css.indexOf("@media (prefers-reduced-motion: reduce)"));
   expect(reduced).toContain("animation: none");
   expect(reduced).toContain("width: 100%");

@@ -6,15 +6,15 @@
     :root[data-native-accent="true"][data-platform="macos"]:not(.notice-window) {
       --accent: var(--native-accent-fill);
       --accent-text: light-dark(var(--native-accent-light), var(--native-accent-dark));
-      --text-on-accent: var(--native-accent-on);
-      --selected-background: var(--accent); --selected-text: var(--text-on-accent);
-      --focus-ring-color: var(--accent-text);
+      --on-accent: var(--native-accent-on);
+      --sel: var(--accent); --sel-text: var(--on-accent);
+      --ring: var(--accent-text);
     }
     /* macOS selection keeps WebKit's paired white text: the contrast pick above is
        black on the default blues, which native lists never show. */
     @supports (color: -apple-system-alternate-selected-text) {
       :root[data-native-accent="true"][data-system="macos"]:not(.notice-window) {
-        --selected-text: -apple-system-alternate-selected-text;
+        --sel-text: -apple-system-alternate-selected-text;
       }
     }
     @media (hover: hover) {
@@ -28,5 +28,5 @@
   }
 }
 @media (prefers-contrast: more), (forced-colors: active) {
-  :root, :root[data-platform] { --accent: Highlight; --accent-text: CanvasText; --text-on-accent: HighlightText; }
+  :root, :root[data-platform] { --accent: Highlight; --accent-text: CanvasText; --on-accent: HighlightText; }
 }

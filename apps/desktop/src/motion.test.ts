@@ -111,12 +111,12 @@ function problems(files: [string, string][]): string[] {
 
 test("the design's motion tokens stay within the 280 ms limit", () => {
   const { normal, reduced } = tokens(css("tokens.css"));
-  for (const name of ["--motion-feedback", "--motion-panel"]) {
+  for (const name of ["--dur", "--dur-panel"]) {
     expect(milliseconds(`var(${name})`, normal)[0]).toBeLessThanOrEqual(LONGEST_MS);
   }
   // Panels and layout move; with reduced motion they change at once.
-  expect(milliseconds("var(--motion-panel)", reduced)).toEqual([REDUCED_MS]);
-  expect(milliseconds("var(--motion-panel)", reduced)).toEqual([REDUCED_MS]);
+  expect(milliseconds("var(--dur-panel)", reduced)).toEqual([REDUCED_MS]);
+  expect(milliseconds("var(--dur-panel)", reduced)).toEqual([REDUCED_MS]);
 });
 
 test("no transition or animation is longer than 280 ms or moves with reduced motion", () => {
@@ -127,14 +127,14 @@ test("no transition or animation is longer than 280 ms or moves with reduced mot
 test("the motion check catches long and moving transitions", () => {
   const tokenSheet = css("tokens.css");
   const check = (rule: string) => problems([["tokens.css", tokenSheet], ["test.css", rule]]);
-  expect(check(".a { transition: opacity var(--motion-feedback) var(--ease-out); }")).toEqual([]);
-  expect(check(".a { transition: transform var(--motion-panel) ease; }")).toEqual([]);
+  expect(check(".a { transition: opacity var(--dur) var(--ease); }")).toEqual([]);
+  expect(check(".a { transition: transform var(--dur-panel) ease; }")).toEqual([]);
   expect(check(".a { transition: opacity 300ms; }")).toHaveLength(1);
   expect(check(".a { transition: opacity 200ms 100ms; }")).toHaveLength(1);
   expect(check(".a { transition: opacity 120ms, transform 0.3s; }")).toHaveLength(2);
   expect(check(".a { transition: transform 120ms; }")).toEqual(['test.css: "transform 120ms" still moves with reduced motion']);
-  expect(check(".a { transition-duration: var(--motion-feedback); }")).toHaveLength(1);
-  expect(check("@keyframes slide { to { transform: none; } } .a { animation: slide var(--motion-panel); }")).toEqual([]);
+  expect(check(".a { transition-duration: var(--dur); }")).toHaveLength(1);
+  expect(check("@keyframes slide { to { transform: none; } } .a { animation: slide var(--dur-panel); }")).toEqual([]);
   expect(check("@keyframes slide { to { transform: none; } } .a { animation: slide 200ms; }")).toHaveLength(1);
   expect(check("@keyframes appear { to { opacity: 1; } } .a { animation: appear 120ms ease; }")).toEqual([]);
   expect(check("@media (prefers-reduced-motion: reduce) { .a { transition: transform 50ms; } }")).toHaveLength(1);

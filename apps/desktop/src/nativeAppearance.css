@@ -11,10 +11,10 @@
   @media (forced-colors: none) and (prefers-contrast: no-preference) {
     :root[data-system="windows"][data-native-appearance="acrylic"]:not(.notice-window) {
       --acrylic-tint: light-dark(rgb(249 249 249 / 92%), rgb(40 40 40 / 92%));
-      --citation: light-dark(#982d16, #ff9d87);
-      --status-done: light-dark(#135f29, #6fca81);
-      --status-look: light-dark(#b07a00, #f5c542);
-      --status-stop: light-dark(#9b273b, #ff9c9c);
+      --scarlet: light-dark(#982d16, #ff9d87);
+      --done: light-dark(#135f29, #6fca81);
+      --look: light-dark(#8a5a00, #e3b341);
+      --stop: light-dark(#9b273b, #ff9c9c);
     }
   }
 }
@@ -29,10 +29,10 @@
    keep their framed, opaque controls. */
 @media (prefers-contrast: no-preference) and (forced-colors: none) {
   /* Pressed and other state frames (for example the first-run writing choice) keep their own border. */
-  :root[data-platform="macos"] :is(button, select):not([aria-pressed="true"]) { border-color: var(--clear); }
+  :root[data-platform="macos"] :is(button, select):not([aria-pressed="true"]) { border-color: transparent; }
   :root[data-platform="macos"] kbd {
-    min-width: 1.25rem; border-color: var(--clear); background: var(--fill-control);
-    font-weight: var(--type-strong-weight); text-align: center;
+    min-width: 1.25rem; border-color: transparent; background: var(--fill);
+    font-weight: var(--strong); text-align: center;
   }
 
   /* With the native material: a hairline edge as on a native panel (no rim or
