@@ -1,4 +1,4 @@
-import type { ComponentPropsWithRef } from "react";
+import type { ComponentPropsWithRef, ReactNode } from "react";
 import { ListBox, ListBoxItem } from "react-aria-components";
 import "./SideNavigation.css";
 
@@ -6,7 +6,7 @@ import "./SideNavigation.css";
 export function SideNavigation<T extends string>({ label, value, options, onChange }: {
   label: string;
   value: T;
-  options: readonly { value: T; label: string; tile?: string; gapBefore?: boolean }[];
+  options: readonly { value: T; label: string; tile?: ReactNode; gapBefore?: boolean }[];
   onChange: (value: T) => void;
 }) {
   return (
@@ -22,7 +22,7 @@ export function SideNavigation<T extends string>({ label, value, options, onChan
             if (event.pointerType === "mouse" && option.value === value) onChange(option.value);
           }}
           render={(native) => <div {...native as ComponentPropsWithRef<"div">} aria-current={option.value === value ? "page" : undefined} />}>
-          <span className="ui-side-navigation-tile" data-page={option.value} data-tile={option.tile} aria-hidden="true" />
+          <span className="ui-side-navigation-tile" data-page={option.value} aria-hidden="true">{option.tile}</span>
           {option.label}
         </ListBoxItem>
       ))}

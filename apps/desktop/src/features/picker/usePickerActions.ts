@@ -49,7 +49,7 @@ export function usePickerActions({
   const stayOpen = pinned || Boolean(shown && typeof shown === "object" && (shown.warnings.length || closestMatchWarnings(offered).length));
   // The keys sheet names what Enter does from the same answer as the footer,
   // and lists the global shortcut too, when it works.
-  const enterRow = enterPastes(destination.app, canPaste, stayOpen) ? null : keyText.copyCitation;
+  const enterRow = enterPastes(destination.app, canPaste, stayOpen) ? null : "shortcuts-action-copy-only" as const;
   const bindings: readonly KeyBinding[] = [
     ...KEY_TABLE.map((binding) => binding.action === "copy" && enterRow ? { ...binding, label: enterRow } : binding),
     ...shortcut?.registered ? [{ region: "system", action: "open", keys: [shortcut.shortcut], displayLabel: shortcut.desktop ? shortcut.shortcut : undefined } as const] : [],

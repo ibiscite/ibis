@@ -2,25 +2,24 @@
    reachable. The existing middle scroll area remains the only scroll owner. */
 main .picker-content .results-area:has(.choice-screen) { display: flex; flex-direction: column; flex: 1 0 auto; overflow: visible; min-height: min-content; }
 .empty-state:has(.choice-screen) { display: flex; flex: 1; min-width: 0; padding: 0; }
-.choice-screen { display: flex; flex-direction: column; flex: none; width: 100%; max-width: 33.75rem; margin: auto; text-align: center; }
+.choice-screen { display: flex; flex-direction: column; flex: none; width: 100%; max-width: 25rem; margin: auto; text-align: center; }
 .choice-title, .choice-line { padding-inline: var(--row-pad); margin: 0; overflow-wrap: anywhere; }
 .choice-title { color: var(--text); font-size: var(--type-lead-size); line-height: var(--type-lead-line); font-weight: var(--strong); }
 .choice-line { margin-top: .375rem; color: var(--text-secondary); font-size: var(--type-meta-size); line-height: var(--type-meta-line); }
 .choice-list { display: flex; flex-direction: column; gap: var(--space-1); margin-top: var(--space-6); outline: none; text-align: start; }
-.choice-screen .choice-row { min-width: 0; height: auto; padding: var(--space-2) var(--row-pad); outline: none; }
+.choice-screen .choice-row { min-width: 0; height: auto; align-items: center; padding: var(--space-2) var(--row-pad); outline: none; }
+.choice-screen .choice-tile .type-icon { width: var(--icon-small); height: var(--icon-small); }
 .choice-screen .choice-row + .choice-row { margin-top: 0; }
 .choice-screen .result-title, .choice-screen .choice-help { white-space: normal; overflow: visible; display: block; overflow-wrap: anywhere; }
 :root[data-density="compact"] .choice-screen .choice-help { display: block; }
 .choice-footnote { margin-top: var(--space-4); }
 .choice-help { margin-top: var(--space-1); }
 .choice-tag { max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.choice-chevron { flex: none; color: var(--text-secondary); }
-.choice-chevron:dir(rtl) { transform: scaleX(-1); }
 .choice-row[data-suggested] .choice-tile { background: var(--accent); color: var(--text-on-accent); }
 /* The focused row is the active one, filled as a selected result row. */
 .choice-screen .choice-row[data-focus-visible] { outline: none; box-shadow: none; }
 .choice-row[data-focused] { background: var(--selected); color: var(--selected-text); }
-.choice-row[data-focused] .choice-help, .choice-row[data-focused] .choice-tag, .choice-row[data-focused] .choice-chevron { color: var(--selected-text-secondary); }
+.choice-row[data-focused] .choice-help, .choice-row[data-focused] .choice-tag { color: var(--selected-text-secondary); }
 .choice-row[data-focused]:not([data-suggested]) .choice-tile { background: var(--on-selected-fill); color: inherit; }
 @media (hover: hover) {
   .choice-row[data-hovered]:not([data-focused]) { background: var(--fill-quiet-hover); }
@@ -37,7 +36,6 @@ main .picker-content .results-area:has(.choice-screen) { display: flex; flex-dir
 .choice-screen[data-grid] .choice-row { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: var(--space-2); margin: 0; min-height: 4rem; background: var(--fill-control); padding: var(--space-3); }
 .choice-screen[data-grid] .choice-tile { background: transparent; }
 .choice-screen[data-grid] .result-title { font-size: var(--type-body-size); line-height: var(--type-body-line); }
-.choice-screen[data-grid] .choice-chevron { display: none; }
 .choice-screen[data-grid] .choice-tag { grid-column: 2; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
 .choice-screen[data-grid] .choice-row[data-focused] { background: var(--selected); }
 @media (hover: hover) {

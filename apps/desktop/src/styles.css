@@ -22,22 +22,20 @@ main {
 main > .search-bar, main > .shelf, main > footer { flex: none; }
 
 .search-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); min-height: calc(calc(var(--field-h) + 2 * var(--inset)) + var(--border-width)); padding: var(--inset); border-bottom: var(--border-width) solid var(--separator); cursor: move; user-select: none; }
-.search-bar > svg { width: var(--icon); stroke-width: var(--icon-stroke); flex-shrink: 0; color: var(--text-secondary); pointer-events: none; }
+.search-bar > svg { width: var(--icon); flex-shrink: 0; color: var(--text-secondary); pointer-events: none; }
 /* The Ibis mark is the logo, so it keeps brand scarlet; contrast modes make it CanvasText (#1293). */
 .search-bar > svg.search-mark { width: 1.5rem; height: 1.5rem; color: var(--scarlet);
   margin-inline: calc(var(--lead) - calc((1.5rem - var(--icon)) / 2)) calc(var(--lead-gap) - var(--space-1) - calc((1.5rem - var(--icon)) / 2));
 }
 /* The search glyph is centred over the tile column and the query starts where
    row titles start (docs/design.md, "Two columns"). */
-/* With no icon the slot stays, so the query keeps the title column. */
-.search-bar[data-icon="none"] > svg { visibility: hidden; }
+/* No icon: the query starts at the leading inset; nothing is reserved. */
 .pin-button { flex: none; }
-.pin-button svg { width: var(--icon); height: var(--icon); stroke-width: var(--icon-stroke); }
 .search-bar > svg { margin-inline: var(--lead) calc(var(--lead-gap) - var(--space-1)); }
 /* Reserve readable query space before wrapping controls, at every text size. */
-.search-field { --search-clear-size: var(--control-h); position: relative; display: flex; flex: 1; min-width: min(12rem, calc(100% - var(--lead) - var(--icon) - var(--lead-gap))); }
+.search-field { --search-clear-size: var(--action-h); position: relative; display: flex; flex: 1; min-width: min(12rem, calc(100% - var(--lead) - var(--icon) - var(--lead-gap))); }
 #search { width: 100%; min-width: 0; height: var(--field-h); font-size: var(--type-search-size); line-height: var(--type-search-line); letter-spacing: -.025em; background: transparent; border: 0; padding: 0; outline-offset: 4px; cursor: text; user-select: text; }
-.search-bar .pin-button { min-width: var(--field-h); min-height: var(--field-h); margin-inline-start: auto; }
+.search-bar .pin-button { margin-inline-start: auto; }
 #search::placeholder { color: var(--text-tertiary); }
 /* The search box never shows a ring: it always has focus, and the caret is the
    cue. Contrast and forced colours restore it below. The clear glyph is quiet like the other icons: secondary colour,
@@ -45,7 +43,7 @@ main > .search-bar, main > .shelf, main > footer { flex: none; }
 #search { border-radius: var(--r-row); }
 #search:focus-visible { outline: none; box-shadow: none; }
 #search::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; display: none; }
-.search-clear.ui-button { --ring-offset: calc(-1 * var(--ring-width)); position: absolute; inset-inline-end: var(--border-width); top: 50%; transform: translateY(-50%); width: var(--search-clear-size); height: var(--search-clear-size); }
+.search-clear.ui-button { --ring-offset: calc(-1 * var(--ring-width)); position: absolute; inset-inline-end: var(--border-width); top: 50%; transform: translateY(-50%); }
 @media (pointer: coarse) {
   :root, :root[data-platform] { --field-h: var(--touch-target); }
   .search-field { --search-clear-size: var(--touch-target); }
@@ -151,14 +149,13 @@ footer { display: flex; align-items: center; padding-block: 0; padding-inline: c
 .library-bar > p[role="status"] { width: 100%; margin: var(--space-1) 0; }
 /* The dot repeats what the words say, so colour is never the only signal. */
 .status-dot { translate: 0 calc(var(--status-dot) / 2 - .5ex); width: var(--status-dot); height: var(--status-dot); border-radius: 50%; flex-shrink: 0; background: var(--text-secondary); }
-.status-dot[data-health="done"] { background: var(--done); }
-.status-dot[data-health="look"] { background: var(--look); }
-.status-dot[data-health="stop"] { background: var(--stop); }
+.status-dot[data-health="done"] { background: var(--status-ok); }
+.status-dot[data-health="look"] { background: var(--status-warning); }
+.status-dot[data-health="stop"] { background: var(--status-error); }
 
 
 /* More stays at the far end even when the footer wraps, so its menu opens inward. */
 .more { position: relative; margin-inline-start: auto; }
-.quiet-button { background: transparent; border-color: transparent; color: var(--text-secondary); }
 
 @media (prefers-contrast: more) {
 
@@ -243,13 +240,10 @@ footer { display: flex; align-items: center; padding-block: 0; padding-inline: c
 /* Footer key hints (#491): what Enter does now, or with Alt held the other
    keys. They stay in narrow windows and wrap instead of overlapping. */
 .enter-hints { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); min-width: 0; color: var(--text-secondary); font-size: var(--type-label-size); overflow-wrap: anywhere; }
-.footer-action { min-width: var(--control-h); max-width: 100%; }
 /* Corners nest: the key sits 4 px inside the action on three sides, and the
    action ends on the same edge as the rows, 8 px inside the window's corner. */
-.library-bar :is(.footer-action, .more > button).ui-button { height: auto; min-height: var(--action-h); border-width: 0; padding-inline: var(--space-2) var(--space-1); }
 /* At large system text sizes the label and caps may need separate lines;
    their visible content must stay inside the button's actual hit target. */
-.footer-action > .key-hint { flex-wrap: wrap; max-width: 100%; white-space: normal; }
 footer .key-hint-label { display: inline; }
 /* Width classes use the actual text size: at 200% the minimum frame keeps
    one footer line of keys, leaving the middle readable (design C10). */
@@ -257,7 +251,6 @@ footer .key-hint-label { display: inline; }
   footer .key-hint-label { display: none; }
 }
 @media (pointer: coarse) {
-  .library-bar :is(.footer-action, .more > button).ui-button { min-width: 2.75rem; min-height: 2.75rem; }
 }
 .empty-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-2); margin-top: var(--space-3); }
 
@@ -291,7 +284,8 @@ footer .key-hint-label { display: inline; }
 
 .recent-heading h2 { margin: 0; font: inherit; }
 [data-active] .result-body > .result-type { color: var(--selected-text-secondary); }
-.result-body > .result-type { color: var(--text-secondary); font-size: var(--type-meta-size); line-height: var(--type-meta-line); }
+:root[data-density="spacious"] .result-meta { margin-top: var(--row-spacing); }
+.result-body > .result-type { color: var(--text-tertiary); margin-top: var(--row-spacing); font-size: var(--type-meta-size); line-height: var(--type-meta-line); }
 
 .query-input { position: relative; display: flex; flex: 1; min-width: 0; }
 

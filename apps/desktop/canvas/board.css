@@ -13,5 +13,5 @@
 .canvas-part { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-1); }
 .canvas-part-items { display: flex; align-items: center; min-height: var(--control-h); }
 .canvas-part code { font: var(--type-label-size) var(--mono); color: var(--text-secondary); }
-.canvas-part svg { width: var(--icon); height: var(--icon); }
+.canvas-part-items > svg { width: var(--icon); height: var(--icon); }
 .canvas-part .canvas-part-mark { width: var(--space-10); height: var(--space-10); }

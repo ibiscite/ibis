@@ -1,3 +1,4 @@
+import { iconPaths, iconStroke } from "./icon-paths";
 // What a copy says afterwards, and what a click on a result row does.
 // Pure decisions, kept apart from the picker so they can be tested alone.
 import type { Copied, NoticeMessage } from "./api";
@@ -79,7 +80,8 @@ export function renderNotice(root: HTMLElement, platform: NoticePlatform): (mess
   mark.setAttribute("viewBox", "0 0 20 20");
   mark.classList.add("copied-notice-mark", "copy-receipt-mark");
   const tick = document.createElementNS("http://www.w3.org/2000/svg", "path");
-  tick.setAttribute("d", "m5 10.5 3.2 3.2L15 6.5");
+  tick.setAttribute("d", iconPaths.check);
+  mark.setAttribute("stroke-width", String(iconStroke));
   mark.append(tick);
   const title = document.createElement("strong");
   const code = document.createElement("code");

@@ -32,7 +32,7 @@ export function useSourceOpen(api: Pick<PickerApi, "openLibrarySource" | "librar
   useEffect(() => {
     if (!visible || !read || !library) return;
     let current = true;
-    void read(item, library.revision, zoteroOnly, withStatusIcon).then((source) => {
+    void read(item, library.revision, library.source_generation, zoteroOnly, withStatusIcon).then((source) => {
       if (current && latest.current === scope) setResolved({ scope, source });
     // Presentation is optional. Retrying it by refreshing status could loop
     // on a retired reference; the explicit open owns any actionable refusal.
@@ -58,7 +58,7 @@ export function useSourceOpen(api: Pick<PickerApi, "openLibrarySource" | "librar
       setBusy(null);
     };
     const kind = appOnly ? "zotero" : source.kind;
-    void api.openLibrarySource(appOnly ? null : target as typeof item, library?.revision ?? "", appOnly || zoteroOnly && target === item, reveal).then(settled, (error: unknown) => {
+    void api.openLibrarySource(appOnly ? null : target as typeof item, library?.revision ?? "", library?.source_generation ?? "", appOnly || zoteroOnly && target === item, reveal).then(settled, (error: unknown) => {
       settled();
       if (latest.current !== scope || request.current !== current) return;
       const changed = isSnapshotChanged(error);

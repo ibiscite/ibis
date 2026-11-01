@@ -1,0 +1,2 @@
+/* The whole content area is the drop target, including empty space. */
+[data-file-drag] { outline: var(--ring-width) solid var(--accent); outline-offset: calc(-1 * var(--ring-width)); }

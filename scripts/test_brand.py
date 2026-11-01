@@ -12,6 +12,19 @@ BUILD = runpy.run_path(str(Path(__file__).resolve().parents[1] / "brand/build.py
 
 
 class BrandDrift(unittest.TestCase):
+    def test_interface_drawings_are_generated_and_included_in_drift_checks(self):
+        root = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            BUILD["ui_icons"](output)
+            name = Path("apps/desktop/src/icon-paths.ts")
+            self.assertEqual((output / name).read_text(), (root / name).read_text())
+            self.assertIn(name, BUILD["generated_files"](output))
+            from xml.etree import ElementTree
+            for source in (root / "brand/icons").glob("*.svg"):
+                path = ElementTree.parse(source).getroot()[0].attrib["d"]
+                self.assertIn(json.dumps(path), (output / name).read_text())
+
     def test_readme_uses_the_current_public_headline(self):
         root = Path(__file__).resolve().parents[1]
         words = json.loads((root / "brand/settings.json").read_text())["words"]

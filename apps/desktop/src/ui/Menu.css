@@ -47,6 +47,7 @@
 }
 /* Checks and icons share one leading column; plain rows and headings reserve
    it too, including menus of radio choices or source actions. */
+.menu-check > svg { width: var(--icon-small); height: var(--icon-small); }
 .menu-check { flex: 0 0 var(--menu-check-width); display: inline-flex; align-items: center; justify-content: center; }
 :root .menu:has(.menu-check) :is(.menu-item:not(:has(> .menu-check)), .menu-header) { padding-inline-start: var(--menu-label-start); }
 /* Grow to the intrinsic label width first; at the viewport limit full action

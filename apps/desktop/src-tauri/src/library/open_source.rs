@@ -35,6 +35,7 @@ pub(crate) struct SourceItem(#[specta(type = specta_typescript::Unknown)] ItemRe
 pub(crate) async fn open_library_source(
     item: Option<SourceItem>,
     expected_revision: String,
+    expected_source_generation: String,
     zotero_only: bool,
     reveal: bool,
     library: State<'_, Mutex<Library>>,
@@ -45,6 +46,7 @@ pub(crate) async fn open_library_source(
             &library,
             item.as_ref().map(|item| &item.0),
             &expected_revision,
+            &expected_source_generation,
             zotero_only,
         )?
     };
@@ -82,6 +84,7 @@ pub(crate) async fn library_source(
     app: AppHandle,
     item: Option<SourceItem>,
     expected_revision: String,
+    expected_source_generation: String,
     zotero_only: bool,
     with_status_icon: bool,
     library: State<'_, Mutex<Library>>,
@@ -92,6 +95,7 @@ pub(crate) async fn library_source(
             &library,
             item.as_ref().map(|item| &item.0),
             &expected_revision,
+            &expected_source_generation,
             zotero_only,
         )?;
         let status_path = match library.source.as_ref().or(library.requested.as_ref()) {
@@ -129,17 +133,26 @@ fn target(
     library: &Library,
     item: Option<&ItemRef>,
     expected: &str,
+    expected_source_generation: &str,
     zotero_only: bool,
 ) -> Result<Target, CommandError> {
     // Opening the app itself is independent of a library snapshot. In
     // particular it still works on first run or after a failed status read.
-    if zotero_only || item.is_none() {
+    if zotero_only {
         return Ok(Target::Zotero);
     }
-    if library.file.as_ref().map(|file| file.revision()).unwrap_or_default() != expected {
+    if library.source_generation.to_string() != expected_source_generation
+        || library.file.as_ref().map(|file| file.revision()).unwrap_or_default() != expected
+    {
         return Err(CommandError::SnapshotChanged);
     }
-    let item = item.ok_or(FAILED)?;
+    let Some(item) = item else {
+        return match library.source.as_ref().or(library.requested.as_ref()) {
+            Some(Source::File(path) | Source::Samples(path)) => Ok(Target::File(path.clone())),
+            Some(Source::Zotero(_)) => Ok(Target::Zotero),
+            None => Err(FAILED.into()),
+        };
+    };
     let file = library.file.as_ref().ok_or(FAILED)?;
     let snapshot = file.engine.snapshot().map_err(|_| CommandError::SnapshotChanged)?;
     if snapshot.fingerprints().full.as_str() != expected
@@ -330,8 +343,15 @@ mod tests {
         let mut library = candidate(PathBuf::from("retained.bib"), "@misc{synthetic}");
         library.requested = Some(Source::File("missing.bib".into()));
         let revision = library.file.as_ref().map(|file| file.revision()).unwrap_or_default();
-        assert_eq!(target(&library, None, &revision, false).ok(), Some(Target::Zotero));
-        assert_eq!(target(&library, None, "old", false).ok(), Some(Target::Zotero));
+        let generation = library.source_generation.to_string();
+        assert_eq!(
+            target(&library, None, &revision, &generation, false).ok(),
+            Some(Target::File("retained.bib".into()))
+        );
+        assert!(matches!(
+            target(&library, None, "old", &generation, false),
+            Err(CommandError::SnapshotChanged)
+        ));
         let item = library
             .file
             .as_ref()
@@ -339,22 +359,62 @@ mod tests {
             .and_then(|snapshot| snapshot.objects().first().map(|object| object.object.id().clone()))
             .unwrap_or_else(|| panic!("invented record"));
         assert_eq!(
-            target(&library, Some(&item), &revision, false).ok(),
+            target(&library, Some(&item), &revision, &generation, false).ok(),
             Some(Target::File("retained.bib".into()))
         );
         assert!(matches!(
-            target(&library, Some(&item), "old", false),
+            target(&library, Some(&item), "old", &generation, false),
             Err(CommandError::SnapshotChanged)
         ));
         let mut forged = item.clone();
         forged.key = "not-a-record".into();
-        assert!(target(&library, Some(&forged), &revision, false).is_err());
+        assert!(target(&library, Some(&forged), &revision, &generation, false).is_err());
         library.source = Some(Source::Samples("samples.csljson".into()));
         assert_eq!(
-            target(&library, Some(&item), &revision, false).ok(),
+            target(&library, Some(&item), &revision, &generation, false).ok(),
             Some(Target::File("samples.csljson".into()))
         );
-        assert_eq!(target(&Library::default(), None, "", true).ok(), Some(Target::Zotero));
+        assert_eq!(
+            target(&Library::default(), None, "", "", true).ok(),
+            Some(Target::Zotero)
+        );
+    }
+
+    #[test]
+    fn an_itemless_open_from_empty_a_cannot_open_empty_b_with_the_same_snapshot() {
+        use super::super::state::{LoadRequests, begin_open, install};
+        let active = Mutex::new(candidate(PathBuf::from("empty-a.bib"), ""));
+        let first = super::super::status::status(&active.lock().unwrap_or_else(|_| panic!("library lock")));
+        let requests = LoadRequests::default();
+        let (request, _, opening) =
+            begin_open(&active, &requests, PathBuf::from("empty-b.bib")).unwrap_or_else(|| panic!("open empty B"));
+        let second = install(
+            &active,
+            &requests,
+            request,
+            Ok(candidate(PathBuf::from("empty-b.bib"), "")),
+        )
+        .unwrap_or_else(|| panic!("install empty B"));
+        let library = active.lock().unwrap_or_else(|_| panic!("library lock"));
+        assert_eq!(
+            first.revision, second.revision,
+            "empty snapshots deliberately share their fingerprint"
+        );
+        assert!(
+            matches!(
+                target(&library, None, &first.revision, &first.source_generation, false),
+                Err(CommandError::SnapshotChanged)
+            ),
+            "A's delayed request must refuse instead of opening B"
+        );
+        assert!(matches!(
+            target(&library, None, &opening.revision, &opening.source_generation, false),
+            Err(CommandError::SnapshotChanged)
+        ));
+        assert_eq!(
+            target(&library, None, &second.revision, &second.source_generation, false).ok(),
+            Some(Target::File("empty-b.bib".into()))
+        );
     }
 
     #[cfg(unix)]

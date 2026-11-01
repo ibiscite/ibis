@@ -1,0 +1,8 @@
+/* Regular 24 pt, large 28 pt. The 32 pt target surrounds the drawn square. */
+.ui-icon-button.ui-button[data-variant] { --icon-button-size: var(--control-small-h); flex: none; width: var(--icon-button-size); min-width: var(--icon-button-size); height: var(--icon-button-size); min-height: var(--icon-button-size); padding: 0; border-radius: var(--r-control); }
+.ui-icon-button.ui-button[data-size="default"] { --icon-button-size: var(--action-h); }
+.ui-icon-button.ui-button::after { inset: calc((var(--icon-button-size) - var(--control-h)) / 2); }
+.ui-icon-button > svg { width: var(--icon-small); height: var(--icon-small); pointer-events: none; }
+@media (pointer: coarse) {
+  .ui-icon-button.ui-button::after { inset: calc((var(--icon-button-size) - var(--touch-target)) / 2); }
+}

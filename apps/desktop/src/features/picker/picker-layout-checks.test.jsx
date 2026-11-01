@@ -104,7 +104,7 @@ test("the radio pointer oracle refuses displaced, clipped and covered controls",
   }
 });
 
-test.each([[720, 480, 1], [480, 360, 1], [480, 360, 2]])("the probe selects one rendered Show all control at %s×%s/%s× text, including with its menu open", async (width, height, scale) => {
+test.each([[720, 480, 1], [480, 360, 1], [480, 360, 2]])("the probe selects one rendered reference-count control at %s×%s/%s× text, including with its menu open", async (width, height, scale) => {
   vi.stubGlobal("innerWidth", width); vi.stubGlobal("innerHeight", height);
   const computed = window.getComputedStyle;
   vi.spyOn(window, "getComputedStyle").mockImplementation((node) => {
@@ -119,7 +119,7 @@ test.each([[720, 480, 1], [480, 360, 1], [480, 360, 2]])("the probe selects one 
   render(<main><CitationShelf announce={false} selected={new Map(records.map((r) => [r.key, r]))} removeLabel={(r) => `Remove ${r.key} from the selection`}
     onRemove={() => {}} style={null} keys focusable={false} outputWarnings={[]} shown={{ markup: [], text: "Synthetic citation", html: "", warnings: [] }} /><footer /></main>);
   const band = document.querySelector("main > .shelf");
-  const name = "Show all 9 selected references";
+  const name = "9 references";
   const trigger = within(band).getByRole("button", { name, exact: true });
   // Model just the Locator intersection and CSS visibility used by this probe.
   // jsdom has no boxes; hidden/display/visibility exclude retained controls,
@@ -136,7 +136,7 @@ test.each([[720, 480, 1], [480, 360, 1], [480, 360, 2]])("the probe selects one 
       return true;
     })),
   };
-  const control = shelfControl(page, name), foldedAnchor = shelfControl(page, /^Show all /);
+  const control = shelfControl(page, name), foldedAnchor = shelfControl(page, /^\d+ references$/);
   expect(control.nodes).toEqual([trigger]);
   expect(foldedAnchor.nodes).toEqual([trigger]);
   fireEvent.click(trigger);

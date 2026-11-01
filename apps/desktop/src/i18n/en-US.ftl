@@ -112,10 +112,19 @@ shortcuts-or = or
 about-automatic = Check for updates automatically
 about-automatic-description = Reads a small update file from GitHub a few times a day
 about-check = Check now
-about-copy = Copy Version
+about-check-failed = Ibis could not check for updates. Try again.
 about-copied = Copied
 about-copy-failed = The version could not be copied.
-about-version = { $name } { $version }
+about-version = Version { $version }
+about-mission = One shortcut to cite from your library in any app.
+about-why = Why an ibis
+about-updates = Updates
+about-links = Links
+about-website = Website
+about-source = Source Code
+about-problem = Report a Problem
+about-licences = Licences
+about-free = Free software under the AGPL 3.0
 about-unavailable = This build does not update itself.
 
 
@@ -237,3 +246,21 @@ undo-reset-window = Reset Window Position
 undo-shortcut = Restore Default Shortcut
 
 undo-removed = Removed { $reference } from citation.
+
+choice-use-zotero = Use Zotero
+choice-zotero-help = Your Zotero library, open or closed
+choice-library-file = Choose a Library File…
+choice-library-file-help = BibTeX, BibLaTeX or CSL-JSON
+choice-drop-file = Or drag a .bib or CSL-JSON file into this window.
+shelf-references = { $count } references
+keys-title = Keyboard Shortcuts
+keys-close = Close
+keys-action = Action
+keys-shortcut = Shortcut
+shortcuts-filter = Filter shortcuts
+shortcuts-global = Open Ibis (global)
+shortcuts-system = System
+shortcuts-empty = No matching actions
+
+choice-use-file = Use { $name }
+choice-back = Choose Another Source
