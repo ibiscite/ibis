@@ -331,9 +331,9 @@ try {
       await checkFormPointers(dialog);
       const year = dialog.getByRole("radio", { name: "Year only", exact: true });
       await year.check();
-      await page.locator('.shelf .preview-text[title="(2026)"]').waitFor();
+      await page.locator(".shelf .preview-text").filter({ hasText: /^\(2026\)$/ }).waitFor();
       await dialog.getByRole("textbox", { name: "Page", exact: true }).fill("9");
-      await page.locator('.shelf .preview-text[title="(2026, p. 9)"]').waitFor();
+      await page.locator(".shelf .preview-text").filter({ hasText: /^\(2026, p\. 9\)$/ }).waitFor();
       await closeEditor(dialog);
       await search.press("ArrowDown"); await search.press("Shift+Enter");
       const mixed = await openEditor();
@@ -576,7 +576,7 @@ try {
       await page.close(); profiles += 1; continue;
     }
     if (largeNotice) {
-      await page.locator('.shelf .preview-text[title="[@synthetic0]"]').waitFor();
+      await page.locator(".shelf .preview-text").filter({ hasText: /^\[@synthetic0\]$/ }).waitFor();
       await search.press("Enter");
       await page.getByRole("list", { name: "Copy warnings" }).waitFor();
       // Copy consumes the old selection; choose two references while its warnings remain.
@@ -626,7 +626,7 @@ try {
       await page.close(); profiles += 1; continue;
     }
     if (small) {
-      await page.locator('.shelf .preview-text[title="[@synthetic0]"]').waitFor();
+      await page.locator(".shelf .preview-text").filter({ hasText: /^\[@synthetic0\]$/ }).waitFor();
       await waitForCheck("results-announced", () => document.querySelector('[aria-label="Search results"]').textContent.trim().length > 0);
       for (const nextHeight of [480, 360]) {
         await page.setViewportSize({ width, height: nextHeight });

@@ -119,7 +119,8 @@ test("RTL citation text is isolated with automatic direction without changing ke
   const citation = document.querySelector(".shelf .preview-text")!;
   expect(citation.getAttribute("dir")).toBe("auto");
   expect(citation.textContent).toBe(text);
-  expect(citation.getAttribute("title")).toBe(text);
+  expect(citation.textContent).toBe(text);
+  expect(citation.getAttribute("title")).toBeNull();
 });
 
 test("a long single citation can be read in full from its keyboard-opened menu without hover", () => {
@@ -221,7 +222,7 @@ test.each([1, 2])("many references at the minimum frame and %s× text retain exa
   const text = "An invented very long citation. ".repeat(40).trim();
   render(shelf({ selected: chosen(records), shown: output(text) }));
   const preview = screen.getByRole("region", { name: "Preview" });
-  expect(within(preview).getByTitle(text).textContent).toBe(text);
+  expect(preview.querySelector(".preview-text")?.textContent).toBe(text);
   const count = screen.getByRole("button", { name: "Show all 50 selected references" });
   expect(count.textContent).toBe("50");
   fireEvent.click(count);

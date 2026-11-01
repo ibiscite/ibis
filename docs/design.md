@@ -478,7 +478,7 @@ page, report, other) never reuse an attachment drawing. Platform icons only
 where the platform owns the meaning.
 
 **Footer and status** [C8]. Status dot and text at the leading edge, then
-"More ⌘K" (quiet), then, last, "Paste into Word · APA ↵"
+"More ⌘K" (quiet), then, last, on the rows' right edge, "Paste into Word · APA ↵"
 or "Copy N as <format> ↵": the one primary action, filled with the accent
 with an `--on-accent` label and key cap, because mouse users copy far more
 often than they open anything else (maintainer, 2026-10-30; a Mac puts the
@@ -576,7 +576,8 @@ screens. Results never move when a reference is added. With several
 references the citation itself holds them as segments (no chips line): each
 reserves 1 px on each side; under the pointer it becomes a soft pill (radius 6),
 so nothing moves, no control ever covers its text and neighbours are never
-covered (also for zero-width separators). From the keyboard ← → select a
+covered (also for zero-width separators). The citation shows no system tooltip:
+the whole text is in the reference's menu. From the keyboard ← → select a
 segment as an accent-filled token and Delete removes it. On copy
 (maintainer, 2026-10-30) the shelf shows a closing beak that is the opening
 one turned 180°, the same size and the same 12 px from the citation, so the
