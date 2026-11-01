@@ -11,6 +11,7 @@
 }
 @media (prefers-contrast: more), (forced-colors: active) {
   :root .menu-popover, :root[data-platform] .menu-popover { --menu-highlight: Highlight; --menu-highlight-text: HighlightText; }
+  .menu-popover { border: var(--border-width) solid CanvasText; }
 }
 
 .menu-popover {
