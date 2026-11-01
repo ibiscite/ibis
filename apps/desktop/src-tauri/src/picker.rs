@@ -146,6 +146,15 @@ pub(crate) fn reveal_picker(app: &AppHandle) {
         .and_then(|window| checked(window.is_visible(), NativeIssue::Visibility));
     if reveal_shows(visible) {
         show_picker(app);
+        return;
+    }
+    // A command from the tray or menu bar still brings a visible picker
+    // forward with the keyboard, as showing it would.
+    #[cfg(target_os = "macos")]
+    crate::panel::show(app);
+    #[cfg(not(target_os = "macos"))]
+    if let Some(window) = app.get_webview_window("main") {
+        report(window.set_focus(), NativeIssue::Focus);
     }
 }
 
@@ -487,9 +496,15 @@ pub(crate) fn hide_picker<R: PickerHideUi>(app: AppHandle<R>, presentation: Opti
     let (send, receive) = std::sync::mpsc::sync_channel(1);
     let handle = app.clone();
     app.run_on_main_thread(move || {
-        let hidden = dismiss_presented_with(&handle.state::<PickerGeneration>(), presentation, || {
-            R::dismiss(&handle);
-        });
+        // A dialog the picker owns is open, perhaps opened after this request
+        // was sent (a copy finishing late): never take away its parent.
+        let dialog = handle
+            .try_state::<ChooserOpen>()
+            .is_some_and(|chooser| chooser.is_open());
+        let hidden = !dialog
+            && dismiss_presented_with(&handle.state::<PickerGeneration>(), presentation, || {
+                R::dismiss(&handle);
+            });
         let _ = send.send(hidden);
     })
     .map_err(|_| "The picker could not be hidden.")?;
@@ -524,6 +539,12 @@ fn dismiss_presented_with(visits: &PickerGeneration, presentation: u64, dismiss:
 pub(crate) fn dismiss_picker(app: &AppHandle) {
     app.state::<PickerGeneration>().advance();
     finish_dismiss(app);
+}
+
+/// Hide the picker only if `generation` is still its presentation, retiring it
+/// in the same atomic step: a show that arrives in between keeps the picker.
+fn dismiss_presentation(app: &AppHandle, generation: u64) -> bool {
+    dismiss_presented_with(&app.state::<PickerGeneration>(), generation, || finish_dismiss(app))
 }
 
 fn finish_dismiss(app: &AppHandle) {
@@ -660,7 +681,7 @@ pub(crate) fn reconcile_suppressed_blur(window: &tauri::WebviewWindow, generatio
     #[cfg(target_os = "windows")]
     dismiss_unless_refocused(app, app.state::<FocusChanges>().record(), generation);
     #[cfg(not(target_os = "windows"))]
-    dismiss_picker(app);
+    dismiss_presentation(app, generation);
 }
 
 /// When Narrator or another UI Automation client presses a control, WebView2
@@ -721,7 +742,7 @@ fn finish_blur(app: &AppHandle, blur: u64, generation: u64) {
             .state::<FocusChanges>()
             .permits_dismissal(blur, &app.state::<PickerGeneration>(), generation)
     {
-        dismiss_picker(app);
+        dismiss_presentation(app, generation);
     }
 }
 
@@ -774,6 +795,29 @@ mod tests {
             "A's Escape must leave B visible"
         );
         assert_eq!(visits.current(), b, "A's late response must not retire B's owner");
+        Ok(())
+    }
+
+    #[test]
+    fn a_hide_requested_before_a_dialog_opened_leaves_the_dialog_its_picker() -> tauri::Result<()> {
+        let app = tauri::test::mock_builder()
+            .manage(PickerGeneration(AtomicU64::new(41)))
+            .manage(ChooserOpen::default())
+            .manage(HideUi {
+                visible: AtomicBool::new(true),
+            })
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))?;
+        // A copy sent for presentation 41 finishes late, after an update offer
+        // opened over that same, still visible picker.
+        let lease = app.state::<ChooserOpen>().begin();
+        assert!(lease.is_some());
+        assert_eq!(hide_picker(app.handle().clone(), Some(41)), Ok(false));
+        assert!(app.state::<HideUi>().visible.load(Ordering::SeqCst));
+        assert_eq!(app.state::<PickerGeneration>().current(), 41);
+        // Once the dialog closes, the same presentation can hide again.
+        drop(lease);
+        assert_eq!(hide_picker(app.handle().clone(), Some(41)), Ok(true));
+        assert!(!app.state::<HideUi>().visible.load(Ordering::SeqCst));
         Ok(())
     }
 
