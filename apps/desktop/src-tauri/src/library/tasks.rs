@@ -567,7 +567,7 @@ pub(super) fn remembered_choice(source: &Source, loaded: &Result<Loaded, LoadErr
 const LIBRARY_FILE_EXTENSIONS: &[&str] = &["bib", "bibtex", "json", "csljson"];
 
 /// Whether a dropped file's name says it is a library.
-#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+#[cfg(target_os = "macos")]
 pub(crate) fn accepts_library_file(path: &std::path::Path) -> bool {
     path.extension()
         .and_then(|extension| extension.to_str())

@@ -46,6 +46,29 @@ test("a rerender while waiting keeps the answer", async () => {
   expect(result.current).toBe("invented orchard");
 });
 
+test("an older reply cannot replace a newer one, or what was typed meanwhile", async () => {
+  const answers: ((text: string) => void)[] = [];
+  let requested = () => {};
+  const api = {
+    takeSearchRequest: () => new Promise((resolve) => { answers.push(resolve); }),
+    onSearchRequested: async (handler: () => void) => { requested = handler; return () => {}; },
+  } as unknown as PickerApi;
+  const { result } = renderHook(() => {
+    const [query, setQuery] = useState("");
+    useNativeRequests(api, query, (text) => setQuery(text), { current: null }, 0);
+    return { query, setQuery };
+  });
+  await act(async () => {});
+  await act(async () => { requested(); });
+  await act(async () => { answers[1]!("invented newer"); });
+  await act(async () => { answers[0]!("invented older"); });
+  expect(result.current.query).toBe("invented newer");
+  await act(async () => { requested(); });
+  act(() => result.current.setQuery("typed"));
+  await act(async () => { answers[2]!("invented late"); });
+  expect(result.current.query).toBe("typed");
+});
+
 test("no waiting text leaves the query alone, and a closed picker ignores a late answer", async () => {
   const { api, unlisten } = scene([]);
   const setQuery = vi.fn();
