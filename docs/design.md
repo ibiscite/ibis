@@ -360,7 +360,13 @@ forced colours; it never resembles a partially completed download.
   2 px accent ring, with normal text (`--choice-selected-background`,
   `--choice-selected-text` and `--choice-selection-ring-width`). This selection
   mark stays visible at rest. The separate keyboard focus ring draws farther
-  inward, with a gap from the selection ring, only on keyboard focus. Rows keep
+  inward, with a gap from the selection ring, only on keyboard focus. **Picture
+  choices share their row** (maintainer, 2026-11-01): a group of picture
+  choices (Appearance, Window size, Search icon) splits the group's full width
+  into equal columns, one per choice, with each picture centred in its column
+  and every caption on one baseline; pictures keep their true relative sizes
+  (Window size) and are never cut (the Search icon field shows its whole
+  placeholder). The ring sits on the picture, the tint on the whole choice. Rows keep
   their full accent fill; the full accent primary action remains one per view.
 - **Focus ring only on keyboard focus** [D8] (`:focus-visible`), never after a
   click, and **drawn inside the item it marks**, so no scroll area clips it and
