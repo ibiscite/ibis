@@ -18,7 +18,7 @@ mod login_item;
 mod macos_notifications;
 #[cfg(target_os = "macos")]
 mod menu_bar;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 mod native_corners;
 mod native_feel;
 mod notice;
@@ -259,6 +259,8 @@ fn main() {
                 panel::cancel_initial_presentation(app.handle());
             }
             native_feel::install(app.handle());
+            #[cfg(target_os = "windows")]
+            native_corners::configure(app.handle());
             destination::manage(app.handle(), &settings_path);
             if let Some(problem) = &loaded.problem {
                 application_message(preferences::settings_problem(problem));

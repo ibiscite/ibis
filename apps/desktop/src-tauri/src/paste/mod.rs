@@ -34,6 +34,8 @@ mod queries;
 mod tickets;
 #[cfg(target_os = "windows")]
 mod windows;
+#[cfg(target_os = "windows")]
+pub(crate) use windows::picker_window;
 
 pub(crate) use capture::Captured;
 #[cfg(any(target_os = "linux", test))]
