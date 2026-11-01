@@ -14,7 +14,7 @@ use objc2_app_kit::{
 use objc2_foundation::{MainThreadMarker, NSArray, NSObject, NSObjectProtocol, NSString, NSURL};
 use tauri::image::Image;
 use tauri::tray::TrayIcon;
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter, Manager, Runtime};
 use tauri_nspanel::objc2::{MainThreadOnly, define_class, msg_send, rc::Retained, runtime::ProtocolObject};
 
 use crate::diagnostics::{NativeIssue, report};
@@ -66,9 +66,15 @@ pub(crate) fn dip(app: &AppHandle) {
             pose(&app, bird);
             std::thread::sleep(DIP_FRAME);
         }
-        pose(&app, resting());
-        std::thread::sleep(DIP_FRAME);
-        DIPPING.store(false, Ordering::SeqCst);
+        // On the thread `show_reading` uses, so a reload ending now cannot be missed.
+        let handle = app.clone();
+        let finished = app.run_on_main_thread(move || {
+            DIPPING.store(false, Ordering::SeqCst);
+            pose(&handle, resting());
+        });
+        if finished.is_err() {
+            DIPPING.store(false, Ordering::SeqCst);
+        }
     });
 }
 
@@ -137,7 +143,8 @@ define_class!(
             let text = pasteboard.stringForType(unsafe { NSPasteboardTypeString });
             let Some(app) = APP.get() else { return };
             if let Some(text) = text.map(|text| text.to_string()) {
-                let query: String = text.trim().chars().take(SEARCH_LIMIT).collect();
+                // A search box holds one line; the picker's own paste does the same.
+                let query: String = text.trim().replace(['\r', '\n'], "\t").chars().take(SEARCH_LIMIT).collect();
                 if let Ok(mut waiting) = app.state::<SearchRequest>().0.lock() {
                     *waiting = Some(query);
                 }
@@ -153,9 +160,14 @@ thread_local! {
     static TARGET: std::cell::OnceCell<Retained<MenuBarTarget>> = const { std::cell::OnceCell::new() };
 }
 
-/// Take a library dropped on the bird, and answer the Services menu.
+/// Take a library dropped on the bird, and answer the Services menu. Hiding the
+/// bird destroys its window, so showing it again must call `watch` again.
 pub(crate) fn accept_drops(app: &AppHandle, tray: &TrayIcon) {
     let _ = APP.set(app.clone());
+    watch(tray);
+}
+
+pub(crate) fn watch<R: Runtime>(tray: &TrayIcon<R>) {
     report(
         tray.with_inner_tray_icon(|inner| {
             let Some(main_thread) = MainThreadMarker::new() else {

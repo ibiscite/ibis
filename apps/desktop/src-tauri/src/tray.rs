@@ -97,6 +97,9 @@ pub(crate) fn show_in_menu_bar<R: Runtime>(app: &AppHandle<R>, shown: bool, revi
             HIDDEN.store(!shown, Ordering::SeqCst);
             if let Some(tray) = handle.tray_by_id("ibis") {
                 report(tray.set_visible(shown), NativeIssue::TrayCreation);
+                if shown {
+                    crate::menu_bar::watch(&tray);
+                }
             }
         }),
         NativeIssue::TrayCreation,

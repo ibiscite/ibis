@@ -115,7 +115,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   });
   useLibrarySetup(library, setFailures, send, input);
   const { altHeld, setAltHeld } = useAltHeld();
-  useNativeRequests(api, setQuery, state.selected.size);
+  useNativeRequests(api, query, setQuery, input, state.selected.size);
   usePickerLifecycle({ api, pickerSession, menus, destination, preferences, resetPointer, readShortcut, report, setAltHeld });
   const { resultArea, followKeyboard } = useResultScroll({
     input, active, restored: state.restored, pointer, selectedSize: selected.size, citationProblem, formatted, format, searchFocused,
