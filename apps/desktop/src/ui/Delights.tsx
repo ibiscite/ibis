@@ -4,7 +4,7 @@ import { useInterfaceMessages } from "../i18n";
 import { matchesAccelerator } from "../keys";
 import { currentPlatform } from "../platform";
 import { Button } from "./Button";
-import { IbisMark } from "./IbisMark";
+import { appIcon } from "../brand";
 import "./Delights.css";
 
 function matchesEcho(event: KeyboardEvent, accelerator: string) {
@@ -51,13 +51,15 @@ export function ShortcutEcho({ keys, children }: { keys: readonly string[]; chil
   return <div className="ui-shortcut-echo" data-echo={pressed || undefined}>{children}</div>;
 }
 
+/** The app icon itself. A click blinks it, and each run of clicks shows a fact. */
 export function AboutDelight({ blink, enabled, onClick }: { blink: number; enabled: boolean; onClick: () => void }) {
   const { text } = useInterfaceMessages();
-  return <div className="ui-about-delight">
-    <Button variant="quiet" aria-label={text("delight-ibis")} preventFocusOnPress onPress={onClick}>
-      <IbisMark key={blink} size="welcome" motion={enabled && blink > 0 ? "blink" : undefined} />
-    </Button>
-  </div>;
+  return <Button variant="quiet" className="ui-about-icon" aria-label={text("delight-ibis")} preventFocusOnPress onPress={onClick}>
+    <span key={blink} data-blink={enabled && blink > 0 ? true : undefined} aria-hidden="true">
+      <span data-icon="light" dangerouslySetInnerHTML={{ __html: appIcon.light }} />
+      <span data-icon="dark" dangerouslySetInnerHTML={{ __html: appIcon.dark }} />
+    </span>
+  </Button>;
 }
 
 export function QuietStatus({ children, passive = false }: { children: ReactNode; passive?: boolean }) {

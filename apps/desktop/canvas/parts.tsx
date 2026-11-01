@@ -1,6 +1,10 @@
 import { useRef, type ReactNode } from "react";
-import { ChoiceIcon, TypeIcon } from "../src/icons";
-import { Button, ToggleButton } from "../src/ui/Button";
+import { ChoiceIcon } from "../src/icons";
+import { Button } from "../src/ui/Button";
+import { IconButton } from "../src/ui/IconButton";
+import { StatusMark } from "../src/ui/StatusMark";
+import { Icon } from "../src/icons";
+import { iconPaths } from "../src/icon-paths";
 import { ChipGroup } from "../src/ui/ChipGroup";
 import { ChoiceList } from "../src/ui/ChoiceList";
 import { IbisMark } from "../src/ui/IbisMark";
@@ -13,7 +17,7 @@ import { Switch } from "../src/ui/Switch";
 
 const ignore = () => {};
 const states = ["rest", "hovered", "pressed", "focus-visible", "disabled"] as const;
-const variants = ["primary", "secondary", "quiet"] as const;
+const variants = ["primary", "secondary"] as const;
 const dots = [["#007aff", "Blue"], ["#953d96", "Purple"], ["#e0383e", "Red"], ["#62ba46", "Green"]] as const;
 const choices = [
   { id: "retry", title: "Try again", help: "Read the library again", icon: <ChoiceIcon name="retry" />, suggested: true },
@@ -37,11 +41,16 @@ export function Parts() {
         <Button variant={variant} isDisabled={state === "disabled"} render={(native) => <button {...native} {...{ [`data-${state}`]: state === "rest" ? undefined : true }} />}>Copy as Pandoc</Button>
       </State>)}
     </Section>)}
-    <Section title="Icon and toggle buttons">
-      <State name="close"><Button variant="icon" glyph="close" aria-label="Close" /></State>
-      <State name="off"><ToggleButton variant="icon" aria-label="Keep open" isSelected={false}><ChoiceIcon name="find" /></ToggleButton></State>
-      <State name="on"><ToggleButton variant="icon" aria-label="Keep open" isSelected><ChoiceIcon name="find" /></ToggleButton></State>
-      <State name="small"><Button size="small">Clear</Button></State>
+    {(["regular", "large"] as const).map((size) => <Section key={size} title={`IconButton: ${size}`}>
+      {(["rest", "hovered", "pressed", "selected", "focus-visible", "disabled"] as const).map((state) => <State key={state} name={state === "selected" ? "toggled-on" : state}>
+        <IconButton icon="pin" size={size} aria-label="Keep Window Open" isSelected={state === "selected"} isDisabled={state === "disabled"}
+          render={(native) => <button {...native} {...{ [`data-${state}`]: state === "rest" ? undefined : true }} />} />
+      </State>)}
+    </Section>)}
+    <Section title="Status: dot, symbol, wash">
+      {(["ok", "warning", "error"] as const).map((kind) => <State key={kind} name={kind}>
+        <StatusMark kind={kind} presentation="dot" /><StatusMark kind={kind} /><StatusMark kind={kind} presentation="wash" />
+      </State>)}
     </Section>
     <Section title="Switch and segmented control">
       <State name="off"><Switch aria-label="Off" isSelected={false} onChange={ignore} /></State>
@@ -71,8 +80,7 @@ export function Parts() {
     <section><h2>Choice rows</h2><ChoiceList title="A choice screen" line="One line of context." choices={choices} onChoose={ignore} /></section>
     <Section title="Marks and icons">
       <State name="mark"><IbisMark size="welcome" className="canvas-part-mark" /></State>
-      {(["library", "sample", "file", "find", "retry", "swap"] as const).map((name) => <State key={name} name={name}><ChoiceIcon name={name} /></State>)}
-      {(["article-journal", "book", "chapter"] as const).map((name) => <State key={name} name={name}><TypeIcon itemType={name} /></State>)}
+      {(Object.keys(iconPaths) as (keyof typeof iconPaths)[]).map((name) => <State key={name} name={name}><Icon name={name} /></State>)}
     </Section>
   </div>;
 }

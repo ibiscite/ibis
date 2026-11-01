@@ -55,11 +55,11 @@ test("a failed switch write restores the authoritative choice without losing oth
   expect((await api.pickerPreferences()).paste).toBe(true);
 });
 
-test("one anniversary line leaves the factual name and revealed fact visible without announcing them", async () => {
+test("one anniversary line and the factual name stay visible without competing facts or announcements", async () => {
   const api = { ...demoApi(), delightView: vi.fn().mockResolvedValue({ fun: true, birthday: true, anniversary: true, fact: "thoth", status: null, library: null, revision: 2, peck: false, build: "invented" }) };
   await act(async () => render(<SettingsApp api={api} initialPage="about" />));
   expect(screen.getByText("Ibis turns two today.").closest('[aria-live], [role="status"]')).toBeNull();
   expect(screen.queryByText("One year with Ibis")).toBeNull();
-  expect(screen.getByText("Ancient Egyptians associated the ibis with Thoth, god of writing.")).toBeTruthy();
+  expect(screen.queryByText("Ancient Egyptians associated the ibis with Thoth, god of writing.")).toBeNull();
   expect(screen.getByText(nameLine)).toBeTruthy();
 });

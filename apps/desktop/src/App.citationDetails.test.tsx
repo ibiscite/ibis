@@ -109,7 +109,7 @@ test("removing a middle reference and Undo restore its position and page through
   fireEvent.click(screen.getByText("Second work"), { ctrlKey: true });
   fireEvent.click(screen.getByText("Third work"), { ctrlKey: true });
   const openReferences = () => {
-    fireEvent.click(screen.getByRole("button", { name: "Show all 3 selected references" }));
+    fireEvent.click(screen.getByRole("button", { name: "3 references" }));
     return screen.getByRole("dialog", { name: "Selected references" });
   };
   let list = openReferences();
@@ -119,7 +119,7 @@ test("removing a middle reference and Undo restore its position and page through
   fireEvent.change(screen.getByRole("textbox", { name: "Page" }), { target: { value: "iv–vi" } });
   fireEvent.click(screen.getByRole("button", { name: "Remove from Citation" }));
   expect(screen.queryByRole("dialog")).toBeNull();
-  expect(screen.getByRole("button", { name: "Show all 2 selected references" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "2 references" })).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: /^Undo / }));
   list = openReferences();
   expect(names()).toEqual(order);
@@ -234,7 +234,7 @@ test.each(["pointer", "Enter", " "])("Edit activated with %s focuses Page and ed
   fireEvent.click(await screen.findByText("First work"), { ctrlKey: true });
   fireEvent.click(screen.getByText("Second work"), { ctrlKey: true });
   for (const [key, title, value] of [["b", "Second work", "29"], ["a", "First work", "12–15"], ["a", "First work", "16"]]) {
-    fireEvent.click(screen.getByRole("button", { name: "Show all 2 selected references" }));
+    fireEvent.click(screen.getByRole("button", { name: "2 references" }));
     const edit = within(screen.getByRole("dialog", { name: "Selected references" })).getByRole("button", { name: `Edit Smith 2020 · ${key}` });
     act(() => edit.focus());
     if (activation === "pointer") fireEvent.click(edit);
@@ -319,7 +319,7 @@ test("each shelf reference keeps independent details and an empty Page removes o
   closeCitationDetails();
   fireEvent.click(screen.getByText("Second work"), { ctrlKey: true });
   const edit = (key: string) => {
-    fireEvent.click(screen.getByRole("button", { name: "Show all 2 selected references" }));
+    fireEvent.click(screen.getByRole("button", { name: "2 references" }));
     return within(screen.getByRole("dialog", { name: "Selected references" })).getByRole("button", { name: `Edit Smith 2020 · ${key}` });
   };
   fireEvent.click(edit("b"));

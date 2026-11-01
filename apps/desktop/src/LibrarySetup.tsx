@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "re
 import type { ShortcutStatus, Sources } from "./bindings";
 import { ChoiceIcon } from "./icons";
 import { keysFor } from "./keys";
+import { useInterfaceMessages } from "./i18n";
 import { setupText } from "./messages";
 import { currentPlatform } from "./platform";
 import { shortcutLabel } from "./keys";
@@ -36,6 +37,7 @@ export function LibrarySetup({ api, perform, autoFocus = false, empty, shortcut,
   /** Search is hidden in welcome, including when reached through recovery. */
   onWelcomeChange?: (shown: boolean) => void;
 }) {
+  const { text } = useInterfaceMessages();
   const { chooseLibrary, useZotero, useSampleLibrary: changeSamples, findSources, openFoundLibrary } = api;
   const welcome = !empty;
   useLayoutEffect(() => {
@@ -73,13 +75,12 @@ export function LibrarySetup({ api, perform, autoFocus = false, empty, shortcut,
     : sources ? setupText.found(files.length, zotero === "available") : setupText.findHelp;
 
   const choices: Choice[] = [
-    ...(empty?.source ? [{ id: "source", title: empty.source.label, icon: empty.source.icon ?? <ChoiceIcon name={empty.zotero ? "library" : "file"} />,
-      keys: keysFor("source") }] : []),
-    { id: "zotero", title: setupText.zotero, help: setupText.zoteroHelp, icon: <ChoiceIcon name="library" />,
+    { id: "zotero", title: text("choice-use-zotero"), help: text("choice-zotero-help"), icon: <ChoiceIcon name="library" />,
       tag: zotero === "available" || empty?.zotero ? setupText.foundOn(currentPlatform()) : undefined },
-    { id: "file", title: setupText.file, help: setupText.fileHelp, icon: <ChoiceIcon name="file" /> },
+    { id: "file", title: text("choice-library-file"), help: text("choice-library-file-help"), icon: <ChoiceIcon name="file" /> },
+    ...(empty?.source ? [{ id: "source", title: empty.source.label, icon: empty.source.icon ?? <ChoiceIcon name={empty.zotero ? "library" : "file"} />, keys: keysFor("source") }] : []),
     ...(!empty && findSources ? [{
-      id: "find", title: onlyFile ? setupText.foundFile(onlyFile.name)
+      id: "find", title: onlyFile ? text("choice-use-file", { name: onlyFile.name })
         : files.length > 1 ? setupText.chooseFound : search === 0 ? setupText.findLibraries : setupText.lookAgain,
       help: onlyFile?.folder ? setupText.foundIn(onlyFile.folder) : outcome,
       // Stays enabled while looking so keyboard focus stays on it; presses wait.
@@ -124,9 +125,9 @@ export function LibrarySetup({ api, perform, autoFocus = false, empty, shortcut,
     : hasShortcut ? shortcut.desktop?.guidance || setupText.shortcutUnavailable
     : `${setupText.noShortcut} ${shortcut.desktop?.guidance || setupText.openWithoutShortcut}`;
   const foundChoices: Choice[] = files.map((file, index) => ({
-    id: `found-${index}`, title: file.name, tag: file.folder || undefined, icon: <ChoiceIcon name="file" />,
+    id: `found-${index}`, title: text("choice-use-file", { name: file.name }), tag: file.folder || undefined, icon: <ChoiceIcon name="file" />,
   }));
-  foundChoices.push({ id: "back", title: setupText.back, icon: <ChoiceIcon name="swap" /> });
+  foundChoices.push({ id: "back", title: text("choice-back"), icon: <ChoiceIcon name="swap" /> });
   return (
     <div className={`library-setup${empty ? "" : " library-welcome"}`}>
       {showFiles && !empty ? <ChoiceList key="found" title={setupText.foundTitle} choices={foundChoices} onChoose={choose} autoFocus
@@ -134,7 +135,7 @@ export function LibrarySetup({ api, perform, autoFocus = false, empty, shortcut,
         : <ChoiceList key="starts" title={empty?.title ?? setupText.sourcesTitle} line={empty ? setupText.emptyLine : setupText.sourcesLine}
           choices={choices} onChoose={choose} autoFocus={autoFocus || !empty} grid={!empty && choices.length === 4} focusId={focusTile ? "find" : undefined}
           mark={!empty && <IbisMark className="welcome-mark" size="welcome" />}
-          footnote={empty ? setupText.dropFile : notes.length > 0 || shortcutNote ? <>
+          footnote={empty ? text("choice-drop-file") : notes.length > 0 || shortcutNote ? <>
             {notes.length > 0 && <span className="welcome-note">{notes.join(" ")}</span>}
             {shortcutNote && <span className="welcome-note">{shortcutNote}</span>}
           </> : undefined} />}

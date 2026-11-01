@@ -29,11 +29,11 @@ test("footer caps pulse for keyboard shortcuts only and retire old timers", () =
 test("About renders only the authorized blink and clicking never changes focus", () => {
   const click = vi.fn();
   const { container, rerender } = render(<AboutDelight blink={1} enabled={false} onClick={click} />);
-  expect(container.querySelector('[data-motion="blink"]')).toBeNull();
+  expect(container.querySelector('[data-blink]')).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Ibis" }));
   expect(click).toHaveBeenCalledOnce();
   rerender(<AboutDelight blink={1} enabled onClick={click} />);
-  expect(container.querySelector('[data-motion="blink"]')).not.toBeNull();
+  expect(container.querySelector('[data-blink]')).not.toBeNull();
 });
 
 test("listed shortcut echo is quiet and refuses recording or composition", () => {

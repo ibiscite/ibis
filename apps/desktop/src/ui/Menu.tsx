@@ -1,3 +1,4 @@
+import { Icon } from "../icons";
 import { Children, createContext, isValidElement, useCallback, useContext, useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type ComponentPropsWithRef, type PointerEvent, type ReactElement, type ReactNode, type Ref, type RefObject } from "react";
 import { composing as isComposing } from "../composition";
 import { flushSync } from "react-dom";
@@ -226,7 +227,7 @@ type ItemProps = {
 /** A drawn check, so it adds no text to the row; Menu.css gives it the icon column. */
 export function MenuCheck({ checked }: { checked: boolean }) {
   return <span className="menu-check" aria-hidden="true">
-    {checked && <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="m2.5 6.5 2.5 2.5 4.5-6" /></svg>}
+    {checked && <Icon name="check" />}
   </span>;
 }
 
@@ -390,7 +391,7 @@ export function Menu({ label, id, trigger, triggerRef, triggerClassName, trigger
     if (immediate) leave(tabFocusRef?.current, true);
     else pendingFocus.current = tabFocusRef?.current ?? null;
   }}><MenuTrigger isOpen={isOpen} onOpenChange={(open) => { fromTrigger.current = open; onOpenChange(open); }}>
-    <Button variant="quiet" size="small" aria-label={label} ref={(node) => {
+    <Button variant="secondary" aria-label={label} ref={(node) => {
       button.current = node;
       if (typeof triggerRef === "function") triggerRef(node);
       else if (triggerRef) triggerRef.current = node;

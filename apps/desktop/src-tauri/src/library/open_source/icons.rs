@@ -76,13 +76,12 @@ fn normalize(raw: SystemIcon) -> Option<SystemIcon> {
 #[cfg(target_os = "linux")]
 fn platform(path: Option<PathBuf>) -> Option<SystemIcon> {
     use gtk::{gio, prelude::*};
-    let icon = match path {
-        Some(path) => gio::File::for_path(path)
-            .query_info("standard::icon", gio::FileQueryInfoFlags::NONE, gio::Cancellable::NONE)
-            .ok()?
-            .icon()?,
-        None => gio::AppInfo::default_for_uri_scheme("zotero")?.icon()?,
-    };
+    // Zotero artwork comes from the installed Mac app only; other systems
+    // retain Ibis's books glyph. File icons still come from the system.
+    let icon = gio::File::for_path(path?)
+        .query_info("standard::icon", gio::FileQueryInfoFlags::NONE, gio::Cancellable::NONE)
+        .ok()?
+        .icon()?;
     let pixels = gtk::IconTheme::default()?
         .lookup_by_gicon(&icon, 32, gtk::IconLookupFlags::FORCE_SIZE)?
         .load_icon()
@@ -106,18 +105,16 @@ pub(super) async fn load(_app: tauri::AppHandle, path: Option<PathBuf>) -> Optio
 #[cfg(target_os = "windows")]
 fn platform_windows(path: Option<PathBuf>) -> Option<SystemIcon> {
     use windows::{
-        Foundation::Size,
         Storage::{
             FileProperties::{ThumbnailMode, ThumbnailType},
             StorageFile,
             Streams::DataReader,
         },
-        System::Launcher,
         core::HSTRING,
     };
-    // Only results explicitly identified as icons are exposed. WinRT supplies the
-    // registered application's logo for Zotero's URI scheme.
-    let (mime, size, input) = if let Some(path) = path {
+    // File icons only. Zotero keeps the shared books glyph on Windows.
+    let (mime, size, input) = {
+        let path = path?;
         let canonical = super::source_file(&path).ok()?;
         let path = dunce::simplified(&canonical);
         let file = StorageFile::GetFileFromPathAsync(&HSTRING::from(path.to_str()?))
@@ -132,30 +129,6 @@ fn platform_windows(path: Option<PathBuf>) -> Option<SystemIcon> {
         if icon.Type().ok()? != ThumbnailType::Icon {
             return None;
         }
-        (
-            icon.ContentType().ok()?.to_string(),
-            icon.Size().ok()?,
-            icon.GetInputStreamAt(0).ok()?,
-        )
-    } else {
-        let apps = Launcher::FindUriSchemeHandlersAsync(&HSTRING::from("zotero"))
-            .ok()?
-            .join()
-            .ok()?;
-        let icon = apps
-            .GetAt(0)
-            .ok()?
-            .DisplayInfo()
-            .ok()?
-            .GetLogo(Size {
-                Width: 32.0,
-                Height: 32.0,
-            })
-            .ok()?
-            .OpenReadAsync()
-            .ok()?
-            .join()
-            .ok()?;
         (
             icon.ContentType().ok()?.to_string(),
             icon.Size().ok()?,

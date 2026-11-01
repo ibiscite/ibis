@@ -132,6 +132,11 @@ export function onPickerHidden(handler: () => void): Promise<UnlistenFn> {
 }
 
 /** Called when a library finishes opening, or fails to open. */
+/** A native-accepted drop supersedes the explicit source chooser. */
+export function onLibraryFileDropped(handler: () => void): Promise<UnlistenFn> {
+  return listen("library:file-dropped", handler);
+}
+
 export function onLibraryChanged(handler: (status: LibraryStatus) => void): Promise<UnlistenFn> {
   return listen<LibraryStatus>("library:changed", (event) => handler(event.payload));
 }
@@ -177,4 +182,9 @@ export function onUpdateAvailable(handler: (available: boolean) => void): Promis
 /** Delivery still receives the full canonical text; only the receipt is shortened. */
 export function showCopiedNotice(text: string, delivery: number | null, summary: import("./bindings").ReceiptSummary | null = null) {
   return commands.showCopiedNotice(text, delivery, summary);
+}
+
+/** Presence only: native paths never enter the webview. */
+export function onFileDrag(change: (active: boolean) => void): Promise<UnlistenFn> {
+  return listen<boolean>("library:file-drag", (event) => change(event.payload));
 }

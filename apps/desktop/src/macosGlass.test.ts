@@ -6,7 +6,6 @@ const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
 const read = (name: string) => readFileSync(new FileURL(`./${name}`, import.meta.url), "utf8");
 const tokens = read("tokens.css");
 const native = read("nativeAppearance.css");
-const libraryStatus = read("ui/LibraryStatus.css");
 
 test("readable overlays use the panel surface at 92% for menus and 96% for sheets", () => {
   expect(tokens).toMatch(/--surface-overlay:\s*light-dark\(rgb\(250 250 252 \/ 92%\), rgb\(44 44 48 \/ 92%\)\)/);
@@ -28,7 +27,7 @@ function macSkinRules(): CSSRule[] {
 
 /** The macOS glass token block: one rule, inside its contrast guard. */
 function macBlock(): { guard: string; body: string } {
-  const match = tokens.match(/@supports \(color: light-dark\(white, black\)\) \{\s*(@media [^{]+)\{(?:\s*\/\*[^]*?\*\/)?\s*:root:not\(\.notice-window\) \{([^{}]*)\}/);
+  const match = tokens.match(/@supports \(color: light-dark\(white, black\)\) \{\s*(@media [^{]+)\{(?:\s*\/\*[^]*?\*\/)?\s*:root \{([^{}]*)\}/);
   expect(match, "macOS glass tokens").toBeTruthy();
   return { guard: match![1]!.trim(), body: match![2]! };
 }
@@ -110,12 +109,11 @@ test("Acrylic text roles keep contrast over black and white backdrops in both th
       const hover = background.map((c) => theme ? c * .97 + 255 * .03 : c * .97);
       for (const fill of [background, hover]) {
         expect(contrast(painted(rgba(shared, "--text")[theme]!, fill), fill), `--text/${theme}/${under}`).toBeGreaterThanOrEqual(4.5);
-        for (const role of ["--scarlet", "--done", "--stop"]) {
+        for (const role of ["--scarlet"]) {
           expect(contrast(hexes(roles, role)[theme]!, fill), `${role}/${theme}/${under}`).toBeGreaterThanOrEqual(4.5);
         }
       }
-      expect(hexes(roles, "--look")).toEqual(hexes(tokens, "--look"));
-      expect(contrast(hexes(roles, "--look")[theme]!, hexes(tokens, "--surface")[theme]!)).toBeGreaterThanOrEqual(3);
+      expect(roles).not.toMatch(/--status-/);
     }
   }
   // Accessibility overrides follow the material rule, never exposing its tint.
@@ -159,22 +157,13 @@ test("the window edge is a hairline, never a white rim or glow (prototype round 
   expect(edge.match(/box-shadow:\s*([^;]+);/)?.[1]).toBe("inset 0 0 0 var(--border-width) var(--glass-edge, transparent)");
 });
 
-test("the Look glyph keeps the frozen colours and an opaque adjacent surface for 3:1 contrast", () => {
-  expect(hexes(tokens, "--look")).toEqual([[176, 122, 0], [245, 197, 66]]);
-  expect(libraryStatus).toMatch(/\.status-dot\[data-health="look"\]\s*\{[^}]*outline:\s*var\(--border-width\) solid var\(--surface\)/);
-});
-
-test.each(["vibrancy", "liquid-glass"])("text keeps 4.5:1 and the Look glyph 3:1 with the qualified %s material", (mode) => {
+test.each(["vibrancy", "liquid-glass"])("citation text keeps 4.5:1 with the qualified %s material", (mode) => {
   const { body } = macBlock();
   const [light, dark] = rgba(body, "--vibrancy-tint");
   const over = (veil: [number, number, number, number], under: number) => veil.slice(0, 3).map((c) => c * veil[3] + under * (1 - veil[3]));
   const roles = materialRoles(mode);
-  expect(hexes(roles, "--look")).toEqual(hexes(tokens, "--look"));
-  const [surfaceLight, surfaceDark] = hexes(tokens, "--surface");
-  const [lookLight, lookDark] = hexes(roles, "--look");
-  expect(contrast(lookLight!, surfaceLight!)).toBeGreaterThanOrEqual(3);
-  expect(contrast(lookDark!, surfaceDark!)).toBeGreaterThanOrEqual(3);
-  for (const role of ["--scarlet", "--done", "--stop"]) {
+  expect(roles).not.toMatch(/--status-/);
+  for (const role of ["--scarlet"]) {
     const [onLight, onDark] = hexes(roles, role);
     for (const under of [141, 255]) expect(contrast(onLight!, over(light!, under)), `${role} light over ${under}`).toBeGreaterThanOrEqual(4.5);
     for (const under of [0, 120]) expect(contrast(onDark!, over(dark!, under)), `${role} dark over ${under}`).toBeGreaterThanOrEqual(4.5);

@@ -19,6 +19,7 @@ export const settingsApi = {
   updateChecks: commands.updateChecks,
   setUpdateChecks: commands.setUpdateChecks,
   checkForUpdates: commands.checkForUpdates,
+  openAboutLink: commands.openAboutLink,
   pastePermission: commands.pastePermission as () => Promise<PastePermission>,
   openPastePermission: commands.openPastePermission,
   dragPasteApp: async (): Promise<void> => { await commands.dragPasteApp(); },

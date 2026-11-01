@@ -63,7 +63,7 @@ test("editing Page in a pasted list preserves every reference in preview and cop
   fireEvent.change(box, { target: { value: "@b @a" } });
   await screen.findByText("Pasted list");
   await waitFor(() => expect(screen.getByRole("region", { name: "Preview" }).textContent).toContain("@b; @a"));
-  fireEvent.click(screen.getByRole("button", { name: "Show all 2 selected references" }));
+  fireEvent.click(screen.getByRole("button", { name: "2 references" }));
   fireEvent.click(within(screen.getByRole("dialog", { name: "Selected references" })).getByRole("button", { name: "Edit Smith 2020 · a" }));
   fireEvent.change(screen.getByRole("textbox", { name: "Page" }), { target: { value: "42" } });
   await waitFor(() => expect(previews.at(-1)?.items).toMatchObject([
@@ -274,7 +274,7 @@ function pressRow(row: HTMLElement) {
   fireEvent.keyDown(row, { key: "Enter", code: "Enter" });
   fireEvent.keyUp(row, { key: "Enter", code: "Enter" });
 }
-const FILE_ROW = /^BibTeX, BibLaTeX or CSL-JSON file/;
+const FILE_ROW = /^Choose a Library File…/;
 const formatButton = (name: string | RegExp = /^Copy as /) => within(screen.getByLabelText("Search references").closest("header")!).getByRole("button", { name });
 
 /** Picks a format in the header's format menu, as a click would. */
@@ -836,7 +836,7 @@ test.each([7, 9, 10])("%i long-key selections retain order across queries and fi
     for (const row of rows) fireEvent.click(row, { ctrlKey: true });
   }
   await waitFor(() => expect(selectedKeys()).toHaveLength(count));
-  fireEvent.click(screen.getByRole("button", { name: `Show all ${count} selected references` }));
+  fireEvent.click(screen.getByRole("button", { name: `${count} references` }));
   let menu = screen.getByRole("dialog", { name: "Selected references" });
   expect(within(menu).getAllByRole("button", { name: /^Edit / })).toHaveLength(count);
   fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
@@ -1259,7 +1259,7 @@ test("an unavailable initial library is named once without a duplicate search er
   expect(calls).not.toContain("search");
   // The chosen row goes away, so the list that replaces it keeps the keyboard.
   pressRow(choiceRow(/^Use another library/));
-  await waitFor(() => expect(document.activeElement).toBe(choiceRow(/^Zotero/)));
+  await waitFor(() => expect(document.activeElement).toBe(choiceRow(/^Use Zotero/)));
   await chooseFromLibrary("Choose Library…");
   pressRow(await screen.findByRole("option", { name: FILE_ROW }));
   await waitFor(() => expect(calls).toContain("choose_library"));
@@ -1298,7 +1298,7 @@ test.each(["", "sleep"])("an empty loaded library is explained even for query %s
   expect(screen.getByText("Choose a library with references.")).toBeTruthy();
   expect(screen.queryByText("Type to find a reference")).toBeNull();
   expect(screen.queryByText("No matching references")).toBeNull();
-  expect(screen.getByRole("option", { name: /^BibTeX, BibLaTeX or CSL-JSON file/ })).toBeTruthy();
+  expect(screen.getByRole("option", { name: /^Choose a Library File…/ })).toBeTruthy();
 });
 
 
@@ -1531,7 +1531,7 @@ test("Ctrl+K opens More with every action, Escape closes it before hiding the pi
   fireEvent.keyDown(box, { key: "k", ctrlKey: true });
   const menu = await screen.findByRole("menu");
   const items = within(menu).getAllByRole("menuitem").map((item) => item.textContent);
-  expect(items).toEqual(["Open ZoteroCtrl+O", "Rows: Comfortable›", "Keyboard ShortcutsCtrl+/", "Settings…Ctrl+,", "Quit IbisCtrl+Q"]);
+  expect(items).toEqual(["Open ⁨refs.bib⁩Ctrl+O", "Rows: Comfortable›", "Keyboard ShortcutsCtrl+/", "Settings…Ctrl+,", "Quit IbisCtrl+Q"]);
   expect(within(menu).queryByRole("menuitem", { name: "Forget formats for apps" })).toBeNull();
   expect(within(menu).getByRole("menuitemcheckbox", { name: "Keep Window Open" }).getAttribute("aria-checked")).toBe("false");
   expect(document.activeElement).toBe(within(menu).getAllByRole("menuitem")[0]);
@@ -2184,7 +2184,7 @@ test("first-run setup lists found .bib files by name and folder, and opens one b
   render(<App />);
   pressRow(await screen.findByRole("option", { name: /^Find them on this computer/ }));
   pressRow(await screen.findByRole("option", { name: /^Choose a found library/ }));
-  await screen.findByRole("option", { name: /^thesis\.bib/ });
+  await screen.findByRole("option", { name: /^Use thesis\.bib/ });
   const found = [...document.querySelectorAll<HTMLElement>("[data-key^='found-']")];
   expect(found.map((row) => row.querySelector(".choice-tag")?.textContent)).toEqual(["PhD", "Downloads"]);
   expect(screen.getByText(/turn on “Allow other applications on this computer to communicate with Zotero”/)).toBeTruthy();
@@ -2221,7 +2221,7 @@ test("when looking for libraries fails, setup still offers the file chooser and 
   pressRow(await screen.findByRole("option", { name: /^Find them on this computer/ }));
   expect(await screen.findByText("Ibis could not look for libraries on this computer. Choose a file instead.")).toBeTruthy();
   expect(choiceRow(FILE_ROW).getAttribute("aria-disabled")).toBeNull();
-  expect(choiceRow(/^Zotero/).getAttribute("aria-disabled")).toBeNull();
+  expect(choiceRow(/^Use Zotero/).getAttribute("aria-disabled")).toBeNull();
   expect(choiceRow(/^Look again/).getAttribute("aria-disabled")).toBeNull();
   expect(document.querySelector("[data-key^='found-']")).toBeNull();
 });
@@ -2248,7 +2248,7 @@ test("setup replaces Find with its discovered file and leaves a usable focused t
   pressRow(await screen.findByRole("option", { name: /^Find them on this computer/ }));
   const file = await screen.findByRole("option", { name: /^Use refs\.bib/ });
   expect(file.textContent).toContain("Found in Documents");
-  expect(choiceRow(/^Zotero/).textContent).toContain("Found on this");
+  expect(choiceRow(/^Use Zotero/).textContent).toContain("Found on this");
   expect(screen.queryByRole("option", { name: /^Look again/ })).toBeNull();
   expect(screen.getAllByRole("option")).toHaveLength(4);
   expect(document.activeElement).toBe(file);
@@ -2810,18 +2810,18 @@ test("? lists every key in a modal dialog, but a ? typed in the search is text",
   const dialog = await screen.findByRole("dialog", { name: "Keyboard Shortcuts" });
   expect(dialog.getAttribute("aria-modal")).toBe("true");
   const close = within(dialog).getByRole("button", { name: "Close" });
-  expect(document.activeElement).toBe(close);
+  expect(document.activeElement).toBe(dialog);
   // Each group's heading names where its keys work; each row is action, then keys.
-  const groups = within(dialog).getAllByRole("rowgroup").slice(1).map((group) => within(group).getAllByRole("row").map((row) => [...row.children].map((cell) => cell.textContent)));
-  expect(groups.map((group) => group[0])).toEqual([["While searching"], ["Anywhere in Ibis"], ["From any app"]].slice(0, groups.length));
+  const groups = within(dialog).getAllByRole("rowgroup").filter((group) => group.tagName === "TBODY").map((group) => within(group).getAllByRole("row").map((row) => [...row.children].map((cell) => cell.textContent)));
+  expect(groups.map((group) => group[0])).toEqual([["While searching"], ["From any app"], ["Anywhere in Ibis"]].slice(0, groups.length));
   const rows = groups.flatMap((group) => group.slice(1));
   expect(groups[0]).toContainEqual(["Paste the citation", "Enter"]);
   expect(groups[0]).toContainEqual(["Add another reference", "Shift+Enter"]);
-  expect(groups[1]).toContainEqual(["More actions", "Ctrl+K"]);
+  expect(groups.find((group) => group[0]?.[0] === "Anywhere in Ibis")).toContainEqual(["More actions", "Ctrl+K"]);
   expect(rows).toContainEqual(["Show this list", "Ctrl+/ or ?"]);
   expect(rows.some(([action]) => action === "Go to the first or last item")).toBe(false);
   // The global shortcut, labelled for this platform, is listed once it works.
-  await waitFor(() => expect(within(dialog).getAllByRole("row").at(-1)?.textContent).toBe("Open IbisCtrl+Shift+Y"));
+  await waitFor(() => expect(within(dialog).getByRole("row", { name: /^Open Ibis/ }).textContent).toBe("Open IbisCtrl+Shift+Y"));
   // Focus stays in the dialog, and the picker's keys wait until it closes.
   fireEvent.keyDown(close, { key: "Tab" });
   expect(dialog.contains(document.activeElement)).toBe(true);
@@ -2838,7 +2838,8 @@ test("? lists every key in a modal dialog, but a ? typed in the search is text",
   }
   // Clicking plain text focuses the dialog itself, so Escape still reaches it.
   expect(dialog.getAttribute("tabindex")).toBe("-1");
-  expect(within(dialog).getByRole("table").getAttribute("aria-labelledby")).toBeNull();
+  expect(within(dialog).getAllByRole("table")).toHaveLength(2);
+  for (const table of within(dialog).getAllByRole("table")) expect(table.getAttribute("aria-labelledby")).toBeNull();
   dialog.focus();
   fireEvent.keyDown(dialog, { key: "Escape" });
   expect(screen.queryByRole("dialog")).toBeNull();
@@ -3098,7 +3099,7 @@ test("mixed selected revisions retain their original tokens and cannot copy", as
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
   await screen.findByText("The library changed. Search again and reselect the references before copying.");
   expect(copies).toEqual([]);
-  fireEvent.click(screen.getByRole("button", { name: "Show all 2 selected references" }));
+  fireEvent.click(screen.getByRole("button", { name: "2 references" }));
   const references = screen.getByRole("dialog", { name: "Selected references" });
   expect(within(references).getAllByRole("button", { name: /^Edit / })).toHaveLength(2);
 });
