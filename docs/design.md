@@ -127,6 +127,11 @@ surfaces passes 4.5:1. The focus ring is always the accent, 2 px with a 1 px
 gap, for every choice. Hover and pressed accent fills move toward the text
 colour by the same amounts in both modes. The System page of the design canvas
 shows these roles labelled side by side in light and dark.
+The accents are a fixed, tuned set rather than a free colour picker
+(maintainer, 2026-11-01): Follow the Mac stays the default, Ibis scarlet comes
+first after it, then the Mac's colours, each with values chosen to look right
+and pass contrast in both light and dark; an arbitrary colour could not keep
+those pairs.
 A chosen accent overrides the system's in Ibis only. Ibis offers no per-element
 colours, fonts, radius, spacing, custom CSS or themes.
 
