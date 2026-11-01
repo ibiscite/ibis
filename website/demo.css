@@ -58,7 +58,6 @@
 /* Match KeyCaps and the app's filled, label-type kbd at every width. */
 .picker-actions .key-caps, .picker-actions .key-cap { display: inline-flex; align-items: center; gap: var(--space-1); }
 .picker-actions .key-caps { direction: ltr; unicode-bidi: isolate; white-space: nowrap; }
-.picker-actions .key-plus { color: var(--text-secondary); }
 .picker-actions kbd { display: inline-block; min-width: var(--key); height: var(--key); margin: 0; padding: 0 calc(var(--space-1) + var(--border-width)); border: var(--border-width) solid var(--stroke-field); border-radius: var(--r-key); background: var(--fill-control); box-shadow: none; text-align: center; font: var(--type-label-size)/calc(var(--key) - 2 * var(--border-width)) var(--font); font-weight: 500; }
 .picker-library { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--row-gap); }
 .picker-library > span:last-child { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }

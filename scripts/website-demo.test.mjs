@@ -37,19 +37,19 @@ function demoPage(platform) {
   return { add, copy, input, panel, figure, result, reopen: figure.querySelector("button") };
 }
 
-for (const [platform, addCaps, copyCaps, pluses] of [
-  ["macos", ["⇧↵"], ["↵"], []],
-  ["windows", ["Shift", "Enter"], ["Enter"], []],
-  ["linux", ["Shift", "Enter"], ["Enter"], ["+"]],
+for (const [platform, addCaps, copyCaps] of [
+  ["macos", ["⇧↵"], ["↵"]],
+  ["windows", ["Shift+Enter"], ["Enter"]],
+  ["linux", ["Shift+Enter"], ["Enter"]],
 ]) test(`${platform} footer keeps system key caps through Add, Remove, no-match search and reopen`, () => {
   const { add, copy, input, panel, reopen } = demoPage(platform);
   const check = label => {
     assert.equal(add.attrs["aria-label"], label);
     assert.equal(add.attrs["aria-keyshortcuts"], "Shift+Enter");
     assert.equal(copy.attrs["aria-keyshortcuts"], "Enter");
-    for (const [button, caps, separators] of [[add, addCaps, pluses], [copy, copyCaps, []]]) {
+    for (const [button, caps] of [[add, addCaps], [copy, copyCaps]]) {
       assert.deepEqual(button.querySelectorAll("kbd").map(cap => cap.textContent), caps);
-      assert.deepEqual(button.querySelectorAll(".key-plus").map(plus => plus.textContent), separators);
+      assert.equal(button.querySelectorAll(".key-plus").length, 0);
       assert.equal(button.querySelector(".key-caps").attrs["aria-hidden"], "true");
     }
   };
@@ -62,14 +62,14 @@ for (const [platform, addCaps, copyCaps, pluses] of [
   reopen.handlers.click(); check("Add"); assert.equal(panel.hidden, false);
 });
 
-test("shared cap labels retain native modifier order and literal plus and slash keys", () => {
+test("shared cap labels are one cap per shortcut in native modifier order, with literal plus and slash keys", () => {
   const ctx = {}; runInNewContext(keyScript, ctx);
   for (const [accelerator, mac, expected] of [
     ["CmdOrCtrl+Shift+Alt+C", true, ["⌥⇧⌘C"]],
-    ["CmdOrCtrl+Shift+Alt+C", false, ["Ctrl", "Shift", "Alt", "C"]],
+    ["CmdOrCtrl+Shift+Alt+C", false, ["Ctrl+Shift+Alt+C"]],
     ["+", true, ["+"]], ["+", false, ["+"]],
-    ["CmdOrCtrl++", true, ["⌘+"]], ["CmdOrCtrl++", false, ["Ctrl", "+"]],
-    ["CmdOrCtrl+/", true, ["⌘/"]], ["CmdOrCtrl+/", false, ["Ctrl", "/"]],
+    ["CmdOrCtrl++", true, ["⌘+"]], ["CmdOrCtrl++", false, ["Ctrl++"]],
+    ["CmdOrCtrl+/", true, ["⌘/"]], ["CmdOrCtrl+/", false, ["Ctrl+/"]],
   ]) assert.deepEqual(Array.from(ctx.keyCapLabels(accelerator, mac)), expected, `${accelerator}, mac=${mac}`);
 });
 
