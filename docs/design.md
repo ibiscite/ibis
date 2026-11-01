@@ -24,11 +24,11 @@ same design and must never differ from them (see **How the design changes**).
    icon drawings, wording and citation scarlet everywhere. The macOS design
    follows Apple's Human Interface Guidelines and the shipped system exactly:
    Apple's sizes, type styles, colours, materials, controls and wording
-   conventions (maintainer, 2026-11-01). Ibis departs from them only where
-   Apple's own accessibility guidance asks for more (text at 4.5:1), and each
+   conventions (maintainer, 2026-11-01). Colours are AppKit's exact values;
+   contrast rises the way the Mac raises it, with Increase Contrast. Each
    departure is named in **Where Ibis departs from Apple**. Windows and GNOME
    designs come later as their own value layers on the same components.
-3. **Readable first.** Nothing smaller than 12 px; secondary text passes 4.5:1.
+3. **Readable first.** Nothing smaller than 12 px; with Increase Contrast on, secondary text passes 4.5:1.
 4. **Easy to hit.** Every target is at least 32 px; 44 px under `pointer: coarse`.
 5. **Show less, reveal more.** An element appears when it becomes useful and
    steps back when it is not. Nothing is removed, only folded one key away. No
@@ -39,9 +39,10 @@ same design and must never differ from them (see **How the design changes**).
 7. **Calm motion.** Movement only explains where something came from, and it
    switches off when the system asks for reduced motion.
 8. **No glow, no edge rings.** Selection is a fill, never an outline.
-   Exception: picture choices in Settings (Appearance, Rows, Search icon
-   miniatures) use a soft accent tint plus a 2 px accent ring, because a fill
-   would hide the picture, as in macOS System Settings. No other coloured
+   Exception: picture choices in Settings (Appearance, Rows, Search icon,
+   Window size) select as macOS System Settings does: a 2 px accent ring 2 px
+   outside the picture, following its corner, and a semibold caption; no tinted
+   box behind it, so each choice has one corner. No other coloured
    borders, outer glows or bright rims. A focus ring appears only when the
    keyboard moved focus.
 9. **Great defaults, then choice.** Every setting starts from one default that
@@ -58,22 +59,34 @@ added here in the same change, or it is a bug.
 
 | Where | Apple | Ibis | Why |
 | --- | --- | --- | --- |
-| Secondary and tertiary text | Secondary label .498, tertiary .259 / .247 | .56 and .45 light; .549 and .38 dark | Apple's guidance asks for 4.5:1 text; its light secondary is 3.95:1 on the window. Tertiary is kept for glyphs and hints at 3:1. |
-| Filled buttons and Copy | Accent fill (#007AFF) with white text | The selection shade (#0064E1) with white text | White on #007AFF is 4.0:1; the selection shade is Apple's own colour and passes. |
-| Text on a selected row, secondary | About .82 white | .88 white | .82 is 4.1:1 on the light selection. |
-| Focus ring | Keyboard focus indicator at 50% (`#0067F4` / `#1AA9FF`) | The accent, solid, 2 px with a 1 px gap | A 50% ring is about 2:1; a focus indicator needs 3:1. |
 | Hit areas | Regular controls are 24 px | Drawn at Apple's size, hit area at least 32 px; full-width menu rows keep Apple's 24 px | Principle 4, easy to hit. |
 | Smallest text | Apple uses 10 and 11 pt captions | Nothing under 12 px | Principle 3, readable first. |
 | Accent choices | System accent only for apps that follow it | Follow the Mac by default, plus Ibis scarlet and tuned Mac colours | Maintainer's choice (2026-10-30); every choice keeps the same three roles and contrast. |
 
 ## Tokens
 
-Components read role tokens only, never raw colours, `GrayText`, literal px
-radii or literal shadows [D1]. Three layers (decision 0021): base values that
-components never read; role tokens, whose defaults are CSS system colours so an
-unknown webview still follows dark mode, the accent and high contrast; then
-the shared macOS look (`:root[data-platform="macos"]`), increased contrast, forced colours
-in that order. Light and dark come from
+**Three layers, each value declared once** (maintainer, 2026-11-01: "like
+professional teams do it in Figma"). One stylesheet holds them for the canvas
+and the app; `tokens.css` uses the same names and values.
+
+1. **Primitives:** raw values named by what they are: the 4 px space scale,
+   the ink (black in light, white in dark), measured hues (`--mac-blue`,
+   `--scarlet-500`, `--green-600`). Only layer 2 reads them.
+2. **Semantic:** what a value is for, set per mode (platform × light or dark):
+   `--text`, `--surface`, `--fill-1`…`--fill-5`, `--separator`, `--accent`,
+   `--selected`, `--ring`, and the corner and size roots (`--r-win`,
+   `--r-menu`, `--r-control`, `--r-card`, `--inset`, `--menu-pad`,
+   `--action-h`, `--key`). Increase Contrast and forced colours are modes here.
+3. **Component:** what a part needs, derived from layer 2 by a written rule
+   and never typed as a second number (`--r-row`, `--r-key`, `--r-mi`,
+   `--key-gap`, `--footer-h`, `--selected-hover`, `--key-fill`). A platform may
+   override a derived value only where its own guidelines differ.
+
+Components read layers 2 and 3 (and the space scale), never raw colours,
+`GrayText`, literal px radii or literal shadows [D1]; canvas boards draw with
+the same components and never restyle them locally. Role tokens default to CSS
+system colours so an unknown webview still follows dark mode, the accent and
+high contrast (decision 0021). Light and dark come from
 `color-scheme` and `light-dark()`; components never read `prefers-color-scheme`.
 `data-system` records the actual OS for fonts, modifier labels and native
 material correctness; it does not choose a different layout. The copied
@@ -93,8 +106,8 @@ them before any later delivery; it sends no new paste while they remain blocked.
 | Role | Tokens | Rule |
 |---|---|---|
 | Surfaces [D4] | `--surface`, `--surface-grouped`, `--surface-overlay`; `--raised`, `--surface-field`, `--scrim` | Three levels, as on the Mac: the window material, grouped content on it (the quaternary fill over `--surface`), and the menu material for every overlay. Fields keep their own background. `--raised` is the Mac's under-page colour, only for cards and the segmented thumb. No other surface colours. |
-| Text [D5] | `--text`, `--text-secondary`, `--text-tertiary`, `--text-disabled` | Apple's label ladder (label, secondary, tertiary, quaternary), with Ibis's contrast floors: secondary always 4.5:1; tertiary only for glyphs and hints at rest (3:1), never sentences. |
-| Accent [D6] | `--accent`, `--accent-text`, `--selected`, `--selected-text`, `--text-on-accent` | The system accent by default; Look's Accent row can override it (maintainer, 2026-10-30). Selected rows and the menu highlight use `--selected-text`, paired to the chosen accent; the system and existing fixed accents use white, while Ibis scarlet uses dark ink in dark mode (maintainer, 2026-10-31). Filled controls that carry words (primary button, Copy, the menu highlight) use the selection fill and `--selected-text`; `--text-on-accent` is only for glyphs on the accent (checkbox ticks, switch thumbs) and matches `--selected-text`. |
+| Text [D5] | `--text`, `--text-secondary`, `--text-tertiary`, `--text-quaternary`, `--text-disabled` | Apple's label ladder (label, secondary, tertiary, quaternary) and disabled control text, at AppKit's exact alphas. Tertiary is for placeholders and glyphs at rest, never sentences; quaternary only for watermarks. Increase Contrast raises them. |
+| Accent [D6] | `--accent`, `--accent-text`, `--selected`, `--selected-text`, `--text-on-accent` | The system accent by default; Look's Accent row can override it (maintainer, 2026-10-30). Selected rows and the menu highlight use `--selected-text`, paired to the chosen accent; the system and existing fixed accents use white, while Ibis scarlet uses dark ink in dark mode (maintainer, 2026-10-31). Selected rows, the menu highlight and a focused citation use the selection fill and `--selected-text`. The default button (Copy, a primary button) is Apple's default button: `--accent` with `--text-on-accent`. |
 | Selection [D7] | `--selected`, `--selected-text`, `--selected-text-secondary`, `--row-inactive-background` | See **Selection and focus**. |
 | Focus [D8] | `--ring`, `--ring-offset`, `--ring-shadow` | See **Selection and focus**. |
 | Fills | `--fill-1` … `--fill-5`; roles `--fill-control(-hover/-pressed)`, `--fill-quiet-hover`, `--fill-primary-*`, `--fill-disabled` | Apple's fill ladder (system, secondary, tertiary, quaternary, quinary fill), black on light and white on dark at the Mac's own alphas. Roles only point at the ladder: control rest, hover and pressed are tertiary, secondary and system fill; quiet row hover and grouped content are quaternary. Pressed is darker on macOS and GNOME, lighter on Windows. |
@@ -104,7 +117,7 @@ them before any later delivery; it sends no new paste while they remain blocked.
 | Progress | `--progress-track`, `--progress-fill`, `--progress-border`, `--progress-border-width` | Accent fill on a quiet track; contrast modes use Canvas with CanvasText fill and edge. |
 | Elevation [D11] | `--shadow-card`, `--shadow-overlay`, `--shadow-dialog`, `--shadow-toast` | One overlay shadow for every menu. None in contrast modes, none on rows, chips or inside an overlay; on Linux only cards, overlays and dialogs. In dark mode fills and hairlines separate layers first. |
 | Space [D12] | `--space-1…10`, `--inset`, `--row-pad`, `--row-gap`, `--row-spacing` | 4 px grid; 2 px only as an optical nudge or between rows. |
-| Shape [D2] | `--r-win`, `--r-tile`, `--r-row`, `--r-tile`, `--r-menu`, `--menu-pad`, `--r-mi`, `--r-control`, `--r-key`, `--r-win`, `--r-win`, `--r-full` | See **Corners**. |
+| Shape [D2] | Roots `--r-win`, `--r-menu`, `--r-control`, `--r-card`, `--r-floor`, `--r-floor-mark`, `--r-full`; derived `--r-row`, `--r-action`, `--r-tile`, `--r-mi`, `--r-seg`, `--r-key` | See **Corners**. |
 | Type [D13] | `--type-*`, `--font`, `--mono` | See **Type**. |
 | Motion [D14] | `--dur/-panel/-layout/-exit`, `--ease`, `--ease-in` | See **Motion**. |
 | Layers [D15] | `--z-content`, `--z-chrome`, `--z-overlay`, `--z-modal`, `--z-toast`, `--inset` | One z-order; overlays keep 8 px from the window edge and never leave the webview. |
@@ -114,8 +127,7 @@ standardise and learn from Apple; platform-specific looks come later). Colour
 tokens follow the Mac's semantic colours, not invented greys: one label
 ladder for text, one fill ladder for every fill, one separator, three
 surfaces, and the accent roles below. Each token has a light and a dark value
-taken from Apple's documented values, with Ibis's contrast floors applied on
-top where Apple's value would fall below them. A component never mixes its
+taken from AppKit exactly; Increase Contrast supplies the stronger set. A component never mixes its
 own colour; it names a role, and the role names a ladder step. New needs pick
 an existing step before adding a token.
 
@@ -147,8 +159,9 @@ ring, progress) uses the Mac's colour for that mode, such as blue `#007AFF`
 in both modes on macOS 27; the selection fill is the deeper shade of the same
 hue that keeps its paired text at 4.5:1, such as `#0064E1` light and
 `#0059D1` dark, never brighter in dark mode than in light; and accent text on
-surfaces passes 4.5:1. The focus ring is always the accent, 2 px with a 1 px
-gap, for every choice. Hover and pressed selection fills (`--selected-hover`,
+surfaces passes 4.5:1. The focus ring is Apple's keyboard focus indicator
+(the accent's focus shade at 50%), 2 px with a 1 px gap; with Increase
+Contrast it is the solid accent. Hover and pressed selection fills (`--selected-hover`,
 `--selected-pressed`) darken toward black by 10% and 20% in both modes, so
 white text keeps 4.5:1 (mixing toward the text colour would lighten them in
 dark mode). The System page of the design canvas
@@ -158,32 +171,37 @@ The accents are a fixed, tuned set rather than a free colour picker
 first after it, then the Mac's colours, each with values chosen to look right
 and pass contrast in both light and dark; an arbitrary colour could not keep
 those pairs.
-**Words on colour use the selection fill** (2026-11-01). Anything filled that
-carries words (selected rows, the macOS menu highlight, the primary button,
-Copy, a focused citation) uses `--selected` with `--selected-text`. The
-lighter `--accent` is for what carries no words: switches, checkboxes, the
-focus ring, progress and indicators. Apple's own accent fails 4.5:1 under
-white text (#007AFF is 4.0:1), so this is how Ibis keeps its floor without
-inventing colours.
+**Selection and the default button, as on the Mac** (maintainer,
+2026-11-01: Apple's values exactly). Selected rows, the macOS menu highlight
+and a focused citation use `--selected` with `--selected-text`. The default
+button (Copy, a primary button) is `--accent` with `--text-on-accent`, as
+AppKit draws it; switches, checkboxes, progress and indicators use `--accent`
+too.
 
 **Exact macOS values**, measured from AppKit on macOS 27.2 (2026-11-01; the
-script is in `docs/macos-metrics.swift`, rerun it on each new macOS). Bold
-marks where Ibis's floor raises Apple's value. Light / dark; black or white at
-the given alpha unless a hex:
+script is in `docs/macos-metrics.swift`, rerun it on each new macOS). Ibis
+uses them unchanged. Light / dark; black or white at the given alpha unless a
+hex:
 
 | Token | Apple role | Light | Dark |
 | --- | --- | --- | --- |
 | `--surface` | window background | `#FFFFFF` | `#1E1E1E` |
 | `--text` | label | .847 | .847 |
-| `--text-secondary` | secondary label | **.56** (Apple .498 is 3.95:1) | .549 |
-| `--text-tertiary` | tertiary label | **.45** (Apple .259) | **.38** (Apple .247) |
+| `--text-secondary` | secondary label | .498 | .549 |
+| `--text-tertiary` | tertiary label | .259 | .247 |
+| `--text-quaternary` | quaternary label | .098 | .098 |
 | `--text-disabled` | disabled control text | .247 | .247 |
 | `--fill-1` … `--fill-5` | system … quinary fill | .098, .078, .047, .027, .008 | the same |
 | `--separator` | separator | .10 | .12 |
 | `--accent` | control accent (Multicolor) | `#007AFF` | `#007AFF` |
 | `--selected` | selected content background | `#0064E1` | `#0059D1` |
 | `--accent-text` | link | `#0068DA` | `#419CFF` |
-| `--selected-text-secondary` | text on selection, secondary | **.88 white** | **.88 white** |
+| `--selected-text-secondary` | text on selection, secondary | .82 white | .82 white |
+| `--ring` | keyboard focus indicator | `#0067F4` at .5 | `#1AA9FF` at .5 |
+
+Increase Contrast (`prefers-contrast: more`) uses the Mac's stronger set; until
+it is measured, interim values give secondary text 4.5:1, glyphs 3:1 and a solid
+accent ring.
 
 Roles point at the ladder: control rest, hover and pressed are the tertiary,
 secondary and system fills; quiet row hover and grouped content are the
@@ -365,9 +383,14 @@ concentric, and an inner corner never goes below the per-OS floor.
 near its container's edge, the gap is the same on every side it shares with
 that edge, and its radius is the container's radius minus that gap. Window 16
 → 8 px inset → footer action and shelf 8 → 4 px gap → key cap 4. The footer is
-44 px so its actions sit 8 px from the window's bottom and side, like the
-shelf. A shape farther from the edge than its container's radius keeps its own
-radius. Check every new nested pair (key caps in hints, chips in menus, fields
+44 px (`--footer-h`: a 28 px action plus 8 above and below) so its actions sit
+8 px from the window's bottom and side, like the shelf. A shape farther from
+the edge than its container's radius keeps the floor. **Neighbours share a
+radius** (maintainer, 2026-11-01, on corners close together): shapes at the
+same depth side by side (footer actions and Copy, rows, menu items) use one
+radius and one gap, so their corners line up. Every derived radius is computed
+in the tokens from its container, never typed, so changing a root moves every
+corner inside it. Check every new nested pair (key caps in hints, chips in menus, fields
 in rows) against this before adding it. What the rule covers (settled
 2026-10-30 after an audit of every nested shape):
 
@@ -387,23 +410,26 @@ in rows) against this before adding it. What the rule covers (settled
   52 px header that means a 36 px field, 8 px from each edge, radius 8.
 
 ```
---r-row  = max(--r-tile, --r-win  − 8px)        rows, search field, shelf card
---r-tile = max(--r-tile, --r-row  − 12px)       type tile
---r-mi   = max(--r-tile, --r-menu − --menu-pad) menu items
+--r-row    = max(--r-floor, --r-win − --inset)          8  rows, fields, shelf, sheet
+--r-action = --r-row                                    8  footer actions, Copy
+--key-gap  = (--action-h − --key) / 2                   4
+--r-key    = max(--r-floor-mark, --r-action − --key-gap) 4  every key cap
+--r-mi     = max(--r-floor, --r-menu − --menu-pad)      7  menu items
+--r-seg    = max(--r-floor-mark, --r-control − 2px)     6  segmented thumb
+--r-tile   = --r-floor                                  6  row tiles (12 px in)
 ```
 
-| Token | Value |
+| Root token | macOS value |
 |---|---|
 | `--r-win` | 16 (every macOS version; the native panel mask) |
-| `--r-tile` | 6 |
-| `--r-row` | 8 |
-| `--r-tile` | 6 |
+| `--r-menu` · `--menu-pad` | 12 · 5 |
 | `--r-control` | 8 |
-| `--r-menu` · `--menu-pad` · `--r-mi` | 12 · 6 · 6 |
-| Citation segment pill | 6 |
+| `--r-card` | 10, Settings group cards (24 px in from the window, so not derived) |
+| `--r-floor` · `--r-floor-mark` | 6 · 4 |
+| Citation segment pill | `--r-floor` |
 
-Key caps use `--r-key`, Settings cards `--r-win`, switches, toasts and capsules
-`--r-full`.
+Switches, chips, toasts and capsules use `--r-full`. Settings page icons use
+Apple's icon shape (22.5% of the size), like app icons.
 
 **Width classes** (container queries, in em). Below 28.75 em: header controls
 wrap and footer hints show keys only. Below 60 em the preview replaces the
@@ -535,10 +561,15 @@ opens it (also Alt+↓ off macOS); a pick or Escape returns to search, Tab moves
 on. Named by what it sets and its value ("Copy as Pandoc"); items are
 `menuitemradio`. Hidden until a library is chosen.
 
-**Key caps.** Only in the footer and in lists of keys, never in buttons or menus
-[C8]. A 20 px fill (`--key` on `--fill-control`), `--r-key`, label-type
-UI-font text, never an outline and never scarlet. macOS joins glyphs in one cap (⌘K;
-the Return cap is the ↵ glyph); Windows gives each key a cap 4 px apart (Ctrl
+**Key caps.** Only in the footer and in lists of keys, never in menus, which
+write shortcuts as plain trailing text [C8]. A 20 px fill (`--key`,
+`--key-fill`), `--r-key`, label-type UI-font text, never an outline and never
+scarlet. On macOS a shortcut is always one cap, written as menus write it (⌘K,
+⇧⌘F, ⌘Space; the Return cap is the ↵ glyph). Inside a footer action the cap
+keeps `--key-gap` on every side it shares with the action, so its corner is
+concentric. On the action's hover or pressed fill the cap steps up one fill
+(`--key-fill`), so it never sinks into the shape around it; on Copy it is a
+tint of Copy's text (`--on-selected-fill`). Windows gives each key a cap 4 px apart (Ctrl
 K); GNOME adds "+" between caps (Ctrl + K). Decorative caps are hidden from
 screen readers; `aria-keyshortcuts` names the keys.
 
@@ -1572,7 +1603,9 @@ minimum window widths, including Larger text. `ui/PictureChoice` gives every
 picture an equal grid column and scales the contents inside the available
 padding; never wrap three choices as two plus one. System is the default, then
 Accent as colour dots, Follow the Mac by default, with Ibis scarlet immediately
-after it and visibly named (maintainer, 2026-10-31). The
+after it and visibly named (maintainer, 2026-10-31); those two are the first
+choices, then a thin divider and the other hues as smaller dots (maintainer,
+2026-11-01). The
 website shows the app as it currently is. Each Appearance picture owns the
 labelled theme for its body and controls; System is split across the whole
 picture diagonally. Rows and Search icon use a crop of the real components at
@@ -1599,7 +1632,9 @@ when saved, errors explained on this page), installing the `ibis` command,
 copying a problem report, and Reset All Settings with Undo; nothing on it is
 needed for everyday use. A search field heads the sidebar: it matches labels,
 descriptions and common words ("dark", "startup", "paste"), opens the page and
-tints the matching row for two seconds. A setting lives in one place; the
+tints the matching row for two seconds. Like the picker's search, its glyph
+centres on the page-icon column and its placeholder starts on the label column
+(maintainer comment, 2026-11-01). A setting lives in one place; the
 picker keeps only actions with their own keys.
 
 **How Settings grows** (maintainer, 2026-11-01: flexible and extensible, with a
