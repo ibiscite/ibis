@@ -62,7 +62,7 @@ export function useMenuBoundary(open: boolean, returnRef?: RefObject<HTMLElement
         let minimum = 0;
         if (overlay && scroll && box && port && box.height > 0) {
           const style = getComputedStyle(overlay);
-          const control = scroll.querySelector<HTMLElement>('input, button, [tabindex="0"]') ?? overlay.querySelector<HTMLElement>("button");
+          const control = scroll.querySelector<HTMLElement>('input:not([type="radio"]), button, [tabindex="0"]') ?? overlay.querySelector<HTMLElement>("button");
           const row = control?.getBoundingClientRect().height ?? 0;
           minimum = Math.max(0, port.top - box.top) + (parseFloat(style.paddingBottom) || 0) + (parseFloat(style.borderBottomWidth) || 0) + Math.min(scroll.scrollHeight, row);
         }

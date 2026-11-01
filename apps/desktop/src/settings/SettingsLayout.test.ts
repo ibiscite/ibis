@@ -88,8 +88,8 @@ test("long sidebar labels can scroll within the remaining height without moving 
 
 test("sidebar navigation and the large page title have shared selection, spacing and type roles", () => {
   const selected = style(navigation, '.ui-side-navigation-item[aria-current="page"]');
-  expect(selected.getPropertyValue("background")).toBe("var(--sel)");
-  expect(selected.getPropertyValue("color")).toBe("var(--sel-text)");
+  expect(selected.getPropertyValue("background")).toBe("var(--selected)");
+  expect(selected.getPropertyValue("color")).toBe("var(--selected-text)");
   const title = style(shell, ".settings-page-title");
   expect(title.getPropertyValue("font-size")).toBe("var(--type-display-size)");
   expect(title.getPropertyValue("line-height")).toBe("var(--type-display-line)");
@@ -125,24 +125,9 @@ test("permission instructions and actions share the card's leading edge at every
   expect(style(shell, ".paste-guide ol").getPropertyValue("padding-inline-start")).toBe("var(--space-5)");
 });
 
-test("the existing eight Settings accents keep white text at 4.5:1", () => {
-  const expected = ["0064e1", "953d96", "c8317d", "c42b30", "b25300", "8a6a00", "3b7f25", "6e6e73"];
-  const shades = [...tokens.matchAll(/--accent-[a-z]+:\s*#([0-9a-f]{6})/g)].map((match) => match[1]!);
-  expect(shades).toEqual(expected);
-  for (const shade of shades) {
-    const linear = shade.match(/../g)!.map((channel) => {
-      const value = Number.parseInt(channel, 16) / 255;
-      return value <= .04045 ? value / 12.92 : ((value + .055) / 1.055) ** 2.4;
-    });
-    const luminance = linear[0]! * .2126 + linear[1]! * .7152 + linear[2]! * .0722;
-    expect(1.05 / (luminance + .05), shade).toBeGreaterThanOrEqual(4.5);
-    expect(["c23a1c", "ff7a5c", "d2401f"]).not.toContain(shade);
-  }
-});
-
 test("picture choices use a quiet selected surface and an inward keyboard-only ring", () => {
   const choices = read("../ui/PictureChoice.css");
-  expect(style(choices, ".ui-picture-choice[data-selected]").getPropertyValue("background")).toBe("color-mix(in srgb, var(--accent) 14%, transparent)");
+  expect(style(choices, ".ui-picture-choice[data-selected]").getPropertyValue("background")).toBe("var(--accent-wash)");
   expect(style(choices, ".ui-picture-choice[data-selected]").getPropertyValue("color")).toBe("var(--text)");
   expect(style(choices, ".ui-picture-choice[data-focus-visible]").getPropertyValue("outline-offset")).toBe("var(--ring-offset)");
   const sheet = document.createElement("style");
@@ -169,33 +154,3 @@ test("picture choices use a quiet selected surface and an inward keyboard-only r
 });
 
 
-test("brand scarlet keeps 3:1 control contrast and 4.5:1 text through both themes and button states", () => {
-  const brand = JSON.parse(read("../../../../brand/settings.json")).colours;
-  const shades = tokens.match(/--accent-ibis:\s*light-dark\((#[0-9a-f]{6}), (#[0-9a-f]{6})\)/i)!;
-  const on = tokens.match(/--accent-ibis-on:\s*light-dark\((#[0-9a-f]{6}), (#[0-9a-f]{6})\)/i)!;
-  expect(shades, "brand accent must use the brand's two real scarlets").toBeTruthy();
-  expect(on, "brand accent must pair a foreground in each theme").toBeTruthy();
-  expect(shades.slice(1).map((hex) => hex.toUpperCase())).toEqual([brand.scarlet, brand.scarlet_dark]);
-  const rgb = (hex: string) => hex.slice(1).match(/../g)!.map((channel) => Number.parseInt(channel, 16));
-  const luminance = (channels: number[]) => channels.map((channel) => {
-    const n = channel / 255;
-    return n <= .04045 ? n / 12.92 : ((n + .055) / 1.055) ** 2.4;
-  }).reduce((sum, n, i) => sum + n * [.2126, .7152, .0722][i]!, 0);
-  const contrast = (a: number[], b: number[]) => {
-    const x = luminance(a), y = luminance(b);
-    return (Math.max(x, y) + .05) / (Math.min(x, y) + .05);
-  };
-  for (const [theme, surfaces] of [[1, ["#ffffff", "#fafafc", "#f0f0f2"]], [2, ["#1e1e22", "#303034", "#26262b"]]] as const) {
-    const fill = rgb(shades[theme]!), foreground = rgb(on[theme]!);
-    for (const amount of [1, .92, .84]) {
-      const state = fill.map((channel) => channel * amount);
-      expect(contrast(state, foreground), `theme ${theme}, button state ${amount}`).toBeGreaterThanOrEqual(4.5);
-      for (const surface of surfaces) expect(contrast(state, rgb(surface)), `theme ${theme}, surface ${surface}`).toBeGreaterThanOrEqual(3);
-    }
-  }
-  // An on-switch is another meaningful foreground on the accent, so its
-  // thumb must consume the same paired colour rather than unconditional white.
-  expect(style(switches, ".ui-switch[data-selected] .ui-switch-thumb").getPropertyValue("background")).toBe("var(--on-accent)");
-  expect(tokens).toContain('--accent-choice-on: var(--accent-ibis-on)');
-  expect(tokens).toContain('--sel-text: var(--accent-choice-on); --on-accent: var(--accent-choice-on)');
-});

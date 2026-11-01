@@ -7,16 +7,16 @@
   /* Labels start after the 8 px item padding, a 14 px check column and the 6 px gap. */
   --menu-item-pad: var(--space-2); --menu-check-width: 14px; --menu-item-gap: 6px;
   --menu-label-start: calc(var(--menu-item-pad) + var(--menu-check-width) + var(--menu-item-gap));
-  --menu-highlight: var(--sel); --menu-highlight-text: var(--sel-text);
+  --menu-highlight: var(--selected); --menu-highlight-text: var(--selected-text);
   --menu-enter-transform: none;
   --menu-open-duration: 90ms;
 }
 @supports (color: light-dark(white, black)) {
   :root[data-platform="windows"] .menu-popover {
-    --menu-highlight: var(--hover);
+    --menu-highlight: var(--fill-4);
   }
   :root[data-platform="linux"] .menu-popover {
-    --menu-highlight: var(--fill);
+    --menu-highlight: var(--fill-3);
   }
 }
 /* Fluent MenuFlyout: 8 px flyout and 4 px rows from the geometry chain, 32 px high, sliding in from its button. */
@@ -43,7 +43,7 @@
   box-sizing: border-box; width: max-content; min-width: min(14rem, calc(100vw - 16px)); max-width: calc(100vw - 16px);
   max-height: calc(100vh - 16px);
   display: flex; flex-direction: column; padding-block: var(--menu-padding); overflow: hidden; overflow-wrap: anywhere;
-  border: 1px solid color-mix(in srgb, var(--line) 35%, var(--surface)); border-radius: var(--menu-radius); box-shadow: var(--shadow-overlay);
+  border: 1px solid var(--separator); border-radius: var(--menu-radius); box-shadow: var(--shadow-overlay);
   font: var(--type-meta-size) / var(--type-meta-line) var(--font);
 }
 .menu-popover[data-entering] { animation: menu-enter var(--menu-open-duration) var(--ease); }
@@ -60,11 +60,11 @@
 .menu-popover [role="menu"]:focus-visible { outline: none; box-shadow: none; }
 .menu-section { display: flex; flex: none; flex-direction: column; }
 .menu-section-chips { flex-direction: row; flex-wrap: wrap; gap: var(--space-1); padding-block: var(--space-2); }
-.menu-section-chips .menu-item { min-height: var(--control-h); background: var(--fill); border-radius: var(--r-full); }
-.menu-section-chips .menu-item[aria-checked="true"] { background: var(--sel); color: var(--sel-text); }
-.menu-separator { height: 1px; margin: 4px var(--menu-item-pad); border: 0; background: var(--line); }
+.menu-section-chips .menu-item { min-height: var(--control-h); background: var(--fill-3); border-radius: var(--r-full); }
+.menu-section-chips .menu-item[aria-checked="true"] { background: var(--selected); color: var(--selected-text); }
+.menu-separator { height: 1px; margin: 4px var(--menu-item-pad); border: 0; background: var(--separator); }
 .menu-header { padding-inline: var(--menu-item-pad); }
-.menu-detail { width: 0; min-width: 100%; margin: 0; padding: var(--space-1) 0 var(--space-2); display: flex; flex-direction: column; gap: var(--space-1); color: var(--muted); font-size: var(--type-label-size); overflow-wrap: break-word; }
+.menu-detail { width: 0; min-width: 100%; margin: 0; padding: var(--space-1) 0 var(--space-2); display: flex; flex-direction: column; gap: var(--space-1); color: var(--text-secondary); font-size: var(--type-label-size); overflow-wrap: break-word; }
 .menu-detail-title { color: var(--text); font-weight: var(--strong); }
 .menu-item {
   display: flex; flex: none; align-items: center; min-height: var(--menu-item-height); padding-block: var(--space-1); padding-inline: var(--menu-item-pad); gap: var(--menu-item-gap);
@@ -81,13 +81,13 @@
 /* Grow to the intrinsic label width first; at the viewport limit full action
    labels wrap while checks and shortcut units retain their columns. */
 .menu-label { flex: 1 1 auto; min-width: 0; white-space: normal; overflow-wrap: break-word; }
-.menu-keys { flex: none; white-space: nowrap; margin-inline-start: 16px; color: var(--muted); font: inherit; }
-.menu-example { flex: none; margin-inline-start: 16px; color: var(--muted); }
+.menu-keys { flex: none; white-space: nowrap; margin-inline-start: 16px; color: var(--text-secondary); font: inherit; }
+.menu-example { flex: none; margin-inline-start: 16px; color: var(--text-secondary); }
 .menu-submenu-arrow { flex: none; margin-inline-start: var(--space-2); }
 [dir="rtl"] .menu-submenu-arrow { transform: scaleX(-1); }
 .menu-item[data-focused] { background: var(--menu-highlight); color: var(--menu-highlight-text); }
 .menu-item[data-focused] :is(.menu-example, .menu-keys, .source-icon) { color: inherit; }
-.menu-item[aria-disabled="true"] { color: var(--muted); }
+.menu-item[aria-disabled="true"] { color: var(--text-secondary); }
 @media (prefers-contrast: more) { .menu-item[data-focused] { outline: 1px solid currentColor; outline-offset: -1px; } }
 @media (forced-colors: active) {
   .menu-item[data-focused] { forced-color-adjust: none; background: Highlight; color: HighlightText; }

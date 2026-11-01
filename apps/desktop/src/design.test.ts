@@ -45,7 +45,7 @@ test("parts take colours, corners and type from tokens", () => {
 
 test("a one-sided edge never marks state", () => {
   const edges = all.flatMap(([name, css]) => css.split("\n")
-    .filter((line) => /border-(inline|block)-(start|end):[^;]*solid/.test(line) && !/separator|--line|--stroke|transparent/.test(line))
+    .filter((line) => /border-(inline|block)-(start|end):[^;]*solid/.test(line) && !/separator|--separator|--stroke-field|transparent/.test(line))
     .map((line) => `${name}: ${line.trim().slice(0, 90)}`));
   expect(edges).toEqual([]);
 });
@@ -59,15 +59,40 @@ const contrast = (a: string, b: string) => {
   const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
   return (hi! + .05) / (lo! + .05);
 };
+/** A role's light and dark colours; translucent text is flattened onto the window surface. */
+const surfaces = ["#fcfcfd", "#242426"] as const;
+const flatten = (value: string, mode: number) => {
+  const rgb = value.match(/rgb\((\d+) (\d+) (\d+) \/ ([\d.]+)%\)/);
+  if (!rgb) return value;
+  const alpha = Number(rgb[4]) / 100, under = surfaces[mode]!;
+  return `#${[1, 2, 3].map((i) => Math.round(Number(rgb[i]) * alpha + Number.parseInt(under.slice(2 * i - 1, 2 * i + 1), 16) * (1 - alpha)).toString(16).padStart(2, "0")).join("")}`;
+};
 const pair = (token: string) => {
-  const match = tokens.match(new RegExp(`${token}: light-dark\\((#[0-9a-f]{6}), (#[0-9a-f]{6})\\)`));
+  const match = tokens.match(new RegExp(`${token}: light-dark\\((#[0-9a-f]{6}|rgb\\([^)]*\\)), (#[0-9a-f]{6}|rgb\\([^)]*\\))\\)`));
   expect(match, token).toBeTruthy();
-  return [match![1]!, match![2]!] as const;
+  return [flatten(match![1]!, 0), flatten(match![2]!, 1)] as const;
 };
 
-test.each([["--text", 4.5], ["--muted", 4.5], ["--tertiary", 3], ["--scarlet", 3], ["--done", 3], ["--look", 3], ["--stop", 3]] as const)(
+test.each([["--text", 4.5], ["--text-secondary", 4.5], ["--text-tertiary", 3], ["--scarlet", 3], ["--done", 3], ["--look", 3], ["--stop", 3]] as const)(
   "%s keeps %s:1 on the surface in light and dark", (token, ratio) => {
     const surface = pair("--surface"), value = pair(token);
     expect(contrast(value[0], surface[0])).toBeGreaterThanOrEqual(ratio);
     expect(contrast(value[1], surface[1])).toBeGreaterThanOrEqual(ratio);
   });
+
+const colour = "(#[0-9a-f]{3,6})";
+const roles = [...tokens.matchAll(new RegExp(`:root\\[data-accent="([a-z]+)"\\] \\{ --ac: light-dark\\(${colour}, ${colour}\\); --ac-selected: light-dark\\(${colour}, ${colour}\\); --ac-text: light-dark\\(${colour}, ${colour}\\);( --ac-on: light-dark\\(${colour}, ${colour}\\);)? \\}`, "g"))];
+const white = "#ffffff";
+const full = (hex: string) => hex.length === 4 ? `#${hex[1]}${hex[1]}${hex[2]}${hex[2]}${hex[3]}${hex[3]}` : hex;
+
+test("all nine accents have their three roles", () => expect(roles.map((role) => role[1])).toHaveLength(9));
+
+test.each(roles.map((role) => [role[1]!, role] as const))("%s keeps its roles readable in both modes", (_, role) => {
+  [0, 1].forEach((mode) => {
+    const accent = role[2 + mode]!, selected = role[4 + mode]!, text = role[6 + mode]!;
+    const on = role[9 + mode] ? full(role[9 + mode]!) : white;
+    expect(contrast(on, selected), `selection text, mode ${mode}`).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(text, surfaces[mode]!), `accent text, mode ${mode}`).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(accent, surfaces[mode]!), `accent as a control, mode ${mode}`).toBeGreaterThanOrEqual(3);
+  });
+});

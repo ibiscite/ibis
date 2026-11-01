@@ -15,19 +15,19 @@
   content: ""; position: absolute; inset: calc(-1 * (var(--space-1) / 2 + var(--border-width))) calc(-1 * var(--border-width));
 }
 :root[data-platform="linux"] .toolbar-menu-button { font-weight: bold; }
-.toolbar-menu-button .popup-indicator { flex: none; width: var(--icon-small); height: var(--icon-small); color: var(--muted); stroke-width: var(--icon-stroke); }
+.toolbar-menu-button .popup-indicator { flex: none; width: var(--icon-small); height: var(--icon-small); color: var(--text-secondary); stroke-width: var(--icon-stroke); }
 .toolbar-menu-button .popup-indicator-macos { width: var(--space-2); height: var(--space-3); }
 /* Keep a useful minimum while filtering; longer labels may use the viewport. */
 .toolbar-menu-popover { width: max-content; min-width: min(300px, calc(100vw - 16px)); max-width: calc(100vw - 16px); }
 .toolbar-menu-filter { flex: none; }
-.toolbar-menu-heading { color: var(--muted); font-size: var(--type-label-size); font-weight: 600; padding-block: 8px 4px; padding-inline: var(--menu-label-start) var(--menu-item-pad); }
-.toolbar-menu .menu-section + .menu-section::before { content: ""; flex: none; height: 1px; margin: 4px var(--menu-item-pad); background: var(--line); }
-.toolbar-menu-sample { margin-inline-start: auto; min-width: 0; max-width: 50%; color: var(--muted); font: var(--type-label-size) var(--mono); white-space: normal; overflow-wrap: anywhere; text-align: end; }
+.toolbar-menu-heading { color: var(--text-secondary); font-size: var(--type-label-size); font-weight: 600; padding-block: 8px 4px; padding-inline: var(--menu-label-start) var(--menu-item-pad); }
+.toolbar-menu .menu-section + .menu-section::before { content: ""; flex: none; height: 1px; margin: 4px var(--menu-item-pad); background: var(--separator); }
+.toolbar-menu-sample { margin-inline-start: auto; min-width: 0; max-width: 50%; color: var(--text-secondary); font: var(--type-label-size) var(--mono); white-space: normal; overflow-wrap: anywhere; text-align: end; }
 .toolbar-menu-sample[data-prose] { font-family: var(--font); }
 .menu-item[data-focused] .toolbar-menu-sample { color: inherit; }
 .toolbar-menu-filter input {
   box-sizing: border-box; width: 100%; min-height: 30px; border: 0; border-radius: var(--menu-item-radius);
-  padding-block: var(--space-1); padding-inline: var(--menu-label-start) var(--menu-item-pad); background: var(--field); color: var(--text); font: inherit;
+  padding-block: var(--space-1); padding-inline: var(--menu-label-start) var(--menu-item-pad); background: var(--surface-field); color: var(--text); font: inherit;
 }
 /* A text field shows its caret, not a ring, like the search box. */
 .toolbar-menu-filter input:focus-visible { outline: 0; box-shadow: none; }

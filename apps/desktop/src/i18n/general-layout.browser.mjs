@@ -162,7 +162,7 @@ try {
           probe.dataset.variant = "primary";
           probe.textContent = "⟦Contrast probe⟧";
           document.querySelector(".ui-settings-card").append(probe);
-          const surface = getComputedStyle(probe.parentElement).backgroundColor;
+          const surface = getComputedStyle(document.body).backgroundColor;
           for (const state of ["normal", "hovered", "pressed"]) {
             delete probe.dataset.hovered; delete probe.dataset.pressed;
             if (state !== "normal") probe.dataset[state] = "true";

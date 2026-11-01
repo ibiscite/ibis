@@ -10,7 +10,7 @@
 /* A row of the menu: the check column, the label, then its keys. */
 .details-menu-row.ui-button[data-variant] { justify-content: start; gap: var(--menu-item-gap); width: 100%; min-height: var(--menu-item-height); padding: 0 var(--menu-item-pad) 0 var(--menu-label-start); border: 0; border-radius: var(--menu-item-radius); color: var(--text); text-align: start; }
 .details-menu-row.ui-button:is([data-hovered], [data-focus-visible]):not([data-disabled]) { background: var(--menu-highlight); color: var(--menu-highlight-text); outline: none; }
-.details-menu-keys { margin-inline-start: auto; padding-inline-start: var(--space-6); color: var(--muted); }
+.details-menu-keys { margin-inline-start: auto; padding-inline-start: var(--space-6); color: var(--text-secondary); }
 .details-menu-row:is([data-hovered], [data-focus-visible]) .details-menu-keys { color: inherit; }
 /* The open menu owns input and its scrollbar. The preserved browsing area
    behind it must not paint another bar. */

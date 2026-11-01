@@ -431,7 +431,7 @@ try {
       const dialog = await openEditor();
       const fullCitation = dialog.getByRole("region", { name: "Full citation", exact: true });
       assert.equal(await fullCitation.textContent(), await segment.locator(".preview-text").textContent(), "the single-reference menu keeps the entire citation available without hover");
-      await dialog.getByRole("textbox", { name: "Page", exact: true }).press("ArrowUp");
+      await dialog.getByRole("textbox", { name: "Page", exact: true }).press("ArrowDown");
       await page.keyboard.press("End");
       assert.equal(await fullCitation.evaluate((node) => document.activeElement === node), true, "menu keys reach the complete citation without hover");
       assert.equal(await reachable(fullCitation), true, "the complete long/RTL citation is reachable in the menu");

@@ -288,8 +288,8 @@ const tokens = readFileSync(new FileURL("../tokens.css", import.meta.url), "utf8
 test("menu role tokens exist, forced colours frame the button, and reduced motion removes movement", () => {
   const definitions = new Set([...(tokens + menuCss + toolbarCss + buttonCss).matchAll(/(--[\w-]+)\s*:/g)].map((match) => match[1]));
   expect([...(menuCss + toolbarCss + buttonCss).matchAll(/var\((--[\w-]+)/g)].map((match) => match[1]).filter((name) => !definitions.has(name))).toEqual([]);
-  expect(buttonCss).toMatch(/border: var\(--border-width\) solid var\(--stroke\)/);
-  expect(tokens).toMatch(/forced-colors: active[\s\S]*--stroke: ButtonText/);
+  expect(buttonCss).toMatch(/border: var\(--border-width\) solid var\(--stroke-field\)/);
+  expect(tokens).toMatch(/forced-colors: active[\s\S]*--stroke-field: ButtonText/);
   expect(menuCss).toMatch(/background: Highlight; color: HighlightText/);
   expect(menuCss).toMatch(/prefers-reduced-motion: reduce[\s\S]*--menu-enter-transform: none; --menu-open-duration: 100ms/);
 });

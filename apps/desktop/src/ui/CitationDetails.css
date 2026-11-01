@@ -9,14 +9,14 @@
 .citation-form-check { flex: 0 0 var(--menu-check-width); text-align: center; }
 .citation-form-label { flex: none; }
 .citation-form:is([data-hovered], [data-focus-visible]) { background: var(--menu-highlight); color: var(--menu-highlight-text); }
-.citation-form[data-disabled] { color: var(--disabled); }
-.citation-form-example { flex: 1; min-width: 0; padding-inline-start: var(--space-5); color: var(--muted); font-size: var(--type-label-size); line-height: var(--type-label-line); text-align: end; overflow-wrap: anywhere; }
+.citation-form[data-disabled] { color: var(--text-disabled); }
+.citation-form-example { flex: 1; min-width: 0; padding-inline-start: var(--space-5); color: var(--text-secondary); font-size: var(--type-label-size); line-height: var(--type-label-line); text-align: end; overflow-wrap: anywhere; }
 .citation-form:is([data-hovered], [data-focus-visible]) .citation-form-example { color: inherit; }
 .citation-page { padding-inline-start: var(--menu-label-start); }
 .citation-page label { flex: none; }
 .citation-page input { flex: 1; min-width: 0; border: 0; padding: 0; background: transparent; color: var(--text); font: inherit; font-variant-numeric: tabular-nums; text-align: end; }
-.citation-page input::placeholder { color: var(--muted); opacity: 1; }
-.citation-page:focus-within { background: var(--field); }
+.citation-page input::placeholder { color: var(--text-secondary); opacity: 1; }
+.citation-page:focus-within { background: var(--surface-field); }
 .citation-page input:focus-visible { outline: none; }
 @media (pointer: coarse) {
   .citation-form, .citation-page { min-height: var(--touch-target); }

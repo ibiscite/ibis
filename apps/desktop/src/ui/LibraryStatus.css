@@ -4,7 +4,7 @@
 /* The native button owns its visible status and a non-collapsing hit target. */
 .library-status-target { flex: 1; min-width: var(--control-h); position: relative; isolation: isolate; }
 /* Text, not a band: hovering it brightens the words and paints no fill. */
-.ui-button.library-status-trigger[data-variant] { position: relative; width: 100%; padding-inline: 0; border-radius: var(--r-tile); color: var(--muted); background: transparent; }
+.ui-button.library-status-trigger[data-variant] { position: relative; width: 100%; padding-inline: 0; border-radius: var(--r-tile); color: var(--text-secondary); background: transparent; }
 .ui-button.library-status-trigger[data-variant]:is([data-hovered], [data-pressed], [aria-expanded="true"]) { color: var(--text); background: transparent; }
 .library-announcement > p { margin: 0; }
 .library-status-controls[data-health="stop"] .library-name, .library-status-controls[data-health="look"] .library-name { color: var(--text); }

@@ -2,28 +2,28 @@
 .ui-picture-choices { display: flex; align-items: flex-end; gap: var(--space-3); min-width: 0; max-width: 100%; }
 .ui-picture-choice {
   display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 6px; min-width: 0; max-width: 100%; box-sizing: border-box;
-  border-radius: var(--r-card); color: var(--muted); background: transparent; outline: none;
+  border-radius: var(--r-card); color: var(--text-secondary); background: transparent; outline: none;
   font-size: var(--type-label-size); line-height: var(--type-label-line); text-align: center; overflow-wrap: anywhere;
 }
 .ui-picture-choice-art { display: contents; }
-.ui-picture-choice[data-selected] { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--text); font-weight: var(--strong); }
+.ui-picture-choice[data-selected] { background: var(--accent-wash); color: var(--text); font-weight: var(--strong); }
 .ui-picture-choice[data-focus-visible] { outline: var(--ring-width) solid var(--ring); outline-offset: var(--ring-offset); }
-.ui-picture-choice[data-disabled] { color: var(--disabled); }
+.ui-picture-choice[data-disabled] { color: var(--text-disabled); }
 .ui-picture-choices[data-strips] { flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: var(--space-2); width: 100%; }
 .ui-picture-choices[data-strips] .ui-picture-choice { align-items: stretch; text-align: start; }
 .ui-picture-choice-label { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; }
 .ui-picture-choices[data-strips] .ui-picture-choice-label { padding-inline: var(--row-spacing); }
-.ui-picture-choice-note { color: var(--muted); font-weight: 400; }
+.ui-picture-choice-note { color: var(--text-secondary); font-weight: 400; }
 .ui-picture-choices[data-dots] { flex-wrap: wrap; align-items: center; gap: 10px; }
 .ui-picture-choices[data-dots] .ui-picture-choice { padding: 0; border-radius: var(--r-full); background: transparent; }
 /* Frames stand on one line, so the labels line up whatever the size. */
 .ui-picture-choice:has(.ui-size-picture) { align-self: stretch; justify-content: end; }
-.ui-size-picture { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-1); box-sizing: border-box; flex: none; border-radius: var(--space-1); background: var(--surface); box-shadow: 0 0 0 1px color-mix(in srgb, var(--text) 22%, transparent); }
-.ui-size-picture b { display: block; height: var(--space-1); border-radius: var(--row-spacing); background: color-mix(in srgb, var(--text) 14%, transparent); }
-.ui-size-picture b[data-query] { height: 6px; background: color-mix(in srgb, var(--text) 24%, transparent); }
+.ui-size-picture { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-1); box-sizing: border-box; flex: none; border-radius: var(--space-1); background: var(--surface); box-shadow: 0 0 0 1px var(--fill-1); }
+.ui-size-picture b { display: block; height: var(--space-1); border-radius: var(--row-spacing); background: var(--fill-2); }
+.ui-size-picture b[data-query] { height: 6px; background: var(--fill-1); }
 .ui-size-picture b[data-short] { width: 70%; }
-.ui-size-picture[data-custom] { background: transparent; box-shadow: none; border: 1px dashed color-mix(in srgb, var(--text) 35%, transparent); }
-.ui-accent-dot { position: relative; display: block; width: 1.125rem; height: 1.125rem; flex: none; border-radius: var(--r-full); background: var(--accent-choice); box-shadow: inset 0 0 0 var(--border-width) var(--line); }
+.ui-size-picture[data-custom] { background: transparent; box-shadow: none; border: 1px dashed var(--text-tertiary); }
+.ui-accent-dot { position: relative; display: block; width: 1.125rem; height: 1.125rem; flex: none; border-radius: var(--r-full); box-shadow: inset 0 0 0 var(--border-width) var(--separator); }
 .ui-picture-choice[data-selected] .ui-accent-dot::after { content: ""; position: absolute; inset: 6px; border-radius: var(--r-full); background: var(--thumb); }
 .ui-visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 @media (prefers-contrast: more), (forced-colors: active) {
@@ -34,16 +34,16 @@
   .ui-picture-choices[data-dots] .ui-picture-choice[data-selected] { background: transparent; }
   .ui-picture-choice[data-selected] .ui-accent-dot { forced-color-adjust: none; box-shadow: 0 0 0 2px Canvas, 0 0 0 4px Highlight; }
 }
-.ui-accent-dot[data-accent="system"] { background: conic-gradient(var(--accent-pink), var(--accent-red), var(--accent-orange), var(--accent-yellow), var(--accent-green), var(--accent-blue), var(--accent-purple), var(--accent-pink)); }
-.ui-accent-dot[data-accent="ibis"] { background: var(--accent-ibis); }
-.ui-accent-dot[data-accent="blue"] { background: var(--accent-blue); }
-.ui-accent-dot[data-accent="purple"] { background: var(--accent-purple); }
-.ui-accent-dot[data-accent="pink"] { background: var(--accent-pink); }
-.ui-accent-dot[data-accent="red"] { background: var(--accent-red); }
-.ui-accent-dot[data-accent="orange"] { background: var(--accent-orange); }
-.ui-accent-dot[data-accent="yellow"] { background: var(--accent-yellow); }
-.ui-accent-dot[data-accent="green"] { background: var(--accent-green); }
-.ui-accent-dot[data-accent="graphite"] { background: var(--accent-graphite); }
+.ui-accent-dot[data-accent="system"] { background: conic-gradient(var(--dot-pink), var(--dot-red), var(--dot-orange), var(--dot-yellow), var(--dot-green), var(--dot-blue), var(--dot-purple), var(--dot-pink)); }
+.ui-accent-dot[data-accent="ibis"] { background: var(--dot-ibis); }
+.ui-accent-dot[data-accent="blue"] { background: var(--dot-blue); }
+.ui-accent-dot[data-accent="purple"] { background: var(--dot-purple); }
+.ui-accent-dot[data-accent="pink"] { background: var(--dot-pink); }
+.ui-accent-dot[data-accent="red"] { background: var(--dot-red); }
+.ui-accent-dot[data-accent="orange"] { background: var(--dot-orange); }
+.ui-accent-dot[data-accent="yellow"] { background: var(--dot-yellow); }
+.ui-accent-dot[data-accent="green"] { background: var(--dot-green); }
+.ui-accent-dot[data-accent="graphite"] { background: var(--dot-graphite); }
 @media (pointer: coarse) {
   .ui-picture-choice { min-width: var(--touch-target); min-height: var(--touch-target); }
 }

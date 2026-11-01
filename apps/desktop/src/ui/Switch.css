@@ -4,7 +4,7 @@
 .ui-switch { position: relative; display: inline-flex; flex: none; align-items: center; min-height: var(--control-h); cursor: default; }
 .ui-switch-track {
   position: relative; box-sizing: border-box; width: 38px; height: 22px; border-radius: var(--r-full);
-  background: var(--fill-p); border: var(--border-width) solid var(--stroke);
+  background: var(--fill-1); border: var(--border-width) solid var(--stroke-field);
   transition: background-color var(--dur) var(--ease);
 }
 .ui-switch-thumb {
@@ -13,7 +13,7 @@
   transition: transform var(--dur) var(--ease);
 }
 .ui-switch[data-selected] .ui-switch-track { background: var(--accent); }
-.ui-switch[data-selected] .ui-switch-thumb { background: var(--on-accent); transform: translateX(16px); }
+.ui-switch[data-selected] .ui-switch-thumb { background: var(--text-on-accent); transform: translateX(16px); }
 .ui-switch[data-selected]:dir(rtl) .ui-switch-thumb { transform: translateX(-16px); }
 .ui-switch[data-focus-visible] .ui-switch-track { outline: var(--ring-width) solid var(--ring); outline-offset: var(--ring-offset); }
 .ui-switch[data-disabled] { opacity: .5; }
