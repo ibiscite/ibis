@@ -61,7 +61,7 @@ second line. The notice is one card (maintainer, 2026-10-30): radius 18, 8 px
 inset, a 36 px tile of radius 10, then the title ("Pasted into Word", 14/18
 semibold) and at most two lines of the citation (12/16 mono), ending "+4 more"
 when longer. Pasted shows a `--status-done` tile with a `--surface` check;
-copied without a paste shows a `--fill` tile with a `--muted` check and the
+copied without a paste shows a `--fill` tile with a `--text-secondary` check and the
 reason in words.
 If Windows cannot release the keys Ibis injected, the notice says "Copied.
 Press and release Ctrl and V". Ibis retains the unsent releases and retries
@@ -69,13 +69,13 @@ them before any later delivery; it sends no new paste while they remain blocked.
 
 | Role | Tokens | Rule |
 |---|---|---|
-| Surfaces [D4] | `--surface-window` < `--surface` < `--surface-raised` < `--surface-overlay`; `--surface-field`, `--scrim` | Base, content sheet, band/cards/shelf, menus and dialogs. On the macOS glass panel the levels share one material (`--surface`) and layers separate by fills and hairlines. |
-| Text [D5] | `--text`, `--muted`, `--text-tertiary`, `--text-disabled` | `--muted` always 4.5:1; tertiary only for glyphs and hints at rest (3:1), never sentences. |
+| Surfaces [D4] | `--surface`, `--surface-grouped`, `--surface-overlay`; `--surface-field`, `--scrim` | Three levels, as on the Mac: the window material, grouped content on it (the quinary fill over `--surface`, as System Settings groups rows), and the menu material for every overlay. Fields keep their own background. No other surface colours. |
+| Text [D5] | `--text`, `--text-secondary`, `--text-tertiary`, `--text-disabled` | Apple's label ladder (label, secondary, tertiary, quaternary), with Ibis's contrast floors: secondary always 4.5:1; tertiary only for glyphs and hints at rest (3:1), never sentences. |
 | Accent [D6] | `--accent`, `--accent-text`, `--text-on-accent` | The system accent by default; Look's Accent row can override it (maintainer, 2026-10-30). Selected rows and the menu highlight use `--selected-text`, paired to the chosen accent; the system and existing fixed accents use white, while Ibis scarlet uses dark ink in dark mode (maintainer, 2026-10-31). `--text-on-accent` (primary button, tiles on the accent) is picked per accent to reach 4.5:1. |
 | Selection [D7] | `--row-active-*`, `--row-inactive-background`, `--selected-*` | See **Selection and focus**. |
 | Focus [D8] | `--focus-ring-*` | See **Selection and focus**. |
-| Fills | `--fill-control(-hover/-pressed)`, `--fill-subtle-*`, `--fill-primary-*`, `--fill-disabled` | Pressed is darker on macOS and GNOME, lighter on Windows. |
-| Strokes | `--separator`, `--stroke-control`, `--stroke-field`, `--stroke-overlay`, `--line`, `--border-width`, `--contrast-border-width` | Never a coloured border on a control. On macOS a hairline or a shadow, never both with a fill. |
+| Fills | `--fill-1` … `--fill-5`; roles `--fill-control(-hover/-pressed)`, `--fill-quiet-hover`, `--fill-primary-*`, `--fill-disabled` | Apple's fill ladder (system, secondary, tertiary, quaternary, quinary fill), black on light and white on dark at the Mac's own alphas. Roles only point at the ladder: control rest, hover and pressed are tertiary, secondary and system fill; quiet row hover is quaternary; grouped content is quinary. Pressed is darker on macOS and GNOME, lighter on Windows. |
+| Strokes | `--separator`, `--stroke-field`, `--border-width`, `--contrast-border-width` | Two strokes: the separator (Apple's separator colour) for hairlines and dividers, and a field edge that meets 3:1. Never a coloured border on a control. On macOS a hairline or a shadow, never both with a fill. |
 | Citation [D9] | `--citation`, `--citation-tile`, `--on-citation` | Scarlet; see **Colour roles**. |
 | Status [D10] | `--status-done`, `--status-look`, `--status-stop`, `--status-info` | Ibis-owned hues, always with words or an icon. Look is a golden amber, `#b07a00` light and `#f5c542` dark (maintainer asked for lighter, 2026-10-30), at least 3:1 as a glyph. Stop is a rose kept apart from scarlet and from Fluent's and Adwaita's red. Info is `--accent-text`. |
 | Progress | `--progress-track`, `--progress-fill`, `--progress-border`, `--progress-border-width` | Accent fill on a quiet track; contrast modes use Canvas with CanvasText fill and edge. |
@@ -85,6 +85,16 @@ them before any later delivery; it sends no new paste while they remain blocked.
 | Type [D13] | `--type-*`, `--font-family`, `--font-mono` | See **Type**. |
 | Motion [D14] | `--motion-feedback/-panel/-layout/-exit`, `--ease-out`, `--ease-in` | See **Motion**. |
 | Layers [D15] | `--z-content`, `--z-chrome`, `--z-overlay`, `--z-tooltip`, `--z-modal`, `--z-toast`, `--overlay-margin` | One z-order; overlays keep 8 px from the window edge and never leave the webview. |
+
+**Apple's semantic ladders** (maintainer, 2026-11-01: simplify,
+standardise and learn from Apple; platform-specific looks come later). Colour
+tokens follow the Mac's semantic colours, not invented greys: one label
+ladder for text, one fill ladder for every fill, one separator, three
+surfaces, and the accent roles below. Each token has a light and a dark value
+taken from Apple's documented values, with Ibis's contrast floors applied on
+top where Apple's value would fall below them. A component never mixes its
+own colour; it names a role, and the role names a ladder step. New needs pick
+an existing step before adding a token.
 
 **Colour roles.** The system accent means "you are here, act on this":
 selection, focus, the primary button, switches and the macOS menu highlight.
@@ -409,7 +419,7 @@ intact. A shortcut in a menu is plain trailing text in native modifier order
 Check each menu side by side with a real one on every platform.
 
 **Buttons.** Primary: `--accent` with `--text-on-accent`, one per view.
-Secondary: `--fill-control` (plus the Windows stroke). Quiet: no fill, `--muted`
+Secondary: `--fill-control` (plus the Windows stroke). Quiet: no fill, `--text-secondary`
 text, subtle hover. Icon button: a 20 px glyph in a 32 px square whose tooltip
 names the action and key; a toggle shows a filled glyph on the pressed fill,
 never the accent. Buttons size to content (at least 64 px wide) and never hold a
@@ -589,7 +599,7 @@ password field.
 **Empty states.** First run, no library, an actually empty library and a library that could not be opened
 use the choice screen [C12]. Otherwise one template, centred: a 48 px symbolic icon in
 `--text-tertiary`, a title (title type), one line of at most 40 characters
-(meta type, `--muted`, up to three rows), then one suggested action 16 px below;
+(meta type, `--text-secondary`, up to three rows), then one suggested action 16 px below;
 quieter text buttons for alternatives. No skeletons or illustrations; the opening screen
 only after 400 ms (**Opening a library**). The result heading appears only
 above rows.
@@ -637,7 +647,7 @@ for keyboard focus or while the segment's menu is open (⌫ removes there). Page
 shows a page token beside search) and, from 0.5, the PDF pane's "Cite this
 page", where the Page field lives beside the page itself.
 
-- **Text.** Text colours; key formats monospace with punctuation in `--muted`;
+- **Text.** Text colours; key formats monospace with punctuation in `--text-secondary`;
   formatted styles in the UI font. A read-only `<bdi dir="auto">` line with an
   ellipsis; the full text is in the tooltip and the wide pane.
   The selected citation's Preview region stays a keyboard focus target;
