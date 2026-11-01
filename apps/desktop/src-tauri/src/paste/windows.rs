@@ -180,8 +180,7 @@ impl Win {
     }
 }
 
-/// The picker's own window, as a safe winsafe handle.
-pub(crate) fn picker_window(app: &AppHandle) -> Option<w::HWND> {
+fn picker_window(app: &AppHandle) -> Option<w::HWND> {
     let known = app.get_webview_window("main")?.hwnd().ok()?;
     let mut picker = None;
     // Obtain a winsafe handle from its safe native enumeration API. Compare
