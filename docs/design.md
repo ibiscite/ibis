@@ -1083,9 +1083,10 @@ never changes search results, what is copied or pasted, or focus; happens once,
 quietly, inside the motion cap; shows its end state under Reduce Motion; never
 loops or plays a sound; and is counted only on this Mac.
 Delights stay quiet and grown-up (maintainer, 2026-11-01): plain sentences,
-no exclamation marks, no emoji, no jokes about the person's work, never in the
-way of a task. Everything only for fun (facts, milestones, the night owl line,
-the birthday, blinks) sits behind one switch, Settings › General › **Small
+no exclamation marks, no emoji, no jokes about the person's work or habits;
+subtle and found rather than announced; never interrupts or sits in the way of
+a task. Everything only for fun (facts, milestones, the birthday,
+blinks) sits behind one switch, Settings › General › **Small
 surprises**, on by default; key feedback, haptics and tips are not part of it.
 
 - **Feel:** a pressed shortcut gives its footer key cap the pressed fill for
@@ -1100,16 +1101,13 @@ surprises**, on by default; key feedback, haptics and tips are not part of it.
 - **Fun:** clicking the About icon makes the ibis blink once, and five clicks
   show "Ancient Egyptians linked the ibis with Thoth, god of writing."; the
   mark pecks once when a library first finishes opening; a library's status line
-  notes its first 100, 1,000 and 10,000 references once ("100 references. A
-  library is taking shape.", "1,000 references. That's a real library.",
-  "10,000 references. A scholar's library.").
+  notes its first 100, 1,000 and 10,000 references once, plainly ("example.bib
+  now holds 1,000 references.").
 - **Second round (approved):** Enter with nothing to paste shakes the footer
   action once (240 ms) and says why; ⌘+ and ⌘− show the size for one second
   where Copied shows; double-clicking the search bar's empty area returns Ibis
   to its place; a dragged `.bib` held over Settings › Libraries opens it;
-  pressing a listed shortcut on Settings › Shortcuts tints its row; opening
-  between 2 and 4 am shows "Writing late? Your references are ready." at most
-  once a week; the paste receipt marks the first, 100th and 1,000th citation
+  pressing a listed shortcut on Settings › Shortcuts tints its row; the paste receipt marks the first, 100th and 1,000th citation
   once each, and About reads "One year with Ibis" on the first anniversary;
   "ibis" in the Settings search opens About with a blink.
 - **Third round, the ibis itself (proposed):** About carries one line on the
@@ -1121,7 +1119,7 @@ surprises**, on by default; key feedback, haptics and tips are not part of it.
   reloads, its menu saying so; on the anniversary of 1.0 About reads "Ibis
   turns two today."
 - **Left out:** confetti, sounds, seasonal themes, joke search results, a
-  "what's new" screen, and choosing another app icon (changing a signed app's
+  late-night greeting (it comments on when people work), a "what's new" screen, and choosing another app icon (changing a signed app's
   icon breaks its signature).
 
 ## Accessibility
