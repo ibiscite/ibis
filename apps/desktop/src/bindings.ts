@@ -172,6 +172,10 @@ export const commands = {
 	 */
 	setShortcut: (shortcut: string | null) => __TAURI_INVOKE<ShortcutStatus_Serialize>("set_shortcut", { shortcut }),
 	windowSize: () => __TAURI_INVOKE<"small" | "medium" | "large" | "custom" | null>("window_size"),
+	/**
+	 *  Kept like a dragged size: the one writer saves it and reports the outcome.
+	 *  Hidden, the next `prepare` applies it before the window appears.
+	 */
 	setWindowSize: (size: WindowSize) => __TAURI_INVOKE<null>("set_window_size", { size }),
 	readWindowPositionUndo: () => __TAURI_INVOKE<number | null>("read_window_position_undo"),
 	undoWindowPosition: (revision: number) => __TAURI_INVOKE<boolean>("undo_window_position", { revision }),

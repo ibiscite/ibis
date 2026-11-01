@@ -126,6 +126,7 @@ function fakeApi(permission: Partial<PastePermission> = {}, preferences: Partial
     reads: 0,
     revision: 0,
     finished: 0,
+    windowSaved: undefined as ((saved: boolean) => void) | undefined,
     pages: [] as ((page: string) => void)[],
     closes: [] as (() => Promise<void>)[],
     shortcut: { shortcut: DEFAULT_PICKER_SHORTCUT, registered: true, error: null } as ShortcutStatus,
@@ -147,6 +148,7 @@ function fakeApi(permission: Partial<PastePermission> = {}, preferences: Partial
     pickerPreferences: async () => state.preferences,
     windowSize: vi.fn(async (): Promise<WindowSize | null> => "medium"),
     setWindowSize: vi.fn(async (): Promise<null> => null),
+    onWindowSaved: vi.fn(async (handler: (saved: boolean) => void) => { state.windowSaved = handler; return () => undefined; }),
     preferenceRevision: async () => ++state.revision,
     setPickerPreferences: commit,
     forgetAppOutputs: async () => null,
@@ -256,21 +258,29 @@ test("Window size shows a dragged size as Custom, applies once, and goes back on
   expect(screen.queryByRole("alert")).toBeNull();
 });
 
-test("a window size read waits behind a queued choice and shows it", async () => {
+test("a window size read that returns late cannot undo a newer choice", async () => {
   const { api } = fakeApi({ granted: true });
-  let current: WindowSize = "medium";
-  const save = deferred<null>();
-  vi.mocked(api.windowSize).mockImplementation(async () => current);
-  vi.mocked(api.setWindowSize).mockImplementationOnce(async (size) => { await save.promise; current = size; return null; });
+  const late = deferred<WindowSize | null>();
+  render(<SettingsApp api={api} initialPage="look" />);
+  const large = await screen.findByRole("radio", { name: "Large" });
+  await waitFor(() => expect(large).toHaveProperty("disabled", false));
+  vi.mocked(api.windowSize).mockReturnValueOnce(late.promise);
+  fireEvent.blur(window); fireEvent.focus(window);
+  await waitFor(() => expect(api.windowSize).toHaveBeenCalledTimes(2));
+  fireEvent.click(large);
+  await act(async () => late.resolve("small"));
+  expect(large).toHaveProperty("checked", true);
+});
+
+test("a size the disk refused says so and keeps showing what the window has", async () => {
+  const { api, state } = fakeApi({ granted: true });
   render(<SettingsApp api={api} initialPage="look" />);
   const large = await screen.findByRole("radio", { name: "Large" });
   await waitFor(() => expect(large).toHaveProperty("disabled", false));
   fireEvent.click(large);
-  fireEvent.blur(window); fireEvent.focus(window);
-  await waitFor(() => expect(large).toHaveProperty("checked", true));
-  await act(async () => { save.resolve(null); });
-  await waitFor(() => expect(api.windowSize).toHaveBeenCalledTimes(2));
-  await act(async () => undefined);
+  await waitFor(() => expect(state.windowSaved).toBeDefined());
+  act(() => state.windowSaved!(false));
+  expect(await screen.findByRole("alert")).toHaveProperty("textContent", englishMessages.text("settings-choice-failed"));
   expect(large).toHaveProperty("checked", true);
 });
 

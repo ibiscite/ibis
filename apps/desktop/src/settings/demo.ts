@@ -18,6 +18,7 @@ export function demoApi(): SettingsApi {
     setPickerPreferences: async (patch, key, revision) => { preferences = { ...preferences, ...patch, ...(key ? { copy_format: key } : {}) }; for (const changed of listeners) changed(revision); return { preferences, copy_format: preferences.copy_format ?? "pandoc" }; },
     windowSize: async () => "medium",
     setWindowSize: async () => null,
+    onWindowSaved: subscribe,
     forgetAppOutputs: async () => null,
     loginItem: async () => ({ name: "Ibis", enabled, problem: null }),
     setLoginItem: async (on) => { enabled = on; return { name: "Ibis", enabled, problem: null }; },
