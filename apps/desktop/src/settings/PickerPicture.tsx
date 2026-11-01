@@ -9,9 +9,9 @@ import pickerStyles from "../styles.css?raw";
 import buttonStyles from "../ui/Button.css?raw";
 
 const ignore = () => undefined;
-// The real styles stay isolated from Settings. Each host inherits the current
+// The real styles stay isolated from Settings, in the app's own order. Each host inherits the current
 // appearance or owns its explicitly requested scheme, never the system default.
-const styles = (pickerStyles + buttonStyles).replace(/@import[^;]+;/g, "")
+const styles = (buttonStyles + pickerStyles).replace(/@import[^;]+;/g, "")
   .replace(/color-scheme:\s*light dark;/g, "")
   .replace(/:root(\[[^\]]+\])?/g, (_, attribute: string | undefined) => attribute ? `:host(${attribute})` : ":host");
 export function PickerPicture({ density = "comfortable", icon = "ibis", appearance, split = false, headerOnly = false, rowsOnly = false }: {
