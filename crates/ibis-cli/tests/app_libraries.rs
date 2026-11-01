@@ -213,3 +213,32 @@ fn settings_this_program_may_not_read_are_explained() {
     assert_eq!((status, code(&stdout).as_str()), (5, "source-unavailable"));
     assert!(stderr.contains("not allowed to read its settings file"), "{stderr}");
 }
+
+#[cfg(unix)]
+#[test]
+fn a_named_pipe_is_refused_without_waiting_for_a_writer() {
+    let home = Home::new("pipe");
+    let pipe = home.root.join("refs.bib");
+    assert!(Command::new("mkfifo").arg(&pipe).status().unwrap().success());
+    let mut child = Command::new(env!("CARGO_BIN_EXE_ibis"))
+        .args(["search", "invented", "--json", "--file"])
+        .arg(&pipe)
+        .env("HOME", &home.root)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .unwrap();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    let status = loop {
+        if let Some(status) = child.try_wait().unwrap() {
+            break status;
+        }
+        if std::time::Instant::now() > deadline {
+            let _ = child.kill();
+            panic!("ibis waited on a named pipe");
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    };
+    assert!(!status.success());
+}

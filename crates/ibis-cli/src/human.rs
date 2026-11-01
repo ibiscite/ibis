@@ -354,7 +354,10 @@ pub(super) fn file_reason(path: &Path, code: ErrorCode) -> &'static str {
         "there is no file at that path; check the spelling or give the full path."
     } else if path.is_dir() {
         "it is a folder; give the library file inside it."
-    } else if std::fs::File::open(path).is_err_and(|error| error.kind() == std::io::ErrorKind::PermissionDenied) {
+    } else if std::fs::metadata(path).is_ok_and(|metadata| metadata.is_file())
+        // Only a regular file is opened to check: opening a pipe or a device can block.
+        && std::fs::File::open(path).is_err_and(|error| error.kind() == std::io::ErrorKind::PermissionDenied)
+    {
         "this program is not allowed to read it; check its permissions, or run it outside the sandbox."
     } else {
         match code {
