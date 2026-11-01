@@ -5,10 +5,12 @@ export type Page = typeof PAGES[number];
 export const ROWS: readonly { id: string; page: Page; label: MessageId; description?: MessageId; keywords?: MessageId }[] = [
   { id: "open-shortcut", page: "general", label: "shortcuts-open", description: "shortcuts-description" },
   { id: "login", page: "general", label: "general-login-label", description: "general-login-description", keywords: "settings-startup-words" },
+  { id: "menu-bar", page: "general", label: "general-menu-bar-label", description: "general-menu-bar-description" },
   { id: "paste-label", page: "general", label: "general-paste-label", description: "general-paste-description", keywords: "settings-paste-words" },
   { id: "appearance", page: "look", label: "look-appearance", description: "look-appearance-description", keywords: "settings-appearance-words" },
   { id: "accent", page: "look", label: "look-accent", description: "look-accent-description" },
   { id: "rows", page: "look", label: "general-rows" },
+  { id: "window-size", page: "look", label: "look-window-size", keywords: "look-window-large" },
   { id: "search-icon", page: "look", label: "look-search-icon" },
   { id: "text-size", page: "look", label: "look-text-size" },
   { id: "preview", page: "look", label: "general-preview", description: "general-preview-description" },

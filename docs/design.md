@@ -202,7 +202,8 @@ header, shelf and footer keep their sizes; the middle area holds the state,
 starts S below the header divider and is the only thing that scrolls.
 Steady, not rigid: Settings › Look › **Window size** offers Small
 (640 × 400), Medium (720 × 480, the default) and Large (840 × 600) as
-pictures, and any dragged size shows as Custom. **Compact** (maintainer,
+pictures, and any dragged size shows as Custom. A choice applies to the display
+the picker opens on next, grows around the window's centre and keeps its top. **Compact** (maintainer,
 2026-10-30, option C) is the fourth picture: the picker opens as a short bar
 (search, up to three recent citations, footer) and grows once to Medium on the
 first key, menu or choice screen, then never shrinks while open. Medium stays
@@ -1599,6 +1600,8 @@ explains pasting. These are separate grants, never instructions to give both.
 in** is off until turned on (App Review 2.4.5(iii)), uses each system's words
 ("Open at Login", "Start when you sign in", "Start on Login"), and is read from
 the system, never `settings.json` (`login_item.rs`, [PRIVACY.md](../PRIVACY.md)).
+**Show in Menu Bar** (macOS, on by default). Turned off, the shortcut still opens
+Ibis, and opening Ibis from Applications opens Settings, so it can be turned back on.
 **Check for updates…** sits in the menu bar or tray menu and in Settings ›
 About with **Check for updates automatically**, using the same commands;
 desktops without a tray reach them through More › Settings…. Builds

@@ -15,6 +15,13 @@
 .ui-picture-choices[data-dots] { display: flex; flex-wrap: wrap; align-items: center; width: auto; gap: var(--space-1); }
 .ui-picture-choices[data-dots] .ui-picture-choice { padding: var(--space-1); justify-content: center; border-radius: var(--r-full); }
 .ui-picture-choices[data-dots] .ui-picture-choice[data-labelled] { flex-direction: row; padding-inline: var(--space-2); }
+/* Frames stand on one line, so the labels line up whatever the size. */
+.ui-picture-choice:has(.ui-size-picture) { align-self: stretch; justify-content: end; }
+.ui-size-picture { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-1); box-sizing: border-box; flex: none; border-radius: 4px; background: var(--surface); box-shadow: 0 0 0 1px color-mix(in srgb, var(--text) 22%, transparent); }
+.ui-size-picture b { display: block; height: 4px; border-radius: 2px; background: color-mix(in srgb, var(--text) 14%, transparent); }
+.ui-size-picture b[data-query] { height: 6px; background: color-mix(in srgb, var(--text) 24%, transparent); }
+.ui-size-picture b[data-short] { width: 70%; }
+.ui-size-picture[data-custom] { background: var(--clear); box-shadow: none; border: 1px dashed color-mix(in srgb, var(--text) 35%, transparent); }
 .ui-accent-dot { width: var(--space-5); height: var(--space-5); flex: none; border-radius: var(--r-full); background: var(--choice-accent); box-shadow: inset 0 0 0 var(--border-width) var(--separator); }
 .ui-visually-hidden { position: absolute; width: var(--hidden-size); height: var(--hidden-size); overflow: hidden; clip-path: var(--hidden-clip); white-space: nowrap; }
 @media (prefers-contrast: more), (forced-colors: active) {

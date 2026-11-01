@@ -2,7 +2,7 @@
 
 use tauri::menu::{CheckMenuItem, IsMenuItem, Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Manager, Runtime};
 
 use crate::diagnostics::{NativeIssue, report};
 use crate::feedback::{idea_url, open_in_browser, problem_url};
@@ -71,6 +71,20 @@ pub(crate) fn show_shortcut(app: &AppHandle, shortcut: Option<&str>) {
     if let Some(item) = app.try_state::<OpenMenuItem>() {
         report(item.0.set_text(open_label(shortcut)), NativeIssue::Shortcut);
     }
+}
+
+static HIDDEN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Off, the shortcut still opens the picker and opening Ibis opens Settings.
+pub(crate) fn show_in_menu_bar<R: Runtime>(app: &AppHandle<R>, shown: bool) {
+    HIDDEN.store(!shown, std::sync::atomic::Ordering::SeqCst);
+    if let Some(tray) = app.tray_by_id("ibis") {
+        report(tray.set_visible(shown), NativeIssue::TrayCreation);
+    }
+}
+
+pub(crate) fn hidden() -> bool {
+    HIDDEN.load(std::sync::atomic::Ordering::SeqCst)
 }
 
 /// The disabled menu item that shows the library line.

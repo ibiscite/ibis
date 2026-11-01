@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
-import type { KeyFormat, LoginItem, LoginItemProblem, PickerPreferences, ShortcutStatus } from "../bindings";
+import type { KeyFormat, LoginItem, LoginItemProblem, PickerPreferences, ShortcutStatus, WindowSize } from "../bindings";
 import { KEY_TABLE } from "../keys";
 import { type MessageId, useInterfaceMessages } from "../i18n";
 import { SHORTCUT_ACTIONS, SHORTCUT_REGIONS, type ShortcutProblem, shortcutRefusalMessage } from "../i18n/settings";
@@ -58,6 +58,8 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     return next;
   }), []);
   const [problemRow, setProblemRow] = useState<{ id: string; message: MessageId } | null>(null);
+  const [windowSize, setWindowSize] = useState<WindowSize | null>(null);
+  const windowSizes = useRef(0);
   const cause = useRef<string | null>(null);
   const edits = useRef(0);
   const live = useRef(true);
@@ -286,7 +288,23 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     const target = document.getElementById(highlighted === "open-shortcut" && page === "general" ? "general-open-shortcut" : highlighted)?.closest(".ui-settings-row");
     if (target) pageRef.current.scrollTop += target.getBoundingClientRect().top - pageRef.current.getBoundingClientRect().top;
   }, [highlighted, page, preferences]);
-  const matches = query.trim() ? ROWS.filter((row) => [row.label, row.description, row.keywords].some((id) => id && text(id, { platform }).toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()))) : [];
+  // Read when Look shows, so a size dragged while Settings waited appears as Custom.
+  useEffect(() => {
+    if (!focused || page !== "look") return;
+    const request = ++windowSizes.current;
+    void api.windowSize().then((size) => {
+      if (live.current && request === windowSizes.current) { setWindowSize(size); readProblem("window-size", size === null); }
+    }, () => { if (live.current && request === windowSizes.current) readProblem("window-size", true); });
+  }, [api, focused, page, readProblem]);
+  const chooseWindowSize = (size: WindowSize) => {
+    const request = ++windowSizes.current, previous = windowSize;
+    setProblemRow(null); setWindowSize(size);
+    void queue.enqueue(() => api.setWindowSize(size)).catch(() => {
+      if (!live.current || request !== windowSizes.current) return;
+      setWindowSize(previous); setProblemRow({ id: "window-size", message: "settings-choice-failed" });
+    });
+  };
+  const matches = query.trim() ? ROWS.filter((row) => (row.id !== "menu-bar" || platform === "macos") && [row.label, row.description, row.keywords].some((id) => id && text(id, { platform }).toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()))) : [];
   const name = login?.name ?? "Ibis";
   const shortcutSetting = <ShortcutSetting key={page} id={page === "general" ? "general-shortcut" : "open-ibis"}
     rowId={page === "general" ? "general-open-shortcut" : "open-shortcut"} status={shortcut} problem={shortcutProblem}
@@ -324,6 +342,10 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
                         .finally(() => { if (live.current && request === loginReads.current) setLoginSaving(false); loginBusy.current = false; });
                     }} isDisabled={loginSaving || !login || login.problem === "unsupported" || login.problem === "unreadable"} />
                 </Row>
+                {platform === "macos" && <Row id="menu-bar" label={text("general-menu-bar-label")} description={text("general-menu-bar-description")} {...feedback("menu-bar")}>
+                  <Switch aria-labelledby="menu-bar" aria-describedby="menu-bar-description" isSelected={preferences?.menu_bar ?? true}
+                    onChange={(on) => change({ menu_bar: on })} isDisabled={!preferences} />
+                </Row>}
             </Group>
             {preferences && (
               <>
@@ -348,7 +370,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
             )}
           </>
         )}
-        {page === "look" && preferences && <LookPage preferences={preferences} change={change} feedback={feedback} />}
+        {page === "look" && preferences && <LookPage preferences={preferences} change={change} feedback={feedback} windowSize={windowSize} chooseWindowSize={chooseWindowSize} />}
         {page === "citations" && <Group id="citation-choices">
           {preferences && <Row id="default-format" {...rowDetails("default-format", text)} {...feedback("default-format")}>
             <DefaultFormat preferences={preferences} change={change} />

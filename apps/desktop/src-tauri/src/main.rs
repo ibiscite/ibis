@@ -283,6 +283,7 @@ fn main() {
                 Ok(Err(error)) => report(Err::<(), _>(error), NativeIssue::TrayCreation),
                 Err(_) => application_message("the menu bar item is not available on this system"),
             }
+            tray::show_in_menu_bar(app.handle(), loaded.settings.menu_bar.unwrap_or(true));
             start_shortcut(app.handle(), loaded.settings.shortcut.as_deref());
             // After the tray, so the menu item shows the saved choice.
             updater::start(app.handle(), loaded.settings.update_checks, loaded.problem.is_none());
@@ -324,7 +325,7 @@ fn main() {
             #[cfg(target_os = "macos")]
             // A Dock click while Settings is open brings Settings forward.
             if let tauri::RunEvent::Reopen { .. } = event {
-                if settings_window::is_open(app) {
+                if settings_window::is_open(app) || tray::hidden() {
                     settings_window::open(app, None);
                 } else {
                     show_picker(app);

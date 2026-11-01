@@ -192,6 +192,8 @@ pub(crate) struct PickerPreferences {
     pub(crate) search_icon: SearchIcon,
     /// Enter pastes into the app the picker was opened from; on by default.
     pub(crate) paste: bool,
+    /// The menu bar item; on by default.
+    pub(crate) menu_bar: bool,
 }
 
 impl PickerPreferences {
@@ -207,6 +209,7 @@ impl PickerPreferences {
             show_paste_preview: settings.show_paste_preview.unwrap_or(true),
             search_icon: settings.search_icon.unwrap_or(SearchIcon::Ibis),
             paste: settings.paste.unwrap_or(true),
+            menu_bar: settings.menu_bar.unwrap_or(true),
         }
     }
 }
@@ -247,6 +250,8 @@ pub(crate) struct PickerPreferencesPatch {
     pub(crate) search_icon: Option<SearchIcon>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) paste: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) menu_bar: Option<bool>,
 }
 
 impl PickerPreferencesPatch {
@@ -276,6 +281,9 @@ impl PickerPreferencesPatch {
         if self.paste.is_some() && !keep("paste") {
             self.paste = None;
         }
+        if self.menu_bar.is_some() && !keep("menu_bar") {
+            self.menu_bar = None;
+        }
     }
 }
 
@@ -296,6 +304,7 @@ impl From<PickerPreferences> for PickerPreferencesPatch {
             show_paste_preview: Some(value.show_paste_preview),
             search_icon: Some(value.search_icon),
             paste: Some(value.paste),
+            menu_bar: Some(value.menu_bar),
         }
     }
 }
@@ -379,6 +388,7 @@ pub(crate) async fn set_picker_preferences<R: tauri::Runtime>(
     tauri::async_runtime::spawn_blocking(move || {
         let saved = settings_file.save_reserved_preferences(intent)?;
         let preferences = PickerPreferences::from_settings(&saved);
+        crate::tray::show_in_menu_bar(app.app_handle(), preferences.menu_bar);
         let change = PreferenceChange { revision, preferences };
         crate::library::refresh_settings_notice(&app, &settings_file);
         if from_elsewhere {
@@ -537,6 +547,9 @@ impl SettingsFile {
             }
             if let Some(paste) = preferences.paste {
                 s.paste = Some(paste).filter(|paste| !paste);
+            }
+            if let Some(shown) = preferences.menu_bar {
+                s.menu_bar = Some(shown).filter(|shown| !shown);
             }
         })
         .map_err(|error| settings_message(&error))?;
@@ -823,6 +836,7 @@ mod tests {
             ("show_paste_preview", serde_json::json!(true)),
             ("search_icon", serde_json::json!("ibis")),
             ("paste", serde_json::json!(true)),
+            ("menu_bar", serde_json::json!(true)),
             ("copy_format", serde_json::json!("cite")),
         ] {
             let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
@@ -830,7 +844,7 @@ mod tests {
             let mut expected = serde_json::json!({
                 "appearance": "dark", "accent": "purple", "citation_style": "apa",
                 "density": "compact", "larger_text": true, "show_paste_preview": false,
-                "search_icon": "magnifier", "paste": false,
+                "search_icon": "magnifier", "paste": false, "menu_bar": false,
             });
             let older = file
                 .reserve_preferences(
@@ -1049,6 +1063,7 @@ mod tests {
             show_paste_preview: false,
             search_icon: SearchIcon::Magnifier,
             paste: true,
+            menu_bar: true,
         };
         let (dispatched, dispatch) = mpsc::channel();
         let (responded, response) = mpsc::channel();
@@ -1479,6 +1494,7 @@ mod tests {
             show_paste_preview: false,
             search_icon: SearchIcon::Magnifier,
             paste: false,
+            menu_bar: true,
         };
         let saved = file.save_preferences(chosen, None).unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(saved.paste, Some(false));
@@ -1500,6 +1516,7 @@ mod tests {
             show_paste_preview: true,
             search_icon: SearchIcon::Magnifier,
             paste: true,
+            menu_bar: true,
         };
         let saved = file.save_preferences(defaults, None).unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(
@@ -1516,6 +1533,7 @@ mod tests {
             "larger_text",
             "show_paste_preview",
             "paste",
+            "menu_bar",
         ] {
             assert!(!text.contains(field), "{field} is not written for the default");
         }
@@ -1580,6 +1598,7 @@ mod tests {
             show_paste_preview: false,
             search_icon: SearchIcon::Magnifier,
             paste: true,
+            menu_bar: true,
         };
         for format in [
             KeyFormat::Pandoc,
@@ -1629,6 +1648,7 @@ mod tests {
             show_paste_preview: false,
             search_icon: SearchIcon::Magnifier,
             paste: true,
+            menu_bar: true,
         };
         for text in [
             r#"{"copy_format":"synthetic-private-value"}"#,

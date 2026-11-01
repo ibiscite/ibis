@@ -228,6 +228,14 @@ impl Owner {
         constraints
     }
 
+    /// A size chosen in Settings, kept for this display like a dragged one.
+    pub fn choose(&mut self, display: &str, frame: PickerWindow, now: Instant) {
+        if self.windows.get(display) != Some(&frame) {
+            self.windows.insert(display.to_owned(), frame);
+            self.queue_save(now);
+        }
+    }
+
     pub fn queue_save(&mut self, now: Instant) {
         self.undo = None;
         self.revision += 1;

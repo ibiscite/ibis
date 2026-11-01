@@ -48,6 +48,61 @@ fn dragged(width: u32, height: u32) -> PickerWindow {
 }
 
 #[test]
+fn window_size_names_presets_and_calls_anything_else_custom() {
+    assert_eq!(WindowSize::of(None), WindowSize::Medium);
+    assert_eq!(WindowSize::of(Some(dragged(640, 400))), WindowSize::Small);
+    assert_eq!(WindowSize::of(Some(dragged(720, 480))), WindowSize::Medium);
+    assert_eq!(WindowSize::of(Some(dragged(840, 600))), WindowSize::Large);
+    assert_eq!(WindowSize::of(Some(dragged(700, 500))), WindowSize::Custom);
+    let moved = PickerWindow {
+        custom_size: false,
+        ..dragged(900, 700)
+    };
+    assert_eq!(
+        WindowSize::of(Some(moved)),
+        WindowSize::Medium,
+        "moving is not resizing"
+    );
+}
+
+#[test]
+fn chosen_size_keeps_the_window_centred_and_fits_a_small_display() {
+    let room = (1400.0, 900.0);
+    let saved = PickerWindow {
+        x: 340,
+        y: 100,
+        ..dragged(720, 480)
+    };
+    let large = chosen(Some(saved), (840, 600), false, room);
+    assert_eq!((large.width, large.height, large.custom_size), (840, 600, true));
+    assert_eq!((large.x + 420, large.y), (340 + 360, 100));
+    let fitted = plan(Some(large), false, (800.0, 500.0));
+    assert_eq!((fitted.width, fitted.height), (800, 500));
+    assert_eq!(
+        WindowSize::of(Some(large)),
+        WindowSize::Large,
+        "the choice survives a small display"
+    );
+    let medium = chosen(Some(large), (720, 480), true, room);
+    assert!(!medium.custom_size, "Medium is the default again");
+    assert_eq!(plan(Some(medium), true, room).height, 552, "larger text applies to it");
+}
+
+#[test]
+fn chosen_size_is_saved_once_and_a_late_write_cannot_replace_it() {
+    let mut owner = Owner::default();
+    let now = Instant::now();
+    let frame = dragged(840, 600);
+    owner.choose("synthetic", frame, now);
+    owner.choose("synthetic", frame, now);
+    assert_eq!(owner.revision, 1, "choosing the same size again saves nothing");
+    let first = owner.pending_save.clone().map(|save| save.revision);
+    owner.choose("synthetic", dragged(640, 400), now);
+    assert_ne!(owner.pending_save.as_ref().map(|save| save.revision), first);
+    assert_eq!(owner.windows.get("synthetic"), Some(&dragged(640, 400)));
+}
+
+#[test]
 fn sizing_default_and_minimum_frames_do_not_depend_on_content() {
     let default = plan(None, false, (1400.0, 900.0));
     assert_eq!((default.width, default.height), (720, 480));
