@@ -96,7 +96,7 @@ pub(crate) async fn row_context(window: WebviewWindow, added: bool) -> Result<Op
                 // Release/reconcile in this same main-thread turn; a newer
                 // show cannot interleave a worker's blocking native queries.
                 let result = finish(lease, result, || {
-                    crate::picker::reconcile_cancelled_menu(&owner, generation)
+                    crate::picker::reconcile_suppressed_blur(&owner, generation)
                 });
                 let _ = send.send(result);
             })

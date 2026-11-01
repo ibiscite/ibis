@@ -588,6 +588,8 @@ pub(crate) fn choose_library_file(app: &AppHandle) {
         return;
     };
     show_picker(app);
+    // The chooser belongs to this presentation; a newer one is never hidden.
+    let generation = app.state::<crate::picker::PickerGeneration>().current();
     #[cfg(target_os = "macos")]
     crate::panel::activate_for_dialog(app);
     let mut dialog = app
@@ -609,7 +611,18 @@ pub(crate) fn choose_library_file(app: &AppHandle) {
                 }
                 publish_current(&handle);
             }
-        })
+        });
+        // With the lease released, hide the picker if the person went elsewhere
+        // while the chooser was open.
+        let owner = handle.clone();
+        crate::diagnostics::report(
+            handle.run_on_main_thread(move || {
+                if let Some(window) = owner.get_webview_window("main") {
+                    crate::picker::reconcile_suppressed_blur(&window, generation);
+                }
+            }),
+            crate::diagnostics::NativeIssue::Window,
+        );
     });
 }
 

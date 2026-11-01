@@ -18,6 +18,8 @@ struct NativePicker {
     menu_labels: Mutex<Vec<&'static str>>,
     notices: Mutex<Vec<String>>,
     installed: Mutex<Vec<String>>,
+    /// Each closed offer: its presentation, and whether its lease was still held.
+    closed: Mutex<Vec<(u64, bool)>>,
 }
 
 impl OfferUi for tauri::test::MockRuntime {
@@ -71,6 +73,15 @@ impl OfferUi for tauri::test::MockRuntime {
             .push(text.into());
     }
 
+    fn dialog_closed(parent: &tauri::WebviewWindow<Self>, generation: u64) {
+        parent
+            .state::<NativePicker>()
+            .closed
+            .lock()
+            .unwrap_or_else(|e| panic!("{e}"))
+            .push((generation, parent.state::<ChooserOpen>().is_open()));
+    }
+
     fn present(
         app: &AppHandle<Self>,
         parent: &tauri::WebviewWindow<Self>,
@@ -99,6 +110,7 @@ fn app(automatic: bool) -> tauri::Result<tauri::App<tauri::test::MockRuntime>> {
     let app = tauri::test::mock_builder()
         .manage(Updates::default())
         .manage(ChooserOpen::default())
+        .manage(crate::picker::PickerGeneration::default())
         .manage(NativePicker::default())
         .build(tauri::test::mock_context(tauri::test::noop_assets()))?;
     tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
@@ -326,7 +338,16 @@ fn explicit_command_with_automatic_checks_off_opens_and_presents_immediately() -
         app.state::<Updates>().begin().is_none(),
         "a visible consent dialog owns the check"
     );
+    assert!(picker.closed.lock().unwrap_or_else(|e| panic!("{e}")).is_empty());
     assert!(answer(app.handle(), false).contains("9.1.0"));
+    // On Windows the offer is not attached to the picker, so focus may go to
+    // another app when it closes. With the lease released, the picker gets
+    // the blur check it missed, for the presentation that opened the offer.
+    let current = app.state::<crate::picker::PickerGeneration>().current();
+    assert_eq!(
+        *picker.closed.lock().unwrap_or_else(|e| panic!("{e}")),
+        [(current, false)]
+    );
     assert!(app.state::<Updates>().begin().is_some());
     assert!(picker.installed.lock().unwrap_or_else(|e| panic!("{e}")).is_empty());
     Ok(())

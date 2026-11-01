@@ -91,6 +91,9 @@ pub(super) trait OfferUi: tauri::Runtime {
     fn refresh(app: &AppHandle<Self>);
     fn availability_changed(app: &AppHandle<Self>, available: bool);
     fn tell(app: &AppHandle<Self>, text: &str);
+    /// The offer dialog closed and its lease is released: hide the picker if
+    /// focus is now elsewhere, as the suppressed blur would have.
+    fn dialog_closed(parent: &tauri::WebviewWindow<Self>, generation: u64);
     fn present(
         app: &AppHandle<Self>,
         parent: &tauri::WebviewWindow<Self>,
@@ -126,6 +129,10 @@ impl OfferUi for tauri::Wry {
 
     fn tell(app: &AppHandle<Self>, text: &str) {
         tell(app, text);
+    }
+
+    fn dialog_closed(parent: &tauri::WebviewWindow<Self>, generation: u64) {
+        crate::picker::reconcile_suppressed_blur(parent, generation);
     }
 
     fn present(
@@ -243,9 +250,13 @@ fn present<R: OfferUi>(app: &AppHandle<R>, candidate: Candidate, asked: bool, bu
                 R::show_picker(&handle);
             }
             publish_available(&handle, false);
+            // The dialog belongs to this presentation; a newer one is never hidden.
+            let generation = handle.state::<crate::picker::PickerGeneration>().current();
             let Candidate { version, text, install } = candidate;
             let callback = handle.clone();
+            let closed = parent.clone();
             R::present(&handle, &parent, owner, text, move |accepted| {
+                R::dialog_closed(&closed, generation);
                 if accepted {
                     install(busy);
                 } else if let Ok(mut declined) = callback.state::<Updates>().declined.lock() {

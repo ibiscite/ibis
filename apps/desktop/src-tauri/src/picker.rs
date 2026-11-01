@@ -605,10 +605,11 @@ impl PickerGeneration {
     }
 }
 
-/// The blur suppressed by a native menu may be the last focus event received.
-/// Call on the main thread after releasing its lease; reconcile only cancellation
-/// against live state.
-pub(crate) fn reconcile_cancelled_menu(window: &tauri::WebviewWindow, generation: u64) {
+/// The blur suppressed by a native menu or dialog may be the last focus event
+/// received: once it closes with focus in another app, nothing else would hide
+/// the picker. Call on the main thread after releasing its lease; reconcile
+/// only against live state, and only the presentation that opened it.
+pub(crate) fn reconcile_suppressed_blur(window: &tauri::WebviewWindow, generation: u64) {
     let app = window.app_handle();
     let outside = app.state::<PickerGeneration>().still_owns_after(generation, || {
         window.is_visible().ok() == Some(true) && focused_for_shortcut(window) == Some(false)
