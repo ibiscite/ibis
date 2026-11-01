@@ -107,8 +107,9 @@ The command line calls the same typed engine methods as the app. Every command
 accepts `--json` and then writes one versioned envelope to stdout, with stable error
 codes and exit codes. The [command line reference](docs/cli.md) covers libraries,
 commands, JSON output, exit codes, canonical citation requests, the JSON-RPC server
-and `ibis mcp` for AI agents. In Claude Code, `/plugin install ibis --marketplace ibiscite/ibis`
-adds the Ibis plugin: the MCP server and a skill that cites only what your library holds.
+and `ibis mcp` for AI agents. The [Ibis plugin for Claude Code and Codex](docs/cli.md#ai-agents-mcp)
+adds the MCP server and a skill that cites only what your library holds. Install a
+current `ibis` command first: `ibis mcp --help` must list `--app-libraries`.
 
 ## Contributing
 
