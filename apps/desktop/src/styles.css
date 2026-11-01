@@ -29,8 +29,8 @@ main > .search-bar, main > .shelf, main > footer { flex: none; }
 }
 /* The search glyph is centred over the tile column and the query starts where
    row titles start (docs/design.md, "Two columns"). */
-/* With no icon the slot stays, so the query keeps the title column. */
-.search-bar[data-icon="none"] > svg { visibility: hidden; }
+/* No icon: the query starts at the leading inset; nothing is reserved. */
+.search-bar[data-icon="none"] > svg { display: none; }
 .pin-button { flex: none; }
 .pin-button svg { width: var(--icon); height: var(--icon); stroke-width: var(--icon-stroke); }
 .search-bar > svg { margin-inline: var(--lead) calc(var(--lead-gap) - var(--space-1)); }
@@ -291,7 +291,8 @@ footer .key-hint-label { display: inline; }
 
 .recent-heading h2 { margin: 0; font: inherit; }
 [data-active] .result-body > .result-type { color: var(--selected-text-secondary); }
-.result-body > .result-type { color: var(--text-secondary); font-size: var(--type-meta-size); line-height: var(--type-meta-line); }
+:root[data-density="spacious"] .result-meta { margin-top: var(--row-spacing); }
+.result-body > .result-type { color: var(--text-tertiary); margin-top: var(--row-spacing); font-size: var(--type-meta-size); line-height: var(--type-meta-line); }
 
 .query-input { position: relative; display: flex; flex: 1; min-width: 0; }
 

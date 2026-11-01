@@ -9,7 +9,7 @@ The logo, app icon and other brand files for Ibis. Use the files in [`exports/`]
 | The logo on a web page or README | `exports/ibis-logo.svg` (light backgrounds), `exports/ibis-logo-on-dark.svg` (dark) |
 | The logo where SVG is not accepted (slides, documents) | `exports/png/ibis-logo-800.png`, `exports/png/ibis-logo-on-dark-800.png` |
 | The bird alone | `exports/ibis-mark.svg`, `exports/ibis-mark-on-dark.svg` |
-| The Mac app icon's appearances | `exports/Ibis.icon`; after changing it, run `scripts/macos-icon.sh` on a Mac with Xcode 26 |
+| The Mac app icon's appearances | `exports/Ibis.icon`; after changing it, run `scripts/macos-icon.sh` on a Mac with Xcode 26. Its layers are flat because macOS adds its own glass and depth; every other platform keeps our soft depth |
 | One colour (print, stickers, monochrome) | `exports/ibis-mark-flat.svg`, `-black.svg`, `-white.svg` |
 | A profile picture (GitHub, social sites) | `exports/png/ibis-avatar-512.png` |
 | GitHub's link preview | `exports/png/github-social-preview.png`: repository Settings, General, Social preview, Edit, Upload |

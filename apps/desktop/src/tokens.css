@@ -99,7 +99,7 @@
   --surface-grouped: var(--fill-4);
   --titlebar-height: 2.75rem;
   --sidebar-width: min(12.5rem, 26%);
-  --page-general: #8e8e93; --page-look: #ff9f0a; --page-citations: #0a84ff; --page-shortcuts: #5e5ce6;
+  --page-general: #8e8e93; --page-look: #ff9f0a; --page-citations: #0a84ff; --page-shortcuts: #5e5ce6; --page-about: var(--ibis);
   --highlight: var(--accent-wash);
 
   /* Look's dots show each Mac colour as Apple draws it. */

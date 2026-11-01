@@ -111,10 +111,18 @@ shortcuts-or = or
 about-automatic = Check for updates automatically
 about-automatic-description = Reads a small update file from GitHub a few times a day
 about-check = Check now
-about-copy = Copy Version
 about-copied = Copied
 about-copy-failed = The version could not be copied.
-about-version = { $name } { $version }
+about-version = Version { $version }
+about-mission = One shortcut to cite from your library in any app.
+about-why = Why an ibis
+about-updates = Updates
+about-links = Links
+about-website = Website
+about-source = Source Code
+about-problem = Report a Problem
+about-licences = Licences
+about-free = Free software under the AGPL 3.0
 about-unavailable = This build does not update itself.
 
 

@@ -157,7 +157,8 @@ function fakeApi(permission: Partial<PastePermission> = {}, preferences: Partial
     setLoginItem: async (enabled) => { state.login = enabled; return { name: "Ibis Nightly", enabled, problem: null }; },
     updateChecks: async () => state.updates,
     setUpdateChecks: async (on) => { state.updates = on; for (const changed of state.automatic) changed(on); return undefined as never; },
-    checkForUpdates: async () => undefined as never,
+    openAboutLink: vi.fn(async () => null),
+  checkForUpdates: async () => undefined as never,
     pastePermission: async () => { state.reads += 1; return state.permission; },
     openPastePermission: async () => { state.opened += 1; return undefined as never; },
     dragPasteApp: vi.fn(async () => undefined),
@@ -1555,7 +1556,7 @@ test("About copies the version and says so", async () => {
   Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
   const pseudo = createInterfaceMessages(english, true);
   render(<InterfaceMessagesProvider messages={pseudo}><SettingsApp api={fakeApi().api} initialPage="about" /></InterfaceMessagesProvider>);
-  fireEvent.click(await screen.findByRole("button", { name: pseudo.text("about-copy") }));
+  fireEvent.click(await screen.findByRole("button", { name: pseudo.text("about-version", { version: "0.0.0" }) }));
   await screen.findByRole("button", { name: pseudo.text("about-copied") });
   expect(writeText).toHaveBeenCalledOnce();
 });

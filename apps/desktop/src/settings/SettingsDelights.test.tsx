@@ -22,7 +22,7 @@ test("About reveals full build with Option and uses the same copy path, includin
   write.mockRejectedValueOnce(new Error("invented clipboard failure"));
   fireEvent.click(screen.getByRole("button", { name: "Ibis 0.2.1" }));
   expect(await screen.findByRole("alert")).toHaveProperty("textContent", "The version could not be copied.");
-  expect(screen.getByRole("button", { name: "Copy Version" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: /^Version/ })).toBeTruthy();
   mounted.unmount();
   render(<SettingsApp api={{ ...api, delightView: vi.fn().mockResolvedValue({ ...details, anniversary: false }) }} initialPage="about" />);
   await screen.findByRole("button", { name: "Ibis 0.2.1" });

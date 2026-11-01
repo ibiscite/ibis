@@ -147,6 +147,7 @@ export const commands = {
 	setUpdateChecks: (enabled: boolean) => __TAURI_INVOKE<void>("set_update_checks", { enabled }),
 	/**  "Check for Updates…": the same check the tray starts. */
 	checkForUpdates: () => __TAURI_INVOKE<void>("check_for_updates"),
+	openAboutLink: (link: AboutLink) => __TAURI_INVOKE<void>("open_about_link", { link }),
 	/**  Whether an automatic check found an update that has not been presented. */
 	updateAvailable: () => __TAURI_INVOKE<boolean>("update_available"),
 	updatePickerActivity: (ticket: number | null) => __TAURI_INVOKE<number | null>("update_picker_activity", { ticket }),
@@ -192,6 +193,9 @@ export const commands = {
 };
 
 /* Types */
+/**  A fixed page linked from About. The web page never chooses the address. */
+export type AboutLink = "website" | "source" | "problem" | "licences";
+
 export type Accent = "system" | "ibis" | "blue" | "purple" | "pink" | "red" | "orange" | "yellow" | "green" | "graphite";
 
 /**  One output the picker can copy: a key syntax or a citation style. */

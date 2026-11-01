@@ -30,6 +30,28 @@ pub(crate) fn idea_url() -> String {
     "https://github.com/ibiscite/ibis/discussions/new?category=ideas".to_owned()
 }
 
+/// A fixed page linked from About. The web page never chooses the address.
+#[derive(Clone, Copy, Debug, serde::Deserialize, specta::Type)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum AboutLink {
+    Website,
+    Source,
+    Problem,
+    Licences,
+}
+
+#[tauri::command]
+#[specta::specta]
+pub(crate) fn open_about_link(app: AppHandle, link: AboutLink) {
+    let url = match link {
+        AboutLink::Website => "https://ibiscite.org".to_owned(),
+        AboutLink::Source => "https://github.com/ibiscite/ibis".to_owned(),
+        AboutLink::Problem => problem_url(&app.package_info().version.to_string()),
+        AboutLink::Licences => "https://github.com/ibiscite/ibis/blob/main/LICENSE".to_owned(),
+    };
+    open_in_browser(&app, url);
+}
+
 /// Open `url` in the default browser. If that fails, copy it and say so.
 pub(crate) fn open_in_browser(app: &AppHandle, url: String) {
     let app = app.clone();

@@ -1,8 +1,22 @@
 .ui-shortcut-echo[data-echo] .ui-settings-row { background: var(--fill-quiet-hover); }
 .ui-shortcut-echo + .ui-shortcut-echo .ui-settings-row { border-top: var(--border-width) solid var(--separator); }
 .ui-shortcut-echo + .ui-settings-row { border-top: var(--border-width) solid var(--separator); }
-.ui-about-delight { display: flex; align-items: center; gap: var(--space-3); }
-.ui-about-delight .ibis-mark { width: calc(2 * var(--space-5)); height: calc(2 * var(--space-5)); }
+.ui-about-hero { display: flex; flex-direction: column; align-items: center; gap: var(--space-1); text-align: center; }
+.ui-about-name { margin: var(--space-1) 0 0; font-size: var(--type-title-size); line-height: var(--type-title-line); font-weight: var(--strong); }
+.ui-about-mission { margin: var(--space-1) 0 0; color: var(--text-secondary); font-size: var(--type-meta-size); line-height: var(--type-meta-line); }
+.ui-about-icon.ui-button[data-variant] { width: 6rem; height: 6rem; padding: 0; border-radius: var(--r-icon); background: transparent; }
+.ui-about-icon svg { display: block; width: 6rem; height: 6rem; }
+.ui-about-icon [data-icon="dark"], :root[data-appearance="dark"] .ui-about-icon [data-icon="light"] { display: none; }
+:root[data-appearance="dark"] .ui-about-icon [data-icon="dark"] { display: block; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-appearance="light"]) .ui-about-icon [data-icon="light"] { display: none; }
+  :root:not([data-appearance="light"]) .ui-about-icon [data-icon="dark"] { display: block; }
+}
+.ui-about-icon [data-blink] mask circle { transform-box: fill-box; transform-origin: center; animation: ibis-blink var(--dur) var(--ease); }
+@media (prefers-reduced-motion: reduce) { .ui-about-icon [data-blink] mask circle { animation: none; } }
+.ui-about-mark { flex: none; width: var(--icon); height: var(--icon); }
+.ui-about-links { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-1); }
+.ui-about-free { margin: 0; text-align: center; color: var(--text-tertiary); font-size: var(--type-label-size); line-height: var(--type-label-line); }
 .ui-about-line, .ui-quiet-status { color: var(--text-secondary); font: 400 var(--type-label-size) / var(--type-label-line) var(--font); }
 .ui-quiet-status { min-width: 0; flex: 0 1 auto; overflow-wrap: anywhere; }
 [data-empty-action] .footer-action { animation: ibis-refusal var(--dur-panel) var(--ease); }

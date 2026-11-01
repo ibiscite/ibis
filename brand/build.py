@@ -288,23 +288,28 @@ def app_icon(dark, uid):
     return doc(side, side, d1 + d2, b1 + b2)
 
 
-def icon_glyph(paint, uid, depth="gradient"):
-    """The bird alone for the macOS icon: the system adds glass, depth and tints."""
+def icon_glyph(paint, uid):
+    """The bird alone for the macOS icon, flat: the system adds glass, depth and tints."""
     side = 1024
-    defs, body = centred("mark", side, CONTAINER * side, paint, uid, depth)
-    return doc(side, side, defs, body)
+    defs, body = centred("mark", side, CONTAINER * side, paint, uid, False)
+    # Apple's renderer rasterises a mask in its own units, so cut the eye at full size.
+    tx, ty, k = (float(value) for value in re.search(r"translate\((\S+) (\S+)\) scale\((\S+)\)", body).groups())
+    (ex, ey, ew, _), _ = SYM["eye"]
+    defs = re.sub(rf'<mask id="{uid}e".*?</mask>', "", defs, flags=re.S)
+    body = body.replace(f'<g mask="url(#{uid}e)">', "<g>")
+    defs += (f'<mask id="{uid}e" maskUnits="userSpaceOnUse" x="0" y="0" width="{side}" height="{side}">'
+             f'<rect width="{side}" height="{side}" fill="#fff"/>'
+             f'<circle cx="{tx + (ex + ew / 2) * k:.3f}" cy="{ty + (ey + ew / 2) * k:.3f}" r="{ew / 2 * k:.3f}" fill="#000"/></mask>')
+    return doc(side, side, defs, f'<g mask="url(#{uid}e)">{body}</g>')
 
 
 def icon_composer(directory):
     """An Icon Composer document. scripts/macos-icon.sh compiles it to Assets.car."""
-    def fill(colours):
-        stops = []
-        for colour in colours:
-            red, green, blue = (int(colour[index:index + 2], 16) / 255 for index in (1, 3, 5))
-            stops.append(f"srgb:{red:.5f},{green:.5f},{blue:.5f},1.00000")
-        return {"linear-gradient": stops, "orientation": {"start": {"x": .5, "y": 0}, "stop": {"x": .67, "y": 1}}}
+    def fill(colour):
+        red, green, blue = (int(colour[index:index + 2], 16) / 255 for index in (1, 3, 5))
+        return {"solid": f"srgb:{red:.5f},{green:.5f},{blue:.5f},1.00000"}
     document = {
-        "fill-specializations": [{"value": fill(TILE)}, {"appearance": "dark", "value": fill(TILE_DARK)}],
+        "fill-specializations": [{"value": fill(TILE[0])}, {"appearance": "dark", "value": fill(TILE_DARK[1])}],
         "groups": [{
             "layers": [{
                 "name": "Ibis",
@@ -322,9 +327,9 @@ def icon_composer(directory):
     }
     assets = directory / "Assets"
     assets.mkdir(parents=True, exist_ok=True)
-    (assets / "ibis-glyph.svg").write_text(icon_glyph(GRADIENT, "ig"), encoding="utf-8")
-    (assets / "ibis-glyph-dark.svg").write_text(icon_glyph(GRADIENT_DARK, "igd"), encoding="utf-8")
-    (assets / "ibis-glyph-mono.svg").write_text(icon_glyph("#FFFFFF", "igm", False), encoding="utf-8")
+    (assets / "ibis-glyph.svg").write_text(icon_glyph(C["scarlet"], "ig"), encoding="utf-8")
+    (assets / "ibis-glyph-dark.svg").write_text(icon_glyph(C["scarlet_dark"], "igd"), encoding="utf-8")
+    (assets / "ibis-glyph-mono.svg").write_text(icon_glyph("#FFFFFF", "igm"), encoding="utf-8")
     (directory / "icon.json").write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
 
 
@@ -662,6 +667,8 @@ def main(root=HERE.parent):
                   + json.dumps(ui_mark(small=True))
                   + ';\nexport const welcomeMark = '
                   + json.dumps({"viewBox": welcome[1], "body": welcome[2]})
+                  + ';\nexport const appIcon = '
+                  + json.dumps({"light": app_icon(False, "a"), "dark": app_icon(True, "ad")})
                   + ';\n', encoding="utf-8")
     subprocess.run([sys.executable, str(HERE.parent / "apps/desktop/src-tauri/icons/source/generate.py"),
                     "--output", str(root / "apps/desktop/src-tauri/icons")], check=True)

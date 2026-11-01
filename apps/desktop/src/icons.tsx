@@ -63,6 +63,22 @@ const choicePaths = {
 
 export type ChoiceIconName = keyof typeof choicePaths;
 
+/** Settings page tiles, one optical size on the same 20 px grid. */
+const pagePaths = {
+  general: "M3 6h6M13 6h4M3 14h2M9 14h8M11 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM7 16a2 2 0 1 0 0-4 2 2 0 0 0 0 4z",
+  look: "M10 3a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM10 3v14",
+  citations: "M8.5 5.5C6 6.2 4.5 8 4.5 10.5v4h4.5V10H6.4M15.5 5.5c-2.5.7-4 2.5-4 5v4H16V10h-2.6",
+  shortcuts: "M7.5 7.5h5v5h-5zM7.5 7.5H6A2.5 2.5 0 1 1 8.5 5v2.5M12.5 7.5V5A2.5 2.5 0 1 1 15 7.5h-2.5M12.5 12.5H15a2.5 2.5 0 1 1-2.5 2.5v-2.5M7.5 12.5V15A2.5 2.5 0 1 1 5 12.5h2.5",
+} as const;
+
+export function PageIcon({ name }: { name: keyof typeof pagePaths }) {
+  return (
+    <svg aria-hidden="true" focusable="false" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d={pagePaths[name]} />
+    </svg>
+  );
+}
+
 export function ChoiceIcon({ name }: { name: ChoiceIconName }) {
   return (
     <svg className="type-icon" aria-hidden="true" focusable="false" width="20" height="20" viewBox="0 0 20 20" fill="none"
