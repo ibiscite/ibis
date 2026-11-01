@@ -1499,6 +1499,38 @@ descriptions and common words ("dark", "startup", "paste"), opens the page and
 tints the matching row for two seconds. A setting lives in one place; the
 picker keeps only actions with their own keys.
 
+**How Settings grows** (maintainer, 2026-11-01: flexible and extensible, with a
+lot of back and forth). Every setting is one entry in a single settings
+registry: its key, page, group, label, optional description, control, default
+and search words. Pages and search are drawn from the registry, so a feature
+adds or deletes its settings in one place without touching page layout, and a
+feature removed in one pull request takes its settings with it. Only built
+entries appear (see above). Growth uses a few shared patterns, never one-off
+screens:
+- **Row**: a label and one control at the end (switch, pop-up, segmented,
+  shortcut recorder, button).
+- **Pictures**: a visual choice as a row of real pictures in equal columns.
+- **List**: items with their status in words, Add… and Remove with Undo, and a
+  Details… sheet per item (libraries, formats per app, shortcut overrides).
+- **Details sheet**: when a group would pass eight rows, its rarer rows move
+  behind a "Details…" button that opens a sheet over the page, as in System
+  Settings; the page itself never scrolls into a wall of rows.
+
+Where planned work lands, from the open issues, so pages keep one job as they grow:
+
+| Page | Now | Planned (issue) |
+|---|---|---|
+| General | Opening shortcut, Open at Login, pasting | Show in Menu Bar; interface language (#1381); selected text becomes the search and is replaced (#1526) |
+| Look | Appearance, Accent, Rows, text size, search icon, paste preview | Window size (#1489); tips on the empty search (#1496) |
+| Libraries | — | Sources list with status, which Zotero libraries, Add/Remove (#781); CSV template (#1379); a library over SSH (#1542) |
+| Citations | Default format | Formats per app with Forget (#1240, #45); styles and locales (#19, #369); citation forms (#1315); locator types (#24); key-change warning (#1092); receipts and strict mode (#1383); Zotero fields in Word (#1543) |
+| Shortcuts | Opening shortcut, key list | Conflicts, overrides and a test field (#779), from one command registry (#1203) |
+| Advanced | — | Where Ibis opens, Reset Window Position, settings file, `ibis` command, problem report, Reset All; Export and Import Settings for another computer (#1561) |
+| About Ibis | Version, update check | Download quietly and install on quit (#1382); licences (#1271); privacy in one line (#1375) |
+
+A new kind of setting that fits none of these pages is a design question for
+this file first, never a new page added in passing.
+
 **Forget formats for apps** lives on Citations and says Ibis asks again the next
 time you paste into each app. Disable its button while forgetting; show failures
 beside the row with a retry, and a brief confirmation there only after success.
