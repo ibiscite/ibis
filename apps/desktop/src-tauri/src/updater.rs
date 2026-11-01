@@ -269,8 +269,12 @@ fn present_offer(
             crate::panel::activate_for_dialog(app);
             dialog.parent(parent)
         };
-        #[cfg(not(target_os = "macos"))]
-        let _ = parent;
+        // The picker stays on top of other windows on Windows, so an offer
+        // without an owner opens underneath it, hidden, while its lease keeps
+        // the picker open. Owned by the picker, it stays above it, and closing
+        // it gives the picker the keyboard back.
+        #[cfg(target_os = "windows")]
+        let dialog = dialog.parent(parent);
         let handle = app.clone();
         dialog.show_with_result(move |result| {
             let accepted = offer_accepted(result);

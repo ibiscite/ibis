@@ -340,9 +340,9 @@ fn explicit_command_with_automatic_checks_off_opens_and_presents_immediately() -
     );
     assert!(picker.closed.lock().unwrap_or_else(|e| panic!("{e}")).is_empty());
     assert!(answer(app.handle(), false).contains("9.1.0"));
-    // On Windows the offer is not attached to the picker, so focus may go to
-    // another app when it closes. With the lease released, the picker gets
-    // the blur check it missed, for the presentation that opened the offer.
+    // The person may have gone to another app while the offer was open. With
+    // the lease released, the picker gets the blur check it missed, for the
+    // presentation that opened the offer.
     let current = app.state::<crate::picker::PickerGeneration>().current();
     assert_eq!(
         *picker.closed.lock().unwrap_or_else(|e| panic!("{e}")),
