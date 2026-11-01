@@ -30,6 +30,9 @@
   .ui-picture-choice { border: var(--border-width) solid CanvasText; }
   .ui-picture-choice[data-selected] { background: Highlight; color: HighlightText; }
   .ui-picture-choice[data-focus-visible] { outline-color: CanvasText; }
+  .ui-picture-choices[data-dots] .ui-picture-choice { border: 0; }
+  .ui-picture-choices[data-dots] .ui-picture-choice[data-selected] { background: transparent; }
+  .ui-picture-choice[data-selected] .ui-accent-dot { forced-color-adjust: none; box-shadow: 0 0 0 2px Canvas, 0 0 0 4px Highlight; }
 }
 .ui-accent-dot[data-accent="system"] { background: conic-gradient(var(--accent-pink), var(--accent-red), var(--accent-orange), var(--accent-yellow), var(--accent-green), var(--accent-blue), var(--accent-purple), var(--accent-pink)); }
 .ui-accent-dot[data-accent="ibis"] { background: var(--accent-ibis); }
