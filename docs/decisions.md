@@ -808,7 +808,11 @@ the app is one client of the same engine. Its public contract is
   identifier lookup (DOI, arXiv and similar) only once that network use is
   approved. Agents pass the keys or ids Ibis returned; Ibis refuses anything
   changed, missing or ambiguous and never fills a gap with a guess.
-- The command line, `ibis serve` and `ibis mcp` stay read-only until 1.0.
+- The command line, `ibis serve` and `ibis mcp` stay read-only until 1.0, and
+  Ibis stays offline. Groundwork that needs no network comes first (offline
+  identifier parsing, results that say where a record came from, one lookup point
+  that is off by default); any internet use waits for its own approval, naming
+  each service and what it learns.
 - `ibis mcp` follows the current MCP revision (2026-07-28) and keeps answering
   older clients; Ibis follows each standard's latest official guidance.
 - With no library named, one-shot commands read the libraries chosen in the app,
