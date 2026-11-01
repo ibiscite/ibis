@@ -1075,58 +1075,50 @@ anything over 280 ms, anything that loops except a busy indicator.
 
 ## Small delights
 
-Approved (maintainer, 2026-11-01): every pick below. The canvas's Small delights board
-lists them. Every delight
-lives only in About, the welcome, status lines or feedback that already exists;
-never changes search results, what is copied or pasted, or focus; happens once,
-quietly, inside the motion cap; shows its end state under Reduce Motion; never
-loops or plays a sound; and is counted only on this Mac.
-Delights are warm, never childish (maintainer, 2026-11-01): Ibis serves
-students and senior academics alike, so a little warmth is welcome in a healthy
-balance: at most one short warm sentence, no slang, no exclamation marks, no
-emoji, no jokes about the person's work or habits;
-subtle and found rather than announced; never interrupts or sits in the way of
-a task. Everything only for fun (facts, milestones, the birthday,
-blinks) sits behind one switch, Settings › General › **Small
-surprises**, on by default; key feedback, haptics and tips are not part of it.
+The final list (maintainer, 2026-11-01): all approved, no new delights until
+the next design pass. The canvas's Small delights board shows them.
+
+Every delight lives only in About, the welcome, status lines or feedback that
+already exists; never changes search results, what is copied or pasted, or
+focus; happens once, inside the motion cap; shows its end state under Reduce
+Motion; never loops or plays a sound; and is counted only on this Mac.
+Delights are warm, never childish: Ibis serves students and senior academics
+alike, so at most one short warm sentence, no slang, exclamation marks or
+emoji, no jokes about the person's work or habits, found rather than
+announced, and never in the way of a task. The fun items sit behind one
+switch, Settings › General › **Small surprises**, on by default.
 
 - **Feel:** a pressed shortcut gives its footer key cap the pressed fill for
-  100 ms; the menu bar mark dips its beak once after a paste or copy; a haptic
-  alignment tick when a citation segment or the window snaps into place; holding
-  ⌘ for one second shows every visible action's key.
+  100 ms; holding ⌘ for one second shows every visible action's key; a haptic
+  alignment tick when a citation segment or the window snaps into place; Enter
+  with nothing to paste shakes the footer action once (240 ms) and says why;
+  ⌘+ and ⌘− show the size for one second where Copied shows; the menu bar ibis
+  dips its beak after a paste or copy and lowers its head while a library
+  reloads, its menu saying so; the app icon ships Default, Dark, Clear and
+  Tinted appearances from `brand/`.
 - **Saves time:** Services › Search with Ibis from selected text; a `.bib` or
-  CSL-JSON file dropped on the menu bar icon becomes a library (the Dock icon
-  shows only while Settings is open); ⌥ on About shows
-  the full version, build and date, and a click copies it; one next-step tip
-  after the first paste, the first of the footer tips.
-- **Fun:** clicking the About icon makes the ibis blink once, and five clicks
-  show "Ancient Egyptians linked the ibis with Thoth, god of writing."; the
-  mark pecks once when a library first finishes opening; a library's status line
-  notes its first 100, 1,000 and 10,000 references once ("100 references in
-  example.bib. A good start.", "… A solid library.", "… A remarkable library.").
-- **Second round (approved):** Enter with nothing to paste shakes the footer
-  action once (240 ms) and says why; ⌘+ and ⌘− show the size for one second
-  where Copied shows; double-clicking the search bar's empty area returns Ibis
-  to its place; a dragged `.bib` held over Settings › Libraries opens it;
-  pressing a listed shortcut on Settings › Shortcuts tints its row; the paste receipt marks the first, 100th and 1,000th citation
-  once each, and About reads "One year with Ibis" on the first anniversary;
-  "ibis" in the Settings search opens About with a blink.
-- **Third round, the ibis itself (approved):** About carries one line on the
-  name ("Named for the bird ancient Egyptians linked with Thoth, god of writing
-  and keeper of records."); each later run of five clicks shows the next of
-  six short, true ibis facts; "thoth" in the Settings search opens About with
-  that line tinted; the app icon ships Default, Dark, Clear and Tinted
-  appearances from `brand/`; the menu bar ibis lowers its head while a library
-  reloads, its menu saying so; on the anniversary of 1.0 About reads "Ibis
-  turns two today."
-- **Fourth round, small courtesies (proposed):** ⌥-clicking the menu bar ibis
-  adds one line to its menu ("3 libraries · 12,408 references · opened
-  today"); every Undo names its action ("Undo Remove Okafor & Lima, 2018") and
-  ⌘Z works while its notice shows; after Copy a Problem Report or Suggest an
-  Idea the row says "Thank you. It helps Ibis get better." for a few seconds.
-- **Left out:** confetti, sounds, seasonal themes, joke search results, a
-  late-night greeting (it comments on when people work), a "what's new" screen, and choosing another app icon (changing a signed app's
-  icon breaks its signature).
+  CSL-JSON file dropped on the menu bar ibis becomes a library;
+  double-clicking the search bar's empty area returns Ibis to its place; a
+  dragged `.bib` held over Settings › Libraries opens it; pressing a listed
+  shortcut on Settings › Shortcuts tints its row; every Undo names its action
+  ("Undo Remove Okafor & Lima, 2018") and ⌘Z works while its notice shows; ⌥ on
+  About shows the full version, build and date, and a click copies it;
+  ⌥-clicking the menu bar ibis adds "3 libraries · 12,408 references · opened
+  today" to its menu; one next-step tip after the first paste; after Copy a
+  Problem Report or Suggest an Idea the row says "Thank you. It helps Ibis get
+  better." for a few seconds.
+- **Fun (Small surprises):** About carries one line on the name ("Named for
+  the bird ancient Egyptians linked with Thoth, god of writing and keeper of
+  records."); clicking the About icon blinks the ibis once, and each run of
+  five clicks shows the next of six short, true ibis facts; "ibis" or "thoth"
+  in the Settings search opens About; the mark pecks once when a library first
+  finishes opening; milestones once each: a library's 100, 1,000 and 10,000
+  references ("A good start.", "A solid library.", "A remarkable library."),
+  the first, 100th and 1,000th citation, "One year with Ibis", and "Ibis turns
+  two today." on the 1.0 anniversary.
+- **Left out:** confetti, sounds, seasonal themes or skins, joke search
+  results, a late-night greeting, a "what's new" screen, and choosing another
+  app icon (it breaks the signature).
 
 ## Accessibility
 
