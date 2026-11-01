@@ -238,6 +238,10 @@ impl LoadRequests {
     }
 }
 
+/// The whole load, parsing included: a slow machine with a large library must
+/// finish. A newer choice cancels at once, so this only limits a lone stuck read.
+const LOAD_DEADLINE: std::time::Duration = std::time::Duration::from_secs(120);
+
 fn supervise_load<T: Send + 'static>(
     cancel: &OpenCancellation,
     deadline: std::time::Duration,
@@ -453,7 +457,7 @@ fn open_one(app: AppHandle, open: OpenRequest) -> impl std::future::Future<Outpu
                 }
             };
             if file_io {
-                supervise_load(&cancel, std::time::Duration::from_secs(10), operation)
+                supervise_load(&cancel, LOAD_DEADLINE, operation)
             } else {
                 operation()
             }
