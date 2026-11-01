@@ -8,7 +8,7 @@
   position: relative; /* Bound React Aria's hidden input to this choice. */
   min-height: var(--control-small-h); padding: 0 var(--space-3); display: inline-flex; align-items: center;
   min-width: 0; max-width: 100%; box-sizing: border-box; overflow-wrap: anywhere;
-  border-radius: calc(var(--r-control) - var(--row-spacing)); font: var(--type-meta-size) / var(--type-meta-line) var(--font);
+  border-radius: var(--r-seg); font: var(--type-meta-size) / var(--type-meta-line) var(--font);
   color: var(--text); cursor: default; white-space: normal;
 }
 .ui-segment[data-hovered]:not([data-selected]) { background: var(--fill-quiet-hover); }

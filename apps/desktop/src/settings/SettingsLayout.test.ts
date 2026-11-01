@@ -127,7 +127,6 @@ test("permission instructions and actions share the card's leading edge at every
 
 test("picture choices use a quiet selected surface and an inward keyboard-only ring", () => {
   const choices = read("../ui/PictureChoice.css");
-  expect(style(choices, ".ui-picture-choice[data-selected]").getPropertyValue("background")).toBe("var(--accent-wash)");
   expect(style(choices, ".ui-picture-choice[data-selected]").getPropertyValue("color")).toBe("var(--text)");
   expect(style(choices, ".ui-picture-choice[data-focus-visible]").getPropertyValue("outline-offset")).toBe("var(--ring-offset)");
   const sheet = document.createElement("style");

@@ -27,7 +27,7 @@ const LOGIN_PROBLEMS = {
 } as const satisfies Record<LoginItemProblem, MessageId>;
 
 /** A page asked for by name; "paste" is General, scrolled to pasting. */
-const PAGE_TILES = { general: "⚙", look: "Aa", citations: "¶", shortcuts: "⌘", about: "i" } as const;
+const PAGE_TILES: Partial<Record<Page, string>> = { general: "⚙", look: "Aa", citations: "¶", shortcuts: "⌘" };
 
 export function pageOf(name: string | null): { page: Page; focus: "paste" | null } {
   if (name === "paste") return { page: "general", focus: "paste" };
@@ -324,6 +324,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
       <div className="settings-titlebar" data-tauri-drag-region />
       <nav className="settings-sidebar" aria-label={text("settings-pages")}>
         <div className="ui-settings-search">
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M10.5 4a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13zM16 16l5 5" /></svg>
           <input type="search" aria-label={text("settings-search")} placeholder={text("settings-search")} value={query} onChange={(event) => setQuery(event.target.value)} />
         </div>
         {query.trim() ? <div className="ui-side-navigation ui-settings-search-results" aria-live="polite">

@@ -6,7 +6,7 @@ import "./SideNavigation.css";
 export function SideNavigation<T extends string>({ label, value, options, onChange }: {
   label: string;
   value: T;
-  options: readonly { value: T; label: string; tile: string; gapBefore?: boolean }[];
+  options: readonly { value: T; label: string; tile?: string; gapBefore?: boolean }[];
   onChange: (value: T) => void;
 }) {
   return (

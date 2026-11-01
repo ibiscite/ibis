@@ -3,7 +3,7 @@
 .keys-backdrop:has(.ui-sheet) { z-index: var(--z-modal); padding: var(--inset); }
 .keys-dialog.ui-sheet {
   box-sizing: border-box; width: min(600px, 100%); max-height: 100%; min-width: 0;
-  border-color: var(--separator); border-radius: var(--r-menu); box-shadow: var(--shadow-overlay);
+  border: 0; border-radius: var(--r-menu); box-shadow: var(--shadow-overlay);
 }
 .ui-sheet .keys-heading { flex: none; border-bottom: 0; }
 .ui-sheet .keys-scroll { container-type: inline-size; }
@@ -22,5 +22,5 @@
   .keys-scroll .keys-groups { grid-template-columns: minmax(0, 1fr); }
 }
 @media (prefers-contrast: more), (forced-colors: active) {
-  .keys-dialog.ui-sheet { border-color: CanvasText; }
+  .keys-dialog.ui-sheet { border: var(--border-width) solid CanvasText; }
 }

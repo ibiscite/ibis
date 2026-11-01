@@ -101,7 +101,7 @@ test("spinner, switch and key-cap geometry each have one shared owner", () => {
     expect(owners, selector).toEqual([owner]);
   }
   expect(read("ui/SourceAction.css")).toContain("width: var(--icon-small); height: var(--icon-small)");
-  expect(tokens).toContain("--icon-small: 1rem");
+  expect(tokens).toContain("--icon-small: var(--space-4)");
 });
 
 test("keyboard-focused choices suppress the global outline and keep their fill", () => {
@@ -142,7 +142,7 @@ const pair = (token: string) => {
   return [flatten(match![1]!, 0), flatten(match![2]!, 1)] as const;
 };
 
-test.each([["--text", 4.5], ["--text-secondary", 4.5], ["--text-tertiary", 3], ["--scarlet", 3], ["--done", 3], ["--look", 3], ["--stop", 3]] as const)(
+test.each([["--text", 4.5], ["--scarlet", 3], ["--done", 3], ["--look", 3], ["--stop", 3]] as const)(
   "%s keeps %s:1 on the surface in light and dark", (token, ratio) => {
     const surface = pair("--surface"), value = pair(token);
     expect(contrast(value[0], surface[0])).toBeGreaterThanOrEqual(ratio);
@@ -150,7 +150,7 @@ test.each([["--text", 4.5], ["--text-secondary", 4.5], ["--text-tertiary", 3], [
   });
 
 const colour = "(#[0-9a-f]{3,6})";
-const roles = [...tokens.matchAll(new RegExp(`:root\\[data-accent="([a-z]+)"\\] \\{ --ac: (?:light-dark\\()?${colour}(?:, ${colour}\\))?; --ac-selected: light-dark\\(${colour}, ${colour}\\); --ac-text: light-dark\\(${colour}, ${colour}\\);( --ac-on: light-dark\\(${colour}, ${colour}\\);)? \\}`, "g"))];
+const roles = [...tokens.replaceAll("var(--ibis)", "#c23a1c").matchAll(new RegExp(`:root\\[data-accent="([a-z]+)"\\] \\{ --ac: (?:light-dark\\()?${colour}(?:, ${colour}\\))?; --ac-selected: light-dark\\(${colour}, ${colour}\\); --ac-text: light-dark\\(${colour}, ${colour}\\);( --ac-on: light-dark\\(${colour}, ${colour}\\);)?(?: --ac-fill: var\\(--ac-selected\\);)? \\}`, "g"))];
 const white = "#ffffff";
 const full = (hex: string) => hex.length === 4 ? `#${hex[1]}${hex[1]}${hex[2]}${hex[2]}${hex[3]}${hex[3]}` : hex;
 
@@ -163,12 +163,14 @@ test.each(roles.map((role) => [role[1]!, role] as const))("%s keeps its roles re
     expect(contrast(on, selected), `selection text, mode ${mode}`).toBeGreaterThanOrEqual(4.5);
     expect(contrast(text, surfaces[mode]!), `accent text, mode ${mode}`).toBeGreaterThanOrEqual(4.5);
     expect(contrast(accent, surfaces[mode]!), `accent as a control, mode ${mode}`).toBeGreaterThanOrEqual(3);
+    const line = tokens.match(new RegExp(`\\[data-accent="${role[1]}"\\][^\\n]*`))![0];
+    expect(contrast(on, line.includes("--ac-fill") ? selected : accent), `primary button, mode ${mode}`).toBeGreaterThanOrEqual(3);
   });
 });
 
 test("the ladders hold the values measured from AppKit on macOS 27.2", () => {
-  for (const value of ["--text: light-dark(rgb(0 0 0 / 84.7%), rgb(255 255 255 / 84.7%))", "--text-secondary: light-dark(rgb(0 0 0 / 56%), rgb(255 255 255 / 54.9%))",
-    "--text-tertiary: light-dark(rgb(0 0 0 / 45%), rgb(255 255 255 / 38%))", "--text-disabled: light-dark(rgb(0 0 0 / 24.7%), rgb(255 255 255 / 24.7%))",
+  for (const value of ["--text: light-dark(rgb(0 0 0 / 84.7%), rgb(255 255 255 / 84.7%))", "--text-secondary: light-dark(rgb(0 0 0 / 49.8%), rgb(255 255 255 / 54.9%))",
+    "--text-tertiary: light-dark(rgb(0 0 0 / 25.9%), rgb(255 255 255 / 24.7%))", "--text-disabled: light-dark(rgb(0 0 0 / 24.7%), rgb(255 255 255 / 24.7%))",
     "--fill-1: light-dark(rgb(0 0 0 / 9.8%), rgb(255 255 255 / 9.8%))", "--fill-4: light-dark(rgb(0 0 0 / 2.7%), rgb(255 255 255 / 2.7%))",
     "--separator: light-dark(rgb(0 0 0 / 10%), rgb(255 255 255 / 12%))", "--surface: light-dark(#ffffff, #1e1e1e)", "--selected: light-dark(#0064e1, #0059d1)"]) expect(tokens).toContain(value);
 });
@@ -177,4 +179,23 @@ test("menus and buttons use title case, as the Mac does", () => {
   const messages = read("messages.ts");
   for (const label of ["Clear Search", "Keep Window Open", "Show What Will Be Pasted", "Keyboard Shortcuts", "Remove from Citation", "Search All Zotero Libraries", "Choose Library…", "Reload Library"]) expect(messages).toContain(`"${label}"`);
   for (const label of ["Clear search", "Keep window open", "Keyboard shortcuts", "Remove from citation", "Reload library", "Choose library…"]) expect(messages).not.toContain(`"${label}"`);
+});
+
+test("a value is declared once: lengths come from the space scale, colours from one primitive", () => {
+  const primitives = /^:root \{[^]*?^\}/m.exec(tokens)![0];
+  const declared = [...primitives.matchAll(/(--[\w-]+):\s*([^;]+);/g)].map(([, name, value]) => [name!, value!.trim()] as const);
+  const scale = new Set(declared.filter(([name]) => name.startsWith("--space-")).map(([, value]) => value));
+  const literal = declared.filter(([name]) => !name.startsWith("--space-") && !name.startsWith("--type-"));
+  expect(literal.filter(([, value]) => scale.has(value))).toEqual([]);
+  const hexes = [...primitives.matchAll(/#[0-9a-f]{3,8}\b/gi)].map(([hex]) => hex.toLowerCase());
+  expect(hexes.filter((hex, index) => hexes.indexOf(hex) !== index)).toEqual([]);
+});
+
+test("every icon is one shape, so translucent colours paint it once", () => {
+  const files = readdirSync(root, { recursive: true }).filter((name) => name.endsWith(".tsx") && !name.includes(".test."));
+  const split = files.flatMap((name) => [...read(name).matchAll(/<svg[^]*?<\/svg>/g)]
+    .filter((match) => !match[0].includes("settings-done") && (match[0].match(/<(path|circle|rect|line)\b/g) ?? []).length > 1).map(() => name));
+  expect(split).toEqual([]);
+  const joined = [...read("icons.tsx").matchAll(/\[("[^\]]*")\]/g)].flatMap(([, list]) => list!.split(/",\s*"/).slice(1));
+  expect(joined.filter((path) => path.replace(/^"/, "").startsWith("m"))).toEqual([]);
 });

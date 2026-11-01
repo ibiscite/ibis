@@ -63,7 +63,7 @@
 .picker-library { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--row-gap); }
 .picker-library > span:last-child { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .picker-dot { flex: none; width: var(--status-dot); height: var(--status-dot); border-radius: var(--r-full); background: var(--done); }
-.picker .picker-primary { background: var(--selected); color: var(--text-on-accent); }
+.picker .picker-primary { background: var(--accent); color: var(--text-on-accent); }
 .picker-primary kbd { background: var(--on-fill-h); color: inherit; box-shadow: none; border-radius: var(--r-key); }
 .demo-hint kbd { font-size: .95em; }
 .picker-shelf .picker-status { flex: none; display: inline-flex; align-items: center; gap: var(--space-1); height: var(--chip-h); padding-inline: var(--space-2); border-radius: var(--r-full); background: color-mix(in srgb, var(--done) 14%, transparent); color: var(--done); font: var(--strong) var(--type-label-size)/var(--type-label-line) var(--font); white-space: nowrap; }
@@ -87,11 +87,11 @@
   .pick .tile:not(.is-added):hover svg { visibility: hidden; }
   .pick .tile:not(.is-added):hover::after { content: "+"; position: absolute; inset: 0; display: grid; place-items: center; font-size: var(--type-heading-size); }
   .picker button:not(.tile):not(.picker-clear):not(.picker-primary):not(:disabled):hover, .draft button:hover { background: var(--fill-control-hover); }
-  .picker .picker-primary:not(:disabled):hover { background: var(--selected-hover); }
+  .picker .picker-primary:not(:disabled):hover { background: var(--accent-hover); }
   .draft .paste-slot:hover { background: var(--website-accent-soft); border-style: solid; }
 }
 .picker button:not(.tile):not(.picker-clear):not(:disabled):active, .draft button:active { background: var(--fill-control-pressed); }
-.picker .picker-primary:not(:disabled):active { background: var(--selected-pressed); }
+.picker .picker-primary:not(:disabled):active { background: var(--accent-pressed); }
 @container picker (max-width: 28.75em) {
   .picker-shelf { padding-inline: var(--space-1); gap: var(--space-1); }
   .picker-citation { gap: min(var(--row-gap), 1cqi); }
