@@ -334,9 +334,12 @@ pub(crate) fn convert(
     }
     // Search-only preprint identifiers never become guessed CSL variables.
     Record {
-        added_at: raw_text("timestamp")
-            .or_else(|| raw_text("dateadded"))
-            .and_then(|date| ibis_core::contract::added_date(&date)),
+        // BibDesk writes date-added, JabRef creationdate (and timestamp in
+        // older versions). The first field that holds a valid date wins; a
+        // malformed one is skipped, never guessed.
+        added_at: ["date-added", "creationdate", "timestamp", "dateadded"]
+            .into_iter()
+            .find_map(|field| raw_text(field).and_then(|date| ibis_core::contract::added_date(&date))),
         id: ItemRef {
             library: source.clone(),
             key: format!("record:{}", entry.key),

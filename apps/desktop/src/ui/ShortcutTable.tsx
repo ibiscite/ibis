@@ -19,7 +19,7 @@ function ShortcutRow({ binding, isMac, system, ids, echo }: { binding: KeyBindin
   const { text } = useInterfaceMessages();
   const pressed = useKeyPulse(binding.keys, echo);
   return <tr id={ids ? `key-${binding.action}` : undefined} data-echo={pressed || undefined}>
-    <th scope="row">{text(SHORTCUT_ACTIONS[binding.action])}</th>
+    <th scope="row">{text(binding.label ?? SHORTCUT_ACTIONS[binding.action])}</th>
     <td><ShortcutKeys binding={binding} isMac={isMac} system={system} /></td>
   </tr>;
 }

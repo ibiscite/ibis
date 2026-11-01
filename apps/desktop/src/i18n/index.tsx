@@ -29,7 +29,7 @@ const IDS = [
   "shortcuts-command-format", "shortcuts-command-pin", "shortcuts-command-keys", "shortcuts-command-more",
   "shortcuts-command-source", "shortcuts-command-preview", "shortcuts-command-settings", "shortcuts-command-quit", "shortcuts-picker-conflict",
   "shortcuts-region-search", "shortcuts-region-library", "shortcuts-region-picker", "shortcuts-region-menu", "shortcuts-region-system",
-  "shortcuts-action-choose-source", "shortcuts-action-reveal-source", "shortcuts-action-source", "shortcuts-action-preview", "shortcuts-action-copy", "shortcuts-action-add", "shortcuts-action-move", "shortcuts-action-escape",
+  "shortcuts-action-choose-source", "shortcuts-action-reveal-source", "shortcuts-action-source", "shortcuts-action-preview", "shortcuts-action-copy", "shortcuts-action-copy-only", "shortcuts-action-add", "shortcuts-action-move", "shortcuts-action-escape",
   "shortcuts-action-format", "shortcuts-action-more", "shortcuts-action-pin", "shortcuts-action-keys", "shortcuts-action-settings", "shortcuts-action-quit",
   "shortcuts-action-menu-move", "shortcuts-action-menu-ends", "shortcuts-action-menu-choose", "shortcuts-action-menu-leave", "shortcuts-or",
   "about-automatic", "about-automatic-description", "about-check", "about-check-failed", "about-mission", "about-why", "about-updates", "about-links", "about-website", "about-source", "about-problem", "about-licences", "about-free", "about-copied", "about-copy-failed", "about-version", "about-unavailable",

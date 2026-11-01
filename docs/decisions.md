@@ -640,7 +640,14 @@ known originating app IDs in the channel's WebView storage, bounded to 20 apps,
 destinations and sample references are not remembered. Rows resolve against the
 current snapshot; no page, form, query or citation text is restored. Failed
 history writes retain in-memory recents; a failed forget remains available for
-retry. Recently added uses validated source-added dates, never publication years
+retry. The Recent citations switch (`recent_citations`, written only when off)
+forgets on off and records only while known to be on, never on an unread
+setting; only a new receipt records, so Forget or turning it back on never
+replays an older one. Each saved "off" forgets as it arrives, so off and
+quickly on again still starts empty. BibTeX added dates come from `date-added`
+(BibDesk), `creationdate` (JabRef), `timestamp` or `dateadded`, first valid
+wins; values with an offset are shifted to UTC, and those without one (JabRef's
+local time) are read as UTC, so cross-source order can be off by the offset. Recently added uses validated source-added dates, never publication years
 or invented import times. These display dates do not change cite fingerprints.
 
 The bounded file is written whole, flushed and swapped in atomically. A file

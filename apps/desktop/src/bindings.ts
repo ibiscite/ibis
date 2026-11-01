@@ -607,6 +607,7 @@ export type PickerPreferencesPatch_Deserialize = {
 	search_icon?: SearchIcon | null,
 	paste?: boolean | null,
 	menu_bar?: boolean | null,
+	recent_citations?: boolean | null,
 	small_surprises?: boolean | null,
 };
 
@@ -621,6 +622,7 @@ export type PickerPreferencesPatch_Serialize = {
 	search_icon?: SearchIcon | null,
 	paste?: boolean | null,
 	menu_bar?: boolean | null,
+	recent_citations?: boolean | null,
 	small_surprises?: boolean | null,
 };
 
@@ -643,6 +645,8 @@ export type PickerPreferences_Deserialize = {
 	paste: boolean,
 	/**  The menu bar item; on by default. */
 	menu_bar: boolean,
+	/**  Recent citations per app; on by default. Off records nothing. */
+	recent_citations?: boolean | null,
 	small_surprises?: boolean | null,
 };
 
@@ -665,6 +669,8 @@ export type PickerPreferences_Serialize = {
 	paste: boolean,
 	/**  The menu bar item; on by default. */
 	menu_bar: boolean,
+	/**  Recent citations per app; on by default. Off records nothing. */
+	recent_citations?: boolean | null,
 	small_surprises?: boolean | null,
 };
 

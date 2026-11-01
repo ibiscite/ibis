@@ -21,6 +21,8 @@ export function usePickerPreferences(
   },
 ) {
   const [smallSurprises, setSmallSurprises] = useState<boolean | null>(null);
+  /** Null until read: nothing is recorded or forgotten on a guess. */
+  const [recentCitations, setRecentCitations] = useState<boolean | null>(null);
   const [ready, setReady] = useState(false);
   const [available, setAvailable] = useState(false);
   const [format, setFormat] = useState<Choice>("pandoc");
@@ -43,6 +45,7 @@ export function usePickerPreferences(
   }, { readAfterWrites: true }));
   const applyView = useCallback((value: PickerPreferences) => {
     setSmallSurprises(value.small_surprises ?? true);
+    setRecentCitations(value.recent_citations ?? true);
     setDensity(value.density);
     // A silent external view change retires its label so the next user choice can repeat it.
     setDensityFeedback((current) => current?.density === value.density ? current : null);
@@ -64,7 +67,11 @@ export function usePickerPreferences(
       if (formatFailed) report("format");
       setAvailable(saved !== null);
       if (saved) applyView(saved);
-      else report("preferences");
+      else {
+        // Unknown again: record nothing, forget nothing.
+        setRecentCitations(null);
+        report("preferences");
+      }
       if (event.pendingStyle) return;
       if (saved?.citation_style && styles) setFormat(`style:${saved.citation_style}`);
       else if (key) setFormat(key);
@@ -108,5 +115,5 @@ export function usePickerPreferences(
    * mount effect, after the library status, so the calls keep their order. */
   const loadPreferences = (mounted: () => boolean) => { void queue.load(mounted); };
 
-  return { ready, available, smallSurprises, format, density, densityAnnouncement: densityFeedback?.presentation === presentation ? densityFeedback.density : undefined, largerText, searchIcon, showPastePreview, chooseFormat, changeDensity, toggleLargerText, togglePastePreview, quitAfterSaving, loadPreferences };
+  return { ready, available, smallSurprises, recentCitations, format, density, densityAnnouncement: densityFeedback?.presentation === presentation ? densityFeedback.density : undefined, largerText, searchIcon, showPastePreview, chooseFormat, changeDensity, toggleLargerText, togglePastePreview, quitAfterSaving, loadPreferences };
 }
