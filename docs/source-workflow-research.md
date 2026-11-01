@@ -1,16 +1,14 @@
 # Source workflows: first versions and research
 
 Planning research, 2026-10-30; not implemented or a compatibility claim. This
-refines four of the [five approved directions](../ROADMAP.md#source-workflow-priorities-for-stable),
+refines four of the [five approved directions](../ROADMAP.md#saved-passages-and-project-checks),
 following #1521. The interaction contract remains in
 [design.md](design.md#source-checks-and-passage-reuse-planned); the behavioral
 bounds below keep that work small. New presentation/keyboard proposals are marked
-as such and require a canonical design update before implementation. Decision memory remains deferred. No additional
+as such and require a canonical design update before implementation. No additional
 manager adapter, source write, network use or MCP permission is approved here.
-The maintainer subsequently clarified that pre-stable work must solve a clear,
-major problem, be easy to explain and fit the tool cohesively. Detailed failure
-contracts do not establish user demand or make every researched idea a release
-requirement. The judgments below apply that bar.
+All five ship before 1.0 (maintainer, 2026-11-01); each starts with the smallest
+slice that is reliable.
 
 ## Order and shared model
 
@@ -161,12 +159,9 @@ static text must not suggest that the document bibliography will update.
 
 ## Save selected evidence as one file
 
-The strongest current report shows that Zotero's existing export route was hard
-to discover, not recurring demand for an Ibis cross-paper brief. Zotero can
-already build a note from annotations across papers; Readwise exports by tag.
-The direct quote action addresses much of this pain with less state. Revisit
-only after repeated observed tasks need chosen subsets across papers and a
-prototype materially improves on those workflows without becoming an organiser.
+Planned for 0.5, after the quote action. Zotero can already build a note from
+annotations across papers and Readwise exports by tag, so the brief must stay a
+small, fixed-layout export of chosen passages, never an organiser.
 [Zotero's cross-paper note workflow](https://www.zotero.org/support/pdf_reader#adding_annotations_to_notes),
 [Readwise tag export](https://docs.readwise.io/reader/docs/faqs/exporting).
 
@@ -210,11 +205,9 @@ Markdown itself or a new import/sync promise.
 
 ## Warn about a changed previously copied key
 
-Migration breakage is real, but these reports do not yet establish a recurring
-need for Ibis-managed history. Current BBT defaults leave populated keys alone;
-Ibis would add persistence, profile continuity and forgetting semantics while
-neither repairing documents nor covering ordinary .bib renames. Keep the research;
-revisit if recurring current-key changes in supported workflows justify that cost.
+Planned for 0.6. Current BBT defaults leave populated keys alone, so changes are
+rare; Ibis adds bounded history, profile continuity and forgetting, and neither
+repairs documents nor guesses ordinary .bib renames.
 
 Show nonblocking “Previously copied as oldKey; current key newKey” with
 **Copy change details**, Open reference and Forget remembered key. Normal citation
