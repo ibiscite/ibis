@@ -93,7 +93,7 @@ test("sidebar navigation and the large page title have shared selection, spacing
   const title = style(shell, ".settings-page-title");
   expect(title.getPropertyValue("font-size")).toBe("var(--type-display-size)");
   expect(title.getPropertyValue("line-height")).toBe("var(--type-display-line)");
-  expect(style(shell, ".settings-page").getPropertyValue("padding")).toBe("var(--space-6)");
+  expect(style(shell, ".settings-page").getPropertyValue("padding")).toBe("0 var(--space-6) var(--space-6)");
   expect(tokens).toMatch(/--sidebar-width:\s*min\(12\.5rem, 26%\)/);
 });
 
