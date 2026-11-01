@@ -129,8 +129,10 @@ impl OfferUi for tauri::test::MockRuntime {
         app.state::<Updates>().automatic.store(on, Ordering::SeqCst);
     }
 
-    fn return_focus(app: &AppHandle<Self>) {
-        Self::reveal_picker(app);
+    fn return_focus(app: &AppHandle<Self>, generation: u64) {
+        if app.state::<crate::picker::PickerGeneration>().current() == generation {
+            Self::reveal_picker(app);
+        }
     }
 }
 
@@ -170,6 +172,10 @@ fn first_run_question_keeps_the_picker_and_answering_gives_it_the_keyboard_back(
         assert_eq!(pending_question(&app), 0);
         let picker = app.state::<NativePicker>();
         picker.visible.store(true, Ordering::SeqCst);
+        // A summon can reach here before the picker has the keyboard.
+        ask_first_run(app.handle());
+        assert!(picker.offers.lock().unwrap_or_else(|e| panic!("{e}")).is_empty());
+        picker.focused.store(true, Ordering::SeqCst);
         ask_first_run(app.handle());
         // The open question is what suppresses the picker's hide on blur.
         assert!(app.state::<ChooserOpen>().is_open());
@@ -214,9 +220,39 @@ fn first_run_question_never_opens_the_picker_by_itself_and_is_asked_only_when_ne
 }
 
 #[test]
+fn a_late_first_run_answer_leaves_a_newer_dismissal_alone() -> tauri::Result<()> {
+    let app = app(false)?;
+    pending_question(&app);
+    let picker = app.state::<NativePicker>();
+    picker.visible.store(true, Ordering::SeqCst);
+    picker.focused.store(true, Ordering::SeqCst);
+    ask_first_run(app.handle());
+    picker.visible.store(false, Ordering::SeqCst);
+    picker.focused.store(false, Ordering::SeqCst);
+    app.state::<crate::picker::PickerGeneration>().advance();
+    let (_, answer) = picker
+        .offers
+        .lock()
+        .unwrap_or_else(|e| panic!("{e}"))
+        .pop()
+        .unwrap_or_else(|| panic!("the question must be asked"));
+    answer(true);
+    assert!(
+        app.state::<Updates>().automatic.load(Ordering::SeqCst),
+        "the answer is still saved"
+    );
+    assert_eq!(picker.shows.load(Ordering::SeqCst), 0);
+    assert!(!picker.visible.load(Ordering::SeqCst));
+    Ok(())
+}
+
+#[test]
 fn first_run_question_waits_for_a_chooser_that_is_open_and_asks_on_the_next_focus() -> tauri::Result<()> {
     let app = app(false)?;
     pending_question(&app);
+    let picker = app.state::<NativePicker>();
+    picker.visible.store(true, Ordering::SeqCst);
+    picker.focused.store(true, Ordering::SeqCst);
     let chooser = app.state::<ChooserOpen>().begin();
     ask_first_run(app.handle());
     assert!(

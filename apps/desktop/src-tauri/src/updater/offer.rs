@@ -108,7 +108,7 @@ pub(super) trait OfferUi: tauri::Runtime {
         answer: impl FnOnce(bool) + Send + 'static,
     );
     fn save_automatic(app: &AppHandle<Self>, on: bool);
-    fn return_focus(app: &AppHandle<Self>);
+    fn return_focus(app: &AppHandle<Self>, generation: u64);
 }
 
 impl OfferUi for tauri::Wry {
@@ -166,8 +166,8 @@ impl OfferUi for tauri::Wry {
         super::setting::change(app, on);
     }
 
-    fn return_focus(app: &AppHandle<Self>) {
-        crate::picker::return_focus(app);
+    fn return_focus(app: &AppHandle<Self>, generation: u64) {
+        crate::picker::return_focus(app, generation);
     }
 }
 
@@ -179,7 +179,11 @@ pub(super) fn ask_first_run<R: OfferUi>(app: &AppHandle<R>) {
     if !updates.question.load(Ordering::SeqCst) {
         return;
     }
-    let Some(parent) = app.get_webview_window("main") else {
+    // A summon can arrive here before the window manager has focused the picker.
+    let Some(parent) = app
+        .get_webview_window("main")
+        .filter(|parent| R::visible(parent) && R::focused(parent))
+    else {
         return;
     };
     let Some(owner) = app.state::<ChooserOpen>().begin() else {
@@ -188,10 +192,12 @@ pub(super) fn ask_first_run<R: OfferUi>(app: &AppHandle<R>) {
     if !updates.question.swap(false, Ordering::SeqCst) {
         return;
     }
+    // The question belongs to this presentation; a newer one is never disturbed.
+    let generation = app.state::<crate::picker::PickerGeneration>().current();
     let handle = app.clone();
     R::present_question(app, &parent, owner, move |yes| {
         R::save_automatic(&handle, yes);
-        R::return_focus(&handle);
+        R::return_focus(&handle, generation);
     });
 }
 

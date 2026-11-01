@@ -149,8 +149,12 @@ pub(crate) fn reveal_picker(app: &AppHandle) {
     }
 }
 
-/// Give the picker the keyboard back when a dialog it owns closes.
-pub(crate) fn return_focus(app: &AppHandle) {
+/// Give the picker the keyboard back when a dialog owned by presentation
+/// `generation` closes, unless the person has since dismissed or reopened it.
+pub(crate) fn return_focus(app: &AppHandle, generation: u64) {
+    if app.state::<PickerGeneration>().current() != generation {
+        return;
+    }
     reveal_picker(app);
     if let Some(window) = app.get_webview_window("main") {
         report(window.set_focus(), NativeIssue::Focus);
@@ -609,7 +613,7 @@ impl PickerGeneration {
     pub(crate) fn current(&self) -> u64 {
         self.0.load(Ordering::SeqCst)
     }
-    fn advance(&self) -> u64 {
+    pub(crate) fn advance(&self) -> u64 {
         self.0.fetch_add(1, Ordering::SeqCst).wrapping_add(1)
     }
     fn retire(&self, generation: u64) -> bool {
