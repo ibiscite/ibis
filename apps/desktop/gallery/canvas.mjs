@@ -14,6 +14,9 @@ const size = (scenario) => scenario === "notice" ? { width: 560, height: 100 }
   : scenario.startsWith("settings-") || scenario === "states" ? { width: 920, height: 560 } : { width: 720, height: 480 };
 const load = async (viewport) => {
   const page = await browser.newPage({ viewport, deviceScaleFactor: 2 });
+  // macOS is the reference design (docs/design.md), so pictures show Mac keys
+  // and metrics whichever system captures them.
+  await page.addInitScript(() => Object.defineProperty(navigator, "platform", { value: "MacIntel" }));
   await page.route("**/*", async (route) => {
     const name = new URL(route.request().url()).pathname.slice(1);
     if (!name) return route.fulfill({ contentType: "text/html", body: '<!doctype html><meta charset="utf-8"><link rel="stylesheet" href="ibis-canvas.css"><div id="host" style="height:100vh"></div><script src="ibis-canvas.js"></script>' });

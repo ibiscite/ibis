@@ -99,7 +99,7 @@ export function LibraryStatusLine({ library, groupName, menu, action, failure }:
           {/* Like More, the shared Menu button owns its visible content. Do not
               replace it with an empty button beneath a sibling text overlay. */}
           <Menu {...menu} trigger={<span className="library-status" data-health={health} title={detail}>{content}</span>}
-            triggerLabel={pickerText.libraryRegion} triggerVariant="quiet" triggerClassName="library-status-trigger" triggerTitle={detail} />
+            triggerLabel={pickerText.libraryRegion} triggerVariant="quiet" triggerSize="small" triggerClassName="library-status-trigger" triggerTitle={detail} />
         </span>
         {action}
       </span> : <span className="library-status" data-health={health} title={detail}>{content}</span>}

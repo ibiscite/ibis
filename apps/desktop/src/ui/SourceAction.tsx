@@ -37,7 +37,7 @@ export function shortenedLabel(label: string, limit = 44): string {
  * control but Copy, it is quiet (docs/design.md, "Quiet bands"). */
 export function SourceAction({ label, keys, icon, file, busy = false, open }: SourceActionProps) {
   const shown = shortenedLabel(label);
-  return <Button variant="quiet" label={shown} keys={keys} className="source-action library-inline-action"
+  return <Button variant="quiet" size="small" label={shown} keys={keys} className="source-action library-inline-action"
     aria-busy={busy || undefined} title={shown === label ? undefined : label}
     aria-label={label} onPress={open} icon={busy ? <span className="source-spinner" aria-hidden="true" /> : <SourceIcon icon={icon} file={file} />} />;
 }

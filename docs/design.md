@@ -696,7 +696,7 @@ with `--text-on-accent` and its key cap, because mouse users copy far more
 often than they open anything else (maintainer, 2026-10-30; a Mac puts the
 default button last). Every hint is label first, then keys: 8 px between them,
 16 px between hints, label type on one baseline. Source, More and Copy use `ui/Button` directly: the same
-height, `--r-control` radius and padding. Source and More are quiet, Copy primary;
+height (the small 24 pt size, as in 0.2.3 and a Mac's regular controls), `--r-control` radius and padding, regular weight. Source and More are quiet, Copy primary;
 keys keep their cap inside the button (maintainer, 2026-11-01: the earlier caps
 read best): the shared key fill on quiet buttons, a 22% veil of
 `--text-on-accent` on the primary. Menus still write shortcuts as plain text.

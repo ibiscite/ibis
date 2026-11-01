@@ -298,7 +298,7 @@ type MenuProps = {
   /** The menu's accessible name. */
   label: string; id?: string;
   /** The trigger button's content and attributes. */
-  trigger: ReactNode; triggerRef?: Ref<HTMLButtonElement>; triggerClassName?: string; triggerVariant?: "secondary" | "quiet"; triggerTitle?: string; triggerKeys?: string; triggerLabel?: string;
+  trigger: ReactNode; triggerRef?: Ref<HTMLButtonElement>; triggerClassName?: string; triggerVariant?: "secondary" | "quiet"; triggerSize?: "default" | "small"; triggerTitle?: string; triggerKeys?: string; triggerLabel?: string;
   isOpen: boolean; onOpenChange: (open: boolean) => void;
   /** Where Tab goes: leaving the menu returns there so keys keep working. */
   tabFocusRef?: RefObject<HTMLElement | null>;
@@ -313,7 +313,7 @@ type MenuProps = {
  * opened from the keyboard, including a shortcut that sets `isOpen`, the first
  * item is highlighted, as in native menus.
  */
-export function Menu({ label, id, trigger, triggerRef, triggerClassName, triggerVariant = "secondary", triggerTitle, triggerKeys, triggerLabel, isOpen, onOpenChange, tabFocusRef, placement = "bottom end", children }: MenuProps) {
+export function Menu({ label, id, trigger, triggerRef, triggerClassName, triggerVariant = "secondary", triggerSize = "default", triggerTitle, triggerKeys, triggerLabel, isOpen, onOpenChange, tabFocusRef, placement = "bottom end", children }: MenuProps) {
   const fromTrigger = useRef(false);
   const button = useRef<HTMLButtonElement | null>(null);
   const boundary = useMenuBoundary(isOpen, tabFocusRef, button);
@@ -391,7 +391,7 @@ export function Menu({ label, id, trigger, triggerRef, triggerClassName, trigger
     if (immediate) leave(tabFocusRef?.current, true);
     else pendingFocus.current = tabFocusRef?.current ?? null;
   }}><MenuTrigger isOpen={isOpen} onOpenChange={(open) => { fromTrigger.current = open; onOpenChange(open); }}>
-    <Button variant={triggerVariant} aria-label={label} ref={(node) => {
+    <Button variant={triggerVariant} size={triggerSize} aria-label={label} ref={(node) => {
       button.current = node;
       if (typeof triggerRef === "function") triggerRef(node);
       else if (triggerRef) triggerRef.current = node;

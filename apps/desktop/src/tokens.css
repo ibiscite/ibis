@@ -231,10 +231,10 @@
   --r-tile: var(--r-floor);
   --r-mi: max(var(--r-floor), calc(var(--r-menu) - var(--menu-pad)));
   --r-seg: max(var(--r-floor-mark), calc(var(--r-control) - 2px));
-  --key-gap: calc((var(--action-h) - var(--key)) / 2);
+  --key-gap: calc((var(--control-small-h) - var(--key)) / 2);
   --r-key: max(var(--r-floor-mark), calc(var(--r-action) - var(--key-gap)));
   --r-toast: 18px; --r-receipt-mark: calc(var(--r-toast) - var(--space-2));
-  --footer-h: calc(var(--action-h) + 2 * var(--inset));
+  --footer-h: calc(var(--control-small-h) + 2 * var(--inset));
   /* Measured from NSSegmentedControl: the chosen fill lands at 19% of the text colour. */
   --segment-track: var(--fill-2); --segment-selected: color-mix(in srgb, var(--text) 12%, transparent);
   --key-fill: var(--fill-control); --key-fill-pressed: var(--fill-control-pressed);
