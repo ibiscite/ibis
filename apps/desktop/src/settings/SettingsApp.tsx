@@ -5,7 +5,12 @@ import { type MessageId, useInterfaceMessages } from "../i18n";
 import { SHORTCUT_ACTIONS, SHORTCUT_REGIONS, type ShortcutProblem, shortcutRefusalMessage } from "../i18n/settings";
 import { PreferencePatchQueue } from "../preferencePatchQueue";
 import { currentPlatform } from "../platform";
+import { UndoNotice } from "../ui/UndoNotice";
 import { Button } from "../ui/Button";
+import { AboutDelight, ShortcutEcho } from "../ui/Delights";
+import { localMoment } from "../ui/localMoment";
+import { useAltHeld } from "../features/picker/useAltHeld";
+import type { DelightFact, DelightView } from "../bindings";
 import { KeyCaps } from "../ui/KeyCaps";
 import { SettingsGroup as Group, SettingsRow as Row } from "../ui/SettingsGroup";
 import { ShortcutSetting } from "../ui/ShortcutSetting";
@@ -21,6 +26,7 @@ import "./Settings.css";
 import { PAGES, ROWS, rowDetails, type Page } from "./rows";
 import { LookPage } from "./LookPage";
 import { initialPreferences, preferenceState } from "./preferenceState";
+const FACT_MESSAGES: Record<DelightFact, MessageId> = { thoth: "delight-thoth", touch: "delight-fact-touch", scarlet: "delight-fact-scarlet", mummies: "delight-fact-mummies", national: "delight-fact-national", flight: "delight-fact-flight" };
 const LOGIN_PROBLEMS = {
   unsupported: "general-login-unsupported", needs_approval: "general-login-needs-approval",
   refused: "general-login-refused", unreadable: "general-login-unreadable",
@@ -72,6 +78,8 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   const [shortcut, setShortcut] = useState<ShortcutStatus | null>(null);
   const [shortcutProblem, setShortcutProblem] = useState<ShortcutProblem | null>(null);
   const [shortcutUndo, setShortcutUndo] = useState<string | null>(null);
+  const shortcutUndoTicket = useRef(0);
+  const clearShortcutUndo = useCallback(() => { shortcutUndoTicket.current += 1; setShortcutUndo(null); }, []);
   const latestShortcut = useRef<ShortcutStatus | null>(null);
   const [shortcutSaving, setShortcutSaving] = useState(false);
   const shortcutBusy = useRef(false);
@@ -82,6 +90,41 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   const [loginSaving, setLoginSaving] = useState(false);
   const [updatesSaving, setUpdatesSaving] = useState(false);
   const [versionCopied, setVersionCopied] = useState(false);
+  const versionCopy = useRef(0);
+  const { altHeld } = useAltHeld();
+  const [about, setAbout] = useState<DelightView | null>(null);
+  const [blink, setBlink] = useState(0);
+  const clickAbout = useRef<() => void>(() => {});
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a saved switch change retires old authorization answers.
+  useEffect(() => {
+    let active = true;
+    let reads = 0;
+    let timer: number | undefined;
+    setAbout(null); setVersionCopied(false); versionCopy.current += 1;
+    const read = (click = false) => {
+      if (page !== "about" || !api.delightView) return;
+      const operation = ++reads;
+      const day = localMoment();
+      window.clearTimeout(timer);
+      void api.delightView(day, null, null, click).then((next) => {
+        if (!active || operation !== reads) return;
+        const now = localMoment();
+        if (day.year !== now.year || day.month !== now.month || day.day !== now.day) { read(); return; }
+        setAbout(next);
+        if (click && next?.fun) setBlink((value) => value + 1);
+        if (next?.anniversary || next?.birthday) {
+          const midnight = new Date(); midnight.setHours(24, 0, 0, 0);
+          timer = window.setTimeout(() => { if (active && operation === reads) { setAbout(null); read(); } }, midnight.getTime() - Date.now());
+        }
+      }).catch(() => undefined);
+    };
+    const focusRead = () => read();
+    clickAbout.current = () => read(true);
+    read();
+    window.addEventListener("focus", focusRead);
+    return () => { active = false; window.clearTimeout(timer); window.removeEventListener("focus", focusRead); clickAbout.current = () => {}; versionCopy.current += 1; };
+  }, [page, api.delightView, preferences?.small_surprises]);
+  useEffect(() => { if (about?.fun === false) setBlink(0); }, [about?.fun]);
   const [forgetStatus, setForgetStatus] = useState<"idle" | "saving" | "done" | "failed">("idle");
   const forgetBusy = useRef(false);
   const updateIntent = useRef<boolean | null>(null);
@@ -147,7 +190,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
       const request = ++shortcutReads.current;
       api.shortcutStatus().then((next) => {
         if (active && request === shortcutReads.current) {
-          if (latestShortcut.current?.shortcut !== next.shortcut) setShortcutUndo(null);
+          if (latestShortcut.current?.shortcut !== next.shortcut) clearShortcutUndo();
           latestShortcut.current = next;
           setShortcut(next);
           setShortcutProblem((problem) => problem?.id === "shortcuts-read-failed" ? null : problem);
@@ -181,10 +224,10 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     window.addEventListener("focus", readShortcut);
     const shortcuts = api.onShortcutStatus((next) => {
       shortcutReads.current += 1;
-      if (active) { latestShortcut.current = next; setShortcut(next); setShortcutUndo(null); }
+      if (active) { latestShortcut.current = next; setShortcut(next); clearShortcutUndo(); }
     });
     void shortcuts.catch(() => { if (active) setShortcutProblem({ id: "shortcuts-read-failed" }); }).then(() => { if (active) readShortcut(); });
-    const page = api.onPage((name) => { const next = pageOf(name); setDetour(name === "paste"); setPage(next.page); setFocus(next.focus ?? "top"); });
+    const page = api.onPage((name) => { const next = pageOf(name); setDetour(name === "paste"); setBlink(0); setPage(next.page); setFocus(next.focus ?? "top"); });
     const automatic = api.onUpdateChecks((next) => {
       if (!active) return;
       updateReads.current += 1;
@@ -206,7 +249,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
       void automatic.then((stop) => stop()).catch(() => undefined);
       void close.then((stop) => stop()).catch(() => undefined);
     };
-  }, [api, queue, readProblem]);
+  }, [api, queue, readProblem, clearShortcutUndo]);
   useEffect(() => {
     const scroller = pageRef.current;
     if (!focus || !scroller) return;
@@ -225,35 +268,35 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     edits.current += 1;
     cause.current = Object.hasOwn(next, "citation_style") || key !== null ? "default-format" : next.appearance !== undefined ? "appearance" : next.accent !== undefined ? "accent"
       : next.density !== undefined ? "rows" : next.larger_text !== undefined ? "text-size"
-      : next.search_icon !== undefined ? "search-icon" : next.paste !== undefined ? "paste-label" : next.menu_bar !== undefined ? "menu-bar" : "preview";
+      : next.search_icon !== undefined ? "search-icon" : next.paste !== undefined ? "paste-label" : next.menu_bar !== undefined ? "menu-bar" : next.small_surprises !== undefined ? "small-surprises" : "preview";
     setProblemRow(null);
     dispatchPreference({ type: "change", value: { ...preferences, ...next, ...(key ? { copy_format: key } : {}) } });
     queue.change(next, key);
   };
-  const changeShortcut = (next: string | null) => {
-    if (shortcutBusy.current) return;
+  const changeShortcut = (next: string | null, restoring = false, ticket = shortcutUndoTicket.current): Promise<void> => {
+    if (shortcutBusy.current || ticket !== shortcutUndoTicket.current) return Promise.resolve();
     shortcutBusy.current = true;
     const previous = shortcut?.shortcut;
-    setShortcutUndo(null);
+    if (!restoring) clearShortcutUndo();
     const request = ++shortcutReads.current;
     setShortcutSaving(true);
     setShortcutProblem(null);
-    void queue.enqueue(() => api.setShortcut(next))
+    return queue.enqueue(() => api.setShortcut(next))
       .then((status) => {
         if (!live.current) return;
         if (request === shortcutReads.current) { latestShortcut.current = status; setShortcut(status); }
-        if (next === null && previous && latestShortcut.current?.shortcut === status.shortcut) setShortcutUndo(previous);
+        if (restoring) clearShortcutUndo();
+        if (next === null && previous && latestShortcut.current?.shortcut === status.shortcut) {
+          shortcutUndoTicket.current += 1; setShortcutUndo(previous);
+        }
       })
       .catch((refusal: unknown) => {
         setShortcutProblem(shortcutRefusalMessage(refusal));
+        if (restoring) throw refusal;
       })
       .finally(() => { shortcutBusy.current = false; setShortcutSaving(false); });
   };
-  useEffect(() => {
-    if (!shortcutUndo) return;
-    const expiry = window.setTimeout(() => setShortcutUndo(null), 8000);
-    return () => window.clearTimeout(expiry);
-  }, [shortcutUndo]);
+
   const configureShortcut = () => {
     if (shortcutBusy.current) return;
     shortcutBusy.current = true;
@@ -279,9 +322,10 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   const feedback = (id: string) => ({ highlighted: highlighted === id, problem: readProblems.has(id) ? text("settings-read-failed")
     : preference.status === "refused" && preference.problem.row === id ? text(preference.problem.message)
     : problemRow?.id === id ? text(problemRow.message) : undefined });
-  const selectPage = (next: Page) => { highlightOperation.current += 1; setHighlighted(null); setDetour(false); setPage(next); setFocus("top"); };
+  const selectPage = (next: Page) => { highlightOperation.current += 1; setHighlighted(null); setDetour(false); setPage(next); setFocus("top"); setBlink(0); };
   const reveal = (row: typeof ROWS[number]) => {
-    selectPage(row.page); setQuery(""); setHighlighted(row.id);
+    selectPage(row.page); setQuery(""); setHighlighted(row.id === "about-ibis" && query.trim().toLowerCase() === "thoth" ? "about-name" : row.id);
+    if (row.id === "about-ibis" && query.trim().toLowerCase() !== "thoth") setBlink(blink + 1);
     const operation = ++highlightOperation.current;
     window.setTimeout(() => { if (live.current && operation === highlightOperation.current) setHighlighted(null); }, 2000);
   };
@@ -312,11 +356,22 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
       void readWindowSize(request);
     });
   };
+  const copyVersion = () => {
+    const operation = ++versionCopy.current;
+    setVersionCopied(false);
+    setProblemRow(null);
+    void navigator.clipboard.writeText(`${name} ${altHeld && about?.build ? about.build : version}`).then(() => {
+      if (!live.current || operation !== versionCopy.current) return;
+      setVersionCopied(true);
+      window.setTimeout(() => { if (live.current && operation === versionCopy.current) setVersionCopied(false); }, 1500);
+    }, () => { if (live.current && operation === versionCopy.current) setProblemRow({ id: "version-label", message: "about-copy-failed" }); });
+  };
   const matches = query.trim() ? ROWS.filter((row) => (row.id !== "menu-bar" || platform === "macos") && [row.label, row.description, row.keywords].some((id) => id && text(id, { platform }).toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()))) : [];
   const name = login?.name ?? "Ibis";
+  const undoTicket = shortcutUndoTicket.current;
   const shortcutSetting = <ShortcutSetting key={page} id={page === "general" ? "general-shortcut" : "open-ibis"}
     rowId={page === "general" ? "general-open-shortcut" : "open-shortcut"} status={shortcut} problem={shortcutProblem}
-    saving={shortcutSaving} undo={shortcutUndo} highlighted={highlighted === "open-shortcut"}
+    saving={shortcutSaving} highlighted={highlighted === "open-shortcut"} echo={page === "shortcuts"}
     onRecord={changeShortcut} onConfigure={configureShortcut} />;
 
   return (
@@ -332,6 +387,9 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
         </div> : <SideNavigation label={text("settings-pages")} value={page} options={PAGES.map((value) => ({ value, label: text(`settings-${value}`), tile: PAGE_TILES[value], gapBefore: value === "about" }))}
           onChange={selectPage} />}
       </nav>
+      {shortcutUndo && <UndoNotice key={undoTicket} action={text("undo-shortcut")} message={text("settings-shortcut-restored")} paused={!focused}
+        onUndo={() => changeShortcut(shortcutUndo, true, undoTicket)}
+        onExpire={() => { if (undoTicket === shortcutUndoTicket.current) clearShortcutUndo(); }} />}
       <main ref={pageRef} className="settings-page" aria-labelledby="settings-page-title">
         <h1 id="settings-page-title" className="settings-page-title">{text(`settings-${page}`)}</h1>
         {preference.status === "unknown" && preference.message && <p className="settings-problem" role="alert">{text(preference.message)}</p>}
@@ -339,6 +397,11 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
         {page === "general" && (
           <>
             {shortcutSetting}
+            <Group id="surprises">
+              <Row id="small-surprises" label={text("general-small-surprises-label")} description={text("general-small-surprises-description")} {...feedback("small-surprises")}>
+                <Switch aria-labelledby="small-surprises" aria-describedby="small-surprises-description" isSelected={preferences?.small_surprises ?? true} isDisabled={!preferences} onChange={(on) => change({ small_surprises: on })} />
+              </Row>
+            </Group>
             <Group id="startup">
                 <Row id="login" label={text("general-login-label", { platform })} description={login?.problem ? text(LOGIN_PROBLEMS[login.problem], { platform, name }) : text("general-login-description")} {...feedback("login")}>
                   <Switch aria-labelledby="login" aria-describedby="login-description" isSelected={login?.enabled ?? false}
@@ -396,12 +459,12 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
             {[...new Set(KEY_TABLE.map((binding) => binding.region))].map((region) => (
               <Group key={region} id={`shortcuts-${region}`} title={text(SHORTCUT_REGIONS[region])}>
                 {KEY_TABLE.filter((binding) => binding.region === region).map((binding) => (
-                  <Row key={binding.action} id={`key-${binding.action}`} label={text(SHORTCUT_ACTIONS[binding.action])}>
+                  <ShortcutEcho key={binding.action} keys={binding.keys}><Row id={`key-${binding.action}`} label={text(SHORTCUT_ACTIONS[binding.action])}>
                     <span className="ui-settings-keys">{binding.keys.flatMap((keys, index) => [
                       index > 0 && <span key={`or-${index}`}>{text("shortcuts-or")}</span>,
                       <KeyCaps key={keys} accelerator={keys} />,
                     ])}</span>
-                  </Row>
+                  </Row></ShortcutEcho>
                 ))}
               </Group>
             ))}
@@ -409,17 +472,16 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
         )}
         {page === "about" && (
           <>
+            <div id="about-ibis"><AboutDelight blink={blink} enabled={about?.fun ?? false} onClick={() => clickAbout.current()} /></div>
+            {about?.fun && (about.birthday || about.anniversary) && <p className="ui-about-line">{text(about.birthday ? "delight-birthday" : "delight-anniversary")}</p>}
+            {about?.fun && about.fact && <p className="ui-about-line">{text(FACT_MESSAGES[about.fact])}</p>}
             <Group id="version">
-              <Row id="version-label" label={text("about-version", { name, version })}
+              <Row id="version-label" label={<Button variant="quiet" preventFocusOnPress onPress={copyVersion}>{text("about-version", { name, version: altHeld && about?.build ? about.build : version })}</Button>}
                 description={updates === null && !readProblems.has("automatic") ? text("about-unavailable") : undefined} {...feedback("version-label")}>
-                <Button onPress={() => {
-                  void navigator.clipboard.writeText(`${name} ${version}`).then(() => {
-                    setVersionCopied(true);
-                    window.setTimeout(() => { if (live.current) setVersionCopied(false); }, 1500);
-                  }, () => setProblemRow({ id: "version-label", message: "about-copy-failed" }));
-                }}>{text(versionCopied ? "about-copied" : "about-copy")}</Button>
+                <Button onPress={copyVersion}>{text(versionCopied ? "about-copied" : "about-copy")}</Button>
                 {updates !== null && <Button onPress={() => { void api.checkForUpdates().then(() => readProblem("version-label", false)).catch(() => readProblem("version-label", true)); }}>{text("about-check")}</Button>}
               </Row>
+              <Row id="about-name" label={text("delight-name")} highlighted={highlighted === "about-name"} />
             {(updates !== null || readProblems.has("automatic")) && (
                 <Row id="automatic" label={text("about-automatic")} description={text("about-automatic-description")} {...feedback("automatic")}>
                   <Switch aria-labelledby="automatic" aria-describedby="automatic-description" isSelected={updates ?? false}

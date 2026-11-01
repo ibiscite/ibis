@@ -90,3 +90,10 @@ test("Windows and macOS containers hold actual images at every required size", (
   }
   expect(entries).toMatchObject({ icp4: [16, 16], icp5: [32, 32], ic07: [128, 128], ic10: [1024, 1024] });
 });
+
+test("the Mac icon ships its appearances beside the older icon file", () => {
+  expect(config.bundle.macOS.files["Resources/Assets.car"]).toBe("icons/macos/Assets.car");
+  expect(read("macos/Assets.car").length).toBeGreaterThan(0);
+  expect(read("../Info.plist").toString()).toMatch(/CFBundleIconName<\/key>\s*<string>Ibis<\/string>/);
+  expect(config.bundle.icon).toContain("icons/icon.icns");
+});

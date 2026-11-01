@@ -30,6 +30,7 @@
     "allow-copy-format",
     "allow-picker-preferences",
     "allow-preference-revision",
+    "allow-delight-view",
     "allow-set-picker-preferences",
     "allow-picker-destination",
     "allow-remember-app-output",
@@ -50,6 +51,9 @@
     "allow-update-available",
     "allow-update-picker-activity",
     "allow-open-settings",
+    "allow-take-search-request",
+    "allow-alignment-tick",
+    "allow-reset-window-position",
     "allow-read-window-position-undo",
     "allow-undo-window-position",
     "allow-dismiss-window-position-undo"

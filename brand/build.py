@@ -238,6 +238,18 @@ def mark(paint, uid, depth=True):
     return doc(side, side, defs, body, (512, 512))
 
 
+def menu_bar(turn, uid):
+    """The one-colour bird the system tints, 16 points tall in the 18 point
+    slot. `turn` lowers the beak about the base of the neck for its dip."""
+    box, body = re.fullmatch(r'<svg[^>]* viewBox="([^"]+)">(.*)</svg>\n', mark("#000000", uid, False), re.S).groups()
+    x, y, side, _ = (float(value) for value in box.split())
+    # The bird's centre sits at (.545, .495) of its export; 0.8 leaves room for the dip.
+    frame = f"{x + side * .145:g} {y + side * .095:g} {side * .8:g} {side * .8:g}"
+    pivot = f"{x + side * .4:g} {y + side * .8:g}"
+    return (f'<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="{frame}">'
+            f'<g transform="rotate({turn} {pivot})">{body}</g></svg>\n')
+
+
 def logo(dark, uid, depth="gradient"):
     m = 100
     pad = PAD * m
@@ -274,6 +286,46 @@ def app_icon(dark, uid):
                         C["tile_edge_dark"] if dark else C["tile_edge"])
     d2, b2 = centred("mark", side, CONTAINER * side, GRADIENT_DARK if dark else GRADIENT, uid, True)
     return doc(side, side, d1 + d2, b1 + b2)
+
+
+def icon_glyph(paint, uid, depth="gradient"):
+    """The bird alone for the macOS icon: the system adds glass, depth and tints."""
+    side = 1024
+    defs, body = centred("mark", side, CONTAINER * side, paint, uid, depth)
+    return doc(side, side, defs, body)
+
+
+def icon_composer(directory):
+    """An Icon Composer document. scripts/macos-icon.sh compiles it to Assets.car."""
+    def fill(colours):
+        stops = []
+        for colour in colours:
+            red, green, blue = (int(colour[index:index + 2], 16) / 255 for index in (1, 3, 5))
+            stops.append(f"srgb:{red:.5f},{green:.5f},{blue:.5f},1.00000")
+        return {"linear-gradient": stops, "orientation": {"start": {"x": .5, "y": 0}, "stop": {"x": .67, "y": 1}}}
+    document = {
+        "fill-specializations": [{"value": fill(TILE)}, {"appearance": "dark", "value": fill(TILE_DARK)}],
+        "groups": [{
+            "layers": [{
+                "name": "Ibis",
+                "image-name-specializations": [
+                    {"value": "ibis-glyph.svg"},
+                    {"appearance": "dark", "value": "ibis-glyph-dark.svg"},
+                    {"appearance": "tinted", "value": "ibis-glyph-mono.svg"},
+                ],
+                "glass": True,
+            }],
+            "shadow": {"kind": "neutral", "opacity": .5},
+            "translucency": {"enabled": False, "value": .5},
+        }],
+        "supported-platforms": {"squares": ["macOS"]},
+    }
+    assets = directory / "Assets"
+    assets.mkdir(parents=True, exist_ok=True)
+    (assets / "ibis-glyph.svg").write_text(icon_glyph(GRADIENT, "ig"), encoding="utf-8")
+    (assets / "ibis-glyph-dark.svg").write_text(icon_glyph(GRADIENT_DARK, "igd"), encoding="utf-8")
+    (assets / "ibis-glyph-mono.svg").write_text(icon_glyph("#FFFFFF", "igm", False), encoding="utf-8")
+    (directory / "icon.json").write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
 
 
 def square_tile(uid):
@@ -529,6 +581,9 @@ def main(root=HERE.parent):
         "ibis-app-icon.svg": app_icon(False, "a"),
         "ibis-app-icon-dark.svg": app_icon(True, "ad"),
         "ibis-avatar.svg": square_tile("av"),
+        "ibis-menu-bar.svg": menu_bar(0, "mbr"),
+        "ibis-menu-bar-dip-1.svg": menu_bar(6, "mb1"),
+        "ibis-menu-bar-dip-2.svg": menu_bar(12, "mb2"),
         "ibis-quote-beak.svg": beak(),
         "favicon.svg": favicon("currentColor", dark_style),
         "github-social-preview.svg": card(1280, 640, "s"),
@@ -546,6 +601,7 @@ def main(root=HERE.parent):
         "video/youtube-banner.svg": video_card(2560, 1440, True, "yb", [TAGLINE], L["banner_logo"]),
         "video/thumbnail-template.svg": thumbnail("th"),
     }
+    icon_composer(OUT / "Ibis.icon")
     (OUT / "video").mkdir(exist_ok=True)
     for name, text in files.items():
         (OUT / name).write_text(text, encoding="utf-8")
@@ -553,6 +609,8 @@ def main(root=HERE.parent):
         png("ibis-app-icon.svg", f"ibis-app-icon-{size}.png", size)
     png("ibis-app-icon-dark.svg", "ibis-app-icon-dark-1024.png", 1024)
     png("ibis-avatar.svg", "ibis-avatar-512.png", 512)
+    for name in ("ibis-menu-bar", "ibis-menu-bar-dip-1", "ibis-menu-bar-dip-2"):
+        png(f"{name}.svg", f"{name}.png", 36)
     png("ibis-mark.svg", "ibis-mark-512.png", 512)
     png("ibis-mark-on-dark.svg", "ibis-mark-on-dark-512.png", 512)
     png("ibis-logo.svg", "ibis-logo-800.png", 800, "auto")

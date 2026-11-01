@@ -8,14 +8,15 @@ import { keyText, pickerText } from "../../messages";
 import { currentPlatform } from "../../platform";
 import { KeyHint } from "../../ui/KeyCaps";
 import { Button } from "../../ui/Button";
+import { QuietStatus } from "../../ui/Delights";
 
 export type KeyHints = { enter: string | null; shiftEnter: string | null; escape: string };
 
 /** Status and its fix, More, then Copy. Shorten status before dropping hint labels. */
-export function PickerFooter({ library, groupName, hints, altHeld, actions, more, status }: {
+export function PickerFooter({ library, groupName, hints, altHeld, actions, more, status, feedback, passive, emptyAction }: {
   library: LibraryStatus | null | undefined; groupName: (id: number) => string; hints: KeyHints; altHeld: boolean;
   actions: { copy: () => void; add: () => void; escape: () => void };
-  more: React.ReactNode; status?: React.ReactNode;
+  more: React.ReactNode; status?: React.ReactNode; feedback?: string | null; passive?: boolean; emptyAction?: boolean;
 }) {
   const bar = useRef<HTMLElement>(null);
   const hintsRow = useRef<HTMLElement>(null);
@@ -59,7 +60,7 @@ export function PickerFooter({ library, groupName, hints, altHeld, actions, more
   return <footer data-menu-floor>
     {/* The region includes More and Copy. Its name must stay distinct from
         the Library button, so native name lookup cannot activate the region. */}
-    <section ref={bar} aria-label={pickerText.pickerActions} className="library-bar"
+    <section ref={bar} aria-label={pickerText.pickerActions} className="library-bar" data-empty-action={emptyAction || undefined}
       data-status-compact={fit.status || undefined} data-hints-compact={fit.labels || undefined}>
       <span className="footer-fit-measure" aria-hidden="true" inert><span ref={statusSize} className="footer-status-size" /><span ref={statusMinimum} className="footer-status-minimum" /></span>
       {status ?? <LibraryStatusLine library={library} groupName={groupName} />}
@@ -68,18 +69,19 @@ export function PickerFooter({ library, groupName, hints, altHeld, actions, more
         {altHeld ? <>
           {hints.shiftEnter && <FooterAction label={hints.shiftEnter} keys={keysFor("add")} onAction={actions.add} />}
           <FooterAction label={hints.escape} keys={keysFor("escape")} onAction={actions.escape} />
-        </> : hints.enter && <FooterAction label={hints.enter} keys={keysFor("copy")} primary onAction={actions.copy} />}
+        </> : hints.enter ? <FooterAction label={hints.enter} keys={keysFor("copy")} primary onAction={actions.copy} />
+          : emptyAction && <FooterAction label={keyText.copy} keys={keysFor("copy")} disabled onAction={actions.copy} />}
       </small>
       {altHeld && moreControl}
-      {library?.note && <p role="status">{library.note}</p>}
+      <QuietStatus passive={!library?.note && passive}>{library?.note ?? feedback}</QuietStatus>
     </section>
   </footer>;
 }
 
-function FooterAction({ label, keys, primary, onAction }: { label: string; keys: string; primary?: boolean; onAction: () => void }) {
+function FooterAction({ label, keys, primary, onAction, disabled }: { label: string; keys: string; primary?: boolean; onAction: () => void; disabled?: boolean }) {
   const platform = currentPlatform();
   return <Button variant={primary ? "primary" : "quiet"} size="small" className="footer-action" aria-label={label}
-    aria-keyshortcuts={ariaKeys(keys, platform === "macos")} onPress={onAction}>
-    <KeyHint label={label} keys={keys} primary={primary} platform={platform} hidden />
+    aria-keyshortcuts={ariaKeys(keys, platform === "macos")} isDisabled={disabled} onPress={onAction}>
+    <KeyHint label={label} keys={keys} primary={primary} platform={platform} hidden echo />
   </Button>;
 }

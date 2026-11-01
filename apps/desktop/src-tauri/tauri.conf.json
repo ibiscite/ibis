@@ -46,7 +46,10 @@
       "icons/linux/512x512/com.ibiscite.ibis.png"
     ],
     "macOS": {
-      "signingIdentity": "-"
+      "signingIdentity": "-",
+      "files": {
+        "Resources/Assets.car": "icons/macos/Assets.car"
+      }
     },
     "linux": {
       "deb": {

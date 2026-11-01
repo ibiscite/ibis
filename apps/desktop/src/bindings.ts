@@ -63,6 +63,8 @@ export const commands = {
 	pickerPreferences: () => __TAURI_INVOKE<PickerPreferences_Serialize>("picker_preferences"),
 	/**  Issue a save identity inline at IPC dispatch; unused identities block nothing. */
 	preferenceRevision: () => __TAURI_INVOKE<number>("preference_revision"),
+	/**  One request per visible presentation/snapshot. Settings passes no presentation. */
+	delightView: (now: LocalMoment, presentation: number | null, revision: string | null, aboutClick: boolean | null) => __TAURI_INVOKE<DelightView>("delight_view", { now, presentation, revision, aboutClick }),
 	/**  Remember the picker preferences; other settings in the file are kept. */
 	setPickerPreferences: (preferences: PickerPreferencesPatch_Deserialize, copyFormat:
 /**  Pandoc / Quarto / R Markdown / Obsidian: `[@key, p. 12]`. */
@@ -129,6 +131,7 @@ export const commands = {
 	delivered: Delivered,
 	text: string,
 	more?: number | null,
+	milestone?: number | null,
 } | null>("copied_notice"),
 	/**  Initial command runs asynchronously; native mutations stay on the main thread. */
 	nativeAppearance: () => __TAURI_INVOKE<string>("native_appearance"),
@@ -177,6 +180,12 @@ export const commands = {
 	 *  Hidden, the next `prepare` applies it before the window appears.
 	 */
 	setWindowSize: (size: WindowSize) => __TAURI_INVOKE<null>("set_window_size", { size }),
+	/**  The picker collects text from Search with Ibis once. */
+	takeSearchRequest: () => __TAURI_INVOKE<string | null>("take_search_request"),
+	/**  A citation segment took its place: the trackpad's alignment tick. */
+	alignmentTick: () => __TAURI_INVOKE<void>("alignment_tick"),
+	/**  Double-clicking the search bar's empty area returns Ibis to its place. */
+	resetWindowPosition: () => __TAURI_INVOKE<void>("reset_window_position"),
 	readWindowPositionUndo: () => __TAURI_INVOKE<number | null>("read_window_position_undo"),
 	undoWindowPosition: (revision: number) => __TAURI_INVOKE<boolean>("undo_window_position", { revision }),
 	dismissWindowPositionUndo: (revision: number) => __TAURI_INVOKE<void>("dismiss_window_position_undo", { revision }),
@@ -244,6 +253,22 @@ export type Copied_Serialize = {
 	summary?: ReceiptSummary | null,
 	/**  Unique clipboard-write identity for receipts, even without a native paste proof. */
 	delivery?: number | null,
+};
+
+export type DelightFact = "thoth" | "touch" | "scarlet" | "mummies" | "national" | "flight";
+
+export type DelightStatus = "paste-tip" | "library100" | "library1000" | "library10000";
+
+export type DelightView = {
+	status: DelightStatus | null,
+	peck: boolean,
+	anniversary: boolean,
+	build: string,
+	fun: boolean,
+	fact: DelightFact | null,
+	birthday: boolean,
+	library: string | null,
+	revision: number,
 };
 
 /**  What happened to a copied citation, for the notice to word. */
@@ -421,6 +446,13 @@ export type LibraryStatus = {
 	checked_at: number | null,
 };
 
+/**  Local calendar facts from the webview clock; eligibility is decided here. */
+export type LocalMoment = {
+	year: number,
+	month: number,
+	day: number,
+};
+
 /**  Picker wire names over the engine's canonical locator vocabulary. */
 export type Locator = {
 	label: LocatorTerm,
@@ -471,10 +503,28 @@ export type MatchField = "citekey" | "title" | "author" | "year" | "doi" | "keyw
  *  What the notice says: whether the citation was pasted or only copied, and
  *  one line of it.
  */
-export type NoticeMessage = {
+export type NoticeMessage = NoticeMessage_Serialize | NoticeMessage_Deserialize;
+
+/**
+ *  What the notice says: whether the citation was pasted or only copied, and
+ *  one line of it.
+ */
+export type NoticeMessage_Deserialize = {
 	delivered: Delivered,
 	text: string,
 	more?: number | null,
+	milestone?: number | null,
+};
+
+/**
+ *  What the notice says: whether the citation was pasted or only copied, and
+ *  one line of it.
+ */
+export type NoticeMessage_Serialize = {
+	delivered: Delivered,
+	text: string,
+	more?: number | null,
+	milestone?: number | null,
 };
 
 /**  An app ID that cannot tell Ibis which output its document needs. */
@@ -550,6 +600,7 @@ export type PickerPreferencesPatch_Deserialize = {
 	search_icon?: SearchIcon | null,
 	paste?: boolean | null,
 	menu_bar?: boolean | null,
+	small_surprises?: boolean | null,
 };
 
 /**  Only fields deliberately changed in one window cross the write boundary. */
@@ -563,6 +614,7 @@ export type PickerPreferencesPatch_Serialize = {
 	search_icon?: SearchIcon | null,
 	paste?: boolean | null,
 	menu_bar?: boolean | null,
+	small_surprises?: boolean | null,
 };
 
 /**
@@ -584,6 +636,7 @@ export type PickerPreferences_Deserialize = {
 	paste: boolean,
 	/**  The menu bar item; on by default. */
 	menu_bar: boolean,
+	small_surprises?: boolean | null,
 };
 
 /**
@@ -605,6 +658,7 @@ export type PickerPreferences_Serialize = {
 	paste: boolean,
 	/**  The menu bar item; on by default. */
 	menu_bar: boolean,
+	small_surprises?: boolean | null,
 };
 
 /**  The authoritative state after one locked patch and flush. */

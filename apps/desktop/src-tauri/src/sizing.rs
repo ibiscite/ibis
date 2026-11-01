@@ -672,6 +672,8 @@ pub(crate) fn reset_position(app: &AppHandle) {
                 && let Some(window) = handle.get_webview_window("main")
                 && prepare(&handle, &window, false, true)
             {
+                #[cfg(target_os = "macos")]
+                crate::menu_bar::tick();
                 crate::picker::show_picker(&handle);
             }
         }),
@@ -763,6 +765,13 @@ pub(crate) fn dismiss_window_position_undo(app: AppHandle, revision: u64) {
         state.dismiss_undo(revision);
     }
     emit_reset_undo(&app);
+}
+
+/// Double-clicking the search bar's empty area returns Ibis to its place.
+#[tauri::command]
+#[specta::specta]
+pub(crate) fn reset_window_position(app: AppHandle) {
+    reset_position(&app);
 }
 
 #[tauri::command]

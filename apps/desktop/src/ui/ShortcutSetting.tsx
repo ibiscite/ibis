@@ -6,12 +6,14 @@ import { currentPlatform } from "../platform";
 import { Button } from "./Button";
 import { SettingsGroup, SettingsRow } from "./SettingsGroup";
 import { ShortcutRecorder } from "./ShortcutRecorder";
+import { ShortcutEcho } from "./Delights";
 
 /** Both Settings pages edit the same owner. This component only presents it. */
-export function ShortcutSetting({ id, rowId, status, problem, saving, undo, highlighted, onRecord, onConfigure }: {
+export function ShortcutSetting({ id, rowId, status, problem, saving, highlighted, onRecord, onConfigure, echo = false }: {
   id: string; rowId: string; status: ShortcutStatus | null; problem: ShortcutProblem | null;
-  saving: boolean; undo: string | null; highlighted: boolean;
+  saving: boolean; highlighted: boolean;
   onRecord: (shortcut: string | null) => void; onConfigure: () => void;
+  echo?: boolean;
 }) {
   const { text } = useInterfaceMessages();
   const mac = currentPlatform() === "macos";
@@ -19,7 +21,7 @@ export function ShortcutSetting({ id, rowId, status, problem, saving, undo, high
   const isDefault = status && /^[a-z]$/i.test(status.shortcut.split("+").at(-1)?.trim() ?? "")
     && shortcutLabel(status.shortcut, mac).split("+").sort().join("+") === defaultLabel.split("+").sort().join("+");
   return <SettingsGroup id={id}>
-    <SettingsRow id={rowId} label={text("shortcuts-open")} highlighted={highlighted}
+    <ShortcutEcho keys={echo && status ? [status.shortcut] : []}><SettingsRow id={rowId} label={text("shortcuts-open")} highlighted={highlighted}
       description={status?.desktop?.guidance ?? (status ? text("shortcuts-description") : undefined)}
       problem={problem ? text(problem.id, problem.command ? { command: text(SHORTCUT_COMMANDS[problem.command]) } : undefined) : undefined}>
       {status?.desktop ? <>
@@ -28,12 +30,10 @@ export function ShortcutSetting({ id, rowId, status, problem, saving, undo, high
       </> : status && <ShortcutRecorder shortcut={status.shortcut} label={text("shortcuts-open")}
         prompt={text("shortcuts-record")} isDisabled={saving} onRecord={onRecord} />}
       {status?.error && <span role="status">{status.error}</span>}
-    </SettingsRow>
+    </SettingsRow></ShortcutEcho>
     {status && !status.desktop && !isDefault && <SettingsRow id="default-shortcut" label={defaultLabel}>
       <Button isDisabled={saving} onPress={() => onRecord(null)}>{text("shortcuts-use-default")}</Button>
     </SettingsRow>}
-    {undo && <SettingsRow id="shortcut-undo" label={text("settings-shortcut-restored")}>
-      <Button isDisabled={saving} onPress={() => onRecord(undo)}>{text("settings-undo")}</Button>
-    </SettingsRow>}
+
   </SettingsGroup>;
 }

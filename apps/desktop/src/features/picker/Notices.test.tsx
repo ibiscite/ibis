@@ -10,6 +10,15 @@ const copied = { text: "[@example2026]", warnings: ["Missing year — 研究 ا�
 const props = { library: null, failures: {}, error: null, copyError: null,
   copied, confirmation: copied, onDismissCopied: vi.fn() };
 
+test("zoom uses the existing copied feedback position and leaves warnings visible", () => {
+  const { rerender } = render(<Notices {...props} feedback="110%" />);
+  expect(screen.getByText("110%")).toBeTruthy();
+  expect(screen.queryByText("Copied")).toBeNull();
+  expect(screen.getByLabelText("Copy warnings").textContent).toBe(copied.warnings[0]);
+  rerender(<Notices {...props} />);
+  expect(screen.getByText("Copied")).toBeTruthy();
+});
+
 test("a long citation refusal is a complete keyboard-reachable notice before Details opens", () => {
   const reason = "Reference 1: Choose another form or clear Page. ".repeat(30);
   const style = document.createElement("style"); style.textContent = noticeStyles; document.head.append(style);

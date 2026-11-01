@@ -1,0 +1,12 @@
+.ui-shortcut-echo[data-echo] .ui-settings-row { background: var(--fill-quiet-hover); }
+.ui-shortcut-echo + .ui-shortcut-echo .ui-settings-row { border-top: var(--border-width) solid var(--separator); }
+.ui-shortcut-echo + .ui-settings-row { border-top: var(--border-width) solid var(--separator); }
+.ui-about-delight { display: flex; align-items: center; gap: var(--space-3); }
+.ui-about-delight .ibis-mark { width: calc(2 * var(--space-5)); height: calc(2 * var(--space-5)); }
+.ui-about-line, .ui-quiet-status { color: var(--text-secondary); font: 400 var(--type-label-size) / var(--type-label-line) var(--font); }
+.ui-quiet-status { min-width: 0; flex: 0 1 auto; overflow-wrap: anywhere; }
+[data-empty-action] .footer-action { animation: ibis-refusal var(--dur-panel) var(--ease); }
+@keyframes ibis-refusal { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(calc(-1 * var(--space-1))); } 75% { transform: translateX(var(--space-1)); } }
+@media (prefers-reduced-motion: reduce) {
+  [data-empty-action] .footer-action { animation: none; }
+}

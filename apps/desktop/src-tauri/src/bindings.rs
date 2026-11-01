@@ -23,6 +23,7 @@ pub(crate) fn commands() -> tauri_specta::Builder<tauri::Wry> {
             crate::copy::copy_format,
             crate::preferences::picker_preferences,
             crate::preferences::preference_revision,
+            crate::delights::delight_view,
             crate::preferences::set_picker_preferences::<tauri::Wry>,
             crate::destination::picker_destination,
             crate::destination::remember_app_output,
@@ -52,6 +53,9 @@ pub(crate) fn commands() -> tauri_specta::Builder<tauri::Wry> {
             crate::shortcut_setting::set_shortcut,
             crate::sizing::window_size,
             crate::sizing::set_window_size,
+            crate::tray::take_search_request,
+            crate::tray::alignment_tick,
+            crate::sizing::reset_window_position,
             crate::sizing::read_window_position_undo,
             crate::sizing::undo_window_position,
             crate::sizing::dismiss_window_position_undo
@@ -74,6 +78,7 @@ mod tests {
     const SETTINGS_COMMANDS: &[&str] = &[
         "picker_preferences",
         "preference_revision",
+        "delight_view",
         "set_picker_preferences",
         "window_size",
         "set_window_size",

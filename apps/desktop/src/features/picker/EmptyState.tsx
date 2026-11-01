@@ -85,7 +85,8 @@ function Recovery({ library, onFind, onReload, setup, source }: {
 /** What the result list says when it has no rows: an empty library, no
  * matches and what to try next, a hint to type, first-run setup, or how to
  * recover a library that could not be opened. */
-export function EmptyState({ library, query, narrowed, onChooseLibrary, onClearSearch, onSearchAll, onReload, setup, source }: {
+export function EmptyState({ library, query, narrowed, onChooseLibrary, onClearSearch, onSearchAll, onReload, setup, source, peck }: {
+  peck?: boolean;
   library: LibraryStatus | null;
   query: string;
   /** Some Zotero libraries are left out of the search, so searching all may help. */
@@ -119,9 +120,9 @@ export function EmptyState({ library, query, narrowed, onChooseLibrary, onClearS
   const description = query ? pickerText.noMatchesHint : library.sample ? setupText.sampleSearchHelp : pickerText.typeToFindHint;
   return (
     <div className="empty-state empty-template">
-      <svg className="empty-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      {peck && !query ? <IbisMark className="opened-mark" size="welcome" motion="peck" /> : <svg className="empty-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
         <path d="M10.5 4a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13zM16 16l5 5" />
-      </svg>
+      </svg>}
       <p className="empty-title" dir="auto">{title}</p>
       <p className="empty-description">{description}</p>
       {query ? <div className="empty-actions">
