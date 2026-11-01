@@ -10,7 +10,7 @@
   background: transparent; color: var(--text); font-size: var(--type-meta-size); line-height: var(--type-meta-line); text-align: start; cursor: default; outline: none;
 }
 .ui-side-navigation-tile {
-  flex: none; display: grid; place-items: center; width: var(--icon); height: var(--icon); border-radius: var(--r-key);
+  flex: none; display: grid; place-items: center; width: var(--icon); height: var(--icon); border-radius: var(--r-icon);
   background: var(--page); color: var(--thumb); font-size: var(--type-label-size); font-weight: var(--strong); line-height: 1;
 }
 .ui-side-navigation-tile::before { content: attr(data-tile); }
@@ -20,7 +20,6 @@
 .ui-side-navigation-tile[data-page="shortcuts"] { --page: var(--page-shortcuts); }
 /* About is the app itself: Ibis's own icon, on no tile, as Mac apps mark their entry. */
 .ui-side-navigation-tile[data-page="about"] { background: url("../../../../brand/exports/ibis-app-icon.svg") center / contain no-repeat; border-radius: 0; }
-.ui-side-navigation-tile[data-page="about"]::before { content: none; }
 :root[data-appearance="dark"] .ui-side-navigation-tile[data-page="about"] { background-image: url("../../../../brand/exports/ibis-app-icon-dark.svg"); }
 @media (prefers-color-scheme: dark) {
   :root:not([data-appearance="light"]) .ui-side-navigation-tile[data-page="about"] { background-image: url("../../../../brand/exports/ibis-app-icon-dark.svg"); }
