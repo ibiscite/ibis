@@ -95,12 +95,21 @@ fn schema_matches_the_published_contract() {
 
 #[test]
 fn search_and_call_use_the_same_versioned_results() {
-    let search = ibis(&["search", "no matches", "--json"]);
-    let call = ibis(&["call", "search", "--params", r#"{"query":"no matches"}"#, "--json"]);
+    // Named, so the test never reads the app's settings on the machine running it.
+    let empty = "--file=../../fixtures/bibtex/empty.bib";
+    let search = ibis(&["search", "no matches", "--json", empty]);
+    let call = ibis(&[
+        "call",
+        "search",
+        "--params",
+        r#"{"query":"no matches"}"#,
+        "--json",
+        empty,
+    ]);
     assert!(search.status.success());
     assert!(call.status.success());
     assert_eq!(search.stdout, call.stdout);
-    let missing = ibis(&["show", "missing", "--json"]);
+    let missing = ibis(&["show", "missing", "--json", empty]);
     assert_eq!(missing.status.code(), Some(4));
 }
 
@@ -112,7 +121,7 @@ fn request_input_is_bounded_and_rejects_ambiguous_json_without_echoing_it() {
         "x".repeat(1024 * 1024 + 1),
     ] {
         let mut child = Command::new(env!("CARGO_BIN_EXE_ibis"))
-            .args(["cite", "--request", "--json"])
+            .args(["cite", "--request", "--json", "--file=../../fixtures/bibtex/empty.bib"])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
