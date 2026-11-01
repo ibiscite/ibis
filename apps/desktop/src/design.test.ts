@@ -194,4 +194,6 @@ test("every icon is one shape, so translucent colours paint it once", () => {
   const split = files.flatMap((name) => [...read(name).matchAll(/<svg[^]*?<\/svg>/g)]
     .filter((match) => !match[0].includes("settings-done") && (match[0].match(/<(path|circle|rect|line)\b/g) ?? []).length > 1).map(() => name));
   expect(split).toEqual([]);
+  const joined = [...read("icons.tsx").matchAll(/\[("[^\]]*")\]/g)].flatMap(([, list]) => list!.split(/",\s*"/).slice(1));
+  expect(joined.filter((path) => path.replace(/^"/, "").startsWith("m"))).toEqual([]);
 });
