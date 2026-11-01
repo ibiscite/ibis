@@ -519,6 +519,20 @@ fn source_values<T: Clone + Eq + Send + Sync + 'static>(matches: &ArgMatches, id
 }
 
 /// A failure keeps its contract code, and so its exit code; the message is for people only.
+/// Runs a filesystem wait on its own thread for at most the two seconds that
+/// docs/architecture.md allows, so a stalled disk cannot hold a command. A
+/// one-shot command leaves at most one such call behind before it exits.
+pub(crate) fn bounded<T: Send + 'static>(operation: impl FnOnce() -> T + Send + 'static) -> Option<T> {
+    let (sender, receiver) = std::sync::mpsc::channel();
+    std::thread::Builder::new()
+        .name("ibis-bounded-io".into())
+        .spawn(move || {
+            let _ = sender.send(operation());
+        })
+        .ok()?;
+    receiver.recv_timeout(std::time::Duration::from_secs(2)).ok()
+}
+
 struct Failure {
     code: ErrorCode,
     message: Option<String>,
@@ -603,7 +617,15 @@ fn execute<R: BufRead, W: Write + Send>(
     }
     let app =
         if asked || (defaults == Defaults::App && !named && matches!(name, "search" | "show" | "cite" | "libraries")) {
-            Some(app_libraries::load()?)
+            Some(bounded(app_libraries::load).unwrap_or_else(|| {
+                Err(Failure::new(
+                    ErrorCode::SourceUnavailable,
+                    format!(
+                        "the Ibis app's settings could not be read in time; try again, or {}.",
+                        app_libraries::NAME_ONE
+                    ),
+                ))
+            })?)
         } else {
             None
         };
@@ -1109,6 +1131,15 @@ fn terminal_display(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn a_stalled_wait_gives_up_at_its_deadline() {
+        assert_eq!(bounded(|| 7), Some(7));
+        let started = std::time::Instant::now();
+        let stalled = bounded(|| std::thread::sleep(std::time::Duration::from_secs(30)));
+        assert_eq!(stalled, None);
+        assert!(started.elapsed() < std::time::Duration::from_secs(5));
+    }
+
     #[test]
     fn source_flags_preserve_order_across_positions_and_ignore_duplicates() -> Result<(), clap::Error> {
         let matches = command().try_get_matches_from([

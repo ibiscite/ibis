@@ -242,3 +242,18 @@ fn a_named_pipe_is_refused_without_waiting_for_a_writer() {
     };
     assert!(!status.success());
 }
+
+#[cfg(unix)]
+#[test]
+fn settings_that_are_a_pipe_are_refused_without_waiting() {
+    let home = Home::new("stalled");
+    let settings = home.config().join(STABLE).join("settings.json");
+    std::fs::create_dir_all(settings.parent().unwrap()).unwrap();
+    // Opening a pipe with no writer would wait forever.
+    assert!(Command::new("mkfifo").arg(&settings).status().unwrap().success());
+    let started = std::time::Instant::now();
+    let (status, stdout, stderr) = home.run(&["search", "invented", "--json"]);
+    assert!(started.elapsed() < std::time::Duration::from_secs(15), "{stderr}");
+    assert_eq!((status, code(&stdout).as_str()), (5, "source-unavailable"), "{stderr}");
+    assert_eq!(stderr.lines().count(), 1, "{stderr}");
+}

@@ -350,20 +350,11 @@ pub(super) fn file_failure(path: &Path, code: ErrorCode) -> String {
 
 /// Why a library file did not open, without naming it.
 pub(super) fn file_reason(path: &Path, code: ErrorCode) -> &'static str {
-    // The bounded read has already failed; looking again runs on its own thread
-    // with a deadline, so a stalled disk or a path just replaced by a pipe cannot
-    // hold the command. Without an answer in time, the read's own reason stands.
-    let (sender, receiver) = std::sync::mpsc::channel();
+    // The bounded read has already failed; looking again is bounded too, so a
+    // stalled disk or a path just replaced by a pipe cannot hold the command.
+    // Without an answer in time, the read's own reason stands.
     let probed = path.to_owned();
-    let spawned = std::thread::Builder::new()
-        .name("ibis-file-reason".into())
-        .spawn(move || {
-            let _ = sender.send(path_reason(&probed));
-        });
-    let found = spawned
-        .ok()
-        .and_then(|_| receiver.recv_timeout(std::time::Duration::from_secs(1)).ok())
-        .flatten();
+    let found = crate::bounded(move || path_reason(&probed)).flatten();
     found.unwrap_or(match code {
         ErrorCode::BadInput => {
             "it cannot be read, or it is not a BibTeX, BibLaTeX or CSL-JSON library; check its permissions and contents."
