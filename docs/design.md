@@ -1095,14 +1095,18 @@ loops or plays a sound; and is counted only on this Mac.
 - **Fun:** clicking the About icon makes the ibis blink once, and five clicks
   show "Ancient Egyptians linked the ibis with Thoth, god of writing."; the
   mark pecks once when a library first finishes opening; a library's status line
-  notes its first 1,000 and 10,000 references once.
+  notes its first 100, 1,000 and 10,000 references once ("100 references. A
+  library is taking shape.", "1,000 references. That's a real library.",
+  "10,000 references. A scholar's library.").
 - **Second round (proposed):** Enter with nothing to paste shakes the footer
   action once (240 ms) and says why; ⌘+ and ⌘− show the size for one second
   where Copied shows; double-clicking the search bar's empty area returns Ibis
   to its place; a dragged `.bib` held over Settings › Libraries opens it;
   pressing a listed shortcut on Settings › Shortcuts tints its row; opening
   between 2 and 4 am shows "Writing late? Your references are ready." at most
-  once a week; "ibis" in the Settings search opens About with a blink.
+  once a week; the paste receipt marks the first, 100th and 1,000th citation
+  once each, and About reads "One year with Ibis" on the first anniversary;
+  "ibis" in the Settings search opens About with a blink.
 - **Left out:** confetti, sounds, seasonal themes, joke search results and a
   "what's new" screen.
 
