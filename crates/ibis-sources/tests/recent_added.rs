@@ -47,3 +47,64 @@ fn source_added_dates_are_separate_from_printed_data() -> Result<(), Box<dyn std
     assert!(mapped.warnings.is_empty());
     Ok(())
 }
+
+type Added = Vec<(String, Option<String>)>;
+
+fn added_dates(name: &str, text: &str) -> Result<Added, Box<dyn std::error::Error>> {
+    let directory = tempfile::tempdir()?;
+    let path = directory.path().join(name);
+    std::fs::write(&path, text)?;
+    let loaded = ibis_sources::load_file(&path)?;
+    Ok(loaded
+        .snapshot
+        .objects()
+        .iter()
+        .filter_map(|object| match &object.object {
+            LibraryObject::Record(record) => Some((record.id.key.clone(), record.added_at.clone())),
+            _ => None,
+        })
+        .collect())
+}
+
+#[test]
+fn bibtex_reads_bibdesk_and_jabref_added_dates_and_skips_malformed_ones() -> Result<(), Box<dyn std::error::Error>> {
+    let mut dates = added_dates(
+        "synthetic.bib",
+        r"@book{bibdesk, title={A}, date-added={2026-10-30 21:15:00 -0500}}
+@book{jabref, title={B}, creationdate={2026-10-29T08:00:00}}
+@book{older, title={C}, timestamp={2026-10-28}}
+@book{fallback, title={D}, date-added={yesterday}, creationdate={2026-10-27T09:30:00}}
+@book{invalid, title={E}, date-added={2026-02-30 10:00:00 +0000}, timestamp={private}}
+@book{missing, title={F}, year={1999}}",
+    )?;
+    dates.sort();
+    assert_eq!(
+        dates,
+        [
+            ("record:bibdesk", Some("2026-10-31T02:15:00Z")),
+            ("record:fallback", Some("2026-10-27T09:30:00Z")),
+            ("record:invalid", None),
+            ("record:jabref", Some("2026-10-29T08:00:00Z")),
+            ("record:missing", None),
+            ("record:older", Some("2026-10-28T00:00:00Z")),
+        ]
+        .map(|(key, date)| (key.to_owned(), date.map(str::to_owned)))
+    );
+    Ok(())
+}
+
+#[test]
+fn added_dates_from_bibtex_and_csl_json_share_one_utc_order() -> Result<(), Box<dyn std::error::Error>> {
+    let bib = added_dates(
+        "synthetic.bib",
+        "@book{late, title={Late}, date-added={2026-10-30 23:00:00 -0500}}",
+    )?;
+    let csl = added_dates(
+        "synthetic.json",
+        r#"[{"id":"early","type":"book","title":"Early","date-added":"2026-10-31T03:00:00Z"}]"#,
+    )?;
+    let (late, early) = (bib[0].1.clone().ok_or("bib date")?, csl[0].1.clone().ok_or("csl date")?);
+    // 23:00 at UTC-5 is 04:00 UTC the next day, after the CSL-JSON reference.
+    assert!(late > early, "{late} must sort after {early}");
+    Ok(())
+}

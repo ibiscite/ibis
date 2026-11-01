@@ -283,6 +283,8 @@ export const pickerText = {
 export const keyText = {
   title: "Keyboard Shortcuts",
   close: "Close",
+  /** The Enter row where Ibis copies instead of pasting. */
+  copyCitation: "Copy the citation",
   keyColumn: "Keys",
   actionColumn: "Action",
   or: "or",

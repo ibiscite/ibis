@@ -89,7 +89,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   const { library, libraryVersion, refreshSnapshot, choosingLibrary, welcomeShown, libraryChoices, showCitations } = libraryState;
   const delights = usePickerDelights(api, state.presentation, library, preferences.smallSurprises);
   useEffect(() => { if (choosingLibrary) delights.dismiss(); }, [choosingLibrary, delights.dismiss]);
-  const recents = useRecentReferences(api.recentReferences, destination.appId, density === "compact", state.recentCopy, state.session);
+  const recents = useRecentReferences(api.recentReferences, destination.appId, density === "compact", state.recentCopy, state.session, preferences.recentCitations);
   const searchState = useLibrarySearch({
     search: api.search, emptySearch: recents.load, query, interpretLocators, library, statusFailed: failures.status ?? false,
     libraryVersion, sessionId: state.session, isCurrentSession, setActive, refreshSnapshot,

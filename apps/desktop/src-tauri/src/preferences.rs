@@ -202,6 +202,9 @@ pub(crate) struct PickerPreferences {
     pub(crate) paste: bool,
     /// The menu bar item; on by default.
     pub(crate) menu_bar: bool,
+    /// Recent citations per app; on by default. Off records nothing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) recent_citations: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) small_surprises: Option<bool>,
 }
@@ -220,6 +223,7 @@ impl PickerPreferences {
             search_icon: settings.search_icon.unwrap_or(SearchIcon::Ibis),
             paste: settings.paste.unwrap_or(true),
             menu_bar: settings.menu_bar.unwrap_or(true),
+            recent_citations: Some(settings.recent_citations.unwrap_or(true)),
             small_surprises: Some(settings.small_surprises.unwrap_or(true)),
         }
     }
@@ -264,6 +268,8 @@ pub(crate) struct PickerPreferencesPatch {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) menu_bar: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) recent_citations: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) small_surprises: Option<bool>,
 }
 
@@ -300,6 +306,9 @@ impl PickerPreferencesPatch {
         if self.menu_bar.is_some() && !keep("menu_bar") {
             self.menu_bar = None;
         }
+        if self.recent_citations.is_some() && !keep("recent_citations") {
+            self.recent_citations = None;
+        }
     }
 }
 
@@ -321,6 +330,7 @@ impl From<PickerPreferences> for PickerPreferencesPatch {
             search_icon: Some(value.search_icon),
             paste: Some(value.paste),
             menu_bar: Some(value.menu_bar),
+            recent_citations: value.recent_citations,
             small_surprises: value.small_surprises,
         }
     }
@@ -595,6 +605,9 @@ impl SettingsFile {
             }
             if let Some(shown) = preferences.menu_bar {
                 s.menu_bar = Some(shown).filter(|shown| !shown);
+            }
+            if let Some(on) = preferences.recent_citations {
+                s.recent_citations = Some(on).filter(|on| !on);
             }
         })
         .map_err(|error| settings_message(&error))?;
@@ -883,6 +896,7 @@ mod tests {
             ("search_icon", serde_json::json!("ibis")),
             ("paste", serde_json::json!(true)),
             ("menu_bar", serde_json::json!(true)),
+            ("recent_citations", serde_json::json!(true)),
             ("small_surprises", serde_json::json!(false)),
             ("copy_format", serde_json::json!("cite")),
         ] {
@@ -891,7 +905,7 @@ mod tests {
             let mut expected = serde_json::json!({
                 "appearance": "dark", "accent": "purple", "citation_style": "apa",
                 "density": "compact", "larger_text": true, "show_paste_preview": false,
-                "search_icon": "magnifier", "paste": false, "menu_bar": false, "small_surprises": true,
+                "search_icon": "magnifier", "paste": false, "menu_bar": false, "recent_citations": false, "small_surprises": true,
             });
             let older = file
                 .reserve_preferences(
@@ -1111,6 +1125,7 @@ mod tests {
             search_icon: SearchIcon::Magnifier,
             paste: true,
             menu_bar: true,
+            recent_citations: Some(true),
             small_surprises: Some(true),
         };
         let (dispatched, dispatch) = mpsc::channel();
@@ -1543,6 +1558,7 @@ mod tests {
             search_icon: SearchIcon::Magnifier,
             paste: false,
             menu_bar: true,
+            recent_citations: Some(true),
             small_surprises: Some(true),
         };
         let saved = file.save_preferences(chosen, None).unwrap_or_else(|e| panic!("{e}"));
@@ -1566,6 +1582,7 @@ mod tests {
             search_icon: SearchIcon::Magnifier,
             paste: true,
             menu_bar: true,
+            recent_citations: Some(true),
             small_surprises: Some(true),
         };
         let saved = file.save_preferences(defaults, None).unwrap_or_else(|e| panic!("{e}"));
@@ -1584,6 +1601,7 @@ mod tests {
             "show_paste_preview",
             "paste",
             "menu_bar",
+            "recent_citations",
         ] {
             assert!(!text.contains(field), "{field} is not written for the default");
         }
@@ -1649,6 +1667,7 @@ mod tests {
             search_icon: SearchIcon::Magnifier,
             paste: true,
             menu_bar: true,
+            recent_citations: Some(true),
             small_surprises: Some(true),
         };
         for format in [
@@ -1700,6 +1719,7 @@ mod tests {
             search_icon: SearchIcon::Magnifier,
             paste: true,
             menu_bar: true,
+            recent_citations: Some(true),
             small_surprises: Some(true),
         };
         for text in [

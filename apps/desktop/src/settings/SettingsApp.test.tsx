@@ -244,6 +244,32 @@ test("Show in Menu Bar is a Mac choice that saves as a patch and goes back on fa
   } finally { delete document.documentElement.dataset.system; }
 });
 
+test.each([
+  ["pastes", { pastes: true }, { paste: true }, "Paste the citation"],
+  ["paste switched off", { pastes: true }, { paste: false }, "Copy the citation"],
+  ["a system that copies", { pastes: false, needed: false }, { paste: true }, "Copy the citation"],
+])("Shortcuts names what Enter does where Ibis %s", async (_case, permission, preferences, words) => {
+  const { api } = fakeApi(permission, preferences);
+  render(<SettingsApp api={api} initialPage="shortcuts" />);
+  expect(await screen.findByText(words)).toBeTruthy();
+  expect(screen.queryByText(words === "Copy the citation" ? "Paste the citation" : "Copy the citation")).toBeNull();
+});
+
+test("Recent citations is on by default, saves off as a patch and goes back on failure", async () => {
+  const { api, state, commit } = fakeApi({ granted: true });
+  const save = vi.spyOn(api, "setPickerPreferences").mockRejectedValueOnce(new Error("refused")).mockImplementation(commit);
+  render(<SettingsApp api={api} initialPage="citations" />);
+  const choice = await screen.findByRole<HTMLInputElement>("switch", { name: "Recent citations" });
+  expect(choice.checked).toBe(true);
+  fireEvent.click(choice);
+  await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+  await waitFor(() => expect(choice.checked).toBe(true));
+  expect((await screen.findByRole("alert")).closest(".ui-settings-row")?.textContent).toContain("Recent citations");
+  fireEvent.click(choice);
+  await waitFor(() => expect(state.patches).toEqual([{ recent_citations: false }]));
+  expect(choice.checked).toBe(false);
+});
+
 test("Window size shows a dragged size as Custom, applies once, and goes back on failure", async () => {
   const { api } = fakeApi({ granted: true });
   vi.mocked(api.windowSize).mockResolvedValue("custom");

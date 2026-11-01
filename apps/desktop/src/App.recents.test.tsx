@@ -71,3 +71,58 @@ test("Forget Recent Citations clears durable history and an old receipt cannot r
   expect(screen.queryByRole("heading", { name: "Cited here recently" })).toBeNull();
   expect(within(screen.getByRole("listbox", { name: "Results" })).queryAllByRole("option")).toHaveLength(0);
 });
+
+const saved = () => JSON.parse(localStorage.getItem("ibis-citation-history") ?? "[]") as { app: string; items: unknown[] }[];
+const copyB = async () => {
+  const search = screen.getByLabelText("Search references");
+  fireEvent.change(search, { target: { value: "b" } });
+  fireEvent.click(await screen.findByText("Recent B"), { detail: 2 });
+  await screen.findByText("Copied");
+  fireEvent.change(search, { target: { value: "" } });
+};
+
+test("Recent citations off forgets the history, records nothing and hides Forget; on again starts empty", async () => {
+  seed();
+  let on = false;
+  backend({ picker_destination: destination,
+    picker_preferences: () => ({ citation_style: null, density: "comfortable", larger_text: false, show_paste_preview: true, search_icon: "magnifier", paste: true, menu_bar: true, recent_citations: on }),
+    recent_references: (args) => Array.isArray(args.ids) && args.ids.length ? [{ ...a, recent: "cited" }] : [],
+    search: () => [b],
+  });
+  render(<App />);
+  await waitFor(() => expect(saved()).toEqual([]));
+  fireEvent.click(screen.getByRole("button", { name: "Keep Window Open" }));
+  await copyB();
+  expect(saved()).toEqual([]);
+  expect(screen.queryByRole("heading", { name: "Cited here recently" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "More" }));
+  expect(await screen.findByRole("menu")).toBeTruthy();
+  expect(screen.queryByRole("menuitem", { name: /Forget Recent Citations/ })).toBeNull();
+  fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+
+  // Turning it back on in Settings starts empty: the earlier receipt is not replayed.
+  on = true;
+  await act(async () => { await emit("preferences:changed", { revision: 1 }); });
+  await act(async () => { await emit("picker:shown", null); });
+  expect(saved()).toEqual([]);
+  await copyB();
+  await waitFor(() => expect(saved()).toEqual([{ app: writer, items: [b.id] }]));
+});
+
+test("after Forget, nothing is recorded until the next citation, which is recorded alone", async () => {
+  seed();
+  backend({ picker_destination: destination,
+    recent_references: (args) => Array.isArray(args.ids) && args.ids.length ? [{ ...a, recent: "cited" }] : [],
+    search: () => [b],
+  });
+  render(<App />);
+  await screen.findByText("Recent A");
+  fireEvent.click(screen.getByRole("button", { name: "Keep Window Open" }));
+  await chooseFromMore("Forget Recent Citations");
+  await waitFor(() => expect(saved()).toEqual([]));
+  await act(async () => { await emit("preferences:changed", { revision: 1 }); });
+  await act(async () => { await emit("picker:shown", null); });
+  expect(saved()).toEqual([]);
+  await copyB();
+  await waitFor(() => expect(saved()).toEqual([{ app: writer, items: [b.id] }]));
+});

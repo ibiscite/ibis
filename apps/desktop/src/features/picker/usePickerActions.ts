@@ -3,7 +3,7 @@ import { keyText } from "../../messages";
 import type { SearchResult } from "../../api";
 import type { PickerApi } from "../../App";
 import { choiceKey, idKey, type CitationReference } from "./choice";
-import { enterLabel } from "./enterLabel";
+import { enterLabel, enterPastes } from "./enterLabel";
 import { closestMatchWarnings } from "./rows";
 import type { usePickerSession } from "./usePickerSession";
 import type { usePickerMenus } from "./usePickerMenus";
@@ -45,15 +45,19 @@ export function usePickerActions({
     send({ type: "hiding" });
     void perform("hide", () => hidePicker(presentation));
   };
-  // The keys overlay lists the global shortcut too, when it works.
-  const bindings: readonly KeyBinding[] = shortcut?.registered
-    ? [...KEY_TABLE, { region: "system", action: "open", keys: [shortcut.shortcut], displayLabel: shortcut.desktop ? shortcut.shortcut : undefined }]
-    : KEY_TABLE;
+  // A kept-open window or a citation with warnings stays open, so Enter copies.
+  const stayOpen = pinned || Boolean(shown && typeof shown === "object" && (shown.warnings.length || closestMatchWarnings(offered).length));
+  // The keys sheet names what Enter does from the same answer as the footer,
+  // and lists the global shortcut too, when it works.
+  const enterRow = enterPastes(destination.app, canPaste, stayOpen) ? null : keyText.copyCitation;
+  const bindings: readonly KeyBinding[] = [
+    ...KEY_TABLE.map((binding) => binding.action === "copy" && enterRow ? { ...binding, label: enterRow } : binding),
+    ...shortcut?.registered ? [{ region: "system", action: "open", keys: [shortcut.shortcut], displayLabel: shortcut.desktop ? shortcut.shortcut : undefined } as const] : [],
+  ];
   // What Enter does now, from the same state the copy uses; null when it does nothing.
   // A refused or stale engine preview cannot be copied.
   const enterAction = offered.length === 0 || shown === "stale" || shown === "failed" ? null
-    : enterLabel(format, offered.length, destination.app, canPaste,
-      pinned || Boolean(shown && typeof shown === "object" && (shown.warnings.length || closestMatchWarnings(offered).length)), Boolean(list && selected.size === 0));
+    : enterLabel(format, offered.length, destination.app, canPaste, stayOpen, Boolean(list && selected.size === 0));
   // Only a row that answers the current query can be added or given a locator.
   const highlighted = ready ? results[active] : undefined;
   const usingLocator = ready && interpretLocators && showCitations ? interpretation?.locator : null;
