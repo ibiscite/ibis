@@ -117,6 +117,7 @@
       --fill-h: light-dark(rgb(0 0 0 / 9%), rgb(255 255 255 / 13%));
       --fill-p: light-dark(rgb(0 0 0 / 14%), rgb(255 255 255 / 18%));
       --chip: light-dark(rgb(0 0 0 / 8%), rgb(255 255 255 / 10%));
+      --shadow-overlay: 0 0 0 .5px light-dark(rgb(0 0 0 / 12%), rgb(255 255 255 / 10%)), 0 12px 32px light-dark(rgb(0 0 0 / 16%), rgb(0 0 0 / 45%));
       --grouped: light-dark(color-mix(in srgb, var(--text) 4%, var(--surface)), var(--surface));
       --grouped-card: light-dark(var(--surface), color-mix(in srgb, var(--text) 6%, var(--surface)));
       --sidebar: light-dark(color-mix(in srgb, var(--text) 7%, var(--surface)), color-mix(in srgb, var(--text) 3%, var(--surface)));
