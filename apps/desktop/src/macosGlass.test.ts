@@ -28,7 +28,7 @@ function macSkinRules(): CSSRule[] {
 
 /** The macOS glass token block: one rule, inside its contrast guard. */
 function macBlock(): { guard: string; body: string } {
-  const match = tokens.match(/@supports \(color: light-dark\(white, black\)\) \{\s*(@media [^{]+)\{(?:\s*\/\*[^]*?\*\/)?\s*:root:not\(\.notice-window\) \{([^{}]*)\}/);
+  const match = tokens.match(/@supports \(color: light-dark\(white, black\)\) \{\s*(@media [^{]+)\{(?:\s*\/\*[^]*?\*\/)?\s*:root \{([^{}]*)\}/);
   expect(match, "macOS glass tokens").toBeTruthy();
   return { guard: match![1]!.trim(), body: match![2]! };
 }

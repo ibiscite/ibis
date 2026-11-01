@@ -121,7 +121,7 @@
 }
 @supports (color: light-dark(white, black)) {
   @media (prefers-contrast: no-preference) and (forced-colors: none) {
-    :root:not(.notice-window) {
+    :root {
       --surface: light-dark(#ffffff, #1e1e1e); --raised: light-dark(#f6f6f6, #282828);
       --surface-overlay: light-dark(#ffffff, #282828); --sheet: var(--surface-overlay);
       --ring: light-dark(rgb(0 103 244 / 50%), rgb(26 169 255 / 50%));
