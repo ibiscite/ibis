@@ -9,8 +9,7 @@
       --text-on-accent: var(--native-accent-on);
       --selected: var(--accent); --selected-text: var(--text-on-accent);
     }
-    /* macOS selection keeps WebKit's paired white text: the contrast pick above is
-       black on the default blues, which native lists never show. */
+    /* macOS selection keeps WebKit's paired text. */
     @supports (color: -apple-system-alternate-selected-text) {
       :root[data-native-accent="true"][data-system="macos"]:not(.notice-window) {
         --selected-text: -apple-system-alternate-selected-text;
