@@ -91,10 +91,9 @@ test("sidebar navigation and the large page title have shared selection, spacing
   expect(selected.getPropertyValue("background")).toBe("var(--sel)");
   expect(selected.getPropertyValue("color")).toBe("var(--sel-text)");
   const title = style(shell, ".settings-page-title");
-  expect(title.getPropertyValue("font-size")).toBe("var(--type-page-title-size)");
-  expect(title.getPropertyValue("line-height")).toBe("var(--type-page-title-line)");
+  expect(title.getPropertyValue("font-size")).toBe("var(--type-display-size)");
+  expect(title.getPropertyValue("line-height")).toBe("var(--type-display-line)");
   expect(style(shell, ".settings-page").getPropertyValue("padding")).toBe("var(--space-6)");
-  expect(tokens).toMatch(/--type-page-title-size:\s*1\.75rem/);
   expect(tokens).toMatch(/--sidebar-width:\s*min\(12rem, 26%\)/);
 });
 
@@ -106,7 +105,7 @@ test("grouped rows and shared controls grow and wrap at the minimum window size 
   expect(row.getPropertyValue("flex-wrap")).toBe("wrap");
   expect(style(groups, ".ui-settings-row[data-described]").getPropertyValue("min-height")).toBe("3.5rem");
   for (const selector of [".ui-settings-group", ".ui-settings-card"]) expect(style(groups, selector).getPropertyValue("flex-shrink")).toBe("0");
-  expect(style(groups, ".ui-settings-card").getPropertyValue("border-radius")).toBe("var(--r-win)");
+  expect(style(groups, ".ui-settings-card").getPropertyValue("border-radius")).toBe("var(--r-card)");
   const button = style(buttons, ".ui-button[data-variant]");
   expect(button.getPropertyValue("font")).toBe("inherit");
   expect(button.getPropertyValue("max-width")).toBe("100%");
@@ -144,12 +143,9 @@ test("the existing eight Settings accents keep white text at 4.5:1", () => {
 
 test("picture choices use a quiet selected surface and an inward keyboard-only ring", () => {
   const choices = read("../ui/PictureChoice.css");
-  expect(style(choices, ".ui-picture-choice[data-selected]").getPropertyValue("background")).toBe("color-mix(in srgb, var(--accent) 12%, var(--surface))");
+  expect(style(choices, ".ui-picture-choice[data-selected]").getPropertyValue("background")).toBe("color-mix(in srgb, var(--accent) 14%, transparent)");
   expect(style(choices, ".ui-picture-choice[data-selected]").getPropertyValue("color")).toBe("var(--text)");
-  const selectionRing = "inset 0 0 0 2px var(--accent)";
-  expect(style(choices, ".ui-picture-choice[data-selected]").getPropertyValue("box-shadow")).toBe(selectionRing);
   expect(style(choices, ".ui-picture-choice[data-focus-visible]").getPropertyValue("outline-offset")).toBe("calc(-1 * (var(--ring-width) + var(--ring-offset)))");
-  expect(style(choices, ".ui-picture-choice[data-selected][data-focus-visible]").getPropertyValue("outline-offset")).toBe("calc(-1 * (2px + var(--ring-width) + var(--ring-offset)))");
   const sheet = document.createElement("style");
   sheet.textContent = choices;
   const picture = document.createElement("div");
@@ -157,12 +153,10 @@ test("picture choices use a quiet selected surface and an inward keyboard-only r
   picture.dataset.selected = "true";
   document.head.append(sheet); document.body.append(picture);
   try {
-    expect(getComputedStyle(picture).boxShadow).toBe(selectionRing);
     expect(getComputedStyle(picture).outline).toBe("none");
     picture.dataset.focusVisible = "true";
-    expect(getComputedStyle(picture).boxShadow).toBe(selectionRing);
     expect(getComputedStyle(picture).outline).toBe("var(--ring-width) solid var(--ring)");
-    expect(getComputedStyle(picture).outlineOffset).toBe("calc(-1 * (2px + var(--ring-width) + var(--ring-offset)))");
+    expect(getComputedStyle(picture).outlineOffset).toBe("calc(-1 * (var(--ring-width) + var(--ring-offset)))");
   } finally { picture.remove(); sheet.remove(); }
   expect(style(groups, ".ui-picker-picture").getPropertyValue("max-width")).toBe("100%");
   expect(style(groups, ".ui-picker-picture").getPropertyValue("aspect-ratio")).toBe("4 / 3");

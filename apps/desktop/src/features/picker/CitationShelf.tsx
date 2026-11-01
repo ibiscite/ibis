@@ -176,8 +176,7 @@ export function CitationShelf({ announce, selected, highlightedReference, highli
     const contents = !keys && "runs" in span && span.runs ? renderRuns(span.runs) : keyText(span.text);
     if (!reference || !onChangeReference || copied) return <span key={index} className="shelf-shared">{contents}</span>;
     const name = labels[span.item!]!;
-    return <span key={idKey(reference.id)} className="shelf-segment" data-reference-key={reference.key} data-built={isSelected(reference) || undefined}
-      data-menu-open={panel?.kind === "reference" && panel.reference === idKey(reference.id) || undefined}>
+    return <span key={idKey(reference.id)} className="shelf-segment" data-reference-key={reference.key} data-built={isSelected(reference) || undefined}>
       <Button variant="quiet" size="small" className="shelf-segment-button" aria-label={citationDetailsText.edit(name)}
         aria-describedby={`${citationId}-${index}`} aria-keyshortcuts={isSelected(reference) ? "Backspace Delete" : undefined}
         aria-haspopup="dialog" aria-expanded={panel?.kind === "reference" && panel.reference === idKey(reference.id)}
@@ -187,7 +186,7 @@ export function CitationShelf({ announce, selected, highlightedReference, highli
       {isSelected(reference) && <Button variant="icon" size="small" className="shelf-remove" glyph="close" excludeFromTabOrder aria-label={removeLabel(reference)} onPress={() => remove(reference)} />}
     </span>;
   });
-  const singleSegment = single && onChangeReference && !copied ? <span className="shelf-segment" data-reference-key={single.key} data-built={isSelected(single) || undefined} data-menu-open={panel?.kind === "reference" || undefined}>
+  const singleSegment = single && onChangeReference && !copied ? <span className="shelf-segment" data-reference-key={single.key} data-built={isSelected(single) || undefined}>
             <Button variant="quiet" size="small" className="shelf-segment-button" aria-label={citationDetailsText.edit(labels[0]!)}
               aria-keyshortcuts={isSelected(single) ? "Backspace Delete" : undefined}
               aria-describedby={text !== undefined ? citationId : undefined}
@@ -202,7 +201,7 @@ export function CitationShelf({ announce, selected, highlightedReference, highli
     <p className="visually-hidden" role="status" aria-label={pickerText.citationSelection} aria-live="polite" aria-atomic="true">
       {announce ? [pickerText.selectionCount(selected.size), ...partialWarnings].join(" ") : ""}
     </p>
-    {hasShelf ? <div className="shelf" data-folded={compact || undefined} data-copied={copied ? "" : undefined} ref={preserveFocus}>
+    {hasShelf ? <div className="shelf" data-panel={panel ? "" : undefined} data-folded={compact || undefined} data-copied={copied ? "" : undefined} ref={preserveFocus}>
       <section ref={(node) => { output.current = node; }} aria-label={shown !== undefined || copied ? pickerText.preview : pickerText.citationDetails}
         tabIndex={focusable && shown !== undefined && !copied ? 0 : undefined}
         className="shelf-output" data-keys={keys || undefined} data-state={!copied && (shown === null || typeof shown === "string") ? shown ?? "pending" : undefined}>

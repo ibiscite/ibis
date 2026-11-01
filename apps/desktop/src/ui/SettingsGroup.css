@@ -9,7 +9,7 @@
   line-height: var(--type-meta-line); font-weight: var(--strong);
 }
 .ui-settings-card {
-  flex: none; min-width: 0; border-radius: var(--r-win); background: var(--grouped-card);
+  flex: none; min-width: 0; border-radius: var(--r-card); background: var(--grouped-card);
   box-shadow: var(--shadow-card); overflow: hidden;
 }
 .ui-settings-row {

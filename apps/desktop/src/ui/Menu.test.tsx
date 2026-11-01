@@ -474,7 +474,7 @@ test("rows keep equal insets, fit intrinsic labels to the viewport and wrap at i
   expect(toolbar.match(/padding-inline: var\(--menu-label-start\) var\(--menu-item-pad\)/g)).toHaveLength(2);
   expect(toolbar).toMatch(/\.toolbar-menu-popover \{[^}]*width: min\(300px, calc\(100vw - 16px\)\); min-width: 0;/);
   expect(toolbar).toMatch(/\.toolbar-menu-sample \{[^}]*min-width: 0;[^}]*white-space: normal;/);
-  expect(`${menuCss}${toolbar}`.match(/\b(10|18|34)px\b/g)).toEqual(["10px", "18px"]);
+  expect(`${menuCss}${toolbar}`.match(/\b(10|14|34)px\b/g)).toEqual(["14px"]);
 });
 
 test("the shortcuts table breaks actions only between words and keeps keys on one line at the end", () => {

@@ -1,7 +1,7 @@
 /* Page content; the shared SettingsLayout owns the window and its scrollers. */
 .settings-page-title {
   margin: 0; overflow-wrap: anywhere;
-  font-size: var(--type-page-title-size); line-height: var(--type-page-title-line); font-weight: var(--strong);
+  font-size: var(--type-display-size); line-height: var(--type-display-line); font-weight: 700;
 }
 .settings-description { color: var(--muted); font-size: var(--type-meta-size); line-height: var(--type-meta-line); margin: 0; }
 .settings-problem { margin: 0; color: var(--stop); }

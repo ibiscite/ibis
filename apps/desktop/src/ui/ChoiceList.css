@@ -4,7 +4,7 @@ main .picker-content .results-area:has(.choice-screen) { display: flex; flex-dir
 .empty-state:has(.choice-screen) { display: flex; flex: 1; min-width: 0; padding: 0; }
 .choice-screen { display: flex; flex-direction: column; flex: none; width: 100%; max-width: 33.75rem; margin: auto; text-align: center; }
 .choice-title, .choice-line { padding-inline: var(--row-pad); margin: 0; overflow-wrap: anywhere; }
-.choice-title { color: var(--text); font-size: var(--type-title-size); line-height: var(--type-title-line); font-weight: var(--strong); }
+.choice-title { color: var(--text); font-size: var(--type-lead-size); line-height: var(--type-lead-line); font-weight: var(--strong); }
 .choice-line { margin-top: .375rem; color: var(--muted); font-size: var(--type-meta-size); line-height: var(--type-meta-line); }
 .choice-list { display: flex; flex-direction: column; gap: var(--space-1); margin-top: var(--space-6); outline: none; text-align: start; }
 .choice-screen .choice-row { min-width: 0; height: auto; padding: var(--space-2) var(--row-pad); outline: none; }
@@ -42,3 +42,4 @@ main .picker-content .results-area:has(.choice-screen) { display: flex; flex-dir
 @media (hover: hover) {
   .choice-screen[data-grid] .choice-row[data-hovered]:not([data-focused]) { background: var(--fill-h); }
 }
+.choice-screen[data-grid] .choice-title { font-size: var(--type-display-size); line-height: var(--type-display-line); }

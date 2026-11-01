@@ -29,11 +29,12 @@ main:has(> .shelf) > footer { border-top-color: transparent; }
 /* The 16 px disc is above the pill and text; its 24 px target straddles
    the segment's outer corner. It never participates in the text's width. */
 .shelf-remove.ui-button[data-variant] { position: absolute; z-index: var(--z-content); inset-block-start: calc(24px / -2); inset-inline-end: calc(24px / -2); width: 24px; min-width: 24px; height: 24px; min-height: 24px; padding: 0; border: 0; border-radius: var(--r-full); visibility: hidden; background: transparent; }
-.shelf-remove.ui-button::after { inset: calc((24px - 16px) / 2); border-radius: var(--r-full); background: var(--fill); }
+.shelf-remove.ui-button::after { inset: calc((24px - 16px) / 2); border-radius: var(--r-full); background: var(--overlay); box-shadow: var(--shadow-badge); }
 .shelf-remove.ui-button[data-glyph="close"]::before { position: relative; z-index: var(--z-content); width: 16px; height: 16px; }
 @media (hover: hover) {
-  .shelf-segment:hover:not(:has([data-focus-visible]), [data-menu-open]) > .shelf-remove { visibility: visible; }
-  .shelf-remove.ui-button[data-hovered]::after { background: var(--fill-h); }
+  .shelf:not([data-panel]) .shelf-segment:hover:not(:has([data-focus-visible])) > .shelf-remove { visibility: visible; }
+  .shelf-remove.ui-button[data-hovered]::after { background: var(--text); }
+  .shelf-remove.ui-button[data-hovered]::before { color: var(--raised); }
 }
 .shelf-actions { display: flex; flex: none; align-items: center; gap: var(--space-1); margin-inline-start: var(--space-1); }
 .shelf-actions:empty { display: none; }

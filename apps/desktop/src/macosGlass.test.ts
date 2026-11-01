@@ -9,8 +9,8 @@ const native = read("nativeAppearance.css");
 const libraryStatus = read("ui/LibraryStatus.css");
 
 test("readable overlays use the panel surface at 92% for menus and 96% for sheets", () => {
-  expect(tokens).toMatch(/--overlay:\s*color-mix\(in srgb, var\(--surface\) 92%, transparent\)/);
-  expect(tokens).toMatch(/--sheet:\s*color-mix\(in srgb, var\(--surface\) 96%, transparent\)/);
+  expect(tokens).toMatch(/--overlay:\s*light-dark\(rgb\(250 250 252 \/ 92%\), rgb\(44 44 48 \/ 92%\)\)/);
+  expect(tokens).toMatch(/--sheet:\s*light-dark\(rgb\(250 250 252 \/ 96%\), rgb\(44 44 48 \/ 96%\)\)/);
 });
 
 function cssRules(source: string): CSSRule[] {
@@ -154,7 +154,7 @@ test("the window edge is a hairline, never a white rim or glow (prototype round 
 });
 
 test("the Look glyph keeps the frozen colours and an opaque adjacent surface for 3:1 contrast", () => {
-  expect(hexes(tokens, "--look")).toEqual([[138, 90, 0], [227, 179, 65]]);
+  expect(hexes(tokens, "--look")).toEqual([[176, 122, 0], [245, 197, 66]]);
   expect(libraryStatus).toMatch(/\.status-dot\[data-health="look"\]\s*\{[^}]*outline:\s*var\(--border-width\) solid var\(--surface\)/);
 });
 
@@ -263,7 +263,7 @@ test.each([
   const solid = preference !== "normal" || mode !== "vibrancy" && mode !== "liquid-glass";
   sheet.textContent = overlayRules(source, preferences)
     .replace(/var\(--(?:surface|overlay|sheet)\)/g, "rgb(252, 252, 253)")
-    .replace(/var\(--blur\)/g, solid ? "none" : "blur(30px) saturate(180%)");
+    .replace(/var\(--blur\)/g, solid ? "none" : "blur(40px) saturate(1.6)");
   document.head.append(sheet);
   document.documentElement.dataset.platform = "macos";
   document.documentElement.dataset.system = platform;
@@ -276,7 +276,7 @@ test.each([
       if (solid) {
         expect(style.getPropertyValue("backdrop-filter")).toBe("none");
       } else {
-        expect(style.getPropertyValue("backdrop-filter")).toBe("blur(30px) saturate(180%)");
+        expect(style.getPropertyValue("backdrop-filter")).toBe("blur(40px) saturate(1.6)");
       }
     }
   } finally {

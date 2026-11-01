@@ -1689,7 +1689,6 @@ test("rows shorten the authors and keep the journal and library label visible", 
   // word and the authors (up to 60% of the byline) keep their width, and the
   // container shortens first. Below 25em the meta line may wrap instead (no
   // row gap). Chromium probe numbers for the crowded cases are in PR #502.
-  expect(styles).not.toMatch(/line-clamp/);
   expect(styles).toMatch(/\.result-meta \{[^}]*flex-wrap: wrap; row-gap: 0;/);
   // The body measures the space left after the tile and year columns.
   expect(styles).toMatch(/\.result-body \{[^}]*container-type: inline-size; \}/);

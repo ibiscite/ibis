@@ -4,8 +4,8 @@
    ADR 0021 §5). These are the look-layer tokens for menus. */
 .menu-popover {
   --menu-radius: var(--r-menu); --menu-padding: var(--menu-pad); --menu-item-radius: var(--r-mi); --menu-item-height: 1.75rem;
-  /* Labels start after the 10 px item padding, an 18 px check column and the 6 px gap. */
-  --menu-item-pad: 10px; --menu-check-width: 18px; --menu-item-gap: 6px;
+  /* Labels start after the 8 px item padding, a 14 px check column and the 6 px gap. */
+  --menu-item-pad: var(--space-2); --menu-check-width: 14px; --menu-item-gap: 6px;
   --menu-label-start: calc(var(--menu-item-pad) + var(--menu-check-width) + var(--menu-item-gap));
   --menu-highlight: var(--sel); --menu-highlight-text: var(--sel-text);
   --menu-enter-transform: none;

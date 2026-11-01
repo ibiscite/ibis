@@ -15,19 +15,20 @@
 
   /* Sizes. */
   --tile: 2rem; --icon: 1.25rem; --icon-small: 1rem; --icon-stroke: 1.5; --key: 1.25rem;
-  --control-h: 2rem; --field-h: 2.25rem; --touch-target: 2.75rem; --border-width: 1px;
+  --control-h: 2rem; --action-h: 1.75rem; --field-h: 2.25rem; --footer-h: 2.75rem; --touch-target: 2.75rem; --border-width: 1px;
   --status-dot: .5rem; --chip-h: 1.5rem;
   /* The search glyph sits on the tile column and the query on the title column. */
   --lead: calc(var(--row-pad) + (var(--tile) - var(--icon)) / 2);
   --lead-gap: calc((var(--tile) - var(--icon)) / 2 + var(--row-gap));
 
   /* Corners nest: each is its container's minus the gap between them. */
-  --r-win: 16px; --r-row: 8px; --r-tile: 6px; --r-control: 8px; --r-key: 5px;
+  --r-win: 16px; --r-card: 10px; --r-row: 8px; --r-tile: 6px; --r-control: 8px; --r-key: 5px;
   --r-menu: 12px; --menu-pad: 6px; --r-mi: 6px; --r-full: 999px;
 
   /* Type: size / line. Nothing is smaller than 12 px. */
   --type-search-size: 1.375rem; --type-search-line: 1.75rem;
-  --type-page-title-size: 1.75rem; --type-page-title-line: 2.25rem;
+  --type-display-size: 1.25rem; --type-display-line: 1.625rem;
+  --type-lead-size: 1.0625rem; --type-lead-line: 1.375rem;
   --type-title-size: .9375rem; --type-title-line: 1.25rem;
   --type-body-size: .875rem; --type-body-line: 1.25rem;
   --type-meta-size: .8125rem; --type-meta-line: 1.125rem;
@@ -48,6 +49,7 @@
   --shadow-overlay: 0 0 0 .5px rgb(0 0 0 / 12%), 0 12px 32px rgb(0 0 0 / 16%);
   --shadow-dialog: 0 24px 48px rgb(0 0 0 / 22%);
   --shadow-toast: 0 8px 16px rgb(0 0 0 / 18%);
+  --shadow-badge: 0 0 0 .5px color-mix(in srgb, var(--text) 28%, transparent), 0 1px 2px rgb(0 0 0 / 18%);
   --shadow-thumb: 0 0 0 .5px rgb(0 0 0 / 12%), 0 1px 2px rgb(0 0 0 / 22%);
   --thumb: #fff;
   --blur: none;
@@ -71,7 +73,8 @@
   --field: var(--fill);
   --chip: color-mix(in srgb, var(--text) 8%, transparent);
   --on-fill-h: rgb(0 0 0 / 8%); --on-fill-p: rgb(0 0 0 / 16%);
-  --accent-h: color-mix(in srgb, var(--accent) 90%, var(--text));
+  --key-on-accent: color-mix(in srgb, var(--on-accent) 22%, transparent);
+  --accent-h: color-mix(in srgb, var(--accent) 88%, var(--text));
   --accent-p: color-mix(in srgb, var(--accent) 80%, var(--text));
   --scrim: rgb(0 0 0 / 30%);
   --scrollbar-thumb: color-mix(in srgb, var(--text) 26%, transparent);
@@ -96,7 +99,7 @@
 @supports (color: light-dark(white, black)) {
   :root {
     --scarlet: light-dark(#c23a1c, #ff7a5c); --scarlet-tile: light-dark(#c23a1c, #d2401f);
-    --done: light-dark(#1a7f37, #5bc26f); --look: light-dark(#8a5a00, #e3b341); --stop: light-dark(#c4314b, #ff8a8a);
+    --done: light-dark(#1a7f37, #5bc26f); --look: light-dark(#b07a00, #f5c542); --stop: light-dark(#c4314b, #ff8a8a);
     --sel: light-dark(#0a63d6, #0a6fe0); --sel-text: #fff; --on-accent: #fff; --sel-muted: rgb(255 255 255 / 82%);
     --scrim: light-dark(rgb(0 0 0 / 20%), rgb(0 0 0 / 40%));
   }
@@ -126,7 +129,7 @@
     :root[data-platform="macos"][data-native-appearance="liquid-glass"]:not(.notice-window) {
       --scarlet: light-dark(#982d16, #ff9d87);
       --done: light-dark(#135f29, #6fca81);
-      --look: light-dark(#8a5a00, #e3b341);
+      --look: light-dark(#b07a00, #f5c542);
       --stop: light-dark(#9b273b, #ff9c9c);
     }
   }
@@ -148,9 +151,9 @@
   @media (prefers-contrast: no-preference) and (forced-colors: none) and (prefers-reduced-transparency: no-preference) {
     :root[data-platform="macos"][data-native-appearance="vibrancy"]:not(.notice-window),
     :root[data-platform="macos"][data-native-appearance="liquid-glass"]:not(.notice-window) {
-      --overlay: color-mix(in srgb, var(--surface) 92%, transparent);
-      --sheet: color-mix(in srgb, var(--surface) 96%, transparent);
-      --blur: blur(30px) saturate(180%);
+      --overlay: light-dark(rgb(250 250 252 / 92%), rgb(44 44 48 / 92%));
+      --sheet: light-dark(rgb(250 250 252 / 96%), rgb(44 44 48 / 96%));
+      --blur: blur(40px) saturate(1.6);
     }
   }
 }
@@ -158,7 +161,7 @@
 /* Increase Contrast and forced colours: system colours, solid edges, no depth. */
 @media (prefers-contrast: more), (forced-colors: active) {
   :root, :root[data-platform] {
-    --shadow-card: none; --shadow-overlay: none; --shadow-dialog: none; --shadow-toast: none; --shadow-thumb: none;
+    --shadow-card: none; --shadow-overlay: none; --shadow-dialog: none; --shadow-toast: none; --shadow-thumb: none; --shadow-badge: none;
     --surface: Canvas; --raised: Canvas; --overlay: Canvas; --sheet: Canvas; --grouped: Canvas; --grouped-card: Canvas; --sidebar: Canvas;
     --text: CanvasText; --muted: CanvasText; --tertiary: CanvasText; --line: CanvasText; --stroke: CanvasText;
     --sel: Highlight; --sel-text: HighlightText; --sel-muted: currentColor;
