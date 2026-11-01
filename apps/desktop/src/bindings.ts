@@ -65,7 +65,6 @@ export const commands = {
 	preferenceRevision: () => __TAURI_INVOKE<number>("preference_revision"),
 	/**  One request per visible presentation/snapshot. Settings passes no presentation. */
 	delightView: (now: LocalMoment, presentation: number | null, revision: string | null, aboutClick: boolean | null) => __TAURI_INVOKE<DelightView>("delight_view", { now, presentation, revision, aboutClick }),
-	setEditUndo: (title: string | null, revision: number) => __TAURI_INVOKE<null>("set_edit_undo", { title, revision }),
 	/**  Remember the picker preferences; other settings in the file are kept. */
 	setPickerPreferences: (preferences: PickerPreferencesPatch_Deserialize, copyFormat:
 /**  Pandoc / Quarto / R Markdown / Obsidian: `[@key, p. 12]`. */

@@ -329,16 +329,22 @@ impl From<PickerPreferences> for PickerPreferencesPatch {
 /// The preferences the picker starts with.
 #[tauri::command]
 #[specta::specta]
-pub(crate) fn picker_preferences(settings_file: State<'_, SettingsFile>) -> Result<PickerPreferences, String> {
-    let _writing = settings_file
-        .writing
-        .lock()
-        .map_err(|_| "settings are unavailable".to_string())?;
-    let preferences = read_preferences(&settings_file.path)?;
-    if let Ok(mut owner) = settings_file.preference_intents.lock() {
-        owner.surprises = preferences.small_surprises.unwrap_or(true);
-    }
-    Ok(preferences)
+pub(crate) async fn picker_preferences(settings_file: State<'_, SettingsFile>) -> Result<PickerPreferences, String> {
+    // Off the main thread: a settings write in progress must never stall a paste.
+    let settings_file = settings_file.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let _writing = settings_file
+            .writing
+            .lock()
+            .map_err(|_| "settings are unavailable".to_string())?;
+        let preferences = read_preferences(&settings_file.path)?;
+        if let Ok(mut owner) = settings_file.preference_intents.lock() {
+            owner.surprises = preferences.small_surprises.unwrap_or(true);
+        }
+        Ok(preferences)
+    })
+    .await
+    .map_err(|_| "settings are unavailable".to_string())?
 }
 
 fn read_preferences(path: &Path) -> Result<PickerPreferences, String> {

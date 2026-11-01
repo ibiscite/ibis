@@ -39,7 +39,7 @@ export function UndoNotice({ message, action, onUndo, onExpire, paused = false, 
   const lease = useRef<ReturnType<typeof registerUndo> | null>(null);
   // biome-ignore lint/correctness/useExhaustiveDependencies: pausing retains this action’s place in undo order.
   useEffect(() => {
-    const current = registerUndo(label, () => invoke.current());
+    const current = registerUndo(() => invoke.current());
     current.pause(paused); lease.current = current;
     return () => { current(); if (lease.current === current) lease.current = null; };
   }, [label]);
