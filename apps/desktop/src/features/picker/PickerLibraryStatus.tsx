@@ -2,22 +2,24 @@ import type { RefObject } from "react";
 import type { LibraryStatus, ZoteroLibrary } from "../../api";
 import type { SystemIcon } from "../../bindings";
 import { LibraryDetail, LibraryStatusLine, zoteroLibraryNames } from "../../LibraryStatusLine";
-import { libraryMessages, pickerText } from "../../messages";
-import { SourceAction, type SourceActionProps } from "../../ui/SourceAction";
+import { libraryMessages, operationFailures, pickerText } from "../../messages";
+import { shortenedLabel, SourceAction, type SourceActionProps } from "../../ui/SourceAction";
 import { keyLabel, keysFor } from "../../keys";
 import { isMac } from "../../platform";
 import { MenuItem, MenuSection } from "../../ui/Menu";
 
 export type LibraryScope = { offered: ZoteroLibrary[]; isChosen: (choice: ZoteroLibrary) => boolean; chosenCount: number;
-  name: (choice: ZoteroLibrary) => string; toggle: (choice: ZoteroLibrary) => void };
+  name: (choice: ZoteroLibrary) => string; toggle: (choice: ZoteroLibrary) => void; all: () => void };
 
-export function PickerLibraryStatus({ library, groupName, isOpen, onOpenChange, searchRef, zotero, actions, failure, sourceFailure, sourceAction, statusIcon }: {
+export function PickerLibraryStatus({ library, groupName, isOpen, onOpenChange, searchRef, zotero, actions, failure, groupsFailed = false, sourceFailure, sourceAction, statusIcon }: {
   library: LibraryStatus | null | undefined; groupName: (id: number) => string;
   isOpen: boolean; onOpenChange: (open: boolean) => void; searchRef: RefObject<HTMLElement | null>;
   zotero: LibraryScope | null;
   actions: { choose: () => void; find: () => void; reload: () => void; openZotero: () => void; useZotero: () => void };
   sourceAction: SourceActionProps;
   failure?: string | null;
+  /** Belongs to this menu, so it shows here and never grows the footer. */
+  groupsFailed?: boolean;
   sourceFailure: boolean;
   statusIcon: SystemIcon | null;
 }) {
@@ -38,20 +40,22 @@ export function PickerLibraryStatus({ library, groupName, isOpen, onOpenChange, 
     action={fix && <SourceAction {...fix} />}
     menu={{ label: pickerText.libraryRegion, id: "library-menu",
       isOpen, onOpenChange, tabFocusRef: searchRef, placement: "top end", children: <>
-        <MenuSection id="library-detail" label={detail.filter(Boolean).join(". ")} header={<LibraryDetail lines={detail} />}>
+        <MenuSection id="library-detail" label={detail.filter(Boolean).join(". ")} header={<LibraryDetail lines={detail} problem={groupsFailed ? operationFailures.zoteroGroups : undefined} />}>
           {/* A reload can publish a recovery screen before an animated exit
               ends. Retire the modal and its same-named menu before that I/O. */}
           {library?.name && <MenuItem id="reload" label={pickerText.reloadLibrary} closeOnSelect onAction={actions.reload} />}
           <MenuItem id="choose" label={pickerText.chooseLibraryMenu} keys={keyLabel(keysFor("chooseSource"), isMac)} onAction={actions.choose} />
           {!library?.zotero && <MenuItem id="zotero" label={pickerText.useZotero} onAction={actions.useZotero} />}
         </MenuSection>
-        {zotero && zotero.offered.length > 1 && <MenuSection id="library-scope" label={pickerText.zoteroLibraries} layout="chips">
+        {zotero && zotero.offered.length > 1 && <MenuSection id="library-scope" label={pickerText.zoteroLibraries} header={pickerText.searchIn} layout="list">
+          <MenuItem id="all" label={pickerText.allLibraries} checked={zotero.chosenCount === zotero.offered.length} onAction={zotero.all} />
           {zotero.offered.map((choice) => {
             const checked = zotero.isChosen(choice);
             const last = checked && zotero.chosenCount === 1;
             const id = typeof choice === "object" ? `group:${choice.group}` : choice;
-            return <MenuItem key={id} id={id} label={zotero.name(choice)} checked={checked} disabled={last}
-              title={last ? pickerText.keepOneLibrary : undefined} onAction={() => zotero.toggle(choice)} />;
+            const name = zotero.name(choice);
+            return <MenuItem key={id} id={id} label={shortenedLabel(name, 36)} checked={checked} disabled={last}
+              title={last ? pickerText.keepOneLibrary : name} onAction={() => zotero.toggle(choice)} />;
           })}
         </MenuSection>}
       </> }} />;

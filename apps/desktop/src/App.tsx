@@ -759,7 +759,8 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
       }} highlightedReferences={selected.size === 0 ? chosen : undefined} previewReceipt={previewReceipt}
         onChangeReference={changeReference} referenceLibrary={(r) => libraryOf(r.source ?? "")} style={style} keys={keyFormat !== null}
         shown={showCitations ? displayedOutput : undefined} searching={searchPending && showPastePreview} outputWarnings={shown && typeof shown === "object" ? shown.warnings : []}
-        problem={previewProblem} copied={showCitations ? state.shelfCopied : null} focusable={selected.size > 0} fallbackFocusRef={input} source={sourceAction} />
+        problem={previewProblem} copied={showCitations ? state.shelfCopied : null} focusable={selected.size > 0} fallbackFocusRef={input}
+        source={source.kind === "zotero" ? { ...sourceAction, label: pickerText.showInZotero } : sourceAction} onOpenSource={(reference) => sourceOpen.run(false, false, reference.id)} />
       <PickerFooter library={library} groupName={groupName}
         status={<PickerLibraryStatus library={library} groupName={groupName} isOpen={libraryMenuOpen}
           onOpenChange={(open) => { if (open) { cancelCopy(); setMenuOpen(false); } setLibraryMenuOpen(open); }}
@@ -767,11 +768,11 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
           statusIcon={source.status_icon ?? null}
           zotero={library?.zotero && chooseZoteroLibraries ? {
             offered: ["user" as const, ...offeredGroups.map((group) => ({ group }))], isChosen, chosenCount: chosenLibraries.length,
-            name: (choice) => typeof choice === "object" ? groupName(choice.group) : pickerText.myLibrary, toggle: toggleLibrary,
+            name: (choice) => typeof choice === "object" ? groupName(choice.group) : pickerText.myLibrary, toggle: toggleLibrary, all: searchAllLibraries,
           } : null}
           actions={{ choose: chooseSources, find: chooseFile, reload: () => runFromMenu("reload", reloadLibrary),
             useZotero: () => runFromMenu("zotero", useZotero), openZotero: () => openSource(source.kind !== "zotero") }}
-          failure={sourceOpen.failure?.message ?? [...libraryOperations].filter((operation) => failures[operation]).map((operation) => FAILURE_MESSAGES[operation]).join(" ")} />}
+          groupsFailed={failures.zoteroGroups} failure={sourceOpen.failure?.message ?? [...libraryOperations].filter((operation) => operation !== "zoteroGroups" && failures[operation]).map((operation) => FAILURE_MESSAGES[operation]).join(" ")} />}
 
         hints={{ enter: enterAction, shiftEnter: shiftEnterAction, escape: escapeAction }}
         altHeld={altHeld} actions={{ copy: copyChosen, add: toggleHighlighted, escape: escapeStep }}

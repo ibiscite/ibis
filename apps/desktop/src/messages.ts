@@ -264,6 +264,8 @@ export const pickerText = {
   viewChanges: "View changes",
   largerText: "Larger text",
   zoteroLibraries: "Zotero libraries",
+  searchIn: "Search in",
+  allLibraries: "All Libraries",
   myLibrary: "My Library",
   groupLibrary: (id: number) => `Group ${id}`,
   keepOneLibrary: "Keep at least one Zotero library on.",

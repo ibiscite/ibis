@@ -34,9 +34,8 @@
 /* Outranks the global ring, which the list would clip into lines at its top and bottom. */
 .menu-popover [role="menu"]:focus-visible { outline: none; box-shadow: none; }
 .menu-section { display: flex; flex: none; flex-direction: column; }
-.menu-section-chips { flex-direction: row; flex-wrap: wrap; gap: var(--space-1); padding-block: var(--space-2); }
-.menu-section-chips .menu-item { min-height: var(--control-h); background: var(--fill-control); border-radius: var(--r-full); }
-.menu-section-chips .menu-item[aria-checked="true"] { background: var(--selected); color: var(--selected-text); }
+/* A long list scrolls inside the menu after eight rows. */
+.menu-section-list { max-height: calc(8 * var(--menu-item-height)); overflow-y: auto; }
 .menu-separator { height: 1px; margin: 5px var(--menu-item-pad); border: 0; background: var(--separator); }
 .menu-header { padding-inline: var(--menu-item-pad); }
 .menu-detail { width: 0; min-width: 100%; margin: 0; padding: var(--space-1) 0 var(--space-2); display: flex; flex-direction: column; gap: var(--space-1); color: var(--text-secondary); font-size: var(--type-label-size); overflow-wrap: break-word; }

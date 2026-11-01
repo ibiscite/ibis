@@ -243,10 +243,10 @@ def menu_escape_focus(native, snapshot, shortcut, report):
                                    "space_reopened", "search_unchanged", "tab_search_typed", "search_restored")}
     report["menu_escape_focus"] = facts
     native.key(shortcut)
-    wait_for(lambda: bool(named(snapshot(), "Keyboard shortcuts")), "shortcut opens More", timeout=5)
+    wait_for(lambda: bool(named(snapshot(), "Keyboard Shortcuts")), "shortcut opens More", timeout=5)
     facts["shortcut_opened"] = True
     native.key("Escape")
-    wait_for(lambda: not named(snapshot(), "Keyboard shortcuts"), "Escape closes More", timeout=5)
+    wait_for(lambda: not named(snapshot(), "Keyboard Shortcuts"), "Escape closes More", timeout=5)
     facts["escape_closed"] = True
     def restored():
         current = snapshot()
@@ -257,18 +257,18 @@ def menu_escape_focus(native, snapshot, shortcut, report):
     native.key("space")
     def reopened():
         current = snapshot()
-        facts["space_reopened"] = bool(named(current, "Keyboard shortcuts"))
+        facts["space_reopened"] = bool(named(current, "Keyboard Shortcuts"))
         # A successful modal open hides Search from the accessibility tree.
         if not facts["space_reopened"]:
             facts["search_unchanged"] = facts["search_unchanged"] and values(current) == original
         return facts["space_reopened"]
     wait_for(reopened, "Space reopens More after Escape", timeout=5)
     native.key("Tab")
-    wait_for(lambda: not named(snapshot(), "Keyboard shortcuts"), "Tab closes More", timeout=5)
+    wait_for(lambda: not named(snapshot(), "Keyboard Shortcuts"), "Tab closes More", timeout=5)
 
     def picker():
         current = snapshot()  # The caller also verifies the owned app is alive.
-        assert current["visible"] and current["foreground"] and not named(current, "Keyboard shortcuts"), "Native picker unavailable after Tab"
+        assert current["visible"] and current["foreground"] and not named(current, "Keyboard Shortcuts"), "Native picker unavailable after Tab"
         return current
 
     def available():
@@ -3875,7 +3875,7 @@ class ContractTests(unittest.TestCase):
                      "Darwin": ("AXTextField", "AXRow")}
             search_role, result_role = roles[self.platform]
             current = {"visible": True, "foreground": True, "nodes": (
-                [{"name": "Keyboard shortcuts", "role": "menu item", "focused": True}] if self.menu else [
+                [{"name": "Keyboard Shortcuts", "role": "menu item", "focused": True}] if self.menu else [
                     {"name": "More", "role": "button", "focused": self.more},
                     {"name": "Search references", "role": search_role, "value": self.value,
                      "focused": self.search and self.platform == "Darwin"},

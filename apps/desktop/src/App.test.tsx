@@ -1643,7 +1643,7 @@ test("rows with the same first author and year are told apart by their container
   // It keeps its own width beside a long title, as in the prototype, capped and ellipsized.
   expect(styles).toMatch(/\.result-first-author \{ flex: none; max-width: 30%;[^}]*text-overflow: ellipsis/);
   // A very narrow Compact row gives the title its own line instead.
-  expect(styles).toMatch(/@container \(max-width: 16em\) \{\s*:root\[data-density="compact"\] \.result-line \{ flex-wrap: wrap; row-gap: 0; \}\s*:root\[data-density="compact"\] \.result-title \{ flex-basis: 100%; \}/);
+  expect(styles).toMatch(/@container \(max-width: 16em\) \{\s*:root\[data-density="compact"\] \.result-line \{ display: grid;/);
   expect(line?.textContent).toBe("Sleep spindlesGarcía et al.2021");
   expect(line?.querySelector(":scope > .result-year")?.textContent).toBe("2021");
   expect(rows[2]?.querySelector(".result-first-author")?.textContent).toBe("Smith");
@@ -2272,9 +2272,10 @@ test("The library menu lists Zotero libraries as checkboxes and turning one on r
   fireEvent.click(libraryButton());
   const group = await screen.findByRole("group", { name: "Zotero libraries" });
   await within(group).findByRole("menuitemcheckbox", { name: "Synthetic lab" });
-  const [mine, lab, reading] = within(group).getAllByRole("menuitemcheckbox");
-  const boxes = [mine!, lab!, reading!];
+  const [all, mine, lab, reading] = within(group).getAllByRole("menuitemcheckbox");
+  const boxes = [all!, mine!, lab!, reading!];
   expect(boxes.map((box) => [box.textContent, box.getAttribute("aria-checked")])).toEqual([
+    ["All Libraries", "false"],
     ["My Library", "true"], ["Synthetic lab", "false"], ["Reading group", "false"],
   ]);
   // The only library on cannot be turned off.

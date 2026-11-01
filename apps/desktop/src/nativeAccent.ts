@@ -19,7 +19,7 @@ export function setNativeAccent(value: unknown): void {
   root.style.setProperty("--native-accent-on", onColor(rgb));
   // Match the macOS neutral roles in tokens.css; tests read those roles directly.
   for (const [theme, ink] of [["light", [39, 39, 39]], ["dark", [221, 221, 221]]] as const) {
-    for (const [state, weight] of [["hover", .88], ["pressed", .8]] as const) {
+    for (const [state, weight] of [["hover", .9], ["pressed", .8]] as const) {
       root.style.setProperty(`--native-accent-on-${state}-${theme}`, onColor(rgb.map((c, i) => c * weight + ink[i]! / 255 * (1 - weight))));
     }
   }

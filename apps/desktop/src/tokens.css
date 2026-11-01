@@ -79,8 +79,8 @@
   --fill-quiet-hover: var(--fill-4);
   --surface-field: var(--fill-control); --chip: var(--fill-control-hover);
   --on-fill-h: rgb(0 0 0 / 8%); --on-fill-p: rgb(0 0 0 / 16%);
-  --accent-h: color-mix(in srgb, var(--selected) 88%, var(--text));
-  --accent-p: color-mix(in srgb, var(--selected) 80%, var(--text));
+  --selected-hover: color-mix(in srgb, var(--selected) 90%, black);
+  --selected-pressed: color-mix(in srgb, var(--selected) 80%, black);
   --accent-wash: color-mix(in srgb, var(--accent) 14%, transparent);
   --on-sel-fill: color-mix(in srgb, var(--selected-text) 22%, transparent);
   --done-wash: color-mix(in srgb, var(--done) 9%, transparent);
@@ -118,7 +118,7 @@
   @media (prefers-contrast: no-preference) and (forced-colors: none) {
     :root:not(.notice-window) {
       --surface: light-dark(#ffffff, #1e1e1e); --raised: light-dark(#f6f6f6, #282828);
-      --surface-overlay: light-dark(#fdfdfe, #2b2b2e); --sheet: var(--surface-overlay);
+      --surface-overlay: light-dark(#ffffff, #282828); --sheet: var(--surface-overlay);
       --text: light-dark(rgb(0 0 0 / 84.7%), rgb(255 255 255 / 84.7%));
       --text-secondary: light-dark(rgb(0 0 0 / 56%), rgb(255 255 255 / 54.9%));
       --text-tertiary: light-dark(rgb(0 0 0 / 45%), rgb(255 255 255 / 38%));
@@ -199,7 +199,7 @@
 @supports (color: light-dark(white, black)) {
   @media (prefers-contrast: no-preference) and (forced-colors: none) {
     :root[data-appearance][data-accent]:not([data-accent="system"]):not(.notice-window) {
-      --accent: var(--ac); --selected: var(--ac-selected); --accent-text: var(--ac-text); --selected-text: var(--ac-on, #fff);
+      --accent: var(--ac); --selected: var(--ac-selected); --accent-text: var(--ac-text); --selected-text: var(--ac-on, #fff); --text-on-accent: var(--ac-on, #fff);
     }
   }
 }

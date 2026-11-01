@@ -235,8 +235,9 @@ footer { display: flex; align-items: center; padding-block: 0; padding-inline: c
    its own line, with the first author below it, rather than being
    squeezed beside them. */
 @container (max-width: 16em) {
-  :root[data-density="compact"] .result-line { flex-wrap: wrap; row-gap: 0; }
-  :root[data-density="compact"] .result-title { flex-basis: 100%; }
+  :root[data-density="compact"] .result-line { display: grid; grid-template-columns: minmax(0, 1fr) auto; row-gap: 0; }
+  :root[data-density="compact"] .result-first-author { grid-row: 2; }
+  :root[data-density="compact"] .result-year { grid-area: 1 / 2; }
 }
 
 /* Footer key hints (#491): what Enter does now, or with Alt held the other

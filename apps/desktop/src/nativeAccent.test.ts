@@ -96,7 +96,7 @@ test("native primary foregrounds stay readable through hover and press in both t
     setNativeAccent(rgb);
     for (const [theme, grey] of [["light", 39], ["dark", 221]] as const) {
       const ink = [grey, grey, grey].map((c) => c / 255);
-      for (const [state, weight] of [["hover", .88], ["pressed", .8]] as const) {
+      for (const [state, weight] of [["hover", .9], ["pressed", .8]] as const) {
         const on = root.style.getPropertyValue(`--native-accent-on-${state}-${theme}`);
         expect(on).toMatch(/^#(?:000|fff)$/);
         const l = luminance(rgb.map((c, i) => c * weight + ink[i]! * (1 - weight)));

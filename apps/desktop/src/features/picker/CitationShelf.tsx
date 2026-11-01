@@ -39,7 +39,7 @@ function Beak({ closing = false }: { closing?: boolean }) {
 
 /** One line of exact engine output. All editing stays in an anchored menu;
  * a folded citation retains its full text and every reference's identity. */
-export function CitationShelf({ source, announce, selected, highlightedReference, highlightedReferences, onChangeReference, removeLabel, onRemove, referenceLibrary, style, keys, shown, previewReceipt, outputWarnings, problem, focusable, fallbackFocusRef, presentation, present = false, copied: copiedReceipt , searching = false }: {
+export function CitationShelf({ source, onOpenSource, announce, selected, highlightedReference, highlightedReferences, onChangeReference, removeLabel, onRemove, referenceLibrary, style, keys, shown, previewReceipt, outputWarnings, problem, focusable, fallbackFocusRef, presentation, present = false, copied: copiedReceipt , searching = false }: {
   presentation?: number;
   present?: boolean;
   announce: boolean;
@@ -64,6 +64,7 @@ export function CitationShelf({ source, announce, selected, highlightedReference
   searching?: boolean;
   /** More's first item, offered in a reference's menu with the same words and keys. */
   source?: SourceActionProps;
+  onOpenSource?: (reference: CitationReference) => void;
 }) {
   const copied = copiedReceipt && shown && typeof shown === "object" && shown.text === copiedReceipt.text ? copiedReceipt : null;
   const preserveFocus = useCallback((node: HTMLElement | null) => {
@@ -256,7 +257,7 @@ export function CitationShelf({ source, announce, selected, highlightedReference
           page={edited.locator?.label === "page" ? edited.locator.value : ""} choices={choices}
           onPageChange={(value) => onChangeReference(edited, { locator: value.trim() ? { label: "page", value, input: "page-editor" } : null })}
           onFormChange={(form) => onChangeReference(edited, { form })} />}
-        {edited && source && <Button variant="quiet" className="details-menu-row" isDisabled={source.busy} onPress={() => { setPanel(null); source.open(); }}>
+        {edited && source && <Button variant="quiet" className="details-menu-row" isDisabled={source.busy} onPress={() => { setPanel(null); onOpenSource?.(edited); }}>
           <span>{source.label}</span>{source.keys && <span className="details-menu-keys" aria-hidden="true">{keyLabel(source.keys, currentPlatform() === "macos")}</span>}
         </Button>}
         {edited && <Button variant="quiet" className="details-menu-row" aria-keyshortcuts="Backspace Delete" isDisabled={!isSelected(edited)} onPress={() => remove(edited)}>

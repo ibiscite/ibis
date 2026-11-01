@@ -256,10 +256,10 @@ export function MenuItem({ id, label, title, keys, checked, disabled, closeOnSel
  * checked keys come from the items themselves. `header` is a visual line
  * above the items that names the group when no `label` is given.
  */
-export function MenuSection({ id, label, header, children, layout, selectionMode = "multiple" }: { id: string; label?: string; header?: ReactNode; children: ReactNode; layout?: "chips"; selectionMode?: "single" | "multiple" }) {
+export function MenuSection({ id, label, header, children, layout, selectionMode = "multiple" }: { id: string; label?: string; header?: ReactNode; children: ReactNode; layout?: "list"; selectionMode?: "single" | "multiple" }) {
   const items = Children.toArray(children).filter(isValidElement) as ReactElement<ItemProps>[];
   const checkable = items.some((item) => item.props.checked !== undefined);
-  return <AriaMenuSection id={id} aria-label={label} className={`menu-section${layout === "chips" ? " menu-section-chips" : ""}`}
+  return <AriaMenuSection id={id} aria-label={label} className={`menu-section${layout === "list" ? " menu-section-list" : ""}`}
     selectionMode={checkable ? selectionMode : undefined}
     selectedKeys={checkable ? items.filter((item) => item.props.checked).map((item) => item.props.id) : undefined}>
     {header && <Header className="menu-header">{label && <span className="visually-hidden">{label}</span>}<div aria-hidden="true">{header}</div></Header>}
