@@ -228,6 +228,8 @@ fn bash_completes_commands_flags_and_values_in_their_real_contexts() {
         ("ibis cite --format = pa", 4, "pandoc", "doctor"),
         ("ibis cite --format=pa", 2, "--format=pandoc", "doctor"),
         ("ibis completions ba", 2, "bash", "doctor"),
+        ("ibis help se", 2, "search", "--locator"),
+        ("ibis help ci", 2, "cite", "doctor"),
     ] {
         let output = Command::new("bash")
             .args([
@@ -266,6 +268,7 @@ fn zsh_completes_flags_and_values_without_running_ibis_again() {
         ("ibis cite --format pa", 4, "pandoc", "doctor"),
         ("ibis cite synthetic --omit-author --lo", 5, "--locator", "--config"),
         ("ibis completions ba", 3, "bash", "doctor"),
+        ("ibis help se", 3, "search", "--locator"),
     ] {
         let output = Command::new("zsh").args(["-f", "-c", &format!(
             "compdef() {{ :; }}\n{script}\ncompadd() {{ printf '%s\\n' \"$@\"; }}\nwords=({words}); CURRENT={index}; _ibis"

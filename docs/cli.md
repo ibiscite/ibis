@@ -51,9 +51,14 @@ watch no files. Library IDs in the output are opaque digests, never paths.
 
 Without `--json`, commands print short lines for people. Add `--json` to any
 command, including `--help`, `--version` and argument errors, and stdout holds exactly
-one JSON envelope followed by a newline. The exceptions are `serve` and `mcp`: once
-running they stream their own protocols on stdout (below); only their help, argument
-errors and a library that fails to open before the stream starts use the envelope:
+one JSON envelope followed by a newline. The exceptions are `serve` and `mcp`, which
+stream their own protocols on stdout (below); their help and argument errors still use
+the envelope. A library that fails to open before they start is reported in each one's
+own way: `serve` writes one framed JSON-RPC error whose `data.code` is the
+`error.code`, with nothing on stderr; `mcp` reports it like any other command. Both
+exit with the code from the table below.
+
+The envelope looks like this:
 
 ```json
 {"ibis":1,"ok":true,"data":{…}}

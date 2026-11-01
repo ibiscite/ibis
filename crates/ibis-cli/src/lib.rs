@@ -5,7 +5,7 @@ use ibis_engine::{Cancellation, DispatchResult, Engine, Method, protocol, reques
 use serde_json::{Value, json};
 use std::{
     io::{BufRead, Read, Write},
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 mod completions;
 mod doctor;
@@ -264,57 +264,67 @@ fn command() -> Command {
                 ),
         });
     }
-    root.subcommand(
-        Command::new("serve")
-            .about("Serve JSON-RPC over Content-Length framed stdio")
-            .arg(
-                Arg::new("stdio")
-                    .long("stdio")
-                    .required(true)
-                    .action(ArgAction::SetTrue)
-                    .help("Use stdin and stdout, the only transport"),
-            ),
-    )
-    .subcommand(Command::new("mcp").about("Serve read-only search and citation tools to AI agents (MCP over stdio)"))
-    .subcommand(
-        Command::new("toggle").about("Show or hide the desktop picker").arg(
-            Arg::new("app")
-                .long("app")
-                .value_name("PATH")
-                .value_parser(clap::value_parser!(PathBuf))
-                .help("The Ibis app to start when it is not running"),
-        ),
-    )
-    .subcommand(
-        Command::new("doctor")
-            .about("Report source health offline, without writing or sending anything")
-            .arg(
-                Arg::new("config")
-                    .long("config")
+    root = root
+        .subcommand(
+            Command::new("serve")
+                .about("Serve JSON-RPC over Content-Length framed stdio")
+                .arg(
+                    Arg::new("stdio")
+                        .long("stdio")
+                        .required(true)
+                        .action(ArgAction::SetTrue)
+                        .help("Use stdin and stdout, the only transport"),
+                ),
+        )
+        .subcommand(
+            Command::new("mcp").about("Serve read-only search and citation tools to AI agents (MCP over stdio)"),
+        )
+        .subcommand(
+            Command::new("toggle").about("Show or hide the desktop picker").arg(
+                Arg::new("app")
+                    .long("app")
                     .value_name("PATH")
                     .value_parser(clap::value_parser!(PathBuf))
-                    .help("Check a chosen Ibis settings file without repairing it or loading its libraries"),
+                    .help("The Ibis app to start when it is not running"),
             ),
-    )
-    .subcommand(
+        )
+        .subcommand(
+            Command::new("doctor")
+                .about("Report source health offline, without writing or sending anything")
+                .arg(
+                    Arg::new("config")
+                        .long("config")
+                        .value_name("PATH")
+                        .value_parser(clap::value_parser!(PathBuf))
+                        .help("Check a chosen Ibis settings file without repairing it or loading its libraries"),
+                ),
+        )
+        .subcommand(
+            Command::new("completions")
+                .about("Generate shell completions from the CLI commands")
+                .arg(
+                    Arg::new("shell")
+                        .value_name("SHELL")
+                        .required(true)
+                        .value_parser(["bash", "zsh", "fish"])
+                        .help("The shell to generate completions for"),
+                ),
+        );
+    // The command list comes from the tree itself, so completions offer every help target.
+    let mut targets: Vec<String> = root
+        .get_subcommands()
+        .map(|command| command.get_name().to_owned())
+        .collect();
+    targets.push("help".to_owned());
+    root.subcommand(
         Command::new("help")
             .about("Print this message or the help of the given command")
             .arg(
                 Arg::new("command")
                     .value_name("COMMAND")
-                    .num_args(0..)
+                    .value_parser(clap::builder::PossibleValuesParser::new(targets))
+                    .hide_possible_values(true)
                     .help("The command to explain, such as cite"),
-            ),
-    )
-    .subcommand(
-        Command::new("completions")
-            .about("Generate shell completions from the CLI commands")
-            .arg(
-                Arg::new("shell")
-                    .value_name("SHELL")
-                    .required(true)
-                    .value_parser(["bash", "zsh", "fish"])
-                    .help("The shell to generate completions for"),
             ),
     )
     .mut_subcommands(|subcommand| subcommand.arg(file.clone()).arg(group.clone()))
@@ -408,6 +418,10 @@ pub fn run_with<R: BufRead, W: Write + Send, E: Write>(
     } else {
         engine.without_file_watches()
     };
+    if let Some(("help", args)) = matches.subcommand() {
+        let help = command_help(arguments.first(), args.get_one::<String>("command"));
+        return emit(json, Ok(help), None, &mut output, &mut errors, mode);
+    }
     match execute(&engine, &matches, &mut input, &mut output, mode) {
         Ok(Execution::Stdio(code)) => code,
         Ok(Execution::Result(result, citing)) => {
@@ -422,6 +436,29 @@ pub fn run_with<R: BufRead, W: Write + Send, E: Write>(
             }
         }
         Err(failure) => emit(json, Err(failure), None, &mut output, &mut errors, mode),
+    }
+}
+
+/// The help `ibis <command> --help` prints, under the name this program was started as.
+fn command_help(program: Option<&std::ffi::OsString>, target: Option<&String>) -> DispatchResult {
+    let mut root = command();
+    if let Some(name) = program
+        .and_then(|program| Path::new(program).file_name())
+        .and_then(|name| name.to_str())
+    {
+        root = root.bin_name(name);
+    }
+    root.build();
+    // The parser only accepts names from the tree, so an unknown target cannot get here.
+    let mut shown = target
+        .and_then(|target| root.find_subcommand(target).cloned())
+        .unwrap_or(root);
+    let help = shown.render_help().to_string();
+    DispatchResult {
+        text: Some(help.trim_end().to_owned()),
+        data: json!({"help":help}),
+        source_findings: false,
+        exit_code: ibis_core::contract::ExitCode::Ok,
     }
 }
 
@@ -478,29 +515,6 @@ fn execute<R: BufRead, W: Write + Send>(
     let (name, args) = matches.subcommand().ok_or(EngineError { code: ErrorCode::Usage })?;
     if name == "doctor" {
         return Ok(Execution::Result(doctor::run(engine, matches, mode)?, None));
-    }
-    if name == "help" {
-        let mut root = command();
-        root.build();
-        let mut shown = &mut root;
-        for word in args.get_many::<String>("command").into_iter().flatten() {
-            shown = shown.find_subcommand_mut(word).ok_or_else(|| {
-                Failure::new(
-                    ErrorCode::Usage,
-                    format!("there is no command '{}'; see: ibis --help", human::field(word)),
-                )
-            })?;
-        }
-        let help = shown.render_help().to_string();
-        return Ok(Execution::Result(
-            DispatchResult {
-                text: Some(help.trim_end().to_owned()),
-                data: json!({"help":help}),
-                source_findings: false,
-                exit_code: ibis_core::contract::ExitCode::Ok,
-            },
-            None,
-        ));
     }
     if name == "completions" {
         let shell = args
