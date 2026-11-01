@@ -186,7 +186,6 @@ citations-format-harvard-cite-them-right = Harvard (Cite Them Right)
 citations-format-ieee = IEEE reference entry
 citations-format-modern-language-association = MLA (9th edition)
 
-settings-undo = Undo
 settings-shortcut-restored = Default shortcut restored
 
 
@@ -197,3 +196,40 @@ citations-style-formats = Citation styles
 citations-filter-formats = Filter formats
 look-sample-title-2 = Paths through the orchard
 look-sample-title-3 = A map of quiet places
+
+# Quiet feedback, counted on this device only.
+delight-ibis = Ibis
+delight-thoth = Ancient Egyptians associated the ibis with Thoth, god of writing.
+delight-tip = ⇧⌘P keeps Ibis open
+delight-library100 = 100 references in { $library }. A good start.
+delight-library1000 = 1,000 references in { $library }. A solid library.
+delight-library10000 = 10,000 references in { $library }. A remarkable library.
+delight-empty = Choose a reference to paste.
+delight-loading = Your library is still opening.
+delight-no-library = Open a library to paste a reference.
+delight-zoom = { $percent }%
+delight-citation = { $count ->
+    [1] First citation
+   *[other] Citation { NUMBER($count) }
+    }
+delight-anniversary = One year with Ibis
+delight-about-words = ibis version about thoth
+canvas-hovered = Hovered
+canvas-pressed = Pressed
+canvas-focused = Keyboard focus
+
+general-small-surprises-label = Small surprises
+general-small-surprises-description = Bird facts, milestones and anniversaries.
+delight-name = Named for the bird ancient Egyptians linked with Thoth, god of writing and keeper of records.
+delight-fact-touch = White ibises find food by touch as they probe the mud.
+delight-fact-scarlet = Scarlet ibises get their colour from pigments in the shellfish they eat.
+delight-fact-mummies = Ancient Egyptians mummified ibises as offerings to Thoth.
+delight-fact-national = The scarlet ibis is a national bird of Trinidad and Tobago.
+delight-fact-flight = Northern bald ibises take turns leading their V formation.
+delight-birthday = Ibis turns two today.
+undo-action = Undo { $action }
+undo-remove = Remove { $reference }
+undo-reset-window = Reset Window Position
+undo-shortcut = Restore Default Shortcut
+
+undo-removed = Removed { $reference } from citation.

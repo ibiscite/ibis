@@ -13,6 +13,7 @@ export type CopyFormat = KeyFormat;
 export type NoticeMessage = NonNullable<Awaited<ReturnType<typeof commands.copiedNotice>>>;
 
 export const {
+  delightView,
   chooseLibrary,
   useZotero,
   useSampleLibrary,

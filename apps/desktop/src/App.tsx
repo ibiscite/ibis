@@ -39,13 +39,16 @@ import { usePickerActions } from "./features/picker/usePickerActions";
 import { usePickerKeys } from "./features/picker/usePickerKeys";
 import { useWindowSizeStatus } from "./features/picker/useWindowSizeStatus";
 import type { Copied } from "./api";
+import { usePickerDelights } from "./features/picker/usePickerDelights";
+import { useEmptyFeedback, useZoomFeedback } from "./ui/Delights";
+import { useInterfaceMessages } from "./i18n";
 
 // A stable provider lets component tests use synthetic data without IPC.
 // Formatted citations are offered only when the provider can supply them.
 export type PickerApi = Pick<typeof nativeApi,
   "chooseLibrary" | "useZotero" | "libraryStatus" | "reloadLibrary" | "previewFileCitation" | "copyFileCitation" | "copyFormat" | "pickerPreferences" | "setPickerPreferences" |
   "hidePicker" | "pickerPresentation" | "pickerVisible" | "setPinned" | "onLibraryChanged" | "onPickerShown" | "onPickerHidden" | "quit" | "search" | "shortcutStatus"> &
-  Partial<Pick<typeof nativeApi, "onPickerPreparing" | "recentReferences" | "openLibrarySource" | "librarySource" | "useSampleLibrary" | "useZoteroLibraries" | "zoteroGroups" | "pickerDestination" | "rememberAppOutput" | "onWindowSizeSaved" | "readWindowPositionUndo" | "undoWindowPosition" | "dismissWindowPositionUndo" | "onWindowReset" | "findSources" | "openFoundLibrary" | "rowContext" | "showCopiedNotice" | "loginItem" | "setLoginItem" | "onUpdateProgress" | "updateChecks" | "setUpdateChecks" | "onUpdateChecks" | "updateAvailable" | "onUpdateAvailable" | "updatePickerActivity" | "checkForUpdates" | "onShortcutStatus" | "openSettings" | "onPreferencesChanged">>;
+  Partial<Pick<typeof nativeApi, "delightView" | "onPickerPreparing" | "recentReferences" | "openLibrarySource" | "librarySource" | "useSampleLibrary" | "useZoteroLibraries" | "zoteroGroups" | "pickerDestination" | "rememberAppOutput" | "onWindowSizeSaved" | "readWindowPositionUndo" | "undoWindowPosition" | "dismissWindowPositionUndo" | "onWindowReset" | "findSources" | "openFoundLibrary" | "rowContext" | "showCopiedNotice" | "loginItem" | "setLoginItem" | "onUpdateProgress" | "updateChecks" | "setUpdateChecks" | "onUpdateChecks" | "updateAvailable" | "onUpdateAvailable" | "updatePickerActivity" | "checkForUpdates" | "onShortcutStatus" | "openSettings" | "onPreferencesChanged">>;
 
 export type PickerPreview = { query?: string; copied?: Copied };
 
@@ -61,6 +64,9 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   const pickerSession = usePickerSession(preview);
   const { session, state, send, setQuery, setActive, cancelCopy, isCurrentSession } = pickerSession;
   const { query, interpretLocators, active, selected, copied, copyError } = state;
+  const { text } = useInterfaceMessages();
+  const emptyFeedback = useEmptyFeedback(`${state.visibility}:${state.interaction}`);
+  const zoomFeedback = useZoomFeedback(state.presentation !== null);
   const pointer = usePointerSelection(active, setActive);
   const { resetPointer } = pointer;
   const operations = useOperations();
@@ -79,6 +85,8 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   const quitAfterSaving = () => destination.quitAfterSaving(quitPreferences);
   const libraryState = usePickerLibrary(api, report, cancelCopy);
   const { library, libraryVersion, refreshSnapshot, choosingLibrary, welcomeShown, libraryChoices, showCitations } = libraryState;
+  const delights = usePickerDelights(api, state.presentation, library, preferences.smallSurprises);
+  useEffect(() => { if (choosingLibrary) delights.dismiss(); }, [choosingLibrary, delights.dismiss]);
   const recents = useRecentReferences(api.recentReferences, destination.appId, density === "compact", state.recentCopy, state.session);
   const searchState = useLibrarySearch({
     search: api.search, emptySearch: recents.load, query, interpretLocators, library, statusFailed: failures.status ?? false,
@@ -136,6 +144,11 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   const keys = usePickerKeys({
     api, pickerSession, menus, source, results, showCitations, copyChosen: rows.copyChosen, actions, pointer, followKeyboard,
     togglePastePreview, quitAfterSaving, perform,
+    onEmptyEnter: () => {
+      if (chosen.length > 0 || searchPending || state.pendingCopy) return;
+      delights.dismiss();
+      emptyFeedback.refuse(text(library?.state === "loading" || library?.state === "reloading" ? "delight-loading" : !library?.has_snapshot ? "delight-no-library" : "delight-empty"));
+    },
   });
   useWindowSizeStatus(api.onWindowSizeSaved, report);
 
@@ -154,7 +167,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
         pageToken={<PickerPageToken
           usingLocator={actions.usingLocator} prepared={actions.prepared} canApplyLocator={actions.canApplyLocator}
           changeLocator={rows.changeLocator} send={send} input={input} />}
-        onQueryChange={(value) => { pointer.resetHover(); setQuery(value); }}
+        onQueryChange={(value) => { delights.dismiss(); pointer.resetHover(); setQuery(value); }}
         onSearchKeyDown={keys.onSearchKeyDown}
         expanded={results.length > 0 && showCitations}
         activeDescendant={showCitations && results[active] ? `result-${active}` : undefined}
@@ -178,14 +191,14 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
             {shortcut.desktop && !welcomeShown && ` ${shortcut.desktop.guidance}`}
           </p>
         </div>}
-        <Notices densityAnnouncement={preferences.densityAnnouncement} updateProgress={updateProgress} library={library} failures={failures}
+        <Notices feedback={zoomFeedback} densityAnnouncement={preferences.densityAnnouncement} updateProgress={updateProgress} library={library} failures={failures}
           error={error} copyError={copyError} copied={copied} missing={list?.missing}
           citationProblem={citationProblem} confirmation={state.copyNotice}
           onDismissCopied={() => send({ type: "dismiss" })} />
         <PickerResults
           api={api} libraryState={libraryState} searchState={searchState} state={state} source={source} scope={scope}
           shortcut={shortcut} perform={perform} input={input} pointer={pointer} rows={rows}
-          density={density} resultArea={resultArea} setQuery={setQuery} />
+          density={density} resultArea={resultArea} setQuery={setQuery} peck={delights.peck} />
       </PickerScroll>
       {/* Keep the selection live region mounted when choices remove citation controls. */}
       <PickerCitationShelf
@@ -195,7 +208,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
       <PickerStatusFooter
         api={api} library={library} scope={scope} sourceState={source} menus={menus} actions={actions}
         copyChosen={rows.copyChosen} destination={destination} recents={recents} preferences={preferences}
-        operations={operations} altHeld={altHeld} lastOutcome={state.lastOutcome}
+        operations={operations} altHeld={altHeld} feedback={emptyFeedback.feedback ?? delights.feedback} passive={!emptyFeedback.feedback && delights.passive} emptyAction={emptyFeedback.shaking} lastOutcome={state.lastOutcome}
         cancelCopy={cancelCopy} quitAfterSaving={quitAfterSaving} />
       <PickerOverlays state={state} send={send} menus={menus} bindings={actions.bindings} />
     </main>

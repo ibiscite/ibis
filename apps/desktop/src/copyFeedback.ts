@@ -1,6 +1,7 @@
 // What a copy says afterwards, and what a click on a result row does.
 // Pure decisions, kept apart from the picker so they can be tested alone.
 import type { Copied, NoticeMessage } from "./api";
+import { englishMessages } from "./i18n";
 import { copiedNoticeText } from "./messages";
 import { currentPlatform, platformOf, type Platform } from "./platform";
 
@@ -86,6 +87,12 @@ export function renderNotice(root: HTMLElement, platform: NoticePlatform): (mess
   root.append(notice);
   return (message: NoticeMessage) => {
     title.textContent = noticeTitle(message, platform);
+    if (message.milestone) {
+      const milestone = document.createElement("span");
+      milestone.setAttribute("aria-hidden", "true");
+      milestone.textContent = ` · ${englishMessages.text("delight-citation", { count: message.milestone })}`;
+      title.append(milestone);
+    }
     const excerpt = document.createElement("span");
     excerpt.className = "copy-receipt-excerpt";
     excerpt.textContent = message.text;

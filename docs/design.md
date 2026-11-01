@@ -549,7 +549,12 @@ age ticks every 30 s outside the live region.
 
 **Notices.** No notice or alert carries a side bar or one-sided border: its words and its place say what it is (maintainer, 2026-10-31). "Copied" or "Inserted" shows after the picker hides, in a window
 that never takes focus: the same card near the top centre on every system. In-window toasts ("Removed · Undo") last 8 s and pause
-on hover and focus. Errors are one sentence beside their cause, never a modal.
+on hover and focus. Every Undo button and the existing Edit menu name the action,
+for example “Undo Remove Okafor & Lima, 2018” or “Undo Reset Look”. Command-Z
+runs the most recent visible undo through the same component; hidden notices are
+paused, and stale menu tickets cannot consume newer actions. With no notice,
+Edit restores the native text-undo item. Long labels wrap and remain bounded;
+author ampersands stay literal. Errors are one sentence beside their cause, never a modal.
 On macOS, system-wide Secure Event Input only copies and says "Copied. Secure
 typing is on, possibly in another app. Press ⌘V to paste." An unavailable or
 timed-out paste check says "Copied. Press ⌘V to paste." Keep these reasons
@@ -872,6 +877,61 @@ once. Chevrons never rotate. Reduced motion: no translate, scale or slide,
 fades of at most 100 ms. Never animated: list content while typing, row height,
 the caret, layout on hover, the citation text, ticking counts, focus rings,
 anything over 280 ms, anything that loops except a busy indicator.
+
+### Small delights (2026-11-01)
+
+Keep the tone warm and restrained: at most one short warm sentence, no slang,
+exclamation marks, emoji or remarks about a person's work or habits. Fun text is
+passive, never a live announcement. It lives only in About, the welcome, existing
+status lines and receipts, with no change to results, citation content or focus.
+
+General's **Small surprises** starts on. The Rust settings owner checks it for
+bird motion and facts, library and citation milestones and anniversary lines.
+Keyboard feedback, the first-paste tip, refusal feedback, version details, zoom
+and Settings search keep working with it off. A failed preference save restores
+the saved choice; a failed delight-record save keeps session claims. Both use the
+single settings writer and its revisions, preserving unrelated fields.
+
+About has the 40 px mark and a name line below the version, always visible:
+“Named for the bird ancient Egyptians linked with Thoth, god of writing and
+keeper of records.” With surprises on, a click blinks once, and every five clicks
+reveals the next of six factual sentences, in order: Thoth, touch-sensitive
+probing, shellfish pigments, ibis mummies, Trinidad and Tobago, V-formation turns.
+The sequence lives in the local typed record. Searching Settings for “ibis” opens
+About with one authorized blink; “thoth” opens it with the name line tinted.
+Option reveals full version/build/date; the row and Copy Version share one path.
+
+The welcome mark pecks after the first successful load. A pressed footer key cap
+uses `--key-fill-pressed` for 100 ms; listed shortcuts tint except while recording.
+Mark and refusal movement stays within `--dur` / `--dur-panel`; Reduce Motion
+shows the stationary end. Empty Enter's feedback lasts 240 ms, with movement
+bounded by the panel cap. Command-plus/minus reports zoom in the Copied slot for
+one second without hiding warnings.
+
+Rust claims each first-paste tip or milestone before the background flush. New
+actions retire rendered answers so they cannot resurface after a refusal,
+chooser or empty-state remount. Library milestones require a current real load;
+samples, retained failures and occupied library status lines cannot consume one.
+The text names the library: “100 references in <library>. A good start.”,
+“1,000 references in <library>. A solid library.” and “10,000 references in
+<library>. A remarkable library.” Only rendered thresholds are claimed, so large
+imports retain the others for later eligible views; the paste tip takes priority.
+Receipts mark citations 1, 100 and 1,000 without adding to the spoken receipt.
+
+About shows “One year with Ibis” only on the first-run anniversary. “Ibis turns
+two today.” belongs only to the second calendar anniversary of 1.0; one build-time
+constant, `FIRST_STABLE_DATE`, remains unset until the actual 1.0 date is known.
+Only one anniversary line appears. The night-time greeting and its state are
+removed. There is no sound, animation loop, hidden polling or network transport.
+Settings has no Libraries page or Copy a Problem Report / Suggest an Idea rows;
+spring-loading and the requested secondary thank-you state therefore remain out
+of scope. Menu bar poses, Services and icon appearances belong to native work.
+
+The six facts use [museum evidence](https://www.metmuseum.org/art/collection/search/552293),
+[white ibis observations](https://www.brookfieldzoo.org/animals/white-ibis),
+[scarlet ibis diet](https://www.birdkingdom.ca/our_animals/scarlet_ibis),
+[national bird identification](https://nationalzoo.si.edu/animals/scarlet-ibis), and
+[the V-formation study](https://pmc.ncbi.nlm.nih.gov/articles/PMC4343164/).
 
 ## Accessibility
 

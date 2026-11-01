@@ -1,4 +1,18 @@
 import { expect, test } from "vitest";
+
+test("paste milestones decorate only the receipt heading and preserve the citation and focus", () => {
+  const root = document.createElement("div");
+  const focus = document.activeElement;
+  const show = renderNotice(root, "macos");
+  for (const [milestone, label] of [[1, "First citation"], [100, "Citation 100"], [1000, "Citation 1,000"]] as const) {
+    show({ delivered: { outcome: "pasted", app: "Invented Writer" }, text: "[@invented]", milestone });
+    expect(root.querySelector("strong")?.textContent).toBe(`Pasted into Invented Writer · ${label}`);
+    expect(root.querySelector("code")?.textContent).toBe("[@invented]");
+    expect(document.activeElement).toBe(focus);
+  }
+  show({ delivered: { outcome: "pasted", app: "Invented Writer" }, text: "[@next]" });
+  expect(root.querySelector("strong")?.textContent).toBe("Pasted into Invented Writer");
+});
 import type { NoticeMessage } from "./api";
 import { afterCopy, DRAG_DISTANCE, leaveNotice, noticePlatform, noticeTitle, renderNotice, rowClickAction, type RowClick } from "./copyFeedback";
 

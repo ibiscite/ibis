@@ -120,7 +120,7 @@ test("removing a middle reference and Undo restore its position and page through
   fireEvent.click(screen.getByRole("button", { name: "Remove from Citation" }));
   expect(screen.queryByRole("dialog")).toBeNull();
   expect(screen.getByRole("button", { name: "Show all 2 selected references" })).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+  fireEvent.click(screen.getByRole("button", { name: /^Undo / }));
   list = openReferences();
   expect(names()).toEqual(order);
   fireEvent.click(within(list).getByRole("button", { name: "Edit Smith 2020 · b" }));
@@ -148,17 +148,17 @@ test("reference and window Undo keep separate reachable actions and cannot consu
   const segment = screen.getByRole("button", { name: "Edit Smith 2020" });
   act(() => segment.focus()); fireEvent.keyDown(segment, { key: "Backspace" });
   await act(async () => { await emit("picker:window-reset", { revision: 17, undo: 17 }); });
-  const actions = screen.getAllByRole("button", { name: "Undo" });
+  const actions = screen.getAllByRole("button", { name: /^Undo / });
   expect(actions).toHaveLength(2);
   const descriptions = actions.map((button) => document.getElementById(button.getAttribute("aria-describedby")!)?.textContent);
-  expect(descriptions).toEqual(["Removed from citation.", "Window position reset."]);
+  expect(descriptions).toEqual(["Removed Smith, 2020 from citation.", "Window position reset."]);
   for (const button of actions) { act(() => button.focus()); expect(document.activeElement).toBe(button); }
   await act(async () => { fireEvent.click(actions[1]!); });
   expect(windowUndos).toEqual([{ revision: 17 }]);
   expect(screen.queryByText("Window position reset.")).toBeNull();
-  expect(screen.getByText("Removed from citation.")).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", { name: "Undo" }));
-  expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
+  expect(screen.getByText("Removed Smith, 2020 from citation.")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: /^Undo / }));
+  expect(screen.queryByRole("button", { name: /^Undo / })).toBeNull();
   expect(screen.getByRole("button", { name: "Remove a from the selection" })).toBeTruthy();
 });
 

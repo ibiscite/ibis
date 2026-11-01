@@ -45,7 +45,7 @@ export const SETTINGS_IDS = [
   "citations-key-formats", "citations-style-formats", "citations-filter-formats",
   "look-sample-title-2", "look-sample-title-3",
   "settings-read-only",
-  "settings-undo", "settings-shortcut-restored",
+  "settings-shortcut-restored",
   "citations-default-description",
   "citations-forget", "citations-forget-description", "citations-forget-button",
   "citations-forget-failed", "citations-forget-done",

@@ -8,6 +8,8 @@ import { SETTINGS_IDS } from "./settings";
 export const INTERFACE_LOCALE = "en-US";
 const IDS = [
   ...SETTINGS_IDS,
+  "general-small-surprises-label", "general-small-surprises-description", "delight-name", "delight-fact-touch", "delight-fact-scarlet", "delight-fact-mummies", "delight-fact-national", "delight-fact-flight", "delight-birthday", "undo-action", "undo-remove", "undo-removed", "undo-reset-window", "undo-shortcut",
+  "delight-ibis", "delight-thoth", "delight-tip", "delight-library100", "delight-library1000", "delight-library10000", "delight-empty", "delight-loading", "delight-no-library", "delight-zoom", "delight-citation", "delight-anniversary", "delight-about-words", "canvas-hovered", "canvas-pressed", "canvas-focused",
   "settings-pages", "settings-general", "settings-shortcuts", "settings-about",
   "general-login-label", "general-login-description", "general-login-place", "general-login-when",
   "general-login-unsupported", "general-login-needs-approval", "general-login-refused", "general-login-unreadable",
@@ -76,7 +78,7 @@ export function createInterfaceMessages(source: string, pseudo = false): Interfa
   // Errors remain fixed text and cannot disclose variables or source content.
   try {
     for (const platform of ["macos", "windows", "linux"]) {
-      for (const id of IDS) text(id, { platform, name: "Ibis", list: "Synthetic List", version: "0.0.0", command: "Synthetic Command" });
+      for (const id of IDS) text(id, { platform, name: "Ibis", list: "Synthetic List", version: "0.0.0", percent: 100, count: 1, library: "Invented Library", action: "Synthetic Action", reference: "Synthetic Reference", command: "Synthetic Command" });
     }
   } catch { throw invalid(); }
   return Object.freeze({ locale: INTERFACE_LOCALE, text });

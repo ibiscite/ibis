@@ -10,7 +10,7 @@ export function ShortcutRecorder({ shortcut, label, prompt, isDisabled, onRecord
 }) {
   const [recording, setRecording] = useState(false);
   return (
-    <span onKeyDownCapture={(event) => {
+    <span data-recording={recording || undefined} onKeyDownCapture={(event) => {
       if (!recording || isDisabled) return;
       if (event.key === "Tab" && !event.ctrlKey && !event.altKey && !event.metaKey) {
         setRecording(false);

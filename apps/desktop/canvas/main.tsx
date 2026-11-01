@@ -1,6 +1,12 @@
 import { useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { App, type PickerApi } from "../src/App";
+import { Button } from "../src/ui/Button";
+import { Switch } from "../src/ui/Switch";
+import { KeyCaps } from "../src/ui/KeyCaps";
+import { SettingsGroup, SettingsRow } from "../src/ui/SettingsGroup";
+import { useAppearance } from "../src/ui/appearance";
+import { englishMessages } from "../src/i18n";
 import type { LibraryStatus, SearchResult } from "../src/bindings";
 import { setPlatform } from "../src/nativeAppearance";
 import { SettingsApp } from "../src/settings/SettingsApp";
@@ -11,7 +17,7 @@ import "../src/ui/Foundation.css";
 // Picker root rules must not leak into the separate Settings window.
 import pickerStyles from "../src/styles.css?inline";
 
-export const scenarios = ["results", "first-run", "more", "format-menu", "settings-general", "settings-look", "settings-citations", "settings-shortcuts", "settings-about"] as const;
+export const scenarios = ["results", "first-run", "more", "format-menu", "states", "empty", "error", "loading", "settings-general", "settings-look", "settings-citations", "settings-shortcuts", "settings-about"] as const;
 type Scenario = typeof scenarios[number];
 type Theme = "light" | "dark";
 
@@ -24,13 +30,15 @@ const rows: SearchResult[] = Array.from({ length: 14 }, (_, i) => ({
   item_type: "article-journal", partial: false, matched: ["title"],
 }));
 
-function pickerApi(firstRun: boolean, settings: SettingsApi, openSettings: (page: string | null) => Promise<void>): PickerApi {
+function pickerApi(scenario: Scenario, settings: SettingsApi, openSettings: (page: string | null) => Promise<void>): PickerApi {
+  const firstRun = scenario === "first-run";
+  const fixture = ["empty", "error", "loading"].includes(scenario);
   const library: LibraryStatus = {
-    state: firstRun ? "none" : "loaded", revision: "1", has_snapshot: !firstRun,
+    state: firstRun ? "none" : scenario === "loading" ? "loading" : scenario === "error" ? "error" : "loaded", revision: "1", has_snapshot: !firstRun && !["loading", "error"].includes(scenario),
     zotero: false, snapshot_zotero: false, zotero_libraries: [],
     name: firstRun ? null : "invented.bib", snapshot_name: firstRun ? null : "invented.bib",
-    references: firstRun ? 0 : rows.length, source_counts: firstRun ? {} : { "invented.bib": rows.length },
-    warnings: 0, error: null, problem: null, note: null, settings_notice: null,
+    references: firstRun || fixture ? 0 : rows.length, source_counts: firstRun ? {} : { "invented.bib": rows.length },
+    warnings: 0, error: scenario === "error" ? "The invented library could not be opened." : null, problem: scenario === "error" ? "other" : null, note: null, settings_notice: null,
     stale: false, updated_at: null, checked_at: null,
   };
   const noop = async () => {};
@@ -39,7 +47,7 @@ function pickerApi(firstRun: boolean, settings: SettingsApi, openSettings: (page
   const receipts = new Map<string, string>();
   return {
     libraryStatus: async () => library,
-    search: async (query) => ({ revision: "1", results: query ? rows : [] }),
+    search: async (query) => ({ revision: "1", results: query && !fixture ? rows : [] }),
     previewFileCitation: async (items, _format, style) => {
       const ticket = `synthetic-ticket-${++sequence}`;
       const spans = items.flatMap((item, index) => [
@@ -73,7 +81,12 @@ function pickerApi(firstRun: boolean, settings: SettingsApi, openSettings: (page
   };
 }
 
-function Canvas({ host, scenario, settings, picker }: { host: HTMLElement; scenario: Scenario; settings: SettingsApi; picker: PickerApi }) {
+function States({ theme }: { theme: Theme }) {
+  useAppearance({ appearance: theme });
+  return <SettingsGroup id="canvas-states">{(["hovered", "pressed", "focus-visible"] as const).map((state, index) => <SettingsRow key={state} id={`canvas-${state}`} label={englishMessages.text((["canvas-hovered", "canvas-pressed", "canvas-focused"] as const)[index]!)}><Switch aria-label={englishMessages.text((["canvas-hovered", "canvas-pressed", "canvas-focused"] as const)[index]!)} isSelected={index === 1} onChange={() => {}} {...{ [`data-${state}`]: true }} /><Button variant={index === 1 ? "primary" : index === 2 ? "quiet" : "secondary"} render={(native) => <button {...native} {...{ [`data-${state}`]: true }} />}><KeyCaps accelerator="CmdOrCtrl+K" /></Button></SettingsRow>)}</SettingsGroup>;
+}
+
+function Canvas({ host, scenario, settings, picker, theme }: { host: HTMLElement; scenario: Scenario; settings: SettingsApi; picker: PickerApi; theme: Theme }) {
   useEffect(() => {
     if (scenario !== "more" && scenario !== "format-menu") return;
     // Open the real control once it is enabled; no polling or stale completion.
@@ -89,9 +102,10 @@ function Canvas({ host, scenario, settings, picker }: { host: HTMLElement; scena
     open();
     return () => observer.disconnect();
   }, [host, scenario]);
+  if (scenario === "states") return <States theme={theme} />;
   return scenario.startsWith("settings-")
     ? <SettingsApp api={settings} initialPage={scenario.slice(9)} />
-    : <><style>{pickerStyles}</style><App api={picker} preview={{ query: scenario === "first-run" ? "" : "invented" }} /></>;
+    : <><style>{pickerStyles}</style><App api={picker} preview={{ query: ["first-run", "empty", "error", "loading"].includes(scenario) ? "" : "invented" }} /></>;
 }
 
 const mounts = new WeakMap<HTMLElement, () => void>();
@@ -114,10 +128,10 @@ export function mount(host: HTMLElement, options: { scenario?: string; theme?: s
   document.documentElement.dataset.nativeAppearance = "opaque";
   host.id = settingsWindow ? "settings" : "root";
   const root = createRoot(host);
-  const picker = pickerApi(scenario === "first-run", settings, async (page) => {
+  const picker = pickerApi(scenario as Scenario, settings, async (page) => {
     mount(host, { scenario: `settings-${page ?? "general"}`, theme });
   });
-  root.render(<Canvas host={host} scenario={scenario as Scenario} settings={settings} picker={picker} />);
+  root.render(<Canvas host={host} scenario={scenario as Scenario} settings={settings} picker={picker} theme={theme as Theme} />);
   const unmount = () => {
     if (mounts.get(host) !== unmount) return;
     mounts.delete(host);

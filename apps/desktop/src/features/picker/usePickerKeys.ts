@@ -15,7 +15,7 @@ import type { useOperations } from "./useOperations";
 
 export function usePickerKeys({
   api, pickerSession, menus, source, results, showCitations, copyChosen, actions, pointer, followKeyboard,
-  togglePastePreview, quitAfterSaving, perform,
+  togglePastePreview, quitAfterSaving, perform, onEmptyEnter,
 }: {
   api: PickerApi;
   pickerSession: Pick<ReturnType<typeof usePickerSession>, "session" | "cancelCopy" | "setActive">;
@@ -30,6 +30,7 @@ export function usePickerKeys({
   togglePastePreview: () => void;
   quitAfterSaving: () => Promise<void>;
   perform: ReturnType<typeof useOperations>["perform"];
+  onEmptyEnter?: () => void;
 }) {
   const { session, cancelCopy, setActive } = pickerSession;
   const { formatButtonRef, menuOpen, keysOpen, togglePin, openKeys, closeMenu, openMore, runFromMenu } = menus;
@@ -88,6 +89,7 @@ export function usePickerKeys({
       e.preventDefault();
       return;
     }
+    if (e.key === "Enter" && !e.shiftKey) onEmptyEnter?.();
     if (e.key === "ArrowDown" && (results.length === 0 || !showCitations) && focusChoices()) {
       e.preventDefault();
     } else if (!showCitations && e.key === "Enter") {

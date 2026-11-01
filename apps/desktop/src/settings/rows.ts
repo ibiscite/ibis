@@ -4,6 +4,7 @@ export const PAGES = ["general", "look", "citations", "shortcuts", "about"] as c
 export type Page = typeof PAGES[number];
 export const ROWS: readonly { id: string; page: Page; label: MessageId; description?: MessageId; keywords?: MessageId }[] = [
   { id: "open-shortcut", page: "general", label: "shortcuts-open", description: "shortcuts-description" },
+  { id: "small-surprises", page: "general", label: "general-small-surprises-label", description: "general-small-surprises-description" },
   { id: "login", page: "general", label: "general-login-label", description: "general-login-description", keywords: "settings-startup-words" },
   { id: "menu-bar", page: "general", label: "general-menu-bar-label", description: "general-menu-bar-description" },
   { id: "paste-label", page: "general", label: "general-paste-label", description: "general-paste-description", keywords: "settings-paste-words" },
@@ -16,6 +17,7 @@ export const ROWS: readonly { id: string; page: Page; label: MessageId; descript
   { id: "preview", page: "look", label: "general-preview", description: "general-preview-description" },
   { id: "default-format", page: "citations", label: "citations-default", description: "citations-default-description" },
   { id: "forget-formats", page: "citations", label: "citations-forget", description: "citations-forget-description" },
+  { id: "about-ibis", page: "about", label: "settings-about", keywords: "delight-about-words" },
   { id: "version-label", page: "about", label: "about-check" },
   { id: "automatic", page: "about", label: "about-automatic", description: "about-automatic-description" },
 ];

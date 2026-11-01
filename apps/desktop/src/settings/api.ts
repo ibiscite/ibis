@@ -7,6 +7,7 @@ import { commands, type KeyFormat, type PastePermission, type PickerPreferences,
 export type { PastePermission } from "../bindings";
 
 export const settingsApi = {
+  delightView: commands.delightView,
   pickerPreferences: commands.pickerPreferences,
   preferenceRevision: commands.preferenceRevision,
   setPickerPreferences: (preferences: Partial<PickerPreferences>, copyFormat: KeyFormat | null, revision: number) => commands.setPickerPreferences(preferences, copyFormat, revision),
@@ -37,4 +38,4 @@ export const settingsApi = {
   onCloseRequested: (handler: () => Promise<void>): Promise<UnlistenFn> => getCurrentWindow().onCloseRequested(handler),
 };
 
-export type SettingsApi = typeof settingsApi;
+export type SettingsApi = Omit<typeof settingsApi, "delightView"> & Partial<Pick<typeof settingsApi, "delightView">>;

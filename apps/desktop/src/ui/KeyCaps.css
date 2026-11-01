@@ -18,3 +18,4 @@ kbd { font: inherit; font-size: var(--type-label-size); font-weight: 500; displa
 .ui-button[data-hovered] kbd { background: var(--key-fill-hover); }
 .ui-button:is([data-pressed], [aria-expanded="true"]) kbd { background: var(--key-fill-pressed); }
 .ui-button[data-variant="primary"] kbd { background: var(--on-selected-fill); }
+.key-caps[data-echo] kbd { background: var(--key-fill-pressed); }
