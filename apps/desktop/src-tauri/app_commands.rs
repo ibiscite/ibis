@@ -19,6 +19,8 @@ pub const APP_COMMANDS: &[&str] = &[
     "copy_format",
     "picker_preferences",
     "preference_revision",
+    "delight_view",
+    "set_edit_undo",
     "set_picker_preferences",
     "picker_destination",
     "remember_app_output",

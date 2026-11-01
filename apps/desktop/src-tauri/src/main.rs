@@ -8,8 +8,10 @@
 
 mod bindings;
 mod copy;
+mod delights;
 mod destination;
 mod diagnostics;
+mod edit_undo;
 mod feedback;
 mod library;
 mod login_item;
@@ -154,6 +156,9 @@ fn main() {
         .manage(ChooserOpen::default())
         .manage(row_context::RowContext::default())
         .on_menu_event(row_context::selected)
+        .on_menu_event(edit_undo::selected)
+        .on_window_event(edit_undo::window_event)
+        .manage(edit_undo::EditUndo::<tauri::Wry>::default())
         .manage(Pinned::default())
         .manage(sizing::Sizing::default())
         .manage(picker_generation)

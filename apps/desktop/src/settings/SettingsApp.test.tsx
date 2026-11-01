@@ -1422,11 +1422,11 @@ test.each(["general", "shortcuts"])("%s default shortcut offers Undo that restor
   state.shortcut = { shortcut: "Alt+K", registered: true, error: null };
   render(<SettingsApp api={api} initialPage={page} />);
   fireEvent.click(await screen.findByRole("button", { name: "Use Default" }));
-  fireEvent.click(await screen.findByRole("button", { name: "Undo" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Undo Restore Default Shortcut" }));
   await act(async () => state.closes[0]!());
   expect(state.shortcut.shortcut).toBe("Alt+K");
   expect(state.shortcutChoices).toEqual([null, "Alt+K"]);
-  expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Undo Restore Default Shortcut" })).toBeNull();
 });
 
 

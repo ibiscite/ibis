@@ -145,10 +145,28 @@ pub struct PickerWindow {
     pub y: i32,
 }
 
+/// Quiet, device-local feedback. No reference text or library paths are stored.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Delights {
+    pub first_run: [i32; 3],
+    pub paste_count: u32,
+    pub paste_tip: bool,
+    pub welcome: bool,
+    pub libraries: BTreeMap<String, u8>,
+    pub about_clicks: u8,
+    pub fact_index: Option<u8>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
     pub schema_version: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delights: Option<Delights>,
+    /// Quiet bird facts and milestones; absent means enabled.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub small_surprises: Option<bool>,
     /// Explicit global shortcut, e.g. `"CommandOrControl+Shift+Y"`; `None` stays unwritten.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub shortcut: Option<String>,
@@ -197,6 +215,8 @@ impl Default for Settings {
     fn default() -> Self {
         Settings {
             schema_version: SCHEMA_VERSION,
+            delights: None,
+            small_surprises: None,
             shortcut: None,
             library: None,
             copy_format: None,

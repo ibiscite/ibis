@@ -20,6 +20,7 @@ export function usePickerPreferences(
     perform: (operation: Operation, action: () => Promise<unknown>) => Promise<void>;
   },
 ) {
+  const [smallSurprises, setSmallSurprises] = useState<boolean | null>(null);
   const [ready, setReady] = useState(false);
   const [available, setAvailable] = useState(false);
   const [format, setFormat] = useState<Choice>("pandoc");
@@ -41,6 +42,7 @@ export function usePickerPreferences(
     write: setPickerPreferences,
   }, { readAfterWrites: true }));
   const applyView = useCallback((value: PickerPreferences) => {
+    setSmallSurprises(value.small_surprises ?? true);
     setDensity(value.density);
     // A silent external view change retires its label so the next user choice can repeat it.
     setDensityFeedback((current) => current?.density === value.density ? current : null);
@@ -106,5 +108,5 @@ export function usePickerPreferences(
    * mount effect, after the library status, so the calls keep their order. */
   const loadPreferences = (mounted: () => boolean) => { void queue.load(mounted); };
 
-  return { ready, available, format, density, densityAnnouncement: densityFeedback?.presentation === presentation ? densityFeedback.density : undefined, largerText, searchIcon, showPastePreview, chooseFormat, changeDensity, toggleLargerText, togglePastePreview, quitAfterSaving, loadPreferences };
+  return { ready, available, smallSurprises, format, density, densityAnnouncement: densityFeedback?.presentation === presentation ? densityFeedback.density : undefined, largerText, searchIcon, showPastePreview, chooseFormat, changeDensity, toggleLargerText, togglePastePreview, quitAfterSaving, loadPreferences };
 }

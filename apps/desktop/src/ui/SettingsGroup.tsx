@@ -12,7 +12,7 @@ export function SettingsGroup({ id, title, children }: { id: string; title?: str
 }
 
 /** An inset label and description, with a trailing control that can wrap below. */
-export function SettingsRow({ id, label, description, children, problem, highlighted, bare = false }: { id: string; label: string; description?: string; children?: ReactNode; problem?: string; bare?: boolean; highlighted?: boolean }) {
+export function SettingsRow({ id, label, description, children, problem, highlighted, bare = false }: { id: string; label: ReactNode; description?: string; children?: ReactNode; problem?: string; bare?: boolean; highlighted?: boolean }) {
   return (
     <div className="ui-settings-row" data-bare={bare || undefined} data-described={description ? true : undefined} data-highlighted={highlighted || undefined}>
       <div className={bare ? "ui-visually-hidden" : "ui-settings-row-text"}>

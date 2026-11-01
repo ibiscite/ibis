@@ -54,6 +54,11 @@ test("the built scenario list renders, switches and reopens without Tauri or net
         expect(host.querySelector('[aria-current="page"]')?.textContent?.toLowerCase()).toContain(scenario.slice(9));
         expect(host.querySelector(".ui-settings-row")).not.toBeNull();
       } else if (scenario === "first-run") expect(host.textContent).toContain("Where do your references live?");
+      else if (scenario === "states") {
+        for (const state of ["hovered", "pressed", "focus-visible"]) expect(host.querySelector(`[data-${state}]`)).not.toBeNull();
+      } else if (scenario === "empty") expect(host.textContent).toContain("No references in invented.bib");
+      else if (scenario === "error") expect(host.textContent).toContain("Can't open invented.bib");
+      else if (scenario === "loading") expect(host.textContent).toContain("Opening invented.bib");
       else {
         expect(host.textContent).toContain("Invented reference 0");
         if (scenario === "more") expect(window.document.querySelector('[role="menu"][aria-label="More"]')).not.toBeNull();
@@ -66,7 +71,7 @@ test("the built scenario list renders, switches and reopens without Tauri or net
     expect(host.querySelectorAll('[role="option"]')).toHaveLength(4);
     host.querySelector('[role="option"][data-key="file"]')?.click();
     await vi.waitFor(() => expect(host.textContent).toContain("The file chooser did not open. Try again."));
-    expect(canvas.scenarios).toEqual(["results", "first-run", "more", "format-menu", "settings-general", "settings-look", "settings-citations", "settings-shortcuts", "settings-about"]);
+    expect(canvas.scenarios).toEqual(["results", "first-run", "more", "format-menu", "states", "empty", "error", "loading", "settings-general", "settings-look", "settings-citations", "settings-shortcuts", "settings-about"]);
     for (const theme of ["light", "dark"]) for (const scenario of canvas.scenarios) {
       const unmount = canvas.mount(host, { scenario, theme });
       await shown(scenario, theme);

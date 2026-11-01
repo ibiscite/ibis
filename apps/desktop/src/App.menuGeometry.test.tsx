@@ -35,7 +35,7 @@ test.each(["error", "refusal"])("a window reset offers Undo without taking focus
   expect(screen.getByText("Window position reset.").getAttribute("role")).toBe("status");
   expect(document.activeElement).toBe(search);
   const pressUndo = async () => {
-    const undo = screen.getByRole<HTMLButtonElement>("button", { name: "Undo" });
+    const undo = screen.getByRole<HTMLButtonElement>("button", { name: "Undo Reset Window Position" });
     act(() => undo.focus());
     fireEvent.click(undo);
     await waitFor(() => expect(undo.disabled || undo.getAttribute("aria-disabled") === "true").toBe(true));
@@ -50,11 +50,11 @@ test.each(["error", "refusal"])("a window reset offers Undo without taking focus
   await pressUndo();
   await act(async () => { replies[0]!(); });
   expect((await screen.findByRole("alert")).textContent).toBe("Could not undo. Try again.");
-  expect(screen.getByRole("button", { name: "Undo" }).getAttribute("aria-disabled")).not.toBe("true");
+  expect(screen.getByRole("button", { name: "Undo Reset Window Position" }).getAttribute("aria-disabled")).not.toBe("true");
   fail = false;
   await pressUndo();
   await act(async () => { replies[1]!(); });
-  await waitFor(() => expect(screen.queryByRole("button", { name: "Undo" })).toBeNull());
+  await waitFor(() => expect(screen.queryByRole("button", { name: "Undo Reset Window Position" })).toBeNull());
   expect(document.activeElement === search).toBe(true);
   expect(restored).toEqual([7, 7]);
   expect(calls).not.toContain("fit_picker");

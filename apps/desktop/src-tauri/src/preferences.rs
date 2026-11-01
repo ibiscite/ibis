@@ -84,14 +84,22 @@ pub(crate) struct SettingsFile {
     /// Held for each whole read, change and save, so two saves never interleave.
     writing: Arc<Mutex<()>>,
     preference_intents: Arc<Mutex<PreferenceIntents>>,
+    pub(crate) delights: Arc<Mutex<crate::delights::DelightOwner>>,
 }
 
 impl SettingsFile {
     pub(crate) fn new(path: PathBuf) -> Self {
+        let loaded = settings::load(&path).settings;
+        let surprises = loaded.small_surprises.unwrap_or(true);
+        let delights = crate::delights::DelightOwner::new(loaded.delights);
         SettingsFile {
             path,
             writing: Arc::new(Mutex::new(())),
-            preference_intents: Arc::new(Mutex::new(PreferenceIntents::default())),
+            preference_intents: Arc::new(Mutex::new(PreferenceIntents {
+                surprises,
+                ..PreferenceIntents::default()
+            })),
+            delights: Arc::new(Mutex::new(delights)),
         }
     }
 
@@ -194,6 +202,8 @@ pub(crate) struct PickerPreferences {
     pub(crate) paste: bool,
     /// The menu bar item; on by default.
     pub(crate) menu_bar: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) small_surprises: Option<bool>,
 }
 
 impl PickerPreferences {
@@ -210,6 +220,7 @@ impl PickerPreferences {
             search_icon: settings.search_icon.unwrap_or(SearchIcon::Ibis),
             paste: settings.paste.unwrap_or(true),
             menu_bar: settings.menu_bar.unwrap_or(true),
+            small_surprises: Some(settings.small_surprises.unwrap_or(true)),
         }
     }
 }
@@ -252,6 +263,8 @@ pub(crate) struct PickerPreferencesPatch {
     pub(crate) paste: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) menu_bar: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) small_surprises: Option<bool>,
 }
 
 impl PickerPreferencesPatch {
@@ -281,6 +294,9 @@ impl PickerPreferencesPatch {
         if self.paste.is_some() && !keep("paste") {
             self.paste = None;
         }
+        if self.small_surprises.is_some() && !keep("small_surprises") {
+            self.small_surprises = None;
+        }
         if self.menu_bar.is_some() && !keep("menu_bar") {
             self.menu_bar = None;
         }
@@ -305,6 +321,7 @@ impl From<PickerPreferences> for PickerPreferencesPatch {
             search_icon: Some(value.search_icon),
             paste: Some(value.paste),
             menu_bar: Some(value.menu_bar),
+            small_surprises: value.small_surprises,
         }
     }
 }
@@ -313,7 +330,15 @@ impl From<PickerPreferences> for PickerPreferencesPatch {
 #[tauri::command]
 #[specta::specta]
 pub(crate) fn picker_preferences(settings_file: State<'_, SettingsFile>) -> Result<PickerPreferences, String> {
-    read_preferences(&settings_file.path)
+    let _writing = settings_file
+        .writing
+        .lock()
+        .map_err(|_| "settings are unavailable".to_string())?;
+    let preferences = read_preferences(&settings_file.path)?;
+    if let Ok(mut owner) = settings_file.preference_intents.lock() {
+        owner.surprises = preferences.small_surprises.unwrap_or(true);
+    }
+    Ok(preferences)
 }
 
 fn read_preferences(path: &Path) -> Result<PickerPreferences, String> {
@@ -422,6 +447,7 @@ struct PreferenceIntents {
     /// Geometry keeps accepted text size until quit, including failed flushes.
     /// This must not advance the durable field's successfully flushed ticket.
     accepted_larger_text: u64,
+    surprises: bool,
 }
 
 struct PreferenceIntent {
@@ -431,7 +457,11 @@ struct PreferenceIntent {
 }
 
 impl SettingsFile {
-    fn issue_preference_revision(&self) -> Result<u64, String> {
+    pub(crate) fn surprises_enabled(&self) -> bool {
+        self.preference_intents.lock().is_ok_and(|owner| owner.surprises)
+    }
+
+    pub(crate) fn issue_preference_revision(&self) -> Result<u64, String> {
         let mut intents = self
             .preference_intents
             .lock()
@@ -509,6 +539,9 @@ impl SettingsFile {
         let copy_format = intent.copy_format;
         let current_settings = read_preference_settings(&self.path)?;
         if written_fields.is_empty() {
+            if let Ok(mut owner) = self.preference_intents.lock() {
+                owner.surprises = current_settings.small_surprises.unwrap_or(true);
+            }
             return Ok(current_settings);
         }
         if std::fs::metadata(&self.path).is_ok_and(|metadata| metadata.permissions().readonly()) {
@@ -551,6 +584,9 @@ impl SettingsFile {
             if let Some(paste) = preferences.paste {
                 s.paste = Some(paste).filter(|paste| !paste);
             }
+            if let Some(enabled) = preferences.small_surprises {
+                s.small_surprises = Some(enabled).filter(|on| !on);
+            }
             if let Some(shown) = preferences.menu_bar {
                 s.menu_bar = Some(shown).filter(|shown| !shown);
             }
@@ -562,6 +598,7 @@ impl SettingsFile {
             .preference_intents
             .lock()
             .map_err(|_| "settings are unavailable".to_string())?;
+        current.surprises = saved.small_surprises.unwrap_or(true);
         for field in written_fields {
             current.fields.insert(field, intent.revision);
         }
@@ -840,6 +877,7 @@ mod tests {
             ("search_icon", serde_json::json!("ibis")),
             ("paste", serde_json::json!(true)),
             ("menu_bar", serde_json::json!(true)),
+            ("small_surprises", serde_json::json!(false)),
             ("copy_format", serde_json::json!("cite")),
         ] {
             let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
@@ -847,7 +885,7 @@ mod tests {
             let mut expected = serde_json::json!({
                 "appearance": "dark", "accent": "purple", "citation_style": "apa",
                 "density": "compact", "larger_text": true, "show_paste_preview": false,
-                "search_icon": "magnifier", "paste": false, "menu_bar": false,
+                "search_icon": "magnifier", "paste": false, "menu_bar": false, "small_surprises": true,
             });
             let older = file
                 .reserve_preferences(
@@ -1067,6 +1105,7 @@ mod tests {
             search_icon: SearchIcon::Magnifier,
             paste: true,
             menu_bar: true,
+            small_surprises: Some(true),
         };
         let (dispatched, dispatch) = mpsc::channel();
         let (responded, response) = mpsc::channel();
@@ -1498,6 +1537,7 @@ mod tests {
             search_icon: SearchIcon::Magnifier,
             paste: false,
             menu_bar: true,
+            small_surprises: Some(true),
         };
         let saved = file.save_preferences(chosen, None).unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(saved.paste, Some(false));
@@ -1520,6 +1560,7 @@ mod tests {
             search_icon: SearchIcon::Magnifier,
             paste: true,
             menu_bar: true,
+            small_surprises: Some(true),
         };
         let saved = file.save_preferences(defaults, None).unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(
@@ -1602,6 +1643,7 @@ mod tests {
             search_icon: SearchIcon::Magnifier,
             paste: true,
             menu_bar: true,
+            small_surprises: Some(true),
         };
         for format in [
             KeyFormat::Pandoc,
@@ -1652,6 +1694,7 @@ mod tests {
             search_icon: SearchIcon::Magnifier,
             paste: true,
             menu_bar: true,
+            small_surprises: Some(true),
         };
         for text in [
             r#"{"copy_format":"synthetic-private-value"}"#,

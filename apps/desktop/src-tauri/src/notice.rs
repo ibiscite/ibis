@@ -145,6 +145,9 @@ pub(crate) struct NoticeMessage {
     text: String,
     #[specta(optional)]
     more: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[specta(optional)]
+    milestone: Option<u32>,
 }
 
 /// The notice being shown, for a notice page that has just loaded and missed
@@ -196,6 +199,14 @@ pub(crate) async fn show_copied_notice(
     .unwrap_or(Delivered::Copied { reason: None });
     #[cfg(target_os = "macos")]
     crate::menu_bar::dip(&app);
+    let milestone = if receipt.is_some() && matches!(delivered, Delivered::Pasted { .. }) {
+        let file = app.state::<crate::preferences::SettingsFile>();
+        let milestone = delivery.and_then(|token| file.record_delight_paste(token));
+        crate::delights::flush_later(file.inner().clone());
+        milestone
+    } else {
+        None
+    };
     show(
         &app,
         NoticeMessage {
@@ -204,6 +215,7 @@ pub(crate) async fn show_copied_notice(
                 .as_ref()
                 .map_or_else(|| self::summary(&text), |receipt| self::summary(&receipt.text)),
             more: summary.map(|receipt| receipt.more),
+            milestone,
         },
         receipt,
     );
