@@ -1,7 +1,7 @@
 import { StatusMark } from "../ui/StatusMark";
 import { type ReactNode, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { PageIcon } from "../icons";
-import type { KeyFormat, LoginItem, LoginItemProblem, PickerPreferences, ShortcutStatus, WindowSize } from "../bindings";
+import type { CheckResult, KeyFormat, LoginItem, LoginItemProblem, PickerPreferences, ShortcutStatus, WindowSize } from "../bindings";
 import { type MessageId, useInterfaceMessages } from "../i18n";
 import { type ShortcutProblem, shortcutRefusalMessage } from "../i18n/settings";
 import { PreferencePatchQueue } from "../preferencePatchQueue";
@@ -89,7 +89,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   const [updatesSaving, setUpdatesSaving] = useState(false);
   const [versionCopied, setVersionCopied] = useState(false);
   const [versionCopyFailed, setVersionCopyFailed] = useState(false);
-  const [manualCheckFailed, setManualCheckFailed] = useState(false);
+  const [checkResult, setCheckResult] = useState<CheckResult | null>(null);
   const [checking, setChecking] = useState(false);
   const manualCheck = useRef(0);
   const versionCopy = useRef(0);
@@ -97,7 +97,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   // biome-ignore lint/correctness/useExhaustiveDependencies: changing pages retires feedback and pending operations.
   useEffect(() => {
     setVersionCopied(false); setVersionCopyFailed(false); versionCopy.current += 1;
-    setManualCheckFailed(false); manualCheck.current += 1;
+    setCheckResult(null); manualCheck.current += 1;
     return () => { versionCopy.current += 1; manualCheck.current += 1; };
   }, [page]);
   const { altHeld } = useAltHeld();
@@ -331,6 +331,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   const feedback = (id: string) => ({ highlighted: highlighted === id, problem: readProblems.has(id) ? text("settings-read-failed")
     : preference.status === "refused" && preference.problem.row === id ? text(preference.problem.message)
     : problemRow?.id === id ? text(problemRow.message) : undefined });
+  const checkSaid = checkResult === "newest" ? "about-check-newest" : checkResult === "not_run" ? "about-check-busy" : null;
   const selectPage = (next: Page) => { highlightOperation.current += 1; setHighlighted(null); setDetour(false); setPage(next); setFocus("top"); setBlink(0); };
   const reveal = (row: typeof ROWS[number]) => {
     selectPage(row.page); setQuery(""); setHighlighted(row.id === "about-ibis" && query.trim().toLowerCase() === "thoth" ? "about-name" : row.id);
@@ -483,17 +484,18 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
               </Row>
             </Group>
             <Group id="about-updates" title={text("about-updates")}>
-              <Row id="automatic" label={text("about-automatic")} description={updates === null && !readProblems.has("automatic") ? text("about-unavailable") : text("about-automatic-description")} {...feedback("automatic")}>
+              <Row id="automatic" label={text("about-automatic")} description={updates === null && !readProblems.has("automatic") ? text("about-unavailable") : text(checkSaid ?? "about-automatic-description")} {...feedback("automatic")}>
                 {(updates !== null || readProblems.has("automatic")) && <>
                   <Button aria-disabled={checking || undefined} onPress={() => {
                     if (checking) return;
                     const operation = ++manualCheck.current;
-                    setManualCheckFailed(false);
+                    setCheckResult(null);
                     setChecking(true);
-                    void api.checkForUpdates().catch(() => { if (live.current && operation === manualCheck.current) setManualCheckFailed(true); })
+                    const finished = (result: CheckResult) => { if (live.current && operation === manualCheck.current) setCheckResult(result); };
+                    void api.checkForUpdates().then(finished, () => finished("failed"))
                       .finally(() => { if (live.current) setChecking(false); });
                   }}>{text(checking ? "about-checking" : "about-check")}</Button>
-                  <span className="visually-hidden" role="status">{checking ? text("about-checking") : ""}</span>
+                  <span className="visually-hidden" role="status">{checking ? text("about-checking") : checkSaid && text(checkSaid)}</span>
                   <Switch aria-labelledby="automatic" aria-describedby="automatic-description" isSelected={updates ?? false}
                     isDisabled={updatesSaving || updates === null} onChange={(on) => {
                       setProblemRow(null); updateIntent.current = on; setUpdatesSaving(true); const operation = ++updateReads.current;
@@ -503,7 +505,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
                       }).finally(() => { if (live.current) setUpdatesSaving(false); });
                     }} />
                 </>}
-                {manualCheckFailed && <p className="ui-settings-row-problem" role="alert">{text("about-check-failed")}</p>}
+                {checkResult === "failed" && <p className="ui-settings-row-problem" role="alert">{text("about-check-failed")}</p>}
               </Row>
             </Group>
             <div className="ui-about-links" role="group" aria-label={text("about-links")}>

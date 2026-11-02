@@ -153,10 +153,10 @@ export const commands = {
 	 */
 	setUpdateChecks: (enabled: boolean) => __TAURI_INVOKE<void>("set_update_checks", { enabled }),
 	/**
-	 *  "Check for Updates…": the same check the tray starts. It returns when the
-	 *  check has ended, so Settings can say it is checking until then.
+	 *  Settings' "Check now": the tray's check, ending with its result, which
+	 *  Settings shows in place. An update found still opens the offer.
 	 */
-	checkForUpdates: () => __TAURI_INVOKE<void>("check_for_updates"),
+	checkForUpdates: () => __TAURI_INVOKE<CheckResult>("check_for_updates"),
 	openAboutLink: (link: AboutLink) => __TAURI_INVOKE<void>("open_about_link", { link }),
 	/**  Whether an automatic check found an update that has not been presented. */
 	updateAvailable: () => __TAURI_INVOKE<boolean>("update_available"),
@@ -216,6 +216,15 @@ export type AppPaste = "paste" | "copy-only";
 
 /**  Settings owns these choices until the picker consumes the same event fields. */
 export type Appearance = "system" | "light" | "dark";
+
+/**  How a check ended. Whoever asked says so in its own place. */
+export type CheckResult =
+/**  Nothing newer exists. */
+"newest" |
+/**  A newer version is presented, or waits for the picker. */
+"offered" |
+/**  No check ran: automatic checks are off, or one holds the updater. */
+"not_run" | "failed";
 
 export type CitationSpan = CitationSpan_Serialize | CitationSpan_Deserialize;
 

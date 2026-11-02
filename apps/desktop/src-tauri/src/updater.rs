@@ -172,7 +172,19 @@ fn present_question(
 /// "Check for Updates…" in the menu.
 pub(crate) fn check_now(app: &AppHandle) {
     let app = app.clone();
-    tauri::async_runtime::spawn(async move { check(&app, true).await });
+    tauri::async_runtime::spawn(async move {
+        let text = match check(&app, true).await {
+            CheckResult::Offered => return,
+            CheckResult::Newest => format!("You have the newest version, {}.", app.package_info().version),
+            CheckResult::NotRun => {
+                "Ibis is already checking for updates, or an update is waiting for your answer.".to_owned()
+            }
+            CheckResult::Failed => {
+                "Ibis could not check for updates. Check your internet connection and try again later.".to_owned()
+            }
+        };
+        tell(&app, &text);
+    });
 }
 
 /// The request names Ibis and its version, as `PRIVACY.md` says, instead of
@@ -212,7 +224,7 @@ async fn find_update(client: &Updater, download_timeout: Duration) -> tauri_plug
     }))
 }
 
-pub(super) async fn check(app: &AppHandle, asked: bool) {
+pub(super) async fn check(app: &AppHandle, asked: bool) -> CheckResult {
     offer::check(app, asked, async {
         let found = match updater(app, CHECK_TIMEOUT) {
             Ok(updater) => find_update(&updater, DOWNLOAD_TIMEOUT)
@@ -225,11 +237,12 @@ pub(super) async fn check(app: &AppHandle, asked: bool) {
         }
         found.map(|update| update.map(|update| offer::Candidate::new(app, update)))
     })
-    .await;
+    .await
 }
 
 /// The existing tray command changes only its words when an update is pending.
 pub(crate) struct UpdateMenuItem(pub(crate) tauri::menu::MenuItem<tauri::Wry>);
+pub(crate) use offer::CheckResult;
 pub(crate) use offer::menu_label as update_menu_label;
 
 /// Whether an automatic check found an update that has not been presented.

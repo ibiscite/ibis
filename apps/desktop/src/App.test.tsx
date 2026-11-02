@@ -1224,7 +1224,8 @@ test("a reload keeps the previous library searchable without adding an opening s
   await screen.findByText("Kept reference");
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 450)); });
   expect(screen.queryByRole("progressbar")).toBeNull();
-  expect(document.querySelector(".results-heading")).toBeNull();
+  // The heading stays too: rows do not move while the library reloads.
+  expect(document.querySelector(".results-heading")).not.toBeNull();
 });
 
 

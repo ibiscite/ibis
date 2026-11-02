@@ -1636,6 +1636,18 @@ test("Check now says it is checking until the same check ends, across pages", as
   expect(await screen.findByRole("button", { name: "Check now" })).toBeTruthy();
 });
 
+test.each([
+  ["newest", "You have the newest version."],
+  ["not_run", "Ibis is already checking, or an update is waiting for your answer."],
+] as const)("Check now says %s in the Updates row, without a dialog", async (result, said) => {
+  const { api } = fakeApi();
+  vi.spyOn(api, "checkForUpdates").mockResolvedValue(result);
+  render(<SettingsApp api={api} initialPage="about" />);
+  fireEvent.click(await screen.findByRole("button", { name: "Check now" }));
+  await screen.findByRole("button", { name: "Check now" });
+  expect(await screen.findByText(said, { selector: ":not(.visually-hidden)" })).toBeTruthy();
+});
+
 test("Forget formats offers Undo, and Undo restores that same ticket", async () => {
   const { api } = fakeApi({}, { citation_style: "apa" });
   const restore = vi.spyOn(api, "restoreAppOutputs");
