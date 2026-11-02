@@ -66,7 +66,8 @@
           "/usr/share/icons/hicolor/128x128/apps/com.ibiscite.ibis.png": "icons/linux/128x128/com.ibiscite.ibis.png",
           "/usr/share/icons/hicolor/256x256/apps/com.ibiscite.ibis.png": "icons/linux/256x256/com.ibiscite.ibis.png",
           "/usr/share/icons/hicolor/512x512/apps/com.ibiscite.ibis.png": "icons/linux/512x512/com.ibiscite.ibis.png",
-          "/usr/share/icons/hicolor/symbolic/apps/com.ibiscite.ibis-symbolic.svg": "icons/source/com.ibiscite.ibis-symbolic.svg"
+          "/usr/share/icons/hicolor/symbolic/apps/com.ibiscite.ibis-symbolic.svg": "icons/source/com.ibiscite.ibis-symbolic.svg",
+          "/usr/lib/libgpg-error.so.0": "/usr/lib/x86_64-linux-gnu/libgpg-error.so.0"
         }
       }
     }
