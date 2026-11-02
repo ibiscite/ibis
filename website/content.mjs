@@ -16,7 +16,7 @@ export async function content(html) {
   ].map(([name, label]) => {
     const row = rows.find(value => value.startsWith(name));
     const version = row?.match(/\((0\.\d)/)?.[1];
-    if (!row || !version || !roadmap.includes(`**${version} `)) throw Error(`Canonical roadmap item missing: ${name}`);
+    if (!row || !version || !roadmap.includes(`\n### ${version} `)) throw Error(`Canonical roadmap item missing: ${name}`);
     return `<li><strong>${escape(label)}</strong></li>`;
   });
   return html.replaceAll("{{headline}}", escape(headline)).replaceAll("{{version}}", version).replace("{{roadmap}}", `<ul class="roadmap">${plans.join("")}</ul>`);
