@@ -32,7 +32,7 @@ test("a paste, delete or caret move with focus on the page keeps its native effe
   backend();
   render(<App />);
   const search = await screen.findByLabelText("Search references");
-  for (const key of [{ key: "v", ctrlKey: true }, { key: "v", metaKey: true }, { key: "Backspace" }, { key: "Home" }, { key: "ArrowLeft", altKey: true }, { key: "å", altKey: true }]) {
+  for (const key of [{ key: "v", ctrlKey: true }, { key: "v", metaKey: true }, { key: "Backspace" }, { key: "Home" }, { key: "ArrowLeft", altKey: true }, { key: "å", altKey: true }, { key: "Process" }]) {
     act(() => search.blur());
     expect(fireEvent.keyDown(document.body, key)).toBe(true); // not cancelled
     expect(document.activeElement).toBe(search);

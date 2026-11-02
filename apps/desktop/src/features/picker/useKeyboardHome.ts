@@ -13,8 +13,10 @@ export function useKeyboardHome(input: RefObject<HTMLInputElement | null>) {
   useEffect(() => {
     const keyDown = (event: KeyboardEvent) => {
       const search = input.current;
-      if (!lost() || !search || event.defaultPrevented || event.isComposing || event.key === "Process") return;
+      if (!lost() || !search || event.defaultPrevented) return;
       search.focus();
+      // An input method composes into Search by itself.
+      if (event.isComposing || event.key === "Process") return;
       // Search's handlers get the key as if it were pressed there. Its native
       // effect (text, paste, caret movement) then also happens in Search,
       // unless one of them consumes the key.
