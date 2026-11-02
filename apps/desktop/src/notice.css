@@ -1,8 +1,7 @@
 /* The Copied notice (#496): its own window. */
-:root.notice-window {
-  color-scheme: light dark;
-  background: transparent;
-}
+/* A chosen appearance (data-appearance) wins over the system's. */
+:root.notice-window:not([data-appearance]) { color-scheme: light dark; }
+:root.notice-window { background: transparent; }
 :root.notice-window,
 :root.notice-window body,
 :root.notice-window #notice { height: 100%; }
@@ -13,7 +12,7 @@
 }
 
 /* One card, with the same shadow gutter and geometry on every system. */
-.copied-notice { width: max-content; max-width: calc(100% - 2 * var(--space-4)); max-height: calc(100% - 2 * var(--space-4)); margin: var(--space-4) auto; overflow: hidden; opacity: 0; --notice-from: calc(-1 * var(--space-2)); }
+.copied-notice { width: max-content; max-width: min(calc(100% - 2 * var(--space-4)), 32rem); max-height: calc(100% - 2 * var(--space-4)); margin: var(--space-4) auto; overflow: hidden; opacity: 0; --notice-from: calc(-1 * var(--space-2)); }
 .copied-notice:empty { display: none; }
 .copied-notice-source { display: none; }
 

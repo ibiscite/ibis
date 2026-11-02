@@ -1,16 +1,17 @@
-/* The same receipt card in the picker and the pointer-ignoring notice. */
-.copy-receipt { box-sizing: border-box; display: grid; grid-template-columns: calc(2 * var(--space-4) + var(--space-1)) minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); align-items: start; column-gap: var(--space-2); padding: var(--space-2); border: var(--border-width) solid var(--separator); border-radius: var(--r-toast); background: var(--surface); color: var(--text); box-shadow: var(--shadow-toast); font: var(--strong) var(--type-body-size) / var(--type-body-line) var(--font); }
-.copy-receipt > strong { grid-column: 2; min-width: 0; font: inherit; overflow-wrap: anywhere; }
-.copy-receipt > code { grid-column: 2; min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; overflow-wrap: anywhere; white-space: pre-wrap; color: var(--scarlet-text); font: 400 var(--type-label-size) / var(--type-label-line) var(--mono); }
-.copy-receipt-mark { grid-row: 1 / span 2; width: calc(2 * var(--space-4) + var(--space-1)); height: calc(2 * var(--space-4) + var(--space-1)); box-sizing: border-box; padding: var(--space-2); border-radius: var(--r-receipt-mark); background: var(--fill-control); fill: none; stroke: var(--text-secondary); stroke-linecap: round; stroke-linejoin: round; }
+/* The same receipt in the picker and the notice window. One line says what happened, the next shows what was copied: a plain check
+   centred on both lines, the title in strong text and the citation in quiet
+   monospaced text. A long reason wraps, never clipped; the citation stays one
+   line, ending in "…" with its "+N more" in view. */
+.copy-receipt { box-sizing: border-box; display: grid; grid-template-columns: var(--icon-small) minmax(0, 1fr); align-items: center; column-gap: var(--space-2); padding: var(--space-2) var(--space-4) var(--space-2) var(--space-3); border: var(--border-width) solid var(--separator); border-radius: var(--r-toast); background: var(--surface); color: var(--text); box-shadow: var(--shadow-toast); font: var(--strong) var(--type-body-size) / var(--type-body-line) var(--font); }
+.copy-receipt > strong { grid-column: 2; min-width: 0; font: inherit; overflow-wrap: anywhere; text-wrap: balance; }
+.copy-receipt > code { grid-column: 2; min-width: 0; display: flex; gap: var(--space-1); overflow: hidden; white-space: nowrap; color: var(--text-secondary); font: 400 var(--type-label-size) / var(--type-label-line) var(--mono); }
+.copy-receipt-mark { grid-row: 1 / span 2; width: var(--icon-small); height: var(--icon-small); fill: none; stroke: var(--text-secondary); stroke-linecap: round; stroke-linejoin: round; }
 /* Only a real paste earns the green check; copied-only stays neutral. */
-.copy-receipt[data-outcome="pasted"] > .copy-receipt-mark { background: var(--status-ok-fill); stroke: var(--status-ok); }
+.copy-receipt[data-outcome="pasted"] > .copy-receipt-mark { stroke: var(--status-ok); }
 @media (prefers-contrast: more), (forced-colors: active) {
   .copy-receipt { border-color: CanvasText; box-shadow: none; }
-  .copy-receipt-mark { background: Canvas; stroke: CanvasText; border: var(--border-width) solid CanvasText; }
-  .copy-receipt[data-outcome="pasted"] > .copy-receipt-mark { background: CanvasText; stroke: Canvas; }
+  .copy-receipt-mark, .copy-receipt[data-outcome="pasted"] > .copy-receipt-mark { stroke: CanvasText; }
 }
 
-.copy-receipt-excerpt { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
-.copy-receipt-excerpt:has(+ .copy-receipt-more) { -webkit-line-clamp: 1; }
-.copy-receipt-more { color: var(--text-secondary); white-space: nowrap; }
+.copy-receipt-excerpt { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.copy-receipt-more { flex: none; }

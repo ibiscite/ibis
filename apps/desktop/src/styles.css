@@ -120,7 +120,6 @@ main > .search-bar, main > .shelf, main > footer { flex: none; }
 .notices:empty { display: none; }
 .notices { padding: 0 calc(var(--inset) + var(--row-pad)); overflow-wrap: anywhere; }
 .notices p { margin: var(--space-3) 0; }
-.copy-notice code { color: var(--scarlet-text); }
 .copy-notice { display: flow-root; padding-bottom: .5rem; }
 .dismiss { float: right; margin: .5rem 0 .5rem .5rem; }
 
@@ -238,6 +237,7 @@ footer { display: flex; align-items: center; padding-block: 0; padding-inline: c
 
 /* Footer key hints (#491): what Enter does now, or with Alt held the other
    keys. They stay in narrow windows and wrap instead of overlapping. */
+.enter-hints:empty { display: none; }
 .enter-hints { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); min-width: 0; color: var(--text-secondary); font-size: var(--type-label-size); overflow-wrap: anywhere; }
 /* Corners nest: the key sits 4 px inside the action on three sides, and the
    action ends on the same edge as the rows, 8 px inside the window's corner. */

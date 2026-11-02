@@ -31,7 +31,7 @@ Anything not listed follows Apple. A new departure is added here in the same cha
 | Hit areas | Regular controls are 24 pt | Drawn at Apple's size, hit area at least 32 px (menu rows keep 24) |
 | Smallest text | 10 and 11 pt captions | Nothing under 12 px |
 | Accent | System accent | Follow the Mac by default, plus Apple's hues and **Ibis scarlet**, as a fixed tuned set |
-| Citation colour | None | Scarlet marks the citation everywhere [C14] |
+| Citation colour | None | The scarlet beak marks the citation; its text stays in the text colours [C14] |
 | Large buttons | Capsules on macOS 26 | Rounded rectangles at every size |
 | Search icon | Magnifier | The Ibis mark by default (as Alfred shows its hat); Magnifier or None in Look |
 | In-window menus | `NSMenu` | Ibis's own, matching native metrics; menu bar, tray and right-click stay native |
@@ -58,7 +58,7 @@ Anything not listed follows Apple. A new departure is added here in the same cha
 - **Accent and selection** [D6]: every Accent choice resolves to three roles with light and dark values: `--accent` (controls, switches, progress, focus), `--selected` with `--selected-text` (selected rows, menu highlight, focused citation; text 4.5:1, never brighter in dark than light) and accent text on surfaces (4.5:1). The default button is `--accent` with `--text-on-accent`. Hover and pressed selection darken toward black.
 - **Focus** [D8]: `--ring`, Apple's keyboard focus indicator, only on `:focus-visible`; solid accent with Increase Contrast.
 - **Status** [D10]: `--status-ok`, `--status-warning`, `--status-error`, the Mac's system hues. A dot or symbol, optionally on a wash; status words stay in a label colour.
-- **The one Ibis red** [D9]: `--scarlet` is the flat mark colour for the search-bar mark, the shelf beak, the added tile, the citation and the logo; it is never recoloured for a material. `--scarlet-text` is scarlet set as text, lightened over translucent materials. `--on-scarlet` is what sits on a scarlet fill. On a selected row the added tile becomes `--selected-text` with a scarlet check.
+- **The one Ibis red** [D9]: `--scarlet` is the flat mark colour for the search-bar mark, the shelf beak, the added tile and the logo; it is never recoloured for a material. `--on-scarlet` is what sits on a scarlet fill. On a selected row the added tile becomes `--selected-text` with a scarlet check.
 - **Ibis scarlet as accent:** offered in Look after a divider; it pairs dark ink in dark mode so white never vanishes into the brighter scarlet.
 - **Contrast:** text, placeholders and key-cap labels 4.5:1 against rendered pixels on every material and wallpaper (#774); focus rings, meaningful icons and only-cue boundaries 3:1.
 
@@ -96,7 +96,7 @@ Anything not listed follows Apple. A new departure is added here in the same cha
 - **Floors**: `--r-floor` for surfaces, `--r-floor-mark` for text-sized marks.
 - **Neighbours share a radius**: shapes side by side at one depth use one radius and one gap.
 - Overlays float on their own layer and keep `--r-menu`; Settings cards use `--r-card`.
-- **Capsules** (`--r-full`) only for switches, count and tag pills, progress tracks and toasts. **Badges** over content (the shelf's remove ×) are circles.
+- **Capsules** (`--r-full`) only for switches, count and tag pills, progress tracks and toasts. Nothing hangs off a shape's edge: a control that belongs to a shape sits inside it.
 - The miniature pictures in Settings are the real picker scaled and keep its radii.
 
 ### Icons
@@ -104,7 +104,7 @@ Anything not listed follows Apple. A new departure is added here in the same cha
 - macOS: SF Symbols and the system's own app and file icons where the system provides them, such as the installed Zotero icon (bundle id `org.zotero.zotero`, read through NSWorkspace).
 - Fallback, and on other systems: Ibis's own set in `brand/icons/`, built by `python3 brand/build.py`; a 20 pt grid, 16 pt live area, one stroke weight matched to SF Symbols Regular, one stroked path each. The icon guard rejects anything else. A missing app or failed icon read shows the books glyph.
 - Ibis never ships Zotero's logo or other apps' artwork.
-- Seven type icons (article, book, chapter, thesis, web page, report, other) stay distinct from attachment drawings. Toggled-on keeps the same outline; the control's fill carries state.
+- Seven type icons (article, book, chapter, thesis, web page, report, other) stay distinct from attachment drawings. Pages have rounded corners and a folded corner, as the book and web icons round theirs; the article page carries a title line and two text lines. Toggled-on keeps the same outline; the control's fill carries state.
 - **The Ibis mark** in the search bar is the flat `brand/` bird in `--scarlet`, eye open; flat `CanvasText` in contrast modes. It never appears on a control and never mirrors.
 - Settings page icons use Apple's icon shape; Mac icon layers are flat, with no added bevels or shadows.
 
@@ -217,7 +217,7 @@ Built in `ibis-core` so every front end shares them (#1204).
 ### Shelf
 
 - **Shelf** [C7]: one line above the footer showing what Enter pastes: the beak at the tile column's end, the citation on the title column. Shown while there are results or a citation is being built; hidden on choice screens. Results never move when a reference is added.
-- Several references are segments of one citation; a pointed segment becomes a soft pill with a round × badge outside its text. ← → select a segment; Delete removes it with Undo.
+- Several references are segments of one citation; a pointed segment shows its hover fill with a small × inside its trailing end, `--key-gap` from the edge on every side, covering the end of the text as a Safari tab's close button does. ← → select a segment; Delete removes it with Undo.
 - **One line, details on demand**: a segment opens an ordinary menu: the reference's name as a heading; **Name in brackets**, **Name in the sentence**, **Year only** with quiet examples; **Page…** editing in place; the source action; **Remove from Citation ⌫**.
 - On copy a closing beak mirrors the opening one and a "Copied" capsule draws its check; Reduce Motion shows the end state. Each copy is confirmed once, in one place.
 - Pending output dims, then "Formatting…"; Enter waits. A failed format says why and offers another style; refusals stay visible until corrected.
@@ -274,7 +274,7 @@ Built in `ibis-core` so every front end shares them (#1204).
 
 ### Notices
 
-- "Pasted" or "Copied" shows after the picker hides, in a window that never takes focus: one card near the top centre on every system, ignoring the pointer. Pasted shows a `--status-ok` check; copied without a paste shows a neutral check and the reason. It never clips: a long citation moves to a second line, ending "+4 more".
+- "Pasted" or "Copied" shows after the picker hides, in a window that never takes focus: one card near the top centre on every system, ignoring the pointer. Pasted shows a `--status-ok` check; copied without a paste shows a neutral check and the reason. The card is a plain check centred on two lines: the title, then the citation in quiet monospaced text. A long reason wraps and is never clipped; the citation stays one line, ending in "…" with "+4 more" in view. The notice follows the chosen appearance.
 - No notice carries a side bar or a one-sided border. Errors are one sentence beside their cause, never a modal.
 - In-window toasts ("Removed · Undo") last 8 s, name their action and accept ⌘Z.
 

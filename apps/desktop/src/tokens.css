@@ -84,7 +84,7 @@
   --accent: Highlight; --accent-text: var(--accent); --text-on-accent: HighlightText;
   --selected: Highlight; --selected-text: HighlightText; --selected-text-secondary: currentColor;
   --ring: var(--accent);
-  --scarlet: CanvasText; --scarlet-text: CanvasText; --on-scarlet: var(--white);
+  --scarlet: CanvasText; --on-scarlet: var(--white);
   --status-ok: CanvasText; --status-warning: CanvasText; --status-error: CanvasText;
   /* System, secondary, tertiary and quaternary fill. */
   --fill-1: color-mix(in srgb, var(--text) 9.8%, transparent);
@@ -121,7 +121,7 @@
 /* The canvas's light and dark values. */
 @supports (color: light-dark(white, black)) {
   :root {
-    --scarlet: light-dark(var(--ibis), var(--ibis-dark)); --scarlet-text: var(--scarlet);
+    --scarlet: light-dark(var(--ibis), var(--ibis-dark));
     --status-ok: light-dark(#34c759, #30d158); --status-warning: light-dark(#ffcc00, #ffd600); --status-error: light-dark(#ff383c, #ff4245);
     --accent: #007aff; --accent-text: light-dark(#0068da, #419cff);
     --selected: light-dark(#0064e1, #0059d1); --selected-text: #fff; --text-on-accent: var(--selected-text);
@@ -149,11 +149,6 @@
       /* The veil over the native material, so text stays legible on any wallpaper. */
       --vibrancy-tint: light-dark(rgb(250 250 252 / 75%), rgb(30 30 34 / 75%));
       --glass-edge: light-dark(rgb(0 0 0 / 10%), rgb(255 255 255 / 10%));
-    }
-    /* Over the veiled material, text roles keep 4.5:1. */
-    :root[data-platform="macos"][data-native-appearance="vibrancy"]:not(.notice-window),
-    :root[data-platform="macos"][data-native-appearance="liquid-glass"]:not(.notice-window) {
-      --scarlet-text: light-dark(#982d16, #ff9d87);
     }
   }
 }
@@ -188,7 +183,7 @@
     --text: CanvasText; --text-secondary: CanvasText; --text-tertiary: CanvasText; --separator: CanvasText; --stroke-field: CanvasText;
     --selected: Highlight; --selected-text: HighlightText; --selected-text-secondary: currentColor;
     --ring: CanvasText; --ring-offset: 2px; --scrollbar-thumb: CanvasText; --scrim: Canvas;
-    --scarlet: CanvasText; --scarlet-text: CanvasText; --on-scarlet: Canvas;
+    --scarlet: CanvasText; --on-scarlet: Canvas;
     --status-ok: CanvasText; --status-warning: CanvasText; --status-error: CanvasText;
   }
 }
@@ -242,7 +237,7 @@
   --r-seg: max(var(--r-floor-mark), calc(var(--r-control) - 2px));
   --key-gap: calc((var(--control-small-h) - var(--key)) / 2);
   --r-key: max(var(--r-floor-mark), calc(var(--r-row) - var(--key-gap)));
-  --r-toast: 18px; --r-receipt-mark: calc(var(--r-toast) - var(--space-2));
+  --r-toast: 18px;
   --footer-h: calc(var(--control-small-h) + 2 * var(--inset));
   /* One Settings row, in every group and the shortcuts list. */
   --settings-row-h: 2.75rem;
