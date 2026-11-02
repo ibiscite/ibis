@@ -15,10 +15,13 @@ export function useKeyboardHome(input: RefObject<HTMLInputElement | null>) {
       const search = input.current;
       if (!lost() || !search || event.defaultPrevented) return;
       search.focus();
-      // A character typed now lands in Search by itself; any other key is
-      // handed to Search as if it had been pressed there.
-      if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) return;
-      event.preventDefault();
+      // Text typed now, also with Option or AltGr or through an input method,
+      // lands in Search by itself.
+      const shortcut = (event.ctrlKey || event.metaKey) && !(event.ctrlKey && event.altKey);
+      if (event.isComposing || event.key === "Process" || event.key.length === 1 && !shortcut) return;
+      // Any other key is handed to Search as if pressed there. A native edit
+      // (paste, undo, delete) still happens in Search, so it keeps its default.
+      if (!shortcut && event.key !== "Backspace" && event.key !== "Delete") event.preventDefault();
       event.stopImmediatePropagation();
       search.dispatchEvent(new KeyboardEvent("keydown", {
         key: event.key, code: event.code, bubbles: true, cancelable: true,

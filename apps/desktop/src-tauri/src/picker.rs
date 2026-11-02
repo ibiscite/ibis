@@ -643,64 +643,97 @@ pub(crate) fn set_pinned(app: AppHandle, pinned: State<'_, Pinned>, on: bool) {
 
 /// Set while the person moves or resizes the picker. A Linux compositor can
 /// take focus away for its move or resize grab, and that blur must not hide
-/// the window being moved. Holds the presentation plus one; 0 when no move
-/// is in progress.
+/// the window being moved. Holds the moved presentation and the move's own
+/// serial, so neither a late end nor an expired limit clears a newer move.
 #[derive(Default)]
-pub(crate) struct Moving(AtomicU64);
+pub(crate) struct Moving {
+    held: Mutex<Option<(u64, u64)>>,
+    serial: AtomicU64,
+}
+
+/// The longest a move holds the picker open without its end arriving: a
+/// cancelled grab or a lost pointer event cannot keep a blurred picker shown.
+#[cfg(target_os = "linux")]
+const MOVE_LIMIT: std::time::Duration = std::time::Duration::from_secs(20);
 
 impl Moving {
-    fn begin(&self, visits: &PickerGeneration, presentation: u64) {
-        if visits.owns(presentation) {
-            self.0.store(presentation.wrapping_add(1), Ordering::SeqCst);
+    /// Start `presentation`'s move, if it is still the shown one.
+    fn begin(&self, visits: &PickerGeneration, presentation: u64) -> Option<u64> {
+        if !visits.owns(presentation) {
+            return None;
         }
+        let serial = self.serial.fetch_add(1, Ordering::SeqCst);
+        *self.held.lock().ok()? = Some((presentation, serial));
+        Some(serial)
     }
 
     /// End any move and return the presentation it belonged to.
     pub(crate) fn end(&self) -> Option<u64> {
-        match self.0.swap(0, Ordering::SeqCst) {
-            0 => None,
-            held => Some(held.wrapping_sub(1)),
-        }
+        self.held.lock().ok()?.take().map(|(presentation, _)| presentation)
     }
 
-    /// End `presentation`'s own move. A late end from an earlier presentation
-    /// never clears a newer one.
-    fn finish(&self, presentation: u64) -> bool {
-        self.0
-            .compare_exchange(presentation.wrapping_add(1), 0, Ordering::SeqCst, Ordering::SeqCst)
-            .is_ok()
+    /// End exactly this move: its own end, or its limit. A late end from an
+    /// earlier move never clears a newer one, even in the same presentation.
+    fn finish(&self, presentation: u64, serial: u64) -> bool {
+        let Ok(mut held) = self.held.lock() else {
+            return false;
+        };
+        let owns = *held == Some((presentation, serial));
+        if owns {
+            *held = None;
+        }
+        owns
     }
 
     /// Whether the shown presentation is being moved now.
     #[cfg(any(target_os = "linux", test))]
     pub(crate) fn holds(&self, visits: &PickerGeneration) -> bool {
-        let held = self.0.load(Ordering::SeqCst);
-        held != 0 && held.wrapping_sub(1) == visits.current()
+        self.held
+            .lock()
+            .is_ok_and(|held| held.is_some_and(|(presentation, _)| presentation == visits.current()))
     }
 }
 
-/// The interface reports a move or resize of `presentation` starting, and
-/// its end once the pointer is back. A blur held during the move is then
-/// checked against live focus, as after a native dialog.
+/// A blur held during a move is checked against live focus, as after a
+/// native dialog.
+fn reconcile_move(app: &AppHandle, presentation: u64) {
+    let handle = app.clone();
+    report(
+        app.run_on_main_thread(move || {
+            if let Some(window) = handle.get_webview_window("main") {
+                reconcile_suppressed_blur(&window, presentation);
+            }
+        }),
+        NativeIssue::Window,
+    );
+}
+
+/// The interface starts a move or resize of `presentation` with no `ends`
+/// and gets the move's id back; once the pointer is back it sends that id as
+/// `ends`. The end can therefore never overtake its start. A move whose end
+/// never arrives is reconciled at its limit.
 #[tauri::command]
 #[specta::specta]
-pub(crate) fn picker_moving(app: AppHandle, presentation: u64, moving: bool) {
+pub(crate) fn picker_moving(app: AppHandle, presentation: u64, ends: Option<u64>) -> Option<u64> {
     let state = app.state::<Moving>();
-    if moving {
-        state.begin(&app.state(), presentation);
-        return;
+    if let Some(serial) = ends {
+        if state.finish(presentation, serial) {
+            reconcile_move(&app, presentation);
+        }
+        return None;
     }
-    if state.finish(presentation) {
-        let handle = app.clone();
-        report(
-            app.run_on_main_thread(move || {
-                if let Some(window) = handle.get_webview_window("main") {
-                    reconcile_suppressed_blur(&window, presentation);
-                }
-            }),
-            NativeIssue::Window,
-        );
-    }
+    let serial = state.begin(&app.state(), presentation)?;
+    // Only Linux holds a blur for a move.
+    #[cfg(target_os = "linux")]
+    let handle = app.clone();
+    #[cfg(target_os = "linux")]
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(MOVE_LIMIT).await;
+        if handle.state::<Moving>().finish(presentation, serial) {
+            reconcile_move(&handle, presentation);
+        }
+    });
+    Some(serial)
 }
 
 /// Whether the picker hides when it loses focus. Release builds hide it, like
@@ -843,21 +876,33 @@ mod tests {
     fn a_move_belongs_to_its_presentation_and_ends_once() {
         let visits = PickerGeneration(AtomicU64::new(41));
         let moving = Moving::default();
-        moving.begin(&visits, 40); // a stale start is ignored
+        assert_eq!(moving.begin(&visits, 40), None); // a stale start is ignored
         assert!(!moving.holds(&visits));
-        moving.begin(&visits, 41);
+        let first = moving
+            .begin(&visits, 41)
+            .unwrap_or_else(|| panic!("the shown presentation can move"));
         assert!(moving.holds(&visits));
         visits.advance(); // hidden or reopened: the move no longer holds
         assert!(!moving.holds(&visits));
         assert_eq!(moving.end(), Some(41));
         assert_eq!(moving.end(), None);
-        // A late end from 41 leaves 42's move alone; 42's own end clears it.
-        moving.begin(&visits, 42);
-        assert!(!moving.finish(41));
+        // A late end from 41 leaves 42's move alone.
+        let second = moving
+            .begin(&visits, 42)
+            .unwrap_or_else(|| panic!("the shown presentation can move"));
+        assert!(!moving.finish(41, first));
         assert!(moving.holds(&visits));
-        assert!(moving.finish(42));
+        // A second move in the same presentation is not ended by the first's
+        // late end or limit; only its own.
+        assert!(moving.finish(42, second));
+        let third = moving
+            .begin(&visits, 42)
+            .unwrap_or_else(|| panic!("the shown presentation can move"));
+        assert!(!moving.finish(42, second));
+        assert!(moving.holds(&visits));
+        assert!(moving.finish(42, third));
         assert!(!moving.holds(&visits));
-        assert!(!moving.finish(42));
+        assert!(!moving.finish(42, third));
     }
 
     #[test]

@@ -14,19 +14,22 @@ function startsDrag(target: Element | null) {
 /**
  * Tell the native side while the person moves or resizes the picker. Some
  * Linux compositors take focus for the move grab; the blur then must not
- * hide the window being moved. The move ends with the press, or with the
- * first unpressed pointer movement once the compositor gives the pointer back.
+ * hide the window being moved. The move ends with the press, its
+ * cancellation, or the first unpressed pointer movement once the compositor
+ * gives the pointer back; the native side bounds a move whose end is lost.
  */
 export function usePickerMove(api: Pick<PickerApi, "pickerMoving">, session: ReturnType<typeof usePickerSession>["session"]) {
   const { pickerMoving } = api;
   useEffect(() => {
     if (!pickerMoving) return;
-    let moving: number | null = null;
+    // The move's id comes back from its start; its end waits for it, so the
+    // end can never reach the native side first.
+    let moving: { presentation: number; id: Promise<number | null> } | null = null;
     const end = () => {
       if (moving === null) return;
-      const presentation = moving;
+      const { presentation, id } = moving;
       moving = null;
-      void pickerMoving(presentation, false).catch(() => undefined);
+      void id.then((ends) => ends === null ? null : pickerMoving(presentation, ends)).catch(() => undefined);
     };
     const down = (event: PointerEvent) => {
       const presentation = session.getSnapshot().presentation;
@@ -34,17 +37,19 @@ export function usePickerMove(api: Pick<PickerApi, "pickerMoving">, session: Ret
       const target = event.target instanceof Element ? event.target : null;
       const edge = event.clientX < EDGE || event.clientY < EDGE || event.clientX > window.innerWidth - EDGE || event.clientY > window.innerHeight - EDGE;
       if (!edge && !startsDrag(target)) return;
-      moving = presentation;
-      void pickerMoving(presentation, true).catch(() => undefined);
+      end();
+      moving = { presentation, id: pickerMoving(presentation, null).catch(() => null) };
     };
     const move = (event: PointerEvent) => { if (event.buttons === 0) end(); };
     window.addEventListener("pointerdown", down, true);
     window.addEventListener("pointerup", end, true);
+    window.addEventListener("pointercancel", end, true);
     window.addEventListener("pointermove", move, true);
     window.addEventListener("focus", end);
     return () => {
       window.removeEventListener("pointerdown", down, true);
       window.removeEventListener("pointerup", end, true);
+      window.removeEventListener("pointercancel", end, true);
       window.removeEventListener("pointermove", move, true);
       window.removeEventListener("focus", end);
       end();
