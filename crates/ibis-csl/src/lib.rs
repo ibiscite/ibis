@@ -7,7 +7,7 @@ mod output;
 mod runtime;
 mod service;
 
-use ibis_core::contract::{CitationRequest, CitationResult, Snapshot};
+use ibis_core::contract::{CitationRequest, CitationResult, OutputSpec, Snapshot};
 pub use service::{CancellationToken, FormatTask};
 use std::sync::Arc;
 use std::time::Duration;
@@ -103,6 +103,10 @@ impl Formatter {
         self.service
             .submit(input::prepare(snapshot, request, self.service.limits())?)?
             .wait()
+    }
+    /// Refuse an unknown style or locale before formatting starts.
+    pub fn check_output(output: &OutputSpec, locale: Option<&str>) -> Result<(), FormatError> {
+        input::check_output(output, locale)
     }
     pub fn submit(&self, snapshot: Arc<Snapshot>, request: CitationRequest) -> Result<FormatTask, FormatError> {
         self.service

@@ -215,6 +215,13 @@
               "code": {
                 "$ref": "#/$defs/WarningCode"
               },
+              "key": {
+                "description": "The repeated BibTeX citation key, for `duplicate-key` only. It is the person's own\ndata and is shown only to them; no other warning carries source text.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
               "line": {
                 "format": "uint",
                 "minimum": 0,

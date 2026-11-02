@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 pub(super) fn run(engine: &Engine, matches: &ArgMatches, mode: OutputMode) -> Result<DispatchResult, EngineError> {
     let args = matches
         .subcommand_matches("doctor")
-        .ok_or(EngineError { code: ErrorCode::Usage })?;
+        .ok_or(EngineError::new(ErrorCode::Usage))?;
     let config = config_check(args.get_one::<PathBuf>("config").map(PathBuf::as_path));
     // Capture existing state once. A later check cannot relabel this observation.
     let mut sources: Vec<_> = engine.libraries()?.libraries.iter().map(library_report).collect();
@@ -287,6 +287,7 @@ mod tests {
             updated_at_ms: 123,
             watch_warning: None,
             zotero: None,
+            duplicate_keys: Default::default(),
         };
         let source = library_report(&library);
         assert_eq!(source["status"], "findings");

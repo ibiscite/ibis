@@ -102,6 +102,9 @@ impl Engine {
         cancel: &Cancellation,
     ) -> Result<CitationResult, EngineError> {
         cancel.check()?;
+        // The request is wrong, not its items: refuse it whole, before formatting.
+        ibis_csl::Formatter::check_output(&request.output, request.output_locale.as_deref())
+            .map_err(formatter_error)?;
         let annotations: Vec<_> = request
             .items
             .iter()
@@ -139,8 +142,6 @@ impl Engine {
         };
         let task = match formatter.submit(snapshot.clone(), request.clone()) {
             Ok(task) => task,
-            Err(FormatError::UnsupportedStyle) => return Ok(refusal(request, CitationError::UnsupportedOutput)),
-            Err(FormatError::InvalidLocale) => return Ok(refusal(request, CitationError::InvalidLocale)),
             Err(failure) => return Err(formatter_error(failure)),
         };
         let _registration = cancel.track(task.cancellation())?;
@@ -150,12 +151,14 @@ impl Engine {
     }
 }
 fn formatter_error(failure: FormatError) -> EngineError {
-    error(match failure {
-        FormatError::Busy | FormatError::TimedOut | FormatError::ResourceLimit => ErrorCode::ResourceLimit,
-        FormatError::Cancelled => ErrorCode::Cancelled,
-        FormatError::InvalidRequest | FormatError::InvalidLocale | FormatError::UnsupportedStyle => ErrorCode::BadInput,
-        FormatError::Runtime => ErrorCode::Internal,
-    })
+    match failure {
+        FormatError::Busy | FormatError::TimedOut | FormatError::ResourceLimit => error(ErrorCode::ResourceLimit),
+        FormatError::Cancelled => error(ErrorCode::Cancelled),
+        FormatError::InvalidRequest => error(ErrorCode::BadInput),
+        FormatError::UnsupportedStyle => EngineError::because(ErrorCode::BadInput, ErrorReason::UnknownStyle),
+        FormatError::InvalidLocale => EngineError::because(ErrorCode::BadInput, ErrorReason::UnknownLocale),
+        FormatError::Runtime => error(ErrorCode::Internal),
+    }
 }
 pub(super) fn refusal(request: &CitationRequest, failure: CitationError) -> CitationResult {
     CitationResult::new(

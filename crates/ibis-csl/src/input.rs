@@ -135,6 +135,21 @@ pub(crate) struct Prepared {
     pub empty: bool,
 }
 
+/// Whether the requested style and locale exist, before any item is looked at.
+pub(crate) fn check_output(output: &OutputSpec, locale: Option<&str>) -> Result<(), FormatError> {
+    let OutputSpec::Csl { style } = output else {
+        return Err(FormatError::UnsupportedStyle);
+    };
+    STYLE_TRAITS.get(style.as_str()).ok_or(FormatError::UnsupportedStyle)?;
+    check_locale(locale)
+}
+fn check_locale(locale: Option<&str>) -> Result<(), FormatError> {
+    if locale.is_some_and(|locale| !matches!(locale, "en" | "en-US")) {
+        return Err(FormatError::InvalidLocale);
+    }
+    Ok(())
+}
+
 pub(crate) fn prepare(
     snapshot: &Snapshot,
     request: &CitationRequest,
@@ -146,6 +161,7 @@ pub(crate) fn prepare(
     let OutputSpec::Csl { style } = &request.output else {
         return Err(FormatError::UnsupportedStyle);
     };
+    check_output(&request.output, request.output_locale.as_deref())?;
     let traits = STYLE_TRAITS.get(style.as_str()).ok_or(FormatError::UnsupportedStyle)?;
     prepare_with_traits(snapshot, request, limits, *traits)
 }
@@ -159,13 +175,7 @@ fn prepare_with_traits(
     let OutputSpec::Csl { style } = &request.output else {
         return Err(FormatError::UnsupportedStyle);
     };
-    if request
-        .output_locale
-        .as_deref()
-        .is_some_and(|locale| !matches!(locale, "en" | "en-US"))
-    {
-        return Err(FormatError::InvalidLocale);
-    }
+    check_locale(request.output_locale.as_deref())?;
     bounded_json(request, limits.input_bytes)?;
     if request
         .input_language

@@ -47,7 +47,7 @@ pub(crate) fn load_str(library: &LibraryId, text: &str) -> Result<ParsedLibrary,
     for (index, raw) in items.into_iter().take(crate::MAX_LIBRARY_RECORDS).enumerate() {
         let warnings_before = result.warnings.len();
         let line = spans.get(index).map(|(_, _, line)| *line);
-        let warning = |code| SourceWarning { code, line };
+        let warning = |code| SourceWarning { code, line, key: None };
         if raw.get().len() > 1024 * 1024 {
             result.warnings.push(warning(WarningCode::WorkLimit));
             continue;
@@ -95,6 +95,8 @@ pub(crate) fn load_str(library: &LibraryId, text: &str) -> Result<ParsedLibrary,
             result.warnings.push(warning(WarningCode::WorkLimit));
             continue;
         }
+        // A repeated `id` is a repeated record, not a repeated citation key: the
+        // first stays citable, so no key is named as skipped.
         if !seen.insert(native.to_owned()) {
             result.warnings.push(warning(WarningCode::DuplicateKey));
             continue;
@@ -169,6 +171,7 @@ pub(crate) fn load_str(library: &LibraryId, text: &str) -> Result<ParsedLibrary,
         result.warnings.push(SourceWarning {
             code: WarningCode::WorkLimit,
             line: spans.get(crate::MAX_LIBRARY_RECORDS).map(|(_, _, line)| *line),
+            key: None,
         });
     }
     Ok(result)

@@ -419,7 +419,7 @@ fn typed_search_refuses_oversized_results_before_public_object_cloning() {
 }
 
 #[test]
-fn bundled_styles_are_available_and_unknown_styles_are_explicit_refusals() {
+fn bundled_styles_are_available_and_unknown_styles_or_locales_refuse_the_request() {
     let mut case = case();
     let engine = Engine::from_snapshot(Arc::new(case.library));
     let cancel = Cancellation::default();
@@ -429,19 +429,23 @@ fn bundled_styles_are_available_and_unknown_styles_are_explicit_refusals() {
     case.request.output = OutputSpec::Csl {
         style: "unknown-style".into(),
     };
-    let result = engine
+    // The request is wrong, not its item: refused whole, before formatting.
+    let refused = engine
         .dispatch(Method::Cite, &serde_json::to_value(&case.request).unwrap(), &cancel)
-        .unwrap();
-    assert_eq!(result.exit_code, ExitCode::Findings);
-    let citation: CitationResult = serde_json::from_value(result.data).unwrap();
+        .unwrap_err();
     assert_eq!(
-        citation.outcomes,
-        vec![ItemOutcome::Refused {
-            item: 0,
-            error: CitationError::UnsupportedOutput
-        }]
+        refused,
+        EngineError::because(ErrorCode::BadInput, ErrorReason::UnknownStyle)
     );
-    assert!(citation.copy_content(1).is_none());
+    case.request.output = OutputSpec::Csl { style: "apa".into() };
+    case.request.output_locale = Some("xx-synthetic".into());
+    let refused = engine
+        .dispatch(Method::Cite, &serde_json::to_value(&case.request).unwrap(), &cancel)
+        .unwrap_err();
+    assert_eq!(
+        refused,
+        EngineError::because(ErrorCode::BadInput, ErrorReason::UnknownLocale)
+    );
 }
 
 #[test]
