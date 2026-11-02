@@ -439,9 +439,7 @@ fn reason_hint(reason: ErrorReason) -> &'static str {
         ErrorReason::DuplicateKey => {
             "The library repeats this citation key, so Ibis skips every entry under it until each has its own key."
         }
-        ErrorReason::AmbiguousKey => {
-            "Several libraries have a reference with this key; cite it by the id search returned."
-        }
+        ErrorReason::AmbiguousKey => "Several references have this key; cite it by the id search returned.",
         ErrorReason::AppMissing | ErrorReason::NotIbis | ErrorReason::NoAnswer => tool_error_hint(ErrorCode::Internal),
     }
 }

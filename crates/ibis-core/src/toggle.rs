@@ -30,6 +30,11 @@ pub fn sign_receipt(path: &Path) -> std::io::Result<()> {
         return Err(std::io::ErrorKind::InvalidInput.into());
     }
     let mut file = std::fs::OpenOptions::new().write(true).open(path)?;
+    // Check what was opened too, in case the path changed after the first check.
+    let opened = file.metadata()?;
+    if !opened.is_file() || opened.len() != 0 {
+        return Err(std::io::ErrorKind::InvalidInput.into());
+    }
     file.write_all(RECEIPT)?;
     file.sync_all()
 }

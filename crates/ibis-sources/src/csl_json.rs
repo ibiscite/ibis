@@ -95,12 +95,10 @@ pub(crate) fn load_str(library: &LibraryId, text: &str) -> Result<ParsedLibrary,
             result.warnings.push(warning(WarningCode::WorkLimit));
             continue;
         }
+        // A repeated `id` is a repeated record, not a repeated citation key: the
+        // first stays citable, so no key is named as skipped.
         if !seen.insert(native.to_owned()) {
-            result.warnings.push(SourceWarning {
-                code: WarningCode::DuplicateKey,
-                line,
-                key: Some(key),
-            });
+            result.warnings.push(warning(WarningCode::DuplicateKey));
             continue;
         }
         let item = ItemRef {

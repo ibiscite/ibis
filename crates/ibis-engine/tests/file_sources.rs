@@ -296,3 +296,32 @@ fn a_repeated_key_is_named_and_selects_nothing_until_it_is_fixed() {
     assert!(show("twin").is_ok());
     assert_eq!(cite("twin").unwrap().copy_content(1).unwrap().text, "[@twin]");
 }
+
+#[test]
+fn a_repeated_csl_json_id_keeps_the_first_and_names_no_skipped_key() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("synthetic.json");
+    std::fs::write(
+        &path,
+        r#"[{"id":"x","citation-key":"first","type":"book"},{"id":"x","citation-key":"second","type":"book"}]"#,
+    )
+    .unwrap();
+    let engine = Engine::new().unwrap().without_file_watches();
+    engine
+        .dispatch(
+            Method::Libraries,
+            &json!({"action":"open-file","path":path}),
+            &Cancellation::default(),
+        )
+        .unwrap();
+    let warnings = &engine.libraries().unwrap().libraries[0].warnings;
+    assert_eq!(warnings.len(), 1);
+    assert_eq!(warnings[0].key, None);
+    let show = |key: &str| {
+        engine.show(&ShowRequest {
+            item: ItemSelector::Key(key.into()),
+        })
+    };
+    assert!(show("first").is_ok());
+    assert_eq!(show("second").unwrap_err(), EngineError::new(ErrorCode::NotFound));
+}

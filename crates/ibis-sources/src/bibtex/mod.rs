@@ -22,7 +22,7 @@ mod lexer;
 mod resolve;
 
 use std::cell::Cell;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use biblatex::Bibliography;
 
@@ -99,7 +99,8 @@ pub(crate) fn load_with_budget(
     let mut macros = Vec::new();
     let mut entries: Vec<RawEntry<'_>> = Vec::new();
     let mut raw_texts: Vec<&str> = Vec::new();
-    let mut seen = HashSet::new();
+    // Each key's first line, so a repeat can name it without searching.
+    let mut seen = HashMap::new();
     let mut duplicates = HashSet::new();
     let duplicate = |line, key: &str| SourceWarning {
         code: WarningCode::DuplicateKey,
@@ -146,17 +147,16 @@ pub(crate) fn load_with_budget(
             Err(message) => result
                 .warnings
                 .push(warn(WarningCode::Syntax, None, format!("{message}; skipped"))),
-            Ok(entry) if !seen.insert(entry.key.clone()) => {
+            Ok(entry) if let Some(&first) = seen.get(&entry.key) => {
                 // Every entry under a repeated key is skipped, so each one is
                 // named, the first included, and the person can find them all.
-                if duplicates.insert(entry.key.clone())
-                    && let Some(first) = entries.iter().find(|first| first.key == entry.key)
-                {
-                    result.warnings.push(duplicate(first.line, &entry.key));
+                if duplicates.insert(entry.key.clone()) {
+                    result.warnings.push(duplicate(first, &entry.key));
                 }
                 result.warnings.push(duplicate(block.line, &entry.key));
             }
             Ok(mut entry) => {
+                seen.insert(entry.key.clone(), block.line);
                 entry.macro_epoch = macros.len();
                 entries.push(entry);
                 raw_texts.push(block.text);
