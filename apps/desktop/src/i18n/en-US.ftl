@@ -53,6 +53,7 @@ general-paste-drag-keyboard = Press to open System Settings.
 general-paste-drag-fallback = If Ibis is not in the list, drag it there.
 general-paste-drag-failed = Couldn't drag this copy of Ibis. Use the + button in System Settings to add it.
 general-paste-waiting = Waiting for your OK…
+general-paste-unreadable = Ibis could not read this permission, so pasting stays off until it can.
 general-paste-granted = Ibis can paste now.
 general-paste-return-failed = Couldn't return to your citation. Open Ibis with your shortcut to continue.
 general-paste-stale = Already on, but still waiting? In System Settings, remove { $name } from the list, add this copy again, then turn it on.
@@ -258,6 +259,7 @@ delight-birthday = Ibis turns two today.
 undo-action = Undo { $action }
 undo-remove = Remove { $reference }
 undo-reset-window = Reset Window Position
+undo-forget-formats = Forget Formats
 undo-shortcut = Restore Default Shortcut
 
 undo-removed = Removed { $reference } from citation.

@@ -49,5 +49,6 @@ export function useRecentReferences(recentReferences: typeof nativeApi.recentRef
     });
     return () => { void stop.then((unlisten) => unlisten()).catch(() => undefined); };
   }, [onPreferencesChanged, forget]);
-  return { load: recentReferences ? load : undefined, forget: enabled !== false && (history.length || forgetFailed) ? forget : null };
+  // A failed clear stays offered, even with Recent citations turned off.
+  return { load: recentReferences ? load : undefined, forget: forgetFailed || enabled !== false && history.length ? forget : null, forgetFailed };
 }

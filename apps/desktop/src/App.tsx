@@ -92,6 +92,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   const delights = usePickerDelights(api, state.presentation, library, preferences.smallSurprises);
   useEffect(() => { if (choosingLibrary) delights.dismiss(); }, [choosingLibrary, delights.dismiss]);
   const recents = useRecentReferences(api.recentReferences, destination.appId, state.recentCopy, state.session, preferences.recentCitations, api.onPreferencesChanged);
+  useEffect(() => { if (recents.forgetFailed) report("recentHistory"); }, [recents.forgetFailed, report]);
   const searchState = useLibrarySearch({
     search: api.search, emptySearch: recents.load, query, interpretLocators, library, statusFailed: failures.status ?? false,
     libraryVersion, sessionId: state.session, isCurrentSession, setActive, refreshSnapshot,

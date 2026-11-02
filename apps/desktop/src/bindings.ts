@@ -86,7 +86,9 @@ export const commands = {
 	/**  Remember output and an optional delivery choice; both absent reset this app to Automatic. */
 	rememberAppOutput: (appId: string, output: ({ key: KeyFormat }) & { style?: never } | ({ style: CitationStyle }) & { key?: never } | null, paste: "paste" | "copy-only" | null, identity: string | null) => __TAURI_INVOKE<null>("remember_app_output", { appId, output, paste, identity }),
 	/**  Forget output and delivery choices for every app. */
-	forgetAppOutputs: () => __TAURI_INVOKE<null>("forget_app_outputs"),
+	forgetAppOutputs: () => __TAURI_INVOKE<number>("forget_app_outputs"),
+	/**  Bring back what Forget removed, while its Undo is offered. */
+	restoreAppOutputs: (ticket: number) => __TAURI_INVOKE<null>("restore_app_outputs", { ticket }),
 	/**  Whether Ibis starts when the person logs in, read from the system now. */
 	loginItem: () => __TAURI_INVOKE<LoginItem>("login_item"),
 	/**  Start Ibis when the person logs in, or stop doing so. */
