@@ -55,12 +55,12 @@ Anything not listed follows Apple. A new departure is added here in the same cha
 - **Labels** [D5]: `--text`, `--text-secondary`, `--text-tertiary` (placeholders and resting glyphs, never sentences), `--text-disabled`; Apple's label ladder at AppKit alphas.
 - **Fills**: Apple's fill ladder `--fill-1` … `--fill-5`. Control rest, hover and pressed are tertiary, secondary and system fill (`--fill-control` and its states); quiet hover and grouped content are quaternary.
 - **Separators**: one `--separator` for hairlines and dividers; a field edge that meets 3:1. Never a coloured border on a control. **One edge per shape**: a border, an inset shadow or an overlay's shadow ring, never two; a divider belongs to one side.
-- **Accent and selection** [D6]: every Accent choice resolves to three roles with light and dark values: `--accent` (controls, switches, progress, focus), `--selected` with `--selected-text` (selected rows, menu highlight, focused citation; text 4.5:1, never brighter in dark than light) and accent text on surfaces (4.5:1). The default button is `--accent` with `--text-on-accent`. Hover and pressed selection darken toward black.
-- **Focus** [D8]: `--ring`, Apple's keyboard focus indicator, only on `:focus-visible`; solid accent with Increase Contrast.
+- **Accent and selection** [D6]: every Accent choice resolves to three roles with light and dark values: `--accent` (controls, switches, focus), `--selected` with `--selected-text` (selected rows, menu highlight, focused citation; text 4.5:1, never brighter in dark than light) and accent text on surfaces (4.5:1, also the progress ring). Follow the Mac reads the same roles from the system: on macOS `--selected` is WebKit's selection background, deeper than the accent and following it; accent text is the accent moved toward black or white only as far as 4.5:1 needs. The default button is `--accent` with `--text-on-accent`, or the deeper `--selected` where white on the accent would miss 4.5:1 (Apple's blue stays as measured); it keeps one text colour through hover and press. Hover and pressed selection darken toward black.
+- **Focus** [D8]: `--ring`, Apple's keyboard focus indicator in the current accent, only on `:focus-visible`; solid accent with Increase Contrast.
 - **Status** [D10]: `--status-ok`, `--status-warning`, `--status-error`, the Mac's system hues. A dot or symbol, optionally on a wash; status words stay in a label colour.
 - **The one Ibis red** [D9]: `--scarlet` is the flat mark colour for the search-bar mark, the shelf beak, the added tile and the logo; it is never recoloured for a material. `--on-scarlet` is what sits on a scarlet fill. On a selected row the added tile becomes `--selected-text` with a scarlet check.
 - **Ibis scarlet as accent:** offered in Look after a divider; it pairs dark ink in dark mode so white never vanishes into the brighter scarlet.
-- **Contrast:** text, placeholders and key-cap labels 4.5:1 against rendered pixels on every material and wallpaper (#774); focus rings, meaningful icons and only-cue boundaries 3:1.
+- **Contrast:** text, placeholders and key-cap labels 4.5:1 against rendered pixels on every material and wallpaper (#774); focus rings, meaningful icons and only-cue boundaries 3:1. Apple's own label, placeholder and status values stay as measured where they fall short; Increase Contrast supplies the stronger set.
 
 ### Materials and layers
 
@@ -112,7 +112,7 @@ Anything not listed follows Apple. A new departure is added here in the same cha
 
 - One cap per shortcut, written as menus write it: ⌘K, ⇧⌘F, ↵ on macOS; Ctrl+K on Windows and Linux (`ui/KeyCaps`).
 - Caps appear only in the footer and in key lists. Menus write shortcuts as plain trailing text in native order (⇧⌘C) [C8].
-- A cap is `--fill-control` with `--r-key`, label type, never an outline or scarlet. Inside a quiet button it keeps its fill; on the primary it is a veil of `--text-on-accent`. A trailing cap in a small button is concentric: `--key-gap` above, below and at the end. A one-symbol cap (↵) is square, and ↵ is lowered .1em so it sits optically centred.
+- A cap is `--fill-control` with `--r-key`, label type, never an outline or scarlet. Inside a quiet button it keeps its fill; on the primary it is a darker veil (`--on-fill-p`). A trailing cap in a small button is concentric: `--key-gap` above, below and at the end. A one-symbol cap (↵) is square, and ↵ is lowered .1em so it sits optically centred.
 - "or" alternatives keep two caps. Decorative caps are hidden from screen readers; `aria-keyshortcuts` names the keys.
 
 ### Motion
@@ -194,7 +194,7 @@ Each component in `apps/desktop/src/ui/` wraps one React Aria component (decisio
 
 ### Results
 
-- **List and row**: type tile, title, meta line, trailing year (or "No date") level with the title's first line in every density. Comfortable's meta line: authors as in a citation, then the container; Spacious adds the type in `--text-tertiary`; Compact puts the first author after the title. The citation key is in the accessible name, not the row.
+- **List and row**: type tile, title, meta line, trailing year (or "No date") level with the title's first line in every density. Comfortable's meta line: authors as in a citation, then the container; Spacious adds the type in `--text-secondary`; Compact puts the first author after the title. The citation key is in the accessible name, not the row.
 - On hover or selection the add button replaces the tile (+, or a check when added) without reflow; a row in the citation shows the scarlet tile with a check.
 - Titles wrap to two lines then end in an ellipsis; the byline stays one line.
 - **Hover card**: resting half a second on a cut-off row shows its full details beside it; it never takes focus. ⌘Y opens Peek for the selected row.

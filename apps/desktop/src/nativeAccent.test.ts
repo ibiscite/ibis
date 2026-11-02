@@ -28,7 +28,7 @@ test("invalid and unavailable input clears every private native input", () => {
     setNativeAccent([1, 1, 0]);
     setNativeAccent(bad);
     expect(root.hasAttribute("data-native-accent")).toBe(false);
-    for (const name of ["fill", "on", "light", "dark", "on-hover-light", "on-hover-dark", "on-pressed-light", "on-pressed-dark"]) expect(root.style.getPropertyValue(`--native-accent-${name}`)).toBe("");
+    for (const name of ["fill", "on", "light", "dark"]) expect(root.style.getPropertyValue(`--native-accent-${name}`)).toBe("");
   }
 });
 
@@ -80,30 +80,44 @@ test("the native accent adds no row rule of its own: the shared selected-row til
   expect(css).not.toMatch(/data-citation-selected/);
 });
 
-test("selected rows and menu highlights keep WebKit's white selected text on the native accent", () => {
-  // Selection keeps the native pair (docs/design.md, Selected row).
-  expect(css).toMatch(/@supports \(color: -apple-system-alternate-selected-text\)\s*\{\s*:root\[data-native-accent="true"\]\[data-system="macos"\]:not\(\.notice-window\)\s*\{\s*--selected-text:\s*-apple-system-alternate-selected-text;/);
-  const bridge = css.indexOf("--selected-text: var(--text-on-accent)");
+test("selected rows and menu highlights keep WebKit's selection pair on the native accent", () => {
+  // Selection is deeper than the accent and follows it (docs/design.md, Accent and selection).
+  expect(css).toMatch(/@supports \(background: -apple-system-selected-content-background\) and \(color: -apple-system-alternate-selected-text\)\s*\{\s*:root\[data-native-accent="true"\]\[data-system="macos"\]:not\(\.notice-window\)\s*\{\s*--selected: -apple-system-selected-content-background;\s*--selected-text: -apple-system-alternate-selected-text;/);
+  const bridge = css.indexOf("--selected: var(--accent); --selected-text: var(--text-on-accent)");
   expect(bridge).toBeGreaterThan(-1);
-  expect(css.indexOf("--selected-text: -apple-system-alternate-selected-text")).toBeGreaterThan(bridge);
+  expect(css.indexOf("--selected: -apple-system-selected-content-background")).toBeGreaterThan(bridge);
   setNativeAccent([0, 122 / 255, 1]);
   expect(root.style.getPropertyValue("--native-accent-on")).toBe("#fff");
   setNativeAccent([1, .78, 0]);
   expect(root.style.getPropertyValue("--native-accent-on")).toBe("#000");
 });
 
-test("native primary foregrounds stay readable through hover and press in both themes", () => {
+test("accent text stays the accent's own colour, moved only as far as contrast needs", () => {
+  setNativeAccent([0, 122 / 255, 1]);
+  const [lightRed, lightGreen, lightBlue] = root.style.getPropertyValue("--native-accent-light").slice(11, -1).split(" ").map(Number);
+  // Darkening keeps the hue exactly; the ring reads as blue, not near-black.
+  expect(lightRed).toBe(0);
+  expect(lightGreen! / lightBlue!).toBeCloseTo(122 / 255);
+  expect(lightBlue).toBeGreaterThan(.7);
+  const [darkRed, , darkBlue] = root.style.getPropertyValue("--native-accent-dark").slice(11, -1).split(" ").map(Number);
+  expect(darkBlue).toBe(1);
+  expect(darkRed).toBeLessThan(.6);
+});
+
+test("the focus ring follows the Mac's accent", () => {
+  expect(css).toMatch(/--ring: color-mix\(in srgb, var\(--accent\) 50%, transparent\);/);
+});
+
+test("a primary button keeps one readable foreground through hover and press", () => {
+  // Hover and press mix the fill with black (tokens.css), so the foreground never flips.
+  expect(css).not.toMatch(/on-hover|on-pressed|\.ui-button/);
   const luminance = (rgb: number[]) => rgb.reduce((l, c, i) => l + (c <= .04045 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4) * [.2126, .7152, .0722][i]!, 0);
-  for (const rgb of [[.4, .55, .5], [0, 122 / 255, 1], [119 / 255, 119 / 255, 119 / 255], [.6, .4, 0], [1, 0, 0], [0, 0, 0], [1, 1, 1]]) {
+  for (const rgb of [[.4, .55, .5], [0, 122 / 255, 1], [247 / 255, 79 / 255, 158 / 255], [140 / 255, 140 / 255, 140 / 255], [.6, .4, 0], [1, 0, 0], [0, 0, 0], [1, 1, 1]]) {
     setNativeAccent(rgb);
-    for (const [theme, grey] of [["light", 39], ["dark", 221]] as const) {
-      const ink = [grey, grey, grey].map((c) => c / 255);
-      for (const [state, weight] of [["hover", .9], ["pressed", .8]] as const) {
-        const on = root.style.getPropertyValue(`--native-accent-on-${state}-${theme}`);
-        expect(on).toMatch(/^#(?:000|fff)$/);
-        const l = luminance(rgb.map((c, i) => c * weight + ink[i]! * (1 - weight)));
-        expect(on === "#000" ? (l + .05) / .05 : 1.05 / (l + .05)).toBeGreaterThanOrEqual(3);
-      }
+    const on = root.style.getPropertyValue("--native-accent-on");
+    for (const weight of [1, .9, .8]) {
+      const l = luminance(rgb.map((c) => c * weight));
+      expect(on === "#000" ? (l + .05) / .05 : 1.05 / (l + .05)).toBeGreaterThanOrEqual(3);
     }
   }
 });

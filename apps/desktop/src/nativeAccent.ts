@@ -1,11 +1,24 @@
 import { listen } from "@tauri-apps/api/event";
 import "./nativeAccent.css";
 
+function luminance(rgb: number[]): number {
+  const linear = rgb.map((c) => c <= .04045 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4);
+  return linear[0]! * .2126 + linear[1]! * .7152 + linear[2]! * .0722;
+}
+
 /** White, as macOS draws text on its accent, unless the accent is too bright for it. */
 function onColor(rgb: number[]): string {
-  const linear = rgb.map((c) => c <= .04045 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4);
-  const l = linear[0]! * .2126 + linear[1]! * .7152 + linear[2]! * .0722;
-  return 1.05 / (l + .05) >= 3 ? "#fff" : "#000";
+  return 1.05 / (luminance(rgb) + .05) >= 3 ? "#fff" : "#000";
+}
+
+/** The accent itself, mixed toward black or white only as far as 4.5:1 needs. */
+function accentText(rgb: number[], toward: number, surface: number): number[] {
+  for (let weight = 1; weight > 0; weight -= .01) {
+    const mixed = rgb.map((c) => c * weight + toward * (1 - weight));
+    const [hi, lo] = [luminance(mixed), surface].sort((a, b) => b - a);
+    if ((hi! + .05) / (lo! + .05) >= 4.5) return mixed;
+  }
+  return [toward, toward, toward];
 }
 
 /** Only bounded, opaque sRGB reaches CSS; public roles remain in the cascade. */
@@ -13,20 +26,14 @@ export function setNativeAccent(value: unknown): void {
   const root = document.documentElement;
   const rgb = Array.isArray(value) && value.length === 3
     && Array.from(value).every((c) => typeof c === "number" && Number.isFinite(c) && c >= 0 && c <= 1) ? value as number[] : null;
-  for (const name of ["fill", "on", "light", "dark", "on-hover-light", "on-hover-dark", "on-pressed-light", "on-pressed-dark"]) root.style.removeProperty(`--native-accent-${name}`);
+  for (const name of ["fill", "on", "light", "dark"]) root.style.removeProperty(`--native-accent-${name}`);
   delete root.dataset.nativeAccent;
   if (!rgb) return;
   root.style.setProperty("--native-accent-fill", `color(srgb ${rgb.join(" ")})`);
   root.style.setProperty("--native-accent-on", onColor(rgb));
-  // Match the macOS neutral roles in tokens.css; tests read those roles directly.
-  for (const [theme, ink] of [["light", [39, 39, 39]], ["dark", [221, 221, 221]]] as const) {
-    for (const [state, weight] of [["hover", .9], ["pressed", .8]] as const) {
-      root.style.setProperty(`--native-accent-on-${state}-${theme}`, onColor(rgb.map((c, i) => c * weight + ink[i]! / 255 * (1 - weight))));
-    }
-  }
-  // Retain the hue at the endpoints; the fill itself is never adjusted.
-  for (const [theme, base, scale] of [["light", 0, .12], ["dark", .96, .04]] as const) {
-    root.style.setProperty(`--native-accent-${theme}`, `color(srgb ${rgb.map((c) => base + c * scale).join(" ")})`);
+  // Readable on each mode's hardest surface (a pressed fill); the fill itself is never adjusted.
+  for (const [theme, toward, surface] of [["light", 0, .78], ["dark", 1, .04]] as const) {
+    root.style.setProperty(`--native-accent-${theme}`, `color(srgb ${accentText(rgb, toward, surface).join(" ")})`);
   }
   root.dataset.nativeAccent = "true";
 }
