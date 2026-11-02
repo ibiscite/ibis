@@ -1177,6 +1177,8 @@ test.each([false, true])("axe checks picker structure (library open: %s) and det
   const canvas = vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
   try {
     expect((await axe.run(document.body, options)).violations.map((v) => v.id)).toEqual([]);
+    // Welcome has no search yet, so only an open library can break it.
+    if (!open) { expect(document.querySelector<HTMLElement>(".search-bar")!.hidden).toBe(true); return; }
     screen.getByRole("combobox", { name: "Search references" }).removeAttribute("aria-expanded");
     const broken = await axe.run(document.body, options);
     expect(broken.violations.map((v) => v.id)).toContain("aria-required-attr");

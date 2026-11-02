@@ -91,7 +91,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   const { library, libraryVersion, refreshSnapshot, choosingLibrary, welcomeShown, libraryChoices, showCitations } = libraryState;
   const delights = usePickerDelights(api, state.presentation, library, preferences.smallSurprises);
   useEffect(() => { if (choosingLibrary) delights.dismiss(); }, [choosingLibrary, delights.dismiss]);
-  const recents = useRecentReferences(api.recentReferences, destination.appId, density === "compact", state.recentCopy, state.session, preferences.recentCitations, api.onPreferencesChanged);
+  const recents = useRecentReferences(api.recentReferences, destination.appId, state.recentCopy, state.session, preferences.recentCitations, api.onPreferencesChanged);
   const searchState = useLibrarySearch({
     search: api.search, emptySearch: recents.load, query, interpretLocators, library, statusFailed: failures.status ?? false,
     libraryVersion, sessionId: state.session, isCurrentSession, setActive, refreshSnapshot,
@@ -174,7 +174,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
       onKeyDown={keys.onKeyDown}
     >
       <PickerHeader
-        pinned={pinned} icon={searchIcon} onTogglePin={() => { togglePin(); input.current?.focus(); }}
+        hidden={welcomeShown} pinned={pinned} icon={searchIcon} onTogglePin={() => { togglePin(); input.current?.focus(); }}
         onResetPosition={api.resetWindowPosition}
         inputRef={input} query={query}
         pageToken={<PickerPageToken
