@@ -137,6 +137,71 @@ pub(crate) fn configured_shortcut_with(
     }
 }
 
+/// Make sure the picker is on screen for a command from the tray, menu bar or
+/// More, or a native dialog it owns. A hidden picker is shown as a new
+/// presentation; a visible one keeps its own, with the search, selection and
+/// library chooser the person is using, and is given the keyboard.
+pub(crate) fn reveal_picker(app: &AppHandle) {
+    reveal(app, true);
+}
+
+/// Make sure a background notice is seen: show a hidden picker, but leave a
+/// visible one where it is, so typing in another app stays there.
+pub(crate) fn reveal_picker_quietly(app: &AppHandle) {
+    reveal(app, false);
+}
+
+fn reveal(app: &AppHandle, focus: bool) {
+    let visible = app
+        .get_webview_window("main")
+        .and_then(|window| checked(window.is_visible(), NativeIssue::Visibility));
+    if reveal_shows(visible) {
+        show_picker(app);
+        return;
+    }
+    if focus {
+        // Activate on the native thread, and only while this presentation is
+        // still shown: a dismissal in between must not bring back a picker
+        // the interface already treats as hidden.
+        let owner = app.state::<PickerGeneration>().current();
+        let handle = app.clone();
+        report(
+            app.run_on_main_thread(move || focus_presented(&handle, owner)),
+            NativeIssue::Focus,
+        );
+    }
+}
+
+fn focus_presented(app: &AppHandle, owner: u64) {
+    let Some(window) = app.get_webview_window("main") else {
+        return;
+    };
+    if !app
+        .state::<PickerGeneration>()
+        .still_owns_after(owner, || window.is_visible().ok() == Some(true))
+    {
+        return;
+    }
+    #[cfg(target_os = "macos")]
+    crate::panel::show(app);
+    #[cfg(not(target_os = "macos"))]
+    report(window.set_focus(), NativeIssue::Focus);
+}
+
+/// Give the picker the keyboard back when a dialog owned by presentation
+/// `generation` closes, unless the person has since dismissed or reopened it.
+pub(crate) fn return_focus(app: &AppHandle, generation: u64) {
+    if app.state::<PickerGeneration>().current() != generation {
+        return;
+    }
+    reveal_picker(app);
+}
+
+/// Only a picker known to be visible keeps its presentation.
+fn reveal_shows(visible: Option<bool>) -> bool {
+    visible != Some(true)
+}
+
 /// Show the picker on the display with the pointer, focused, and tell the interface to focus the search box.
 pub(crate) fn show_picker(app: &AppHandle) {
     crate::updater::picker_activity(app);
@@ -458,9 +523,15 @@ pub(crate) fn hide_picker<R: PickerHideUi>(app: AppHandle<R>, presentation: Opti
     let (send, receive) = std::sync::mpsc::sync_channel(1);
     let handle = app.clone();
     app.run_on_main_thread(move || {
-        let hidden = dismiss_presented_with(&handle.state::<PickerGeneration>(), presentation, || {
-            R::dismiss(&handle);
-        });
+        // A dialog the picker owns is open, perhaps opened after this request
+        // was sent (a copy finishing late): never take away its parent.
+        let dialog = handle
+            .try_state::<ChooserOpen>()
+            .is_some_and(|chooser| chooser.is_open());
+        let hidden = !dialog
+            && dismiss_presented_with(&handle.state::<PickerGeneration>(), presentation, || {
+                R::dismiss(&handle);
+            });
         let _ = send.send(hidden);
     })
     .map_err(|_| "The picker could not be hidden.")?;
@@ -495,6 +566,12 @@ fn dismiss_presented_with(visits: &PickerGeneration, presentation: u64, dismiss:
 pub(crate) fn dismiss_picker(app: &AppHandle) {
     app.state::<PickerGeneration>().advance();
     finish_dismiss(app);
+}
+
+/// Hide the picker only if `generation` is still its presentation, retiring it
+/// in the same atomic step: a show that arrives in between keeps the picker.
+fn dismiss_presentation(app: &AppHandle, generation: u64) -> bool {
+    dismiss_presented_with(&app.state::<PickerGeneration>(), generation, || finish_dismiss(app))
 }
 
 fn finish_dismiss(app: &AppHandle) {
@@ -584,7 +661,7 @@ impl PickerGeneration {
     pub(crate) fn current(&self) -> u64 {
         self.0.load(Ordering::SeqCst)
     }
-    fn advance(&self) -> u64 {
+    pub(crate) fn advance(&self) -> u64 {
         self.0.fetch_add(1, Ordering::SeqCst).wrapping_add(1)
     }
     fn retire(&self, generation: u64) -> bool {
@@ -605,10 +682,11 @@ impl PickerGeneration {
     }
 }
 
-/// The blur suppressed by a native menu may be the last focus event received.
-/// Call on the main thread after releasing its lease; reconcile only cancellation
-/// against live state.
-pub(crate) fn reconcile_cancelled_menu(window: &tauri::WebviewWindow, generation: u64) {
+/// The blur suppressed by a native menu or dialog may be the last focus event
+/// received: once it closes with focus in another app, nothing else would hide
+/// the picker. Call on the main thread after releasing its lease; reconcile
+/// only against live state, and only the presentation that opened it.
+pub(crate) fn reconcile_suppressed_blur(window: &tauri::WebviewWindow, generation: u64) {
     let app = window.app_handle();
     let outside = app.state::<PickerGeneration>().still_owns_after(generation, || {
         window.is_visible().ok() == Some(true) && focused_for_shortcut(window) == Some(false)
@@ -630,7 +708,7 @@ pub(crate) fn reconcile_cancelled_menu(window: &tauri::WebviewWindow, generation
     #[cfg(target_os = "windows")]
     dismiss_unless_refocused(app, app.state::<FocusChanges>().record(), generation);
     #[cfg(not(target_os = "windows"))]
-    dismiss_picker(app);
+    dismiss_presentation(app, generation);
 }
 
 /// When Narrator or another UI Automation client presses a control, WebView2
@@ -691,13 +769,23 @@ fn finish_blur(app: &AppHandle, blur: u64, generation: u64) {
             .state::<FocusChanges>()
             .permits_dismissal(blur, &app.state::<PickerGeneration>(), generation)
     {
-        dismiss_picker(app);
+        dismiss_presentation(app, generation);
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn revealing_a_visible_picker_keeps_its_presentation() {
+        // A new presentation would start a new picker session, so the open
+        // library chooser could no longer close itself after its selection.
+        assert!(!reveal_shows(Some(true)));
+        assert!(reveal_shows(Some(false)));
+        // Unknown visibility shows: a dialog must never open without its picker.
+        assert!(reveal_shows(None));
+    }
 
     #[derive(Default)]
     struct HideUi {
@@ -734,6 +822,29 @@ mod tests {
             "A's Escape must leave B visible"
         );
         assert_eq!(visits.current(), b, "A's late response must not retire B's owner");
+        Ok(())
+    }
+
+    #[test]
+    fn a_hide_requested_before_a_dialog_opened_leaves_the_dialog_its_picker() -> tauri::Result<()> {
+        let app = tauri::test::mock_builder()
+            .manage(PickerGeneration(AtomicU64::new(41)))
+            .manage(ChooserOpen::default())
+            .manage(HideUi {
+                visible: AtomicBool::new(true),
+            })
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))?;
+        // A copy sent for presentation 41 finishes late, after an update offer
+        // opened over that same, still visible picker.
+        let lease = app.state::<ChooserOpen>().begin();
+        assert!(lease.is_some());
+        assert_eq!(hide_picker(app.handle().clone(), Some(41)), Ok(false));
+        assert!(app.state::<HideUi>().visible.load(Ordering::SeqCst));
+        assert_eq!(app.state::<PickerGeneration>().current(), 41);
+        // Once the dialog closes, the same presentation can hide again.
+        drop(lease);
+        assert_eq!(hide_picker(app.handle().clone(), Some(41)), Ok(true));
+        assert!(!app.state::<HideUi>().visible.load(Ordering::SeqCst));
         Ok(())
     }
 
