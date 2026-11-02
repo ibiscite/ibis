@@ -168,8 +168,18 @@ test.each(roles.map((role) => [role[1]!, role] as const))("%s keeps its roles re
     expect(contrast(text, surfaces[mode]!), `accent text, mode ${mode}`).toBeGreaterThanOrEqual(4.5);
     expect(contrast(accent, surfaces[mode]!), `accent as a control, mode ${mode}`).toBeGreaterThanOrEqual(3);
     const line = tokens.match(new RegExp(`\\[data-accent="${role[1]}"\\][^\\n]*`))![0];
-    expect(contrast(on, line.includes("--ac-fill") ? selected : accent), `primary button, mode ${mode}`).toBeGreaterThanOrEqual(3);
+    // Blue is Apple's own default button, kept as measured.
+    expect(contrast(on, line.includes("--ac-fill") ? selected : accent), `primary button, mode ${mode}`).toBeGreaterThanOrEqual(role[1] === "blue" ? 4 : 4.5);
   });
+});
+
+test("tertiary ink stays on placeholders and resting glyphs, never words a person reads", () => {
+  const rules = all.flatMap(([, css]) => [...css.matchAll(/([^{}]+)\{[^{}]*[^-]color: var\(--text-tertiary\)/g)].map((match) => match[1]!.trim()));
+  expect(rules.filter((selector) => !/placeholder|-glyph|-icon|-remove/.test(selector))).toEqual([]);
+});
+
+test("a key cap on the primary darkens it, so its label stays readable on every accent", () => {
+  expect(read("ui/Button.css")).toMatch(/\.ui-button\[data-variant="primary"\] \.key-caps kbd \{ background: var\(--on-fill-p\); \}/);
 });
 
 test("the ladders hold the values measured from AppKit on macOS 27.2", () => {

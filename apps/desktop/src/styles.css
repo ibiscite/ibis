@@ -51,7 +51,7 @@ main > .search-bar, main > .shelf, main > footer { flex: none; }
 :root[data-platform] #search { padding-inline-end: calc(var(--search-clear-size) + var(--space-1)); }
 
 .results-area { flex: 1; min-height: 0; margin-block: var(--inset); padding-inline: var(--inset); }
-.results-heading { display: flex; justify-content: space-between; padding: var(--space-1) var(--row-pad) var(--space-2); color: var(--text-tertiary); font-size: var(--type-label-size); line-height: var(--type-label-line); font-weight: var(--strong); letter-spacing: .02em; }
+.results-heading { display: flex; justify-content: space-between; padding: var(--space-1) var(--row-pad) var(--space-2); color: var(--text-secondary); font-size: var(--type-label-size); line-height: var(--type-label-line); font-weight: var(--strong); letter-spacing: .02em; }
 #results { list-style: none; padding: 0; margin: 0; }
 /* Rows are exactly --row-height and --row-spacing apart in every list of
    options (C4); the clear border (an edge only in increased contrast) is
@@ -284,7 +284,7 @@ footer .key-hint-label { display: inline; }
 .recent-heading h2 { margin: 0; font: inherit; }
 [data-active] .result-body > .result-type { color: var(--selected-text-secondary); }
 :root[data-density="spacious"] .result-meta { margin-top: var(--row-spacing); }
-.result-body > .result-type { color: var(--text-tertiary); margin-top: var(--row-spacing); font-size: var(--type-body-size); line-height: var(--type-body-line); }
+.result-body > .result-type { color: var(--text-secondary); margin-top: var(--row-spacing); font-size: var(--type-body-size); line-height: var(--type-body-line); }
 
 .query-input { position: relative; display: flex; flex: 1; min-width: 0; }
 
