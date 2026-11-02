@@ -338,3 +338,16 @@ fn saved_delights_preserve_other_settings_and_old_files_remain_optional() {
             .is_none()
     );
 }
+
+#[test]
+fn the_build_line_names_the_commit_once() {
+    assert_eq!(
+        build_line("0.2.7", Some("abc1234"), "2026-11-02"),
+        "0.2.7 · abc1234 · 2026-11-02"
+    );
+    assert_eq!(build_line("0.2.7", None, "2026-11-02"), "0.2.7 · local · 2026-11-02");
+    assert_eq!(
+        build_line("0.2.8-nightly.20261102120000+abc1234", Some("abc1234def"), "2026-11-02"),
+        "0.2.8-nightly.20261102120000+abc1234 · 2026-11-02"
+    );
+}

@@ -82,3 +82,14 @@ test("0.2 upgrade notes explain the new default and preserve explicitly stored s
   }
   for (const tag of ["v0.1.1", "v0.3.0"]) assert.doesNotMatch(releaseNotes(tag, generated), /macOS shortcut/);
 });
+
+test("lists each change once, even when two commits or PR references repeat it", () => {
+  const repeated = `### Bug Fixes
+
+* keep the picker open ([#12](https://github.com/ibiscite/ibis/issues/12)) ([1a2b3c4](https://github.com/ibiscite/ibis/commit/1a2b3c4d))
+* keep the picker open ([#12](https://github.com/ibiscite/ibis/issues/12)) ([5e6f7a8](https://github.com/ibiscite/ibis/commit/5e6f7a8b))
+* name the key ([9b0c1d2](https://github.com/ibiscite/ibis/commit/9b0c1d2e))
+* name the key ([9b0c1d2](https://github.com/ibiscite/ibis/commit/9b0c1d2e))
+`;
+  assert.equal(changes(repeated), ["**Bug Fixes**", "", "- Keep the picker open (#12)", "- Name the key"].join("\n"));
+});

@@ -54,7 +54,7 @@ fn command() -> Command {
         .display_order(1002)
         .help("Read a local Zotero group library by its group ID; repeat for several");
     let mut root = Command::new("ibis")
-        .version(env!("CARGO_PKG_VERSION"))
+        .version(ibis_core::VERSION)
         .about("Find references and cite them anywhere.")
         .after_help(ROOT_HELP)
         .subcommand_required(true)
@@ -405,7 +405,7 @@ fn run_engine<R: BufRead, W: Write + Send, E: Write>(
                         true,
                         Ok(DispatchResult {
                             data: if error.kind() == clap::error::ErrorKind::DisplayVersion {
-                                json!({"version":env!("CARGO_PKG_VERSION")})
+                                json!({"version":ibis_core::VERSION})
                             } else {
                                 json!({"help":error.to_string()})
                             },

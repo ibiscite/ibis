@@ -21,6 +21,8 @@ const COMMAND_LINE = ["ibis-macOS-Apple-silicon.tar.gz", "ibis-macOS-Intel.tar.g
 
 export function changes(generated) {
   const lines = [];
+  // A change merged twice, or listed under two commits, appears once.
+  const seen = new Set();
   for (const raw of generated.split("\n")) {
     const line = raw.trimEnd();
     if (/^:robot:|^---$|^## \d/.test(line)) continue;
@@ -36,7 +38,10 @@ export function changes(generated) {
       .replace(/, closes \[#\d+\]\([^)]*\)(, \[#\d+\]\([^)]*\))*/g, "")
       .replace(/\[#(\d+)\]\([^)]*\)/g, "#$1")
       .replace(/^\*\*([^*]+):\*\* /, "$1: ");
-    lines.push(`- ${text.charAt(0).toUpperCase()}${text.slice(1)}`);
+    const entry = `- ${text.charAt(0).toUpperCase()}${text.slice(1)}`;
+    if (seen.has(entry)) continue;
+    seen.add(entry);
+    lines.push(entry);
   }
   return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }

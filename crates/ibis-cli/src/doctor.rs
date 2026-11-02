@@ -60,18 +60,14 @@ pub(super) fn run(engine: &Engine, matches: &ArgMatches, mode: OutputMode) -> Re
         .data;
     let data = json!({
         "contract_version": Version,
-        "cli_version": env!("CARGO_PKG_VERSION"),
+        "cli_version": ibis_core::VERSION,
         "stdout_tty": mode == OutputMode::Terminal,
         "capabilities": {"methods":Method::ALL, "key_outputs":key_outputs, "csl_styles":styles["styles"]},
         "config":config,
         "library_check":library_check,
         "sources":sources,
     });
-    let mut text = format!(
-        "Ibis {} · contract {}\n",
-        env!("CARGO_PKG_VERSION"),
-        data["contract_version"]
-    );
+    let mut text = format!("Ibis {} · contract {}\n", ibis_core::VERSION, data["contract_version"]);
     text.push_str(&format!(
         "Capabilities: {}\n",
         Method::ALL.map(Method::as_str).join(", ")
