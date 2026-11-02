@@ -25,6 +25,7 @@ export const {
   librarySource,
   hidePicker,
   pickerPresentation,
+  pickerMoving,
   setPinned,
   quit,
   shortcutStatus,

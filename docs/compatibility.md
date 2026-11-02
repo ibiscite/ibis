@@ -50,6 +50,11 @@ on Debian/Ubuntu, or run `APPIMAGE_EXTRACT_AND_RUN=1 ./Ibis-Linux.AppImage`.
 CI checks that the extracted AppImage starts and stays up; it does not run the
 full picker smoke test through that fallback.
 
+**NixOS:** run the AppImage with `appimage-run` (`nix-shell -p appimage-run`,
+or set `programs.appimage.enable = true;` and `programs.appimage.binfmt = true;`
+in your configuration). The command line archive holds a static binary that
+runs as it is. There is no Nix package yet.
+
 ## Linux shortcuts and tray
 
 X11 shortcuts need a reachable X11 server with XKB. On Wayland Ibis instead
