@@ -102,6 +102,11 @@ export const commands = {
 	 */
 	setPinned: (on: boolean) => __TAURI_INVOKE<void>("set_pinned", { on }),
 	/**
+	 *  The interface reports move `id` of `presentation` starting, and its end
+	 *  once the pointer is back. A move whose end never arrives ends at its limit.
+	 */
+	pickerMoving: (presentation: number, id: number, moving: boolean) => __TAURI_INVOKE<void>("picker_moving", { presentation, id, moving }),
+	/**
 	 *  End the app. Closing the window only hides it, so this is the way out on
 	 *  Windows and Linux, which have no application menu with Quit.
 	 */

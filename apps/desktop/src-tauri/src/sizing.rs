@@ -409,6 +409,10 @@ pub(crate) fn prepare(app: &AppHandle, window: &WebviewWindow, first_show: bool,
     let Some((monitor, keep_position)) = placement::active_monitor(app, window, first_show || reset) else {
         return false;
     };
+    #[cfg(target_os = "windows")]
+    if first_show {
+        report(display_events::settle_frame(window).ok_or(()), NativeIssue::Resize);
+    }
     let sizing = app.state::<Sizing>();
     let saved = if reset {
         None

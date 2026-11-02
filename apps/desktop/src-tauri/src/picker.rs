@@ -641,6 +641,121 @@ pub(crate) fn set_pinned(app: AppHandle, pinned: State<'_, Pinned>, on: bool) {
     let _ = app;
 }
 
+/// Set while the person moves or resizes the picker. A Linux compositor can
+/// take focus away for its move or resize grab, and that blur must not hide
+/// the window being moved. The interface numbers its moves in the order it
+/// starts them, so a start or end that arrives late or out of order never
+/// replaces or clears a newer move.
+#[derive(Default)]
+pub(crate) struct Moving(Mutex<Moves>);
+
+#[derive(Default)]
+struct Moves {
+    /// The held move: its presentation and its number.
+    held: Option<(u64, u64)>,
+    /// The newest move number seen; an older start is late.
+    newest: u64,
+}
+
+/// The longest a move holds the picker open without its end arriving, so a
+/// cancelled grab or a lost pointer event cannot keep a blurred picker shown.
+/// No one drags a window for a minute.
+const MOVE_LIMIT: std::time::Duration = std::time::Duration::from_secs(60);
+
+impl Moving {
+    /// Start move `id` of `presentation`, if that is still shown and no newer
+    /// move has started or ended.
+    #[cfg(any(target_os = "linux", test))]
+    fn begin(&self, visits: &PickerGeneration, presentation: u64, id: u64) -> bool {
+        let Ok(mut moves) = self.0.lock() else {
+            return false;
+        };
+        if !visits.owns(presentation) || id <= moves.newest {
+            return false;
+        }
+        moves.newest = id;
+        moves.held = Some((presentation, id));
+        true
+    }
+
+    /// End any move and return the presentation it belonged to.
+    pub(crate) fn end(&self) -> Option<u64> {
+        self.0.lock().ok()?.held.take().map(|(presentation, _)| presentation)
+    }
+
+    /// End exactly move `id`: its own end, or its limit. An end that arrives
+    /// before its start still retires that start.
+    fn finish(&self, presentation: u64, id: u64) -> bool {
+        let Ok(mut moves) = self.0.lock() else {
+            return false;
+        };
+        moves.newest = moves.newest.max(id);
+        let owns = moves.held == Some((presentation, id));
+        if owns {
+            moves.held = None;
+        }
+        owns
+    }
+
+    /// Whether the shown presentation is being moved now.
+    pub(crate) fn holds(&self, visits: &PickerGeneration) -> bool {
+        self.0.lock().is_ok_and(|moves| {
+            moves
+                .held
+                .is_some_and(|(presentation, _)| presentation == visits.current())
+        })
+    }
+}
+
+/// A blur held during a move is checked against live focus, as after a
+/// native dialog, unless another move has started since.
+fn reconcile_move(app: &AppHandle, presentation: u64) {
+    let handle = app.clone();
+    report(
+        app.run_on_main_thread(move || {
+            if handle.state::<Moving>().holds(&handle.state()) {
+                return;
+            }
+            if let Some(window) = handle.get_webview_window("main") {
+                reconcile_suppressed_blur(&window, presentation);
+            }
+        }),
+        NativeIssue::Window,
+    );
+}
+
+/// The interface reports move `id` of `presentation` starting, and its end
+/// once the pointer is back. A move whose end never arrives ends at its limit.
+#[tauri::command]
+#[specta::specta]
+pub(crate) fn picker_moving(app: AppHandle, presentation: u64, id: u64, moving: bool) {
+    let state = app.state::<Moving>();
+    if !moving {
+        if state.finish(presentation, id) {
+            reconcile_move(&app, presentation);
+        }
+    } else if begins(&state, &app, presentation, id) {
+        let handle = app.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            std::thread::sleep(MOVE_LIMIT);
+            if handle.state::<Moving>().finish(presentation, id) {
+                reconcile_move(&handle, presentation);
+            }
+        });
+    }
+}
+
+/// Only Linux holds a blur for a move.
+#[cfg(target_os = "linux")]
+fn begins(state: &Moving, app: &AppHandle, presentation: u64, id: u64) -> bool {
+    state.begin(&app.state(), presentation, id)
+}
+
+#[cfg(not(target_os = "linux"))]
+fn begins(_state: &Moving, _app: &AppHandle, _presentation: u64, _id: u64) -> bool {
+    false
+}
+
 /// Whether the picker hides when it loses focus. Release builds hide it, like
 /// other launchers, except while its file chooser has the focus or it is
 /// pinned; development builds never do, so the developer tools stay usable.
@@ -776,6 +891,40 @@ fn finish_blur(app: &AppHandle, blur: u64, generation: u64) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_move_belongs_to_its_presentation_and_ends_once() {
+        let visits = PickerGeneration(AtomicU64::new(41));
+        let moving = Moving::default();
+        assert!(!moving.begin(&visits, 40, 1)); // a stale presentation is ignored
+        assert!(moving.begin(&visits, 41, 2));
+        assert!(moving.holds(&visits));
+        visits.advance(); // hidden or reopened: the move no longer holds
+        assert!(!moving.holds(&visits));
+        assert_eq!(moving.end(), Some(41));
+        assert_eq!(moving.end(), None);
+        // A late end from 41 leaves 42's move alone.
+        assert!(moving.begin(&visits, 42, 3));
+        assert!(!moving.finish(41, 2));
+        assert!(moving.holds(&visits));
+        // In one presentation, an earlier move's late end or limit never ends
+        // a later move; only its own end does.
+        assert!(moving.finish(42, 3));
+        assert!(moving.begin(&visits, 42, 4));
+        assert!(!moving.finish(42, 3));
+        assert!(moving.holds(&visits));
+        assert!(moving.finish(42, 4));
+        assert!(!moving.holds(&visits));
+        assert!(!moving.finish(42, 4));
+        // Starts that arrive out of order: the older one never replaces the newer.
+        assert!(moving.begin(&visits, 42, 6));
+        assert!(!moving.begin(&visits, 42, 5));
+        assert!(moving.finish(42, 6));
+        // An end that overtakes its start retires it.
+        assert!(!moving.finish(42, 7));
+        assert!(!moving.begin(&visits, 42, 7));
+        assert!(!moving.holds(&visits));
+    }
 
     #[test]
     fn revealing_a_visible_picker_keeps_its_presentation() {

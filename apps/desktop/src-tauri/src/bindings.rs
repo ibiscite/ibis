@@ -33,6 +33,7 @@ pub(crate) fn commands() -> tauri_specta::Builder<tauri::Wry> {
             crate::picker::hide_picker::<tauri::Wry>,
             crate::picker::picker_presentation,
             crate::picker::set_pinned,
+            crate::picker::picker_moving,
             crate::picker::quit,
             crate::picker::shortcut_status,
             crate::picker::wayland::configure_shortcuts,

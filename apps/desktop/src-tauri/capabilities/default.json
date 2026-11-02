@@ -40,6 +40,7 @@
     "allow-hide-picker",
     "allow-picker-presentation",
     "allow-set-pinned",
+    "allow-picker-moving",
     "allow-quit",
     "allow-shortcut-status",
     "allow-show-copied-notice",

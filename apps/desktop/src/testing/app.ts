@@ -130,6 +130,7 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
     search: () => [],
     hide_picker: () => true,
     picker_presentation: () => 0,
+    picker_moving: () => null,
     delight_view: () => ({ status: null, peck: false, anniversary: false, build: "0.0.0 · invented · 2026-11-01" }),
     show_copied_notice: () => null,
     set_pinned: () => null,

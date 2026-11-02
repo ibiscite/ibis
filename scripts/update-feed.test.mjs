@@ -80,7 +80,9 @@ test("Stable and Nightly Linux package file sets never share icons, launchers or
   const identities = JSON.parse(readFileSync(new URL("../brand/settings.json", import.meta.url), "utf8")).desktop_identifiers;
   for (const platform of ["deb", "appimage"]) {
     const sets = [stable, nightly].map((config) => {
-      const files = config.bundle.linux[platform].files;
+      // An AppImage's own libraries never leave its image, so they cannot clash.
+      const files = Object.fromEntries(Object.entries(config.bundle.linux[platform].files)
+        .filter(([dest]) => !(platform === "appimage" && dest.startsWith("/usr/lib/"))));
       for (const [dest, source] of Object.entries(files)) {
         assert.ok(dest.includes(config.identifier), dest);
         assert.ok(source.includes(config.identifier), source);
