@@ -152,7 +152,10 @@ export const commands = {
 	 *  thread and is queued in click order with the tray's clicks.
 	 */
 	setUpdateChecks: (enabled: boolean) => __TAURI_INVOKE<void>("set_update_checks", { enabled }),
-	/**  "Check for Updates…": the same check the tray starts. */
+	/**
+	 *  "Check for Updates…": the same check the tray starts. It returns when the
+	 *  check has ended, so Settings can say it is checking until then.
+	 */
 	checkForUpdates: () => __TAURI_INVOKE<void>("check_for_updates"),
 	openAboutLink: (link: AboutLink) => __TAURI_INVOKE<void>("open_about_link", { link }),
 	/**  Whether an automatic check found an update that has not been presented. */

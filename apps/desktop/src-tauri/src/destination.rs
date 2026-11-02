@@ -106,12 +106,15 @@ struct MemoryFile {
     recovery: bool,
 }
 
+/// Every app's choices, and whether lost choices still need resolving.
+type Choices = (Vec<Remembered>, bool);
+
 /// The per-app file, read once and written on every change.
 pub(crate) struct AppMemory {
     path: PathBuf,
-    state: Mutex<(Vec<Remembered>, bool)>,
+    state: Mutex<Choices>,
     /// What the newest Forget removed, for its Undo. Never written to disk.
-    forgotten: Mutex<(u32, Option<(Vec<Remembered>, bool)>)>,
+    forgotten: Mutex<(u32, Option<Choices>)>,
 }
 
 fn normalized(app: &AppId) -> AppId {
@@ -237,7 +240,7 @@ impl AppMemory {
         let mut state = self.state.lock().map_err(|_| unavailable())?;
         let mut forgotten = self.forgotten.lock().map_err(|_| unavailable())?;
         write(&self.path, &[], false)?;
-        let removed = std::mem::replace(&mut *state, (Vec::new(), false));
+        let removed = std::mem::take(&mut *state);
         *forgotten = (forgotten.0.wrapping_add(1), Some(removed));
         Ok(forgotten.0)
     }
