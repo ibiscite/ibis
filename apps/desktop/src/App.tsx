@@ -124,7 +124,8 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
     api, session, state, destination, currentPin, formatButtonRef, refreshSnapshot, report, setFormatOpen,
     view: {
       queryKey, format, snapshotRevision, defaultChoice, chosen, shown, previewVisible: showPastePreview,
-      searchPending, ready: preferences.ready,
+      // The citation stays in view through a reload, but Enter waits for its end.
+      searchPending, ready: preferences.ready && library?.state !== "reloading",
     },
   });
   useLibrarySetup(library, setFailures, send, input);

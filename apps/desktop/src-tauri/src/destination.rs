@@ -210,7 +210,8 @@ impl AppMemory {
         if paste == Some(AppPaste::Paste) && lookup(&app).is_none() && identity.is_none() {
             return Err(io::Error::other("this app has no proven identity to approve"));
         }
-        self.change(false, |apps| {
+        let chosen = app.clone();
+        self.change(|apps| {
             let previous = apps.iter().find(|entry| entry.app == app);
             let paste = paste.or_else(|| {
                 output.and_then(|_| previous?.paste).filter(|paste| {
@@ -231,7 +232,14 @@ impl AppMemory {
                     identity,
                 });
             }
-        })
+        })?;
+        // Any explicit choice since Forget, even a reset, is no longer Undo's to restore.
+        if let Ok(mut forgotten) = self.forgotten.lock()
+            && let Some((removed, _)) = forgotten.1.as_mut()
+        {
+            removed.retain(|old| old.app != chosen);
+        }
+        Ok(())
     }
 
     /// Forget every app, returning the ticket that can undo it.
@@ -267,7 +275,7 @@ impl AppMemory {
         Ok(())
     }
 
-    fn change(&self, reset: bool, change: impl FnOnce(&mut Vec<Remembered>)) -> io::Result<()> {
+    fn change(&self, change: impl FnOnce(&mut Vec<Remembered>)) -> io::Result<()> {
         let mut state = self
             .state
             .lock()
@@ -276,15 +284,8 @@ impl AppMemory {
         change(&mut apps);
         let excess = apps.len().saturating_sub(MAX_APPS);
         apps.drain(..excess);
-        let recovery = state.1 && !reset;
+        let recovery = state.1;
         write(&self.path, &apps, recovery)?;
-        // An app edited since Forget, even back to nothing, is no longer Undo's to restore.
-        if let Ok(mut forgotten) = self.forgotten.lock()
-            && let Some((removed, _)) = forgotten.1.as_mut()
-        {
-            let entry = |list: &[Remembered], app: &AppId| list.iter().find(|item| item.app == *app).cloned();
-            removed.retain(|old| entry(&state.0, &old.app) == entry(&apps, &old.app));
-        }
         *state = (apps, recovery);
         Ok(())
     }
@@ -541,8 +542,7 @@ mod tests {
         let app = mac("com.invented.writer");
         memory.set_choice(&app, Some(AppOutput::Key(KeyFormat::Pandoc)), None)?;
         let ticket = memory.forget()?;
-        memory.set_choice(&app, Some(AppOutput::Key(KeyFormat::Typst)), None)?;
-        memory.set_choice(&app, None, None)?;
+        memory.set_choice(&app, None, None)?; // Automatic, in a picker still open from before.
         memory.restore(ticket)?;
         assert_eq!(memory.get(&app).0, None);
         Ok(())
