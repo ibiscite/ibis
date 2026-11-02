@@ -24,7 +24,7 @@ const SETTINGS: Record<string, MessageId> = {
   paste: "general-paste-label", menu_bar: "general-menu-bar-label", recent_citations: "citations-recent",
   small_surprises: "general-small-surprises-label", appearance: "look-appearance", accent: "look-accent",
 };
-const NOTES: Record<RestoreNote, MessageId> = { "library-not-found": "backup-note-library", "shortcut-kept": "backup-note-shortcut" };
+const NOTES: Record<RestoreNote, MessageId> = { "library-not-found": "backup-note-library", "shortcut-kept": "backup-note-shortcut", "repairs-settings": "backup-note-repairs" };
 const VALUES: Record<string, Record<string, MessageId>> = {
   density: { compact: "general-density-compact", comfortable: "general-density-comfortable", spacious: "general-density-spacious" },
   appearance: { system: "look-system", light: "look-light", dark: "look-dark" },
@@ -32,6 +32,9 @@ const VALUES: Record<string, Record<string, MessageId>> = {
   accent: { ibis: "look-accent-ibis", blue: "look-accent-blue", purple: "look-accent-purple", pink: "look-accent-pink", red: "look-accent-red", orange: "look-accent-orange", yellow: "look-accent-yellow", green: "look-accent-green", graphite: "look-accent-graphite" },
 };
 const FORMATS = new Set(["pandoc", "autocite", "parencite", "textcite", "cite", "typst", "keys", "apa", "chicago-author-date", "harvard-cite-them-right", "ieee", "modern-language-association"]);
+
+/** Something to write: a changed setting, or a damaged settings file to replace. */
+const restorable = (preview: RestorePreview) => preview.changes.length > 0 || preview.notes.includes("repairs-settings");
 
 function problemOf(error: unknown): MessageId {
   return typeof error === "string" && Object.hasOwn(PROBLEMS, error) ? PROBLEMS[error as BackupProblem] : "backup-problem-not-saved";
@@ -137,13 +140,13 @@ export function BackupRows({ api }: { api: BackupApi }) {
           <div className="settings-restore" role="group" aria-labelledby="restore-preview">
             {preview.changes.length
               ? <ul className="ui-settings-description">{preview.changes.map((item) => <li key={item.setting}>{change(item)}</li>)}</ul>
-              : <p className="ui-settings-description">{text("restore-same")}</p>}
+              : !restorable(preview) && <p className="ui-settings-description">{text("restore-same")}</p>}
             {preview.notes.map((note) => <p key={note} className="ui-settings-description">{text(NOTES[note])}</p>)}
             {restarting
               ? <p role="status" className="ui-settings-description">{text("restore-restarting")}</p>
               : <div className="settings-restore-actions">
                   <Button onPress={forget} isDisabled={busy !== null}>{text("restore-cancel")}</Button>
-                  {preview.changes.length > 0 && <Button variant="primary" onPress={restore} isDisabled={busy !== null}>{text("restore-confirm")}</Button>}
+                  {restorable(preview) && <Button variant="primary" onPress={restore} isDisabled={busy !== null}>{text("restore-confirm")}</Button>}
                 </div>}
           </div>
         </Row>

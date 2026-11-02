@@ -773,7 +773,7 @@ export type RestoreChange = {
 	to: string | null,
 };
 
-export type RestoreNote = "library-not-found" | "shortcut-kept";
+export type RestoreNote = "library-not-found" | "shortcut-kept" | "repairs-settings";
 
 /**  What restoring the chosen backup would change, before anything does. */
 export type RestorePreview = {

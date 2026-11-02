@@ -270,6 +270,9 @@ pub enum Note {
     LibraryNotFound,
     /// The backup has no opening shortcut for this system; this computer's is kept.
     ShortcutKept,
+    /// This computer's settings file is damaged. Restoring replaces it, even
+    /// with the same settings, and keeps the damaged file beside it.
+    RepairsSettings,
 }
 
 /// What a restore would do, worked out from the settings as they are now.
@@ -284,9 +287,18 @@ pub struct Plan {
 }
 
 impl Plan {
-    /// The settings file holds the backup's settings already.
+    /// The settings file holds the backup's settings already, undamaged.
     pub fn is_empty(&self) -> bool {
-        self.changes.is_empty()
+        self.changes.is_empty() && !self.notes.contains(&Note::RepairsSettings)
+    }
+
+    /// Mark the plan as replacing a damaged settings file.
+    #[must_use]
+    pub fn repairing(mut self, damaged: bool) -> Self {
+        if damaged && !self.notes.contains(&Note::RepairsSettings) {
+            self.notes.push(Note::RepairsSettings);
+        }
+        self
     }
 }
 

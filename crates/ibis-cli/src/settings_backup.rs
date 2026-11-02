@@ -176,7 +176,7 @@ fn import(args: &ArgMatches) -> Result<DispatchResult, Failure> {
         Some(file) => bounded(move || file.try_exists().unwrap_or(false)).unwrap_or(false),
         None => true,
     };
-    let plan = backup::plan(&loaded.settings, &backup, |_| found);
+    let plan = backup::plan(&loaded.settings, &backup, |_| found).repairing(loaded.problem.is_some());
     let dry_run = args.get_flag("dry-run");
     if !dry_run && !plan.is_empty() {
         let restoring = plan.clone();
@@ -234,6 +234,9 @@ fn import_text(app: &str, backup: &Backup, plan: &backup::Plan, dry_run: bool) -
                 "Note: the backup's bibliography file is not on this computer. It is kept, and Ibis finds it once the file is there.\n"
             }
             Note::ShortcutKept => "Note: the backup has no opening shortcut for this system, so this computer's is kept.\n",
+            Note::RepairsSettings => {
+                "Note: the settings file on this computer is damaged. Restoring replaces it and keeps the damaged file beside it.\n"
+            }
         });
     }
     text.push_str(if dry_run {
@@ -268,6 +271,7 @@ fn note_id(note: &Note) -> &'static str {
     match note {
         Note::LibraryNotFound => "library-not-found",
         Note::ShortcutKept => "shortcut-kept",
+        Note::RepairsSettings => "repairs-settings",
     }
 }
 

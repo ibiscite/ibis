@@ -58,6 +58,7 @@ pub(crate) struct RestoreChange {
 pub(crate) enum RestoreNote {
     LibraryNotFound,
     ShortcutKept,
+    RepairsSettings,
 }
 
 /// What restoring the chosen backup would change, before anything does.
@@ -76,11 +77,23 @@ pub(crate) struct RestorePreview {
 pub(crate) struct PendingRestore(Mutex<(u32, Option<Plan>)>);
 
 impl PendingRestore {
-    fn offer(&self, plan: Plan) -> Option<u32> {
+    /// Start choosing a backup: any earlier preview, shown or still being
+    /// chosen, can no longer be restored.
+    fn begin(&self) -> Option<u32> {
         let mut pending = self.0.lock().ok()?;
         pending.0 = pending.0.wrapping_add(1);
-        pending.1 = Some(plan);
+        pending.1 = None;
         Some(pending.0)
+    }
+
+    /// Keep the plan of the latest choice; a choice that finished late is dropped.
+    fn offer(&self, ticket: u32, plan: Plan) -> bool {
+        let Ok(mut pending) = self.0.lock() else { return false };
+        if pending.0 != ticket {
+            return false;
+        }
+        pending.1 = Some(plan);
+        true
     }
 
     fn take(&self, ticket: u32) -> Option<Plan> {
@@ -192,6 +205,7 @@ fn preview(ticket: u32, backup: &backup::Backup, plan: &Plan) -> RestorePreview 
             .map(|note| match note {
                 Note::LibraryNotFound => RestoreNote::LibraryNotFound,
                 Note::ShortcutKept => RestoreNote::ShortcutKept,
+                Note::RepairsSettings => RestoreNote::RepairsSettings,
             })
             .collect(),
     }
@@ -255,6 +269,7 @@ pub(crate) async fn back_up_settings(window: WebviewWindow) -> Result<Option<Str
 #[specta::specta]
 pub(crate) async fn choose_settings_backup(window: WebviewWindow) -> Result<Option<RestorePreview>, BackupProblem> {
     let app = window.app_handle().clone();
+    let ticket = app.state::<PendingRestore>().begin().ok_or(BackupProblem::Changed)?;
     let dialog = app
         .dialog()
         .file()
@@ -284,9 +299,10 @@ pub(crate) async fn choose_settings_backup(window: WebviewWindow) -> Result<Opti
         }
         _ => true,
     };
-    let plan = backup::plan(&loaded.settings, &backup, |_| found);
-    let pending = app.state::<PendingRestore>();
-    let ticket = pending.offer(plan.clone()).ok_or(BackupProblem::Changed)?;
+    let plan = backup::plan(&loaded.settings, &backup, |_| found).repairing(loaded.problem.is_some());
+    if !app.state::<PendingRestore>().offer(ticket, plan.clone()) {
+        return Ok(None);
+    }
     Ok(Some(preview(ticket, &backup, &plan)))
 }
 
@@ -334,13 +350,19 @@ mod tests {
     #[test]
     fn only_the_latest_preview_can_be_restored_and_only_once() {
         let pending = PendingRestore::default();
-        let first = pending.offer(plan(&Settings::default())).unwrap_or_default();
-        let second = pending.offer(plan(&Settings::default())).unwrap_or_default();
+        let first = pending.begin().unwrap_or_default();
+        let second = pending.begin().unwrap_or_default();
         assert_ne!(first, second);
+        assert!(pending.offer(second, plan(&Settings::default())));
+        assert!(
+            !pending.offer(first, plan(&Settings::default())),
+            "a choice that finished late is dropped"
+        );
         assert!(pending.take(first).is_none(), "a replaced preview is refused");
-        assert!(pending.take(second).is_some());
+        assert!(pending.take(second).is_some(), "the latest preview survives a late one");
         assert!(pending.take(second).is_none(), "a restore runs once");
-        let third = pending.offer(plan(&Settings::default())).unwrap_or_default();
+        let third = pending.begin().unwrap_or_default();
+        assert!(pending.offer(third, plan(&Settings::default())));
         pending.cancel(third);
         assert!(pending.take(third).is_none());
     }

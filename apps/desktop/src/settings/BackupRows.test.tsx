@@ -124,3 +124,15 @@ test("a preview that arrives after Settings closed is forgotten, and closing for
   expect(api.cancelSettingsRestore).toHaveBeenCalledWith(9);
   expect(api.restoreSettingsBackup).not.toHaveBeenCalled();
 });
+
+test("a damaged settings file can be repaired from a backup with the same settings", async () => {
+  const api = fakeApi({ chooseSettingsBackup: vi.fn(async () => ({ ...preview(6, []), notes: ["repairs-settings" as const] })) });
+  render(<BackupRows api={api} />);
+  fireEvent.click(screen.getByRole("button", { name: "Restore…" }));
+  await act(async () => undefined);
+  expect(screen.getByText(/settings file on this computer is damaged/)).toBeTruthy();
+  expect(screen.queryByText("This computer already has these settings.")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Restore and Restart" }));
+  await act(async () => undefined);
+  expect(api.restoreSettingsBackup).toHaveBeenCalledWith(6);
+});

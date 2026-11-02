@@ -478,6 +478,23 @@ fn restore_replaces_damaged_settings_but_never_newer_or_unreadable_ones() {
     backup::restore(&path, &plan).unwrap_or_else(|error| panic!("{error}"));
     assert_eq!(settings::load(&path).settings.citation_style, Some(CitationStyle::Ieee));
     assert_eq!(read(&directory.path().join("settings.json.invalid-1")), "{ damaged");
+    // Damaged, recovered from a .bak that already matches the backup: still
+    // worth restoring, because it repairs the damaged file.
+    let directory = folder();
+    let path = directory.path().join("settings.json");
+    write(&path, "{ damaged");
+    write(
+        &directory.path().join("settings.json.bak"),
+        &serde_json::to_string(&backup.settings).unwrap_or_default(),
+    );
+    let loaded = settings::load(&path);
+    let plan = backup::plan(&loaded.settings, &backup, |_| true).repairing(loaded.problem.is_some());
+    assert!(plan.changes.is_empty());
+    assert!(!plan.is_empty());
+    assert!(plan.notes.contains(&backup::Note::RepairsSettings));
+    backup::restore(&path, &plan).unwrap_or_else(|error| panic!("{error}"));
+    assert!(settings::load(&path).problem.is_none());
+    assert_eq!(read(&directory.path().join("settings.json.invalid-1")), "{ damaged");
     // No settings file yet: the restore creates it.
     let directory = folder();
     let path = directory.path().join("nested").join("settings.json");
