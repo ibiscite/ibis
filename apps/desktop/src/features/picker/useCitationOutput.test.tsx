@@ -222,6 +222,58 @@ test("a stale file preview waits for a changed source instead of retrying each u
   }
 });
 
+test("a reload keeps the settled preview, then formats once when it ends", async () => {
+  const previewFileCitation = vi.fn<Preview>().mockResolvedValue(preview("[@settled]"));
+  const initial = options({ previewFileCitation });
+  const { result, rerender } = renderHook(useCitationOutput, { initialProps: initial });
+  await waitFor(() => expect(result.current.shown).toMatchObject({ text: "[@settled]" }));
+
+  await act(async () => { rerender({ ...initial, library: { ...library(), state: "reloading" }, libraryVersion: 1 }); });
+  expect(previewFileCitation).toHaveBeenCalledTimes(1);
+  expect(result.current.shown).toMatchObject({ text: "[@settled]" });
+  expect(result.current.previewProblem).toBeUndefined();
+
+  previewFileCitation.mockResolvedValue(preview("[@fresh]"));
+  rerender({ ...initial, library: library("2"), chosen: [reference("2")], libraryVersion: 2 });
+  await waitFor(() => expect(result.current.shown).toMatchObject({ text: "[@fresh]" }));
+  expect(previewFileCitation).toHaveBeenCalledTimes(2);
+});
+
+test("a preview refused by a reload that began first waits instead of failing", async () => {
+  const previewFileCitation = vi.fn<Preview>().mockRejectedValueOnce({ code: "library_loading" }).mockResolvedValue(preview("[@fresh]"));
+  const refreshSnapshot = vi.fn();
+  const initial = options({ previewFileCitation, refreshSnapshot });
+  const { result, rerender } = renderHook(useCitationOutput, { initialProps: initial });
+  await act(async () => { await Promise.resolve(); });
+  expect(result.current.shown).toBeNull();
+  expect(result.current.previewProblem).toBeUndefined();
+  expect(refreshSnapshot).not.toHaveBeenCalled();
+
+  rerender({ ...initial, libraryVersion: 1 });
+  await waitFor(() => expect(result.current.shown).toMatchObject({ text: "[@fresh]" }));
+});
+
+test("a citation chosen during a reload starts no preview until the reload ends", async () => {
+  const previewFileCitation = vi.fn<Preview>().mockResolvedValue(preview("[@fresh]"));
+  const initial = options({ previewFileCitation, library: { ...library(), state: "reloading" } });
+  const { result, rerender } = renderHook(useCitationOutput, { initialProps: initial });
+  await act(async () => { await Promise.resolve(); });
+  expect(previewFileCitation).not.toHaveBeenCalled();
+  expect(result.current.shown).toBeNull();
+
+  rerender({ ...initial, library: library(), libraryVersion: 1 });
+  await waitFor(() => expect(result.current.shown).toMatchObject({ text: "[@fresh]" }));
+  expect(previewFileCitation).toHaveBeenCalledOnce();
+});
+
+test("a failed reload that keeps its snapshot still formats the citation", async () => {
+  const previewFileCitation = vi.fn<Preview>().mockResolvedValue(preview("[@kept]"));
+  const initial = options({ previewFileCitation, library: { ...library(), state: "reloading" } });
+  const { result, rerender } = renderHook(useCitationOutput, { initialProps: initial });
+  rerender({ ...initial, library: { ...library(), state: "error", error: "Synthetic failure" }, libraryVersion: 1 });
+  await waitFor(() => expect(result.current.shown).toMatchObject({ text: "[@kept]" }));
+});
+
 test("a stale file preview recovers when a refreshed search has a new source revision", async () => {
   const previewFileCitation = vi.fn<Preview>()
     .mockRejectedValueOnce({ code: "snapshot_changed" })

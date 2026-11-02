@@ -179,7 +179,7 @@ pub(crate) async fn preview_file_citation(
             .map_err(|_| CommandError::from("The library is unavailable."))?;
         let _ = expected_revision;
         if library.opening {
-            return Err("The library is loading. Try again after it opens.".into());
+            return Err(CommandError::LibraryLoading);
         }
         library
             .file

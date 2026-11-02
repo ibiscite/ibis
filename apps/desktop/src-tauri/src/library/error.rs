@@ -83,6 +83,8 @@ pub(crate) enum CommandError {
     /// The references the interface chose from are no longer the open
     /// library; search again and choose again.
     SnapshotChanged,
+    /// The library is being read; ask again when it has opened.
+    LibraryLoading,
     /// Another loaded record has this citation key, so citing by key would be ambiguous.
     SharedCitationKey { key: String },
     /// Anything else, with fixed text for the user.
@@ -116,6 +118,7 @@ impl fmt::Display for CommandError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             CommandError::SnapshotChanged => f.write_str("library snapshot changed"),
+            CommandError::LibraryLoading => f.write_str("library is loading"),
             CommandError::SharedCitationKey { key } => {
                 write!(f, "the citation key `{key}` belongs to more than one reference")
             }
@@ -140,6 +143,10 @@ mod tests {
         assert_eq!(
             json(CommandError::SnapshotChanged),
             serde_json::json!({"code": "snapshot_changed"})
+        );
+        assert_eq!(
+            json(CommandError::LibraryLoading),
+            serde_json::json!({"code": "library_loading"})
         );
         assert_eq!(
             json(CommandError::SharedCitationKey { key: "same".into() }),

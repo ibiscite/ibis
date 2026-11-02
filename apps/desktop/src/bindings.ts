@@ -239,6 +239,8 @@ export type CommandError =
  *  library; search again and choose again.
  */
 { code: "snapshot_changed" } |
+/**  The library is being read; ask again when it has opened. */
+{ code: "library_loading" } |
 /**  Another loaded record has this citation key, so citing by key would be ambiguous. */
 { code: "shared_citation_key"; key: string } |
 /**  Anything else, with fixed text for the user. */

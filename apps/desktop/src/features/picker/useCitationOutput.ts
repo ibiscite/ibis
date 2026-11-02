@@ -37,7 +37,11 @@ export function useCitationOutput({ chosen, library, libraryVersion, sessionId =
   const output = style ?? format;
   // Reading unchanged status must not retry the same stale citation forever.
   const retryKey = JSON.stringify([output, library?.revision, chosenKey]);
-  const previewKey = `${output}\u0002${libraryVersion}\u0002${chosenKey}`;
+  // A reload is not a new citation: the settled preview stays until it ends.
+  const reloading = library?.state === "loading" || library?.state === "reloading";
+  const settledVersion = useRef(libraryVersion);
+  if (!reloading) settledVersion.current = libraryVersion;
+  const previewKey = `${output}\u0002${settledVersion.current}\u0002${chosenKey}`;
   // A -> B -> A is a new operation: B has retired A's native copy ticket.
   // Equal input alone cannot revive that receipt before fresh A finishes.
   const request = useMemo(() => ({ key: previewKey }), [previewKey]);
@@ -59,7 +63,7 @@ export function useCitationOutput({ chosen, library, libraryVersion, sessionId =
   useEffect(() => {
     const previous = previousRequest.current;
     previousRequest.current = { sessionId, key: previewKey };
-    if (chosen.length === 0 || !chosenRevision) return;
+    if (chosen.length === 0 || !chosenRevision || reloading) return;
     if (reusable && formatted && formatted.request !== request) {
       lastStarted.current = request;
       setFormatted({ ...formatted, request });
@@ -85,7 +89,7 @@ export function useCitationOutput({ chosen, library, libraryVersion, sessionId =
     })), keyFormat ?? "pandoc", style, chosenRevision, abort.signal).then((result) => ({ markup: result.html ? parse(result.html) : [result.text], text: result.text, html: result.html ?? "", warnings: result.warnings, spans: result.spans, preview: result, fileTicket: result.ticket, fileHash: result.content_hash }));
     made
       .then((result) => { if (owns()) setFormatted({ key, request, preview: result.preview, result: result.preview.problem ? "failed" : result, problem: result.preview.problem ?? undefined }); })
-      .catch((error) => { if (owns()) {
+      .catch((error) => { if (owns() && !nativeApi.isLibraryLoading(error)) {
         const stale = nativeApi.isSnapshotChanged(error);
         const shared = nativeApi.sharedCitationKey(error);
         const failure = typeof error === "object" && error !== null ? error as { code?: unknown; message?: unknown } : null;
