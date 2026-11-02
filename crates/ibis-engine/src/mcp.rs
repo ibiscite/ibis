@@ -241,7 +241,7 @@ fn supported_versions() -> Vec<&'static str> {
 }
 
 fn server_info() -> Value {
-    json!({"name": "ibis", "title": "Ibis", "version": env!("CARGO_PKG_VERSION")})
+    json!({"name": "ibis", "title": "Ibis", "version": ibis_core::VERSION})
 }
 
 fn error(id: Value, code: i64, message: &str) -> Value {

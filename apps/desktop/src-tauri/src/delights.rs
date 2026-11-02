@@ -33,6 +33,15 @@ pub(crate) enum DelightStatus {
 // Set this once the first stable release date is known; no invented release date.
 const FIRST_STABLE_DATE: Option<[i32; 3]> = None;
 
+/// The About build line. A nightly's version already names its commit.
+fn build_line(version: &str, commit: Option<&str>, date: &str) -> String {
+    match commit {
+        _ if version.contains('+') => format!("{version} · {date}"),
+        Some(commit) => format!("{version} · {commit} · {date}"),
+        None => format!("{version} · local · {date}"),
+    }
+}
+
 fn release_birthday(now: LocalMoment, first_stable: Option<[i32; 3]>) -> bool {
     first_stable.is_some_and(|date| {
         date[0]
@@ -135,12 +144,7 @@ impl SettingsFile {
             anniversary: fun && anniversary,
             birthday: fun && release_birthday(now, FIRST_STABLE_DATE),
             fun,
-            build: format!(
-                "{} · {} · {}",
-                env!("CARGO_PKG_VERSION"),
-                option_env!("GITHUB_SHA").unwrap_or("local"),
-                env!("IBIS_BUILD_DATE")
-            ),
+            build: build_line(ibis_core::VERSION, option_env!("GITHUB_SHA"), env!("IBIS_BUILD_DATE")),
             ..DelightView::default()
         };
         if fun && about_click {

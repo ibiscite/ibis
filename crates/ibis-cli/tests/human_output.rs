@@ -272,7 +272,7 @@ fn help_and_version_are_envelopes_under_json() -> Result<(), Box<dyn std::error:
     assert_eq!((code, errors.as_str()), (0, ""));
     assert_eq!(
         serde_json::from_str::<serde_json::Value>(&text)?,
-        serde_json::json!({"ibis":1,"ok":true,"data":{"version":env!("CARGO_PKG_VERSION")}})
+        serde_json::json!({"ibis":1,"ok":true,"data":{"version":ibis_core::VERSION}})
     );
     // The help command takes no flags of its own; --json still wraps its text.
     for args in [

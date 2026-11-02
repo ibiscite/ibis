@@ -26,7 +26,7 @@ fn success_without_a_tty_reports_versions_capabilities_and_freshness_without_con
     let (code, report) = doctor(&["--file", "../../fixtures/bibtex/fidelity.bib"]);
     assert_eq!(code, 0);
     assert_eq!(report["contract_version"], 1);
-    assert_eq!(report["cli_version"], env!("CARGO_PKG_VERSION"));
+    assert_eq!(report["cli_version"], ibis_core::VERSION);
     assert_eq!(report["stdout_tty"], false);
     assert_eq!(report["capabilities"]["methods"], json!(ibis_engine::Method::ALL));
     assert!(

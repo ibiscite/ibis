@@ -15,3 +15,10 @@ pub mod settings;
 pub mod source;
 pub mod syntax;
 pub mod zotero;
+
+/// The version this build reports. A nightly sets `IBIS_VERSION` at build time
+/// to its own version and commit, such as `0.2.8-nightly.20261102120000+abc1234`.
+pub const VERSION: &str = match option_env!("IBIS_VERSION") {
+    Some(version) => version,
+    None => env!("CARGO_PKG_VERSION"),
+};

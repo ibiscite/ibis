@@ -221,6 +221,8 @@ jobs:
             config="$RUNNER_TEMP/nightly.conf.json"
             node scripts/update-feed.mjs config "$version" > "$config"
             echo "config=$config" >> "$GITHUB_OUTPUT"
+            # The command line and About report this, so a report names the build.
+            echo "IBIS_VERSION=$version+${GITHUB_SHA:0:7}" >> "$GITHUB_ENV"
           fi
 
       # Linux builds the command line for musl too: a static binary runs on
