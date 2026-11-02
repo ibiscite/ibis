@@ -79,11 +79,12 @@ fn settings_file(nightly: bool) -> Result<(&'static str, PathBuf), Failure> {
     let present = |path: &Path| {
         fs::symlink_metadata(path).is_ok() || fs::symlink_metadata(path.with_extension("json.bak")).is_ok()
     };
-    Ok(if !present(&stable.1) && present(&night.1) {
-        night
-    } else {
-        stable
-    })
+    let (stable_path, night_path) = (stable.1.clone(), night.1.clone());
+    // A stalled settings folder is reported after the deadline, never taken as absent.
+    let only_nightly = within("the settings folder", move || {
+        !present(&stable_path) && present(&night_path)
+    })?;
+    Ok(if only_nightly { night } else { stable })
 }
 
 pub(crate) fn run(matches: &ArgMatches) -> Result<DispatchResult, Failure> {
