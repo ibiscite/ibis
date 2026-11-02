@@ -13,20 +13,18 @@ export function useKeyboardHome(input: RefObject<HTMLInputElement | null>) {
   useEffect(() => {
     const keyDown = (event: KeyboardEvent) => {
       const search = input.current;
-      if (!lost() || !search || event.defaultPrevented) return;
+      if (!lost() || !search || event.defaultPrevented || event.isComposing || event.key === "Process") return;
       search.focus();
-      // Text typed now, also with Option or AltGr or through an input method,
-      // lands in Search by itself.
-      const shortcut = (event.ctrlKey || event.metaKey) && !(event.ctrlKey && event.altKey);
-      if (event.isComposing || event.key === "Process" || event.key.length === 1 && !shortcut) return;
-      // Any other key is handed to Search as if pressed there. A native edit
-      // (paste, undo, delete) still happens in Search, so it keeps its default.
-      if (!shortcut && event.key !== "Backspace" && event.key !== "Delete") event.preventDefault();
+      // Search's handlers get the key as if it were pressed there. Its native
+      // effect (text, paste, caret movement) then also happens in Search,
+      // unless one of them consumes the key.
       event.stopImmediatePropagation();
-      search.dispatchEvent(new KeyboardEvent("keydown", {
-        key: event.key, code: event.code, bubbles: true, cancelable: true,
+      const delivered = search.dispatchEvent(new KeyboardEvent("keydown", {
+        key: event.key, code: event.code, location: event.location, bubbles: true, cancelable: true,
         ctrlKey: event.ctrlKey, metaKey: event.metaKey, altKey: event.altKey, shiftKey: event.shiftKey, repeat: event.repeat,
+        modifierAltGraph: event.getModifierState("AltGraph"),
       }));
+      if (!delivered) event.preventDefault();
     };
     document.addEventListener("keydown", keyDown, true);
     return () => {

@@ -28,11 +28,11 @@ test("Escape with focus on the page itself still hides the picker", async () => 
   await waitFor(() => expect(calls).toContain("hide_picker"));
 });
 
-test("a paste or delete with focus on the page keeps its native edit and reaches Search", async () => {
+test("a paste, delete or caret move with focus on the page keeps its native effect in Search", async () => {
   backend();
   render(<App />);
   const search = await screen.findByLabelText("Search references");
-  for (const key of [{ key: "v", ctrlKey: true }, { key: "v", metaKey: true }, { key: "Backspace" }, { key: "å", altKey: true }]) {
+  for (const key of [{ key: "v", ctrlKey: true }, { key: "v", metaKey: true }, { key: "Backspace" }, { key: "Home" }, { key: "ArrowLeft", altKey: true }, { key: "å", altKey: true }]) {
     act(() => search.blur());
     expect(fireEvent.keyDown(document.body, key)).toBe(true); // not cancelled
     expect(document.activeElement).toBe(search);

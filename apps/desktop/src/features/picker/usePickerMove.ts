@@ -4,6 +4,7 @@ import type { usePickerSession } from "./usePickerSession";
 
 /** How close to the window's edge a press starts a native resize. */
 const EDGE = 6;
+let lastId = 0;
 
 /** As Tauri's own drag script decides: a direct press on a plain drag region, or anywhere in a deep one. */
 function startsDrag(target: Element | null) {
@@ -22,14 +23,12 @@ export function usePickerMove(api: Pick<PickerApi, "pickerMoving">, session: Ret
   const { pickerMoving } = api;
   useEffect(() => {
     if (!pickerMoving) return;
-    // The move's id comes back from its start; its end waits for it, so the
-    // end can never reach the native side first.
-    let moving: { presentation: number; id: Promise<number | null> } | null = null;
+    let moving: { presentation: number; id: number } | null = null;
     const end = () => {
       if (moving === null) return;
       const { presentation, id } = moving;
       moving = null;
-      void id.then((ends) => ends === null ? null : pickerMoving(presentation, ends)).catch(() => undefined);
+      void pickerMoving(presentation, id, false).catch(() => undefined);
     };
     const down = (event: PointerEvent) => {
       const presentation = session.getSnapshot().presentation;
@@ -38,7 +37,11 @@ export function usePickerMove(api: Pick<PickerApi, "pickerMoving">, session: Ret
       const edge = event.clientX < EDGE || event.clientY < EDGE || event.clientX > window.innerWidth - EDGE || event.clientY > window.innerHeight - EDGE;
       if (!edge && !startsDrag(target)) return;
       end();
-      moving = { presentation, id: pickerMoving(presentation, null).catch(() => null) };
+      // Numbered in start order, also across reloads, so the native side can
+      // refuse whatever arrives late or out of order.
+      lastId = Math.max(lastId + 1, Math.floor((performance.timeOrigin + performance.now()) * 1000));
+      moving = { presentation, id: lastId };
+      void pickerMoving(presentation, lastId, true).catch(() => undefined);
     };
     const move = (event: PointerEvent) => { if (event.buttons === 0) end(); };
     window.addEventListener("pointerdown", down, true);
