@@ -275,7 +275,11 @@ fn main() {
             // Complete size and placement while the native window is hidden,
             // before either the panel readiness gate or a window show.
             if let Some(window) = checked(app.get_webview_window("main").ok_or(()), NativeIssue::Window) {
-                if !sizing::prepare(app.handle(), &window, true, false) {
+                // A session with no display yet (remote, headless) can still run:
+                // each opening prepares the frame again.
+                let no_display =
+                    checked(window.available_monitors(), NativeIssue::Monitor).is_some_and(|all| all.is_empty());
+                if !sizing::prepare(app.handle(), &window, true, false) && !no_display {
                     return Err("the picker frame could not be prepared".into());
                 }
                 sizing::watch_display(app.handle(), &window);
