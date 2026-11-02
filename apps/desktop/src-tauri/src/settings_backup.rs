@@ -17,6 +17,9 @@ use tauri_plugin_dialog::DialogExt;
 use crate::preferences::SettingsFile;
 
 /// A file or folder that does not answer within this time is reported, never waited on.
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+const MAX_IN_FLIGHT: usize = 8;
 const DEADLINE: Duration = Duration::from_secs(2);
 
 /// Why a backup or restore did not happen; the Settings window words it.
@@ -110,11 +113,30 @@ impl PendingRestore {
 }
 
 /// Run file work on its own thread for at most [`DEADLINE`].
+/// At most [`MAX_IN_FLIGHT`] calls run at once: a call stuck in a stalled
+/// folder keeps its place until it really finishes, so retries cannot pile up
+/// threads (docs/architecture.md).
 pub(crate) fn within<T: Send + 'static>(work: impl FnOnce() -> T + Send + 'static) -> Option<T> {
+    static IN_FLIGHT: AtomicUsize = AtomicUsize::new(0);
+    bounded(&IN_FLIGHT, work)
+}
+
+fn bounded<T: Send + 'static>(in_flight: &'static AtomicUsize, work: impl FnOnce() -> T + Send + 'static) -> Option<T> {
+    struct Place(&'static AtomicUsize);
+    impl Drop for Place {
+        fn drop(&mut self) {
+            self.0.fetch_sub(1, Ordering::AcqRel);
+        }
+    }
+    let place = Place(in_flight);
+    if in_flight.fetch_add(1, Ordering::AcqRel) >= MAX_IN_FLIGHT {
+        return None;
+    }
     let (sender, receiver) = std::sync::mpsc::channel();
     std::thread::Builder::new()
-        .name("ibis-settings-backup".into())
+        .name("ibis-settings-file".into())
         .spawn(move || {
+            let _place = place;
             let _ = sender.send(work());
         })
         .ok()?;
@@ -353,6 +375,38 @@ mod tests {
         let text = backup::export(settings, "0.0.0").unwrap_or_else(|error| panic!("{error}"));
         let backup = backup::parse(&text).unwrap_or_else(|error| panic!("{error}"));
         backup::plan(&Settings::default(), &backup, |_| true)
+    }
+
+    #[test]
+    fn stuck_file_calls_have_a_fixed_limit_until_they_finish() {
+        static IN_FLIGHT: AtomicUsize = AtomicUsize::new(0);
+        let within = |work: fn() -> i32| bounded(&IN_FLIGHT, work);
+        let (release, wait) = std::sync::mpsc::channel::<()>();
+        let wait = std::sync::Arc::new(Mutex::new(wait));
+        let stuck: Vec<_> = (0..MAX_IN_FLIGHT)
+            .map(|_| {
+                let wait = wait.clone();
+                std::thread::spawn(move || bounded(&IN_FLIGHT, move || drop(wait.lock().map(|w| w.recv()))))
+            })
+            .collect();
+        for call in stuck {
+            assert!(
+                call.join().ok().flatten().is_none(),
+                "a stalled call gives up at the deadline"
+            );
+        }
+        assert!(within(|| 1).is_none(), "no new worker while eight are stuck");
+        for _ in 0..MAX_IN_FLIGHT {
+            let _ = release.send(());
+        }
+        let started = std::time::Instant::now();
+        while within(|| 1).is_none() {
+            assert!(
+                started.elapsed() < DEADLINE * 2,
+                "places come back once the calls finish"
+            );
+            std::thread::yield_now();
+        }
     }
 
     #[test]
