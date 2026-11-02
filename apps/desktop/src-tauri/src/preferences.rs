@@ -48,8 +48,11 @@ fn settings_message(problem: &settings::SettingsError) -> String {
 /// This notice is for the interface only: its settings path must not be logged.
 pub(crate) fn settings_notice(path: &Path, loaded: &settings::Loaded) -> Option<String> {
     let Some(problem) = loaded.problem.as_ref() else {
-        // A sync service's copy is named, never merged (#1561).
-        let copies = settings::sync_conflicts(path);
+        // A sync service's copy is named, never merged (#1561). The scan is an
+        // optional warning: a stalled synced folder only skips it, after at
+        // most the file deadline.
+        let scanned = path.to_path_buf();
+        let copies = crate::settings_backup::within(move || settings::sync_conflicts(&scanned)).unwrap_or_default();
         return (!copies.is_empty()).then(|| {
             format!(
                 "A synced copy of settings.json is beside it ({}). Ibis uses settings.json; delete the copy once you have checked it. Settings file: {}",

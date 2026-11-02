@@ -110,7 +110,7 @@ impl PendingRestore {
 }
 
 /// Run file work on its own thread for at most [`DEADLINE`].
-fn within<T: Send + 'static>(work: impl FnOnce() -> T + Send + 'static) -> Option<T> {
+pub(crate) fn within<T: Send + 'static>(work: impl FnOnce() -> T + Send + 'static) -> Option<T> {
     let (sender, receiver) = std::sync::mpsc::channel();
     std::thread::Builder::new()
         .name("ibis-settings-backup".into())
