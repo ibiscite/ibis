@@ -90,6 +90,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   const [versionCopied, setVersionCopied] = useState(false);
   const [versionCopyFailed, setVersionCopyFailed] = useState(false);
   const [manualCheckFailed, setManualCheckFailed] = useState(false);
+  const [checking, setChecking] = useState(false);
   const manualCheck = useRef(0);
   const versionCopy = useRef(0);
   // Feedback belongs to this page presentation, independently of delight preferences.
@@ -484,11 +485,15 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
             <Group id="about-updates" title={text("about-updates")}>
               <Row id="automatic" label={text("about-automatic")} description={updates === null && !readProblems.has("automatic") ? text("about-unavailable") : text("about-automatic-description")} {...feedback("automatic")}>
                 {(updates !== null || readProblems.has("automatic")) && <>
-                  <Button onPress={() => {
+                  <Button aria-disabled={checking || undefined} onPress={() => {
+                    if (checking) return;
                     const operation = ++manualCheck.current;
                     setManualCheckFailed(false);
-                    void api.checkForUpdates().catch(() => { if (live.current && operation === manualCheck.current) setManualCheckFailed(true); });
-                  }}>{text("about-check")}</Button>
+                    setChecking(true);
+                    void api.checkForUpdates().catch(() => { if (live.current && operation === manualCheck.current) setManualCheckFailed(true); })
+                      .finally(() => { if (live.current) setChecking(false); });
+                  }}>{text(checking ? "about-checking" : "about-check")}</Button>
+                  <span className="visually-hidden" role="status">{checking ? text("about-checking") : ""}</span>
                   <Switch aria-labelledby="automatic" aria-describedby="automatic-description" isSelected={updates ?? false}
                     isDisabled={updatesSaving || updates === null} onChange={(on) => {
                       setProblemRow(null); updateIntent.current = on; setUpdatesSaving(true); const operation = ++updateReads.current;

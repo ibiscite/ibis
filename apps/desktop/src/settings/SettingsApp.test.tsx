@@ -1617,6 +1617,24 @@ test("version-copy failure stays visible under the version when the update-setti
   expect(screen.getByText("Ibis could not read your settings; reopen Settings to try again.")).toBeTruthy();
 });
 
+test("Check now says it is checking until the same check ends, across pages", async () => {
+  const { api } = fakeApi();
+  let finish!: () => void;
+  const check = vi.spyOn(api, "checkForUpdates").mockImplementation(() => new Promise<never>((resolve) => { finish = resolve as () => void; }));
+  render(<SettingsApp api={api} initialPage="about" />);
+  fireEvent.click(await screen.findByRole("button", { name: "Check now" }));
+  const busy = await screen.findByRole("button", { name: "Checking…" });
+  expect(busy.getAttribute("aria-disabled")).toBe("true");
+  expect(screen.getAllByRole("status").some((status) => status.textContent === "Checking…")).toBe(true);
+  fireEvent.click(busy);
+  expect(check).toHaveBeenCalledOnce();
+  fireEvent.click(screen.getByRole("option", { name: "General" }));
+  fireEvent.click(await screen.findByRole("option", { name: "About Ibis" }));
+  expect(await screen.findByRole("button", { name: "Checking…" })).toBeTruthy();
+  await act(async () => { finish(); });
+  expect(await screen.findByRole("button", { name: "Check now" })).toBeTruthy();
+});
+
 test("manual update-check failure and retry leave the known automatic setting intact", async () => {
   const { api } = fakeApi();
   vi.spyOn(api, "checkForUpdates").mockRejectedValueOnce(new Error("invented manual check failure")).mockResolvedValue(undefined as never);

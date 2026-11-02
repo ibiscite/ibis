@@ -212,7 +212,7 @@ async fn find_update(client: &Updater, download_timeout: Duration) -> tauri_plug
     }))
 }
 
-async fn check(app: &AppHandle, asked: bool) {
+pub(super) async fn check(app: &AppHandle, asked: bool) {
     offer::check(app, asked, async {
         let found = match updater(app, CHECK_TIMEOUT) {
             Ok(updater) => find_update(&updater, DOWNLOAD_TIMEOUT)
