@@ -5,9 +5,9 @@ import { useZoteroScope } from "./useZoteroScope";
 
 type Options = Parameters<typeof useZoteroScope>[0];
 
-function library(zotero_libraries: ZoteroLibrary[], source_generation = "1"): LibraryStatus {
+function library(zotero_libraries: ZoteroLibrary[], source_generation = "1", zotero = true): LibraryStatus {
   return { source_generation, source_is_requested: true, revision: "1", state: "loaded", has_snapshot: true, name: "Zotero", snapshot_name: "Zotero", references: 1,
-    zotero: true, zotero_libraries, snapshot_zotero: true, source_counts: {}, warnings: 0, error: null } as unknown as LibraryStatus;
+    zotero, zotero_libraries, snapshot_zotero: true, source_counts: {}, warnings: 0, error: null } as unknown as LibraryStatus;
 }
 
 function deferred() {
@@ -63,12 +63,21 @@ test("an older failure after a newer success keeps the choice the library report
   expect(failures(report)).toEqual([]);
 });
 
+test("an older opening's report cannot clear a newer pending choice", async () => {
+  const [a, b] = [deferred(), deferred()];
+  const { result, rerender, initial } = setup([a, b]);
+  act(() => result.current.toggleLibrary(group(1)));
+  act(() => result.current.toggleLibrary(group(2)));
+  rerender({ ...initial, library: library(["user", group(1)], "2"), libraryVersion: 1 });
+  expect(result.current.chosenLibraries).toEqual(["user", group(1), group(2)]);
+});
+
 test("changing source retires a pending choice and its late result", async () => {
   const a = deferred();
   const { result, rerender, initial, report } = setup([a]);
   act(() => result.current.toggleLibrary(group(1)));
-  rerender({ ...initial, library: library(["user"], "2"), libraryVersion: 1 });
-  expect(result.current.chosenLibraries).toEqual(["user"]);
+  rerender({ ...initial, library: library([], "2", false), libraryVersion: 1 });
+  expect(result.current.chosenLibraries).toEqual([]);
   await act(async () => { a.reject(new Error("synthetic")); await a.promise.catch(() => undefined); });
   expect(failures(report)).toEqual([]);
 });

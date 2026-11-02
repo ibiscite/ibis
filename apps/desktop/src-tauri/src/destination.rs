@@ -257,11 +257,7 @@ impl AppMemory {
         let Some((removed, recovery)) = forgotten.1.as_ref() else {
             return Ok(());
         };
-        let mut apps: Vec<Remembered> = removed
-            .iter()
-            .filter(|old| !state.0.iter().any(|new| new.app == old.app))
-            .cloned()
-            .collect();
+        let mut apps = removed.clone();
         apps.extend(state.0.iter().cloned());
         apps.drain(..apps.len().saturating_sub(MAX_APPS));
         let recovery = *recovery || state.1;
@@ -282,6 +278,13 @@ impl AppMemory {
         apps.drain(..excess);
         let recovery = state.1 && !reset;
         write(&self.path, &apps, recovery)?;
+        // An app edited since Forget, even back to nothing, is no longer Undo's to restore.
+        if let Ok(mut forgotten) = self.forgotten.lock()
+            && let Some((removed, _)) = forgotten.1.as_mut()
+        {
+            let entry = |list: &[Remembered], app: &AppId| list.iter().find(|item| item.app == *app).cloned();
+            removed.retain(|old| entry(&state.0, &old.app) == entry(&apps, &old.app));
+        }
         *state = (apps, recovery);
         Ok(())
     }
@@ -528,6 +531,20 @@ mod tests {
             AppMemory::open(path).get(&kept).0,
             Some(AppOutput::Key(KeyFormat::Pandoc))
         );
+        Ok(())
+    }
+
+    #[test]
+    fn undo_leaves_an_app_reset_since_forget_alone() -> io::Result<()> {
+        let directory = tempfile::tempdir()?;
+        let memory = AppMemory::open(directory.path().join("apps.json"));
+        let app = mac("com.invented.writer");
+        memory.set_choice(&app, Some(AppOutput::Key(KeyFormat::Pandoc)), None)?;
+        let ticket = memory.forget()?;
+        memory.set_choice(&app, Some(AppOutput::Key(KeyFormat::Typst)), None)?;
+        memory.set_choice(&app, None, None)?;
+        memory.restore(ticket)?;
+        assert_eq!(memory.get(&app).0, None);
         Ok(())
     }
 

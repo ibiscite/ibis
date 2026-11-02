@@ -31,11 +31,14 @@ export function useZoteroScope({ library, libraryVersion, menuOpen, nothingMatch
   useEffect(() => {
     if (pendingLibraries && sameChoice(pendingLibraries, reportedLibraries)) setPendingLibraries(null);
   }, [library]);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: a new source retires any choice made for the old one.
+  // Every opening advances the source generation, so only leaving Zotero
+  // retires a choice; an older opening's report must not clear a newer one.
+  const zotero = Boolean(library?.zotero);
   useEffect(() => {
+    if (zotero) return;
     choice.current += 1;
     setPendingLibraries(null);
-  }, [library?.source_generation]);
+  }, [zotero]);
   const chosenLibraries = pendingLibraries ?? reportedLibraries;
   const severalLibraries = chosenLibraries.length > 1;
   const wantGroups = Boolean(zoteroGroups && library?.zotero && (menuOpen || severalLibraries || nothingMatched));
