@@ -169,6 +169,27 @@ export const commands = {
 	 *  the picker again. Granting permission never captures a target or retries Enter.
 	 */
 	finishPasteGuide: () => __TAURI_INVOKE<boolean>("finish_paste_guide"),
+	/**  Ask where to save a backup and write it there. `None` when cancelled. */
+	backUpSettings: () => __TAURI_INVOKE<string | null>("back_up_settings"),
+	/**
+	 *  Ask for a backup, check it whole and say what restoring it would change.
+	 *  `None` when cancelled. Nothing changes yet.
+	 */
+	chooseSettingsBackup: () => __TAURI_INVOKE<{
+	/**  Names this preview; only the latest one can be restored. */
+	ticket: number,
+	made_on: BackupSystem,
+	made_by: string,
+	changes: RestoreChange[],
+	notes: RestoreNote[],
+} | null>("choose_settings_backup"),
+	/**
+	 *  Restore the previewed backup, then restart so every part of Ibis starts
+	 *  from the restored settings. The replaced settings become `settings.json.bak`.
+	 */
+	restoreSettingsBackup: (ticket: number) => __TAURI_INVOKE<null>("restore_settings_backup", { ticket }),
+	/**  Forget the previewed restore. */
+	cancelSettingsRestore: (ticket: number) => __TAURI_INVOKE<null>("cancel_settings_restore", { ticket }),
 	/**  Whether Ibis may paste now. Read each time: the person can change it at any moment. */
 	pastePermission: () => __TAURI_INVOKE<PastePermission>("paste_permission"),
 	/**  On an explicit user action, repair only missing grants and open the pane. */
@@ -211,6 +232,15 @@ export type AppPaste = "paste" | "copy-only";
 
 /**  Settings owns these choices until the picker consumes the same event fields. */
 export type Appearance = "system" | "light" | "dark";
+
+/**  Why a backup or restore did not happen; the Settings window words it. */
+export type BackupProblem = "not-downloaded" | "unreadable" | "not-a-backup" | "settings-file" | "newer" | "invalid" |
+/**  This computer's settings are damaged, from a newer Ibis or unreadable. */
+"settings-unusable" |
+/**  The settings changed, or another backup was chosen, after the preview. */
+"changed" | "not-saved";
+
+export type BackupSystem = "macos" | "windows" | "linux";
 
 export type CitationSpan = CitationSpan_Serialize | CitationSpan_Deserialize;
 
@@ -732,6 +762,28 @@ export type ReferenceDetails = {
 };
 
 export type ReferenceForm = "normal" | "narrative" | "year-only";
+
+/**
+ *  One setting a restore changes. Values are as the settings file writes
+ *  them, as text; `None` is the default. A bibliography is its file name only.
+ */
+export type RestoreChange = {
+	setting: string,
+	from: string | null,
+	to: string | null,
+};
+
+export type RestoreNote = "library-not-found" | "shortcut-kept";
+
+/**  What restoring the chosen backup would change, before anything does. */
+export type RestorePreview = {
+	/**  Names this preview; only the latest one can be restored. */
+	ticket: number,
+	made_on: BackupSystem,
+	made_by: string,
+	changes: RestoreChange[],
+	notes: RestoreNote[],
+};
 
 export type RowAction = "copy" | "toggle";
 

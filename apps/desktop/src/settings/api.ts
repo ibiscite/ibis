@@ -27,6 +27,10 @@ export const settingsApi = {
   shortcutStatus: commands.shortcutStatus,
   setShortcut: commands.setShortcut,
   configureShortcuts: commands.configureShortcuts,
+  backUpSettings: commands.backUpSettings,
+  chooseSettingsBackup: commands.chooseSettingsBackup,
+  restoreSettingsBackup: commands.restoreSettingsBackup,
+  cancelSettingsRestore: commands.cancelSettingsRestore,
   onShortcutStatus: (handler: (status: ShortcutStatus) => void): Promise<UnlistenFn> => listen<ShortcutStatus>("shortcut:status", (event) => handler(event.payload)),
   version: getVersion,
   /** Settings is asked to show a page, such as the paste guide after a refused paste. */

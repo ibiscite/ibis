@@ -20,7 +20,7 @@ fn shortcut_defaults_stay_unwritten_and_explicit_choices_survive_saves() {
         std::fs::write(&path, original.to_string()).unwrap_or_else(|error| panic!("{error}"));
         let loaded = settings::load(&path);
         assert!(loaded.problem.is_none());
-        assert_eq!(loaded.settings.shortcut.as_deref(), shortcut);
+        assert_eq!(loaded.settings.shortcut.here(), shortcut);
         settings::update(&path, |current| current.copy_format = Some(KeyFormat::Typst))
             .unwrap_or_else(|error| panic!("{error}"));
         let saved: serde_json::Value =

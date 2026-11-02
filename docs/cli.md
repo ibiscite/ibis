@@ -64,6 +64,8 @@ app's choice only when given `--app-libraries`.
 | `doctor` | An offline health report on the named sources and settings file ([terminal kit](../crates/ibis-cli/README.md#offline-diagnosis)). |
 | `completions bash\|zsh\|fish` | Shell completions ([terminal kit](../crates/ibis-cli/README.md#shell-completions)). |
 | `toggle [--app PATH]` | Show or hide the desktop picker. |
+| `settings export [FILE] [--force]` | Back up the app's settings for another computer, to FILE or stdout; never replaces FILE without `--force`. Paste approvals and window places are left out. |
+| `settings import FILE [--dry-run]` | Restore a backup into the app's settings after checking all of it, listing every change; `--dry-run` only lists them. The replaced settings become `settings.json.bak`. Both use the stable app's settings, or Nightly's with `--nightly` or when only Nightly is installed ([moving to a new computer](moving-to-a-new-computer.md)). |
 
 ## Output for scripts and agents
 
