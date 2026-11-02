@@ -244,13 +244,22 @@ fn bad_calls_are_tool_errors_without_library_text() {
     let (_dir, engine) = engine();
     let missing = tool(&engine, "show", json!({"item":{"key":"absent"}}));
     assert_eq!(missing["isError"], true);
-    assert_eq!(missing["content"][0]["text"], "error: not-found");
+    assert_eq!(
+        missing["content"][0]["text"],
+        "error: not-found. No reference matched; use a key or id that search returned."
+    );
     let both = tool(
         &engine,
         "cite",
         json!({"items":[{"key":"demo2026"}],"style":"apa","syntax":"pandoc"}),
     );
     assert_eq!(both["isError"], true);
+    assert!(
+        both["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .starts_with("error: bad-input. ")
+    );
     let limit = tool(&engine, "search", json!({"query":"sleep","limit":1000}));
     assert_eq!(limit["isError"], true);
     let unknown = handle(

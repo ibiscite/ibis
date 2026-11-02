@@ -207,7 +207,7 @@ fn command() -> Command {
                         .long("locale")
                         .value_name("LOCALE")
                         .help_heading(OUTPUT)
-                        .help("Language for --style output, such as en-GB or de-DE"),
+                        .help("Language for --style output; only en-US is available for now"),
                 )
                 .arg(
                     Arg::new("locator")
@@ -1102,11 +1102,15 @@ fn emit(
     if !json && mode == OutputMode::Terminal {
         encoded = terminal_display(&String::from_utf8_lossy(&encoded)).into_bytes();
     }
-    if output
+    if let Err(error) = output
         .write_all(&encoded)
         .and_then(|()| output.write_all(b"\n"))
-        .is_err()
+        .and_then(|()| output.flush())
     {
+        // A reader that closed the pipe early (`| head`) asked for no more; anything else is said.
+        if error.kind() != std::io::ErrorKind::BrokenPipe {
+            say(human::write_failure(&error));
+        }
         return 70;
     }
     code.value()
@@ -1166,6 +1170,50 @@ mod tests {
             ["first.bib", "second.bib", "third.bib"].map(PathBuf::from)
         );
         Ok(())
+    }
+
+    #[test]
+    fn output_that_cannot_be_written_is_explained_unless_the_reader_left() {
+        struct Failing(std::io::ErrorKind);
+        impl std::io::Write for Failing {
+            fn write(&mut self, _: &[u8]) -> std::io::Result<usize> {
+                Err(self.0.into())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let result = || DispatchResult {
+            data: json!({"invented":true}),
+            text: Some("(Lee, 2024)".into()),
+            source_findings: false,
+            exit_code: ibis_core::contract::ExitCode::Ok,
+        };
+        for (kind, expected) in [
+            (
+                std::io::ErrorKind::StorageFull,
+                "ibis: the output could not be written because the disk is full; free some space and try again.\n",
+            ),
+            (
+                std::io::ErrorKind::PermissionDenied,
+                "ibis: the output could not be written; check where it is sent and try again.\n",
+            ),
+            (std::io::ErrorKind::BrokenPipe, ""),
+        ] {
+            for json in [false, true] {
+                let mut errors = Vec::new();
+                let code = emit(
+                    json,
+                    Ok(result()),
+                    None,
+                    &mut Failing(kind),
+                    &mut errors,
+                    OutputMode::Plain,
+                );
+                assert_eq!(code, 70);
+                assert_eq!(String::from_utf8_lossy(&errors), expected, "{kind:?} json={json}");
+            }
+        }
     }
 
     #[test]
