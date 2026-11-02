@@ -12,7 +12,7 @@ use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_dialog::DialogExt;
 
 use crate::diagnostics::{NativeIssue, application_message, report};
-use crate::picker::{ChooserOpen, show_picker};
+use crate::picker::{ChooserOpen, reveal_picker};
 use crate::preferences::SettingsFile;
 use crate::tray::{LibraryMenuItem, library_line};
 
@@ -521,7 +521,7 @@ fn open_one(app: AppHandle, open: OpenRequest) -> impl std::future::Future<Outpu
             }
             if show_note {
                 // The choice may have come from the tray; make sure it is seen.
-                show_picker(&app);
+                crate::picker::reveal_picker_quietly(&app);
             }
             #[cfg(debug_assertions)]
             let publishing = std::time::Instant::now();
@@ -586,7 +586,9 @@ pub(crate) fn choose_library_file(app: &AppHandle) {
     let Some(owner) = app.state::<ChooserOpen>().begin() else {
         return;
     };
-    show_picker(app);
+    reveal_picker(app);
+    // The chooser belongs to this presentation; a newer one is never hidden.
+    let generation = app.state::<crate::picker::PickerGeneration>().current();
     #[cfg(target_os = "macos")]
     crate::panel::activate_for_dialog(app);
     let mut dialog = app
@@ -608,7 +610,18 @@ pub(crate) fn choose_library_file(app: &AppHandle) {
                 }
                 publish_current(&handle);
             }
-        })
+        });
+        // With the lease released, hide the picker if the person went elsewhere
+        // while the chooser was open.
+        let owner = handle.clone();
+        crate::diagnostics::report(
+            handle.run_on_main_thread(move || {
+                if let Some(window) = owner.get_webview_window("main") {
+                    crate::picker::reconcile_suppressed_blur(&window, generation);
+                }
+            }),
+            crate::diagnostics::NativeIssue::Window,
+        );
     });
 }
 
@@ -629,7 +642,7 @@ pub(super) fn open_zotero(app: &AppHandle, chosen: ZoteroLibraries) {
     // Start first: the picker then sees a request in progress and does not
     // start a second check of Zotero.
     start_open(app, Source::Zotero(chosen), true);
-    show_picker(app);
+    reveal_picker(app);
 }
 
 /// Check Zotero and files with unavailable notifications or failed reads when

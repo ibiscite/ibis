@@ -37,6 +37,8 @@ Nothing from your library is sent, and updates install only when you agree.";
 #[derive(Default)]
 pub(crate) struct Updates {
     automatic: AtomicBool,
+    /// The first-run question, waiting for the picker to be shown and focused.
+    question: AtomicBool,
     /// One check, consent dialog or installation at a time.
     busy: Arc<AtomicBool>,
     /// A version the person chose not to install; automatic checks don't offer it again.
@@ -118,7 +120,7 @@ pub(crate) fn start(app: &AppHandle, saved: Option<bool>, can_save: bool) {
     }
     match saved {
         Some(on) => setting::set_automatic(app, on),
-        None if can_save => ask(app),
+        None if can_save => app.state::<Updates>().question.store(true, Ordering::SeqCst),
         None => {}
     }
     let app = app.clone();
@@ -133,18 +135,38 @@ pub(crate) fn start(app: &AppHandle, saved: Option<bool>, can_save: bool) {
     });
 }
 
-fn ask(app: &AppHandle) {
-    let handle = app.clone();
-    app.dialog()
+fn present_question(
+    app: &AppHandle,
+    parent: &tauri::WebviewWindow,
+    owner: crate::picker::ChooserLease,
+    answer: impl FnOnce(bool) + Send + 'static,
+) {
+    let dialog = app
+        .dialog()
         .message(QUESTION)
         .title("Check for updates automatically?")
         .buttons(MessageDialogButtons::OkCancelCustom(
             "Check Automatically".into(),
             "Not Now".into(),
-        ))
-        .show(move |yes| {
-            setting::change(&handle, yes);
+        ));
+    // Owned by the picker like an offer, so it opens above the picker.
+    #[cfg(target_os = "macos")]
+    let dialog = {
+        crate::panel::activate_for_dialog(app);
+        dialog.parent(parent)
+    };
+    #[cfg(target_os = "windows")]
+    let dialog = dialog.parent(parent);
+    #[cfg(target_os = "linux")]
+    let _ = parent;
+    let handle = app.clone();
+    dialog.show(move |yes| {
+        let result = handle.run_on_main_thread(move || {
+            drop(owner);
+            answer(yes);
         });
+        report(result, NativeIssue::Window);
+    });
 }
 
 /// "Check for Updates…" in the menu.
@@ -269,8 +291,12 @@ fn present_offer(
             crate::panel::activate_for_dialog(app);
             dialog.parent(parent)
         };
-        #[cfg(not(target_os = "macos"))]
-        let _ = parent;
+        // The picker stays on top of other windows on Windows, so an offer
+        // without an owner opens underneath it, hidden, while its lease keeps
+        // the picker open. Owned by the picker, it stays above it, and closing
+        // it gives the picker the keyboard back.
+        #[cfg(target_os = "windows")]
+        let dialog = dialog.parent(parent);
         let handle = app.clone();
         dialog.show_with_result(move |result| {
             let accepted = offer_accepted(result);
@@ -475,6 +501,7 @@ pub(crate) fn picker_presented(app: &AppHandle) {
 /// Windows/Linux may deliver focus after the show hook has already run.
 /// A focus event re-checks pending availability, never showing or focusing a window.
 pub(crate) fn picker_focused(app: &AppHandle) {
+    offer::ask_first_run(app);
     offer::refresh_pending(app);
 }
 
@@ -504,7 +531,7 @@ fn present_installation_failure(app: &AppHandle, show: bool) {
             if show {
                 // The lease also covers showing the parent; its actual-show
                 // hook sees the owner and cannot recursively present a sheet.
-                crate::picker::show_picker(&handle);
+                crate::picker::reveal_picker_quietly(&handle);
             }
             if crate::diagnostics::checked(window.is_visible(), NativeIssue::Visibility) != Some(true) {
                 return;

@@ -240,3 +240,21 @@ test("an accepted file drop leaves Choose Library and shows the dropped library'
   commandO();
   await waitFor(() => expect(open).toHaveBeenCalledOnce());
 });
+
+test("a file chosen on first-run setup hands the keyboard to Search when the results replace setup", async () => {
+  let current: Record<string, unknown> = { ...library, state: "none", has_snapshot: false, name: null, snapshot_name: null, references: 0, source_counts: {} };
+  const choose = vi.fn(() => null);
+  backend({ library_status: () => current, search: () => [result("picked", "Invented reference")], choose_library: choose });
+  render(<App />);
+  const file = await screen.findByRole("option", { name: /^Choose a Library File/ });
+  act(() => file.focus());
+  fireEvent.click(file);
+  await waitFor(() => expect(choose).toHaveBeenCalledOnce());
+  // The native chooser opened and closed; the engine then reports the library.
+  current = library;
+  await act(async () => { await emit("library:changed", current); });
+  await screen.findByText("Invented reference");
+  expect(screen.queryByRole("option", { name: /^Choose a Library File/ })).toBeNull();
+  await frame();
+  expect(document.activeElement).toBe(search());
+});

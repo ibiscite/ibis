@@ -87,10 +87,13 @@ pub(crate) fn menu_label(available: bool) -> &'static str {
 pub(super) trait OfferUi: tauri::Runtime {
     fn visible(parent: &tauri::WebviewWindow<Self>) -> bool;
     fn focused(parent: &tauri::WebviewWindow<Self>) -> bool;
-    fn show_picker(app: &AppHandle<Self>);
+    fn reveal_picker(app: &AppHandle<Self>);
     fn refresh(app: &AppHandle<Self>);
     fn availability_changed(app: &AppHandle<Self>, available: bool);
     fn tell(app: &AppHandle<Self>, text: &str);
+    /// The offer dialog closed and its lease is released: hide the picker if
+    /// focus is now elsewhere, as the suppressed blur would have.
+    fn dialog_closed(parent: &tauri::WebviewWindow<Self>, generation: u64);
     fn present(
         app: &AppHandle<Self>,
         parent: &tauri::WebviewWindow<Self>,
@@ -98,6 +101,14 @@ pub(super) trait OfferUi: tauri::Runtime {
         text: String,
         answer: impl FnOnce(bool) + Send + 'static,
     );
+    fn present_question(
+        app: &AppHandle<Self>,
+        parent: &tauri::WebviewWindow<Self>,
+        owner: ChooserLease,
+        answer: impl FnOnce(bool) + Send + 'static,
+    );
+    fn save_automatic(app: &AppHandle<Self>, on: bool);
+    fn return_focus(app: &AppHandle<Self>, generation: u64);
 }
 
 impl OfferUi for tauri::Wry {
@@ -109,8 +120,8 @@ impl OfferUi for tauri::Wry {
         crate::picker::focused_for_shortcut(parent) == Some(true)
     }
 
-    fn show_picker(app: &AppHandle<Self>) {
-        crate::picker::show_picker(app);
+    fn reveal_picker(app: &AppHandle<Self>) {
+        crate::picker::reveal_picker(app);
     }
 
     fn refresh(app: &AppHandle<Self>) {
@@ -128,6 +139,10 @@ impl OfferUi for tauri::Wry {
         tell(app, text);
     }
 
+    fn dialog_closed(parent: &tauri::WebviewWindow<Self>, generation: u64) {
+        crate::picker::reconcile_suppressed_blur(parent, generation);
+    }
+
     fn present(
         app: &AppHandle<Self>,
         parent: &tauri::WebviewWindow<Self>,
@@ -137,6 +152,53 @@ impl OfferUi for tauri::Wry {
     ) {
         present_offer(app, parent, owner, text, answer);
     }
+
+    fn present_question(
+        app: &AppHandle<Self>,
+        parent: &tauri::WebviewWindow<Self>,
+        owner: ChooserLease,
+        answer: impl FnOnce(bool) + Send + 'static,
+    ) {
+        super::present_question(app, parent, owner, answer);
+    }
+
+    fn save_automatic(app: &AppHandle<Self>, on: bool) {
+        super::setting::change(app, on);
+    }
+
+    fn return_focus(app: &AppHandle<Self>, generation: u64) {
+        crate::picker::return_focus(app, generation);
+    }
+}
+
+/// Asked from a shown, focused picker, so a hidden start at login stays hidden.
+/// The lease keeps the picker through the dialog's blur, and the answer gives it
+/// the keyboard back. A chooser that is open leaves it for the next focus.
+pub(super) fn ask_first_run<R: OfferUi>(app: &AppHandle<R>) {
+    let updates = app.state::<Updates>();
+    if !updates.question.load(Ordering::SeqCst) {
+        return;
+    }
+    // A summon can arrive here before the window manager has focused the picker.
+    let Some(parent) = app
+        .get_webview_window("main")
+        .filter(|parent| R::visible(parent) && R::focused(parent))
+    else {
+        return;
+    };
+    let Some(owner) = app.state::<ChooserOpen>().begin() else {
+        return;
+    };
+    if !updates.question.swap(false, Ordering::SeqCst) {
+        return;
+    }
+    // The question belongs to this presentation; a newer one is never disturbed.
+    let generation = app.state::<crate::picker::PickerGeneration>().current();
+    let handle = app.clone();
+    R::present_question(app, &parent, owner, move |yes| {
+        R::save_automatic(&handle, yes);
+        R::return_focus(&handle, generation);
+    });
 }
 
 fn publish_available<R: OfferUi>(app: &AppHandle<R>, available: bool) {
@@ -240,12 +302,16 @@ fn present<R: OfferUi>(app: &AppHandle<R>, candidate: Candidate, asked: bool, bu
             if asked {
                 // Explicit tray/More commands may open their parent. The check and
                 // dialog leases prevent show/focus callbacks from starting a retry.
-                R::show_picker(&handle);
+                R::reveal_picker(&handle);
             }
             publish_available(&handle, false);
+            // The dialog belongs to this presentation; a newer one is never hidden.
+            let generation = handle.state::<crate::picker::PickerGeneration>().current();
             let Candidate { version, text, install } = candidate;
             let callback = handle.clone();
+            let closed = parent.clone();
             R::present(&handle, &parent, owner, text, move |accepted| {
+                R::dialog_closed(&closed, generation);
                 if accepted {
                     install(busy);
                 } else if let Ok(mut declined) = callback.state::<Updates>().declined.lock() {

@@ -18,6 +18,8 @@ struct NativePicker {
     menu_labels: Mutex<Vec<&'static str>>,
     notices: Mutex<Vec<String>>,
     installed: Mutex<Vec<String>>,
+    /// Each closed offer: its presentation, and whether its lease was still held.
+    closed: Mutex<Vec<(u64, bool)>>,
 }
 
 impl OfferUi for tauri::test::MockRuntime {
@@ -34,7 +36,7 @@ impl OfferUi for tauri::test::MockRuntime {
         }
     }
 
-    fn show_picker(app: &AppHandle<Self>) {
+    fn reveal_picker(app: &AppHandle<Self>) {
         let picker = app.state::<NativePicker>();
         picker.shows.fetch_add(1, Ordering::SeqCst);
         picker.visible.store(true, Ordering::SeqCst);
@@ -71,6 +73,15 @@ impl OfferUi for tauri::test::MockRuntime {
             .push(text.into());
     }
 
+    fn dialog_closed(parent: &tauri::WebviewWindow<Self>, generation: u64) {
+        parent
+            .state::<NativePicker>()
+            .closed
+            .lock()
+            .unwrap_or_else(|e| panic!("{e}"))
+            .push((generation, parent.state::<ChooserOpen>().is_open()));
+    }
+
     fn present(
         app: &AppHandle<Self>,
         parent: &tauri::WebviewWindow<Self>,
@@ -93,12 +104,43 @@ impl OfferUi for tauri::test::MockRuntime {
                 }),
             ));
     }
+
+    fn present_question(
+        app: &AppHandle<Self>,
+        parent: &tauri::WebviewWindow<Self>,
+        owner: ChooserLease,
+        answer: impl FnOnce(bool) + Send + 'static,
+    ) {
+        assert_eq!(parent.label(), "main");
+        app.state::<NativePicker>()
+            .offers
+            .lock()
+            .unwrap_or_else(|e| panic!("{e}"))
+            .push((
+                "first-run question".into(),
+                Box::new(move |yes| {
+                    drop(owner);
+                    answer(yes);
+                }),
+            ));
+    }
+
+    fn save_automatic(app: &AppHandle<Self>, on: bool) {
+        app.state::<Updates>().automatic.store(on, Ordering::SeqCst);
+    }
+
+    fn return_focus(app: &AppHandle<Self>, generation: u64) {
+        if app.state::<crate::picker::PickerGeneration>().current() == generation {
+            Self::reveal_picker(app);
+        }
+    }
 }
 
 fn app(automatic: bool) -> tauri::Result<tauri::App<tauri::test::MockRuntime>> {
     let app = tauri::test::mock_builder()
         .manage(Updates::default())
         .manage(ChooserOpen::default())
+        .manage(crate::picker::PickerGeneration::default())
         .manage(NativePicker::default())
         .build(tauri::test::mock_context(tauri::test::noop_assets()))?;
     tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
@@ -112,6 +154,125 @@ fn app(automatic: bool) -> tauri::Result<tauri::App<tauri::test::MockRuntime>> {
     assert!(input.settle(ticket));
     drop(input);
     Ok(app)
+}
+
+fn pending_question(app: &tauri::App<tauri::test::MockRuntime>) -> usize {
+    app.state::<Updates>().question.store(true, Ordering::SeqCst);
+    app.state::<NativePicker>()
+        .offers
+        .lock()
+        .unwrap_or_else(|e| panic!("{e}"))
+        .len()
+}
+
+#[test]
+fn first_run_question_keeps_the_picker_and_answering_gives_it_the_keyboard_back() -> tauri::Result<()> {
+    for yes in [true, false] {
+        let app = app(!yes)?;
+        assert_eq!(pending_question(&app), 0);
+        let picker = app.state::<NativePicker>();
+        picker.visible.store(true, Ordering::SeqCst);
+        // A summon can reach here before the picker has the keyboard.
+        ask_first_run(app.handle());
+        assert!(picker.offers.lock().unwrap_or_else(|e| panic!("{e}")).is_empty());
+        picker.focused.store(true, Ordering::SeqCst);
+        ask_first_run(app.handle());
+        // The open question is what suppresses the picker's hide on blur.
+        assert!(app.state::<ChooserOpen>().is_open());
+        assert!(!crate::picker::hides_on_blur(
+            true,
+            app.state::<ChooserOpen>().is_open(),
+            false
+        ));
+        // Asked once: the dialog's own focus changes must not ask again.
+        ask_first_run(app.handle());
+        assert_eq!(picker.offers.lock().unwrap_or_else(|e| panic!("{e}")).len(), 1);
+        picker.focused.store(false, Ordering::SeqCst);
+        let (_, answer) = picker
+            .offers
+            .lock()
+            .unwrap_or_else(|e| panic!("{e}"))
+            .pop()
+            .unwrap_or_else(|| panic!("the question must be asked"));
+        answer(yes);
+        assert!(!app.state::<ChooserOpen>().is_open());
+        assert_eq!(app.state::<Updates>().automatic.load(Ordering::SeqCst), yes);
+        assert!(picker.visible.load(Ordering::SeqCst), "nothing left on screen");
+        assert!(picker.focused.load(Ordering::SeqCst), "typing goes to the picker");
+    }
+    Ok(())
+}
+
+#[test]
+fn first_run_question_never_opens_the_picker_by_itself_and_is_asked_only_when_needed() -> tauri::Result<()> {
+    let app = app(false)?;
+    // No focused picker has asked, as on a hidden start at login.
+    ask_first_run(app.handle());
+    assert!(
+        app.state::<NativePicker>()
+            .offers
+            .lock()
+            .unwrap_or_else(|e| panic!("{e}"))
+            .is_empty()
+    );
+    assert_eq!(app.state::<NativePicker>().shows.load(Ordering::SeqCst), 0);
+    Ok(())
+}
+
+#[test]
+fn a_late_first_run_answer_leaves_a_newer_dismissal_alone() -> tauri::Result<()> {
+    let app = app(false)?;
+    pending_question(&app);
+    let picker = app.state::<NativePicker>();
+    picker.visible.store(true, Ordering::SeqCst);
+    picker.focused.store(true, Ordering::SeqCst);
+    ask_first_run(app.handle());
+    picker.visible.store(false, Ordering::SeqCst);
+    picker.focused.store(false, Ordering::SeqCst);
+    app.state::<crate::picker::PickerGeneration>().advance();
+    let (_, answer) = picker
+        .offers
+        .lock()
+        .unwrap_or_else(|e| panic!("{e}"))
+        .pop()
+        .unwrap_or_else(|| panic!("the question must be asked"));
+    answer(true);
+    assert!(
+        app.state::<Updates>().automatic.load(Ordering::SeqCst),
+        "the answer is still saved"
+    );
+    assert_eq!(picker.shows.load(Ordering::SeqCst), 0);
+    assert!(!picker.visible.load(Ordering::SeqCst));
+    Ok(())
+}
+
+#[test]
+fn first_run_question_waits_for_a_chooser_that_is_open_and_asks_on_the_next_focus() -> tauri::Result<()> {
+    let app = app(false)?;
+    pending_question(&app);
+    let picker = app.state::<NativePicker>();
+    picker.visible.store(true, Ordering::SeqCst);
+    picker.focused.store(true, Ordering::SeqCst);
+    let chooser = app.state::<ChooserOpen>().begin();
+    ask_first_run(app.handle());
+    assert!(
+        app.state::<NativePicker>()
+            .offers
+            .lock()
+            .unwrap_or_else(|e| panic!("{e}"))
+            .is_empty()
+    );
+    drop(chooser);
+    ask_first_run(app.handle());
+    assert_eq!(
+        app.state::<NativePicker>()
+            .offers
+            .lock()
+            .unwrap_or_else(|e| panic!("{e}"))
+            .len(),
+        1
+    );
+    Ok(())
 }
 
 #[test]
@@ -326,7 +487,16 @@ fn explicit_command_with_automatic_checks_off_opens_and_presents_immediately() -
         app.state::<Updates>().begin().is_none(),
         "a visible consent dialog owns the check"
     );
+    assert!(picker.closed.lock().unwrap_or_else(|e| panic!("{e}")).is_empty());
     assert!(answer(app.handle(), false).contains("9.1.0"));
+    // The person may have gone to another app while the offer was open. With
+    // the lease released, the picker gets the blur check it missed, for the
+    // presentation that opened the offer.
+    let current = app.state::<crate::picker::PickerGeneration>().current();
+    assert_eq!(
+        *picker.closed.lock().unwrap_or_else(|e| panic!("{e}")),
+        [(current, false)]
+    );
     assert!(app.state::<Updates>().begin().is_some());
     assert!(picker.installed.lock().unwrap_or_else(|e| panic!("{e}")).is_empty());
     Ok(())
