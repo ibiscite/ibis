@@ -6,11 +6,20 @@
    Parts read layers 2 and 3 and the space scale. Sizes are in rem so the system
    and Larger text settings scale them; radii stay px, matching the native corner. */
 
+/* Parameters: the few values a designer turns. Everything below derives
+   from them or from Apple's own values, so one change restyles every part. */
+:root {
+  --unit: .25rem;        /* the spacing grid (4 pt) */
+  --radius: 8px;         /* a control's corner; cards, menus and floors follow */
+  --type-base: .8125rem; /* body text (13 pt); every text style steps from it */
+  --ibis: #c23a1c; --ibis-dark: #f2552f; /* Ibis red, light and dark (brand/settings.json) */
+}
+
 /* Layer 1: primitives. */
 :root {
-  /* Space, on a 4 px grid. S = --inset keeps every fill S from a window edge or divider. */
-  --space-1: .25rem; --space-2: .5rem; --space-3: .75rem; --space-4: 1rem;
-  --space-5: 1.25rem; --space-6: 1.5rem; --space-8: 2rem; --space-10: 2.5rem;
+  /* Space, on the grid. S = --inset keeps every fill S from a window edge or divider. */
+  --space-1: var(--unit); --space-2: calc(2 * var(--unit)); --space-3: calc(3 * var(--unit)); --space-4: calc(4 * var(--unit));
+  --space-5: calc(5 * var(--unit)); --space-6: calc(6 * var(--unit)); --space-8: calc(8 * var(--unit)); --space-10: calc(10 * var(--unit));
   --inset: var(--space-2);
   --row-pad: var(--space-3); --row-gap: var(--space-3); --row-spacing: 2px;
   --row-compact: var(--space-10); --row-comfortable: 3.625rem; --row-spacious: 4.75rem;
@@ -20,25 +29,27 @@
   /* Sizes. */
   --tile: var(--space-8); --icon: var(--space-5); --icon-small: var(--space-4); --icon-stroke: 1.5; --icon-compact: .875rem; --key: var(--space-5);
   --control-h: var(--space-8); --action-h: 1.75rem; --control-small-h: var(--space-6); --field-h: 2.25rem; --touch-target: 2.75rem; --border-width: 1px;
-  --status-dot: var(--space-2); --chip-h: var(--control-small-h);
+  --status-dot: var(--space-2);
   /* Measured from NSSwitch on macOS 26: a wide capsule with a pill thumb. */
   --switch-w: 54px; --switch-h: 24px; --switch-thumb-w: 32px; --switch-thumb-h: 20px;
   /* The search glyph sits on the tile column and the query on the title column. */
   --lead: calc(var(--row-pad) + (var(--tile) - var(--icon)) / 2);
   --lead-gap: calc((var(--tile) - var(--icon)) / 2 + var(--row-gap));
 
-  /* Corner roots and floors: no surface below 6, no text-sized mark below 4. */
-  --r-win: 16px; --r-menu: 12px; --r-card: 10px; --r-control: 8px; --r-full: 999px; --r-icon: 22.5%;
-  --r-floor: 6px; --r-floor-mark: 4px; --corner-inset: 8px; --menu-pad: 5px;
+  /* Corners. The window's is the Mac's own (it matches the native mask [C15]);
+     the rest scale with --radius, with floors for surfaces and text-sized marks. */
+  --r-win: 16px; --r-control: var(--radius); --r-card: calc(1.25 * var(--radius)); --r-menu: calc(1.5 * var(--radius));
+  --r-full: 999px; --r-icon: 22.5%;
+  --r-floor: calc(.75 * var(--radius)); --r-floor-mark: calc(.5 * var(--radius)); --corner-inset: var(--space-2); --menu-pad: 5px;
 
-  /* Type: size / line. Nothing is smaller than 12 px. */
-  --type-search-size: 1.375rem; --type-search-line: 1.625rem;
-  --type-display-size: 1.25rem; --type-display-line: 1.625rem;
-  --type-lead-size: 1.0625rem; --type-lead-line: 1.375rem;
-  --type-title-size: .9375rem; --type-title-line: 1.25rem;
-  --type-body-size: .8125rem; --type-body-line: 1rem;
-  --type-meta-size: var(--type-body-size); --type-meta-line: var(--type-body-line);
-  --type-label-size: .75rem; --type-label-line: .9375rem;
+  /* Type: size / line, as macOS text styles step from body (1 pt = .0625rem).
+     Nothing is smaller than 12 px. */
+  --type-body-size: var(--type-base); --type-body-line: calc(var(--type-base) + .1875rem);
+  --type-label-size: calc(var(--type-base) - .0625rem); --type-label-line: calc(var(--type-label-size) + .1875rem);
+  --type-title-size: calc(var(--type-base) + .125rem); --type-title-line: calc(var(--type-title-size) + .3125rem);
+  --type-lead-size: calc(var(--type-base) + .25rem); --type-lead-line: calc(var(--type-lead-size) + .3125rem);
+  --type-display-size: calc(var(--type-base) + .4375rem); --type-display-line: calc(var(--type-display-size) + .375rem);
+  --type-search-size: calc(var(--type-base) + .5625rem); --type-search-line: calc(var(--type-search-size) + .25rem);
   --strong: 600;
   --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
   --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
@@ -50,8 +61,7 @@
   /* Layers. */
   --z-content: 0; --z-chrome: 1; --z-overlay: 10; --z-modal: 30; --z-toast: 40;
 
-  /* The two colours that are not the system's. */
-  --white: #fff; --ibis: #c23a1c;
+  --white: #fff;
 
   /* Depth. */
   --shadow-card: 0 0 0 .5px rgb(0 0 0 / 10%), 0 1px 2px rgb(0 0 0 / 8%), 0 8px 20px -8px rgb(0 0 0 / 18%);
@@ -74,14 +84,13 @@
   --accent: Highlight; --accent-text: var(--accent); --text-on-accent: HighlightText;
   --selected: Highlight; --selected-text: HighlightText; --selected-text-secondary: currentColor;
   --ring: var(--accent);
-  --scarlet: CanvasText; --scarlet-tile: CanvasText; --on-scarlet: var(--white);
+  --scarlet: CanvasText; --on-scarlet: var(--white);
   --status-ok: CanvasText; --status-warning: CanvasText; --status-error: CanvasText;
-  /* System, secondary, tertiary, quaternary and quinary fill. */
+  /* System, secondary, tertiary and quaternary fill. */
   --fill-1: color-mix(in srgb, var(--text) 9.8%, transparent);
   --fill-2: color-mix(in srgb, var(--text) 7.8%, transparent);
   --fill-3: color-mix(in srgb, var(--text) 4.7%, transparent);
   --fill-4: color-mix(in srgb, var(--text) 2.7%, transparent);
-  --fill-5: color-mix(in srgb, var(--text) .8%, transparent);
   /* Controls rest, hover and press on the tertiary, secondary and system fills. */
   --fill-control: var(--fill-3); --fill-control-hover: var(--fill-2); --fill-control-pressed: var(--fill-1);
   --fill-quiet-hover: var(--fill-4);
@@ -112,7 +121,7 @@
 /* The canvas's light and dark values. */
 @supports (color: light-dark(white, black)) {
   :root {
-    --scarlet: light-dark(var(--ibis), #ff7a5c); --scarlet-tile: light-dark(var(--ibis), #d2401f);
+    --scarlet: light-dark(var(--ibis), var(--ibis-dark));
     --status-ok: light-dark(#34c759, #30d158); --status-warning: light-dark(#ffcc00, #ffd600); --status-error: light-dark(#ff383c, #ff4245);
     --accent: #007aff; --accent-text: light-dark(#0068da, #419cff);
     --selected: light-dark(#0064e1, #0059d1); --selected-text: #fff; --text-on-accent: var(--selected-text);
@@ -136,16 +145,10 @@
       --fill-2: light-dark(rgb(0 0 0 / 7.8%), rgb(255 255 255 / 7.8%));
       --fill-3: light-dark(rgb(0 0 0 / 4.7%), rgb(255 255 255 / 4.7%));
       --fill-4: light-dark(rgb(0 0 0 / 2.7%), rgb(255 255 255 / 2.7%));
-      --fill-5: light-dark(rgb(0 0 0 / .8%), rgb(255 255 255 / .8%));
       --shadow-overlay: 0 0 0 .5px light-dark(rgb(0 0 0 / 12%), rgb(255 255 255 / 10%)), 0 12px 32px light-dark(rgb(0 0 0 / 16%), rgb(0 0 0 / 45%));
       /* The veil over the native material, so text stays legible on any wallpaper. */
       --vibrancy-tint: light-dark(rgb(250 250 252 / 75%), rgb(30 30 34 / 75%));
       --glass-edge: light-dark(rgb(0 0 0 / 10%), rgb(255 255 255 / 10%));
-    }
-    /* Over the veiled material, text roles keep 4.5:1. */
-    :root[data-platform="macos"][data-native-appearance="vibrancy"]:not(.notice-window),
-    :root[data-platform="macos"][data-native-appearance="liquid-glass"]:not(.notice-window) {
-      --scarlet: light-dark(#982d16, #ff9d87);
     }
   }
 }
@@ -180,7 +183,7 @@
     --text: CanvasText; --text-secondary: CanvasText; --text-tertiary: CanvasText; --separator: CanvasText; --stroke-field: CanvasText;
     --selected: Highlight; --selected-text: HighlightText; --selected-text-secondary: currentColor;
     --ring: CanvasText; --ring-offset: 2px; --scrollbar-thumb: CanvasText; --scrim: Canvas;
-    --scarlet: CanvasText; --scarlet-tile: CanvasText; --on-scarlet: Canvas;
+    --scarlet: CanvasText; --on-scarlet: Canvas;
     --status-ok: CanvasText; --status-warning: CanvasText; --status-error: CanvasText;
   }
 }
@@ -203,7 +206,7 @@
    4.5:1, never brighter in dark than in light; accent text passes 4.5:1 on the
    surface. Follow the Mac reaches the same roles from nativeAccent.css. */
 :root[data-accent="blue"] { --ac: #007aff; --ac-selected: light-dark(#0064e1, #0059d1); --ac-text: light-dark(#0068da, #419cff); }
-:root[data-accent="ibis"] { --ac: light-dark(var(--ibis), #ff7a5c); --ac-selected: light-dark(var(--ibis), #ff7a5c); --ac-text: light-dark(var(--ibis), #ff7a5c); --ac-on: light-dark(#fff, #171717); }
+:root[data-accent="ibis"] { --ac: light-dark(var(--ibis), var(--ibis-dark)); --ac-selected: var(--ac); --ac-text: var(--ac); --ac-on: light-dark(#fff, #171717); }
 :root[data-accent="purple"] { --ac: light-dark(#953d96, #a550a7); --ac-selected: light-dark(#953d96, #904291); --ac-text: light-dark(#953d96, #bd71bf); }
 :root[data-accent="pink"] { --ac: light-dark(#f74f9e, #f74f9e); --ac-selected: light-dark(#e4086c, #e4086c); --ac-text: light-dark(#e4086c, #f74f9e); }
 :root[data-accent="red"] { --ac: light-dark(#e0383e, #ff5257); --ac-selected: light-dark(#de3036, #e80005); --ac-text: light-dark(#dd2c32, #ff5257); }
@@ -229,17 +232,17 @@
      menu 12 -5-> menu item 7     control 8 -2-> segment 6     row 8 -12-> tile 6 */
 :root {
   --r-row: max(var(--r-floor), calc(var(--r-win) - var(--corner-inset)));
-  --r-action: var(--r-row);
   --r-tile: var(--r-floor);
   --r-mi: max(var(--r-floor), calc(var(--r-menu) - var(--menu-pad)));
   --r-seg: max(var(--r-floor-mark), calc(var(--r-control) - 2px));
-  --key-gap: calc((var(--action-h) - var(--key)) / 2);
-  --r-key: max(var(--r-floor-mark), calc(var(--r-action) - var(--key-gap)));
-  --r-toast: 18px; --r-receipt-mark: calc(var(--r-toast) - var(--space-2));
-  --footer-h: calc(var(--action-h) + 2 * var(--inset));
+  --key-gap: calc((var(--control-small-h) - var(--key)) / 2);
+  --r-key: max(var(--r-floor-mark), calc(var(--r-row) - var(--key-gap)));
+  --r-toast: 18px;
+  --footer-h: calc(var(--control-small-h) + 2 * var(--inset));
+  /* One Settings row, in every group and the shortcuts list. */
+  --settings-row-h: 2.75rem;
   /* Measured from NSSegmentedControl: the chosen fill lands at 19% of the text colour. */
-  --segment-track: var(--fill-2); --segment-selected: color-mix(in srgb, var(--text) 12%, transparent);
-  --key-fill: var(--fill-control); --key-fill-pressed: var(--fill-control-pressed);
+  --segment-selected: color-mix(in srgb, var(--text) 12%, transparent);
   --primary: var(--accent);
   --accent-hover: color-mix(in srgb, var(--primary) 90%, black);
   --accent-pressed: color-mix(in srgb, var(--primary) 80%, black);
@@ -274,7 +277,7 @@
       --website-line: light-dark(#E5E5E5, #2E2E2E);
       --website-text: light-dark(#171717, #F2F2F2);
       --website-muted: light-dark(#525252, #B5B5B5);
-      --website-accent-soft: light-dark(rgb(194 58 28 / .08), rgb(255 122 92 / .13));
+      --website-accent-soft: light-dark(rgb(194 58 28 / .08), rgb(242 85 47 / .13));
     }
   }
 }

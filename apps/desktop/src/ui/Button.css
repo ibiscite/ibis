@@ -13,9 +13,11 @@
 /* A 24 px fill still has a 32 px pointer target, inside the footer's padding. */
 .ui-button[data-size="small"]::after { inset: calc(-1 * (var(--control-h) - var(--control-small-h)) / 2 - var(--border-width)) calc(-1 * var(--border-width)); }
 .ui-button[data-variant="quiet"], .ui-button[data-variant="icon"] { background: transparent; border-color: transparent; color: var(--control-icon-color, var(--text-secondary)); }
+/* A quiet button's words are label colour, as a Mac borderless button's title, so they keep 4.5:1. */
+.ui-button[data-variant="quiet"] { color: var(--control-icon-color, var(--text)); }
 .ui-button[data-variant="primary"], .ui-button[data-variant="secondary"] { min-width: 4rem; }
 .ui-button[data-variant="icon"] { min-width: var(--control-h); padding: 0; }
-.ui-button[data-variant="primary"] { background: var(--primary); color: var(--text-on-accent); border-color: transparent; font-weight: var(--strong); }
+.ui-button[data-variant="primary"] { background: var(--primary); color: var(--text-on-accent); border-color: transparent; }
 @media (hover: hover) {
   .ui-button[data-hovered]:not([data-disabled], [aria-disabled="true"]) { background: var(--fill-control-hover); }
   .ui-button:is([data-variant="quiet"], [data-variant="icon"])[data-hovered]:not([data-disabled], [aria-disabled="true"]) { background: var(--fill-quiet-hover); color: var(--control-icon-hover-color, var(--text)); }
@@ -36,7 +38,13 @@
 .ui-button-icon { display: inline-flex; flex: none; width: var(--icon-small); height: var(--icon-small); }
 .ui-button-icon > :is(svg, img, span) { width: 100%; height: 100%; }
 .ui-button[data-variant] > .key-hint { color: inherit; flex-wrap: wrap; max-width: 100%; white-space: normal; }
-.ui-button[data-variant] .key-caps kbd { background: transparent; border-color: transparent; color: inherit; padding-inline: 0; font-weight: inherit; }
+/* Keys keep their cap inside a button: the shared fill on quiet and secondary
+   buttons, a light veil of the button's own text colour on the primary. A trailing cap is
+   concentric with its small button: the same --key-gap above, below and at the
+   end, so its --r-key corner follows the button's. */
+.ui-button[data-variant] .key-caps kbd { color: inherit; font-weight: inherit; }
+.ui-button[data-variant="primary"] .key-caps kbd { background: color-mix(in srgb, var(--text-on-accent) 22%, transparent); }
+.ui-button[data-size="small"]:has(.key-caps:last-child) { padding-inline-end: calc(var(--key-gap) - var(--border-width)); }
 @media (pointer: coarse) {
   .ui-button[data-variant], .settings-page .ui-button[data-variant] { min-width: var(--touch-target); min-height: var(--touch-target); }
   .ui-button[data-variant]::after, .ui-button[data-size="small"]::after, .settings-page .ui-button[data-variant]::after { inset: 0; }

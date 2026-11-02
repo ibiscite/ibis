@@ -17,14 +17,13 @@ test("implicit key caps retain actual system modifiers under the shared macOS lo
   vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
   setPlatform("Win32");
   const { container, rerender } = render(<KeyCaps accelerator="CmdOrCtrl+K" />);
-  expect(caps(container)).toEqual(["Ctrl", "K"]);
+  expect(caps(container)).toEqual(["Ctrl+K"]);
   setPlatform("MacIntel");
   rerender(<KeyCaps accelerator="CmdOrCtrl+K" />);
   expect(caps(container)).toEqual(["⌘K"]);
   setPlatform("Linux x86_64");
   rerender(<KeyCaps accelerator="CmdOrCtrl+K" />);
-  expect(caps(container)).toEqual(["Ctrl", "K"]);
-  expect(container.querySelectorAll(".key-plus")).toHaveLength(1);
+  expect(caps(container)).toEqual(["Ctrl+K"]);
 });
 
 test("footer and More pair actual system keys with their accessible shortcuts", () => {
@@ -43,36 +42,30 @@ test("footer and More pair actual system keys with their accessible shortcuts", 
     expect(trigger.getAttribute("aria-keyshortcuts")).toBe(more);
     expect(caps(trigger)).toEqual(moreCaps);
   };
-  check("Control+K", ["Ctrl", "K"], "Enter");
+  check("Control+K", ["Ctrl+K"], "Enter");
   setPlatform("MacIntel");
   rerender(footer());
   check("Meta+K", ["⌘K"], "↵");
   setPlatform("Linux x86_64");
   rerender(footer());
-  check("Control+K", ["Ctrl", "K"], "Enter");
+  check("Control+K", ["Ctrl+K"], "Enter");
 });
 
 test("macOS joins the glyphs in one cap, as its menus write them", () => {
   const { container } = render(<KeyCaps accelerator="CmdOrCtrl+K" platform="macos" />);
   expect(caps(container)).toEqual(["⌘K"]);
-  expect(container.querySelector(".key-plus")).toBeNull();
 });
 
-test("Windows gives each key its own cap, with nothing between", () => {
-  const { container } = render(<KeyCaps accelerator="CmdOrCtrl+K" platform="windows" />);
-  expect(caps(container)).toEqual(["Ctrl", "K"]);
-  expect(container.querySelector(".key-plus")).toBeNull();
+test("Windows and GNOME write the whole shortcut in one cap, as their menus do", () => {
+  const { container, rerender } = render(<KeyCaps accelerator="CmdOrCtrl+K" platform="windows" />);
+  expect(caps(container)).toEqual(["Ctrl+K"]);
+  rerender(<KeyCaps accelerator="Shift+Enter" platform="linux" />);
+  expect(caps(container)).toEqual(["Shift+Enter"]);
 });
 
-test("GNOME gives each key its own cap with a plus between, as GTK's shortcut labels do", () => {
-  const { container } = render(<KeyCaps accelerator="Shift+Enter" platform="linux" />);
-  expect(caps(container)).toEqual(["Shift", "Enter"]);
-  expect([...container.querySelectorAll(".key-plus")].map((plus) => plus.textContent)).toEqual(["+"]);
-});
-
-test("a lone plus or slash key stays one cap", () => {
+test("a lone plus or slash key stays inside the one cap", () => {
   const { container } = render(<KeyCaps accelerator="CmdOrCtrl+/" platform="windows" />);
-  expect(caps(container)).toEqual(["Ctrl", "/"]);
+  expect(caps(container)).toEqual(["Ctrl+/"]);
 });
 
 test("a hint names the action first and its keys after", () => {

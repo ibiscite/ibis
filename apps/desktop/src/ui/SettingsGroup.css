@@ -4,9 +4,10 @@
   display: flex; flex-direction: column;
   scroll-margin-block: var(--space-6);
 }
-.ui-settings-group-title {
-  margin: 0; padding: 0 var(--space-1) 6px; color: var(--text-secondary); font-size: var(--type-label-size);
-  line-height: var(--type-label-line); font-weight: var(--strong); letter-spacing: .02em;
+/* One group heading, shared with the shortcuts list. */
+.ui-settings-group-title, .ui-shortcut-table th[scope="rowgroup"] {
+  margin: 0; padding: 0 var(--space-1) var(--space-2); color: var(--text-secondary); font-size: var(--type-label-size);
+  line-height: var(--type-label-line); font-weight: var(--strong);
 }
 .ui-settings-card {
   flex: none; min-width: 0; border-radius: var(--r-card); background: var(--raised);
@@ -14,7 +15,7 @@
 }
 .ui-settings-row {
   display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-4);
-  min-height: 3rem; padding: var(--space-2) var(--space-4); box-sizing: border-box; font-size: var(--type-meta-size); line-height: var(--type-meta-line);
+  min-height: var(--settings-row-h); padding: var(--space-2) var(--space-4); box-sizing: border-box; font-size: var(--type-body-size); line-height: var(--type-body-line);
 }
 .ui-settings-row[data-bare] { padding: var(--space-3); }
 .ui-settings-row + .ui-settings-row { border-top: var(--border-width) solid var(--separator); }
@@ -30,7 +31,7 @@
 .ui-settings-search { position: relative; margin: 0 var(--inset) 10px; min-width: 0; }
 /* The glyph sits on the sidebar's icon column. */
 .ui-settings-search > .ui-settings-search-glyph { position: absolute; inset-block-start: 50%; inset-inline-start: calc(var(--space-2) + (var(--icon) - var(--icon-small)) / 2); width: var(--icon-small); height: var(--icon-small); translate: 0 -50%; color: var(--text-tertiary); pointer-events: none; }
-.ui-settings-search input { width: 100%; min-width: 0; box-sizing: border-box; min-height: var(--action-h); border-radius: var(--r-control); border: var(--border-width) solid var(--separator); padding-block: 0; padding-inline: calc(var(--space-2) + var(--icon) + var(--space-2)) calc(var(--control-small-h) + var(--space-2)); background: transparent; color: var(--text); font-size: var(--type-meta-size); }
+.ui-settings-search input { width: 100%; min-width: 0; box-sizing: border-box; min-height: var(--action-h); border-radius: var(--r-control); border: var(--border-width) solid var(--separator); padding-block: 0; padding-inline: calc(var(--space-2) + var(--icon) + var(--space-2)) calc(var(--control-small-h) + var(--space-2)); background: transparent; color: var(--text); font-size: var(--type-body-size); }
 .ui-settings-search input::placeholder { color: var(--text-tertiary); }
 .ui-settings-search-results { display: flex; flex-direction: column; gap: var(--space-1); }
 .ui-settings-search-results button { text-align: start; }

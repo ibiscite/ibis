@@ -6,13 +6,14 @@ import { PickerHeader } from "../features/picker/PickerHeader";
 import { ResultRow } from "../features/picker/ResultList";
 import { useInterfaceMessages } from "../i18n";
 import pickerStyles from "../styles.css?raw";
+import foundationStyles from "../ui/Foundation.css?raw";
 import buttonStyles from "../ui/Button.css?raw";
 import iconButtonStyles from "../ui/IconButton.css?raw";
 
 const ignore = () => undefined;
 // The real styles stay isolated from Settings, in the app's own order. Each host inherits the current
 // appearance or owns its explicitly requested scheme, never the system default.
-const styles = (buttonStyles + iconButtonStyles + pickerStyles).replace(/@import[^;]+;/g, "")
+const styles = (foundationStyles + buttonStyles + iconButtonStyles + pickerStyles).replace(/@import[^;]+;/g, "")
   .replace(/color-scheme:\s*light dark;/g, "")
   .replace(/:root(\[[^\]]+\])?/g, (_, attribute: string | undefined) => attribute ? `:host(${attribute})` : ":host");
 export function PickerPicture({ density = "comfortable", icon = "ibis", appearance, split = false, headerOnly = false, rowsOnly = false }: {

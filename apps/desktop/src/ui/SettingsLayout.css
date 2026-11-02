@@ -1,6 +1,6 @@
 /* Settings [C18]: keep root, mount and shell in the same height coordinate
    space at Default, Larger and 200% text, including under browser zoom. */
-:root.settings-window { color-scheme: light dark; }
+:root.settings-window:not([data-appearance]) { color-scheme: light dark; }
 :root.settings-window, :root.settings-window body, #settings { height: 100%; min-height: 0; margin: 0; overflow: hidden; }
 :root.settings-window body {
   background: var(--surface); color: var(--text);

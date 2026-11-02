@@ -6,7 +6,7 @@ import { libraryMessages, operationFailures, pickerText } from "../../messages";
 import { shortenedLabel, SourceAction, type SourceActionProps } from "../../ui/SourceAction";
 import { keyLabel, keysFor } from "../../keys";
 import { isMac } from "../../platform";
-import { MenuItem, MenuSection } from "../../ui/Menu";
+import { MenuItem, MenuSection, MenuSeparator } from "../../ui/Menu";
 
 export type LibraryScope = { offered: ZoteroLibrary[]; isChosen: (choice: ZoteroLibrary) => boolean; chosenCount: number;
   name: (choice: ZoteroLibrary) => string; toggle: (choice: ZoteroLibrary) => void; all: () => void };
@@ -49,6 +49,7 @@ export function PickerLibraryStatus({ library, groupName, isOpen, onOpenChange, 
           <MenuItem id="choose" label={pickerText.chooseLibraryMenu} keys={keyLabel(keysFor("chooseSource"), isMac)} onAction={actions.choose} />
           {!library?.zotero && <MenuItem id="zotero" label={pickerText.useZotero} onAction={actions.useZotero} />}
         </MenuSection>
+        {zotero && zotero.offered.length > 1 && <MenuSeparator />}
         {zotero && zotero.offered.length > 1 && <MenuSection id="library-scope" label={pickerText.zoteroLibraries} header={pickerText.searchIn} layout="list">
           <MenuItem id="all" label={pickerText.allLibraries} checked={zotero.chosenCount === zotero.offered.length} onAction={zotero.all} />
           {zotero.offered.map((choice) => {

@@ -1,6 +1,6 @@
 /* Key caps are filled, never outlined boxes (PowerToys, Raycast, GNOME): a
    20 px cap on the button fill; contrast modes give it an edge. */
-kbd { font: inherit; font-size: var(--type-label-size); font-weight: 500; display: inline-block; min-width: var(--key); height: var(--key); line-height: calc(var(--key) - 2 * var(--border-width)); padding: 0 var(--space-1); text-align: center; background: var(--key-fill); border: var(--border-width) solid var(--stroke-field); border-radius: var(--r-key); margin-inline-start: var(--space-1); }
+kbd { font: inherit; font-size: var(--type-label-size); font-weight: 500; display: inline-block; min-width: var(--key); height: var(--key); line-height: calc(var(--key) - 2 * var(--border-width)); padding: 0 var(--space-1); text-align: center; background: var(--fill-control); border: var(--border-width) solid var(--stroke-field); border-radius: var(--r-key); margin-inline-start: var(--space-1); }
 @media (prefers-contrast: no-preference) and (forced-colors: none) {
   kbd { border-color: transparent; font-weight: var(--strong); }
 }
@@ -13,5 +13,8 @@ kbd { font: inherit; font-size: var(--type-label-size); font-weight: 500; displa
    right-to-left page "⌘K" would otherwise show as "K⌘" and "Ctrl K" as "K Ctrl". */
 .key-caps { direction: ltr; unicode-bidi: isolate; }
 .key-caps kbd { margin: 0; padding-inline: calc(var(--space-1) + var(--border-width)); }
-.key-plus { color: var(--text-secondary); }
-.key-caps[data-echo] kbd { background: var(--key-fill-pressed); }
+/* A one-symbol cap is square, as on a keyboard. ↵ draws above the middle of its
+   em box in system fonts, so it is lowered by .1em to sit optically centred. */
+.key-caps kbd[data-single]:not([data-system]) { padding-inline: 0; min-width: var(--key); }
+.key-caps kbd[data-label="↵"] { line-height: calc(var(--key) - 2 * var(--border-width) + .2em); }
+.key-caps[data-echo] kbd { background: var(--fill-control-pressed); }

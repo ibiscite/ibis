@@ -224,7 +224,7 @@ test.each([1, 2])("many references at the minimum frame and %s× text retain exa
   const preview = screen.getByRole("region", { name: "Preview" });
   expect(preview.querySelector(".preview-text")?.textContent).toBe(text);
   const count = screen.getByRole("button", { name: "50 references" });
-  expect(count.textContent).toBe("50 references");
+  expect(count.textContent).toBe("50");
   fireEvent.click(count);
   const menu = screen.getByRole("dialog", { name: "Selected references" });
   expect(document.querySelector(".shelf")!.contains(menu)).toBe(false);

@@ -9,3 +9,6 @@
 
 /* An icon takes its row's colour, so hover and selection can never strand it. */
 svg { color: inherit; }
+
+/* Spoken, not shown: the one hidden-text rule. */
+.visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }

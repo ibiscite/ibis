@@ -99,7 +99,7 @@ test("sidebar navigation and the large page title have shared selection, spacing
 
 test("grouped rows and shared controls grow and wrap at the minimum window size and larger text", () => {
   const row = style(groups, ".ui-settings-row");
-  expect(row.getPropertyValue("min-height")).toBe("3rem");
+  expect(row.getPropertyValue("min-height")).toBe("var(--settings-row-h)");
   expect(row.getPropertyValue("height")).toBe("");
   expect(row.getPropertyValue("box-sizing")).toBe("border-box");
   expect(row.getPropertyValue("flex-wrap")).toBe("wrap");

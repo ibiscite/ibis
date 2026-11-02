@@ -13,7 +13,7 @@ export function PictureChoice<T extends string>({ label, description, value, opt
     orientation="horizontal" value={value} isDisabled={isDisabled} onChange={(next) => onChange(next as T)}>
     {options.map((option) => <Radio className="ui-picture-choice" key={option.value} value={option.value} isDisabled={option.isDisabled} aria-label={option.label}>
       {option.picture && <span className="ui-picture-choice-art" title={option.label}>{option.picture}</span>}
-      <span className={dots ? "ui-visually-hidden" : "ui-picture-choice-label"}>{option.label}{option.note && <span className="ui-picture-choice-note">{option.note}</span>}</span>
+      <span className={dots ? "visually-hidden" : "ui-picture-choice-label"}>{option.label}{option.note && <span className="ui-picture-choice-note">{option.note}</span>}</span>
     </Radio>)}
   </RadioGroup>;
 }

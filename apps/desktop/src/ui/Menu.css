@@ -19,7 +19,7 @@
   max-height: calc(100vh - 16px);
   display: flex; flex-direction: column; padding-block: var(--menu-padding); overflow: hidden; overflow-wrap: anywhere;
   border-radius: var(--menu-radius); box-shadow: var(--shadow-overlay);
-  font: var(--type-meta-size) / var(--type-meta-line) var(--font);
+  font: var(--type-body-size) / var(--type-body-line) var(--font);
 }
 .menu-popover[data-exiting] { animation: menu-exit var(--dur-exit) var(--ease-in); }
 @keyframes menu-exit { to { opacity: 0; } }
@@ -37,8 +37,12 @@
 .menu-section { display: flex; flex: none; flex-direction: column; }
 /* A long list scrolls inside the menu after eight rows. */
 .menu-section-list { max-height: calc(8 * var(--menu-item-height)); overflow-y: auto; }
-.menu-separator { height: 1px; margin: 5px var(--menu-item-pad); border: 0; background: var(--separator); }
+/* One separator, whether a part draws it or sections imply it. */
+.menu-separator, .toolbar-menu .menu-section + .menu-section::before { content: ""; flex: none; height: var(--border-width); margin: var(--menu-pad) var(--menu-item-pad); border: 0; background: var(--separator); }
 .menu-header { padding-inline: var(--menu-item-pad); }
+/* The one section title, as macOS menus write one: small, bold and secondary,
+   aligned with the item labels, so it never reads as an item. */
+.menu-heading { padding-block: var(--space-2) var(--space-1); padding-inline: var(--menu-label-start) var(--menu-item-pad); color: var(--text-secondary); font-size: var(--type-label-size); line-height: var(--type-label-line); font-weight: var(--strong); }
 .menu-detail { width: 0; min-width: 100%; margin: 0; padding: var(--space-1) 0 var(--space-2); display: flex; flex-direction: column; gap: var(--space-1); color: var(--text-secondary); font-size: var(--type-label-size); overflow-wrap: break-word; }
 .menu-detail-title { color: var(--text); font-weight: var(--strong); }
 .menu-item {

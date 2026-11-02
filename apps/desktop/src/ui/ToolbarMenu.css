@@ -7,8 +7,6 @@
 /* Keep a useful minimum while filtering; longer labels may use the viewport. */
 .toolbar-menu-popover { width: max-content; min-width: min(300px, calc(100vw - 16px)); max-width: calc(100vw - 16px); }
 .toolbar-menu-filter { flex: none; }
-.toolbar-menu-heading { color: var(--text-secondary); font-size: var(--type-label-size); font-weight: 600; padding-block: 8px 4px; padding-inline: var(--menu-label-start) var(--menu-item-pad); }
-.toolbar-menu .menu-section + .menu-section::before { content: ""; flex: none; height: 1px; margin: 5px var(--menu-item-pad); background: var(--separator); }
 .toolbar-menu-sample { margin-inline-start: auto; min-width: 0; max-width: 50%; color: var(--text-secondary); font: var(--type-label-size) var(--mono); white-space: normal; overflow-wrap: anywhere; text-align: end; }
 .toolbar-menu-sample[data-prose] { font-family: var(--font); }
 .menu-item[data-focused] .toolbar-menu-sample { color: inherit; }

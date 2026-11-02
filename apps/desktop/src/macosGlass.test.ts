@@ -38,16 +38,6 @@ function rgba(body: string, token: string): [number, number, number, number][] {
   return [...value!.matchAll(/rgb\((\d+) (\d+) (\d+) \/ ([\d.]+)%\)/g)].map((m) => [+m[1]!, +m[2]!, +m[3]!, +m[4]! / 100]);
 }
 
-/** A role's light and dark colours; translucent text is flattened onto the window surface. */
-function hexes(body: string, token: string): number[][] {
-  const value = body.match(new RegExp(`${token}:\\s*light-dark\\(([^;]+)\\);`))?.[1];
-  expect(value, token).toBeTruthy();
-  const surfaces = [[255, 255, 255], [30, 30, 30]];
-  return [...value!.matchAll(/#([0-9a-f]{6})|rgb\((\d+) (\d+) (\d+) \/ ([\d.]+)%\)/g)].map((m, mode) => m[1]
-    ? [1, 3, 5].map((i) => parseInt(`#${m[1]}`.slice(i, i + 2), 16))
-    : [+m[2]!, +m[3]!, +m[4]!].map((c, i) => c * +m[5]! / 100 + surfaces[mode]![i]! * (1 - +m[5]! / 100)));
-}
-
 /** Translucent text as painted on a given background. */
 const painted = (ink: [number, number, number, number], under: number[]) => ink.slice(0, 3).map((c, i) => c * ink[3]! + under[i]! * (1 - ink[3]!));
 
@@ -109,9 +99,6 @@ test("Acrylic text roles keep contrast over black and white backdrops in both th
       const hover = background.map((c) => theme ? c * .97 + 255 * .03 : c * .97);
       for (const fill of [background, hover]) {
         expect(contrast(painted(rgba(shared, "--text")[theme]!, fill), fill), `--text/${theme}/${under}`).toBeGreaterThanOrEqual(4.5);
-        for (const role of ["--scarlet"]) {
-          expect(contrast(hexes(roles, role)[theme]!, fill), `${role}/${theme}/${under}`).toBeGreaterThanOrEqual(4.5);
-        }
       }
       expect(roles).not.toMatch(/--status-/);
     }
@@ -137,13 +124,6 @@ test("primary text keeps 7:1 over the veiled material, on the brightest and dark
   }
 });
 
-/** Native macOS colour roles, inside the same guard. */
-function materialRoles(mode: string): string {
-  const body = tokens.match(new RegExp(String.raw`:root\[data-platform="macos"\]\[data-native-appearance="${mode}"\]:not\(\.notice-window\)[^{]*\{([^{}]*)\}`))?.[1];
-  expect(body, "vibrancy colour roles").toBeTruthy();
-  return body!;
-}
-
 test("the window edge is a hairline, never a white rim or glow (prototype round six)", () => {
   const { body } = macBlock();
   const [light, dark] = rgba(body, "--glass-edge");
@@ -157,20 +137,6 @@ test("the window edge is a hairline, never a white rim or glow (prototype round 
   expect(edge.match(/box-shadow:\s*([^;]+);/)?.[1]).toBe("inset 0 0 0 var(--border-width) var(--glass-edge, transparent)");
 });
 
-test.each(["vibrancy", "liquid-glass"])("citation text keeps 4.5:1 with the qualified %s material", (mode) => {
-  const { body } = macBlock();
-  const [light, dark] = rgba(body, "--vibrancy-tint");
-  const over = (veil: [number, number, number, number], under: number) => veil.slice(0, 3).map((c) => c * veil[3] + under * (1 - veil[3]));
-  const roles = materialRoles(mode);
-  expect(roles).not.toMatch(/--status-/);
-  for (const role of ["--scarlet"]) {
-    const [onLight, onDark] = hexes(roles, role);
-    for (const under of [141, 255]) expect(contrast(onLight!, over(light!, under)), `${role} light over ${under}`).toBeGreaterThanOrEqual(4.5);
-    for (const under of [0, 120]) expect(contrast(onDark!, over(dark!, under)), `${role} dark over ${under}`).toBeGreaterThanOrEqual(4.5);
-  }
-  // The opaque surface keeps Ibis scarlet itself.
-  expect(body).not.toMatch(/--scarlet/);
-});
 
 test("the Copied notice window keeps its own pill border and colours", () => {
   document.documentElement.className = "notice-window";

@@ -34,10 +34,11 @@ export function setupDemo() {
   const copy = el("button", { type: "button", className: "picker-primary", textContent: "Copy" }), add = el("button", { type: "button", textContent: "Add" });
   function keyCaps(accelerator) {
     const caps = el("span", { className: "key-caps" }); caps.setAttribute("aria-hidden", "true");
-    for (const [index, label] of keyCapLabels(accelerator, mac).entries()) {
+    for (const label of keyCapLabels(accelerator, mac)) {
       const cap = el("span", { className: "key-cap" });
-      if (index > 0 && platform === "linux") cap.append(el("span", { className: "key-plus", textContent: "+" }));
-      cap.append(el("kbd", { textContent: label })); caps.append(cap);
+      const kbd = el("kbd", { textContent: label });
+      kbd.dataset.label = label; if ([...label].length === 1) kbd.dataset.single = "";
+      cap.append(kbd); caps.append(cap);
     }
     return caps;
   }

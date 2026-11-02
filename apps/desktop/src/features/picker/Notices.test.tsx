@@ -87,12 +87,12 @@ test("update progress keeps known, unknown, checking and failed phases honest", 
   expect(screen.getByRole("progressbar").hasAttribute("data-indeterminate")).toBe(true);
   rerender(<Notices {...props} copied={null} {...{ updateProgress: { ...progress, received: 100 } }} />);
   expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe("100");
-  expect(screen.getByRole("progressbar").querySelector<HTMLElement>(".update-track > div")?.style.width).toBe("100%");
+  expect(screen.getByRole("progressbar").querySelector<SVGElement>(".update-ring-fill")?.style.getPropertyValue("--progress")).toBe("100");
   rerender(<Notices {...props} copied={null} {...{ updateProgress: { ...progress, received: 100, phase: "installing" } }} />);
   expect(screen.getByRole("progressbar").textContent).toContain("Checking and installing");
   expect(screen.getByRole("progressbar").hasAttribute("aria-valuenow")).toBe(false);
   expect(screen.getByRole("progressbar").hasAttribute("data-indeterminate")).toBe(true);
-  expect(screen.getByRole("progressbar").querySelector<HTMLElement>(".update-track > div")?.style.width).toBe("");
+  expect(screen.getByRole("progressbar").querySelector<SVGElement>(".update-ring-fill")?.style.getPropertyValue("--progress")).toBe("");
   rerender(<Notices {...props} copied={null} {...{ updateProgress: { ...progress, phase: "failed" } }} />);
   expect(screen.queryByRole("progressbar")).toBeNull();
   expect(screen.getByRole("alert").textContent).toContain("Check now in Settings > About");

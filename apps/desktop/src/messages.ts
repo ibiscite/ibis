@@ -552,8 +552,9 @@ export const copyFormatMenu: Record<KeyFormat, { label: string; sample: string }
 };
 
 export const updateText = {
-  downloading: "Downloading the update…",
-  installing: "Checking and installing the update…",
+  title: "Updating Ibis",
+  downloading: "Downloading",
+  installing: "Checking and installing",
   failed: "The update could not be installed. Use Check now in Settings > About to try again later.",
 };
 

@@ -24,7 +24,7 @@ import "../src/notice.css";
 // Picker root rules must not leak into the separate Settings window.
 import pickerStyles from "../src/styles.css?inline";
 
-export const scenarios = ["notice", "results", "first-run", "more", "format-menu", "states", "parts", "empty", "file-drag", "error", "loading", "empty-search", "shelf", "reference-menu", "library-menu", "shortcuts", "pinned", "no-matches", "missing", "zotero-closed", "unreadable", "stale", "compact", "spacious", "larger-text", "right-to-left", "long-titles", "tokens", "settings-general", "settings-look", "settings-citations", "settings-shortcuts", "settings-about"] as const;
+export const scenarios = ["notice", "results", "first-run", "more", "format-menu", "states", "parts", "empty", "file-drag", "error", "loading", "empty-search", "shelf", "reference-menu", "library-menu", "shortcuts", "pinned", "no-matches", "missing", "zotero-closed", "unreadable", "stale", "compact", "spacious", "larger-text", "right-to-left", "long-titles", "update", "tokens", "settings-general", "settings-look", "settings-citations", "settings-shortcuts", "settings-about"] as const;
 type Scenario = typeof scenarios[number];
 type Theme = "light" | "dark";
 
@@ -115,6 +115,7 @@ function pickerApi(scenario: Scenario, settings: SettingsApi, openSettings: (pag
     openFoundLibrary: async () => null,
     reloadLibrary: noop, openLibrarySource: async () => null, openSettings,
     onFileDrag: scenario === "file-drag" ? async (change) => { change(true); return () => {}; } : undefined,
+    onUpdateProgress: scenario === "update" ? async (progress) => { progress({ attempt: 1, revision: 1, received: 3_150_000, total: 7_400_000, phase: "downloading" }); return () => {}; } : undefined,
     onLibraryChanged: subscribe, onPickerShown: subscribe, onPickerHidden: subscribe,
   };
 }
@@ -208,7 +209,10 @@ const mounts = new WeakMap<HTMLElement, () => void>();
 /** One board per iframe/document, as in the app's separate native windows.
  * Load ibis-canvas.css and ibis-canvas.js, then mount or use data-ibis-canvas.
  * URL: ?scenario=settings-look&theme=dark; attributes override the URL. */
-export function mount(host: HTMLElement, options: { scenario?: string; theme?: string } = {}): () => void {
+/** The design parameters a canvas board may turn (tokens.css, "Parameters"). */
+export const parameters = ["--unit", "--radius", "--type-base", "--ibis", "--ibis-dark"] as const;
+
+export function mount(host: HTMLElement, options: { scenario?: string; theme?: string; params?: Partial<Record<typeof parameters[number], string>> } = {}): () => void {
   const params = new URLSearchParams(window.location.search);
   const scenario = options.scenario ?? (host.dataset.ibisCanvas || params.get("scenario") || "results");
   const theme = options.theme ?? host.dataset.theme ?? params.get("theme") ?? "light";
@@ -216,6 +220,12 @@ export function mount(host: HTMLElement, options: { scenario?: string; theme?: s
   if (theme !== "light" && theme !== "dark") throw new Error(`Unknown canvas theme: ${theme}`);
   mounts.get(host)?.();
   setPlatform();
+  // Parameters override tokens.css live; everything derived from them follows.
+  for (const name of parameters) {
+    const value = options.params?.[name]?.trim();
+    if (value) document.documentElement.style.setProperty(name, value);
+    else document.documentElement.style.removeProperty(name);
+  }
   const settings = demoApi();
   void settings.setPickerPreferences({ ...fixtures[scenario as Scenario]?.preferences, appearance: theme as Theme, paste: false }, null, 0);
   // The states and tokens pages use the Settings window's base styles.

@@ -2,7 +2,7 @@
   "_about": "Every tunable brand value. Edit, then run python3 brand/build.py. Sizes are shares of M, the bird's height, unless noted.",
   "colours": {
     "scarlet": "#C23A1C",
-    "scarlet_dark": "#FF7A5C",
+    "scarlet_dark": "#F2552F",
     "scarlet_favicon": "#CF4628",
     "gradient": [
       "#CF4628",

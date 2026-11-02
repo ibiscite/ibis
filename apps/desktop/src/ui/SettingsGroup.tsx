@@ -15,7 +15,7 @@ export function SettingsGroup({ id, title, children }: { id: string; title?: str
 export function SettingsRow({ id, label, description, children, problem, highlighted, bare = false }: { id: string; label: ReactNode; description?: string; children?: ReactNode; problem?: string; bare?: boolean; highlighted?: boolean }) {
   return (
     <div className="ui-settings-row" data-bare={bare || undefined} data-described={description ? true : undefined} data-highlighted={highlighted || undefined}>
-      <div className={bare ? "ui-visually-hidden" : "ui-settings-row-text"}>
+      <div className={bare ? "visually-hidden" : "ui-settings-row-text"}>
         <span id={id}>{label}</span>
         {description && <span id={`${id}-description`} className="ui-settings-description">{description}</span>}
       </div>

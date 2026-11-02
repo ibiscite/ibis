@@ -11,7 +11,6 @@
   @media (forced-colors: none) and (prefers-contrast: no-preference) {
     :root[data-system="windows"][data-native-appearance="acrylic"]:not(.notice-window) {
       --acrylic-tint: light-dark(rgb(249 249 249 / 92%), rgb(40 40 40 / 92%));
-      --scarlet: light-dark(#982d16, #ff9d87);
     }
   }
 }
@@ -21,7 +20,7 @@
   :root[data-native-appearance] { background: var(--surface); }
 }
 
-/* macOS skin (docs/design.md, the prototype's macOS look): frameless buttons
+/* macOS skin (docs/design.md, Per platform): frameless buttons
    and key caps on soft fills, rounder menus. Increase contrast and forced colours
    keep their framed, opaque controls. */
 @media (prefers-contrast: no-preference) and (forced-colors: none) {

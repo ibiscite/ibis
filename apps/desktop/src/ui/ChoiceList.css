@@ -5,7 +5,7 @@ main .picker-content .results-area:has(.choice-screen) { display: flex; flex-dir
 .choice-screen { display: flex; flex-direction: column; flex: none; width: 100%; max-width: 25rem; margin: auto; text-align: center; }
 .choice-title, .choice-line { padding-inline: var(--row-pad); margin: 0; overflow-wrap: anywhere; }
 .choice-title { color: var(--text); font-size: var(--type-lead-size); line-height: var(--type-lead-line); font-weight: var(--strong); }
-.choice-line { margin-top: .375rem; color: var(--text-secondary); font-size: var(--type-meta-size); line-height: var(--type-meta-line); }
+.choice-line { margin-top: .375rem; color: var(--text-secondary); font-size: var(--type-body-size); line-height: var(--type-body-line); }
 .choice-list { display: flex; flex-direction: column; gap: var(--space-1); margin-top: var(--space-6); outline: none; text-align: start; }
 .choice-screen .choice-row { min-width: 0; height: auto; align-items: center; padding: var(--space-2) var(--row-pad); outline: none; }
 .choice-screen .choice-tile .type-icon { width: var(--icon-small); height: var(--icon-small); }

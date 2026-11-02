@@ -2,7 +2,7 @@
 .shelf { --shelf-target: var(--control-h); position: relative; flex: none; min-height: 0; overflow: visible; margin: 0 var(--inset) var(--inset); border-radius: var(--r-row); background: var(--fill-control); }
 .shelf::before { content: ""; position: absolute; inset: 0; border-radius: inherit; background: var(--status-ok-wash); opacity: 0; pointer-events: none; }
 main:has(> .shelf) > footer { border-top-color: transparent; }
-.shelf-output { position: relative; display: flex; align-items: center; height: max(var(--space-10), var(--shelf-target)); padding-inline: var(--row-pad); font-size: var(--type-meta-size); }
+.shelf-output { position: relative; display: flex; align-items: center; height: max(var(--space-10), var(--shelf-target)); padding-inline: var(--row-pad); font-size: var(--type-body-size); }
 .shelf-leading { flex: 0 0 var(--tile); display: flex; justify-content: end; margin-inline-end: var(--row-gap); }
 .shelf-mark { display: block; flex: none; height: var(--space-5); width: auto; color: var(--scarlet); }
 .shelf-output[data-state="pending"] .shelf-mark { opacity: .45; }
@@ -21,20 +21,34 @@ main:has(> .shelf) > footer { border-top-color: transparent; }
 .shelf-output .preview-text .csl-entry { display: inline; }
 .shelf-output .preview-text .csl-entry + .csl-entry { margin-inline-start: var(--space-4); }
 .shelf-segment { position: relative; display: flex; flex: 0 1 auto; min-width: 0; padding-block: var(--space-2); padding-inline: 1px; }
-.shelf-segment-button.ui-button[data-variant] { justify-content: start; flex: 0 1 auto; min-width: 0; min-height: var(--chip-h); max-width: 100%; padding: 0; border-width: 0; border-radius: var(--r-tile); color: var(--text); white-space: nowrap; }
+.shelf-segment-button.ui-button[data-variant] { justify-content: start; flex: 0 1 auto; min-width: 0; min-height: var(--control-small-h); max-width: calc(100% + 2 * var(--space-1)); margin-inline: calc(-1 * var(--space-1)); padding: 0 var(--space-1); transition: padding-inline-end var(--dur) var(--ease); border-width: 0; border-radius: var(--r-tile); color: var(--text); white-space: nowrap; }
 .shelf-reference-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .shelf-segment-button.ui-button[data-size="small"]::after { inset-inline: 0; }
 .shelf-segment-button.ui-button[data-focus-visible] { background: var(--selected); color: var(--selected-text); outline: none; box-shadow: none; }
 .shelf-segment-button[data-focus-visible] .preview-text { color: inherit; }
-/* Removal uses the shared square; only its placement belongs to the shelf. */
-.shelf-remove.ui-button { position: absolute; z-index: var(--z-chrome); inset-block-start: calc(var(--control-small-h) / -2); inset-inline-end: calc(var(--control-small-h) / -2); visibility: hidden; --ring-offset: calc(-1 * var(--ring-width)); }
+/* Removal sits inside the reference and never covers its text: on hover the
+   chip grows at its trailing end to make room for a small quiet x, the same
+   --remove-gap from the chip's edge on every side. The 32 px pointer target stays. */
+.shelf-segment { --remove-gap: calc((var(--control-small-h) - var(--space-4)) / 2); --remove-room: calc(var(--space-1) + var(--space-4) + var(--remove-gap)); }
+.shelf-segment > .shelf-remove.ui-icon-button.ui-button[data-variant] { --icon-button-size: var(--space-4); position: absolute; z-index: var(--z-chrome); inset-block-start: 50%; inset-inline-end: calc(1px - var(--space-1) + var(--remove-gap)); translate: 0 -50%; visibility: hidden; border: 0; border-radius: max(var(--r-floor-mark), calc(var(--r-tile) - var(--remove-gap))); color: var(--text-secondary); --ring-offset: calc(-1 * var(--ring-width)); }
+.shelf-segment > .shelf-remove.ui-icon-button.ui-button[data-variant] > svg { width: var(--space-3); height: var(--space-3); }
+.shelf-segment > .shelf-remove.ui-icon-button.ui-button[data-variant]:is([data-hovered], [data-pressed]) { background: var(--fill-control-hover); color: var(--text); }
 @media (hover: hover) {
   .shelf:not([data-panel]) .shelf-segment:hover:not(:has([data-focus-visible])) > .shelf-remove { visibility: visible; }
+  .shelf:not([data-panel]) .shelf-segment:hover > .shelf-segment-button:not([data-focus-visible]) { background: var(--fill-control-hover); }
+  .shelf:not([data-panel]) .shelf-segment[data-built]:hover:not(:has([data-focus-visible])) > .shelf-segment-button { padding-inline-end: var(--remove-room); }
 }
 .shelf-actions { display: flex; flex: none; align-items: center; gap: var(--space-1); margin-inline-start: var(--space-1); }
 .shelf-actions:empty { display: none; }
+/* The count is a pop-up on the shelf's fill, so it is the one bordered control
+   there: an opaque face and a hairline edge, a document glyph, the number and
+   the chevrons, as a Mac pop-up button reads. */
+.shelf-actions > .shelf-count.ui-popup-button.ui-button[data-variant] { min-height: var(--control-small-h); padding-inline: var(--space-2) var(--space-1); border: var(--border-width) solid var(--separator); border-radius: var(--r-tile); background: var(--surface-overlay); color: var(--text); font-variant-numeric: tabular-nums; }
+.shelf-actions > .shelf-count.ui-popup-button.ui-button[data-variant]:is([data-hovered], [data-pressed], [aria-expanded="true"]) { background-image: linear-gradient(var(--fill-control-hover), var(--fill-control-hover)); }
+.shelf-count .toolbar-menu-value { display: inline-flex; align-items: center; gap: var(--space-1); }
+.shelf-count-icon { width: var(--icon-small); height: var(--icon-small); color: var(--text-secondary); }
 /* Counts live after the citation in fixed slots; neither shifts its column. */
-.shelf-pill { flex: none; padding-inline: var(--space-2); border-radius: var(--r-full); background: var(--chip); color: var(--text-secondary); font-size: var(--type-label-size); line-height: var(--chip-h); white-space: nowrap; }
+.shelf-pill { flex: none; padding-inline: var(--space-2); border-radius: var(--r-full); background: var(--chip); color: var(--text-secondary); font-size: var(--type-label-size); line-height: var(--control-small-h); white-space: nowrap; }
 .shelf-details-list { display: flex; flex-direction: column; gap: var(--row-spacing); margin: 0; padding: 0; list-style: none; }
 .shelf-details-list .ui-button { justify-content: start; text-align: start; width: 100%; height: auto; border-width: 0; min-height: var(--control-h); padding: var(--space-2); border-radius: var(--r-mi); color: var(--text); }
 .shelf-detail-locator { color: var(--text-secondary); }
@@ -47,7 +61,7 @@ main:has(> .shelf) > footer { border-top-color: transparent; }
 .shelf[data-copied] .shelf-citation { flex: 0 1 auto; gap: var(--row-gap); }
 .shelf[data-copied] .preview-text { flex: 0 1 auto; }
 .shelf[data-copied]::before { animation: shelf-copy-wash 160ms var(--ease); }
-.shelf-copied { display: inline-flex; flex: none; align-items: center; gap: var(--space-1); height: var(--chip-h); padding-inline: var(--space-2); border-radius: var(--r-full); color: var(--text); background: var(--status-ok-fill); font: var(--strong) var(--type-label-size) / var(--type-label-line) var(--font); white-space: nowrap; }
+.shelf-copied { display: inline-flex; flex: none; align-items: center; gap: var(--space-1); height: var(--control-small-h); padding-inline: var(--space-2); border-radius: var(--r-full); color: var(--text); background: var(--status-ok-fill); font: var(--strong) var(--type-label-size) / var(--type-label-line) var(--font); white-space: nowrap; }
 .shelf-copied svg { color: var(--status-ok); width: var(--icon-small); height: var(--icon-small); fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; }
 .shelf-copied path { animation: shelf-check var(--dur-panel) var(--ease); }
 @keyframes shelf-copy-wash { from { opacity: 1; } to { opacity: 0; } }
@@ -55,10 +69,11 @@ main:has(> .shelf) > footer { border-top-color: transparent; }
 @media (pointer: coarse) {
   .shelf { --shelf-target: var(--touch-target); }
   .shelf-segment-button.ui-button[data-variant] { min-width: var(--touch-target); }
-  .shelf-segment-button.ui-button[data-size="small"]::after { inset-block: calc((var(--touch-target) - var(--chip-h)) / -2); }
+  .shelf-segment-button.ui-button[data-size="small"]::after { inset-block: calc((var(--touch-target) - var(--control-small-h)) / -2); }
 }
 @media (prefers-reduced-motion: reduce) {
   .shelf[data-copied]::before, .shelf-copied path { animation: none; }
+  .shelf-segment-button.ui-button[data-variant] { transition: none; }
 }
 @media (prefers-contrast: more), (forced-colors: active) {
   .shelf { outline: var(--border-width) solid CanvasText; outline-offset: calc(-1 * var(--border-width)); }
@@ -70,5 +85,5 @@ main:has(> .shelf) > footer { border-top-color: transparent; }
 .shelf-shared { flex: none; white-space: pre; }
 .shelf-punctuation { color: var(--text-secondary); }
 .shelf-segment-button[data-focus-visible] .shelf-punctuation { color: inherit; }
-.details-menu-scroll > .shelf-full-citation { margin: var(--menu-pad) 0 0; padding: var(--space-2) var(--menu-item-pad) var(--space-2) var(--menu-label-start); border-radius: var(--r-mi); background: var(--fill-control); font-size: var(--type-meta-size); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
+.details-menu-scroll > .shelf-full-citation { margin: var(--menu-pad) 0 0; padding: var(--space-2) var(--menu-item-pad) var(--space-2) var(--menu-label-start); border-radius: var(--r-mi); background: var(--fill-control); font-size: var(--type-body-size); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
 

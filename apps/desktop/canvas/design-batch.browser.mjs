@@ -24,12 +24,34 @@ try {
     assert.ok(scrolling.content <= scrolling.height, `About never scrolls at 920 × 560 (${theme}): ${JSON.stringify(scrolling)}`);
     assert.equal(await page.getByRole("button", { name: "Ibis", exact: true }).locator("svg").count(), 2, "About uses the light/dark app icon");
   }
+  // Edges: every picker screen keeps its outermost controls --space-2 (8 px)
+  // from the window, concentric with its 16 px corner, and a trailing key cap
+  // keeps the same gap above, below and at the end of its button.
+  for (const scenario of ["results", "first-run", "shelf", "stale", "empty", "no-matches", "missing", "zotero-closed", "pinned", "update"]) {
+    await open(scenario);
+    const edges = await page.evaluate(() => {
+      const width = document.documentElement.clientWidth;
+      const visible = (node) => { const box = node.getBoundingClientRect(); return box.width > 0 && box.height > 0 && getComputedStyle(node).visibility !== "hidden"; };
+      const trailing = (selector) => Math.max(...[...document.querySelectorAll(selector)].filter(visible).map((node) => node.getBoundingClientRect().right));
+      const caps = [...document.querySelectorAll("footer .ui-button[data-size='small']")].filter(visible).flatMap((button) => {
+        const cap = button.querySelector(".key-caps:last-child kbd:last-child");
+        if (!cap) return [];
+        const outer = button.getBoundingClientRect(), inner = cap.getBoundingClientRect();
+        return [[inner.top - outer.top, outer.bottom - inner.bottom, outer.right - inner.right].map((gap) => Math.round(gap))];
+      });
+      const header = trailing(".search-bar button");
+      return { footer: width - trailing("footer button"), header: header > 0 ? width - header : 8, caps };
+    });
+    assert.equal(Math.round(edges.footer), 8, `${scenario}: the footer's last control is 8 px from the window edge`);
+    assert.equal(Math.round(edges.header), 8, `${scenario}: the header's last control is 8 px from the window edge`);
+    for (const gaps of edges.caps) assert.equal(new Set(gaps).size, 1, `${scenario}: a trailing key cap is concentric with its button (${gaps})`);
+  }
   await open("stale");
   await page.locator(".source-action").waitFor();
   await page.locator(".footer-action").waitFor();
   const footerGeometry = await page.locator(".source-action, .footer-action").evaluateAll((buttons) => buttons.map((button) => {
     const style = getComputedStyle(button);
-    return [button.getBoundingClientRect().height, style.borderRadius, style.paddingInlineStart, style.paddingInlineEnd];
+    return [button.getBoundingClientRect().height, style.borderRadius, style.paddingInlineStart];
   }));
   assert.deepEqual(footerGeometry[0], footerGeometry[1], "source and copy have identical footer geometry");
   await open("file-drag");
@@ -46,13 +68,14 @@ try {
   }));
   assert.equal(crops.length, 3);
   assert.equal(new Set(crops.map((crop) => `${crop.width}/${crop.height}/${crop.headerHeight}`)).size, 1, "all icon pictures take an identical header crop");
-  assert.ok(Math.abs(crops[2].leading - crops[2].inset) < 1, "None starts at the leading inset without reserved icon space");
+  assert.ok(Math.abs(crops[2].leading - crops[2].inset) < 1, `None starts at the leading inset without reserved icon space: ${JSON.stringify(crops[2])}`);
   assert.ok(crops.every((crop) => crop.headerHeight <= crop.height + 1), "each crop contains the whole header");
   await open("settings-shortcuts");
   const table = page.getByRole("table", { name: "Keyboard Shortcuts" });
   assert.equal(await table.getByRole("columnheader").count(), 2);
   const rowHeights = await table.locator('tbody tr:has(th[scope="row"])').evaluateAll((rows) => rows.map((row) => row.getBoundingClientRect().height));
-  assert.ok(rowHeights.every((height) => Math.abs(height - 32) < 1), `compact shortcut rows: ${rowHeights}`);
+  const settingsRow = await page.evaluate(() => { const probe = document.createElement("div"); probe.style.height = "var(--settings-row-h)"; document.body.append(probe); const height = probe.getBoundingClientRect().height; probe.remove(); return height; });
+  assert.ok(rowHeights.every((height) => Math.abs(height - settingsRow) < 1), `shortcut rows share the settings row height (${settingsRow}): ${rowHeights}`);
   await page.getByRole("searchbox", { name: "Filter shortcuts" }).fill("quit");
   assert.equal(await table.locator('th[scope="row"]').allTextContents().then((labels) => labels.join()), "Quit Ibis");
   await page.getByRole("searchbox", { name: "Filter shortcuts" }).fill("unmatched");
@@ -81,5 +104,5 @@ try {
   await page.keyboard.press("Escape");
   await sheet.waitFor({ state: "detached" });
   assert.deepEqual(errors, []);
-  console.log("Design batch: About fits 920 × 560 in both themes; equal header crops, None inset, 32 pt shortcut rows, filter, sheet focus/Tab and minimum-size reachability pass.");
+  console.log("Design batch: window-edge insets and concentric key caps on every picker screen; About fits 920 × 560 in both themes; equal header crops, None inset, settings-height shortcut rows, filter, sheet focus/Tab and minimum-size reachability pass.");
 } finally { await browser.close(); }

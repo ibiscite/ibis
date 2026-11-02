@@ -125,7 +125,7 @@ footer > .text { border-top: var(--border-width) solid var(--separator); padding
   .margin { display: none; } .journey { grid-column: 2; max-width: 43rem; }
 }
 /* Shared controls use the app's timings, never a website motion copy. */
-.appearance { display: flex; align-items: center; gap: var(--space-3); margin-top: var(--space-6); font: var(--type-meta-size)/1.5 var(--font); color: var(--text-secondary); }
+.appearance { display: flex; align-items: center; gap: var(--space-3); margin-top: var(--space-6); font: var(--type-body-size)/1.5 var(--font); color: var(--text-secondary); }
 .appearance button { min-height: var(--touch-target); border: 0; background: none; color: inherit; padding: 0; font: inherit; cursor: pointer; }
 .appearance-toggle { display: flex; align-items: center; gap: var(--space-2); }
 .appearance svg { width: var(--space-4); height: var(--space-4); fill: none; stroke: currentColor; stroke-width: var(--icon-stroke); }

@@ -353,7 +353,7 @@ try {
       const receipt = page.locator(".copy-notice .copy-receipt");
       await receipt.getByText("+4 more", { exact: true }).waitFor();
       assert.equal(await reachable(receipt), true, "the summary and remaining-reference count are reachable");
-      assert.equal(await receipt.locator(".copy-receipt-excerpt").evaluate((node) => getComputedStyle(node).webkitLineClamp), "1", "the remaining count has its own second line");
+      assert.equal(await receipt.locator("code").evaluate((node) => { const excerpt = node.querySelector(".copy-receipt-excerpt").getBoundingClientRect(), more = node.querySelector(".copy-receipt-more").getBoundingClientRect(); return getComputedStyle(node).whiteSpace === "nowrap" && Math.abs(excerpt.top - more.top) < 1 && more.right <= node.getBoundingClientRect().right + 1; }), true, "the citation stays one line and keeps its remaining count in view");
       await checkScan("the receipt summary keeps the shelf one line");
       assert.deepEqual(errors, [], "no page errors");
       await page.close(); profiles += 1; continue;
