@@ -107,7 +107,9 @@ pub fn export(settings: &Settings, version: &str) -> Result<String, BackupError>
 /// Write a backup to `path`: the whole file is flushed under a temporary name
 /// first, so an interrupted write never leaves half a backup under that name.
 /// Without `replace`, a file already at `path`, even one that appears during
-/// the write, is never replaced and the error is `AlreadyExists`.
+/// the write, is never replaced and the error is `AlreadyExists`. On a drive
+/// without hard links that guarantee comes from creating `path` directly, and
+/// a failed write there removes the file it created.
 pub fn save(path: &Path, text: &str, replace: bool) -> io::Result<()> {
     if !replace && fs::symlink_metadata(path).is_ok() {
         return Err(io::ErrorKind::AlreadyExists.into());
@@ -122,12 +124,7 @@ pub fn save(path: &Path, text: &str, replace: bool) -> io::Result<()> {
                 name.to_string_lossy(),
                 std::process::id()
             ));
-            let mut options = fs::OpenOptions::new();
-            options.write(true).create_new(true);
-            // The backup names a private bibliography path: owner-only, like settings.
-            #[cfg(unix)]
-            std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
-            match options.open(&partial) {
+            match create_private(&partial) {
                 Err(error) if error.kind() == io::ErrorKind::AlreadyExists => None,
                 opened => Some(opened.map(|file| (partial, file))),
             }
@@ -139,17 +136,32 @@ pub fn save(path: &Path, text: &str, replace: bool) -> io::Result<()> {
         if replace {
             return fs::rename(&partial, path);
         }
-        // A link takes the name only if it is free; some cloud folders have no
-        // links, and there the name is checked again just before the rename.
+        // A link takes the name only if it is free. Some drives and cloud
+        // folders have no links; there the name is created only if it is free.
         match fs::hard_link(&partial, path) {
-            Err(error) if error.kind() != io::ErrorKind::AlreadyExists && fs::symlink_metadata(path).is_err() => {
-                fs::rename(&partial, path)
+            Err(error) if error.kind() != io::ErrorKind::AlreadyExists => {
+                let mut file = create_private(path)?;
+                io::Write::write_all(&mut file, text.as_bytes())
+                    .and_then(|()| file.sync_all())
+                    .inspect_err(|_| {
+                        let _ = fs::remove_file(path);
+                    })
             }
             other => other,
         }
     });
     let _ = fs::remove_file(&partial);
     placed
+}
+
+/// Create a new file that only its owner can read: a backup names a private
+/// bibliography path, like the settings file.
+fn create_private(path: &Path) -> io::Result<fs::File> {
+    let mut options = fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    options.open(path)
 }
 
 /// A change as previews show it: a bibliography by its file name only, so
