@@ -7,6 +7,8 @@ import { useMenuBoundary, useMenuPlacement } from "./Menu";
 import "./Menu.css";
 import "./DetailsMenu.css";
 
+export const stableAnchor = (anchor: HTMLElement) => anchor.closest<HTMLElement>(".shelf-output") ?? anchor;
+
 /** Editable details use the shared menu surface, anchored to their cause.
  * The form retains dialog semantics for its field and radio group; React Aria
  * owns placement and viewport bounds. Tab leaves the menu, as in every Ibis menu. */
@@ -15,7 +17,8 @@ export function DetailsMenu({ id, anchor, returnFocusRef, title, heading = title
   title: string; heading?: string; children: ReactNode; onClose: () => void;
   onRemove?: () => void;
 }) {
-  const trigger = useMemo(() => ({ current: anchor }), [anchor]);
+  // A segment grows as its page is typed; the shelf around it stays put, so the menu does.
+  const trigger = useMemo(() => ({ current: stableAnchor(anchor) }), [anchor]);
   const placement = useMenuPlacement(true, trigger, "top end");
   const frame = useRef<HTMLDivElement>(null);
   const returnTo = useRef(document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null);
