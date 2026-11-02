@@ -300,8 +300,8 @@ pub enum Note {
     LibraryNotFound,
     /// The backup has no opening shortcut for this system; this computer's is kept.
     ShortcutKept,
-    /// This computer's settings file is damaged. Restoring replaces it, even
-    /// with the same settings, and keeps the damaged file beside it.
+    /// This computer's settings file is damaged or missing. Restoring writes
+    /// it, even with the same settings, and keeps a damaged file beside it.
     RepairsSettings,
 }
 
@@ -391,9 +391,14 @@ fn changes(current: &Settings, restored: &Settings) -> Vec<Change> {
         .collect()
 }
 
-/// Whether the settings file is damaged, so a restore replaces it even when
-/// the settings recovered from it already match the backup.
-pub fn is_damaged(problem: Option<&SettingsError>) -> bool {
+/// Whether a restore must write the settings file even when the settings
+/// recovered for it already match the backup: it is damaged, or missing with
+/// only `settings.json.bak` left.
+pub fn needs_repair(loaded: &super::Loaded) -> bool {
+    is_damaged(loaded.problem.as_ref()) || (loaded.primary_read == PrimaryRead::Missing && loaded.from_backup)
+}
+
+fn is_damaged(problem: Option<&SettingsError>) -> bool {
     match problem {
         Some(SettingsError::Invalid(_) | SettingsError::InvalidZoteroLibraryEntry { .. }) => true,
         Some(SettingsError::Unreadable(error)) => error.kind() == io::ErrorKind::InvalidData,
@@ -409,6 +414,7 @@ pub fn is_damaged(problem: Option<&SettingsError>) -> bool {
 pub fn restore(path: &Path, plan: &Plan) -> Result<Settings, BackupError> {
     let mut loaded = super::load(path);
     let missing = loaded.primary_read == PrimaryRead::Missing;
+    let repair = needs_repair(&loaded);
     let damaged = match loaded.problem.take() {
         None => false,
         Some(problem) if is_damaged(Some(&problem)) => true,
@@ -420,7 +426,7 @@ pub fn restore(path: &Path, plan: &Plan) -> Result<Settings, BackupError> {
     if loaded.settings != plan.current {
         return Err(BackupError::Changed);
     }
-    if plan.restored != loaded.settings || damaged {
+    if plan.restored != loaded.settings || repair {
         super::write_settings(path, &plan.restored, damaged)?;
     }
     Ok(plan.restored.clone())

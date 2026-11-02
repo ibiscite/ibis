@@ -325,8 +325,7 @@ pub(crate) async fn choose_settings_backup(window: WebviewWindow) -> Result<Opti
         }
         _ => true,
     };
-    let plan =
-        backup::plan(&loaded.settings, &backup, |_| found).repairing(backup::is_damaged(loaded.problem.as_ref()));
+    let plan = backup::plan(&loaded.settings, &backup, |_| found).repairing(backup::needs_repair(&loaded));
     if !app.state::<PendingRestore>().offer(ticket, plan.clone()) {
         return Ok(None);
     }

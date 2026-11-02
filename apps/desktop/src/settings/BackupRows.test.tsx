@@ -130,7 +130,7 @@ test("a damaged settings file can be repaired from a backup with the same settin
   render(<BackupRows api={api} />);
   fireEvent.click(screen.getByRole("button", { name: "Restore…" }));
   await act(async () => undefined);
-  expect(screen.getByText(/settings file on this computer is damaged/)).toBeTruthy();
+  expect(screen.getByText(/settings file on this computer is damaged or missing/)).toBeTruthy();
   expect(screen.queryByText("This computer already has these settings.")).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Restore and Restart" }));
   await act(async () => undefined);

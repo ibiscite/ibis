@@ -177,8 +177,7 @@ fn import(args: &ArgMatches) -> Result<DispatchResult, Failure> {
         Some(file) => bounded(move || file.try_exists().unwrap_or(false)).unwrap_or(false),
         None => true,
     };
-    let plan =
-        backup::plan(&loaded.settings, &backup, |_| found).repairing(backup::is_damaged(loaded.problem.as_ref()));
+    let plan = backup::plan(&loaded.settings, &backup, |_| found).repairing(backup::needs_repair(&loaded));
     let dry_run = args.get_flag("dry-run");
     if !dry_run && !plan.is_empty() {
         backup::restore(&path, &plan).map_err(|error| match &error {
@@ -236,7 +235,7 @@ fn import_text(app: &str, backup: &Backup, plan: &backup::Plan, dry_run: bool) -
             }
             Note::ShortcutKept => "Note: the backup has no opening shortcut for this system, so this computer's is kept.\n",
             Note::RepairsSettings => {
-                "Note: the settings file on this computer is damaged. Restoring replaces it and keeps the damaged file beside it.\n"
+                "Note: the settings file on this computer is damaged or missing. Restoring writes it again, and keeps any damaged file beside it.\n"
             }
         });
     }
