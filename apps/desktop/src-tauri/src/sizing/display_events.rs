@@ -55,7 +55,7 @@ pub(super) fn install(app: &AppHandle, _window: &WebviewWindow) -> Option<()> {
 mod windows {
     use super::*;
     use std::sync::OnceLock;
-    use winsafe::{HWND, co, msg::Wm};
+    use winsafe::{HWND, HwndPlace, POINT, SIZE, co, msg::Wm};
 
     // No borrowed native pointer; the app handle only schedules the sizing owner.
     static APP: OnceLock<AppHandle> = OnceLock::new();
@@ -71,6 +71,26 @@ mod windows {
         checked(
             unsafe { HWND::from_ptr(hwnd.0).SetWindowSubclass(changed, SUBCLASS, 0) },
             NativeIssue::Monitor,
+        )
+    }
+
+    /// tao sizes an undecorated, shadowed window by its current frame insets.
+    /// Until Windows recalculates that frame they still hold the hidden caption,
+    /// so the first restored picker came out 31 px taller on every launch.
+    pub(super) fn settle_frame(window: &WebviewWindow) -> Option<()> {
+        let hwnd = checked(window.hwnd(), NativeIssue::Window)?;
+        // SAFETY: Tauri supplies the live picker HWND, and setup runs on its
+        // owning thread. The call keeps its place, size, order and visibility.
+        let hwnd = unsafe { HWND::from_ptr(hwnd.0) };
+        let keep = co::SWP::NOMOVE | co::SWP::NOSIZE | co::SWP::NOZORDER | co::SWP::NOACTIVATE;
+        checked(
+            hwnd.SetWindowPos(
+                HwndPlace::None,
+                POINT::default(),
+                SIZE::default(),
+                keep | co::SWP::FRAMECHANGED,
+            ),
+            NativeIssue::Resize,
         )
     }
 
@@ -100,6 +120,11 @@ mod windows {
 #[cfg(target_os = "windows")]
 pub(super) fn install(app: &AppHandle, window: &WebviewWindow) -> Option<()> {
     windows::install(app, window)
+}
+
+#[cfg(target_os = "windows")]
+pub(super) fn settle_frame(window: &WebviewWindow) -> Option<()> {
+    windows::settle_frame(window)
 }
 
 #[cfg(target_os = "linux")]
