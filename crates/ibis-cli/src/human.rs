@@ -324,6 +324,15 @@ fn refusal(error: CitationError, label: &str, output: &str, form: CitationForm, 
     }
 }
 
+/// Fixed words for output that could not be written; the OS message is not repeated.
+pub(super) fn write_failure(error: &std::io::Error) -> &'static str {
+    if error.kind() == std::io::ErrorKind::StorageFull {
+        "the output could not be written because the disk is full; free some space and try again."
+    } else {
+        "the output could not be written; check where it is sent and try again."
+    }
+}
+
 /// The fallback sentence for each contract error code.
 pub(super) fn code_sentence(code: ErrorCode) -> &'static str {
     match code {

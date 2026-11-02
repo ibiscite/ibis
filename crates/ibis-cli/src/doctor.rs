@@ -123,7 +123,17 @@ fn config_check(path: Option<&Path>) -> Value {
             "Use --config <settings.json> to check a chosen settings file. CLI library choices come from flags.",
         );
     };
-    let loaded = settings::load(path);
+    // Within the filesystem deadline: a stalled disk reports unreadable, never hangs.
+    let owned = path.to_owned();
+    let Some(loaded) = crate::bounded(move || settings::load(&owned)) else {
+        let mut result = check(
+            "failed",
+            "config-unreadable",
+            "The chosen config could not be read in time. It was left unchanged.",
+        );
+        result["from_backup"] = json!(false);
+        return result;
+    };
     let mut result = match loaded.problem.as_ref() {
         None if loaded.primary_read == settings::PrimaryRead::Missing => {
             check("failed", "config-missing", "The chosen config does not exist.")

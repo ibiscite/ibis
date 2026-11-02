@@ -1,3 +1,4 @@
+import { pickerText } from "../messages";
 import { render, screen } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
 import english from "./en-US.ftl?raw";
@@ -126,4 +127,18 @@ test("the pseudolocale marks and expands interface text while keeping external v
   expect(pseudo.text("settings-general").length).toBeGreaterThan("General".length * 1.3);
   expect(pseudo.text("general-paste-drag", { name: "Synthetic App", list: "Synthetic List" })).toContain("Synthetic App");
   expect(pseudo.text("general-paste-drag", { name: "Synthetic App", list: "Synthetic List" })).toContain("Synthetic List");
+});
+
+test("settings wording follows the platform, and a backend reason ends on one full stop", () => {
+  const says = (id: Parameters<typeof englishMessages.text>[0], platform: string) => englishMessages.text(id, { platform });
+  expect(says("general-paste-description", "macos")).toBe("Otherwise Ibis copies and you press ⌘V");
+  for (const platform of ["windows", "linux"]) {
+    expect(says("general-paste-description", platform)).toBe("Otherwise Ibis copies and you press Ctrl+V");
+    expect(says("look-accent-system", platform)).toBe("Follow the system");
+    expect(says("look-accent-multicolor", platform)).not.toContain("Mac");
+  }
+  expect(says("look-accent-system", "macos")).toBe("Follow the Mac");
+  expect(pickerText.shortcutError(false, "Ctrl+Shift+Y", "Restart Ibis after the desktop portal is available."))
+    .toBe("The shortcut Ctrl+Shift+Y is not available: Restart Ibis after the desktop portal is available.");
+  expect(pickerText.shortcutError(true, "Ctrl+Shift+Y", "it is taken")).toBe("Your shortcut setting was not used: it is taken.");
 });

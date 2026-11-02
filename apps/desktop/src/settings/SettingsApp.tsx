@@ -431,7 +431,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
                 {/* Only systems where Ibis pastes ask for a permission first. */}
                 {permission?.pastes && (
                 <Group id="paste" title={text("general-paste-title")}>
-                  <Row id="paste-label" label={text("general-paste-label")} description={text("general-paste-description")} {...feedback("paste-label")}>
+                  <Row id="paste-label" label={text("general-paste-label")} description={text("general-paste-description", { platform })} {...feedback("paste-label")}>
                     <Switch aria-labelledby="paste-label" aria-describedby="paste-label-description" isSelected={preferences.paste}
                       onChange={(on) => change({ paste: on })} />
                   </Row>

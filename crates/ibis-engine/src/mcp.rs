@@ -407,12 +407,29 @@ fn call(engine: &Engine, name: &str, arguments: &Value) -> Value {
             "isError": false
         }),
         Err(EngineError { code }) => {
-            let code = serde_json::to_value(code).unwrap_or(Value::Null);
-            json!({
-                "content": [{"type": "text", "text": format!("error: {}", code.as_str().unwrap_or("internal"))}],
-                "isError": true
-            })
+            let name = serde_json::to_value(code).unwrap_or(Value::Null);
+            let text = format!(
+                "error: {}. {}",
+                name.as_str().unwrap_or("internal"),
+                tool_error_hint(code)
+            );
+            json!({"content": [{"type": "text", "text": text}], "isError": true})
         }
+    }
+}
+
+/// Fixed advice for each error code, so an agent knows what to change without library text.
+fn tool_error_hint(code: ErrorCode) -> &'static str {
+    match code {
+        ErrorCode::Usage | ErrorCode::BadInput => {
+            "The arguments do not fit this tool's input schema; check the names, types, limits and combinations it allows."
+        }
+        ErrorCode::NotFound => "No reference matched; use a key or id that search returned.",
+        ErrorCode::SourceUnavailable => "The library could not be read right now; try again shortly.",
+        ErrorCode::ResourceLimit => "The request or its answer is too large; ask for fewer results.",
+        ErrorCode::NewerFormat => "The library was written by a newer program; update Ibis.",
+        ErrorCode::Internal => "Ibis could not finish this request; try again.",
+        ErrorCode::Cancelled => "The request was cancelled.",
     }
 }
 
