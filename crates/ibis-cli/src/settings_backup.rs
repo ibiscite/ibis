@@ -133,8 +133,9 @@ fn export(args: &ArgMatches) -> Result<DispatchResult, Failure> {
         return Ok(result(json!({"app": app, "backup": data}), Some(text)));
     };
     let force = args.get_flag("force");
-    let written = destination.clone();
-    within("the backup's folder", move || backup::save(&written, &text, force))?.map_err(|error| {
+    // A write the person asked for runs to the end, so the result reported is
+    // the one on disk.
+    backup::save(&destination, &text, force).map_err(|error| {
         if error.kind() == std::io::ErrorKind::AlreadyExists {
             Failure::new(
                 ErrorCode::Usage,
@@ -180,8 +181,7 @@ fn import(args: &ArgMatches) -> Result<DispatchResult, Failure> {
         backup::plan(&loaded.settings, &backup, |_| found).repairing(backup::is_damaged(loaded.problem.as_ref()));
     let dry_run = args.get_flag("dry-run");
     if !dry_run && !plan.is_empty() {
-        let restoring = plan.clone();
-        within("the settings file", move || backup::restore(&path, &restoring))?.map_err(|error| match &error {
+        backup::restore(&path, &plan).map_err(|error| match &error {
             BackupError::Settings(problem) => current_failure(app, problem),
             BackupError::Changed => Failure::new(
                 ErrorCode::SourceUnavailable,

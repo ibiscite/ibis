@@ -216,10 +216,10 @@ fn preview(ticket: u32, backup: &backup::Backup, plan: &Plan) -> RestorePreview 
 #[specta::specta]
 pub(crate) async fn back_up_settings(window: WebviewWindow) -> Result<Option<String>, BackupProblem> {
     let app = window.app_handle().clone();
-    let file = app.state::<SettingsFile>().inner().clone();
-    let loaded = file
-        .exclusive(settings::load)
-        .map_err(|_| BackupProblem::SettingsUnusable)?;
+    // A read-only load needs no writer lock (saves replace the file whole),
+    // and a stalled folder gives up after the file deadline.
+    let path = app.state::<SettingsFile>().path.clone();
+    let loaded = within(move || settings::load(&path)).ok_or(BackupProblem::SettingsUnusable)?;
     // A backup of recovered or default settings would not be what was chosen.
     if loaded.problem.is_some() {
         return Err(BackupProblem::SettingsUnusable);
@@ -288,10 +288,10 @@ pub(crate) async fn choose_settings_backup(window: WebviewWindow) -> Result<Opti
     let backup = within(move || backup::read(&path))
         .ok_or(BackupProblem::Unreadable)?
         .map_err(|error| problem(&error))?;
-    let file = app.state::<SettingsFile>().inner().clone();
-    let loaded = file
-        .exclusive(settings::load)
-        .map_err(|_| BackupProblem::SettingsUnusable)?;
+    // A read-only load needs no writer lock (saves replace the file whole),
+    // and a stalled folder gives up after the file deadline.
+    let path = app.state::<SettingsFile>().path.clone();
+    let loaded = within(move || settings::load(&path)).ok_or(BackupProblem::SettingsUnusable)?;
     // Damaged settings can be replaced; settings from a newer Ibis never are.
     if let Some(SettingsError::NewerVersion(_)) = &loaded.problem {
         return Err(BackupProblem::SettingsUnusable);
