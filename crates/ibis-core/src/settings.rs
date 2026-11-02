@@ -98,10 +98,10 @@ impl From<ZoteroLibraries> for OneOrMore {
 }
 
 /// The opening shortcut chosen on each system, so one settings file or backup
-/// serves a Mac and a Windows PC alike (#1561). A plain string, as people write
-/// it by hand, is this system's shortcut: `"shortcut": "Alt+Space"`. Once another
-/// system has one too, Ibis writes one entry per system:
-/// `"shortcut": {"macos": "Control+Command+R", "windows": "Alt+Space"}`.
+/// serves a Mac and a Windows PC alike (#1561). Ibis always writes one entry
+/// per system, `"shortcut": {"macos": "Control+Command+R", "windows": "Alt+Space"}`,
+/// so a file shared between systems never hands one system's shortcut to
+/// another. A plain string, as people write it by hand, is this system's.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Shortcuts(BTreeMap<System, String>);
 
@@ -143,10 +143,7 @@ impl From<BTreeMap<System, String>> for Shortcuts {
 
 impl Serialize for Shortcuts {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        match (self.here(), self.0.len()) {
-            (Some(here), 1) => serializer.serialize_str(here),
-            _ => self.0.serialize(serializer),
-        }
+        self.0.serialize(serializer)
     }
 }
 
@@ -1531,7 +1528,13 @@ mod tests {
         update(&path, |s| s.shortcut.set_here(Some("Alt+Space".into()))).unwrap_or_else(|e| panic!("{e}"));
         let saved: Value =
             serde_json::from_str(&fs::read_to_string(&path).unwrap_or_default()).unwrap_or_else(|e| panic!("{e}"));
-        assert_eq!(saved["shortcut"], "Alt+Space");
+        assert_eq!(
+            saved["shortcut"][serde_json::to_value(System::HERE)
+                .unwrap_or_default()
+                .as_str()
+                .unwrap_or_default()],
+            "Alt+Space"
+        );
         assert_eq!(saved["citation_style"], "apa");
         assert_eq!(saved["window_position"], newer_build["window_position"]);
         assert_eq!(saved["later_flag"], newer_build["later_flag"]);

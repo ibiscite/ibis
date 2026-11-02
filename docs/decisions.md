@@ -623,8 +623,10 @@ This permission does not change MCP's exclusion of notes, annotations and privat
 2026-11-02 (#1561): the settings file works on another computer. A bibliography
 inside the home folder is written as `~/…` with `/` between names, and read back
 under that computer's home; other paths stay as written. The opening shortcut is
-kept per system: plain text is this system's, and once another system has one
-the file holds `{"macos": …, "windows": …}`; each computer uses only its own.
+kept per system and always written as `{"macos": …, "windows": …}`, so a file
+shared live between systems never hands one system's shortcut to another; plain
+text written by hand is this system's. Builds before this one cannot read the
+per-system form or `~/…` and fall back as for any damaged file (0016, pre-1.0).
 Saves through a symlink replace the linked file and keep the link. Copies a sync
 service made (iCloud `settings 2.json`, OneDrive `settings-PC.json`, Dropbox,
 Google Drive, Syncthing) are named in the settings notice, never merged. A

@@ -1165,7 +1165,7 @@ mod tests {
         // Simulate an external edit after dispatch, before the writer can read.
         let current = serde_json::json!({
             "schema_version": 2, "copy_format": "cite", "citation_style": "apa",
-            "library": { "bibtex": "refs.bib" }, "shortcut": "Alt+Space", "update_checks": false,
+            "library": { "bibtex": "refs.bib" }, "shortcut": { "macos": "Alt+Space", "windows": "Alt+Space", "linux": "Alt+Space" }, "update_checks": false,
             "picker_windows": { "display-a": {
                 "width": 840, "height": 600, "custom_size": true, "x": 40, "y": 60
             } },
@@ -1635,7 +1635,7 @@ mod tests {
         assert!(PickerPreferences::from_settings(&settings::Settings::default()).show_paste_preview);
 
         let original = serde_json::json!({
-            "schema_version": 2, "shortcut": "Alt+Space", "library": { "bibtex": "refs.bib" },
+            "schema_version": 2, "shortcut": { "macos": "Alt+Space", "windows": "Alt+Space", "linux": "Alt+Space" }, "library": { "bibtex": "refs.bib" },
             "copy_format": "typst", "update_checks": false, "citation_style": "ieee",
             "density": "compact", "larger_text": true, "future_choice": { "kept": [true, null] },
         });

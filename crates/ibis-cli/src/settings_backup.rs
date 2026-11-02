@@ -176,7 +176,8 @@ fn import(args: &ArgMatches) -> Result<DispatchResult, Failure> {
         Some(file) => bounded(move || file.try_exists().unwrap_or(false)).unwrap_or(false),
         None => true,
     };
-    let plan = backup::plan(&loaded.settings, &backup, |_| found).repairing(loaded.problem.is_some());
+    let plan =
+        backup::plan(&loaded.settings, &backup, |_| found).repairing(backup::is_damaged(loaded.problem.as_ref()));
     let dry_run = args.get_flag("dry-run");
     if !dry_run && !plan.is_empty() {
         let restoring = plan.clone();

@@ -113,8 +113,26 @@ pub fn save(path: &Path, text: &str, replace: bool) -> io::Result<()> {
         return Err(io::ErrorKind::AlreadyExists.into());
     }
     let name = path.file_name().ok_or(io::ErrorKind::InvalidInput)?;
-    let partial = path.with_file_name(format!(".{}.partial", name.to_string_lossy()));
-    let mut file = fs::OpenOptions::new().write(true).create_new(true).open(&partial)?;
+    // A fresh temporary name each time: one left by an interrupted write never
+    // blocks a later backup under the same name.
+    let (partial, mut file) = (0..100u32)
+        .find_map(|attempt| {
+            let partial = path.with_file_name(format!(
+                ".{}.{}-{attempt}.partial",
+                name.to_string_lossy(),
+                std::process::id()
+            ));
+            let mut options = fs::OpenOptions::new();
+            options.write(true).create_new(true);
+            // The backup names a private bibliography path: owner-only, like settings.
+            #[cfg(unix)]
+            std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+            match options.open(&partial) {
+                Err(error) if error.kind() == io::ErrorKind::AlreadyExists => None,
+                opened => Some(opened.map(|file| (partial, file))),
+            }
+        })
+        .unwrap_or_else(|| Err(io::ErrorKind::AlreadyExists.into()))?;
     let written = io::Write::write_all(&mut file, text.as_bytes()).and_then(|()| file.sync_all());
     drop(file);
     let placed = written.and_then(|()| {
@@ -361,6 +379,16 @@ fn changes(current: &Settings, restored: &Settings) -> Vec<Change> {
         .collect()
 }
 
+/// Whether the settings file is damaged, so a restore replaces it even when
+/// the settings recovered from it already match the backup.
+pub fn is_damaged(problem: Option<&SettingsError>) -> bool {
+    match problem {
+        Some(SettingsError::Invalid(_) | SettingsError::InvalidZoteroLibraryEntry { .. }) => true,
+        Some(SettingsError::Unreadable(error)) => error.kind() == io::ErrorKind::InvalidData,
+        _ => false,
+    }
+}
+
 /// Save `plan.restored`, if the settings file still holds `plan.current`. The
 /// settings it replaces become `settings.json.bak`. A damaged settings file is
 /// kept as `settings.json.invalid-N` and replaced, since a backup is how people
@@ -371,8 +399,7 @@ pub fn restore(path: &Path, plan: &Plan) -> Result<Settings, BackupError> {
     let missing = loaded.primary_read == PrimaryRead::Missing;
     let damaged = match loaded.problem.take() {
         None => false,
-        Some(SettingsError::Invalid(_) | SettingsError::InvalidZoteroLibraryEntry { .. }) => true,
-        Some(SettingsError::Unreadable(error)) if error.kind() == io::ErrorKind::InvalidData => true,
+        Some(problem) if is_damaged(Some(&problem)) => true,
         // With no settings file, nothing is replaced; an unusable old backup is kept.
         Some(SettingsError::Unreadable(_)) if missing => false,
         Some(SettingsError::Backup(error)) if missing && !matches!(*error, SettingsError::NewerVersion(_)) => false,

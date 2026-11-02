@@ -131,7 +131,7 @@ fn a_library_in_the_home_folder_is_saved_with_a_tilde_and_reopens_as_the_same_fi
 }
 
 #[test]
-fn shortcuts_are_kept_per_system_and_written_as_text_when_only_this_one_has_one() {
+fn shortcuts_are_kept_and_written_per_system() {
     let directory = folder();
     let path = directory.path().join("settings.json");
     let here = system_name(System::HERE);
@@ -160,11 +160,12 @@ fn shortcuts_are_kept_per_system_and_written_as_text_when_only_this_one_has_one(
     settings::update(&path, |s| s.shortcut.set_here(None)).unwrap_or_else(|error| panic!("{error}"));
     let saved: Value = serde_json::from_str(&read(&path)).unwrap_or_default();
     assert_eq!(saved["shortcut"], json!({other: "Control+Command+R"}));
-    // Only this system's: plain text, as before.
+    // Only this system's: still written per system, so a shared file never
+    // hands it to another system.
     write(&path, "{}");
     settings::update(&path, |s| s.shortcut.set_here(Some("Alt+K".into()))).unwrap_or_else(|error| panic!("{error}"));
     let saved: Value = serde_json::from_str(&read(&path)).unwrap_or_default();
-    assert_eq!(saved["shortcut"], "Alt+K");
+    assert_eq!(saved["shortcut"], json!({here: "Alt+K"}));
     // A system Ibis does not know makes the file invalid, as any wrong value does.
     write(&path, r#"{"shortcut":{"amiga":"Alt+K"}}"#);
     assert!(matches!(settings::load(&path).problem, Some(SettingsError::Invalid(_))));
@@ -488,7 +489,7 @@ fn restore_replaces_damaged_settings_but_never_newer_or_unreadable_ones() {
         &serde_json::to_string(&backup.settings).unwrap_or_default(),
     );
     let loaded = settings::load(&path);
-    let plan = backup::plan(&loaded.settings, &backup, |_| true).repairing(loaded.problem.is_some());
+    let plan = backup::plan(&loaded.settings, &backup, |_| true).repairing(backup::is_damaged(loaded.problem.as_ref()));
     assert!(plan.changes.is_empty());
     assert!(!plan.is_empty());
     assert!(plan.notes.contains(&backup::Note::RepairsSettings));
@@ -524,4 +525,48 @@ fn a_restored_file_cannot_turn_on_update_checks_or_carry_window_places() {
     let plan = backup::plan(&Settings::default(), &backup, |_| true);
     assert_eq!(plan.restored, Settings::default());
     assert!(plan.is_empty());
+}
+
+#[test]
+fn an_interrupted_backup_never_blocks_the_next_one() {
+    let directory = folder();
+    let path = directory.path().join("Ibis settings.json");
+    write(&directory.path().join(".Ibis settings.json.partial"), "half");
+    write(
+        &directory
+            .path()
+            .join(format!(".Ibis settings.json.{}-0.partial", std::process::id())),
+        "half",
+    );
+    backup::save(&path, "{}\n", false).unwrap_or_else(|error| panic!("{error}"));
+    assert_eq!(read(&path), "{}\n");
+    backup::save(&path, "{ }\n", true).unwrap_or_else(|error| panic!("{error}"));
+    assert_eq!(read(&path), "{ }\n");
+    assert!(
+        matches!(backup::save(&path, "{}\n", false), Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists)
+    );
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = std::fs::metadata(&path)
+            .map(|m| m.permissions().mode() & 0o777)
+            .unwrap_or_default();
+        assert_eq!(mode, 0o600, "a backup names a private path, so only its owner reads it");
+    }
+}
+
+#[test]
+fn a_shared_settings_file_keeps_each_systems_shortcut_apart() {
+    let directory = folder();
+    let path = directory.path().join("settings.json");
+    settings::update(&path, |s| s.shortcut.set_here(Some("Alt+Space".into())))
+        .unwrap_or_else(|error| panic!("{error}"));
+    let written: Value = serde_json::from_str(&read(&path)).unwrap_or_default();
+    let here = serde_json::to_value(ibis_core::destination::System::HERE).unwrap_or_default();
+    let here = here.as_str().unwrap_or_default();
+    assert_eq!(
+        written["shortcut"],
+        json!({ here: "Alt+Space" }),
+        "never a plain string another system would take as its own"
+    );
 }
