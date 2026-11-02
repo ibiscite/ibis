@@ -63,10 +63,11 @@
 .picker-library > span:last-child { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .picker-dot { flex: none; width: var(--status-dot); height: var(--status-dot); border-radius: var(--r-full); background: var(--status-ok); }
 /* As the app's footer: small quiet actions, only the primary filled. */
-.picker .picker-actions button { min-height: var(--control-small-h); padding-block: 0; background: transparent; box-shadow: none; }
+.picker .picker-actions button, .picker .picker-actions .picker-static-control { min-height: var(--control-small-h); padding-block: 0; background: transparent; box-shadow: none; }
+.picker .picker-actions :is(button, .picker-static-control):has(kbd) { padding-inline-end: var(--key-gap); }
 .picker .picker-actions button:hover { background: var(--fill-control-hover); }
 .picker .picker-primary, .picker .picker-actions .picker-primary { background: var(--accent); color: var(--text-on-accent); }
-.picker-primary kbd { background: color-mix(in srgb, var(--text-on-accent) 22%, transparent); border-color: transparent; color: inherit; box-shadow: none; border-radius: var(--r-key); }
+.picker-primary kbd { background: var(--on-fill-h); border-color: transparent; color: inherit; box-shadow: none; border-radius: var(--r-key); }
 .demo-hint kbd { font-size: .95em; }
 .picker-shelf .picker-status { flex: none; display: inline-flex; align-items: center; gap: var(--space-1); height: var(--control-small-h); padding-inline: var(--space-2); border-radius: var(--r-full); background: color-mix(in srgb, var(--status-ok) 14%, transparent); color: var(--text); font: var(--strong) var(--type-label-size)/var(--type-label-line) var(--font); white-space: nowrap; }
 .picker-status:empty { display: none; }

@@ -38,11 +38,13 @@
 .ui-button-icon { display: inline-flex; flex: none; width: var(--icon-small); height: var(--icon-small); }
 .ui-button-icon > :is(svg, img, span) { width: 100%; height: 100%; }
 .ui-button[data-variant] > .key-hint { color: inherit; flex-wrap: wrap; max-width: 100%; white-space: normal; }
-/* Keys keep their cap inside a button (maintainer, 2026-11-01: the earlier caps
-   read best): the shared fill on quiet and secondary buttons, a light veil of
-   the button's own text colour on the primary. */
+/* Keys keep their cap inside a button: the shared fill on quiet and secondary
+   buttons, a darkening veil on the primary (as in 0.2.3). A trailing cap is
+   concentric with its small button: the same --key-gap above, below and at the
+   end, so its --r-key corner follows the button's. */
 .ui-button[data-variant] .key-caps kbd { color: inherit; font-weight: inherit; }
-.ui-button[data-variant="primary"] .key-caps kbd { background: color-mix(in srgb, var(--text-on-accent) 22%, transparent); }
+.ui-button[data-variant="primary"] .key-caps kbd { background: var(--on-fill-h); }
+.ui-button[data-size="small"]:has(.key-caps:last-child) { padding-inline-end: calc(var(--key-gap) - var(--border-width)); }
 @media (pointer: coarse) {
   .ui-button[data-variant], .settings-page .ui-button[data-variant] { min-width: var(--touch-target); min-height: var(--touch-target); }
   .ui-button[data-variant]::after, .ui-button[data-size="small"]::after, .settings-page .ui-button[data-variant]::after { inset: 0; }
