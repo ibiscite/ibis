@@ -541,9 +541,17 @@ fn write_settings(path: &Path, settings: &Settings, recovering: bool) -> Result<
         preserve_invalid(path)?;
     }
     // A settings file linked into a synced folder stays linked: the file it
-    // points to is replaced, never the link (#1561).
+    // points to is replaced, never the link (#1561). A link to one of Ibis's
+    // own side files (an interrupted write, the backup) is replaced instead.
     let target = match fs::symlink_metadata(path) {
-        Ok(metadata) if metadata.file_type().is_symlink() => fs::canonicalize(path)?,
+        Ok(metadata) if metadata.file_type().is_symlink() => {
+            let linked = fs::canonicalize(path)?;
+            if is_side_file(path, &linked) {
+                path.to_path_buf()
+            } else {
+                linked
+            }
+        }
         _ => path.to_path_buf(),
     };
     // The new contents reach the disk before they replace the old file, so a
@@ -564,6 +572,24 @@ fn write_settings(path: &Path, settings: &Settings, recovering: bool) -> Result<
     fs::rename(&temporary, &target)?;
     sync_directory(&target);
     Ok(())
+}
+
+/// Whether `linked` is a file Ibis keeps beside `path`, such as
+/// `settings.json.tmp`, `settings.json.bak` or `settings.json.invalid-1`.
+fn is_side_file(path: &Path, linked: &Path) -> bool {
+    let same_folder = match (path.parent().map(fs::canonicalize), linked.parent()) {
+        (Some(Ok(folder)), Some(linked_folder)) => folder == linked_folder,
+        _ => false,
+    };
+    let (Some(stem), Some(name)) = (
+        path.file_stem().and_then(|s| s.to_str()),
+        linked.file_name().and_then(|s| s.to_str()),
+    ) else {
+        return false;
+    };
+    same_folder
+        && name.starts_with(&format!("{stem}."))
+        && name != path.file_name().and_then(|s| s.to_str()).unwrap_or("")
 }
 
 /// Copies that a sync service made of the settings file when two computers
