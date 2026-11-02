@@ -315,14 +315,17 @@ pub(crate) async fn choose_settings_backup(window: WebviewWindow) -> Result<Opti
 /// from the restored settings. The replaced settings become `settings.json.bak`.
 #[tauri::command]
 #[specta::specta]
-pub(crate) fn restore_settings_backup(
-    app: AppHandle,
-    pending: State<'_, PendingRestore>,
-    file: State<'_, SettingsFile>,
-    ticket: u32,
-) -> Result<(), BackupProblem> {
-    let plan = pending.take(ticket).ok_or(BackupProblem::Changed)?;
-    file.exclusive(|path| backup::restore(path, &plan))
+pub(crate) async fn restore_settings_backup(app: AppHandle, ticket: u32) -> Result<(), BackupProblem> {
+    let plan = app
+        .state::<PendingRestore>()
+        .take(ticket)
+        .ok_or(BackupProblem::Changed)?;
+    let file = app.state::<SettingsFile>().inner().clone();
+    // The locked read, write and flush run off the interface thread and are
+    // waited for to the end, so the result shown is the one on disk.
+    tauri::async_runtime::spawn_blocking(move || file.exclusive(|path| backup::restore(path, &plan)))
+        .await
+        .map_err(|_| BackupProblem::NotSaved)?
         .map_err(|_| BackupProblem::NotSaved)?
         .map_err(|error| match error {
             BackupError::Changed => BackupProblem::Changed,
