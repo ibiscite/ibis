@@ -663,6 +663,14 @@ impl Moving {
         }
     }
 
+    /// End `presentation`'s own move. A late end from an earlier presentation
+    /// never clears a newer one.
+    fn finish(&self, presentation: u64) -> bool {
+        self.0
+            .compare_exchange(presentation.wrapping_add(1), 0, Ordering::SeqCst, Ordering::SeqCst)
+            .is_ok()
+    }
+
     /// Whether the shown presentation is being moved now.
     #[cfg(any(target_os = "linux", test))]
     pub(crate) fn holds(&self, visits: &PickerGeneration) -> bool {
@@ -682,12 +690,12 @@ pub(crate) fn picker_moving(app: AppHandle, presentation: u64, moving: bool) {
         state.begin(&app.state(), presentation);
         return;
     }
-    if let Some(generation) = state.end() {
+    if state.finish(presentation) {
         let handle = app.clone();
         report(
             app.run_on_main_thread(move || {
                 if let Some(window) = handle.get_webview_window("main") {
-                    reconcile_suppressed_blur(&window, generation);
+                    reconcile_suppressed_blur(&window, presentation);
                 }
             }),
             NativeIssue::Window,
@@ -843,6 +851,13 @@ mod tests {
         assert!(!moving.holds(&visits));
         assert_eq!(moving.end(), Some(41));
         assert_eq!(moving.end(), None);
+        // A late end from 41 leaves 42's move alone; 42's own end clears it.
+        moving.begin(&visits, 42);
+        assert!(!moving.finish(41));
+        assert!(moving.holds(&visits));
+        assert!(moving.finish(42));
+        assert!(!moving.holds(&visits));
+        assert!(!moving.finish(42));
     }
 
     #[test]
