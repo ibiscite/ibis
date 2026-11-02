@@ -213,7 +213,8 @@ fn initial_damage_is_tolerated_and_reload_warnings_are_not_blanket_rejected() {
     let reload = reload_file(&path).unwrap_or_else(|e| panic!("{e}"));
     assert_eq!(records(&reload).len(), 1);
     assert_eq!(records(&reload)[0].citation_key(), Ok(Some("retained")));
-    assert_eq!(reload.warnings.len(), 2);
+    // Both `good` entries are named, then the empty `title=`.
+    assert_eq!(reload.warnings.len(), 3);
     std::fs::write(&path, "% Deliberately empty library\n").unwrap_or_else(|e| panic!("{e}"));
     assert_eq!(reload_file(&path).map(|l| records(&l).len()), Ok(0));
 }

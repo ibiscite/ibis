@@ -43,6 +43,10 @@ pub enum WarningCode {
 pub struct SourceWarning {
     pub code: WarningCode,
     pub line: Option<usize>,
+    /// The repeated BibTeX citation key, for `duplicate-key` only. It is the person's own
+    /// data and is shown only to them; no other warning carries source text.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key: Option<String>,
 }
 
 /// One immutable library plus private source ownership. Paths never serialize.

@@ -96,12 +96,20 @@ fn labelled_samples_keep_the_source_change_guard_and_cannot_label_a_refusal() ->
             error: CitationError::ChangedItem
         })
     ));
-    case.request.output = OutputSpec::Csl {
+    // An unknown style is a wrong request: nothing is prepared to label.
+    let mut unknown = case.request.clone();
+    unknown.output = OutputSpec::Csl {
         style: "invented-unavailable-style".into(),
     };
+    assert_eq!(
+        engine.prepare_citation(&unknown, &Cancellation::default()).err(),
+        Some(EngineError::because(ErrorCode::BadInput, ErrorReason::UnknownStyle))
+    );
+    case.request.items[0].item.key = "missing-synthetic-record".into();
     let refused = engine
         .prepare_citation(&case.request, &Cancellation::default())
         .map_err(|_| "prepare refusal")?;
+    assert!(refused.result().copy_content(1).is_none());
     assert_eq!(
         refused.mark_sample().err().ok_or("refusal labelled")?.code,
         ErrorCode::BadInput
