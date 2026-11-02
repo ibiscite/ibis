@@ -37,11 +37,7 @@ export function useCitationOutput({ chosen, library, libraryVersion, sessionId =
   const output = style ?? format;
   // Reading unchanged status must not retry the same stale citation forever.
   const retryKey = JSON.stringify([output, library?.revision, chosenKey]);
-  // A reload is not a new citation: the settled preview stays until it ends.
-  const reloading = library?.state === "loading" || library?.state === "reloading";
-  const settledVersion = useRef(libraryVersion);
-  if (!reloading) settledVersion.current = libraryVersion;
-  const previewKey = `${output}\u0002${settledVersion.current}\u0002${chosenKey}`;
+  const previewKey = `${output}\u0002${libraryVersion}\u0002${chosenKey}`;
   // A -> B -> A is a new operation: B has retired A's native copy ticket.
   // Equal input alone cannot revive that receipt before fresh A finishes.
   const request = useMemo(() => ({ key: previewKey }), [previewKey]);
@@ -63,7 +59,7 @@ export function useCitationOutput({ chosen, library, libraryVersion, sessionId =
   useEffect(() => {
     const previous = previousRequest.current;
     previousRequest.current = { sessionId, key: previewKey };
-    if (chosen.length === 0 || !chosenRevision || reloading) return;
+    if (chosen.length === 0 || !chosenRevision) return;
     if (reusable && formatted && formatted.request !== request) {
       lastStarted.current = request;
       setFormatted({ ...formatted, request });

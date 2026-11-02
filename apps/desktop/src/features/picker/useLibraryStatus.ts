@@ -7,7 +7,19 @@ import type { Operation } from "./Notices";
  * reads; reopening reads once. There is no library-status polling. */
 export function useLibraryStatus(api: PickerApi, report: (operation: Operation, failed?: boolean) => void, cancelCopy: () => void) {
   const [library, setLibrary] = useState<LibraryStatus | null>();
+  // A reload is not a new library: search and citations keep this one, and
+  // the version stays, until it ends. Only the footer follows the live status.
+  const [settledLibrary, setSettledLibrary] = useState<LibraryStatus | null>();
   const [libraryVersion, setLibraryVersion] = useState(0);
+  const publish = useCallback((status: LibraryStatus) => {
+    setLibrary(status);
+    if (status.state === "reloading") {
+      setSettledLibrary((settled) => settled ?? status);
+      return;
+    }
+    setSettledLibrary(status);
+    setLibraryVersion((version) => version + 1);
+  }, []);
   const generation = useRef(0);
   const mounted = useRef(false);
   const current = useRef({ api, report, cancelCopy });
@@ -16,16 +28,16 @@ export function useLibraryStatus(api: PickerApi, report: (operation: Operation, 
     const request = ++generation.current;
     void current.current.api.libraryStatus().then((status) => {
       if (!mounted.current || request !== generation.current) return;
-      setLibrary(status);
-      setLibraryVersion((version) => version + 1);
+      publish(status);
       current.current.report("status", false);
     }).catch(() => {
       if (!mounted.current || request !== generation.current) return;
       setLibrary((old) => old === undefined ? null : old);
+      setSettledLibrary((old) => old === undefined ? null : old);
       current.current.cancelCopy();
       current.current.report("status");
     });
-  }, []);
+  }, [publish]);
   const { onLibraryChanged, onPickerHidden, onPickerShown } = api;
   useEffect(() => {
     let alive = true;
@@ -34,8 +46,7 @@ export function useLibraryStatus(api: PickerApi, report: (operation: Operation, 
     const changed = onLibraryChanged((status) => {
       if (!alive) return;
       generation.current += 1;
-      setLibrary(status);
-      setLibraryVersion((version) => version + 1);
+      publish(status);
       current.current.report("status", false);
     }).catch(subscribe("libraryEvents"));
     const hidden = onPickerHidden(() => { if (alive) generation.current += 1; }).catch(subscribe("pickerEvents"));
@@ -49,5 +60,5 @@ export function useLibraryStatus(api: PickerApi, report: (operation: Operation, 
       for (const subscription of [hidden, shown]) void subscription.then((stop) => stop()).catch(() => console.error("Picker event cleanup failed."));
     };
   }, [onLibraryChanged, onPickerHidden, onPickerShown, refreshSnapshot]);
-  return { library, libraryVersion, refreshSnapshot };
+  return { library, settledLibrary, libraryVersion, refreshSnapshot };
 }

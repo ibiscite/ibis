@@ -88,13 +88,13 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   const { format } = destination;
   const quitAfterSaving = () => destination.quitAfterSaving(quitPreferences);
   const libraryState = usePickerLibrary(api, report, cancelCopy);
-  const { library, libraryVersion, refreshSnapshot, choosingLibrary, welcomeShown, libraryChoices, showCitations } = libraryState;
+  const { library, settledLibrary, libraryVersion, refreshSnapshot, choosingLibrary, welcomeShown, libraryChoices, showCitations } = libraryState;
   const delights = usePickerDelights(api, state.presentation, library, preferences.smallSurprises);
   useEffect(() => { if (choosingLibrary) delights.dismiss(); }, [choosingLibrary, delights.dismiss]);
   const recents = useRecentReferences(api.recentReferences, destination.appId, state.recentCopy, state.session, preferences.recentCitations, api.onPreferencesChanged);
   useEffect(() => { if (recents.forgetFailed) report("recentHistory"); }, [recents.forgetFailed, report]);
   const searchState = useLibrarySearch({
-    search: api.search, emptySearch: recents.load, query, interpretLocators, library, statusFailed: failures.status ?? false,
+    search: api.search, emptySearch: recents.load, query, interpretLocators, library: settledLibrary, statusFailed: failures.status ?? false,
     libraryVersion, sessionId: state.session, isCurrentSession, setActive, refreshSnapshot,
   });
   const { queryKey, results, sameSnapshot, ready, interpretation, list, error, pending: searchPending } = searchState;
@@ -107,7 +107,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   // What may be copied: the same, once the shown results answer the current query.
   const chosen = selected.size > 0 || ready ? shownChoice : [];
   const output = useCitationOutput({
-    chosen: shownChoice, library, libraryVersion, sessionId: state.session, isCurrentSession, format, style: styleOf(format),
+    chosen: shownChoice, library: settledLibrary, libraryVersion, sessionId: state.session, isCurrentSession, format, style: styleOf(format),
     showPastePreview, previewFileCitation: api.previewFileCitation, refreshSnapshot,
   });
   const { formatted, shown, previewProblem, displayedOutput } = output;

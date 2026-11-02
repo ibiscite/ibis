@@ -1618,7 +1618,6 @@ test("version-copy failure stays visible under the version when the update-setti
   expect(screen.getByText("Ibis could not read your settings; reopen Settings to try again.")).toBeTruthy();
 });
 
-<<<<<<< HEAD
 test("Check now says it is checking until the same check ends, across pages", async () => {
   const { api } = fakeApi();
   let finish!: () => void;
@@ -1635,7 +1634,8 @@ test("Check now says it is checking until the same check ends, across pages", as
   expect(await screen.findByRole("button", { name: "Checking…" })).toBeTruthy();
   await act(async () => { finish(); });
   expect(await screen.findByRole("button", { name: "Check now" })).toBeTruthy();
-=======
+});
+
 test("Forget formats offers Undo, and Undo restores that same ticket", async () => {
   const { api } = fakeApi({}, { citation_style: "apa" });
   const restore = vi.spyOn(api, "restoreAppOutputs");
@@ -1668,7 +1668,6 @@ test("a failed permission read replaces an old Allowed with an honest answer", a
   read.mockResolvedValue({ pastes: true, needed: true, granted: true, list: "Accessibility" });
   await act(async () => { window.dispatchEvent(new Event("focus")); });
   expect(await screen.findByText("Allowed in Privacy & Security › Accessibility")).toBeTruthy();
->>>>>>> 0774e0a7 (fix(desktop): offer Undo for Forget formats and report failed clears)
 });
 
 test("manual update-check failure and retry leave the known automatic setting intact", async () => {

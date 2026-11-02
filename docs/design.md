@@ -239,7 +239,7 @@ Built in `ibis-core` so every front end shares them (#1204).
 | Starting, first run | "Checking library…", "No library chosen" |
 | Loaded | "Zotero · 1,204 references" or "thesis.bib · 1,204 references" |
 | Changed while open | "… · updated 2 minutes ago" (only when references changed) |
-| Reloading | "… · reloading…", count kept |
+| Reloading | "… · reloading…", count kept; rows and the citation stay until it ends |
 | Problem, old copy kept | "Zotero not updated · 2 h", then one fix button ("Open Zotero", "Find thesis.bib…") |
 
 - Counts include bibliographic records only. Background work shows a small progress ring before the words.

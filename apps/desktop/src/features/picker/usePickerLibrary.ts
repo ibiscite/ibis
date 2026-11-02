@@ -7,7 +7,7 @@ export function usePickerLibrary(api: PickerApi, report: ReturnType<typeof useOp
   const { chooseLibrary, useZotero, findSources, openFoundLibrary } = api;
   const setupApi = useMemo(() => ({ chooseLibrary, useZotero, useSampleLibrary: api.useSampleLibrary, findSources, openFoundLibrary }),
     [chooseLibrary, useZotero, api.useSampleLibrary, findSources, openFoundLibrary]);
-  const { library, libraryVersion, refreshSnapshot } = useLibraryStatus(api, report, cancelCopy);
+  const { library, settledLibrary, libraryVersion, refreshSnapshot } = useLibraryStatus(api, report, cancelCopy);
   const [choosingLibrary, setChoosingLibrary] = useState(false);
   const chooserRequest = useRef<object | null>(null);
   const [welcomeShown, setWelcomeShown] = useState(false);
@@ -15,5 +15,5 @@ export function usePickerLibrary(api: PickerApi, report: ReturnType<typeof useOp
   const blocked = library?.state === "error" && !library.has_snapshot;
   const libraryChoices = choosingLibrary || library?.state === "none" || blocked || library?.state === "loaded" && library.has_snapshot && library.references === 0;
   const showCitations = !libraryChoices;
-  return { library, libraryVersion, refreshSnapshot, choosingLibrary, setChoosingLibrary, chooserRequest, welcomeShown, setWelcomeShown, busy, blocked, libraryChoices, showCitations, setupApi };
+  return { library, settledLibrary, libraryVersion, refreshSnapshot, choosingLibrary, setChoosingLibrary, chooserRequest, welcomeShown, setWelcomeShown, busy, blocked, libraryChoices, showCitations, setupApi };
 }
