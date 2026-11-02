@@ -59,6 +59,6 @@ export function useLibraryStatus(api: PickerApi, report: (operation: Operation, 
       void changed.then((stop) => stop()).catch(() => console.error("Library event cleanup failed."));
       for (const subscription of [hidden, shown]) void subscription.then((stop) => stop()).catch(() => console.error("Picker event cleanup failed."));
     };
-  }, [onLibraryChanged, onPickerHidden, onPickerShown, refreshSnapshot]);
+  }, [onLibraryChanged, onPickerHidden, onPickerShown, refreshSnapshot, publish]);
   return { library, settledLibrary, libraryVersion, refreshSnapshot };
 }
