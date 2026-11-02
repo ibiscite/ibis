@@ -14,7 +14,6 @@ const ignore = () => undefined;
 // The real styles stay isolated from Settings, in the app's own order. Each host inherits the current
 // appearance or owns its explicitly requested scheme, never the system default.
 const styles = (foundationStyles + buttonStyles + iconButtonStyles + pickerStyles).replace(/@import[^;]+;/g, "")
-  .replace(/color-scheme:\s*light dark;/g, "")
   .replace(/:root(\[[^\]]+\])?/g, (_, attribute: string | undefined) => attribute ? `:host(${attribute})` : ":host");
 export function PickerPicture({ density = "comfortable", icon = "ibis", appearance, split = false, headerOnly = false, rowsOnly = false }: {
   density?: Density; icon?: SearchIcon; appearance?: string; split?: boolean; headerOnly?: boolean; rowsOnly?: boolean;

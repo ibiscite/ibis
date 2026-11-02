@@ -415,6 +415,10 @@ otherwise record unavailable coverage. Do not provision paid replacement runs.
 | Performance/resources | Search/assets, gross regressions | Open/refresh and cycle/idle trends | Named-machine fixed budgets | Targeted measurement |
 | Agent exploration | Regressions discovered earlier | Bounded rotating goals | Broader combinations | Issue-specific goal |
 
+Colours need the real engine: [`apps/desktop/gallery/webkit.swift`](../apps/desktop/gallery/webkit.swift)
+renders the canvas in the Mac's own WKWebView and checks every accent in System,
+Light and Dark. Run it on macOS after any change to colours or appearance.
+
 Native delivery must start with a selected placeholder and surrounding text,
 summon Ibis normally, then read the destination independently through saved
 content or native text access. Check placement, Unicode, punctuation, selection

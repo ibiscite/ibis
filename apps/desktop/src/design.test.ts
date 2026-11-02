@@ -178,8 +178,27 @@ test("tertiary ink stays on placeholders and resting glyphs, never words a perso
   expect(rules.filter((selector) => !/placeholder|-glyph|-icon|-remove/.test(selector))).toEqual([]);
 });
 
-test("a key cap on the primary darkens it, so its label stays readable on every accent", () => {
-  expect(read("ui/Button.css")).toMatch(/\.ui-button\[data-variant="primary"\] \.key-caps kbd \{ background: var\(--on-fill-p\); \}/);
+test("a key cap on the primary uses the pressed fill, so its label stays readable on every accent", () => {
+  expect(read("ui/Button.css")).toMatch(/\.ui-button\[data-variant="primary"\] \.key-caps kbd \{ background: var\(--accent-pressed\); \}/);
+});
+
+test("every window has a colour scheme, or light-dark() roles have no value in System", () => {
+  expect(tokens).toMatch(/:root \{ color-scheme: light dark; \}/);
+  expect(all.filter(([, css]) => /(^|[\s;{])color-scheme:/.test(css)).map(([name]) => name)).toEqual([]);
+});
+
+test("the focus ring is solid accent text, so it keeps 3:1 on every surface", () => {
+  expect(tokens).toContain("--ring: var(--accent-text);");
+  expect(tokens.match(/--ring: [^;]*(?:\/ \d|color-mix)/)).toBeNull();
+  expect(read("nativeAccent.css")).not.toContain("--ring");
+});
+
+test("the Settings search clear button outranks the shared button's position", () => {
+  expect(read("ui/SettingsGroup.css")).toMatch(/\.ui-settings-search > \.ui-settings-search-clear\.ui-button \{ position: absolute;/);
+});
+
+test("choice titles use the label colour on every screen", () => {
+  expect(read("ui/ChoiceList.css")).toMatch(/\.choice-screen \.choice-row \{[^}]*color: var\(--text\);/);
 });
 
 test("the ladders hold the values measured from AppKit on macOS 27.2", () => {

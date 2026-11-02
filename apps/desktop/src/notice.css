@@ -1,6 +1,4 @@
 /* The Copied notice (#496): its own window. */
-/* A chosen appearance (data-appearance) wins over the system's. */
-:root.notice-window:not([data-appearance]) { color-scheme: light dark; }
 :root.notice-window { background: transparent; }
 :root.notice-window,
 :root.notice-window body,

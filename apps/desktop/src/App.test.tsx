@@ -1056,7 +1056,7 @@ test.each([1, 20])("the %i-result heading keeps its English word order on an RTL
 
 test("every system shares the Mac focus ring and accessibility overrides", () => {
   expect(styles).toMatch(/:focus-visible:not\(\.ui-button, \.menu-item\)\s*\{[^}]*outline:\s*var\(--ring-width\) solid var\(--ring\)/);
-  expect(tokens).toMatch(/--ring:\s*var\(--accent\)/);
+  expect(tokens).toMatch(/--ring:\s*var\(--accent-text\)/);
   expect(tokens).not.toMatch(/:root\[data-platform="windows"\]\s*\{[^}]*--ring/);
   expect(tokens).toContain("--ring: CanvasText");
 });
