@@ -7,7 +7,7 @@ members = ["crates/ibis-core", "crates/ibis-cli", "crates/ibis-zotero-local", "c
 default-members = ["crates/ibis-core", "crates/ibis-cli", "crates/ibis-zotero-local", "crates/ibis-sources", "crates/ibis-csl", "crates/ibis-engine"]
 
 [workspace.package]
-version = "0.2.6"
+version = "0.2.7"
 edition = "2024"
 license = "AGPL-3.0-or-later"
 repository = "https://github.com/ibiscite/ibis"
