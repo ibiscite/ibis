@@ -36,6 +36,7 @@ impl AttachmentBudget {
         warnings.push(SourceWarning {
             code: WarningCode::WorkLimit,
             line,
+            key: None,
         });
     }
 }
@@ -134,6 +135,7 @@ fn append_with(
                         warnings.push(SourceWarning {
                             code: WarningCode::InvalidAttachment,
                             line,
+                            key: None,
                         });
                         (title, kind, None, Availability::Unknown)
                     }
@@ -169,6 +171,7 @@ fn append_with(
                     warnings.push(SourceWarning {
                         code: WarningCode::InvalidAttachment,
                         line,
+                        key: None,
                     });
                     (String::new(), String::new(), None, Availability::Unknown)
                 }

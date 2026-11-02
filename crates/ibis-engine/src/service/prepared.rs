@@ -108,7 +108,7 @@ impl PreparedCitation {
                     .strip_suffix('}')
                     .filter(|_| rtf.starts_with("{\\rtf1"))
                     .ok_or_else(|| error(ErrorCode::Internal))?;
-                Ok(format!("{body} {{\\plain [Sample]}}}}"))
+                Ok::<_, EngineError>(format!("{body} {{\\plain [Sample]}}}}"))
             })
             .transpose()?;
         display.nodes.push(DisplayNode {

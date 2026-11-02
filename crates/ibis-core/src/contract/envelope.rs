@@ -90,11 +90,11 @@ impl<T> Envelope<T> {
             data,
         })
     }
-    pub fn failure(code: ErrorCode) -> Self {
+    pub fn failure(error: impl Into<EngineError>) -> Self {
         Self::Failure(Failure {
             ibis: Version,
             ok: Status,
-            error: EngineError { code },
+            error: error.into(),
         })
     }
     pub fn data(&self) -> Option<&T> {
@@ -124,10 +124,49 @@ pub enum ErrorCode {
     Cancelled,
 }
 
+/// Why a request failed, when the code alone cannot tell a caller what to change.
+/// Front ends choose their words from it; they never guess a reason from the code.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum ErrorReason {
+    /// No style has the requested id; `styles` lists them.
+    UnknownStyle,
+    /// The requested locale is not available; only en-US is for now.
+    UnknownLocale,
+    /// The key is repeated in a library, so every entry under it is skipped.
+    DuplicateKey,
+    /// Several references share the key.
+    AmbiguousKey,
+    /// The program started as the Ibis app does not exist.
+    AppMissing,
+    /// The program started as the Ibis app is not Ibis.
+    NotIbis,
+    /// The Ibis app started but did not confirm the request in time.
+    NoAnswer,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct EngineError {
     pub code: ErrorCode,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<ErrorReason>,
+}
+impl EngineError {
+    pub const fn new(code: ErrorCode) -> Self {
+        Self { code, reason: None }
+    }
+    pub const fn because(code: ErrorCode, reason: ErrorReason) -> Self {
+        Self {
+            code,
+            reason: Some(reason),
+        }
+    }
+}
+impl From<ErrorCode> for EngineError {
+    fn from(code: ErrorCode) -> Self {
+        Self::new(code)
+    }
 }
 
 /// Values are the public process contract; JSON-RPC uses ErrorCode instead.

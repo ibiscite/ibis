@@ -234,3 +234,65 @@ fn watched_symlink_retires_old_identity_but_keeps_other_selected_owners() {
         ids.len() == 2 && ids.contains(&second) && ids.contains(&third) && !ids.contains(&first)
     });
 }
+
+#[test]
+fn a_repeated_key_is_named_and_selects_nothing_until_it_is_fixed() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("synthetic.bib");
+    let engine = Engine::new().unwrap().without_file_watches();
+    let cancel = Cancellation::default();
+    let show = |key: &str| {
+        engine.show(&ShowRequest {
+            item: ItemSelector::Key(key.into()),
+        })
+    };
+    let cite = |key: &str| {
+        engine.cite_keys(
+            &KeyCitationRequest {
+                keys: vec![key.into()],
+                output: OutputSpec::Key {
+                    syntax: KeySyntax::Pandoc,
+                    command: None,
+                },
+                form: CitationForm::Normal,
+                output_locale: None,
+            },
+            &cancel,
+        )
+    };
+    let repeated = EngineError::because(ErrorCode::NotFound, ErrorReason::DuplicateKey);
+    for copies in [2, 3] {
+        let mut text = "@article{kept,title={Kept synthetic}}\n".to_owned();
+        for copy in 0..copies {
+            text.push_str(&format!("@article{{twin,title={{Synthetic copy {copy}}}}}\n"));
+        }
+        std::fs::write(&path, text).unwrap();
+        let action = if copies == 2 {
+            json!({"action":"open-file","path":path})
+        } else {
+            json!({"action":"reload"})
+        };
+        let loaded = engine.dispatch(Method::Libraries, &action, &cancel).unwrap();
+        assert_eq!(loaded.exit_code, ExitCode::Findings);
+        let warnings = &engine.libraries().unwrap().libraries[0].warnings;
+        let lines: Vec<_> = warnings
+            .iter()
+            .filter(|warning| warning.key.as_deref() == Some("twin"))
+            .filter_map(|warning| warning.line)
+            .collect();
+        // Every entry under the key is named, the first included.
+        assert_eq!(lines, (2..2 + copies).collect::<Vec<_>>(), "{copies} copies");
+        assert_eq!(show("twin").unwrap_err(), repeated);
+        assert_eq!(cite("twin").unwrap_err(), repeated);
+        assert!(show("kept").is_ok());
+        // A key nobody wrote is still simply missing.
+        assert_eq!(show("absent").unwrap_err(), EngineError::new(ErrorCode::NotFound));
+    }
+    std::fs::write(&path, "@article{twin,title={Synthetic copy}}\n").unwrap();
+    engine
+        .dispatch(Method::Libraries, &json!({"action":"reload"}), &cancel)
+        .unwrap();
+    assert!(engine.libraries().unwrap().libraries[0].warnings.is_empty());
+    assert!(show("twin").is_ok());
+    assert_eq!(cite("twin").unwrap().copy_content(1).unwrap().text, "[@twin]");
+}

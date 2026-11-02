@@ -135,3 +135,14 @@ fn empty_citation_cannot_be_copied() {
         assert!(result.copy_content(1).is_none());
     }
 }
+
+#[test]
+#[ignore = "writes the checked-in schema"]
+fn write_schema_snapshot() -> Result<(), Box<dyn std::error::Error>> {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/engine-contract.schema.json");
+    std::fs::write(
+        path,
+        serde_json::to_string_pretty(&ibis_core::contract::schema())? + "\n",
+    )?;
+    Ok(())
+}

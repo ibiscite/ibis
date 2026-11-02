@@ -27,7 +27,10 @@ serve --stdio` (JSON-RPC 2.0), `ibis mcp` and the desktop app are clients; the
 app links the engine in-process. The command line exposes everything; a test
 fails when two front ends give different results for the same request. Methods
 take and return JSON described by `ibis schema`, in a versioned envelope with
-stable error codes. One citation request, one result, with typed losses and
+stable error codes; an error may add a stable reason, and front ends choose
+their words from it rather than guessing from the code. A wrong style or
+locale is a request error, not a refusal of each item (2026-11-02, #1618).
+One citation request, one result, with typed losses and
 refusals instead of plausible but wrong text. Records, attachments, notes,
 annotations, collections, tags and saved searches are addressed by
 `library + native key`; Ibis maps Zotero's raw data to CSL itself so Zotero
@@ -56,7 +59,10 @@ paste) and an alternative passes that gate for less than fixing the cause in Tau
 Ibis never writes to a library. BibTeX and BibLaTeX entries are parsed one by
 one; broken entries, duplicate keys and undefined macros become warnings with
 line numbers. A repeated BibTeX key makes every entry under that key unavailable,
-including as an inheritance parent (2026-10-30, #1519).
+including as an inheritance parent (2026-10-30, #1519); none is kept, because
+Ibis cannot know which one the person meant. The warning names the key at
+every entry, the first included, and looking the key up says it is repeated
+(2026-11-02, #1617).
 Zotero is read through its local API while it runs and from a
 private read-only copy of `zotero.sqlite` (with `-wal` and `-shm`) while it is
 closed, tested on Zotero 7 to 10, leaving out trashed items. Citation keys

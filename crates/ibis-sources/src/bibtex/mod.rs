@@ -82,6 +82,7 @@ pub(crate) fn load_with_budget(
         result.warnings.push(SourceWarning {
             code: WarningCode::WorkLimit,
             line: None,
+            key: None,
         });
         return (result, true);
     }
@@ -90,6 +91,7 @@ pub(crate) fn load_with_budget(
         result.warnings.push(SourceWarning {
             code: WarningCode::WorkLimit,
             line: blocks.get(crate::MAX_LIBRARY_RECORDS).map(|block| block.line),
+            key: None,
         });
         blocks.truncate(crate::MAX_LIBRARY_RECORDS);
     }
@@ -99,10 +101,16 @@ pub(crate) fn load_with_budget(
     let mut raw_texts: Vec<&str> = Vec::new();
     let mut seen = HashSet::new();
     let mut duplicates = HashSet::new();
+    let duplicate = |line, key: &str| SourceWarning {
+        code: WarningCode::DuplicateKey,
+        line: Some(line),
+        key: Some(key.to_owned()),
+    };
     for block in &blocks {
         let warn = |code, _key: Option<String>, _message: String| SourceWarning {
             code,
             line: Some(block.line),
+            key: None,
         };
         if !budget.charge(block.text.len().saturating_mul(4).saturating_add(2048)) {
             result
@@ -139,11 +147,14 @@ pub(crate) fn load_with_budget(
                 .warnings
                 .push(warn(WarningCode::Syntax, None, format!("{message}; skipped"))),
             Ok(entry) if !seen.insert(entry.key.clone()) => {
-                duplicates.insert(entry.key.clone());
-                let message = format!("duplicate key `{}`; all entries with this key are skipped", entry.key);
-                result
-                    .warnings
-                    .push(warn(WarningCode::DuplicateKey, Some(entry.key), message));
+                // Every entry under a repeated key is skipped, so each one is
+                // named, the first included, and the person can find them all.
+                if duplicates.insert(entry.key.clone())
+                    && let Some(first) = entries.iter().find(|first| first.key == entry.key)
+                {
+                    result.warnings.push(duplicate(first.line, &entry.key));
+                }
+                result.warnings.push(duplicate(block.line, &entry.key));
             }
             Ok(mut entry) => {
                 entry.macro_epoch = macros.len();
@@ -175,6 +186,7 @@ pub(crate) fn load_with_budget(
         let warn = |code, _message: &str| SourceWarning {
             code,
             line: Some(entry.line),
+            key: None,
         };
         if let Ok(Ok((_, _, problems))) = &outcome {
             budget.charge(
@@ -384,7 +396,17 @@ mod tests {
         );
         assert_eq!(
             result.warnings.iter().map(|warning| warning.line).collect::<Vec<_>>(),
-            [Some(2), Some(4)]
+            [Some(2), Some(1), Some(4)]
+        );
+        // Both entries under the repeated key are named, the first included.
+        assert_eq!(
+            result
+                .warnings
+                .iter()
+                .filter(|warning| warning.code == WarningCode::DuplicateKey)
+                .map(|warning| (warning.line, warning.key.as_deref()))
+                .collect::<Vec<_>>(),
+            [(Some(1), Some("one")), (Some(4), Some("one"))]
         );
     }
     proptest::proptest! {

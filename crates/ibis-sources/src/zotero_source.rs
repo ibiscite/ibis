@@ -243,12 +243,14 @@ impl ZoteroSource {
                         LiveWarning::MalformedItem => WarningCode::Field,
                     },
                     line: None,
+                    key: None,
                 })
                 .collect();
             let bbt_keys = keys.find(transport, reader.library(), &keyless).unwrap_or_else(|()| {
                 warnings.push(SourceWarning {
                     code: WarningCode::CitationKeysUnavailable,
                     line: None,
+                    key: None,
                 });
                 BTreeMap::new()
             });
@@ -332,7 +334,11 @@ impl ZoteroSource {
                         .better_bibtex_unknown
                         .then_some(WarningCode::CitationKeysUnavailable),
                 )
-                .map(|code| SourceWarning { code, line: None })
+                .map(|code| SourceWarning {
+                    code,
+                    line: None,
+                    key: None,
+                })
                 .collect();
             loaded.push(self.map_items(
                 library_id(library),
@@ -407,15 +413,18 @@ impl ZoteroSource {
                             WarningCode::Field
                         },
                         line: None,
+                        key: None,
                     }));
                 }
                 Err(MappingError::UnsupportedType) => warnings.push(SourceWarning {
                     code: WarningCode::Field,
                     line: None,
+                    key: None,
                 }),
                 Err(MappingError::InputLimit) => warnings.push(SourceWarning {
                     code: WarningCode::WorkLimit,
                     line: None,
+                    key: None,
                 }),
                 Err(_) => return Err(ZoteroError::InvalidData),
             }
@@ -565,7 +574,8 @@ mod tests {
             loaded.warnings,
             vec![SourceWarning {
                 code: WarningCode::WorkLimit,
-                line: None
+                line: None,
+                key: None,
             }]
         );
     }
@@ -593,7 +603,8 @@ mod tests {
             loaded.warnings,
             vec![SourceWarning {
                 code: WarningCode::WorkLimit,
-                line: None
+                line: None,
+                key: None,
             }]
         );
     }
