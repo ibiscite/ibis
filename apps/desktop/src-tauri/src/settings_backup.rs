@@ -256,8 +256,12 @@ pub(crate) async fn back_up_settings(window: WebviewWindow) -> Result<Option<Str
     let Some(chosen) = chosen else { return Ok(None) };
     let path = chosen.into_path().map_err(|_| BackupProblem::NotSaved)?;
     let shown = path.file_name().map(|name| name.to_string_lossy().into_owned());
-    // The system dialog already asked before replacing a file.
-    within(move || backup::save(&path, &text, true))
+    // The system dialog already asked before replacing a file. A save the
+    // person started is waited for to the end, however slow the folder, so
+    // its result is the one shown and nothing lands after a reported failure.
+    tauri::async_runtime::spawn_blocking(move || backup::save(&path, &text, true))
+        .await
+        .ok()
         .and_then(Result::ok)
         .ok_or(BackupProblem::NotSaved)?;
     Ok(Some(shown.unwrap_or(name)))
