@@ -1,6 +1,6 @@
 {
   "name": "ibis",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "description": "Cite from your own reference library: search Zotero, BibTeX or CSL-JSON and format citations from real records, read-only and offline.",
   "author": {
     "name": "Ibis contributors",
