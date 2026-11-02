@@ -112,7 +112,7 @@ Anything not listed follows Apple. A new departure is added here in the same cha
 
 - One cap per shortcut, written as menus write it: ⌘K, ⇧⌘F, ↵ on macOS; Ctrl+K on Windows and Linux (`ui/KeyCaps`).
 - Caps appear only in the footer and in key lists. Menus write shortcuts as plain trailing text in native order (⇧⌘C) [C8].
-- A cap is `--fill-control` with `--r-key`, label type, never an outline or scarlet. Inside a quiet button it keeps its fill; on the primary it is the darkening veil `--on-fill-h`. A trailing cap in a small button is concentric: `--key-gap` above, below and at the end.
+- A cap is `--fill-control` with `--r-key`, label type, never an outline or scarlet. Inside a quiet button it keeps its fill; on the primary it is a veil of `--text-on-accent`. A trailing cap in a small button is concentric: `--key-gap` above, below and at the end. A one-symbol cap (↵) is square, and ↵ is lowered .1em so it sits optically centred.
 - "or" alternatives keep two caps. Decorative caps are hidden from screen readers; `aria-keyshortcuts` names the keys.
 
 ### Motion

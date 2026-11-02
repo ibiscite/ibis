@@ -13,4 +13,8 @@ kbd { font: inherit; font-size: var(--type-label-size); font-weight: 500; displa
    right-to-left page "⌘K" would otherwise show as "K⌘" and "Ctrl K" as "K Ctrl". */
 .key-caps { direction: ltr; unicode-bidi: isolate; }
 .key-caps kbd { margin: 0; padding-inline: calc(var(--space-1) + var(--border-width)); }
+/* A one-symbol cap is square, as on a keyboard. ↵ draws above the middle of its
+   em box in system fonts, so it is lowered by .1em to sit optically centred. */
+.key-caps kbd[data-single] { padding-inline: 0; min-width: var(--key); }
+.key-caps kbd[data-label="↵"] { line-height: calc(var(--key) - 2 * var(--border-width) + .2em); }
 .key-caps[data-echo] kbd { background: var(--fill-control-pressed); }

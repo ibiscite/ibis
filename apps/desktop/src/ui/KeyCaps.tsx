@@ -15,7 +15,7 @@ export function KeyCaps({ accelerator, platform = currentPlatform(), hidden, ech
   const parts = keyCapLabels(accelerator, platform === "macos");
   return <span className="key-caps" data-echo={pressed || undefined} aria-hidden={hidden || undefined}>
     {parts.map((part, i) => <span key={i} className="key-cap">
-<kbd>{part}</kbd>
+<kbd data-single={[...part].length === 1 || undefined} data-label={part}>{part}</kbd>
     </span>)}
   </span>;
 }

@@ -67,7 +67,9 @@
 .picker .picker-actions :is(button, .picker-static-control):has(kbd) { padding-inline-end: var(--key-gap); }
 .picker .picker-actions button:hover { background: var(--fill-control-hover); }
 .picker .picker-primary, .picker .picker-actions .picker-primary { background: var(--accent); color: var(--text-on-accent); }
-.picker-primary kbd { background: var(--on-fill-h); border-color: transparent; color: inherit; box-shadow: none; border-radius: var(--r-key); }
+.picker-actions kbd[data-single] { padding-inline: 0; }
+.picker-actions kbd[data-label="↵"] { line-height: calc(var(--key) - 2 * var(--border-width) + .2em); }
+.picker-primary kbd { background: color-mix(in srgb, var(--text-on-accent) 22%, transparent); border-color: transparent; color: inherit; box-shadow: none; border-radius: var(--r-key); }
 .demo-hint kbd { font-size: .95em; }
 .picker-shelf .picker-status { flex: none; display: inline-flex; align-items: center; gap: var(--space-1); height: var(--control-small-h); padding-inline: var(--space-2); border-radius: var(--r-full); background: color-mix(in srgb, var(--status-ok) 14%, transparent); color: var(--text); font: var(--strong) var(--type-label-size)/var(--type-label-line) var(--font); white-space: nowrap; }
 .picker-status:empty { display: none; }

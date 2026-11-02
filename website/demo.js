@@ -36,7 +36,9 @@ export function setupDemo() {
     const caps = el("span", { className: "key-caps" }); caps.setAttribute("aria-hidden", "true");
     for (const label of keyCapLabels(accelerator, mac)) {
       const cap = el("span", { className: "key-cap" });
-      cap.append(el("kbd", { textContent: label })); caps.append(cap);
+      const kbd = el("kbd", { textContent: label });
+      kbd.dataset.label = label; if ([...label].length === 1) kbd.dataset.single = "";
+      cap.append(kbd); caps.append(cap);
     }
     return caps;
   }
