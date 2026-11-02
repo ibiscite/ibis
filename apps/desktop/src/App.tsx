@@ -30,6 +30,7 @@ import { usePickerSearchFocus } from "./features/picker/usePickerSearchFocus";
 import { useCitationCopy } from "./features/picker/useCitationCopy";
 import { useLibrarySetup } from "./features/picker/useLibrarySetup";
 import { usePickerMove } from "./features/picker/usePickerMove";
+import { useKeyboardHome } from "./features/picker/useKeyboardHome";
 import { useAltHeld } from "./features/picker/useAltHeld";
 import { HeldKeys } from "./features/picker/HeldKeys";
 import { useNativeRequests } from "./features/picker/useNativeRequests";
@@ -130,6 +131,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   useNativeRequests(api, query, setQuery, input, state.selected.size);
   usePickerLifecycle({ api, pickerSession, menus, destination, preferences, resetPointer, readShortcut, report, setAltHeld });
   usePickerMove(api, pickerSession.session);
+  useKeyboardHome(input);
   const { resultArea, followKeyboard } = useResultScroll({
     input, active, restored: state.restored, pointer, selectedSize: selected.size, citationProblem, formatted, format, searchFocused,
   });
