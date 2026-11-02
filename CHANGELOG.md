@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.2.7](https://github.com/ibiscite/ibis/compare/v0.2.6...v0.2.7) (2026-11-02)
+
+
+### Features
+
+* **agents:** cite from Claude Code and Codex with the Ibis plugin ([#1598](https://github.com/ibiscite/ibis/issues/1598)) ([6fd5ec3](https://github.com/ibiscite/ibis/commit/6fd5ec31b842167ed22cf7b72fc5331df207c40b))
+* **canvas:** show every shared part in its states ([#1595](https://github.com/ibiscite/ibis/issues/1595)) ([bab370d](https://github.com/ibiscite/ibis/commit/bab370d5611418e6e6a4eb6e85b875e3a47261cb))
+* **cli:** explain every option and error for scripts and agents ([#1590](https://github.com/ibiscite/ibis/issues/1590)) ([3f09eca](https://github.com/ibiscite/ibis/commit/3f09eca5188bc274439c0e4fc49c7f955df7497b))
+* **desktop:** finish the canvas review and design system ([#1597](https://github.com/ibiscite/ibis/issues/1597)) ([c6b5f66](https://github.com/ibiscite/ibis/commit/c6b5f664fad7a93b65ccff7aa9284588c8e0a8a0))
+* recent citations switch, BibTeX added dates, Enter wording ([#1604](https://github.com/ibiscite/ibis/issues/1604)) ([fb38ce9](https://github.com/ibiscite/ibis/commit/fb38ce96a524c0396f8ddb1d9f655dc7d34e08d8))
+
+
+### Bug Fixes
+
+* **agents:** protect private records and preserve search meaning ([#1606](https://github.com/ibiscite/ibis/issues/1606)) ([034708a](https://github.com/ibiscite/ibis/commit/034708af8077daff56ef61387372a023fd799298))
+* **cli:** clearer failures, help and docs from CLI testing ([#1622](https://github.com/ibiscite/ibis/issues/1622)) ([9c3249a](https://github.com/ibiscite/ibis/commit/9c3249abbb6314bfc1109e2225abf639a40c00ac))
+* **desktop:** keep the picker and its keyboard through dialogs ([#1609](https://github.com/ibiscite/ibis/issues/1609)) ([a97e8e7](https://github.com/ibiscite/ibis/commit/a97e8e7da7289ba6ea910a22b4a6f18ded3242d8))
+* **desktop:** keep the picker still while typing ([#1603](https://github.com/ibiscite/ibis/issues/1603)) ([7be864d](https://github.com/ibiscite/ibis/commit/7be864d7c248f509e3bf47b43f33d803853b3d98))
+* **desktop:** match Mac controls and tidy shortcut screens ([#1608](https://github.com/ibiscite/ibis/issues/1608)) ([6f8b32c](https://github.com/ibiscite/ibis/commit/6f8b32c6ad56a8772d4234ffd9d53fd3ebc38747))
+* **desktop:** name the right keys and system on each platform ([#1614](https://github.com/ibiscite/ibis/issues/1614)) ([db9d927](https://github.com/ibiscite/ibis/commit/db9d927207bc0e8618806441d29b533a78574a75))
+* **paste:** paste on busy Windows PCs when the window is proven ready ([#1602](https://github.com/ibiscite/ibis/issues/1602)) ([8acc06a](https://github.com/ibiscite/ibis/commit/8acc06af51dcda2c2f9969ab872e2b120b1d4045)), closes [#1601](https://github.com/ibiscite/ibis/issues/1601)
+
+
+### Documentation
+
+* **cli:** install the command with Homebrew ([#1607](https://github.com/ibiscite/ibis/issues/1607)) ([20c5ed1](https://github.com/ibiscite/ibis/commit/20c5ed1e7dfe010092e565bd7acc3452232d15cf))
+* **plugins:** provide a public licence and usage notice ([#1611](https://github.com/ibiscite/ibis/issues/1611)) ([41bceb3](https://github.com/ibiscite/ibis/commit/41bceb355f073a028a5bbc59049fce9db5f4dcf4))
+* **roadmap:** build every planned feature before 1.0 ([#1599](https://github.com/ibiscite/ibis/issues/1599)) ([dc147fd](https://github.com/ibiscite/ibis/commit/dc147fdeaa5160dbec2c86acfd36930569375022))
+* tidy the roadmap into one section per release ([#1615](https://github.com/ibiscite/ibis/issues/1615)) ([9b93ab2](https://github.com/ibiscite/ibis/commit/9b93ab2dbcadf464dd9f59d7ae0780fc881585f0))
+
 ## [0.2.6](https://github.com/ibiscite/ibis/compare/v0.2.5...v0.2.6) (2026-11-01)
 
 
