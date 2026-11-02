@@ -163,7 +163,7 @@ Each component in `apps/desktop/src/ui/` wraps one React Aria component (decisio
 | Shelf (`ChipGroup`, `LocatorToken`, `CitationDetails`) | See **Shelf**. |
 | Footer and status line (`LibraryStatus`, `SourceAction`) | See **Footer**. A status line is words, never a filled band. |
 | Toast and copied notice (`UndoNotice`, `CopyReceipt`) | Capsule toast, 8 s, pauses on hover and focus; see **Notices**. |
-| Progress (`ui/Progress`) | Accent fill on a quiet track; known totals show a percentage; unknown totals a moving segment; Reduce Motion shows a static dashed bar. |
+| Progress (`ui/Progress`) | A task such as an update is a quiet card on the row grid: an accent ring around the Ibis mark in the tile column, the title and phase ("Updating Ibis", "Downloading · 3.1 of 7.4 MB") where titles start, the percent where years end. An unknown phase turns the ring; Reduce Motion shows it dashed and still. Opening a library keeps a thin bar. |
 | Choice cards (`ui/ChoiceList`) | See **First run and choice screens**. |
 | Picture choice (`ui/PictureChoice`) | Equal columns, one per choice, captions on one baseline; never wrap three as two plus one. |
 | Sidebar (`ui/SideNavigation`) | Single-selection list with `aria-current="page"`, the Mac's medium sidebar row, selected fill and paired text. |
@@ -217,7 +217,7 @@ Built in `ibis-core` so every front end shares them (#1204).
 ### Shelf
 
 - **Shelf** [C7]: one line above the footer showing what Enter pastes: the beak at the tile column's end, the citation on the title column. Shown while there are results or a citation is being built; hidden on choice screens. Results never move when a reference is added.
-- Several references are segments of one citation; a pointed segment shows its hover fill with a small × inside its trailing end, `--key-gap` from the edge on every side, covering the end of the text as a Safari tab's close button does. ← → select a segment; Delete removes it with Undo.
+- Several references are segments of one citation; a pointed segment shows its hover fill and grows at its trailing end to make room for a small ×, `--key-gap` from the edge on every side. Nothing ever covers text. ← → select a segment; Delete removes it with Undo.
 - **One line, details on demand**: a segment opens an ordinary menu: the reference's name as a heading; **Name in brackets**, **Name in the sentence**, **Year only** with quiet examples; **Page…** editing in place; the source action; **Remove from Citation ⌫**.
 - On copy a closing beak mirrors the opening one and a "Copied" capsule draws its check; Reduce Motion shows the end state. Each copy is confirmed once, in one place.
 - Pending output dims, then "Formatting…"; Enter waits. A failed format says why and offers another style; refusals stay visible until corrected.
@@ -274,7 +274,7 @@ Built in `ibis-core` so every front end shares them (#1204).
 
 ### Notices
 
-- "Pasted" or "Copied" shows after the picker hides, in a window that never takes focus: one card near the top centre on every system, ignoring the pointer. Pasted shows a `--status-ok` check; copied without a paste shows a neutral check and the reason. The card is a plain check centred on two lines: the title, then the citation in quiet monospaced text. A long reason wraps and is never clipped; the citation stays one line, ending in "…" with "+4 more" in view. The notice follows the chosen appearance.
+- "Pasted" or "Copied" shows after the picker hides, in a window that never takes focus: one card near the top centre on every system, ignoring the pointer. What was copied is the hero: the citation in the text colour at body size, monospaced. Above it a quiet secondary line says what happened ("Copied", "Pasted into Word" or the reason). A green check in a soft green circle, centred on both lines, confirms success. A long reason wraps and is never clipped; the citation stays one line, ending in "…" with "+4 more" in view. The notice follows the chosen appearance.
 - No notice carries a side bar or a one-sided border. Errors are one sentence beside their cause, never a modal.
 - In-window toasts ("Removed · Undo") last 8 s, name their action and accept ⌘Z.
 
@@ -340,7 +340,7 @@ Never call the destination a password field. The right paste key is shown per sy
 - **Accent**: the Mac's row of colour dots, **Follow the Mac** first (the default), Apple's hues in Apple's order, a divider, then **Ibis scarlet**. No free colour picker, custom fonts, themes or CSS.
 - A failed save shows an alert and restores the saved choice; queued choices finish saving (at most two seconds) before the window closes. Preference resets offer Undo.
 
-**Shortcuts.** Settings › Shortcuts has a search field, then grouped cards (Open Ibis, While searching, Your library, Anywhere in Ibis, In a menu). Only the opening-shortcut recorder edits a key; fixed keys are plain secondary text. General and Shortcuts share `ui/ShortcutSetting`. The Keyboard Shortcuts sheet (⌘/) is a readable overlay of two equal columns that hugs its content and closes with the square IconButton [C13].
+**Shortcuts.** Settings › Shortcuts has a search field, then grouped cards (Open Ibis, While searching, Your library, Anywhere in Ibis, In a menu). Only the opening-shortcut recorder edits a key; fixed keys are plain secondary text. Group headings scroll with their cards, never sticking over a card's edge. Keys and the "or" between them share one baseline with equal gaps. General and Shortcuts share `ui/ShortcutSetting`. The Keyboard Shortcuts sheet (⌘/) is a readable overlay of two equal columns that hugs its content and closes with the square IconButton [C13].
 
 - The recorder shows the shortcut in system notation; clicking says **Type a shortcut…**; Esc, Tab or leaving cancels.
 - A shortcut needs Control, Option or Command; **⌘ + one key is refused**, as are picker commands and, on Windows, Ctrl+Alt with a printable key (AltGr). Refusals name the owner and keep the working shortcut.

@@ -31,8 +31,9 @@ export function Notices({ library, failures, error, citationProblem, copyError, 
     </p>
     <div className="notices">
       {updateProgress && (updateProgress.phase === "failed" ? <p role="alert">{updateText.failed}</p> :
-        <Progress label={updateText[updateProgress.phase]} value={updateProgress.phase === "downloading" && updateProgress.total
-          ? Math.min(100, 100 * updateProgress.received / updateProgress.total) : undefined} />)}
+        <Progress title={updateText.title} label={updateText[updateProgress.phase]} detail={updateSize(updateProgress)}
+          value={updateProgress.phase === "downloading" && updateProgress.total
+            ? Math.min(100, 100 * updateProgress.received / updateProgress.total) : undefined} />)}
       {library?.settings_notice && <p role="alert">{library.settings_notice}</p>}
       {(Object.keys(failures) as Operation[]).filter((operation) => failures[operation] && !libraryOperations.has(operation)).map((operation) => (
         <p role="alert" key={operation}>{operationFailures[operation]}</p>
@@ -71,3 +72,10 @@ export function Notices({ library, failures, error, citationProblem, copyError, 
 
 /** Library failures stay beside the footer's library controls. */
 export const libraryOperations = new Set<Operation>(["status", "libraryEvents", "choose", "reload", "zotero", "zoteroGroups"]);
+
+/** "3.1 of 7.4 MB" while a download of known size runs; nothing otherwise. */
+function updateSize({ phase, received, total }: UpdateProgress): string | undefined {
+  if (phase !== "downloading" || !total) return undefined;
+  const mb = (bytes: number) => (bytes / 1e6).toFixed(1);
+  return `${mb(Math.min(received, total))} of ${mb(total)} MB`;
+}

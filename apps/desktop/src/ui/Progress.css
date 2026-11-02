@@ -1,15 +1,37 @@
-.update-progress { --progress-track: var(--fill-control); --progress-fill: var(--accent-text); --progress-border: transparent; --progress-border-width: 0px; margin-block: var(--space-2); }
+.update-progress, .update-card { --progress-track: var(--fill-control); --progress-fill: var(--accent-text); --progress-border: transparent; --progress-border-width: 0px; }
 @media (prefers-contrast: more), (forced-colors: active) {
-  .update-progress { --progress-track: Canvas; --progress-fill: CanvasText; --progress-border: CanvasText; --progress-border-width: var(--border-width); }
+  .update-progress, .update-card { --progress-track: Canvas; --progress-fill: CanvasText; --progress-border: CanvasText; --progress-border-width: var(--border-width); }
 }
+
+/* A linear bar, for opening a library. */
+.update-progress { margin-block: var(--space-2); }
 .update-track { box-sizing: content-box; height: var(--space-1); background: var(--progress-track); border: var(--progress-border-width) solid var(--progress-border); border-radius: var(--r-full); overflow: hidden; margin-block-start: var(--space-1); }
 .update-track > div { height: 100%; background: var(--progress-fill); }
 .update-progress[data-indeterminate] .update-track > div { width: 25%; animation: progress-slide 1s linear infinite alternate; }
-/* Paused while the picker is hidden (App.tsx). */
-:root[data-picker-hidden] .update-progress[data-indeterminate] .update-track > div { animation-play-state: paused; }
 @keyframes progress-slide { to { transform: translateX(300%); } }
+
+/* A task card, as a result row draws it: the ring centred in the tile column,
+   the text where titles start, the percent where years end. */
+.update-card { --progress-track: var(--fill-control-pressed); display: grid; grid-template-columns: var(--tile) minmax(0, 1fr) auto; align-items: center; column-gap: var(--row-gap); margin: var(--space-2) calc(-1 * var(--row-pad)); padding: var(--space-2) var(--row-pad); border: var(--progress-border-width) solid var(--progress-border); border-radius: var(--r-row); background: var(--fill-control); }
+/* The track is the ring's own inset edge; the fill is its one stroke. The
+   Ibis mark sits in the middle, in its one red. */
+.update-ring { --ring: calc(var(--tile) - var(--space-1)); position: relative; display: grid; place-items: center; justify-self: center; width: var(--ring); height: var(--ring); border-radius: var(--r-full); box-shadow: inset 0 0 0 calc(var(--ring) / 8) var(--progress-track); }
+.update-ring > svg:first-child { position: absolute; inset: 0; width: 100%; height: 100%; rotate: -90deg; }
+.update-ring-mark { width: calc(var(--ring) / 2); height: calc(var(--ring) / 2); color: var(--scarlet); }
+.update-ring-fill { --progress: 0; fill: none; stroke-width: 2.5; stroke: var(--progress-fill); stroke-linecap: round; stroke-dasharray: 100; stroke-dashoffset: calc(100 - var(--progress)); transform-box: fill-box; transform-origin: center; transition: stroke-dashoffset var(--dur-panel) var(--ease); }
+.update-card[data-indeterminate] .update-ring-fill { stroke-dashoffset: 72; animation: update-turn 1s linear infinite; }
+@keyframes update-turn { to { rotate: 360deg; } }
+.update-text { display: flex; flex-direction: column; min-width: 0; }
+.update-text > strong { font: var(--strong) var(--type-body-size) / var(--type-body-line) var(--font); }
+.update-text > span, .update-percent { color: var(--text-secondary); font-size: var(--type-label-size); line-height: var(--type-label-line); }
+.update-percent { font-variant-numeric: tabular-nums; }
+
+/* Paused while the picker is hidden (App.tsx). */
+:root[data-picker-hidden] .update-progress[data-indeterminate] .update-track > div, :root[data-picker-hidden] .update-card[data-indeterminate] .update-ring-fill { animation-play-state: paused; }
 @media (prefers-reduced-motion: reduce) {
   .update-progress[data-indeterminate] .update-track > div { animation: none; width: 100%; background: none; border-block-start: var(--space-1) dashed var(--progress-fill); }
+  .update-card[data-indeterminate] .update-ring-fill { animation: none; stroke-dasharray: 4 4; stroke-dashoffset: 0; }
+  .update-ring-fill { transition: none; }
 }
 /* Preserve the explicit system pair, including the dashed reduced-motion cue. */
-@media (forced-colors: active) { .update-track { forced-color-adjust: none; } }
+@media (forced-colors: active) { .update-track, .update-ring { forced-color-adjust: none; } }

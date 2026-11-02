@@ -21,22 +21,22 @@ main:has(> .shelf) > footer { border-top-color: transparent; }
 .shelf-output .preview-text .csl-entry { display: inline; }
 .shelf-output .preview-text .csl-entry + .csl-entry { margin-inline-start: var(--space-4); }
 .shelf-segment { position: relative; display: flex; flex: 0 1 auto; min-width: 0; padding-block: var(--space-2); padding-inline: 1px; }
-.shelf-segment-button.ui-button[data-variant] { justify-content: start; flex: 0 1 auto; min-width: 0; min-height: var(--control-small-h); max-width: calc(100% + 2 * var(--space-1)); margin-inline: calc(-1 * var(--space-1)); padding: 0 var(--space-1); border-width: 0; border-radius: var(--r-tile); color: var(--text); white-space: nowrap; }
+.shelf-segment-button.ui-button[data-variant] { justify-content: start; flex: 0 1 auto; min-width: 0; min-height: var(--control-small-h); max-width: calc(100% + 2 * var(--space-1)); margin-inline: calc(-1 * var(--space-1)); padding: 0 var(--space-1); transition: padding-inline-end var(--dur) var(--ease); border-width: 0; border-radius: var(--r-tile); color: var(--text); white-space: nowrap; }
 .shelf-reference-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .shelf-segment-button.ui-button[data-size="small"]::after { inset-inline: 0; }
 .shelf-segment-button.ui-button[data-focus-visible] { background: var(--selected); color: var(--selected-text); outline: none; box-shadow: none; }
 .shelf-segment-button[data-focus-visible] .preview-text { color: inherit; }
-/* Removal sits inside the reference, as Safari's tab close button does: on
-   hover a small quiet x at the trailing end, the same --key-gap from the chip's
-   edge on every side, opaque on the chip's own hover fill so it covers the end
-   of the text instead of floating over it. The 32 px pointer target stays. */
-.shelf-segment { --remove-gap: calc((var(--control-small-h) - var(--space-4)) / 2); }
-.shelf-segment > .shelf-remove.ui-icon-button.ui-button[data-variant] { --icon-button-size: var(--space-4); position: absolute; z-index: var(--z-chrome); inset-block-start: 50%; inset-inline-end: calc(1px - var(--space-1) + var(--remove-gap)); translate: 0 -50%; visibility: hidden; border: 0; border-radius: max(var(--r-floor-mark), calc(var(--r-tile) - var(--remove-gap))); background: linear-gradient(var(--fill-control-hover), var(--fill-control-hover)), linear-gradient(var(--fill-control), var(--fill-control)), var(--surface); color: var(--text-secondary); --ring-offset: calc(-1 * var(--ring-width)); }
+/* Removal sits inside the reference and never covers its text: on hover the
+   chip grows at its trailing end to make room for a small quiet x, the same
+   --remove-gap from the chip's edge on every side. The 32 px pointer target stays. */
+.shelf-segment { --remove-gap: calc((var(--control-small-h) - var(--space-4)) / 2); --remove-room: calc(var(--space-1) + var(--space-4) + var(--remove-gap)); }
+.shelf-segment > .shelf-remove.ui-icon-button.ui-button[data-variant] { --icon-button-size: var(--space-4); position: absolute; z-index: var(--z-chrome); inset-block-start: 50%; inset-inline-end: calc(1px - var(--space-1) + var(--remove-gap)); translate: 0 -50%; visibility: hidden; border: 0; border-radius: max(var(--r-floor-mark), calc(var(--r-tile) - var(--remove-gap))); color: var(--text-secondary); --ring-offset: calc(-1 * var(--ring-width)); }
 .shelf-segment > .shelf-remove.ui-icon-button.ui-button[data-variant] > svg { width: var(--space-3); height: var(--space-3); }
-.shelf-segment > .shelf-remove.ui-icon-button.ui-button[data-variant]:is([data-hovered], [data-pressed]) { color: var(--text); }
+.shelf-segment > .shelf-remove.ui-icon-button.ui-button[data-variant]:is([data-hovered], [data-pressed]) { background: var(--fill-control-hover); color: var(--text); }
 @media (hover: hover) {
   .shelf:not([data-panel]) .shelf-segment:hover:not(:has([data-focus-visible])) > .shelf-remove { visibility: visible; }
   .shelf:not([data-panel]) .shelf-segment:hover > .shelf-segment-button:not([data-focus-visible]) { background: var(--fill-control-hover); }
+  .shelf:not([data-panel]) .shelf-segment[data-built]:hover:not(:has([data-focus-visible])) > .shelf-segment-button { padding-inline-end: var(--remove-room); }
 }
 .shelf-actions { display: flex; flex: none; align-items: center; gap: var(--space-1); margin-inline-start: var(--space-1); }
 .shelf-actions:empty { display: none; }
@@ -73,6 +73,7 @@ main:has(> .shelf) > footer { border-top-color: transparent; }
 }
 @media (prefers-reduced-motion: reduce) {
   .shelf[data-copied]::before, .shelf-copied path { animation: none; }
+  .shelf-segment-button.ui-button[data-variant] { transition: none; }
 }
 @media (prefers-contrast: more), (forced-colors: active) {
   .shelf { outline: var(--border-width) solid CanvasText; outline-offset: calc(-1 * var(--border-width)); }

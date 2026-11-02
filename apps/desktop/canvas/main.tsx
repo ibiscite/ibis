@@ -115,7 +115,7 @@ function pickerApi(scenario: Scenario, settings: SettingsApi, openSettings: (pag
     openFoundLibrary: async () => null,
     reloadLibrary: noop, openLibrarySource: async () => null, openSettings,
     onFileDrag: scenario === "file-drag" ? async (change) => { change(true); return () => {}; } : undefined,
-    onUpdateProgress: scenario === "update" ? async (progress) => { progress({ attempt: 1, revision: 1, received: 42, total: 100, phase: "downloading" }); return () => {}; } : undefined,
+    onUpdateProgress: scenario === "update" ? async (progress) => { progress({ attempt: 1, revision: 1, received: 3_150_000, total: 7_400_000, phase: "downloading" }); return () => {}; } : undefined,
     onLibraryChanged: subscribe, onPickerShown: subscribe, onPickerHidden: subscribe,
   };
 }

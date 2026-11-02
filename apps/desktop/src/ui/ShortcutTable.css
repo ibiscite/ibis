@@ -5,7 +5,9 @@
    secondary text, and the word "System" is spoken, not shown. */
 .ui-shortcut-table { width: 100%; border-collapse: separate; border-spacing: 0; font: var(--type-body-size)/var(--type-body-line) var(--font); }
 .ui-shortcut-table th, .ui-shortcut-table td { box-sizing: border-box; padding: 0; text-align: start; font-weight: inherit; }
-.ui-shortcut-table tbody th[scope="rowgroup"] { position: sticky; top: 0; z-index: var(--z-content); padding-block-start: var(--space-5); background: var(--surface); }
+/* Group headings scroll with their cards, as in System Settings: a heading
+   that stuck would cover the top edge of the card below it. */
+.ui-shortcut-table tbody th[scope="rowgroup"] { padding-block-start: var(--space-5); }
 .ui-shortcut-table tbody:first-of-type th[scope="rowgroup"] { padding-block-start: var(--space-4); }
 /* Card rows: the row's cells draw the card, its edges and its corners. */
 .ui-shortcut-table tr:not(:first-child) > * { height: var(--settings-row-h); padding-inline: var(--space-4); background: var(--raised); border-top: var(--border-width) solid var(--separator); }
@@ -18,7 +20,9 @@
 .ui-shortcut-table tr:last-child > :last-child { border-end-end-radius: var(--r-card); }
 .ui-shortcut-table tr:not(:first-child) > td[colspan] { height: auto; padding-block: var(--space-2); text-align: start; }
 .keys-binding { display: inline-flex; align-items: center; gap: var(--space-1); white-space: nowrap; }
-.ui-settings-keys { display: inline-flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; justify-content: end; color: var(--text-secondary); vertical-align: middle; }
+.ui-settings-keys .keys-binding { align-items: baseline; gap: var(--space-2); }
+/* Keys and the "or" between them share one baseline and the label size. */
+.ui-settings-keys { display: inline-flex; align-items: baseline; gap: var(--space-2); font-size: var(--type-label-size); flex-wrap: wrap; justify-content: end; color: var(--text-secondary); vertical-align: middle; }
 .ui-settings-keys kbd[data-system] { min-width: 0; padding-inline: 0; background: transparent; border-color: transparent; color: var(--text-secondary); font-weight: 400; }
 .ui-shortcut-filter.ui-settings-search { margin: 0; }
 
