@@ -1282,8 +1282,8 @@ test("Appearance, ten accents, both search icons, both text sizes and preview pe
   const mounted = render(<SettingsApp api={api} initialPage="look" />);
   const accents = within(await screen.findByRole("radiogroup", { name: "Accent" })).getAllByRole("radio");
   expect(accents).toHaveLength(10);
-  expect(accents.map((radio) => radio.getAttribute("aria-label"))).toEqual(expect.arrayContaining(["Follow the Mac", "Blue", "Ibis scarlet"]));
-  expect(accents[0]?.getAttribute("aria-label")).toBe("Follow the Mac");
+  expect(accents.map((radio) => radio.getAttribute("aria-label"))).toEqual(expect.arrayContaining(["Follow the system", "Blue", "Ibis scarlet"]));
+  expect(accents[0]?.getAttribute("aria-label")).toBe("Follow the system");
   expect(accents.at(-1)?.getAttribute("aria-label")).toBe("Ibis scarlet");
   fireEvent.click(screen.getByRole("radio", { name: "Dark" }));
   fireEvent.click(screen.getByRole("radio", { name: "Purple" }));
@@ -1301,7 +1301,7 @@ test("Appearance, ten accents, both search icons, both text sizes and preview pe
   expect(await screen.findByRole("radio", { name: "Purple" })).toHaveProperty("checked", true);
   expect(document.documentElement.dataset.appearance).toBe("dark");
   fireEvent.click(screen.getByRole("radio", { name: "System" }));
-  fireEvent.click(screen.getByRole("radio", { name: "Follow the Mac" }));
+  fireEvent.click(screen.getByRole("radio", { name: "Follow the system" }));
   fireEvent.click(screen.getByRole("radio", { name: "Magnifier" }));
   fireEvent.click(screen.getByRole("radio", { name: "Default" }));
   await act(async () => state.closes.at(-1)!());
