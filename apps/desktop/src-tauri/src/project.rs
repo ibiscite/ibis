@@ -37,6 +37,9 @@ pub(crate) enum ProjectState {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, specta::Type)]
 pub(crate) struct ProjectStatus {
     pub(crate) generation: u32,
+    /// Counts reads that changed an answer, which can happen with the status
+    /// otherwise the same, as when an entry is added to a healthy file.
+    pub(crate) revision: u32,
     pub(crate) name: String,
     pub(crate) state: ProjectState,
     /// Answers come from an earlier read, because the newest one failed.
@@ -64,6 +67,7 @@ struct Ticket {
 #[derive(Default)]
 struct Slot {
     generation: u32,
+    revision: u32,
     path: Option<PathBuf>,
     read: Option<ProjectRead>,
     reading: bool,
@@ -113,6 +117,9 @@ impl ProjectBibliography {
         slot.reading = false;
         let unchanged = slot.read.as_ref().is_some_and(|old| old.same_answers(&read));
         slot.read = Some(read);
+        if !unchanged {
+            slot.revision = slot.revision.wrapping_add(1);
+        }
         !unchanged
     }
 
@@ -127,6 +134,7 @@ impl ProjectBibliography {
         };
         Some(ProjectStatus {
             generation: slot.generation,
+            revision: slot.revision,
             name,
             state,
             last_good,
@@ -489,6 +497,31 @@ mod tests {
         assert!(!slot.finish(ticket.generation, read(&ticket)));
         assert_eq!(slot.status(), None);
         assert!(slot.current().is_none());
+    }
+
+    #[test]
+    fn new_content_in_a_healthy_file_changes_the_status_so_rows_are_asked_again() {
+        let (_dir, a) = written("a.bib", A);
+        let slot = ProjectBibliography::default();
+        let ticket = slot.choose(Some(a.clone())).unwrap_or_else(|| panic!("a ticket"));
+        slot.finish(ticket.generation, read(&ticket));
+        let before = slot.status();
+
+        std::fs::write(&a, B).unwrap_or_else(|error| panic!("{error}"));
+        let again = slot.check_again().unwrap_or_else(|| panic!("a ticket"));
+        assert!(slot.finish(again.generation, read(&again)));
+        let after = slot.status();
+        assert_eq!(
+            before.as_ref().map(|status| status.state),
+            after.as_ref().map(|status| status.state),
+            "still ready"
+        );
+        assert_ne!(before, after, "yet not the same answer");
+
+        // An unchanged read leaves the status alone, so it asks nobody anything.
+        let unchanged = slot.check_again().unwrap_or_else(|| panic!("a ticket"));
+        assert!(!slot.finish(unchanged.generation, read(&unchanged)));
+        assert_eq!(slot.status(), after);
     }
 
     #[test]

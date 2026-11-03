@@ -61,6 +61,11 @@ export const commands = {
 	copyFormat: () => __TAURI_INVOKE<KeyFormat>("copy_format"),
 	projectStatus: () => __TAURI_INVOKE<{
 	generation: number,
+	/**
+	 *  Counts reads that changed an answer, which can happen with the status
+	 *  otherwise the same, as when an entry is added to a healthy file.
+	 */
+	revision: number,
 	name: string,
 	state: ProjectState,
 	/**  Answers come from an earlier read, because the newest one failed. */
@@ -814,6 +819,11 @@ export type ProjectState =
 /**  What the picker may show. A file name, never a folder. */
 export type ProjectStatus = {
 	generation: number,
+	/**
+	 *  Counts reads that changed an answer, which can happen with the status
+	 *  otherwise the same, as when an entry is added to a healthy file.
+	 */
+	revision: number,
 	name: string,
 	state: ProjectState,
 	/**  Answers come from an earlier read, because the newest one failed. */

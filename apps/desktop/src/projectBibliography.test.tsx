@@ -7,7 +7,7 @@ import { backend, chooseFromMore, receipt, resetApp, result } from "./testing/ap
 
 afterEach(resetApp);
 
-const file = (over: Partial<ProjectStatus> = {}): ProjectStatus => ({ generation: 1, name: "thesis.bib", state: "ready", last_good: false, reason: null, damaged_lines: [], ...over });
+const file = (over: Partial<ProjectStatus> = {}): ProjectStatus => ({ generation: 1, revision: 1, name: "thesis.bib", state: "ready", last_good: false, reason: null, damaged_lines: [], ...over });
 /** Names sit in invisible direction marks; a person reads the words between. */
 const plain = (text: string | null | undefined) => (text ?? "").replace(/[\u2068\u2069]/g, "");
 const shownRow = () => plain(screen.getByRole("option").textContent);
@@ -58,6 +58,18 @@ test("with no bibliography chosen, the check asks no search twice", async () => 
   await act(() => emit("project:changed"));
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   expect(called.filter((command) => command === "search")).toHaveLength(1);
+});
+
+test("new content in the same healthy file marks the rows again", async () => {
+  let status = file(), mark = "missing";
+  backend({ project_status: () => status, search: () => [row(mark)] });
+  render(<App />);
+  fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "seas" } });
+  await waitFor(() => expect(shownRow()).toContain("Missing from thesis.bib"));
+  status = file({ revision: 2 });
+  mark = "in";
+  await act(() => emit("project:changed"));
+  await waitFor(() => expect(shownRow()).toContain("In thesis.bib"));
 });
 
 test("a failed read keeps its last good copy, labelled", async () => {
