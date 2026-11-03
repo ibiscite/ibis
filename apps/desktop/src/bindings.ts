@@ -40,7 +40,7 @@ export const commands = {
 	/**  The library as it is now, for the interface when it starts. */
 	libraryStatus: () => __TAURI_INVOKE<LibraryStatus>("library_status"),
 	/**  Open the searched source or launch Zotero for a reported Zotero problem. */
-	openLibrarySource: (item: unknown | null, expectedRevision: string, expectedSourceGeneration: string, zoteroOnly: boolean, reveal: boolean) => __TAURI_INVOKE<null>("open_library_source", { item, expectedRevision, expectedSourceGeneration, zoteroOnly, reveal }),
+	openLibrarySource: (item: unknown | null, expectedRevision: string, expectedSourceGeneration: string, zoteroOnly: boolean, reveal: boolean, presentation: number | null) => __TAURI_INVOKE<null>("open_library_source", { item, expectedRevision, expectedSourceGeneration, zoteroOnly, reveal, presentation }),
 	/**  Resolve the selected source and its system icon, never exposing its path. */
 	librarySource: (item: unknown | null, expectedRevision: string, expectedSourceGeneration: string, zoteroOnly: boolean, withStatusIcon: boolean) => __TAURI_INVOKE<SourcePresentation>("library_source", { item, expectedRevision, expectedSourceGeneration, zoteroOnly, withStatusIcon }),
 	/**
@@ -170,7 +170,7 @@ export const commands = {
 /**  General, scrolled to pasting and its permission. */
 "paste" | "look" | "libraries" | "advanced" | "shortcuts" | "citations" | "about" |
 /**  About, running Check now: the tray's update check shows its result there. */
-"updates" | null) => __TAURI_INVOKE<void>("open_settings", { page }),
+"updates" | null, presentation: number | null) => __TAURI_INVOKE<void>("open_settings", { page, presentation }),
 	/**
 	 *  Close the paste guide after both grants; a fresh external activation opens
 	 *  the picker again. Granting permission never captures a target or retries Enter.

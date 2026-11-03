@@ -277,6 +277,19 @@ test("More names Keep Window Open the same way on and off, with a check", async 
   await waitFor(() => expect(screen.getByRole("menuitemcheckbox", { name: "Keep Window Open" }).getAttribute("aria-checked")).toBe("false"));
 });
 
+test("Settings and a source name the opening that asked, so a late one cannot hide a newer one", async () => {
+  const asked: unknown[] = [];
+  backend({ library_status: () => library, search: () => [result("picked", "Invented reference")],
+    open_settings: ({ presentation }) => { asked.push(presentation); return null; },
+    open_library_source: ({ presentation }) => { asked.push(presentation); return null; } });
+  render(<App />);
+  await screen.findByText("Invented reference");
+  await reopen();
+  press(",", { ctrlKey: true });
+  press("o", { ctrlKey: true });
+  await waitFor(() => expect(asked).toEqual([43, 43]));
+});
+
 test("a command clears every layer in its way, and the keys for an open layer close it", async () => {
   await chosenCitation();
   press("k", { ctrlKey: true });

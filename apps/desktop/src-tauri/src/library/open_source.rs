@@ -34,17 +34,20 @@ pub(crate) struct SourceItem(#[specta(type = specta_typescript::Unknown)] ItemRe
 /// Open the searched source or launch Zotero for a reported Zotero problem.
 #[tauri::command]
 #[specta::specta]
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn open_library_source(
     item: Option<SourceItem>,
     expected_revision: String,
     expected_source_generation: String,
     zotero_only: bool,
     reveal: bool,
+    presentation: Option<u64>,
     app: AppHandle,
     library: State<'_, Mutex<Library>>,
 ) -> Result<(), CommandError> {
-    // The opening that asked; a launch that ends later gives way for it alone.
-    let presentation = app.state::<PickerGeneration>().current();
+    // Named by the picker: this body runs after Tauri schedules it, and a
+    // launch that ends later gives way for the opening that asked alone.
+    let presentation = app.state::<PickerGeneration>().originating(presentation);
     let target = {
         let library = library.lock().map_err(|_| CommandError::from(FAILED))?;
         target(

@@ -51,8 +51,11 @@ impl Page {
 /// WebView2 callback, where building a second webview deadlocks on Windows.
 #[tauri::command]
 #[specta::specta]
-pub(crate) async fn open_settings(app: AppHandle, page: Option<Page>) {
-    open(&app, page);
+pub(crate) async fn open_settings(app: AppHandle, page: Option<Page>, presentation: Option<u64>) {
+    // Tauri spawns async commands before their bodies run; the picker names
+    // the opening that asked, so a newer one is not what gives way.
+    let presentation = app.state::<PickerGeneration>().originating(presentation);
+    show(&app, page, presentation);
 }
 
 /// Close the paste guide after both grants; a fresh external activation opens
@@ -100,15 +103,19 @@ fn finish_guide_with<E>(granted: bool, focused: bool, close: impl FnOnce() -> Re
 }
 
 pub(crate) fn open(app: &AppHandle, page: Option<Page>) {
+    show(app, page, app.state::<PickerGeneration>().current());
+}
+
+fn show(app: &AppHandle, page: Option<Page>, presentation: u64) {
     let handle = app.clone();
     report(
-        app.run_on_main_thread(move || present(&handle, page)),
+        app.run_on_main_thread(move || present(&handle, page, presentation)),
         NativeIssue::Window,
     );
 }
 
 /// Every way into Settings ends here, so each has one effect on the picker.
-pub(crate) fn present<R: PickerHideUi>(app: &AppHandle<R>, page: Option<Page>) {
+pub(crate) fn present<R: PickerHideUi>(app: &AppHandle<R>, page: Option<Page>, presentation: u64) {
     #[cfg(target_os = "macos")]
     {
         report(
@@ -120,7 +127,7 @@ pub(crate) fn present<R: PickerHideUi>(app: &AppHandle<R>, page: Option<Page>) {
     }
     if let Some(window) = app.get_webview_window(LABEL) {
         present_existing(&window, page);
-        yield_picker(app);
+        yield_to_window(app, presentation, Takeover::Covered);
         return;
     }
     let url = format!("settings.html?page={}", page.unwrap_or(Page::General).name());
@@ -156,14 +163,10 @@ pub(crate) fn present<R: PickerHideUi>(app: &AppHandle<R>, page: Option<Page>) {
     match checked(builder.build(), NativeIssue::Window) {
         Some(window) => {
             report(window.set_focus(), NativeIssue::Focus);
-            yield_picker(app);
+            yield_to_window(app, presentation, Takeover::Covered);
         }
         None => closed(app),
     }
-}
-
-fn yield_picker<R: PickerHideUi>(app: &AppHandle<R>) {
-    yield_to_window(app, app.state::<PickerGeneration>().current(), Takeover::Covered);
 }
 
 /// Every presentation has a page; ordinary Settings opens on General at the top.

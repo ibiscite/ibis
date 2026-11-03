@@ -48,7 +48,7 @@ export function usePickerKeys({
       if (formatOpen) closeNearestLayer(event); else openFormat();
     } else if (command === "chooseSource") chooseSources();
     else if (command === "source" || command === "revealSource") openSource(false, command === "revealSource");
-    else if (command === "settings") { if (openSettings) runFromMenu("settings", () => openSettings(null)); }
+    else if (command === "settings") { if (openSettings) runFromMenu("settings", () => openSettings(null, session.getSnapshot().presentation)); }
     else runFromMenu("quit", quitAfterSaving);
   };
   const searchKey = (e: KeyboardEvent) => {

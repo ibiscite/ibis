@@ -803,7 +803,7 @@ fn yields_to_window(shown: bool, chooser_open: bool, pinned: bool, takeover: Tak
 pub(crate) struct PickerGeneration(AtomicU64);
 
 impl PickerGeneration {
-    fn originating(&self, presentation: Option<u64>) -> u64 {
+    pub(crate) fn originating(&self, presentation: Option<u64>) -> u64 {
         presentation.unwrap_or_else(|| self.current())
     }
 
@@ -1006,7 +1006,7 @@ mod tests {
             for page in [None, None, Some(Page::About), Some(Page::Updates), Some(Page::Paste)] {
                 app.state::<HideUi>().visible.store(true, Ordering::SeqCst);
                 let shown = app.state::<PickerGeneration>().advance();
-                present(handle, page);
+                present(handle, page, shown);
                 assert!(
                     !app.state::<HideUi>().visible.load(Ordering::SeqCst),
                     "the picker must leave"
@@ -1026,8 +1026,19 @@ mod tests {
     fn settings_leaves_the_picker_that_owns_an_open_file_dialog() -> tauri::Result<()> {
         let app = picker_and_settings(false)?;
         let _dialog = app.state::<ChooserOpen>().begin();
-        crate::settings_window::present(app.handle(), None);
+        crate::settings_window::present(app.handle(), None, 41);
         assert!(app.state::<HideUi>().visible.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[test]
+    fn settings_asked_for_by_one_opening_leaves_a_newer_one_alone() -> tauri::Result<()> {
+        let app = picker_and_settings(true)?;
+        let asked = app.state::<PickerGeneration>().current();
+        let newer = app.state::<PickerGeneration>().advance();
+        crate::settings_window::present(app.handle(), None, asked);
+        assert!(app.state::<HideUi>().visible.load(Ordering::SeqCst));
+        assert_eq!(app.state::<PickerGeneration>().current(), newer);
         Ok(())
     }
 
