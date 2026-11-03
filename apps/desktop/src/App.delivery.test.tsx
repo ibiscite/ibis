@@ -453,3 +453,163 @@ test("reopening during a pending copy keeps the new query and selection without 
   expect(harness.document.pastes).toEqual([]);
   expect(harness.receipt.textContent).toBe("");
 });
+
+const finishOpening = async (harness: Harness) => {
+  const job = harness.search.pending.filter((pending) => pending.args.text === "smith 2020").at(-1)!;
+  await act(async () => { job.complete({ revision: "1", results: [first] }); });
+  await act(async () => { harness.preview.pending.at(-1)!.complete({ text: "[@a]" }); });
+};
+
+const selectedScenario = async (configure?: (harness: Harness) => void) => {
+  const harness = await open((h) => {
+    h.document.text = "Draft: smith 2020 ends.";
+    h.document.selection = [7, 17];
+    h.target.readsSelection = true;
+    configure?.(h);
+  });
+  await act(async () => { await harness.reopen(); });
+  return harness;
+};
+
+test("short selected text opens as the search, all selected, and Enter pastes over it", async () => {
+  const harness = await selectedScenario();
+  const box = searchBox() as HTMLInputElement;
+  expect(box.value).toBe("smith 2020");
+  expect([box.selectionStart, box.selectionEnd]).toEqual([0, 10]);
+  await finishOpening(harness);
+  await enter();
+  await finishCopy(harness);
+  await finishDelivery(harness);
+  expect(harness.document.text).toBe("Draft: [@a] ends.");
+  expectReceipt(harness, "Pasted into Example Writer", "[@a]");
+});
+
+test("typing replaces the selected search and Enter still replaces the document's selection", async () => {
+  const harness = await selectedScenario();
+  await type("something else");
+  const job = harness.search.pending.filter((pending) => pending.args.text === "something else").at(-1)!;
+  await act(async () => { job.complete({ revision: "1", results: [first] }); });
+  await act(async () => { harness.preview.pending.at(-1)!.complete({ text: "[@a]" }); });
+  await enter();
+  await finishCopy(harness);
+  await finishDelivery(harness);
+  expect(harness.document.text).toBe("Draft: [@a] ends.");
+});
+
+test("a selection that changes before Enter is left alone, and the citation stays copied", async () => {
+  const harness = await selectedScenario();
+  await finishOpening(harness);
+  harness.document.selection = [0, 5];
+  await enter();
+  await finishCopy(harness);
+  await finishDelivery(harness);
+  expect(harness.document.text).toBe("Draft: smith 2020 ends.");
+  expect(harness.clipboard.text).toBe("[@a]");
+  expectReceipt(harness, "Copied. Ibis replaces only text it showed you. Press ⌘V to replace it.", "[@a]");
+});
+
+test("a long selection is ignored: an empty search, no paste over it, and the footer says Copy", async () => {
+  const words = "Invented sentence that runs on. ".repeat(6);
+  const harness = await selectedScenario((h) => {
+    h.document.text = words;
+    h.document.selection = [0, words.length];
+  });
+  expect((searchBox() as HTMLInputElement).value).toBe("");
+  await type("first");
+  const job = harness.search.pending.filter((pending) => pending.args.text === "first").at(-1)!;
+  await act(async () => { job.complete({ revision: "1", results: [first] }); });
+  await act(async () => { harness.preview.pending.at(-1)!.complete({ text: "[@a]" }); });
+  expect(screen.queryByRole("button", { name: /^Paste into/ })).toBeNull();
+  await enter();
+  await finishCopy(harness);
+  await finishDelivery(harness);
+  expect(harness.document.text).toBe(words);
+  expectReceipt(harness, "Copied. Ibis replaces only text it showed you. Press ⌘V to replace it.", "[@a]");
+});
+
+const copyFirst = async (harness: Harness, query: string) => {
+  await type(query);
+  const job = harness.search.pending.filter((pending) => pending.args.text === query).at(-1)!;
+  await act(async () => { job.complete({ revision: "1", results: [first] }); });
+  await act(async () => { harness.preview.pending.at(-1)!.complete({ text: "[@a]" }); });
+  await enter();
+  await finishCopy(harness);
+  await finishDelivery(harness);
+};
+const NOT_SHOWN = "Copied. Ibis replaces only text it showed you. Press ⌘V to replace it.";
+
+test("a multi-line selection opens an empty search, and Enter leaves it alone", async () => {
+  const lines = "first line\nsecond line";
+  const harness = await selectedScenario((h) => {
+    h.document.text = lines;
+    h.document.selection = [0, 22];
+  });
+  expect((searchBox() as HTMLInputElement).value).toBe("");
+  await copyFirst(harness, "first");
+  expect(harness.document.text).toBe(lines);
+  expectReceipt(harness, NOT_SHOWN, "[@a]");
+});
+
+test("a failed read opens an empty search, and Enter does not paste over text it never showed", async () => {
+  const harness = await selectedScenario((h) => { h.target.selectionFails = true; });
+  expect((searchBox() as HTMLInputElement).value).toBe("");
+  await copyFirst(harness, "first");
+  expect(harness.document.text).toBe("Draft: smith 2020 ends.");
+  expect(harness.clipboard.text).toBe("[@a]");
+  expectReceipt(harness, NOT_SHOWN, "[@a]");
+});
+
+test("a failed read with nothing selected still pastes at the caret", async () => {
+  const harness = await selectedScenario((h) => {
+    h.target.selectionFails = true;
+    h.document.selection = [7, 7];
+  });
+  await copyFirst(harness, "first");
+  expect(harness.document.text).toBe("Draft: [@a]smith 2020 ends.");
+});
+
+test("an app that cannot report a selection pastes as it always did", async () => {
+  const harness = await selectedScenario((h) => { h.target.readsSelection = false; });
+  expect((searchBox() as HTMLInputElement).value).toBe("");
+  await copyFirst(harness, "first");
+  expect(harness.document.text).toBe("Draft: [@a] ends.");
+});
+
+test("a refused app opens an empty search, and Enter changes nothing in the document", async () => {
+  const harness = await selectedScenario((h) => { h.target.refusal = "terminal"; });
+  expect((searchBox() as HTMLInputElement).value).toBe("");
+  expect(harness.clipboard.owner).toBeNull();
+  await copyFirst(harness, "first");
+  expect(harness.document.text).toBe("Draft: smith 2020 ends.");
+  expectReceipt(harness, "Copied. Not pasted into a terminal", "[@a]");
+});
+
+test("Copy only opens an empty search, and Enter changes nothing in the document", async () => {
+  const harness = await selectedScenario((h) => {
+    h.target.selectionFails = true;
+    h.appChoices.set(h.target.appId, { output: null, paste: "copy-only" });
+  });
+  expect((searchBox() as HTMLInputElement).value).toBe("");
+  await copyFirst(harness, "first");
+  expect(harness.document.text).toBe("Draft: smith 2020 ends.");
+  expectReceipt(harness, "Copied. Copy only is set for this app", "[@a]");
+});
+
+test("an unapproved app opens an empty search and changes nothing in the document", async () => {
+  const harness = await selectedScenario((h) => {
+    h.target.selectionFails = true;
+    h.target.verified = false;
+  });
+  expect((searchBox() as HTMLInputElement).value).toBe("");
+  expect(harness.document.pastes).toEqual([]);
+});
+
+test("closing and reopening with nothing selected starts empty, not on the old document text", async () => {
+  const harness = await selectedScenario();
+  await act(async () => { fireEvent.keyDown(searchBox(), { key: "Escape" }); });
+  expect((searchBox() as HTMLInputElement).value).toBe("");
+  await act(async () => { fireEvent.keyDown(searchBox(), { key: "Escape" }); });
+  harness.document.selection = [7, 7];
+  await act(async () => { await harness.reopen(); });
+  expect((searchBox() as HTMLInputElement).value).toBe("");
+});

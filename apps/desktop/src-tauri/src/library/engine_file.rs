@@ -442,8 +442,10 @@ impl FileLibrary {
                 _ => None,
             })
             .collect();
-        // A pasted list or a kept row has nothing in the way.
-        let unfiltered = if results.is_empty() { reply.unfiltered } else { None };
+        let unfiltered = results
+            .is_empty()
+            .then(|| ibis_engine::without_filters(&query.text))
+            .flatten();
         Ok(SearchReply {
             revision,
             results,

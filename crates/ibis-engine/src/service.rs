@@ -98,10 +98,6 @@ pub struct SearchResult {
     /// The locator read off the end of the query, when one was asked for and found.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub locator: Option<ibis_core::locator::TrailingLocator>,
-    /// When nothing matched, the query without its field hints and tags, to
-    /// offer instead; empty when hints were all it had.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub unfiltered: Option<String>,
 }
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct StylesResult {
@@ -372,15 +368,8 @@ impl Engine {
             list: Option<&'a PastedList>,
             #[serde(skip_serializing_if = "Option::is_none")]
             locator: Option<&'a ibis_core::locator::TrailingLocator>,
-            #[serde(skip_serializing_if = "Option::is_none")]
-            unfiltered: Option<&'a String>,
         }
-        let unfiltered = hits
-            .is_empty()
-            .then(|| ibis_core::search::without_filters(&request.query))
-            .flatten();
         let view = SearchView {
-            unfiltered: unfiltered.as_ref(),
             snapshot: state.index.snapshot().fingerprints(),
             list: list.as_ref(),
             locator: locator.as_ref(),
@@ -412,7 +401,6 @@ impl Engine {
                 })
                 .collect(),
             locator,
-            unfiltered,
         })
     }
     pub fn show(&self, request: &ShowRequest) -> Result<SnapshotObject, EngineError> {
@@ -712,7 +700,7 @@ fn select<'a>(
                 let LibraryObject::Record(record) = &item.object else {
                     return false;
                 };
-                record.citation_keys.iter().any(|candidate| candidate.value == *key) || record.aliases.contains(key)
+                record.answers_to(key)
             });
             let found = matches.next().ok_or_else(|| {
                 if libraries.values().any(|library| library.duplicate_keys.contains(key)) {

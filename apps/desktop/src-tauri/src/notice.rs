@@ -10,6 +10,7 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
+use ibis_core::destination::AppId;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 
@@ -23,13 +24,15 @@ const TITLE: &str = "Ibis notice";
 /// As long as the prototype shows it: a 120 ms fade in, then the page's
 /// 200 ms fade out, which this timer starts with `notice:leave`.
 const SHOWN_FOR: Duration = Duration::from_millis(2_800);
+/// A note is read once, ever, so it stays long enough to read.
+const NOTE_SHOWN_FOR: Duration = Duration::from_millis(9_000);
 /// The page's fade out (`notice.css`).
 const FADE_OUT: Duration = Duration::from_millis(200);
 /// Time for the `notice:leave` event to reach the page before the window goes.
 const GRACE: Duration = Duration::from_millis(100);
 /// A new window's timer starts when its page has loaded; this one takes it
 /// away if the page never loads.
-const LOAD_LIMIT: Duration = Duration::from_millis(8_000);
+const LOAD_LIMIT: Duration = Duration::from_millis(10_000);
 /// The notice names what was copied on one line; longer text is cut short.
 const TEXT_LIMIT: usize = 200;
 
@@ -50,11 +53,11 @@ impl Platform {
     };
 }
 
-/// Shared 560x100-point notice frame: room for the longest reason and a
-/// second line for the citation, with 16 points for the pill's shadow. The
+/// Shared 560x140-point notice frame: room for the longest reason, the
+/// citation and the plugin note, with 16 points for the pill's shadow. The
 /// window ignores the pointer, so its clear margins never block a click.
 pub(crate) fn notice_size(_platform: Platform) -> (f64, f64) {
-    (560.0, 100.0)
+    (560.0, 140.0)
 }
 
 /// Place the shared pill near the top centre, within the usable display area.
@@ -147,6 +150,16 @@ pub(crate) struct NoticeMessage {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[specta(optional)]
     milestone: Option<u32>,
+    /// The first paste into this word processor: insert with its plugin if the
+    /// document uses one.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    plugin_note: bool,
+}
+
+impl NoticeMessage {
+    fn shown_for(&self) -> Duration {
+        if self.plugin_note { NOTE_SHOWN_FOR } else { SHOWN_FOR }
+    }
 }
 
 /// The notice being shown, for a notice page that has just loaded and missed
@@ -180,6 +193,8 @@ pub(crate) async fn show_copied_notice(
         .and_then(|mut owner| owner.claim(delivery));
     #[cfg(target_os = "windows")]
     let ticket = receipt.and_then(|_| crate::paste::take_copy(&app, delivery));
+    // Read before delivery: a proof only ever belongs to this capture.
+    let target = crate::paste::last_app(&app).map(|(id, ..)| id);
     // A paste may wait up to a second for the app to come back to the front.
     let delivered = {
         let (app, text) = (app.clone(), text.clone());
@@ -206,6 +221,7 @@ pub(crate) async fn show_copied_notice(
     } else {
         None
     };
+    let pasted_into = target.filter(|_| receipt.is_some() && matches!(delivered, Delivered::Pasted { .. }));
     show(
         &app,
         NoticeMessage {
@@ -215,13 +231,15 @@ pub(crate) async fn show_copied_notice(
                 .map_or_else(|| self::summary(&text), |receipt| self::summary(&receipt.text)),
             more: summary.map(|receipt| receipt.more),
             milestone,
+            plugin_note: false,
         },
         receipt,
+        pasted_into,
     );
     delivered
 }
 
-fn show(app: &AppHandle, text: NoticeMessage, receipt: Option<u64>) {
+fn show(app: &AppHandle, mut text: NoticeMessage, receipt: Option<u64>, pasted_into: Option<AppId>) {
     let notice = app.state::<Notice>();
     // Check after acquiring the publication lock. If B publishes while A
     // waits here, A cannot replace B's text, restart its timer or show itself.
@@ -230,6 +248,9 @@ fn show(app: &AppHandle, text: NoticeMessage, receipt: Option<u64>) {
     if !owner.current(receipt) {
         return;
     }
+    // Spent only here: a notice a newer one replaced keeps it for the next paste.
+    text.plugin_note = pasted_into.is_some_and(|id| app.state::<crate::destination::AppMemory>().take_plugin_note(&id));
+    let shown_for = text.shown_for();
     if let Ok(mut current) = notice.text.lock() {
         *current = Some(text.clone());
     }
@@ -244,7 +265,7 @@ fn show(app: &AppHandle, text: NoticeMessage, receipt: Option<u64>) {
                 }
                 report(window.emit_to(LABEL, "notice:show", &text), NativeIssue::Notice);
                 present(app);
-                SHOWN_FOR
+                shown_for
             }
             // Its page starts the usual timer once it has loaded.
             None if create(app).is_some() => LOAD_LIMIT,
@@ -398,8 +419,14 @@ fn create(app: &AppHandle) -> Option<()> {
             report(window.set_ignore_cursor_events(true), NativeIssue::Notice);
         }
         let app = window.app_handle();
-        let showing = app.state::<Notice>().showing.load(Ordering::SeqCst);
-        dismiss_after(app, showing, SHOWN_FOR);
+        let notice = app.state::<Notice>();
+        let showing = notice.showing.load(Ordering::SeqCst);
+        let shown_for = notice
+            .text
+            .lock()
+            .ok()
+            .and_then(|text| text.as_ref().map(NoticeMessage::shown_for));
+        dismiss_after(app, showing, shown_for.unwrap_or(SHOWN_FOR));
     });
     let window = checked(builder.build(), NativeIssue::Notice)?;
     #[cfg(target_os = "macos")]
@@ -679,8 +706,8 @@ mod tests {
     #[test]
     fn all_platforms_use_the_shared_pill_frame_and_top_centre_placement() {
         for platform in [Platform::MacOs, Platform::Windows, Platform::Linux] {
-            assert_eq!(notice_size(platform), (560.0, 100.0));
-            let (x, y) = notice_position(platform, LEFT, 560.0, 100.0);
+            assert_eq!(notice_size(platform), (560.0, 140.0));
+            let (x, y) = notice_position(platform, LEFT, 560.0, 140.0);
             assert_eq!(x + 280.0, LEFT.x + LEFT.width / 2.0);
             assert_eq!(y, LEFT.y + 24.0);
         }

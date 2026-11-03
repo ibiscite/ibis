@@ -291,8 +291,6 @@ fn setting_label(setting: &str) -> String {
         "citation_style" => "Citation style",
         "density" => "Row density",
         "larger_text" => "Larger text",
-        "show_paste_preview" => "Show the citation",
-        "search_icon" => "Search field icon",
         "paste" => "Enter pastes",
         "menu_bar" => "Menu bar item",
         "recent_citations" => "Recent citations",

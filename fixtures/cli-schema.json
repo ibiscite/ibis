@@ -1139,13 +1139,6 @@
           },
           "snapshot": {
             "$ref": "#/$defs/Fingerprints"
-          },
-          "unfiltered": {
-            "description": "When nothing matched, the query without its field hints and tags, to\noffer instead; empty when hints were all it had.",
-            "type": [
-              "string",
-              "null"
-            ]
           }
         },
         "required": [
@@ -2256,6 +2249,11 @@
               {
                 "const": "accessibility-required",
                 "description": "macOS Accessibility trust is required for the identity-only focus proof.",
+                "type": "string"
+              },
+              {
+                "const": "selection-not-shown",
+                "description": "A paste would replace selected text the search never showed.",
                 "type": "string"
               }
             ]

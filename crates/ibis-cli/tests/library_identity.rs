@@ -88,6 +88,11 @@ fn tool(engine: &Engine, name: &str, arguments: Value) -> Result<Value, String> 
     }
 }
 
+/// An MCP ref for an item reference, as search would give it.
+fn mcp_ref(item: &Value) -> String {
+    ibis_engine::mcp::reference(&serde_json::from_value(item.clone()).unwrap())
+}
+
 fn opened(paths: &[&Path]) -> Engine {
     let engine = Engine::new().unwrap().without_file_watches();
     for path in paths {
@@ -181,20 +186,25 @@ fn a_keyless_csl_record_formats_and_key_output_refuses_it() {
     assert_eq!(key["data"]["text"], "");
 
     assert_eq!(
-        tool(&engine, "cite", json!({"items":[{"id":item}]})).unwrap()["text"],
+        tool(&engine, "cite", json!({"items":[{"ref":mcp_ref(&item)}]})).unwrap()["text"],
         "(Doe, 2026)"
     );
-    let refused = tool(&engine, "cite", json!({"items":[{"id":item}],"syntax":"pandoc"})).unwrap_err();
+    let refused = tool(
+        &engine,
+        "cite",
+        json!({"items":[{"ref":mcp_ref(&item)}],"syntax":"pandoc"}),
+    )
+    .unwrap_err();
     assert!(refused.contains("has no citation key"), "{refused}");
     assert_eq!(
-        tool(&engine, "show", json!({"item":{"id":item}})).unwrap()["key"],
+        tool(&engine, "show", json!({"ref":mcp_ref(&item)})).unwrap()["key"],
         Value::Null
     );
     // The source `id` was never a key, so looking it up finds nothing.
     let lookup = asked(&engine, Method::Show, &json!({"item":{"by":"key","value":"item-7"}}));
     assert_eq!(lookup["error"]["code"], "not-found");
     assert!(
-        tool(&engine, "show", json!({"item":{"key":"item-7"}}))
+        tool(&engine, "show", json!({"ref":"item-7"}))
             .unwrap_err()
             .contains("not-found")
     );
@@ -220,7 +230,7 @@ fn csl_json_key_export_keeps_the_source_id() {
     assert_eq!(records[0]["id"], "item-7");
     assert_eq!(records[0]["citation-key"], "Doe2026");
     // MCP offers no CSL-JSON key output, but finds the record by its real key.
-    let cited = tool(&engine, "cite", json!({"items":[{"key":"Doe2026"}],"syntax":"pandoc"})).unwrap();
+    let cited = tool(&engine, "cite", json!({"items":[{"ref":"Doe2026"}],"syntax":"pandoc"})).unwrap();
     assert_eq!(cited["text"], "[@Doe2026]");
 }
 
@@ -283,9 +293,13 @@ fn an_id_that_is_not_loaded_is_not_found_and_a_malformed_one_is_bad_input() {
         assert_eq!(asked(&engine, Method::Search, &search)["error"]["code"], code);
         let reload = json!({"action":"reload","library":library});
         assert_eq!(asked(&engine, Method::Libraries, &reload)["error"]["code"], code);
-        let item = json!({"id":{"library":library,"key":"record:Doe2026"}});
-        let text = tool(&engine, "show", json!({"item":item})).unwrap_err();
-        assert!(text.contains(code), "{text}");
+        // MCP refs are text: one that names no loaded library finds nothing.
+        let reference = format!("id:{library}/record:Doe2026");
+        let text = tool(&engine, "show", json!({"ref":reference})).unwrap_err();
+        assert!(
+            text.starts_with("error: not-found") || text.starts_with("error: bad-input"),
+            "{text}"
+        );
     }
     // Nothing was read or replaced by asking.
     assert_eq!(engine.snapshot().unwrap().fingerprints(), before.fingerprints());
@@ -314,12 +328,12 @@ fn a_key_in_two_libraries_formats_by_reference_and_its_lookup_says_ambiguous() {
             &request(&item, json!({"kind":"csl","style":"apa"})),
         );
         assert_eq!(formatted["data"]["outcomes"][0]["outcome"], "rendered");
-        assert!(tool(&engine, "cite", json!({"items":[{"id":item}]})).is_ok());
+        assert!(tool(&engine, "cite", json!({"items":[{"ref":mcp_ref(&item)}]})).is_ok());
     }
     let lookup = asked(&engine, Method::Show, &json!({"item":{"by":"key","value":"Doe2026"}}));
     assert_eq!(lookup["error"]["code"], "bad-input");
     assert_eq!(lookup["error"]["reason"], "ambiguous-key");
-    let text = tool(&engine, "show", json!({"item":{"key":"Doe2026"}})).unwrap_err();
+    let text = tool(&engine, "show", json!({"ref":"Doe2026"})).unwrap_err();
     assert!(text.contains("Several references have this key"), "{text}");
 }
 
