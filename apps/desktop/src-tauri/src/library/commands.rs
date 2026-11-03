@@ -170,6 +170,7 @@ pub(crate) async fn search(
             results: Vec::new(),
             interpretation: None,
             list: None,
+            unfiltered: None,
         });
     };
     let project = project.current();

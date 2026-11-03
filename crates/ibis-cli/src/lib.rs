@@ -35,6 +35,17 @@ mcp speak their own protocols instead). Messages go to stderr. Exit codes: 0 ok,
 5 source unavailable or resource limit, 6 newer format, 70 internal, 130 cancelled.
 
 Reference for scripts and agents: https://github.com/ibiscite/ibis/blob/main/docs/cli.md";
+const GREETING: &str = "\
+finds references and cites them anywhere.
+
+Try it:
+  ibis search lantern --file refs.bib       find a reference
+  ibis cite vale2024lanterns --file refs.bib --style apa
+                                            make a citation
+  ibis doctor --file refs.bib               check a library
+
+With the Ibis app installed you can leave out --file.
+Add --json to any command for scripts and agents. All commands: ibis --help";
 
 fn command() -> Command {
     // Keep list values in their own scope: clap's global propagation replaces
@@ -434,6 +445,15 @@ fn run_engine<R: BufRead, W: Write + Send, E: Write>(
     mode: OutputMode,
     defaults: Defaults,
 ) -> u8 {
+    // A person at a terminal gets a start; a script still gets the usage error.
+    if arguments.len() < 2 && mode == OutputMode::Terminal {
+        let greeting = format!("Ibis {} {GREETING}\n", ibis_core::VERSION);
+        return if output.write_all(greeting.as_bytes()).is_ok() {
+            0
+        } else {
+            70
+        };
+    }
     let json = arguments.iter().any(|argument| argument == "--json");
     let program = program_name(arguments.first());
     let matches = match command().bin_name(&program).try_get_matches_from(arguments.iter()) {

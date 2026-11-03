@@ -39,6 +39,11 @@ Ibis uses; the source stays the original, and an export that needs the original
 entry reads it from the source (2026-10-27: in-memory raw copies dropped, which
 nothing read and which doubled memory). Details: [architecture](architecture.md).
 
+2026-11-02 (maintainer): the engine is the soul of Ibis. It stands on its own and
+is developed in tandem with the app, with no compromises; the GUI is only a layer.
+It must work with AI agents, run on every operating system and be there for anyone
+to build on.
+
 ## 0004 Desktop shell (with 0012)
 
 Tauri 2 with a React interface, in one process: the picker window is hidden

@@ -5,6 +5,7 @@
 use std::collections::BTreeMap;
 
 use ibis_core::contract::{LibraryObject, Record};
+pub use ibis_core::model::strip_markup;
 use ibis_sources::{LoadedLibrary, SourceWarning, WarningCode};
 use serde_json::Value;
 
@@ -106,24 +107,6 @@ pub fn warned_at(loaded: &LoadedLibrary, code: WarningCode, line: usize) -> usiz
         .iter()
         .filter(|warning| warning.code == code && warning.line == Some(line))
         .count()
-}
-
-/// Remove CSL rich-text tags and decode the entities used to escape text.
-pub fn strip_markup(rich: &str) -> String {
-    let mut out = String::with_capacity(rich.len());
-    let mut in_tag = false;
-    for c in rich.chars() {
-        match c {
-            '<' => in_tag = true,
-            '>' if in_tag => in_tag = false,
-            _ if !in_tag => out.push(c),
-            _ => {}
-        }
-    }
-    out.replace("&lt;", "<")
-        .replace("&gt;", ">")
-        .replace("&quot;", "\"")
-        .replace("&amp;", "&")
 }
 
 /// The shared name model built from a source's CSL name.
