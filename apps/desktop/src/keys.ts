@@ -40,7 +40,7 @@ export function keysFor(action: KeyAction): string {
 
 const NAMED: Record<string, [mac: string, other: string]> = {
   enter: ["↵", "Enter"], escape: ["Esc", "Esc"], arrowdown: ["↓", "↓"], arrowup: ["↑", "↑"],
-  home: ["Home", "Home"], end: ["End", "End"], tab: ["Tab", "Tab"], space: ["Space", "Space"],
+  home: ["Home", "Home"], end: ["End", "End"], tab: ["Tab", "Tab"], space: ["Space", "Space"], backspace: ["⌫", "Backspace"],
 };
 
 /** Display order only; accelerator matching retains the original binding. */

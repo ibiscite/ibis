@@ -1,6 +1,6 @@
 // The lightweight mocked Rust side and shared steps for whole-picker tests.
 // For clipboard/document outcomes and reordered workers, use ./delivery instead.
-import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { clearMocks, mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { vi } from "vitest";
 import { listen } from "@tauri-apps/api/event";
@@ -74,9 +74,16 @@ export async function openCitationDetails(): Promise<HTMLInputElement> {
   return screen.findByRole<HTMLInputElement>("textbox", { name: "Page" });
 }
 
+/** Picks a form from the inspector's Form pop-up. */
+export async function chooseForm(name: string) {
+  fireEvent.click(await waitFor(() => within(document.querySelector<HTMLElement>(".inspector")!).getByRole("button", { name: /^Show as / })));
+  const menu = await waitFor(() => { const list = document.querySelector<HTMLElement>('[role="menu"]'); if (!list) throw new Error("The Form menu is not open"); return list; });
+  fireEvent.click(within(menu).getByRole("menuitemradio", { name }));
+}
+
 export function closeCitationDetails() {
-  const dialog = screen.queryByRole("dialog", { name: /^(Citation details|Selected references)/ });
-  if (dialog) fireEvent.keyDown(dialog, { key: "Escape" });
+  const details = document.querySelector(".inspector");
+  if (details) fireEvent.keyDown(details, { key: "Escape" });
 }
 
 export function result(key: string, title: string, source = "refs.bib") {

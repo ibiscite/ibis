@@ -24,6 +24,8 @@
 }
 .ui-side-navigation-item[aria-current="page"] { background: var(--selected); color: var(--selected-text); }
 .ui-side-navigation-item[data-focus-visible] { outline: var(--ring-width) solid var(--ring); outline-offset: calc(-1 * var(--ring-width)); }
+/* The accent ring would vanish on the accent fill, so the selected row's ring takes its text colour, inside the fill. */
+.ui-side-navigation-item[data-focus-visible][aria-selected="true"] { outline-color: var(--selected-text); outline-offset: calc(-2 * var(--ring-width)); }
 .ui-side-navigation-empty { margin: 0; padding: var(--row-spacing) var(--space-2); color: var(--text-secondary); font-size: var(--type-body-size); line-height: var(--type-body-line); }
 /* About sits at the foot of the sidebar. */
 .ui-side-navigation-item[data-gap-before] { margin-block-start: auto; }

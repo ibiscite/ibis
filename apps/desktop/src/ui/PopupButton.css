@@ -1,4 +1,6 @@
 .ui-popup-button.ui-button { gap: var(--space-1); max-width: 12rem; font: var(--type-body-size)/var(--type-body-line) var(--font); }
+/* The chevron sits nearer the edge than the label starts, as an NSPopUpButton draws it. */
+.ui-popup-button.ui-button[data-variant] { padding-inline: var(--space-3) var(--space-2); }
 .toolbar-menu-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 :root[data-platform="macos"] .ui-popup-button { min-height: calc(var(--control-h) - var(--space-1)); }
 

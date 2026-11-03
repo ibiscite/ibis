@@ -494,7 +494,8 @@ test("rows keep equal insets, fit intrinsic labels to the viewport and wrap at i
   expect(toolbar).toMatch(/\.toolbar-menu-filter input \{[^}]*padding-inline: var\(--menu-label-start\) var\(--menu-item-pad\)/);
   expect(menuCss).toMatch(/\.menu-heading \{[^}]*padding-inline: var\(--menu-label-start\) var\(--menu-item-pad\)/);
   expect(toolbar).toMatch(/\.toolbar-menu-popover \{[^}]*min-width: min\(300px, calc\(100vw - 16px\)\);/);
-  expect(toolbar).toMatch(/\.toolbar-menu-sample \{[^}]*min-width: 0;[^}]*white-space: normal;/);
+  expect(toolbar).toMatch(/\.toolbar-menu-sample \{[^}]*min-width: 0;[^}]*white-space: nowrap;/);
+  expect(toolbar).toMatch(/\.toolbar-menu-sample\[data-prose\] \{[^}]*white-space: normal;/);
   expect(menuCss).toContain("--menu-check-width: var(--icon-small)");
   expect(`${menuCss}${toolbar}`).not.toMatch(/\b(14|34)px\b/);
 });

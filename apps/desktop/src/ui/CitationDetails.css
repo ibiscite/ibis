@@ -1,27 +1,18 @@
-/* Menu rows: Menu.css sets the height, padding and check column. */
-.citation-details { display: flex; flex-direction: column; color: var(--text); }
-.citation-forms { display: flex; flex-direction: column; }
-.citation-form, .citation-page { position: relative; display: flex; align-items: center; gap: var(--menu-item-gap); min-height: var(--menu-item-height); padding-inline: var(--menu-item-pad); border-radius: var(--menu-item-radius); }
-/* Keep the native radio inside its own row and give it the row's whole hit
-   area. React Aria's clipped wrapper must not clip or displace that target. */
-.citation-form > span:has(> input[type="radio"]) { display: contents; }
-.citation-form input[type="radio"] { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; box-sizing: border-box; opacity: 0; z-index: var(--z-content); cursor: inherit; }
-.citation-form-check { flex: 0 0 var(--menu-check-width); display: inline-flex; justify-content: center; }
-.citation-form-check > svg { width: var(--icon-small); height: var(--icon-small); }
-.citation-form-label { flex: none; }
-.citation-form:is([data-hovered], [data-focus-visible]) { background: var(--menu-highlight); color: var(--menu-highlight-text); }
-.citation-form[data-disabled] { color: var(--text-disabled); }
-/* Why a form is unavailable reads as a sentence under it, not a sliver beside it. */
-.citation-form:has(.citation-form-reason) { flex-wrap: wrap; padding-block: var(--space-1); }
-.citation-form-example.citation-form-reason { flex-basis: 100%; padding-inline-start: calc(var(--menu-check-width) + var(--menu-item-gap)); text-align: start; }
-.citation-form-example { flex: 1; min-width: 0; padding-inline-start: var(--space-5); color: var(--text-secondary); font-size: var(--type-label-size); line-height: var(--type-label-line); text-align: end; overflow-wrap: anywhere; }
-.citation-form:is([data-hovered], [data-focus-visible]) .citation-form-example { color: inherit; }
-.citation-page { padding-inline-start: var(--menu-label-start); }
-.citation-page label { flex: none; }
-.citation-page input { flex: 1; min-width: 0; border: 0; padding: 0; background: transparent; color: var(--text); font: inherit; font-variant-numeric: tabular-nums; text-align: end; }
-.citation-page input::placeholder { color: var(--text-placeholder); opacity: 1; }
-.citation-page:focus-within { background: var(--surface-field); }
-.citation-page input:focus-visible { outline: none; }
+/* Inspector rows, as Xcode's and Finder's: a trailing-aligned label, then one
+   control. Both controls draw at the same height and keep 32 px targets. */
+.citation-details { display: grid; grid-template-columns: max-content minmax(0, 1fr); column-gap: var(--space-2); }
+.citation-field { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; align-items: center; min-height: var(--control-h); }
+.citation-label { color: var(--text-secondary); font-size: var(--type-body-size); line-height: var(--type-body-line); text-align: end; }
+/* The clear border is the rest of the target; the fill lines up with the pop-up's. */
+.citation-field input { --field-gap: calc((var(--control-h) - var(--action-h)) / 2); box-sizing: border-box; width: calc(100% + 2 * var(--field-gap)); min-width: 0; height: var(--control-h); margin-inline: calc(-1 * var(--field-gap)); padding-inline: calc(var(--space-3) + var(--border-width)); border: var(--field-gap) solid transparent; border-radius: calc(var(--r-control) + var(--field-gap)); background: var(--surface-field) padding-box; color: var(--text); font: var(--type-body-size) / var(--type-body-line) var(--font); font-variant-numeric: tabular-nums; }
+.citation-field input::placeholder { color: var(--text-tertiary); opacity: 1; }
+/* With the caret in it, an empty field reads as empty, not as holding "None". */
+.citation-field input:focus::placeholder { color: transparent; }
+.citation-note { grid-column: 1 / -1; margin: 0; padding-block: var(--space-1); color: var(--text-secondary); font-size: var(--type-body-size); line-height: var(--type-body-line); overflow-wrap: break-word; }
+.citation-field input:focus-visible { outline-offset: calc(var(--border-width) - var(--field-gap)); }
+.citation-field .toolbar-menu-control { display: flex; min-width: 0; }
+.citation-field .ui-popup-button.ui-button { flex: 1; justify-content: space-between; min-width: 0; max-width: none; }
 @media (pointer: coarse) {
-  .citation-form, .citation-page { min-height: var(--touch-target); }
+  .citation-field { min-height: var(--touch-target); }
+  .citation-field input { height: var(--touch-target); }
 }
