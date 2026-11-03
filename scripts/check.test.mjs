@@ -15,6 +15,9 @@ const copyChecker = (scripts) => {
   for (const name of ["empty.test.mjs", "picker-budget.mjs"]) writeFileSync(join(scripts, name), "");
 };
 
+// Compiles a WebKit check that ends as SWIFT_RESULT says.
+const stubSwift = (bin) => writeFileSync(join(bin, "swiftc"), '#!/bin/sh\nprintf "#!/bin/sh\\nexit ${SWIFT_RESULT:-0}\\n" > "$4"\nchmod +x "$4"\n', { mode: 0o755 });
+
 test("brand-only checks rebuild without starting Rust or changing source files", { skip: process.platform === "win32" }, (t) => {
   const root = mkdtempSync(join(tmpdir(), "ibis-brand-check-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
@@ -97,8 +100,7 @@ test("a change selects the checks CI would run", { skip: process.platform === "w
   mkdirSync(scripts); mkdirSync(bin); mkdirSync(desktop, { recursive: true });
   copyChecker(scripts);
   for (const tool of ["actionlint", "cargo", "pnpm", "python3"]) writeFileSync(join(bin, tool), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
-  // Compiles a WebKit check that ends as SWIFT_RESULT says.
-  writeFileSync(join(bin, "swiftc"), '#!/bin/sh\nprintf "#!/bin/sh\\nexit ${SWIFT_RESULT:-0}\\n" > "$4"\nchmod +x "$4"\n', { mode: 0o755 });
+  stubSwift(bin);
   const env = { ...process.env, [pathKey]: `${bin}${delimiter}${process.env[pathKey] ?? ""}`, GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@example.org", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@example.org" };
   delete env.NODE_TEST_CONTEXT;
   const git = (...args) => assert.equal(spawnSync("git", args, { cwd: root, env }).status, 0, args.join(" "));
@@ -143,6 +145,7 @@ test("a missing minimum Rust toolchain reports incomplete instead of failed", { 
   mkdirSync(scripts); mkdirSync(bin); mkdirSync(join(root, "apps/desktop"), { recursive: true });
   copyChecker(scripts);
   for (const tool of ["actionlint", "pnpm", "python3"]) writeFileSync(join(bin, tool), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+  stubSwift(bin);
   writeFileSync(join(bin, "cargo"), '#!/bin/sh\ncase "$1" in +*) exit 1 ;; esac\nexit 0\n', { mode: 0o755 });
   const env = { ...process.env, [pathKey]: `${bin}${delimiter}${process.env[pathKey] ?? ""}` };
   delete env.NODE_TEST_CONTEXT;
