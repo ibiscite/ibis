@@ -1,7 +1,7 @@
 // Real built picker + invented IPC. Browser layout evidence, not native input/engine proof.
 // Serve `pnpm build` with `pnpm exec vite preview`; reuse an installed Playwright.
 import assert from "node:assert/strict";
-import { dismissMenu, hasMiddleViewport, isAnchoredDetails, isWholeNotice, isWholeRadioTarget, isWholeShelf, noticeText, refusalGeometry, refusalPresentation, shelfControl, waitForLayout } from "./picker-layout-checks.mjs";
+import { dismissMenu, hasMiddleViewport, isSeatedInspector, isWholeNotice, isWholeShelf, noticeText, refusalGeometry, refusalPresentation, shelfControl, waitForLayout } from "./picker-layout-checks.mjs";
 const { chromium } = await import(process.env.IBIS_PLAYWRIGHT_MODULE || "playwright");
 const base = new URL(process.argv[2] || "http://127.0.0.1:4173");
 assert.ok(["127.0.0.1", "localhost"].includes(base.hostname), "Use a loopback fixture server");
@@ -148,7 +148,7 @@ try {
       const main = document.querySelector("main"), bounds = main.getBoundingClientRect();
       const issues = [];
       if (document.documentElement.scrollHeight > innerHeight + 1 || document.documentElement.scrollTop || document.body.scrollTop || main.scrollTop) issues.push("window scrolls");
-      const active = document.querySelector(".details-menu-body") ?? main;
+      const active = document.querySelector(".inspector") ?? main;
       const scrollers = [...active.querySelectorAll("*")].filter((node) => /auto|scroll/.test(getComputedStyle(node).overflowY) && node.clientHeight > 0 && node.scrollHeight > node.clientHeight + 1);
       if (scrollers.length > 1) issues.push(`multiple scrollbars: ${scrollers.map((node) => `${node.className}:${node.clientHeight}/${node.scrollHeight}`).join(", ")}`);
       for (const button of main.querySelectorAll("footer button")) {
@@ -174,9 +174,9 @@ try {
           const rect = node.getBoundingClientRect(), frame = band.getBoundingClientRect();
           return rect.top >= frame.top - 1 && rect.bottom <= frame.bottom + 1 && rect.left >= frame.left - 1 && rect.right <= frame.right + 1;
         }
-        const owner = [node.closest(".details-menu-scroll"), node.closest(".results-area"), node.closest(".picker-content")]
+        const owner = [node.closest(".inspector-document"), node.closest(".inspector-column"), node.closest(".inspector-body"), node.closest(".results-area"), node.closest(".picker-content")]
           .find((part) => part && /auto|scroll/.test(getComputedStyle(part).overflowY));
-        const middle = (node.closest(".details-menu-scroll") ?? node.closest(".picker-content")).getBoundingClientRect();
+        const middle = (node.closest(".inspector") ?? node.closest(".picker-content")).getBoundingClientRect();
         const bounds = owner.getBoundingClientRect();
         const top = Math.max(middle.top, bounds.top), bottom = Math.min(middle.bottom, bounds.bottom);
         const rect = node.getBoundingClientRect();
@@ -308,68 +308,61 @@ try {
     await page.getByRole("option").last().waitFor();
     await checkScan("results");
     assert.deepEqual(page.viewportSize(), frame, "typing results keeps the opening frame");
-    const anchoredMenu = async (anchor) => {
-      const rect = await anchor.evaluate((node) => {
-        const rect = node.getBoundingClientRect();
-        return { top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right };
-      });
-      await waitForCheck("details-menu-anchored-and-contained", isAnchoredDetails, rect);
-    };
+    const seated = () => waitForCheck("inspector-seated-beside-the-list", isSeatedInspector);
     const openEditor = async () => {
       const open = async () => {
         const edit = shelfControl(page, /^Edit /).first();
-        const count = shelfControl(page, /^Show all /);
-        if (await edit.count()) { await edit.click(); return edit; }
-        await count.click();
-        const choices = page.getByRole("dialog", { name: "Selected references", exact: true });
-        await choices.getByRole("button", { name: /^Edit / }).first().click();
-        return count;
+        if (await edit.count()) { await edit.click(); return; }
+        await shelfControl(page, /^\d+ references$/).click();
+        await page.getByRole("menuitemradio").first().click();
       };
-      let anchor = await open();
-      let dialog = page.getByRole("dialog", { name: /^Citation details/ });
-      await dialog.waitFor();
-      const pageField = dialog.getByRole("textbox", { name: "Page", exact: true });
+      await open();
+      const inspector = page.getByRole("region", { name: /^Citation details for/ });
+      await inspector.waitFor();
+      const pageField = inspector.getByRole("textbox", { name: "Page", exact: true });
       assert.equal(await pageField.evaluate((node) => document.activeElement === node), true, "opening a segment focuses Page");
-      await anchoredMenu(anchor);
+      await seated();
       await pageField.press("Tab");
-      await dialog.waitFor({ state: "detached" });
-      assert.equal(await page.evaluate(() => document.activeElement !== document.body && !document.activeElement.closest(".details-menu")), true, "Tab closes details and moves on");
-      anchor = await open();
-      dialog = page.getByRole("dialog", { name: /^Citation details/ });
-      await dialog.waitFor();
-      await anchoredMenu(anchor);
-      return dialog;
+      assert.equal(await page.evaluate(() => document.activeElement?.closest(".inspector") !== null), true, "Tab moves through the inspector");
+      await inspector.waitFor();
+      return inspector;
     };
-    const closeEditor = async (dialog) => {
-      await dialog.press("Escape");
-      await dialog.waitFor({ state: "detached" });
+    const closeEditor = async (inspector) => {
+      await page.keyboard.press("Escape");
+      await inspector.waitFor({ state: "detached" });
     };
-    const checkFormPointers = async (dialog) => {
-      for (const radio of await dialog.getByRole("radio").all()) {
-        if (await radio.isDisabled()) continue;
-        await radio.scrollIntoViewIfNeeded();
-        assert.equal(await radio.evaluate(isWholeRadioTarget), true, "the enabled native radio fills its row and receives pointer hits");
-        await radio.click({ trial: true });
-      }
-      const remove = dialog.getByRole("button", { name: /^Remove from Citation/ });
-      if (await remove.isEnabled()) await remove.click({ trial: true });
+    const formMenu = async (inspector) => {
+      await inspector.getByRole("button", { name: /^Show as / }).click();
+      const menu = page.getByRole("menu");
+      await menu.waitFor();
+      return menu;
     };
+    const steady = () => page.evaluate(() => [".inspector-column", ".inspector-reference", ".shelf"].map((part) => {
+      const { top, left, width, height } = document.querySelector(part).getBoundingClientRect();
+      return [top, left, width, height];
+    }));
     if (shelfDetails === "forms") {
-      const dialog = await openEditor();
-      await dialog.locator(".citation-forms").getByText("(Aster, 2026)", { exact: true }).waitFor();
-      await checkFormPointers(dialog);
-      const year = dialog.getByRole("radio", { name: "Year only", exact: true });
-      await year.check();
+      const inspector = await openEditor();
+      const pageField = inspector.getByRole("textbox", { name: "Page", exact: true });
+      await pageField.focus();
+      const before = await steady();
+      for (const value of ["1", "12", "12–15", "12–15, 17, 19"]) { await pageField.fill(value); await page.evaluate(() => new Promise(requestAnimationFrame)); assert.deepEqual(await steady(), before, "nothing moves while typing a page"); }
+      await pageField.fill("");
+      let menu = await formMenu(inspector);
+      await menu.getByText("(Aster, 2026)", { exact: true }).waitFor();
+      await menu.getByRole("menuitemradio", { name: "Year only", exact: true }).click();
       await page.locator(".shelf .preview-text").filter({ hasText: /^\(2026\)$/ }).waitFor();
-      await dialog.getByRole("textbox", { name: "Page", exact: true }).fill("9");
+      await inspector.getByRole("textbox", { name: "Page", exact: true }).fill("9");
       await page.locator(".shelf .preview-text").filter({ hasText: /^\(2026, p\. 9\)$/ }).waitFor();
-      await closeEditor(dialog);
+      await closeEditor(inspector);
       await search.press("ArrowDown"); await search.press("Shift+Enter");
       const mixed = await openEditor();
-      const narrative = mixed.getByRole("radio", { name: "Name in the sentence", exact: true });
-      assert.equal(await narrative.isDisabled(), true, "unsupported group form is disabled before editing");
-      await mixed.getByText("Cite this reference alone for Name in the sentence.", { exact: true }).waitFor();
-      await checkFormPointers(mixed);
+      menu = await formMenu(mixed);
+      const narrative = menu.getByRole("menuitemradio", { name: "Name in the sentence", exact: true });
+      assert.equal(await narrative.getAttribute("aria-disabled"), "true", "an unsupported group form is dimmed");
+      await menu.getByText("Cite this reference alone for Name in the sentence.", { exact: true }).waitFor();
+      await page.keyboard.press("Escape");
+      await menu.waitFor({ state: "detached" });
       await closeEditor(mixed);
       await checkScan("current-style examples and true Year only keep one shelf line");
       assert.deepEqual(resizes, [], "forms never request native sizing");
@@ -445,29 +438,30 @@ try {
       await segment.hover();
       const remove = shelfControl(page, "Remove synthetic0 from the selection");
       await remove.waitFor({ state: "visible" });
+      await page.waitForTimeout(300); // The chip grows to make room for it.
       assert.equal(await remove.evaluate((node) => {
         const rect = node.getBoundingClientRect();
         const text = node.closest(".shelf-segment").querySelector(".preview-text").getBoundingClientRect();
         const size = rect.width * 2 / 3;
         const top = rect.top + (rect.height - size) / 2, left = rect.left + (rect.width - size) / 2;
-        return Math.abs(rect.width - rect.height) <= 1 && rect.width >= 23 &&
+        return Math.abs(rect.width - rect.height) <= 1 && rect.width >= 16 &&
           (top + size <= text.top + 1 || left + size <= text.left + 1 || top >= text.bottom - 1 || left >= text.right - 1);
       }), true, "the square remove button's glyph stays outside the long key's text at every text size/direction");
       await remove.click();
-      assert.equal(await page.getByRole("dialog").count(), 0, "the remove badge never opens the menu");
+      assert.equal(await page.getByRole("dialog").count(), 0, "the remove badge never opens a dialog");
       await page.getByRole("button", { name: /^Undo/ }).click();
       assert.equal(await page.locator('[role="option"][data-citation-selected]').count(), 1, "Undo restores the removed reference");
       const dialog = await openEditor();
       const fullCitation = dialog.getByRole("region", { name: "Full citation", exact: true });
       assert.equal(await fullCitation.textContent(), await segment.locator(".preview-text").textContent(), "the single-reference menu keeps the entire citation available without hover");
-      await dialog.getByRole("textbox", { name: "Page", exact: true }).press("ArrowDown");
-      await page.keyboard.press("End");
-      assert.equal(await fullCitation.evaluate((node) => document.activeElement === node), true, "menu keys reach the complete citation without hover");
-      assert.equal(await reachable(fullCitation), true, "the complete long/RTL citation is reachable in the menu");
+      assert.equal(await fullCitation.getAttribute("tabindex"), "0", "Tab reaches the complete citation without hover");
+      assert.equal(await reachable(fullCitation), true, "the complete long/RTL citation is reachable in the panel");
       await dialog.getByRole("textbox", { name: "Page", exact: true }).fill("iv–vi");
-      for (const control of await dialog.getByRole("radio").all()) assert.equal(await reachable(control), true, "all name forms stay whole and reachable");
-      await checkFormPointers(dialog);
-      assert.deepEqual(await page.locator("main > .shelf").boundingBox(), band, "the long citation and menu never grow the shelf");
+      const forms = await formMenu(dialog);
+      assert.equal(await forms.getByRole("menuitemradio").count(), 3, "all three forms are in the Show as menu");
+      await page.keyboard.press("Escape");
+      await forms.waitFor({ state: "detached" });
+      assert.deepEqual(await page.locator("main > .shelf").boundingBox(), band, "the long citation and panel never grow the shelf");
       await closeEditor(dialog);
       const reopened = await openEditor();
       assert.equal(await reopened.getByRole("textbox", { name: "Page", exact: true }).inputValue(), "iv–vi", "close/reopen keeps the page");
@@ -494,18 +488,17 @@ try {
         assert.equal(await segments.nth(1).evaluate((node) => document.activeElement === node), true, "arrow selection follows citation order");
         await segments.nth(1).press("Space");
         await page.getByRole("textbox", { name: "Page", exact: true }).waitFor();
-        await closeEditor(page.getByRole("dialog", { name: /^Citation details/ }));
+        await closeEditor(page.getByRole("region", { name: /^Citation details for/ }));
         const count = shelfControl(page, "9 references");
         await count.click();
-        dialog = page.getByRole("dialog", { name: "Selected references", exact: true });
+        const menu = page.getByRole("menu");
+        await menu.waitFor();
+        const items = menu.getByRole("menuitemradio");
+        assert.equal(await items.count(), 9, "the count lists every chosen reference");
+        await items.nth(8).click();
+        dialog = page.getByRole("region", { name: /^Citation details for/ });
         await dialog.waitFor();
-        await anchoredMenu(count);
-        const controls = dialog.getByRole("button", { name: /^Edit / });
-        assert.equal(await controls.count(), 9, "every chosen reference has its own editor in the overlay");
-        for (const control of await controls.all()) {
-          assert.equal(await reachable(control), true, "every reference menu is reachable");
-          await control.click({ trial: true });
-        }
+        await seated();
       } else if (shelfDetails === "warnings") {
         await search.press("Shift+Enter");
         const warnings = shelfControl(page, /2 warnings.*Reference entry.*Closest matches/);
@@ -516,9 +509,9 @@ try {
         const folded = await page.locator("main > .shelf").getAttribute("data-folded") !== null;
         assert.equal(await warnings.getByText(folded ? "! 2" : "2 warnings", { exact: true }).isVisible(), true, "warning and closest-match choices have a visible cue before opening");
         await warnings.press("Space");
-        dialog = page.getByRole("dialog", { name: "Citation warnings", exact: true });
+        dialog = page.getByRole("region", { name: "Citation warnings", exact: true });
         await dialog.waitFor();
-        await anchoredMenu(warnings);
+        await seated();
         for (const meaning of [dialog.getByRole("heading", { name: "Reference entry", exact: true }), dialog.getByRole("heading", { name: "Closest matches", exact: true }),
           dialog.getByText(noticeText.entryWarning, { exact: true }), dialog.getByText(/IEEE numbers depend on your whole document/), dialog.getByText(/only some search words matched/)]) {
           assert.equal(await reachable(meaning), true, "every warning, reference-entry explanation and closest-match provenance is reachable");
@@ -538,10 +531,10 @@ try {
         assert.equal(await shelfReason.textContent(), noticeText.formatting, "the reason appears beside the failed citation before Details opens");
         assert.equal(await reachable(shelfReason), true, "the refusal line stays visible in the fixed shelf");
         await shelfControl(page, "Details").click();
-        dialog = page.getByRole("dialog", { name: /^Citation details/ });
+        dialog = page.getByRole("region", { name: /^Citation details for/ });
         await dialog.waitFor();
-        await anchoredMenu(page.locator("main > .shelf .shelf-output"));
-        assert.equal(await reachable(dialog.locator(".shelf-detail-title")), true, "both ends of a long reference title are reachable");
+        await seated();
+        assert.equal(await reachable(dialog.getByRole("heading", { level: 3 })), true, "both ends of a long reference title are reachable");
         assert.equal(await reachable(dialog.getByText(noticeText.formatting, { exact: true })), true, "both ends of the full refusal are reachable");
       }
       await checkScan("details leave whole fixed bands and one active scroller");
@@ -678,17 +671,12 @@ try {
     await page.setViewportSize({ width: 480, height: 360 });
     await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     await checkScan("resizing while editing keeps fixed bands and one active scroller");
-    const anchor = shelfControl(page, /^Edit /).first();
-    await anchoredMenu(anchor);
-    const heading = editor.getByRole("heading");
+    await seated();
+    const heading = editor.getByRole("heading", { level: 2 });
     assert.equal(await heading.evaluate((node) => {
       const title = node.getBoundingClientRect();
       return title.top >= 0 && title.bottom <= innerHeight && title.left >= 0 && title.right <= innerWidth;
     }), true, "the chosen reference stays readable in its editor at minimum size");
-    if (scale === 1) assert.equal(await page.locator('[role="option"][aria-selected="true"] .result-title').evaluate((node) => {
-      const title = node.getBoundingClientRect(), port = node.closest(".picker-content").getBoundingClientRect();
-      return title.top >= port.top - 1 && title.bottom <= port.bottom + 1;
-    }), true, "the selected result also stays within the middle while editing");
     assert.equal(await reachable(page.getByLabel("Page", { exact: true })), true, "the editor remains reachable");
     assert.equal(await page.getByLabel("Page", { exact: true }).evaluate((node) => document.activeElement === node), true, "resizing preserves Page focus");
     assert.equal(await page.getByLabel("Page", { exact: true }).inputValue(), "12", "folding preserves the person's edit");

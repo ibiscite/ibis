@@ -1,0 +1,92 @@
+import { useEffect, useState, type Ref } from "react";
+import { citationDetails, isCancelled } from "../../api";
+import type { FilePreview, ReferenceDetails } from "../../bindings";
+import { composing } from "../../composition";
+import type { FormattedCitation } from "../../format/styles";
+import { render } from "../../format/markup";
+import { Icon, TypeIcon } from "../../icons";
+import { keyLabel } from "../../keys";
+import { citationDetailsText, keyText, pickerText } from "../../messages";
+import { currentPlatform } from "../../platform";
+import { Button } from "../../ui/Button";
+import { CitationDetails } from "../../ui/CitationDetails";
+import { Inspector } from "../../ui/Inspector";
+import type { SourceActionProps } from "../../ui/SourceAction";
+import type { CitationDetailsChange, CitationReference } from "./choice";
+import type { InspectorPanel } from "./useCitationInspector";
+
+export type CitationNotes = { entry: string | null; output: readonly string[]; closest: readonly string[] };
+
+/** The details of one reference, or the notes on its citation. The column's
+ * controls never move: everything that grows with the output sits beside them. */
+export function CitationInspector({ ref, id, panel, heading, reference, index, selected, previewReceipt, output, citation, failure, notes, source, keys, onChange, onSubmit, onOpenSource, onRemove, onClose }: {
+  ref: Ref<HTMLElement>; id: string; panel: InspectorPanel; heading: string;
+  reference: CitationReference | undefined; index: number; selected: boolean; previewReceipt?: FilePreview;
+  /** Which output the citation is in; a page edit leaves it the same. */
+  output: string;
+  citation: FormattedCitation | null; failure: string | null; notes: CitationNotes;
+  source?: SourceActionProps; keys: boolean;
+  onChange?: (reference: CitationReference, change: CitationDetailsChange) => void;
+  onSubmit?: () => void; onOpenSource?: (reference: CitationReference) => void;
+  onRemove: (reference: CitationReference) => void; onClose: () => void;
+}) {
+  const [details, setDetails] = useState<{ receipt: FilePreview; output: string; value: ReferenceDetails | "failed" }>();
+  const editing = panel.kind !== "warnings";
+  useEffect(() => {
+    if (!editing || !previewReceipt || index < 0) return;
+    let live = true;
+    void citationDetails(previewReceipt.ticket, previewReceipt.content_hash, index).then(
+      (value) => { if (live) setDetails({ receipt: previewReceipt, output, value }); },
+      (error) => { if (live && !isCancelled(error)) setDetails({ receipt: previewReceipt, output, value: "failed" }); },
+    );
+    return () => { live = false; };
+  }, [editing, previewReceipt, index, output]);
+  const problem = failure && <p role="alert" tabIndex={0} className="inspector-citation inspector-problem"><Icon name="warning" />{failure}</p>;
+  if (!editing) {
+    const { entry, output, closest } = notes;
+    return <Inspector ref={ref} id={id} label={pickerText.citationWarnings} heading={pickerText.citationWarnings} closeLabel={keyText.close} onClose={onClose}>
+      {entry && <><h3>{pickerText.entryOnlyShort}</h3><p>{entry}</p></>}
+      {output.map((warning, i) => <p key={`output-${i}`}>{warning}</p>)}
+      {closest.length > 0 && <h3>{pickerText.closestMatches}</h3>}
+      {closest.map((warning, i) => <p key={`partial-${i}`}>{warning}</p>)}
+      {problem}
+    </Inspector>;
+  }
+  const form = reference?.form ?? "normal";
+  // Examples stay while the next arrive, so typing a page never flickers. The
+  // rest of an older answer says nothing about the citation now being made,
+  // unless this output has no forms at all, which a page cannot change.
+  const choices = !details || details.value === "failed" || details.receipt === previewReceipt
+    || details.output === output && details.value.forms.every((choice) => choice.reason) ? details?.value
+    : { current_form: form, forms: details.value.forms.map((choice) => ({ ...choice, reason: null })) };
+  const byline = reference && [reference.authors, reference.container, reference.year].filter(Boolean).join(" · ");
+  return <Inspector ref={ref} id={id} label={reference ? citationDetailsText.details(reference.title || reference.key) : pickerText.citationDetails} heading={heading} closeLabel={keyText.close} onClose={onClose}
+    onKeyDown={(event) => {
+      const target = event.target as HTMLElement;
+      if ((event.key !== "Backspace" && event.key !== "Delete") || composing(event) || target.matches("input") || !reference || !selected) return;
+      event.preventDefault(); onRemove(reference);
+    }}
+    document={<>
+      {reference && <div className="inspector-reference">
+        <span className="result-tile"><TypeIcon itemType={reference.item_type} /></span>
+        <div>
+          <h3><bdi dir="auto">{reference.title || reference.key}</bdi></h3>
+          {byline && <p><bdi dir="auto">{byline}</bdi></p>}
+        </div>
+      </div>}
+      {citation && <section aria-label={pickerText.fullCitation} tabIndex={0} className="inspector-citation" data-keys={keys || undefined}><bdi dir="auto">{citation.markup.length && !keys ? render(citation.markup) : citation.text}</bdi></section>}
+      {problem}
+      {[...notes.entry ? [notes.entry] : [], ...notes.output, ...notes.closest].map((note, i) => <p key={i} className="inspector-citation">{note}</p>)}
+    </>}>
+    {reference && onChange && <CitationDetails autoFocus page={reference.locator?.label === "page" ? reference.locator.value : ""} form={form} choices={choices}
+      onPageChange={(value) => onChange(reference, { locator: value.trim() ? { label: "page", value, input: "page-editor" } : null })}
+      onFormChange={(form) => onChange(reference, { form })} onSubmit={onSubmit} />}
+    {reference && <hr />}
+    {reference && source && <Button variant="quiet" className="inspector-action" isDisabled={source.busy} onPress={() => { onClose(); onOpenSource?.(reference); }}>
+      <span>{source.label}</span>{source.keys && <span className="inspector-keys" aria-hidden="true">{keyLabel(source.keys, currentPlatform() === "macos")}</span>}
+    </Button>}
+    {reference && <Button variant="quiet" className="inspector-action" aria-keyshortcuts="Backspace Delete" isDisabled={!selected} onPress={() => onRemove(reference)}>
+      <span>{keyText.removeFromCitation}</span><span className="inspector-keys" aria-hidden="true">{keyLabel("Backspace", currentPlatform() === "macos")}</span>
+    </Button>}
+  </Inspector>;
+}
