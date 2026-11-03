@@ -2,10 +2,10 @@ import { useLayoutEffect, useRef, type KeyboardEventHandler, type ReactNode, typ
 import { IconButton } from "./IconButton";
 import "./Inspector.css";
 
-/** One thing's details, in the picker's middle area. Search, shelf and footer
- * stay live around it, so it is a region and never a dialog. The column keeps
- * its controls in place; whatever grows with the output, and later a source's
- * pages, belongs in `document` beside it. */
+/** One thing's details, in a panel beside the list. Everything around it stays
+ * live, so it is a region and never a dialog. The column keeps its controls in
+ * place; whatever grows with the output, and later a source's pages, belongs in
+ * `document`, under it or, in a panel wide enough, beside it. */
 export function Inspector({ ref, id, label, heading, closeLabel, document: page, children, onClose, onKeyDown }: {
   ref?: Ref<HTMLElement>; id?: string; label: string; heading: string; closeLabel: string;
   document?: ReactNode; children: ReactNode; onClose: () => void;

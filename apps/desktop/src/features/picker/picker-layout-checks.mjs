@@ -78,14 +78,15 @@ export function isWholeShelf() {
     getComputedStyle(shelf).flexShrink === "0" && !/auto|scroll/.test(getComputedStyle(shelf).overflowY);
 }
 
-// The inspector takes exactly the middle area's place: nothing else in the
-// picker moves or resizes, and it never leaves the window.
-export function isSeatedInspector(middle) {
+// The inspector sits in the middle row and never overlaps a list in view.
+export function isSeatedInspector() {
   const panes = document.querySelectorAll(".inspector");
   if (panes.length !== 1) return false;
   const rect = panes[0].getBoundingClientRect();
-  return ["top", "bottom", "left", "right"].every((edge) => Math.abs(rect[edge] - middle[edge]) <= 1) &&
-    rect.left >= 0 && rect.top >= 0 && rect.right <= innerWidth && rect.bottom <= innerHeight;
+  const search = document.querySelector(".search-bar").getBoundingClientRect(), shelf = document.querySelector(".shelf").getBoundingClientRect();
+  const list = document.querySelector(".picker-content");
+  const beside = getComputedStyle(list).visibility === "hidden" || list.getBoundingClientRect().right <= rect.left + 1;
+  return beside && rect.width > 0 && rect.height > 0 && rect.left >= 0 && rect.right <= innerWidth && rect.top >= search.bottom - 1 && rect.bottom <= shelf.top + 1;
 }
 
 // Only fixed keys and numeric geometry may cross out of the page on failure.

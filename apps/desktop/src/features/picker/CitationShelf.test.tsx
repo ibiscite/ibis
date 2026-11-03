@@ -101,7 +101,7 @@ test.each(["click", "Enter", " "])("a single reference is the whole citation seg
   expect(within(inspector).getByRole("heading", { level: 2 }).textContent).toBe("García 2021");
   expect(within(inspector).getByRole("heading", { level: 3 }).textContent).toBe("Invented title a");
   expect(document.activeElement).toBe(within(inspector).getByRole("textbox", { name: "Page" }));
-  expect(within(inspector).getByRole("button", { name: /^Form Name in brackets/ })).toBeTruthy();
+  expect(within(inspector).getByRole("button", { name: /^Show as Name in brackets/ })).toBeTruthy();
   expect(within(inspector).getByRole("button", { name: /Remove from Citation/ })).toBeTruthy();
   expect(screen.queryByRole("dialog")).toBeNull();
   fireEvent.click(within(inspector).getByRole("button", { name: "Close" }));
@@ -227,7 +227,7 @@ test("Backspace removes from the inspector, but only ever edits text in Page", (
   fireEvent.click(screen.getByRole("button", { name: "Edit García 2021" }));
   fireEvent.keyDown(screen.getByRole("textbox", { name: "Page" }), { key: "Backspace" });
   expect(remove).not.toHaveBeenCalled();
-  fireEvent.keyDown(screen.getByRole("button", { name: /^Form / }), { key: "Backspace" });
+  fireEvent.keyDown(screen.getByRole("button", { name: /^Show as / }), { key: "Backspace" });
   expect(remove).toHaveBeenCalledExactlyOnceWith(reference);
 });
 

@@ -21,11 +21,11 @@ function Editor() {
 
 test("the Form pop-up names the current form, and a pick changes it", async () => {
   render(<Editor />);
-  fireEvent.click(screen.getByRole("button", { name: "Form Name in brackets" }));
+  fireEvent.click(screen.getByRole("button", { name: "Show as Name in brackets" }));
   const item = await screen.findByRole("menuitemradio", { name: "Year only" });
   expect(item.textContent).toContain("(2026)");
   fireEvent.click(item);
-  expect(await screen.findByRole("button", { name: "Form Year only" })).toBeTruthy();
+  expect(await screen.findByRole("button", { name: "Show as Year only" })).toBeTruthy();
 });
 
 test("Year only uses its own engine form and an unavailable form says why under its label", async () => {
@@ -35,7 +35,7 @@ test("Year only uses its own engine form and an unavailable form says why under 
     { form: "narrative", example: null, reason: "Cite it alone or choose another output." },
     { form: "year-only", example: "(2026)", reason: null },
   ] }} />);
-  fireEvent.click(screen.getByRole("button", { name: /^Form / }));
+  fireEvent.click(screen.getByRole("button", { name: /^Show as / }));
   const narrative = await screen.findByRole("menuitemradio", { name: "Name in the sentence" });
   expect(narrative.getAttribute("aria-disabled")).toBe("true");
   expect(document.getElementById(narrative.getAttribute("aria-describedby")!)?.textContent).toBe("Cite it alone or choose another output.");
@@ -48,7 +48,7 @@ test("Year only uses its own engine form and an unavailable form says why under 
 test("before the engine answers the reference's own form shows and every form can be tried", async () => {
   const change = vi.fn();
   render(<CitationDetails page="" form="narrative" onPageChange={vi.fn()} onFormChange={change} />);
-  fireEvent.click(screen.getByRole("button", { name: "Form Name in the sentence" }));
+  fireEvent.click(screen.getByRole("button", { name: "Show as Name in the sentence" }));
   fireEvent.click(await screen.findByRole("menuitemradio", { name: "Name in brackets" }));
   expect(change).toHaveBeenCalledExactlyOnceWith("normal");
 });

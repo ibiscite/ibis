@@ -12,8 +12,8 @@ export type InspectorPanel = {
   receipt?: ShelfCopied | null;
 };
 
-/** The inspector's one owner, above the shelf because Esc, the middle area and
- * the footer's Esc hint all answer to it. */
+/** The inspector's one owner, above the shelf because Esc, the list's notices
+ * and the footer's Esc hint all answer to it. */
 export function useCitationInspector() {
   const [panel, show] = useState<InspectorPanel | null>(null);
   const close = useCallback(() => show(null), []);

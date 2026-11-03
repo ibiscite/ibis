@@ -5,7 +5,7 @@ export const citationDetailsText = {
   page: "Page",
   pageNone: "None",
   pageHint: "A page or range",
-  form: "Form",
+  form: "Show as",
   examplesUnavailable: "Examples are unavailable",
   forms: [
     { value: "normal", label: "Name in brackets" },

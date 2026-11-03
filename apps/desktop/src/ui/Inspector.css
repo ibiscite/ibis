@@ -1,10 +1,14 @@
-/* [C19] Takes the middle area's place. Narrow or short frames stack it into one
-   scroller; otherwise the column sits on the trailing edge, as Xcode's and
-   Finder's inspectors do, and only the document scrolls. */
-.inspector { grid-area: middle; container: inspector / size; min-width: 0; min-height: 0; }
-.inspector-body { display: flex; flex-direction: column; height: 100%; padding-block: var(--inset); overflow: auto; overscroll-behavior: contain; }
-.inspector-column, .inspector-document { flex: none; min-width: 0; padding-inline: calc(var(--inset) + var(--row-pad)); }
+/* [C19] A sidebar beside the list, as in Preview, inside one steady window.
+   Where the two cannot share the width it takes the list's place instead. */
+.inspector { --inspector-pad: var(--row-pad); grid-area: panel; container: inspector / size; width: var(--inspector-width); min-width: 0; min-height: 0; margin-block: var(--inset); border-inline-start: var(--border-width) solid var(--separator); }
+@container (max-width: 36rem) {
+  .inspector { --inspector-pad: calc(var(--inset) + var(--row-pad)); grid-area: middle; width: auto; margin-block: 0; border: 0; }
+  .picker-content:has(~ .inspector) { visibility: hidden; }
+}
+.inspector-body { display: flex; flex-direction: column; height: 100%; overflow: auto; overscroll-behavior: contain; }
+.inspector-column, .inspector-document { flex: none; min-width: 0; padding-inline: var(--inspector-pad); }
 .inspector-column { --ring-offset: calc(-1 * var(--ring-width)); display: flex; flex-direction: column; gap: var(--space-2); }
+.inspector-document { padding-block: var(--space-3) var(--space-1); }
 .inspector-heading { flex: none; display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); min-height: var(--control-h); }
 .inspector-heading h2 { min-width: 0; margin: 0; overflow: hidden; font: var(--strong) var(--type-body-size) / var(--type-body-line) var(--font); text-overflow: ellipsis; white-space: nowrap; }
 .inspector-heading .ui-icon-button { flex: none; margin-inline-end: calc(-1 * var(--space-1)); }
@@ -15,11 +19,12 @@
 .inspector-action.ui-button[data-variant] { justify-content: space-between; gap: var(--space-4); width: calc(100% + 2 * var(--space-2)); max-width: none; min-height: var(--control-small-h); margin-inline: calc(-1 * var(--space-2)); padding-inline: var(--space-2); border: 0; border-radius: var(--r-tile); font: var(--type-body-size) / var(--type-body-line) var(--font); text-align: start; }
 .inspector-keys { flex: none; color: var(--text-secondary); }
 .inspector-action[data-disabled] .inspector-keys { color: inherit; }
+/* A panel wide enough for a document keeps its column on the trailing edge,
+   and only the document scrolls. */
 @container inspector (min-width: 34rem) and (min-height: 11rem) {
   .inspector-body { flex-direction: row-reverse; overflow: hidden; }
   .inspector-column { flex: 0 0 var(--inspector-column); overflow: auto; }
   .inspector-column:only-child { flex: 1; }
-  .inspector-document { flex: 1; overflow: auto; }
-  /* One divider, which keeps S from the header's divider and from the shelf. */
+  .inspector-document { flex: 1; padding-block: 0; overflow: auto; }
   .inspector-column:not(:only-child) { border-inline-start: var(--border-width) solid var(--separator); }
 }

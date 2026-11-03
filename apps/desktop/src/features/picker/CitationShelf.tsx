@@ -136,14 +136,6 @@ export function CitationShelf({ inspector, onSubmit, source, onOpenSource, annou
   const text = visible?.text;
   const single = references.length === 1 ? references[0] : undefined;
   const hasShelf = present || copied || references.length || shown !== undefined || previous;
-  // Search owns the middle area: reaching it, by any key or click, hands the list back.
-  const inspectorOpen = panel !== null;
-  useEffect(() => {
-    const search = fallbackFocusRef?.current;
-    if (!inspectorOpen || !search) return;
-    search.addEventListener("focus", close);
-    return () => search.removeEventListener("focus", close);
-  }, [inspectorOpen, fallbackFocusRef, close]);
   useLayoutEffect(() => {
     if (!panel) return;
     if (panel.presentation !== presentation || panel.receipt !== copied || !hasShelf || panel.reference && !edited || copied && panel.kind !== "warnings") {

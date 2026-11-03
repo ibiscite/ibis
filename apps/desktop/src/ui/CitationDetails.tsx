@@ -23,13 +23,6 @@ export function CitationDetails({ page, form, pageRef, choices, autoFocus = fals
   const answer = typeof choices === "object" ? choices : undefined;
   const current = answer?.current_form ?? form;
   return <div className="citation-details">
-    <TextField className="citation-field" value={page} onChange={onPageChange}>
-      <Label className="citation-label">{text.page}</Label>
-      <Input ref={pageRef} autoFocus={autoFocus} placeholder={text.pageNone} onKeyDown={(event) => {
-        if (event.key === "Enter" && !event.repeat && !composing(event)) { event.preventDefault(); onSubmit?.(); }
-      }} />
-      <Text slot="description" className="visually-hidden">{text.pageHint}</Text>
-    </TextField>
     <div className="citation-field">
       <span className="citation-label" aria-hidden="true">{text.form}</span>
       <ToolbarMenu buttonRef={formButton} returnFocusRef={formButton} label={text.form} value={text.forms.find((option) => option.value === current)?.label ?? ""} selectedKey={current}
@@ -41,5 +34,12 @@ export function CitationDetails({ page, form, pageRef, choices, autoFocus = fals
           if (chosen) onFormChange(chosen.value);
         }} />
     </div>
+    <TextField className="citation-field" value={page} onChange={onPageChange}>
+      <Label className="citation-label">{text.page}</Label>
+      <Input ref={pageRef} autoFocus={autoFocus} placeholder={text.pageNone} onKeyDown={(event) => {
+        if (event.key === "Enter" && !event.repeat && !composing(event)) { event.preventDefault(); onSubmit?.(); }
+      }} />
+      <Text slot="description" className="visually-hidden">{text.pageHint}</Text>
+    </TextField>
   </div>;
 }

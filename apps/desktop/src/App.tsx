@@ -151,6 +151,8 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   });
   const source = usePickerSource({ api, pickerSession, libraryState, menus, results: sameSnapshot ? results : [], altHeld, perform });
   const inspector = useCitationInspector();
+  // The refusal stays beside the fields that can correct it, in one place.
+  const listProblem = inspector.panel && inspector.panel.kind !== "warnings" ? null : citationProblem;
   const actions = usePickerActions({
     api, pickerSession, menus, libraryState, searchState, destination, shown, inspector,
     // The footer names what Enter copies now, or after the running search.
@@ -201,7 +203,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
         showFormat={!libraryChoices && (library === null || Boolean(library?.has_snapshot))}
         styles onFormatChange={chooseFormat} onFormatCommand={keys.onFormatCommand}
       />
-      <PickerScroll onFileDrag={api.onFileDrag} presentation={state.visibility} citationProblem={citationProblem} citationProblemIdentity={citationProblem ? formatted?.request : undefined} covered={inspector.panel !== null}>
+      <PickerScroll onFileDrag={api.onFileDrag} presentation={state.visibility} citationProblem={listProblem} citationProblemIdentity={listProblem ? formatted?.request : undefined}>
         {shortcut?.error && <div className="notices">
           <p role="status">
             {pickerText.shortcutError(shortcut.registered, shortcut.shortcut, shortcut.error)}
@@ -210,7 +212,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
         </div>}
         <Notices feedback={zoomFeedback} densityAnnouncement={preferences.densityAnnouncement} updateProgress={updateProgress} library={library} failures={failures}
           error={error} copyError={copyError} copied={copied} missing={ready ? list?.missing : undefined}
-          citationProblem={citationProblem} confirmation={state.copyNotice}
+          citationProblem={listProblem} confirmation={state.copyNotice}
           onDismissCopied={() => send({ type: "dismiss" })} />
         <PickerResults
           api={api} libraryState={libraryState} searchState={searchState} state={state} source={source} scope={scope}

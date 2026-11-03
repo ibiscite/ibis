@@ -873,8 +873,7 @@ after required review, CI and budget gates pass; stable deployment keeps its
 one-click approval. The website demo is critical and stays functionally
 aligned with the released app; Settings #776 remains future polish.
 
-2026-11-02: One reference's details are an inspector in the picker's middle area,
-never an overlay: a column of fixed controls beside a document region, with
-search, shelf and footer live around it. The same structure will hold a source's
-pages (#1252), so choosing a page there needs no redesign. Rules: design.md
-**Inspector** [C19].
+2026-11-02: One reference's details and, later, a source's PDF share one panel
+inside the picker, beside the list as in Preview's sidebar; never an anchored
+popover. The picker widens only to hold the PDF. Rules: design.md **Inspector**
+[C19] (maintainer).

@@ -219,17 +219,19 @@ test.each([{ coarse: false, doubled: false }, { coarse: true, doubled: false }, 
   expect(isWholeShelf()).toBe(false);
 });
 
-test("the inspector oracle rejects a pane that leaves the middle area or the window", () => {
-  let rect = new DOMRect(0, 69, 720, 300);
-  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(() => rect);
-  render(<section className="inspector" />);
-  const middle = { top: 69, bottom: 369, left: 0, right: 720 };
+test("the inspector oracle rejects a panel over the list, the bands or past the window", () => {
+  const rects = { inspector: new DOMRect(432, 61, 288, 323), "search-bar": new DOMRect(0, 0, 720, 53), shelf: new DOMRect(8, 392, 704, 40), "picker-content": new DOMRect(0, 53, 432, 339) };
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function () { return rects[this.className]; });
+  render(<main><div className="search-bar" /><div className="picker-content" /><section className="inspector" /><div className="shelf" /></main>);
   vi.stubGlobal("innerWidth", 720); vi.stubGlobal("innerHeight", 480);
-  expect(isSeatedInspector(middle)).toBe(true);
-  rect = new DOMRect(0, 69, 720, 240);
-  expect(isSeatedInspector(middle)).toBe(false);
-  rect = new DOMRect(-2, 69, 722, 300);
-  expect(isSeatedInspector(middle)).toBe(false);
+  expect(isSeatedInspector()).toBe(true);
+  rects["picker-content"] = new DOMRect(0, 53, 720, 339);
+  expect(isSeatedInspector()).toBe(false);
+  rects["picker-content"] = new DOMRect(0, 53, 432, 339);
+  rects.inspector = new DOMRect(432, 61, 288, 400);
+  expect(isSeatedInspector()).toBe(false);
+  rects.inspector = new DOMRect(440, 61, 288, 323);
+  expect(isSeatedInspector()).toBe(false);
   vi.unstubAllGlobals();
 });
 

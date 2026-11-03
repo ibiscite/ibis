@@ -99,7 +99,7 @@ await search.press("ArrowDown"); await search.press("Shift+Enter"); await search
 await page.locator(".shelf-count").click().catch(() => {}); await page.waitForTimeout(250); await shot("04-selected-references");
 await page.keyboard.press("Escape"); await page.waitForTimeout(150);
 await page.locator(".shelf-segment-button").first().click().catch(() => {}); await page.waitForTimeout(250); await shot("05-reference-details");
-await page.getByRole("button", { name: /^Form / }).click().catch(() => {}); await page.waitForTimeout(250); await shot("05-form-menu");
+await page.getByRole("button", { name: /^Show as / }).click().catch(() => {}); await page.waitForTimeout(250); await shot("05-form-menu");
 await page.keyboard.press("Escape"); await page.waitForTimeout(150);
 await page.keyboard.press("Escape"); await page.waitForTimeout(150);
 await search.focus();

@@ -3739,7 +3739,7 @@ test("hiding output keeps chips and pending copy checks, and remembers the choic
     await openCitationDetails();
     const details = screen.getByRole("region", { name: "Citation details for First" });
     expect(within(details).getByRole("textbox", { name: "Page" })).toBeTruthy();
-    expect(within(details).getByRole("button", { name: /^Form / })).toBeTruthy();
+    expect(within(details).getByRole("button", { name: /^Show as / })).toBeTruthy();
     fireEvent.keyDown(details, { key: "Escape" });
     expect(screen.queryByRole("region", { name: "Preview" })).toBeNull();
     expect(copies).toHaveBeenCalledOnce();

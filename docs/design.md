@@ -89,7 +89,7 @@ Anything not listed follows Apple. A new departure is added here in the same cha
 - **Two columns** [C3]: icons, the search glyph, the status dot and type tiles centre on the tile column (`--tile`); text (row titles, the query, status text, the shelf citation) starts on the title column. The trailing edge is where row text ends; the last header control, footer key cap and year column end there. Distances run from the logical start edge, also in RTL.
 - **Rows** [C4]: three densities (decision 0020): Compact (one line), Comfortable (two, the default), Spacious (three). Density changes rows only. Rows are 2 px apart in results.
 - **One steady window** [C10]: the picker keeps one size the whole time it is open, in every state; nothing measures content to choose a height and nothing animates a resize. Medium 720 × 480 is the default, minimum 480 × 360; Look › **Window size** offers Small, Medium, Large and **Compact** (a short bar that grows once to Medium on the first key, then never shrinks). A dragged size shows as Custom and is kept per display.
-- **Nothing clipped, one scroller**: no state is ever cut off; only the middle area or an open menu scrolls, never two at once. In a short frame with large text the header gaps and footer hint labels give way first.
+- **Nothing clipped, one scroller**: no state is ever cut off; only the middle area or an open menu scrolls, never two at once. The inspector is the one exception: a sidebar scrolls apart from the list beside it, as in Preview. In a short frame with large text the header gaps and footer hint labels give way first.
 - **Width classes** [C17]: below 28.75 em footer hints show keys only; at 60 em the preview sits beside the list, below it replaces it.
 
 ### Corners
@@ -230,16 +230,16 @@ Built in `ibis-core` so every front end shares them (#1204).
 
 ### Inspector
 
-[C19] One reference's details are never an overlay. As in Xcode, Finder and Preview, details sit in the window beside what they describe, so one structure holds them now and a source's pages later.
+[C19] One reference's details are never an overlay. They open in a panel beside the list, as Preview's sidebar does, so one surface holds them now and a source's pages later.
 
-- **Where**: the inspector takes the middle area's place, in the one steady window. Search, shelf and footer stay where they are and stay live. The list keeps its scroll place behind it, out of reach.
-- **Two parts**: a column of fixed width on the trailing edge (`--inspector-column`) and the document beside it. Below 34 rem wide or 11 rem tall they stack into one scroller, column first; otherwise only the document scrolls.
-- **The column holds what you change**: the reference's name and ×; **Page** and **Form** as label and control rows; a separator; the source action; **Remove from Citation ⌫**. It has the same rows in every state and nothing in it changes height, so nothing moves while typing.
-- **The document holds what grows**: the row's tile, the full title and byline, then what will be pasted in full, on the title column. A refusal takes the citation's place; warnings follow it.
-- **Form is a pop-up**, its value the current form, its menu the three forms with quiet examples. Only the engine says a form cannot be used; until it answers every form can be tried, so a refused citation can always be corrected here. Examples stay while the next arrive.
-- **Shelf and inspector work together**: pressing a segment shows its details and focuses Page; pressing another moves them; pressing the same one closes them.
-- **Keys**: Tab moves through it in order, never trapped. Enter in Page does what the footer says. Esc closes the Form menu, then the inspector, and focus returns to the segment. Reaching Search hands the middle area back to the list.
-- **Warnings** use the same surface without a document.
+- **Where**: in the middle row, on the trailing edge, `--inspector-width` wide, with the shelf running under both. The window stays its one steady size. Search, list, shelf and footer stay where they are and stay live. Below 36 rem wide the panel takes the list's place instead.
+- **Order**: the reference's name and ×; **Show as** and **Page** as label and control rows; a separator; the source action; **Remove from Citation ⌫**. Then the document: the full title and byline, then what will be pasted in full. These rows are the same in every state and nothing above the document changes height, so nothing moves while typing.
+- **Show as is a pop-up**, its value the current form, its menu the three forms with quiet examples. Only the engine says a form cannot be used; until it answers every form can be tried, so a refused citation can always be corrected here. Examples stay while the next arrive.
+- **One place for a refusal**: while the panel is open a citation refusal takes the citation's place in the panel, beside the fields that fix it, and not above the list.
+- **Shelf and panel work together**: pressing a segment shows its details and focuses Page; pressing another moves them; pressing the same one closes them. A reference that leaves the shelf closes them.
+- **Keys**: Tab moves through it in order, never trapped. Enter in Page does what the footer says. Esc closes the Show as menu, then the panel, and focus returns to the segment if it was inside; Search keeps focus if it was there.
+- **Warnings** use the same panel without a document.
+- **A wider panel**: at 34 rem the column keeps its width on the trailing edge and the document sits beside it, scrolling alone.
 
 ### Footer
 
@@ -434,7 +434,7 @@ How each user-visible item planned before 1.0 in ROADMAP.md fits the components 
 | Browse, "Selected in Zotero", passages (0.5) | Collections and tags as search filters; a reference's highlights unfold under its row and fill in its page |
 | Bibliography, "References used this session", project `.bib` (0.4) | More and the format pop-up; rows say "In refs.bib" or "Missing from refs.bib" |
 | `ibis check`, DOI lookup (0.6) | Command line first; DOI lookup as an opt-in no-results fallback |
-| A source's PDF, choosing the page there (#1252) | The **Inspector**'s document shows the pages; the title and citation move out of its way, and the column stays put, its Page field following the page in view |
+| A source's PDF, choosing the page there (#1252) | The **Inspector** widens with the picker, the one planned exception to [C10]; its document shows the pages beside the list, and the column stays put, its Page field following the page in view |
 
 ## How the design changes
 

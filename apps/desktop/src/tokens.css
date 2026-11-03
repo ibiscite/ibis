@@ -242,7 +242,7 @@
   --r-key: max(var(--r-floor-mark), calc(var(--r-row) - var(--key-gap)));
   --r-toast: 18px;
   --footer-h: calc(var(--control-small-h) + 2 * var(--inset));
-  --inspector-column: 15rem;
+  --inspector-width: 18rem; --inspector-column: 15rem;
   /* One Settings row, in every group and the shortcuts list. */
   --settings-row-h: 2.75rem;
   /* Measured from NSSegmentedControl: the chosen fill lands at 19% of the text colour. */

@@ -76,7 +76,7 @@ export async function openCitationDetails(): Promise<HTMLInputElement> {
 
 /** Picks a form from the inspector's Form pop-up. */
 export async function chooseForm(name: string) {
-  fireEvent.click(await waitFor(() => within(document.querySelector<HTMLElement>(".inspector")!).getByRole("button", { name: /^Form / })));
+  fireEvent.click(await waitFor(() => within(document.querySelector<HTMLElement>(".inspector")!).getByRole("button", { name: /^Show as / })));
   const menu = await waitFor(() => { const list = document.querySelector<HTMLElement>('[role="menu"]'); if (!list) throw new Error("The Form menu is not open"); return list; });
   fireEvent.click(within(menu).getByRole("menuitemradio", { name }));
 }

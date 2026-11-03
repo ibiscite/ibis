@@ -279,13 +279,7 @@ try {
     await page.getByRole("option").last().waitFor();
     await checkScan("results");
     assert.deepEqual(page.viewportSize(), frame, "typing results keeps the opening frame");
-    const seated = async () => {
-      const rect = await page.locator(".picker-content").evaluate((node) => {
-        const rect = node.getBoundingClientRect();
-        return { top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right };
-      });
-      await waitForCheck("inspector-seated-in-the-middle", isSeatedInspector, rect);
-    };
+    const seated = () => waitForCheck("inspector-seated-beside-the-list", isSeatedInspector);
     const openEditor = async () => {
       const open = async () => {
         const edit = shelfControl(page, /^Edit /).first();
@@ -309,7 +303,7 @@ try {
       await inspector.waitFor({ state: "detached" });
     };
     const formMenu = async (inspector) => {
-      await inspector.getByRole("button", { name: /^Form / }).click();
+      await inspector.getByRole("button", { name: /^Show as / }).click();
       const menu = page.getByRole("menu");
       await menu.waitFor();
       return menu;
