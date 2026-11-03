@@ -33,8 +33,9 @@ pub(crate) enum Selection {
     Citation(OldCitation),
 }
 
-/// What Enter must find selected to replace it.
+/// What Enter must find selected to replace it. Only macOS reads it back.
 #[derive(Clone, PartialEq, Eq)]
+#[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
 pub(crate) struct OldCitation {
     pub(crate) digest: Fingerprint,
     /// UTF-16 units, so a much longer selection is never copied across.
