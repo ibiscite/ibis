@@ -26,6 +26,8 @@ export type RemovedReference = { token: number; reference: CitationReference; be
 export type ShelfCopied = Copied & { closestMatches?: readonly string[] };
 export type SessionState = {
   query: string; interpretLocators: boolean; active: number; selected: Map<string, CitationReference>; selectionChanged: boolean;
+  /** Advances when a window is about to appear (preparing or shown): what its first frame may show. */
+  opened: number;
   session: number; presentation: number | null; visibility: number; interaction: number; context: number; viewInteraction: number; view: SessionView | null;
   presentationSubscribed: boolean; readingPresentation: boolean; retryPresentation: boolean;
   hiddenAt: number | null; escapedQuery: { text: string; interpretLocators: boolean } | null; restored: number; permissionDetour: boolean;
@@ -68,7 +70,7 @@ export type SessionEffect =
 
 export function initialSession(query = "", copied: Copied | null = null): SessionState {
   return { query, interpretLocators: true, active: 0, selected: new Map(), selectionChanged: false,
-    session: 0, presentation: null, visibility: 0, interaction: 0, context: 0, viewInteraction: -1, view: null,
+    opened: 0, session: 0, presentation: null, visibility: 0, interaction: 0, context: 0, viewInteraction: -1, view: null,
     presentationSubscribed: false, readingPresentation: false, retryPresentation: false,
     hiddenAt: null, escapedQuery: null, restored: 0, permissionDetour: false,
     pendingCopy: null, flights: [], activeCopy: null, nextCopy: 0, lastSuccessfulCopy: 0, copied, shelfCopied: null, copyNotice: copied, removed: null, recentCopy: null, copyError: null, lastOutcome: null };
@@ -215,10 +217,10 @@ export function reduceSession(s: SessionState, event: SessionEvent): [SessionSta
     }
     case "hiding": return [{ ...s, readingPresentation: false, retryPresentation: false, visibility: s.visibility + 1, pendingCopy: null, shelfCopied: null, copyNotice: null }, []];
     case "hidden": return [{ ...s, presentation: null, readingPresentation: false, retryPresentation: false, visibility: s.visibility + 1, hiddenAt: event.now, pendingCopy: null, shelfCopied: null, copyNotice: null }, []];
-    case "preparing": return [{ ...returning(s, event.now), hiddenAt: null }, []];
+    case "preparing": return [{ ...returning(s, event.now), hiddenAt: null, opened: s.opened + 1 }, []];
     case "shown": {
       s = returning(s, event.now);
-      return [{ ...s, session: s.session + 1, presentation: event.presentation, readingPresentation: false, retryPresentation: false, visibility: s.visibility + 1, viewInteraction: -1, hiddenAt: null, pendingCopy: null, shelfCopied: null, copyNotice: null }, []];
+      return [{ ...s, opened: s.opened + 1, session: s.session + 1, presentation: event.presentation, readingPresentation: false, retryPresentation: false, visibility: s.visibility + 1, viewInteraction: -1, hiddenAt: null, pendingCopy: null, shelfCopied: null, copyNotice: null }, []];
     }
     case "retire": return [{ ...s, presentation: null, presentationSubscribed: false, readingPresentation: false, retryPresentation: false, session: s.session + 1, visibility: s.visibility + 1, viewInteraction: -1, pendingCopy: null, flights: [], activeCopy: null }, []];
   }

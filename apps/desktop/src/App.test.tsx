@@ -234,6 +234,9 @@ test.each([
   await act(async () => { await emit("picker:hidden"); });
   refuse = fault;
   await act(async () => { await emit("library:changed", { state: "loaded", revision: "1", source_generation: "1", source_is_requested: true, has_snapshot: true, zotero: false, name: "refs.bib", snapshot_name: "refs.bib", references: 1, warnings: 0, error: null, problem: null, note: null }); });
+  await act(async () => { await emit("picker:preparing"); });
+  // The first frame of the reopened window already has no failure in it.
+  expect(screen.queryByText("The citation could not be prepared. Try again.")).toBeNull();
   await act(async () => { await emit("picker:shown", 2); });
   await waitFor(() => expect(screen.getByRole("region", { name: "Preview" }).textContent).toContain("[@a]"));
   expect(screen.queryByText("The citation could not be prepared. Try again.")).toBeNull();

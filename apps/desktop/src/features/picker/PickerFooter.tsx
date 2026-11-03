@@ -36,7 +36,6 @@ export function PickerFooter({ library, groupName, hints, altHeld, actions, more
       const preferred = width(statusSize.current);
       if (!(available > 0 && preferred > 0)) return;
       const gap = parseFloat(getComputedStyle(element).columnGap) || 0;
-      const fix = width(element.querySelector(".source-action"));
       const intrinsic = (button: Element | null) => {
         const label = button?.querySelector<HTMLElement>(".key-hint-label");
         if (!label) return width(button);
@@ -44,6 +43,10 @@ export function PickerFooter({ library, groupName, hints, altHeld, actions, more
         // A truncated button is narrower than its name; fit by what it wants.
         return width(button) + (getComputedStyle(label).position === "absolute" ? label.scrollWidth + labelGap : Math.max(0, label.scrollWidth - label.clientWidth));
       };
+      // The fix's own wish, never what the action leaves it: it reserves its
+      // room in the leading column, so it can neither wrap onto the action nor fold it.
+      const fix = intrinsic(element.querySelector(".source-action"));
+      element.style.setProperty("--footer-fix", `${fix}px`);
       const actions = [...(hintsRow.current?.children ?? [])];
       const hintGap = hintsRow.current ? parseFloat(getComputedStyle(hintsRow.current).columnGap) || 0 : 0;
       const moreWidth = intrinsic(menu.current?.querySelector("button") ?? null);
@@ -80,5 +83,5 @@ export function PickerFooter({ library, groupName, hints, altHeld, actions, more
 }
 
 function FooterAction({ label, keys, primary, onAction, disabled }: { label: string; keys: string; primary?: boolean; onAction: () => void; disabled?: boolean }) {
-  return <Button variant={primary ? "primary" : "quiet"} size="small" className="footer-action" label={label} keys={keys} isDisabled={disabled} onPress={onAction} />;
+  return <Button variant={primary ? "primary" : "quiet"} size="small" className="footer-action" label={label} keys={keys} title={label} isDisabled={disabled} onPress={onAction} />;
 }

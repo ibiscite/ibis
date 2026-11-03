@@ -108,7 +108,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   // What may be copied: the same, once the shown results answer the current query.
   const chosen = selected.size > 0 || ready ? shownChoice : [];
   const output = useCitationOutput({
-    chosen: shownChoice, library: settledLibrary, libraryVersion, sessionId: state.session, isCurrentSession, format, style: styleOf(format),
+    chosen: shownChoice, library: settledLibrary, libraryVersion, sessionId: state.session, opened: state.opened, isCurrentSession, format, style: styleOf(format),
     showPastePreview, previewFileCitation: api.previewFileCitation, refreshSnapshot,
   });
   const { formatted, shown, previewProblem, displayedOutput } = output;

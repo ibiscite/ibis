@@ -319,6 +319,18 @@ test("reopening drops a failure from the first frame and prepares the same citat
   expect(result.current.shown).toMatchObject({ text: "Reopened entry" });
 });
 
+test("a failure is gone when the reopened window prepares its first frame, before it is shown", async () => {
+  const previewFileCitation = vi.fn<Preview>().mockRejectedValueOnce({ code: "failed", message: engineFault }).mockResolvedValue(preview("Shown entry"));
+  const initial = options({ previewFileCitation, sessionId: 0, opened: 0 });
+  const { result, rerender } = renderHook(useCitationOutput, { initialProps: initial });
+  await waitFor(() => expect(result.current.previewProblem).toBe(engineFault));
+  rerender({ ...initial, opened: 1 });
+  expect(result.current.previewProblem).toBeUndefined();
+  expect(result.current.displayedOutput).not.toBe("failed");
+  rerender({ ...initial, sessionId: 1, opened: 2 });
+  await waitFor(() => expect(result.current.shown).toMatchObject({ text: "Shown entry" }));
+});
+
 test("a failure that outlives reopening is shown again, and a late old failure cannot replace a newer citation", async () => {
   const pending: { resolve: (value: FilePreview) => void; reject: (reason: unknown) => void }[] = [];
   const previewFileCitation = vi.fn<Preview>(() => new Promise((resolve, reject) => pending.push({ resolve, reject })));

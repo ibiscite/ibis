@@ -245,7 +245,7 @@ Built in `ibis-core` so every front end shares them (#1204).
 ### Footer
 
 - **Footer** [C8]: status dot and text at the leading edge (dot on the tiles' column), the source action, the one primary action ("Paste into Word · APA ↵" or "Copy N as <format> ↵"), and last, on the rows' trailing edge, "More ⌘K".
-- **More never moves**: it has the last column of its own, so nothing about the action moves it: not a longer label, not Alt, not the action being absent. A click aimed at More can never land on Copy. The action sits against it and grows toward the status.
+- **More never moves**: it has the last column of its own, so nothing about the action moves it: not a longer label, not Alt, not the action being absent. A click aimed at More can never land on Copy. The action sits against it and grows toward the status. The leading slot always keeps room for its fix ("Find thesis.bib…"), so the fix never wraps onto the action; a failure line under them spans the footer.
 - Every hint is label first, then keys, on one baseline. When the footer does not fit, shorten the status, then truncate the action's label with "…", its keys and full name kept, and only by the window's width drop hint labels to keys. The action's own width never decides that fold.
 - **Quiet bands**: inside the shelf and footer only the main action (Copy or Paste) is filled. The library status, the source action, More, the reference count, notes and Details are quiet. A band that is itself a fill never holds another filled control.
 - Never show an action twice on one screen. With ⌥ held: "Add to citation ⇧↵", the Esc step, then More.
@@ -285,7 +285,7 @@ Built in `ibis-core` so every front end shares them (#1204).
 
 ### Copying and pasting
 
-- Cancelled work is not a failure and never reaches the person: a preview stopped by a newer choice, a reload or a hide says nothing. A preview that fails belongs to the opening that saw it: reopening or choosing the citation again prepares it afresh, and the failure is gone from the first frame.
+- Cancelled work is not a failure and never reaches the person: a preview stopped by a newer choice or a reload says nothing. A preview that fails belongs to the opening that saw it: reopening or choosing the citation again prepares it afresh, and the failure is gone from the first frame.
 - Enter does what the footer says. Pressed while results or the preview load, it waits and runs once. Repeated activations on the same citation never copy twice; a changed query, reference, page or format, arrows, Esc or hiding cancel a waiting Enter. A stale reply never replaces newer shelf or feedback.
 - **First paste in an app**: a browser, a code editor or an unrecognised app opens the format chooser once; the pick is remembered for that app (decision 0031). An unrecognised app also asks **Paste into [app name] from now on** or **Copy only**; answering never replays the held Enter.
 - Chooser items read as plain names with a quiet example ("BibLaTeX brackets   \parencite{key}"). "Just this once" applies to one copy; "Automatic" forgets the app's choices; "Use as global default" changes the fallback. A pick says its scope ("APA for this citation").

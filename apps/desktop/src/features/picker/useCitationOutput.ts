@@ -10,12 +10,14 @@ import { STYLE_NAMES, type StyleId } from "../../format/styles";
 import { pickerText } from "../../messages";
 import { choiceKey, styleOf, type Choice, type CitationReference } from "./choice";
 
-export function useCitationOutput({ chosen, library, libraryVersion, sessionId = 0, isCurrentSession, format, style, showPastePreview, previewFileCitation, refreshSnapshot }: {
+export function useCitationOutput({ chosen, library, libraryVersion, sessionId = 0, opened = sessionId, isCurrentSession, format, style, showPastePreview, previewFileCitation, refreshSnapshot }: {
   /** The selection, or the highlighted result when nothing is selected. */
   chosen: CitationReference[];
   library: LibraryStatus | null | undefined;
   libraryVersion: number;
   sessionId?: number;
+  /** Advances before a reopened window's first frame; a failure belongs to one. */
+  opened?: number;
   isCurrentSession?: (id: number) => boolean;
   format: Choice;
   /** The citation style, when one is chosen and formatting is available. */
@@ -27,11 +29,13 @@ export function useCitationOutput({ chosen, library, libraryVersion, sessionId =
 }) {
   // Tagged with the style, choice and library it was made for, so Enter never
   // copies a preview of an earlier choice.
-  const [formatted, setFormatted] = useState<{ key: string; request: object; session: number; preview?: FilePreview; result: (FormattedCitation & { fileTicket?: string; fileHash?: string }) | "failed" | "stale"; problem?: string } | null>(null);
+  const [formatted, setFormatted] = useState<{ key: string; request: object; session: number; opened: number; preview?: FilePreview; result: (FormattedCitation & { fileTicket?: string; fileHash?: string }) | "failed" | "stale"; problem?: string } | null>(null);
   const stalePreview = useRef<string | null>(null);
   // A preview stopped under a live owner is asked for once more per opening.
   const [attempt, setAttempt] = useState(0);
   const askedAgain = useRef<string | null>(null);
+  const currentOpening = useRef(opened);
+  currentOpening.current = opened;
   const currentSession = useRef(sessionId);
   currentSession.current = sessionId;
   const chosenKey = choiceKey(chosen);
@@ -53,7 +57,7 @@ export function useCitationOutput({ chosen, library, libraryVersion, sessionId =
   // reopening prepares it afresh, and an earlier opening's failure is never shown.
   const failed = formatted?.result === "failed";
   const reusable = !failed && formatted?.key === previewKey && lastStarted.current === formatted.request;
-  const ownsResult = (formatted?.request === request && !(failed && formatted.session !== sessionId)) || reusable;
+  const ownsResult = (formatted?.request === request && !(failed && (formatted.session !== sessionId || formatted.opened !== opened))) || reusable;
   // What Enter would copy now; null while it is being formatted.
   const shown = ownsResult ? formatted?.result ?? null : null;
   // Why the preview failed, when the user can fix it.
@@ -76,7 +80,7 @@ export function useCitationOutput({ chosen, library, libraryVersion, sessionId =
     // detours. Only unfinished or failed work needs a new session's request.
     if (previous.sessionId !== sessionId && previous.key === previewKey && formatted?.request === request && !failed) return;
     if (stalePreview.current === retryKey) {
-      setFormatted({ key: previewKey, request, session: sessionId, result: "stale" });
+      setFormatted({ key: previewKey, request, session: sessionId, opened, result: "stale" });
       return;
     }
     let live = true;
@@ -91,7 +95,7 @@ export function useCitationOutput({ chosen, library, libraryVersion, sessionId =
       ...(r.form ? { form: r.form } : {}),
     })), keyFormat ?? "pandoc", style, chosenRevision, abort.signal).then((result) => ({ markup: result.html ? parse(result.html) : [result.text], text: result.text, html: result.html ?? "", warnings: result.warnings, spans: result.spans, preview: result, fileTicket: result.ticket, fileHash: result.content_hash }));
     made
-      .then((result) => { if (owns()) setFormatted({ key, request, session: sessionId, preview: result.preview, result: result.preview.problem ? "failed" : result, problem: result.preview.problem ?? undefined }); })
+      .then((result) => { if (owns()) { askedAgain.current = null; setFormatted({ key, request, session: sessionId, opened: currentOpening.current, preview: result.preview, result: result.preview.problem ? "failed" : result, problem: result.preview.problem ?? undefined }); } })
       .catch((error) => { if (owns() && !nativeApi.isLibraryLoading(error)) {
         if (nativeApi.isCancelled(error)) {
           // Nothing failed and this owner still wants the citation. A second
@@ -107,7 +111,7 @@ export function useCitationOutput({ chosen, library, libraryVersion, sessionId =
         const shared = nativeApi.sharedCitationKey(error);
         const failure = typeof error === "object" && error !== null ? error as { code?: unknown; message?: unknown } : null;
         const message = failure?.code === "failed" && typeof failure.message === "string" ? failure.message : undefined;
-        setFormatted({ key, request, session: sessionId, result: stale ? "stale" : "failed", problem: shared ? pickerText.sharedKey(shared) : message });
+        setFormatted({ key, request, session: sessionId, opened: currentOpening.current, result: stale ? "stale" : "failed", problem: shared ? pickerText.sharedKey(shared) : message });
         if (stale) {
           stalePreview.current = retryKey;
           refreshSnapshot();

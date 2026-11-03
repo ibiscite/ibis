@@ -28,6 +28,12 @@ function geometry(initialWidth = 720) {
   };
 }
 
+function rule(selector: string) {
+  const at = footerStyles.indexOf(`${selector} {`);
+  expect(at).toBeGreaterThanOrEqual(0);
+  return footerStyles.slice(at, footerStyles.indexOf("}", at));
+}
+
 function footer(copy = vi.fn(), altHeld = false, label: string | null = "Copy 20 as Pandoc") {
   return <PickerFooter library={null} groupName={String} hints={{ enter: label, shiftEnter: "Add to citation", escape: "Hide" }}
     altHeld={altHeld} actions={{ copy, add: copy, escape: copy }} more={<button aria-label="More">More</button>} />;
@@ -144,17 +150,25 @@ test("a truncated action still shortens the status first, by the width its name 
   expect(bar.hasAttribute("data-hints-compact")).toBe(false);
 });
 
+test("the leading slot reserves its fix's width, and a failure line spans the footer", () => {
+  const resize = geometry(520);
+  render(<PickerFooter library={null} groupName={String} hints={{ enter: "Copy 20 as Harvard Cite Them Right", shiftEnter: null, escape: "Hide" }}
+    altHeld={false} actions={{ copy: vi.fn(), add: vi.fn(), escape: vi.fn() }} more={<button aria-label="More">More</button>}
+    status={<span className="library-status-controls"><span className="library-status">Status</span><button className="source-action">Find invented-thesis.bib</button></span>} />);
+  resize(520);
+  const bar = document.querySelector<HTMLElement>(".library-bar")!;
+  expect(bar.style.getPropertyValue("--footer-fix")).toBe("180px");
+  expect(rule(".library-bar")).toMatch(/--footer-fix/);
+  expect(rule(".library-bar[data-status-compact]")).toMatch(/--footer-fix/);
+  expect(footerStyles).toMatch(/\.library-bar > :is\(\.ui-quiet-status, \.library-action-error\) \{ grid-column: 1 \/ -1; \}/);
+});
+
 test("the action column truncates its label and can never push More off the trailing column", () => {
-  const rule = (selector: string) => {
-    const at = footerStyles.indexOf(`${selector} {`);
-    expect(at).toBeGreaterThanOrEqual(0);
-    return footerStyles.slice(at, footerStyles.indexOf("}", at));
-  };
   expect(rule(".library-bar")).toMatch(/display: grid/);
   expect(rule(".library-bar")).toMatch(/grid-template-columns: [^;]*minmax\(0, auto\) auto/);
   expect(rule(".library-bar > .more")).toMatch(/grid-area: 1 \/ 3/);
   // The leading slot can hold anything: only the two fixed columns are named.
-  expect(footerStyles).toMatch(/\.library-bar > :not\(\.enter-hints, \.more, \.ui-quiet-status\) \{ grid-column: 1; min-width: 0; \}/);
+  expect(footerStyles).toMatch(/\.library-bar > :not\(\.enter-hints, \.more, \.ui-quiet-status, \.library-action-error\) \{ grid-column: 1; min-width: 0; \}/);
   expect(rule(".library-bar .footer-action .key-hint-label")).toMatch(/text-overflow: ellipsis/);
   expect(pickerStyles).not.toMatch(/\.more \{[^}]*margin-inline-start: auto/);
 });

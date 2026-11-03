@@ -1,12 +1,15 @@
 /* Whatever the leading slot holds, action, More: the action's column can only
    shrink, so no label, and no action at all, can move More off the last column.
    Quiet notes span a row of their own. */
-.library-bar { --footer-status-min: min(14rem, 100%); position: relative; display: grid; grid-template-columns: minmax(var(--footer-status-min), 1fr) minmax(0, auto) auto; }
-.library-bar[data-status-compact] { --footer-status-min: calc(var(--tile) + var(--row-gap)); }
-.library-bar > :not(.enter-hints, .more, .ui-quiet-status) { grid-column: 1; min-width: 0; }
-.library-bar > .enter-hints { grid-area: 1 / 2; flex-wrap: nowrap; }
+/* The leading column always keeps room for its fix (`--footer-fix`, measured). */
+.library-bar { --footer-status-min: max(14rem, calc(var(--tile) + var(--row-gap) + var(--space-1) + var(--footer-fix, 0px)));
+  position: relative; display: grid; grid-template-columns: minmax(min(var(--footer-status-min), 100%), 1fr) minmax(0, auto) auto; }
+.library-bar[data-status-compact] { --footer-status-min: calc(var(--tile) + var(--row-gap) + var(--space-1) + var(--footer-fix, 0px)); }
+.library-bar > :not(.enter-hints, .more, .ui-quiet-status, .library-action-error) { grid-column: 1; min-width: 0; }
+/* Alt's two actions may wrap at large text; one action shrinks within its line. */
+.library-bar > .enter-hints { grid-area: 1 / 2; }
 .library-bar > .more { grid-area: 1 / 3; }
-.library-bar > .ui-quiet-status { grid-column: 1 / -1; }
+.library-bar > :is(.ui-quiet-status, .library-action-error) { grid-column: 1 / -1; }
 .footer-fit-measure { position: absolute; visibility: hidden; pointer-events: none; display: flex; max-width: 100%; height: 0; overflow: hidden; }
 .footer-status-size { flex: none; width: 14rem; }
 .footer-status-minimum { flex: none; width: calc(var(--tile) + var(--row-gap)); }
