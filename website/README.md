@@ -200,6 +200,9 @@ including the static example and accessible labels. The desktop app keeps its
 
 Search for “lantern”, choose the lantern gardens reference, then press Enter.
 
+The README, `docs/cli.md` and command-line help use the same references and the same
+privacy sentence; `scripts/website-content.test.mjs` fails if another example set appears.
+
 For #1375, the combined device session still needs genuine desktop help screenshots
 of first-run **Try sample references**, that practice task in the empty search,
 the lantern search result and preview, and the copy/paste receipt and destination

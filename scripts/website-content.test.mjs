@@ -75,3 +75,14 @@ test("macOS browser platform names select Mac shortcuts and native tokens", asyn
     assert.equal(dataset.platform, "macos");
   }
 });
+
+test("the README and CLI examples use the shared invented references and privacy line", async () => {
+  const { references } = await import("../website/demo-model.mjs");
+  const read = path => readFile(new URL(path, import.meta.url), "utf8");
+  const [readme, cli, help] = await Promise.all([read("../README.md"), read("../docs/cli.md"), read("../crates/ibis-cli/src/lib.rs")]);
+  assert.ok(readme.includes("No account, no uploads, no telemetry; sources read without changes."));
+  for (const [name, text] of [["README.md", readme], ["docs/cli.md", cli], ["ibis-cli help", help]]) {
+    assert.ok(text.includes(references[0].key), `${name} cites the shared first reference`);
+    assert.doesNotMatch(text, /garcia 2021|garcia2021|smith2020|jones2019|accents2021|protected2020|search "?memory/, `${name} has no second example set`);
+  }
+});
