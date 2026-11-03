@@ -48,7 +48,7 @@ export function PickerResults({
     shortcut={shortcut} onWelcomeChange={setWelcomeShown} /> : (library !== undefined && (libraryChoices || busy || results.length === 0 && !error && (!library?.error || blocked)) ? (
     <EmptyState library={library} query={query} narrowed={narrowed} peck={peck}
       unfiltered={unfiltered} missing={Boolean(list?.missing.length)}
-      onRemoveFilter={(plain) => { setQuery(plain); input.current?.focus(); }}
+      onRemoveFilter={(plain) => { setQuery(plain); focusHome(); }}
       source={api.openLibrarySource && source.sourceInChoices ? sourceChoice : undefined}
       onChooseLibrary={() => void perform("choose", chooseLibrary)}
       onClearSearch={() => { setQuery(""); focusHome(); }}
