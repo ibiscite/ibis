@@ -39,6 +39,11 @@ Ibis uses; the source stays the original, and an export that needs the original
 entry reads it from the source (2026-10-27: in-memory raw copies dropped, which
 nothing read and which doubled memory). Details: [architecture](architecture.md).
 
+2026-11-02 (maintainer): the engine is the soul of Ibis. It stands on its own and
+is developed in tandem with the app, with no compromises; the GUI is only a layer.
+It must work with AI agents, run on every operating system and be there for anyone
+to build on.
+
 ## 0004 Desktop shell (with 0012)
 
 Tauri 2 with a React interface, in one process: the picker window is hidden
@@ -896,3 +901,8 @@ completed fixes, including the picker fade, logo and compact-window work,
 after required review, CI and budget gates pass; stable deployment keeps its
 one-click approval. The website demo is critical and stays functionally
 aligned with the released app; Settings #776 remains future polish.
+
+2026-11-02: One reference's details and, later, a source's PDF share one panel
+inside the picker, beside the list as in Preview's sidebar; never an anchored
+popover. The picker widens only to hold the PDF. Rules: design.md **Inspector**
+[C19] (maintainer).

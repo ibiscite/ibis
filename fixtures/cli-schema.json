@@ -2102,6 +2102,23 @@
       },
       "result": {
         "$defs": {
+          "AppId": {
+            "additionalProperties": false,
+            "description": "An app as the platform names it: a bundle ID on macOS, an executable name\non Windows. Never a window title or document name.",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "system": {
+                "$ref": "#/$defs/System"
+              }
+            },
+            "required": [
+              "system",
+              "id"
+            ],
+            "type": "object"
+          },
           "CitationError": {
             "description": "Fixed citation diagnostics contain no source data, paths, keys or request text.\nA front-end boundary maps a wholly invalid/cancelled request to its envelope error.",
             "enum": [
@@ -2151,6 +2168,121 @@
               "sentence-case-expected"
             ],
             "type": "string"
+          },
+          "CopyReason": {
+            "description": "Why a citation was copied instead of pasted.",
+            "oneOf": [
+              {
+                "enum": [
+                  "paste-off",
+                  "unsupported-system",
+                  "no-target",
+                  "copy-only",
+                  "target-changed",
+                  "clipboard-changed",
+                  "paste-expired",
+                  "secure-field",
+                  "elevated-app",
+                  "terminal",
+                  "remote-desktop",
+                  "virtual-machine",
+                  "nonstandard-shortcut",
+                  "no-permission"
+                ],
+                "type": "string"
+              },
+              {
+                "const": "unknown-app",
+                "description": "An unrecognised app has no explicit paste approval.",
+                "type": "string"
+              },
+              {
+                "const": "secure-input",
+                "description": "System-wide secure typing is enabled, possibly by another app.",
+                "type": "string"
+              },
+              {
+                "const": "paste-unavailable",
+                "description": "The final paste check was unavailable or could not finish in time.",
+                "type": "string"
+              },
+              {
+                "const": "accessibility-required",
+                "description": "macOS Accessibility trust is required for the identity-only focus proof.",
+                "type": "string"
+              }
+            ]
+          },
+          "Decision": {
+            "oneOf": [
+              {
+                "properties": {
+                  "action": {
+                    "const": "paste",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "copy",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "$ref": "#/$defs/CopyReason"
+                  }
+                },
+                "required": [
+                  "action",
+                  "reason"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "Destination": {
+            "additionalProperties": false,
+            "description": "What Ibis does for a named app: the output it uses and whether it pastes,\nwith pasting on and permitted, as they are by default. A choice remembered\nin the app for one app is that person's and stays out of this answer.",
+            "properties": {
+              "app": {
+                "$ref": "#/$defs/AppId"
+              },
+              "delivery": {
+                "$ref": "#/$defs/Decision"
+              },
+              "name": {
+                "description": "The app's name, when Ibis knows it.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "output": {
+                "$ref": "#/$defs/OutputSpec"
+              },
+              "output_question": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/OutputQuestion"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "The app keeps `output` until a person answers this question in Ibis."
+              }
+            },
+            "required": [
+              "app",
+              "output",
+              "delivery"
+            ],
+            "type": "object"
           },
           "DisplayNode": {
             "additionalProperties": false,
@@ -2273,6 +2405,26 @@
               }
             ]
           },
+          "KeySyntax": {
+            "enum": [
+              "pandoc",
+              "biblatex",
+              "natbib",
+              "latex",
+              "typst",
+              "org-cite",
+              "myst",
+              "multi-markdown",
+              "ascii-doc",
+              "jupyter",
+              "jekyll-scholar",
+              "scannable-cite",
+              "keys",
+              "csl-json",
+              "cayw-json"
+            ],
+            "type": "string"
+          },
           "Loss": {
             "additionalProperties": false,
             "properties": {
@@ -2326,11 +2478,91 @@
             ],
             "type": "string"
           },
+          "OutputQuestion": {
+            "description": "An app ID that cannot tell Ibis which output its document needs.",
+            "enum": [
+              "browser",
+              "editor"
+            ],
+            "type": "string"
+          },
+          "OutputSpec": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "command": {
+                    "default": null,
+                    "description": "A command name for syntaxes that support it; engines validate its grammar.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "kind": {
+                    "const": "key",
+                    "type": "string"
+                  },
+                  "syntax": {
+                    "$ref": "#/$defs/KeySyntax"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "syntax"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "csl",
+                    "type": "string"
+                  },
+                  "style": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "style"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "preset",
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "name"
+                ],
+                "type": "object"
+              }
+            ]
+          },
           "Script": {
             "enum": [
               "normal",
               "subscript",
               "superscript"
+            ],
+            "type": "string"
+          },
+          "System": {
+            "description": "The operating system an app ID belongs to.",
+            "enum": [
+              "macos",
+              "windows",
+              "linux"
             ],
             "type": "string"
           }
@@ -2341,6 +2573,17 @@
           "content_hash": {
             "$ref": "#/$defs/Fingerprint",
             "description": "Digest of the exact clipboard representations, including their presence."
+          },
+          "destination": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Destination"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The app this citation was made for, when a caller named one."
           },
           "display": {
             "$ref": "#/$defs/DisplayTree"

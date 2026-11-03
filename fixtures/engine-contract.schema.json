@@ -55,6 +55,23 @@
         "comment"
       ]
     },
+    "AppId": {
+      "description": "An app as the platform names it: a bundle ID on macOS, an executable name\non Windows. Never a window title or document name.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "system": {
+          "$ref": "#/$defs/System"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "system",
+        "id"
+      ]
+    },
     "Attachment": {
       "type": "object",
       "properties": {
@@ -313,6 +330,17 @@
           "description": "Digest of the exact clipboard representations, including their presence.",
           "$ref": "#/$defs/Fingerprint"
         },
+        "destination": {
+          "description": "The app this citation was made for, when a caller named one.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Destination"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "display": {
           "$ref": "#/$defs/DisplayTree"
         },
@@ -424,6 +452,121 @@
         "id",
         "name",
         "items"
+      ]
+    },
+    "CopyReason": {
+      "description": "Why a citation was copied instead of pasted.",
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "paste-off",
+            "unsupported-system",
+            "no-target",
+            "copy-only",
+            "target-changed",
+            "clipboard-changed",
+            "paste-expired",
+            "secure-field",
+            "elevated-app",
+            "terminal",
+            "remote-desktop",
+            "virtual-machine",
+            "nonstandard-shortcut",
+            "no-permission"
+          ]
+        },
+        {
+          "description": "An unrecognised app has no explicit paste approval.",
+          "type": "string",
+          "const": "unknown-app"
+        },
+        {
+          "description": "System-wide secure typing is enabled, possibly by another app.",
+          "type": "string",
+          "const": "secure-input"
+        },
+        {
+          "description": "The final paste check was unavailable or could not finish in time.",
+          "type": "string",
+          "const": "paste-unavailable"
+        },
+        {
+          "description": "macOS Accessibility trust is required for the identity-only focus proof.",
+          "type": "string",
+          "const": "accessibility-required"
+        }
+      ]
+    },
+    "Decision": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "paste"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "copy"
+            },
+            "reason": {
+              "$ref": "#/$defs/CopyReason"
+            }
+          },
+          "required": [
+            "action",
+            "reason"
+          ]
+        }
+      ]
+    },
+    "Destination": {
+      "description": "What Ibis does for a named app: the output it uses and whether it pastes,\nwith pasting on and permitted, as they are by default. A choice remembered\nin the app for one app is that person's and stays out of this answer.",
+      "type": "object",
+      "properties": {
+        "app": {
+          "$ref": "#/$defs/AppId"
+        },
+        "delivery": {
+          "$ref": "#/$defs/Decision"
+        },
+        "name": {
+          "description": "The app's name, when Ibis knows it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "output": {
+          "$ref": "#/$defs/OutputSpec"
+        },
+        "output_question": {
+          "description": "The app keeps `output` until a person answers this question in Ibis.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OutputQuestion"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "app",
+        "output",
+        "delivery"
       ]
     },
     "DisplayNode": {
@@ -1086,6 +1229,14 @@
         "input-language-unsupported"
       ]
     },
+    "OutputQuestion": {
+      "description": "An app ID that cannot tell Ibis which output its document needs.",
+      "type": "string",
+      "enum": [
+        "browser",
+        "editor"
+      ]
+    },
     "OutputSpec": {
       "oneOf": [
         {
@@ -1313,6 +1464,15 @@
     "SuccessStatus": {
       "type": "boolean",
       "const": true
+    },
+    "System": {
+      "description": "The operating system an app ID belongs to.",
+      "type": "string",
+      "enum": [
+        "macos",
+        "windows",
+        "linux"
+      ]
     },
     "Tag": {
       "type": "object",
