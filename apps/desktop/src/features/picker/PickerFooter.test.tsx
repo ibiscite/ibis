@@ -150,6 +150,23 @@ test("a truncated action still shortens the status first, by the width its name 
   expect(bar.hasAttribute("data-hints-compact")).toBe(false);
 });
 
+test("holding Alt keeps the footer one line: Alt's labels fold to keys, More keeps its label", () => {
+  const resize = geometry(500);
+  const view = render(footer());
+  const bar = document.querySelector(".library-bar")!;
+  resize(500);
+  expect(bar.hasAttribute("data-alt-compact")).toBe(false);
+  view.rerender(footer(vi.fn(), true));
+  resize(500);
+  expect(bar.hasAttribute("data-alt-compact")).toBe(true);
+  expect(bar.hasAttribute("data-hints-compact")).toBe(false);
+  expect(footerStyles).toMatch(/\.library-bar > \.enter-hints \{ grid-area: 1 \/ 2; flex-wrap: nowrap; \}/);
+  expect(footerStyles).toMatch(/\[data-alt-compact\] \.enter-hints \.key-hint-label/);
+  expect(footerStyles).toMatch(/\[data-alt-compact\]\[data-hints-compact\] > \.enter-hints \{ overflow: hidden; \}/);
+  view.rerender(footer());
+  expect(bar.hasAttribute("data-alt-compact")).toBe(false);
+});
+
 test("the leading slot reserves its fix's width, and a failure line spans the footer", () => {
   const resize = geometry(520);
   render(<PickerFooter library={null} groupName={String} hints={{ enter: "Copy 20 as Harvard Cite Them Right", shiftEnter: null, escape: "Hide" }}

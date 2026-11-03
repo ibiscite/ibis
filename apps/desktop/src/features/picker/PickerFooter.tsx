@@ -24,7 +24,7 @@ export function PickerFooter({ library, groupName, hints, altHeld, actions, more
   const statusSize = useRef<HTMLSpanElement>(null);
   const statusMinimum = useRef<HTMLSpanElement>(null);
   const labelMinimum = useRef<HTMLSpanElement>(null);
-  const [fit, setFit] = useState({ status: false, labels: false });
+  const [fit, setFit] = useState({ status: false, labels: false, alt: false });
   const platform = currentPlatform();
   // biome-ignore lint/correctness/useExhaustiveDependencies: labels, Alt and platform change intrinsic control widths.
   useLayoutEffect(() => {
@@ -54,7 +54,11 @@ export function PickerFooter({ library, groupName, hints, altHeld, actions, more
         + Math.max(0, actions.length - 1) * hintGap + gap * 2 > available;
       // Never the action's own width: its label must not be able to resize More.
       const labels = width(statusMinimum.current) + fix + moreWidth + width(labelMinimum.current) + gap * 2 > available;
-      setFit((old) => old.status === status && old.labels === labels ? old : { status, labels });
+      // Alt's two actions cannot truncate both into one line: they keep their
+      // keys and fold their labels, never More's, so More keeps its size.
+      const alt = altHeld && width(statusMinimum.current) + fix + moreWidth + gap * 2
+        + actions.reduce((sum, action) => sum + intrinsic(action), 0) + Math.max(0, actions.length - 1) * hintGap > available;
+      setFit((old) => old.status === status && old.labels === labels && old.alt === alt ? old : { status, labels, alt });
     };
     measure();
     const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
@@ -66,7 +70,7 @@ export function PickerFooter({ library, groupName, hints, altHeld, actions, more
     {/* The region includes More and Copy. Its name must stay distinct from
         the Library button, so native name lookup cannot activate the region. */}
     <section ref={bar} aria-label={pickerText.pickerActions} className="library-bar" data-empty-action={emptyAction || undefined}
-      data-status-compact={fit.status || undefined} data-hints-compact={fit.labels || undefined}>
+      data-status-compact={fit.status || undefined} data-hints-compact={fit.labels || undefined} data-alt-compact={altHeld && fit.alt || undefined}>
       <span className="footer-fit-measure" aria-hidden="true" inert><span ref={statusSize} className="footer-status-size" /><span ref={statusMinimum} className="footer-status-minimum" /><span ref={labelMinimum} className="footer-label-minimum" /></span>
       {status ?? <LibraryStatusLine library={library} groupName={groupName} />}
       <small key="hints" ref={hintsRow} className="enter-hints" aria-label={keyText.footer} role="group">

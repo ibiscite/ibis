@@ -304,6 +304,27 @@ try {
       assert.ok(footer.truncated, `${caseLabel}: a long action label truncates, or folds to keys by width`);
       assert.ok(footer.clear, `${caseLabel}: the action never reaches More`);
       for (const end of footer.ends) assert.ok(Math.abs(end - footer.ends[0]) < 1, `${caseLabel}: the action keeps its end against More`);
+      const steady = () => page.evaluate(() => {
+        const { left, right, top } = document.querySelector(".library-bar > .more button").getBoundingClientRect();
+        return { left, right, top, height: document.querySelector("footer").getBoundingClientRect().height };
+      });
+      const before = await steady();
+      await page.keyboard.down("Alt");
+      await page.waitForFunction(() => document.querySelectorAll(".enter-hints > *").length > 1 || !document.querySelector(".enter-hints")?.getClientRects().length);
+      await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
+      const held = await steady();
+      const covered = await page.evaluate(() => {
+        const more = document.querySelector(".library-bar > .more button").getBoundingClientRect();
+        const row = document.querySelector(".enter-hints");
+        const bound = row.getBoundingClientRect(), clipped = getComputedStyle(row).overflow === "hidden";
+        return [...row.querySelectorAll("button")].some((button) => {
+          const box = button.getBoundingClientRect(), right = clipped ? Math.min(box.right, bound.right) : box.right, left = clipped ? Math.max(box.left, bound.left) : box.left;
+          return box.width > 0 && right > more.left + 1 && left < more.right - 1;
+        });
+      });
+      assert.equal(covered, false, `${caseLabel}: Alt's actions never cover More`);
+      await page.keyboard.up("Alt");
+      assert.deepEqual(held, before, `${caseLabel}: Alt moves neither More nor the footer's height`);
     }
     await page.getByRole("option").last().waitFor();
     await checkScan("results");
