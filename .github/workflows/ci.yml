@@ -19,6 +19,8 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  # Debug information makes up most of what Windows compiles and links here.
+  CARGO_PROFILE_DEV_DEBUG: 0
   RUSTFLAGS: -D warnings
 
 jobs:
@@ -30,12 +32,14 @@ jobs:
       contents: read
       pull-requests: read
     outputs:
+      core: ${{ steps.classify.outputs.core }}
       native: ${{ steps.classify.outputs.native }}
       web: ${{ steps.classify.outputs.web }}
     steps:
       # Interface-only and website-only pull requests keep web validation
       # without native jobs and without building the interface for them.
       # A Linux Desktop placeholder still reports success for "CI result".
+      # Changes only inside apps/desktop skip the crates' tests.
       # Main and unclear file lists build the complete app.
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -100,17 +104,11 @@ jobs:
           retention-days: 1
 
   test:
-    name: Test (${{ matrix.os }})
+    name: Test (ubuntu-24.04)
     needs: changes
-    if: needs.changes.outputs.web == 'true'
-    runs-on: ${{ matrix.os }}
+    if: needs.changes.outputs.core == 'true'
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        # macOS and Windows run the same checks inside their Desktop jobs,
-        # which already build on those systems; one runner each per change.
-        os: [ubuntu-24.04]
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -124,13 +122,22 @@ jobs:
           # which would evict main's from the repository's cache quota.
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
-      - name: Format
-        run: cargo fmt --all --check
+      - name: Install Pandoc
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends pandoc
 
       - name: Lint
         run: cargo clippy --all-targets --locked
 
+      - name: Check the declared minimum Rust version
+        run: |
+          rustup toolchain install 1.90.0 --profile minimal
+          cargo +1.90.0 check --locked --all-targets
+
+      # The citation fidelity test compares against Pandoc here; other systems
+      # run the rest of the tests without it.
       - name: Test
+        env:
+          IBIS_REQUIRE_PANDOC: "1"
         run: cargo test --locked
 
       - name: Enforce 100k search budget (release)
@@ -193,7 +200,7 @@ jobs:
           pnpm typecheck
           pnpm lint
           pnpm test
-          pnpm build
+          pnpm exec vite build
           node ../../scripts/picker-budget.mjs dist
 
   desktop:
@@ -202,6 +209,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     env:
+      CORE: ${{ needs.changes.outputs.core }}
       NATIVE: ${{ needs.changes.outputs.native }}
     strategy:
       fail-fast: false
@@ -226,13 +234,13 @@ jobs:
           persist-credentials: false
 
       - name: Check Windows updater activation contracts
-        if: env.NATIVE == 'true' && runner.os == 'Windows'
+        if: env.CORE == 'true' && runner.os == 'Windows'
         run: |
           command -v pwsh
           python -B scripts/update-e2e.py --self-test
 
       - name: Test the Windows offline observer
-        if: env.NATIVE == 'true' && runner.os == 'Windows'
+        if: env.CORE == 'true' && runner.os == 'Windows'
         shell: pwsh
         run: ./scripts/check-offline.tests.ps1
 
@@ -263,6 +271,10 @@ jobs:
       - name: Check generated brand assets (Linux)
         if: env.NATIVE == 'true' && runner.os == 'Linux'
         run: node scripts/check.mjs --brand-assets
+
+      - name: Format
+        if: env.NATIVE == 'true' && runner.os == 'Linux'
+        run: cargo fmt --all --check
 
       - name: Cache Rust build
         if: env.NATIVE == 'true'
@@ -298,8 +310,10 @@ jobs:
         if: env.NATIVE == 'true' && runner.os == 'Windows'
         run: cargo test -p ibis-desktop --locked one_ctrl_v_pastes_the_clipboard_into_the_app_in_front -- --ignored --nocapture
 
+      # Windows finds real bugs in the crates. macOS almost never finds one
+      # that Linux misses, so pull requests leave it to main.
       - name: Lint and test the core and scripts (macOS and Windows)
-        if: env.NATIVE == 'true' && runner.os != 'Linux'
+        if: env.CORE == 'true' && (runner.os == 'Windows' || (runner.os == 'macOS' && github.event_name != 'pull_request'))
         run: |
           cargo clippy --all-targets --locked
           cargo test --locked
@@ -331,33 +345,6 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-  fidelity:
-    name: Citation fidelity
-    needs: changes
-    if: needs.changes.outputs.web == 'true'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Cache Rust build
-        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-        with:
-          # Pull requests restore main's caches but never write their own,
-          # which would evict main's from the repository's cache quota.
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-
-      - name: Install Pandoc
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends pandoc
-
-      - name: Compare rendering from BibTeX and from CSL export
-        env:
-          IBIS_REQUIRE_PANDOC: "1"
-        run: cargo test -p ibis --test fidelity --locked
-
   dependencies:
     name: Dependency policy
     runs-on: ubuntu-24.04
@@ -379,15 +366,15 @@ jobs:
           arguments: --all-features --locked
 
   # One check that stands for every required job, for the ruleset to require
-  # instead of six names. A matrix job skipped because a job it needs failed
+  # instead of five names. A matrix job skipped because a job it needs failed
   # never reports its per-system checks; this job always reports. Every
-  # unconditional job must succeed. Rust and fidelity may be skipped only for
-  # docs-only inputs; missing classifier output fails shut.
+  # unconditional job must succeed. Test may be skipped only when no input of
+  # the crates changed; missing classifier output fails shut.
   # It also refuses stacked pull requests: every pull request targets main.
   result:
     name: CI result
     if: always()
-    needs: [changes, test, web, desktop, fidelity, dependencies]
+    needs: [changes, test, web, desktop, dependencies]
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:
@@ -396,7 +383,8 @@ jobs:
           RESULTS: ${{ needs.changes.result }} ${{ needs.web.result }} ${{ needs.desktop.result }} ${{ needs.dependencies.result }}
           WEB: ${{ needs.changes.outputs.web }}
           NATIVE: ${{ needs.changes.outputs.native }}
-          RUST_RESULTS: ${{ needs.test.result }} ${{ needs.fidelity.result }}
+          CORE: ${{ needs.changes.outputs.core }}
+          TEST: ${{ needs.test.result }}
           EVENT: ${{ github.event_name }}
           BASE: ${{ github.base_ref }}
         run: |
@@ -416,19 +404,12 @@ jobs:
               exit 1
             fi
           done
-          case "$EVENT:$WEB:$NATIVE" in
-            pull_request:false:false) expected=skipped ;;
-            pull_request:true:false|*:true:true) expected=success ;;
+          case "$EVENT:$WEB:$NATIVE:$CORE" in
+            pull_request:false:false:false|pull_request:true:false:false|pull_request:true:true:false) expected=skipped ;;
+            *:true:true:true) expected=success ;;
             *) echo "::error::Missing or invalid check selection."; exit 1 ;;
           esac
-          set -- $RUST_RESULTS
-          if [ "$#" -ne 2 ]; then
-            echo "::error::Expected 2 Rust job results, got $#."
+          if [ "$TEST" != "$expected" ]; then
+            echo "::error::Expected Test to be '$expected', got '$TEST'."
             exit 1
           fi
-          for result in "$@"; do
-            if [ "$result" != "$expected" ]; then
-              echo "::error::Expected Rust and fidelity jobs to be '$expected', got '$result'."
-              exit 1
-            fi
-          done

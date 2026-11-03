@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
 const maxFiles = 3000; // GitHub's pull-request files endpoint stops here.
-const full = { native: true, web: true };
+const full = { core: true, native: true, web: true };
 const validPath = (path) => typeof path === "string" && path.length > 0 && !/[\x00-\x1f\x7f\\]/.test(path)
   && path.split("/").every((part) => part && part !== "." && part !== "..");
 // Markdown beside code or vendored assets can be pinned by Rust tests.
@@ -17,6 +17,8 @@ const interfaceFile = (path) => path !== "apps/desktop/src/bindings.ts" && (
 );
 // The website is plain files checked by the script tests in the Web job.
 const websiteFile = (path) => path.startsWith("website/");
+// Plain `cargo test` never builds the app and no crate reads its files.
+const appFile = (path) => path.startsWith("apps/desktop/");
 
 export function classify(event, expected, files) {
   if (event !== "pull_request") return { ...full };
@@ -31,7 +33,9 @@ export function classify(event, expected, files) {
     paths.push(file.filename);
     if (file.previous_filename != null) paths.push(file.previous_filename);
   }
-  return { native: paths.some((path) => !documentation(path) && !interfaceFile(path) && !websiteFile(path)), web: paths.some((path) => !documentation(path)) };
+  const web = paths.filter((path) => !documentation(path));
+  const native = web.filter((path) => !interfaceFile(path) && !websiteFile(path));
+  return { core: native.some((path) => !appFile(path)), native: native.length > 0, web: web.length > 0 };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
