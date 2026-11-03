@@ -32,7 +32,13 @@ function fixture(t) {
     const path = join(cwd, "event.json"); writeFileSync(path, JSON.stringify(value));
     return { GITHUB_ACTIONS: "true", GITHUB_EVENT_PATH: path, GITHUB_EVENT_NAME: name, GITHUB_SHA: git("rev-parse", "HEAD") };
   };
-  return { cwd, env, git, commit, base, run, event };
+  // The event and merge commit GitHub makes for a pull request ending at HEAD.
+  const pullRequest = (commits = 1, tip = git("rev-parse", "HEAD"), parent = base) => {
+    const merge = git("-c", "user.name=GitHub", "-c", "user.email=noreply@github.com", "commit-tree", git("rev-parse", "HEAD^{tree}"), "-p", parent, "-p", tip, "-m", "Synthetic PR merge");
+    git("update-ref", "HEAD", merge);
+    return { pull_request: { base: { sha: base }, head: { sha: tip }, commits } };
+  };
+  return { cwd, env, git, commit, base, run, event, pullRequest };
 }
 
 test("the identity guard rejects a synthetic unintended maintainer author without printing it", (t) => {
@@ -75,40 +81,25 @@ test("manual maintainer metadata is outside the AI repair, folded AI trailers ar
 });
 
 test("PR range checks an earlier bad commit even when its exact head is public", (t) => {
-  const f = fixture(t); f.commit(rejected); const tip = f.commit();
-  const tree = f.git("rev-parse", "HEAD^{tree}");
-  const merge = f.git("-c", "user.name=GitHub", "-c", "user.email=noreply@github.com", "commit-tree", tree, "-p", f.base, "-p", tip, "-m", "Synthetic PR merge");
-  f.git("update-ref", "HEAD", merge);
-  const event = { pull_request: { base: { sha: f.base }, head: { sha: tip }, commits: 2 } };
+  const f = fixture(t); f.commit(rejected); f.commit();
+  const event = f.pullRequest(2);
   const result = f.run([], f.event(event, "pull_request"));
   assert.equal(result.status, 1); assert.match(result.stderr, /identity 1: maintainer author/);
   event.pull_request.commits = 1;
   assert.match(f.run([], f.event(event, "pull_request")).stderr, /incomplete/);
 });
 
-test("actual merge-group candidate metadata is checked even without an AI trailer", (t) => {
-  const f = fixture(t); const head = f.commit(rejected, "Synthetic merge-group candidate");
-  const event = { merge_group: { base_sha: f.base, head_sha: head } };
-  assert.match(f.run([], f.event(event, "merge_group")).stderr, /maintainer author/);
-  event.merge_group.head_sha = f.base;
-  assert.match(f.run([], f.event(event, "merge_group")).stderr, /match the merge-group/);
-});
-
-test("valid PR and merge-group candidates accept complete intended ranges", (t) => {
+test("a valid pull request accepts its complete range, even on a newer main", (t) => {
   const f = fixture(t); const tip = f.commit();
-  const tree = f.git("rev-parse", "HEAD^{tree}");
-  const metadata = ["-c", "user.name=GitHub", "-c", "user.email=noreply@github.com"];
-  const newerBase = f.git(...metadata, "commit-tree", tree, "-p", f.base, "-m", "Synthetic newer main");
-  const merge = f.git(...metadata, "commit-tree", tree, "-p", newerBase, "-p", tip, "-m", "Synthetic PR merge");
-  f.git("update-ref", "HEAD", merge);
-  assert.equal(f.run([], f.event({ pull_request: { base: { sha: f.base }, head: { sha: tip }, commits: 1 } }, "pull_request")).status, 0);
-  assert.equal(f.run([], f.event({ merge_group: { base_sha: newerBase, head_sha: merge } }, "merge_group")).status, 0);
+  const newerBase = f.git("-c", "user.name=GitHub", "-c", "user.email=noreply@github.com", "commit-tree", f.git("rev-parse", "HEAD^{tree}"), "-p", f.base, "-m", "Synthetic newer main");
+  const event = f.pullRequest(1, tip, newerBase);
+  assert.equal(f.run([], f.event(event, "pull_request")).status, 0);
 });
 
 test("Git-valid spaced trailer separators cannot hide candidate identities", (t) => {
   for (const key of ["Signed-off-by", "Co-authored-by"]) {
-    const f = fixture(t); const head = f.commit(publicEmail, `${key} : Diyanko <${rejected}>`);
-    assert.equal(f.run([], f.event({ merge_group: { base_sha: f.base, head_sha: head } }, "merge_group")).status, 1);
+    const f = fixture(t); f.commit(publicEmail, `Assisted-by: Codex\n\n${key} : Diyanko <${rejected}>`);
+    assert.equal(f.run([], f.event(f.pullRequest(), "pull_request")).status, 1);
   }
 });
 
@@ -121,19 +112,20 @@ test("co-author disclosures do not depend on a fixed AI product-name list", (t) 
 
 test("missing, mismatched, shallow and empty intended inputs fail without sensitive diagnostics", (t) => {
   const f = fixture(t); const head = f.commit();
-  for (const [event, name, pattern] of [
-    [{}, "pull_request", /range is missing/],
-    [{ merge_group: { base_sha: "a".repeat(40), head_sha: head } }, "merge_group", /unavailable/],
-    [{ merge_group: { base_sha: f.base, head_sha: "short" } }, "merge_group", /full base\/head/],
-    [{ merge_group: { base_sha: head, head_sha: head } }, "merge_group", /empty or incomplete/],
+  const event = f.pullRequest();
+  for (const [value, pattern] of [
+    [{}, /range is missing/],
+    [{ pull_request: { ...event.pull_request, base: { sha: "a".repeat(40) } } }, /unavailable/],
+    [{ pull_request: { ...event.pull_request, head: { sha: "short" } } }, /full base\/head/],
+    [{ pull_request: { ...event.pull_request, head: { sha: head }, commits: 0 } }, /count is missing/],
   ]) {
-    const result = f.run([], f.event(event, name));
+    const result = f.run([], f.event(value, "pull_request"));
     assert.equal(result.status, 1); assert.match(result.stderr, pattern);
     assert.doesNotMatch(result.stdout + result.stderr, /fatal:|example\.invalid|ibis-identity-/);
   }
-  const event = f.event({ merge_group: { base_sha: f.base, head_sha: head } }, "merge_group");
-  assert.match(f.run([], { ...event, GITHUB_SHA: f.base }).stderr, /checkout does not match/);
-  assert.match(f.run([], { ...event, GIT_SHALLOW_FILE: "synthetic-unavailable" }).stderr, /source overrides/);
+  const environment = f.event(event, "pull_request");
+  assert.match(f.run([], { ...environment, GITHUB_SHA: f.base }).stderr, /checkout does not match/);
+  assert.match(f.run([], { ...environment, GIT_SHALLOW_FILE: "synthetic-unavailable" }).stderr, /source overrides/);
   writeFileSync(join(f.cwd, ".git", "shallow"), head + "\n");
-  assert.match(f.run([], event).stderr, /shallow inputs/);
+  assert.match(f.run([], environment).stderr, /shallow inputs/);
 });

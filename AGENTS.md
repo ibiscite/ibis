@@ -6,32 +6,33 @@ look and behaviour in [docs/design.md](docs/design.md), testing and coverage in
 [docs/testing.md](docs/testing.md), lasting decisions in
 [docs/decisions.md](docs/decisions.md). Current work and owners: the tracking issue (label `tracking`).
 
+The goal is a finished change on the nightly quickly, so the maintainer can test everything at once ([decision 0027](docs/decisions.md#0027-process-until-10-with-0011-0015-and-0017)).
+
 ```sh
-cargo fmt --all && cargo clippy --all-targets --locked && cargo test --locked
-cargo test -p ibis-desktop --locked              # the app's Rust side; plain cargo test skips it
-pnpm -C apps/desktop test && pnpm -C apps/desktop typecheck
-node scripts/check.mjs --script-tests      # only when scripts/ changed
+node scripts/check.mjs                     # what CI would run for this branch's changes
+node scripts/check.mjs --all               # every check
+cargo test -p ibis-desktop --locked        # the app's Rust side; plain cargo test skips it
+pnpm -C apps/desktop exec vitest run FILE --maxWorkers=1
 node scripts/pr-lint.mjs --title "fix: explain the change"
 ```
 
 ## Start here
 
 - Everything needed to resume lives in the repository and on GitHub, never only in a chat, a tool's memory or a local file. Start from the tracking issue: **Plan** gives the order, **Now** what is in flight and who owns it. Run `git fetch origin --prune` and `git status`; keep work you did not make.
-- Take the first unclaimed Plan item whose prerequisites are merged. Before editing, read Now and recent claims, check open pull requests for conflicts, and claim paths and mutable-state owners with a draft pull request that says `Closes #N`, or a one-line comment on the tracking issue naming the branch.
+- Take the first unclaimed Plan item whose prerequisites are merged. Check open pull requests for conflicts, and claim with a draft pull request or a one-line comment on the tracking issue naming the branch.
 - Until 1.0, keep the process light and the code easy to change: the roadmap, the tracking issue and one plain issue per piece of work. Add no labels, automation, templates, boards or process documents unless they save time right away.
 - When the maintainer approves a plan or answers a question, record it the same day in the file it changes (`ROADMAP.md`, `docs/` or `docs/decisions.md`) and link it from the tracking issue.
 
 ## Parallel work
 
-- One branch and one worktree per pull request, from `origin/main`; no stacking, never push to `main`. Give each worktree its own Cargo target directory.
-- One writer per set of paths and mutable-state owners; serialize overlapping work. If yours overlap, finish or review that pull request instead of starting a second.
+- Each pull request gets its own branch and worktree from `origin/main`, with its own Cargo target directory; no stacking, never push to `main`. Related changes go together in one pull request; unrelated ones get their own.
+- One writer per set of paths and mutable-state owners. If yours overlap an open pull request, finish or review that one instead of starting a second.
 - Files everyone touches (`ROADMAP.md`, `docs/design.md`, `docs/decisions.md`, `tokens.css`, `App.tsx`) get small edits that merge quickly.
-- At most two active implementation PRs repository-wide touching picker, copy, paste, IPC or settings state. Engine work against agreed contracts and docs, research and review can run in parallel. Split a draft over about 1,500 changed lines.
 
 ## Building
 
-- Before code, write executable scenarios for success, refusal, failed I/O, delayed A after B and close/reopen; assert the final outcome a person sees. Build the smallest slice meeting the issue's "Done when", including cancellation and stale-result correctness before merge; defer features, not invariants. Delete what you replace. Until 1.0, replace wrong behaviour: no compatibility code or settings migrations.
-- Debugging: reproduce each bug in a failing regression test, then fix the cause. After two identical check failures, fix the cause or narrow the reproduction without weakening the required outcome. After three CI rounds on one blocker, cut scope and write the diagnosis on the issue.
+- Before code, write executable scenarios for success, refusal, failed I/O, delayed A after B and close/reopen; assert the final outcome a person sees. Build the smallest slice meeting the issue's "Done when", including cancellation and stale-result correctness; defer features, not invariants. Delete what you replace. Until 1.0, replace wrong behaviour: no compatibility code or settings migrations.
+- Debugging: reproduce each bug in a failing regression test, then fix the cause. After two identical check failures, fix the cause or narrow the reproduction without weakening the required outcome. After three CI rounds on one blocker, cut scope and write the diagnosis on the issue. Before treating compiler inference cascades as missing imports, read the platform binding's signatures in locked source.
 - Each async operation has one owner and an immutable identity; stale completion cannot consume newer state. Front ends never reinterpret engine intent.
 - UI: keep it simple and on the design system. Changes go through `apps/desktop/src/tokens.css`, a shared component in `apps/desktop/src/ui/` or `docs/design.md`, never one screen on its own. When the maintainer says something looks or behaves wrong, fix it and write the rule into `docs/design.md`. Visual fine-tuning waits until close to 1.0.
 - Performance: the budgets in `docs/architecture.md` are limits, not goals. Say on the pull request what a change does to speed and memory when it could affect either. Nothing polls while Ibis is hidden; a check may poll only while its screen is shown.
@@ -42,40 +43,11 @@ node scripts/pr-lint.mjs --title "fix: explain the change"
 
 - Pull request titles are Conventional Commits; they become the release notes. Say what changed and how it was checked, and link `Closes #N`.
 - Sign off commits (`git commit -s`) with a public project or GitHub noreply identity, and disclose AI help with an `Assisted-by:` or `Co-authored-by:` trailer.
-- Review named invariants and changed interactions. Changes to these risky areas need one review of the final head by a session that did not write the change, with every P1 and P2 fixed: the updater, release signing and CI permissions; settings and other files Ibis writes; the clipboard, escaping and pasting; window permissions, native input and the shortcut portal; BibTeX and Zotero reading, citation syntaxes and formatting; untrusted input, network access and security boundaries. Anything else needs your own adversarial check. Findings below P2 go into one 1.0 issue per area, not new issues.
-- Merge only with a green "CI result" on the exact head, by squash, never bypassing. Auto-merge sometimes does not fire: if a green pull request is still open, squash-merge it yourself. GitHub runs no pull request checks while a pull request has a merge conflict, so a head with no "CI result" usually needs `origin/main` merged in; never merge a head that has no CI run. If `main` turns red, revert the merge that broke it first, then fix.
-- After a merge, update the tracking issue's Now if it changed, then remove your own worktree and local branch for it. Lasting decisions go into `docs/decisions.md`.
-
-2026-10-29: Before final review and CI of a shared contract change, merge current `origin/main`; verify that reviewed head still contains it immediately before squash. Focus local Vitest checks with `pnpm -C apps/desktop exec vitest run FILE --maxWorkers=1` (`pnpm test --` runs the full suite).
-
-2026-10-29: Settle synthetic native windows before launching Ibis; accessibility focus does not prove keyboard ownership.
-
-2026-10-29: Unchanged release notes can leave Release Please on old main; merge final main and check every workspace lock version before release.
-
-2026-10-29: Control generated sandboxed Mac test apps by verified PID; CUA app lookups can hang or relaunch them, so enforce helper-process deadlines.
-
-2026-10-29: Linux smoke must bind a unique managed window to its fixed fixture title and PID before testing hints; a visible same-process auxiliary is insufficient.
-
-2026-10-30: Verify platform binding signatures and inherent methods in locked source before treating compiler inference cascades as missing imports.
-
-2026-10-30: Predeclare baseline validity and a counterbalanced benchmark order; keep every result and reject comparisons with unexplained baseline excursions.
-
-2026-10-30: Provision child worktrees from a live checkout before delegation; an archived chat working directory cannot serve as their source.
-
-2026-10-30: Resume a finished agent with a follow-up task; an ordinary message does not restart its work.
-
-## Brief for an implementing agent
-
-```text
-Outcome / non-goals:
-Owned state / reserved paths / conflicting PRs:
-Canonical contract and invariants:
-Scenarios first: success; refusal; failed I/O; delayed A after B; close/reopen
-Consumer oracle (final observable outcome) / required platform evidence:
-Done when / checks:
-Reviewer: attack stale ownership, fail-open uncertainty, lost meaning,
-private-data propagation and changed interactions.
-```
+- Trust `node scripts/check.mjs`, push, and open the pull request with `gh pr merge --squash --auto`: it merges itself on a green "CI result". Do your own adversarial check first, and hold a pull request back only for a named reason.
+- These changes also need one review of the final head by a session that did not write them, with every P1 and P2 fixed: the updater; release signing and publishing; CI permissions; security boundaries (unsafe native modules, window permissions and the shortcut portal, network access, what untrusted input can reach). The reviewer attacks stale ownership, fail-open uncertainty, lost meaning, private-data propagation and changed interactions. Findings below P2 go into one 1.0 issue per area, not new issues.
+- Merge only with a green "CI result" on the exact head, by squash, never bypassing. If a green pull request is still open, squash-merge it yourself. A head with no "CI result" usually has a merge conflict, which stops GitHub running checks: merge `origin/main` into it. A change to a shared contract merges current `origin/main` before its final CI.
+- Main runs every check; a pull request runs only what its paths can affect, and a nightly does not wait for either. If `main` turns red, revert the merge that broke it first, then fix.
+- After a merge, update the tracking issue's Now if it changed, then remove your own worktree and local branch. Lasting decisions go into `docs/decisions.md`.
 
 ## Asking the maintainer
 

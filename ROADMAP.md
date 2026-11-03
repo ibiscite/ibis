@@ -84,15 +84,7 @@ No new features. People test everything, then the maintainer moves to 1.0. The r
 
 ## Saved passages and project checks
 
-These five workflows were approved on 2026-10-30 and all ship before 1.0. The first three come first; each starts with the smallest path that is reliable, and a slice that cannot yet be proved is narrowed rather than allowed to weaken its claims. Detail and limits are in the [research](docs/source-workflow-research.md); interaction rules in [design](docs/design.md#source-checks-and-passage-reuse-planned).
-
-1. **Check the project's bibliography** ([#1377](https://github.com/ibiscite/ibis/issues/1377)): choose a read-only `.bib`; results say "In thesis.bib", "Missing from thesis.bib" or a specific unknown or conflict state. Copy a safe missing entry with its existing key, or explain how to export it from the reference manager.
-2. **Search highlights and comments, then open the exact passage** ([#54](https://github.com/ibiscite/ibis/issues/54), [#359](https://github.com/ibiscite/ibis/issues/359)).
-3. **Copy a quote with its reference** ([#1385](https://github.com/ibiscite/ibis/issues/1385)), with personal comments kept separate.
-4. **Export selected passages as an evidence brief** ([#1517](https://github.com/ibiscite/ibis/issues/1517)): one new Markdown file with quotations, separate comments, references, pages and source links; no notebook or publishing service.
-5. **Warn when a previously copied key changes** ([#1092](https://github.com/ibiscite/ibis/issues/1092)), only with proven source, library and item continuity, with bounded private history and no guessed `.bib` renames or document edits.
-
-Notes and comments stay distinct from quotations. Zotero annotation support is stated per version and per live or closed mode. None of this widens MCP access to notes, annotations or private links.
+Five workflows in 0.4 to 0.6 were approved together on 2026-10-30, in this order: the project's bibliography ([#1377](https://github.com/ibiscite/ibis/issues/1377)), highlights and comments with exact passages ([#54](https://github.com/ibiscite/ibis/issues/54), [#359](https://github.com/ibiscite/ibis/issues/359)), quotes ([#1385](https://github.com/ibiscite/ibis/issues/1385)), evidence briefs ([#1517](https://github.com/ibiscite/ibis/issues/1517)) and changed keys ([#1092](https://github.com/ibiscite/ibis/issues/1092)). A slice that cannot yet be proved is narrowed rather than allowed to weaken its claims. Notes and comments stay distinct from quotations, Zotero annotation support is stated per version and per live or closed mode, and none of this widens MCP access to notes, annotations or private links. Detail: [research](docs/source-workflow-research.md); interaction rules: [design](docs/design.md#source-checks-and-passage-reuse-planned).
 
 ## After 1.0: needs paid signing
 
