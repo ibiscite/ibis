@@ -115,6 +115,7 @@ fn present(app: &AppHandle, page: Option<Page>) {
     }
     if let Some(window) = app.get_webview_window(LABEL) {
         present_existing(&window, page);
+        yield_picker(app);
         return;
     }
     let url = format!("settings.html?page={}", page.unwrap_or(Page::General).name());
@@ -124,7 +125,10 @@ fn present(app: &AppHandle, page: Option<Page>) {
         .min_inner_size(MIN_SIZE.0, MIN_SIZE.1)
         .center()
         .maximizable(false)
-        .focused(true);
+        .focused(true)
+        // A system alert leaves Settings without the keyboard; the click that
+        // returns to it must also reach the control under the pointer.
+        .accept_first_mouse(true);
     // The sidebar runs under the traffic lights, as in System Settings.
     #[cfg(target_os = "macos")]
     {
@@ -145,9 +149,17 @@ fn present(app: &AppHandle, page: Option<Page>) {
         builder = builder.additional_browser_args(&args);
     }
     match checked(builder.build(), NativeIssue::Window) {
-        Some(window) => report(window.set_focus(), NativeIssue::Focus),
+        Some(window) => {
+            report(window.set_focus(), NativeIssue::Focus);
+            yield_picker(app);
+        }
         None => closed(app),
     }
+}
+
+/// Every way into Settings has this one effect on the picker.
+fn yield_picker(app: &AppHandle) {
+    crate::picker::yield_to_window(app, app.state::<crate::picker::PickerGeneration>().current());
 }
 
 /// Every presentation has a page; ordinary Settings opens on General at the top.

@@ -4,9 +4,11 @@ import { appLocale, isolate, libraryMessages, pickerText } from "./messages";
 import { Menu, MenuDetail } from "./ui/Menu";
 import "./ui/LibraryStatus.css";
 
-/** Done, Look or Stop for the footer dot; words carry the same meaning. */
-export function libraryHealth(library: LibraryStatus | null | undefined): "done" | "look" | "stop" | "idle" {
+/** Done, Look or Stop for the footer dot; words carry the same meaning, so a
+ * problem said anywhere beside it (`problem`) never leaves the dot green. */
+export function libraryHealth(library: LibraryStatus | null | undefined, problem = false): "done" | "look" | "stop" | "idle" {
   if (library === null || library?.error || library?.stale) return "stop";
+  if (problem) return "look";
   if (!library?.has_snapshot) return "idle";
   return library.warnings > 0 || library.references === 0 ? "look" : "done";
 }
@@ -55,15 +57,17 @@ function useMinuteTick() {
  * detail is the tooltip; the live region holds no clock, so it is not repeated
  * every age tick.
  */
-export function LibraryStatusLine({ library, groupName, menu, action, failure }: {
+export function LibraryStatusLine({ library, groupName, menu, action, failure, problem = false }: {
   library: LibraryStatus | null | undefined; groupName: (id: number) => string;
   menu?: Omit<ComponentProps<typeof Menu>, "trigger" | "triggerTitle" | "triggerClassName">;
   action?: ReactNode;
   failure?: string | null;
+  /** The status menu reports a problem of its own, such as a group list that failed. */
+  problem?: boolean;
 }) {
   useMinuteTick();
   const now = Date.now();
-  const health = libraryHealth(library);
+  const health = libraryHealth(library, problem || Boolean(failure));
   const [source, summaryState] = libraryMessages.summaryParts(library);
   // The English phrase keeps source, separator, state and age in that order,
   // even on an RTL page or when the source starts in Arabic/Hebrew. The source

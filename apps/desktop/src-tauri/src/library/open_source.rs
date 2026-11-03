@@ -9,12 +9,14 @@ use std::sync::Mutex;
 use ibis_core::contract::{ItemRef, LibraryObject};
 use ibis_engine::request::ZoteroLibrary;
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 
 mod icons;
 
 use super::state::Library;
 use super::{CommandError, Source};
+use crate::diagnostics::{NativeIssue, report};
+use crate::picker::{PickerGeneration, yield_to_window};
 
 #[derive(Debug, PartialEq, Eq)]
 enum Target {
@@ -38,8 +40,11 @@ pub(crate) async fn open_library_source(
     expected_source_generation: String,
     zotero_only: bool,
     reveal: bool,
+    app: AppHandle,
     library: State<'_, Mutex<Library>>,
 ) -> Result<(), CommandError> {
+    // The opening that asked; a launch that ends later gives way for it alone.
+    let presentation = app.state::<PickerGeneration>().current();
     let target = {
         let library = library.lock().map_err(|_| CommandError::from(FAILED))?;
         target(
@@ -52,7 +57,13 @@ pub(crate) async fn open_library_source(
     };
     tauri::async_runtime::spawn_blocking(move || launch(target, reveal))
         .await
-        .map_err(|_| CommandError::from(FAILED))?
+        .map_err(|_| CommandError::from(FAILED))??;
+    let handle = app.clone();
+    report(
+        app.run_on_main_thread(move || yield_to_window(&handle, presentation)),
+        NativeIssue::Window,
+    );
+    Ok(())
 }
 
 #[derive(Clone, Serialize, specta::Type)]

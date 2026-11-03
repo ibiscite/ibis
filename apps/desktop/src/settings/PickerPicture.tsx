@@ -26,9 +26,9 @@ export function PickerPicture({ density = "comfortable", icon = "ibis", appearan
     container: text("look-sample-journal"), year: 2021, item_type: "article-journal", matched: [],
   };
   const html = renderToStaticMarkup(<>
-    {!rowsOnly && <PickerHeader inputRef={createRef()} query="" onQueryChange={ignore} onSearchKeyDown={ignore}
+    {!rowsOnly && <PickerHeader inputRef={createRef()} query="" onQueryChange={ignore}
       expanded={false} activeDescendant={undefined} format="pandoc" showFormat={false} styles={false}
-      onFormatChange={ignore} onFormatCommand={() => ({ run: ignore, isCurrent: () => false })} pinned={false} onTogglePin={ignore} icon={icon} />}
+      onFormatChange={ignore} pinned={false} onTogglePin={ignore} icon={icon} />}
     {!headerOnly && <div className="results-area"><ul id="results">{(["look-sample-title", "look-sample-title-2", "look-sample-title-3"] as const).map((title, index) =>
       <ResultRow key={title} record={{ ...record, title: text(title) }} index={index} active={index === 0} added={false} density={density} hoverAllowed={false} library={null}
         handlers={{ onPointerDown: ignore, onClick: ignore, onContext: ignore, onTileClick: ignore }} />

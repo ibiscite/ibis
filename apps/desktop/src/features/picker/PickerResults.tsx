@@ -18,7 +18,7 @@ import type { Density } from "../../api";
 const noLibrary = () => null;
 
 export function PickerResults({
-  api, libraryState, searchState, state, source, scope, shortcut, perform, input, pointer, rows, density,
+  api, libraryState, searchState, state, source, scope, shortcut, perform, focusHome, pointer, rows, density,
   resultArea, setQuery, peck,
 }: {
   setQuery: (value: string) => void;
@@ -31,7 +31,7 @@ export function PickerResults({
   scope: ReturnType<typeof useZoteroScope>;
   shortcut: ReturnType<typeof useShortcutStatus>["shortcut"];
   perform: ReturnType<typeof useOperations>["perform"];
-  input: RefObject<HTMLInputElement | null>;
+  focusHome: () => void;
   pointer: ReturnType<typeof usePointerSelection>;
   rows: Pick<ReturnType<typeof useCitationRows>, "onChoose" | "onContext" | "onToggle">;
   density: Density;
@@ -49,9 +49,9 @@ export function PickerResults({
     <EmptyState library={library} query={query} narrowed={narrowed} peck={peck}
       source={api.openLibrarySource && source.sourceInChoices ? sourceChoice : undefined}
       onChooseLibrary={() => void perform("choose", chooseLibrary)}
-      onClearSearch={() => { setQuery(""); input.current?.focus(); }}
+      onClearSearch={() => { setQuery(""); focusHome(); }}
       onSearchAll={searchAllLibraries}
-      onReload={() => { input.current?.focus(); void perform("reload", reloadLibrary); }}
+      onReload={() => { focusHome(); void perform("reload", reloadLibrary); }}
       setup={
         (focus, empty) => <LibrarySetup api={setupApi} perform={perform} autoFocus={focus} empty={empty} shortcut={shortcut} onWelcomeChange={setWelcomeShown} />
       } />

@@ -6,6 +6,7 @@ import { mergeProps, setInteractionModality } from "react-aria";
 import { Header, Menu as AriaMenu, MenuItem as AriaMenuItem, MenuSection as AriaMenuSection, MenuStateContext, MenuTrigger, Popover, Separator, SubmenuTrigger, Text } from "react-aria-components";
 import { Button } from "./Button";
 import { markScrollEdges } from "./ScrollArea";
+import { useLayer } from "./layers";
 import { useMenuLifecycle } from "./useMenuLifecycle";
 import "./Menu.css";
 import "./Overlay.css";
@@ -204,7 +205,7 @@ export function MenuRow({ itemId, ...props }: ComponentPropsWithRef<"div"> & { i
   return <div {...mergeProps(props, { onPointerMove })} />;
 }
 
-const ActionFocusContext = createContext<((immediate?: boolean) => void) | null>(null);
+const ActionFocusContext = createContext<(() => void) | null>(null);
 
 /** A wrapping, read-only menu header, also spoken through its section label. */
 export function MenuDetail({ title, detail }: { title: string; detail?: string | null }) {
@@ -239,7 +240,7 @@ export function MenuItem({ id, label, title, keys, checked, disabled, closeOnSel
     shouldCloseOnSelect={closeOnSelect ?? (checked === undefined && !disabled ? undefined : false)}
     onAction={() => {
       if (disabled) return;
-      if (checked === undefined || closeOnSelect) requestActionFocus?.(closeOnSelect);
+      if (checked === undefined || closeOnSelect) requestActionFocus?.();
       onAction();
     }}
     render={(props) => <MenuRow {...props as ComponentPropsWithRef<"div">} itemId={id} title={title} aria-disabled={disabled || undefined} />}>
@@ -308,7 +309,9 @@ type MenuProps = {
 
 /**
  * A menu button with a popover menu. React Aria owns roles, arrow keys,
- * typeahead, Escape, outside clicks, focus return and placement. Opened by a
+ * typeahead, submenus, outside clicks and placement; the layer stack owns
+ * Escape. A closing modal refuses focus and traps the next key, so a key or a
+ * chosen item closes it at once, with no exit to wait for. Opened by a
  * pointer, nothing is highlighted until the pointer or an arrow key moves;
  * opened from the keyboard, including a shortcut that sets `isOpen`, the first
  * item is highlighted, as in native menus.
@@ -318,10 +321,8 @@ export function Menu({ label, id, trigger, triggerRef, triggerClassName, trigger
   const button = useRef<HTMLButtonElement | null>(null);
   const boundary = useMenuBoundary(isOpen, tabFocusRef, button);
   const renderedPlacement = useMenuPlacement(isOpen, button, placement);
-  const { list, listRef, opening, retryFocus, cancelFocusRetry } = useMenuLifecycle(isOpen);
-  const popover = useRef<HTMLElement | null>(null);
+  const { list, listRef, opening } = useMenuLifecycle(isOpen);
   const wholeRows = useWholeRows(list);
-  const pendingFocus = useRef<HTMLElement | null>(null);
   const [skipExit, setSkipExit] = useState(false);
   useEffect(() => { if (!isOpen) fromTrigger.current = false; }, [isOpen]);
   useEffect(() => {
@@ -340,73 +341,35 @@ export function Menu({ label, id, trigger, triggerRef, triggerClassName, trigger
     window.addEventListener("resize", keepFocusedVisible);
     return () => window.removeEventListener("resize", keepFocusedVisible);
   }, [isOpen, list]);
-  // The exiting modal popover can refuse focus outside it. Retry after removal,
-  // and leave a newly focused dialog/control alone.
-  const restoreFocus = useCallback(() => {
-    const target = pendingFocus.current;
+  useLayoutEffect(() => { if (isOpen) setSkipExit(false); }, [isOpen]);
+  const leave = (to: HTMLElement | null | undefined) => {
+    const previous = document.activeElement;
+    flushSync(() => { setSkipExit(true); onOpenChange(false); });
     const active = document.activeElement;
-    if (target?.isConnected && (active === document.body || active === button.current || active === target || popover.current?.contains(active))) target.focus();
-    if (!popover.current) pendingFocus.current = null;
-  }, []);
-  const popoverRef = useCallback((node: HTMLElement | null) => {
-    popover.current = node;
-    wholeRows(node);
-    if (!node && pendingFocus.current) retryFocus(restoreFocus);
-  }, [restoreFocus, retryFocus, wholeRows]);
-  useLayoutEffect(() => {
-    if (isOpen) {
-      setSkipExit(false);
-      pendingFocus.current = null;
-    } else restoreFocus();
-  }, [isOpen, restoreFocus]);
-  useEffect(() => {
-    // Any later user input supersedes the closing action's destination.
-    const cancel = () => { pendingFocus.current = null; };
-    document.addEventListener("pointerdown", cancel, true);
-    document.addEventListener("keydown", cancel, true);
-    return () => {
-      cancel();
-      document.removeEventListener("pointerdown", cancel, true);
-      document.removeEventListener("keydown", cancel, true);
-    };
-  }, []);
-  const leave = (to: HTMLElement | null | undefined, immediate: boolean) => {
-    if (immediate) {
-      // Tab hands input back now. Keeping the modal mounted for its exit would
-      // reject focus, losing any typing before its animation finishes.
-      const previous = document.activeElement;
-      pendingFocus.current = null;
-      cancelFocusRetry();
-      flushSync(() => { setSkipExit(true); onOpenChange(false); });
-      const active = document.activeElement;
-      if (to?.isConnected && (active === previous || active === document.body || active === button.current || active === to)) to.focus();
-      return;
-    }
-    pendingFocus.current = to ?? null;
-    onOpenChange(false);
+    if (to?.isConnected && (active === previous || active === document.body || active === button.current || active === to)) to.focus();
   };
+  useLayer("menu", isOpen, (event) => {
+    // Escape leaves the innermost submenu first; React Aria owns that step.
+    const inner = event?.target instanceof Element ? event.target.closest('[role="menu"]') : null;
+    if (inner && inner !== list.current) return false;
+    leave(event ? button.current : tabFocusRef?.current);
+  });
   // Outside the collection builder so submenu portals inherit the action owner.
-  return <ActionFocusContext.Provider value={(immediate) => {
-    // Release both modal scopes before returning focus from a submenu choice.
-    if (immediate) leave(tabFocusRef?.current, true);
-    else pendingFocus.current = tabFocusRef?.current ?? null;
-  }}><MenuTrigger isOpen={isOpen} onOpenChange={(open) => { fromTrigger.current = open; onOpenChange(open); }}>
+  return <ActionFocusContext.Provider value={() => leave(tabFocusRef?.current)}><MenuTrigger isOpen={isOpen} onOpenChange={(open) => { fromTrigger.current = open; onOpenChange(open); }}>
     <Button variant={triggerVariant} size={triggerSize} aria-label={label} ref={(node) => {
       button.current = node;
       if (typeof triggerRef === "function") triggerRef(node);
       else if (triggerRef) triggerRef.current = node;
     }} className={triggerClassName}
       render={(props) => <button {...props as ComponentPropsWithRef<"button">} title={triggerTitle} aria-label={triggerLabel ?? label} aria-keyshortcuts={triggerKeys} />}>{trigger}</Button>
-    <Popover ref={popoverRef} className="menu-popover ui-overlay" placement={renderedPlacement} offset={6} containerPadding={8} shouldSkipAnimation={skipExit} {...boundary}>
+    <Popover ref={wholeRows} className="menu-popover ui-overlay" placement={renderedPlacement} offset={6} containerPadding={8} shouldSkipAnimation={skipExit} {...boundary}>
       <div className="menu-frame" onKeyDownCapture={(event) => {
         if (isComposing(event)) { event.stopPropagation(); return; }
-        // Escape leaves the innermost submenu first. Tab leaves the entire menu.
-        if (event.key === "Escape" && event.target instanceof Element && event.target.closest('[role="menu"]') !== list.current) return;
-        const to = event.key === "Escape" ? button.current : event.key === "Tab" ? tabFocusRef?.current : undefined;
-        if (to === undefined) return;
+        // Tab leaves the entire menu, from any depth.
+        if (event.key !== "Tab" || tabFocusRef === undefined) return;
         event.preventDefault();
         event.stopPropagation();
-        leave(to, event.key === "Tab");
+        leave(tabFocusRef.current);
       }} onKeyUpCapture={(event) => { if (isComposing(event)) event.stopPropagation(); }}>
         <AriaMenu key={opening} ref={listRef} id={id} className="menu scroll-area" aria-label={label} autoFocus={fromTrigger.current ? undefined : "first"}
           render={(props) => <div {...props as ComponentPropsWithRef<"div">} aria-label={label} aria-labelledby={undefined} />}>

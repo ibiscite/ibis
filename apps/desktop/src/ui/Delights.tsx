@@ -39,9 +39,10 @@ export function useKeyPulse(accelerator: string | readonly string[], enabled = t
       timer = window.setTimeout(() => setPressed(false), 100);
     };
     const clear = () => { window.clearTimeout(timer); setPressed(false); };
-    window.addEventListener("keydown", down);
+    // Capture: a key the layer stack uses stops there, and still pulses.
+    window.addEventListener("keydown", down, true);
     window.addEventListener("blur", clear);
-    return () => { window.clearTimeout(timer); window.removeEventListener("keydown", down); window.removeEventListener("blur", clear); };
+    return () => { window.clearTimeout(timer); window.removeEventListener("keydown", down, true); window.removeEventListener("blur", clear); };
   }, [keys, enabled]);
   return pressed;
 }

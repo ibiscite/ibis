@@ -2,6 +2,7 @@ import { useMemo, useRef, type ReactNode, type RefObject } from "react";
 import { Dialog, Heading, Popover } from "react-aria-components";
 import { flushSync } from "react-dom";
 import { composing } from "../composition";
+import { useLayer } from "./layers";
 import { useScrollEdges } from "./ScrollArea";
 import { useMenuBoundary, useMenuPlacement } from "./Menu";
 import "./Menu.css";
@@ -37,6 +38,7 @@ export function DetailsMenu({ id, anchor, returnFocusRef, title, heading = title
       : returnFocusRef?.current;
     (target ?? returnFocusRef?.current)?.focus({ preventScroll: true });
   };
+  useLayer("popover", true, (event) => close(event !== undefined));
   const tab = (backward: boolean) => {
     const origin = returnTo.current?.isConnected && !returnTo.current.closest("[hidden]") ? returnTo.current
       : anchor.matches("button, input, [tabindex]") ? anchor : anchor.querySelector<HTMLElement>("button, input, [tabindex]");
@@ -60,7 +62,6 @@ export function DetailsMenu({ id, anchor, returnFocusRef, title, heading = title
       }} onKeyDown={(event) => {
         event.stopPropagation();
         if (composing(event)) return;
-        if (event.key === "Escape" && !composing(event)) { event.preventDefault(); close(); }
         const target = event.target as HTMLElement;
         const inField = target.matches("input:not([type=radio]), textarea") || target.isContentEditable;
         if (onRemove && !inField && (event.key === "Backspace" || event.key === "Delete")) { event.preventDefault(); close(false); onRemove(); }

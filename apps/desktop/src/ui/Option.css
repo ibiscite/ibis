@@ -6,6 +6,8 @@
 .ui-option .result-title {
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
 }
+/* Compact is one line (C4): a long title ends in an ellipsis, as in Mail's lists. */
+:root[data-density="compact"] .ui-option .result-title { -webkit-line-clamp: 1; }
 .ui-option .result-meta { flex-wrap: nowrap; }
 .ui-option .result-byline, .ui-option .result-library { min-width: 0; }
 .ui-option .result-authors { flex: 0 10 auto; }

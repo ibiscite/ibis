@@ -38,7 +38,7 @@ export function PickerLibraryStatus({ library, groupName, isOpen, onOpenChange, 
       // ⌘O appears only where it does the same thing: with a reference selected it means Show in Zotero.
       : library?.zotero && library.problem === "zotero_closed" ? { ...libraryAction, label: pickerText.openZotero, keys: sourceAction.label === pickerText.openZotero ? sourceAction.keys : undefined, open: actions.openZotero }
       : library?.zotero ? { ...libraryAction, label: pickerText.chooseLibraryMenu, keys: keysFor("chooseSource"), open: actions.choose } : sourceAction : failure ? { ...sourceAction, label: pickerText.chooseLibraryMenu, keys: keysFor("chooseSource"), open: actions.choose } : null;
-  return <LibraryStatusLine library={library} groupName={groupName} failure={failure}
+  return <LibraryStatusLine library={library} groupName={groupName} failure={failure} problem={groupsFailed}
     action={!hideAction && fix && fix.label !== rowAction && <SourceAction {...fix} />}
     menu={{ label: pickerText.libraryRegion, id: "library-menu",
       isOpen, onOpenChange, tabFocusRef: searchRef, placement: "top end", children: <>

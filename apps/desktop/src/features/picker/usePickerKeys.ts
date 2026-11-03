@@ -1,9 +1,7 @@
-import type { KeyboardEvent } from "react";
 import type { PickerApi } from "../../App";
 import { focusChoices } from "../../ui/ChoiceList";
-import type { FormatCommand } from "./FormatMenu";
-import type { ToolbarMenuCommand } from "../../ui/ToolbarMenu";
-import { composing, isFormatShortcut, isKeysShortcut, isMenuShortcut, isPinShortcut, isPreviewShortcut, isQuitShortcut, isSettingsShortcut, isSourceShortcut, isChooseSourceShortcut } from "./shortcuts";
+import { closeNearestLayer, closeOverlays, composingKey, consumeKey, focusLost, overlayOpen, useKeyOwner } from "../../ui/layers";
+import { commandFor, type PickerCommand } from "./shortcuts";
 import type { usePickerSession } from "./usePickerSession";
 import type { usePickerMenus } from "./usePickerMenus";
 import type { usePickerSource } from "./usePickerSource";
@@ -11,11 +9,12 @@ import type { useLibrarySearch } from "./useLibrarySearch";
 import type { useCitationRows } from "./useCitationRows";
 import type { usePickerActions } from "./usePickerActions";
 import type { usePointerSelection } from "../../pointerSelection";
-import type { useOperations } from "./useOperations";
 
+/** The picker's one key owner and command path. Every key arrives here first,
+ * wherever focus is; a key and its menu item run the same command. */
 export function usePickerKeys({
   api, pickerSession, menus, source, results, showCitations, copyChosen, actions, pointer, followKeyboard,
-  togglePastePreview, quitAfterSaving, perform, onEmptyEnter,
+  togglePastePreview, quitAfterSaving, onEmptyEnter,
 }: {
   api: PickerApi;
   pickerSession: Pick<ReturnType<typeof usePickerSession>, "session" | "cancelCopy" | "setActive">;
@@ -24,66 +23,35 @@ export function usePickerKeys({
   results: ReturnType<typeof useLibrarySearch>["results"];
   showCitations: boolean;
   copyChosen: ReturnType<typeof useCitationRows>["copyChosen"];
-  actions: Pick<ReturnType<typeof usePickerActions>, "escapeStep" | "toggleHighlighted">;
+  actions: Pick<ReturnType<typeof usePickerActions>, "toggleHighlighted">;
   pointer: ReturnType<typeof usePointerSelection>;
   followKeyboard: { current: boolean };
   togglePastePreview: () => void;
   quitAfterSaving: () => Promise<void>;
-  perform: ReturnType<typeof useOperations>["perform"];
   onEmptyEnter?: () => void;
 }) {
   const { session, cancelCopy, setActive } = pickerSession;
-  const { formatButtonRef, menuOpen, keysOpen, togglePin, openKeys, closeMenu, openMore, runFromMenu } = menus;
+  const { input, moreButton, menuOpen, keysOpen, formatOpen, togglePin, openKeys, openMore, openFormat, focusHome, runFromMenu } = menus;
   const { chooseSources, openSource } = source;
-  const { escapeStep, toggleHighlighted } = actions;
+  const { toggleHighlighted } = actions;
   const { openSettings } = api;
-  const onKeyDownCapture = (e: KeyboardEvent<HTMLElement>) => {
-    pointer.resetHover();
-    if (composing(e)) return;
-    // Format owns its modal exit and restores Search before running a
-    // command. Let its capture handler consume these keys first.
-    if (e.target instanceof Element && (e.target.closest(".toolbar-menu-popover") ||
-      formatButtonRef.current?.contains(e.target) && formatButtonRef.current.getAttribute("aria-expanded") === "true")) return;
-    if (isChooseSourceShortcut(e)) {
-      e.preventDefault(); e.stopPropagation();
-      if (!e.repeat) chooseSources();
-    } else if (isSourceShortcut(e)) {
-      e.preventDefault();
-      e.stopPropagation();
-      if (!e.repeat) openSource(false, e.altKey);
-    }
+  /** Toggles leave layers as they are; a command that opens something first
+   * clears them, and pressing an open layer's own key closes it. */
+  const run = (command: PickerCommand, event?: KeyboardEvent) => {
+    if (command === "pin") togglePin();
+    else if (command === "preview") togglePastePreview();
+    else if (command === "more") {
+      if (menuOpen) { closeOverlays(); moreButton.current?.focus(); } else openMore();
+    } else if (command === "keys") {
+      if (keysOpen) closeNearestLayer(event); else openKeys();
+    } else if (command === "format") {
+      if (formatOpen) closeNearestLayer(event); else openFormat();
+    } else if (command === "chooseSource") chooseSources();
+    else if (command === "source" || command === "revealSource") openSource(false, command === "revealSource");
+    else if (command === "settings") { if (openSettings) runFromMenu("settings", () => openSettings(null)); }
+    else runFromMenu("quit", quitAfterSaving);
   };
-  const onKeyDown = (e: KeyboardEvent<HTMLElement>) => {
-    if (composing(e)) return;
-    if (isFormatShortcut(e)) {
-      e.preventDefault();
-      if (!e.repeat && !menuOpen && !keysOpen) formatButtonRef.current?.click();
-    } else if (isPinShortcut(e)) {
-      e.preventDefault();
-      if (!e.repeat) togglePin();
-    } else if (isPreviewShortcut(e)) {
-      e.preventDefault();
-      if (!e.repeat) togglePastePreview();
-    } else if (isKeysShortcut(e)) {
-      e.preventDefault();
-      openKeys();
-    } else if (e.key === "Escape") {
-      e.preventDefault();
-      escapeStep();
-    } else if (isMenuShortcut(e)) {
-      e.preventDefault();
-      if (menuOpen) closeMenu(true);
-      else openMore();
-    } else if (isSettingsShortcut(e) && openSettings) {
-      e.preventDefault();
-      if (!e.repeat) runFromMenu("settings", () => openSettings(null));
-    } else if (isQuitShortcut(e)) {
-      e.preventDefault();
-      void perform("quit", quitAfterSaving);
-    }
-  };
-  const onSearchKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (composing(e)) return;
+  const searchKey = (e: KeyboardEvent) => {
     // A held Remove activation must not act again after focus returns.
     if (e.key === "Enter" && e.repeat) {
       e.preventDefault();
@@ -109,20 +77,27 @@ export function usePickerKeys({
       copyChosen();
     }
   };
-  const onFormatCommand = (command: FormatCommand): ToolbarMenuCommand => {
-    const visibility = session.getSnapshot().visibility;
-    return {
-      isCurrent: () => visibility === session.getSnapshot().visibility && session.getSnapshot().hiddenAt === null,
-      run: () => {
-        if (command === "more") openMore();
-        else if (command === "keys") openKeys();
-        else if (command === "pin") togglePin();
-        else if (command === "preview") togglePastePreview();
-        else if (command === "quit") void perform("quit", quitAfterSaving);
-        else if (command === "chooseSource") chooseSources();
-        else if (command === "source" || command === "revealSource") openSource(false, command === "revealSource");
-      },
-    };
+  const keyDown = (e: KeyboardEvent) => {
+    pointer.resetHover();
+    // A click on a blank part of the picker, or a control that went away,
+    // leaves focus on nothing. The key goes home with its native effect, so
+    // the text it types lands in Search. Focus is not moved before a key:
+    // that would clear a selection made with the pointer.
+    if (focusLost() && !overlayOpen()) focusHome();
+    if (composingKey(e) || e.key === "Process") return;
+    if (e.key === "Escape") {
+      // One press, one step: holding Esc must not walk down to hiding.
+      if (e.repeat || closeNearestLayer(e)) consumeKey(e);
+      return;
+    }
+    const focused = document.activeElement;
+    const command = commandFor(e, focused);
+    if (command === "settings" && !openSettings) return;
+    if (command) {
+      consumeKey(e);
+      if (!e.repeat) run(command, e);
+    } else if (focused === input.current) searchKey(e);
   };
-  return { onKeyDownCapture, onKeyDown, onSearchKeyDown, onFormatCommand };
+  useKeyOwner({ keyDown, home: focusHome });
+  return { run };
 }

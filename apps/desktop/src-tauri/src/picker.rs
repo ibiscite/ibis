@@ -568,6 +568,24 @@ pub(crate) fn dismiss_picker(app: &AppHandle) {
     finish_dismiss(app);
 }
 
+/// Another window has taken over: Settings, or the app showing a source. An
+/// unpinned picker leaves, by the rule that hides it on blur, which no build or
+/// system may decide for us: a nonactivating panel can keep its place above
+/// the new window, and debug builds never hide on blur. A hide after Settings
+/// is up leaves the app shown, so Settings keeps the keyboard. Only
+/// `presentation` gives way: a late result cannot hide a newer opening.
+pub(crate) fn yield_to_window(app: &AppHandle, presentation: u64) {
+    let Some(window) = app.get_webview_window("main") else {
+        return;
+    };
+    let shown = window.is_visible().unwrap_or(false);
+    let chooser_open = app.state::<ChooserOpen>().is_open();
+    let pinned = app.state::<Pinned>().0.load(Ordering::SeqCst);
+    if yields_to_window(shown, chooser_open, pinned) {
+        dismiss_presentation(app, presentation);
+    }
+}
+
 /// Hide the picker only if `generation` is still its presentation, retiring it
 /// in the same atomic step: a show that arrives in between keeps the picker.
 fn dismiss_presentation(app: &AppHandle, generation: u64) -> bool {
@@ -761,6 +779,12 @@ fn begins(_state: &Moving, _app: &AppHandle, _presentation: u64, _id: u64) -> bo
 /// pinned; development builds never do, so the developer tools stay usable.
 pub(crate) fn hides_on_blur(release_build: bool, chooser_open: bool, pinned: bool) -> bool {
     release_build && !chooser_open && !pinned
+}
+
+/// Whether a shown picker gives way to a new window. The same rule as blur in
+/// every build: its own file dialog and a pin keep it.
+fn yields_to_window(shown: bool, chooser_open: bool, pinned: bool) -> bool {
+    shown && hides_on_blur(true, chooser_open, pinned)
 }
 
 /// A show/dismiss attempt invalidates work owned by an earlier presentation,
@@ -1769,6 +1793,10 @@ mod tests {
     /// made the dialog disappear before it could be used.
     #[test]
     fn the_picker_stays_open_while_its_chooser_has_the_focus() {
+        assert!(yields_to_window(true, false, false));
+        assert!(!yields_to_window(false, false, false));
+        assert!(!yields_to_window(true, true, false));
+        assert!(!yields_to_window(true, false, true));
         assert!(hides_on_blur(true, false, false));
         assert!(!hides_on_blur(true, true, false));
         assert!(!hides_on_blur(false, false, false));
