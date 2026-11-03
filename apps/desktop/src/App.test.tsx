@@ -64,8 +64,8 @@ test("editing Page in a pasted list preserves every reference in preview and cop
   await screen.findByText("Pasted list");
   await waitFor(() => expect(screen.getByRole("region", { name: "Preview" }).textContent).toContain("@b; @a"));
   fireEvent.click(screen.getByRole("button", { name: "2 references" }));
-  fireEvent.click(within(screen.getByRole("dialog", { name: "Selected references" })).getByRole("button", { name: "Edit Smith 2020 · a" }));
-  fireEvent.change(screen.getByRole("textbox", { name: "Page" }), { target: { value: "42" } });
+  fireEvent.click(await screen.findByRole("menuitemradio", { name: "Smith 2020 · a" }));
+  fireEvent.change(await screen.findByRole("textbox", { name: "Page" }), { target: { value: "42" } });
   await waitFor(() => expect(previews.at(-1)?.items).toMatchObject([
     { id: result("b", "").id, locator: null },
     { id: result("a", "").id, locator: null, page_input: "42" },
@@ -144,8 +144,9 @@ test("selected closest-match warnings survive exact searches and copying a mixed
   await screen.findByText("Best matches");
   expect(screen.queryByText("Closest matches")).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: /Closest matches/ }));
-  expect(screen.getByRole("dialog", { name: "Citation warnings" }).textContent).toContain("Synthetic closest reference");
-  fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+  const notes = screen.getByRole("region", { name: "Citation warnings" });
+  expect(notes.textContent).toContain("Synthetic closest reference");
+  fireEvent.keyDown(notes, { key: "Escape" });
   expect(screen.getByRole("status", { name: "Citation selection" }).textContent).toContain("only some search words matched");
   fireEvent.keyDown(box, { key: "Enter" });
   await waitFor(() => expect(copied).toHaveLength(1));
@@ -232,9 +233,9 @@ test.each([true, false])("a duplicate-key refusal stays visible before Details a
   fireEvent.keyDown(box, { key: "Enter" });
   expect(calls).not.toContain("copy_file_citation");
   fireEvent.click(screen.getByRole("button", { name: "Details" }));
-  const details = screen.getByRole("dialog", { name: /^Citation details/ });
+  const details = screen.getByRole("region", { name: /^Citation details for/ });
   expect(within(details).getByRole("alert").textContent).toContain(message);
-  fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+  fireEvent.keyDown(details, { key: "Escape" });
   act(() => box.focus());
   fireEvent.keyDown(box, { key: "Enter" });
   expect(calls).not.toContain("copy_file_citation");
@@ -306,11 +307,9 @@ test("the borderless picker has a permitted drag region around its editable sear
   await waitFor(() => expect((box as HTMLInputElement).value).toBe("sleep"));
 });
 
-/** Ordered identities exposed by the current shelf, or its all-references menu. */
+/** Ordered identities exposed by the current shelf. */
 function selectedKeys(root: ParentNode = document) {
-  const menu = root.querySelector('[role="dialog"] .shelf-details-list');
-  const scope = menu ?? root;
-  return [...scope.querySelectorAll<HTMLElement>('.shelf-segment[data-built][data-reference-key], .shelf-details-list > [data-reference-key]')].map((segment) => segment.dataset.referenceKey);
+  return [...root.querySelectorAll<HTMLElement>('.shelf-segment[data-built][data-reference-key]')].map((segment) => segment.dataset.referenceKey);
 }
 async function expectPage(value: string) {
   const page = await openCitationDetails();
@@ -837,9 +836,10 @@ test.each([7, 9, 10])("%i long-key selections retain order across queries and fi
   }
   await waitFor(() => expect(selectedKeys()).toHaveLength(count));
   fireEvent.click(screen.getByRole("button", { name: `${count} references` }));
-  let menu = screen.getByRole("dialog", { name: "Selected references" });
-  expect(within(menu).getAllByRole("button", { name: /^Edit / })).toHaveLength(count);
-  fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+  let menu = await screen.findByRole("menu");
+  expect(within(menu).getAllByRole("menuitemradio")).toHaveLength(count);
+  fireEvent.keyDown(menu, { key: "Escape" });
+  await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
   const removed = [0, Math.floor(count / 2), count - 1];
   for (const i of removed) {
     const key = records[i]!.key;
@@ -2953,8 +2953,9 @@ test("the footer can wait for pending engine output and never offers failed outp
     await screen.findByRole("alert");
     expect(within(screen.getByRole("region", { name: "Preview" })).getByText(/Couldn’t format in APA/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Details" }));
-    expect(within(screen.getByRole("dialog")).getByText(/Couldn’t format in APA/)).toBeTruthy();
-    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    const details = document.querySelector<HTMLElement>(".inspector")!;
+    expect(within(details).getByText(/Couldn’t format in APA/)).toBeTruthy();
+    fireEvent.keyDown(details, { key: "Escape" });
     expect(footerKeys()).not.toContain("Enter");
   } finally {
     vi.unstubAllGlobals();
@@ -3127,8 +3128,7 @@ test("mixed selected revisions retain their original tokens and cannot copy", as
   await screen.findByText("The library changed. Search again and reselect the references before copying.");
   expect(copies).toEqual([]);
   fireEvent.click(screen.getByRole("button", { name: "2 references" }));
-  const references = screen.getByRole("dialog", { name: "Selected references" });
-  expect(within(references).getAllByRole("button", { name: /^Edit / })).toHaveLength(2);
+  expect(within(await screen.findByRole("menu")).getAllByRole("menuitemradio")).toHaveLength(2);
 });
 
 test.each(["resolve", "reject"])("an older recovery status cannot override a newer event (%s)", async (outcome) => {
@@ -3738,10 +3738,10 @@ test("hiding output keeps chips and pending copy checks, and remembers the choic
     await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
     expect(screen.queryByRole("region", { name: "Preview" })).toBeNull();
     await openCitationDetails();
-    const details = screen.getByRole("dialog", { name: "Citation details for First" });
+    const details = screen.getByRole("region", { name: "Citation details for First" });
     expect(within(details).getByRole("textbox", { name: "Page" })).toBeTruthy();
-    expect(within(details).getByRole("radiogroup", { name: "Citation form" })).toBeTruthy();
-    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    expect(within(details).getByRole("button", { name: /^Show as / })).toBeTruthy();
+    fireEvent.keyDown(details, { key: "Escape" });
     expect(screen.queryByRole("region", { name: "Preview" })).toBeNull();
     expect(copies).toHaveBeenCalledOnce();
     await chooseFromMore("Show What Will Be Pasted", "menuitemcheckbox");
