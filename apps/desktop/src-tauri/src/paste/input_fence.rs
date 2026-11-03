@@ -7,7 +7,7 @@ use std::time::Instant;
 use ibis_core::destination::CopyReason;
 
 #[cfg(any(target_os = "macos", test))]
-use super::capture::Front;
+use super::capture::{Front, Selection};
 #[cfg(any(target_os = "macos", test))]
 use super::{CopyProof, DeliveryRequest, POST_LIMIT, SafetyStamp};
 
@@ -21,6 +21,7 @@ pub(super) struct PostRequest {
     pub(super) presentation: u64,
     pub(super) stamp: SafetyStamp,
     pub(super) window: Option<u32>,
+    pub(super) selection: Selection,
     pub(super) began: Instant,
     pub(super) deadline: Instant,
 }
@@ -36,6 +37,10 @@ impl PostRequest {
             presentation: proof.presentation,
             stamp: proof.stamp,
             window: proof.captured.as_ref().and_then(|captured| captured.window),
+            selection: proof
+                .captured
+                .as_ref()
+                .map_or(Selection::Unknown, |captured| captured.selection.clone()),
             began: request.began,
             deadline: request.deadline,
         }
@@ -56,6 +61,7 @@ pub(super) enum PostResult {
     Unavailable,
     Expired,
     TargetChanged,
+    SelectionChanged,
     ClipboardChanged,
     AccessibilityRequired,
     NoPermission,
@@ -74,8 +80,9 @@ pub(super) enum InputPress {
     OtherMouse,
 }
 
-/// These calls run in one main-thread task. The only AX query is the bounded,
-/// identity-only focused-window proof (ADR 0029); never clipboard contents.
+/// These calls run in one main-thread task. The AX queries are the bounded,
+/// identity-only focused-window proof and the selection read (ADR 0029); never
+/// clipboard contents.
 #[cfg(any(target_os = "macos", test))]
 pub(super) trait PostDesk {
     fn now(&self) -> Instant;
@@ -85,6 +92,9 @@ pub(super) trait PostDesk {
     /// Run refresh after the initial provider reads, before the tightly
     /// bounded final window/global-focus pair. No lock follows that pair.
     fn frontmost(&self, refresh: impl FnOnce() -> Result<(), CopyReason>) -> Result<Option<Front>, CopyReason>;
+    /// What the selection is now must be what the picker opened on. Read after
+    /// the secure-input check, so a refused paste never reads selected text.
+    fn selection_unchanged(&self, selection: &Selection) -> Result<(), CopyReason>;
     fn change_count(&self) -> isize;
     fn secure_input(&self) -> Option<bool>;
     fn seconds_since_input(&self, event: InputPress) -> f64;
@@ -202,6 +212,15 @@ pub(super) fn checked_post(desk: &impl PostDesk, request: &PostRequest) -> PostR
     }
     if desk.now() >= request.deadline {
         return PostResult::Unavailable;
+    }
+    if let Err(reason) = desk.selection_unchanged(&request.selection) {
+        return match reason {
+            CopyReason::SelectionChanged => PostResult::SelectionChanged,
+            CopyReason::TargetChanged => PostResult::TargetChanged,
+            CopyReason::SecureInput => PostResult::SecureInput,
+            CopyReason::AccessibilityRequired => PostResult::AccessibilityRequired,
+            _ => PostResult::Unavailable,
+        };
     }
     // All shared-state locks precede this last target check. Its bounded AX
     // read includes lock-free completion/continuity checks before comparison.

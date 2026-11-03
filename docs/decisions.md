@@ -219,7 +219,16 @@ When the shortcut opens the picker with short text selected in the target app,
 that text becomes the search and the paste replaces it (macOS and Windows, on
 by default; maintainer, 2026-10-28). The selection is read once, at the
 shortcut, through accessibility access separate from paste's PostEvent permission; it is never read
-from secure fields, never stored and never logged.
+from secure fields, never stored and never logged. Windows follows; macOS ships
+first (#1526).
+
+The rule behind it: **Ibis replaces only text the person saw in search.** A long
+or multi-line selection is ignored for search, and Enter then only copies, with
+the reason, because a paste would delete it unseen. The selection Enter finds
+must be the one the picker opened on, so text selected or changed since refuses
+the paste with `selection-changed`. An app that cannot report a selection pastes
+as before: Ibis cannot tell, and refusing would end pasting there. The paste
+switch also turns the read off; there is no separate setting (2026-11-02).
 
 ## 0029 Native calls
 
@@ -341,6 +350,18 @@ identity while moving to a different surface. Missing top-level evidence never
 falls back to the document alone. No titles, roles/subroles, document text, values,
 tree traversal, attribute enumeration or descriptions are allowed. The opt-in
 diagnostics amendment below permits only numeric/boolean evidence and fixed stages.
+
+One exception reads content, and only for "selected text as the search"
+(#1526): `AXSubrole`, `AXSelectedTextRange` and `AXSelectedText` of the focused
+control, three fixed names in their own closed set. It runs only for an app Ibis
+may paste into (never copy-only, refused or unapproved, and never with paste
+off), after a capture proved the focus, with Secure Event Input off and a focused
+control the target process owns. A failed or unprovable subrole, or
+`AXSecureTextField`, stops it before the range is read; a range over the limit
+never copies the text across. It has its own 30 ms sleep-inclusive budget, and
+any failure means an empty search. It uses no clipboard and posts no keys. The
+text is sent once, to the picker window only; native code keeps a digest, whose
+`Debug` prints only its kind, for the same read just before the paste.
 Single- and multiwindow apps follow the same focused-window identity contract.
 At capture, Ibis first checks whether one of its own native windows is key.
 A repeated show while its nonactivating picker owns the keyboard keeps the

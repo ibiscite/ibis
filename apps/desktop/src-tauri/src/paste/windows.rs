@@ -61,6 +61,8 @@ fn front(window: &w::HWND, capture: bool) -> Option<Front> {
         focus_failure: None,
         name,
         elevated: capture && above_ibis(&process),
+        selection: Selection::Unknown,
+        search: None,
     })
 }
 

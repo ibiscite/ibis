@@ -259,7 +259,7 @@ fn show_picker_on_thread(app: &AppHandle, owner: u64) {
         return;
     }
     // Before the panel takes the front: the app Enter will paste into (#1241).
-    crate::paste::capture(app);
+    let selection = crate::paste::capture(app);
     // Native target capture may outlive its request, especially on Windows.
     if !visits.owns(owner) {
         return;
@@ -269,7 +269,8 @@ fn show_picker_on_thread(app: &AppHandle, owner: u64) {
             return;
         }
         // Before the window appears, so its first frame is already current.
-        report(window.emit("picker:preparing", ()), NativeIssue::PickerEvent);
+        // Only the picker hears the selected text; a stale show drops it above.
+        report(app.emit_to("main", "picker:preparing", selection), NativeIssue::PickerEvent);
         crate::native_feel::before_show(app);
         report(window.unminimize(), NativeIssue::Unminimize);
         #[cfg(target_os = "macos")]

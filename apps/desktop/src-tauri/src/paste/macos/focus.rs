@@ -1,4 +1,6 @@
-//! The identity-only AX exception in ADR 0029. No role, title or value reads.
+//! The identity-only AX exception in ADR 0029. No role, title or value reads,
+//! but for the one selection read beside it: password subrole, selected range
+//! and selected text of the focused control, with its own closed call set.
 
 use std::time::{Duration, Instant};
 
@@ -6,6 +8,7 @@ use ibis_core::destination::CopyReason;
 use objc2_app_kit::NSRunningApplication;
 use tauri_nspanel::objc2::rc::Retained;
 
+use super::super::capture::{SHORT_SELECTION, SelectedText, Selection};
 use super::diagnostics;
 
 const LIMIT: Duration = Duration::from_millis(50);
@@ -13,6 +16,9 @@ const LIMIT: Duration = Duration::from_millis(50);
 // slow provider turn that final snapshot into another long stale interval. Three sequential
 // reads share 15 ms (5 ms each on average), still inside the whole query's 50 ms bound.
 const TAIL_LIMIT: Duration = Duration::from_millis(15);
+/// The whole selection read, at opening and again before the paste. A slower
+/// app opens with an empty search, inside the opening budget.
+const SELECTION_LIMIT: Duration = Duration::from_millis(30);
 
 /// This closed set is the entire attribute allowlist, including the containing
 /// document and top-level surface of global focus, including foreign panels.
@@ -49,6 +55,18 @@ struct Identity<E> {
     surface: E,
 }
 
+/// One answer from the selection calls; `TooLong` needs no text to be copied.
+#[derive(Debug, PartialEq, Eq)]
+enum Reply<T> {
+    Value(T),
+    TooLong,
+    /// The control has no selected text right now.
+    NoValue,
+    /// The control does not report this attribute at all.
+    Unsupported,
+    Failed,
+}
+
 trait Provider {
     type Element: PartialEq;
     fn now(&self) -> Instant;
@@ -66,6 +84,95 @@ trait Provider {
     /// attribute on this process and claims that live process before writing.
     fn enable_manual_accessibility(&self, _pid: i32, _deadline: Instant) -> Result<bool, CopyReason> {
         Ok(false)
+    }
+    /// System-wide secure typing; `None` when it cannot be read here.
+    fn secure_typing(&self) -> Option<bool>;
+    fn password_field(&self, element: &Self::Element, deadline: Instant) -> Reply<bool>;
+    /// Selected length in UTF-16 units, so long text is never copied across.
+    fn selected_length(&self, element: &Self::Element, deadline: Instant) -> Reply<usize>;
+    fn selected_text(&self, element: &Self::Element, deadline: Instant) -> Reply<String>;
+}
+
+/// The focused control's selection, or why it stays unread. Never touches the
+/// clipboard or posts a key; every failure leaves the search empty.
+fn read_selection<P: Provider>(
+    provider: &P,
+    pid: i32,
+    deadline: Instant,
+) -> Result<(Selection, Option<SelectedText>), CopyReason> {
+    let started = provider.elapsed();
+    let available = || {
+        let age = provider
+            .elapsed()
+            .checked_sub(started)
+            .ok_or(CopyReason::PasteUnavailable)?;
+        if provider.now() >= deadline || age >= SELECTION_LIMIT {
+            diagnostics::stage("ax.selection_timeout");
+            return Err(CopyReason::PasteUnavailable);
+        }
+        Ok(())
+    };
+    match provider.secure_typing() {
+        Some(false) => {}
+        Some(true) => return Err(CopyReason::SecureInput),
+        None => return Err(CopyReason::PasteUnavailable),
+    }
+    if !provider.trusted() {
+        return Err(CopyReason::AccessibilityRequired);
+    }
+    let system = provider.system()?;
+    let focused = provider.read(&system, Attribute::FocusedElement, deadline)?;
+    available()?;
+    let owned = provider.pid(&focused)? == pid;
+    diagnostics::owner(owned);
+    if !owned {
+        return Err(CopyReason::TargetChanged);
+    }
+    diagnostics::stage("ax.selection_field");
+    match provider.password_field(&focused, deadline) {
+        Reply::Value(false) | Reply::NoValue | Reply::Unsupported => {}
+        Reply::Value(true) => return Err(CopyReason::SecureField),
+        Reply::TooLong | Reply::Failed => return Err(CopyReason::PasteUnavailable),
+    }
+    available()?;
+    diagnostics::stage("ax.selection_range");
+    match provider.selected_length(&focused, deadline) {
+        Reply::Value(0) => return Ok((Selection::Nothing, None)),
+        Reply::Value(length) if length > SHORT_SELECTION => return Ok((Selection::Ignored, None)),
+        Reply::TooLong => return Ok((Selection::Ignored, None)),
+        Reply::Failed => return Err(CopyReason::PasteUnavailable),
+        Reply::Value(_) | Reply::NoValue | Reply::Unsupported => {}
+    }
+    available()?;
+    diagnostics::stage("ax.selection_text");
+    let selected = match provider.selected_text(&focused, deadline) {
+        Reply::Value(text) => Selection::of_text(&text),
+        Reply::TooLong => (Selection::Ignored, None),
+        Reply::NoValue => (Selection::Nothing, None),
+        Reply::Unsupported => (Selection::Unknown, None),
+        Reply::Failed => return Err(CopyReason::PasteUnavailable),
+    };
+    // A late success is still a timeout: the app may have moved on.
+    available()?;
+    Ok(selected)
+}
+
+/// The final proof before posting. `Unknown` was never read, so it asks nothing.
+fn check_selection<P: Provider>(
+    provider: &P,
+    pid: i32,
+    expected: &Selection,
+    deadline: Instant,
+) -> Result<(), CopyReason> {
+    if *expected == Selection::Unknown {
+        return Ok(());
+    }
+    let (found, _text) = read_selection(provider, pid, deadline)?;
+    diagnostics::equality(None, None, Some(found == *expected));
+    match found {
+        Selection::Unknown => Err(CopyReason::PasteUnavailable),
+        found if found == *expected => Ok(()),
+        _ => Err(CopyReason::SelectionChanged),
     }
 }
 
@@ -229,8 +336,15 @@ fn query<P: Provider>(
 #[allow(unsafe_code)]
 mod native;
 
-pub(super) fn capture(pid: i32, eligible: Option<Retained<NSRunningApplication>>) -> Result<u32, CopyReason> {
+pub(super) fn capture(
+    pid: i32,
+    eligible: Option<Retained<NSRunningApplication>>,
+) -> Result<(u32, Selection, Option<SelectedText>), CopyReason> {
     native::capture(pid, eligible)
+}
+
+pub(super) fn selection_unchanged(pid: i32, expected: &Selection, deadline: Instant) -> Result<(), CopyReason> {
+    native::selection_unchanged(pid, expected, deadline)
 }
 
 pub(super) fn trusted() -> bool {
@@ -284,6 +398,12 @@ mod tests {
         manual_failure: Option<CopyReason>,
         manual_delay: Duration,
         replace_after_manual: bool,
+        secure_typing: Cell<Option<bool>>,
+        password: Reply<bool>,
+        selected_length: Cell<Option<usize>>,
+        selected: RefCell<Reply<String>>,
+        selection_reads: RefCell<Vec<&'static str>>,
+        selection_delay: Duration,
     }
 
     impl Fake {
@@ -318,6 +438,25 @@ mod tests {
                 manual_failure: None,
                 manual_delay: Duration::ZERO,
                 replace_after_manual: false,
+                secure_typing: Cell::new(Some(false)),
+                password: Reply::Value(false),
+                selected_length: Cell::new(None),
+                selected: RefCell::new(Reply::Unsupported),
+                selection_reads: RefCell::default(),
+                selection_delay: Duration::ZERO,
+            }
+        }
+
+        fn selection(&self) -> Result<(Selection, Option<String>), CopyReason> {
+            read_selection(self, 42, self.now() + SELECTION_LIMIT)
+                .map(|(selection, text)| (selection, text.map(SelectedText::into_search)))
+        }
+
+        fn selecting(text: &str) -> Self {
+            Self {
+                selected_length: Cell::new(Some(text.encode_utf16().count())),
+                selected: RefCell::new(Reply::Value(text.to_owned())),
+                ..Self::new()
             }
         }
 
@@ -386,6 +525,35 @@ mod tests {
             Ok(if *element == 1 { 42 } else { self.focused_pid })
         }
 
+        fn secure_typing(&self) -> Option<bool> {
+            self.secure_typing.get()
+        }
+        fn password_field(&self, _: &u32, _: Instant) -> Reply<bool> {
+            self.selection_reads.borrow_mut().push("subrole");
+            match self.password {
+                Reply::Value(value) => Reply::Value(value),
+                Reply::NoValue => Reply::NoValue,
+                Reply::Unsupported => Reply::Unsupported,
+                Reply::TooLong | Reply::Failed => Reply::Failed,
+            }
+        }
+        fn selected_length(&self, _: &u32, _: Instant) -> Reply<usize> {
+            self.selection_reads.borrow_mut().push("range");
+            self.selected_length.get().map_or(Reply::Unsupported, Reply::Value)
+        }
+        fn selected_text(&self, _: &u32, _: Instant) -> Reply<String> {
+            self.selection_reads.borrow_mut().push("text");
+            self.clock.set(self.clock.get() + self.selection_delay);
+            self.elapsed.set(self.elapsed.get() + self.selection_delay);
+            match &*self.selected.borrow() {
+                Reply::Value(text) => Reply::Value(text.clone()),
+                Reply::TooLong => Reply::TooLong,
+                Reply::NoValue => Reply::NoValue,
+                Reply::Unsupported => Reply::Unsupported,
+                Reply::Failed => Reply::Failed,
+            }
+        }
+
         fn enable_manual_accessibility(&self, pid: i32, _: Instant) -> Result<bool, CopyReason> {
             if self.focused_pid != pid
                 || !self
@@ -427,6 +595,171 @@ mod tests {
             }
             self.manual.set(true);
             Ok(true)
+        }
+    }
+
+    #[test]
+    fn short_selected_text_reaches_the_search_trimmed_in_one_closed_read() {
+        let fake = Fake::selecting("smith 2020 ");
+        let (selection, text) = fake.selection().unwrap_or_else(|reason| panic!("{reason:?}"));
+        assert_eq!(selection, Selection::of_text("smith 2020 ").0);
+        assert_eq!(text.as_deref(), Some("smith 2020"));
+        assert_eq!(*fake.selection_reads.borrow(), ["subrole", "range", "text"]);
+        assert_eq!(*fake.reads.borrow(), [Attribute::FocusedElement]);
+    }
+
+    #[test]
+    fn a_long_selection_is_recognised_without_copying_its_text_across() {
+        let fake = Fake {
+            selected_length: Cell::new(Some(SHORT_SELECTION + 1)),
+            selected: RefCell::new(Reply::Value("Invented private words".into())),
+            ..Fake::new()
+        };
+        assert_eq!(fake.selection(), Ok((Selection::Ignored, None)));
+        assert!(!fake.selection_reads.borrow().contains(&"text"));
+    }
+
+    #[test]
+    fn nothing_selected_stops_at_the_range_and_apps_without_a_range_still_answer() {
+        let empty = Fake::selecting("");
+        assert_eq!(empty.selection(), Ok((Selection::Nothing, None)));
+        assert!(!empty.selection_reads.borrow().contains(&"text"));
+        for (reply, expected) in [
+            (Reply::Value(String::new()), Selection::Nothing),
+            (Reply::NoValue, Selection::Nothing),
+            (Reply::TooLong, Selection::Ignored),
+            (Reply::Unsupported, Selection::Unknown),
+        ] {
+            let fake = Fake {
+                selected: RefCell::new(reply),
+                ..Fake::new()
+            };
+            assert_eq!(fake.selection(), Ok((expected, None)));
+        }
+    }
+
+    #[test]
+    fn secure_typing_refuses_before_anything_is_asked_of_the_app() {
+        for (state, reason) in [
+            (Some(true), CopyReason::SecureInput),
+            (None, CopyReason::PasteUnavailable),
+        ] {
+            let fake = Fake::selecting("smith 2020");
+            fake.secure_typing.set(state);
+            assert_eq!(fake.selection(), Err(reason));
+            assert!(fake.reads.borrow().is_empty());
+            assert!(fake.selection_reads.borrow().is_empty());
+        }
+    }
+
+    #[test]
+    fn a_password_field_is_refused_before_its_range_or_text_is_read() {
+        let fake = Fake {
+            password: Reply::Value(true),
+            ..Fake::selecting("hunter2")
+        };
+        assert_eq!(fake.selection(), Err(CopyReason::SecureField));
+        assert_eq!(*fake.selection_reads.borrow(), ["subrole"]);
+        let unproved = Fake {
+            password: Reply::Failed,
+            ..Fake::selecting("hunter2")
+        };
+        assert_eq!(unproved.selection(), Err(CopyReason::PasteUnavailable));
+        assert_eq!(*unproved.selection_reads.borrow(), ["subrole"]);
+    }
+
+    #[test]
+    fn a_field_without_a_subrole_is_an_ordinary_field() {
+        for password in [Reply::NoValue, Reply::Unsupported] {
+            let fake = Fake {
+                password,
+                ..Fake::selecting("smith 2020")
+            };
+            assert!(fake.selection().is_ok_and(|(_, text)| text.is_some()));
+        }
+    }
+
+    #[test]
+    fn a_foreign_panel_failed_read_or_revoked_trust_keeps_the_search_empty() {
+        let foreign = Fake {
+            focused_pid: 99,
+            ..Fake::selecting("smith 2020")
+        };
+        assert_eq!(foreign.selection(), Err(CopyReason::TargetChanged));
+        assert!(foreign.selection_reads.borrow().is_empty());
+        let failed = Fake {
+            selected: RefCell::new(Reply::Failed),
+            ..Fake::new()
+        };
+        assert_eq!(failed.selection(), Err(CopyReason::PasteUnavailable));
+        let revoked = Fake::selecting("smith 2020");
+        revoked.trusted.set(false);
+        assert_eq!(revoked.selection(), Err(CopyReason::AccessibilityRequired));
+    }
+
+    #[test]
+    fn a_late_answer_is_a_timeout_even_when_it_succeeded() {
+        let fake = Fake {
+            selection_delay: SELECTION_LIMIT,
+            ..Fake::selecting("smith 2020")
+        };
+        assert_eq!(fake.selection(), Err(CopyReason::PasteUnavailable));
+    }
+
+    #[test]
+    fn the_final_proof_passes_only_for_the_selection_the_picker_opened_on() {
+        let opened = Selection::of_text("smith 2020").0;
+        let check = |fake: &Fake, expected: &Selection| {
+            check_selection(fake, 42, expected, fake.now() + SELECTION_LIMIT)
+        };
+        assert_eq!(check(&Fake::selecting("smith 2020"), &opened), Ok(()));
+        assert_eq!(
+            check(&Fake::selecting("jones 2021"), &opened),
+            Err(CopyReason::SelectionChanged)
+        );
+        assert_eq!(check(&Fake::selecting(""), &opened), Err(CopyReason::SelectionChanged));
+        assert_eq!(
+            check(&Fake::selecting("new"), &Selection::Nothing),
+            Err(CopyReason::SelectionChanged),
+            "text selected after opening was never shown"
+        );
+        assert_eq!(check(&Fake::selecting(""), &Selection::Nothing), Ok(()));
+        let unread = Fake::new();
+        assert_eq!(check(&unread, &opened), Err(CopyReason::PasteUnavailable));
+    }
+
+    #[test]
+    fn an_unread_selection_asks_nothing_at_the_final_proof() {
+        let fake = Fake::selecting("smith 2020");
+        assert_eq!(
+            check_selection(&fake, 42, &Selection::Unknown, fake.now() + SELECTION_LIMIT),
+            Ok(())
+        );
+        assert!(fake.reads.borrow().is_empty());
+    }
+
+    #[test]
+    fn secure_typing_at_the_final_proof_keeps_its_own_reason() {
+        let fake = Fake::selecting("smith 2020");
+        fake.secure_typing.set(Some(true));
+        assert_eq!(
+            check_selection(
+                &fake,
+                42,
+                &Selection::of_text("smith 2020").0,
+                fake.now() + SELECTION_LIMIT
+            ),
+            Err(CopyReason::SecureInput)
+        );
+    }
+
+    #[test]
+    fn the_selection_read_cannot_touch_the_clipboard_or_post_a_key() {
+        for source in [include_str!("focus.rs"), include_str!("focus/native.rs")] {
+            let code = source.split("#[cfg(test)]").next().unwrap_or(source);
+            for call in ["NSPasteboard", "CGEvent", "post_to_pid"] {
+                assert!(!code.contains(call), "{call}");
+            }
         }
     }
 

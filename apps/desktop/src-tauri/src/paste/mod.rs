@@ -38,6 +38,8 @@ mod windows;
 pub(crate) use capture::Captured;
 #[cfg(any(target_os = "linux", test))]
 use capture::Front;
+#[cfg(any(target_os = "macos", target_os = "windows", test))]
+use capture::Selection;
 #[cfg(any(target_os = "windows", test))]
 use delivery::CopyEvidence;
 #[cfg(target_os = "windows")]
@@ -376,11 +378,19 @@ impl LastTarget {
     }
 }
 
-/// Remember the app in front, before the picker shows. Ibis in front keeps the earlier capture.
-pub(crate) fn capture(app: &AppHandle) {
+/// Remember the app in front, before the picker shows. Ibis in front keeps the
+/// earlier capture. Returns short selected text for the search, once (#1526).
+pub(crate) fn capture(app: &AppHandle) -> Option<String> {
     let own = i32::try_from(std::process::id()).unwrap_or(i32::MAX);
     #[cfg(target_os = "macos")]
-    let front = macos::frontmost(app);
+    let mut front = macos::frontmost(app);
+    #[cfg(target_os = "macos")]
+    let search = front
+        .as_mut()
+        .and_then(|front| front.search.take())
+        .map(capture::SelectedText::into_search);
+    #[cfg(not(target_os = "macos"))]
+    let search = None;
     #[cfg(target_os = "windows")]
     let generation = app.state::<crate::picker::PickerGeneration>().current();
     #[cfg(target_os = "windows")]
@@ -404,6 +414,7 @@ pub(crate) fn capture(app: &AppHandle) {
             app.state::<crate::picker::PickerGeneration>().current(),
         );
     }
+    search
 }
 
 /// The app the picker was last opened from, with the name the picker shows

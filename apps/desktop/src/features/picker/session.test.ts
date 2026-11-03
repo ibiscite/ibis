@@ -371,3 +371,75 @@ test("preparing clears an expired search before the window appears, and showing 
   s.send({ type: "shown", now: 61_100, presentation: 2 });
   expect(s.state.presentation).toBe(2);
 });
+
+test("short selected text opens as a search that lasts one opening", () => {
+  const s = scenario();
+  s.send({ type: "hidden", now: 0 });
+  s.send({ type: "preparing", now: 10, selection: "smith 2020" });
+  s.send({ type: "shown", now: 11, presentation: 1 });
+  expect(s.state).toMatchObject({ query: "smith 2020", fromDocument: true, restored: 1 });
+  s.send({ type: "hidden", now: 20 });
+  s.send({ type: "preparing", now: 30, selection: null });
+  s.send({ type: "shown", now: 31, presentation: 2 });
+  expect(s.state).toMatchObject({ query: "", fromDocument: false });
+});
+
+test("a newer selection replaces an earlier search and keeps the shelf", () => {
+  const s = scenario();
+  s.send({ type: "toggle", result: a });
+  s.send({ type: "query", value: "typed earlier" });
+  s.send({ type: "hidden", now: 0 });
+  s.send({ type: "preparing", now: 10, selection: "smith 2020" });
+  expect(s.state.query).toBe("smith 2020");
+  expect([...s.state.selected.values()]).toHaveLength(1);
+});
+
+test("no selection leaves a recent typed search to return as before", () => {
+  const s = scenario();
+  s.send({ type: "query", value: "typed earlier" });
+  s.send({ type: "hidden", now: 0 });
+  s.send({ type: "preparing", now: 10, selection: null });
+  s.send({ type: "shown", now: 11, presentation: 1 });
+  expect(s.state).toMatchObject({ query: "typed earlier", fromDocument: false });
+});
+
+test("editing document text makes it the person's own search", () => {
+  const s = scenario();
+  s.send({ type: "preparing", now: 10, selection: "smith 2020" });
+  s.send({ type: "query", value: "smith 20" });
+  s.send({ type: "hidden", now: 20 });
+  s.send({ type: "preparing", now: 30 });
+  expect(s.state).toMatchObject({ query: "smith 20", fromDocument: false });
+});
+
+test("Escape clears document text for good: it never comes back as a search", () => {
+  const s = scenario();
+  s.send({ type: "preparing", now: 10, selection: "smith 2020" });
+  s.send({ type: "escape-search" });
+  expect(s.state).toMatchObject({ query: "", escapedQuery: null, fromDocument: false });
+  s.send({ type: "hidden", now: 20 });
+  s.send({ type: "preparing", now: 30, selection: null });
+  expect(s.state.query).toBe("");
+});
+
+test("a permission detour keeps its prepared search over a new selection", () => {
+  const s = scenario();
+  s.send({ type: "query", value: "prepared" });
+  s.send(s.view());
+  s.send({ type: "enter", choice: choiceKey([a]) });
+  s.complete(1);
+  s.send({ type: "hid", id: 1, session: 0 });
+  expect(s.state.permissionDetour).toBe(true);
+  s.send({ type: "hidden", now: 20 });
+  s.send({ type: "preparing", now: 30, selection: "smith 2020" });
+  expect(s.state).toMatchObject({ query: "prepared", fromDocument: false });
+});
+
+test("a selection arriving with a waiting Enter cancels it: Enter never pastes a citation from an older search", () => {
+  const s = scenario();
+  s.send(s.view({ searchPending: true }));
+  s.send({ type: "enter", choice: null });
+  expect(s.state.pendingCopy).not.toBeNull();
+  s.send({ type: "preparing", now: 10, selection: "smith 2020" });
+  expect(s.state.pendingCopy).toBeNull();
+});

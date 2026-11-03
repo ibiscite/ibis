@@ -534,6 +534,8 @@ export const copiedNoticeText = {
     "paste-unavailable": "Copied. Press ⌘V to paste.",
     "elevated-app": "Copied. Not pasted into an administrator app",
     "key-release-failed": "Copied. Press and release Ctrl and V",
+    "selection-changed": "Copied. The selected text changed, so Ibis left it. Press ⌘V to paste.",
+    "long-selection": "Copied. Ibis does not replace long selected text. Press ⌘V to replace it.",
   } as Record<string, string>,
   windowsTitle: "Citation copied. Press Ctrl+V to paste.",
   source: "Ibis",

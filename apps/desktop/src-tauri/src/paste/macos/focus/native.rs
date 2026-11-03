@@ -1,10 +1,12 @@
 //! Public SDK AX/CF signatures only. The closed attribute enum prevents content
-//! reads; none of these objects is formatted, serialized, logged or sent.
+//! reads; none of these objects is formatted, serialized, logged or sent. The
+//! selection calls are the one exception, decision 0029: three fixed attributes
+//! of the focused control, whose text goes only to the picker's search.
 
 use std::cell::RefCell;
 use std::ffi::c_void;
 use std::ptr::NonNull;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use ibis_core::destination::CopyReason;
 use objc2_app_kit::NSRunningApplication;
@@ -12,8 +14,10 @@ use objc2_core_foundation::{CFBoolean, CFDictionary, CFGetTypeID, CFRetained, CF
 use objc2_foundation::NSThread;
 use tauri_nspanel::objc2::rc::Retained;
 
+use super::super::secure_input;
 use super::{
-    Attribute, Identity, LIMIT, Provider, capture_query, claim_process, diagnostics, missing_identity_attribute, query,
+    Attribute, Identity, LIMIT, Provider, Reply, SELECTION_LIMIT, SHORT_SELECTION, SelectedText, Selection,
+    capture_query, check_selection, claim_process, diagnostics, missing_identity_attribute, query, read_selection,
     same_live_process,
 };
 
@@ -35,6 +39,22 @@ unsafe extern "C" {
     ) -> i32;
     fn AXUIElementSetMessagingTimeout(element: *const c_void, seconds: f32) -> i32;
     fn AXUIElementSetAttributeValue(element: *const c_void, attribute: *const c_void, value: *const c_void) -> i32;
+    fn AXValueGetTypeID() -> usize;
+    fn AXValueGetType(value: *const c_void) -> u32;
+    fn AXValueGetValue(value: *const c_void, kind: u32, output: *mut c_void) -> u8;
+}
+
+/// `kAXValueTypeCFRange` in AXValue.h.
+const AX_VALUE_CF_RANGE: u32 = 4;
+/// `kAXErrorAttributeUnsupported` and `kAXErrorNoValue`.
+const AX_UNSUPPORTED: i32 = -25205;
+const AX_NO_VALUE: i32 = -25212;
+
+/// CFRange in CFBase.h: two CFIndex values.
+#[repr(C)]
+struct AxRange {
+    location: isize,
+    length: isize,
 }
 
 #[derive(Clone)]
@@ -70,6 +90,14 @@ impl PartialEq for Element {
     }
 }
 
+/// The only attributes the selection read may name.
+#[derive(Clone, Copy)]
+enum SelectionAttribute {
+    Subrole,
+    Range,
+    Text,
+}
+
 #[derive(Default)]
 struct Native {
     application: RefCell<Option<Element>>,
@@ -78,6 +106,42 @@ struct Native {
 }
 
 impl Native {
+    fn selection_value(
+        &self,
+        element: &Element,
+        attribute: SelectionAttribute,
+        deadline: Instant,
+    ) -> Reply<CFRetained<CFType>> {
+        let started = self.elapsed();
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            return Reply::Failed;
+        }
+        // SAFETY: Retained AX object and strictly positive finite timeout.
+        if unsafe { AXUIElementSetMessagingTimeout(element.ptr(), remaining.as_secs_f32()) } != 0 {
+            return Reply::Failed;
+        }
+        let name = CFString::from_static_str(match attribute {
+            SelectionAttribute::Subrole => "AXSubrole",
+            SelectionAttribute::Range => "AXSelectedTextRange",
+            SelectionAttribute::Text => "AXSelectedText",
+        });
+        let mut value = std::ptr::null();
+        // SAFETY: Both inputs live through the call and the initialized local
+        // receives the SDK's retained result. Only this closed selection set.
+        let error = unsafe {
+            AXUIElementCopyAttributeValue(element.ptr(), CFRetained::as_ptr(&name).as_ptr().cast(), &mut value)
+        };
+        diagnostics::ax(error, self.elapsed().saturating_sub(started));
+        let owned = Element::owned(value);
+        match error {
+            0 => owned.map_or(Reply::Failed, Reply::Value),
+            AX_NO_VALUE => Reply::NoValue,
+            AX_UNSUPPORTED => Reply::Unsupported,
+            _ => Reply::Failed,
+        }
+    }
+
     fn check_activation_process(&self, pid: i32) -> Result<&Retained<NSRunningApplication>, CopyReason> {
         let original = self.activation_process.as_ref().ok_or(CopyReason::PasteUnavailable)?;
         let current = NSRunningApplication::runningApplicationWithProcessIdentifier(pid);
@@ -188,6 +252,59 @@ impl Provider for Native {
         }
     }
 
+    fn secure_typing(&self) -> Option<bool> {
+        secure_input::enabled()
+    }
+
+    fn password_field(&self, element: &Element, deadline: Instant) -> Reply<bool> {
+        match self.selection_value(element, SelectionAttribute::Subrole, deadline) {
+            Reply::Value(value) => value
+                .downcast_ref::<CFString>()
+                .map_or(Reply::Failed, |subrole| Reply::Value(subrole.to_string() == "AXSecureTextField")),
+            Reply::NoValue => Reply::NoValue,
+            Reply::Unsupported => Reply::Unsupported,
+            Reply::TooLong | Reply::Failed => Reply::Failed,
+        }
+    }
+
+    fn selected_length(&self, element: &Element, deadline: Instant) -> Reply<usize> {
+        let value = match self.selection_value(element, SelectionAttribute::Range, deadline) {
+            Reply::Value(value) => value,
+            Reply::NoValue => return Reply::NoValue,
+            Reply::Unsupported => return Reply::Unsupported,
+            Reply::TooLong | Reply::Failed => return Reply::Failed,
+        };
+        let pointer: *const c_void = CFRetained::as_ptr(&value).as_ptr().cast();
+        let mut range = AxRange { location: 0, length: 0 };
+        // SAFETY: The value is retained, checked to be an AXValue holding a
+        // CFRange before its fixed-size contents are written to the local.
+        let read = unsafe {
+            CFGetTypeID(Some(&value)) == AXValueGetTypeID()
+                && AXValueGetType(pointer) == AX_VALUE_CF_RANGE
+                && AXValueGetValue(pointer, AX_VALUE_CF_RANGE, (&raw mut range).cast()) != 0
+        };
+        match usize::try_from(range.length) {
+            Ok(length) if read && range.location >= 0 => Reply::Value(length),
+            _ => Reply::Failed,
+        }
+    }
+
+    fn selected_text(&self, element: &Element, deadline: Instant) -> Reply<String> {
+        match self.selection_value(element, SelectionAttribute::Text, deadline) {
+            Reply::Value(value) => match value.downcast_ref::<CFString>() {
+                Some(text) if usize::try_from(text.length()).is_ok_and(|length| length <= SHORT_SELECTION) => {
+                    Reply::Value(text.to_string())
+                }
+                Some(_) => Reply::TooLong,
+                None => Reply::Failed,
+            },
+            Reply::TooLong => Reply::TooLong,
+            Reply::NoValue => Reply::NoValue,
+            Reply::Unsupported => Reply::Unsupported,
+            Reply::Failed => Reply::Failed,
+        }
+    }
+
     fn enable_manual_accessibility(&self, pid: i32, deadline: Instant) -> Result<bool, CopyReason> {
         let Some(missing_owner) = *self.missing_identity.borrow() else {
             return Ok(false);
@@ -277,7 +394,10 @@ pub(super) fn request_trust() {
     unsafe { AXIsProcessTrustedWithOptions(CFRetained::as_ptr(&options).as_ptr().cast()) };
 }
 
-pub(super) fn capture(pid: i32, eligible: Option<Retained<NSRunningApplication>>) -> Result<u32, CopyReason> {
+pub(super) fn capture(
+    pid: i32,
+    eligible: Option<Retained<NSRunningApplication>>,
+) -> Result<(u32, Selection, Option<SelectedText>), CopyReason> {
     if !NSThread::isMainThread_class() {
         return Err(CopyReason::PasteUnavailable);
     }
@@ -295,6 +415,13 @@ pub(super) fn capture(pid: i32, eligible: Option<Retained<NSRunningApplication>>
         ..Native::default()
     };
     let window = capture_query(&provider, pid, may_activate);
+    // The same paste policy as the activation write, on a focus just proved.
+    // Any refusal or failure is an empty search, never a reason to stop.
+    let (selection, search) = if may_activate && window.is_ok() {
+        read_selection(&provider, pid, Instant::now() + SELECTION_LIMIT).unwrap_or_default()
+    } else {
+        Default::default()
+    };
     SAVED.with(|saved| {
         let mut saved = saved.borrow_mut();
         if saved.next != token {
@@ -302,8 +429,16 @@ pub(super) fn capture(pid: i32, eligible: Option<Retained<NSRunningApplication>>
         }
         let window = window?;
         saved.window = Some((token, window));
-        Ok(token)
+        Ok((token, selection, search))
     })
+}
+
+pub(super) fn selection_unchanged(pid: i32, expected: &Selection, deadline: Instant) -> Result<(), CopyReason> {
+    if !NSThread::isMainThread_class() {
+        return Err(CopyReason::PasteUnavailable);
+    }
+    let limit: Duration = SELECTION_LIMIT;
+    check_selection(&Native::default(), pid, expected, deadline.min(Instant::now() + limit))
 }
 
 pub(super) fn current(

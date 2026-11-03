@@ -1,6 +1,7 @@
 use ibis_core::destination::{AppPaste, CopyReason, Decision, PastePermission, System, decide, lookup};
 use tauri::{AppHandle, Manager};
 
+use super::capture::Selection;
 use super::{Captured, LastTarget, permission};
 
 pub(super) fn paste_policy(app: &AppHandle, enabled: bool, choosing: bool) -> bool {
@@ -57,6 +58,8 @@ pub(super) fn delivery_decision(captured: &Captured, permission: PastePermission
         {
             Decision::Copy(captured.focus_failure.unwrap_or(CopyReason::PasteUnavailable))
         }
+        // A paste replaces the selection; Ibis never deletes text it did not show.
+        Decision::Paste if captured.selection == Selection::Ignored => Decision::Copy(CopyReason::LongSelection),
         decision => decision,
     }
 }

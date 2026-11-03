@@ -45,6 +45,8 @@ struct Fake {
     checks: RefCell<Vec<&'static str>>,
     posts: RefCell<Vec<i32>>,
     pending: PendingPost,
+    /// What the final selection read finds, or why it fails.
+    selection_now: RefCell<Option<Result<Selection, CopyReason>>>,
 }
 
 impl Fake {
@@ -90,6 +92,7 @@ impl Fake {
             checks: RefCell::default(),
             posts: RefCell::default(),
             pending: PendingPost::default(),
+            selection_now: RefCell::new(None),
         }
     }
 
@@ -102,6 +105,8 @@ impl Fake {
             focus_failure: None,
             name: None,
             elevated: false,
+            selection: Selection::Unknown,
+            search: None,
         })
     }
 }
@@ -223,6 +228,16 @@ impl PostDesk for Fake {
         self.checks.borrow_mut().push("foreground");
         Ok(self.front())
     }
+    fn selection_unchanged(&self, selection: &Selection) -> Result<(), CopyReason> {
+        self.checks.borrow_mut().push("selection");
+        match (self.selection_now.borrow().as_ref(), selection) {
+            (_, Selection::Unknown) => Ok(()),
+            (Some(Ok(now)), expected) if now == expected => Ok(()),
+            (Some(Ok(_)), _) => Err(CopyReason::SelectionChanged),
+            (Some(Err(reason)), _) => Err(*reason),
+            (None, _) => Err(CopyReason::PasteUnavailable),
+        }
+    }
     fn change_count(&self) -> isize {
         self.checks.borrow_mut().push("change-count");
         self.change_count.get()
@@ -281,6 +296,7 @@ fn writer(id: &str) -> Captured {
         window: Some(100),
         focus_failure: None,
         name: Some("Writer".into()),
+        selection: Selection::Unknown,
         #[cfg(target_os = "macos")]
         diagnostic: None,
     }
@@ -610,6 +626,8 @@ fn repeated_show_from_our_key_panel_still_pastes_once_into_the_original_external
         focus_failure: None,
         name: Some("Writer".into()),
         elevated: false,
+        selection: Selection::Unknown,
+        search: None,
     };
     let own_key = macos::capture_front(Some(active_external), 7, true, |_| {
         panic!("own panel must keep AX bank")
@@ -643,6 +661,8 @@ fn granting_access_cannot_repair_a_failed_capture_without_a_fresh_external_activ
             focus_failure: None,
             name: Some("Writer".into()),
             elevated: false,
+            selection: Selection::Unknown,
+            search: None,
         };
         let failed = macos::capture_front(Some(external()), 7, false, |_| Err(reason));
         last.begin_presentation(capture::captured(System::Macos, failed, 7));
@@ -661,7 +681,7 @@ fn granting_access_cannot_repair_a_failed_capture_without_a_fresh_external_activ
         if reason == CopyReason::AccessibilityRequired {
             assert_eq!(desk.asked.get(), 2);
         }
-        let valid = macos::capture_front(Some(external()), 7, false, |_| Ok(100));
+        let valid = macos::capture_front(Some(external()), 7, false, |_| Ok((100, Selection::Unknown, None)));
         last.begin_presentation(capture::captured(System::Macos, valid, 7));
         let proof = copy();
         desk.presentation.set(proof.presentation);
@@ -1389,4 +1409,111 @@ fn terminals_and_missing_postevent_permission_keep_the_existing_flow() {
     assert_eq!(deliver(&desk, Some(&proof()), true), copied(Some("no-permission")));
     assert_eq!(desk.asked.get(), 1);
     assert!(desk.posts.borrow().is_empty());
+}
+
+fn with_selection(text: &str) -> CopyProof {
+    let mut proof = proof();
+    if let Some(captured) = &mut proof.captured {
+        captured.selection = Selection::of_text(text).0;
+    }
+    proof
+}
+
+#[test]
+fn enter_pastes_over_the_selection_the_picker_opened_on() {
+    let desk = Fake::new();
+    *desk.selection_now.borrow_mut() = Some(Ok(Selection::of_text("smith 2020").0));
+    assert_eq!(deliver(&desk, Some(&with_selection("smith 2020")), true), pasted());
+    assert_eq!(*desk.posts.borrow(), [42]);
+    assert!(desk.checks.borrow().contains(&"selection"));
+}
+
+#[test]
+fn a_selection_changed_before_enter_is_left_alone_and_says_why() {
+    for now in ["jones 2021", ""] {
+        let desk = Fake::new();
+        *desk.selection_now.borrow_mut() = Some(Ok(Selection::of_text(now).0));
+        assert_eq!(
+            deliver(&desk, Some(&with_selection("smith 2020")), true),
+            copied(Some("selection-changed"))
+        );
+        assert!(desk.posts.borrow().is_empty());
+    }
+}
+
+#[test]
+fn a_failed_read_or_secure_typing_at_the_final_proof_never_posts() {
+    for (failure, reason) in [
+        (CopyReason::PasteUnavailable, "paste-unavailable"),
+        (CopyReason::SecureInput, "secure-input"),
+        (CopyReason::TargetChanged, "target-changed"),
+    ] {
+        let desk = Fake::new();
+        *desk.selection_now.borrow_mut() = Some(Err(failure));
+        assert_eq!(
+            deliver(&desk, Some(&with_selection("smith 2020")), true),
+            copied(Some(reason))
+        );
+        assert!(desk.posts.borrow().is_empty());
+    }
+}
+
+#[test]
+fn text_selected_after_opening_was_never_shown_so_it_is_not_replaced() {
+    let desk = Fake::new();
+    *desk.selection_now.borrow_mut() = Some(Ok(Selection::of_text("selected later").0));
+    assert_eq!(
+        deliver(&desk, Some(&with_selection("")), true),
+        copied(Some("selection-changed"))
+    );
+    assert!(desk.posts.borrow().is_empty());
+}
+
+#[test]
+fn a_long_selection_copies_and_says_so_before_any_foreground_wait() {
+    let desk = Fake::new();
+    let long = "Invented words. ".repeat(10);
+    assert_eq!(
+        deliver(&desk, Some(&with_selection(&long)), true),
+        copied(Some("long-selection"))
+    );
+    assert!(desk.posts.borrow().is_empty());
+    assert!(desk.checks.borrow().is_empty());
+}
+
+#[test]
+fn an_app_that_cannot_report_a_selection_pastes_as_it_always_did() {
+    let desk = Fake::new();
+    assert_eq!(deliver(&desk, Some(&proof()), true), pasted());
+    assert_eq!(*desk.posts.borrow(), [42]);
+}
+
+#[test]
+fn the_footer_offers_copy_when_enter_would_refuse_a_long_selection() {
+    let mut captured = writer("com.microsoft.word");
+    captured.selection = Selection::Ignored;
+    let permission = PastePermission {
+        enabled: true,
+        granted: true,
+        app: None,
+    };
+    assert!(!intended_paste(Some(&captured), permission));
+    captured.selection = Selection::Nothing;
+    assert!(intended_paste(Some(&captured), permission));
+}
+
+#[test]
+fn reopening_with_a_new_selection_replaces_what_the_old_opening_read() {
+    let last = LastTarget::default();
+    let mut first = writer("com.microsoft.word");
+    first.selection = Selection::of_text("smith 2020").0;
+    last.begin_presentation(Some(first));
+    let mut second = writer("com.microsoft.word");
+    second.selection = Selection::Nothing;
+    last.begin_presentation(Some(second));
+    let held = last.0.lock().map(|state| state.captured.clone());
+    assert_eq!(
+        held.ok().flatten().map(|captured| captured.selection),
+        Some(Selection::Nothing)
+    );
 }
