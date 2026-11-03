@@ -50,6 +50,16 @@ test("a citation with a warning stays open and says why instead of pasting", asy
   expect(calls("hide_picker")).toBe(0);
 });
 
+test("with no bibliography chosen, the check asks no search twice", async () => {
+  const called = backend({ project_status: () => null, search: () => [row("in")] });
+  render(<App />);
+  fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "seas" } });
+  await screen.findByText("Invented seas");
+  await act(() => emit("project:changed"));
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  expect(called.filter((command) => command === "search")).toHaveLength(1);
+});
+
 test("a failed read keeps its last good copy, labelled", async () => {
   picker("in", () => file({ state: "failed", last_good: true }));
   await waitFor(() => expect(shownRow()).toContain("In thesis.bib (last good copy)"));

@@ -12,10 +12,15 @@ export function useProjectBibliography(api: PickerApi, report: ReturnType<typeof
   const [version, setVersion] = useState(0);
   const [notice, setNotice] = useState<string | null>(null);
   const reading = useRef(0);
+  const shown = useRef(JSON.stringify(null));
   const read = useCallback(() => {
     const request = ++reading.current;
     void projectStatus?.().then((next) => {
       if (request !== reading.current) return;
+      // Only a new answer asks searches again; nobody without a bibliography pays.
+      const answer = JSON.stringify(next);
+      if (answer === shown.current) return;
+      shown.current = answer;
       setStatus(next);
       setVersion((old) => old + 1);
     }, () => { if (request === reading.current) report("project"); });
