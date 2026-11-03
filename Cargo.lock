@@ -2069,6 +2069,7 @@ dependencies = [
  "block2",
  "clipboard-win",
  "dunce",
+ "getrandom 0.3.4",
  "gtk",
  "ibis",
  "ibis-core",

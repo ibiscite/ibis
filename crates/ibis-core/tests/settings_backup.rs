@@ -597,3 +597,18 @@ fn a_shared_settings_file_keeps_each_systems_shortcut_apart() {
         "never a plain string another system would take as its own"
     );
 }
+
+#[test]
+fn the_editor_endpoints_token_never_leaves_in_a_backup() {
+    let mut settings = chosen();
+    settings.editor_endpoint = Some(ibis_core::settings::EditorEndpoint {
+        port: 23_124,
+        token: "0123456789abcdef0123456789abcdef".into(),
+    });
+    let text = backup::export(&settings, "0.2.8").unwrap_or_else(|error| panic!("{error}"));
+    assert!(!text.contains("0123456789abcdef"), "{text}");
+    assert!(!format!("{settings:?}").contains("0123456789abcdef"), "nor in a log");
+    let read = backup::parse(&text).unwrap_or_else(|error| panic!("{error}"));
+    let plan = backup::plan(&settings, &read, |_| true);
+    assert_eq!(plan.restored.editor_endpoint, settings.editor_endpoint);
+}

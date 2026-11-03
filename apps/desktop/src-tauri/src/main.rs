@@ -11,6 +11,7 @@ mod copy;
 mod delights;
 mod destination;
 mod diagnostics;
+mod editor_endpoint;
 mod feedback;
 mod library;
 mod login_item;
@@ -164,6 +165,8 @@ fn main() {
         .manage(ChooserOpen::default())
         .manage(settings_backup::PendingRestore::default())
         .manage(row_context::RowContext::default())
+        .manage(editor_endpoint::Pending::default())
+        .manage(editor_endpoint::Endpoint::default())
         .on_menu_event(row_context::selected)
         .manage(Pinned::default())
         .manage(picker::Moving::default())
@@ -338,6 +341,7 @@ fn main() {
             // After the tray, so the menu item shows the saved choice.
             updater::start(app.handle(), loaded.settings.update_checks, loaded.problem.is_none());
             // The library from settings; IBIS_LIBRARY overrides it for development.
+            editor_endpoint::start(app.handle(), loaded.settings.editor_endpoint.clone());
             let library = std::env::var_os("IBIS_LIBRARY")
                 .map(|path| Source::File(PathBuf::from(path)))
                 .or_else(|| loaded.settings.library.clone().map(Source::from));

@@ -169,6 +169,7 @@ pub(crate) async fn preview_file_citation(
     intent: PreviewIntent,
     library: State<'_, Mutex<Library>>,
     requests: State<'_, PreviewRequests>,
+    editor: State<'_, crate::editor_endpoint::Pending>,
 ) -> Result<crate::library::engine_file::FilePreview, CommandError> {
     let cancel = requests
         .start(intent)
@@ -188,9 +189,12 @@ pub(crate) async fn preview_file_citation(
         (file, library.source_generation)
     };
     let reservation = file.reserve_preview_with(cancel);
-    let result = tauri::async_runtime::spawn_blocking(move || file.preview(reservation, items, format, style))
-        .await
-        .map_err(|_| CommandError::from("The preview is unavailable. Try again."))?;
+    let editor = editor.current();
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        file.preview_for(reservation, items, format, style, editor.as_ref())
+    })
+    .await
+    .map_err(|_| CommandError::from("The preview is unavailable. Try again."))?;
     // A reload cancels previews it overtakes; that is waiting, not a failure.
     let overtaken = result.is_err()
         && library
@@ -202,6 +206,23 @@ pub(crate) async fn preview_file_citation(
         result
     }
 }
+/// Whole content with no delivery: it is copied, never pasted.
+fn write_plain_content(app: &AppHandle, content: ibis_core::contract::ClipboardContent<'_>) -> Result<(), String> {
+    clipboard::write(app, content).map(|_| ())
+}
+
+/// Plain text with no delivery.
+pub(crate) fn write_plain(app: &AppHandle, text: &str) -> Result<(), String> {
+    write_plain_content(
+        app,
+        ibis_core::contract::ClipboardContent {
+            text,
+            html: None,
+            rtf: None,
+        },
+    )
+}
+
 #[tauri::command]
 #[specta::specta]
 pub(crate) fn copy_file_citation(
@@ -209,6 +230,7 @@ pub(crate) fn copy_file_citation(
     content_hash: String,
     app: AppHandle,
     library: State<'_, Mutex<Library>>,
+    editor: State<'_, crate::editor_endpoint::Pending>,
 ) -> Result<Copied, CommandError> {
     #[cfg(target_os = "windows")]
     let attempt = crate::paste::begin_copy(&app);
@@ -221,6 +243,24 @@ pub(crate) fn copy_file_citation(
         }
         library.file.clone().ok_or(CommandError::SnapshotChanged)?
     };
+    // A waiting editor gets the citation in place of the clipboard. It is
+    // handed over under the same commit barrier, and nothing is pasted.
+    if let Some(request) = editor.current() {
+        if !file.prepared_for(&ticket, &request) {
+            return Err(CommandError::SnapshotChanged);
+        }
+        return file.copy(&ticket, &content_hash, |content| {
+            let text = content.text;
+            if request.clipboard {
+                write_plain_content(&app, content)?;
+            }
+            if editor.answer(request.id, text) {
+                Ok(())
+            } else {
+                Err("Your editor stopped waiting for this citation.".to_owned())
+            }
+        });
+    }
     let mut delivery = None;
     let mut copied = file.copy(&ticket, &content_hash, |content| {
         #[cfg(target_os = "windows")]

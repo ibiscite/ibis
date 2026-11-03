@@ -46,6 +46,7 @@
     "allow-show-copied-notice",
     "allow-native-appearance",
     "allow-row-context",
+    "allow-editor-request",
     "allow-update-checks",
     "allow-set-update-checks",
     "allow-check-for-updates",

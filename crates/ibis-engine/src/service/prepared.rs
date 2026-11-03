@@ -21,6 +21,12 @@ impl PreparedCitation {
     pub fn into_result(self) -> CitationResult {
         self.result
     }
+    pub fn request_output(&self) -> &OutputSpec {
+        &self.request.output
+    }
+    pub fn request_form(&self) -> CitationForm {
+        self.request.form
+    }
     pub fn item_form(&self, item: usize) -> Option<CitationForm> {
         self.request
             .items
