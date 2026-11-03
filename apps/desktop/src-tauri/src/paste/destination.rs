@@ -47,7 +47,7 @@ pub(super) fn intended_paste(captured: Option<&Captured>, permission: PastePermi
 pub(super) fn delivery_decision(captured: &Captured, permission: PastePermission) -> Decision {
     match policy_decision(captured, permission) {
         // A paste replaces the selection; Ibis never deletes text it did not show.
-        Decision::Paste if captured.selection == Selection::Ignored => Decision::Copy(CopyReason::LongSelection),
+        Decision::Paste if captured.selection == Selection::Ignored => Decision::Copy(CopyReason::SelectionNotShown),
         decision => decision,
     }
 }

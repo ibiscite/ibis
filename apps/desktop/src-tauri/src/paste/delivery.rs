@@ -202,7 +202,7 @@ pub(super) fn deliver<D: Desk>(desk: &D, proof: Option<&D::Proof>, enabled: bool
                 PostResult::Unavailable => copied(Some(CopyReason::PasteUnavailable)),
                 PostResult::Expired => copied(Some(CopyReason::PasteExpired)),
                 PostResult::TargetChanged => copied(Some(CopyReason::TargetChanged)),
-                PostResult::SelectionChanged => copied(Some(CopyReason::SelectionChanged)),
+                PostResult::SelectionNotShown => copied(Some(CopyReason::SelectionNotShown)),
                 PostResult::ClipboardChanged => copied(Some(CopyReason::ClipboardChanged)),
                 PostResult::AccessibilityRequired => {
                     desk.ask_to_post();

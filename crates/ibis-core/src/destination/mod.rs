@@ -150,10 +150,8 @@ pub enum CopyReason {
     NoPermission,
     /// macOS Accessibility trust is required for the identity-only focus proof.
     AccessibilityRequired,
-    /// The text selected when the picker opened is no longer what is selected.
-    SelectionChanged,
-    /// Selected text the search never showed; a paste would delete it unseen.
-    LongSelection,
+    /// A paste would replace selected text the search never showed.
+    SelectionNotShown,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

@@ -233,7 +233,7 @@ impl PostDesk for Fake {
         match (self.selection_now.borrow().as_ref(), selection) {
             (_, Selection::Unknown) => Ok(()),
             (Some(Ok(now)), expected) if now == expected => Ok(()),
-            (Some(Ok(_)), _) => Err(CopyReason::SelectionChanged),
+            (Some(Ok(_)), _) => Err(CopyReason::SelectionNotShown),
             (Some(Err(reason)), _) => Err(*reason),
             (None, _) => Err(CopyReason::PasteUnavailable),
         }
@@ -1436,7 +1436,7 @@ fn a_selection_changed_before_enter_is_left_alone_and_says_why() {
         *desk.selection_now.borrow_mut() = Some(Ok(Selection::of_text(now).0));
         assert_eq!(
             deliver(&desk, Some(&with_selection("smith 2020")), true),
-            copied(Some("selection-changed"))
+            copied(Some("selection-not-shown"))
         );
         assert!(desk.posts.borrow().is_empty());
     }
@@ -1465,7 +1465,7 @@ fn text_selected_after_opening_was_never_shown_so_it_is_not_replaced() {
     *desk.selection_now.borrow_mut() = Some(Ok(Selection::of_text("selected later").0));
     assert_eq!(
         deliver(&desk, Some(&with_selection("")), true),
-        copied(Some("selection-changed"))
+        copied(Some("selection-not-shown"))
     );
     assert!(desk.posts.borrow().is_empty());
 }
@@ -1476,10 +1476,32 @@ fn a_long_selection_copies_and_says_so_before_any_foreground_wait() {
     let long = "Invented words. ".repeat(10);
     assert_eq!(
         deliver(&desk, Some(&with_selection(&long)), true),
-        copied(Some("long-selection"))
+        copied(Some("selection-not-shown"))
     );
     assert!(desk.posts.borrow().is_empty());
     assert!(desk.checks.borrow().is_empty());
+}
+
+#[test]
+fn an_opening_that_could_not_read_never_pastes_over_text_found_at_enter() {
+    let unread = || {
+        let mut proof = proof();
+        if let Some(captured) = &mut proof.captured {
+            captured.selection = Selection::Unread;
+        }
+        proof
+    };
+    let desk = Fake::new();
+    *desk.selection_now.borrow_mut() = Some(Err(CopyReason::SelectionNotShown));
+    assert_eq!(
+        deliver(&desk, Some(&unread()), true),
+        copied(Some("selection-not-shown"))
+    );
+    assert!(desk.posts.borrow().is_empty());
+    let empty = Fake::new();
+    *empty.selection_now.borrow_mut() = Some(Ok(Selection::Unread));
+    assert_eq!(deliver(&empty, Some(&unread()), true), pasted());
+    assert_eq!(*empty.posts.borrow(), [42]);
 }
 
 #[test]

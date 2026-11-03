@@ -12,15 +12,19 @@ use ibis_core::destination::{AppId, AppPaste, CopyReason, System, Target};
 pub(crate) const SHORT_SELECTION: usize = 120;
 
 /// What was selected in the target when the picker opened (#1526). Ibis only
-/// pastes over text the person saw in search, so `Ignored` refuses the paste.
+/// pastes over text the person saw in search: `Ignored` refuses the paste, and
+/// `Unread` lets it through only once nothing is proved selected.
 #[derive(Clone, Default, PartialEq, Eq)]
 #[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
 pub(crate) enum Selection {
-    /// Not read, or the app could not say. Nothing is known, so nothing changes.
+    /// The app has no way to report a selection, so Ibis cannot tell and pastes.
     #[default]
     Unknown,
+    /// Refused, failed or too slow at opening: the question is still open.
+    Unread,
     Nothing,
-    /// Long or multi-line: never shown, and not the text is kept.
+    /// Long, multi-line or blank, or the app would not say what: never shown,
+    /// and none of it is kept.
     Ignored,
     /// A digest only; the text itself goes to the search once.
     Short(Fingerprint),
@@ -31,6 +35,7 @@ impl std::fmt::Debug for Selection {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
             Self::Unknown => "Unknown",
+            Self::Unread => "Unread",
             Self::Nothing => "Nothing",
             Self::Ignored => "Ignored",
             Self::Short(_) => "Short",
@@ -45,13 +50,14 @@ impl Selection {
         if text.is_empty() {
             return (Self::Nothing, None);
         }
-        if text.encode_utf16().count() > SHORT_SELECTION || text.chars().any(line_break_or_control) {
+        let shown = text.trim();
+        if shown.is_empty() || text.encode_utf16().count() > SHORT_SELECTION || text.chars().any(line_break_or_control)
+        {
             return (Self::Ignored, None);
         }
-        let shown = text.trim();
         (
             Self::Short(Fingerprint::of_bytes(text.as_bytes())),
-            (!shown.is_empty()).then(|| SelectedText(shown.to_owned())),
+            Some(SelectedText(shown.to_owned())),
         )
     }
 }
@@ -236,11 +242,9 @@ mod tests {
     }
 
     #[test]
-    fn nothing_selected_is_not_a_selection_and_spaces_show_nothing_but_still_count() {
+    fn nothing_selected_is_not_a_selection_and_spaces_cannot_be_shown_so_are_ignored() {
         assert_eq!(Selection::of_text(""), (Selection::Nothing, None));
-        let (selection, search) = Selection::of_text("   ");
-        assert!(matches!(selection, Selection::Short(_)));
-        assert_eq!(search, None);
+        assert_eq!(Selection::of_text("   "), (Selection::Ignored, None));
     }
 
     #[test]

@@ -217,18 +217,21 @@ proofs. An unidentified notice cannot claim ownership (2026-10-31, #1494).
 
 When the shortcut opens the picker with short text selected in the target app,
 that text becomes the search and the paste replaces it (macOS and Windows, on
-by default; maintainer, 2026-10-28). The selection is read once, at the
-shortcut, through accessibility access separate from paste's PostEvent permission; it is never read
+by default; maintainer, 2026-10-28). The selection is read at the
+shortcut, and again just before the paste, through accessibility access separate from paste's PostEvent permission; it is never read
 from secure fields, never stored and never logged. Windows follows; macOS ships
 first (#1526).
 
-The rule behind it: **Ibis replaces only text the person saw in search.** A long
-or multi-line selection is ignored for search, and Enter then only copies, with
-the reason, because a paste would delete it unseen. The selection Enter finds
-must be the one the picker opened on, so text selected or changed since refuses
-the paste with `selection-changed`. An app that cannot report a selection pastes
-as before: Ibis cannot tell, and refusing would end pasting there. The paste
-switch also turns the read off; there is no separate setting (2026-11-02).
+The rule behind it: **Ibis replaces only text the person saw in search.** A long,
+multi-line or blank selection is ignored for search, and Enter then only copies,
+with `selection-not-shown`, because a paste would delete it unseen. The selection
+Enter finds must be the one the picker opened on, so text selected or changed
+since refuses the paste the same way. When the opening could not read (refused,
+failed or too slow) the search is empty and the final read decides: the paste
+goes ahead only if nothing is selected. An app whose control does not report a
+selection at all pastes as before: Ibis cannot tell, and refusing would end
+pasting there. The paste switch also turns the read off; there is no separate
+setting (2026-11-02).
 
 ## 0029 Native calls
 
@@ -358,10 +361,12 @@ may paste into (never copy-only, refused or unapproved, and never with paste
 off), after a capture proved the focus, with Secure Event Input off and a focused
 control the target process owns. A failed or unprovable subrole, or
 `AXSecureTextField`, stops it before the range is read; a range over the limit
-never copies the text across. It has its own 30 ms sleep-inclusive budget, and
-any failure means an empty search. It uses no clipboard and posts no keys. The
-text is sent once, to the picker window only; native code keeps a digest, whose
-`Debug` prints only its kind, for the same read just before the paste.
+never copies the text across, and an app without a range sends it, then only
+its length is used. The read has its own sleep-inclusive budget, 30 ms at opening
+and 60 ms just before the paste, and a failure at opening means an empty search.
+It uses no clipboard and posts no keys. The text is emitted once for the picker
+window, the only one that listens; native code keeps a digest, whose `Debug` prints only
+its kind, for the read just before the paste.
 Single- and multiwindow apps follow the same focused-window identity contract.
 At capture, Ibis first checks whether one of its own native windows is key.
 A repeated show while its nonactivating picker owns the keyboard keeps the

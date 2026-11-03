@@ -269,7 +269,7 @@ fn show_picker_on_thread(app: &AppHandle, owner: u64) {
             return;
         }
         // Before the window appears, so its first frame is already current.
-        // Only the picker hears the selected text; a stale show drops it above.
+        // Only the picker listens for this; a stale show dropped its text above.
         report(
             app.emit_to("main", "picker:preparing", selection),
             NativeIssue::PickerEvent,

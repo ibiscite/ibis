@@ -272,7 +272,7 @@ Built in `ibis-core` so every front end shares them (#1204).
 - **First paste in an app**: a browser, a code editor or an unrecognised app opens the format chooser once; the pick is remembered for that app (decision 0031). An unrecognised app also asks **Paste into [app name] from now on** or **Copy only**; answering never replays the held Enter.
 - Chooser items read as plain names with a quiet example ("BibLaTeX brackets   \parencite{key}"). "Just this once" applies to one copy; "Automatic" forgets the app's choices; "Use as global default" changes the fallback. A pick says its scope ("APA for this citation").
 - Refused apps (terminals, remote viewers, virtual machines) and targets Ibis cannot prove only copy, with the reason. A permission detour keeps the prepared citation and waits for a fresh Enter.
-- **Selected text as the search** (macOS): short text on one line, selected in the target app, opens as the search, all selected, so typing replaces it; Enter pastes over it. It lasts one opening: it never returns as a recent search unless edited. Long or multi-line selections, secure typing, password fields, copy-only, refused or unapproved apps and failed reads open an empty search and change nothing. **Ibis replaces only text the person saw**: with a long selection the footer offers Copy, and a selection that changed before Enter stays as it is, with the reason.
+- **Selected text as the search** (macOS): short text on one line, selected in the target app, opens as the search, all selected, so typing replaces it; Enter pastes over it. It lasts one opening: it never returns as a recent search unless edited. Long or multi-line selections, secure typing, password fields, copy-only, refused or unapproved apps and failed reads open an empty search and change nothing. **Ibis replaces only text the person saw**: with a long selection the footer offers Copy, and any selection that changed, or was never read, stays as it is, with the reason. Enter still pastes at the caret when nothing is selected.
 - A successful copy hides Ibis, returns focus to the previous window and shows the notice. Pinned, Ibis stays.
 
 ### Notices
@@ -290,8 +290,7 @@ Built in `ibis-core` so every front end shares them (#1204).
 | Copy only chosen | Copied. Copy only is set for this app |
 | Target changed | Copied. The target app or window changed |
 | Clipboard replaced | Copied. The clipboard changed; copy the citation again |
-| Selection changed | Copied. The selected text changed, so Ibis left it. Press ⌘V to paste. |
-| Long text selected | Copied. Ibis does not replace long selected text. Press ⌘V to replace it. |
+| Selected text never shown | Copied. Ibis replaces only text it showed you. Press ⌘V to replace it. |
 | Expired | Copied. The paste expired; paste it yourself |
 | Windows keys stuck | Copied. Press and release Ctrl and V |
 

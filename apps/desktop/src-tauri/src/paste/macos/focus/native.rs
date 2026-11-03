@@ -6,7 +6,7 @@
 use std::cell::RefCell;
 use std::ffi::c_void;
 use std::ptr::NonNull;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use ibis_core::destination::CopyReason;
 use objc2_app_kit::NSRunningApplication;
@@ -16,9 +16,9 @@ use tauri_nspanel::objc2::rc::Retained;
 
 use super::super::secure_input;
 use super::{
-    Attribute, Identity, LIMIT, Provider, Reply, SELECTION_LIMIT, SHORT_SELECTION, SelectedText, Selection,
-    capture_query, check_selection, claim_process, diagnostics, missing_identity_attribute, query, read_selection,
-    same_live_process,
+    Attribute, FINAL_SELECTION_LIMIT, Identity, LIMIT, Provider, Reply, SELECTION_LIMIT, SHORT_SELECTION, SelectedText,
+    Selection, capture_query, check_selection, claim_process, diagnostics, missing_identity_attribute,
+    opening_selection, query, same_live_process,
 };
 
 // SAFETY: AXUIElement.h declares AXError=int32_t, pid_t=int and Boolean=u8.
@@ -416,12 +416,13 @@ pub(super) fn capture(
     };
     let window = capture_query(&provider, pid, may_activate);
     // The same paste policy as the activation write, on a focus just proved.
-    // Any refusal or failure is an empty search, never a reason to stop.
-    let (selection, search) = if may_activate && window.is_ok() {
-        read_selection(&provider, pid, Instant::now() + SELECTION_LIMIT).unwrap_or_default()
-    } else {
-        Default::default()
-    };
+    // A refusal or failure opens an empty search and stays unread for Enter.
+    let (selection, search) = opening_selection(
+        &provider,
+        pid,
+        may_activate && window.is_ok(),
+        Instant::now() + SELECTION_LIMIT,
+    );
     SAVED.with(|saved| {
         let mut saved = saved.borrow_mut();
         if saved.next != token {
@@ -437,8 +438,8 @@ pub(super) fn selection_unchanged(pid: i32, expected: &Selection, deadline: Inst
     if !NSThread::isMainThread_class() {
         return Err(CopyReason::PasteUnavailable);
     }
-    let limit: Duration = SELECTION_LIMIT;
-    check_selection(&Native::default(), pid, expected, deadline.min(Instant::now() + limit))
+    let deadline = deadline.min(Instant::now() + FINAL_SELECTION_LIMIT);
+    check_selection(&Native::default(), pid, expected, deadline)
 }
 
 pub(super) fn current(

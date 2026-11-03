@@ -85,7 +85,7 @@ const returning = (s: SessionState, now: number): SessionState => {
   const expired = !s.permissionDetour && s.hiddenAt !== null && now - s.hiddenAt > 60_000;
   const escaped = s.hiddenAt !== null ? s.escapedQuery : null;
   return expired ? changed(s, { query: "", interpretLocators: true, fromDocument: false, selected: new Map(), removed: null, active: 0, escapedQuery: null }) :
-    s.fromDocument && s.hiddenAt !== null ? changed(s, { query: "", interpretLocators: true, fromDocument: false, active: 0 }) :
+    s.fromDocument && s.hiddenAt !== null && !s.permissionDetour ? changed(s, { query: "", interpretLocators: true, fromDocument: false, active: 0 }) :
     escaped ? changed(s, { query: s.query || escaped.text, interpretLocators: escaped.interpretLocators, escapedQuery: null, restored: s.restored + 1 }) : s;
 };
 
@@ -258,7 +258,7 @@ export function reduceSession(s: SessionState, event: SessionEvent): [SessionSta
       if (!ownsCompletion(s, f, event.output)) return [finish(s, f), s.activeCopy === f.id && f.owner.session === s.session && sameOutput(f.owner.output, event.output) ? [{ type: "consume", output: f.owner.output }] : []];
       s = { ...s, copied: outcome, shelfCopied: sameVisibleOutput ? { ...outcome, closestMatches: f.warnings } : null,
         copyNotice: sameVisibleOutput ? null : outcome, escapedQuery: null, flights: s.flights.map((flight) => flight === f ? { ...f, phase: "hide", outcome } : flight) };
-      return afterCopy(outcome, event.pinned) === "hide-and-notify" ? [{ ...s, permissionDetour: true }, [{ type: "hide", id: f.id, session: f.session, presentation: f.presentation }]] : complete(s);
+      return afterCopy(outcome, event.pinned) === "hide-and-notify" ? [s, [{ type: "hide", id: f.id, session: f.session, presentation: f.presentation }]] : complete(s);
     }
     case "hid": {
       if (f.phase !== "hide") return [s, []];
@@ -277,7 +277,8 @@ export function reduceSession(s: SessionState, event: SessionEvent): [SessionSta
       if (event.delivered && f.id === s.lastSuccessfulCopy) s = { ...s, lastOutcome: noticeTitle({ delivered: event.delivered, text: "" }) };
       const permissionRefused = event.delivered?.outcome === "copied"
         && (event.delivered.reason === "no-permission" || event.delivered.reason === "accessibility-required");
-      return permissionRefused ? [finish(s, f), []] : complete(s);
+      // Only a refusal this citation still owns is a detour; a newer opening is not.
+      return permissionRefused ? [finish(ownsInteraction(s, f) ? { ...s, permissionDetour: true } : s, f), []] : complete(s);
     }
   }
 }

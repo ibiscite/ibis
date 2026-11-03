@@ -138,8 +138,7 @@ test.each([
   ["paste-expired", "Copied. The paste expired; paste it yourself"],
   ["secure-input", "Copied. Secure typing is on, possibly in another app. Press ⌘V to paste."],
   ["paste-unavailable", "Copied. Press ⌘V to paste."],
-  ["selection-changed", "Copied. The selected text changed, so Ibis left it. Press ⌘V to paste."],
-  ["long-selection", "Copied. Ibis does not replace long selected text. Press ⌘V to replace it."],
+  ["selection-not-shown", "Copied. Ibis replaces only text it showed you. Press ⌘V to replace it."],
 ])("%s offers manual paste without claiming the target is a password field", (reason, message) => {
   const copy = copied("[@synthetic]", reason);
   expect(noticeTitle(copy, "macos")).toBe(message);

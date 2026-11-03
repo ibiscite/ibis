@@ -16,9 +16,12 @@ const LIMIT: Duration = Duration::from_millis(50);
 // slow provider turn that final snapshot into another long stale interval. Three sequential
 // reads share 15 ms (5 ms each on average), still inside the whole query's 50 ms bound.
 const TAIL_LIMIT: Duration = Duration::from_millis(15);
-/// The whole selection read, at opening and again before the paste. A slower
-/// app opens with an empty search, inside the opening budget.
+/// The selection read at opening: a slower app opens with an empty search,
+/// inside the opening budget, and the final read answers instead.
 const SELECTION_LIMIT: Duration = Duration::from_millis(30);
+/// The read just before the paste. It decides whether the paste happens, so a
+/// busy app gets longer, still well inside the 250 ms post limit.
+const FINAL_SELECTION_LIMIT: Duration = Duration::from_millis(60);
 
 /// This closed set is the entire attribute allowlist, including the containing
 /// document and top-level surface of global focus, including foreign panels.
@@ -98,6 +101,7 @@ trait Provider {
 fn read_selection<P: Provider>(
     provider: &P,
     pid: i32,
+    limit: Duration,
     deadline: Instant,
 ) -> Result<(Selection, Option<SelectedText>), CopyReason> {
     let started = provider.elapsed();
@@ -106,7 +110,7 @@ fn read_selection<P: Provider>(
             .elapsed()
             .checked_sub(started)
             .ok_or(CopyReason::PasteUnavailable)?;
-        if provider.now() >= deadline || age >= SELECTION_LIMIT {
+        if provider.now() >= deadline || age >= limit {
             diagnostics::stage("ax.selection_timeout");
             return Err(CopyReason::PasteUnavailable);
         }
@@ -136,28 +140,45 @@ fn read_selection<P: Provider>(
     }
     available()?;
     diagnostics::stage("ax.selection_range");
-    match provider.selected_length(&focused, deadline) {
+    let something_selected = match provider.selected_length(&focused, deadline) {
         Reply::Value(0) => return Ok((Selection::Nothing, None)),
         Reply::Value(length) if length > SHORT_SELECTION => return Ok((Selection::Ignored, None)),
         Reply::TooLong => return Ok((Selection::Ignored, None)),
         Reply::Failed => return Err(CopyReason::PasteUnavailable),
-        Reply::Value(_) | Reply::NoValue | Reply::Unsupported => {}
-    }
+        Reply::Value(_) => true,
+        Reply::NoValue | Reply::Unsupported => false,
+    };
     available()?;
     diagnostics::stage("ax.selection_text");
     let selected = match provider.selected_text(&focused, deadline) {
-        Reply::Value(text) => Selection::of_text(&text),
+        Reply::Value(text) if !text.is_empty() => Selection::of_text(&text),
         Reply::TooLong => (Selection::Ignored, None),
-        Reply::NoValue => (Selection::Nothing, None),
-        Reply::Unsupported => (Selection::Unknown, None),
         Reply::Failed => return Err(CopyReason::PasteUnavailable),
+        // Text is selected but the app will not say what: it cannot be shown.
+        Reply::Value(_) | Reply::NoValue | Reply::Unsupported if something_selected => (Selection::Ignored, None),
+        Reply::Value(_) | Reply::NoValue => (Selection::Nothing, None),
+        Reply::Unsupported => (Selection::Unknown, None),
     };
     // A late success is still a timeout: the app may have moved on.
     available()?;
     Ok(selected)
 }
 
-/// The final proof before posting. `Unknown` was never read, so it asks nothing.
+/// The selection for the search, or `Unread` for the final read to settle:
+/// refused apps are never asked, and no failure here stops the picker opening.
+fn opening_selection<P: Provider>(
+    provider: &P,
+    pid: i32,
+    allowed: bool,
+    deadline: Instant,
+) -> (Selection, Option<SelectedText>) {
+    if !allowed {
+        return (Selection::Unread, None);
+    }
+    read_selection(provider, pid, SELECTION_LIMIT, deadline).unwrap_or((Selection::Unread, None))
+}
+
+/// The final proof before posting. `Unknown` cannot answer, so it asks nothing.
 fn check_selection<P: Provider>(
     provider: &P,
     pid: i32,
@@ -167,11 +188,12 @@ fn check_selection<P: Provider>(
     if *expected == Selection::Unknown {
         return Ok(());
     }
-    let (found, _text) = read_selection(provider, pid, deadline)?;
-    match found {
-        Selection::Unknown => Err(CopyReason::PasteUnavailable),
-        found if found == *expected => Ok(()),
-        _ => Err(CopyReason::SelectionChanged),
+    let (found, _text) = read_selection(provider, pid, FINAL_SELECTION_LIMIT, deadline)?;
+    match (expected, found) {
+        (Selection::Unread, Selection::Nothing | Selection::Unknown) => Ok(()),
+        (_, Selection::Unknown) => Err(CopyReason::PasteUnavailable),
+        (expected, found) if *expected == found => Ok(()),
+        _ => Err(CopyReason::SelectionNotShown),
     }
 }
 
@@ -447,7 +469,7 @@ mod tests {
         }
 
         fn selection(&self) -> Result<(Selection, Option<String>), CopyReason> {
-            read_selection(self, 42, self.now() + SELECTION_LIMIT)
+            read_selection(self, 42, SELECTION_LIMIT, self.now() + SELECTION_LIMIT)
                 .map(|(selection, text)| (selection, text.map(SelectedText::into_search)))
         }
 
@@ -709,16 +731,16 @@ mod tests {
     fn the_final_proof_passes_only_for_the_selection_the_picker_opened_on() {
         let opened = Selection::of_text("smith 2020").0;
         let check =
-            |fake: &Fake, expected: &Selection| check_selection(fake, 42, expected, fake.now() + SELECTION_LIMIT);
+            |fake: &Fake, expected: &Selection| check_selection(fake, 42, expected, fake.now() + FINAL_SELECTION_LIMIT);
         assert_eq!(check(&Fake::selecting("smith 2020"), &opened), Ok(()));
         assert_eq!(
             check(&Fake::selecting("jones 2021"), &opened),
-            Err(CopyReason::SelectionChanged)
+            Err(CopyReason::SelectionNotShown)
         );
-        assert_eq!(check(&Fake::selecting(""), &opened), Err(CopyReason::SelectionChanged));
+        assert_eq!(check(&Fake::selecting(""), &opened), Err(CopyReason::SelectionNotShown));
         assert_eq!(
             check(&Fake::selecting("new"), &Selection::Nothing),
-            Err(CopyReason::SelectionChanged),
+            Err(CopyReason::SelectionNotShown),
             "text selected after opening was never shown"
         );
         assert_eq!(check(&Fake::selecting(""), &Selection::Nothing), Ok(()));
@@ -727,13 +749,106 @@ mod tests {
     }
 
     #[test]
-    fn an_unread_selection_asks_nothing_at_the_final_proof() {
+    fn an_app_that_cannot_report_a_selection_is_asked_nothing_at_the_final_proof() {
         let fake = Fake::selecting("smith 2020");
         assert_eq!(
             check_selection(&fake, 42, &Selection::Unknown, fake.now() + SELECTION_LIMIT),
             Ok(())
         );
         assert!(fake.reads.borrow().is_empty());
+    }
+
+    #[test]
+    fn a_range_that_says_text_is_selected_is_believed_when_the_text_is_withheld() {
+        for reply in [Reply::NoValue, Reply::Unsupported, Reply::Value(String::new())] {
+            let fake = Fake {
+                selected_length: Cell::new(Some(5)),
+                selected: RefCell::new(reply),
+                ..Fake::new()
+            };
+            assert_eq!(fake.selection(), Ok((Selection::Ignored, None)));
+        }
+    }
+
+    #[test]
+    fn opening_never_fails_a_read_into_a_pass() {
+        let opening = |fake: &Fake, allowed| {
+            let (selection, text) = opening_selection(fake, 42, allowed, fake.now() + SELECTION_LIMIT);
+            assert_eq!(text, None);
+            selection
+        };
+        for fake in [
+            Fake {
+                selected: RefCell::new(Reply::Failed),
+                ..Fake::new()
+            },
+            Fake {
+                password: Reply::Value(true),
+                ..Fake::selecting("hunter2")
+            },
+            Fake {
+                focused_pid: 99,
+                ..Fake::selecting("smith 2020")
+            },
+            Fake {
+                selection_delay: SELECTION_LIMIT,
+                ..Fake::selecting("smith 2020")
+            },
+        ] {
+            assert_eq!(opening(&fake, true), Selection::Unread);
+        }
+        let secure = Fake::selecting("smith 2020");
+        secure.secure_typing.set(Some(true));
+        assert_eq!(opening(&secure, true), Selection::Unread);
+        let refused = Fake::selecting("smith 2020");
+        assert_eq!(opening(&refused, false), Selection::Unread);
+        assert!(refused.selection_reads.borrow().is_empty());
+        assert!(refused.reads.borrow().is_empty());
+    }
+
+    #[test]
+    fn an_unread_opening_pastes_only_once_nothing_is_proved_selected() {
+        let check = |fake: &Fake| check_selection(fake, 42, &Selection::Unread, fake.now() + FINAL_SELECTION_LIMIT);
+        assert_eq!(check(&Fake::selecting("")), Ok(()));
+        assert_eq!(
+            check(&Fake::new()),
+            Ok(()),
+            "an app that cannot report pastes as before"
+        );
+        assert_eq!(
+            check(&Fake::selecting("smith 2020")),
+            Err(CopyReason::SelectionNotShown)
+        );
+        let paragraph = "Invented paragraph. ".repeat(20);
+        assert_eq!(check(&Fake::selecting(&paragraph)), Err(CopyReason::SelectionNotShown));
+        let still_failing = Fake {
+            selected: RefCell::new(Reply::Failed),
+            ..Fake::new()
+        };
+        assert_eq!(check(&still_failing), Err(CopyReason::PasteUnavailable));
+        let password = Fake {
+            password: Reply::Value(true),
+            ..Fake::selecting("hunter2")
+        };
+        assert_eq!(check(&password), Err(CopyReason::SecureField));
+        assert!(!password.selection_reads.borrow().contains(&"range"));
+    }
+
+    #[test]
+    fn the_final_read_has_longer_than_the_opening_for_a_busy_app() {
+        let fake = Fake {
+            selection_delay: Duration::from_millis(40),
+            selected: RefCell::new(Reply::NoValue),
+            ..Fake::new()
+        };
+        assert_eq!(
+            check_selection(&fake, 42, &Selection::Unread, fake.now() + FINAL_SELECTION_LIMIT),
+            Ok(())
+        );
+        assert_eq!(
+            opening_selection(&fake, 42, true, fake.now() + SELECTION_LIMIT),
+            (Selection::Unread, None)
+        );
     }
 
     #[test]
@@ -745,7 +860,7 @@ mod tests {
                 &fake,
                 42,
                 &Selection::of_text("smith 2020").0,
-                fake.now() + SELECTION_LIMIT
+                fake.now() + FINAL_SELECTION_LIMIT
             ),
             Err(CopyReason::SecureInput)
         );

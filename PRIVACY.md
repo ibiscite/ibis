@@ -37,8 +37,9 @@ and its local data. New Ibis data flows need a recorded decision ([decisions](do
   reads the text you selected there through Accessibility, so short text can
   become the search and be replaced by the paste. It reads once when Ibis opens
   and once more just before pasting. Ibis never reads a password field or while
-  secure typing is on, and never reads long selections' text, the clipboard or
-  anything else in the document. The text goes only to the search box in memory,
+  secure typing is on, and never reads the clipboard or anything else in the
+  document. A long selection's text stays in the app when the app reports its
+  length; if it does not, Ibis measures the text and drops it. The text goes only to the search box in memory,
   is never saved, logged or sent anywhere, and comes back only if you edited it.
   Turning pasting off turns this off.
 - **Settings:** the desktop saves `settings.json`, its previous version as

@@ -429,10 +429,42 @@ test("a permission detour keeps its prepared search over a new selection", () =>
   s.send({ type: "enter", choice: choiceKey([a]) });
   s.complete(1);
   s.send({ type: "hid", id: 1, session: 0 });
+  s.send({ type: "delivered", id: 1, session: 0, delivered: { outcome: "copied", reason: "no-permission" } });
   expect(s.state.permissionDetour).toBe(true);
   s.send({ type: "hidden", now: 20 });
   s.send({ type: "preparing", now: 30, selection: "smith 2020" });
   expect(s.state).toMatchObject({ query: "prepared", fromDocument: false });
+});
+
+test("a detour keeps a citation prepared from document text", () => {
+  const s = scenario();
+  s.send({ type: "preparing", now: 1, selection: "smith 2020" });
+  s.send(s.view());
+  s.send({ type: "enter", choice: choiceKey([a]) });
+  s.complete(1);
+  s.send({ type: "hid", id: 1, session: 0 });
+  s.send({ type: "delivered", id: 1, session: 0, delivered: { outcome: "copied", reason: "no-permission" } });
+  s.send({ type: "hidden", now: 20 });
+  s.send({ type: "preparing", now: 30, selection: null });
+  expect(s.state.query).toBe("smith 2020");
+});
+
+test("reopening during delivery is no detour: the new selection opens, and the late refusal cannot stick", () => {
+  const s = scenario();
+  s.send({ type: "query", value: "prepared" });
+  s.send(s.view());
+  s.send({ type: "enter", choice: choiceKey([a]) });
+  s.complete(1);
+  s.send({ type: "hid", id: 1, session: 0 });
+  s.send({ type: "hidden", now: 20 });
+  s.send({ type: "preparing", now: 21, selection: "jones 2021" });
+  s.send({ type: "shown", now: 22, presentation: 1 });
+  expect(s.state).toMatchObject({ query: "jones 2021", fromDocument: true });
+  s.send({ type: "delivered", id: 1, session: 0, delivered: { outcome: "copied", reason: "no-permission" } });
+  expect(s.state.permissionDetour).toBe(false);
+  s.send({ type: "hidden", now: 30 });
+  s.send({ type: "preparing", now: 31, selection: "newer 2022" });
+  expect(s.state.query).toBe("newer 2022");
 });
 
 test("a selection arriving with a waiting Enter cancels it: Enter never pastes a citation from an older search", () => {
