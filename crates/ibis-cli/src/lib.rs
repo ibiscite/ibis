@@ -24,9 +24,9 @@ const OUTPUT: &str = "Output";
 const PER_KEY: &str = "Per key";
 const ROOT_HELP: &str = "\
 Examples:
-  ibis search \"garcia 2021\" --file refs.bib
-  ibis cite garcia2021 --file refs.bib --style apa
-  ibis search memory --zotero --json
+  ibis search lantern --file refs.bib
+  ibis cite vale2024lanterns --file refs.bib --style apa
+  ibis search lantern --zotero --json
 
 Add --json to any command for one versioned JSON envelope on stdout (serve and
 mcp speak their own protocols instead). Messages go to stderr. Exit codes: 0 ok, 1 findings, 2 usage, 3 bad input, 4 not found,
@@ -94,7 +94,7 @@ fn command() -> Command {
             Method::Libraries => subcommand.about("List loaded libraries and source warnings"),
             Method::Search => subcommand
                 .about("Search loaded records")
-                .after_help("Examples:\n  ibis search \"garcia 2021\" --file refs.bib\n  ibis search memory --file refs.bib --json | jq '.data.hits[].item.object.data.csl.title'")
+                .after_help("Examples:\n  ibis search lantern --file refs.bib\n  ibis search lantern --file refs.bib --json | jq '.data.hits[].item.object.data.csl.title'")
                 .arg(
                     Arg::new("query")
                         .value_name("WORDS")
@@ -128,10 +128,10 @@ fn command() -> Command {
                 .about("Render a citation through the shared engine")
                 .after_help(
                     "Options after a key apply to that key, as in the picker:\n  \
-                     ibis cite smith2020 --locator \"p. 12\" --prefix see jones2019 --omit-author\n\n\
+                     ibis cite vale2024lanterns --locator \"p. 12\" --prefix see fen2023clouds --omit-author\n\n\
                      Examples:\n  \
-                     ibis cite smith2020 --file refs.bib --format autocite\n  \
-                     ibis cite smith2020 --file refs.bib --style apa --bibliography\n  \
+                     ibis cite vale2024lanterns --file refs.bib --format autocite\n  \
+                     ibis cite vale2024lanterns --file refs.bib --style apa --bibliography\n  \
                      ibis schema cite   # the CitationRequest that --request reads",
                 )
                 .arg(
