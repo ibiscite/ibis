@@ -188,6 +188,28 @@ fn cite_formats_by_key_or_by_id() {
 }
 
 #[test]
+fn cite_for_an_app_uses_that_apps_output_and_says_how_it_arrives() {
+    let (_dir, engine) = engine();
+    let cite = |arguments| tool(&engine, "cite", arguments);
+    let word = cite(json!({"items":[{"key":"demo2026"}],"for_app":"com.microsoft.Word","syntax":"typst"}));
+    let apa = cite(json!({"items":[{"key":"demo2026"}]}));
+    assert_eq!(word["structuredContent"]["text"], apa["structuredContent"]["text"]);
+    assert_eq!(word["structuredContent"]["destination"]["delivery"]["action"], "paste");
+    let obsidian = cite(json!({"items":[{"key":"demo2026"}],"for_app":"md.obsidian"}));
+    assert_eq!(obsidian["structuredContent"]["text"], "[@demo2026]");
+    let unknown = cite(json!({"items":[{"key":"demo2026"}],"for_app":"com.example.unknown","syntax":"typst"}));
+    assert_eq!(unknown["structuredContent"]["text"], "@demo2026");
+    assert_eq!(
+        unknown["structuredContent"]["destination"]["delivery"]["action"],
+        "copy"
+    );
+    assert_eq!(
+        cite(json!({"items":[{"key":"demo2026"}],"for_app":""}))["isError"],
+        true
+    );
+}
+
+#[test]
 fn cite_preserves_both_item_warning_codes_by_key_and_by_id() {
     use ibis_core::contract::*;
     use ibis_engine::request::KeyCitationRequest;

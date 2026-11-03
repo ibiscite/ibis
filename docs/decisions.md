@@ -931,3 +931,8 @@ nightly never waits for CI or the release checks. A numbered release does.
 The testing rhythm (maintainer, 2026-11-02): agents merge to main on green, a
 testing session checks the real app on the Mac, and the maintainer tries one
 nightly a day with a short list of what changed.
+
+2026-11-02: One reference's details and, later, a source's PDF share one panel
+inside the picker, beside the list as in Preview's sidebar; never an anchored
+popover. The picker widens only to hold the PDF. Rules: design.md **Inspector**
+[C19] (maintainer).
