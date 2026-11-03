@@ -174,7 +174,15 @@ mod tests {
 
     #[test]
     fn hidden_characters_are_told_from_ordinary_text() {
-        for hidden in ['\u{1b}', '\u{7}', '\u{202e}', '\u{2067}', '\u{feff}', '\u{e0041}', '\u{e0100}'] {
+        for hidden in [
+            '\u{1b}',
+            '\u{7}',
+            '\u{202e}',
+            '\u{2067}',
+            '\u{feff}',
+            '\u{e0041}',
+            '\u{e0100}',
+        ] {
             assert!(is_hidden(hidden), "{hidden:?}");
         }
         // Joiners and marks that text in many languages needs are kept.

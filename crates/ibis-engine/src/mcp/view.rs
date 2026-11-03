@@ -15,29 +15,21 @@ pub const MAX_TEXT: usize = 1_000;
 const ID_MARK: &str = "id:";
 
 /// A record's fields as formatting sees them.
-pub(super) struct Citable<'a> {
-    pub record: &'a Record,
-    pub csl: Map<String, Value>,
-}
-
-impl<'a> From<&'a Record> for Citable<'a> {
-    fn from(record: &'a Record) -> Self {
-        let mut csl = record
-            .csl
-            .iter()
-            .map(|(field, value)| (field.clone(), value.clone()))
-            .collect();
-        citable_fields(&mut csl);
-        Self { record, csl }
-    }
+pub(super) fn citable(record: &Record) -> Map<String, Value> {
+    let mut csl = record
+        .csl
+        .iter()
+        .map(|(field, value)| (field.clone(), value.clone()))
+        .collect();
+    citable_fields(&mut csl);
+    csl
 }
 
 /// Fields [`summary`] already gives; `show` leaves them out of the rest.
 const SUMMARIZED: [&str; 5] = ["type", "title", "author", "container-title", "DOI"];
 
 /// What an agent needs to recognise and cite a record. Fields the record lacks are left out.
-pub(super) fn summary(citable: &Citable<'_>, reference: String) -> Map<String, Value> {
-    let csl = &citable.csl;
+pub(super) fn summary(csl: &Map<String, Value>, reference: String) -> Map<String, Value> {
     let field = |name: &str| csl.get(name).map(shorten);
     let authors: Vec<Value> = csl
         .get("author")
@@ -72,11 +64,9 @@ pub(super) fn summary(citable: &Citable<'_>, reference: String) -> Map<String, V
 }
 
 /// The citable fields [`summary`] does not already give.
-pub(super) fn details(citable: &Citable<'_>) -> Value {
+pub(super) fn details(csl: &Map<String, Value>) -> Value {
     Value::Object(
-        citable
-            .csl
-            .iter()
+        csl.iter()
             .filter(|(name, _)| is_variable(name) && !SUMMARIZED.contains(&name.as_str()))
             .map(|(name, value)| (name.clone(), shorten(value)))
             .collect(),

@@ -146,7 +146,8 @@ pub struct Record {
 impl Record {
     /// Whether citing `key` can mean this record.
     pub fn answers_to(&self, key: &str) -> bool {
-        self.citation_keys.iter().any(|candidate| candidate.value == key) || self.aliases.iter().any(|alias| alias == key)
+        self.citation_keys.iter().any(|candidate| candidate.value == key)
+            || self.aliases.iter().any(|alias| alias == key)
     }
 
     /// Agreement is required; provenance never determines which key wins.

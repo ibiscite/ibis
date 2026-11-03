@@ -127,7 +127,7 @@ fn agents_never_see_private_notes_and_long_text_is_cut() {
     assert_eq!(shown["isError"], false);
     let data = &shown["structuredContent"];
     assert_eq!(data["title"], "Synthetic research on sleep");
-    assert_eq!(data["authors"], json!(["Researcher, Synthetic", "Writer, Example"]));
+    assert_eq!(data["authors"], json!(["Synthetic Researcher", "Example Writer"]));
     assert_eq!(data["year"], 2026);
     let text = shown.to_string();
     assert!(!text.contains("private"));
@@ -188,6 +188,28 @@ fn cite_formats_by_key_or_by_id() {
 }
 
 #[test]
+fn cite_for_an_app_uses_that_apps_output_and_says_how_it_arrives() {
+    let (_dir, engine) = engine();
+    let cite = |arguments| tool(&engine, "cite", arguments);
+    let word = cite(json!({"items":[{"ref":"demo2026"}],"for_app":"com.microsoft.Word","syntax":"typst"}));
+    let apa = cite(json!({"items":[{"ref":"demo2026"}]}));
+    assert_eq!(word["structuredContent"]["text"], apa["structuredContent"]["text"]);
+    assert_eq!(word["structuredContent"]["destination"]["delivery"]["action"], "paste");
+    let obsidian = cite(json!({"items":[{"ref":"demo2026"}],"for_app":"md.obsidian"}));
+    assert_eq!(obsidian["structuredContent"]["text"], "[@demo2026]");
+    let unknown = cite(json!({"items":[{"ref":"demo2026"}],"for_app":"com.example.unknown","syntax":"typst"}));
+    assert_eq!(unknown["structuredContent"]["text"], "@demo2026");
+    assert_eq!(
+        unknown["structuredContent"]["destination"]["delivery"]["action"],
+        "copy"
+    );
+    assert_eq!(
+        cite(json!({"items":[{"ref":"demo2026"}],"for_app":""}))["isError"],
+        true
+    );
+}
+
+#[test]
 fn cite_preserves_both_item_warning_codes_by_key_and_by_id() {
     use ibis_core::contract::*;
     use ibis_engine::request::KeyCitationRequest;
@@ -224,7 +246,10 @@ fn cite_preserves_both_item_warning_codes_by_key_and_by_id() {
             item: ibis_engine::request::ItemSelector::Key("protected2020".into()),
         })
         .unwrap();
-    for selector in [json!({"ref":"protected2020"}), json!({"ref":mcp::reference(shown.object.id())})] {
+    for selector in [
+        json!({"ref":"protected2020"}),
+        json!({"ref":mcp::reference(shown.object.id())}),
+    ] {
         let answer = tool(
             &engine,
             "cite",
@@ -246,7 +271,7 @@ fn bad_calls_are_tool_errors_without_library_text() {
     assert_eq!(missing["isError"], true);
     assert_eq!(
         missing["content"][0]["text"],
-        "error: not-found. No reference matched; use a key or id that search returned."
+        "error: not-found. No reference matched; use a ref that search returned."
     );
     let both = tool(
         &engine,
@@ -310,7 +335,11 @@ fn note_overrides_print_but_note_text_and_app_links_never_reach_agents() {
     let id = item_id(&engine);
     let shown = tool(&engine, "show", json!({"ref":id}));
     assert_eq!(shown["structuredContent"]["title"], "Invented override title");
-    let bibliography = tool(&engine, "cite", json!({"items":[{"ref":id}],"form":"bibliography-only"}));
+    let bibliography = tool(
+        &engine,
+        "cite",
+        json!({"items":[{"ref":id}],"form":"bibliography-only"}),
+    );
     assert_eq!(
         bibliography["structuredContent"]["text"],
         "Invented, A. (2020). Invented override title. Invented Press."

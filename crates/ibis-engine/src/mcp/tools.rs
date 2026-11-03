@@ -2,13 +2,14 @@
 //! words an agent chooses it by, its schemas and the function that answers it.
 //! To add a tool, add an entry. Failures are tool errors the agent can read:
 //! a fixed error code, then what to change, with nothing from the library.
-use super::view::{self, Citable};
+use super::view;
 use crate::request::{ItemSelector, SearchRequest, ShowRequest};
 use crate::{Cancellation, Engine};
 use ibis_core::contract::{
     CitationError, CitationForm, CitationItem, CitationRequest, CitationResult, EngineError, ErrorCode, ErrorReason,
     ItemOutcome, KeySyntax, LibraryObject, OutputSpec, Record, Script, Snapshot, TextRun,
 };
+use ibis_core::destination::{System, destination};
 use serde_json::{Map, Value, json};
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
@@ -334,7 +335,7 @@ fn search(engine: &Engine, arguments: &Map<String, Value>) -> Result<Value, Refu
     let mut hits = Vec::new();
     let mut size = 0;
     for ((hit, record), reference) in records.iter().zip(refs) {
-        let mut data = view::summary(&Citable::from(*record), reference);
+        let mut data = view::summary(&view::citable(record), reference);
         data.insert("partial".into(), json!(hit.partial));
         data.insert("typo".into(), json!(hit.typo));
         size += Value::Object(data.clone()).to_string().len() + 1;
@@ -394,7 +395,8 @@ fn show_input() -> Value {
 
 fn show_output() -> Value {
     let mut shown = record_output();
-    shown["properties"]["fields"] = json!({"type": "object", "description": "Every other citable field, under its CSL name."});
+    shown["properties"]["fields"] =
+        json!({"type": "object", "description": "Every other citable field, under its CSL name."});
     shown["properties"]["provenance"] = json!({"type": "string"});
     shown["properties"]["library_notes"] = json!({"type": "array", "items": {"type": "string"}});
     shown["required"] = json!(["ref", "fields", "provenance"]);
@@ -406,7 +408,7 @@ fn show(engine: &Engine, arguments: &Map<String, Value>) -> Result<Value, Refusa
     let shown = engine.show(&ShowRequest { item })?;
     match &shown.object {
         LibraryObject::Record(record) => {
-            let citable = Citable::from(record);
+            let citable = view::citable(record);
             let snapshot = engine.snapshot()?;
             let reference = references(&snapshot, std::iter::once(record)).remove(0);
             let mut data = view::summary(&citable, reference);
@@ -447,7 +449,8 @@ fn cite_input() -> Value {
             "items": {"type": "array", "items": item, "minItems": 1, "description": "The references, in order."},
             "style": {"type": "string", "description": "A style id from the styles tool. Leave out to use apa, or give syntax instead."},
             "syntax": {"type": "string", "enum": SYNTAXES.map(syntax_name), "description": "A key syntax for the document's own citation processor."},
-            "form": {"type": "string", "enum": ["normal", "narrative", "author-only", "year-only", "full", "bibliography-only"], "description": "How it reads. bibliography-only writes reference-list entries and needs a style."}
+            "form": {"type": "string", "enum": ["normal", "narrative", "author-only", "year-only", "full", "bibliography-only"], "description": "How it reads. bibliography-only writes reference-list entries and needs a style."},
+            "for_app": {"type": "string", "description": "A macOS bundle ID or Windows executable name. Uses the output Ibis uses for that app; style or syntax apply when it has none of its own."}
         },
         "required": ["items"],
         "additionalProperties": false
@@ -462,6 +465,7 @@ fn cite_output() -> Value {
             "notices": {"type": "array"},
             "losses": {"type": "array", "description": "What was asked for but could not be shown."},
             "warnings": {"type": "array"},
+            "destination": {"type": "object", "description": "What Ibis does for the app named by for_app, with pasting on and permitted."},
             "provenance": {"type": "string"},
             "library_notes": {"type": "array", "items": {"type": "string"}}
         },
@@ -495,7 +499,10 @@ fn cite(engine: &Engine, arguments: &Map<String, Value>) -> Result<Value, Refusa
                 .ok()
                 .filter(|syntax| SYNTAXES.contains(syntax))
                 .ok_or_else(|| {
-                    Refusal::bad(format!("syntax must be one of: {}.", SYNTAXES.map(syntax_name).join(", ")))
+                    Refusal::bad(format!(
+                        "syntax must be one of: {}.",
+                        SYNTAXES.map(syntax_name).join(", ")
+                    ))
                 })?,
             command: None,
         },
@@ -506,6 +513,20 @@ fn cite(engine: &Engine, arguments: &Map<String, Value>) -> Result<Value, Refusa
                 .to_owned(),
         },
     };
+    let destination = match arguments.get("for_app") {
+        Some(app) => {
+            let app = app
+                .as_str()
+                .filter(|app| !app.is_empty())
+                .ok_or_else(|| Refusal::bad("for_app must be a macOS bundle ID or Windows executable name."))?;
+            let style = arguments.get("style").and_then(Value::as_str).unwrap_or("apa");
+            Some(destination(app, System::HERE, &output, style))
+        }
+        None => None,
+    };
+    let output = destination
+        .as_ref()
+        .map_or(output, |destination| destination.output.clone());
     let form: CitationForm = match arguments.get("form") {
         Some(form) => serde_json::from_value(form.clone())
             .map_err(|_| Refusal::bad("form must be one of the values in this tool's input schema."))?,
@@ -549,6 +570,9 @@ fn cite(engine: &Engine, arguments: &Map<String, Value>) -> Result<Value, Refusa
     if !result.warnings.is_empty() {
         answer["warnings"] = json!(result.warnings);
     }
+    if let Some(destination) = destination {
+        answer["destination"] = json!(destination);
+    }
     with_library_notes(answer, engine)
 }
 
@@ -580,7 +604,9 @@ fn citation_item(engine: &Engine, item: &Value) -> Result<CitationItem, Refusal>
             locator
                 .as_str()
                 .and_then(ibis_core::locator::read_given)
-                .ok_or_else(|| Refusal::bad("the locator is not readable; write it like \"p. 12\", \"ch. 3\" or \"12-14\"."))?,
+                .ok_or_else(|| {
+                    Refusal::bad("the locator is not readable; write it like \"p. 12\", \"ch. 3\" or \"12-14\".")
+                })?,
         ),
     };
     Ok(CitationItem {
@@ -592,7 +618,9 @@ fn citation_item(engine: &Engine, item: &Value) -> Result<CitationItem, Refusal>
         suffix: text("suffix")?,
         suppress_author: match fields.get("omit_author") {
             None => false,
-            Some(omit) => omit.as_bool().ok_or_else(|| Refusal::bad("omit_author must be true or false."))?,
+            Some(omit) => omit
+                .as_bool()
+                .ok_or_else(|| Refusal::bad("omit_author must be true or false."))?,
         },
         annotation: None,
         expected_annotation_cite: None,
@@ -605,11 +633,7 @@ fn refusal(result: &CitationResult) -> Refusal {
         .outcomes
         .iter()
         .filter_map(|outcome| match outcome {
-            ItemOutcome::Refused { item, error } => Some(format!(
-                "Item {}: {}",
-                item + 1,
-                refusal_hint(*error)
-            )),
+            ItemOutcome::Refused { item, error } => Some(format!("Item {}: {}", item + 1, refusal_hint(*error))),
             ItemOutcome::Rendered { .. } => None,
         })
         .collect();
@@ -625,7 +649,11 @@ fn refusal(result: &CitationResult) -> Refusal {
             }
         )
     });
-    let code = if changed { ErrorCode::NotFound } else { ErrorCode::BadInput };
+    let code = if changed {
+        ErrorCode::NotFound
+    } else {
+        ErrorCode::BadInput
+    };
     Refusal::new(code, reasons.join(" "))
 }
 

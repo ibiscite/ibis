@@ -117,8 +117,10 @@ fn named_libraries_replace_the_app_and_servers_read_it_only_when_asked() {
         let (status, _, stderr) = home.run(&args);
         assert_eq!((status, stderr.as_str()), (0, ""), "{args:?}");
     }
-    let (status, stdout, _) = home.run(&["mcp", "--app-libraries", "--json"]);
-    assert_eq!((status, code(&stdout).as_str()), (6, "newer-format"));
+    // The MCP server starts and says why through its tools; closing stdin ends it.
+    let (status, stdout, stderr) = home.run(&["mcp", "--app-libraries", "--json"]);
+    assert_eq!((status, stdout.as_str()), (0, ""));
+    assert!(stderr.contains("newer version of Ibis"), "{stderr}");
     let (status, stdout, _) = home.run(&["libraries", "--app-libraries", "--file", file, "--json"]);
     assert_eq!((status, code(&stdout).as_str()), (6, "newer-format"));
     // Reading never changes the settings file.
@@ -226,9 +228,8 @@ fn the_plugin_declares_local_execution_and_ships_its_listing_icons() {
 #[test]
 fn plugin_versions_move_with_each_release() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let json = |path: &str| -> serde_json::Value {
-        serde_json::from_slice(&std::fs::read(root.join(path)).unwrap()).unwrap()
-    };
+    let json =
+        |path: &str| -> serde_json::Value { serde_json::from_slice(&std::fs::read(root.join(path)).unwrap()).unwrap() };
     let extra_files = json("release-please-config.json")["packages"]["."]["extra-files"].clone();
     for manifest in ["plugins/ibis/plugin.json", "plugins/ibis/.claude-plugin/plugin.json"] {
         assert_eq!(json(manifest)["version"], ibis_core::VERSION, "{manifest}");
