@@ -44,3 +44,10 @@ test("a very long list stays readable", () => {
   const next = new Map(styles.map((style) => [style, output("y")]));
   assert.match(report(compareSweeps(previous, next, []), previous, next), /and 50 more/);
 });
+
+test("text with an empty part is listed for a person to check", () => {
+  const next = sweep({ hole: { citations: ["(, 2024, p.)"], bibliography: "Fine." }, fine: output("(Taylor, 2026)") });
+  const result = compareSweeps(new Map(), next, []);
+  assert.deepEqual(result.suspicious, ["hole"]);
+  assert.match(report(result, new Map(), next), /looks incomplete, to check by hand:\*\* `hole`/);
+});

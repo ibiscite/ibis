@@ -296,7 +296,13 @@
           const pending = bibliography.children.filter((node) => node.name === "layout");
           while (pending.length) {
             const node = pending.pop();
-            node.children = node.children.filter((child) => !(child.name === "text" && child.attrs.variable === "citation-number"));
+            const number = (child) => child.name === "text" && child.attrs.variable === "citation-number";
+            // A number that opens the entry takes its separator with it: the
+            // next element's leading ". " only ever followed the number.
+            if (node.name === "layout" && node.children[0] && number(node.children[0]) && node.children[1]?.attrs?.prefix) {
+              node.children[1].attrs.prefix = node.children[1].attrs.prefix.replace(/^[\s.,;:]+/, "");
+            }
+            node.children = node.children.filter((child) => !number(child));
             for (const child of node.children) {
               const called = child.attrs?.macro;
               if (macros.has(called)) {

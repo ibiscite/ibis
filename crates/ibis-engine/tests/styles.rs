@@ -89,6 +89,32 @@ fn the_output_says_its_language_and_a_key_syntax_has_none() {
 }
 
 #[test]
+fn a_language_written_in_another_script_keeps_its_script() {
+    let (engine, id) = engine();
+    let mut request = request(&id, "chicago-notes-bibliography", Some("sr-Cyrl-RS"));
+    request.form = CitationForm::BibliographyOnly;
+    let cyrillic = engine.cite(&request, &Cancellation::default()).unwrap();
+    assert_eq!(cyrillic.language.as_deref(), Some("sr-Cyrl-RS"));
+    request.output_locale = Some("sr-Latn-RS".into());
+    let latin = engine.cite(&request, &Cancellation::default()).unwrap();
+    assert_ne!(cyrillic.text, latin.text);
+}
+
+#[test]
+fn a_style_no_one_has_checked_refuses_to_omit_the_author() {
+    let (engine, id) = engine();
+    let mut request = request(&id, "nature", None);
+    request.items[0].suppress_author = true;
+    for style in ["the-open-university-a251", "chicago-notes-bibliography"] {
+        request.output = OutputSpec::Csl { style: style.into() };
+        let refused = engine.cite(&request, &Cancellation::default()).unwrap();
+        assert!(refused.copy_content(1).is_none(), "{style}");
+    }
+    request.output = OutputSpec::Csl { style: "apa".into() };
+    assert_eq!(engine.cite(&request, &Cancellation::default()).unwrap().text, "(2026)");
+}
+
+#[test]
 fn a_style_without_a_document_says_what_it_printed() {
     let (engine, id) = engine();
     let numeric = cite(&engine, &id, "nature", None).unwrap();

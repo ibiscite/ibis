@@ -233,6 +233,20 @@ mod tests {
     }
 
     #[test]
+    fn a_removed_number_takes_its_separator_with_it() {
+        on_worker_stack(|| {
+            let session = Session::new(&Limits::default(), &control()).unwrap();
+            let xml = r#"<style xmlns="http://purl.org/net/xbiblio/csl" version="1.0" class="in-text"><info><category citation-format="numeric"/></info>
+                      <citation><layout><text variable="citation-number"/></layout></citation>
+                      <bibliography><layout><text variable="citation-number"/><text variable="title" prefix=". " suffix="."/></layout></bibliography></style>"#;
+            let request = serde_json::json!({"style":"synthetic-leading-number","numeric":true,"items":[{"id":"ibis-0","type":"book","title":"Synthetic signals"}],"cites":[{"id":"ibis-0"}],"bibliography":true,"keep_order":false,"locale":null});
+            let output: serde_json::Value =
+                serde_json::from_str(&session.render(&request.to_string(), xml).unwrap()).unwrap();
+            assert_eq!(output["text"], "Synthetic signals.");
+        });
+    }
+
+    #[test]
     fn year_only_checks_each_items_rendered_year_and_refuses_locator_only_branches() {
         on_worker_stack(|| {
             let limits = Limits::default();

@@ -168,6 +168,7 @@ function checkedFile(path) {
 export function readStyles(tree) {
   const styles = [];
   const directories = [[tree, false], [join(tree, "dependent"), true]];
+  if (!lstatSync(join(tree, "dependent")).isDirectory()) throw new Error("dependent: not a directory");
   for (const [directory, dependent] of directories) {
     for (const name of readdirSync(directory).sort()) {
       if (!name.endsWith(".csl")) continue;
@@ -229,7 +230,8 @@ async function main() {
     if (!update) {
       const pinned = JSON.parse(readFileSync(recordPath, "utf8"));
       for (const part of ["files", "renames", "primary"]) {
-        if (JSON.stringify(pinned[part]) !== JSON.stringify(record[part])) throw new Error(`the pinned release's ${part} no longer match csl-bundle.json`);
+        // A manifest older than a part's record has nothing to compare it with.
+        if (part in pinned && JSON.stringify(pinned[part]) !== JSON.stringify(record[part])) throw new Error(`the pinned release's ${part} no longer match csl-bundle.json`);
       }
     }
     writeFileSync(join(vendor, "csl-bundle.bin"), bundle);

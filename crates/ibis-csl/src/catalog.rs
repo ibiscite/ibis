@@ -290,7 +290,15 @@ pub(crate) fn locale_xml(tag: &str) -> Result<Option<String>, FormatError> {
     let prefixed: Vec<_> = header
         .locales
         .iter()
-        .filter(|locale| locale.0.strip_prefix(tag).is_some_and(|rest| rest.starts_with('-')))
+        // The processor upper-cases the second subtag: it asks for `sr-CYRL`.
+        .filter(|locale| {
+            locale.0.len() > tag.len()
+                && locale.0.as_bytes()[tag.len()] == b'-'
+                && locale
+                    .0
+                    .get(..tag.len())
+                    .is_some_and(|start| start.eq_ignore_ascii_case(tag))
+        })
         .collect();
     let tag = match (locale_tag(tag), prefixed.as_slice()) {
         (Ok(tag), _) => tag,
@@ -482,8 +490,8 @@ mod tests {
         }
         // What the processor asks for while running sr-Latn-RS and sr-Cyrl-RS.
         for (asked, found) in [
-            ("sr-Latn", "sr-Latn-RS"),
-            ("sr-Cyrl", "sr-Cyrl-RS"),
+            ("sr-LATN", "sr-Latn-RS"),
+            ("sr-CYRL", "sr-Cyrl-RS"),
             ("sr-RS", "sr-Latn-RS"),
         ] {
             assert!(locale_xml(asked).unwrap().unwrap().contains(found), "{asked}");

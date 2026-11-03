@@ -26,6 +26,13 @@ function failed(output) {
   return parts(output).some((part) => part?.failed !== undefined);
 }
 
+/** Text with a part missing: empty brackets or a separator where a name was. */
+export const SUSPICIOUS = /\(\s*[,;:.]|[,;]\s*\)|^\s*[,;:.]|\(\s*\)/;
+
+function suspicious(output) {
+  return parts(output).some((part) => typeof part === "string" && part.split("\n").some((line) => SUSPICIOUS.test(line)));
+}
+
 export function compareSweeps(previous, next, exceptions) {
   const removed = [...previous.keys()].filter((style) => !next.has(style)).sort();
   const added = [...next.keys()].filter((style) => !previous.has(style)).sort();
@@ -39,6 +46,7 @@ export function compareSweeps(previous, next, exceptions) {
     changed,
     failures,
     newFailures: failures.filter((style) => !known.has(style)),
+    suspicious: [...next].filter(([, output]) => suspicious(output)).map(([style]) => style).sort(),
     fixed: exceptions.filter((style) => next.has(style) && !failures.includes(style)).sort(),
   };
 }
@@ -48,9 +56,10 @@ const list = (styles) => {
   return styles.length > MAX_LISTED ? `${shown} and ${styles.length - MAX_LISTED} more` : shown;
 };
 
-export function report({ removed, added, changed, newFailures, fixed }, previous, next) {
+export function report({ removed, added, changed, newFailures, fixed, suspicious = [] }, previous, next) {
   const lines = [`Output changed in ${changed.length} ${changed.length === 1 ? "style" : "styles"}.`];
   if (newFailures.length) lines.push("", `**New failures:** ${list(newFailures)}`);
+  if (suspicious.length) lines.push("", `**Text that looks incomplete, to check by hand:** ${list(suspicious)}`);
   if (changed.length) lines.push("", `**Changed:** ${list(changed)}`);
   if (added.length) lines.push("", `**Added:** ${list(added)}`);
   if (removed.length) lines.push("", `**Removed:** ${list(removed)}`);

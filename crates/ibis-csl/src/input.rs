@@ -246,7 +246,8 @@ fn prepare_with_style(
                 && !traits.numeric)
             // Only styles whose output for these forms has been checked against
             // Zotero offer them; anywhere else they can print residue ("…, pp.").
-            || (matches!(form, CitationForm::AuthorOnly | CitationForm::YearOnly | CitationForm::Narrative)
+            || ((matches!(form, CitationForm::AuthorOnly | CitationForm::YearOnly | CitationForm::Narrative)
+                || pick.suppress_author && !bibliography)
                 && !style.verified_forms)
         {
             Some(CitationError::UnsupportedForm)
