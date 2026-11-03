@@ -17,6 +17,7 @@ use ibis_core::contract::{
     CitationForm, CitationItem, CitationRequest, EngineError, ErrorCode, ErrorReason, ItemRef, KeySyntax,
     LibraryObject, OutputSpec, Record,
 };
+use ibis_core::destination::{System, destination};
 use serde_json::{Map, Value, json};
 use std::io::{self, BufRead, Read, Write};
 
@@ -337,7 +338,8 @@ fn tools() -> Value {
                     "items": {"type": "array", "items": item, "minItems": 1},
                     "style": {"type": "string", "description": "A style id from the styles tool."},
                     "syntax": {"type": "string", "enum": SYNTAXES.map(syntax_name)},
-                    "form": {"type": "string", "enum": ["normal", "narrative", "author-only", "year-only", "full", "bibliography-only"]}
+                    "form": {"type": "string", "enum": ["normal", "narrative", "author-only", "year-only", "full", "bibliography-only"]},
+                    "for_app": {"type": "string", "description": "A macOS bundle ID or Windows executable name. Uses the output Ibis uses for that app; style or syntax apply when it has none of its own."}
                 },
                 "required": ["items"]
             },
@@ -347,7 +349,8 @@ fn tools() -> Value {
                     "text": {"type": "string"},
                     "notices": {"type": "array"},
                     "losses": {"type": "array"},
-                    "warnings": {"type": "array"}
+                    "warnings": {"type": "array"},
+                    "destination": {"type": "object", "description": "What Ibis does for the app named by for_app, with pasting on and permitted."}
                 },
                 "required": ["text", "notices", "losses"]
             },
@@ -530,6 +533,17 @@ fn cite(engine: &Engine, arguments: &Value) -> Result<Value, EngineError> {
                 .to_owned(),
         },
     };
+    let destination = match arguments.get("for_app") {
+        Some(app) => {
+            let app = app.as_str().filter(|app| !app.is_empty()).ok_or_else(bad_input)?;
+            let style = arguments.get("style").and_then(Value::as_str).unwrap_or("apa");
+            Some(destination(app, System::running(), &output, style))
+        }
+        None => None,
+    };
+    let output = destination
+        .as_ref()
+        .map_or(output, |destination| destination.output.clone());
     let form: CitationForm = match arguments.get("form") {
         Some(form) => serde_json::from_value(form.clone()).map_err(|_| bad_input())?,
         None => CitationForm::default(),
@@ -599,6 +613,9 @@ fn cite(engine: &Engine, arguments: &Value) -> Result<Value, EngineError> {
             });
             if !result.warnings.is_empty() {
                 answer["warnings"] = json!(result.warnings);
+            }
+            if let Some(destination) = destination {
+                answer["destination"] = json!(destination);
             }
             Ok(answer)
         }
