@@ -1,8 +1,8 @@
 import { KEY_TABLE, type KeyBinding } from "../../keys";
-import { keyText } from "../../messages";
+import { keyText, pickerText } from "../../messages";
 import type { SearchResult } from "../../api";
 import type { PickerApi } from "../../App";
-import { choiceKey, idKey, type CitationReference } from "./choice";
+import { choiceKey, choiceName, idKey, type CitationReference } from "./choice";
 import { enterLabel, enterPastes } from "./enterLabel";
 import { closestMatchWarnings } from "./rows";
 import type { usePickerSession } from "./usePickerSession";
@@ -59,6 +59,7 @@ export function usePickerActions({
   // What Enter does now, from the same state the copy uses; null when it does nothing.
   // A refused or stale engine preview cannot be copied.
   const enterAction = offered.length === 0 || shown === "stale" || shown === "failed" ? null
+    : state.changing !== null ? pickerText.changeCitation(choiceName(format))
     : enterLabel(format, offered.length, destination.app, canPaste, stayOpen, Boolean(list && selected.size === 0));
   // Only a row that answers the current query can be added or given a locator.
   const highlighted = ready ? results[active] : undefined;
@@ -81,9 +82,17 @@ export function usePickerActions({
       input.current?.focus();
     } else hide();
   };
+  const lastCitation = showCitations ? state.lastCitations.get(destination.appId ?? "") : undefined;
+  const changeLast = () => {
+    if (!lastCitation) return;
+    cancelCopy();
+    if (lastCitation.format !== format) destination.useOnce(lastCitation.format);
+    send({ type: "change-last" });
+    input.current?.focus();
+  };
   const toggleHighlighted = () => {
     toggle(highlighted);
     input.current?.focus();
   };
-  return { bindings, usingLocator, prepared, canApplyLocator, toggleHighlighted, escapeStep, hints: { enter: enterAction, shiftEnter: shiftEnterAction, escape: escapeAction } };
+  return { bindings, usingLocator, prepared, canApplyLocator, toggleHighlighted, escapeStep, canChangeLast: Boolean(lastCitation), changeLast, hints: { enter: enterAction, shiftEnter: shiftEnterAction, escape: escapeAction } };
 }

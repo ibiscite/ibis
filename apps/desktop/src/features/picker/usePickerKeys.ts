@@ -3,7 +3,7 @@ import type { PickerApi } from "../../App";
 import { focusChoices } from "../../ui/ChoiceList";
 import type { FormatCommand } from "./FormatMenu";
 import type { ToolbarMenuCommand } from "../../ui/ToolbarMenu";
-import { composing, isFormatShortcut, isKeysShortcut, isMenuShortcut, isPinShortcut, isQuitShortcut, isSettingsShortcut, isSourceShortcut, isChooseSourceShortcut } from "./shortcuts";
+import { composing, isChangeLastShortcut, isFormatShortcut, isKeysShortcut, isMenuShortcut, isPinShortcut, isQuitShortcut, isSettingsShortcut, isSourceShortcut, isChooseSourceShortcut } from "./shortcuts";
 import type { usePickerSession } from "./usePickerSession";
 import type { usePickerMenus } from "./usePickerMenus";
 import type { usePickerSource } from "./usePickerSource";
@@ -24,7 +24,7 @@ export function usePickerKeys({
   results: ReturnType<typeof useLibrarySearch>["results"];
   showCitations: boolean;
   copyChosen: ReturnType<typeof useCitationRows>["copyChosen"];
-  actions: Pick<ReturnType<typeof usePickerActions>, "escapeStep" | "toggleHighlighted">;
+  actions: Pick<ReturnType<typeof usePickerActions>, "escapeStep" | "toggleHighlighted" | "changeLast">;
   pointer: ReturnType<typeof usePointerSelection>;
   followKeyboard: { current: boolean };
   quitAfterSaving: () => Promise<void>;
@@ -34,7 +34,7 @@ export function usePickerKeys({
   const { session, cancelCopy, setActive } = pickerSession;
   const { formatButtonRef, menuOpen, keysOpen, togglePin, openKeys, closeMenu, openMore, runFromMenu } = menus;
   const { chooseSources, openSource } = source;
-  const { escapeStep, toggleHighlighted } = actions;
+  const { escapeStep, toggleHighlighted, changeLast } = actions;
   const { openSettings } = api;
   const onKeyDownCapture = (e: KeyboardEvent<HTMLElement>) => {
     pointer.resetHover();
@@ -60,6 +60,9 @@ export function usePickerKeys({
     } else if (isPinShortcut(e)) {
       e.preventDefault();
       if (!e.repeat) togglePin();
+    } else if (isChangeLastShortcut(e)) {
+      e.preventDefault();
+      if (!e.repeat) changeLast();
     } else if (isKeysShortcut(e)) {
       e.preventDefault();
       openKeys();

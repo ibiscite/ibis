@@ -50,13 +50,15 @@ export function usePickerLifecycle({ api, pickerSession, menus, destination, pre
     };
     window.addEventListener("focus", activated);
     let prepared = false;
+    // A detour's citation and a change coming back keep the output they were made in.
+    const keepsOutput = () => { const { permissionDetour, changing } = session.getSnapshot(); return permissionDetour || changing !== null; };
     const focusSearch = (presentation: number) => {
       searchAtShow = input.current?.value ?? "";
       resetPointer();
       const previousQuery = session.getSnapshot().query;
       send({ type: "shown", now: performance.now(), presentation });
       if (session.getSnapshot().query !== previousQuery) searchAtShow = session.getSnapshot().query;
-      if (!prepared) destination.read(true, session.getSnapshot().permissionDetour);
+      if (!prepared) destination.read(true, keepsOutput());
       prepared = false;
       readShortcut();
       // On X11, showing can precede native activation. WebKit restores the
@@ -85,7 +87,7 @@ export function usePickerLifecycle({ api, pickerSession, menus, destination, pre
       if (!mounted) return;
       prepared = true;
       send({ type: "preparing", now: performance.now(), selection });
-      destination.read(true, session.getSnapshot().permissionDetour);
+      destination.read(true, keepsOutput());
     }).catch(() => subscriptionFailure("pickerEvents"));
     const unlisten = onPickerShown((presentation) => {
       if (!mounted) return;

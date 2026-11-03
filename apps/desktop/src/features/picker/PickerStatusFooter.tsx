@@ -74,6 +74,7 @@ export function PickerStatusFooter({
           density: changeDensity,
           pin: togglePin,
           keys: openKeys,
+          changeLast: actions.canChangeLast ? actions.changeLast : null,
           settings: openSettings ? () => runFromMenu("settings", () => openSettings(null)) : null,
           copyOnlyHere: destination.pasteChoices && destination.app ? { app: destination.app, choose: () => {
             cancelCopy();

@@ -852,7 +852,7 @@ fn a_superseded_claimed_worker_cannot_post_even_if_citation_and_counter_match() 
     last.begin_presentation(Some(writer("com.microsoft.word")));
     let copy = || {
         let token = last
-            .write_copy(TEXT, |_| Ok(None), || Ok(Some(COUNT)))
+            .write_copy(TEXT, None, |_| Ok(None), || Ok(Some(COUNT)))
             .unwrap_or_else(|e| panic!("{e}"));
         last.take_copy(TEXT, token).unwrap_or_else(|| panic!("proof"))
     };
@@ -1141,7 +1141,7 @@ fn only_our_write_supplies_a_snapshot_and_the_proof_is_consumed_once() {
         state.captured = Some(writer("com.microsoft.word"));
     }
     let token = last
-        .write_copy(TEXT, |_| Ok(None), || Ok(Some(COUNT)))
+        .write_copy(TEXT, None, |_| Ok(None), || Ok(Some(COUNT)))
         .unwrap_or_else(|e| panic!("{e}"));
     let ticket = last.take_copy(TEXT, token).unwrap_or_else(|| panic!("copy proof"));
     assert_eq!(ticket.change_count, COUNT);
@@ -1149,7 +1149,7 @@ fn only_our_write_supplies_a_snapshot_and_the_proof_is_consumed_once() {
     assert_eq!(ticket.captured, Some(writer("com.microsoft.word")));
     assert!(last.take_copy(TEXT, token).is_none());
     let token = last
-        .write_copy(TEXT, |_| Ok(None), || Ok(Some(COUNT)))
+        .write_copy(TEXT, None, |_| Ok(None), || Ok(Some(COUNT)))
         .unwrap_or_else(|e| panic!("{e}"));
     assert!(last.take_copy("different citation", token).is_none());
     assert!(last.take_copy(TEXT, None).is_none());
@@ -1157,9 +1157,9 @@ fn only_our_write_supplies_a_snapshot_and_the_proof_is_consumed_once() {
     // A failed write or a concurrent replacement cannot reuse an old proof.
     for result in [Err("write failed".into()), Ok(None)] {
         let token = last
-            .write_copy(TEXT, |_| Ok(None), || Ok(Some(COUNT)))
+            .write_copy(TEXT, None, |_| Ok(None), || Ok(Some(COUNT)))
             .unwrap_or_else(|e| panic!("{e}"));
-        let _ = last.write_copy(TEXT, |_| Ok(None), || result);
+        let _ = last.write_copy(TEXT, None, |_| Ok(None), || result);
         assert!(last.take_copy(TEXT, token).is_none());
     }
 }
@@ -1178,7 +1178,7 @@ fn a_new_presentation_invalidates_delivery_even_when_it_keeps_the_same_target() 
     let last = LastTarget::default();
     last.begin_presentation(Some(writer("com.microsoft.word")));
     let token = last
-        .write_copy(TEXT, |_| Ok(None), || Ok(Some(COUNT)))
+        .write_copy(TEXT, None, |_| Ok(None), || Ok(Some(COUNT)))
         .unwrap_or_else(|e| panic!("{e}"));
     let ticket = last.take_copy(TEXT, token).unwrap_or_else(|| panic!("copy proof"));
     // Hide/blur can advance PickerGeneration repeatedly. This proof
@@ -1539,5 +1539,74 @@ fn reopening_with_a_new_selection_replaces_what_the_old_opening_read() {
     assert_eq!(
         held.ok().flatten().map(|captured| captured.selection),
         Some(Selection::Nothing)
+    );
+}
+
+fn replacing(old: &str) -> CopyProof {
+    let mut proof = proof();
+    if let Some(captured) = &mut proof.captured {
+        captured.selection = Selection::Citation(capture::OldCitation::of(old));
+    }
+    proof
+}
+
+#[test]
+fn a_changed_citation_pastes_over_the_selected_old_citation() {
+    let desk = Fake::new();
+    *desk.selection_now.borrow_mut() = Some(Ok(Selection::Citation(capture::OldCitation::of("(Smith, 2020)"))));
+    assert_eq!(deliver(&desk, Some(&replacing("(Smith, 2020)")), true), pasted());
+    assert_eq!(*desk.posts.borrow(), [42]);
+}
+
+#[test]
+fn a_changed_citation_never_pastes_when_the_old_one_is_not_selected() {
+    let desk = Fake::new();
+    *desk.selection_now.borrow_mut() = Some(Err(CopyReason::CitationNotSelected));
+    assert_eq!(
+        deliver(&desk, Some(&replacing("(Smith, 2020)")), true),
+        copied(Some("citation-not-selected"))
+    );
+    assert!(desk.posts.borrow().is_empty());
+}
+
+#[test]
+fn a_system_that_cannot_read_a_selection_only_copies_a_changed_citation() {
+    let mut captured = writer("winword.exe");
+    captured.target.system = System::Windows;
+    if let Some(app) = &mut captured.target.app {
+        app.system = System::Windows;
+    }
+    let permission = PastePermission {
+        enabled: true,
+        granted: true,
+        app: None,
+    };
+    assert!(intended_paste(Some(&captured), permission));
+    captured.selection = Selection::Citation(capture::OldCitation::of("(Smith, 2020)"));
+    assert!(!intended_paste(Some(&captured), permission));
+}
+
+#[test]
+fn a_changed_citation_overrides_what_the_opening_read() {
+    let last = LastTarget::default();
+    let mut opened = writer("com.microsoft.word");
+    opened.selection = Selection::Ignored;
+    last.begin_presentation(Some(opened));
+    let stamp = Fake::new().stamp.get();
+    let token = last
+        .write_copy_observed(
+            TEXT,
+            Some("(Smith, 2020)"),
+            stamp,
+            |_| Ok(None),
+            || Ok(Some(COUNT)),
+            #[cfg(target_os = "macos")]
+            None,
+        )
+        .unwrap_or_else(|error| panic!("{error}"));
+    let proof = last.take_copy(TEXT, token).unwrap_or_else(|| panic!("proof"));
+    assert_eq!(
+        proof.captured.map(|captured| captured.selection),
+        Some(Selection::Citation(capture::OldCitation::of("(Smith, 2020)")))
     );
 }

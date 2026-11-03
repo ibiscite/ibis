@@ -207,11 +207,12 @@ pub(crate) async fn preview_file_citation(
 pub(crate) fn copy_file_citation(
     ticket: String,
     content_hash: String,
+    replaces: Option<String>,
     app: AppHandle,
     library: State<'_, Mutex<Library>>,
 ) -> Result<Copied, CommandError> {
     #[cfg(target_os = "windows")]
-    let attempt = crate::paste::begin_copy(&app);
+    let attempt = crate::paste::begin_copy(&app, replaces.as_deref());
     // The library lock is held only to take the engine; the engine's own
     // commit barrier guards the write.
     let file = {
@@ -230,7 +231,7 @@ pub(crate) fn copy_file_citation(
         }
         #[cfg(not(target_os = "windows"))]
         {
-            delivery = clipboard::write(&app, content)?;
+            delivery = clipboard::write(&app, content, replaces.as_deref())?;
         }
         Ok(())
     })?;

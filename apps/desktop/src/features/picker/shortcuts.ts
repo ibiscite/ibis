@@ -25,6 +25,11 @@ export function isMenuShortcut(e: React.KeyboardEvent, mac = isMac): boolean {
   return matchesAccelerator(e, keysFor("more"), mac);
 }
 
+/** Reopen the last citation for this app; the shortcut that opens Ibis never does. */
+export function isChangeLastShortcut(e: React.KeyboardEvent, mac = isMac): boolean {
+  return matchesAccelerator(e, keysFor("changeLast"), mac);
+}
+
 /** The quit shortcut from the key table: ⌘Q on macOS, Ctrl+Q elsewhere. */
 export function isQuitShortcut(e: React.KeyboardEvent, mac = isMac): boolean {
   return matchesAccelerator(e, keysFor("quit"), mac);

@@ -33,7 +33,7 @@ test("the runner writes and delivers one canonical result despite repeated Enter
   const pending = deferred<Copied>();
   const s = setup({ copyFileCitation: vi.fn(() => pending.promise) });
   s.enter(); s.enter();
-  expect(s.ports.copyFileCitation).toHaveBeenCalledExactlyOnceWith("prepared", "hash");
+  expect(s.ports.copyFileCitation).toHaveBeenCalledExactlyOnceWith("prepared", "hash", null);
   pending.resolve({ text: "canonical citation", warnings: [], delivery: 42 });
   await pending.promise;
   await Promise.resolve();

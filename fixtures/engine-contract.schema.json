@@ -500,6 +500,11 @@
           "description": "A paste would replace selected text the search never showed.",
           "type": "string",
           "const": "selection-not-shown"
+        },
+        {
+          "description": "A changed citation replaces only the old citation, selected.",
+          "type": "string",
+          "const": "citation-not-selected"
         }
       ]
     },

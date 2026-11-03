@@ -179,6 +179,8 @@ pub enum CopyReason {
     AccessibilityRequired,
     /// A paste would replace selected text the search never showed.
     SelectionNotShown,
+    /// A changed citation replaces only the old citation, selected.
+    CitationNotSelected,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
