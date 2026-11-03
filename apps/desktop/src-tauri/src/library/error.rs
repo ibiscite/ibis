@@ -68,7 +68,11 @@ impl fmt::Display for LoadError {
                     }
                     (Some(ErrorReason::ZoteroProfileNeeded), _) => "choose which Zotero profile to read",
                     (Some(ErrorReason::ZoteroNeedsOpening), _) => {
-                        "Zotero's library could not be read while it is closed; open Zotero"
+                        "Zotero's library cannot be read while it is closed"
+                    }
+                    (Some(ErrorReason::ZoteroNotFound), _) => "no Zotero library was found on this computer",
+                    (Some(ErrorReason::ZoteroNoSpace), _) => {
+                        "there is not enough free space to read Zotero while it is closed; free some space or open Zotero"
                     }
                     (_, ErrorCode::Cancelled) => "reading Zotero was cancelled",
                     (_, ErrorCode::ResourceLimit) => "reading Zotero exceeded its work limit",
@@ -76,7 +80,7 @@ impl fmt::Display for LoadError {
                     (_, ErrorCode::NotFound) => {
                         "a chosen Zotero group library was not found; check that you are still a member"
                     }
-                    _ => "Zotero could not be read; allow other applications in Zotero, or close it and try again",
+                    _ => "Zotero could not be read just now; try again",
                 })
             }
             LoadError::NotLocal => f.write_str("the chosen file is not on this computer"),

@@ -32,7 +32,7 @@ pub enum ZoteroError {
     Closed(#[from] closed::ClosedError),
     #[error("the default Zotero directory is unavailable")]
     Location,
-    #[error("Zotero is closed and has several profiles; choose one")]
+    #[error("Zotero is closed and which profile to read is not settled; choose one")]
     ProfileNeeded,
     #[error("a chosen Zotero library was not found")]
     LibraryNotFound,
@@ -61,10 +61,17 @@ impl ZoteroError {
         match self {
             Self::Live(LiveError::NotAllowed) => Some(ErrorReason::ZoteroSharingOff),
             Self::ProfileNeeded => Some(ErrorReason::ZoteroProfileNeeded),
-            Self::Location => Some(ErrorReason::ZoteroNeedsOpening),
-            Self::Closed(_) if !(self.cancelled() || self.newer() || self.limited()) => {
-                Some(ErrorReason::ZoteroNeedsOpening)
-            }
+            Self::Location | Self::Closed(closed::ClosedError::NotFound) => Some(ErrorReason::ZoteroNotFound),
+            Self::Closed(closed::ClosedError::NoSpace) => Some(ErrorReason::ZoteroNoSpace),
+            Self::Closed(
+                closed::ClosedError::Running
+                | closed::ClosedError::ProcessCheck
+                | closed::ClosedError::UnsafeSource
+                | closed::ClosedError::Damaged
+                | closed::ClosedError::TooOld
+                | closed::ClosedError::NeedsRecovery,
+            ) => Some(ErrorReason::ZoteroNeedsOpening),
+            // Passing trouble: the same read may work, so nothing else is advised.
             _ => None,
         }
     }
@@ -229,7 +236,8 @@ impl ZoteroSource {
             return Err(LiveError::Cancelled.into());
         }
         let data = chosen_directory(&here()?, self.profile.as_deref())?;
-        let acquired = read_closed_at(&data, &std::env::temp_dir(), cancelled.clone())?;
+        let acquired = read_closed_at(&data, &std::env::temp_dir(), cancelled.clone())
+            .map_err(|error| chosen_read_failed(error, self.profile.as_deref()))?;
         self.publish_closed(&acquired, &|| cancelled())
     }
     pub fn refresh(
@@ -571,8 +579,9 @@ pub fn profiles() -> Result<Vec<String>, ZoteroError> {
     profile_names(&here()?)
 }
 
-/// Whether a Zotero library is on this computer, Zotero running or not. Looks
-/// at file metadata only, so nothing is read before a person chooses Zotero.
+/// Whether a Zotero library is on this computer, Zotero running or not. Reads
+/// Zotero's profile configuration and checks that a database file exists; no
+/// library is read before a person chooses Zotero.
 pub fn installed() -> bool {
     here().is_ok_and(|found| {
         found
@@ -613,6 +622,16 @@ fn chosen_directory(found: &discovery::Discovery, profile: Option<&str>) -> Resu
         [only] if found.warnings.is_empty() => Ok(only.path().to_owned()),
         [_, _, ..] => Err(ZoteroError::ProfileNeeded),
         _ => Err(ZoteroError::Location),
+    }
+}
+
+/// A chosen profile on an unplugged drive asks again; otherwise the choice
+/// could never be changed from the screen that reports it.
+fn chosen_read_failed(error: ZoteroError, profile: Option<&str>) -> ZoteroError {
+    if profile.is_some() && error == ZoteroError::Closed(closed::ClosedError::NotFound) {
+        ZoteroError::ProfileNeeded
+    } else {
+        error
     }
 }
 
@@ -673,6 +692,14 @@ mod tests {
         );
     }
     #[test]
+    fn a_chosen_profile_that_cannot_be_reached_asks_again() {
+        let not_found = ZoteroError::Closed(closed::ClosedError::NotFound);
+        assert_eq!(chosen_read_failed(not_found, Some("Work")), ZoteroError::ProfileNeeded);
+        assert_eq!(chosen_read_failed(not_found, None), not_found);
+        let running = ZoteroError::Closed(closed::ClosedError::Running);
+        assert_eq!(chosen_read_failed(running, Some("Work")), running);
+    }
+    #[test]
     fn a_chosen_profile_that_is_gone_never_falls_back_to_another() {
         let (_home, found) = registry(&[("Home", "/invented/home")]);
         assert_eq!(chosen_directory(&found, None).unwrap(), Path::new("/invented/home"));
@@ -717,17 +744,35 @@ mod tests {
             Some(ErrorReason::ZoteroSharingOff)
         );
         for fix_by_opening in [
+            closed::ClosedError::Running,
+            closed::ClosedError::ProcessCheck,
+            closed::ClosedError::UnsafeSource,
+            closed::ClosedError::Damaged,
+            closed::ClosedError::TooOld,
+            closed::ClosedError::NeedsRecovery,
+        ] {
+            assert_eq!(
+                ZoteroError::Closed(fix_by_opening).reason(),
+                Some(ErrorReason::ZoteroNeedsOpening)
+            );
+        }
+        for not_here in [
             ZoteroError::Location,
             ZoteroError::Closed(closed::ClosedError::NotFound),
-            ZoteroError::Closed(closed::ClosedError::Running),
-            ZoteroError::Closed(closed::ClosedError::NeedsRecovery),
         ] {
-            assert_eq!(fix_by_opening.reason(), Some(ErrorReason::ZoteroNeedsOpening));
+            assert_eq!(not_here.reason(), Some(ErrorReason::ZoteroNotFound));
         }
+        assert_eq!(
+            ZoteroError::Closed(closed::ClosedError::NoSpace).reason(),
+            Some(ErrorReason::ZoteroNoSpace)
+        );
         for no_advice in [
             ZoteroError::Closed(closed::ClosedError::TooNew),
             ZoteroError::Closed(closed::ClosedError::TooLarge),
             ZoteroError::Closed(closed::ClosedError::Cancelled),
+            ZoteroError::Closed(closed::ClosedError::Changing),
+            ZoteroError::Closed(closed::ClosedError::StorageInUse),
+            ZoteroError::Closed(closed::ClosedError::TimedOut),
             ZoteroError::LibraryNotFound,
         ] {
             assert_eq!(no_advice.reason(), None);

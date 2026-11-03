@@ -145,10 +145,14 @@ pub enum ErrorReason {
     NoAnswer,
     /// Zotero is running but does not let other applications read it.
     ZoteroSharingOff,
-    /// Zotero is closed and this computer has several profiles; name one.
+    /// Zotero is closed and which profile to read is not settled; name one.
     ZoteroProfileNeeded,
-    /// Zotero's own copy could not be read closed; opening Zotero is the fix.
+    /// A closed read is unsafe or impossible here; opening Zotero is the fix.
     ZoteroNeedsOpening,
+    /// No Zotero library is on this computer.
+    ZoteroNotFound,
+    /// A closed read needs a private copy and there is no room for it.
+    ZoteroNoSpace,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

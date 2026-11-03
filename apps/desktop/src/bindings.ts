@@ -20,7 +20,7 @@ export const commands = {
 	useSampleLibrary: (enabled: boolean) => __TAURI_INVOKE<null>("use_sample_library", { enabled }),
 	/**
 	 *  What the welcome screen can say about Zotero before anything is chosen, so
-	 *  it can offer Zotero first. Reads no library and no other file.
+	 *  it can offer Zotero first. Reads Zotero's profile configuration and no library.
 	 */
 	findZotero: () => __TAURI_INVOKE<ZoteroPresence>("find_zotero"),
 	/**
@@ -46,19 +46,18 @@ export const commands = {
 	 */
 	zoteroGroups: () => __TAURI_INVOKE<ZoteroGroup[]>("zotero_groups"),
 	/**
-	 *  The Zotero profiles on this computer, by name, for choosing which one to
-	 *  read while Zotero is closed. Their locations stay native.
+	 *  The profiles to choose from for reading while Zotero is closed. Their
+	 *  locations stay native.
 	 */
-	zoteroProfiles: () => __TAURI_INVOKE<string[]>("zotero_profiles"),
+	zoteroProfiles: () => __TAURI_INVOKE<ZoteroProfiles>("zotero_profiles"),
 	/**
 	 *  Read this Zotero profile from now on; the result arrives as
-	 *  `library:changed`. A name no longer on this computer is refused.
+	 *  `library:changed`, and only a read that succeeds saves the choice.
 	 */
-	useZoteroProfile: (name: string) => __TAURI_INVOKE<null>("use_zotero_profile", { name }),
+	useZoteroProfile: (name: string) => __TAURI_INVOKE<void>("use_zotero_profile", { name }),
 	/**
-	 *  Whether Zotero now shares its library, asked only while a screen waiting
-	 *  for that is shown. Once it does, the failed choice is read again and the
-	 *  result arrives as `library:changed`.
+	 *  Ask Zotero while a screen waiting on it is shown. Once it answers, the
+	 *  failed choice is read again and the result arrives as `library:changed`.
 	 */
 	checkZoteroSharing: () => __TAURI_INVOKE<ZoteroPresence>("check_zotero_sharing"),
 	/**  The library as it is now, for the interface when it starts. */
@@ -473,8 +472,10 @@ export type LibraryProblem =
 "zotero_closed" |
 /**  Zotero answered but does not let other apps read it. */
 "zotero_access_off" |
-/**  Zotero is closed and which of several profiles to read is not chosen. */
-"zotero_profiles" | "other";
+/**  Zotero is closed and which profile to read is not settled. */
+"zotero_profiles" |
+/**  No Zotero library is on this computer. */
+"zotero_missing" | "other";
 
 export type LibraryState = "none" | "loading" | "loaded" | "reloading" | "error";
 
@@ -1022,3 +1023,9 @@ export type ZoteroLibrary =
 export type ZoteroPresence = "available" | "access_off" |
 /**  Not running, but its library is on this computer and can be read. */
 "closed" | "absent";
+
+/**  The Zotero profiles on this computer and the one chosen, by name. */
+export type ZoteroProfiles = {
+	names: string[],
+	chosen: string | null,
+};

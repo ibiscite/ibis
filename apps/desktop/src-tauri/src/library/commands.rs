@@ -10,7 +10,7 @@ use tauri::{AppHandle, Manager, State, path::BaseDirectory};
 use super::search::{SearchQuery, SearchReply, SearchRequests};
 use super::source::Source;
 use super::state::Library;
-use super::status::LibraryStatus;
+use super::status::{LibraryProblem, LibraryStatus};
 use super::tasks::{choose_library_file, current_status, reload_library_file, start_open, use_zotero_library};
 use crate::setup::{ZoteroPresence, zotero_presence};
 
@@ -88,37 +88,60 @@ pub(crate) async fn zotero_groups(library: State<'_, Mutex<Library>>) -> Result<
     .map_err(|_| "Zotero could not list its group libraries".to_string())
 }
 
-/// The Zotero profiles on this computer, by name, for choosing which one to
-/// read while Zotero is closed. Their locations stay native.
+/// The Zotero profiles on this computer and the one chosen, by name.
+#[derive(Clone, Serialize, specta::Type)]
+pub(crate) struct ZoteroProfiles {
+    pub(crate) names: Vec<String>,
+    pub(crate) chosen: Option<String>,
+}
+
+/// The profiles to choose from for reading while Zotero is closed. Their
+/// locations stay native.
 #[tauri::command]
 #[specta::specta]
-pub(crate) async fn zotero_profiles() -> Result<Vec<String>, String> {
-    tauri::async_runtime::spawn_blocking(super::engine_file::zotero_profiles)
-        .await
-        .map_err(|_| "listing Zotero profiles stopped unexpectedly".to_string())?
-        .map_err(|_| "Ibis could not list your Zotero profiles".to_string())
+pub(crate) async fn zotero_profiles(app: AppHandle) -> Result<ZoteroProfiles, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let chosen = app.state::<crate::preferences::SettingsFile>().zotero_profile();
+        super::engine_file::zotero_profiles().map(|names| ZoteroProfiles { names, chosen })
+    })
+    .await
+    .map_err(|_| "listing Zotero profiles stopped unexpectedly".to_string())?
+    .map_err(|_| "Ibis could not list your Zotero profiles".to_string())
 }
 
 /// Read this Zotero profile from now on; the result arrives as
-/// `library:changed`. A name no longer on this computer is refused.
+/// `library:changed`, and only a read that succeeds saves the choice.
 #[tauri::command]
 #[specta::specta]
-pub(crate) async fn use_zotero_profile(app: AppHandle, name: String) -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(move || super::tasks::use_zotero_profile(&app, name))
-        .await
-        .map_err(|_| "choosing the Zotero profile stopped unexpectedly".to_string())?
+pub(crate) fn use_zotero_profile(app: AppHandle, name: String) {
+    super::tasks::use_zotero_profile(&app, name);
 }
 
-/// Whether Zotero now shares its library, asked only while a screen waiting
-/// for that is shown. Once it does, the failed choice is read again and the
-/// result arrives as `library:changed`.
+/// Whether to read Zotero again after asking it: it now shares, or it opened
+/// without sharing and the screen waiting on it still says something else.
+fn zotero_answered(found: ZoteroPresence, problem: Option<LibraryProblem>) -> bool {
+    match found {
+        ZoteroPresence::Available => true,
+        ZoteroPresence::AccessOff => problem != Some(LibraryProblem::ZoteroAccessOff),
+        ZoteroPresence::Closed | ZoteroPresence::Absent => false,
+    }
+}
+
+/// Ask Zotero while a screen waiting on it is shown. Once it answers, the
+/// failed choice is read again and the result arrives as `library:changed`.
 #[tauri::command]
 #[specta::specta]
 pub(crate) async fn check_zotero_sharing(app: AppHandle) -> Result<ZoteroPresence, String> {
     let found = tauri::async_runtime::spawn_blocking(|| zotero_presence(&mut LocalZotero::default()))
         .await
         .map_err(|_| "checking Zotero stopped unexpectedly".to_string())?;
-    if found == ZoteroPresence::Available {
+    let problem = app
+        .state::<Mutex<Library>>()
+        .lock()
+        .ok()
+        .and_then(|library| library.error)
+        .map(LibraryProblem::from);
+    if zotero_answered(found, problem) {
         super::tasks::retry_zotero_on_focus(&app);
     }
     Ok(found)
@@ -207,4 +230,23 @@ pub(crate) async fn search(
     tauri::async_runtime::spawn_blocking(move || file.search(&query, limit, scope, &cancel))
         .await
         .map_err(|_| "searching stopped unexpectedly".to_string())?
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_waiting_screen_reads_again_only_when_that_can_change_what_it_says() {
+        use {LibraryProblem as P, ZoteroPresence as Z};
+        for problem in [P::ZoteroClosed, P::ZoteroAccessOff, P::ZoteroProfiles, P::ZoteroMissing] {
+            assert!(zotero_answered(Z::Available, Some(problem)));
+            assert!(!zotero_answered(Z::Absent, Some(problem)));
+        }
+        // Zotero opened with sharing off: the screen must move on from "isn't open".
+        assert!(zotero_answered(Z::AccessOff, Some(P::ZoteroClosed)));
+        assert!(zotero_answered(Z::AccessOff, Some(P::ZoteroProfiles)));
+        // Already saying so: no read every two seconds.
+        assert!(!zotero_answered(Z::AccessOff, Some(P::ZoteroAccessOff)));
+    }
 }

@@ -467,10 +467,16 @@ pub(super) fn reason_sentence(reason: ErrorReason) -> &'static str {
             "Zotero is not sharing its library; in Zotero open Settings, Advanced, and turn on Allow other applications on this computer to communicate with Zotero."
         }
         ErrorReason::ZoteroProfileNeeded => {
-            "Zotero is closed and has several profiles; open Zotero, or name one with --zotero-profile NAME."
+            "Zotero is closed and Ibis needs to know which profile to read; open Zotero, or name one with --zotero-profile NAME."
         }
         ErrorReason::ZoteroNeedsOpening => {
+            "Zotero's library cannot be read while it is closed; open Zotero, then try again."
+        }
+        ErrorReason::ZoteroNotFound => {
             "no local Zotero library was found or it could not be read; check that Zotero is installed and has been opened once, or use --file."
+        }
+        ErrorReason::ZoteroNoSpace => {
+            "there is not enough free space to read Zotero while it is closed; free some space, or open Zotero."
         }
     }
 }

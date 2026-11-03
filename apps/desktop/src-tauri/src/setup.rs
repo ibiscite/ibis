@@ -97,7 +97,7 @@ fn found_zotero(transport: &mut impl api::Transport, installed: impl FnOnce() ->
 }
 
 /// What the welcome screen can say about Zotero before anything is chosen, so
-/// it can offer Zotero first. Reads no library and no other file.
+/// it can offer Zotero first. Reads Zotero's profile configuration and no library.
 #[tauri::command]
 #[specta::specta]
 pub(crate) async fn find_zotero() -> Result<ZoteroPresence, String> {

@@ -123,12 +123,14 @@ export const setupText = {
   find: (name: string) => `Find ${name}`,
   findFileHelp: "Choose where it is now",
   unreadableTitle: (name: string) => `Can't read ${name}`,
-  zoteroClosedTitle: "Zotero isn't open",
+  zoteroClosedTitle: "Ibis needs Zotero open",
+  zoteroMissingTitle: "Zotero's library isn't on this computer",
+  zoteroMissingLine: "Install Zotero and open it once and Ibis will carry on by itself, or use another library.",
   zoteroClosedLine: "Open Zotero and Ibis will carry on by itself.",
   zoteroAccessOffTitle: "Zotero isn't sharing your library",
   zoteroAccessOffWaiting: "Ibis will carry on by itself once it's on.",
   zoteroProfilesTitle: "Which Zotero profile?",
-  zoteroProfilesLine: "Zotero is closed and has several profiles. Choose the one to read.",
+  zoteroProfilesLine: "Zotero is closed. Choose the profile to read.",
   zoteroProfilesFailed: "Ibis could not list your Zotero profiles. Open Zotero and Ibis will carry on by itself.",
   otherTitle: (name: string) => `Can't open ${name}`,
   theLibrary: "the library",
@@ -249,6 +251,8 @@ export const pickerText = {
   reload: "Reload",
   reloadTitle: "Reload Library",
   reloadLibrary: "Reload Library",
+  chooseZoteroProfile: "Choose Zotero Profile…",
+  zoteroProfile: "Zotero Profile",
   chooseLibraryMenu: "Choose Library…",
   copyAs: "Copy as",
   quitLabel: "Quit Ibis",
@@ -327,9 +331,14 @@ export const keyText = {
 export const libraryMessages = {
   opening: (name: string | null) => `Opening ${name ?? "library"}…`,
   reloading: (name: string | null) => `Reloading ${name ?? "library"}…`,
-  openError: (name: string | null, reason: string, zotero = false) => {
+  openError: (name: string | null, reason: string, zotero = false, problem: LibraryStatus["problem"] = null) => {
     const sentence = /[.!?]$/.test(reason) ? reason : `${reason}.`;
-    if (zotero) return `${isolate(name ?? "Zotero")} could not be read. ${sentence} Open Zotero, then reload.`;
+    if (zotero) {
+      // Each fix is named once: sharing is a setting, and a profile is chosen here.
+      const fix = problem === "zotero_access_off" ? ` ${setupText.zoteroAccessOff}`
+        : problem === "zotero_profiles" || problem === "zotero_missing" ? "" : " Open Zotero, then reload.";
+      return `${isolate(name ?? "Zotero")} could not be read. ${sentence}${fix}`;
+    }
     return `The library could not be opened: ${isolate(name ?? "the chosen file")}. ${sentence} Choose it again or reconnect the drive.`;
   },
   emptyTitle: (name: string | null) => `No references in ${name ?? "this library"}`,
@@ -378,7 +387,7 @@ export const libraryMessages = {
     const parts = [
       zoteroSnapshot(status) && !(status.error && !status.stale) ? libraryNames(status) : null,
       checked === null ? null : isolate(`${status.stale ? "last read" : "checked"} ${ago(checked, now)}, ${clock(checked, now)}`),
-      status.error ? libraryMessages.openError(status.name, status.error, status.zotero)
+      status.error ? libraryMessages.openError(status.name, status.error, status.zotero, status.problem)
         : status.stale ? (zoteroSnapshot(status) ? "Zotero could not be reached" : "the file could not be read")
         : null,
     ].filter((part): part is string => part !== null);

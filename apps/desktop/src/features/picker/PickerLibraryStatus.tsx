@@ -1,5 +1,5 @@
-import type { RefObject } from "react";
-import type { LibraryStatus, ZoteroLibrary } from "../../api";
+import { useEffect, useState, type RefObject } from "react";
+import type { LibraryStatus, ZoteroLibrary, ZoteroProfiles } from "../../api";
 import type { SystemIcon } from "../../bindings";
 import { LibraryDetail, libraryCondition, LibraryStatusLine, zoteroLibraryNames } from "../../LibraryStatusLine";
 import { libraryMessages, pickerText } from "../../messages";
@@ -15,7 +15,7 @@ export const zoteroWaits = (problem: LibraryStatus["problem"]) =>
 export type LibraryScope = { offered: ZoteroLibrary[]; isChosen: (choice: ZoteroLibrary) => boolean; chosenCount: number;
   name: (choice: ZoteroLibrary) => string; toggle: (choice: ZoteroLibrary) => void; all: () => void };
 
-export function PickerLibraryStatus({ library, groupName, isOpen, onOpenChange, searchRef, zotero, actions, failure, groupsFailed = false, sourceFailure, sourceAction, statusIcon, hideAction = false, rowAction }: {
+export function PickerLibraryStatus({ library, groupName, isOpen, onOpenChange, searchRef, zotero, actions, failure, groupsFailed = false, sourceFailure, sourceAction, statusIcon, hideAction = false, rowAction, listProfiles, chooseProfile }: {
   library: LibraryStatus | null | undefined; groupName: (id: number) => string;
   isOpen: boolean; onOpenChange: (open: boolean) => void; searchRef: RefObject<HTMLElement | null>;
   zotero: LibraryScope | null;
@@ -28,21 +28,38 @@ export function PickerLibraryStatus({ library, groupName, isOpen, onOpenChange, 
   statusIcon: SystemIcon | null;
   hideAction?: boolean;
   rowAction?: string;
+  listProfiles?: () => Promise<ZoteroProfiles>;
+  chooseProfile?: (name: string) => void;
 }) {
+  // Listed when this menu opens: choosing or changing a profile lives here
+  // whenever references are on screen, so it never takes them away.
+  const [profiles, setProfiles] = useState<ZoteroProfiles | null>(null);
+  const [profilesFailed, setProfilesFailed] = useState(false);
+  const wantProfiles = isOpen && Boolean(library?.zotero) ? listProfiles : undefined;
+  useEffect(() => {
+    setProfilesFailed(false);
+    if (!wantProfiles) return;
+    let current = true;
+    void wantProfiles().then((found) => { if (current) setProfiles(found); }, () => { if (current) setProfilesFailed(true); });
+    return () => { current = false; };
+  }, [wantProfiles]);
+  const profileRows = wantProfiles && chooseProfile && profiles && profiles.names.length > 1 ? profiles : null;
   const detail = libraryMessages.detail(library, Date.now(), (status) => zoteroLibraryNames(status, groupName));
-  const condition = libraryCondition(library, { groupsFailed, failure });
+  const condition = libraryCondition(library, { groupsFailed, profilesFailed, failure });
+  const openProfiles: SourceActionProps | null = library?.zotero && library.problem === "zotero_profiles" && library.has_snapshot
+    ? { ...sourceAction, icon: statusIcon, file: false, label: pickerText.chooseZoteroProfile, keys: undefined, open: () => onOpenChange(true) } : null;
   // The engine's problem code chooses the action. A closed Zotero with a
   // usable fresh snapshot has no problem and offers no interruption.
   const libraryAction = { ...sourceAction, icon: statusIcon, file: !(library?.snapshot_zotero ?? library?.zotero) };
   const failedChoice = library?.has_snapshot && library.error && !library.stale;
-  const fix: SourceActionProps | null = sourceFailure ? sourceAction : failedChoice
+  const fix: SourceActionProps | null = sourceFailure ? sourceAction : openProfiles ?? (failedChoice
     ? { ...libraryAction, label: pickerText.chooseLibraryMenu, keys: keysFor("chooseSource"), open: actions.choose }
     : library?.error || library?.stale
     ? !library.zotero && (library.problem === "missing" || !sourceAction.file)
       ? { ...libraryAction, label: pickerText.findSourceFile(library.name), keys: library.stale && sourceAction.file ? sourceAction.keys : undefined, open: actions.find }
       // ⌘O appears only where it does the same thing: with a reference selected it means Show in Zotero.
       : library?.zotero && zoteroWaits(library.problem) ? { ...libraryAction, label: pickerText.openZotero, keys: sourceAction.label === pickerText.openZotero ? sourceAction.keys : undefined, open: actions.openZotero }
-      : library?.zotero ? { ...libraryAction, label: pickerText.chooseLibraryMenu, keys: keysFor("chooseSource"), open: actions.choose } : sourceAction : failure ? { ...sourceAction, label: pickerText.chooseLibraryMenu, keys: keysFor("chooseSource"), open: actions.choose } : null;
+      : library?.zotero ? { ...libraryAction, label: pickerText.chooseLibraryMenu, keys: keysFor("chooseSource"), open: actions.choose } : sourceAction : failure ? { ...sourceAction, label: pickerText.chooseLibraryMenu, keys: keysFor("chooseSource"), open: actions.choose } : null);
   return <LibraryStatusLine library={library} groupName={groupName} failure={failure} condition={condition}
     action={!hideAction && fix && fix.label !== rowAction && <SourceAction {...fix} />}
     menu={{ label: pickerText.libraryRegion, id: "library-menu",
@@ -54,6 +71,11 @@ export function PickerLibraryStatus({ library, groupName, isOpen, onOpenChange, 
           <MenuItem id="choose" label={pickerText.chooseLibraryMenu} keys={keyLabel(keysFor("chooseSource"), isMac)} onAction={actions.choose} />
           {!library?.zotero && <MenuItem id="zotero" label={pickerText.useZotero} onAction={actions.useZotero} />}
         </MenuSection>
+        {profileRows && <MenuSeparator />}
+        {profileRows && <MenuSection id="zotero-profile" label={pickerText.zoteroProfile} header={pickerText.zoteroProfile} layout="list">
+          {profileRows.names.map((name, index) => <MenuItem key={name} id={`profile-${index}`} label={shortenedLabel(name, 36)} title={name}
+            checked={name === profileRows.chosen} closeOnSelect onAction={() => chooseProfile?.(name)} />)}
+        </MenuSection>}
         {zotero && zotero.offered.length > 1 && <MenuSeparator />}
         {zotero && zotero.offered.length > 1 && <MenuSection id="library-scope" label={pickerText.zoteroLibraries} header={pickerText.searchIn} layout="list">
           <MenuItem id="all" label={pickerText.allLibraries} checked={zotero.chosenCount === zotero.offered.length} onAction={zotero.all} />

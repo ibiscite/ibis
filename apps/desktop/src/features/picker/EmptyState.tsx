@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import type { EmptyLibraryChoices, SourceChoice } from "../../LibrarySetup";
-import type { LibraryStatus } from "../../api";
+import type { LibraryStatus, ZoteroProfiles } from "../../api";
 import { ChoiceIcon, Icon } from "../../icons";
 import { keysFor } from "../../keys";
 import { keyText, libraryMessages, pickerText, setupText } from "../../messages";
@@ -51,7 +51,7 @@ function LibraryProgress({ library }: { library: LibraryStatus }) {
 export const ZOTERO_CHECK_EVERY = 2_000;
 
 export type ZoteroRecovery = {
-  listProfiles?: () => Promise<string[]>;
+  listProfiles?: () => Promise<ZoteroProfiles>;
   chooseProfile?: (name: string) => void;
   checkSharing?: () => Promise<unknown>;
 };
@@ -74,12 +74,13 @@ function Recovery({ library, onFind, onReload, setup, source, zotero }: {
   useEffect(() => {
     if (!listProfiles) return;
     let current = true;
-    void listProfiles().then((found) => { if (current) setProfiles(found); }, () => { if (current) setProfiles(null); });
+    void listProfiles().then((found) => { if (current) setProfiles(found.names); }, () => { if (current) setProfiles(null); });
     return () => { current = false; };
   }, [listProfiles]);
   // While this screen waits on Zotero, and only then, notice the fix by itself.
   const waiting = library.zotero && !switching && zoteroWaits(library.problem);
-  useWhileShown(waiting ? zotero?.checkSharing : undefined, ZOTERO_CHECK_EVERY);
+  const missing = library.zotero && library.problem === "zotero_missing";
+  useWhileShown((waiting || missing) && !switching ? zotero?.checkSharing : undefined, ZOTERO_CHECK_EVERY);
   // The chosen row is gone, so the list that replaces it takes focus.
   if (switching) return <div className="empty-state">{setup(true)}</div>;
   const name = shortName(library.name) ?? (library.zotero ? setupText.zotero : setupText.theLibrary);
@@ -87,6 +88,7 @@ function Recovery({ library, onFind, onReload, setup, source, zotero }: {
   const problem = library.problem ?? "other";
   const [title, line] = library.zotero && problem === "zotero_closed" ? [setupText.zoteroClosedTitle, setupText.zoteroClosedLine]
     : library.zotero && problem === "zotero_access_off" ? [setupText.zoteroAccessOffTitle, `${setupText.zoteroAccessOff} ${setupText.zoteroAccessOffWaiting}`]
+    : missing ? [setupText.zoteroMissingTitle, setupText.zoteroMissingLine]
     : askingProfile ? [setupText.zoteroProfilesTitle, profiles === null ? setupText.zoteroProfilesFailed : setupText.zoteroProfilesLine]
     : problem === "missing" ? [setupText.missingTitle(name), setupText.missingLine]
     : problem === "unreadable" ? [setupText.unreadableTitle(name), reason]
@@ -101,6 +103,7 @@ function Recovery({ library, onFind, onReload, setup, source, zotero }: {
     : profileRows.length > 0 ? [...profileRows, another]
     // The fix is in Zotero and this screen notices it, so that is the one next step.
     : waiting && source ? [another]
+    : missing ? [{ ...another, suggested: true }, tryAgain]
     : [{ ...tryAgain, suggested: true }, another];
   if (!finding && source && source.label !== pickerText.chooseLibraryMenu && !choices.some((choice) => choice.title === source.label)) {
     const open: Choice = { id: "source", title: source.label, icon: source.icon ?? <ChoiceIcon name={library.zotero ? "library" : "file"} />, keys: keysFor("source"), suggested: waiting && profileRows.length === 0 };

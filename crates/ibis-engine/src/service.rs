@@ -501,8 +501,12 @@ impl Engine {
                 parameters::<LibrariesRequest>(params)?
             } {
                 LibrariesRequest::List => value(self.libraries()?)?,
-                LibrariesRequest::OpenZotero { libraries, profile } => {
-                    self.read_zotero(false, libraries.as_deref(), profile.as_deref(), cancel)?;
+                LibrariesRequest::OpenZotero {
+                    libraries,
+                    profile,
+                    reload,
+                } => {
+                    self.read_zotero(reload, libraries.as_deref(), profile.as_deref(), cancel)?;
                     value(self.libraries()?)?
                 }
                 LibrariesRequest::ZoteroProfiles => value(LibrariesResult {

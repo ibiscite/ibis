@@ -1,6 +1,6 @@
 import { useEffect, useState, type ComponentProps, type ReactNode } from "react";
 import type { LibraryStatus, ZoteroLibrary } from "./bindings";
-import { appLocale, isolate, libraryMessages, operationFailures, pickerText } from "./messages";
+import { appLocale, isolate, libraryMessages, operationFailures, pickerText, setupText } from "./messages";
 import { Menu, MenuDetail } from "./ui/Menu";
 import "./ui/LibraryStatus.css";
 
@@ -9,10 +9,10 @@ export type LibraryCondition = { health: "done" | "look" | "stop" | "idle"; prob
 /** The one reading of a library's health. The dot, the hover text and the
  * menu all draw from it, so a screen can never say two things at once: a
  * problem in words is never a Done dot. */
-export function libraryCondition(library: LibraryStatus | null | undefined, { groupsFailed = false, failure = null }: {
-  groupsFailed?: boolean; failure?: string | null;
+export function libraryCondition(library: LibraryStatus | null | undefined, { groupsFailed = false, profilesFailed = false, failure = null }: {
+  groupsFailed?: boolean; profilesFailed?: boolean; failure?: string | null;
 } = {}): LibraryCondition {
-  const problem = groupsFailed ? operationFailures.zoteroGroups : null;
+  const problem = [groupsFailed && operationFailures.zoteroGroups, profilesFailed && setupText.zoteroProfilesFailed].filter(Boolean).join(" ") || null;
   if (library === null || library?.error || library?.stale) return { health: "stop", problem };
   if (problem || failure) return { health: "look", problem };
   if (!library?.has_snapshot) return { health: "idle", problem };
@@ -84,7 +84,7 @@ export function LibraryStatusLine({ library, groupName, menu, action, failure, c
   const detail = [...lines, problem].filter(Boolean).join("\n");
   // A kept copy's age ("checked …") is already in the second line.
   const heard = age && !library?.stale ? `${lines[0]} · ${age}` : lines[0];
-  const spoken = age || lines[1] || problem ? [heard, lines[1], problem].filter(Boolean).join(". ") : null;
+  const spoken = age || lines[1] ? [heard, lines[1]].filter(Boolean).join(". ") : null;
   // Recovery and initial opening have their own single announcement in the
   // middle area. Inline operation failures use an alert beside their action.
   const announces = !failure && !(library && !library.has_snapshot && (library.state === "error" || library.state === "loading"));

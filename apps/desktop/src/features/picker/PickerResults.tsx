@@ -53,7 +53,7 @@ export function PickerResults({
       onSearchAll={searchAllLibraries}
       onReload={() => { input.current?.focus(); void perform("reload", reloadLibrary); }}
       zotero={{ listProfiles: api.zoteroProfiles, checkSharing: api.checkZoteroSharing,
-        chooseProfile: api.useZoteroProfile && ((name) => { void perform("zotero", () => api.useZoteroProfile!(name)); }) }}
+        chooseProfile: api.useZoteroProfile && ((name) => { void perform("zotero", async () => api.useZoteroProfile!(name)); }) }}
       setup={
         (focus, empty) => <LibrarySetup api={setupApi} perform={perform} autoFocus={focus} empty={empty} shortcut={shortcut} onWelcomeChange={setWelcomeShown} />
       } />

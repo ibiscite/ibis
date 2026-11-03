@@ -444,8 +444,12 @@ fn reason_hint(reason: ErrorReason) -> &'static str {
         ErrorReason::ZoteroSharingOff => {
             "Zotero is running but not sharing; turn on Allow other applications in Zotero's Advanced settings."
         }
-        ErrorReason::ZoteroProfileNeeded => "Zotero is closed and has several profiles; open Zotero or name a profile.",
-        ErrorReason::ZoteroNeedsOpening => "Zotero's library could not be read while it is closed; open Zotero.",
+        ErrorReason::ZoteroProfileNeeded => {
+            "Zotero is closed and which profile to read is not settled; open Zotero or name a profile."
+        }
+        ErrorReason::ZoteroNeedsOpening => "Zotero's library cannot be read while it is closed; open Zotero.",
+        ErrorReason::ZoteroNotFound => "No local Zotero library was found on this computer.",
+        ErrorReason::ZoteroNoSpace => "There is not enough free space to read Zotero while it is closed.",
     }
 }
 

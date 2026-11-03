@@ -46,6 +46,7 @@ fn chosen() -> Settings {
         citation_style: Some(CitationStyle::Ieee),
         density: Some(Density::Compact),
         update_checks: Some(true),
+        zotero_profile: Some("Invented elsewhere".into()),
         ..Settings::default()
     };
     settings.shortcut.set_here(Some("Alt+Shift+K".into()));
@@ -374,6 +375,7 @@ fn restoring_on_another_computer_keeps_its_local_settings_and_shortcut() {
     let mut here = Settings {
         update_checks: Some(false),
         density: Some(Density::Spacious),
+        zotero_profile: Some("Invented here".into()),
         ..Settings::default()
     };
     here.shortcut.set_here(Some("Alt+Space".into()));
@@ -393,6 +395,7 @@ fn restoring_on_another_computer_keeps_its_local_settings_and_shortcut() {
         Some(false),
         "the update question stays this computer's"
     );
+    assert_eq!(plan.restored.zotero_profile, here.zotero_profile);
     assert_eq!(plan.restored.picker_windows, here.picker_windows);
     assert_eq!(plan.restored.shortcut.here(), Some("Alt+Space"));
     assert_eq!(

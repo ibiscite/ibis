@@ -34,10 +34,10 @@ pub const FORMAT: u64 = 1;
 const MARKER: &str = "ibis_settings_backup";
 
 /// Settings that belong to one computer and never travel: window places, quiet
-/// device-local feedback, and the update question, which each computer answers
-/// for itself because it allows network use (decision 0008). A restore keeps
-/// this computer's values for them.
-pub const LOCAL: [&str; 3] = ["picker_windows", "delights", "update_checks"];
+/// device-local feedback, the update question, which each computer answers for
+/// itself because it allows network use (decision 0008), and the Zotero profile,
+/// a name that means nothing elsewhere. A restore keeps this computer's values.
+pub const LOCAL: [&str; 4] = ["picker_windows", "delights", "update_checks", "zotero_profile"];
 
 /// A backup read and checked whole.
 #[derive(Debug, Clone, PartialEq, Eq)]

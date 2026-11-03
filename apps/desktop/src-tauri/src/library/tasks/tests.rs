@@ -126,6 +126,7 @@ fn a_new_library_opens_before_the_obsolete_filesystem_read_returns() {
             source,
             reload,
             intent: OpenIntent::Read,
+            profile: None,
             cancel: OpenCancellation::default(),
             #[cfg(debug_assertions)]
             started: std::time::Instant::now(),
@@ -319,6 +320,7 @@ fn three_rapid_choices_run_only_first_and_last_loads_and_the_last_wins() {
             source,
             reload,
             intent: OpenIntent::Read,
+            profile: None,
             #[cfg(debug_assertions)]
             started: std::time::Instant::now(),
         }

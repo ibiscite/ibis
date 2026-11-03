@@ -281,11 +281,7 @@ impl FileLibrary {
             .collect();
         // The listing is sorted by opaque ID, not by the user's selection order.
         let same = loaded.len() == libraries.len() && loaded.iter().all(|library| libraries.contains(library));
-        let request = if force && same {
-            json!({"action":"reload"})
-        } else {
-            json!({"action":"open-zotero","libraries":libraries,"profile":profile})
-        };
+        let request = json!({"action":"open-zotero","libraries":libraries,"profile":profile,"reload":force && same});
         self.engine
             .dispatch(Method::Libraries, &request, cancel)
             .map_err(super::LoadError::EngineZotero)?;

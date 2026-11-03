@@ -75,8 +75,10 @@ pub(crate) enum LibraryProblem {
     ZoteroClosed,
     /// Zotero answered but does not let other apps read it.
     ZoteroAccessOff,
-    /// Zotero is closed and which of several profiles to read is not chosen.
+    /// Zotero is closed and which profile to read is not settled.
     ZoteroProfiles,
+    /// No Zotero library is on this computer.
+    ZoteroMissing,
     Other,
 }
 
@@ -90,6 +92,7 @@ impl From<LoadError> for LibraryProblem {
                 Some(ErrorReason::ZoteroSharingOff) => LibraryProblem::ZoteroAccessOff,
                 Some(ErrorReason::ZoteroProfileNeeded) => LibraryProblem::ZoteroProfiles,
                 Some(ErrorReason::ZoteroNeedsOpening) => LibraryProblem::ZoteroClosed,
+                Some(ErrorReason::ZoteroNotFound) => LibraryProblem::ZoteroMissing,
                 _ => LibraryProblem::Other,
             },
             LoadError::Source(SourceError::Unavailable) => LibraryProblem::Missing,
@@ -460,7 +463,7 @@ mod tests {
         use ibis_core::contract::{EngineError, ErrorCode, ErrorReason};
         use ibis_core::zotero::api::ZoteroError;
         let engine = |reason| LoadError::EngineZotero(EngineError::because(ErrorCode::SourceUnavailable, reason));
-        let cases: [(LoadError, LibraryProblem); 9] = [
+        let cases: [(LoadError, LibraryProblem); 11] = [
             (SourceError::Unavailable.into(), LibraryProblem::Missing),
             (SourceError::Unreadable.into(), LibraryProblem::Unreadable),
             (SourceError::TooLarge.into(), LibraryProblem::Unreadable),
@@ -468,6 +471,8 @@ mod tests {
             (engine(ErrorReason::ZoteroSharingOff), LibraryProblem::ZoteroAccessOff),
             (engine(ErrorReason::ZoteroProfileNeeded), LibraryProblem::ZoteroProfiles),
             (engine(ErrorReason::ZoteroNeedsOpening), LibraryProblem::ZoteroClosed),
+            (engine(ErrorReason::ZoteroNotFound), LibraryProblem::ZoteroMissing),
+            (engine(ErrorReason::ZoteroNoSpace), LibraryProblem::Other),
             (ZoteroError::NotAllowed.into(), LibraryProblem::ZoteroAccessOff),
             (LoadError::Stopped, LibraryProblem::Other),
         ];

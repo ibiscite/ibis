@@ -23,6 +23,9 @@ pub enum LibrariesRequest {
         /// one profile reads it and one with several is refused.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         profile: Option<String>,
+        /// Read everything again, not only what changed.
+        #[serde(default)]
+        reload: bool,
     },
     /// The Zotero profiles on this computer, by name; reads no library.
     ZoteroProfiles,

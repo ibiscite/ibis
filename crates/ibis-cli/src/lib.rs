@@ -732,6 +732,7 @@ fn execute<R: BufRead, W: Write + Send>(
         let params = serde_json::to_value(LibrariesRequest::OpenZotero {
             libraries: Some(zotero),
             profile,
+            reload: false,
         })
         .map_err(|_| EngineError::new(ErrorCode::BadInput))?;
         let before = engine.libraries()?.libraries;

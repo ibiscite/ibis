@@ -198,7 +198,8 @@ test("a refused switch keeps the file searchable and the engine's recovery instr
   expect(await screen.findByText("Retained file reference")).toBeTruthy();
   const tooltip = within(footer()).getByRole("button", { name: "Library" }).getAttribute("title");
   expect(tooltip).toContain(reason);
-  expect(tooltip).toContain("Open Zotero, then reload.");
+  expect(tooltip).toContain("Settings › Advanced");
+  expect(tooltip).not.toContain("Open Zotero");
   expect(footer().querySelector(".library-detail")?.textContent).toContain(reason);
   expect(document.querySelector(".notices")?.textContent).toBe("");
   expect(within(footer()).getByRole("button", { name: "Choose Library…" })).toBeTruthy();
@@ -232,7 +233,7 @@ test("Command-O works on a recovery screen and a missing source refuses with a v
   const opened = vi.fn(() => { throw { code: "failed" }; });
   backend({ library_status: () => library({ state: "error", has_snapshot: false, problem: "zotero_closed", error: "Zotero is closed" }), open_library_source: opened });
   render(<App />);
-  await screen.findByText("Zotero isn't open");
+  await screen.findByText("Ibis needs Zotero open");
   const sourceRow = screen.getByRole("option", { name: "Open Zotero" });
   expect(sourceRow.textContent).toContain("Ctrl+O");
   expect(status().getAttribute("aria-live")).toBe("off");
@@ -311,4 +312,44 @@ test("a delayed status A cannot replace event B, including across hide and reope
   await act(async () => finish(stale({ references: 12, revision: "A" })));
   expect(status().textContent).toContain("27 references");
   expect(within(footer()).queryByRole("button", { name: "Open Zotero" })).toBeNull();
+});
+
+test("kept references stay on screen while a profile is chosen from the library menu", async () => {
+  const chosen = vi.fn(() => null);
+  backend({
+    library_status: () => stale({ problem: "zotero_profiles", error: "choose which Zotero profile to read; keeping the last loaded references" }),
+    zotero_profiles: () => ({ names: ["Home", "Work"], chosen: "Home" }), use_zotero_profile: chosen,
+  });
+  render(<App />);
+  fireEvent.click(await within(footer()).findByRole("button", { name: "Choose Zotero Profile…" }));
+  const menu = await screen.findByRole("menu", { name: "Library" });
+  expect(within(menu).getByRole("menuitemcheckbox", { name: "Home" }).getAttribute("aria-checked")).toBe("true");
+  fireEvent.click(within(menu).getByRole("menuitemcheckbox", { name: "Work" }));
+  await waitFor(() => expect(chosen).toHaveBeenCalledOnce());
+  expect(chosen.mock.calls[0]).toEqual([{ name: "Work" }]);
+  expect(screen.queryByText("Which Zotero profile?")).toBeNull();
+});
+
+test("one profile offers no choice, and a list that cannot be read is said in the menu", async () => {
+  backend({ library_status: () => library(), zotero_profiles: () => ({ names: ["Home"], chosen: null }) });
+  const first = render(<App />);
+  fireEvent.click(await within(footer()).findByRole("button", { name: "Library" }));
+  const menu = await screen.findByRole("menu", { name: "Library" });
+  await waitFor(() => expect(within(menu).queryByText("Zotero Profile")).toBeNull());
+  first.unmount();
+  backend({ library_status: () => library(), zotero_profiles: () => { throw new Error("synthetic"); } });
+  render(<App />);
+  fireEvent.click(await within(footer()).findByRole("button", { name: "Library" }));
+  expect(await screen.findByText(/could not list your Zotero profiles/)).toBeTruthy();
+  expect(document.querySelector(".status-dot")?.getAttribute("data-health")).toBe("look");
+});
+
+test("Zotero recovering by itself clears the failure that came before it", async () => {
+  backend({ library_status: () => library({ state: "error", has_snapshot: false, problem: "zotero_closed", error: "closed" }),
+    use_zotero: () => { throw new Error("synthetic"); } });
+  render(<App />);
+  await screen.findByText("Ibis needs Zotero open");
+  await act(async () => { await emit("library:changed", library()); });
+  await waitFor(() => expect(status().textContent).toBe("Zotero · 12 references"));
+  expect(document.querySelector(".status-dot")?.getAttribute("data-health")).toBe("done");
 });

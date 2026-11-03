@@ -358,5 +358,13 @@ test("the dot and every word draw from one condition", () => {
   const { container } = render(createElement(LibraryStatusLine, { library: zotero({ checked_at: Date.now() }), groupName: String, condition }));
   expect(container.querySelector(".status-dot")?.getAttribute("data-health")).toBe("look");
   expect(container.querySelector(".library-status")?.getAttribute("title")).toContain(condition.problem);
-  expect(container.querySelector(".library-detail")?.textContent).toContain(condition.problem);
+});
+
+test("each Zotero problem names its own fix once when references are kept", () => {
+  const words = (problem: LibraryStatus["problem"]) => libraryMessages.openError("Zotero", "reason", true, problem);
+  expect(words("zotero_access_off")).toContain("Settings › Advanced");
+  expect(words("zotero_access_off")).not.toContain("Open Zotero");
+  expect(words("zotero_profiles")).not.toContain("Open Zotero");
+  expect(words("zotero_missing")).not.toContain("Open Zotero");
+  expect(words("zotero_closed")).toContain("Open Zotero, then reload.");
 });
