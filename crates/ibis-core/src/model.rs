@@ -124,8 +124,9 @@ impl Issued {
 }
 
 /// Remove CSL rich-text tags and decode the entities used to escape text.
-/// Markup is exactly what the formatter reads (`crates/ibis-csl/src/bridge.js`);
-/// any other `<`, as in `p<0.05`, is text.
+/// Markup is the tag set the formatter recognises (`crates/ibis-csl/src/bridge.js`);
+/// any other `<`, as in `p<0.05`, is text. Citeproc also prints an unbalanced tag
+/// as text, which is not mirrored here, so `a<b>c` reads `ac`.
 pub fn strip_markup(rich: &str) -> String {
     let mut out = String::with_capacity(rich.len());
     let mut rest = rich;
