@@ -50,7 +50,7 @@ try {
         if (!ids.length) throw Error("Synthetic reset listener unavailable");
         for (const id of ids) callbacks.get(id)?.({ event, id, payload: { revision: 7, undo: 7 } });
       };
-      const preferences = { citation_style: shelfDetails === "warnings" ? "ieee" : shelfDetails === "forms" ? "apa" : null, density: "comfortable", larger_text: larger, show_paste_preview: true, search_icon: "ibis", paste: false, menu_bar: true };
+      const preferences = { citation_style: shelfDetails === "warnings" ? "ieee" : shelfDetails === "forms" ? "apa" : null, density: "comfortable", larger_text: larger, paste: false, menu_bar: true };
       const library = { state: "loaded", revision: "1", has_snapshot: true, zotero: false, name: "invented.bib", snapshot_name: "invented.bib", references: 14, warnings: 0, error: null, problem: null, note: null, settings_notice: startupNotice ? "Synthetic startup settings notice." : null };
       if (viewState === "first-run") Object.assign(library, { state: "none", has_snapshot: false, name: null, snapshot_name: null, references: 0 });
       if (viewState === "empty-library") library.references = 0;
@@ -355,15 +355,16 @@ try {
       const band = await page.locator("main > .shelf").boundingBox();
       await search.press("Shift+Enter");
       await shelfControl(page, /^Edit /).first().press("Backspace");
-      const removal = page.locator(".undo-notices > .undo-notice").first();
-      await removal.getByText(/^Removed .* from citation\.$/).waitFor();
+      const removal = page.locator(".notice-slot > .notice-band").first();
+      await removal.getByText(/^Removed /).waitFor();
       await page.evaluate(() => window.fixtureWindowReset());
-      const undo = page.locator(".undo-notices > .undo-notice").nth(1).getByRole("button", { name: /^Undo/ });
+      const undo = page.locator(".notice-slot > .notice-band").nth(1).getByRole("button", { name: /^Undo/ });
       await undo.waitFor();
       assert.equal(await search.evaluate((node) => document.activeElement === node), true, "Reset's Undo notice leaves typing focus in Search");
       await waitForCheck("independent-undo-actions-whole-and-uncovered", () => {
-        const boxes = [...document.querySelectorAll(".undo-notices > .undo-notice")].map((node) => node.getBoundingClientRect());
-        return boxes.length === 2 && boxes.every((box) => box.top >= 7 && box.bottom <= innerHeight - 7 && box.left >= 7 && box.right <= innerWidth - 7) && boxes[0].bottom <= boxes[1].top;
+        const bands = [...document.querySelectorAll(".notice-slot > .notice-band")].map((node) => node.getBoundingClientRect());
+        const footer = document.querySelector("main > footer").getBoundingClientRect();
+        return bands.length === 2 && bands[0].width === 0 && bands[1].top >= footer.top && bands[1].bottom <= footer.bottom;
       });
       await undo.click();
       await page.getByRole("alert").and(page.getByText("Could not undo. Try again.", { exact: true })).waitFor();

@@ -138,6 +138,7 @@ test.each([
   ["paste-expired", "Copied. The paste expired; paste it yourself"],
   ["secure-input", "Copied. Secure typing is on, possibly in another app. Press ⌘V to paste."],
   ["paste-unavailable", "Copied. Press ⌘V to paste."],
+  ["selection-not-shown", "Copied. Ibis replaces only text it showed you. Press ⌘V to replace it."],
 ])("%s offers manual paste without claiming the target is a password field", (reason, message) => {
   const copy = copied("[@synthetic]", reason);
   expect(noticeTitle(copy, "macos")).toBe(message);
@@ -151,6 +152,17 @@ test.each(["windows", "linux"] as const)("unavailable safety evidence uses %s's 
   const root = document.createElement("div");
   renderNotice(root, platform)(copied("[@invented]", "paste-unavailable"));
   expect(root.querySelector("strong")?.textContent).toBe("Copied. Press Ctrl+V to paste.");
+});
+
+test("the first paste into a word processor adds the plugin note, once, in the status region", () => {
+  const root = document.createElement("div");
+  const show = renderNotice(root, "macos");
+  show({ delivered: { outcome: "pasted", app: "Example Writer" }, text: "(Invented, 2026)", plugin_note: true });
+  const note = root.querySelector('[role="status"] .copy-receipt-note');
+  expect(note?.textContent).toContain("insert with the plugin");
+  expect(note?.textContent).toContain("Zotero, Mendeley, EndNote, Citavi, Paperpile");
+  show({ delivered: { outcome: "pasted", app: "Example Writer" }, text: "(Invented, 2026)" });
+  expect(root.querySelector(".copy-receipt-note")).toBeNull();
 });
 
 test("the app's timer fades the notice out, and showing it again brings it back", () => {

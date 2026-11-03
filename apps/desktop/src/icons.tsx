@@ -38,6 +38,6 @@ export function ChoiceIcon({ name }: { name: ChoiceIconName }) {
   return <Icon name={name} className="type-icon" />;
 }
 
-export function PageIcon({ name }: { name: "general" | "look" | "citations" | "shortcuts" }) {
+export function PageIcon({ name }: { name: "general" | "look" | "citations" | "shortcuts" | "about" }) {
   return <Icon name={name} />;
 }

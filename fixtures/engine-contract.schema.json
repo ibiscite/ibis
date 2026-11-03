@@ -502,6 +502,11 @@
           "description": "macOS Accessibility trust is required for the identity-only focus proof.",
           "type": "string",
           "const": "accessibility-required"
+        },
+        {
+          "description": "A paste would replace selected text the search never showed.",
+          "type": "string",
+          "const": "selection-not-shown"
         }
       ]
     },
