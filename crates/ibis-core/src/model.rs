@@ -124,7 +124,8 @@ impl Issued {
 }
 
 /// Remove CSL rich-text tags and decode the entities used to escape text.
-/// Only the tags citations use are markup: in `p<0.05` the `<` is text.
+/// Markup is exactly what the formatter reads (`crates/ibis-csl/src/bridge.js`);
+/// any other `<`, as in `p<0.05`, is text.
 pub fn strip_markup(rich: &str) -> String {
     let mut out = String::with_capacity(rich.len());
     let mut rest = rich;
@@ -146,14 +147,35 @@ pub fn strip_markup(rich: &str) -> String {
         .replace("&amp;", "&")
 }
 
+/// How far a span's attributes are searched for its `>`, so hostile text stays linear.
+const MAX_TAG_ATTRIBUTES: usize = 256;
+
 /// The length of the rich-text tag `text` starts with, if it starts with one.
-/// The scan is bounded, so a long run of `<` stays linear.
 fn rich_text_tag_len(text: &str) -> Option<usize> {
-    let end = text.bytes().take(64).position(|byte| byte == b'>')?;
-    let tag = text[1..end].to_ascii_lowercase();
-    let name = tag.strip_prefix('/').unwrap_or(&tag);
-    let simple = matches!(name, "i" | "b" | "sc" | "sub" | "sup" | "span");
-    (simple || name.starts_with("span class=") || name.starts_with("span style=")).then_some(end + 1)
+    const PLAIN: [&str; 11] = [
+        "<i>", "</i>", "<b>", "</b>", "<sc>", "</sc>", "<sub>", "</sub>", "<sup>", "</sup>", "</span>",
+    ];
+    if let Some(tag) = PLAIN.iter().find(|tag| text.starts_with(**tag)) {
+        return Some(tag.len());
+    }
+    let after_name = text.strip_prefix("<span")?;
+    let attribute = after_name.trim_start();
+    if attribute.len() == after_name.len() {
+        return None;
+    }
+    let after_value = attribute
+        .strip_prefix("class=\"no")
+        .and_then(|value| value.strip_prefix("case\"").or_else(|| value.strip_prefix("decor\"")))
+        .or_else(|| {
+            let value = attribute.strip_prefix("style=\"font-variant:")?.trim_start();
+            let value = value.strip_prefix("small-caps")?;
+            value.strip_prefix(';').unwrap_or(value).strip_prefix('"')
+        })?;
+    let end = after_value
+        .bytes()
+        .take(MAX_TAG_ATTRIBUTES)
+        .position(|byte| byte == b'>')?;
+    Some(text.len() - after_value.len() + end + 1)
 }
 
 #[cfg(test)]
@@ -172,18 +194,34 @@ mod tests {
     }
 
     #[test]
-    fn only_rich_text_tags_are_markup() {
+    fn only_tags_the_formatter_reads_are_markup() {
         assert_eq!(strip_markup("Effect of p<0.05 on tides"), "Effect of p<0.05 on tides");
         assert_eq!(strip_markup("a < b > c"), "a < b > c");
-        assert_eq!(strip_markup("<foo>bar</foo>"), "<foo>bar</foo>");
+        for literal in [
+            "<foo>bar</foo>",
+            "Why A<B>C matters",
+            "<span>x",
+            "<span class=\"math\">x",
+            "<I>x",
+        ] {
+            assert_eq!(strip_markup(literal), literal);
+        }
         assert_eq!(
             strip_markup("<span class=\"nocase\">iPhone</span> and <sup>2</sup>H <sc>Ab</sc>"),
             "iPhone and 2H Ab"
         );
-        assert_eq!(
-            strip_markup("<span style=\"font-variant:small-caps;\">Ab</span> <B>c</B>"),
-            "Ab c"
-        );
+        for spelled in [
+            "<span  class=\"nocase\">x</span>",
+            "<span\tclass=\"nodecor\">x</span>",
+            "<span class=\"nocase\" data-origin=\"invented\">x</span>",
+            "<span style=\"font-variant:small-caps;\">x</span>",
+            "<span style=\"font-variant: small-caps\">x</span>",
+        ] {
+            assert_eq!(strip_markup(spelled), "x", "{spelled}");
+        }
+        // A tag that never closes is text, even repeated many times.
+        let unclosed = "<span class=\"nocase\"".repeat(10_000);
+        assert_eq!(strip_markup(&unclosed), unclosed);
         // A long run of `<` stays linear and literal.
         assert_eq!(strip_markup(&"<".repeat(100_000)), "<".repeat(100_000));
     }
