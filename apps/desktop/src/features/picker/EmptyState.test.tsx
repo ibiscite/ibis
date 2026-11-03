@@ -97,7 +97,7 @@ test("several profiles are offered by name and a choice names only that", async 
 test("a list of profiles that cannot be read still leaves a way forward", async () => {
   const chooseProfile = vi.fn();
   recovery(waiting("zotero_profiles"), { listProfiles: async () => { throw new Error("refused"); }, chooseProfile });
-  expect(await screen.findByText(/could not list your Zotero profiles/)).toBeTruthy();
+  expect(await screen.findByRole("alert")).toHaveProperty("textContent", expect.stringContaining("could not list your Zotero profiles"));
   expect(screen.getByRole("option", { name: /Try again/ })).toBeTruthy();
   expect(screen.getByRole("option", { name: /Use another library/ })).toBeTruthy();
   expect(chooseProfile).not.toHaveBeenCalled();

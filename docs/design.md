@@ -315,6 +315,7 @@ Never call the destination a password field. The right paste key is shown per sy
 - **Welcome**: the whole window, with no search header. The mark, a title, the line "Ibis finds a reference and pastes its citation where you're typing. It only reads your library, never changes it.", then four starts as a 2 × 2 grid of tiles (Zotero, a .bib file, Find them on this computer, Try sample references), each with its own centred glyph. The note names the registered shortcut ("After this, open Ibis from any app with ⇧⌘Y."), or says **No shortcut is set** with how to open Ibis instead. Esc dismisses a menu, then hides.
 - **Opening a library**: nothing for 400 ms, then the mark, "Opening example.bib…", "Reading your library. Zotero can stay closed." and a thin progress bar. Rows kept from before stay instead.
 - **No library**: "Where do your references live?" with the welcome grid; nothing is searched until Find is chosen.
+- **Zotero found**: Ibis still asks. When Zotero is running or its library is on this computer, the welcome screen keeps every start and highlights Zotero, so Enter takes it. Only that look happens first; no library is read until it is chosen.
 - **Empty library** (a successful load with zero references): "No references in thesis.bib", "Choose a library with references.", then **Use Zotero**, **Choose a Library File…**, and for a file **Open <file> ⌘O**; below, "Or drag a .bib or CSL-JSON file into this window."
 - **Could not open, nothing kept**: the title names the library and the fix; "Use another library" shows the no-library screen. A failure with references kept stays a notice above them.
 
@@ -322,8 +323,8 @@ Never call the destination a password field. The right paste key is shown per sy
 | --- | --- | --- |
 | `missing` | Can't find thesis.bib | Find thesis.bib, Use another library |
 | `unreadable`, `other` | Can't read thesis.bib / Can't open thesis.bib | Try again, Use another library |
-| `zotero_closed` | Zotero isn't open | Try again, Open Zotero, Use another library |
-| `zotero_access_off` | Zotero isn't sharing your library | Try again, Open Zotero, Use another library |
+| `zotero_closed` | Zotero isn't open | Open Zotero, Use another library |
+| `zotero_access_off` | Zotero isn't sharing your library | Open Zotero, Use another library |
 | `zotero_profiles` | Which Zotero profile? | One row per profile, Open Zotero, Use another library |
 
 - Setup finishes itself: Ibis never asks "What do you write in?"; with Zotero closed Ibis reads the library anyway. A screen waiting on Zotero says where the fix is and asks Zotero every two seconds while it is shown, never while the picker is hidden, so it carries on by itself as soon as Zotero answers. With several profiles the closed path asks once, by the profile's name, and remembers the answer; a saved profile that is gone asks again and never reads another.

@@ -143,7 +143,10 @@ fn a_zotero_that_stops_refusing_is_read_without_any_other_change() {
     let refused = engine.dispatch(Method::Libraries, &open, &cancel).unwrap_err();
     assert_eq!(refused.code, ErrorCode::SourceUnavailable);
     assert_eq!(refused.reason, Some(ErrorReason::ZoteroSharingOff));
-    assert!(engine.libraries().unwrap().libraries.is_empty(), "a refusal publishes nothing");
+    assert!(
+        engine.libraries().unwrap().libraries.is_empty(),
+        "a refusal publishes nothing"
+    );
 
     server.sharing_off.store(false, Ordering::Relaxed);
     engine.dispatch(Method::Libraries, &open, &cancel).unwrap();
@@ -159,13 +162,22 @@ fn turning_sharing_off_later_keeps_the_last_read_and_says_why() {
         .dispatch(Method::Libraries, &json!({"action":"open-zotero"}), &cancel)
         .unwrap();
     server.sharing_off.store(true, Ordering::Relaxed);
-    let refused = engine
+    // Reloading everything reports each library's own health, not one failure.
+    engine
         .dispatch(Method::Libraries, &json!({"action":"reload"}), &cancel)
-        .unwrap_err();
-    assert_eq!(refused.reason, Some(ErrorReason::ZoteroSharingOff));
+        .unwrap();
     let info = engine.libraries().unwrap();
     assert_eq!(info.libraries[0].objects, 1, "the last good references stay");
     assert_eq!(info.libraries[0].refresh_error, Some(ErrorCode::SourceUnavailable));
+    assert_eq!(info.libraries[0].refresh_reason, Some(ErrorReason::ZoteroSharingOff));
+
+    server.sharing_off.store(false, Ordering::Relaxed);
+    engine
+        .dispatch(Method::Libraries, &json!({"action":"reload"}), &cancel)
+        .unwrap();
+    let info = engine.libraries().unwrap();
+    assert_eq!(info.libraries[0].refresh_error, None);
+    assert_eq!(info.libraries[0].refresh_reason, None, "recovery leaves no old reason");
 }
 
 #[test]

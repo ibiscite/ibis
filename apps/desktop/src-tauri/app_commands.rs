@@ -4,6 +4,7 @@ pub const APP_COMMANDS: &[&str] = &[
     "reload_library",
     "use_zotero",
     "use_sample_library",
+    "find_zotero",
     "find_sources",
     "open_found_library",
     "use_zotero_libraries",

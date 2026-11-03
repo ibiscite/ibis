@@ -583,6 +583,21 @@
           "description": "The Ibis app started but did not confirm the request in time.",
           "type": "string",
           "const": "no-answer"
+        },
+        {
+          "description": "Zotero is running but does not let other applications read it.",
+          "type": "string",
+          "const": "zotero-sharing-off"
+        },
+        {
+          "description": "Zotero is closed and this computer has several profiles; name one.",
+          "type": "string",
+          "const": "zotero-profile-needed"
+        },
+        {
+          "description": "Zotero's own copy could not be read closed; opening Zotero is the fix.",
+          "type": "string",
+          "const": "zotero-needs-opening"
         }
       ]
     },

@@ -667,7 +667,9 @@ pub(crate) fn use_zotero_profile(app: &AppHandle, name: String) -> Result<(), St
     if !known.contains(&name) {
         return Err("That Zotero profile is no longer here. Choose again.".into());
     }
-    let saved = app.state::<SettingsFile>().update(|settings| settings.zotero_profile = Some(name));
+    let saved = app
+        .state::<SettingsFile>()
+        .update(|settings| settings.zotero_profile = Some(name));
     saved.map_err(|error| format!("The Zotero profile could not be saved: {error}"))?;
     start_open(app, Source::Zotero(current_zotero_choice(app)), true);
     Ok(())

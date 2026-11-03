@@ -99,9 +99,13 @@ function Recovery({ library, onFind, onReload, setup, source, zotero }: {
   const choices: Choice[] = finding
     ? [{ id: "find", title: setupText.find(name), help: setupText.findFileHelp, icon: <ChoiceIcon name="find" />, suggested: true, keys: keysFor("source") }, another]
     : profileRows.length > 0 ? [...profileRows, another]
+    // The fix is in Zotero and this screen notices it, so that is the one next step.
+    : waiting && source ? [another]
     : [{ ...tryAgain, suggested: true }, another];
-  if (!finding && source && source.label !== pickerText.chooseLibraryMenu && !choices.some((choice) => choice.title === source.label)) choices.push({ id: "source", title: source.label, icon: source.icon ?? <ChoiceIcon name={library.zotero ? "library" : "file"} />,
-    keys: keysFor("source") });
+  if (!finding && source && source.label !== pickerText.chooseLibraryMenu && !choices.some((choice) => choice.title === source.label)) {
+    const open: Choice = { id: "source", title: source.label, icon: source.icon ?? <ChoiceIcon name={library.zotero ? "library" : "file"} />, keys: keysFor("source"), suggested: waiting && profileRows.length === 0 };
+    if (open.suggested) choices.unshift(open); else choices.push(open);
+  }
   return (
     <div className="empty-state">
       {/* Announced once, as the footer's live region does for other states. */}

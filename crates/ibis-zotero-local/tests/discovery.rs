@@ -276,5 +276,8 @@ fn several_profiles_are_offered_by_a_name_that_is_safe_and_unique() {
     assert_eq!(found.warnings, []);
     let names: Vec<_> = found.directories.iter().map(|found| found.name()).collect();
     assert_eq!(names, ["Work", "Work (2)", "Profile 3"]);
-    assert!(!format!("{found:?}").contains("invented"), "names show, locations never do");
+    assert!(
+        !format!("{found:?}").contains("invented"),
+        "names show, locations never do"
+    );
 }

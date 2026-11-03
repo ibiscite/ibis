@@ -571,6 +571,17 @@ pub fn profiles() -> Result<Vec<String>, ZoteroError> {
     profile_names(&here()?)
 }
 
+/// Whether a Zotero library is on this computer, Zotero running or not. Looks
+/// at file metadata only, so nothing is read before a person chooses Zotero.
+pub fn installed() -> bool {
+    here().is_ok_and(|found| {
+        found
+            .directories
+            .iter()
+            .any(|found| found.path().join("zotero.sqlite").is_file())
+    })
+}
+
 /// The groups a running Zotero lists; reads no library.
 pub fn live_groups(port: u16) -> Result<Vec<Group>, ZoteroError> {
     libraries::groups(&mut ibis_zotero_local::LocalZotero::on_port(port)).map_err(|error| match error {
@@ -688,8 +699,14 @@ mod tests {
         assert_eq!(
             groups,
             [
-                Group { id: 7, name: "Lab group".into() },
-                Group { id: 8, name: "Group 8".into() }
+                Group {
+                    id: 7,
+                    name: "Lab group".into()
+                },
+                Group {
+                    id: 8,
+                    name: "Group 8".into()
+                }
             ]
         );
     }

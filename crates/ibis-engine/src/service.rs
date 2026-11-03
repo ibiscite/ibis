@@ -37,6 +37,9 @@ pub struct LibraryInfo {
     pub warnings: Vec<ibis_sources::SourceWarning>,
     pub warnings_total: usize,
     pub refresh_error: Option<ErrorCode>,
+    /// What a person can do about `refresh_error`, when the failure says.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub refresh_reason: Option<ErrorReason>,
     pub updated_at_ms: u64,
     /// A readable source remains usable when automatic updates are unavailable.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -58,6 +61,7 @@ impl LibraryInfo {
             warnings: vec![],
             warnings_total: 0,
             refresh_error: None,
+            refresh_reason: None,
             updated_at_ms: now_ms(),
             watch_warning: None,
             zotero: None,
@@ -71,12 +75,15 @@ pub struct LibrariesResult {
     /// Answers `zotero-profiles`: each profile's safe name, never its location.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub zotero_profiles: Option<Vec<String>>,
+    /// Answers `zotero-profiles`: whether a Zotero library is on this computer.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub zotero_installed: Option<bool>,
     /// Answers `zotero-groups`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub zotero_groups: Option<Vec<ZoteroGroup>>,
 }
 /// A Zotero group library by its public ID and a name safe to show.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct ZoteroGroup {
     pub id: u64,
     pub name: String,
@@ -307,6 +314,7 @@ impl Engine {
         Ok(LibrariesResult {
             libraries: self.state()?.libraries.values().cloned().collect(),
             zotero_profiles: None,
+            zotero_installed: None,
             zotero_groups: None,
         })
     }
@@ -498,7 +506,8 @@ impl Engine {
                     value(self.libraries()?)?
                 }
                 LibrariesRequest::ZoteroProfiles => value(LibrariesResult {
-                    zotero_profiles: Some(self.zotero_profiles()?),
+                    zotero_profiles: Some(self.zotero_profiles().unwrap_or_default()),
+                    zotero_installed: Some(ibis_sources::zotero_source::installed()),
                     ..self.libraries()?
                 })?,
                 LibrariesRequest::ZoteroGroups => value(LibrariesResult {
@@ -550,12 +559,11 @@ impl Engine {
     }
 }
 impl State {
-    fn with_failure(&self, library: &LibraryId, code: ErrorCode) -> Result<Self, EngineError> {
+    fn with_failure(&self, library: &LibraryId, failure: EngineError) -> Result<Self, EngineError> {
         let mut libraries = self.libraries.clone();
-        libraries
-            .get_mut(library)
-            .ok_or_else(|| error(ErrorCode::NotFound))?
-            .refresh_error = Some(code);
+        let info = libraries.get_mut(library).ok_or_else(|| error(ErrorCode::NotFound))?;
+        info.refresh_error = Some(failure.code);
+        info.refresh_reason = failure.reason;
         Ok(Self {
             accepted: self.accepted.clone(),
             zotero_generation: self.zotero_generation,
@@ -669,10 +677,11 @@ impl Shared {
         });
         Ok(())
     }
-    fn failed(&self, library: &LibraryId, code: ErrorCode) -> Result<(), EngineError> {
+    fn failed(&self, library: &LibraryId, failure: impl Into<EngineError>) -> Result<(), EngineError> {
         let _publication = self.publication.lock().map_err(|_| error(ErrorCode::Internal))?;
         let old = self.state_view()?;
-        *self.state.write().map_err(|_| error(ErrorCode::Internal))? = Arc::new(old.with_failure(library, code)?);
+        *self.state.write().map_err(|_| error(ErrorCode::Internal))? =
+            Arc::new(old.with_failure(library, failure.into())?);
         self.notify()
     }
 }

@@ -284,6 +284,7 @@ mod tests {
             warnings: vec![],
             warnings_total: 0,
             refresh_error: Some(ErrorCode::SourceUnavailable),
+            refresh_reason: None,
             updated_at_ms: 123,
             watch_warning: None,
             zotero: None,

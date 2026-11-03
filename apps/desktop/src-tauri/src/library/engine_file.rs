@@ -100,13 +100,24 @@ fn engine_list<T: serde::de::DeserializeOwned>(
         .ok_or(ibis_core::contract::ErrorCode::Internal.into())
 }
 
-pub(super) fn zotero_groups(engine: &Engine) -> Result<Vec<ibis_engine::ZoteroGroup>, ibis_core::contract::EngineError> {
+pub(super) fn zotero_groups(
+    engine: &Engine,
+) -> Result<Vec<ibis_engine::ZoteroGroup>, ibis_core::contract::EngineError> {
     engine_list(engine, "zotero-groups", "zotero_groups")
 }
 
 /// The Zotero profiles on this computer, by name.
 pub(super) fn zotero_profiles() -> Result<Vec<String>, ibis_core::contract::EngineError> {
-    engine_list(&Engine::new()?, "zotero-profiles", "zotero_profiles")
+    let names: Vec<String> = engine_list(&Engine::new()?, "zotero-profiles", "zotero_profiles")?;
+    if names.is_empty() {
+        return Err(ibis_core::contract::ErrorCode::SourceUnavailable.into());
+    }
+    Ok(names)
+}
+
+/// Whether a Zotero library is on this computer; reads none.
+pub(crate) fn zotero_installed() -> bool {
+    Engine::new().is_ok_and(|engine| engine_list(&engine, "zotero-profiles", "zotero_installed").unwrap_or(false))
 }
 
 impl FileLibrary {
@@ -279,8 +290,14 @@ impl FileLibrary {
             .dispatch(Method::Libraries, &request, cancel)
             .map_err(super::LoadError::EngineZotero)?;
         let info = self.engine.libraries().map_err(super::LoadError::EngineZotero)?;
-        if let Some(code) = info.libraries.iter().find_map(|info| info.refresh_error) {
-            return Err(super::LoadError::EngineZotero(code.into()));
+        let failure = info.libraries.iter().find_map(|info| {
+            info.refresh_error.map(|code| ibis_core::contract::EngineError {
+                code,
+                reason: info.refresh_reason,
+            })
+        });
+        if let Some(failure) = failure {
+            return Err(super::LoadError::EngineZotero(failure));
         }
         // Empty libraries change the choice even when the object fingerprint stays equal.
         Ok(same)

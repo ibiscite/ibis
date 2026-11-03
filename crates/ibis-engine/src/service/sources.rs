@@ -84,6 +84,7 @@ fn info(loaded: &LoadedLibrary) -> LibraryInfo {
         warnings: loaded.warnings.iter().take(MAX_WARNING_DETAILS).cloned().collect(),
         warnings_total: loaded.warnings.len(),
         refresh_error: None,
+        refresh_reason: None,
         updated_at_ms: now_ms(),
         watch_warning: None,
         zotero: None,
@@ -226,7 +227,7 @@ impl Engine {
         let mut read = match prepared.read {
             Ok(read) => read,
             Err(failure) => {
-                *state = Arc::new(state.with_failure(&slot.loaded.library, failure.code)?);
+                *state = Arc::new(state.with_failure(&slot.loaded.library, failure)?);
                 drop(state);
                 self.shared.notify()?;
                 return Err(failure);
@@ -239,6 +240,7 @@ impl Engine {
                 && let Some(current) = state.libraries.get(id)
             {
                 info.refresh_error = current.refresh_error;
+                info.refresh_reason = current.refresh_reason;
                 info.watch_warning = current.watch_warning;
             }
         }
@@ -510,8 +512,11 @@ impl Engine {
                 if let Some(chosen) = chosen {
                     *source = chosen;
                 }
-                *self.resources.closed_groups.lock().map_err(|_| error(ErrorCode::Internal))? =
-                    source.closed_groups().map(<[_]>::to_vec);
+                *self
+                    .resources
+                    .closed_groups
+                    .lock()
+                    .map_err(|_| error(ErrorCode::Internal))? = source.closed_groups().map(<[_]>::to_vec);
                 Ok(())
             }
             Err(failure) => {
@@ -528,6 +533,10 @@ impl Engine {
                 } else {
                     ErrorCode::SourceUnavailable
                 };
+                let failure = EngineError {
+                    code,
+                    reason: failure.reason(),
+                };
                 // Any failed read retires prepared Zotero copies until a read
                 // succeeds, even when only a new choice failed: its full read
                 // already began, and the copy guard does not tell them apart.
@@ -538,14 +547,11 @@ impl Engine {
                     // A new choice that fails says nothing about the old one.
                     if chosen.is_none() {
                         for previous in source.current() {
-                            let _ = self.shared.failed(&previous.library, code);
+                            let _ = self.shared.failed(&previous.library, failure);
                         }
                     }
                 }
-                Err(EngineError {
-                    code,
-                    reason: failure.reason(),
-                })
+                Err(failure)
             }
         }
     }
@@ -556,11 +562,18 @@ impl Engine {
     /// Group libraries by name. Zotero answers while it runs; a closed Zotero
     /// has only what its last read listed, which never starts another read.
     pub(super) fn zotero_groups(&self) -> Result<Vec<ZoteroGroup>, EngineError> {
-        let port = self.resources.zotero_port.unwrap_or(ibis_sources::zotero_source::DEFAULT_PORT);
+        let port = self
+            .resources
+            .zotero_port
+            .unwrap_or(ibis_sources::zotero_source::DEFAULT_PORT);
         let groups = match ibis_sources::zotero_source::live_groups(port) {
             Ok(groups) => groups,
             Err(ZoteroError::Live(LiveError::Transport(TransportError::Unreachable))) => {
-                let closed = self.resources.closed_groups.lock().map_err(|_| error(ErrorCode::Internal))?;
+                let closed = self
+                    .resources
+                    .closed_groups
+                    .lock()
+                    .map_err(|_| error(ErrorCode::Internal))?;
                 closed.clone().ok_or_else(|| error(ErrorCode::SourceUnavailable))?
             }
             Err(failure) => {
@@ -631,7 +644,7 @@ impl Shared {
         let old = self.state_view()?;
         // No source observation completed: observers must not advance their
         // successful-check time just because watch health changed.
-        let mut next = old.with_failure(library, ErrorCode::SourceUnavailable)?;
+        let mut next = old.with_failure(library, error(ErrorCode::SourceUnavailable))?;
         next.libraries
             .get_mut(library)
             .ok_or_else(|| error(ErrorCode::NotFound))?

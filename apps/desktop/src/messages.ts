@@ -1,4 +1,4 @@
-import type { KeyFormat, LibraryStatus, LoginItemProblem } from "./bindings";
+import type { KeyFormat, LibraryStatus, LoginItemProblem, ZoteroPresence } from "./bindings";
 import type { Platform } from "./platform";
 
 export const citationDetailsText = {
@@ -115,8 +115,9 @@ export const setupText = {
     "“Allow other applications on this computer to communicate with Zotero”.",
   cutShort: "Some folders were too large to search fully. Choose the file yourself if it is not listed.",
   nothingFound: "No Zotero or .bib files found nearby. Choose the file yourself.",
-  found: (files: number, zotero: boolean) =>
-    [zotero ? "Zotero is open." : "", files ? `${files} .bib ${files === 1 ? "file" : "files"} found.` : ""].filter(Boolean).join(" "),
+  found: (files: number, zotero: ZoteroPresence | null) =>
+    [zotero === "available" ? "Zotero is open." : zotero === "closed" ? "Zotero is on this computer." : "",
+      files ? `${files} .bib ${files === 1 ? "file" : "files"} found.` : ""].filter(Boolean).join(" "),
   missingTitle: (name: string) => `Can't find ${name}`,
   missingLine: "It may have moved, or its drive is disconnected.",
   find: (name: string) => `Find ${name}`,

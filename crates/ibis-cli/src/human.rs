@@ -407,7 +407,10 @@ pub(super) fn zotero_failure(error: EngineError, profiles: &[String]) -> String 
     };
     if error.reason == Some(ErrorReason::ZoteroProfileNeeded) && !profiles.is_empty() {
         let names: Vec<_> = profiles.iter().map(|name| field(name)).collect();
-        return format!("cannot read the Zotero library: {reason} Profiles: {}.", names.join(", "));
+        return format!(
+            "cannot read the Zotero library: {reason} Profiles: {}.",
+            names.join(", ")
+        );
     }
     format!("cannot read the Zotero library: {reason}")
 }

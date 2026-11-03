@@ -457,12 +457,17 @@ mod tests {
 
     #[test]
     fn problems_group_failures_by_the_fix_they_need() {
+        use ibis_core::contract::{EngineError, ErrorCode, ErrorReason};
         use ibis_core::zotero::api::ZoteroError;
-        let cases: [(LoadError, LibraryProblem); 6] = [
+        let engine = |reason| LoadError::EngineZotero(EngineError::because(ErrorCode::SourceUnavailable, reason));
+        let cases: [(LoadError, LibraryProblem); 9] = [
             (SourceError::Unavailable.into(), LibraryProblem::Missing),
             (SourceError::Unreadable.into(), LibraryProblem::Unreadable),
             (SourceError::TooLarge.into(), LibraryProblem::Unreadable),
             (ZOTERO_OFFLINE, LibraryProblem::ZoteroClosed),
+            (engine(ErrorReason::ZoteroSharingOff), LibraryProblem::ZoteroAccessOff),
+            (engine(ErrorReason::ZoteroProfileNeeded), LibraryProblem::ZoteroProfiles),
+            (engine(ErrorReason::ZoteroNeedsOpening), LibraryProblem::ZoteroClosed),
             (ZoteroError::NotAllowed.into(), LibraryProblem::ZoteroAccessOff),
             (LoadError::Stopped, LibraryProblem::Other),
         ];

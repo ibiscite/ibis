@@ -42,6 +42,7 @@ export const {
   forgetAppOutputs,
   loginItem,
   setLoginItem,
+  findZotero,
   findSources,
   openFoundLibrary,
   rowContext,
