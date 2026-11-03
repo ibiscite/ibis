@@ -40,13 +40,15 @@ export function PickerResults({
   const { choosingLibrary, setupApi, setWelcomeShown, library, libraryChoices, busy, blocked, showCitations } = libraryState;
   const { active, selected } = state;
   // The shown results and empty message answer this query until the next reply.
-  const { results, error, list, announcement, answered: query } = searchState;
+  const { results, error, list, unfiltered, announcement, answered: query } = searchState;
   const { narrowed, searchAllLibraries, severalLibraries, libraryOf } = scope;
   const { sourceChoice, performSourceChoice } = source;
   const { chooseLibrary, reloadLibrary } = api;
   const emptyState = choosingLibrary ? <LibrarySetup api={setupApi} perform={performSourceChoice} autoFocus
     shortcut={shortcut} onWelcomeChange={setWelcomeShown} /> : (library !== undefined && (libraryChoices || busy || results.length === 0 && !error && (!library?.error || blocked)) ? (
     <EmptyState library={library} query={query} narrowed={narrowed} peck={peck}
+      unfiltered={unfiltered} missing={Boolean(list?.missing.length)}
+      onRemoveFilter={(plain) => { setQuery(plain); input.current?.focus(); }}
       source={api.openLibrarySource && source.sourceInChoices ? sourceChoice : undefined}
       onChooseLibrary={() => void perform("choose", chooseLibrary)}
       onClearSearch={() => { setQuery(""); focusHome(); }}

@@ -139,6 +139,11 @@ export const commands = {
 	text: string,
 	more?: number | null,
 	milestone?: number | null,
+	/**
+	 *  The first paste into this word processor: insert with its plugin if the
+	 *  document uses one.
+	 */
+	plugin_note?: boolean,
 } | null>("copied_notice"),
 	/**  Initial command runs asynchronously; native mutations stay on the main thread. */
 	nativeAppearance: () => __TAURI_INVOKE<string>("native_appearance"),
@@ -574,6 +579,11 @@ export type NoticeMessage_Deserialize = {
 	text: string,
 	more?: number | null,
 	milestone?: number | null,
+	/**
+	 *  The first paste into this word processor: insert with its plugin if the
+	 *  document uses one.
+	 */
+	plugin_note: boolean,
 };
 
 /**
@@ -585,6 +595,11 @@ export type NoticeMessage_Serialize = {
 	text: string,
 	more?: number | null,
 	milestone?: number | null,
+	/**
+	 *  The first paste into this word processor: insert with its plugin if the
+	 *  document uses one.
+	 */
+	plugin_note?: boolean,
 };
 
 /**  An app ID that cannot tell Ibis which output its document needs. */
@@ -827,6 +842,8 @@ export type SearchReply_Deserialize = {
 	results: SearchResult_Deserialize[],
 	interpretation?: LocatorQuery | null,
 	list?: PastedList | null,
+	/**  Nothing matched and the search has filters: the search without them. */
+	unfiltered?: string | null,
 };
 
 /**  A search keeps its snapshot identity even when no references match. */
@@ -835,6 +852,8 @@ export type SearchReply_Serialize = {
 	results: SearchResult_Serialize[],
 	interpretation?: LocatorQuery | null,
 	list?: PastedList | null,
+	/**  Nothing matched and the search has filters: the search without them. */
+	unfiltered?: string | null,
 };
 
 export type SearchResult = SearchResult_Serialize | SearchResult_Deserialize;

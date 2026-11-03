@@ -12,7 +12,7 @@ import type { useLibrarySearch } from "./useLibrarySearch";
 import { closeOverlays } from "../../ui/layers";
 import { useSourceOpen } from "./useSourceOpen";
 
-export function usePickerSource({ api, pickerSession, libraryState, menus, results, altHeld, perform }: {
+export function usePickerSource({ api, pickerSession, libraryState, menus, results, altHeld, perform, report }: {
   api: PickerApi;
   pickerSession: ReturnType<typeof usePickerSession>;
   libraryState: ReturnType<typeof usePickerLibrary>;
@@ -21,12 +21,13 @@ export function usePickerSource({ api, pickerSession, libraryState, menus, resul
   results: ReturnType<typeof useLibrarySearch>["results"];
   altHeld: boolean;
   perform: ReturnType<typeof useOperations>["perform"];
+  report: ReturnType<typeof useOperations>["report"];
 }) {
   const { session, state, cancelCopy } = pickerSession;
   const { library, libraryChoices, chooserRequest, setChoosingLibrary, refreshSnapshot } = libraryState;
   const { input, leaveOverlays, runFromMenu } = menus;
   const { active, selected } = state;
-  const { chooseLibrary, onLibraryFileDropped } = api;
+  const { chooseLibrary, onLibraryFileDropped, onLibraryFileRefused } = api;
   const sourceItem = !libraryChoices ? results[active]?.id ?? (selected.size === 1 ? [...selected.values()][0]?.id : null) ?? null : null;
   const sourceOpen = useSourceOpen(api, library, state.visibility, sourceItem, false, refreshSnapshot, () => session.getSnapshot().presentation);
   const chooseSources = () => {
@@ -41,10 +42,19 @@ export function usePickerSource({ api, pickerSession, libraryState, menus, resul
   useEffect(() => {
     let active = true;
     const subscription = onLibraryFileDropped?.(() => {
-      if (active) dismissChooser();
+      if (active) { report("dropRefused", false); dismissChooser(); }
     }).catch(() => () => undefined);
-    return () => { active = false; void subscription?.then((stop) => stop()).catch(() => undefined); };
-  }, [onLibraryFileDropped, dismissChooser]);
+    const refusal = onLibraryFileRefused?.(() => {
+      if (active) report("dropRefused");
+    }).catch(() => () => undefined);
+    return () => {
+      active = false;
+      void subscription?.then((stop) => stop()).catch(() => undefined);
+      void refusal?.then((stop) => stop()).catch(() => undefined);
+    };
+  }, [onLibraryFileDropped, onLibraryFileRefused, dismissChooser, report]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a refusal belongs to the opening it happened in.
+  useEffect(() => { report("dropRefused", false); }, [state.visibility, report]);
   const performSourceChoice: typeof perform = (operation, action, isCurrent) => {
     if (operation === "findSources") return perform(operation, action, isCurrent);
     const request = {};

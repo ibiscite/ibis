@@ -138,6 +138,11 @@ export function onLibraryFileDropped(handler: () => void): Promise<UnlistenFn> {
   return listen("library:file-dropped", handler);
 }
 
+/** Dropped files Ibis cannot use: only that it happened, never a path. */
+export function onLibraryFileRefused(handler: () => void): Promise<UnlistenFn> {
+  return listen("library:file-refused", handler);
+}
+
 export function onLibraryChanged(handler: (status: LibraryStatus) => void): Promise<UnlistenFn> {
   return listen<LibraryStatus>("library:changed", (event) => handler(event.payload));
 }

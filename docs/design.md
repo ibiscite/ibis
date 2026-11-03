@@ -206,7 +206,7 @@ Each component in `apps/desktop/src/ui/` wraps one React Aria component (decisio
 - **List scrolling**: a clicked row stays under the pointer and only that row consumes the click, even if results re-render first. Arrow keys take back ownership.
 - **Empty search** [C11]: a new library shows the hint ("Type to find a reference") centred in the middle area, with no keys. With history it shows **Cited here recently** (up to three, for the app Ibis came from) then **Recently added** (three), as ordinary rows navigated as one list.
 - **Typing keeps the picker still**: rows, headings, shelf and footer stay until the next reply; nothing blanks. A click on a row from an earlier query does nothing.
-- No matches: "No matching references", "Try a surname, year or fewer words.", then Clear Search. When nothing matches every word, closest matches show under **Closest matches** and keep a "Closest match" pill on the shelf.
+- No matches: "No matching references", "Try a surname, year or fewer words.", then Clear Search. When something else is the obstacle the screen names it, with its one fix: a filter (**Remove Filter** keeps the plain words), left-out Zotero libraries (**Search All Zotero Libraries**) or "Not in your libraries" for a pasted citation. A source failure and an empty library keep their own screens. When nothing matches every word, closest matches show under **Closest matches** and keep a "Closest match" pill on the shelf.
 
 ### Search rules
 
@@ -293,6 +293,7 @@ Built in `ibis-core` so every front end shares them (#1204).
 ### Notices
 
 - "Pasted" or "Copied" shows after the picker hides, in a window that never takes focus: one card near the top centre on every system, ignoring the pointer. What was copied is the hero: the citation in the text colour at body size, monospaced. Above it a quiet secondary line says what happened ("Copied", "Pasted into Word" or the reason). A green check in a soft green circle, centred on both lines, confirms success. A long reason wraps and is never clipped; the citation stays one line, ending in "…" with "+4 more" in view. The notice follows the chosen appearance.
+- **Plugin note**: the first paste into a word processor (Word, LibreOffice, Pages) adds a line under the citation and stays nine seconds: if this document uses a reference manager's plugin, insert with the plugin. Once per app, remembered in the per-app file, reset by Clear. It depends only on the app ID; Ibis cannot see the document, and browsers are skipped because Google Docs looks like any page.
 - No notice carries a side bar or a one-sided border. Errors are one sentence beside their cause, never a modal.
 - In-window toasts ("Removed · Undo") last 8 s, name their action and accept ⌘Z.
 
@@ -313,6 +314,7 @@ Never call the destination a password field. The right paste key is shown per sy
 ### Window behaviour
 
 - **Opening**: on the focused window's display, at its last place there (first time: centred, top in the upper third), with a short fade and focus in search. A search from under a minute ago returns selected, unless Esc or Clear cleared it: an explicit clear sticks. Text typed while opening is kept. The window is current in its first frame.
+- **Dropping a file**: one `.bib`, `.biblatex` or CSL-JSON file dropped on the picker becomes the library, and the footer shows its name and count. Anything else leaves the library alone and says what Ibis accepts until the next good drop or opening.
 - **Moving and resizing**: drag the empty header; snap to centre, upper third and corners. Settings › Advanced › **Where Ibis opens** offers Centre and the four corners; **Reset Window Position** restores the default.
 - **Other windows**: a command that hands the screen to another window has one effect however it was reached, and Esc then belongs to that window. Settings always closes the picker, even a pinned one, which would otherwise float above it; the pin stays for the next opening. An opened source hides an unpinned picker; pinned, it stays beside. A file chooser belongs to the picker, which stays behind it.
 - **Clicking outside** hides Ibis and the click reaches its target, unless pinned or a dialog, drag or file chooser is open.
@@ -428,7 +430,6 @@ How each user-visible item planned before 1.0 in ROADMAP.md fits the components 
 
 | Feature (release) | Fits as |
 |---|---|
-| Zotero while closed (0.2) | Footer status with words and a dot; detail in the tooltip and More |
 | Output per app, self-finishing setup (0.3) | First run above |
 | Paste into the app you came from (0.3) | Enter pastes; the footer says "Paste into Word"; a refusal copies and says why |
 | Selected text as the search (0.3) | The picker opens with the selection in search, all selected; Enter pastes over the selection |

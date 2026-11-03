@@ -10,8 +10,8 @@ export async function content(html) {
   if (!design) throw Error("Canonical Coming features section is missing");
   const rows = [...design.matchAll(/^\| ([^|]+) \|/gm)].map(([, feature]) => feature);
   const plans = [
-    ["Zotero while closed", "Find references even when Zotero is closed"],
-    ["Paste into the app you came from", "Paste citations straight into your document"],
+    ["Paste into the app you came from", "Paste straight into your document on Windows too"],
+    ["Citation forms", "Use any citation style"],
     ["Browse", "Cite the exact page from your PDFs"],
   ].map(([name, label]) => {
     const row = rows.find(value => value.startsWith(name));
