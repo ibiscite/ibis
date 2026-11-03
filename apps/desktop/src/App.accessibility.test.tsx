@@ -5,7 +5,7 @@ import { App } from "./App";
 import { backend, chooseRows, resetApp, type Handler } from "./testing/app";
 import type { PickerPreferences } from "./api";
 
-const saved: PickerPreferences = { citation_style: null, density: "comfortable", larger_text: false, show_paste_preview: true, search_icon: "magnifier", paste: true, menu_bar: true };
+const saved: PickerPreferences = { citation_style: null, density: "comfortable", larger_text: false, paste: true, menu_bar: true };
 const observers: MutationObserver[] = [];
 afterEach(async () => { observers.splice(0).forEach((observer) => observer.disconnect()); await resetApp(); });
 const deferred = <T,>() => {
@@ -39,15 +39,15 @@ test("Rows applies once in a persistent polite region; initial load, same-value 
   // A hidden announcer must not turn the empty visual notices into a padded row.
   expect(region.closest(".notices")).toBeNull();
   expect(document.querySelector(".notices")?.matches(":empty")).toBe(true);
-  await chooseRows("spacious");
-  await waitFor(() => expect(region.textContent).toBe("Rows: Spacious"));
-  expect(document.documentElement.dataset.density).toBe("spacious");
-  expect(updates).toEqual(["Rows: Spacious"]);
+  await chooseRows("compact");
+  await waitFor(() => expect(region.textContent).toBe("Rows: Compact"));
+  expect(document.documentElement.dataset.density).toBe("compact");
+  expect(updates).toEqual(["Rows: Compact"]);
   await act(async () => { save.resolve(null); });
-  loaded = { ...saved, density: "spacious" };
+  loaded = { ...saved, density: "compact" };
   await act(async () => { await emit("preferences:changed"); });
   expect(screen.getByRole("status", { name: "View changes" })).toBe(region);
-  expect(updates).toEqual(["Rows: Spacious"]);
+  expect(updates).toEqual(["Rows: Compact"]);
   expect(calls.filter((call) => call === "set_picker_preferences")).toHaveLength(1);
   expect(calls).not.toContain("copy_file_citation");
 });
@@ -71,12 +71,12 @@ test("a failed Rows save keeps the applied view and reports a fixed error withou
   const save = deferred<null>();
   await open({ set_picker_preferences: () => save.promise });
   const { region, updates } = feedback();
-  await chooseRows("spacious");
-  await waitFor(() => expect(region.textContent).toBe("Rows: Spacious"));
+  await chooseRows("compact");
+  await waitFor(() => expect(region.textContent).toBe("Rows: Compact"));
   await act(async () => { save.reject(new Error("SYNTHETIC_PRIVATE_SAVE_ERROR")); });
   expect(await screen.findByRole("alert")).toHaveProperty("textContent", "Ibis could not read or save your picker choices. They apply until Ibis restarts.");
-  expect(document.documentElement.dataset.density).toBe("spacious");
-  expect(updates).toEqual(["Rows: Spacious"]);
+  expect(document.documentElement.dataset.density).toBe("compact");
+  expect(updates).toEqual(["Rows: Compact"]);
   expect(region.textContent).not.toMatch(/saved/i);
   expect(document.body.textContent).not.toContain("SYNTHETIC_PRIVATE_SAVE_ERROR");
 });
@@ -88,43 +88,43 @@ test("a delayed preference read cannot restore or announce A after the user appl
   const { region, updates } = feedback();
   await act(async () => { await emit("preferences:changed"); });
   expect(reads).toBe(2);
-  await chooseRows("spacious");
-  await waitFor(() => expect(region.textContent).toBe("Rows: Spacious"));
+  await chooseRows("compact");
+  await waitFor(() => expect(region.textContent).toBe("Rows: Compact"));
   await act(async () => { old.resolve({ ...saved, density: "compact" }); });
-  expect(document.documentElement.dataset.density).toBe("spacious");
-  expect(region.textContent).toBe("Rows: Spacious");
-  expect(updates).toEqual(["Rows: Spacious"]);
+  expect(document.documentElement.dataset.density).toBe("compact");
+  expect(region.textContent).toBe("Rows: Compact");
+  expect(updates).toEqual(["Rows: Compact"]);
 });
 
 test("hide/reopen retires Rows feedback before an old save completes", async () => {
   const save = deferred<null>();
   await open({ set_picker_preferences: () => save.promise });
   const { region, updates } = feedback();
-  await chooseRows("spacious");
-  await waitFor(() => expect(region.textContent).toBe("Rows: Spacious"));
+  await chooseRows("compact");
+  await waitFor(() => expect(region.textContent).toBe("Rows: Compact"));
   await act(async () => { await emit("picker:hidden"); await emit("picker:shown"); });
   expect(region.textContent).toBe("");
   await act(async () => { save.resolve(null); });
   expect(screen.getByRole("status", { name: "View changes" })).toBe(region);
   expect(region.textContent).toBe("");
-  expect(updates).toEqual(["Rows: Spacious"]);
-  expect(document.documentElement.dataset.density).toBe("spacious");
+  expect(updates).toEqual(["Rows: Compact"]);
+  expect(document.documentElement.dataset.density).toBe("compact");
 });
 
 test("the same Rows label announces again after a silent background view change", async () => {
   await open();
   const { region, updates } = feedback();
-  await chooseRows("spacious");
-  await waitFor(() => expect(document.documentElement.dataset.density).toBe("spacious"));
+  await chooseRows("compact");
+  await waitFor(() => expect(document.documentElement.dataset.density).toBe("compact"));
   await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
-  expect(updates).toEqual(["Rows: Spacious"]);
+  expect(updates).toEqual(["Rows: Compact"]);
   // A fresh read applies the saved external view; it is not an old reply.
   await act(async () => { await emit("preferences:changed"); });
   expect(document.documentElement.dataset.density).toBe("comfortable");
-  expect(updates).toEqual(["Rows: Spacious"]);
-  await chooseRows("spacious");
-  await waitFor(() => expect(document.documentElement.dataset.density).toBe("spacious"));
+  expect(updates).toEqual(["Rows: Compact"]);
+  await chooseRows("compact");
+  await waitFor(() => expect(document.documentElement.dataset.density).toBe("compact"));
   await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
-  expect(region.textContent).toBe("Rows: Spacious");
-  expect(updates).toEqual(["Rows: Spacious", "Rows: Spacious"]);
+  expect(region.textContent).toBe("Rows: Compact");
+  expect(updates).toEqual(["Rows: Compact", "Rows: Compact"]);
 });

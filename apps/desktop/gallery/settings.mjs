@@ -11,7 +11,7 @@ for (const theme of ["light", "dark"]) for (const panel of ["general", "look", "
         Object.defineProperty(navigator, "platform", { value: "MacIntel" });
         // Persist across a real reload to exercise close/reopen without native I/O.
         const read = (key, fallback) => JSON.parse(sessionStorage.getItem(key) || "null") ?? fallback;
-        let preferences = read("preferences", { citation_style: null, density: "comfortable", larger_text: larger, show_paste_preview: true, search_mark: true, paste: true, appearance: "system", accent: "system" });
+        let preferences = read("preferences", { citation_style: null, density: "comfortable", larger_text: larger, paste: true, appearance: "system", accent: "system" });
         let shortcut = read("shortcut", { shortcut: "Alt+J", registered: true, error: null });
         let callbackId = 0, revision = 0, shortcutAttempts = 0;
         window.__TAURI_INTERNALS__ = {

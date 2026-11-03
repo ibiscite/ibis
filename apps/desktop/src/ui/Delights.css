@@ -4,17 +4,22 @@
 .ui-about-hero { display: flex; flex-direction: column; align-items: center; gap: var(--space-1); text-align: center; }
 .ui-about-name { margin: var(--space-1) 0 0; font-size: var(--type-title-size); line-height: var(--type-title-line); font-weight: var(--strong); }
 .ui-about-mission { margin: var(--space-1) 0 0; color: var(--text-secondary); font-size: var(--type-body-size); line-height: var(--type-body-line); }
-.ui-about-icon.ui-button[data-variant] { width: 6rem; height: 6rem; padding: 0; border-radius: var(--r-icon); background: transparent; }
-.ui-about-icon svg { display: block; width: 6rem; height: 6rem; }
+.ui-about-icon.ui-button[data-variant] { width: var(--mark-app); height: var(--mark-app); padding: 0; border-radius: var(--r-icon); background: transparent; }
+.ui-about-icon svg { display: block; width: var(--mark-app); height: var(--mark-app); }
 .ui-about-icon [data-icon="dark"], :root[data-appearance="dark"] .ui-about-icon [data-icon="light"] { display: none; }
 :root[data-appearance="dark"] .ui-about-icon [data-icon="dark"] { display: block; }
 @media (prefers-color-scheme: dark) {
   :root:not([data-appearance="light"]) .ui-about-icon [data-icon="light"] { display: none; }
   :root:not([data-appearance="light"]) .ui-about-icon [data-icon="dark"] { display: block; }
 }
-.ui-about-icon [data-blink] mask circle { transform-box: fill-box; transform-origin: center; animation: ibis-blink var(--dur) var(--ease); }
-@media (prefers-reduced-motion: reduce) { .ui-about-icon [data-blink] mask circle { animation: none; } }
-.ui-about-mark { flex: none; width: var(--icon); height: var(--icon); }
+/* The bird dips its beak on its tile, turning at the foot of its neck in the artwork's own units. */
+.ui-about-icon [data-dip] svg > g > g { transform-origin: 36px 80px; animation: ibis-peck var(--dur-panel) var(--ease); }
+@media (prefers-reduced-motion: reduce) { .ui-about-icon [data-dip] svg > g > g { animation: none; } }
+/* Every line takes the same two lines of room, so a new fact never moves the page. */
+.ui-about-line { box-sizing: content-box; margin: 0; max-inline-size: 34rem; min-block-size: calc(2 * var(--type-label-line)); padding: var(--row-spacing) var(--space-2); border-radius: var(--r-floor); text-wrap: balance; }
+.ui-about-line[data-highlighted] { background: var(--highlight); }
+.ui-about-line > [data-said] { display: block; animation: about-said var(--dur-panel) var(--ease); }
+@keyframes about-said { from { opacity: 0; } }
 .ui-about-links { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-1); }
 .ui-about-free { margin: 0; text-align: center; color: var(--text-secondary); font-size: var(--type-label-size); line-height: var(--type-label-line); }
 .ui-quiet-status { color: var(--text-secondary); font: 400 var(--type-label-size) / var(--type-label-line) var(--font); }

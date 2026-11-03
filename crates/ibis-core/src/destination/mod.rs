@@ -192,6 +192,13 @@ pub fn lookup(app: &AppId) -> Option<&'static App> {
     APPS.iter().find(|entry| entry.system == app.system && entry.id == id)
 }
 
+/// A word processor whose documents can hold live citations from a reference
+/// manager's plugin. Pasted text is not one, and Ibis cannot see a document, so
+/// only the app ID decides. Browsers stay out: Google Docs looks like any page.
+pub fn has_citation_plugins(app: &AppId) -> bool {
+    lookup(app).is_some_and(|app| matches!(app.name, "Microsoft Word" | "Pages" | "LibreOffice"))
+}
+
 /// Paste, or copy with the reason. Checks run from the user's own choice to
 /// what the target app is; the first that applies wins.
 pub fn decide(target: &Target, permission: PastePermission) -> Decision {

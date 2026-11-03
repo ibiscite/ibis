@@ -87,14 +87,19 @@ function Recovery({ library, onFind, onReload, setup, source }: {
 /** What the result list says when it has no rows: an empty library, no
  * matches and what to try next, a hint to type, first-run setup, or how to
  * recover a library that could not be opened. */
-export function EmptyState({ library, query, narrowed, onChooseLibrary, onClearSearch, onSearchAll, onReload, setup, source, peck }: {
+export function EmptyState({ library, query, narrowed, unfiltered = null, missing = false, onChooseLibrary, onClearSearch, onRemoveFilter, onSearchAll, onReload, setup, source, peck }: {
   peck?: boolean;
   library: LibraryStatus | null;
   query: string;
   /** Some Zotero libraries are left out of the search, so searching all may help. */
   narrowed: boolean;
+  /** The search without its filters, when filters may be why nothing matched. */
+  unfiltered?: string | null;
+  /** A pasted citation or identifier that no library holds. */
+  missing?: boolean;
   onChooseLibrary: () => void;
   onClearSearch: () => void;
+  onRemoveFilter?: (query: string) => void;
   onSearchAll: () => void;
   onReload: () => void;
   /** Shown while no library is chosen; focus moves into it when asked. */
@@ -118,16 +123,22 @@ export function EmptyState({ library, query, narrowed, onChooseLibrary, onClearS
       source,
     })}</div>;
   }
-  const title = query ? pickerText.noMatches : pickerText.typeToFind;
-  const description = query ? pickerText.noMatchesHint : library.sample ? setupText.sampleSearchHelp : pickerText.typeToFindHint;
+  // The one obstacle to name, with its one fix: the nearest thing to undo first.
+  const filtered = Boolean(query) && unfiltered !== null && Boolean(onRemoveFilter);
+  const scoped = Boolean(query) && !filtered && narrowed;
+  const absent = Boolean(query) && !filtered && !scoped && missing;
+  const title = filtered ? pickerText.filterObstacle : scoped ? pickerText.scopeObstacle : absent ? pickerText.notInLibraries : query ? pickerText.noMatches : pickerText.typeToFind;
+  const description = filtered ? pickerText.filterObstacleHint : scoped ? pickerText.scopeObstacleHint : absent ? pickerText.notInLibrariesHint
+    : query ? pickerText.noMatchesHint : library.sample ? setupText.sampleSearchHelp : pickerText.typeToFindHint;
   return (
     <div className="empty-state empty-template">
       {peck && !query ? <IbisMark className="opened-mark" size="welcome" motion="peck" /> : <Icon name="find" className="empty-icon" />}
       <p className="empty-title" dir="auto">{title}</p>
       <p className="empty-description">{description}</p>
       {query ? <div className="empty-actions">
-        <Button variant="primary" className="empty-primary" onPress={onClearSearch}>{pickerText.clearSearch}</Button>
-        {narrowed && <Button variant="secondary" className="empty-alternative" onPress={onSearchAll}>{pickerText.searchAllLibraries}</Button>}
+        {filtered ? <Button variant="primary" className="empty-primary" onPress={() => onRemoveFilter?.(unfiltered!)}>{pickerText.removeFilter}</Button>
+          : scoped ? <Button variant="primary" className="empty-primary" onPress={onSearchAll}>{pickerText.searchAllLibraries}</Button>
+          : <Button variant="primary" className="empty-primary" onPress={onClearSearch}>{pickerText.clearSearch}</Button>}
       </div> : null}
       {!query && <div className="empty-keys" aria-hidden="true">
         <KeyHint label={keyText.copy} keys={keysFor("copy")} />

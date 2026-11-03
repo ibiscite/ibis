@@ -14,7 +14,7 @@ final class Loaded: NSObject, WKNavigationDelegate {
 
 let dist = URL(fileURLWithPath: CommandLine.arguments[1]).standardizedFileURL
 let out = URL(fileURLWithPath: CommandLine.arguments[2])
-let accents = ["system", "blue", "ibis", "purple", "pink", "red", "orange", "yellow", "green", "graphite"]
+let accents = ["system", "ibis"]
 let screens = ["results", "settings-look"]
 // The Mac's appearance, then Ibis's own Appearance setting.
 let modes: [(mac: NSAppearance.Name, name: String, chosen: String)] = [

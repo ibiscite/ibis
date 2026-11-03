@@ -13,7 +13,7 @@ function scenario() {
   const send = (event: SessionEvent) => { [state, effects] = reduceSession(state, event); return effects; };
   const view = (change: Partial<SessionView> = {}): SessionEvent => ({ type: "view", session: state.session, interaction: state.interaction,
     view: { queryKey: sessionQueryKey(state), format: "pandoc", snapshotRevision: "synthetic", defaultChoice: choiceKey([a]),
-      chosen: [a], shown: prepared, previewVisible: true, searchPending: false, ready: true, saving: false, shouldAsk: false,
+      chosen: [a], shown: prepared, searchPending: false, ready: true, saving: false, shouldAsk: false,
       output: { opening: 0, choice: 0, delivery: 0 }, ...change } });
   const complete = (id: number, change: Partial<Extract<SessionEvent, { type: "copied" }>> = {}) => send({ type: "copied", id, session: 0, outcome: { text: prepared.text, warnings: [] },
     output: { opening: 0, choice: 0, delivery: 0 }, pinned: false, ...change });
@@ -291,18 +291,6 @@ test("delivery revocation keeps completed-write feedback without hiding or deliv
   expect(s.state.lastOutcome).toBe("Copied");
   expect(s.state.selected.size).toBe(0);
   expect(s.state.flights).toHaveLength(0);
-  expect(s.effects).toEqual([{ type: "consume", output }]);
-});
-
-test("a revoked write confirms in Notices when Preview is hidden, without retaining its delivery proof", () => {
-  const s = scenario();
-  s.send(s.view({ previewVisible: false }));
-  s.send({ type: "enter", choice: choiceKey([a]) });
-  const output = { opening: 0, choice: 0, delivery: 1 };
-  s.send(s.view({ output, previewVisible: false }));
-  s.complete(1, { output, outcome: { text: prepared.text, warnings: [], delivery: 17 } });
-  expect(s.state.shelfCopied).toBeNull();
-  expect(s.state.copyNotice).toEqual({ text: prepared.text, warnings: [] });
   expect(s.effects).toEqual([{ type: "consume", output }]);
 });
 

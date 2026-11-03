@@ -99,7 +99,6 @@ export const ResultRow = memo(function ResultRow({ record: r, index: i, active, 
   const compact = density === "compact";
   // A match in the container is always named: the row may shorten the container.
   const why = hiddenMatch(r.matched);
-  const itemType = density === "spacious" ? rowText.itemType(r.item_type) : null;
   return (
     <Option hoverAllowed={hoverAllowed}
       id={`result-${i}`}
@@ -148,10 +147,9 @@ export const ResultRow = memo(function ResultRow({ record: r, index: i, active, 
           </span>
           {library && <span className="result-library">{library}</span>}
         </span>
-        {itemType && <span className="result-type">{itemType}</span>}
         {why && <span className="result-why">{pickerText.matchedIn(why)}</span>}
-        {/* The type in words where the row does not show it; the tile's icon is decorative. */}
-        {!itemType && rowText.itemType(r.item_type) && <span className="visually-hidden">{rowText.itemType(r.item_type)}</span>}
+        {/* The type in words; the tile's icon is decorative. */}
+        {rowText.itemType(r.item_type) && <span className="visually-hidden">{rowText.itemType(r.item_type)}</span>}
         {added && <span className="visually-hidden">{pickerText.addedToCitation}</span>}
         {/* The key is searchable and spoken but not drawn: the shelf shows the citation (C4). */}
         <span className="result-key visually-hidden" dir="ltr">{r.key}</span>

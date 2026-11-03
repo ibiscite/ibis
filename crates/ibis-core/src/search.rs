@@ -666,6 +666,14 @@ fn tokens(query: &str) -> Vec<&str> {
     tokens
 }
 
+/// The search without its field hints and tags, to offer when nothing matched:
+/// `None` when it has none. Empty when hints are all it had.
+pub fn without_filters(query: &str) -> Option<String> {
+    let tokens = tokens(query);
+    let plain: Vec<_> = tokens.iter().copied().filter(|token| hint(token).is_none()).collect();
+    (plain.len() < tokens.len()).then(|| plain.join(" "))
+}
+
 /// A field hint at the start of `token`: `Some((None, …))` for years.
 fn hint(token: &str) -> Option<(Option<MatchField>, &str)> {
     if let Some(tag) = token.strip_prefix('#').filter(|tag| !tag.is_empty()) {
@@ -1360,6 +1368,33 @@ fn is_optional_mark(c: char) -> bool {
         | '\u{180F}'
         | '\u{FE00}'..='\u{FE0F}'
         | '\u{E0100}'..='\u{E01EF}')
+}
+
+#[cfg(test)]
+mod filter_tests {
+    use super::without_filters;
+
+    #[test]
+    fn a_search_without_its_filters_keeps_every_plain_word_in_order() {
+        assert_eq!(without_filters("smith #sleep 2020").as_deref(), Some("smith 2020"));
+        assert_eq!(
+            without_filters("y:2019-2022 memory a:garcia").as_deref(),
+            Some("memory")
+        );
+        assert_eq!(
+            without_filters("t:\"cell signaling\" review").as_deref(),
+            Some("review")
+        );
+    }
+
+    #[test]
+    fn hints_alone_leave_an_empty_search_and_a_plain_search_has_no_filter() {
+        assert_eq!(without_filters("#sleep y:2020").as_deref(), Some(""));
+        assert_eq!(without_filters("smith 2020"), None);
+        assert_eq!(without_filters("note: this"), None);
+        assert_eq!(without_filters("#"), None);
+        assert_eq!(without_filters(""), None);
+    }
 }
 
 #[cfg(test)]

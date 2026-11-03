@@ -67,44 +67,89 @@ pub(super) fn run(engine: &Engine, matches: &ArgMatches, mode: OutputMode) -> Re
         "library_check":library_check,
         "sources":sources,
     });
-    let mut text = format!("Ibis {} · contract {}\n", ibis_core::VERSION, data["contract_version"]);
-    text.push_str(&format!(
-        "Capabilities: {}\n",
-        Method::ALL.map(Method::as_str).join(", ")
-    ));
-    for (label, result) in [("Config", &data["config"]), ("Libraries", &data["library_check"])] {
-        text.push_str(&summary(label, result));
-    }
-    for source in sources {
-        let label = format!(
-            "Source {} ({})",
-            source["index"],
-            source["kind"].as_str().unwrap_or("loaded")
-        );
-        text.push_str(&summary(&label, &source));
-        if let Some(time) = source["freshness"]["updated_at_ms"].as_u64() {
-            text.push_str(&format!(
-                "  Freshness: {}; last successful read: {time} ms since Unix epoch.\n",
-                source["freshness"]["state"].as_str().unwrap_or("unknown")
-            ));
-        }
-    }
+    let text = report_text(&data, unix_ms());
     Ok(DispatchResult {
         data,
-        text: Some(text.trim_end_matches('\n').into()),
+        text: Some(text),
         exit_code: if findings { ExitCode::Findings } else { ExitCode::Ok },
         // The report already includes warnings; do not emit a second generic diagnostic.
         source_findings: false,
     })
 }
 
+fn unix_ms() -> u64 {
+    let since_epoch = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH);
+    since_epoch.map_or(0, |elapsed| u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX))
+}
+
+/// The report for a person: a plain verdict line per check, then one conclusion.
+/// `--json` keeps every field; only these words are free to change.
+fn report_text(data: &Value, now_ms: u64) -> String {
+    let engine = format!(
+        "{} engine methods, {} key outputs, {} styles",
+        data["capabilities"]["methods"].as_array().map_or(0, Vec::len),
+        data["capabilities"]["key_outputs"].as_array().map_or(0, Vec::len),
+        data["capabilities"]["csl_styles"].as_array().map_or(0, Vec::len),
+    );
+    let mut text = format!(
+        "Ibis {} · contract {} · {engine}\n\n",
+        ibis_core::VERSION,
+        data["contract_version"]
+    );
+    let mut checks = vec![("Settings".to_owned(), &data["config"])];
+    // Each library has its own line; this one only matters when there are none.
+    if data["library_check"]["status"] != "ok" {
+        checks.push(("Libraries".to_owned(), &data["library_check"]));
+    }
+    for source in data["sources"].as_array().into_iter().flatten() {
+        let kind = source["kind"].as_str().unwrap_or("source");
+        checks.push((format!("Library {} ({kind})", source["index"]), source));
+    }
+    for (label, result) in &checks {
+        text.push_str(&summary(label, result));
+        if let (Some("stale"), Some(time)) = (
+            result["freshness"]["state"].as_str(),
+            result["freshness"]["updated_at_ms"].as_u64(),
+        ) {
+            text.push_str(&format!(
+                "      Last good read: {}.\n",
+                age(now_ms.saturating_sub(time))
+            ));
+        }
+    }
+    let problems = checks
+        .iter()
+        .filter(|(_, result)| matches!(result["status"].as_str(), Some("findings" | "failed")))
+        .count();
+    text.push('\n');
+    text.push_str(&match problems {
+        0 => "All good.".to_owned(),
+        1 => "1 thing to look at.".to_owned(),
+        count => format!("{count} things to look at."),
+    });
+    text
+}
+
 fn summary(label: &str, result: &Value) -> String {
-    format!(
-        "{label}: {} [{}] {}\n",
-        result["status"].as_str().unwrap_or("failed"),
-        result["code"].as_str().unwrap_or("internal"),
-        result["message"].as_str().unwrap_or("Check failed.")
-    )
+    let message = result["message"].as_str().unwrap_or("Check failed.");
+    let code = result["code"].as_str().unwrap_or("internal");
+    match result["status"].as_str() {
+        Some("ok") => format!("ok    {label}: {message}\n"),
+        Some("findings") => format!("warn  {label}: {message} [{code}]\n"),
+        Some("not-checked") => format!("skip  {label}: {message}\n"),
+        _ => format!("fail  {label}: {message} [{code}]\n"),
+    }
+}
+
+fn age(elapsed_ms: u64) -> String {
+    let minutes = elapsed_ms / 60_000;
+    let (count, unit) = match minutes {
+        0 => return "less than a minute ago".to_owned(),
+        1..60 => (minutes, "minute"),
+        60..1440 => (minutes / 60, "hour"),
+        _ => (minutes / 1440, "day"),
+    };
+    format!("{count} {unit}{} ago", if count == 1 { "" } else { "s" })
 }
 
 fn check(status: &str, code: &str, message: &str) -> Value {
@@ -294,5 +339,78 @@ mod tests {
         assert_eq!(source["code"], "refresh-failed");
         assert_eq!(source["freshness"], json!({"state":"stale", "updated_at_ms":123}));
         assert!(summary("Source 1", &source).contains("last successful snapshot"));
+    }
+
+    fn report(sources: Vec<Value>) -> Value {
+        json!({
+            "contract_version": 1,
+            "capabilities": {"methods": ["search", "cite"], "key_outputs": [{}], "csl_styles": [{}, {}, {}]},
+            "config": check("not-checked", "config-not-requested", "Add --config to check settings."),
+            "library_check": check("ok", "sources-reported", "Each selected source has its own result below."),
+            "sources": sources,
+        })
+    }
+
+    fn source(status: &str, code: &str, freshness: Value) -> Value {
+        let mut source = check(status, code, "The fixed message.");
+        source["kind"] = json!("file");
+        source["index"] = json!(1);
+        source["freshness"] = freshness;
+        source
+    }
+
+    #[test]
+    fn a_healthy_report_ends_in_all_good_and_a_skipped_check_is_not_a_problem() {
+        let current = json!({"state":"current", "updated_at_ms":5});
+        let text = report_text(&report(vec![source("ok", "source-ok", current)]), 10);
+        assert!(text.contains("2 engine methods, 1 key outputs, 3 styles"), "{text}");
+        assert!(text.contains("ok    Library 1 (file): The fixed message.\n"), "{text}");
+        assert!(
+            text.contains("skip  Settings: Add --config to check settings.\n"),
+            "{text}"
+        );
+        assert!(!text.contains("Libraries:"), "{text}");
+        assert!(text.ends_with("All good."), "{text}");
+        // A current source was read just now, so no raw time reaches a person.
+        assert!(!text.contains("Last good read"), "{text}");
+        assert!(!text.contains("epoch"), "{text}");
+    }
+
+    #[test]
+    fn problems_are_counted_named_by_code_and_old_copies_say_their_age() {
+        let stale = json!({"state":"stale", "updated_at_ms":0});
+        let unknown = json!({"state":"unknown", "updated_at_ms":null});
+        let text = report_text(
+            &report(vec![
+                source("findings", "refresh-failed", stale),
+                source("failed", "library-missing", unknown),
+            ]),
+            3 * 3_600_000,
+        );
+        assert!(
+            text.contains("warn  Library 1 (file): The fixed message. [refresh-failed]\n"),
+            "{text}"
+        );
+        assert!(text.contains("      Last good read: 3 hours ago.\n"), "{text}");
+        assert!(
+            text.contains("fail  Library 1 (file): The fixed message. [library-missing]\n"),
+            "{text}"
+        );
+        assert!(text.ends_with("2 things to look at."), "{text}");
+    }
+
+    #[test]
+    fn an_age_reads_like_speech() {
+        for (elapsed_ms, expected) in [
+            (0, "less than a minute ago"),
+            (59_999, "less than a minute ago"),
+            (60_000, "1 minute ago"),
+            (59 * 60_000, "59 minutes ago"),
+            (3_600_000, "1 hour ago"),
+            (47 * 3_600_000, "1 day ago"),
+            (72 * 3_600_000, "3 days ago"),
+        ] {
+            assert_eq!(age(elapsed_ms), expected);
+        }
     }
 }

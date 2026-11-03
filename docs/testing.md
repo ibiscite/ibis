@@ -24,6 +24,9 @@ Windows qualification runs on GitHub runners.
   synthetic inputs. Desktop Rust tests run separately from the default
   workspace tests. These establish the asserted contracts and simulated
   decisions; native permission, focus and insertion still need a desktop.
+- **Engine boundary:** `crates/ibis-engine/tests/engine_boundary.rs` pins which
+  crate may use which, and fails when a front end calls a lower crate in a new
+  place (decision 0028). #1260 empties its list of remaining direct calls.
 - **CLI/MCP goldens:** [canonical cases](../fixtures/cases/README.md) and
   [formatted fixtures](../fixtures/formatted/README.md) check text, markup,
   notices, losses and refusals through the engine and CLI. MCP replays the

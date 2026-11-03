@@ -8,7 +8,7 @@ afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 const preview = (ticket: number, changes: RestorePreview["changes"] = [
   { setting: "citation_style", from: "apa", to: "ieee" },
   { setting: "library", from: null, to: "thesis.bib" },
-  { setting: "density", from: "spacious", to: "compact" },
+  { setting: "density", from: "comfortable", to: "compact" },
   { setting: "larger_text", from: null, to: "on" },
   { setting: "shortcut.windows", from: null, to: "Alt+Space" },
 ]): RestorePreview => ({ ticket, made_on: "windows", made_by: "0.2.8", changes, notes: ["library-not-found"] });
@@ -52,7 +52,7 @@ test("a restore shows every change in words first, then restores that preview an
   expect(items).toEqual([
     "Citation style: APA (7th edition) → IEEE reference entry",
     "Library: Default → thesis.bib",
-    "Rows: Spacious → Compact",
+    "Rows: Comfortable → Compact",
     "Larger text: Default → On",
     "Opening shortcut on Windows: Default → Alt+Space",
   ]);
