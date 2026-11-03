@@ -1,4 +1,4 @@
-//! Org, MyST, MultiMarkdown, AsciiDoc, Jupyter, Jekyll Scholar and Cite as You
+//! Org, MyST, MultiMarkdown, AsciiDoc, ConTeXt, Jupyter, Jekyll Scholar and Cite as You
 //! Write JSON render from the shared request, with typed losses (#1207).
 #![allow(clippy::unwrap_used)]
 use ibis_core::contract::*;
@@ -398,4 +398,90 @@ fn pandoc_reads_org_citations_as_the_same_picks() {
         ", pp. 12–14, emphasis added"
     );
     assert_eq!(text(&citations[1]["citationPrefix"]), "and/or cf.");
+}
+
+#[test]
+fn context_writes_its_cite_command_in_every_form_it_has() {
+    let form = |form| render(KeySyntax::Context, |r| r.form = form).text;
+    assert_eq!(form(CitationForm::Normal), "\\cite[Example2026]");
+    assert_eq!(
+        form(CitationForm::AuthorOnly),
+        "\\cite[alternative=author][Example2026]"
+    );
+    assert_eq!(form(CitationForm::YearOnly), "\\cite[alternative=year][Example2026]");
+    assert_eq!(form(CitationForm::Full), "\\cite[alternative=entry][Example2026]");
+    let mut case = seed();
+    case.request.output = OutputSpec::Key {
+        syntax: KeySyntax::Context,
+        command: None,
+    };
+    case.request.form = CitationForm::Narrative;
+    let refused = syntax::cite(&case.library, &case.request).unwrap();
+    assert_eq!(
+        refused.outcomes,
+        [ItemOutcome::Refused {
+            item: 0,
+            error: CitationError::UnsupportedForm
+        }]
+    );
+}
+
+#[test]
+fn context_carries_notes_for_one_reference_and_reports_them_for_several() {
+    let one = render(KeySyntax::Context, noted);
+    assert_eq!(
+        one.text,
+        "\\cite[lefttext={{see}},righttext={{pp. 12–14, emphasis added}}][Example2026]"
+    );
+    assert!(one.losses.is_empty());
+    // ConTeXt sorts the keys, and its texts follow the sorted order.
+    let several = render(KeySyntax::Context, |r| {
+        noted(r);
+        two(r);
+    });
+    assert_eq!(several.text, "\\cite[Example2026,Example2026]");
+    assert_eq!(
+        fields(&several),
+        [LossField::Locator, LossField::Prefix, LossField::Suffix].repeat(2)
+    );
+}
+
+#[test]
+fn context_keeps_its_special_characters_literal() {
+    let result = render(KeySyntax::Context, |r| {
+        r.items[0].suffix = plain(r"a & b % c # d $ e _ f ^ g ~ h { i } j \ k | l, m [n] = o");
+    });
+    assert_eq!(
+        result.text,
+        r"\cite[righttext={{a \& b \% c \# d \$ e \_ f \char94{} g \char126{} h \char123{} i \char125{} j \char92{} k \char124{} l, m [n] = o}}][Example2026]"
+    );
+}
+
+#[test]
+fn context_refuses_a_key_it_would_read_as_something_else() {
+    for key in ["a=b", "a[b", "a%b", "a#b"] {
+        let mut case = seed();
+        let LibraryObject::Record(record) = case.library.objects()[0].object.clone() else {
+            panic!("a record")
+        };
+        let mut record = record;
+        record.citation_keys[0].value = key.into();
+        let id = record.id.clone();
+        case.library = Snapshot::new(vec![LibraryObject::Record(record)]).unwrap();
+        case.request.items[0].item = id;
+        case.request.items[0].expected_cite = None;
+        case.request.output = OutputSpec::Key {
+            syntax: KeySyntax::Context,
+            command: None,
+        };
+        let refused = syntax::cite(&case.library, &case.request).unwrap();
+        assert_eq!(
+            refused.outcomes,
+            [ItemOutcome::Refused {
+                item: 0,
+                error: CitationError::InvalidKey
+            }],
+            "{key}"
+        );
+    }
 }

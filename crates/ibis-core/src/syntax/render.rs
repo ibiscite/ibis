@@ -19,6 +19,7 @@ pub(super) fn render(
         KeySyntax::Biblatex => flatten(&biblatex(caps.command.unwrap_or("autocite"), picks)),
         KeySyntax::Natbib => natbib(picks, requested_items),
         KeySyntax::Latex => flatten(&latex(picks)),
+        KeySyntax::Context => context(caps, picks),
         KeySyntax::Typst => flatten(&typst(picks)),
         KeySyntax::Keys => picks.iter().map(|pick| pick.key).collect::<Vec<_>>().join(", "),
         KeySyntax::CslJson => return csl_json(picks),
@@ -674,6 +675,44 @@ fn mmd(caps: &SyntaxCapabilities, picks: &[Pick<'_>]) -> String {
             }
         })
         .collect()
+}
+
+/// ConTeXt publications: `\\cite[alternative=year,righttext={p. 12}][key]`. The
+/// style puts its own separator before the right text.
+fn context(caps: &SyntaxCapabilities, picks: &[Pick<'_>]) -> String {
+    let first = &picks[0];
+    let alternative = match first.form {
+        CitationForm::AuthorOnly => Some("author"),
+        YearOnly => Some("year"),
+        CitationForm::Full => Some("entry"),
+        _ => None,
+    };
+    let (mut left, mut right) = (String::new(), String::new());
+    if let [pick] = picks {
+        left = plain(caps, &pick.item.prefix, false);
+        right = pick
+            .item
+            .locator
+            .as_ref()
+            .map(|locator| locator_text(locator, "–", " "))
+            .into_iter()
+            .chain(Some(plain(caps, &pick.item.suffix, true)).filter(|suffix| !suffix.is_empty()))
+            .collect::<Vec<_>>()
+            .join(", ");
+    }
+    let settings = alternative
+        .map(|alternative| format!("alternative={alternative}"))
+        .into_iter()
+        .chain((!left.is_empty()).then(|| format!("lefttext={{{{{}}}}}", context_escape(&left))))
+        .chain((!right.is_empty()).then(|| format!("righttext={{{{{}}}}}", context_escape(&right))))
+        .collect::<Vec<_>>()
+        .join(",");
+    let keys = keys(picks, ",");
+    if settings.is_empty() {
+        format!("\\cite[{keys}]")
+    } else {
+        format!("\\cite[{settings}][{keys}]")
+    }
 }
 
 /// asciidoctor-bibtex: `cite:[key(12), other(3)]`. Only pages are supported.

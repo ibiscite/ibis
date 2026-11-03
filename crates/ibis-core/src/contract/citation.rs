@@ -155,6 +155,7 @@ pub enum KeySyntax {
     Biblatex,
     Natbib,
     Latex,
+    Context,
     Typst,
     OrgCite,
     Myst,
@@ -169,11 +170,12 @@ pub enum KeySyntax {
 }
 
 impl KeySyntax {
-    pub const ALL: [Self; 15] = [
+    pub const ALL: [Self; 16] = [
         Self::Pandoc,
         Self::Biblatex,
         Self::Natbib,
         Self::Latex,
+        Self::Context,
         Self::Typst,
         Self::OrgCite,
         Self::Myst,

@@ -507,7 +507,7 @@ fn prefix_support_matches_every_supported_output_and_form() {
             let expected = match (caps.syntax, form) {
                 (KeySyntax::Pandoc, CitationForm::Narrative) | (KeySyntax::Latex | KeySyntax::Typst, _) => Flattened,
                 (KeySyntax::Natbib, CitationForm::Narrative | CitationForm::AuthorOnly) => Flattened,
-                (KeySyntax::Natbib, _) => SingleItem,
+                (KeySyntax::Natbib | KeySyntax::Context, _) => SingleItem,
                 (
                     KeySyntax::Keys
                     | KeySyntax::CslJson
@@ -1337,6 +1337,18 @@ proptest! {
                         let suffix = if caps.escaping == Escaping::Pandoc && !note.trim().is_empty() { suffix.strip_prefix(",").unwrap_or(&suffix).trim_start().strip_prefix("{}").unwrap() } else { &suffix };
                         prop_assert_eq!(suffix.split_whitespace().collect::<Vec<_>>().join(" "), expected, "{:?}: {}", caps, result.text);
                     }
+                },
+                Escaping::Context => {
+                    let (settings, keys) = result.text.rsplit_once("][").unwrap_or(("", result.text.strip_prefix("\\cite[").unwrap()));
+                    prop_assert_eq!(keys.strip_suffix(']'), Some(key.as_str()), "{}", result.text);
+                    // Every special is written as an escape, so nothing can end the setting.
+                    let mut rest = settings.to_owned();
+                    for escape in ["\\&", "\\%", "\\#", "\\$", "\\_", "\\char92{}", "\\char94{}", "\\char123{}", "\\char124{}", "\\char125{}", "\\char126{}"] {
+                        rest = rest.replace(escape, "");
+                    }
+                    let rest = rest.replacen("\\cite", "", 1);
+                    prop_assert!(!rest.contains(['\\', '&', '%', '#', '$', '_', '^', '~', '|']), "{}", result.text);
+                    prop_assert_eq!(rest.matches('{').count(), rest.matches('}').count(), "{}", result.text);
                 },
                 _ => {},
             }

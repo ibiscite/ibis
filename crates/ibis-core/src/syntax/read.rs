@@ -37,6 +37,10 @@ fn select<'a>(text: &'a str, work: &mut Work<'_>) -> Option<Citation<'a>> {
     if let Some(read) = json(text, work) {
         return Some(read);
     }
+    // ConTeXt's `\\cite[keys]` reads as a LaTeX `\\cite` with notes and no keys.
+    if let Some(read) = context(text, work) {
+        return Some(read);
+    }
     for caps in &CAPABILITIES {
         if !work.spend(1) {
             return None;
@@ -58,7 +62,8 @@ fn select<'a>(text: &'a str, work: &mut Work<'_>) -> Option<Citation<'a>> {
             KeySyntax::AsciiDoc => asciidoc(text, work),
             KeySyntax::Jupyter => html(text, work),
             KeySyntax::JekyllScholar => jekyll(text, work),
-            KeySyntax::Pandoc
+            KeySyntax::Context
+            | KeySyntax::Pandoc
             | KeySyntax::MultiMarkdown
             | KeySyntax::Keys
             | KeySyntax::ScannableCite
@@ -110,6 +115,23 @@ fn tex<'a>(text: &'a str, command: &str, multi: bool, work: &mut Work<'_>) -> Op
     }
     // Even a damaged optional argument is consumed once, keeping scanning linear.
     (rest.len() < text.len() - command.len() - 1).then(|| explicit(keys, rest))
+}
+
+/// `\\cite[settings][keys]` or `\\cite[keys]`: the last bracket holds the keys.
+fn context<'a>(text: &'a str, work: &mut Work<'_>) -> Option<Citation<'a>> {
+    let mut rest = text.strip_prefix("\\cite[")?;
+    let (mut body, after) = group(rest, '[', ']', false, work);
+    rest = after;
+    if let Some(next) = rest.strip_prefix('[') {
+        (body, rest) = group(next, '[', ']', false, work);
+    }
+    // `\\cite[see]{key}` is LaTeX: its bracket holds a note.
+    if work.trim_start(rest).starts_with('{') || !work.spend(body.len()) {
+        return None;
+    }
+    // A single bracket of settings names no key.
+    let keys = (!body.contains('=')).then(|| comma_keys(body)).into_iter().flatten();
+    Some(explicit(keys, rest))
 }
 
 fn typst<'a>(text: &'a str, work: &mut Work<'_>) -> Option<Citation<'a>> {
