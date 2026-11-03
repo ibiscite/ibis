@@ -4,14 +4,16 @@ on:
   push:
     branches: [main]
   pull_request:
+  merge_group:
   workflow_dispatch:
 
 # On a pull request, a newer push cancels the run in progress. On main, a run
 # that has started always finishes, so its caches are saved and its evidence is
 # collected; GitHub keeps only the newest waiting push and replaces older ones
-# before they start, so a burst of merges never runs every commit.
+# before they start, so a burst of merges never runs every commit. Each merge
+# queue entry has its own ref and group, and is never cancelled.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
@@ -170,7 +172,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          fetch-depth: 0 # The identity guard reads the pull request's commit range.
+          fetch-depth: 0 # The identity guard reads the pull request range or the queue candidate.
 
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0

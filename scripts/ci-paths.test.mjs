@@ -147,6 +147,8 @@ test("main and merge queue always validate the complete app", () => {
   assert.ok(push, "CI runs on pushes");
   assert.match(push, /branches: \[main\]/);
   assert.doesNotMatch(push, /\bpaths(?:-ignore)?:/, "main pushes must not filter out Markdown or other paths");
+  assert.match(workflow, /^  merge_group:\n  workflow_dispatch:\n/m, "merge queue runs have no path filter");
+  assert.match(workflow, /^concurrency:\n  group: ci-\$\{\{ github\.event_name \}\}-\$\{\{ github\.ref \}\}\n  cancel-in-progress: \$\{\{ github\.event_name == 'pull_request' \}\}\n/m, "only pull request runs are cancelled");
 });
 
 test("the CLI emits only fixed decisions for valid, missing and malformed metadata", (t) => {
@@ -246,6 +248,8 @@ test("CI result accepts only deliberate skips and rejects failures, cancellation
   check({ NATIVE: "false", CORE: "false", ...skipped }, 1); // The interface always reaches WebKit.
   check({ CORE: "false", TEST: "skipped" }, 0); // Changes only inside the app.
   check({ EVENT: "push", BASE: "" }, 0);
+  check({ EVENT: "merge_group", BASE: "" }, 0); // A queue run has no base_ref and runs everything.
+  check({ EVENT: "merge_group", BASE: "", CORE: "false", TEST: "skipped" }, 1);
   check({ BASE: "feature" }, 1);
   for (const value of ["", "unknown"]) for (const name of ["WEB", "INTERFACE", "NATIVE", "CORE"]) check({ [name]: value }, 1);
   check({ NATIVE: "false" }, 1); // The crates never run without the app.

@@ -34,7 +34,7 @@ function eventInput() {
 }
 
 export function checkAgentIdentities(event = eventInput()) {
-  if (process.env.GITHUB_EVENT_NAME === "pull_request" && !event?.pull_request) fail("the intended event range is missing.");
+  if (process.env.GITHUB_EVENT_NAME === "pull_request" && !event?.pull_request || process.env.GITHUB_EVENT_NAME === "merge_group" && !event?.merge_group) fail("the intended event range is missing.");
   if (git(["rev-parse", "--is-shallow-repository"]) !== "false") fail("full history is required; shallow inputs cannot establish the intended range.");
   const head = git(["rev-parse", "--verify", "HEAD^{commit}"]);
   const verify = (sha) => {
@@ -43,7 +43,7 @@ export function checkAgentIdentities(event = eventInput()) {
     return sha;
   };
   if (process.env.GITHUB_SHA && verify(process.env.GITHUB_SHA) !== head) fail("the checkout does not match the event head.");
-  let base, tip = head, expected;
+  let base, tip = head, expected, candidate = null;
   if (event?.pull_request) {
     const pr = event.pull_request;
     verify(pr.base?.sha); tip = verify(pr.head?.sha);
@@ -53,6 +53,10 @@ export function checkAgentIdentities(event = eventInput()) {
     if (parents.length !== 2 || parents[1] !== tip) fail("the checkout must be the matching PR merge candidate.");
     base = verify(parents[0]); // Current merge base can be newer than the event base.
     git(["merge-base", "--is-ancestor", pr.base.sha, base]);
+  } else if (event?.merge_group) {
+    base = verify(event.merge_group.base_sha); tip = verify(event.merge_group.head_sha);
+    if (tip !== head) fail("the checkout must match the merge-group candidate.");
+    candidate = head; // Automated candidate metadata matters even without an AI trailer.
   } else if (!event) {
     base = git(["merge-base", "origin/main", head]);
   }
@@ -69,7 +73,7 @@ export function checkAgentIdentities(event = eventInput()) {
     if (parts.length !== 5) fail("commit metadata is malformed.");
     const [author, authorEmail, committer, committerEmail, body] = parts;
     const message = body.replace(/\r?\n[ \t]+/g, " "); // Git trailers can fold onto continuation lines.
-    if (!assisted.test(message) && !/^(?:Codex|Claude|ChatGPT|GitHub Copilot)\b/i.test(author)) continue;
+    if (commit !== candidate && !assisted.test(message) && !/^(?:Codex|Claude|ChatGPT|GitHub Copilot)\b/i.test(author)) continue;
     const identities = [["author", author, authorEmail], ["committer", committer, committerEmail]];
     for (const match of message.matchAll(/^(Signed-off-by|Co-authored-by)[ \t]*:[ \t]*([^\r\n]*)/gim)) {
       const identity = match[2].match(/^(.*?)\s*<([^<>]*)>\s*$/);
