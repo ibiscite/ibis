@@ -174,6 +174,19 @@ test("a held Esc takes one step, not every layer down to hiding", async () => {
   expect(hides(calls)).toBe(0);
 });
 
+test("Esc works after a hide, when WebKitGTK calls the next press a repeat", async () => {
+  // The release of the Esc that hid the window reached another window.
+  const calls = backend();
+  render(<App />);
+  await waitFor(() => expect(document.activeElement).toBe(search()));
+  press("Escape");
+  await waitFor(() => expect(hides(calls)).toBe(1));
+  await reopen();
+  await waitFor(() => expect(document.activeElement).toBe(search()));
+  press("Escape", { repeat: true });
+  await waitFor(() => expect(hides(calls)).toBe(2));
+});
+
 test("the footer's Esc action steps back through the same stack", async () => {
   backend({ library_status: () => library, search: () => [result("picked", "Invented reference")] });
   render(<App />);
@@ -345,7 +358,7 @@ test("the inspector stays live: a command opens over it and Esc comes back throu
   fireEvent.change(page, { target: { value: "12" } });
   press("k", { ctrlKey: true });
   await screen.findByRole("menu", { name: /^More/ });
-  expect(screen.getByRole("textbox", { name: "Page" })).toBeTruthy();
+  expect(page.isConnected).toBe(true);
   press(",", { ctrlKey: true });
   await waitFor(() => expect(opened).toHaveBeenCalledOnce());
   expect(screen.queryByRole("menu")).toBeNull();

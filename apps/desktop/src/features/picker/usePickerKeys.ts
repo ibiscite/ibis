@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import type { PickerApi } from "../../App";
 import { focusChoices } from "../../ui/ChoiceList";
 import { closeNearestLayer, closeOverlays, composingKey, consumeKey, focusLost, overlayOpen, useKeyOwner } from "../../ui/layers";
@@ -77,8 +78,14 @@ export function usePickerKeys({
       copyChosen();
     }
   };
+  const lastShowing = useRef<number | null>(null);
   const keyDown = (e: KeyboardEvent) => {
     pointer.resetHover();
+    // A key that hides the window releases over another one, so WebKitGTK calls
+    // the next press of it a repeat. A repeat counts only within one showing.
+    const showing = session.getSnapshot().visibility;
+    const repeated = e.repeat && (lastShowing.current === null || lastShowing.current === showing);
+    lastShowing.current = showing;
     // A click on a blank part of the picker, or a control that went away,
     // leaves focus on nothing. The key goes home with its native effect, so
     // the text it types lands in Search. Focus is not moved before a key:
@@ -88,7 +95,7 @@ export function usePickerKeys({
     if (composingKey(e) || e.key === "Process") return;
     if (e.key === "Escape") {
       // One press, one step: holding Esc must not walk down to hiding.
-      if (e.repeat || closeNearestLayer(e)) consumeKey(e);
+      if (repeated || closeNearestLayer(e)) consumeKey(e);
       return;
     }
     const target = lost ? document.activeElement : e.target;
@@ -96,7 +103,7 @@ export function usePickerKeys({
     if (command === "settings" && !openSettings) return;
     if (command) {
       consumeKey(e);
-      if (!e.repeat) run(command, e);
+      if (!repeated) run(command, e);
     } else if (target === input.current) searchKey(e);
   };
   useKeyOwner({ keyDown, home: focusHome });

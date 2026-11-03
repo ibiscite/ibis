@@ -99,7 +99,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   const manualCheck = useRef(0);
   const checkRunning = useRef(false);
   /** The one update check a person asks for: the button, and the tray through this page. */
-  const checkNow = () => {
+  const checkNow = useCallback(() => {
     if (checkRunning.current) return;
     checkRunning.current = true;
     const operation = ++manualCheck.current;
@@ -108,7 +108,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     const finished = (result: CheckResult) => { if (live.current && operation === manualCheck.current) setCheckResult(result); };
     void api.checkForUpdates().then(finished, () => finished("failed"))
       .finally(() => { checkRunning.current = false; if (live.current) setChecking(false); });
-  };
+  }, [api]);
   const versionCopy = useRef(0);
   // Feedback belongs to this page presentation, independently of delight preferences.
   // biome-ignore lint/correctness/useExhaustiveDependencies: changing pages retires feedback and pending operations.
@@ -277,7 +277,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
       void automatic.then((stop) => stop()).catch(() => undefined);
       void close.then((stop) => stop()).catch(() => undefined);
     };
-  }, [api, queue, readProblem, clearShortcutUndo]);
+  }, [api, queue, readProblem, clearShortcutUndo, checkNow]);
   useEffect(() => {
     const scroller = pageRef.current;
     if (!focus || !scroller) return;
