@@ -11,10 +11,10 @@ const setup = (focus: boolean, empty?: EmptyLibraryChoices) => <LibrarySetup
 const loaded = testStates.find((state) => state.id === "no-results")!.library;
 const opening = { ...loaded, has_snapshot: false, references: 0 };
 
-function mount(query = "", empty = false) {
+function mount(query = "", empty = false, narrowed = false) {
   const choose = vi.fn(), clear = vi.fn(), searchAll = vi.fn();
   const { container } = render(<EmptyState library={empty ? { ...loaded, references: 0 } : loaded} query={query}
-    narrowed onChooseLibrary={choose} onClearSearch={clear} onSearchAll={searchAll} onReload={vi.fn()} setup={() => <p>Setup preserved</p>} />);
+    narrowed={narrowed} onChooseLibrary={choose} onClearSearch={clear} onSearchAll={searchAll} onReload={vi.fn()} setup={() => <p>Setup preserved</p>} />);
   return { container, choose, clear, searchAll };
 }
 
@@ -33,6 +33,48 @@ test.each(["", "unmatched"])("one empty-state template has a plain title, descri
     : "Search by title, author, year, citation key or DOI.");
   expect(container.querySelector(".empty-icon")?.getAttribute("aria-hidden")).toBe("true");
   expect(screen.queryByRole("heading")).toBeNull();
+});
+
+const obstacle = (props: Partial<Parameters<typeof EmptyState>[0]>) => {
+  const handlers = { onClearSearch: vi.fn(), onSearchAll: vi.fn(), onRemoveFilter: vi.fn() };
+  const { container } = render(<EmptyState library={loaded} query="smith #sleep" narrowed={false} onChooseLibrary={vi.fn()} onReload={vi.fn()} setup={() => null} {...handlers} {...props} />);
+  return { ...handlers, title: container.querySelector(".empty-title")?.textContent, buttons: screen.getAllByRole("button").map((button) => button.textContent) };
+};
+
+test("a filter is named, with one fix that keeps the plain words", () => {
+  const { title, buttons, onRemoveFilter } = obstacle({ unfiltered: "smith" });
+  expect(title).toBe("No matches with this filter");
+  expect(buttons).toEqual(["Remove Filter"]);
+  fireEvent.click(screen.getByRole("button", { name: "Remove Filter" }));
+  expect(onRemoveFilter).toHaveBeenCalledWith("smith");
+});
+
+test("a library scope is named, with one fix", () => {
+  const { title, buttons } = obstacle({ narrowed: true });
+  expect(title).toBe("Not in the libraries you're searching");
+  expect(buttons).toEqual(["Search All Zotero Libraries"]);
+});
+
+test("a pasted citation no library holds says so", () => {
+  const { title, buttons } = obstacle({ missing: true });
+  expect(title).toBe("Not in your libraries");
+  expect(buttons).toEqual(["Clear Search"]);
+});
+
+test("a filter goes first: it is the nearest thing to undo", () => {
+  expect(obstacle({ unfiltered: "smith", narrowed: true, missing: true }).title).toBe("No matches with this filter");
+});
+
+test("plain no matches, an empty library and a source failure stay different", () => {
+  expect(obstacle({}).title).toBe("No matching references");
+  cleanup();
+  const { container: empty } = render(<EmptyState library={{ ...loaded, references: 0 }} query="x" narrowed={false} onChooseLibrary={vi.fn()} onClearSearch={vi.fn()} onSearchAll={vi.fn()} onReload={vi.fn()} setup={() => <p>Add references</p>} />);
+  expect(empty.textContent).toContain("Add references");
+  expect(empty.textContent).not.toContain("No matching references");
+  cleanup();
+  const { container: failed } = render(<EmptyState library={{ ...loaded, state: "error", has_snapshot: false, problem: "unreadable" }} query="x" narrowed={false} onChooseLibrary={vi.fn()} onClearSearch={vi.fn()} onSearchAll={vi.fn()} onReload={vi.fn()} setup={() => null} />);
+  expect(failed.textContent).not.toContain("No matching references");
+  expect(screen.getByRole("alert")).toBeTruthy();
 });
 
 test("idle instructions show only the two decorative key hints without an action", () => {
@@ -129,24 +171,20 @@ test("a refresh with retained references never adds an opening screen above them
   expect(screen.queryByText(/Reading your library/)).toBeNull();
 });
 
-test("no matches retain clear-search and search-all actions", () => {
-  const { container, clear, searchAll } = mount("unmatched");
-  expect(container.querySelector(".empty-actions")).toBeTruthy();
+test("no matches offer the one fix for what is in the way", () => {
+  const { container, clear } = mount("unmatched");
+  expect(container.querySelectorAll(".empty-actions .ui-button")).toHaveLength(1);
   fireEvent.click(screen.getByRole("button", { name: "Clear Search" }));
-  fireEvent.click(screen.getByRole("button", { name: "Search All Zotero Libraries" }));
   expect(clear).toHaveBeenCalledOnce();
+  cleanup();
+  const { container: scoped, searchAll } = mount("unmatched", false, true);
+  expect(scoped.querySelectorAll('.empty-actions .ui-button[data-variant="primary"]')).toHaveLength(1);
+  fireEvent.click(screen.getByRole("button", { name: "Search All Zotero Libraries" }));
   expect(searchAll).toHaveBeenCalledOnce();
 });
 
-test("no matches keep one suggested clear-search action and a quieter search-all action", () => {
-  const { container } = mount("unmatched");
-  expect(container.querySelectorAll('.empty-actions .ui-button[data-variant="primary"]')).toHaveLength(1);
-  expect(container.querySelector('.empty-actions .ui-button[data-variant="primary"]')?.textContent).toBe("Clear Search");
-  expect(container.querySelector('.empty-alternative')?.textContent).toBe("Search All Zotero Libraries");
-});
-
-test.each(["Clear Search", "Search All Zotero Libraries"])("no matches: Enter and Space invoke only %s once", (label) => {
-  const { clear, searchAll } = mount("unmatched");
+test.each([["Clear Search", false], ["Search All Zotero Libraries", true]] as const)("no matches: Enter and Space invoke only %s once", (label, narrowed) => {
+  const { clear, searchAll } = mount("unmatched", false, narrowed);
   const handler = label === "Clear Search" ? clear : searchAll;
   const other = label === "Clear Search" ? searchAll : clear;
   const button = screen.getByRole("button", { name: label });

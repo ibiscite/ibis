@@ -206,7 +206,7 @@ Each component in `apps/desktop/src/ui/` wraps one React Aria component (decisio
 - **List scrolling**: a clicked row stays under the pointer and only that row consumes the click, even if results re-render first. Arrow keys take back ownership.
 - **Empty search** [C11]: a new library shows the hint ("Type to find a reference") centred in the middle area, with no keys. With history it shows **Cited here recently** (up to three, for the app Ibis came from) then **Recently added** (three), as ordinary rows navigated as one list.
 - **Typing keeps the picker still**: rows, headings, shelf and footer stay until the next reply; nothing blanks. A click on a row from an earlier query does nothing.
-- No matches: "No matching references", "Try a surname, year or fewer words.", then Clear Search. When nothing matches every word, closest matches show under **Closest matches** and keep a "Closest match" pill on the shelf.
+- No matches: "No matching references", "Try a surname, year or fewer words.", then Clear Search. When something else is the obstacle the screen names it, with its one fix: a filter (**Remove Filter** keeps the plain words), left-out Zotero libraries (**Search All Zotero Libraries**) or "Not in your libraries" for a pasted citation. A source failure and an empty library keep their own screens. When nothing matches every word, closest matches show under **Closest matches** and keep a "Closest match" pill on the shelf.
 
 ### Search rules
 
@@ -427,7 +427,6 @@ How each user-visible item planned before 1.0 in ROADMAP.md fits the components 
 
 | Feature (release) | Fits as |
 |---|---|
-| Zotero while closed (0.2) | Footer status with words and a dot; detail in the tooltip and More |
 | Output per app, self-finishing setup (0.3) | First run above |
 | Paste into the app you came from (0.3) | Enter pastes; the footer says "Paste into Word"; a refusal copies and says why |
 | Selected text as the search (0.3) | The picker opens with the selection in search, all selected; Enter pastes over the selection |

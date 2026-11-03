@@ -52,6 +52,9 @@ app's choice only when given `--app-libraries`.
 
 ## Commands
 
+`ibis` alone at a terminal prints a short start and exits 0. With its output piped,
+it stays a usage error (exit 2), so a script that forgets its command fails loudly.
+
 | Command | Does |
 | --- | --- |
 | `search WORDS [--limit N]` | Find references by author, title, year or key. An empty result is a success. |
