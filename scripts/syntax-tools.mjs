@@ -31,8 +31,27 @@ function cite(format, ...options) {
   return result.stdout.trim();
 }
 
-// Words only, for the checks below; nothing here is shown as HTML.
-const text = (xml) => xml.replace(/<style[^>]*>[^]*?<\/style>/g, "").replace(/<[^>]*>/g, "").replace(/[<>]/g, "").replaceAll("&amp;", "&").replaceAll("\u00a0", " ");
+// Words only, for the checks below; nothing here is shown as HTML. Everything
+// between angle brackets goes, and so does a stylesheet's content.
+function text(html) {
+  let out = "";
+  let tag = null;
+  let style = false;
+  for (const ch of html) {
+    if (tag !== null) {
+      if (ch !== ">") {
+        tag += ch;
+        continue;
+      }
+      const name = tag.trim().toLowerCase();
+      if (name.startsWith("style")) style = true;
+      else if (name.startsWith("/style")) style = false;
+      tag = null;
+    } else if (ch === "<") tag = "";
+    else if (!style && ch !== ">") out += ch;
+  }
+  return out.replaceAll("&amp;", "&").replaceAll("\u00a0", " ");
+}
 
 function context(work) {
   const citation = cite("context", "--locator", "p. 12", "--prefix", "see & so", "--suffix", "50%, a {b}");
