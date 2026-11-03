@@ -52,11 +52,11 @@ test("changes inside the app skip the crates, and anything the crates read does 
   assert.equal(pr([row("apps/desktop/src-tauri/src/moved.rs", "crates/ibis-core/src/moved.rs")]).core, true);
 });
 
-// A Rust string naming the app or website folder, whole or as the first piece of a path.
-const namesAppOrWebsite = (source) => /"(?:\.\.\/)*(?:apps|website)(?:\/[^"]*)?"|\/(?:apps|website)\//.test(source);
+// Any Rust string with the word "apps" or "website" in it, however a path is built.
+const namesAppOrWebsite = (source) => /"[^"\n]*(?<![\w-])(?:apps|website)(?![\w-])[^"\n]*"/.test(source);
 
 test("crate code reads the app or the website only where app changes still run it", () => {
-  for (const source of ['root.join("apps").join("desktop/src/App.tsx")', 'concat!("apps", "/desktop/x")', '"../../website/index.html"', 'Path::new("apps/desktop")', 'format!("{root}/apps/desktop")']) {
+  for (const source of ['root.join("apps").join("desktop/src/App.tsx")', 'concat!("apps", "/desktop/x")', '"../../website/index.html"', 'Path::new("apps/desktop")', 'format!("{root}/apps/desktop")', 'root.join("./apps")', 'PathBuf::from(format!("{root}/apps"))', '"website"']) {
     assert.ok(namesAppOrWebsite(source), source);
   }
   for (const source of ['"applications"', "// see `apps/desktop` for the parity tests", '"website-title"']) assert.ok(!namesAppOrWebsite(source), source);
@@ -67,6 +67,7 @@ test("crate code reads the app or the website only where app changes still run i
   // Each file allowed to name these folders, and why that is safe.
   const allowed = {
     "crates/ibis-core/src/locator.rs": 'the locator abbreviation "apps" (appendices), not a path',
+    "crates/ibis-core/tests/settings_backup.rs": "the settings file apps.json, not the repository's apps folder",
     "crates/ibis-engine/tests/engine_boundary.rs": "runs on app changes too, below",
   };
   assert.deepEqual(readers, Object.keys(allowed), "a new reader must run on app changes too, or widen `core` in ci-paths.mjs");
