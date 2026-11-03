@@ -7,7 +7,9 @@
 
 <p align="center"><strong>Your next citation, a shortcut away.</strong><br>Search your libraries and cite where you write.<br><a href="https://ibiscite.org">ibiscite.org</a></p>
 
-Ibis is free and open source. Searching and copying work offline after setup. Ibis adds no analytics and never changes your libraries. See [privacy and local storage](PRIVACY.md) for runtime data and optional update checks.
+Ibis is free and open source. Searching and copying work offline after setup.
+
+No account, no uploads, no telemetry; sources read without changes. [Privacy](PRIVACY.md) covers runtime data and optional update checks.
 
 ## What it does today
 
@@ -85,9 +87,9 @@ Ask questions and suggest ideas in [GitHub Discussions](https://github.com/ibisc
 `ibis` is the engine itself, for people, scripts and AI agents. On macOS and Linux, install it with `brew install ibiscite/tap/ibis`. Or download it from the [nightly](https://github.com/ibiscite/ibis/releases/tag/nightly) or a [release](https://github.com/ibiscite/ibis/releases/latest): `ibis-macOS-Apple-silicon.tar.gz`, `ibis-macOS-Intel.tar.gz`, `ibis-Windows.zip` or `ibis-Linux.tar.gz`. Unpack it and put `ibis` somewhere on your PATH. The macOS binary is not signed yet; if macOS refuses to run a downloaded copy, run `xattr -d com.apple.quarantine ibis` once.
 
 ```sh
-ibis search "garcia" --file refs.bib
-ibis cite accents2021 --file refs.bib --style apa
-ibis cite accents2021 protected2020 --file refs.bib --format autocite
+ibis search "lantern" --file refs.bib
+ibis cite vale2024lanterns --file refs.bib --style apa
+ibis cite vale2024lanterns fen2023clouds --file refs.bib --format autocite
 ```
 
 `ibis --help` lists every command. From a checkout, `cargo run -p ibis -- <command>` does the same, for example with the synthetic `fixtures/bibtex/fidelity.bib`:

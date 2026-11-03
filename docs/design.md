@@ -56,7 +56,7 @@ Anything not listed follows Apple. A new departure is added here in the same cha
 - **Labels** [D5]: `--text`, `--text-secondary`, `--text-tertiary` (placeholders and resting glyphs, never sentences), `--text-disabled`; Apple's label ladder at AppKit alphas.
 - **Fills**: Apple's fill ladder `--fill-1` … `--fill-5`. Control rest, hover and pressed are tertiary, secondary and system fill (`--fill-control` and its states); quiet hover and grouped content are quaternary.
 - **Separators**: one `--separator` for hairlines and dividers; a field edge that meets 3:1. Never a coloured border on a control. **One edge per shape**: a border, an inset shadow or an overlay's shadow ring, never two; a divider belongs to one side.
-- **Accent and selection** [D6]: every Accent choice resolves to three roles with light and dark values: `--accent` (controls, switches, focus), `--selected` with `--selected-text` (selected rows, menu highlight, focused citation; text 4.5:1, never brighter in dark than light) and accent text on surfaces (4.5:1, also the progress ring). Follow the Mac reads the same roles from the system: on macOS `--selected` is WebKit's selection background, deeper than the accent and following it; accent text is the accent moved toward black or white only as far as 4.5:1 needs. The default button is `--accent` with `--text-on-accent`, or the deeper `--selected` where white on the accent would miss 4.5:1 (Apple's blue and red stay as measured; a Mac accent goes deeper below 4:1); it keeps one text colour through hover and press. Hover and press darken toward black; Ibis scarlet in dark, with dark ink, lightens toward white. Secondary text on a selection stays at full `--selected-text`; weight and size carry the hierarchy.
+- **Accent and selection** [D6]: every Accent choice resolves to three roles with light and dark values: `--accent` (controls, switches, focus), `--selected` with `--selected-text` (selected rows, menu highlight; text 4.5:1, never brighter in dark than light) and accent text on surfaces (4.5:1, also the progress ring). Follow the Mac reads the same roles from the system: on macOS `--selected` is WebKit's selection background, deeper than the accent and following it; accent text is the accent moved toward black or white only as far as 4.5:1 needs. The default button is `--accent` with `--text-on-accent`, or the deeper `--selected` where white on the accent would miss 4.5:1 (Apple's blue and red stay as measured; a Mac accent goes deeper below 4:1); it keeps one text colour through hover and press. Hover and press darken toward black; Ibis scarlet in dark, with dark ink, lightens toward white. Secondary text on a selection stays at full `--selected-text`; weight and size carry the hierarchy.
 - **Focus** [D8]: `--ring`, solid accent text, only on `:focus-visible`; the system ink with Increase Contrast.
 - **Status** [D10]: `--status-ok`, `--status-warning`, `--status-error`, the Mac's system hues. A dot or symbol, optionally on a wash; status words stay in a label colour.
 - **The one Ibis red** [D9]: `--scarlet` is the flat mark colour for the search-bar mark, the shelf beak, the added tile and the logo; it is never recoloured for a material. `--on-scarlet` is what sits on a scarlet fill. On a selected row the added tile becomes `--selected-text` with a scarlet check.
@@ -68,7 +68,7 @@ Anything not listed follows Apple. A new departure is added here in the same cha
 
 - **Surfaces** [D4]: `--surface` (window), `--surface-grouped` (grouped content), `--surface-overlay` (every overlay), `--surface-field`; `--raised` only for cards and the segmented thumb. No other surface colours.
 - **Window glass** [C13]: on macOS one glass sheet for the whole panel (Liquid Glass, popover vibrancy fallback) under a surface veil, so colour shows through but never readable shapes. Never glass on glass or CSS blur posing as the desktop. Elsewhere an opaque surface.
-- **Readable overlays** [C13]: menus, the keys sheet, dialogs and the shelf's reference menu use the panel's glass, denser than the window, so content behind reads as soft colour only.
+- **Readable overlays** [C13]: menus, the keys sheet and dialogs use the panel's glass, denser than the window, so content behind reads as soft colour only.
 - **Elevation** [D11]: one overlay shadow for every menu; none on rows, chips or inside an overlay. In dark mode fills and hairlines separate layers first.
 - **Layers** [D15]: one z-order (`--z-*`); one overlay of each kind at a time; overlays keep `--inset` from the window edge and never leave it.
 - **Increase Contrast** uses the Mac's stronger set: stronger labels and marks, a solid ring, no scroll fades.
@@ -89,7 +89,7 @@ Anything not listed follows Apple. A new departure is added here in the same cha
 - **Two columns** [C3]: icons, the search glyph, the status dot and type tiles centre on the tile column (`--tile`); text (row titles, the query, status text, the shelf citation) starts on the title column. The trailing edge is where row text ends; the last header control, footer key cap and year column end there. Distances run from the logical start edge, also in RTL.
 - **Rows** [C4]: three densities (decision 0020): Compact (one line), Comfortable (two, the default), Spacious (three). Density changes rows only. Rows are 2 px apart in results.
 - **One steady window** [C10]: the picker keeps one size the whole time it is open, in every state; nothing measures content to choose a height and nothing animates a resize. Medium 720 × 480 is the default, minimum 480 × 360; Look › **Window size** offers Small, Medium, Large and **Compact** (a short bar that grows once to Medium on the first key, then never shrinks). A dragged size shows as Custom and is kept per display.
-- **Nothing clipped, one scroller**: no state is ever cut off; only the middle area or an open menu scrolls, never two at once. In a short frame with large text the header gaps and footer hint labels give way first.
+- **Nothing clipped, one scroller**: no state is ever cut off; only the middle area or an open menu scrolls, never two at once. The inspector is the one exception: a sidebar scrolls apart from the list beside it, as in Preview. In a short frame with large text the header gaps and footer hint labels give way first.
 - **Width classes** [C17]: below 28.75 em footer hints show keys only; at 60 em the preview sits beside the list, below it replaces it.
 
 ### Corners
@@ -154,7 +154,7 @@ Each component in `apps/desktop/src/ui/` wraps one React Aria component (decisio
 | --- | --- |
 | Button (`ui/Button`) | Primary (accent, one per view), secondary (`--fill-control`) and quiet (no fill at rest, shared hover). Rounded rectangle, `--r-control`; `--action-h` large, regular in Settings, small (`--control-small-h`) in the shelf and footer; trailing key caps. |
 | IconButton | Square, one size and glyph size per context, `--r-control`; rest transparent with secondary ink, toggled-on is the pressed fill with the same outline. Header ×, pin, sheet close, chip × and Settings search clear all use it. |
-| Pop-up button (`ui/PopupButton`, `ToolbarMenu`) | Shows its value and a chevron that never turns; Space, Enter or ↓ opens it; a pick or Esc returns to search. Named by what it sets ("Copy as Pandoc"). |
+| Pop-up button (`ui/PopupButton`, `ToolbarMenu`) | Shows its value and a chevron that never turns, nearer the edge than the label starts; Space, Enter or ↓ opens it; a pick or Esc returns to search. Named by what it sets ("Copy as Pandoc"). |
 | Menu (`ui/Menu`) | See **Menus**. |
 | Segmented | `--r-seg` thumb on a quiet track. |
 | Switch (`ui/Switch`) | The one on/off control: accent track when on, `--text-on-accent` thumb, size from `--switch-*`. |
@@ -162,7 +162,8 @@ Each component in `apps/desktop/src/ui/` wraps one React Aria component (decisio
 | Settings group and row (`ui/SettingsGroup`) | See **Settings**. |
 | Shortcut table (`ui/ShortcutTable`) | Small secondary heading, one card of rows, action at the start and keys at the end. |
 | Key caps (`ui/KeyCaps`) | See **Key caps**. |
-| Shelf (`ChipGroup`, `LocatorToken`, `CitationDetails`) | See **Shelf**. |
+| Shelf (`ChipGroup`, `LocatorToken`) | See **Shelf**. |
+| Inspector (`ui/Inspector`, `CitationDetails`) | See **Inspector**. |
 | Footer and status line (`LibraryStatus`, `SourceAction`) | See **Footer**. A status line is words, never a filled band. |
 | Toast and copied notice (`UndoNotice`, `CopyReceipt`) | Capsule toast, 8 s, pauses on hover and focus; see **Notices**. |
 | Progress (`ui/Progress`) | A task such as an update is a quiet card on the row grid: an accent ring around the Ibis mark in the tile column, the title and phase ("Updating Ibis", "Downloading · 3.1 of 7.4 MB") where titles start, the percent where years end. An unknown phase turns the ring; Reduce Motion shows it dashed and still. Opening a library keeps a thin bar. |
@@ -176,10 +177,11 @@ Each component in `apps/desktop/src/ui/` wraps one React Aria component (decisio
 
 ### Menus
 
-- [C9] In-window menus (format, library, More, a reference) use `--r-menu`, `--menu-pad`, AppKit's item height, separators and the overlay material.
+- [C9] In-window menus (format, library, More, the reference count, Form) use `--r-menu`, `--menu-pad`, AppKit's item height, separators and the overlay material.
 - A menu with any check keeps a leading check column for every row, so labels share one start and shortcuts line up at the end.
 - **Menu heading**: small bold secondary type that never reads as an item.
-- Sections keep one order: what it is about, what you can do, Ibis itself. Labels name the result; a quiet example of the output may trail.
+- Sections keep one order: what it is about, what you can do, Ibis itself. Labels name the result; a quiet example of the output may trail, on one line ending in an ellipsis.
+- An unavailable choice stays in the list, dimmed, with why in one quiet line under its label; it never sets the menu's width.
 - Menus over seven items get a filter field aligned with the labels. Header menus open `bottom end`, footer menus `top end`, flipping and shifting to stay within the window.
 - Menus size to their labels up to the viewport, then wrap; a scrolling menu ends on a whole row. Any pointer movement highlights an item.
 - **More holds actions, not preferences**: Show in Zotero or Open thesis.bib (⌘O); Rows › (Compact, Comfortable, Spacious); Keep Window Open; Show What Will Be Pasted; Keyboard Shortcuts (⌘/); Settings…; Quit Ibis. Each thing appears in one place.
@@ -188,7 +190,7 @@ Each component in `apps/desktop/src/ui/` wraps one React Aria component (decisio
 
 ### Search bar
 
-- Order: search glyph, query, clear ×, format pop-up, pin. The header is its tallest control plus 2S, with a divider below [C2].
+- Order: search glyph, query, clear ×, format pop-up, pin. The header is its tallest control plus 2S, with a divider below [C2]. Its controls take the field's height, so the gap above and beside them is S and their corners nest in the window's (`--r-row`).
 - Look › **Search icon**: Ibis mark (default), Magnifier or None. With None the query starts at the leading inset.
 - `#tag`, `y:2019-2022` and `a:name` plus a space become removable chips; Backspace in an empty box removes the last.
 - **Pin** [C6]: a neutral IconButton at the header's end; on, it shows the pressed fill, never the accent. Esc never unpins.
@@ -219,12 +221,26 @@ Built in `ibis-core` so every front end shares them (#1204).
 ### Shelf
 
 - **Shelf** [C7]: one line above the footer showing what Enter pastes: the beak at the tile column's end, the citation on the title column. Shown while there are results or a citation is being built; hidden on choice screens. Results never move when a reference is added.
-- Several references are segments of one citation; a pointed segment shows its hover fill and grows at its trailing end to make room for a small ×, `--key-gap` from the edge on every side. Nothing ever covers text. ← → select a segment; Delete removes it with Undo.
-- **One line, details on demand**: a segment opens an ordinary menu: the reference's name as a heading; **Name in brackets**, **Name in the sentence**, **Year only** with quiet examples; **Page…** editing in place; the source action; **Remove from Citation ⌫**.
+- Several references are segments of one citation; a pointed segment shows its hover fill and grows at its trailing end to make room for a small ×, `--key-gap` from the edge on every side. Nothing ever covers text. ← → select a segment; Delete removes it with Undo. Segment text starts exactly on the title column. A focused segment shows the ring every button has; the segment whose details are open keeps the pressed fill, as a toggled-on button does.
+- **One line, details on demand**: a segment opens the **Inspector**. The count is a pop-up of every reference with its page; a pick opens that reference there.
 - On copy a closing beak mirrors the opening one and a "Copied" capsule draws its check; Reduce Motion shows the end state. Each copy is confirmed once, in one place.
 - Pending output dims, then "Formatting…"; Enter waits. A failed format says why and offers another style; refusals stay visible until corrected.
 - **Show What Will Be Pasted** (⌘I, on by default): off hides only the line.
 - The shelf keeps the last citation through a running search and when the next search finds nothing.
+
+### Inspector
+
+[C19] One reference's details are never an overlay. They open in a panel beside the list, as Preview's sidebar does, so one surface holds them now and a source's pages later.
+
+- **Where**: in the middle row, on the trailing edge, `--inspector-width` wide, with the shelf running under both. The window stays its one steady size. Search, list, shelf and footer stay where they are and stay live. Below 36 rem wide the panel takes the list's place instead.
+- **Order**: the reference's name and ×; **Show as** and **Page** as label and control rows; a separator; the source action; **Remove from Citation ⌫**. Then the document: the full title and byline, then what will be pasted in full. These rows are the same in every state and nothing above the document changes height, so nothing moves while typing.
+- **Show as is a pop-up**, its value the current form, its menu the three forms with quiet examples. Only the engine says a form cannot be used, and only for the citation it was asked about; until it answers every form can be tried, so a refused citation can always be corrected here. Examples stay while the next arrive. Where no form is available, as in a reference-entry style, one quiet line replaces the pop-up.
+- **One place for a failure**: while the panel is open, a citation refusal, a failed copy and every warning show in words in the panel, beside the fields that fix them, and not above the list. The shelf's warning and Details controls step aside, so nothing there comes and goes while typing.
+- **Shelf and panel work together**: pressing a segment shows its details and focuses Page; pressing another moves them; pressing the same one closes them. A reference that leaves the shelf closes them.
+- **Page** shows None as its placeholder only until the caret is in it.
+- **Keys**: Tab moves through it in order, never trapped. Enter in Page does what the footer says. Esc closes the Show as menu, then the panel, and focus returns to the segment if it was inside; Search keeps focus if it was there. Removing the reference closes the panel and returns to Search.
+- **Warnings** use the same panel without a document.
+- **A wider panel**: at 34 rem the column keeps its width on the trailing edge and the document sits beside it, scrolling alone.
 
 ### Footer
 
@@ -256,7 +272,7 @@ Built in `ibis-core` so every front end shares them (#1204).
 | Click / double-click a row | Selects [C5] / pastes or copies what the shelf shows |
 | Enter, or the footer action | Pastes or copies what the shelf shows; success hides an unpinned window |
 | ⌘-click, the tile's +, ⇧Enter | Adds to the citation, in order |
-| Esc | Steps back one layer: menu or dialog, preview, then clears search and filters (the shelf stays), then hides |
+| Esc | Steps back one layer: menu or dialog, inspector, preview, then clears search and filters (the shelf stays), then hides |
 | ⌘O / ⇧⌘O | Opens the source / Choose Library… |
 | ⌘K | More |
 | ⌘/, or `?` outside a field | Keyboard shortcuts |
@@ -352,6 +368,8 @@ Never call the destination a password field. The right paste key is shown per sy
 
 **General.** **Open at Login** is off until turned on and read from the system, never `settings.json`. **Show in Menu Bar** is planned (on by default; off, opening Ibis from Applications opens Settings). The menu bar icon is a one-colour bird from `brand/` opening a menu: Open Ibis, the library line, Reset Window Position, Settings…, Check for Updates…, Quit Ibis.
 
+**Another computer.** Settings › General ends with **Back Up Settings** (Back Up…, a save dialog that starts in iCloud Drive on macOS, OneDrive on Windows, otherwise Documents) and **Restore Settings** (Restore…). A chosen backup is checked whole, then the row lists every change as "Setting: before → after" with notes (a bibliography not on this computer, a shortcut kept for this system), **Cancel** and the primary **Restore and Restart**. Nothing changes before that button; a bibliography shows by its file name only. Refusals say why in one line and change nothing ([moving to a new computer](moving-to-a-new-computer.md)).
+
 **About.** A centred hero with the actual app icon, the name, a **Version x** button that copies it (⌥ shows and copies the full build), and the mission line; then Updates (automatic checks, Check now), links and the free-software note. It fits 920 × 560 without scrolling. Automatic update offers never show or focus the picker; they wait for empty, idle input, and **Later** is the default for every key (decision 0019).
 
 ## Source checks and passage reuse (planned)
@@ -413,12 +431,13 @@ How each user-visible item planned before 1.0 in ROADMAP.md fits the components 
 | Output per app, self-finishing setup (0.3) | First run above |
 | Paste into the app you came from (0.3) | Enter pastes; the footer says "Paste into Word"; a refusal copies and says why |
 | Selected text as the search (0.3) | The picker opens with the selection in search, all selected; Enter pastes over the selection |
-| Citation forms, 29 locator types, prefix and suffix, reorder, any style, presets (0.4) | The shelf, the format pop-up and Settings › Citations |
+| Citation forms, 29 locator types, prefix and suffix, reorder, any style, presets (0.4) | The shelf, more label and control rows in the **Inspector**, the format pop-up and Settings › Citations |
 | `ibis://` links, Show in Zotero, Open PDF in Zotero (0.4) | A link opens the picker filled in; the Zotero actions sit in More and the row's menu |
 | Settings window (0.4, #776) | **Settings** |
 | Browse, "Selected in Zotero", passages (0.5) | Collections and tags as search filters; a reference's highlights unfold under its row and fill in its page |
 | Bibliography, "References used this session", project `.bib` (0.4) | More and the format pop-up; rows say "In refs.bib" or "Missing from refs.bib" |
 | `ibis check`, DOI lookup (0.6) | Command line first; DOI lookup as an opt-in no-results fallback |
+| A source's PDF, choosing the page there (#1252) | The **Inspector** widens with the picker, the one planned exception to [C10]; its document shows the pages beside the list, and the column stays put, its Page field following the page in view |
 
 ## How the design changes
 

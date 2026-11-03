@@ -397,6 +397,9 @@ pub struct CitationResult {
     pub language: Option<String>,
     /// Digest of the exact clipboard representations, including their presence.
     pub content_hash: Fingerprint,
+    /// The app this citation was made for, when a caller named one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub destination: Option<crate::destination::Destination>,
 }
 
 /// Borrowed canonical representations, available only after the copy gate succeeds.
@@ -458,6 +461,7 @@ impl CitationResult {
             warnings: vec![],
             language: None,
             content_hash,
+            destination: None,
         }
     }
 

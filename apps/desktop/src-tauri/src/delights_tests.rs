@@ -328,7 +328,7 @@ fn saved_delights_preserve_other_settings_and_old_files_remain_optional() {
     settings.flush_delights().unwrap();
     settings.update(|s| s.larger_text = Some(true)).unwrap();
     let saved = ibis_core::settings::load(&path).settings;
-    assert_eq!(saved.shortcut.as_deref(), Some("Alt+Space"));
+    assert_eq!(saved.shortcut.here(), Some("Alt+Space"));
     assert_eq!(saved.unknown["invented_future"], original["invented_future"]);
     assert!(saved.delights.is_some());
     assert!(

@@ -25,12 +25,23 @@ pub enum OutputQuestion {
 }
 
 /// The operating system an app ID belongs to.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum System {
     Macos,
     Windows,
     Linux,
+}
+
+impl System {
+    /// The system this build runs on; other Unix desktops count as Linux.
+    pub const HERE: Self = if cfg!(target_os = "macos") {
+        Self::Macos
+    } else if cfg!(windows) {
+        Self::Windows
+    } else {
+        Self::Linux
+    };
 }
 
 /// An app as the platform names it: a bundle ID on macOS, an executable name
@@ -56,6 +67,22 @@ impl AppId {
                 .to_ascii_lowercase(),
             System::Macos | System::Linux => self.id.to_ascii_lowercase(),
         }
+    }
+
+    /// The app an ID names when no platform layer captured it, as when a
+    /// person or an agent types one: the system whose table knows the ID,
+    /// `running` first, so a Windows executable reads the same on a Mac. An
+    /// ID no table knows stays on `running`.
+    pub fn named(id: &str, running: System) -> Self {
+        let on = |system| Self {
+            system,
+            id: id.to_owned(),
+        };
+        [running, System::Macos, System::Windows]
+            .into_iter()
+            .map(on)
+            .find(|app| lookup(app).is_some())
+            .unwrap_or_else(|| on(running))
     }
 }
 
@@ -203,6 +230,47 @@ pub fn output_for(app: Option<&AppId>, default: &OutputSpec, style: &str) -> Out
         },
         Some(OutputClass::Key(syntax)) => OutputSpec::Key { syntax, command: None },
         None => default.clone(),
+    }
+}
+
+/// What Ibis does for a named app: the output it uses and whether it pastes,
+/// with pasting on and permitted, as they are by default. A choice remembered
+/// in the app for one app is that person's and stays out of this answer.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct Destination {
+    pub app: AppId,
+    /// The app's name, when Ibis knows it.
+    pub name: Option<String>,
+    pub output: OutputSpec,
+    pub delivery: Decision,
+    /// The app keeps `output` until a person answers this question in Ibis.
+    pub output_question: Option<OutputQuestion>,
+}
+
+/// The destination for an app ID; `default` and `style` as in [`output_for`].
+pub fn destination(id: &str, running: System, default: &OutputSpec, style: &str) -> Destination {
+    let app = AppId::named(id, running);
+    let entry = lookup(&app);
+    let delivery = decide(
+        &Target {
+            system: app.system,
+            app: Some(app.clone()),
+            secure_field: false,
+            elevated: false,
+        },
+        PastePermission {
+            enabled: true,
+            granted: true,
+            app: None,
+        },
+    );
+    Destination {
+        output: output_for(Some(&app), default, style),
+        name: entry.map(|entry| entry.name.to_owned()),
+        output_question: entry.and_then(|entry| entry.output_question),
+        delivery,
+        app,
     }
 }
 

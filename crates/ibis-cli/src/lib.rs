@@ -1,6 +1,7 @@
 //! The CLI parses arguments and presents typed engine results; no source or citation rules live here.
 use clap::{Arg, ArgAction, ArgMatches, Command};
 use ibis_core::contract::*;
+use ibis_core::destination::{System, destination};
 use ibis_engine::{Cancellation, DispatchResult, Engine, Method, protocol, request::*};
 use serde_json::{Value, json};
 use std::{
@@ -11,6 +12,7 @@ mod app_libraries;
 mod completions;
 mod doctor;
 mod human;
+mod settings_backup;
 mod toggle;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -24,9 +26,9 @@ const OUTPUT: &str = "Output";
 const PER_KEY: &str = "Per key";
 const ROOT_HELP: &str = "\
 Examples:
-  ibis search \"garcia 2021\" --file refs.bib
-  ibis cite garcia2021 --file refs.bib --style apa
-  ibis search memory --zotero --json
+  ibis search lantern --file refs.bib
+  ibis cite vale2024lanterns --file refs.bib --style apa
+  ibis search lantern --zotero --json
 
 Add --json to any command for one versioned JSON envelope on stdout (serve and
 mcp speak their own protocols instead). Messages go to stderr. Exit codes: 0 ok, 1 findings, 2 usage, 3 bad input, 4 not found,
@@ -94,7 +96,7 @@ fn command() -> Command {
             Method::Libraries => subcommand.about("List loaded libraries and source warnings"),
             Method::Search => subcommand
                 .about("Search loaded records")
-                .after_help("Examples:\n  ibis search \"garcia 2021\" --file refs.bib\n  ibis search memory --file refs.bib --json | jq '.data.hits[].item.object.data.csl.title'")
+                .after_help("Examples:\n  ibis search lantern --file refs.bib\n  ibis search lantern --file refs.bib --json | jq '.data.hits[].item.object.data.csl.title'")
                 .arg(
                     Arg::new("query")
                         .value_name("WORDS")
@@ -128,10 +130,11 @@ fn command() -> Command {
                 .about("Render a citation through the shared engine")
                 .after_help(
                     "Options after a key apply to that key, as in the picker:\n  \
-                     ibis cite smith2020 --locator \"p. 12\" --prefix see jones2019 --omit-author\n\n\
+                     ibis cite vale2024lanterns --locator \"p. 12\" --prefix see fen2023clouds --omit-author\n\n\
                      Examples:\n  \
-                     ibis cite smith2020 --file refs.bib --format autocite\n  \
-                     ibis cite smith2020 --file refs.bib --style apa --bibliography\n  \
+                     ibis cite vale2024lanterns --file refs.bib --format autocite\n  \
+                     ibis cite vale2024lanterns --file refs.bib --style apa --bibliography\n  \
+                     ibis cite vale2024lanterns --file refs.bib --for-app com.microsoft.Word\n  \
                      ibis schema cite   # the CitationRequest that --request reads",
                 )
                 .arg(
@@ -150,6 +153,7 @@ fn command() -> Command {
                             "keys",
                             "format",
                             "style",
+                            "for-app",
                             "form",
                             "locale",
                             "bibliography",
@@ -184,6 +188,14 @@ fn command() -> Command {
                         .value_name("STYLE_ID")
                         .help_heading(OUTPUT)
                         .help("Format with a CSL style instead, such as apa; list them with: ibis styles"),
+                )
+                .arg(
+                    Arg::new("for-app")
+                        .long("for-app")
+                        .value_name("APP_ID")
+                        .value_parser(clap::builder::NonEmptyStringValueParser::new())
+                        .help_heading(OUTPUT)
+                        .help("Use the output Ibis uses for this app, a macOS bundle ID or Windows executable; --style and --format apply when it has none of its own"),
                 )
                 .arg(
                     Arg::new("bibliography")
@@ -340,6 +352,7 @@ fn command() -> Command {
                         .help("Check a chosen Ibis settings file without repairing it or loading its libraries"),
                 ),
         )
+        .subcommand(settings_backup::command())
         .subcommand(
             Command::new("completions")
                 .about("Generate shell completions from the CLI commands")
@@ -624,6 +637,9 @@ fn execute<R: BufRead, W: Write + Send>(
     if name == "doctor" {
         return Ok(Execution::Result(doctor::run(engine, matches, mode)?, None));
     }
+    if name == "settings" {
+        return Ok(Execution::Result(settings_backup::run(args)?, None));
+    }
     if name == "completions" {
         let shell = args
             .get_one::<String>("shell")
@@ -857,6 +873,13 @@ fn execute<R: BufRead, W: Write + Send>(
                     command: command.map(str::to_owned),
                 }
             };
+            let destination = args.get_one::<String>("for-app").map(|app| {
+                let style = args.get_one::<String>("style").map_or("apa", String::as_str);
+                destination(app, System::HERE, &output, style)
+            });
+            let output = destination
+                .as_ref()
+                .map_or(output, |destination| destination.output.clone());
             let form = if args.get_flag("bibliography") {
                 CitationForm::BibliographyOnly
             } else {
@@ -891,14 +914,17 @@ fn execute<R: BufRead, W: Write + Send>(
                         .collect()
                     })
                     .collect(),
-                output: args
-                    .get_one::<String>("style")
-                    .or_else(|| args.get_one::<String>("format"))
-                    .cloned()
-                    .unwrap_or_else(|| "pandoc".into()),
+                output: match &destination {
+                    Some(destination) => output_name(&destination.output),
+                    None => args
+                        .get_one::<String>("style")
+                        .or_else(|| args.get_one::<String>("format"))
+                        .cloned()
+                        .unwrap_or_else(|| "pandoc".into()),
+                },
                 form,
             };
-            let result = engine
+            let mut result = engine
                 .cite_keys(
                     &KeyCitationRequest {
                         keys: keys.clone(),
@@ -938,6 +964,7 @@ fn execute<R: BufRead, W: Write + Send>(
                             |key| key_failure(engine, key, error, libraries_open()),
                         ),
                 })?;
+            result.destination = destination;
             let result = engine.finalize(DispatchResult::citation(result, keys.len())?)?;
             return Ok(Execution::Result(result, Some(citing)));
         }
@@ -1006,16 +1033,19 @@ fn request_citing(params: &Value) -> Option<human::Citing> {
     Some(human::Citing {
         labels: vec![],
         flags: vec![],
-        output: match &request.output {
-            OutputSpec::Csl { style } => style.clone(),
-            OutputSpec::Key { syntax, .. } => serde_json::to_value(syntax)
-                .ok()
-                .and_then(|syntax| syntax.as_str().map(str::to_owned))
-                .unwrap_or_default(),
-            OutputSpec::Preset { .. } => "this output".into(),
-        },
+        output: output_name(&request.output),
         form: request.form,
     })
+}
+fn output_name(output: &OutputSpec) -> String {
+    match output {
+        OutputSpec::Csl { style } => style.clone(),
+        OutputSpec::Key { syntax, .. } => serde_json::to_value(syntax)
+            .ok()
+            .and_then(|syntax| syntax.as_str().map(str::to_owned))
+            .unwrap_or_default(),
+        OutputSpec::Preset { .. } => "this output".into(),
+    }
 }
 /// Keys with the options that follow each one, the way the picker attaches them.
 fn key_items(args: &ArgMatches) -> Result<Vec<KeyItem>, Failure> {

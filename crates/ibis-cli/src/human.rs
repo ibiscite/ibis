@@ -1,6 +1,7 @@
 //! Sentences and summaries for people; `--json` output never passes through here.
 use ibis_core::{
     contract::*,
+    destination::{CopyReason, Decision, Destination},
     model::{Name, strip_markup},
     syntax::MAX_CITATION_ITEMS,
 };
@@ -314,9 +315,38 @@ pub(super) fn citation_report(data: &Value, citing: &Citing, printed: bool) -> V
     {
         lines.push(format!("note: written in {}.", field(language)));
     }
+    if printed && let Ok(destination) = serde_json::from_value(parse("destination")) {
+        lines.push(destination_note(&destination));
+    }
     let mut seen = std::collections::BTreeSet::new();
     lines.retain(|line| seen.insert(line.clone()));
     lines
+}
+
+/// What the app would do with this citation; pasting is on and permitted here.
+fn destination_note(destination: &Destination) -> String {
+    let name = destination.name.as_deref().unwrap_or("this app");
+    let delivery = match destination.delivery {
+        Decision::Paste => format!("Ibis pastes into {name}"),
+        Decision::Copy(CopyReason::UnknownApp) => "Ibis does not know this app, so it asks before pasting".into(),
+        Decision::Copy(CopyReason::UnsupportedSystem) => {
+            "Ibis copies here, because it cannot paste on this system yet".into()
+        }
+        Decision::Copy(CopyReason::Terminal) => {
+            format!("Ibis copies for {name}, because a paste runs there as typed input")
+        }
+        Decision::Copy(CopyReason::RemoteDesktop | CopyReason::VirtualMachine) => {
+            format!("Ibis copies for {name}, because keystrokes reach another system there")
+        }
+        Decision::Copy(CopyReason::NonstandardShortcut) => {
+            format!("Ibis copies for {name}, because its paste key does something else")
+        }
+        Decision::Copy(_) => format!("Ibis copies for {name}"),
+    };
+    match destination.output_question {
+        Some(_) => format!("note: {delivery}; the app asks once which output {name} needs."),
+        None => format!("note: {delivery}."),
+    }
 }
 
 fn refusal(error: CitationError, label: &str, output: &str, form: CitationForm, flags: &str) -> String {

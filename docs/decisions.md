@@ -39,6 +39,11 @@ Ibis uses; the source stays the original, and an export that needs the original
 entry reads it from the source (2026-10-27: in-memory raw copies dropped, which
 nothing read and which doubled memory). Details: [architecture](architecture.md).
 
+2026-11-02 (maintainer): the engine is the soul of Ibis. It stands on its own and
+is developed in tandem with the app, with no compromises; the GUI is only a layer.
+It must work with AI agents, run on every operating system and be there for anyone
+to build on.
+
 ## 0004 Desktop shell (with 0012)
 
 Tauri 2 with a React interface, in one process: the picker window is hidden
@@ -640,6 +645,30 @@ barrier and preserve successful copy order rather than disk-completion order.
 Stable and Nightly stay isolated.
 This permission does not change MCP's exclusion of notes, annotations and private links.
 
+2026-11-02 (#1561): the settings file works on another computer. A bibliography
+inside the home folder is written as `~/…` with `/` between names, and read back
+under that computer's home; other paths stay as written. The opening shortcut is
+kept per system and always written as `{"macos": …, "windows": …}`, so a file
+shared live between systems never hands one system's shortcut to another; plain
+text written by hand is this system's. Builds before this one cannot read the
+per-system form or `~/…` and fall back as for any damaged file (0016, pre-1.0).
+Saves through a symlink replace the linked file and keep the link. Copies a sync
+service made (iCloud `settings 2.json`, OneDrive `settings-PC.json`, Dropbox,
+Google Drive, Syncthing) are named in the settings notice, never merged. A
+backup (`ibis_settings_backup: 1`, `made_on`, `made_by`, `settings`) holds the
+settings without the ones that belong to one computer: window places, quiet
+feedback and the update question, which each computer answers for itself because
+it allows network use (0008). Paste approvals live in `apps.json` and never
+travel, so a restored file cannot grant paste (0031). A restore checks the whole
+backup first, shows every change, is refused if the settings changed since that
+preview, and saves through the normal atomic write, so the replaced settings
+become `settings.json.bak`; damaged settings are kept as `.invalid-N` and
+replaced, settings from a newer Ibis never are. Placeholders a cloud folder has
+not downloaded are reported without reading them. The app restarts after a
+restore so every part starts from the same settings. `ibis settings import`
+writes only Ibis's own settings file; the command line stays read-only for
+libraries and sources (0033).
+
 ## 0031 What Ibis remembers per app
 
 The output chooser remembers a format picked for the captured app unless the
@@ -886,3 +915,8 @@ completed fixes, including the picker fade, logo and compact-window work,
 after required review, CI and budget gates pass; stable deployment keeps its
 one-click approval. The website demo is critical and stays functionally
 aligned with the released app; Settings #776 remains future polish.
+
+2026-11-02: One reference's details and, later, a source's PDF share one panel
+inside the picker, beside the list as in Preview's sidebar; never an anchored
+popover. The picker widens only to hold the PDF. Rules: design.md **Inspector**
+[C19] (maintainer).
