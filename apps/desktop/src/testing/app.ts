@@ -174,7 +174,7 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
     (cmd, args) => {
       calls.push(cmd);
       if (cmd === "preview_file_citation" && (args as PreviewRequest).intent.cancel) {
-        return Promise.reject({ code: "failed", message: "A newer citation preview replaced this request." });
+        return Promise.reject({ code: "cancelled" });
       }
       const handler = overrides[cmd] ?? defaults[cmd];
       if (!handler) throw new Error(`unexpected command ${cmd}`);

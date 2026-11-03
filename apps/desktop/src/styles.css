@@ -126,7 +126,7 @@ main > .search-bar, main > .shelf, main > footer { flex: none; }
 footer { display: flex; align-items: center; padding-block: 0; padding-inline: calc(var(--inset) + var(--row-pad)) var(--inset); font-size: var(--type-label-size); min-height: var(--footer-h); }
 /* The divider is outside the 24 px actions and their two 8 px gaps.
    Coarse targets and wrapped actions grow the band instead of clipping. */
-.library-bar { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); padding-block: var(--inset); }
+.library-bar { flex: 1; min-width: 0; align-items: center; gap: var(--space-2); padding-block: var(--inset); }
 /* One line that never pushes the keys aside: the age after the source and count
    is cut first, and the tooltip and More keep the whole detail. */
 /* The dot sits at the footer's edge with the text 12 px after it, as system
@@ -153,7 +153,7 @@ footer { display: flex; align-items: center; padding-block: 0; padding-inline: c
 
 
 /* More stays at the far end even when the footer wraps, so its menu opens inward. */
-.more { position: relative; margin-inline-start: auto; }
+.more { position: relative; }
 
 @media (prefers-contrast: more) {
 

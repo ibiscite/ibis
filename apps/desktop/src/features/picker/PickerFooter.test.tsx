@@ -18,6 +18,7 @@ function geometry(initialWidth = 720) {
   vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(function (this: HTMLElement) { return this.matches(".library-bar") ? available : 0; });
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
     const size = this.matches(".footer-status-size") ? 224 : this.matches(".footer-status-minimum") ? 44
+      : this.matches(".footer-label-minimum") ? 120
       : this.matches("button[aria-label='More']") ? sizes.more : this.matches("button") ? sizes.copy : 0;
     return new DOMRect(0, 0, size * sizes.scale, 24 * sizes.scale);
   });
@@ -27,7 +28,7 @@ function geometry(initialWidth = 720) {
   };
 }
 
-function footer(copy = vi.fn(), altHeld = false, label = "Copy 20 as Pandoc") {
+function footer(copy = vi.fn(), altHeld = false, label: string | null = "Copy 20 as Pandoc") {
   return <PickerFooter library={null} groupName={String} hints={{ enter: label, shiftEnter: "Add to citation", escape: "Hide" }}
     altHeld={altHeld} actions={{ copy, add: copy, escape: copy }} more={<button aria-label="More">More</button>} />;
 }
@@ -57,12 +58,12 @@ test("the short enlarged layout drops only hints and keeps status and More reach
   expect(copy.getAttribute("aria-keyshortcuts")).toBe("Enter");
 });
 
-test("the footer is status, More, Copy with no Shortcuts button at any width", () => {
+test("the footer is status, Copy, More with no Shortcuts button at any width", () => {
   const resize = geometry(); render(footer());
   const bar = document.querySelector(".library-bar")!;
   const more = screen.getByRole("button", { name: "More" });
   const copy = screen.getByRole("button", { name: "Copy 20 as Pandoc" });
-  expect(more.compareDocumentPosition(copy) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(copy.compareDocumentPosition(more) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(copy.getAttribute("data-variant")).toBe("primary");
   for (const width of [720, 440, 300, 900]) {
     resize(width);
@@ -80,7 +81,7 @@ test("status shortens first, then labels yield while Copy keeps its name, key an
   resize(440);
   expect(bar.hasAttribute("data-status-compact")).toBe(true);
   expect(bar.hasAttribute("data-hints-compact")).toBe(false);
-  resize(300);
+  resize(260);
   expect(bar.hasAttribute("data-hints-compact")).toBe(true);
   expect(action.getAttribute("aria-keyshortcuts")).toBe("Enter");
   expect(document.activeElement).toBe(action);
@@ -99,7 +100,8 @@ test("changing count, format and key-cap widths recomputes fit without losing fu
   view.rerender(footer(vi.fn(), false, "Copy 1000 as Chicago"));
   const bar = document.querySelector(".library-bar")!;
   expect(bar.hasAttribute("data-status-compact")).toBe(true);
-  expect(bar.hasAttribute("data-hints-compact")).toBe(true);
+  // A long label truncates; only the window's width folds labels to keys.
+  expect(bar.hasAttribute("data-hints-compact")).toBe(false);
   expect(status.getAttribute("title")).toBe(detail);
   expect(screen.getByRole("button", { name: "Copy 1000 as Chicago" }).getAttribute("aria-keyshortcuts")).toBe("Enter");
   expect(screen.getByRole("button", { name: "More" })).toBeTruthy();
@@ -107,6 +109,52 @@ test("changing count, format and key-cap widths recomputes fit without losing fu
   expect(bar.hasAttribute("data-status-compact")).toBe(false);
   expect(bar.hasAttribute("data-hints-compact")).toBe(false);
   expect(screen.queryByRole("button", { name: "Shortcuts" })).toBeNull();
+});
+
+test.each([
+  ["a short action", "Copy IEEE entry"],
+  ["a count", "Copy 2 IEEE entries"],
+  ["a long destination", "Paste into Claude · Chicago Manual of Style entry"],
+  ["no action", null],
+])("More keeps its place in the same element with %s", (_, label) => {
+  const resize = geometry(420);
+  const view = render(footer());
+  const bar = document.querySelector(".library-bar")!;
+  const more = screen.getByRole("button", { name: "More" });
+  const slot = more.closest(".more")!;
+  view.rerender(footer(vi.fn(), false, label));
+  // A label of any length can never fold More's own label and resize it.
+  resize(420, { copy: label ? 40 + label.length * 8 : 0 });
+  expect(screen.getByRole("button", { name: "More" })).toBe(more);
+  expect(bar.lastElementChild).toBe(slot);
+  expect(bar.hasAttribute("data-hints-compact")).toBe(false);
+  view.rerender(footer(vi.fn(), true, label));
+  expect(screen.getByRole("button", { name: "More" })).toBe(more);
+  expect(bar.lastElementChild).toBe(slot);
+});
+
+test("a truncated action still shortens the status first, by the width its name wants", () => {
+  const resize = geometry(600); render(footer());
+  const bar = document.querySelector(".library-bar")!;
+  const label = screen.getByRole("button", { name: "Copy 20 as Pandoc" }).querySelector(".key-hint-label")!;
+  Object.defineProperty(label, "scrollWidth", { value: 400 });
+  Object.defineProperty(label, "clientWidth", { value: 100 });
+  resize(600);
+  expect(bar.hasAttribute("data-status-compact")).toBe(true);
+  expect(bar.hasAttribute("data-hints-compact")).toBe(false);
+});
+
+test("the action column truncates its label and can never push More off the trailing column", () => {
+  const rule = (selector: string) => {
+    const at = footerStyles.indexOf(`${selector} {`);
+    expect(at).toBeGreaterThanOrEqual(0);
+    return footerStyles.slice(at, footerStyles.indexOf("}", at));
+  };
+  expect(rule(".library-bar")).toMatch(/display: grid/);
+  expect(rule(".library-bar")).toMatch(/grid-template-columns: [^;]*minmax\(0, auto\) auto/);
+  expect(rule(".library-bar > .more")).toMatch(/grid-column: 3/);
+  expect(rule(".library-bar .footer-action .key-hint-label")).toMatch(/text-overflow: ellipsis/);
+  expect(pickerStyles).not.toMatch(/\.more \{[^}]*margin-inline-start: auto/);
 });
 
 test.each(["More", "Copy 20 as Pandoc", "Search", "Pointer destination"])("folding preserves the current control's focus (%s)", (owner) => {

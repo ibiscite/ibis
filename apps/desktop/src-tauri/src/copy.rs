@@ -170,9 +170,7 @@ pub(crate) async fn preview_file_citation(
     library: State<'_, Mutex<Library>>,
     requests: State<'_, PreviewRequests>,
 ) -> Result<crate::library::engine_file::FilePreview, CommandError> {
-    let cancel = requests
-        .start(intent)
-        .ok_or_else(|| CommandError::from("A newer citation preview replaced this request."))?;
+    let cancel = requests.start(intent).ok_or(CommandError::Cancelled)?;
     let (file, generation) = {
         let library = library
             .lock()
@@ -191,11 +189,13 @@ pub(crate) async fn preview_file_citation(
     let result = tauri::async_runtime::spawn_blocking(move || file.preview(reservation, items, format, style))
         .await
         .map_err(|_| CommandError::from("The preview is unavailable. Try again."))?;
-    // A reload cancels previews it overtakes; that is waiting, not a failure.
+    // A reload cancels previews it overtakes, and the quiet check that follows
+    // each show retires Zotero while it reads. Both publish when they end, which
+    // asks again; that is waiting, not a failure.
     let overtaken = result.is_err()
-        && library
-            .lock()
-            .is_ok_and(|library| library.opening || library.source_generation != generation);
+        && library.lock().is_ok_and(|library| {
+            library.opening || library.checking || library.source_generation != generation
+        });
     if overtaken {
         Err(CommandError::LibraryLoading)
     } else {

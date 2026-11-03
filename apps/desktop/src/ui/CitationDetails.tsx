@@ -22,7 +22,7 @@ export function CitationDetails({ label, page, pageRef, choices, autoFocus = fal
     }}>
       {text.forms.map((option) => {
         const choice = typeof choices === "object" ? choices.forms.find((choice) => choice.form === option.value) : undefined;
-        const reason = choice?.reason ?? (!choice ? choices === "refused" ? "Correct Page or choose another output to prepare examples." : choices === "failed" ? "Examples are unavailable. Close and reopen the menu to try again." : "Preparing examples…" : null);
+        const reason = choice?.reason ?? (!choice ? choices === "refused" ? "Examples appear once this citation can be prepared." : choices === "failed" ? "Examples are unavailable. Close and reopen the menu to try again." : "Preparing examples…" : null);
         const description = `${descriptions}-${option.value}`;
         return <Radio key={option.value} className="citation-form" value={option.value} aria-label={option.label}
           isDisabled={Boolean(reason)} aria-describedby={description}>

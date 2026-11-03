@@ -87,6 +87,20 @@ fn replacing_or_invalidating_a_preview_cancels_its_engine_work() -> Result<(), B
 }
 
 #[test]
+fn a_cancelled_preview_says_so_instead_of_failing() -> Result<(), Box<dyn std::error::Error>> {
+    let file = FileLibrary::from_engine(Engine::new().map_err(|_| "engine")?);
+    let cancel = Cancellation::default();
+    let reservation = file.reserve_preview_with(cancel.clone());
+    cancel.cancel();
+    let error = file
+        .preview(reservation, Vec::new(), KeyFormat::Pandoc, Some(CitationStyle::Ieee))
+        .err()
+        .ok_or("cancelled preview ran")?;
+    assert_eq!(error, CommandError::Cancelled);
+    Ok(())
+}
+
+#[test]
 fn a_superseded_preview_stops_before_reading_its_page_and_form() -> Result<(), Box<dyn std::error::Error>> {
     let file = FileLibrary::from_engine(Engine::new().map_err(|_| "engine")?);
     let older = file.reserve_preview();
@@ -109,10 +123,7 @@ fn a_superseded_preview_stops_before_reading_its_page_and_form() -> Result<(), B
         )
         .err()
         .ok_or("obsolete preview ran")?;
-    assert_eq!(
-        error,
-        CommandError::from("A newer citation preview replaced this request.")
-    );
+    assert_eq!(error, CommandError::Cancelled);
     Ok(())
 }
 

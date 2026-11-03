@@ -1,6 +1,5 @@
 /* Shared library status controls use the footer's existing geometry and roles. */
 .library-status-controls { flex: 1; min-width: min(14rem, 100%); display: flex; align-items: center; gap: var(--space-1); }
-[data-status-compact] > .library-status-controls { min-width: calc(var(--tile) + var(--row-gap)); }
 /* The native button owns its visible status and a non-collapsing hit target. */
 .library-status-target { flex: 1; min-width: var(--control-h); position: relative; isolation: isolate; }
 /* The quiet button's padding sits in the footer's inset, so the dot stays on

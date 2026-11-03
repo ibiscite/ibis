@@ -1,7 +1,7 @@
 import { Icon } from "../../icons";
 import { IconButton } from "../../ui/IconButton";
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type RefObject } from "react";
-import { citationDetails, type SearchResult } from "../../api";
+import { citationDetails, isCancelled, type SearchResult } from "../../api";
 import type { FilePreview, ReferenceDetails } from "../../bindings";
 import type { FormattedCitation, StyleId } from "../../format/styles";
 import { copiesEntry, STYLE_NAMES } from "../../format/styles";
@@ -112,7 +112,7 @@ export function CitationShelf({ source, onOpenSource, announce, selected, highli
     let live = true;
     void citationDetails(previewReceipt.ticket, previewReceipt.content_hash, editedIndex).then(
       (value) => { if (live) setFormChoices({ receipt: previewReceipt, item: editedIndex, value }); },
-      () => { if (live) setFormChoices({ receipt: previewReceipt, item: editedIndex, value: "failed" }); },
+      (error) => { if (live && !isCancelled(error)) setFormChoices({ receipt: previewReceipt, item: editedIndex, value: "failed" }); },
     );
     return () => { live = false; };
   }, [detailsOpen, previewReceipt, editedIndex, presentation, panelPresentation]);

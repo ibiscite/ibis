@@ -158,6 +158,11 @@ export function isLibraryLoading(error: unknown): boolean {
   return typeof error === "object" && error !== null && (error as Partial<CommandError>).code === "library_loading";
 }
 
+/** Work stopped on purpose. It is never a failure and never reaches the person. */
+export function isCancelled(error: unknown): boolean {
+  return typeof error === "object" && error !== null && (error as Partial<CommandError>).code === "cancelled";
+}
+
 export function isSnapshotChanged(error: unknown): boolean {
   return typeof error === "object" && error !== null && (error as Partial<CommandError>).code === "snapshot_changed";
 }
