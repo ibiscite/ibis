@@ -251,16 +251,34 @@ pub(crate) fn copy_file_citation(
         if !file.prepared_for(&ticket, &request) {
             return Err(CommandError::SnapshotChanged);
         }
-        return file.copy(&ticket, &content_hash, |content| {
-            // The editor first: a request that has gone leaves the clipboard alone.
-            if !editor.answer(request.id, content.text) {
-                return Err("Your editor stopped waiting for this citation.".to_owned());
-            }
-            if request.clipboard {
-                write_plain_content(&app, content)?;
-            }
+        // The text leaves the commit barrier first; the editor is answered with no
+        // lock held, because ending a request takes these locks the other way round.
+        let mut text = None;
+        let copied = file.copy(&ticket, &content_hash, |content| {
+            text = Some((
+                content.text.to_owned(),
+                content.html.map(str::to_owned),
+                content.rtf.map(str::to_owned),
+            ));
             Ok(())
-        });
+        })?;
+        let (text, html, rtf) = text.ok_or(CommandError::SnapshotChanged)?;
+        if !editor.answer(request.id, &text) {
+            return Err("Your editor stopped waiting for this citation.".into());
+        }
+        // Only a request that was answered may leave its citation on the clipboard.
+        if request.clipboard {
+            write_plain_content(
+                &app,
+                ibis_core::contract::ClipboardContent {
+                    text: &text,
+                    html: html.as_deref(),
+                    rtf: rtf.as_deref(),
+                },
+            )
+            .map_err(CommandError::from)?;
+        }
+        return Ok(copied);
     }
     let mut delivery = None;
     let mut copied = file.copy(&ticket, &content_hash, |content| {
