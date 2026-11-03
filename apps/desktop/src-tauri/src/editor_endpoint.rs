@@ -259,13 +259,14 @@ fn listen<H: Host>(port: u16, token: String, host: Arc<H>) -> std::io::Result<Li
                     return;
                 }
                 let Ok(stream) = stream else { continue };
-                if !stream.peer_addr().is_ok_and(|peer| peer.ip().is_loopback())
-                    || open.fetch_add(1, Ordering::SeqCst) >= MAX_CONNECTIONS
+                // Counted first and handed back by the guard on every path, so no
+                // connection, however it fails, can move the count the wrong way.
+                let slot = Slot(Arc::clone(&open));
+                if open.fetch_add(1, Ordering::SeqCst) >= MAX_CONNECTIONS
+                    || !stream.peer_addr().is_ok_and(|peer| peer.ip().is_loopback())
                 {
-                    open.fetch_sub(1, Ordering::SeqCst);
                     continue;
                 }
-                let slot = Slot(Arc::clone(&open));
                 let (token, host, stop) = (Arc::clone(&token), Arc::clone(&host), Arc::clone(&stopping));
                 // The slot travels with the thread and is given back however it ends.
                 let _ = std::thread::Builder::new()
@@ -381,11 +382,15 @@ fn open(app: &AppHandle, endpoint: &EditorEndpoint) -> Option<EndpointProblem> {
 pub(crate) fn start(app: &AppHandle, saved: Option<EditorEndpoint>) {
     if let Some(endpoint) = saved {
         let problem = open(app, &endpoint);
-        app.state::<Endpoint>()
-            .0
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .1 = problem;
+        // Whoever holds the port could learn the saved token from an editor, so
+        // it is forgotten; switching on again makes a new address.
+        if problem.is_some() {
+            let _ = app
+                .state::<SettingsFile>()
+                .update(|settings| settings.editor_endpoint = None);
+        }
+        let state = app.state::<Endpoint>();
+        state.0.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).1 = problem;
     }
     use tauri::Listener;
     let handle = app.clone();
@@ -799,6 +804,31 @@ mod tests {
         let mut stream = connect(port);
         send(&mut stream, port, &cayw("?probe=true"), "");
         assert!(answer(&mut stream).ends_with("ready"), "still answering");
+    }
+
+    #[test]
+    fn connections_that_reset_at_once_cannot_use_up_the_count() {
+        let (_listening, port, host) = server(Fake::default());
+        for _ in 0..(MAX_CONNECTIONS * 4) {
+            let stream = connect(port);
+            // Closing with nothing sent, as a reset client does.
+            drop(stream);
+        }
+        host.ready.store(true, Ordering::SeqCst);
+        let mut stream = connect(port);
+        send(&mut stream, port, &cayw("?probe=true"), "");
+        assert!(answer(&mut stream).ends_with("ready"), "still answering");
+    }
+
+    #[test]
+    fn a_slot_is_given_back_on_every_path() {
+        let open = Arc::new(AtomicUsize::new(0));
+        for _ in 0..3 {
+            let slot = Slot(Arc::clone(&open));
+            open.fetch_add(1, Ordering::SeqCst);
+            drop(slot);
+        }
+        assert_eq!(open.load(Ordering::SeqCst), 0);
     }
 
     #[test]
