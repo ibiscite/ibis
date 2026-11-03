@@ -440,7 +440,6 @@ How each user-visible item planned before 1.0 in ROADMAP.md fits the components 
 
 | Feature (release) | Fits as |
 |---|---|
-| Zotero while closed (0.2) | Footer status with words and a dot; detail in the tooltip and More |
 | Output per app, self-finishing setup (0.3) | First run above |
 | Paste into the app you came from (0.3) | Enter pastes; the footer says "Paste into Word"; a refusal copies and says why |
 | Selected text as the search (0.3) | The picker opens with the selection in search, all selected; Enter pastes over the selection |
