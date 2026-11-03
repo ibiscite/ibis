@@ -124,14 +124,14 @@ say when they do, and `ibis schema` always describes the version you have.
 
 ```sh
 # Titles of the first five matches
-ibis search "memory" --file refs.bib --limit 5 --json | jq -r '.data.hits[].item.object.data.csl.title'
+ibis search "lantern" --file refs.bib --limit 5 --json | jq -r '.data.hits[].item.object.data.csl.title'
 
 # Cite the first hit in APA
-key=$(ibis search "garcia 2021" --file refs.bib --json | jq -r '.data.hits[0].item.object.data.citation_keys[0].value')
+key=$(ibis search "vale 2024" --file refs.bib --json | jq -r '.data.hits[0].item.object.data.citation_keys[0].value')
 ibis cite "$key" --file refs.bib --style apa
 
 # Branch on the exit status, not on the wording; 1 may still hold a citation
-out=$(ibis cite smith2020 --file refs.bib --json)
+out=$(ibis cite vale2024lanterns --file refs.bib --json)
 case $? in
   0 | 1) jq -er '.data.text | select(. != "")' <<<"$out" || echo "refused; see .data.outcomes" ;;
   4) echo "no such key" ;;
