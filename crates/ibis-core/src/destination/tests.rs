@@ -388,3 +388,48 @@ fn decisions_serialize_as_message_codes() -> Result<(), serde_json::Error> {
     );
     Ok(())
 }
+
+#[test]
+fn an_id_belongs_to_the_system_whose_table_knows_it() {
+    assert_eq!(AppId::named("WINWORD.EXE", System::Macos).system, System::Windows);
+    assert_eq!(
+        AppId::named("com.microsoft.Word", System::Windows).system,
+        System::Macos
+    );
+    assert_eq!(
+        AppId::named(r"C:\Office\WINWORD.EXE", System::Linux).system,
+        System::Windows
+    );
+    assert_eq!(AppId::named("com.example.unknown", System::Linux).system, System::Linux);
+}
+
+#[test]
+fn a_destination_says_what_the_app_gets_and_how() {
+    let default = OutputSpec::Key {
+        syntax: KeySyntax::Typst,
+        command: None,
+    };
+    let at = |id: &str, running| destination(id, running, &default, "ieee");
+
+    let word = at("com.microsoft.word", System::Macos);
+    assert_eq!(word.name.as_deref(), Some("Microsoft Word"));
+    assert_eq!(word.delivery, Decision::Paste);
+    assert_eq!(word.output, OutputSpec::Csl { style: "ieee".into() });
+
+    let terminal = at("com.apple.Terminal", System::Windows);
+    assert_eq!(terminal.delivery, Decision::Copy(CopyReason::Terminal));
+    assert_eq!(terminal.output, default);
+
+    let browser = at("com.apple.Safari", System::Macos);
+    assert_eq!(browser.output_question, Some(OutputQuestion::Browser));
+    assert_eq!(browser.output, default);
+
+    for running in [System::Macos, System::Windows] {
+        let unknown = at("com.example.unknown", running);
+        assert_eq!(unknown.name, None);
+        assert_eq!(unknown.output, default);
+        assert_eq!(unknown.delivery, Decision::Copy(CopyReason::UnknownApp));
+    }
+    let linux = at("com.example.unknown", System::Linux);
+    assert_eq!(linux.delivery, Decision::Copy(CopyReason::UnsupportedSystem));
+}
