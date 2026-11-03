@@ -119,6 +119,7 @@ function main() {
     ["Workflow expressions", "actionlint", ["-shellcheck=", "-pyflakes="]],
     ...brandSteps.map((step) => [...step, {}, "native"]),
     ["Format", "cargo", ["fmt", "--all", "--check"], {}, "native"],
+    ["Engine boundary", "cargo", ["test", "-p", "ibis-engine", "--test", "engine_boundary", "--locked"], {}, "native"],
     ["Lint", "cargo", ["clippy", "--all-targets", "--locked", "--", "-D", "warnings", "-D", "clippy::unused_result_ok"], {}, "core"],
     ["Minimum Rust", "cargo", ["+1.90.0", "check", "--locked", "--all-targets"], {}, "core"],
     ["Test", "cargo", ["test", "--locked"], {}, "core"],

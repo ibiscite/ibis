@@ -52,9 +52,12 @@ test("changes inside the app skip the crates, and anything the crates read does 
   assert.equal(pr([row("apps/desktop/src-tauri/src/moved.rs", "crates/ibis-core/src/moved.rs")]).core, true);
 });
 
-test("no crate reads the app or the website", () => {
-  const paths = spawnSync("git", ["grep", "-lE", "\\.\\./(apps|website)/", "--", "crates", "fuzz"], { cwd: fileURLToPath(new URL("..", import.meta.url)), encoding: "utf8" });
-  assert.equal(paths.stdout, "", "if a crate must read these, widen `core` in ci-paths.mjs");
+test("crate code reads the app or the website only where app changes still run it", () => {
+  const root = fileURLToPath(new URL("..", import.meta.url));
+  const paths = spawnSync("git", ["grep", "-lE", "\\.\\./(apps|website)/|\"(apps|website)/", "--", "crates/*.rs", "fuzz/*.rs"], { cwd: root, encoding: "utf8" });
+  assert.equal(paths.stdout, "crates/ibis-engine/tests/engine_boundary.rs\n", "a new reader must run on app changes too, or widen `core` in ci-paths.mjs");
+  const workflow = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
+  assert.match(workflow, /- name: Keep the app behind the engine \(Linux\)\n        if: env\.NATIVE == 'true' && runner\.os == 'Linux'\n        run: cargo test -p ibis-engine --test engine_boundary --locked/);
 });
 
 test("website-only changes keep web checks without native jobs", () => {
