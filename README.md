@@ -53,8 +53,6 @@ Some Linux desktops, including GNOME without a tray extension, show no tray icon
 
 To change the format, use the control beside search. On a Mac the format follows the app you came from, and choosing another one remembers it for that app. On Windows and Linux, choosing a format changes it everywhere. **Just this once** applies it to one citation only.
 
-Hide or show the citation with **Show what will be pasted** in **More**, or **Ctrl+I** (**⌘I** on a Mac). Ibis remembers this choice; the references you added stay selected.
-
 **Nightly only, until the next release:** add a locator at the end of a search,
 such as `memory p 12–14`, `memory ch. 3` or `memory S. 12`. Ibis shows how it interpreted the locator; **Search as typed**
 searches the complete text instead. Each reference you add keeps its own locator

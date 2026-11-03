@@ -11,7 +11,7 @@ import { PickerPageToken } from "./features/picker/PickerPageToken";
 import { PickerResults } from "./features/picker/PickerResults";
 import { PickerCitationShelf } from "./features/picker/PickerCitationShelf";
 import { PickerStatusFooter } from "./features/picker/PickerStatusFooter";
-import { PickerOverlays } from "./features/picker/PickerOverlays";
+import { PickerNotices, PickerOverlays } from "./features/picker/PickerOverlays";
 import { useOperations } from "./features/picker/useOperations";
 import { useShortcutStatus } from "./features/picker/useShortcutStatus";
 import { usePickerPreferences } from "./features/picker/usePickerPreferences";
@@ -54,7 +54,7 @@ import { useInterfaceMessages } from "./i18n";
 export type PickerApi = Pick<typeof nativeApi,
   "chooseLibrary" | "useZotero" | "libraryStatus" | "reloadLibrary" | "previewFileCitation" | "copyFileCitation" | "copyFormat" | "pickerPreferences" | "setPickerPreferences" |
   "hidePicker" | "pickerPresentation" | "pickerVisible" | "setPinned" | "onLibraryChanged" | "onPickerShown" | "onPickerHidden" | "quit" | "search" | "shortcutStatus"> &
-  Partial<Pick<typeof nativeApi, "pickerMoving" | "onLibraryFileDropped" | "onFileDrag" | "delightView" | "onPickerPreparing" | "recentReferences" | "openLibrarySource" | "librarySource" | "useSampleLibrary" | "useZoteroLibraries" | "zoteroGroups" | "pickerDestination" | "editorRequest" | "onEditorRequest" | "rememberAppOutput" | "onWindowSizeSaved" | "readWindowPositionUndo" | "undoWindowPosition" | "dismissWindowPositionUndo" | "onWindowReset" | "findSources" | "openFoundLibrary" | "rowContext" | "showCopiedNotice" | "loginItem" | "setLoginItem" | "onUpdateProgress" | "updateChecks" | "setUpdateChecks" | "onUpdateChecks" | "updateAvailable" | "onUpdateAvailable" | "updatePickerActivity" | "checkForUpdates" | "onShortcutStatus" | "openSettings" | "onPreferencesChanged" | "takeSearchRequest" | "onSearchRequested" | "alignmentTick" | "resetWindowPosition">>;
+  Partial<Pick<typeof nativeApi, "pickerMoving" | "onLibraryFileDropped" | "onLibraryFileRefused" | "onFileDrag" | "delightView" | "onPickerPreparing" | "recentReferences" | "openLibrarySource" | "librarySource" | "useSampleLibrary" | "useZoteroLibraries" | "zoteroGroups" | "pickerDestination" | "editorRequest" | "onEditorRequest" | "rememberAppOutput" | "onWindowSizeSaved" | "readWindowPositionUndo" | "undoWindowPosition" | "dismissWindowPositionUndo" | "onWindowReset" | "findSources" | "openFoundLibrary" | "rowContext" | "showCopiedNotice" | "loginItem" | "setLoginItem" | "onUpdateProgress" | "updateChecks" | "setUpdateChecks" | "onUpdateChecks" | "updateAvailable" | "onUpdateAvailable" | "updatePickerActivity" | "checkForUpdates" | "onShortcutStatus" | "openSettings" | "onPreferencesChanged" | "takeSearchRequest" | "onSearchRequested" | "alignmentTick" | "resetWindowPosition">>;
 
 export type PickerPreview = { query?: string; copied?: Copied };
 
@@ -82,7 +82,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   });
   const updateProgress = useUpdateProgress(api, setFailures);
   const preferences = usePickerPreferences(api, { styles: true, report, perform, presentation: state.visibility });
-  const { density, searchIcon, showPastePreview, togglePastePreview, quitAfterSaving: quitPreferences } = preferences;
+  const { density, quitAfterSaving: quitPreferences } = preferences;
   const deliveryTarget = useDeliveryTarget(api);
   const destination = useDestination(deliveryTarget.api, {
     fallback: preferences.format, fallbackReady: preferences.available, chooseDefault: preferences.chooseFormat, report,
@@ -113,7 +113,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   const chosen = selected.size > 0 || ready ? shownChoice : [];
   const output = useCitationOutput({
     chosen: shownChoice, library: settledLibrary, libraryVersion: checkVersion, sessionId: state.session, isCurrentSession, format, style: styleOf(format),
-    showPastePreview, previewFileCitation: api.previewFileCitation, refreshSnapshot,
+    previewFileCitation: api.previewFileCitation, refreshSnapshot,
   });
   const { formatted, shown, previewProblem, displayedOutput } = output;
   const citationProblem = displayedOutput === "failed" ? previewProblem ?? pickerText.previewError : null;
@@ -128,7 +128,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   const { requestCopy, chooseFormat, questionScope, onFormatOpenChange } = useCitationCopy({
     api, session, state, destination, currentPin, formatButtonRef, refreshSnapshot, report, setFormatOpen,
     view: {
-      queryKey, format, snapshotRevision, defaultChoice, chosen, shown, previewVisible: showPastePreview,
+      queryKey, format, snapshotRevision, defaultChoice, chosen, shown,
       // The citation stays in view through a reload, but Enter waits for its end.
       searchPending, ready: preferences.ready && library?.state !== "reloading",
     },
@@ -157,7 +157,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
     zoteroGroups: api.zoteroGroups, chooseZoteroLibraries: api.useZoteroLibraries, report, perform,
     focusSearch: () => input.current?.focus(),
   });
-  const source = usePickerSource({ api, pickerSession, libraryState, menus, results: sameSnapshot ? results : [], altHeld, perform });
+  const source = usePickerSource({ api, pickerSession, libraryState, menus, results: sameSnapshot ? results : [], altHeld, perform, report });
   const inspector = useCitationInspector();
   // A failure stays beside the fields that can correct it, in one place, also
   // when the panel takes the list's place.
@@ -170,7 +170,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   });
   const keys = usePickerKeys({
     api, pickerSession, menus, source, results, showCitations, copyChosen: rows.copyChosen, actions, pointer, followKeyboard,
-    togglePastePreview, quitAfterSaving, perform,
+    quitAfterSaving, perform,
     onEmptyEnter: () => {
       if (chosen.length > 0 || searchPending || state.pendingCopy) return;
       delights.dismiss();
@@ -189,7 +189,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
       onKeyDown={keys.onKeyDown}
     >
       <PickerHeader
-        hidden={welcomeShown} pinned={pinned} icon={searchIcon} onTogglePin={() => { togglePin(); input.current?.focus(); }}
+        hidden={welcomeShown} pinned={pinned} onTogglePin={() => { togglePin(); input.current?.focus(); }}
         onResetPosition={api.resetWindowPosition}
         inputRef={input} query={query}
         pageToken={<PickerPageToken
@@ -219,7 +219,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
             {shortcut.desktop && !welcomeShown && ` ${shortcut.desktop.guidance}`}
           </p>
         </div>}
-        <Notices editorNotice={editor.label} feedback={zoomFeedback} densityAnnouncement={preferences.densityAnnouncement} updateProgress={updateProgress} library={library} failures={failures}
+        <Notices editorNotice={editor.label} densityAnnouncement={preferences.densityAnnouncement} library={library} failures={failures}
           error={error} copyError={inspector.panel ? null : copyError} copied={copied} missing={ready ? list?.missing : undefined}
           citationProblem={listProblem} confirmation={state.copyNotice}
           onDismissCopied={() => send({ type: "dismiss" })} />
@@ -235,9 +235,9 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
       <PickerStatusFooter
         api={api} library={library} scope={scope} sourceState={source} menus={menus} actions={actions}
         copyChosen={rows.copyChosen} destination={destination} recents={recents} preferences={preferences}
-        operations={operations} altHeld={altHeld} feedback={emptyFeedback.feedback ?? delights.feedback} passive={!emptyFeedback.feedback && delights.passive} emptyAction={emptyFeedback.shaking} lastOutcome={state.lastOutcome}
+        operations={operations} altHeld={altHeld} notices={<PickerNotices state={state} send={send} menus={menus} updateProgress={updateProgress} remark={zoomFeedback ?? emptyFeedback.feedback ?? delights.feedback} passive={!zoomFeedback && !emptyFeedback.feedback && delights.passive} onRemarkPassed={() => { if (zoomFeedback) return; if (emptyFeedback.feedback) emptyFeedback.clear(); else delights.dismiss(); }} />} emptyAction={emptyFeedback.shaking} lastOutcome={state.lastOutcome}
         cancelCopy={cancelCopy} quitAfterSaving={quitAfterSaving} />
-      <PickerOverlays state={state} send={send} menus={menus} bindings={actions.bindings} />
+      <PickerOverlays menus={menus} bindings={actions.bindings} />
       <HeldKeys />
     </main>
   );

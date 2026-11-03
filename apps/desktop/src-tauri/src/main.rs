@@ -194,6 +194,8 @@ fn main() {
                     if paths.len() == 1 && library::accepts_library_file(&paths[0]) {
                         let _ = webview.emit("library:file-dropped", ());
                         library::start_open(webview.app_handle(), library::Source::File(paths[0].clone()), true);
+                    } else if !paths.is_empty() {
+                        let _ = webview.emit("library:file-refused", ());
                     }
                 }
                 tauri::WebviewEvent::DragDrop(tauri::DragDropEvent::Leave) => {

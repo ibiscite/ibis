@@ -32,38 +32,25 @@ fn surprises_off_keeps_tips_and_counts_but_does_not_claim_fun_items() {
 }
 
 #[test]
-fn facts_follow_five_clicks_and_reopen_preserves_the_sequence_after_failed_saves() {
+fn each_click_says_the_next_fact_and_a_plain_read_says_none() {
     let dir = tempfile::tempdir().unwrap();
     let file = SettingsFile::new(dir.path().join("settings.json"));
     let now = moment(2026, 11, 1);
+    assert_eq!(file.claim_about(now, false).fact, None);
     for fact in [
-        DelightFact::Thoth,
         DelightFact::Touch,
         DelightFact::Scarlet,
         DelightFact::Mummies,
         DelightFact::National,
         DelightFact::Flight,
     ] {
-        for _ in 0..4 {
-            file.claim_about(now, true);
-        }
         assert_eq!(file.claim_about(now, true).fact, Some(fact));
+        assert_eq!(file.claim_about(now, false).fact, None);
     }
+    assert_eq!(file.claim_about(now, true).fact, Some(DelightFact::Touch));
     file.flush_delights().unwrap();
     let reopened = SettingsFile::new(file.path.clone());
-    for _ in 0..4 {
-        reopened.claim_about(now, true);
-    }
-    assert_eq!(reopened.claim_about(now, true).fact, Some(DelightFact::Thoth));
-}
-
-#[test]
-fn first_stable_birthday_has_one_build_time_anchor_and_one_day() {
-    assert!(!release_birthday(moment(2028, 11, 1), None));
-    assert!(!release_birthday(moment(2027, 11, 1), Some([2026, 11, 1])));
-    assert!(release_birthday(moment(2028, 11, 1), Some([2026, 11, 1])));
-    assert!(!release_birthday(moment(2028, 11, 2), Some([2026, 11, 1])));
-    assert!(!release_birthday(moment(2028, 11, 1), Some([i32::MAX, 11, 1])));
+    assert_eq!(reopened.claim_about(now, true).fact, Some(DelightFact::Scarlet));
 }
 
 #[test]
@@ -172,23 +159,15 @@ fn edited_calendar_metadata_cannot_panic_or_block_paste() {
 }
 
 #[test]
-fn a_large_import_keeps_every_milestone_and_first_paste_tip_takes_priority() {
+fn a_large_import_is_one_moment_and_first_paste_tip_takes_priority() {
     let dir = tempfile::tempdir().unwrap();
     let settings = SettingsFile::new(dir.path().join("settings.json"));
     let now = moment(2026, 11, 1);
     let library = || Some(("invented".into(), 10000));
-    assert_eq!(
-        settings.claim_delights(now, true, library()).status,
-        Some(DelightStatus::Library100)
-    );
     settings.record_delight_paste(1);
     assert_eq!(
         settings.claim_delights(now, true, library()).status,
         Some(DelightStatus::PasteTip)
-    );
-    assert_eq!(
-        settings.claim_delights(now, true, library()).status,
-        Some(DelightStatus::Library1000)
     );
     assert_eq!(
         settings.claim_delights(now, true, library()).status,
@@ -274,17 +253,11 @@ fn claims_are_once_only_across_windows_failed_writes_and_reopen() {
     std::fs::write(dir.path().join("blocked"), "invented obstruction").unwrap();
     let first = blocked.claim_delights(now, true, Some(("invented".into(), 1000)));
     assert!(first.peck);
-    assert_eq!(first.status, Some(DelightStatus::Library100));
+    assert_eq!(first.status, Some(DelightStatus::Library1000));
     assert!(blocked.flush_delights().is_err());
     let again = blocked.claim_delights(now, true, Some(("invented".into(), 1000)));
     assert!(!again.peck);
-    assert_eq!(again.status, Some(DelightStatus::Library1000));
-    assert_eq!(
-        blocked
-            .claim_delights(now, true, Some(("invented".into(), 1000)))
-            .status,
-        None
-    );
+    assert_eq!(again.status, None);
     assert_eq!(
         blocked
             .claim_delights(now, true, Some(("invented".into(), 1000)))

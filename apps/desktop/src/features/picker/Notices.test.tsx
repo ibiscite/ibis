@@ -1,6 +1,6 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { Notices } from "./Notices";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { Notices, UpdateNotice } from "./Notices";
 
 afterEach(cleanup);
 const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
@@ -9,15 +9,6 @@ const noticeStyles = readFileSync(new FileURL("./Notices.css", import.meta.url),
 const copied = { text: "[@example2026]", warnings: ["Missing year — 研究 العربية <literal>"] };
 const props = { library: null, failures: {}, error: null, copyError: null,
   copied, confirmation: copied, onDismissCopied: vi.fn() };
-
-test("zoom uses the existing copied feedback position and leaves warnings visible", () => {
-  const { rerender } = render(<Notices {...props} feedback="110%" />);
-  expect(screen.getByText("110%")).toBeTruthy();
-  expect(screen.queryByText("Copied")).toBeNull();
-  expect(screen.getByLabelText("Copy warnings").textContent).toBe(copied.warnings[0]);
-  rerender(<Notices {...props} />);
-  expect(screen.getByText("Copied")).toBeTruthy();
-});
 
 test("a long citation refusal is a complete keyboard-reachable notice before Details opens", () => {
   const reason = "Reference 1: Choose another form or clear Page. ".repeat(30);
@@ -77,23 +68,37 @@ test("retiring a confirmation leaves its warnings without announcing Copied agai
 // Download completion is not installation success: verification still follows.
 test("update progress keeps known, unknown, checking and failed phases honest", () => {
   const progress = { attempt: 1, revision: 1, received: 25, total: 100, phase: "downloading" as const };
-  const { rerender } = render(<Notices {...props} copied={null} {...{ updateProgress: progress }} />);
+  const { rerender } = render(<UpdateNotice progress={progress} />);
   expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe("25");
   expect(screen.getByRole("progressbar").textContent).toContain("25%");
   expect(screen.getByRole("progressbar").hasAttribute("data-indeterminate")).toBe(false);
-  rerender(<Notices {...props} copied={null} {...{ updateProgress: { ...progress, total: null } }} />);
+  rerender(<UpdateNotice progress={{ ...progress, total: null }} />);
   expect(screen.getByRole("progressbar").hasAttribute("aria-valuenow")).toBe(false);
   expect(screen.getByRole("progressbar").textContent).not.toContain("%");
   expect(screen.getByRole("progressbar").hasAttribute("data-indeterminate")).toBe(true);
-  rerender(<Notices {...props} copied={null} {...{ updateProgress: { ...progress, received: 100 } }} />);
+  rerender(<UpdateNotice progress={{ ...progress, received: 100 }} />);
   expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe("100");
   expect(screen.getByRole("progressbar").querySelector<SVGElement>(".update-ring-fill")?.style.getPropertyValue("--progress")).toBe("100");
-  rerender(<Notices {...props} copied={null} {...{ updateProgress: { ...progress, received: 100, phase: "installing" } }} />);
+  rerender(<UpdateNotice progress={{ ...progress, received: 100, phase: "installing" }} />);
   expect(screen.getByRole("progressbar").textContent).toContain("Checking and installing");
   expect(screen.getByRole("progressbar").hasAttribute("aria-valuenow")).toBe(false);
   expect(screen.getByRole("progressbar").hasAttribute("data-indeterminate")).toBe(true);
   expect(screen.getByRole("progressbar").querySelector<SVGElement>(".update-ring-fill")?.style.getPropertyValue("--progress")).toBe("");
-  rerender(<Notices {...props} copied={null} {...{ updateProgress: { ...progress, phase: "failed" } }} />);
+  rerender(<UpdateNotice progress={{ ...progress, phase: "failed" }} />);
   expect(screen.queryByRole("progressbar")).toBeNull();
   expect(screen.getByRole("alert").textContent).toContain("Check now in Settings > About");
+});
+
+test("a failed update passes once seen, and waits while the picker is hidden", () => {
+  vi.useFakeTimers();
+  try {
+    const seen = vi.fn();
+    const failed = { attempt: 1, revision: 1, received: 0, total: null, phase: "failed" } as const;
+    const { rerender } = render(<UpdateNotice progress={failed} paused onSeen={seen} />);
+    act(() => { vi.advanceTimersByTime(9000); });
+    expect(seen).not.toHaveBeenCalled();
+    rerender(<UpdateNotice progress={failed} onSeen={seen} />);
+    act(() => { vi.advanceTimersByTime(8000); });
+    expect(seen).toHaveBeenCalledOnce();
+  } finally { vi.useRealTimers(); }
 });

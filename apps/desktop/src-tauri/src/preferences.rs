@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use ibis_core::cite::KeyFormat;
-use ibis_core::settings::{self, CitationStyle, Density, SearchIcon};
+use ibis_core::settings::{self, CitationStyle, Density};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
 
@@ -173,14 +173,6 @@ pub(crate) enum Accent {
     #[default]
     System,
     Ibis,
-    Blue,
-    Purple,
-    Pink,
-    Red,
-    Orange,
-    Yellow,
-    Green,
-    Graphite,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
@@ -219,9 +211,6 @@ pub(crate) struct PickerPreferences {
     pub(crate) citation_style: Option<CitationStyle>,
     pub(crate) density: Density,
     pub(crate) larger_text: bool,
-    pub(crate) show_paste_preview: bool,
-    /// What leads the search field; the Ibis mark by default.
-    pub(crate) search_icon: SearchIcon,
     /// Enter pastes into the app the picker was opened from; on by default.
     pub(crate) paste: bool,
     /// The menu bar item; on by default.
@@ -243,8 +232,6 @@ impl PickerPreferences {
             citation_style: settings.citation_style,
             density: settings.density.unwrap_or(Density::Comfortable),
             larger_text: settings.larger_text.unwrap_or(false),
-            show_paste_preview: settings.show_paste_preview.unwrap_or(true),
-            search_icon: settings.search_icon.unwrap_or(SearchIcon::Ibis),
             paste: settings.paste.unwrap_or(true),
             menu_bar: settings.menu_bar.unwrap_or(true),
             recent_citations: Some(settings.recent_citations.unwrap_or(true)),
@@ -284,10 +271,6 @@ pub(crate) struct PickerPreferencesPatch {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) larger_text: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) show_paste_preview: Option<bool>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) search_icon: Option<SearchIcon>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) paste: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) menu_bar: Option<bool>,
@@ -314,12 +297,6 @@ impl PickerPreferencesPatch {
         }
         if self.larger_text.is_some() && !keep("larger_text") {
             self.larger_text = None;
-        }
-        if self.show_paste_preview.is_some() && !keep("show_paste_preview") {
-            self.show_paste_preview = None;
-        }
-        if self.search_icon.is_some() && !keep("search_icon") {
-            self.search_icon = None;
         }
         if self.paste.is_some() && !keep("paste") {
             self.paste = None;
@@ -350,8 +327,6 @@ impl From<PickerPreferences> for PickerPreferencesPatch {
             citation_style: Some(value.citation_style),
             density: Some(value.density),
             larger_text: Some(value.larger_text),
-            show_paste_preview: Some(value.show_paste_preview),
-            search_icon: Some(value.search_icon),
             paste: Some(value.paste),
             menu_bar: Some(value.menu_bar),
             recent_citations: value.recent_citations,
@@ -615,12 +590,6 @@ impl SettingsFile {
             if let Some(larger) = preferences.larger_text {
                 s.larger_text = Some(larger).filter(|larger| *larger);
             }
-            if let Some(shown) = preferences.show_paste_preview {
-                s.show_paste_preview = Some(shown).filter(|shown| !shown);
-            }
-            if let Some(icon) = preferences.search_icon {
-                s.search_icon = Some(icon).filter(|icon| *icon != SearchIcon::Ibis);
-            }
             if let Some(paste) = preferences.paste {
                 s.paste = Some(paste).filter(|paste| !paste);
             }
@@ -731,8 +700,8 @@ mod tests {
         // A before any asynchronous command code (including reservation) runs.
         let older = set_picker_preferences(
             PickerPreferencesPatch {
-                density: Some(Density::Compact),
-                accent: Some(Accent::Purple),
+                density: Some(Density::Comfortable),
+                accent: Some(Accent::Ibis),
                 ..Default::default()
             },
             Some(KeyFormat::Typst),
@@ -743,7 +712,7 @@ mod tests {
         );
         let newer = set_picker_preferences(
             PickerPreferencesPatch {
-                density: Some(Density::Spacious),
+                density: Some(Density::Compact),
                 ..Default::default()
             },
             Some(KeyFormat::Cite),
@@ -754,20 +723,20 @@ mod tests {
         );
         let newer = tauri::async_runtime::block_on(newer).unwrap_or_else(|e| panic!("{e}"));
         let older = tauri::async_runtime::block_on(older).unwrap_or_else(|e| panic!("{e}"));
-        assert_eq!(newer.preferences.density, Density::Spacious);
+        assert_eq!(newer.preferences.density, Density::Compact);
         assert_eq!(
             older.preferences.density,
-            Density::Spacious,
+            Density::Compact,
             "late reply reports current disk state"
         );
         let shown = shown.lock().unwrap_or_else(|e| panic!("{e}"));
-        assert_eq!(shown.get("main"), Some(&Density::Spacious));
-        assert_eq!(shown.get("settings"), Some(&Density::Spacious));
+        assert_eq!(shown.get("main"), Some(&Density::Compact));
+        assert_eq!(shown.get("settings"), Some(&Density::Compact));
         // Restart's read must match the newer window, retaining unrelated fields.
         let reopened = read_preferences(&path).unwrap_or_else(|e| panic!("{e}"));
-        assert_eq!(reopened.density, Density::Spacious);
+        assert_eq!(reopened.density, Density::Compact);
         assert_eq!(reopened.copy_format, Some(KeyFormat::Cite));
-        assert_eq!(reopened.accent, Some(Accent::Purple));
+        assert_eq!(reopened.accent, Some(Accent::Ibis));
     }
 
     #[test]
@@ -778,7 +747,7 @@ mod tests {
         let older = file
             .reserve_preferences(
                 PickerPreferencesPatch {
-                    density: Some(Density::Compact),
+                    density: Some(Density::Comfortable),
                     ..Default::default()
                 },
                 None,
@@ -797,7 +766,7 @@ mod tests {
         file.save_reserved_preferences(newer).unwrap_or_else(|e| panic!("{e}"));
         file.save_reserved_preferences(older).unwrap_or_else(|e| panic!("{e}"));
         let saved = read_preferences(&path).unwrap_or_else(|e| panic!("{e}"));
-        assert_eq!(saved.density, Density::Compact);
+        assert_eq!(saved.density, Density::Comfortable);
         assert!(!saved.paste);
     }
 
@@ -810,7 +779,7 @@ mod tests {
         let older = file
             .reserve_preferences(
                 PickerPreferencesPatch {
-                    density: Some(Density::Compact),
+                    density: Some(Density::Comfortable),
                     ..Default::default()
                 },
                 None,
@@ -819,7 +788,7 @@ mod tests {
         let newer = file
             .reserve_preferences(
                 PickerPreferencesPatch {
-                    density: Some(Density::Spacious),
+                    density: Some(Density::Compact),
                     ..Default::default()
                 },
                 None,
@@ -835,7 +804,7 @@ mod tests {
         file.save_reserved_preferences(older).unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(
             read_preferences(&path).unwrap_or_else(|e| panic!("{e}")).density,
-            Density::Compact
+            Density::Comfortable
         );
     }
 
@@ -855,17 +824,17 @@ mod tests {
         };
         for revision in [0, issued + 1, u64::MAX] {
             assert!(
-                file.save_reserved_preferences(intent(revision, Density::Spacious))
+                file.save_reserved_preferences(intent(revision, Density::Compact))
                     .is_err()
             );
             assert!(!path.exists(), "an unissued save must not touch disk");
         }
-        file.save_reserved_preferences(intent(issued, Density::Compact))
+        file.save_reserved_preferences(intent(issued, Density::Comfortable))
             .unwrap_or_else(|e| panic!("{e}"));
         let replay = file
-            .save_reserved_preferences(intent(issued, Density::Spacious))
+            .save_reserved_preferences(intent(issued, Density::Compact))
             .unwrap_or_else(|e| panic!("{e}"));
-        assert_eq!(PickerPreferences::from_settings(&replay).density, Density::Compact);
+        assert_eq!(PickerPreferences::from_settings(&replay).density, Density::Comfortable);
         assert_eq!(
             file.issue_preference_revision().unwrap_or_else(|e| panic!("{e}")),
             issued + 1
@@ -880,8 +849,8 @@ mod tests {
         let older = file
             .reserve_preferences(
                 PickerPreferencesPatch {
-                    density: Some(Density::Compact),
-                    accent: Some(Accent::Purple),
+                    density: Some(Density::Comfortable),
+                    accent: Some(Accent::Ibis),
                     ..Default::default()
                 },
                 Some(KeyFormat::Typst),
@@ -890,7 +859,7 @@ mod tests {
         let newer = file
             .reserve_preferences(
                 PickerPreferencesPatch {
-                    density: Some(Density::Spacious),
+                    density: Some(Density::Compact),
                     ..Default::default()
                 },
                 Some(KeyFormat::Cite),
@@ -899,11 +868,11 @@ mod tests {
         file.save_reserved_preferences(newer).unwrap_or_else(|e| panic!("{e}"));
         file.save_reserved_preferences(older).unwrap_or_else(|e| panic!("{e}"));
         let shown = read_preferences(&path).unwrap_or_else(|e| panic!("{e}"));
-        assert_eq!(shown.density, Density::Spacious);
+        assert_eq!(shown.density, Density::Compact);
         assert_eq!(shown.copy_format, Some(KeyFormat::Cite));
         assert_eq!(
             shown.accent,
-            Some(Accent::Purple),
+            Some(Accent::Ibis),
             "a newer density choice must not discard an unrelated accent"
         );
     }
@@ -912,12 +881,10 @@ mod tests {
     fn every_preference_orders_its_own_writes_without_dropping_other_fields() {
         for (field, value) in [
             ("appearance", serde_json::json!("light")),
-            ("accent", serde_json::json!("blue")),
+            ("accent", serde_json::json!("system")),
             ("citation_style", serde_json::Value::Null),
-            ("density", serde_json::json!("spacious")),
+            ("density", serde_json::json!("comfortable")),
             ("larger_text", serde_json::json!(false)),
-            ("show_paste_preview", serde_json::json!(true)),
-            ("search_icon", serde_json::json!("ibis")),
             ("paste", serde_json::json!(true)),
             ("menu_bar", serde_json::json!(true)),
             ("recent_citations", serde_json::json!(true)),
@@ -927,9 +894,8 @@ mod tests {
             let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
             let file = SettingsFile::new(directory.path().join("settings.json"));
             let mut expected = serde_json::json!({
-                "appearance": "dark", "accent": "purple", "citation_style": "apa",
-                "density": "compact", "larger_text": true, "show_paste_preview": false,
-                "search_icon": "magnifier", "paste": false, "menu_bar": false, "recent_citations": false, "small_surprises": true,
+                "appearance": "dark", "accent": "ibis", "citation_style": "apa",
+                "density": "compact", "larger_text": true, "paste": false, "menu_bar": false, "recent_citations": false, "small_surprises": true,
             });
             let older = file
                 .reserve_preferences(
@@ -975,30 +941,17 @@ mod tests {
             None,
         )
         .unwrap_or_else(|e| panic!("{e}"));
-        for accent in [
-            Accent::Ibis,
-            Accent::Blue,
-            Accent::Purple,
-            Accent::Pink,
-            Accent::Red,
-            Accent::Orange,
-            Accent::Yellow,
-            Accent::Green,
-            Accent::Graphite,
-        ] {
-            file.save_preferences(
-                PickerPreferencesPatch {
-                    accent: Some(accent),
-                    ..Default::default()
-                },
-                None,
-            )
-            .unwrap_or_else(|e| panic!("{e}"));
-            let loaded = read_preferences(&path).unwrap_or_else(|e| panic!("{e}"));
-            assert_eq!(loaded.appearance, Some(Appearance::Dark));
-            assert_eq!(loaded.accent, Some(accent));
-            assert_eq!(loaded.search_icon, SearchIcon::Ibis, "the Ibis mark is the default");
-        }
+        file.save_preferences(
+            PickerPreferencesPatch {
+                accent: Some(Accent::Ibis),
+                ..Default::default()
+            },
+            None,
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
+        let loaded = read_preferences(&path).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(loaded.appearance, Some(Appearance::Dark));
+        assert_eq!(loaded.accent, Some(Accent::Ibis));
         file.save_preferences(
             PickerPreferencesPatch {
                 appearance: Some(Appearance::System),
@@ -1032,7 +985,7 @@ mod tests {
             assert!(
                 file.save_preferences(
                     PickerPreferencesPatch {
-                        density: Some(Density::Spacious),
+                        density: Some(Density::Compact),
                         ..Default::default()
                     },
                     None
@@ -1048,7 +1001,7 @@ mod tests {
         std::fs::set_permissions(&path, readonly).unwrap_or_else(|e| panic!("{e}"));
         let refused = file.save_preferences(
             PickerPreferencesPatch {
-                density: Some(Density::Spacious),
+                density: Some(Density::Compact),
                 ..Default::default()
             },
             None,
@@ -1143,10 +1096,8 @@ mod tests {
             appearance: Some(Appearance::System),
             accent: Some(Accent::System),
             citation_style: None,
-            density: Density::Spacious,
+            density: Density::Compact,
             larger_text: true,
-            show_paste_preview: false,
-            search_icon: SearchIcon::Magnifier,
             paste: true,
             menu_bar: true,
             recent_citations: Some(true),
@@ -1576,10 +1527,8 @@ mod tests {
             appearance: Some(Appearance::System),
             accent: Some(Accent::System),
             citation_style: Some(CitationStyle::Apa),
-            density: Density::Spacious,
+            density: Density::Compact,
             larger_text: true,
-            show_paste_preview: false,
-            search_icon: SearchIcon::Magnifier,
             paste: false,
             menu_bar: true,
             recent_citations: Some(true),
@@ -1602,8 +1551,6 @@ mod tests {
             citation_style: None,
             density: Density::Comfortable,
             larger_text: false,
-            show_paste_preview: true,
-            search_icon: SearchIcon::Magnifier,
             paste: true,
             menu_bar: true,
             recent_citations: Some(true),
@@ -1622,7 +1569,6 @@ mod tests {
             "citation_style",
             "density",
             "larger_text",
-            "show_paste_preview",
             "paste",
             "menu_bar",
             "recent_citations",
@@ -1632,10 +1578,20 @@ mod tests {
     }
 
     #[test]
-    fn paste_preview_defaults_on_and_off_survives_restart_without_losing_settings() {
+    fn a_removed_accent_reads_as_following_the_mac() {
+        let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+        let path = directory.path().join("settings.json");
+        std::fs::write(&path, r#"{"accent":"purple","larger_text":true}"#).unwrap_or_else(|e| panic!("{e}"));
+        let loaded = read_preferences(&path).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(loaded.accent, Some(Accent::System));
+        assert!(loaded.larger_text);
+    }
+
+    #[test]
+    fn an_off_choice_survives_restart_and_on_stays_unwritten() {
         let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
         let file = SettingsFile::new(directory.path().join("settings.json"));
-        assert!(PickerPreferences::from_settings(&settings::Settings::default()).show_paste_preview);
+        assert!(PickerPreferences::from_settings(&settings::Settings::default()).paste);
 
         let original = serde_json::json!({
             "schema_version": 2, "shortcut": { "macos": "Alt+Space", "windows": "Alt+Space", "linux": "Alt+Space" }, "library": { "bibtex": "refs.bib" },
@@ -1644,7 +1600,7 @@ mod tests {
         });
         std::fs::write(&file.path, original.to_string()).unwrap_or_else(|e| panic!("{e}"));
         let mut chosen = PickerPreferences::from_settings(&settings::load(&file.path).settings);
-        chosen.show_paste_preview = false;
+        chosen.paste = false;
         file.save_preferences(chosen, None).unwrap_or_else(|e| panic!("{e}"));
         let restarted = SettingsFile::new(file.path.clone());
         let loaded = settings::load(&restarted.path);
@@ -1659,20 +1615,17 @@ mod tests {
         let saved: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&file.path).unwrap_or_default())
             .unwrap_or_else(|e| panic!("{e}"));
         for (field, value) in original.as_object().unwrap_or_else(|| panic!("expected an object")) {
-            assert_eq!(&saved[field], value, "{field} survives the preview choice");
+            assert_eq!(&saved[field], value, "{field} survives the choice");
         }
-        assert_eq!(saved["show_paste_preview"], false);
+        assert_eq!(saved["paste"], false);
 
-        chosen.show_paste_preview = true;
+        chosen.paste = true;
         restarted
             .save_preferences(chosen, None)
             .unwrap_or_else(|e| panic!("{e}"));
         let saved: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&file.path).unwrap_or_default())
             .unwrap_or_else(|e| panic!("{e}"));
-        assert!(
-            saved.get("show_paste_preview").is_none(),
-            "the on default stays unwritten"
-        );
+        assert!(saved.get("paste").is_none(), "the on default stays unwritten");
         assert_eq!(saved["future_choice"], original["future_choice"]);
     }
 
@@ -1685,10 +1638,8 @@ mod tests {
             appearance: Some(Appearance::System),
             accent: Some(Accent::System),
             citation_style: Some(CitationStyle::Apa),
-            density: Density::Compact,
+            density: Density::Comfortable,
             larger_text: true,
-            show_paste_preview: false,
-            search_icon: SearchIcon::Magnifier,
             paste: true,
             menu_bar: true,
             recent_citations: Some(true),
@@ -1739,8 +1690,6 @@ mod tests {
             citation_style: None,
             density: Density::Comfortable,
             larger_text: false,
-            show_paste_preview: false,
-            search_icon: SearchIcon::Magnifier,
             paste: true,
             menu_bar: true,
             recent_citations: Some(true),
@@ -1748,8 +1697,8 @@ mod tests {
         };
         for text in [
             r#"{"copy_format":"synthetic-private-value"}"#,
-            r#"{"show_paste_preview":"synthetic-private-value"}"#,
-            r#"{"schema_version":3,"show_paste_preview":false,"future_choice":{"kept":true}}"#,
+            r#"{"larger_text":"synthetic-private-value"}"#,
+            r#"{"schema_version":3,"larger_text":true,"future_choice":{"kept":true}}"#,
         ] {
             std::fs::write(&file.path, text).unwrap_or_else(|e| panic!("{e}"));
             let failed = file.save_preferences(chosen, Some(KeyFormat::Cite));
@@ -1784,7 +1733,7 @@ mod tests {
             let mut global = baseline;
             global.citation_style = None;
             let mut view = baseline;
-            view.density = Density::Spacious;
+            view.density = Density::Compact;
             // Each client sends only the field its user changed from the same baseline.
             let patches = [
                 serde_json::json!({ "citation_style": global.citation_style }),
@@ -1815,7 +1764,7 @@ mod tests {
                 let (_, saved) = results.recv().unwrap_or_else(|e| panic!("{e}"));
                 assert_eq!(saved.citation_style, None);
                 assert_eq!(saved.copy_format, Some(KeyFormat::Cite));
-                assert_eq!(saved.density, Some(Density::Spacious));
+                assert_eq!(saved.density, Some(Density::Compact));
             });
         }
     }

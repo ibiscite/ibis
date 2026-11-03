@@ -125,8 +125,9 @@ export function onPreferencesChanged(handler: (change: Partial<PreferenceChange>
 
 /** Called whenever the picker is hidden, by any route. */
 /** Fires before the window appears, so its first frame is already current. */
-export function onPickerPreparing(handler: () => void): Promise<UnlistenFn> {
-  return listen("picker:preparing", handler);
+/** Before the window shows, with short text selected in the target app, if any. */
+export function onPickerPreparing(handler: (selection: string | null) => void): Promise<UnlistenFn> {
+  return listen<string | null>("picker:preparing", (event) => handler(event.payload));
 }
 
 export function onPickerHidden(handler: () => void): Promise<UnlistenFn> {
@@ -137,6 +138,11 @@ export function onPickerHidden(handler: () => void): Promise<UnlistenFn> {
 /** A native-accepted drop supersedes the explicit source chooser. */
 export function onLibraryFileDropped(handler: () => void): Promise<UnlistenFn> {
   return listen("library:file-dropped", handler);
+}
+
+/** Dropped files Ibis cannot use: only that it happened, never a path. */
+export function onLibraryFileRefused(handler: () => void): Promise<UnlistenFn> {
+  return listen("library:file-refused", handler);
 }
 
 export function onLibraryChanged(handler: (status: LibraryStatus) => void): Promise<UnlistenFn> {

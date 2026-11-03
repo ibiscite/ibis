@@ -1,6 +1,5 @@
-import type { SearchIcon } from "../../bindings";
 // The picker's saved formatting and view preferences.
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type * as nativeApi from "../../api";
 import type { CopyFormat, Density, PickerPreferences } from "../../api";
 import { PreferencePatchQueue } from "../../preferencePatchQueue";
@@ -29,9 +28,6 @@ export function usePickerPreferences(
   const [density, setDensity] = useState<Density>("comfortable");
   const [densityFeedback, setDensityFeedback] = useState<{ presentation: number; density: Density } | null>(null);
   const [largerText, setLargerText] = useState(false);
-  const [searchIcon, setSearchIcon] = useState<SearchIcon>("magnifier");
-  const [showPastePreview, setShowPastePreview] = useState(true);
-  const previewVisibility = useRef(true);
   const [queue] = useState(() => new PreferencePatchQueue({
     read: async () => {
       const [key, saved] = await Promise.allSettled([copyFormat(), pickerPreferences()]);
@@ -50,9 +46,6 @@ export function usePickerPreferences(
     // A silent external view change retires its label so the next user choice can repeat it.
     setDensityFeedback((current) => current?.density === value.density ? current : null);
     setLargerText(value.larger_text);
-    setSearchIcon(value.search_icon ?? "magnifier");
-    previewVisibility.current = value.show_paste_preview;
-    setShowPastePreview(value.show_paste_preview);
   }, []);
   useEffect(() => queue.subscribe((event) => {
     if (event.type === "saving") {
@@ -97,12 +90,6 @@ export function usePickerPreferences(
     setLargerText(!largerText);
     savePreferences({ larger_text: !largerText });
   };
-  const togglePastePreview = () => {
-    const next = !previewVisibility.current;
-    previewVisibility.current = next;
-    setShowPastePreview(next);
-    savePreferences({ show_paste_preview: next });
-  };
   useEffect(() => {
     document.documentElement.dataset.density = density;
     document.documentElement.dataset.textSize = largerText ? "larger" : "normal";
@@ -115,5 +102,5 @@ export function usePickerPreferences(
    * mount effect, after the library status, so the calls keep their order. */
   const loadPreferences = (mounted: () => boolean) => { void queue.load(mounted); };
 
-  return { ready, available, smallSurprises, recentCitations, format, density, densityAnnouncement: densityFeedback?.presentation === presentation ? densityFeedback.density : undefined, largerText, searchIcon, showPastePreview, chooseFormat, changeDensity, toggleLargerText, togglePastePreview, quitAfterSaving, loadPreferences };
+  return { ready, available, smallSurprises, recentCitations, format, density, densityAnnouncement: densityFeedback?.presentation === presentation ? densityFeedback.density : undefined, largerText, chooseFormat, changeDensity, toggleLargerText, quitAfterSaving, loadPreferences };
 }

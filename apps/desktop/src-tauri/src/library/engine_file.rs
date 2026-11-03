@@ -444,7 +444,7 @@ impl FileLibrary {
             .collect();
         let unfiltered = results
             .is_empty()
-            .then(|| ibis_core::search::without_filters(&query.text))
+            .then(|| ibis_engine::without_filters(&query.text))
             .flatten();
         Ok(SearchReply {
             revision,
