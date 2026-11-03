@@ -554,6 +554,10 @@ fn locator_label(term: LocatorTerm, plural: bool) -> &'static str {
     }
 }
 
+pub(super) fn source_id(record: &Record) -> Option<&str> {
+    record.csl.get("id").and_then(serde_json::Value::as_str)
+}
+
 /// Serialize borrowed CSL fields directly into a bounded writer. Large repeated
 /// records cannot create an unbounded series of cloned maps before the limit.
 fn csl_json(picks: &[Pick<'_>]) -> Result<String, CitationError> {
@@ -563,8 +567,7 @@ fn csl_json(picks: &[Pick<'_>]) -> Result<String, CitationError> {
             let mut map = serializer.serialize_map(None)?;
             // The key has its own field; a source `id` stays what it was, so
             // the export still matches the file it came from.
-            let id = self.0.record.csl.get("id").and_then(serde_json::Value::as_str);
-            map.serialize_entry("id", id.unwrap_or(self.0.key))?;
+            map.serialize_entry("id", source_id(self.0.record).unwrap_or(self.0.key))?;
             map.serialize_entry("citation-key", self.0.key)?;
             for (key, value) in &self.0.record.csl {
                 if key != "id" && key != "citation-key" {

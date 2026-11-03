@@ -234,10 +234,6 @@ impl ZoteroSource {
         cancelled: &impl Fn() -> bool,
         on_full: &mut impl FnMut() -> Result<(), LiveError>,
     ) -> Result<Vec<Arc<LoadedLibrary>>, ZoteroError> {
-        let profile = match &self.profile {
-            Profile::Known(profile) => profile.clone(),
-            Profile::Running => running_account(transport),
-        };
         // Every chosen library is read before any is published, so a
         // failure keeps the last complete set.
         let mut readers = self.readers.clone();
@@ -246,6 +242,10 @@ impl ZoteroSource {
                 .refresh_observed(transport, reload, cancelled, on_full)
                 .map_err(live_error)?;
         }
+        let profile = match &self.profile {
+            Profile::Known(profile) => profile.clone(),
+            Profile::Running => running_account(transport)?,
+        };
         let mut keys = BbtKeys {
             bbt,
             libraries: None,
@@ -550,17 +550,21 @@ fn directory_identity(data: &Path) -> Vec<u8> {
     identity
 }
 
-/// The account of the running profile, from any one item. A profile that has
-/// never synced has account 0, and an empty one shows none; two of those can't
-/// be told apart while Zotero runs, which costs an old reference finding nothing.
-fn running_account(transport: &mut impl Transport) -> Vec<u8> {
-    let account = transport
-        .get("/api/users/0/items/top?limit=1&format=json")
-        .ok()
-        .filter(|response| response.status == 200)
-        .and_then(|response| serde_json::from_slice::<Value>(&response.body).ok())
-        .and_then(|rows| rows.get(0)?.pointer("/library/id")?.as_u64());
-    format!("account:{}", account.unwrap_or_default()).into_bytes()
+/// The account of the running profile, from any one item. Two profiles of one
+/// account hold the same synced items, so sharing ids is right for them. A
+/// never-synced profile has account 0 and an empty one shows none; those can't
+/// be told apart while Zotero runs, and item keys are random, so a reference
+/// from one then finds nothing in the other.
+fn running_account(transport: &mut impl Transport) -> Result<Vec<u8>, ZoteroError> {
+    let response = transport
+        .get("users/0/items/top?limit=1&format=json")
+        .map_err(LiveError::Transport)?;
+    if response.status != 200 {
+        return Err(LiveError::Status(response.status).into());
+    }
+    let rows: Value = serde_json::from_slice(&response.body).map_err(|_| ZoteroError::InvalidData)?;
+    let account = rows.get(0).and_then(|row| row.pointer("/library/id")?.as_u64());
+    Ok(format!("account:{}", account.unwrap_or_default()).into_bytes())
 }
 
 fn default_directory() -> Result<PathBuf, ZoteroError> {
@@ -952,7 +956,9 @@ mod tests {
     fn a_profile_is_its_data_directory_and_several_go_by_the_running_account() {
         struct Account(Option<u64>);
         impl Transport for Account {
-            fn get(&mut self, _: &str) -> Result<Response, TransportError> {
+            fn get(&mut self, path: &str) -> Result<Response, TransportError> {
+                // The real transport refuses a path with a leading slash.
+                assert!(path.starts_with("users/0/items/top?"), "{path}");
                 Ok(Response {
                     status: 200,
                     headers: vec![],

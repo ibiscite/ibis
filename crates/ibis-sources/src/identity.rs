@@ -96,12 +96,12 @@ fn random() -> Key {
 }
 
 fn saved(path: &Path, create: bool) -> io::Result<Key> {
-    let found = read(path);
-    match found {
+    match read(path) {
         Ok(Some(key)) => return Ok(key),
-        Ok(None) if create => std::fs::remove_file(path)?,
-        Err(ref error) if create && error.kind() == io::ErrorKind::NotFound => {}
+        // Never repaired: another process may be relying on what is there,
+        // and a key that cannot be read costs only lasting ids. Doctor says so.
         Ok(None) => return Err(io::ErrorKind::InvalidData.into()),
+        Err(error) if create && error.kind() == io::ErrorKind::NotFound => {}
         Err(error) => return Err(error),
     }
     let directory = path.parent().ok_or(io::ErrorKind::InvalidInput)?;
@@ -169,7 +169,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_saved_key_is_made_once_kept_and_replaced_only_when_unusable() {
+    fn a_saved_key_is_made_once_and_kept_and_a_damaged_one_is_left_alone() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("deep/library-ids.key");
         assert_eq!(saved(&path, false).unwrap_err().kind(), io::ErrorKind::NotFound);
@@ -185,8 +185,8 @@ mod tests {
         }
         for damage in ["", "short", &"z".repeat(64), &"a".repeat(200)] {
             std::fs::write(&path, damage).unwrap();
-            assert_eq!(saved(&path, false).unwrap_err().kind(), io::ErrorKind::InvalidData);
-            assert_ne!(saved(&path, true).unwrap(), first);
+            assert_eq!(saved(&path, true).unwrap_err().kind(), io::ErrorKind::InvalidData);
+            assert_eq!(std::fs::read_to_string(&path).unwrap(), damage);
         }
     }
 

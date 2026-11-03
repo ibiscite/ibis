@@ -225,6 +225,38 @@ fn csl_json_key_export_keeps_the_source_id() {
 }
 
 #[test]
+fn csl_json_export_refuses_two_records_that_would_share_an_id() {
+    let directory = tempfile::tempdir().unwrap();
+    let one = write(
+        directory.path(),
+        "one.json",
+        &format!(r#"[{BOOK},"id":"item-7","citation-key":"One"}}]"#),
+    );
+    let two = write(
+        directory.path(),
+        "two.json",
+        &format!(r#"[{BOOK},"id":"item-7","citation-key":"Two"}}]"#),
+    );
+    let engine = opened(&[&one, &two]);
+    let items: Vec<_> = library_ids(&engine)
+        .into_iter()
+        .map(|id| json!({"item":{"library":id,"key":"record:item-7"}}))
+        .collect();
+    let exported = asked(
+        &engine,
+        Method::Cite,
+        &json!({"items":items,"output":{"kind":"key","syntax":"csl-json"}}),
+    );
+    assert_eq!(exported["data"]["outcomes"][1]["error"], "ambiguous-key");
+    let same = json!({"items":[items[0], items[0]],"output":{"kind":"key","syntax":"csl-json"}});
+    let same = asked(&engine, Method::Cite, &same);
+    assert_eq!(
+        same["data"]["outcomes"][1]["outcome"], "rendered",
+        "one record twice is fine"
+    );
+}
+
+#[test]
 fn an_id_that_is_not_loaded_is_not_found_and_a_malformed_one_is_bad_input() {
     let directory = tempfile::tempdir().unwrap();
     let path = write(directory.path(), "a.bib", "@book{Doe2026,title={Invented atlas}}");

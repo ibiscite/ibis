@@ -64,7 +64,7 @@ pub(super) fn run(engine: &Engine, matches: &ArgMatches, mode: OutputMode) -> Re
         check(
             "not-checked",
             "ids-this-run",
-            "Library ids hold for this run: no saved key yet, and doctor writes none. Any other command saves one where it can.",
+            "Library ids hold for this run: there is no usable saved key, and doctor writes none. Any other command saves one where it can.",
         )
     };
     let data = json!({
