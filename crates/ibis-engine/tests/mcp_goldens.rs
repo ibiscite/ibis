@@ -56,7 +56,10 @@ fn golden_cases_replay_through_mcp() {
         }) {
             Some((data, content)) => {
                 assert_eq!(answer["isError"], false, "{}", case.name);
-                let mut expected = json!({"text": content.text, "notices": data.notices, "losses": data.losses});
+                let mut expected = json!({
+                    "text": content.text, "notices": data.notices, "losses": data.losses,
+                    "provenance": answer["structuredContent"]["provenance"],
+                });
                 // Nonempty warnings are part of citation feedback, including
                 // APA's sentence-case reminder for the bibliography case.
                 // Keep the established response shape for clean citations.
@@ -97,7 +100,7 @@ fn arguments(request: &CitationRequest) -> Option<Value> {
         return None;
     }
     let mut arguments = json!({
-        "items": request.items.iter().map(|item| json!({"id": item.item})).collect::<Vec<_>>(),
+        "items": request.items.iter().map(|item| json!({"ref": mcp::reference(&item.item)})).collect::<Vec<_>>(),
         "form": request.form,
     });
     match &request.output {

@@ -92,7 +92,7 @@ fn a_session_runs_over_newline_delimited_stdio() {
     .collect::<String>()
         + "not json\n";
     let mut output = Vec::new();
-    mcp::serve(&engine, input.as_bytes(), &mut output).unwrap();
+    mcp::serve(&engine, mcp::Session::default(), input.as_bytes(), &mut output).unwrap();
     let replies: Vec<Value> = String::from_utf8(output)
         .unwrap()
         .lines()
@@ -115,7 +115,12 @@ fn a_session_runs_over_newline_delimited_stdio() {
         assert_eq!(tool["annotations"]["readOnlyHint"], true);
         assert_eq!(tool["annotations"]["openWorldHint"], false);
     }
-    assert_eq!(replies[2]["result"]["structuredContent"]["hits"][0]["key"], "demo2026");
+    assert!(
+        replies[2]["result"]["structuredContent"]["hits"][0]["ref"]
+            .as_str()
+            .unwrap()
+            .starts_with("demo2026#")
+    );
     assert_eq!(replies[3]["error"]["code"], -32601);
     assert_eq!(replies[4]["error"]["code"], -32700);
 }
@@ -123,15 +128,15 @@ fn a_session_runs_over_newline_delimited_stdio() {
 #[test]
 fn agents_never_see_private_notes_and_long_text_is_cut() {
     let (_dir, engine) = engine();
-    let shown = tool(&engine, "show", json!({"item":{"key":"demo2026"}}));
+    let shown = tool(&engine, "show", json!({"ref":"demo2026"}));
     assert_eq!(shown["isError"], false);
     let data = &shown["structuredContent"];
     assert_eq!(data["title"], "Synthetic research on sleep");
-    assert_eq!(data["authors"], json!(["Researcher, Synthetic", "Writer, Example"]));
+    assert_eq!(data["authors"], json!(["Synthetic Researcher", "Example Writer"]));
     assert_eq!(data["year"], 2026);
     let text = shown.to_string();
     assert!(!text.contains("private"));
-    let summary = data["csl"]["abstract"].as_str().unwrap();
+    let summary = data["fields"]["abstract"].as_str().unwrap();
     assert_eq!(summary.chars().count(), mcp::MAX_TEXT + 1);
     assert!(summary.ends_with('…'));
 
@@ -139,7 +144,7 @@ fn agents_never_see_private_notes_and_long_text_is_cut() {
     let exported = tool(
         &engine,
         "cite",
-        json!({"items":[{"key":"demo2026"}],"syntax":"csl-json"}),
+        json!({"items":[{"ref":"demo2026"}],"syntax":"csl-json"}),
     );
     assert_eq!(exported["isError"], true);
     assert!(!exported.to_string().contains("private"));
@@ -158,20 +163,30 @@ fn search_preserves_partial_and_typo_matches_for_the_agent() {
     assert_eq!(exact["structuredContent"]["hits"][0]["partial"], false);
     assert_eq!(exact["structuredContent"]["hits"][0]["typo"], false);
     let partial = tool(&engine, "search", json!({"query":"sleep neutron"}));
-    assert_eq!(partial["structuredContent"]["hits"][0]["key"], "demo2026");
+    assert!(
+        partial["structuredContent"]["hits"][0]["ref"]
+            .as_str()
+            .unwrap()
+            .starts_with("demo2026#")
+    );
     assert_eq!(partial["structuredContent"]["hits"][0]["partial"], true);
     assert_eq!(partial["structuredContent"]["hits"][0]["typo"], false);
     let typo = tool(&engine, "search", json!({"query":"synthetiq"}));
-    assert_eq!(typo["structuredContent"]["hits"][0]["key"], "demo2026");
+    assert!(
+        typo["structuredContent"]["hits"][0]["ref"]
+            .as_str()
+            .unwrap()
+            .starts_with("demo2026#")
+    );
     assert_eq!(typo["structuredContent"]["hits"][0]["typo"], true);
 }
 
 #[test]
 fn cite_formats_by_key_or_by_id() {
     let (_dir, engine) = engine();
-    let pandoc = tool(&engine, "cite", json!({"items":[{"key":"demo2026"}],"syntax":"pandoc"}));
+    let pandoc = tool(&engine, "cite", json!({"items":[{"ref":"demo2026"}],"syntax":"pandoc"}));
     assert_eq!(pandoc["structuredContent"]["text"], "[@demo2026]");
-    let apa = tool(&engine, "cite", json!({"items":[{"key":"demo2026"}]}));
+    let apa = tool(&engine, "cite", json!({"items":[{"ref":"demo2026"}]}));
     assert_eq!(apa["structuredContent"]["text"], "(Researcher & Writer, 2026)");
     // Notices travel with the text, as `ibis cite --json` reports; one work needs no year letters.
     assert_eq!(apa["structuredContent"]["notices"], json!([]));
@@ -181,9 +196,14 @@ fn cite_formats_by_key_or_by_id() {
     );
 
     let hits = tool(&engine, "search", json!({"query":"second"}));
-    let id = hits["structuredContent"]["hits"][0]["id"].clone();
-    assert_eq!(hits["structuredContent"]["hits"][0]["key"], "nokey");
-    let by_id = tool(&engine, "cite", json!({"items":[{"id":id}],"style":"apa"}));
+    let id = hits["structuredContent"]["hits"][0]["ref"].clone();
+    assert!(
+        hits["structuredContent"]["hits"][0]["ref"]
+            .as_str()
+            .unwrap()
+            .starts_with("nokey#")
+    );
+    let by_id = tool(&engine, "cite", json!({"items":[{"ref":id}],"style":"apa"}));
     assert_eq!(by_id["structuredContent"]["text"], "(Author, 2025)");
 }
 
@@ -191,20 +211,20 @@ fn cite_formats_by_key_or_by_id() {
 fn cite_for_an_app_uses_that_apps_output_and_says_how_it_arrives() {
     let (_dir, engine) = engine();
     let cite = |arguments| tool(&engine, "cite", arguments);
-    let word = cite(json!({"items":[{"key":"demo2026"}],"for_app":"com.microsoft.Word","syntax":"typst"}));
-    let apa = cite(json!({"items":[{"key":"demo2026"}]}));
+    let word = cite(json!({"items":[{"ref":"demo2026"}],"for_app":"com.microsoft.Word","syntax":"typst"}));
+    let apa = cite(json!({"items":[{"ref":"demo2026"}]}));
     assert_eq!(word["structuredContent"]["text"], apa["structuredContent"]["text"]);
     assert_eq!(word["structuredContent"]["destination"]["delivery"]["action"], "paste");
-    let obsidian = cite(json!({"items":[{"key":"demo2026"}],"for_app":"md.obsidian"}));
+    let obsidian = cite(json!({"items":[{"ref":"demo2026"}],"for_app":"md.obsidian"}));
     assert_eq!(obsidian["structuredContent"]["text"], "[@demo2026]");
-    let unknown = cite(json!({"items":[{"key":"demo2026"}],"for_app":"com.example.unknown","syntax":"typst"}));
+    let unknown = cite(json!({"items":[{"ref":"demo2026"}],"for_app":"com.example.unknown","syntax":"typst"}));
     assert_eq!(unknown["structuredContent"]["text"], "@demo2026");
     assert_eq!(
         unknown["structuredContent"]["destination"]["delivery"]["action"],
         "copy"
     );
     assert_eq!(
-        cite(json!({"items":[{"key":"demo2026"}],"for_app":""}))["isError"],
+        cite(json!({"items":[{"ref":"demo2026"}],"for_app":""}))["isError"],
         true
     );
 }
@@ -246,7 +266,10 @@ fn cite_preserves_both_item_warning_codes_by_key_and_by_id() {
             item: ibis_engine::request::ItemSelector::Key("protected2020".into()),
         })
         .unwrap();
-    for selector in [json!({"key":"protected2020"}), json!({"id":shown.object.id()})] {
+    for selector in [
+        json!({"ref":"protected2020"}),
+        json!({"ref":mcp::reference(shown.object.id())}),
+    ] {
         let answer = tool(
             &engine,
             "cite",
@@ -264,16 +287,16 @@ fn cite_preserves_both_item_warning_codes_by_key_and_by_id() {
 #[test]
 fn bad_calls_are_tool_errors_without_library_text() {
     let (_dir, engine) = engine();
-    let missing = tool(&engine, "show", json!({"item":{"key":"absent"}}));
+    let missing = tool(&engine, "show", json!({"ref":"absent"}));
     assert_eq!(missing["isError"], true);
     assert_eq!(
         missing["content"][0]["text"],
-        "error: not-found. No reference matched; use a key or id that search returned."
+        "error: not-found. No reference matched; use a ref that search returned."
     );
     let both = tool(
         &engine,
         "cite",
-        json!({"items":[{"key":"demo2026"}],"style":"apa","syntax":"pandoc"}),
+        json!({"items":[{"ref":"demo2026"}],"style":"apa","syntax":"pandoc"}),
     );
     assert_eq!(both["isError"], true);
     assert!(
@@ -301,7 +324,7 @@ fn an_oversized_line_is_refused_once_and_the_session_continues() {
     input.push('\n');
     input.push_str(&format!("{}\n", request(7, "ping", json!({}))));
     let mut output = Vec::new();
-    mcp::serve(&engine, input.as_bytes(), &mut output).unwrap();
+    mcp::serve(&engine, mcp::Session::default(), input.as_bytes(), &mut output).unwrap();
     let replies: Vec<Value> = String::from_utf8(output)
         .unwrap()
         .lines()
@@ -330,9 +353,13 @@ fn note_overrides_print_but_note_text_and_app_links_never_reach_agents() {
         .to_string(),
     );
     let id = item_id(&engine);
-    let shown = tool(&engine, "show", json!({"item":{"id":id}}));
+    let shown = tool(&engine, "show", json!({"ref":id}));
     assert_eq!(shown["structuredContent"]["title"], "Invented override title");
-    let bibliography = tool(&engine, "cite", json!({"items":[{"id":id}],"form":"bibliography-only"}));
+    let bibliography = tool(
+        &engine,
+        "cite",
+        json!({"items":[{"ref":id}],"form":"bibliography-only"}),
+    );
     assert_eq!(
         bibliography["structuredContent"]["text"],
         "Invented, A. (2020). Invented override title. Invented Press."
@@ -352,7 +379,7 @@ fn note_overrides_print_but_note_text_and_app_links_never_reach_agents() {
 
 fn item_id(engine: &Engine) -> Value {
     let hits = tool(engine, "search", json!({"query":"invented"}));
-    hits["structuredContent"]["hits"][0]["id"].clone()
+    hits["structuredContent"]["hits"][0]["ref"].clone()
 }
 
 #[test]
@@ -379,7 +406,7 @@ fn every_answer_is_bounded() {
         hits["structuredContent"]["hits"].as_array().unwrap().len(),
         mcp::MAX_HITS
     );
-    let shown = tool(&engine, "show", json!({"item":{"key":"bound0"}}));
+    let shown = tool(&engine, "show", json!({"ref":"bound0"}));
     assert!(shown["content"][0]["text"].as_str().unwrap().len() <= mcp::MAX_ANSWER);
 }
 
@@ -410,7 +437,7 @@ fn an_override_cannot_slip_past_the_formatter_checks() {
         &json!([{"id":"others","type":"book","title":"Invented","issued":{"date-parts":[[2020]]},"note":"author: others"}])
             .to_string(),
     );
-    let cited = tool(&engine, "cite", json!({"items":[{"id":item_id(&engine)}]}));
+    let cited = tool(&engine, "cite", json!({"items":[{"ref":item_id(&engine)}]}));
     assert_eq!(cited["isError"], true);
 }
 
@@ -453,7 +480,12 @@ fn a_2026_client_works_without_a_handshake() {
     )
     .unwrap();
     assert_eq!(call["result"]["resultType"], "complete");
-    assert_eq!(call["result"]["structuredContent"]["hits"][0]["key"], "demo2026");
+    assert!(
+        call["result"]["structuredContent"]["hits"][0]["ref"]
+            .as_str()
+            .unwrap()
+            .starts_with("demo2026#")
+    );
     assert_eq!(
         call["result"]["_meta"]["io.modelcontextprotocol/serverInfo"]["name"],
         "ibis"
@@ -584,13 +616,13 @@ fn only_a_complete_handshake_opens_the_process_to_older_requests() {
 fn every_tool_answer_has_the_fields_its_output_schema_requires() {
     let (_dir, engine) = engine();
     let tools = handle(&engine, &modern(1, "tools/list", json!({}))).unwrap()["result"]["tools"].clone();
-    let id = tool(&engine, "search", json!({"query":"sleep"}))["structuredContent"]["hits"][0]["id"].clone();
+    let id = tool(&engine, "search", json!({"query":"sleep"}))["structuredContent"]["hits"][0]["ref"].clone();
     let calls = [
         ("search", json!({"query":"sleep"})),
-        ("show", json!({"item":{"key":"demo2026"}})),
-        ("show", json!({"item":{"id":id}})),
-        ("cite", json!({"items":[{"key":"demo2026"}]})),
-        ("cite", json!({"items":[{"key":"demo2026"}],"syntax":"pandoc"})),
+        ("show", json!({"ref":"demo2026"})),
+        ("show", json!({"ref":id})),
+        ("cite", json!({"items":[{"ref":"demo2026"}]})),
+        ("cite", json!({"items":[{"ref":"demo2026"}],"syntax":"pandoc"})),
         ("styles", json!({})),
     ];
     for (name, arguments) in calls {

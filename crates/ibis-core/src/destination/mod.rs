@@ -177,6 +177,8 @@ pub enum CopyReason {
     NoPermission,
     /// macOS Accessibility trust is required for the identity-only focus proof.
     AccessibilityRequired,
+    /// A paste would replace selected text the search never showed.
+    SelectionNotShown,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

@@ -42,6 +42,19 @@ impl Name {
     /// Name in natural reading order: "given particle family suffix", family
     /// name first with no space for Chinese, Japanese and Korean names, and
     /// "et al." for a truncated list.
+    /// Reads a CSL name; parts that are missing or not text stay empty.
+    pub fn from_csl(value: &serde_json::Value) -> Self {
+        let text = |name| value.get(name).and_then(serde_json::Value::as_str).map(str::to_owned);
+        Self {
+            family: text("family"),
+            given: text("given"),
+            literal: text("literal"),
+            dropping_particle: text("dropping-particle"),
+            non_dropping_particle: text("non-dropping-particle"),
+            suffix: text("suffix"),
+        }
+    }
+
     pub fn display(&self) -> String {
         if self.is_others() {
             return "et al.".to_string();
@@ -123,6 +136,20 @@ impl Issued {
     }
 }
 
+/// Characters that hide text or change how a person sees it: controls other than
+/// line breaks and tabs, direction overrides and isolates, invisible formatting
+/// marks, and plane 14, whose tag characters spell out text no one can see.
+pub fn is_hidden(character: char) -> bool {
+    (character.is_control() && !matches!(character, '\n' | '\t'))
+        || matches!(character,
+            '\u{202a}'..='\u{202e}'
+            | '\u{2066}'..='\u{2069}'
+            | '\u{2060}'..='\u{2064}'
+            | '\u{feff}'
+            | '\u{fff9}'..='\u{fffb}'
+            | '\u{e0000}'..='\u{e0fff}')
+}
+
 /// Remove CSL rich-text tags and decode the entities used to escape text.
 /// Markup is the tag set the formatter recognises (`crates/ibis-csl/src/bridge.js`);
 /// any other `<`, as in `p<0.05`, is text. Citeproc also prints an unbalanced tag
@@ -181,7 +208,26 @@ fn rich_text_tag_len(text: &str) -> Option<usize> {
 
 #[cfg(test)]
 mod tests {
-    use super::strip_markup;
+    use super::{is_hidden, strip_markup};
+
+    #[test]
+    fn hidden_characters_are_told_from_ordinary_text() {
+        for hidden in [
+            '\u{1b}',
+            '\u{7}',
+            '\u{202e}',
+            '\u{2067}',
+            '\u{feff}',
+            '\u{e0041}',
+            '\u{e0100}',
+        ] {
+            assert!(is_hidden(hidden), "{hidden:?}");
+        }
+        // Joiners and marks that text in many languages needs are kept.
+        for kept in ['\n', '\t', 'a', 'ع', '\u{200d}', '\u{200c}', '\u{200f}', '\u{fe0f}'] {
+            assert!(!is_hidden(kept), "{kept:?}");
+        }
+    }
 
     #[test]
     fn strip_markup_removes_tags_and_decodes_entities() {

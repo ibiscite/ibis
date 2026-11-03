@@ -151,6 +151,8 @@ impl TicketDesk for Fake {
             focus_failure: None,
             name: None,
             elevated: false,
+            selection: Selection::Unknown,
+            search: None,
         });
         if let Some(change) = self.after_front_query {
             change(self);
@@ -242,6 +244,8 @@ fn writer(id: &str) -> Captured {
             focus_failure: None,
             name: Some("Writer".into()),
             elevated: false,
+            selection: Selection::Unknown,
+            search: None,
         }),
         7,
     )
