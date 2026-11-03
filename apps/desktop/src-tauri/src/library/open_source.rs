@@ -16,7 +16,7 @@ mod icons;
 use super::state::Library;
 use super::{CommandError, Source};
 use crate::diagnostics::{NativeIssue, report};
-use crate::picker::{PickerGeneration, yield_to_window};
+use crate::picker::{PickerGeneration, Takeover, yield_to_window};
 
 #[derive(Debug, PartialEq, Eq)]
 enum Target {
@@ -60,7 +60,7 @@ pub(crate) async fn open_library_source(
         .map_err(|_| CommandError::from(FAILED))??;
     let handle = app.clone();
     report(
-        app.run_on_main_thread(move || yield_to_window(&handle, presentation)),
+        app.run_on_main_thread(move || yield_to_window(&handle, presentation, Takeover::Beside)),
         NativeIssue::Window,
     );
     Ok(())

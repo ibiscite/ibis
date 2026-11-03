@@ -50,7 +50,7 @@ export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library
         {actions.forgetRecent && <MenuItem id="forget-recent" label="Forget Recent Citations" onAction={actions.forgetRecent} />}
       </MenuSection>
       <MenuSection id="view-toggles">
-        <MenuItem id="pin" label={pinned ? pickerText.stopKeepingOpen : pickerText.keepOpenMenu} keys={label(keysFor("pin"))} checked={pinned} onAction={actions.pin} />
+        <MenuItem id="pin" label={pickerText.keepOpenMenu} keys={label(keysFor("pin"))} checked={pinned} onAction={actions.pin} />
         <MenuItem id="paste-preview" label={pickerText.showPastePreview} keys={label(keysFor("preview"))} checked={showPastePreview} onAction={actions.preview} />
       </MenuSection>
       <MenuSeparator />

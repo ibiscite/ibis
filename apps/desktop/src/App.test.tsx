@@ -1719,7 +1719,7 @@ test("header and More share the pin with state-dependent labels", async () => {
   fireEvent.click(keep);
   await waitFor(() => expect(pins).toEqual([true]));
   expect(pin.getAttribute("aria-pressed")).toBe("true");
-  expect((await screen.findByRole("menuitemcheckbox", { name: "Stop keeping open" })).getAttribute("aria-checked")).toBe("true");
+  expect((await screen.findByRole("menuitemcheckbox", { name: "Keep Window Open" })).getAttribute("aria-checked")).toBe("true");
   fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
   await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
   expect(pin.getAttribute("aria-pressed")).toBe("true");
@@ -1727,7 +1727,7 @@ test("header and More share the pin with state-dependent labels", async () => {
   await waitFor(() => expect(pins).toEqual([true, false]));
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "P", ctrlKey: true, shiftKey: true });
   await waitFor(() => expect(pins).toEqual([true, false, true]));
-  await chooseFromMore("Stop keeping open", "menuitemcheckbox");
+  await chooseFromMore("Keep Window Open", "menuitemcheckbox");
   await waitFor(() => expect(pins).toEqual([true, false, true, false]));
   expect(pin.getAttribute("aria-pressed")).toBe("false");
   fireEvent.keyDown(screen.getByRole("menu"), { key: "Tab" });

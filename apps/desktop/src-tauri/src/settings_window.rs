@@ -2,9 +2,10 @@
 //! the Dock and the app switcher like any Mac settings window.
 
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, Manager, Runtime, WebviewUrl, WebviewWindowBuilder};
 
 use crate::diagnostics::{NativeIssue, checked, report};
+use crate::picker::{PickerGeneration, PickerHideUi, Takeover, yield_to_window};
 
 pub(crate) const LABEL: &str = "settings";
 const TITLE: &str = "Ibis Settings";
@@ -106,7 +107,8 @@ pub(crate) fn open(app: &AppHandle, page: Option<Page>) {
     );
 }
 
-fn present(app: &AppHandle, page: Option<Page>) {
+/// Every way into Settings ends here, so each has one effect on the picker.
+pub(crate) fn present<R: PickerHideUi>(app: &AppHandle<R>, page: Option<Page>) {
     #[cfg(target_os = "macos")]
     {
         report(
@@ -160,13 +162,12 @@ fn present(app: &AppHandle, page: Option<Page>) {
     }
 }
 
-/// Every way into Settings has this one effect on the picker.
-fn yield_picker(app: &AppHandle) {
-    crate::picker::yield_to_window(app, app.state::<crate::picker::PickerGeneration>().current());
+fn yield_picker<R: PickerHideUi>(app: &AppHandle<R>) {
+    yield_to_window(app, app.state::<PickerGeneration>().current(), Takeover::Covered);
 }
 
 /// Every presentation has a page; ordinary Settings opens on General at the top.
-fn present_existing<R: tauri::Runtime>(window: &tauri::WebviewWindow<R>, page: Option<Page>) {
+fn present_existing<R: Runtime>(window: &tauri::WebviewWindow<R>, page: Option<Page>) {
     report(
         window.emit_to(LABEL, "settings:page", page.unwrap_or(Page::General)),
         NativeIssue::Window,
@@ -185,7 +186,7 @@ pub(crate) fn is_open(app: &AppHandle) -> bool {
 
 /// Once Settings closes, Ibis leaves the Dock again and lives in the menu bar,
 /// handing focus back to the app underneath unless the picker is up.
-pub(crate) fn closed(app: &AppHandle) {
+pub(crate) fn closed<R: Runtime>(app: &AppHandle<R>) {
     #[cfg(target_os = "macos")]
     {
         report(

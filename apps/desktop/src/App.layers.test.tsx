@@ -247,6 +247,36 @@ test.each(commands)("%s does the same by key and from More", async (name, role, 
   if (role === "menuitem") expect(byMenu.menu).toBe(0);
 });
 
+test.each(["the key", "More"])("Settings from %s keeps a pinned picker's pin for its next opening", async (route) => {
+  const opened = vi.fn(() => null);
+  const pins: unknown[] = [];
+  backend({ library_status: () => library, open_settings: opened, set_pinned: ({ on }) => { pins.push(on); return null; } });
+  render(<App />);
+  await waitFor(() => expect(screen.getByRole("status", { name: "Library status" }).textContent).toContain("thesis.bib"));
+  act(() => search().focus());
+  press("p", { ctrlKey: true, shiftKey: true });
+  await waitFor(() => expect(pins).toEqual([true]));
+  if (route === "the key") press(",", { ctrlKey: true });
+  else await chooseFromMore("Settings…");
+  await waitFor(() => expect(opened).toHaveBeenCalledOnce());
+  expect(screen.queryByRole("menu")).toBeNull();
+  // Native hides it even pinned; nothing here may undo the pin.
+  await reopen();
+  expect(pins).toEqual([true]);
+  expect(screen.getByRole("button", { name: "Keep Window Open", pressed: true })).toBeTruthy();
+  expect(document.activeElement).toBe(search());
+});
+
+test("More names Keep Window Open the same way on and off, with a check", async () => {
+  backend({ library_status: () => library });
+  render(<App />);
+  await waitFor(() => expect(screen.getByRole("status", { name: "Library status" }).textContent).toContain("thesis.bib"));
+  await chooseFromMore("Keep Window Open", "menuitemcheckbox");
+  await waitFor(() => expect(screen.getByRole("menuitemcheckbox", { name: "Keep Window Open" }).getAttribute("aria-checked")).toBe("true"));
+  fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Keep Window Open" }));
+  await waitFor(() => expect(screen.getByRole("menuitemcheckbox", { name: "Keep Window Open" }).getAttribute("aria-checked")).toBe("false"));
+});
+
 test("a command clears every layer in its way, and the keys for an open layer close it", async () => {
   await chosenCitation();
   press("k", { ctrlKey: true });

@@ -568,21 +568,31 @@ pub(crate) fn dismiss_picker(app: &AppHandle) {
     finish_dismiss(app);
 }
 
-/// Another window has taken over: Settings, or the app showing a source. An
-/// unpinned picker leaves, by the rule that hides it on blur, which no build or
-/// system may decide for us: a nonactivating panel can keep its place above
-/// the new window, and debug builds never hide on blur. A hide after Settings
-/// is up leaves the app shown, so Settings keeps the keyboard. Only
-/// `presentation` gives way: a late result cannot hide a newer opening.
-pub(crate) fn yield_to_window(app: &AppHandle, presentation: u64) {
+/// What a window taking over means for the picker.
+#[derive(Clone, Copy)]
+pub(crate) enum Takeover {
+    /// Another app: a pinned picker stays beside it, as the pin promises.
+    Beside,
+    /// Settings: a floating picker would cover it and take its clicks, so even
+    /// a pinned one leaves. The pin stays for its next opening.
+    Covered,
+}
+
+/// Another window has taken over: Settings, or the app showing a source. This
+/// is not left to blur, which no build or system may decide for us: a
+/// nonactivating panel can keep its place above the new window, and debug
+/// builds never hide on blur. A hide after Settings is up leaves the app
+/// shown, so Settings keeps the keyboard. Only `presentation` gives way: a
+/// late result cannot hide a newer opening.
+pub(crate) fn yield_to_window<R: PickerHideUi>(app: &AppHandle<R>, presentation: u64, takeover: Takeover) {
     let Some(window) = app.get_webview_window("main") else {
         return;
     };
     let shown = window.is_visible().unwrap_or(false);
     let chooser_open = app.state::<ChooserOpen>().is_open();
     let pinned = app.state::<Pinned>().0.load(Ordering::SeqCst);
-    if yields_to_window(shown, chooser_open, pinned) {
-        dismiss_presentation(app, presentation);
+    if yields_to_window(shown, chooser_open, pinned, takeover) {
+        dismiss_presented_with(&app.state::<PickerGeneration>(), presentation, || R::dismiss(app));
     }
 }
 
@@ -781,10 +791,10 @@ pub(crate) fn hides_on_blur(release_build: bool, chooser_open: bool, pinned: boo
     release_build && !chooser_open && !pinned
 }
 
-/// Whether a shown picker gives way to a new window. The same rule as blur in
-/// every build: its own file dialog and a pin keep it.
-fn yields_to_window(shown: bool, chooser_open: bool, pinned: bool) -> bool {
-    shown && hides_on_blur(true, chooser_open, pinned)
+/// Whether a shown picker gives way to a new window, in every build. Its own
+/// file dialog always keeps it; a pin keeps it only beside another app.
+fn yields_to_window(shown: bool, chooser_open: bool, pinned: bool, takeover: Takeover) -> bool {
+    shown && hides_on_blur(true, chooser_open, pinned && matches!(takeover, Takeover::Beside))
 }
 
 /// A show/dismiss attempt invalidates work owned by an earlier presentation,
@@ -969,6 +979,76 @@ mod tests {
         fn dismiss(app: &AppHandle<Self>) {
             app.state::<HideUi>().visible.store(false, Ordering::SeqCst);
         }
+    }
+
+    fn picker_and_settings(pinned: bool) -> tauri::Result<tauri::App<tauri::test::MockRuntime>> {
+        let app = tauri::test::mock_builder()
+            .manage(PickerGeneration(AtomicU64::new(41)))
+            .manage(ChooserOpen::default())
+            .manage(Pinned(AtomicBool::new(pinned)))
+            .manage(HideUi {
+                visible: AtomicBool::new(true),
+            })
+            .build(tauri::generate_context!(test = true))?;
+        tauri::WebviewWindowBuilder::new(&app, "main", Default::default()).build()?;
+        Ok(app)
+    }
+
+    /// ⌘, and More reach `open_settings`; the tray, the Dock, launch and the
+    /// paste guide call `settings_window::open`. All of them end in `present`.
+    #[test]
+    fn every_way_into_settings_closes_a_pinned_or_unpinned_picker_and_keeps_the_pin() -> tauri::Result<()> {
+        use crate::settings_window::{Page, present};
+        for pinned in [false, true] {
+            let app = picker_and_settings(pinned)?;
+            let handle = app.handle();
+            // A new Settings window first, then each request over an open one.
+            for page in [None, None, Some(Page::About), Some(Page::Updates), Some(Page::Paste)] {
+                app.state::<HideUi>().visible.store(true, Ordering::SeqCst);
+                let shown = app.state::<PickerGeneration>().advance();
+                present(handle, page);
+                assert!(
+                    !app.state::<HideUi>().visible.load(Ordering::SeqCst),
+                    "the picker must leave"
+                );
+                assert_ne!(
+                    app.state::<PickerGeneration>().current(),
+                    shown,
+                    "its presentation is over"
+                );
+                assert_eq!(app.state::<Pinned>().0.load(Ordering::SeqCst), pinned, "the pin stays");
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn settings_leaves_the_picker_that_owns_an_open_file_dialog() -> tauri::Result<()> {
+        let app = picker_and_settings(false)?;
+        let _dialog = app.state::<ChooserOpen>().begin();
+        crate::settings_window::present(app.handle(), None);
+        assert!(app.state::<HideUi>().visible.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[test]
+    fn an_opened_source_hides_only_its_own_unpinned_presentation() -> tauri::Result<()> {
+        let unpinned = picker_and_settings(false)?;
+        let asked = unpinned.state::<PickerGeneration>().current();
+        let newer = unpinned.state::<PickerGeneration>().advance();
+        yield_to_window(unpinned.handle(), asked, Takeover::Beside);
+        assert!(
+            unpinned.state::<HideUi>().visible.load(Ordering::SeqCst),
+            "a late result keeps a newer opening"
+        );
+        yield_to_window(unpinned.handle(), newer, Takeover::Beside);
+        assert!(!unpinned.state::<HideUi>().visible.load(Ordering::SeqCst));
+
+        let pinned = picker_and_settings(true)?;
+        let current = pinned.state::<PickerGeneration>().current();
+        yield_to_window(pinned.handle(), current, Takeover::Beside);
+        assert!(pinned.state::<HideUi>().visible.load(Ordering::SeqCst));
+        Ok(())
     }
 
     #[test]
@@ -1793,10 +1873,13 @@ mod tests {
     /// made the dialog disappear before it could be used.
     #[test]
     fn the_picker_stays_open_while_its_chooser_has_the_focus() {
-        assert!(yields_to_window(true, false, false));
-        assert!(!yields_to_window(false, false, false));
-        assert!(!yields_to_window(true, true, false));
-        assert!(!yields_to_window(true, false, true));
+        assert!(yields_to_window(true, false, false, Takeover::Beside));
+        assert!(!yields_to_window(false, false, false, Takeover::Beside));
+        assert!(!yields_to_window(true, true, false, Takeover::Beside));
+        assert!(!yields_to_window(true, false, true, Takeover::Beside));
+        assert!(yields_to_window(true, false, true, Takeover::Covered));
+        assert!(!yields_to_window(true, true, true, Takeover::Covered));
+        assert!(!yields_to_window(false, false, true, Takeover::Covered));
         assert!(hides_on_blur(true, false, false));
         assert!(!hides_on_blur(true, true, false));
         assert!(!hides_on_blur(false, false, false));
