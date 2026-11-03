@@ -115,7 +115,12 @@ fn a_session_runs_over_newline_delimited_stdio() {
         assert_eq!(tool["annotations"]["readOnlyHint"], true);
         assert_eq!(tool["annotations"]["openWorldHint"], false);
     }
-    assert_eq!(replies[2]["result"]["structuredContent"]["hits"][0]["ref"], "demo2026");
+    assert!(
+        replies[2]["result"]["structuredContent"]["hits"][0]["ref"]
+            .as_str()
+            .unwrap()
+            .starts_with("demo2026#")
+    );
     assert_eq!(replies[3]["error"]["code"], -32601);
     assert_eq!(replies[4]["error"]["code"], -32700);
 }
@@ -158,11 +163,21 @@ fn search_preserves_partial_and_typo_matches_for_the_agent() {
     assert_eq!(exact["structuredContent"]["hits"][0]["partial"], false);
     assert_eq!(exact["structuredContent"]["hits"][0]["typo"], false);
     let partial = tool(&engine, "search", json!({"query":"sleep neutron"}));
-    assert_eq!(partial["structuredContent"]["hits"][0]["ref"], "demo2026");
+    assert!(
+        partial["structuredContent"]["hits"][0]["ref"]
+            .as_str()
+            .unwrap()
+            .starts_with("demo2026#")
+    );
     assert_eq!(partial["structuredContent"]["hits"][0]["partial"], true);
     assert_eq!(partial["structuredContent"]["hits"][0]["typo"], false);
     let typo = tool(&engine, "search", json!({"query":"synthetiq"}));
-    assert_eq!(typo["structuredContent"]["hits"][0]["ref"], "demo2026");
+    assert!(
+        typo["structuredContent"]["hits"][0]["ref"]
+            .as_str()
+            .unwrap()
+            .starts_with("demo2026#")
+    );
     assert_eq!(typo["structuredContent"]["hits"][0]["typo"], true);
 }
 
@@ -182,7 +197,12 @@ fn cite_formats_by_key_or_by_id() {
 
     let hits = tool(&engine, "search", json!({"query":"second"}));
     let id = hits["structuredContent"]["hits"][0]["ref"].clone();
-    assert_eq!(hits["structuredContent"]["hits"][0]["ref"], "nokey");
+    assert!(
+        hits["structuredContent"]["hits"][0]["ref"]
+            .as_str()
+            .unwrap()
+            .starts_with("nokey#")
+    );
     let by_id = tool(&engine, "cite", json!({"items":[{"ref":id}],"style":"apa"}));
     assert_eq!(by_id["structuredContent"]["text"], "(Author, 2025)");
 }
@@ -460,7 +480,12 @@ fn a_2026_client_works_without_a_handshake() {
     )
     .unwrap();
     assert_eq!(call["result"]["resultType"], "complete");
-    assert_eq!(call["result"]["structuredContent"]["hits"][0]["ref"], "demo2026");
+    assert!(
+        call["result"]["structuredContent"]["hits"][0]["ref"]
+            .as_str()
+            .unwrap()
+            .starts_with("demo2026#")
+    );
     assert_eq!(
         call["result"]["_meta"]["io.modelcontextprotocol/serverInfo"]["name"],
         "ibis"

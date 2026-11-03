@@ -3,14 +3,13 @@
 //! To add a tool, add an entry. Failures are tool errors the agent can read:
 //! a fixed error code, then what to change, with nothing from the library.
 use super::view;
-use crate::request::{ItemSelector, SearchRequest, ShowRequest};
+use crate::request::{SearchRequest, ShowRequest};
 use crate::{Cancellation, Engine};
 use ibis_core::contract::{
     CitationError, CitationForm, CitationItem, CitationRequest, CitationResult, EngineError, ErrorCode, ErrorReason,
-    ItemOutcome, KeySyntax, LibraryObject, OutputSpec, Record, Script, Snapshot, TextRun,
+    ItemOutcome, KeySyntax, LibraryObject, OutputSpec, Script, Snapshot, SnapshotObject, TextRun,
 };
 use ibis_core::destination::{System, destination};
-use ibis_sources::WarningCode;
 use serde_json::{Map, Value, json};
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
@@ -70,7 +69,7 @@ pub(super) const TOOLS: [Tool; 4] = [
     Tool {
         name: "cite",
         title: "Format a citation",
-        description: "Write a citation or reference list from refs that search returned, with page locators if needed. Give a CSL `style` (default apa) for finished text, or a key `syntax` such as pandoc, biblatex or typst for a document that is processed later. Use the returned text as it is, and tell the user about anything in notices, losses or warnings.",
+        description: "Write a citation or reference list from refs that search returned, with page locators if needed. Pass each ref exactly as search gave it. Give a CSL `style` (default apa) for finished text, or a key `syntax` such as pandoc, biblatex or typst for a document that is processed later. Use the returned text as it is, and tell the user about anything in notices, losses or warnings.",
         input: cite_input,
         output: cite_output,
         reads_library: true,
@@ -233,19 +232,10 @@ fn library_notes(engine: &Engine) -> Result<Vec<String>, EngineError> {
                 .to_owned(),
         );
     }
-    // Warnings about one field leave the entry usable, and `cite` reports those itself.
-    let skipped = libraries.iter().any(|library| {
-        library.warnings_total > library.warnings.len()
-            || library.warnings.iter().any(|warning| {
-                matches!(
-                    warning.code,
-                    WarningCode::Syntax | WarningCode::DuplicateKey | WarningCode::WorkLimit
-                )
-            })
-    });
-    if skipped {
+    // Sources report a skipped entry under several warning codes, so any warning counts.
+    if libraries.iter().any(|library| library.warnings_total > 0) {
         notes.push(
-            "Some library entries could not be used, for example two entries with one citation key, so they are missing here. `ibis libraries` lists them for the user."
+            "The library has warnings, so entries may be missing or incomplete, for example two entries with one citation key. `ibis libraries` lists them for the user."
                 .to_owned(),
         );
     }
@@ -342,7 +332,7 @@ fn search(engine: &Engine, arguments: &Map<String, Value>) -> Result<Value, Refu
         .collect();
     let mut complete = records.len() <= limit;
     let snapshot = engine.snapshot()?;
-    let refs = references(&snapshot, records.iter().take(limit).map(|(_, record)| *record));
+    let refs = references(&snapshot, records.iter().take(limit).map(|(hit, _)| &hit.item));
     let mut hits = Vec::new();
     let mut size = 0;
     for ((hit, record), reference) in records.iter().zip(refs) {
@@ -364,18 +354,19 @@ fn search(engine: &Engine, arguments: &Map<String, Value>) -> Result<Value, Refu
     with_library_notes(answer, engine)
 }
 
-/// A ref for each record: its citation key when that selects it alone and reads
-/// as written, or else its id.
-fn references<'a>(snapshot: &Snapshot, records: impl Iterator<Item = &'a Record>) -> Vec<String> {
-    let records: Vec<_> = records.collect();
-    let usable = |record: &'a Record| {
-        record
+/// A ref for each object: its citation key when that selects it alone and reads
+/// as written, or else its id, then the check that refuses it once the record changes.
+fn references<'a>(snapshot: &Snapshot, objects: impl Iterator<Item = &'a SnapshotObject>) -> Vec<String> {
+    let objects: Vec<_> = objects.collect();
+    let usable = |object: &'a SnapshotObject| match &object.object {
+        LibraryObject::Record(record) => record
             .citation_key()
             .ok()
             .flatten()
-            .filter(|key| !key.is_empty() && *key == view::clean(key))
+            .filter(|key| !key.is_empty() && *key == view::clean(key)),
+        _ => None,
     };
-    let wanted: BTreeSet<&str> = records.iter().filter_map(|record| usable(record)).collect();
+    let wanted: BTreeSet<&str> = objects.iter().filter_map(|object| usable(object)).collect();
     let mut holders = BTreeMap::<&str, usize>::new();
     for item in snapshot.objects() {
         if let LibraryObject::Record(record) = &item.object {
@@ -386,11 +377,14 @@ fn references<'a>(snapshot: &Snapshot, records: impl Iterator<Item = &'a Record>
             }
         }
     }
-    records
+    objects
         .into_iter()
-        .map(|record| match usable(record) {
-            Some(key) if holders.get(key) == Some(&1) => key.to_owned(),
-            _ => view::reference(&record.id),
+        .map(|object| {
+            let base = match usable(object) {
+                Some(key) if holders.get(key) == Some(&1) => key.to_owned(),
+                _ => view::reference(object.object.id()),
+            };
+            view::checked(base, object.fingerprints.cite.as_str())
         })
         .collect()
 }
@@ -415,13 +409,12 @@ fn show_output() -> Value {
 }
 
 fn show(engine: &Engine, arguments: &Map<String, Value>) -> Result<Value, Refusal> {
-    let item = required_ref(arguments, "ref")?;
-    let shown = engine.show(&ShowRequest { item })?;
+    let shown = selected(engine, arguments)?;
     match &shown.object {
         LibraryObject::Record(record) => {
             let citable = view::citable(record);
             let snapshot = engine.snapshot()?;
-            let reference = references(&snapshot, std::iter::once(record)).remove(0);
+            let reference = references(&snapshot, std::iter::once(&shown)).remove(0);
             let mut data = view::summary(&citable, reference);
             data.insert("fields".into(), view::details(&citable));
             data.insert("provenance".into(), json!(PROVENANCE));
@@ -432,13 +425,22 @@ fn show(engine: &Engine, arguments: &Map<String, Value>) -> Result<Value, Refusa
     }
 }
 
-fn required_ref(arguments: &Map<String, Value>, name: &str) -> Result<ItemSelector, Refusal> {
-    arguments
-        .get(name)
+/// The record a `ref` names, as long as it still says what search saw.
+fn selected(engine: &Engine, arguments: &Map<String, Value>) -> Result<SnapshotObject, Refusal> {
+    let reference = arguments
+        .get("ref")
         .and_then(Value::as_str)
         .filter(|reference| !reference.is_empty())
-        .map(view::selector)
-        .ok_or_else(|| Refusal::bad(format!("{name} must be a ref from search, as text.")))
+        .ok_or_else(|| Refusal::bad("ref must be a ref from search, as text."))?;
+    let (item, check) = view::parse(reference);
+    let found = engine.show(&ShowRequest { item })?;
+    if check.is_some_and(|check| !found.fingerprints.cite.as_str().starts_with(check)) {
+        return Err(Refusal::new(
+            ErrorCode::NotFound,
+            "This reference changed since search returned it; search again and check it is the one you meant.",
+        ));
+    }
+    Ok(found)
 }
 
 fn cite_input() -> Value {
@@ -554,6 +556,7 @@ fn cite(engine: &Engine, arguments: &Map<String, Value>) -> Result<Value, Refusa
         })
         .collect::<Result<Vec<_>, _>>()?;
     let count = items.len();
+    let keyed = matches!(output, OutputSpec::Key { .. });
     let result = engine.cite(
         &CitationRequest {
             items,
@@ -572,8 +575,15 @@ fn cite(engine: &Engine, arguments: &Map<String, Value>) -> Result<Value, Refusa
     let Some(content) = result.copy_content(count) else {
         return Err(refusal(&result));
     };
+    // Removing a hidden character from a key would name another record, or none.
+    let text = view::scrub(content.text);
+    if (keyed && text != content.text) || text.trim().is_empty() {
+        return Err(Refusal::bad(
+            "A citation key here has hidden characters, so a key syntax cannot write it safely; use a style, or ask the user to fix the key.",
+        ));
+    }
     let mut answer = json!({
-        "text": view::scrub(content.text),
+        "text": text,
         "notices": result.notices,
         "losses": result.losses,
         "provenance": PROVENANCE,
@@ -594,9 +604,7 @@ fn citation_item(engine: &Engine, item: &Value) -> Result<CitationItem, Refusal>
         .as_object()
         .ok_or_else(|| Refusal::bad("each item must be an object with a ref from search."))?;
     known(fields, &cite_input()["properties"]["items"]["items"], "an item")?;
-    let selected = engine.show(&ShowRequest {
-        item: required_ref(fields, "ref")?,
-    })?;
+    let selected = selected(engine, fields)?;
     let text = |name: &str| -> Result<Vec<TextRun>, Refusal> {
         match fields.get(name) {
             None => Ok(vec![]),

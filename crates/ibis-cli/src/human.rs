@@ -1,4 +1,5 @@
 //! Sentences and summaries for people; `--json` output never passes through here.
+pub(super) use ibis_core::model::is_hidden;
 use ibis_core::{
     contract::*,
     destination::{CopyReason, Decision, Destination},

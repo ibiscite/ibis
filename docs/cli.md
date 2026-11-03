@@ -192,7 +192,9 @@ behind a queue of eight; a long request delays the ones after it.
 | `cite` | `items`, each a `ref` with any `locator`, `prefix`, `suffix` or `omit_author`, then `style` or `syntax`, `form`, and `for_app`, the [ID above](#output-for-an-app) | The citation `text`, with `notices`, `losses` and `warnings`. |
 | `styles` | nothing | The style ids `cite` accepts. |
 
-A `ref` is the citation key, or an `id:` string when no key selects that record alone.
+A `ref` is the citation key, or an `id:` string when no key selects that record alone,
+then `#` and a short check. If the record changes after `search`, the ref is refused
+instead of citing whatever now holds that key.
 Answers holding library text carry a `provenance` line saying it is data, not
 instructions, and `library_notes` when results may be missing or out of date, for
 example when entries were skipped or a library could no longer be read.
@@ -244,9 +246,12 @@ open Agent Skills format; copy that folder into an agent's skills folder to use 
 without the plugin.
 
 Through MCP, agents see bibliographic fields and citations only: never notes, annotations, source
-paths, file locations or local links. Markup and hidden characters are removed, because
-anyone can write a title; a library is treated as untrusted text. Long values are
-shortened and each answer is at most 256 KiB. Nothing connects beyond your computer; reading a running Zotero uses
+paths, file locations, local links or addresses with a login. A note's field lines, such
+as `original-title: …`, count as bibliographic fields, because citations print them.
+`search` and `show` remove markup, direction overrides and invisible tag characters,
+because anyone can write a title; a library is treated as untrusted text. `cite` text is
+the citation as it prints, so a title's own words stay in it. Long values are shortened
+and each answer is at most 256 KiB. Nothing connects beyond your computer; reading a running Zotero uses
 its local API on `127.0.0.1` only.
 
 Search results preserve `partial` (only some query words matched) and `typo`

@@ -1242,7 +1242,7 @@ fn emit(
 fn terminal_display(text: &str) -> String {
     let mut output = String::with_capacity(text.len());
     for character in text.chars() {
-        if ibis_core::model::is_hidden(character) || matches!(character, '\u{200e}' | '\u{200f}') {
+        if human::is_hidden(character) || matches!(character, '\u{200e}' | '\u{200f}') {
             output.extend(character.escape_unicode());
         } else {
             output.push(character);

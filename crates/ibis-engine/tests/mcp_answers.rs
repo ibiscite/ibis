@@ -86,19 +86,85 @@ fn entries_a_repeated_key_skipped_are_not_passed_off_as_absent() {
     );
     let result = tool(&engine, "search", json!({"query":"lantern"}));
     assert_eq!(answer(&result)["hits"], json!([]));
-    assert!(
-        answer(&result)["library_notes"]
-            .to_string()
-            .contains("could not be used")
-    );
+    assert!(answer(&result)["library_notes"].to_string().contains("may be missing"));
 }
 
 #[test]
-fn a_warning_about_one_field_does_not_claim_entries_are_missing() {
+fn a_ref_from_before_a_change_is_refused_rather_than_citing_another_work() {
+    let (_dir, path, engine) = library(b"@book{tide2020, title={Lantern original}, author={Orig, Ana}, year=2020}\n");
+    let found = tool(&engine, "search", json!({"query":"lantern"}));
+    let reference = answer(&found)["hits"][0]["ref"].as_str().unwrap().to_owned();
+    assert_eq!(
+        answer(&tool(&engine, "cite", json!({"items":[{"ref":reference}]})))["text"],
+        "(Orig, 2020)"
+    );
+    std::fs::write(
+        &path,
+        b"@book{tide2020, title={Lantern swapped}, author={Swap, Bo}, year=1999}\n",
+    )
+    .unwrap();
+    engine
+        .dispatch(Method::Libraries, &json!({"action":"reload"}), &Cancellation::default())
+        .unwrap();
+    for (name, arguments) in [
+        ("cite", json!({"items":[{"ref":reference}]})),
+        ("show", json!({"ref":reference})),
+    ] {
+        let refused = tool(&engine, name, arguments);
+        assert!(refusal(&refused).contains("changed since search"), "{refused}");
+    }
+}
+
+#[test]
+fn a_citation_key_is_never_rewritten_into_another_records_key() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("keys.json");
+    std::fs::write(
+        &path,
+        "[{\"id\":\"ab\",\"citation-key\":\"ab\",\"type\":\"book\",\"title\":\"Tide plain\"},\
+          {\"id\":\"a\u{2060}b\",\"citation-key\":\"a\u{2060}b\",\"type\":\"book\",\"title\":\"Tide hidden\"}]",
+    )
+    .unwrap();
+    let engine = Engine::new().unwrap().without_file_watches();
+    open(&engine, &path);
+    let found = tool(&engine, "search", json!({"query":"tide hidden"}));
+    let hit = &answer(&found)["hits"][0];
+    assert_eq!(hit["title"], "Tide hidden");
+    let refused = tool(&engine, "cite", json!({"items":[{"ref":hit["ref"]}],"syntax":"pandoc"}));
+    assert!(refusal(&refused).contains("hidden characters"), "{refused}");
+    let cited = tool(&engine, "cite", json!({"items":[{"ref":hit["ref"]}],"style":"apa"}));
+    assert!(answer(&cited)["text"].as_str().unwrap().contains("Tide"), "{cited}");
+}
+
+#[test]
+fn links_to_this_computer_never_reach_an_agent() {
+    let (_dir, _path, engine) = library(
+        br"@misc{local2020, title={Tide local}, year=2020, url={http://localhost:8080/private/tide.pdf},
+  note={source: file:///Users/invented/Private/tide.pdf}}
+@misc{nas2020, title={Tide nas}, year=2020, url={http://192.168.1.20/nas/tide.pdf}}
+@misc{login2020, title={Tide login}, year=2020, url={https://user:hunter2@files.invented.test/tide.pdf}}
+@misc{home2020, title={Tide home}, year=2020, url={http://nas.local/tide.pdf}}
+@misc{open2020, title={Tide open}, year=2020, url={https://example.org/tide.pdf}}
+",
+    );
+    for key in ["local2020", "nas2020", "login2020", "home2020"] {
+        let shown = tool(&engine, "show", json!({"ref":key}));
+        assert!(answer(&shown)["fields"].get("URL").is_none(), "{shown}");
+        assert!(answer(&shown)["fields"].get("source").is_none(), "{shown}");
+    }
+    let shown = tool(&engine, "show", json!({"ref":"open2020"}));
+    assert_eq!(answer(&shown)["fields"]["URL"], "https://example.org/tide.pdf");
+}
+
+#[test]
+fn a_warning_of_any_kind_says_entries_may_be_missing() {
     let (_dir, _path, engine) = library(b"@misc{lantern, title={Lantern}, year={}}\n");
     let result = tool(&engine, "search", json!({"query":"lantern"}));
-    assert_eq!(answer(&result)["hits"][0]["ref"], "lantern");
-    assert!(answer(&result).get("library_notes").is_none(), "{result}");
+    assert_eq!(answer(&result)["hits"][0]["title"], "Lantern");
+    assert!(
+        answer(&result)["library_notes"].to_string().contains("may be missing"),
+        "{result}"
+    );
 }
 
 #[test]

@@ -13,6 +13,7 @@ use std::fmt::Write;
 /// Characters kept of any one text value.
 pub const MAX_TEXT: usize = 1_000;
 const ID_MARK: &str = "id:";
+const CHECK_LENGTH: usize = 8;
 
 /// A record's fields as formatting sees them.
 pub(super) fn citable(record: &Record) -> Map<String, Value> {
@@ -118,8 +119,23 @@ pub fn reference(id: &ItemRef) -> String {
     text
 }
 
-/// Reads a ref. Text that is not an id is a citation key.
-pub(super) fn selector(reference: &str) -> ItemSelector {
+/// A ref as search returns it: the record, then a short check of what it said then.
+pub(super) fn checked(base: String, fingerprint: &str) -> String {
+    format!("{base}#{}", &fingerprint[..fingerprint.len().min(CHECK_LENGTH)])
+}
+
+/// Reads a ref into the record it names and the check it carries, if any.
+pub(super) fn parse(reference: &str) -> (ItemSelector, Option<&str>) {
+    match reference.rsplit_once('#') {
+        Some((base, check)) if check.len() == CHECK_LENGTH && check.bytes().all(|byte| byte.is_ascii_hexdigit()) => {
+            (selector(base), Some(check))
+        }
+        _ => (selector(reference), None),
+    }
+}
+
+/// Text that is not an id is a citation key.
+fn selector(reference: &str) -> ItemSelector {
     reference
         .strip_prefix(ID_MARK)
         .and_then(|id| id.split_once('/'))
