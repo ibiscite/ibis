@@ -146,6 +146,8 @@ export const densityNames = {
 } as const;
 
 export const pickerText = {
+  /** An editor asked through the endpoint; it receives exactly what is shown. */
+  editorWaiting: (format: string) => `Citing for your editor in ${isolate(format)}. Enter sends what you see; Esc cancels.`,
   openZotero: "Open Zotero",
   showInZotero: "Show in Zotero",
   findSource: "Find…",

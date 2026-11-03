@@ -180,6 +180,22 @@ for the whole cluster. The other forms currently require one reference.
 Author-only requests with a locator or suffix are refused: Natbib's numerical
 mode silently omits those postnotes, and Ibis cannot know the document's mode.
 
+## Editors (Cite as You Write)
+
+Editor integrations written for Better BibTeX's Cite as You Write can use Ibis
+instead, if they let you enter the whole endpoint address. Switch on Settings ›
+Citations › **Editor endpoint**, choose **Copy Address**, and paste it where the
+editor asks for its Cite as You Write URL. Integrations that only let you change
+Zotero's port cannot reach it. Formats and options are listed in
+[parity](parity.md#better-bibtex-cite-as-you-write).
+
+| Editor client | What has passed | Formats and options |
+| --- | --- | --- |
+| VS Code: Citation Picker for Zotero 0.2.1 (`zotero-citation-picker.port`) | Its recorded requests, replayed against the endpoint (`cayw_clients.rs`). Not yet run against Ibis in VS Code, so compatibility is not claimed. | `pandoc`, `biblatex`, `natbib`, `typst`, `formatted-citation`, `formatted-bibliography` |
+
+The extension's **Zotero: Check Connection** and PDF commands use Better BibTeX's
+JSON-RPC, which Ibis does not offer; they report an error.
+
 ## What the tests establish
 
 `scripts/smoke-native.py` checks a narrow case on Linux/X11: the default

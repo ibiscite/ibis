@@ -59,6 +59,16 @@ export const commands = {
 	copyFileCitation: (ticket: string, contentHash: string) => __TAURI_INVOKE<Copied_Serialize>("copy_file_citation", { ticket, contentHash }),
 	/**  The format the picker starts with: the last one chosen, or Pandoc. */
 	copyFormat: () => __TAURI_INVOKE<KeyFormat>("copy_format"),
+	/**  The format the waiting editor asked for; `None` when no editor is waiting. */
+	editorRequest: () => __TAURI_INVOKE<string | null>("editor_request"),
+	editorEndpoint: () => __TAURI_INVOKE<EndpointStatus>("editor_endpoint"),
+	/**
+	 *  Switch the endpoint. Off closes the port and forgets the address, so the next
+	 *  time it is on, an old copy of that address no longer works.
+	 */
+	setEditorEndpoint: (on: boolean) => __TAURI_INVOKE<EndpointStatus>("set_editor_endpoint", { on }),
+	/**  Put the address on the clipboard for pasting into an editor's settings. */
+	copyEditorEndpoint: () => __TAURI_INVOKE<null>("copy_editor_endpoint"),
 	/**  The preferences the picker starts with. */
 	pickerPreferences: () => __TAURI_INVOKE<PickerPreferences_Serialize>("picker_preferences"),
 	/**  Issue a save identity inline at IPC dispatch; unused identities block nothing. */
@@ -374,6 +384,23 @@ export type DisplayRun_Serialize = {
 	script: Script,
 	small_caps?: boolean,
 	underline?: boolean,
+};
+
+/**  Why the endpoint could not listen. */
+export type EndpointProblem =
+/**  Another program has the port. */
+"port-in-use" |
+/**  The saved port or token cannot be used. */
+"bad-setting" | "not-saved";
+
+/**
+ *  What Settings shows. The address holds the token: anyone who has it can open
+ *  the picker, so it stays on this computer and in this window.
+ */
+export type EndpointStatus = {
+	on: boolean,
+	url: string | null,
+	problem: EndpointProblem | null,
 };
 
 export type FilePreview = FilePreview_Serialize | FilePreview_Deserialize;

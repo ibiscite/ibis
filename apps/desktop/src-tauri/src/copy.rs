@@ -159,6 +159,8 @@ pub(crate) async fn citation_details(
         .map_err(|_| CommandError::from("Citation examples are unavailable. Close and reopen the menu to try again."))?
 }
 
+// Each managed state is its own argument: Tauri hands them to commands that way.
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 #[specta::specta]
 pub(crate) async fn preview_file_citation(

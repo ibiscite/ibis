@@ -135,6 +135,7 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
     "plugin:window|is_visible": () => true,
     shortcut_status: () => ({ shortcut: "CommandOrControl+Shift+Y", registered: true, error: null }),
     search: () => [],
+    editor_request: () => null,
     hide_picker: () => true,
     picker_presentation: () => 0,
     picker_moving: () => null,

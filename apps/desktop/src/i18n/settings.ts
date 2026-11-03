@@ -56,6 +56,8 @@ export const SETTINGS_IDS = [
   "citations-default-description",
   "citations-forget", "citations-forget-description", "citations-forget-button",
   "citations-forget-failed", "citations-forget-done", "citations-recent", "citations-recent-description", "citations-recent-words",
+  "citations-editor", "citations-editor-description", "citations-editor-words", "citations-editor-address", "citations-editor-address-description",
+  "citations-editor-copy", "citations-editor-copied", "citations-editor-port-in-use", "citations-editor-bad-setting", "citations-editor-not-saved",
   "citations-format-pandoc",
   "citations-format-autocite",
   "citations-format-parencite",

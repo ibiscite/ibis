@@ -476,6 +476,7 @@ impl FileLibrary {
         }
         Ok(latest.1.clone())
     }
+    #[cfg(test)]
     pub(crate) fn preview(
         &self,
         reservation: u64,

@@ -464,13 +464,15 @@ mod tests {
 
     const TOKEN: &str = "0123456789abcdef0123456789abcdef";
 
+    type Then = Box<dyn FnOnce(&Pending) + Send>;
+
     #[derive(Default)]
     struct Fake {
         pending: Pending,
         presented: AtomicUsize,
         changes: AtomicUsize,
         ready: AtomicBool,
-        then: StdMutex<Option<Box<dyn FnOnce(&Pending) + Send>>>,
+        then: StdMutex<Option<Then>>,
     }
 
     impl Host for Fake {
