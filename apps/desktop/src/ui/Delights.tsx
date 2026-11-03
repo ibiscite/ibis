@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { composing } from "../composition";
 import { useInterfaceMessages } from "../i18n";
 import { matchesAccelerator } from "../keys";
@@ -99,12 +99,11 @@ export function useEmptyFeedback(identity: string) {
   const [feedback, setFeedback] = useState<string | null>(null);
   const [shaking, setShaking] = useState(false);
   const timer = useRef<number | undefined>(undefined);
-  const passing = useRef<number | undefined>(undefined);
   // biome-ignore lint/correctness/useExhaustiveDependencies: a new presentation retires feedback.
-  useEffect(() => { setFeedback(null); setShaking(false); return () => { window.clearTimeout(timer.current); window.clearTimeout(passing.current); }; }, [identity]);
-  return { feedback, shaking, refuse: (message: string) => {
-    setFeedback(message); setShaking(true); window.clearTimeout(timer.current); window.clearTimeout(passing.current);
+  useEffect(() => { setFeedback(null); setShaking(false); return () => window.clearTimeout(timer.current); }, [identity]);
+  const clear = useCallback(() => setFeedback(null), []);
+  return { feedback, shaking, clear, refuse: (message: string) => {
+    setFeedback(message); setShaking(true); window.clearTimeout(timer.current);
     timer.current = window.setTimeout(() => setShaking(false), 240);
-    passing.current = window.setTimeout(() => setFeedback(null), 8000);
   } };
 }

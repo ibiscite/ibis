@@ -65,8 +65,8 @@ export function Notices({ library, failures, error, citationProblem, copyError, 
 }
 
 /** An update in the notice slot, so no row moves while it runs. */
-export function UpdateNotice({ progress }: { progress: UpdateProgress }) {
-  if (progress.phase === "failed") return <QuietNotice role="alert">{updateText.failed}</QuietNotice>;
+export function UpdateNotice({ progress, paused, onSeen }: { progress: UpdateProgress; paused?: boolean; onSeen?: () => void }) {
+  if (progress.phase === "failed") return <QuietNotice role="alert" paused={paused} onExpire={onSeen}>{updateText.failed}</QuietNotice>;
   return <Progress title={updateText.title} label={updateText[progress.phase]} detail={updateSize(progress)}
     value={progress.phase === "downloading" && progress.total ? Math.min(100, 100 * progress.received / progress.total) : undefined} />;
 }

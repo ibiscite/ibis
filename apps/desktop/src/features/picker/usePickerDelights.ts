@@ -31,12 +31,5 @@ export function usePickerDelights(api: PickerApi, presentation: number | null, l
     }
     return () => { live = false; window.clearTimeout(timer); };
   }, [api.delightView, presentation, revision, load, settingsRevision]);
-  // A remark stands in for the library status, so it passes like any notice.
-  const remark = view?.status ?? null;
-  useEffect(() => {
-    if (!remark) return;
-    const timer = window.setTimeout(dismiss, 8000);
-    return () => window.clearTimeout(timer);
-  }, [remark, dismiss]);
   return { feedback: view?.status ? text(STATUS[view.status], { keys: keyLabel(keysFor("pin"), isMac) }) : null, peck: view?.peck ?? false, passive: view?.status !== "paste-tip", dismiss };
 }

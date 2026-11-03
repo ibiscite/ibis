@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { Notices, UpdateNotice } from "./Notices";
 
 afterEach(cleanup);
@@ -87,4 +87,18 @@ test("update progress keeps known, unknown, checking and failed phases honest", 
   rerender(<UpdateNotice progress={{ ...progress, phase: "failed" }} />);
   expect(screen.queryByRole("progressbar")).toBeNull();
   expect(screen.getByRole("alert").textContent).toContain("Check now in Settings > About");
+});
+
+test("a failed update passes once seen, and waits while the picker is hidden", () => {
+  vi.useFakeTimers();
+  try {
+    const seen = vi.fn();
+    const failed = { attempt: 1, revision: 1, received: 0, total: null, phase: "failed" } as const;
+    const { rerender } = render(<UpdateNotice progress={failed} paused onSeen={seen} />);
+    act(() => { vi.advanceTimersByTime(9000); });
+    expect(seen).not.toHaveBeenCalled();
+    rerender(<UpdateNotice progress={failed} onSeen={seen} />);
+    act(() => { vi.advanceTimersByTime(8000); });
+    expect(seen).toHaveBeenCalledOnce();
+  } finally { vi.useRealTimers(); }
 });

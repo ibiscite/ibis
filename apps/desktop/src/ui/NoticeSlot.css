@@ -1,11 +1,10 @@
 /* Each window's one place for what passes [Notices]: its status area, in the layout.
    Nothing here floats, casts a shadow or opens a layer, so a notice never covers a
-   row and can sit behind any open menu. The newest shows; an older one returns when
-   it goes, with the rest of its time. */
+   row and can sit behind any open menu. */
 .notice-slot { display: flex; align-items: center; min-width: 0; font-size: var(--type-body-size); line-height: var(--type-body-line); }
-.notice-slot > :not(:last-child) { display: none; }
 .notice-band { display: flex; align-items: center; gap: var(--space-2); flex: 1; box-sizing: border-box; min-width: 0; min-height: var(--control-small-h); padding-inline-start: var(--notice-start, 0); color: var(--text); animation: notice-in var(--dur-panel) var(--ease); }
 /* One line: words end in an ellipsis, Undo stays whole beside them. */
+.notice-band[hidden] { display: none; }
 .notice-band > span { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .notice-band > .ui-button { flex: none; }
 .notice-band:not([data-offer]) { color: var(--text-secondary); }

@@ -138,7 +138,7 @@ test("closing and reopening while Page has focus returns to Search and retains t
   expect((await openCitationDetails()).value).toBe("42");
 });
 
-test("reference and window Undo keep separate reachable actions and cannot consume each other", async () => {
+test("reference and window Undo take the slot in turn and cannot consume each other", async () => {
   const windowUndos: unknown[] = [];
   backend({ search: () => [result("a", "Invented work")], undo_window_position: (args) => { windowUndos.push(args); return true; } });
   render(<App />);
@@ -148,12 +148,10 @@ test("reference and window Undo keep separate reachable actions and cannot consu
   const segment = screen.getByRole("button", { name: "Edit Smith 2020" });
   act(() => segment.focus()); fireEvent.keyDown(segment, { key: "Backspace" });
   await act(async () => { await emit("picker:window-reset", { revision: 17, undo: 17 }); });
-  const actions = screen.getAllByRole("button", { name: /^Undo / });
-  expect(actions).toHaveLength(2);
-  const descriptions = actions.map((button) => document.getElementById(button.getAttribute("aria-describedby")!)?.textContent);
-  expect(descriptions).toEqual(["Removed Smith 2020", "Window position reset."]);
-  for (const button of actions) { act(() => button.focus()); expect(document.activeElement).toBe(button); }
-  await act(async () => { fireEvent.click(actions[1]!); });
+  // One slot: the newest offer shows, and the other waits with its action intact.
+  const newest = screen.getByRole("button", { name: /^Undo / });
+  expect(document.getElementById(newest.getAttribute("aria-describedby")!)?.textContent).toBe("Window position reset.");
+  await act(async () => { fireEvent.click(newest); });
   expect(windowUndos).toEqual([{ revision: 17 }]);
   expect(screen.queryByText("Window position reset.")).toBeNull();
   expect(screen.getByText("Removed Smith 2020")).toBeTruthy();

@@ -222,7 +222,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
       <PickerStatusFooter
         api={api} library={library} scope={scope} sourceState={source} menus={menus} actions={actions}
         copyChosen={rows.copyChosen} destination={destination} recents={recents} preferences={preferences}
-        operations={operations} altHeld={altHeld} notices={<PickerNotices state={state} send={send} menus={menus} updateProgress={updateProgress} remark={zoomFeedback ?? emptyFeedback.feedback ?? delights.feedback} passive={!zoomFeedback && !emptyFeedback.feedback && delights.passive} />} emptyAction={emptyFeedback.shaking} lastOutcome={state.lastOutcome}
+        operations={operations} altHeld={altHeld} notices={<PickerNotices state={state} send={send} menus={menus} updateProgress={updateProgress} remark={zoomFeedback ?? emptyFeedback.feedback ?? delights.feedback} passive={!zoomFeedback && !emptyFeedback.feedback && delights.passive} onRemarkPassed={() => { emptyFeedback.clear(); delights.dismiss(); }} />} emptyAction={emptyFeedback.shaking} lastOutcome={state.lastOutcome}
         cancelCopy={cancelCopy} quitAfterSaving={quitAfterSaving} />
       <PickerOverlays menus={menus} bindings={actions.bindings} />
       <HeldKeys />

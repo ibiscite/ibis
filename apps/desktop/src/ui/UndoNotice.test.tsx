@@ -116,7 +116,7 @@ test("closing and reopening preserves the remaining visible Undo time", () => {
   expect(expire).toHaveBeenCalledOnce();
 });
 
-test("a notice stays in the layout on one line, and the newest takes the slot", () => {
+test("a notice stays in the layout on one line and offers its key", () => {
   const { container } = render(<NoticeSlot>
     <UndoNotice action="Reset Window Position" message="Window position reset." onUndo={async () => {}} onExpire={() => {}} />
     <QuietNotice>A remark.</QuietNotice>
@@ -125,9 +125,43 @@ test("a notice stays in the layout on one line, and the newest takes the slot", 
   expect(container.querySelector(".notice-band[data-offer]")).not.toBeNull();
   const css = readFileSync(new FileURL("./NoticeSlot.css", import.meta.url), "utf8");
   expect(css).not.toMatch(/position:\s*(fixed|absolute|sticky)|box-shadow|z-index/);
-  expect(css).toMatch(/\.notice-slot > :not\(:last-child\) \{ display: none; \}/);
   expect(css).toMatch(/white-space: nowrap/);
   expect(screen.getByRole("button", { name: "Undo Reset Window Position" }).getAttribute("aria-keyshortcuts")).toBeTruthy();
+});
+
+test("the newest offer takes the slot and ⌘Z, and an older one returns with the rest of its time", () => {
+  vi.useFakeTimers();
+  const older = vi.fn(), newer = vi.fn();
+  const slot = (both: boolean) => <NoticeSlot>
+    <UndoNotice action="Remove Vale 2021" message="Removed Vale 2021" onUndo={async () => {}} onExpire={older} />
+    {both && <UndoNotice action="Reset Window Position" message="Window position reset." onUndo={async () => {}} onExpire={newer} />}
+  </NoticeSlot>;
+  const { rerender } = render(slot(false));
+  act(() => vi.advanceTimersByTime(2000));
+  rerender(slot(true));
+  expect(screen.getByRole("button", { name: "Undo Reset Window Position" })).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Undo Remove Vale 2021" })).toBeNull();
+  act(() => vi.advanceTimersByTime(7000));
+  expect(older).not.toHaveBeenCalled();
+  rerender(slot(false));
+  expect(screen.getByRole("button", { name: "Undo Remove Vale 2021" })).toBeTruthy();
+  act(() => vi.advanceTimersByTime(5900));
+  expect(older).not.toHaveBeenCalled();
+  act(() => vi.advanceTimersByTime(100));
+  expect(older).toHaveBeenCalledOnce();
+});
+
+test("a remark's time runs only while it is shown, and restarts when it returns", () => {
+  vi.useFakeTimers();
+  const passed = vi.fn();
+  const { rerender } = render(<QuietNotice paused onExpire={passed}>A remark.</QuietNotice>);
+  act(() => vi.advanceTimersByTime(9000));
+  expect(passed).not.toHaveBeenCalled();
+  rerender(<QuietNotice onExpire={passed}>A remark.</QuietNotice>);
+  act(() => vi.advanceTimersByTime(7900));
+  rerender(<QuietNotice onExpire={() => passed()}>A remark.</QuietNotice>);
+  act(() => vi.advanceTimersByTime(100));
+  expect(passed).toHaveBeenCalledOnce();
 });
 
 test("an empty slot draws nothing", () => {
