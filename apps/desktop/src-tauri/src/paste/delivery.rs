@@ -212,7 +212,6 @@ pub(super) fn deliver<D: Desk>(desk: &D, proof: Option<&D::Proof>, enabled: bool
                     desk.ask_to_post();
                     copied(Some(CopyReason::NoPermission))
                 }
-                #[cfg(any(target_os = "windows", test))]
                 PostResult::SecureField => copied(Some(CopyReason::SecureField)),
                 #[cfg(any(target_os = "windows", test))]
                 PostResult::KeyReleaseFailed => key_release_failed(),

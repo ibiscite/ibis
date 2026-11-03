@@ -229,8 +229,9 @@ Enter finds must be the one the picker opened on, so text selected or changed
 since refuses the paste the same way. When the opening could not read (refused,
 failed or too slow) the search is empty and the final read decides: the paste
 goes ahead only if nothing is selected. An app whose control does not report a
-selection at all pastes as before: Ibis cannot tell, and refusing would end
-pasting there. The paste switch also turns the read off; there is no separate
+selection at all, or does not implement the call, pastes as before: Ibis cannot
+tell, and refusing would end pasting there, so a selection in such a control can
+still be replaced. The paste switch also turns the read off; there is no separate
 setting (2026-11-02).
 
 ## 0029 Native calls

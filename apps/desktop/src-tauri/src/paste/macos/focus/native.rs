@@ -18,7 +18,7 @@ use super::super::secure_input;
 use super::{
     Attribute, FINAL_SELECTION_LIMIT, Identity, LIMIT, Provider, Reply, SELECTION_LIMIT, SHORT_SELECTION, SelectedText,
     Selection, capture_query, check_selection, claim_process, diagnostics, missing_identity_attribute,
-    opening_selection, query, same_live_process,
+    opening_selection, query, range_length, same_live_process, selection_error,
 };
 
 // SAFETY: AXUIElement.h declares AXError=int32_t, pid_t=int and Boolean=u8.
@@ -46,9 +46,6 @@ unsafe extern "C" {
 
 /// `kAXValueTypeCFRange` in AXValue.h.
 const AX_VALUE_CF_RANGE: u32 = 4;
-/// `kAXErrorAttributeUnsupported` and `kAXErrorNoValue`.
-const AX_UNSUPPORTED: i32 = -25205;
-const AX_NO_VALUE: i32 = -25212;
 
 /// CFRange in CFBase.h: two CFIndex values.
 #[repr(C)]
@@ -134,11 +131,11 @@ impl Native {
         };
         diagnostics::ax(error, self.elapsed().saturating_sub(started));
         let owned = Element::owned(value);
-        match error {
-            0 => owned.map_or(Reply::Failed, Reply::Value),
-            AX_NO_VALUE => Reply::NoValue,
-            AX_UNSUPPORTED => Reply::Unsupported,
-            _ => Reply::Failed,
+        match selection_error(error) {
+            Reply::Value(()) => owned.map_or(Reply::Failed, Reply::Value),
+            Reply::NoValue => Reply::NoValue,
+            Reply::Unsupported => Reply::Unsupported,
+            Reply::TooLong | Reply::Failed => Reply::Failed,
         }
     }
 
@@ -283,10 +280,7 @@ impl Provider for Native {
                 && AXValueGetType(pointer) == AX_VALUE_CF_RANGE
                 && AXValueGetValue(pointer, AX_VALUE_CF_RANGE, (&raw mut range).cast()) != 0
         };
-        match usize::try_from(range.length) {
-            Ok(length) if read && range.location >= 0 => Reply::Value(length),
-            _ => Reply::Failed,
-        }
+        range_length(read, range.location, range.length)
     }
 
     fn selected_text(&self, element: &Element, deadline: Instant) -> Reply<String> {

@@ -1447,6 +1447,7 @@ fn a_failed_read_or_secure_typing_at_the_final_proof_never_posts() {
     for (failure, reason) in [
         (CopyReason::PasteUnavailable, "paste-unavailable"),
         (CopyReason::SecureInput, "secure-input"),
+        (CopyReason::SecureField, "secure-field"),
         (CopyReason::TargetChanged, "target-changed"),
     ] {
         let desk = Fake::new();

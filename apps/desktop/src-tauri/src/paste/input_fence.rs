@@ -65,7 +65,6 @@ pub(super) enum PostResult {
     ClipboardChanged,
     AccessibilityRequired,
     NoPermission,
-    #[cfg(any(target_os = "windows", test))]
     SecureField,
     #[cfg(any(target_os = "windows", test))]
     KeyReleaseFailed,
@@ -218,6 +217,7 @@ pub(super) fn checked_post(desk: &impl PostDesk, request: &PostRequest) -> PostR
             CopyReason::SelectionNotShown => PostResult::SelectionNotShown,
             CopyReason::TargetChanged => PostResult::TargetChanged,
             CopyReason::SecureInput => PostResult::SecureInput,
+            CopyReason::SecureField => PostResult::SecureField,
             CopyReason::AccessibilityRequired => PostResult::AccessibilityRequired,
             _ => PostResult::Unavailable,
         };

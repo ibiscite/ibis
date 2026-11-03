@@ -422,8 +422,9 @@ test("Escape clears document text for good: it never comes back as a search", ()
   expect(s.state.query).toBe("");
 });
 
-test("a permission detour keeps its prepared search over a new selection", () => {
+test("a new selection ends a permission detour: the text a paste would replace is always shown", () => {
   const s = scenario();
+  s.send({ type: "toggle", result: a });
   s.send({ type: "query", value: "prepared" });
   s.send(s.view());
   s.send({ type: "enter", choice: choiceKey([a]) });
@@ -433,7 +434,39 @@ test("a permission detour keeps its prepared search over a new selection", () =>
   expect(s.state.permissionDetour).toBe(true);
   s.send({ type: "hidden", now: 20 });
   s.send({ type: "preparing", now: 30, selection: "smith 2020" });
-  expect(s.state).toMatchObject({ query: "prepared", fromDocument: false });
+  expect(s.state).toMatchObject({ query: "smith 2020", fromDocument: true, permissionDetour: false });
+  expect([...s.state.selected.values()]).toHaveLength(1);
+});
+
+test("a detour keeps its prepared search when the document has no selection", () => {
+  const s = scenario();
+  s.send({ type: "query", value: "prepared" });
+  s.send(s.view());
+  s.send({ type: "enter", choice: choiceKey([a]) });
+  s.complete(1);
+  s.send({ type: "hid", id: 1, session: 0 });
+  s.send({ type: "delivered", id: 1, session: 0, delivered: { outcome: "copied", reason: "no-permission" } });
+  s.send({ type: "hidden", now: 20 });
+  s.send({ type: "preparing", now: 30, selection: null });
+  expect(s.state).toMatchObject({ query: "prepared", permissionDetour: true });
+});
+
+test("a fresh Enter after a detour ends it, so a reopen during delivery cannot leave it stuck", () => {
+  const s = scenario();
+  s.send({ type: "query", value: "prepared" });
+  s.send(s.view());
+  s.send({ type: "enter", choice: choiceKey([a]) });
+  s.complete(1);
+  s.send({ type: "hid", id: 1, session: 0 });
+  s.send({ type: "delivered", id: 1, session: 0, delivered: { outcome: "copied", reason: "no-permission" } });
+  s.send({ type: "hidden", now: 20 });
+  s.send({ type: "preparing", now: 30, selection: null });
+  s.send({ type: "shown", now: 31, presentation: 0 });
+  expect(s.state.permissionDetour).toBe(true);
+  s.send(s.view());
+  s.send({ type: "enter", choice: choiceKey([a]) });
+  s.send({ type: "copied", id: 2, session: s.state.session, outcome: { text: prepared.text, warnings: [] }, output: { opening: 0, choice: 0, delivery: 0 }, pinned: false });
+  expect(s.state.permissionDetour).toBe(false);
 });
 
 test("a detour keeps a citation prepared from document text", () => {

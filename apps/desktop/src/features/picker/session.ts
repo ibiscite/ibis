@@ -220,9 +220,10 @@ export function reduceSession(s: SessionState, event: SessionEvent): [SessionSta
     case "hidden": return [{ ...s, presentation: null, readingPresentation: false, retryPresentation: false, visibility: s.visibility + 1, hiddenAt: event.now, pendingCopy: null, shelfCopied: null, copyNotice: null }, []];
     case "preparing": {
       s = { ...returning(s, event.now), hiddenAt: null };
-      // A permission detour keeps its prepared citation; a new search would replace it.
-      if (!event.selection || s.permissionDetour) return [s, []];
-      return [changed(s, { query: event.selection, interpretLocators: true, fromDocument: true, active: 0, escapedQuery: null, restored: s.restored + 1 }), []];
+      if (!event.selection) return [s, []];
+      // The paste would replace this text, so it always shows, even after a
+      // permission detour; the shelf stays.
+      return [changed(s, { query: event.selection, interpretLocators: true, fromDocument: true, active: 0, escapedQuery: null, restored: s.restored + 1, permissionDetour: false }), []];
     }
     case "shown": {
       s = returning(s, event.now);
@@ -258,7 +259,7 @@ export function reduceSession(s: SessionState, event: SessionEvent): [SessionSta
       if (!ownsCompletion(s, f, event.output)) return [finish(s, f), s.activeCopy === f.id && f.owner.session === s.session && sameOutput(f.owner.output, event.output) ? [{ type: "consume", output: f.owner.output }] : []];
       s = { ...s, copied: outcome, shelfCopied: sameVisibleOutput ? { ...outcome, closestMatches: f.warnings } : null,
         copyNotice: sameVisibleOutput ? null : outcome, escapedQuery: null, flights: s.flights.map((flight) => flight === f ? { ...f, phase: "hide", outcome } : flight) };
-      return afterCopy(outcome, event.pinned) === "hide-and-notify" ? [s, [{ type: "hide", id: f.id, session: f.session, presentation: f.presentation }]] : complete(s);
+      return afterCopy(outcome, event.pinned) === "hide-and-notify" ? [{ ...s, permissionDetour: false }, [{ type: "hide", id: f.id, session: f.session, presentation: f.presentation }]] : complete(s);
     }
     case "hid": {
       if (f.phase !== "hide") return [s, []];

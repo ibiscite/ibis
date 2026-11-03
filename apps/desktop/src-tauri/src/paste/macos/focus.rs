@@ -70,6 +70,27 @@ enum Reply<T> {
     Failed,
 }
 
+/// What an AX error says about a selection attribute. A control that does not
+/// implement the call has none, which is not a failed read.
+fn selection_error(error: i32) -> Reply<()> {
+    match error {
+        0 => Reply::Value(()),
+        -25212 => Reply::NoValue,
+        -25205 | -25208 => Reply::Unsupported,
+        _ => Reply::Failed,
+    }
+}
+
+/// An empty range may carry `kCFNotFound` as its location; it still says that
+/// nothing is selected.
+fn range_length(read: bool, location: isize, length: isize) -> Reply<usize> {
+    match usize::try_from(length) {
+        Ok(0) if read => Reply::Value(0),
+        Ok(length) if read && location >= 0 => Reply::Value(length),
+        _ => Reply::Failed,
+    }
+}
+
 trait Provider {
     type Element: PartialEq;
     fn now(&self) -> Instant;
@@ -756,6 +777,22 @@ mod tests {
             Ok(())
         );
         assert!(fake.reads.borrow().is_empty());
+    }
+
+    #[test]
+    fn controls_that_answer_oddly_are_not_failed_reads() {
+        assert_eq!(selection_error(0), Reply::Value(()));
+        assert_eq!(selection_error(-25212), Reply::NoValue);
+        assert_eq!(selection_error(-25205), Reply::Unsupported);
+        assert_eq!(selection_error(-25208), Reply::Unsupported, "not implemented");
+        assert_eq!(selection_error(-25204), Reply::Failed, "cannot complete");
+        assert_eq!(selection_error(-25202), Reply::Failed, "invalid element");
+        assert_eq!(range_length(true, -1, 0), Reply::Value(0), "kCFNotFound with no length");
+        assert_eq!(range_length(true, 3, 0), Reply::Value(0));
+        assert_eq!(range_length(true, 3, 7), Reply::Value(7));
+        assert_eq!(range_length(true, -1, 7), Reply::Failed);
+        assert_eq!(range_length(true, 3, -1), Reply::Failed);
+        assert_eq!(range_length(false, 3, 7), Reply::Failed);
     }
 
     #[test]
