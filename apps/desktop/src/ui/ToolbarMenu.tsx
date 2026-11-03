@@ -8,8 +8,8 @@ import { useMenuLifecycle } from "./useMenuLifecycle";
 import "./ToolbarMenu.css";
 
 /** An item with `checked` is a toggle beside the single choice, such as "Just this once".
- * A `note` says quietly why a choice is dimmed: under its label, or once for a
- * whole section when every choice shares the reason. */
+ * A `note` says something quietly: on an item, why it is dimmed, under its label;
+ * on a section, what holds for all of it. */
 export type ToolbarMenuSection = { id: string; label?: string; note?: string; items: { id: string; label: string; sample?: string; prose?: boolean; note?: string; disabled?: boolean; checked?: boolean; command?: boolean }[] };
 export type ToolbarMenuCommand = { run: () => void; isCurrent: () => boolean };
 export type MenuCloseReason = "action" | "dismiss" | "command";

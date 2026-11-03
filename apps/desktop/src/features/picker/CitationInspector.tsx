@@ -19,26 +19,28 @@ export type CitationNotes = { entry: string | null; output: readonly string[]; c
 
 /** The details of one reference, or the notes on its citation. The column's
  * controls never move: everything that grows with the output sits beside them. */
-export function CitationInspector({ ref, id, panel, heading, reference, index, selected, previewReceipt, citation, failure, notes, source, keys, onChange, onSubmit, onOpenSource, onRemove, onClose }: {
+export function CitationInspector({ ref, id, panel, heading, reference, index, selected, previewReceipt, output, citation, failure, notes, source, keys, onChange, onSubmit, onOpenSource, onRemove, onClose }: {
   ref: Ref<HTMLElement>; id: string; panel: InspectorPanel; heading: string;
   reference: CitationReference | undefined; index: number; selected: boolean; previewReceipt?: FilePreview;
+  /** Which output the citation is in; a page edit leaves it the same. */
+  output: string;
   citation: FormattedCitation | null; failure: string | null; notes: CitationNotes;
   source?: SourceActionProps; keys: boolean;
   onChange?: (reference: CitationReference, change: CitationDetailsChange) => void;
   onSubmit?: () => void; onOpenSource?: (reference: CitationReference) => void;
   onRemove: (reference: CitationReference) => void; onClose: () => void;
 }) {
-  const [details, setDetails] = useState<{ receipt: FilePreview; value: ReferenceDetails | "failed" }>();
+  const [details, setDetails] = useState<{ receipt: FilePreview; output: string; value: ReferenceDetails | "failed" }>();
   const editing = panel.kind !== "warnings";
   useEffect(() => {
     if (!editing || !previewReceipt || index < 0) return;
     let live = true;
     void citationDetails(previewReceipt.ticket, previewReceipt.content_hash, index).then(
-      (value) => { if (live) setDetails({ receipt: previewReceipt, value }); },
-      () => { if (live) setDetails({ receipt: previewReceipt, value: "failed" }); },
+      (value) => { if (live) setDetails({ receipt: previewReceipt, output, value }); },
+      () => { if (live) setDetails({ receipt: previewReceipt, output, value: "failed" }); },
     );
     return () => { live = false; };
-  }, [editing, previewReceipt, index]);
+  }, [editing, previewReceipt, index, output]);
   const problem = failure && <p role="alert" tabIndex={0} className="inspector-citation inspector-problem"><Icon name="warning" />{failure}</p>;
   if (!editing) {
     const { entry, output, closest } = notes;
@@ -52,8 +54,10 @@ export function CitationInspector({ ref, id, panel, heading, reference, index, s
   }
   const form = reference?.form ?? "normal";
   // Examples stay while the next arrive, so typing a page never flickers. The
-  // rest of an older answer says nothing about the citation now being made.
-  const choices = !details || details.value === "failed" || details.receipt === previewReceipt ? details?.value
+  // rest of an older answer says nothing about the citation now being made,
+  // unless this output has no forms at all, which a page cannot change.
+  const choices = !details || details.value === "failed" || details.receipt === previewReceipt
+    || details.output === output && details.value.forms.every((choice) => choice.reason) ? details?.value
     : { current_form: form, forms: details.value.forms.map((choice) => ({ ...choice, reason: null })) };
   const byline = reference && [reference.authors, reference.container, reference.year].filter(Boolean).join(" · ");
   return <Inspector ref={ref} id={id} label={reference ? citationDetailsText.details(reference.title || reference.key) : pickerText.citationDetails} heading={heading} closeLabel={keyText.close} onClose={onClose}

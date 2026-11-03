@@ -713,3 +713,33 @@ test("a copy that fails says so in the panel, once, so it is seen when the panel
   await waitFor(() => expect(document.querySelector(".inspector")).toBeNull());
   expect((await screen.findByRole("alert")).closest(".notices")).toBeTruthy();
 });
+
+test.each([1, 2])("removing the edited reference closes the panel and returns to Search (%s chosen)", async (count) => {
+  backend({ search: () => [result("a", "First work"), result("b", "Second work")] });
+  render(<App />);
+  fireEvent.click(await screen.findByText("First work"), { ctrlKey: true });
+  if (count === 2) fireEvent.click(screen.getByText("Second work"), { ctrlKey: true });
+  fireEvent.click((await screen.findAllByRole("button", { name: /^Edit Smith 2020/ }))[0]!);
+  const page = await screen.findByRole("textbox", { name: "Page" });
+  await waitFor(() => expect(document.activeElement).toBe(page));
+  fireEvent.click(screen.getByRole("button", { name: /Remove from Citation/ }));
+  await waitFor(() => expect(document.querySelector(".inspector")).toBeNull());
+  expect(document.activeElement).toBe(screen.getByLabelText("Search references"));
+});
+
+test("an output with no forms keeps its one line while a page is typed, with no pop-up in between", async () => {
+  const reason = "Reference entries have no name forms. Choose another style.";
+  const replies: ((value: unknown) => void)[] = [];
+  backend({ search: () => [result("a", "Invented work")], preview_file_citation: ({ items }) => receipt(`Entry ${items[0]?.page_input ?? ""}`),
+    citation_details: () => new Promise((resolve) => replies.push(resolve)) });
+  render(<App />);
+  const page = await openCitationDetails();
+  await waitFor(() => expect(replies).toHaveLength(1));
+  const none = { current_form: null, forms: [{ form: "normal", example: null, reason }, { form: "narrative", example: null, reason }, { form: "year-only", example: null, reason }] };
+  await act(async () => replies[0]!(none));
+  expect(screen.getByText(reason)).toBeTruthy();
+  fireEvent.change(page, { target: { value: "9" } });
+  await waitFor(() => expect(replies).toHaveLength(2));
+  expect(screen.getByText(reason)).toBeTruthy();
+  expect(screen.queryByRole("button", { name: /^Show as / })).toBeNull();
+});

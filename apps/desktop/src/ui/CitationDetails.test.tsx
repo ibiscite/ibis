@@ -53,16 +53,27 @@ test("before the engine answers the reference's own form shows and every form ca
   expect(change).toHaveBeenCalledExactlyOnceWith("normal");
 });
 
-test("an explicit answer of no form selects none, and a reason every form shares shows once", async () => {
-  const reason = "Keys only has no name forms. Choose another output.";
+test("with no form to choose, one quiet line replaces the pop-up", () => {
+  const reason = "Reference entries have no name forms. Choose another style.";
   render(<CitationDetails page="" form="normal" onPageChange={vi.fn()} onFormChange={vi.fn()} choices={{ current_form: null, forms: [
     { form: "normal", example: null, reason }, { form: "narrative", example: null, reason }, { form: "year-only", example: null, reason },
+  ] }} />);
+  expect(screen.getAllByText(reason)).toHaveLength(1);
+  expect(screen.queryByRole("button", { name: /^Show as / })).toBeNull();
+});
+
+test("an explicit answer of no form selects none, where forms have their own reasons", async () => {
+  render(<CitationDetails page="" form="normal" onPageChange={vi.fn()} onFormChange={vi.fn()} choices={{ current_form: null, forms: [
+    { form: "normal", example: null, reason: "First invented reason." }, { form: "narrative", example: null, reason: "Second invented reason." }, { form: "year-only", example: "(2026)", reason: null },
   ] }} />);
   fireEvent.click(screen.getByRole("button", { name: "Show as None" }));
   const items = await screen.findAllByRole("menuitemradio");
   expect(items.filter((item) => item.getAttribute("aria-checked") === "true")).toEqual([]);
-  expect(items.every((item) => item.getAttribute("aria-disabled") === "true")).toBe(true);
-  expect(screen.getAllByText(reason)).toHaveLength(1);
+});
+
+test("an empty Page with the caret in it shows no placeholder", () => {
+  const css = readFileSync(new FileURL("./CitationDetails.css", import.meta.url), "utf8");
+  expect(css).toContain("input:focus::placeholder { color: transparent; }");
 });
 
 test.each(["macos", "windows", "linux"])("%s uses labelled shared controls and plain text", async (platform) => {
