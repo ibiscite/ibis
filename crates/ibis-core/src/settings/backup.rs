@@ -340,6 +340,7 @@ pub fn plan(current: &Settings, backup: &Backup, exists: impl FnOnce(&Path) -> b
     restored.picker_windows = current.picker_windows.clone();
     restored.delights = current.delights.clone();
     restored.update_checks = current.update_checks;
+    restored.zotero_profile = current.zotero_profile.clone();
     let mut notes = Vec::new();
     // Each system keeps its own shortcut unless the backup has one for it.
     let mut shortcuts: BTreeMap<System, String> = current.shortcut.by_system().clone();
