@@ -69,10 +69,23 @@ impl SyntaxCapabilities {
 use CitationForm::{Narrative, Normal, YearOnly};
 use FieldSupport::{Flattened, Native, SingleItem, Unsupported};
 
-pub const CAPABILITIES: [SyntaxCapabilities; 16] = [
+pub const CAPABILITIES: [SyntaxCapabilities; 17] = [
     SyntaxCapabilities {
         syntax: KeySyntax::Pandoc,
         command: None,
+        forms: &[Normal, Narrative, YearOnly],
+        single_item_forms: &[Narrative],
+        locator: Native,
+        prefix: &[(Normal, Native), (Narrative, Flattened), (YearOnly, Native)],
+        suffix: Native,
+        rich_text: Native,
+        author_suppression: Native,
+        escaping: Escaping::Pandoc,
+    },
+    // Better BibTeX's `format=pandoc`: no brackets when nothing needs them.
+    SyntaxCapabilities {
+        syntax: KeySyntax::Pandoc,
+        command: Some("bare"),
         forms: &[Normal, Narrative, YearOnly],
         single_item_forms: &[Narrative],
         locator: Native,
