@@ -326,11 +326,11 @@ Enforcement is split by measured margin (maintainer, 2026-10-28):
 |---|---|---|
 | Search p95 ≤ 20 ms, each query | `ci.yml` → `test` (`Test (ubuntu-24.04)`), release `search_budget` | At least 61% measured margin |
 | Picker JS/CSS ≤ 400 KiB gzipped | `ci.yml` → `changes` and `web`, both picker build paths | Deterministic asset bytes |
-| 100k open and refresh < 3 s each | `preview.yml` → Linux `build`: `open_refresh_report` on branches and 0.2.x, `open_refresh_budget` on tags from 0.3 | Only 224 ms open margin; shared PR-runner noise can exceed it |
+| 100k open and refresh < 3 s each | `preview.yml` → `release-checks`: `open_refresh_report` on branches and 0.2.x, `open_refresh_budget` on tags from 0.3 | Only 224 ms open margin; shared PR-runner noise can exceed it |
 
-Preview's build covers nightly packages from `main`, tagged releases and manual
-package builds; the scheduled update-test-only run retains its existing build
-skip. Failing open/refresh blocks that build and its downstream publication.
+Preview's release checks cover pushes to `main`, tags and manual runs; the
+scheduled update-test-only run skips them. Failing open/refresh stops a numbered
+release and never holds a nightly back.
 Both engine cases use one test thread after compilation finishes; no retries,
 discarded warmups or best-of selection hide failures. One instrumented run
 immediately after compilation took 3,638 ms to open while search passed, which

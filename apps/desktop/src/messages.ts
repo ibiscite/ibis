@@ -568,8 +568,3 @@ export const updateText = {
   installing: "Checking and installing",
   failed: "The update could not be installed. Use Check now in Settings > About to try again later.",
 };
-
-// The Settings window (#776, docs/design.md "Settings").
-export const settingsText = {
-  windowTitle: "Ibis Settings",
-} as const;
