@@ -8,8 +8,9 @@ import { useMenuLifecycle } from "./useMenuLifecycle";
 import "./ToolbarMenu.css";
 
 /** An item with `checked` is a toggle beside the single choice, such as "Just this once".
- * A `note` says quietly, under the label, why a dimmed choice is unavailable. */
-export type ToolbarMenuSection = { id: string; label?: string; items: { id: string; label: string; sample?: string; prose?: boolean; note?: string; disabled?: boolean; checked?: boolean; command?: boolean }[] };
+ * A `note` says quietly why a choice is dimmed: under its label, or once for a
+ * whole section when every choice shares the reason. */
+export type ToolbarMenuSection = { id: string; label?: string; note?: string; items: { id: string; label: string; sample?: string; prose?: boolean; note?: string; disabled?: boolean; checked?: boolean; command?: boolean }[] };
 export type ToolbarMenuCommand = { run: () => void; isCurrent: () => boolean };
 export type MenuCloseReason = "action" | "dismiss" | "command";
 type Props = {
@@ -104,6 +105,7 @@ export function ToolbarMenu({ buttonRef, buttonShortcut, disabled, label, value,
     }}>
     {sections.map((section) => <MenuSection key={section.id} id={section.id} className="menu-section">
       {section.label && <Header className="menu-heading">{section.label}</Header>}
+      {section.note && <Header className="toolbar-menu-note">{section.note}</Header>}
       {section.items.map((item) => <MenuItem className="menu-item" id={item.id} key={item.id} textValue={item.label} shouldCloseOnSelect={false}
         render={(props) => <MenuRow {...props as ComponentPropsWithRef<"div">} itemId={item.id} aria-disabled={disabled || item.disabled || undefined}
           {...item.checked !== undefined ? { role: "menuitemcheckbox", "aria-checked": item.checked } : item.command ? { role: "menuitem", "aria-checked": undefined } : {}} />}>

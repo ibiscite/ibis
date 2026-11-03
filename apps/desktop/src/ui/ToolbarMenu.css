@@ -10,7 +10,9 @@
 /* One quiet line: a long example ends in an ellipsis, never breaks a key apart. */
 .toolbar-menu-sample { margin-inline-start: auto; min-width: 0; max-width: 50%; overflow: hidden; color: var(--text-secondary); font: var(--type-label-size) var(--mono); text-overflow: ellipsis; white-space: nowrap; text-align: end; }
 .toolbar-menu-sample[data-prose] { font-family: var(--font); white-space: normal; overflow-wrap: break-word; }
-/* Why a choice is unavailable: under its label, and never what sets the menu's width. */
+/* Why a choice is unavailable: under its label, or once above them all, and never
+   what sets the menu's width. */
+.toolbar-menu-note { contain: inline-size; padding-block: var(--space-1); padding-inline: var(--menu-label-start) var(--menu-item-pad); color: var(--text-secondary); font-size: var(--type-label-size); line-height: var(--type-label-line); overflow-wrap: break-word; }
 .menu-item:has(> .toolbar-menu-sample[data-note]) { flex-wrap: wrap; row-gap: 0; }
 .toolbar-menu-sample[data-note] { contain: inline-size; flex: 1 0 100%; max-width: none; margin: 0; padding-inline-start: calc(var(--menu-check-width) + var(--menu-item-gap)); font-family: var(--font); line-height: var(--type-label-line); text-align: start; white-space: normal; overflow-wrap: break-word; }
 .menu-item[data-focused] .toolbar-menu-sample { color: inherit; }

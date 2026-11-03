@@ -72,7 +72,7 @@ export function CitationInspector({ ref, id, panel, heading, reference, index, s
       </div>}
       {citation && <section aria-label={pickerText.fullCitation} tabIndex={0} className="inspector-citation" data-keys={keys || undefined}><bdi dir="auto">{citation.markup.length && !keys ? render(citation.markup) : citation.text}</bdi></section>}
       {problem}
-      {[...notes.output, ...notes.closest].map((warning, i) => <p key={i} className="inspector-citation">{warning}</p>)}
+      {[...notes.entry ? [notes.entry] : [], ...notes.output, ...notes.closest].map((note, i) => <p key={i} className="inspector-citation">{note}</p>)}
     </>}>
     {reference && onChange && <CitationDetails autoFocus page={reference.locator?.label === "page" ? reference.locator.value : ""} form={form} choices={choices}
       onPageChange={(value) => onChange(reference, { locator: value.trim() ? { label: "page", value, input: "page-editor" } : null })}

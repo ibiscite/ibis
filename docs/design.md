@@ -181,7 +181,7 @@ Each component in `apps/desktop/src/ui/` wraps one React Aria component (decisio
 - A menu with any check keeps a leading check column for every row, so labels share one start and shortcuts line up at the end.
 - **Menu heading**: small bold secondary type that never reads as an item.
 - Sections keep one order: what it is about, what you can do, Ibis itself. Labels name the result; a quiet example of the output may trail, on one line ending in an ellipsis.
-- An unavailable choice stays in the list, dimmed, with why in one quiet line under its label; it never sets the menu's width.
+- An unavailable choice stays in the list, dimmed, with why in one quiet line under its label, or once above them when every choice shares the reason; it never sets the menu's width.
 - Menus over seven items get a filter field aligned with the labels. Header menus open `bottom end`, footer menus `top end`, flipping and shifting to stay within the window.
 - Menus size to their labels up to the viewport, then wrap; a scrolling menu ends on a whole row. Any pointer movement highlights an item.
 - **More holds actions, not preferences**: Show in Zotero or Open thesis.bib (⌘O); Rows › (Compact, Comfortable, Spacious); Keep Window Open; Show What Will Be Pasted; Keyboard Shortcuts (⌘/); Settings…; Quit Ibis. Each thing appears in one place.
@@ -221,7 +221,7 @@ Built in `ibis-core` so every front end shares them (#1204).
 ### Shelf
 
 - **Shelf** [C7]: one line above the footer showing what Enter pastes: the beak at the tile column's end, the citation on the title column. Shown while there are results or a citation is being built; hidden on choice screens. Results never move when a reference is added.
-- Several references are segments of one citation; a pointed segment shows its hover fill and grows at its trailing end to make room for a small ×, `--key-gap` from the edge on every side. Nothing ever covers text. ← → select a segment; Delete removes it with Undo. A focused segment shows the ring every button has; the segment whose details are open keeps the pressed fill, as a toggled-on button does.
+- Several references are segments of one citation; a pointed segment shows its hover fill and grows at its trailing end to make room for a small ×, `--key-gap` from the edge on every side. Nothing ever covers text. ← → select a segment; Delete removes it with Undo. Segment text starts exactly on the title column. A focused segment shows the ring every button has; the segment whose details are open keeps the pressed fill, as a toggled-on button does.
 - **One line, details on demand**: a segment opens the **Inspector**. The count is a pop-up of every reference with its page; a pick opens that reference there.
 - On copy a closing beak mirrors the opening one and a "Copied" capsule draws its check; Reduce Motion shows the end state. Each copy is confirmed once, in one place.
 - Pending output dims, then "Formatting…"; Enter waits. A failed format says why and offers another style; refusals stay visible until corrected.
@@ -234,8 +234,8 @@ Built in `ibis-core` so every front end shares them (#1204).
 
 - **Where**: in the middle row, on the trailing edge, `--inspector-width` wide, with the shelf running under both. The window stays its one steady size. Search, list, shelf and footer stay where they are and stay live. Below 36 rem wide the panel takes the list's place instead.
 - **Order**: the reference's name and ×; **Show as** and **Page** as label and control rows; a separator; the source action; **Remove from Citation ⌫**. Then the document: the full title and byline, then what will be pasted in full. These rows are the same in every state and nothing above the document changes height, so nothing moves while typing.
-- **Show as is a pop-up**, its value the current form, or None where the output has no name forms; its menu the three forms with quiet examples. Only the engine says a form cannot be used, and only for the citation it was asked about; until it answers every form can be tried, so a refused citation can always be corrected here. Examples stay while the next arrive.
-- **One place for a failure**: while the panel is open, a citation refusal or a failed copy shows in the panel, beside the fields that fix it, and not above the list.
+- **Show as is a pop-up**, its value the current form, or None where the output has no name forms; its menu the three forms with quiet examples. Only the engine says a form cannot be used, and only for the citation it was asked about; until it answers every form can be tried, so a refused citation can always be corrected here. Examples stay while the next arrive. A reason every form shares shows once.
+- **One place for a failure**: while the panel is open, a citation refusal, a failed copy and every warning show in words in the panel, beside the fields that fix them, and not above the list. The shelf's warning and Details controls step aside, so nothing there comes and goes while typing.
 - **Shelf and panel work together**: pressing a segment shows its details and focuses Page; pressing another moves them; pressing the same one closes them. A reference that leaves the shelf closes them.
 - **Keys**: Tab moves through it in order, never trapped. Enter in Page does what the footer says. Esc closes the Show as menu, then the panel, and focus returns to the segment if it was inside; Search keeps focus if it was there.
 - **Warnings** use the same panel without a document.

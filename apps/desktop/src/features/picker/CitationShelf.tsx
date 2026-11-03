@@ -136,6 +136,8 @@ export function CitationShelf({ inspector, onSubmit, copyProblem, source, onOpen
   const visible = ready ?? (retainedSegments ? previous : null);
   const text = visible?.text;
   const single = references.length === 1 ? references[0] : undefined;
+  // The panel says these in words, so nothing in the shelf comes and goes while typing.
+  const detailsOpen = panel !== null && panel.kind !== "warnings";
   const hasShelf = present || copied || references.length || shown !== undefined || previous;
   useLayoutEffect(() => {
     if (!panel) return;
@@ -233,14 +235,14 @@ export function CitationShelf({ inspector, onSubmit, copyProblem, source, onOpen
             filterLabel={pickerText.filterReferences} sections={[{ id: "references", label: pickerText.selectedReferences, items: references.map((reference, i) => ({ id: idKey(reference.id), label: labels[i]!,
               sample: [reference.locator && `${reference.locator.label} ${reference.locator.value}`, reference.partial && pickerText.closestMatch].filter(Boolean).join(" · ") || undefined, prose: true })) }]}
             onAction={(key) => { const reference = references.find((r) => idKey(r.id) === key); if (reference) open("reference", count.current!, reference); }} />}
-          {statusLabel && <Button variant="quiet" className="shelf-warnings" aria-label={statusLabel} title={statusLabel}
+          {statusLabel && !detailsOpen && <Button variant="quiet" className="shelf-warnings" aria-label={statusLabel} title={statusLabel}
             aria-expanded={panel?.kind === "warnings"} aria-controls={panel?.kind === "warnings" ? inspectorId : undefined}
             onPress={(event) => toggle("warnings", event.target as HTMLElement)}>{compact ? warnings.length > 0 ? `! ${warnings.length}` : "i" : <>
               {warnings.length > 0 && <span>{pickerText.warningCount(warnings.length)}</span>}
               {entryNotice && <span>{pickerText.entryOnlyShort}</span>}
             </>}</Button>}
-          {!copied && (shown === "failed" || shown === "stale") && <Button variant="quiet" aria-expanded={panel?.kind === "failure"}
-            aria-controls={panel?.kind === "failure" ? inspectorId : undefined} onPress={(event) => toggle("failure", event.target as HTMLElement, references[0])}>{pickerText.details}</Button>}
+          {!copied && !detailsOpen && (shown === "failed" || shown === "stale") && <Button variant="quiet" aria-expanded={false}
+            onPress={(event) => open("failure", event.target as HTMLElement, references[0])}>{pickerText.details}</Button>}
         </div>
       </section>
     </div> : null}

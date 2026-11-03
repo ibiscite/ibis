@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, type KeyboardEventHandler, type ReactNode, type Ref } from "react";
 import { IconButton } from "./IconButton";
+import { useScrollEdges } from "./ScrollArea";
 import "./Inspector.css";
 
 /** One thing's details, in a panel beside the list. Everything around it stays
@@ -12,11 +13,13 @@ export function Inspector({ ref, id, label, heading, closeLabel, document: page,
   onKeyDown?: KeyboardEventHandler<HTMLElement>;
 }) {
   const column = useRef<HTMLDivElement>(null);
+  const body = useRef<HTMLDivElement>(null);
+  useScrollEdges(body);
   // With nothing to edit, the column itself takes the keys, so they can scroll it.
   // biome-ignore lint/correctness/useExhaustiveDependencies: focus is taken once, on opening.
   useLayoutEffect(() => { if (!page) column.current?.focus({ preventScroll: true }); }, []);
   return <section ref={ref} id={id} className="inspector" aria-label={label} onKeyDown={onKeyDown}>
-    <div className="inspector-body">
+    <div ref={body} className="inspector-body scroll-area">
       <div ref={column} className="inspector-column" tabIndex={page ? undefined : 0}>
         <header className="inspector-heading"><h2><bdi>{heading}</bdi></h2><IconButton aria-label={closeLabel} onPress={onClose} /></header>
         {children}

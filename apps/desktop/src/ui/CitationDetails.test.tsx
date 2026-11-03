@@ -53,14 +53,16 @@ test("before the engine answers the reference's own form shows and every form ca
   expect(change).toHaveBeenCalledExactlyOnceWith("normal");
 });
 
-test("an explicit engine answer of no form selects none, and never the requested form", async () => {
+test("an explicit answer of no form selects none, and a reason every form shares shows once", async () => {
+  const reason = "Keys only has no name forms. Choose another output.";
   render(<CitationDetails page="" form="normal" onPageChange={vi.fn()} onFormChange={vi.fn()} choices={{ current_form: null, forms: [
-    { form: "normal", example: null, reason: "Keys only has no name forms. Choose another output." },
-    { form: "narrative", example: null, reason: "Keys only has no name forms. Choose another output." },
-    { form: "year-only", example: null, reason: "Keys only has no name forms. Choose another output." },
+    { form: "normal", example: null, reason }, { form: "narrative", example: null, reason }, { form: "year-only", example: null, reason },
   ] }} />);
   fireEvent.click(screen.getByRole("button", { name: "Show as None" }));
-  expect((await screen.findAllByRole("menuitemradio")).filter((item) => item.getAttribute("aria-checked") === "true")).toEqual([]);
+  const items = await screen.findAllByRole("menuitemradio");
+  expect(items.filter((item) => item.getAttribute("aria-checked") === "true")).toEqual([]);
+  expect(items.every((item) => item.getAttribute("aria-disabled") === "true")).toBe(true);
+  expect(screen.getAllByText(reason)).toHaveLength(1);
 });
 
 test.each(["macos", "windows", "linux"])("%s uses labelled shared controls and plain text", async (platform) => {

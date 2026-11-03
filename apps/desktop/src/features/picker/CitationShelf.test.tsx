@@ -233,6 +233,18 @@ test("Backspace removes from the inspector, but only ever edits text in Page", (
   expect(remove).toHaveBeenCalledExactlyOnceWith(reference);
 });
 
+test("with details open, notes read in the panel and nothing comes and goes in the shelf", () => {
+  const warning = "Reference 1: Page is not included in this output.";
+  const reference = record("a");
+  const { rerender } = render(shelf({ selected: chosen([reference]), style: "ieee", shown: output() }));
+  fireEvent.click(screen.getByRole("button", { name: "Edit García 2021" }));
+  rerender(shelf({ selected: chosen([reference]), style: "ieee", shown: output(), outputWarnings: [warning] }));
+  const panel = details(/^Citation details for/);
+  expect(within(panel).getByText(warning)).toBeTruthy();
+  expect(within(panel).getByText(/IEEE numbers depend on your whole document/)).toBeTruthy();
+  expect(document.querySelector(".shelf-warnings")).toBeNull();
+});
+
 test("a key the segment does not use is handed on to the picker", () => {
   const picker = vi.fn();
   render(<main onKeyDown={(event) => picker(event.key)}>{shelf({ selected: chosen([record("a")]), shown: output() })}</main>);

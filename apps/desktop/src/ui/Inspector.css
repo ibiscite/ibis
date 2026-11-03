@@ -22,7 +22,7 @@
 /* A panel wide enough for a document keeps its column on the trailing edge,
    and only the document scrolls. */
 @container inspector (min-width: 34rem) and (min-height: 11rem) {
-  .inspector-body { flex-direction: row-reverse; overflow: hidden; }
+  .inspector-body.scroll-area { flex-direction: row-reverse; overflow: hidden; }
   .inspector-column { flex: 0 0 var(--inspector-column); overflow: auto; }
   .inspector-column:only-child { flex: 1; }
   .inspector-document { flex: 1; padding-block: 0; overflow: auto; }

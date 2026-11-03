@@ -144,8 +144,9 @@ test("selected closest-match warnings survive exact searches and copying a mixed
   await screen.findByText("Best matches");
   expect(screen.queryByText("Closest matches")).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: /Closest matches/ }));
-  expect(screen.getByRole("dialog", { name: "Citation warnings" }).textContent).toContain("Synthetic closest reference");
-  fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+  const notes = screen.getByRole("region", { name: "Citation warnings" });
+  expect(notes.textContent).toContain("Synthetic closest reference");
+  fireEvent.keyDown(notes, { key: "Escape" });
   expect(screen.getByRole("status", { name: "Citation selection" }).textContent).toContain("only some search words matched");
   fireEvent.keyDown(box, { key: "Enter" });
   await waitFor(() => expect(copied).toHaveLength(1));
@@ -2953,8 +2954,9 @@ test("the footer can wait for pending engine output and never offers failed outp
     await screen.findByRole("alert");
     expect(within(screen.getByRole("region", { name: "Preview" })).getByText(/Couldn’t format in APA/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Details" }));
-    expect(within(screen.getByRole("dialog")).getByText(/Couldn’t format in APA/)).toBeTruthy();
-    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    const details = document.querySelector<HTMLElement>(".inspector")!;
+    expect(within(details).getByText(/Couldn’t format in APA/)).toBeTruthy();
+    fireEvent.keyDown(details, { key: "Escape" });
     expect(footerKeys()).not.toContain("Enter");
   } finally {
     vi.unstubAllGlobals();
