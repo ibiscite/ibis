@@ -23,6 +23,30 @@ destinations through Tauri's JSON merge patch before adding its own.
 
 Packages are named `Ibis-<platform>.<extension>` with no version (for example `Ibis-macOS-Apple-silicon.dmg`, `Ibis-Windows-setup.exe`), so download links never change; ARM packages add `-ARM` after the platform. The command line ships beside them as `ibis-<platform>.tar.gz` (`ibis-Windows.zip` on Windows), holding `ibis`, the licence and `NOTICE.md`. Release notes come from Conventional Commits ([commits](CONTRIBUTING.md#pull-requests)); `scripts/release-notes.mjs` adds the download table, the unsigned-install note and verification steps. Link the [code signing policy](docs/code-signing.md) from release notes: updater signatures and operating-system code signing are separate, and the latter is planned for 1.0.
 
+## The note people read
+
+Generated notes list every change. For a milestone (`0.N.0`), add a short note above them on the published release, written for someone in the middle of a paper rather than for developers:
+
+```markdown
+Ibis X.Y: [one sentence saying what is different for someone writing].
+
+**New**
+
+- [What you can now do, as you would tell a colleague.]
+
+**Fixed**
+
+- [What went wrong before, and what happens now.]
+
+**Good to know**
+
+- [What still does not work, and on which systems.]
+
+This is an early preview. Tell me what breaks: [issue form](https://github.com/ibiscite/ibis/issues/new/choose), or diyanko@ibiscite.org if you have no GitHub account.
+```
+
+Name only what the release has shown working, and leave out version numbers of tools, file names and internal terms unless a reader needs them.
+
 ## How a release is built
 
 Release Please keeps a pull request titled `chore: release X.Y.Z`. Merging it updates `CHANGELOG.md` and the versions, then tags `vX.Y.Z` with the `ibis-release` app's token. The tag starts Preview builds (`.github/workflows/preview.yml`):
