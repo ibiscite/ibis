@@ -490,7 +490,7 @@ mod tests {
     fn a_restore_through_the_settings_writer_saves_and_keeps_the_replaced_file() {
         let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
         let path = directory.path().join("settings.json");
-        std::fs::write(&path, r#"{"density":"spacious"}"#).unwrap_or_else(|error| panic!("{error}"));
+        std::fs::write(&path, r#"{"density":"compact"}"#).unwrap_or_else(|error| panic!("{error}"));
         let file = SettingsFile::new(path.clone());
         let settings = Settings {
             larger_text: Some(true),
@@ -513,6 +513,6 @@ mod tests {
         assert!(restored.is_ok());
         assert_eq!(settings::load(&path).settings.larger_text, Some(true));
         let replaced = std::fs::read_to_string(path.with_extension("json.bak")).unwrap_or_default();
-        assert!(replaced.contains("spacious"));
+        assert!(replaced.contains("compact"));
     }
 }

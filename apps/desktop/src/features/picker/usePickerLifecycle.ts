@@ -82,10 +82,10 @@ export function usePickerLifecycle({ api, pickerSession, menus, destination, pre
     })
       .catch(() => subscriptionFailure("pickerEvents"));
     // The window appears after this: settle what its first frame shows.
-    const unlistenPreparing = onPickerPreparing?.(() => {
+    const unlistenPreparing = onPickerPreparing?.((selection) => {
       if (!mounted) return;
       prepared = true;
-      send({ type: "preparing", now: performance.now() });
+      send({ type: "preparing", now: performance.now(), selection });
       destination.read(true, session.getSnapshot().permissionDetour);
     }).catch(() => subscriptionFailure("pickerEvents"));
     const unlisten = onPickerShown((presentation) => {

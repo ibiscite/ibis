@@ -66,25 +66,25 @@ test("More holds working actions, leaving preferences and update checks to Setti
   expect(calls).not.toContain("set_picker_preferences");
   const more = screen.getByRole("menu", { name: "More" });
   expect([...more.querySelectorAll('[role^="menuitem"]')].map((item) => item.getAttribute("aria-label") ?? item.textContent))
-    .toEqual(["Open ⁨refs.bib⁩Ctrl+O", "Rows: Comfortable", "References Used This Session…", "Keep Window OpenCtrl+Shift+P", "Show What Will Be PastedCtrl+I", "Keyboard ShortcutsCtrl+/", "Settings…Ctrl+,", "Quit IbisCtrl+Q"]);
+    .toEqual(["Open ⁨refs.bib⁩Ctrl+O", "Rows: Comfortable", "References Used This Session…", "Keep Window OpenCtrl+Shift+P", "Keyboard ShortcutsCtrl+/", "Settings…Ctrl+,", "Quit IbisCtrl+Q"]);
   expect(within(more).queryByRole("menuitem", { name: "Forget formats for apps" })).toBeNull();
   expect(calls).not.toContain("forget_app_outputs");
 });
 
-test.each(["Compact", "Comfortable", "Spacious"])("Rows offers every density and its line count, then chooses %s directly", async (choice) => {
+test.each(["Compact", "Comfortable"])("Rows offers every density and its line count, then chooses %s directly", async (choice) => {
   const saved: unknown[] = [];
   backend({ set_picker_preferences: ({ preferences }) => { saved.push(preferences); return null; } });
   render(<App />);
   await chooseFromMore("Rows: Comfortable");
   const rows = await screen.findByRole("menu", { name: "Rows" });
   const options = within(rows).getAllByRole("menuitemradio");
-  expect(options.map((item) => item.textContent)).toEqual(["Compact1 line", "Comfortable2 lines", "Spacious3 lines"]);
+  expect(options.map((item) => item.textContent)).toEqual(["Compact1 line", "Comfortable2 lines"]);
   expect(options.map((item) => document.getElementById(item.getAttribute("aria-describedby")!)?.textContent))
-    .toEqual(["1 line", "2 lines", "3 lines"]);
-  expect(options.map((item) => item.getAttribute("aria-checked"))).toEqual(["false", "true", "false"]);
+    .toEqual(["1 line", "2 lines"]);
+  expect(options.map((item) => item.getAttribute("aria-checked"))).toEqual(["false", "true"]);
   const option = within(rows).getByRole("menuitemradio", { name: choice });
   act(() => option.focus());
-  if (choice === "Spacious") {
+  if (choice === "Compact") {
     fireEvent.keyDown(option, { key: "Enter" });
     fireEvent.keyUp(option, { key: "Enter" });
   } else fireEvent.click(option);
@@ -106,8 +106,8 @@ test("Rows supports arrow navigation and Escape returns to More without saving",
   act(() => trigger.focus());
   fireEvent.keyDown(trigger, { key: "ArrowRight" });
   const submenu = await screen.findByRole("menu", { name: "Rows" });
-  fireEvent.keyDown(document.activeElement!, { key: "End" });
-  expect(document.activeElement).toBe(within(submenu).getByRole("menuitemradio", { name: "Spacious" }));
+  fireEvent.keyDown(document.activeElement!, { key: "Home" });
+  expect(document.activeElement).toBe(within(submenu).getByRole("menuitemradio", { name: "Compact" }));
   fireEvent.keyDown(document.activeElement!, { key: "Escape" });
   await waitFor(() => expect(screen.queryByRole("menu", { name: "Rows" })).toBeNull());
   expect(screen.getByRole("menu", { name: "More" })).toBeTruthy();

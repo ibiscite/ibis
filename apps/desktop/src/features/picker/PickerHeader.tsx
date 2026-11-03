@@ -1,9 +1,7 @@
-import type { SearchIcon } from "../../bindings";
 import type React from "react";
 import type { MouseEvent } from "react";
 import { IbisMark } from "../../ui/IbisMark";
 import { IconButton } from "../../ui/IconButton";
-import { Icon } from "../../icons";
 import { composing } from "./shortcuts";
 import { pickerText } from "../../messages";
 import { ariaKeys, keysFor } from "../../keys";
@@ -15,13 +13,11 @@ import type { AppPaste } from "../../api";
 
 /** The search bar: the search box and the copy format. It is also
  * the window's drag region; the editable box itself is not. */
-export function PickerHeader({ hidden = false, onResetPosition, inputRef, query, pageToken, onQueryChange, onSearchKeyDown, expanded, activeDescendant, format, formatButtonRef, app = null, formatScope, onFormatOpenChange, onceOnly = false, onToggleOnce = () => undefined, onAutomatic = () => undefined, onDefault = () => undefined, pasteChoices, onPasteChange, formatDisabled = false, showFormat, styles, onFormatChange, onFormatCommand, pinned, onTogglePin, icon = "magnifier" }: {
+export function PickerHeader({ hidden = false, onResetPosition, inputRef, query, pageToken, onQueryChange, onSearchKeyDown, expanded, activeDescendant, format, formatButtonRef, app = null, formatScope, onFormatOpenChange, onceOnly = false, onToggleOnce = () => undefined, onAutomatic = () => undefined, onDefault = () => undefined, pasteChoices, onPasteChange, formatDisabled = false, showFormat, styles, onFormatChange, onFormatCommand, pinned, onTogglePin }: {
   /** Welcome has no search yet; the field stays mounted so focus can return to it. */
   hidden?: boolean;
   inputRef: React.RefObject<HTMLInputElement | null>;
   pinned: boolean;
-  /** What leads the search field, a person's choice in Look. */
-  icon?: SearchIcon;
   onTogglePin: () => void;
   query: string;
   pageToken?: React.ReactNode;
@@ -59,10 +55,9 @@ export function PickerHeader({ hidden = false, onResetPosition, inputRef, query,
     return twice;
   };
   return (
-    <header className="search-bar" hidden={hidden} data-icon={icon} data-tauri-drag-region title={pickerText.dragSearchBar}
+    <header className="search-bar" hidden={hidden} data-tauri-drag-region title={pickerText.dragSearchBar}
       onMouseDown={emptyArea} onMouseUp={(event) => { if (emptyArea(event)) onResetPosition?.(); }}>
-      {icon === "ibis" && <IbisMark className="search-mark" size="search" />}
-      {icon === "magnifier" && <Icon name="find" />}
+      <IbisMark className="search-mark" size="search" />
       <label className="visually-hidden" htmlFor="search">
         {pickerText.searchLabel}
       </label>

@@ -21,11 +21,6 @@
   border-radius: var(--menu-radius); box-shadow: var(--shadow-overlay);
   font: var(--type-body-size) / var(--type-body-line) var(--font);
 }
-.menu-popover[data-exiting] { animation: menu-exit var(--dur-exit) var(--ease-in); }
-@keyframes menu-exit { to { opacity: 0; } }
-@media (prefers-reduced-motion: reduce) {
-  .menu-popover[data-exiting] { animation-duration: 100ms; }
-}
 .menu-frame { display: contents; }
 /* The menu and its rows never show a focus ring: the highlight is a fill. */
 /* The side padding is on the scrolling list, so a classic scroll bar sits

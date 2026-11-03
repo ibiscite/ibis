@@ -250,6 +250,10 @@ pub(crate) struct SearchReply {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[specta(optional)]
     pub(super) list: Option<PastedList>,
+    /// Nothing matched and the search has filters: the search without them.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[specta(optional)]
+    pub(super) unfiltered: Option<String>,
 }
 
 #[cfg(test)]

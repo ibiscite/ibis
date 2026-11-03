@@ -38,7 +38,7 @@ function preview(text: string): FilePreview {
 function options(overrides: Partial<Options>): Options {
   return {
     chosen: [reference()], library: library(), libraryVersion: 0,
-    format: "pandoc", style: null, showPastePreview: true,
+    format: "pandoc", style: null,
     previewFileCitation: vi.fn<Preview>().mockResolvedValue(preview("[@synthetic]")),
     refreshSnapshot: vi.fn(), ...overrides,
   };

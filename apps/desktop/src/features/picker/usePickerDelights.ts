@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import type { PickerApi } from "../../App";
 import type { DelightView, LibraryStatus } from "../../bindings";
 import { type MessageId, useInterfaceMessages } from "../../i18n";
+import { keyLabel, keysFor } from "../../keys";
+import { isMac } from "../../platform";
 import { localMoment } from "../../ui/localMoment";
 
 const STATUS: Record<NonNullable<DelightView["status"]>, MessageId> = {
@@ -29,5 +31,5 @@ export function usePickerDelights(api: PickerApi, presentation: number | null, l
     }
     return () => { live = false; window.clearTimeout(timer); };
   }, [api.delightView, presentation, revision, load, settingsRevision]);
-  return { feedback: view?.status ? text(STATUS[view.status], { library: view.library ?? "" }) : null, peck: view?.peck ?? false, passive: view?.status !== "paste-tip", dismiss };
+  return { feedback: view?.status ? text(STATUS[view.status], { keys: keyLabel(keysFor("pin"), isMac) }) : null, peck: view?.peck ?? false, passive: view?.status !== "paste-tip", dismiss };
 }

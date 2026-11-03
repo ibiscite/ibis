@@ -16,7 +16,8 @@ and its local data. New Ibis data flows need a recorded decision ([decisions](do
   save the bibliography, to the file you choose.
 - **Automatic paste on macOS:** Ibis checks the active app and process, and opaque
   Accessibility identities for the focused document and input surface. It reads
-  no document titles, field roles, values or text. A bounded wait after copying
+  no document titles, field roles or values, and no text except the selection
+  below. A bounded wait after copying
   compares only with the original captured identities; it never adopts another
   window or surface. Tabs and conversations can share those identities. Just
   before pasting, Ibis checks the time since the last key-down and left, right or other
@@ -35,6 +36,15 @@ and its local data. New Ibis data flows need a recorded decision ([decisions](do
   to the OS; Ibis still reads only identities and process ownership. Refused apps
   and Copy only never receive this write
   ([decision 0029](docs/decisions.md#0029-native-calls)).
+- **Selected text (macOS):** when you open Ibis in an app it may paste into, it
+  reads the text you selected there through Accessibility, so short text can
+  become the search and be replaced by the paste. It reads once when Ibis opens
+  and once more just before pasting. Ibis never reads a password field or while
+  secure typing is on, and never reads the clipboard or anything else in the
+  document. A long selection's text stays in the app when the app reports its
+  length; if it does not, Ibis measures the text and drops it. The text goes only to the search box in memory,
+  is never saved, logged or sent anywhere, and comes back only if you edited it.
+  Turning pasting off turns this off.
 - **Settings:** the desktop saves `settings.json`, its previous version as
   `settings.json.bak`, and `settings.json.tmp` while saving. An interrupted save
   may leave the temporary file. Settings include the library path or Zotero

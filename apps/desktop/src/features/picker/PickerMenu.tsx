@@ -13,7 +13,7 @@ const label = (accelerator: string) => keyLabel(accelerator, isMac);
 
 /** More holds working actions; preferences live in Settings and source choices
  * have their own library menu. Rows is the one look changed while working. */
-export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, libraryDetail, lastOutcome, density, showPastePreview, pinned, actions, source }: {
+export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, libraryDetail, lastOutcome, density, pinned, actions, source }: {
   source?: SourceActionProps;
   isOpen: boolean; onOpenChange: (open: boolean) => void;
   buttonRef: Ref<HTMLButtonElement>; searchRef: RefObject<HTMLElement | null>;
@@ -21,9 +21,8 @@ export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library
   libraryDetail: [string, string | null] | null;
   lastOutcome?: string | null;
   density: Density;
-  showPastePreview: boolean;
   pinned: boolean;
-  actions: { density: (density: Density) => void; preview: () => void; pin: () => void; keys: () => void; settings: (() => void) | null;
+  actions: { density: (density: Density) => void; pin: () => void; keys: () => void; settings: (() => void) | null;
     /** Offered for a proven ordinary app target. */
     copyOnlyHere?: { app: string; choose: () => void } | null;
     forgetRecent?: (() => void) | null; quit: () => void;
@@ -42,7 +41,7 @@ export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library
       <MenuSection id="view">
         <MenuSubmenu id="density" label={pickerText.rows} value={pickerText.density(densityNames[density])} title={pickerText.densityTitle}>
           <MenuSection id="densities" selectionMode="single">
-            {(["compact", "comfortable", "spacious"] as const).map((choice) => <MenuItem key={choice} id={choice}
+            {(["compact", "comfortable"] as const).map((choice) => <MenuItem key={choice} id={choice}
               label={densityNames[choice]} example={pickerText.densityExamples[choice]} checked={density === choice}
               closeOnSelect onAction={() => actions.density(choice)} />)}
           </MenuSection>
@@ -53,7 +52,6 @@ export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library
       </MenuSection>
       <MenuSection id="view-toggles">
         <MenuItem id="pin" label={pinned ? pickerText.stopKeepingOpen : pickerText.keepOpenMenu} keys={label(keysFor("pin"))} checked={pinned} onAction={actions.pin} />
-        <MenuItem id="paste-preview" label={pickerText.showPastePreview} keys={label(keysFor("preview"))} checked={showPastePreview} onAction={actions.preview} />
       </MenuSection>
       <MenuSeparator />
       <MenuSection id="ibis">
