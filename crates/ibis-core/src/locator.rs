@@ -142,6 +142,16 @@ pub fn parse(text: &str) -> Option<Locator> {
     (text.len() <= MAX_LOCATOR_LEN).then(|| read(text, false)).flatten()
 }
 
+/// Read a locator given on its own, as a person writes one: everything [`parse`]
+/// reads, and bare pages such as `12-14`.
+pub fn read_given(text: &str) -> Option<Locator> {
+    [format!("x {text}"), format!("x, {text}")]
+        .iter()
+        .filter_map(|query| parse_trailing(query))
+        .find(|split| split.search == "x")
+        .map(|split| split.locator)
+}
+
 /// Why a Page field cannot become a locator value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PageValueError {

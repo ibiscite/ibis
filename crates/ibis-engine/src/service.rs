@@ -681,7 +681,7 @@ fn select<'a>(
                 let LibraryObject::Record(record) = &item.object else {
                     return false;
                 };
-                record.citation_keys.iter().any(|candidate| candidate.value == *key) || record.aliases.contains(key)
+                record.answers_to(key)
             });
             let found = matches.next().ok_or_else(|| {
                 if libraries.values().any(|library| library.duplicate_keys.contains(key)) {

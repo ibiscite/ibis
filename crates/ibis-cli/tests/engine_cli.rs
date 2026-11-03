@@ -311,9 +311,9 @@ fn mcp_serves_agents_from_the_files_given() -> Result<(), Box<dyn std::error::Er
     for message in [
         json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":ibis_engine::mcp::LEGACY_VERSIONS[0],"capabilities":{},"clientInfo":{"name":"test","version":"1"}}}),
         json!({"jsonrpc":"2.0","method":"notifications/initialized"}),
-        json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"cite","arguments":{"items":[{"key":"accents2021"}],"syntax":"pandoc"}}}),
+        json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"cite","arguments":{"items":[{"ref":"accents2021"}],"syntax":"pandoc"}}}),
         // A 2026-07-28 client in the same process: no handshake, the revision in `_meta`.
-        json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"cite","arguments":{"items":[{"key":"accents2021"}],"syntax":"pandoc"},"_meta":{"io.modelcontextprotocol/protocolVersion":ibis_engine::mcp::PROTOCOL_VERSION,"io.modelcontextprotocol/clientCapabilities":{}}}}),
+        json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"cite","arguments":{"items":[{"ref":"accents2021"}],"syntax":"pandoc"},"_meta":{"io.modelcontextprotocol/protocolVersion":ibis_engine::mcp::PROTOCOL_VERSION,"io.modelcontextprotocol/clientCapabilities":{}}}}),
     ] {
         writeln!(stdin, "{message}")?;
     }
@@ -333,6 +333,45 @@ fn mcp_serves_agents_from_the_files_given() -> Result<(), Box<dyn std::error::Er
     assert_eq!(replies[1]["result"]["structuredContent"]["text"], "[@accents2021]");
     assert_eq!(replies[2]["result"]["structuredContent"]["text"], "[@accents2021]");
     assert_eq!(replies[2]["result"]["resultType"], "complete");
+    Ok(())
+}
+
+#[test]
+fn mcp_that_cannot_open_its_library_still_starts_and_says_why() -> Result<(), Box<dyn std::error::Error>> {
+    use std::io::Write;
+    let missing = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("private-folder-name.bib");
+    let mut child = Command::new(env!("CARGO_BIN_EXE_ibis"))
+        .arg("mcp")
+        .arg("--file")
+        .arg(&missing)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()?;
+    let mut stdin = child.stdin.take().ok_or("stdin")?;
+    for message in [
+        json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":ibis_engine::mcp::LEGACY_VERSIONS[0],"capabilities":{},"clientInfo":{"name":"test","version":"1"}}}),
+        json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"search","arguments":{"query":"lantern"}}}),
+        json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"styles","arguments":{}}}),
+    ] {
+        writeln!(stdin, "{message}")?;
+    }
+    drop(stdin);
+    let output = child.wait_with_output()?;
+    assert_eq!(output.status.code(), Some(0));
+    let stderr = String::from_utf8(output.stderr)?;
+    assert!(stderr.contains("private-folder-name.bib"), "{stderr}");
+    let replies: Vec<Value> = String::from_utf8(output.stdout)?
+        .lines()
+        .map(serde_json::from_str)
+        .collect::<Result<_, _>>()?;
+    assert_eq!(replies[1]["result"]["isError"], true);
+    let text = replies[1]["result"]["content"][0]["text"].as_str().ok_or("text")?;
+    assert!(text.starts_with("error: source-unavailable."), "{text}");
+    assert!(text.contains("no file at that path"), "{text}");
+    assert!(text.contains("start a new session"), "{text}");
+    assert!(!text.contains("private-folder-name"), "an agent sees no path: {text}");
+    assert_eq!(replies[2]["result"]["structuredContent"]["styles"][0]["id"], "apa");
     Ok(())
 }
 
