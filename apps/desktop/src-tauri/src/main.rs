@@ -31,6 +31,7 @@ mod picker;
 mod placement;
 mod preferences;
 mod row_context;
+mod settings_backup;
 mod settings_window;
 mod setup;
 mod shortcut_setting;
@@ -161,6 +162,7 @@ fn main() {
         .manage(PreviewRequests::default())
         .manage(setup::Offered::default())
         .manage(ChooserOpen::default())
+        .manage(settings_backup::PendingRestore::default())
         .manage(row_context::RowContext::default())
         .on_menu_event(row_context::selected)
         .manage(Pinned::default())
@@ -332,7 +334,7 @@ fn main() {
                 Err(_) => application_message("the menu bar item is not available on this system"),
             }
             tray::show_in_menu_bar(app.handle(), loaded.settings.menu_bar.unwrap_or(true), 0);
-            start_shortcut(app.handle(), loaded.settings.shortcut.as_deref());
+            start_shortcut(app.handle(), loaded.settings.shortcut.here());
             // After the tray, so the menu item shows the saved choice.
             updater::start(app.handle(), loaded.settings.update_checks, loaded.problem.is_none());
             // The library from settings; IBIS_LIBRARY overrides it for development.

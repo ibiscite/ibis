@@ -22,6 +22,7 @@ import { useAppearance } from "../ui/appearance";
 import { DefaultFormat } from "./DefaultFormat";
 import { Switch } from "../ui/Switch";
 import { PasteGuide, usePastePermission } from "./PasteGuide";
+import { BackupRows } from "./BackupRows";
 import type { SettingsApi } from "./api";
 import "../ui/SettingsLayout.css";
 import "./Settings.css";
@@ -432,6 +433,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
                 )}
               </>
             )}
+            <BackupRows api={api} />
           </>
         )}
         {page === "look" && preferences && <LookPage preferences={preferences} change={change} feedback={feedback} windowSize={windowSize} chooseWindowSize={chooseWindowSize} />}
