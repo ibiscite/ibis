@@ -252,10 +252,12 @@ fn refresh_keeps_old_snapshots_and_refuses_ambiguous_keys() {
     let LibraryObject::Record(mut record) = old.objects()[0].object.clone() else {
         panic!("record")
     };
-    let library = LibraryId::file(b"another synthetic library");
+    let library = LibraryId::digest(b"another synthetic library");
     record.id.library = library.clone();
     let second = Arc::new(Snapshot::new(vec![LibraryObject::Record(record)]).unwrap());
-    engine.publish_library(library.clone(), second).unwrap();
+    engine
+        .publish_library(library.clone(), ibis_engine::LibraryKind::Snapshot, second)
+        .unwrap();
     assert_eq!(old.objects().len(), 1);
     assert_eq!(engine.snapshot().unwrap().objects().len(), 2);
     assert_eq!(
@@ -268,7 +270,11 @@ fn refresh_keeps_old_snapshots_and_refuses_ambiguous_keys() {
         ErrorCode::BadInput
     );
     engine
-        .publish_library(library, Arc::new(Snapshot::new(vec![]).unwrap()))
+        .publish_library(
+            library,
+            ibis_engine::LibraryKind::Snapshot,
+            Arc::new(Snapshot::new(vec![]).unwrap()),
+        )
         .unwrap();
     assert!(
         engine
@@ -307,7 +313,9 @@ fn library_changes_invalidate_subscribers_without_mutating_previous_snapshots() 
     let old = engine.snapshot().unwrap();
     let snapshot = Arc::new(case.library);
     let library = snapshot.objects()[0].object.id().library.clone();
-    engine.publish_library(library.clone(), snapshot.clone()).unwrap();
+    engine
+        .publish_library(library.clone(), ibis_engine::LibraryKind::Snapshot, snapshot.clone())
+        .unwrap();
     events.recv_timeout(std::time::Duration::from_secs(1)).unwrap();
     assert_eq!(engine.libraries().unwrap().libraries[0].id, library);
     assert_eq!(engine.snapshot().unwrap().fingerprints(), snapshot.fingerprints());
@@ -323,7 +331,7 @@ fn a_named_missing_library_is_not_silently_an_empty_search() {
         interpret_locator: false,
         query: "synthetic".into(),
         limit: 10,
-        libraries: Some(vec![LibraryId::file(b"missing synthetic scope")]),
+        libraries: Some(vec![LibraryId::digest(b"missing synthetic scope")]),
     };
     assert_eq!(
         engine.search(&request, &Cancellation::default()).unwrap_err().code,
@@ -351,10 +359,16 @@ fn a_slow_subscriber_wakes_to_current_state_without_blocking_publications() {
     let publisher = std::thread::spawn(move || {
         for _ in 0..40 {
             publishing
-                .publish_library(library.clone(), Arc::new(Snapshot::new(vec![]).unwrap()))
+                .publish_library(
+                    library.clone(),
+                    ibis_engine::LibraryKind::Snapshot,
+                    Arc::new(Snapshot::new(vec![]).unwrap()),
+                )
                 .unwrap();
         }
-        publishing.publish_library(library, latest).unwrap();
+        publishing
+            .publish_library(library, ibis_engine::LibraryKind::Snapshot, latest)
+            .unwrap();
         completed.send(()).unwrap();
     });
     // The publisher must finish while the subscriber leaves its single wake queued.
@@ -366,6 +380,7 @@ fn a_slow_subscriber_wakes_to_current_state_without_blocking_publications() {
     engine
         .publish_library(
             newest.objects()[0].object.id().library.clone(),
+            ibis_engine::LibraryKind::Snapshot,
             Arc::new(Snapshot::new(vec![]).unwrap()),
         )
         .unwrap();
@@ -424,8 +439,8 @@ fn bundled_styles_are_available_and_unknown_styles_or_locales_refuse_the_request
     let engine = Engine::from_snapshot(Arc::new(case.library));
     let cancel = Cancellation::default();
     let catalog = engine.dispatch(Method::Styles, &json!({}), &cancel).unwrap().data;
-    assert_eq!(catalog["styles"].as_array().unwrap().len(), 5);
     assert_eq!(catalog["styles"][0]["id"], "apa");
+    assert!(catalog["total"].as_u64().unwrap() > 10_000);
     case.request.output = OutputSpec::Csl {
         style: "unknown-style".into(),
     };
@@ -489,7 +504,8 @@ fn closing_an_idle_subscription_wakes_its_worker_and_preserves_other_subscribers
     worker.join().unwrap();
     engine
         .publish_library(
-            ibis_core::contract::LibraryId::file(b"synthetic subscription"),
+            ibis_core::contract::LibraryId::digest(b"synthetic subscription"),
+            ibis_engine::LibraryKind::Snapshot,
             std::sync::Arc::new(ibis_core::contract::Snapshot::new(vec![]).unwrap()),
         )
         .unwrap();
@@ -507,7 +523,8 @@ fn closing_a_subscription_drains_its_pending_notification_before_disconnect() {
     let close = events.close_handle();
     engine
         .publish_library(
-            ibis_core::contract::LibraryId::file(b"synthetic pending"),
+            ibis_core::contract::LibraryId::digest(b"synthetic pending"),
+            ibis_engine::LibraryKind::Snapshot,
             std::sync::Arc::new(ibis_core::contract::Snapshot::new(vec![]).unwrap()),
         )
         .unwrap();

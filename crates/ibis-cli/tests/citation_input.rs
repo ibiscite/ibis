@@ -31,7 +31,11 @@ fn canonical_citation_golden_cases_replay_through_the_cli() -> Result<(), Box<dy
                 .map(|item| item.object.clone())
                 .collect();
             engine
-                .publish_library(library, Arc::new(Snapshot::new(objects)?))
+                .publish_library(
+                    library,
+                    ibis_engine::LibraryKind::Snapshot,
+                    Arc::new(Snapshot::new(objects)?),
+                )
                 .map_err(|_| "publish")?;
         }
         let mut output = vec![];

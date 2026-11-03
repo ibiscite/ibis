@@ -96,7 +96,7 @@ fn a_superseded_preview_stops_before_reading_its_page_and_form() -> Result<(), B
             older,
             vec![FileSelection {
                 id: ItemRef {
-                    library: LibraryId::file(b"synthetic"),
+                    library: LibraryId::digest(b"synthetic"),
                     key: "work".into(),
                 },
                 cite: Fingerprint::of_bytes(b"synthetic"),

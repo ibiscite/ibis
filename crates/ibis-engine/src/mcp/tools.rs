@@ -3,7 +3,7 @@
 //! To add a tool, add an entry. Failures are tool errors the agent can read:
 //! a fixed error code, then what to change, with nothing from the library.
 use super::view;
-use crate::request::{SearchRequest, ShowRequest};
+use crate::request::{SearchRequest, ShowRequest, StylesRequest};
 use crate::{Cancellation, Engine};
 use ibis_core::contract::{
     CitationError, CitationForm, CitationItem, CitationRequest, CitationResult, EngineError, ErrorCode, ErrorReason,
@@ -16,6 +16,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 /// Search results returned to an agent at most.
 pub const MAX_HITS: usize = 25;
+/// Styles one answer lists at most; Ibis holds over ten thousand.
+pub const MAX_STYLES: usize = 200;
 /// Entries kept of any one list (authors, keywords).
 pub const MAX_LIST: usize = 20;
 /// Bytes of JSON one tool answer may carry. Search returns fewer hits rather
@@ -77,8 +79,8 @@ pub(super) const TOOLS: [Tool; 4] = [
     },
     Tool {
         name: "styles",
-        title: "List citation styles",
-        description: "List the citation style ids that cite accepts, such as apa or ieee.",
+        title: "Find citation styles",
+        description: "Find the style ids cite accepts by journal or style name, among every official CSL style, and list the languages a citation can be written in. With no query, the common styles come first.",
         input: styles_input,
         output: styles_output,
         reads_library: false,
@@ -148,11 +150,12 @@ fn code_hint(code: ErrorCode) -> &'static str {
 fn reason_hint(reason: ErrorReason) -> &'static str {
     match reason {
         ErrorReason::UnknownStyle => "No style has that id; the styles tool lists them.",
-        ErrorReason::UnknownLocale => "That locale is not available; Ibis formats in en-US for now.",
+        ErrorReason::UnknownLocale => "That locale is not available; the styles tool lists the locales.",
         ErrorReason::DuplicateKey => {
             "The library repeats this citation key, so Ibis skips every entry under it until each has its own key."
         }
         ErrorReason::AmbiguousKey => "Several references have this key; use the ref search returned.",
+        ErrorReason::MissingKey => "This reference has no citation key; use a style, or ask the user to give it one.",
         ErrorReason::AppMissing | ErrorReason::NotIbis | ErrorReason::NoAnswer => code_hint(ErrorCode::Internal),
     }
 }
@@ -461,6 +464,7 @@ fn cite_input() -> Value {
         "properties": {
             "items": {"type": "array", "items": item, "minItems": 1, "description": "The references, in order."},
             "style": {"type": "string", "description": "A style id from the styles tool. Leave out to use apa, or give syntax instead."},
+            "locale": {"type": "string", "description": "The language to write a formatted citation in, such as de-DE, from the styles tool. Leave out for the style's own."},
             "syntax": {"type": "string", "enum": SYNTAXES.map(syntax_name), "description": "A key syntax for the document's own citation processor."},
             "form": {"type": "string", "enum": ["normal", "narrative", "author-only", "year-only", "full", "bibliography-only"], "description": "How it reads. bibliography-only writes reference-list entries and needs a style."},
             "for_app": {"type": "string", "description": "A macOS bundle ID or Windows executable name. Uses the output Ibis uses for that app; style or syntax apply when it has none of its own."}
@@ -475,6 +479,7 @@ fn cite_output() -> Value {
         "type": "object",
         "properties": {
             "text": {"type": "string"},
+            "language": {"type": "string", "description": "The language a formatted citation is written in."},
             "notices": {"type": "array"},
             "losses": {"type": "array", "description": "What was asked for but could not be shown."},
             "warnings": {"type": "array"},
@@ -540,6 +545,21 @@ fn cite(engine: &Engine, arguments: &Map<String, Value>) -> Result<Value, Refusa
     let output = destination
         .as_ref()
         .map_or(output, |destination| destination.output.clone());
+    let locale = match arguments.get("locale") {
+        None => None,
+        Some(locale) => Some(
+            locale
+                .as_str()
+                .ok_or_else(|| Refusal::bad("locale must be a language tag, as text, such as de-DE."))?
+                .to_owned(),
+        ),
+    };
+    // A key syntax leaves language to the document's processor; nothing would read it.
+    if locale.is_some() && matches!(output, OutputSpec::Key { .. }) {
+        return Err(Refusal::bad(
+            "locale applies only to a style; a key syntax leaves language to the document's processor.",
+        ));
+    }
     let form: CitationForm = match arguments.get("form") {
         Some(form) => serde_json::from_value(form.clone())
             .map_err(|_| Refusal::bad("form must be one of the values in this tool's input schema."))?,
@@ -564,7 +584,7 @@ fn cite(engine: &Engine, arguments: &Map<String, Value>) -> Result<Value, Refusa
             keep_order: matches!(output, OutputSpec::Key { .. }),
             output,
             input_language: None,
-            output_locale: None,
+            output_locale: locale,
         },
         &Cancellation::default(),
     )?;
@@ -593,6 +613,9 @@ fn cite(engine: &Engine, arguments: &Map<String, Value>) -> Result<Value, Refusa
     }
     if let Some(destination) = destination {
         answer["destination"] = json!(destination);
+    }
+    if let Some(language) = &result.language {
+        answer["language"] = json!(language);
     }
     with_library_notes(answer, engine)
 }
@@ -701,7 +724,15 @@ fn refusal_hint(error: CitationError) -> &'static str {
 }
 
 fn styles_input() -> Value {
-    json!({"type": "object", "properties": {}, "additionalProperties": false})
+    json!({
+        "type": "object",
+        "properties": {
+            "query": {"type": "string", "maxLength": 1024, "description": "Words from a style's title or id, such as a journal's name."},
+            "limit": {"type": "integer", "minimum": 1, "maximum": MAX_STYLES, "default": 25},
+            "offset": {"type": "integer", "minimum": 0, "default": 0, "description": "How many matching styles to skip, for the next page."}
+        },
+        "additionalProperties": false
+    })
 }
 
 fn styles_output() -> Value {
@@ -710,14 +741,47 @@ fn styles_output() -> Value {
         "properties": {
             "styles": {
                 "type": "array",
-                "items": {"type": "object", "properties": {"id": {"type": "string"}, "title": {"type": "string"}}, "required": ["id", "title"]}
-            }
+                "items": {
+                    "type": "object",
+                    "properties": {"id": {"type": "string"}, "title": {"type": "string"}, "updated": {"type": "string"}},
+                    "required": ["id", "title", "updated"]
+                }
+            },
+            "total": {"type": "integer", "description": "How many styles match, beyond this page."},
+            "locales": {"type": "array"}
         },
-        "required": ["styles"]
+        "required": ["styles", "total", "locales"]
     })
 }
 
-fn styles(engine: &Engine, _: &Map<String, Value>) -> Result<Value, Refusal> {
-    let styles = engine.styles()?;
-    serde_json::to_value(styles).map_err(|_| EngineError::new(ErrorCode::Internal).into())
+fn styles(engine: &Engine, arguments: &Map<String, Value>) -> Result<Value, Refusal> {
+    let number = |name: &str, default: usize, most: Option<usize>| match arguments.get(name) {
+        None => Ok(default),
+        Some(value) => value
+            .as_u64()
+            .and_then(|value| usize::try_from(value).ok())
+            .filter(|value| most.is_none_or(|most| (1..=most).contains(value)))
+            .ok_or_else(|| {
+                Refusal::bad(match most {
+                    Some(most) => format!("{name} must be a whole number from 1 to {most}."),
+                    None => format!("{name} must be a whole number, 0 or more."),
+                })
+            }),
+    };
+    let query = match arguments.get("query") {
+        None => None,
+        Some(query) => Some(
+            query
+                .as_str()
+                .filter(|query| query.len() <= 1024)
+                .ok_or_else(|| Refusal::bad("query must be text of at most 1,024 bytes."))?
+                .to_owned(),
+        ),
+    };
+    let page = engine.styles(&StylesRequest {
+        query,
+        limit: number("limit", 25, Some(MAX_STYLES))?,
+        offset: number("offset", 0, None)?,
+    })?;
+    serde_json::to_value(page).map_err(|_| EngineError::new(ErrorCode::Internal).into())
 }

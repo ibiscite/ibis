@@ -17,7 +17,7 @@ fn bib(text: &str) -> Snapshot {
 
 fn zotero(fields: Value) -> Snapshot {
     let item: ZoteroItem = serde_json::from_value(fields).unwrap();
-    let mapped = map_item(LibraryId::zotero(b"invented"), &item).unwrap();
+    let mapped = map_item(LibraryId::digest(b"invented"), &item).unwrap();
     Snapshot::new(vec![LibraryObject::Record(mapped.record)]).unwrap()
 }
 
@@ -25,7 +25,7 @@ fn csl(fields: Value) -> Snapshot {
     Snapshot::new(vec![LibraryObject::Record(Record {
         added_at: None,
         id: ItemRef {
-            library: LibraryId::file(b"invented"),
+            library: LibraryId::digest(b"invented"),
             key: "work".into(),
         },
         csl: serde_json::from_value(fields).unwrap(),
@@ -259,7 +259,7 @@ fn mapped_zotero_matches_every_existing_formatting_golden_without_a_socket() {
         .iter()
         .map(|item| {
             let item = serde_json::from_value(item.clone()).unwrap();
-            let mapped = map_item(LibraryId::zotero(b"invented"), &item).unwrap();
+            let mapped = map_item(LibraryId::digest(b"invented"), &item).unwrap();
             assert!(mapped.warnings.is_empty());
             LibraryObject::Record(mapped.record)
         })

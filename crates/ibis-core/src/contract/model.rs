@@ -8,17 +8,19 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
-/// A source identity digest, never a source location. Sources hash the full
-/// canonical file identity, or profile/data-directory/library identity.
+/// A library's opaque token. It says nothing about the library: its kind and
+/// capabilities are fields of its description, and nothing may read them from
+/// here. Sources mint one with [`LibraryId::digest`] over a private key and the
+/// source's identity, so a seen id confirms no guessed location.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, JsonSchema)]
-pub struct LibraryId(#[schemars(regex(pattern = r"^(file|zotero):[0-9a-f]{64}$"))] String);
+pub struct LibraryId(#[schemars(regex(pattern = r"^[A-Za-z0-9_-]{1,64}$"))] String);
 
 impl LibraryId {
     pub fn new(value: &str) -> Result<Self, ModelError> {
-        let valid = value
-            .strip_prefix("file:")
-            .or_else(|| value.strip_prefix("zotero:"))
-            .is_some_and(is_digest);
+        let valid = (1..=64).contains(&value.len())
+            && value
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-');
         if valid {
             Ok(Self(value.into()))
         } else {
@@ -26,12 +28,10 @@ impl LibraryId {
         }
     }
 
-    pub fn file(identity: &[u8]) -> Self {
-        Self(format!("file:{}", Fingerprint::of_bytes(identity).as_str()))
-    }
-
-    pub fn zotero(identity: &[u8]) -> Self {
-        Self(format!("zotero:{}", Fingerprint::of_bytes(identity).as_str()))
+    /// The token for `identity`. What goes in decides what the id reveals, so
+    /// a source passes key material along with anything guessable.
+    pub fn digest(identity: &[u8]) -> Self {
+        Self(format!("lib_{}", &Fingerprint::of_bytes(identity).as_str()[..32]))
     }
 
     pub fn as_str(&self) -> &str {
@@ -108,7 +108,6 @@ pub struct Fingerprints {
 pub enum CitationKeySource {
     Bibtex,
     CslJsonCitationKey,
-    CslJsonId,
     Zotero,
     Extra,
     BetterBibtex,
@@ -644,7 +643,7 @@ mod tests {
 
     #[test]
     fn merging_shares_objects_and_matches_a_fresh_snapshot() {
-        let other = LibraryId::file(b"second invented library");
+        let other = LibraryId::digest(b"second invented library");
         let mut moved = record();
         moved.id.library = other.clone();
         let first = Snapshot::new(vec![LibraryObject::Record(record())]).unwrap();
@@ -776,7 +775,7 @@ mod tests {
 
     fn id(key: &str) -> ItemRef {
         ItemRef {
-            library: LibraryId::file(b"invented library"),
+            library: LibraryId::digest(b"invented library"),
             key: key.into(),
         }
     }
@@ -824,24 +823,25 @@ mod tests {
 
     #[test]
     fn opaque_ids_and_hashes_round_trip_without_paths() {
-        let library = LibraryId::file(b"synthetic source identity");
+        let library = LibraryId::digest(b"synthetic source identity");
         round_trip(&library);
-        round_trip(&LibraryId::zotero(b"synthetic profile and library"));
+        round_trip(&LibraryId::new("any-other_source7").unwrap());
         round_trip(&id("参考文献"));
         round_trip(&Fingerprint::of_bytes(b"synthetic"));
         for invalid in [
             "",
-            "file:relative",
+            "file:0123",
             "zotero:/invented/path",
-            "file:../secret",
-            "file:\\invented",
+            "../secret",
+            "with space",
             "https://invalid.example",
+            &"a".repeat(65),
         ] {
             assert_eq!(LibraryId::new(invalid), Err(ModelError::InvalidLibraryId));
             assert!(serde_json::from_value::<LibraryId>(json!(invalid)).is_err());
         }
         assert!(serde_json::from_value::<Fingerprint>(json!("invalid")).is_err());
-        assert_eq!(serde_json::to_value(library).unwrap().as_str().unwrap().len(), 69);
+        assert_eq!(serde_json::to_value(library).unwrap().as_str().unwrap().len(), 36);
     }
 
     #[test]
@@ -1001,7 +1001,6 @@ mod tests {
         for source in [
             CitationKeySource::Bibtex,
             CitationKeySource::CslJsonCitationKey,
-            CitationKeySource::CslJsonId,
             CitationKeySource::Zotero,
             CitationKeySource::Extra,
             CitationKeySource::BetterBibtex,

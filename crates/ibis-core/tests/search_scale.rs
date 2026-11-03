@@ -55,7 +55,7 @@ fn library(records: usize) -> Vec<LibraryObject> {
     let families = words(&mut rng, 3000, true);
     let given = words(&mut rng, 400, true);
     let journals = words(&mut rng, 300, true);
-    let library = LibraryId::file(b"synthetic scale library");
+    let library = LibraryId::digest(b"synthetic scale library");
     (0..records)
         .map(|n| {
             let mut pick = |list: &[String], count: usize| -> Vec<String> {

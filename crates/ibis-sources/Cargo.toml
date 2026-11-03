@@ -16,6 +16,7 @@ thiserror = "2.0.21"
 ibis-zotero-local = { path = "../ibis-zotero-local" }
 rusqlite = { version = "0.41.0", features = ["bundled", "hooks"] }
 biblatex = "0.12.0"
+getrandom = "0.4.3"
 notify = "8.2.0"
 unicode-normalization = "0.1.26"
 
