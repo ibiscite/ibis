@@ -258,9 +258,9 @@ impl Provider for Native {
 
     fn password_field(&self, element: &Element, deadline: Instant) -> Reply<bool> {
         match self.selection_value(element, SelectionAttribute::Subrole, deadline) {
-            Reply::Value(value) => value
-                .downcast_ref::<CFString>()
-                .map_or(Reply::Failed, |subrole| Reply::Value(subrole.to_string() == "AXSecureTextField")),
+            Reply::Value(value) => value.downcast_ref::<CFString>().map_or(Reply::Failed, |subrole| {
+                Reply::Value(subrole.to_string() == "AXSecureTextField")
+            }),
             Reply::NoValue => Reply::NoValue,
             Reply::Unsupported => Reply::Unsupported,
             Reply::TooLong | Reply::Failed => Reply::Failed,

@@ -150,8 +150,6 @@ fn manual_accessibility_policy(
             app: Some(id),
             secure_field: false,
             elevated: front.elevated,
-            selection: Selection::Unknown,
-            search: None,
         },
         PastePermission {
             enabled,

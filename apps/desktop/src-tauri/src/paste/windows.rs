@@ -7,7 +7,7 @@ use std::time::Duration;
 use tauri::{AppHandle, Manager};
 use winsafe::{self as w, co};
 
-use super::capture::Front;
+use super::capture::{Front, Selection};
 use super::{PasswordQueries, PasteEvent, PasteKeys, QueryWorker, TicketDesk};
 
 static NAME_WORKER: LazyLock<QueryWorker> = LazyLock::new(QueryWorker::default);

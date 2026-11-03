@@ -430,6 +430,7 @@ fn an_editor_with_verified_window_identity_pastes_once_after_returning() {
             "foreground",
             "secure-input",
             "change-count",
+            "selection",
             "secure-input",
             "change-count",
             "foreground",

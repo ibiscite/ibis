@@ -38,7 +38,7 @@ mod windows;
 pub(crate) use capture::Captured;
 #[cfg(any(target_os = "linux", test))]
 use capture::Front;
-#[cfg(any(target_os = "macos", target_os = "windows", test))]
+#[cfg(any(target_os = "macos", test))]
 use capture::Selection;
 #[cfg(any(target_os = "windows", test))]
 use delivery::CopyEvidence;

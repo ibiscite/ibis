@@ -8,11 +8,13 @@ use ibis_core::contract::Fingerprint;
 use ibis_core::destination::{AppId, AppPaste, CopyReason, System, Target};
 
 /// The most text, in UTF-16 units as AX counts it, that can become the search.
+#[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
 pub(crate) const SHORT_SELECTION: usize = 120;
 
 /// What was selected in the target when the picker opened (#1526). Ibis only
 /// pastes over text the person saw in search, so `Ignored` refuses the paste.
 #[derive(Clone, Default, PartialEq, Eq)]
+#[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
 pub(crate) enum Selection {
     /// Not read, or the app could not say. Nothing is known, so nothing changes.
     #[default]
@@ -36,6 +38,7 @@ impl std::fmt::Debug for Selection {
     }
 }
 
+#[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
 impl Selection {
     /// Decide what `text` is, and what the search should show of it.
     pub(crate) fn of_text(text: &str) -> (Self, Option<SelectedText>) {
@@ -53,6 +56,7 @@ impl Selection {
     }
 }
 
+#[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
 fn line_break_or_control(c: char) -> bool {
     c.is_control() || matches!(c, '\u{2028}' | '\u{2029}')
 }
@@ -61,6 +65,7 @@ fn line_break_or_control(c: char) -> bool {
 #[derive(PartialEq, Eq)]
 pub(crate) struct SelectedText(String);
 
+#[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
 impl SelectedText {
     pub(crate) fn into_search(self) -> String {
         self.0
@@ -91,6 +96,7 @@ pub(crate) struct Front {
     pub(crate) elevated: bool,
     pub(crate) selection: Selection,
     /// Taken for the search before the rest becomes a capture.
+    #[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
     pub(crate) search: Option<SelectedText>,
 }
 

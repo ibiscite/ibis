@@ -168,7 +168,6 @@ fn check_selection<P: Provider>(
         return Ok(());
     }
     let (found, _text) = read_selection(provider, pid, deadline)?;
-    diagnostics::equality(None, None, Some(found == *expected));
     match found {
         Selection::Unknown => Err(CopyReason::PasteUnavailable),
         found if found == *expected => Ok(()),
@@ -709,9 +708,8 @@ mod tests {
     #[test]
     fn the_final_proof_passes_only_for_the_selection_the_picker_opened_on() {
         let opened = Selection::of_text("smith 2020").0;
-        let check = |fake: &Fake, expected: &Selection| {
-            check_selection(fake, 42, expected, fake.now() + SELECTION_LIMIT)
-        };
+        let check =
+            |fake: &Fake, expected: &Selection| check_selection(fake, 42, expected, fake.now() + SELECTION_LIMIT);
         assert_eq!(check(&Fake::selecting("smith 2020"), &opened), Ok(()));
         assert_eq!(
             check(&Fake::selecting("jones 2021"), &opened),

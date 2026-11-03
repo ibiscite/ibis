@@ -270,7 +270,10 @@ fn show_picker_on_thread(app: &AppHandle, owner: u64) {
         }
         // Before the window appears, so its first frame is already current.
         // Only the picker hears the selected text; a stale show drops it above.
-        report(app.emit_to("main", "picker:preparing", selection), NativeIssue::PickerEvent);
+        report(
+            app.emit_to("main", "picker:preparing", selection),
+            NativeIssue::PickerEvent,
+        );
         crate::native_feel::before_show(app);
         report(window.unminimize(), NativeIssue::Unminimize);
         #[cfg(target_os = "macos")]
