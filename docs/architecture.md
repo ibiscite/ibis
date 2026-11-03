@@ -18,6 +18,8 @@ This is the target architecture for the rebuild agreed on 2026-10-26 ([decision 
 
 ## Principles
 
+- **The engine is the soul of Ibis** (maintainer, 2026-11-02). Almost no one sees it, but everything is done there and it makes Ibis powerful and fast; the app is only a layer on top. It must stand on its own, adapt and grow, work with AI agents, run on every operating system and be there for anyone to build on, developed in tandem with the app and with no compromises.
+- **One contract, one door.** What Ibis promises is the contract: methods that take and return JSON, stable error codes, `ibis schema` and the golden cases. `ibis-engine` keeps that promise and is the only crate a front end should need. JSON and codes are stable; the sentences people read are free to improve. The app stays in-process because that is simpler, not because a process boundary is slow, and it uses the contract so that moving it out later is a small change.
 - **The engine is the product; front ends are clients.** Every capability lives in the Rust engine as typed methods. The command line exposes all of it; the app, `ibis serve` and `ibis mcp` each expose an explicit subset suited to them (the picker does not administer the engine; headless clients do not open windows). A test fails when two front ends give different results for the same request. No front end formats, resolves or decides anything itself.
 - **One citation request, one result.** Preview, copy, paste, export, the command line and the editor endpoint all call `cite(snapshot, request) -> result`. What you see is exactly what is pasted.
 - **Only what Ibis can get right.** A field a format cannot carry is reported as a typed loss; a citation form it cannot carry is refused. Where correctness needs the whole document (numbering, ibid., 2020a/b), Ibis gives what is correct on its own and says why.
@@ -34,6 +36,16 @@ This is the target architecture for the rebuild agreed on 2026-10-26 ([decision 
 - **Opinionated defaults, sharp knives on request.** The first run works with no setup and good choices already made. Anyone can change any choice, but nothing asks a person to configure what a good default can decide.
 - **Fewer moving parts.** Prefer one process, standard formats and code Ibis already ships over new services, dependencies and custom infrastructure. When a simpler option makes code unnecessary, delete the code.
 - **Long-lived foundations.** Standards and widely used open source first (CSL 1.0.2, CSL-JSON, BibTeX, SQLite, Zotero's APIs, PDF.js). Each dependency that could fade sits behind one Ibis module so it can be replaced: Tauri, React Aria, PDF.js, citeproc-js, the BibTeX parser.
+
+## Engine direction
+
+From the engine review of 2026-11-02. These need no further decision; each step lands with its own issue.
+
+- **Reaching it:** `ibis ... --json` and `ibis serve --stdio` from any language; `ibis mcp` for agents; `ibis lsp` for editors (0.7); WebAssembly for websites and browser extensions. Python and npm packages, when someone asks, are thin clients around the `ibis` program. No C library, native language bindings or hosted API.
+- **Portable rules:** `ibis-core` stays free of native dependencies and builds for WebAssembly today; the key-output golden cases matched byte for byte there. `ibis-sources` gets a feature switch so its readers can follow without Zotero or SQLite.
+- **Fewer crates:** once the app stops calling `ibis-zotero-local` (#1260), it merges into `ibis-sources`. Settings and per-app choices move out of `ibis-core`, and `doctor` moves into the engine with #1538.
+- **Extending:** data files first, then pipes, never native code or scripts loaded into the engine. Extensions carry their own tests.
+- **Stays:** citeproc-js in QuickJS, JSON-RPC with LSP framing, a fixed list of source kinds, one repository and one version number until 1.0.
 
 ## Data model (ibis-core)
 
