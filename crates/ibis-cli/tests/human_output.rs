@@ -463,15 +463,14 @@ fn a_preloaded_engine_never_reads_the_app_settings() -> Result<(), Box<dyn std::
     let (code, _, errors) = run(engine()?, &["ibis", "search", "x", "--json"])?;
     assert_eq!((code, errors.as_str()), (0, ""));
     // Asked for the app's libraries, it refuses instead of reading or ignoring them.
-    for args in [
-        &["ibis", "search", "x", "--app-libraries", "--json"][..],
-        &["ibis", "mcp", "--app-libraries", "--json"],
-    ] {
-        let (code, text, errors) = run(engine()?, args)?;
-        assert_eq!(code, 2, "{args:?}");
-        assert_eq!(text, "{\"error\":{\"code\":\"usage\"},\"ibis\":1,\"ok\":false}\n");
-        assert!(errors.contains("--app-libraries is not available here"), "{errors}");
-    }
+    let (code, text, errors) = run(engine()?, &["ibis", "search", "x", "--app-libraries", "--json"])?;
+    assert_eq!(code, 2);
+    assert_eq!(text, "{\"error\":{\"code\":\"usage\"},\"ibis\":1,\"ok\":false}\n");
+    assert!(errors.contains("--app-libraries is not available here"), "{errors}");
+    // The server starts and says the same, so an agent can tell the person.
+    let (code, _, errors) = run(engine()?, &["ibis", "mcp", "--app-libraries", "--json"])?;
+    assert_eq!(code, 0);
+    assert!(errors.contains("--app-libraries is not available here"), "{errors}");
     Ok(())
 }
 
@@ -486,3 +485,4 @@ fn a_bare_less_than_sign_keeps_the_whole_title() -> Result<(), Box<dyn std::erro
     assert!(text.contains("Effect of p<0.05 on tidal rats"), "{text}");
     Ok(())
 }
+

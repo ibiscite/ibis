@@ -278,16 +278,17 @@ fn agents_see_a_page_and_the_language() {
         call(&mut session, "styles", json!({"limit":mcp::MAX_STYLES + 1}))["isError"],
         true
     );
+    let reference = mcp::reference(&id);
     let cited = call(
         &mut session,
         "cite",
-        json!({"items":[{"id":id}],"style":"apa","locale":"de-DE"}),
+        json!({"items":[{"ref":reference}],"style":"apa","locale":"de-DE"}),
     );
     assert_eq!(cited["structuredContent"]["language"], "de-DE");
     let refused = call(
         &mut session,
         "cite",
-        json!({"items":[{"id":id}],"style":"apa","locale":"xx-INVENTED"}),
+        json!({"items":[{"ref":reference}],"style":"apa","locale":"xx-INVENTED"}),
     );
     assert_eq!(refused["isError"], true);
     assert!(

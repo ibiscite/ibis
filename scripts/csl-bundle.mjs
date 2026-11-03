@@ -34,9 +34,23 @@ function attribute(tag, name) {
   return found ? decode(found[1] ?? found[2]) : null;
 }
 
+/** The style without its comments, so commented-out metadata is never read. */
+function withoutComments(xml) {
+  let out = "";
+  let at = 0;
+  for (;;) {
+    const start = xml.indexOf("<!--", at);
+    if (start < 0) return out + xml.slice(at);
+    out += xml.slice(at, start);
+    const end = xml.indexOf("-->", start + 4);
+    if (end < 0) return out;
+    at = end + 3;
+  }
+}
+
 /** What a style says about itself, read from its `<style>` and `<info>` only. */
 export function styleMetadata(id, xml) {
-  const text = xml.replace(/<!--[\s\S]*?-->/g, "");
+  const text = withoutComments(xml);
   const style = /<style\b[^>]*>/.exec(text)?.[0];
   const info = /<info>([\s\S]*?)<\/info>/.exec(text)?.[1];
   if (!style || !info) throw new Error(`${id}: no <style> or <info>`);
