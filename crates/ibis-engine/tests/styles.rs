@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 fn engine() -> (Engine, ItemRef) {
     let id = ItemRef {
-        library: LibraryId::file(b"synthetic-styles"),
+        library: LibraryId::digest(b"synthetic-styles"),
         key: "work".into(),
     };
     let csl = serde_json::from_value(json!({
