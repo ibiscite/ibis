@@ -10,6 +10,7 @@ use ibis_core::contract::{
     ItemOutcome, KeySyntax, LibraryObject, OutputSpec, Record, Script, Snapshot, TextRun,
 };
 use ibis_core::destination::{System, destination};
+use ibis_sources::WarningCode;
 use serde_json::{Map, Value, json};
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
@@ -232,11 +233,21 @@ fn library_notes(engine: &Engine) -> Result<Vec<String>, EngineError> {
                 .to_owned(),
         );
     }
-    let warnings: usize = libraries.iter().map(|library| library.warnings_total).sum();
-    if warnings > 0 {
-        notes.push(format!(
-            "The library has {warnings} warning(s), so entries with a repeated key or broken syntax may be missing. `ibis libraries` lists them for the user."
-        ));
+    // Warnings about one field leave the entry usable, and `cite` reports those itself.
+    let skipped = libraries.iter().any(|library| {
+        library.warnings_total > library.warnings.len()
+            || library.warnings.iter().any(|warning| {
+                matches!(
+                    warning.code,
+                    WarningCode::Syntax | WarningCode::DuplicateKey | WarningCode::WorkLimit
+                )
+            })
+    });
+    if skipped {
+        notes.push(
+            "Some library entries could not be used, for example two entries with one citation key, so they are missing here. `ibis libraries` lists them for the user."
+                .to_owned(),
+        );
     }
     Ok(notes)
 }

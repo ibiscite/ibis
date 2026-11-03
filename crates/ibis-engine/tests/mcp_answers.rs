@@ -86,7 +86,19 @@ fn entries_a_repeated_key_skipped_are_not_passed_off_as_absent() {
     );
     let result = tool(&engine, "search", json!({"query":"lantern"}));
     assert_eq!(answer(&result)["hits"], json!([]));
-    assert!(answer(&result)["library_notes"].to_string().contains("repeated key"));
+    assert!(
+        answer(&result)["library_notes"]
+            .to_string()
+            .contains("could not be used")
+    );
+}
+
+#[test]
+fn a_warning_about_one_field_does_not_claim_entries_are_missing() {
+    let (_dir, _path, engine) = library(b"@misc{lantern, title={Lantern}, year={}}\n");
+    let result = tool(&engine, "search", json!({"query":"lantern"}));
+    assert_eq!(answer(&result)["hits"][0]["ref"], "lantern");
+    assert!(answer(&result).get("library_notes").is_none(), "{result}");
 }
 
 #[test]
