@@ -10,8 +10,8 @@ const IDS = [
   ...SETTINGS_IDS,
   "choice-use-file", "choice-back", "choice-use-zotero", "choice-zotero-help", "choice-library-file", "choice-library-file-help", "choice-drop-file", "shelf-references",
   "keys-title", "keys-close", "keys-action", "keys-shortcut", "shortcuts-filter", "shortcuts-global", "shortcuts-system", "shortcuts-empty",
-  "general-small-surprises-label", "general-small-surprises-description", "delight-name", "delight-fact-touch", "delight-fact-scarlet", "delight-fact-mummies", "delight-fact-national", "delight-fact-flight", "delight-birthday", "undo-action", "undo-remove", "undo-removed", "undo-reset-window", "undo-forget-formats", "undo-shortcut",
-  "delight-ibis", "delight-thoth", "delight-tip", "delight-library100", "delight-library1000", "delight-library10000", "delight-empty", "delight-loading", "delight-no-library", "delight-zoom", "delight-citation", "delight-anniversary", "delight-about-words", "canvas-hovered", "canvas-pressed", "canvas-focused",
+  "general-small-surprises-label", "general-small-surprises-description", "delight-name", "delight-fact-touch", "delight-fact-scarlet", "delight-fact-mummies", "delight-fact-national", "delight-fact-flight", "undo-action", "undo-remove", "undo-removed", "undo-reset-window", "undo-forget-formats", "undo-shortcut",
+  "delight-ibis", "delight-tip", "delight-library100", "delight-library1000", "delight-library10000", "delight-empty", "delight-loading", "delight-no-library", "delight-zoom", "delight-citation", "delight-anniversary", "delight-about-words", "canvas-hovered", "canvas-pressed", "canvas-focused",
   "settings-pages", "settings-general", "settings-shortcuts", "settings-about",
   "general-login-label", "general-login-description", "general-login-place", "general-login-when",
   "general-login-unsupported", "general-login-needs-approval", "general-login-refused", "general-login-unreadable",
@@ -20,19 +20,18 @@ const IDS = [
   "general-paste-guide-title", "general-paste-guide-why", "general-paste-step-open", "general-paste-step-allow", "general-paste-step-return",
   "general-paste-pane", "general-paste-open", "general-paste-drag", "general-paste-drag-keyboard", "general-paste-drag-fallback",
   "general-paste-drag-failed", "general-paste-waiting", "general-paste-granted", "general-paste-unreadable", "general-paste-return-failed", "general-paste-stale",
-  "general-rows", "general-density-compact", "general-density-comfortable", "general-density-spacious",
-  "general-preview", "general-preview-description",
+  "general-rows", "general-density-compact", "general-density-comfortable",
   "shortcuts-open", "shortcuts-description", "shortcuts-record", "shortcuts-use-default", "shortcuts-change", "shortcuts-not-assigned",
   "shortcuts-configure-failed", "shortcuts-failed", "shortcuts-read-failed",
   "shortcuts-refusal-invalid", "shortcuts-refusal-needs-modifier", "shortcuts-refusal-app-shortcut", "shortcuts-refusal-alt-gr",
   "shortcuts-refusal-in-use", "shortcuts-refusal-unavailable", "shortcuts-refusal-not-saved",
   "shortcuts-command-format", "shortcuts-command-pin", "shortcuts-command-keys", "shortcuts-command-more",
-  "shortcuts-command-source", "shortcuts-command-preview", "shortcuts-command-settings", "shortcuts-command-quit", "shortcuts-picker-conflict",
+  "shortcuts-command-source", "shortcuts-command-settings", "shortcuts-command-quit", "shortcuts-picker-conflict",
   "shortcuts-region-search", "shortcuts-region-library", "shortcuts-region-picker", "shortcuts-region-menu", "shortcuts-region-system",
-  "shortcuts-action-choose-source", "shortcuts-action-reveal-source", "shortcuts-action-source", "shortcuts-action-preview", "shortcuts-action-copy", "shortcuts-action-copy-only", "shortcuts-action-add", "shortcuts-action-move", "shortcuts-action-escape",
+  "shortcuts-action-choose-source", "shortcuts-action-reveal-source", "shortcuts-action-source", "shortcuts-action-copy", "shortcuts-action-copy-only", "shortcuts-action-add", "shortcuts-action-move", "shortcuts-action-escape",
   "shortcuts-action-format", "shortcuts-action-more", "shortcuts-action-pin", "shortcuts-action-keys", "shortcuts-action-settings", "shortcuts-action-quit",
   "shortcuts-action-menu-move", "shortcuts-action-menu-ends", "shortcuts-action-menu-choose", "shortcuts-action-menu-leave", "shortcuts-or",
-  "about-automatic", "about-automatic-description", "about-check", "about-checking", "about-check-failed", "about-check-newest", "about-check-busy", "about-mission", "about-why", "about-updates", "about-links", "about-website", "about-source", "about-problem", "about-licences", "about-free", "about-copied", "about-copy-failed", "about-version", "about-unavailable",
+  "about-automatic", "about-automatic-description", "about-check", "about-checking", "about-check-failed", "about-check-newest", "about-check-busy", "about-mission", "about-updates", "about-links", "about-website", "about-source", "about-problem", "about-licences", "about-free", "about-copied", "about-copy-failed", "about-version", "about-unavailable",
 ] as const;
 export type MessageId = typeof IDS[number];
 type Variables = Readonly<Record<string, string | number>>;
@@ -80,7 +79,7 @@ export function createInterfaceMessages(source: string, pseudo = false): Interfa
   // Errors remain fixed text and cannot disclose variables or source content.
   try {
     for (const platform of ["macos", "windows", "linux"]) {
-      for (const id of IDS) text(id, { platform, name: "Ibis", list: "Synthetic List", version: "0.0.0", percent: 100, count: 1, library: "Invented Library", action: "Synthetic Action", reference: "Synthetic Reference", command: "Synthetic Command", file: "Invented.json", setting: "Synthetic Setting", from: "A", to: "B", system: "Synthetic System", id: 1 });
+      for (const id of IDS) text(id, { platform, name: "Ibis", list: "Synthetic List", version: "0.0.0", percent: 100, count: 1, keys: "Synthetic Keys", action: "Synthetic Action", reference: "Synthetic Reference", command: "Synthetic Command", file: "Invented.json", setting: "Synthetic Setting", from: "A", to: "B", system: "Synthetic System", id: 1 });
     }
   } catch { throw invalid(); }
   return Object.freeze({ locale: INTERFACE_LOCALE, text });

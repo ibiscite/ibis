@@ -42,7 +42,7 @@ function setup(density: Density = "comfortable", formatted = true) {
     library_status: status,
     use_sample_library: ({ enabled }) => switchTo(enabled ? "sample" : "none"),
     choose_library: () => null,
-    picker_preferences: () => ({ citation_style: formatted ? "apa" : null, density, show_paste_preview: true }),
+    picker_preferences: () => ({ citation_style: formatted ? "apa" : null, density }),
     search: ({ query }) => ({ revision: mode, results: mode === "none" || !query.text ? [] : [{
       ...result(mode === "sample" ? lantern["citation-key"] : "own", mode === "sample" ? title : "My invented reference", mode === "sample" ? "samples" : "real"),
       revision: mode, sample: mode === "sample",
@@ -89,7 +89,7 @@ test.each([true, false])("first citation: choose samples, search, Enter and rece
   expect(calls).not.toContain("set_picker_preferences");
 });
 
-test.each<Density>(["compact", "comfortable", "spacious"])("samples stay labelled in %s rows", async (density) => {
+test.each<Density>(["compact", "comfortable"])("samples stay labelled in %s rows", async (density) => {
   setup(density);
   await chooseSamples();
   fireEvent.change(screen.getByRole("combobox"), { target: { value: "lantern" } });

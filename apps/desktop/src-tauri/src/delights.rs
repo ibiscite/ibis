@@ -30,9 +30,6 @@ pub(crate) enum DelightStatus {
     Library10000,
 }
 
-// Set this once the first stable release date is known; no invented release date.
-const FIRST_STABLE_DATE: Option<[i32; 3]> = None;
-
 /// The About build line. A nightly's version already names its commit.
 fn build_line(version: &str, commit: Option<&str>, date: &str) -> String {
     match commit {
@@ -42,26 +39,16 @@ fn build_line(version: &str, commit: Option<&str>, date: &str) -> String {
     }
 }
 
-fn release_birthday(now: LocalMoment, first_stable: Option<[i32; 3]>) -> bool {
-    first_stable.is_some_and(|date| {
-        date[0]
-            .checked_add(2)
-            .is_some_and(|year| now.date() == [year, date[1], date[2]])
-    })
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, specta::Type)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum DelightFact {
-    Thoth,
     Touch,
     Scarlet,
     Mummies,
     National,
     Flight,
 }
-const FACTS: [DelightFact; 6] = [
-    DelightFact::Thoth,
+const FACTS: [DelightFact; 5] = [
     DelightFact::Touch,
     DelightFact::Scarlet,
     DelightFact::Mummies,
@@ -77,8 +64,6 @@ pub(crate) struct DelightView {
     build: String,
     fun: bool,
     fact: Option<DelightFact>,
-    birthday: bool,
-    library: Option<String>,
     revision: u64,
 }
 
@@ -142,23 +127,17 @@ impl SettingsFile {
             .is_some_and(|year| now.date() == [year, saved.first_run[1], saved.first_run[2]]);
         let mut view = DelightView {
             anniversary: fun && anniversary,
-            birthday: fun && release_birthday(now, FIRST_STABLE_DATE),
             fun,
             build: build_line(ibis_core::VERSION, option_env!("GITHUB_SHA"), env!("IBIS_BUILD_DATE")),
             ..DelightView::default()
         };
         if fun && about_click {
-            saved.about_clicks = (saved.about_clicks % 5) + 1;
-            if saved.about_clicks == 5 {
-                saved.about_clicks = 0;
-                saved.fact_index = Some(saved.fact_index.map_or(0, |last| (last % 6 + 1) % 6));
-            }
+            // One click, one fact; the next open carries on where this one stopped.
+            let count = FACTS.len() as u8;
+            let index = saved.fact_index.map_or(0, |last| (last % count + 1) % count);
+            saved.fact_index = Some(index);
+            view.fact = Some(FACTS[usize::from(index)]);
         }
-        view.fact = if fun {
-            saved.fact_index.map(|index| FACTS[usize::from(index % 6)])
-        } else {
-            None
-        };
         if picker {
             view.peck = fun && !saved.welcome;
             if fun {
@@ -173,17 +152,19 @@ impl SettingsFile {
                 && fun
             {
                 let seen = saved.libraries.entry(identity).or_default();
-                // Claim only what is rendered; larger imports retain their other milestones.
-                for (threshold, bit, status) in [
+                // Only the highest milestone reached speaks; a big import is one moment, not three.
+                let reached = [
+                    (10000, 7, DelightStatus::Library10000),
+                    (1000, 3, DelightStatus::Library1000),
                     (100, 1, DelightStatus::Library100),
-                    (1000, 2, DelightStatus::Library1000),
-                    (10000, 4, DelightStatus::Library10000),
-                ] {
-                    if count >= threshold && *seen & bit == 0 {
-                        *seen |= bit;
-                        view.status = Some(status);
-                        break;
-                    }
+                ]
+                .into_iter()
+                .find(|(threshold, _, _)| count >= *threshold);
+                if let Some((_, bits, status)) = reached
+                    && *seen & bits != bits
+                {
+                    *seen |= bits;
+                    view.status = Some(status);
                 }
             }
         }
@@ -282,15 +263,13 @@ pub(crate) fn delight_view(
         // Keep the library owner through claiming; a replacement cannot consume an old snapshot's claim.
         let status = crate::library::snapshot_status(&library);
         let library = library_claim(&status, revision.as_deref());
-        let mut view = file.claim_delights_when(
+        file.claim_delights_when(
             now,
             quiet_load(&status, revision.as_deref()),
             library,
             || presentation == Some(crate::picker::picker_presentation(app.state())),
             false,
-        );
-        view.library = status.snapshot_name;
-        view
+        )
     } else {
         file.claim_about(now, about_click.unwrap_or(false))
     };

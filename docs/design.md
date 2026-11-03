@@ -21,6 +21,8 @@ Tags such as [C12] are cited by code and tests; keep each beside its rule.
 7. **Calm motion.** Movement explains where something came from and stops under Reduce Motion.
 8. **No glow, no edge rings.** Selection is a fill, never an outline. Exceptions: picture choices (see **Selection is a fill**) and a dragged library file, which rings the whole content area.
 9. **Great defaults, then choice.** Most people never open Settings; no setting exists because a choice was hard.
+10. **The bar for anything people see.** A beginner succeeds with no reading, in plain words, without opening Settings; a pro does everything by keyboard, with nothing waiting or confirming.
+11. **One next action.** Every screen has one clear next action, and every failure says why and what to do.
 
 ## Where Ibis departs from macOS
 
@@ -30,10 +32,10 @@ Anything not listed follows Apple. A new departure is added here in the same cha
 | --- | --- | --- |
 | Hit areas | Regular controls are 24 pt | Drawn at Apple's size, hit area at least 32 px (menu rows keep 24) |
 | Smallest text | 10 and 11 pt captions | Nothing under 12 px |
-| Accent | System accent | Follow the Mac by default, plus Apple's hues and **Ibis scarlet**, as a fixed tuned set |
+| Accent | System accent | Follow the Mac by default, or **Ibis scarlet** |
 | Citation colour | None | The scarlet beak marks the citation; its text stays in the text colours [C14] |
 | Large buttons | Capsules on macOS 26 | Rounded rectangles at every size |
-| Search icon | Magnifier | The Ibis mark by default (as Alfred shows its hat); Magnifier or None in Look |
+| Search icon | Magnifier | The Ibis mark, as Alfred shows its hat |
 | In-window menus | `NSMenu` | Ibis's own, matching native metrics; menu bar, tray and right-click stay native |
 | Window size | Content decides | One steady size while open [C10] |
 | Key caps | Shortcuts only in menus | Caps in the footer and key lists |
@@ -53,14 +55,14 @@ Anything not listed follows Apple. A new departure is added here in the same cha
 
 ### Colour
 
-- **Labels** [D5]: `--text`, `--text-secondary`, `--text-tertiary` (placeholders and resting glyphs, never sentences), `--text-disabled`; Apple's label ladder at AppKit alphas.
-- **Fills**: Apple's fill ladder `--fill-1` … `--fill-5`. Control rest, hover and pressed are tertiary, secondary and system fill (`--fill-control` and its states); quiet hover and grouped content are quaternary.
-- **Separators**: one `--separator` for hairlines and dividers; a field edge that meets 3:1. Never a coloured border on a control. **One edge per shape**: a border, an inset shadow or an overlay's shadow ring, never two; a divider belongs to one side.
-- **Accent and selection** [D6]: every Accent choice resolves to three roles with light and dark values: `--accent` (controls, switches, focus), `--selected` with `--selected-text` (selected rows, menu highlight; text 4.5:1, never brighter in dark than light) and accent text on surfaces (4.5:1, also the progress ring). Follow the Mac reads the same roles from the system: on macOS `--selected` is WebKit's selection background, deeper than the accent and following it; accent text is the accent moved toward black or white only as far as 4.5:1 needs. The default button is `--accent` with `--text-on-accent`, or the deeper `--selected` where white on the accent would miss 4.5:1 (Apple's blue and red stay as measured; a Mac accent goes deeper below 4:1); it keeps one text colour through hover and press. Hover and press darken toward black; Ibis scarlet in dark, with dark ink, lightens toward white. Secondary text on a selection stays at full `--selected-text`; weight and size carry the hierarchy.
+- **Labels** [D5]: `--text`, `--text-secondary`, `--text-tertiary` (resting glyphs, never sentences), `--text-disabled`; Apple's label ladder at AppKit alphas. `--text-placeholder` is AppKit's placeholder colour, which equals its secondary label.
+- **Fills**: Apple's fill ladder `--fill-1` … `--fill-4`. Control rest, hover and pressed are tertiary, secondary and system fill (`--fill-control` and its states); quiet hover and grouped content are quaternary.
+- **Separators**: one `--separator` for hairlines and dividers; `--stroke-field` is the control edge that only Increase Contrast and forced colours draw. Never a coloured border on a control. **One edge per shape**: a border, an inset shadow or an overlay's shadow ring, never two; a divider belongs to one side.
+- **Accent and selection** [D6]: there are two choices, **Follow the Mac** and **Ibis scarlet**, and each resolves to three roles with light and dark values: `--accent` (controls, switches, focus), `--selected` with `--selected-text` (selected rows, menu highlight, focused citation; text 4.5:1, never brighter in dark than light) and accent text on surfaces (4.5:1, also the progress ring). Follow the Mac reads the same roles from the system: on macOS `--selected` is WebKit's selection background, deeper than the accent and following it; accent text is the accent moved toward black or white only as far as 4.5:1 needs. The default button is `--accent` with `--text-on-accent`, or the deeper `--selected` where a Mac accent would fall below 4:1 with white; it keeps one text colour through hover and press. Hover and press darken toward black. Secondary text on a selection stays at full `--selected-text`; weight and size carry the hierarchy.
 - **Focus** [D8]: `--ring`, solid accent text, only on `:focus-visible`; the system ink with Increase Contrast.
 - **Status** [D10]: `--status-ok`, `--status-warning`, `--status-error`, the Mac's system hues. A dot or symbol, optionally on a wash; status words stay in a label colour. The dot agrees with the words beside it: while its menu or the footer reports a problem it is never green.
 - **The one Ibis red** [D9]: `--scarlet` is the flat mark colour for the search-bar mark, the shelf beak, the added tile and the logo; it is never recoloured for a material. `--on-scarlet` is what sits on a scarlet fill. On a selected row the added tile becomes `--selected-text` with a scarlet check.
-- **Ibis scarlet as accent:** offered in Look after a divider; it pairs dark ink in dark mode so white never vanishes into the brighter scarlet.
+- **Ibis scarlet as accent:** it follows the rule of every macOS accent: the selection and filled controls are `--ibis` in both modes and carry white (5.4:1); the bright `--ibis-dark` stays for accent text, the ring and marks in dark (4.9:1 on the surface). Scarlet belongs to the bird, the shelf beak, the added tile and this one chosen accent, nowhere else.
 - **Light and dark** come from one `color-scheme` on the root, in every window; `light-dark()` roles have no value without it.
 - **Contrast:** text, placeholders and key-cap labels 4.5:1 against rendered pixels on every material and wallpaper (#774); focus rings, meaningful icons and only-cue boundaries 3:1. Apple's own label, placeholder and status values stay as measured where they fall short; Increase Contrast supplies the stronger set.
 
@@ -87,19 +89,19 @@ Anything not listed follows Apple. A new departure is added here in the same cha
 - **Spacing** [C1]: S = `--inset` on every OS. Every fill keeps S from the window edge and from any divider it touches; the list's viewport starts S below the header divider and ends S above the shelf. 4 px grid; 2 px only as an optical nudge.
 - **Control sizes**: the picker uses Apple's large controls and Settings the regular ones, as Spotlight and System Settings do. Targets grow to 32 px without changing the drawn size.
 - **Two columns** [C3]: icons, the search glyph, the status dot and type tiles centre on the tile column (`--tile`); text (row titles, the query, status text, the shelf citation) starts on the title column. The trailing edge is where row text ends; the last header control, footer key cap and year column end there. Distances run from the logical start edge, also in RTL.
-- **Rows** [C4]: three densities (decision 0020): Compact (one line; a long title ends in an ellipsis), Comfortable (two, the default), Spacious (three). Density changes rows only. Rows are 2 px apart in results.
+- **Rows** [C4]: two densities: Compact (one line; a long title ends in an ellipsis) and Comfortable (two, the default). Density changes rows only. Rows are 2 px apart in results.
 - **One steady window** [C10]: the picker keeps one size the whole time it is open, in every state; nothing measures content to choose a height and nothing animates a resize. Medium 720 × 480 is the default, minimum 480 × 360; Look › **Window size** offers Small, Medium, Large and **Compact** (a short bar that grows once to Medium on the first key, then never shrinks). A dragged size shows as Custom and is kept per display.
 - **Nothing clipped, one scroller**: no state is ever cut off; only the middle area or an open menu scrolls, never two at once. The inspector is the one exception: a sidebar scrolls apart from the list beside it, as in Preview. In a short frame with large text the header gaps and footer hint labels give way first.
 - **Width classes** [C17]: below 28.75 em footer hints show keys only; at 60 em the preview sits beside the list, below it replaces it.
 
 ### Corners
 
-- **Corners** [C15][D3]: rounded rectangles on one concentric chain. A shape near its container's edge keeps equal gaps and takes the container's radius minus that gap; every derived radius is computed in `tokens.css`, never typed. Window (`--r-win`, 16 on every macOS) → rows, fields, shelf (`--r-row`) → footer actions (`--r-action`) → key caps (`--r-key`); menus (`--r-menu`) → menu items (`--r-mi`).
+- **Corners** [C15][D3]: rounded rectangles on one concentric chain. A shape near its container's edge keeps equal gaps and takes the container's radius minus that gap; every derived radius is computed in `tokens.css`, never typed. Window (`--r-win`, 16 on every macOS) → rows, fields, shelf (`--r-row`) → footer actions (`--r-control`) → key caps (`--r-key`); menus (`--r-menu`) → menu items (`--r-mi`).
 - **Floors**: `--r-floor` for surfaces, `--r-floor-mark` for text-sized marks.
 - **Neighbours share a radius**: shapes side by side at one depth use one radius and one gap.
 - Overlays float on their own layer and keep `--r-menu`; Settings cards use `--r-card`.
-- **Capsules** (`--r-full`) only for switches, count and tag pills, progress tracks and toasts. Nothing hangs off a shape's edge: a control that belongs to a shape sits inside it.
-- The miniature pictures in Settings are the real picker scaled and keep its radii.
+- **Capsules** (`--r-full`) only for switches, count and tag pills and progress tracks. Nothing hangs off a shape's edge: a control that belongs to a shape sits inside it.
+- The miniature pictures in Settings keep the picker's radii; see **Previews**.
 
 ### Icons
 
@@ -107,13 +109,24 @@ Anything not listed follows Apple. A new departure is added here in the same cha
 - Fallback, and on other systems: Ibis's own set in `brand/icons/`, built by `python3 brand/build.py`; a 20 pt grid, 16 pt live area, one stroke weight matched to SF Symbols Regular, one stroked path each. The icon guard rejects anything else. A missing app or failed icon read shows the books glyph.
 - Ibis never ships Zotero's logo or other apps' artwork.
 - Seven type icons (article, book, chapter, thesis, web page, report, other) stay distinct from attachment drawings. Pages have rounded corners and a folded corner, as the book and web icons round theirs; the article page carries a title line and two text lines. Toggled-on keeps the same outline; the control's fill carries state.
-- **The Ibis mark** in the search bar is the flat `brand/` bird in `--scarlet`, eye open; flat `CanvasText` in contrast modes. It never appears on a control and never mirrors.
-- Settings page icons use Apple's icon shape; Mac icon layers are flat, with no added bevels or shadows.
+- Settings page icons use Apple's icon shape: a white glyph from the set above on a `--page-*` tile, one family for every page. Mac icon layers are flat, with no added bevels or shadows.
+
+### The bird
+
+The bird appears only where Ibis itself is the subject, in the one treatment of that context, and a view holds at most one beyond the search bar's. It never labels a control, a page, a row or a setting, and never mirrors. In contrast modes every flat bird is `CanvasText`.
+
+| Context | Treatment | Size |
+| --- | --- | --- |
+| Ibis as an app: About, the Dock, Finder, the paste guide's drag icon | The real app icon on its tile, never redrawn | `--mark-app` |
+| Greeting: welcome, the first open | The depth mark, no tile | `--mark-greeting` |
+| Waiting: opening a library | The flat mark, breathing | 2.5 rem |
+| Working: the search bar | The flat mark in `--scarlet`, eye open | The search glyph's size |
+| System chrome: the menu bar | The one-colour bird the system tints | The system's |
 
 ### Key caps
 
 - One cap per shortcut, written as menus write it: ⌘K, ⇧⌘F, ↵ on macOS; Ctrl+K on Windows and Linux (`ui/KeyCaps`).
-- Caps appear only in the footer and in key lists. Menus write shortcuts as plain trailing text in native order (⇧⌘C) [C8].
+- Caps appear only in the footer, the notice slot and key lists. Menus write shortcuts as plain trailing text in native order (⇧⌘C) [C8].
 - A cap is `--fill-control` with `--r-key`, label type, never an outline or scarlet. Inside a quiet button it keeps its fill; on the primary it is the pressed fill. A trailing cap in a small button is concentric: `--key-gap` above, below and at the end. A one-symbol cap (↵) is square, and ↵ is lowered .1em so it sits optically centred.
 - "or" alternatives keep two caps. Decorative caps are hidden from screen readers; `aria-keyshortcuts` names the keys.
 
@@ -165,11 +178,11 @@ Each component in `apps/desktop/src/ui/` wraps one React Aria component (decisio
 | Shelf (`ChipGroup`, `LocatorToken`) | See **Shelf**. |
 | Inspector (`ui/Inspector`, `CitationDetails`) | See **Inspector**. |
 | Footer and status line (`LibraryStatus`, `SourceAction`) | See **Footer**. A status line is words, never a filled band. |
-| Toast and copied notice (`UndoNotice`, `CopyReceipt`) | Capsule toast, 8 s, pauses on hover and focus; see **Notices**. |
-| Progress (`ui/Progress`) | A task such as an update is a quiet card on the row grid: an accent ring around the Ibis mark in the tile column, the title and phase ("Updating Ibis", "Downloading · 3.1 of 7.4 MB") where titles start, the percent where years end. An unknown phase turns the ring; Reduce Motion shows it dashed and still. Opening a library keeps a thin bar. |
+| Notice slot (`ui/NoticeSlot`, `UndoNotice`) and receipt (`CopyReceipt`) | See **Notices**. |
+| Progress (`ui/Progress`) | A task such as an update is one line of the notice slot: a small ring where the status dot sits, then the title, phase and percent ("Updating Ibis", "Downloading · 3.1 of 7.4 MB", "42%"), so no row moves. An unknown phase turns the ring; Reduce Motion shows it dashed and still. Opening a library keeps a thin bar. |
 | Choice cards (`ui/ChoiceList`) | See **First run and choice screens**. |
 | Picture choice (`ui/PictureChoice`) | Equal columns, one per choice, captions on one baseline; never wrap three as two plus one. |
-| Sidebar (`ui/SideNavigation`) | Single-selection list with `aria-current="page"`, the Mac's medium sidebar row, selected fill and paired text. |
+| Sidebar (`ui/SideNavigation`) | Single-selection list with `aria-current="page"`, the Mac's medium sidebar row, selected fill and paired text. `SideResults` draws search results as the same rows. |
 | Scroll area (`ui/ScrollArea`) | The system's own scroll bars; the side inset sits inside the bar; `--scroll-fade` only at an edge with more beyond it. |
 | File drag (`ui/FileDrag`) | A draggable file icon with button states. |
 
@@ -184,21 +197,20 @@ Each component in `apps/desktop/src/ui/` wraps one React Aria component (decisio
 - An unavailable choice stays in the list, dimmed, with why in one quiet line under its label; it never sets the menu's width.
 - Menus over seven items get a filter field aligned with the labels. Header menus open `bottom end`, footer menus `top end`, flipping and shifting to stay within the window.
 - Menus size to their labels up to the viewport, then wrap; a scrolling menu ends on a whole row. Any pointer movement highlights an item.
-- **More holds actions, not preferences**: Show in Zotero or Open thesis.bib (⌘O); Rows › (Compact, Comfortable, Spacious); Keep Window Open; Show What Will Be Pasted; Keyboard Shortcuts (⌘/); Settings…; Quit Ibis. Each thing appears in one place.
+- **More holds actions, not preferences**: Show in Zotero or Open thesis.bib (⌘O); Rows › (Compact, Comfortable); Keep Window Open; Keyboard Shortcuts (⌘/); Settings…; Quit Ibis. Each thing appears in one place.
 
 ## Picker
 
 ### Search bar
 
 - Order: search glyph, query, clear ×, format pop-up, pin. The header is its tallest control plus 2S, with a divider below [C2]. Its controls take the field's height, so the gap above and beside them is S and their corners nest in the window's (`--r-row`).
-- Look › **Search icon**: Ibis mark (default), Magnifier or None. With None the query starts at the leading inset.
 - `#tag`, `y:2019-2022` and `a:name` plus a space become removable chips; Backspace in an empty box removes the last.
 - **Pin** [C6]: a neutral IconButton at the header's end; on, it shows the pressed fill, never the accent. Esc never unpins.
 - The format pop-up names the exact output and the captured app (`APA · Word`); hidden until a library is chosen.
 
 ### Results
 
-- **List and row**: type tile, title, meta line, trailing year (or "No date") level with the title's first line in every density. Comfortable's meta line: authors as in a citation, then the container; Spacious adds the type in `--text-secondary`; Compact puts the first author after the title. The citation key is in the accessible name, not the row.
+- **List and row**: type tile, title, meta line, trailing year (or "No date") level with the title's first line in every density. Comfortable's meta line: authors as in a citation, then the container; Compact puts the first author after the title. The citation key is in the accessible name, not the row.
 - On hover or selection the add button replaces the tile (+, or a check when added) without reflow; a row in the citation shows the scarlet tile with a check.
 - Titles wrap to two lines then end in an ellipsis; the byline stays one line.
 - **Hover card**: resting half a second on a cut-off row shows its full details beside it; it never takes focus. ⌘Y opens Peek for the selected row.
@@ -225,7 +237,6 @@ Built in `ibis-core` so every front end shares them (#1204).
 - **One line, details on demand**: a segment opens the **Inspector**. The count is a pop-up of every reference with its page; a pick opens that reference there.
 - On copy a closing beak mirrors the opening one and a "Copied" capsule draws its check; Reduce Motion shows the end state. Each copy is confirmed once, in one place.
 - Pending output dims, then "Formatting…"; Enter waits. A failed format says why and offers another style; refusals stay visible until corrected.
-- **Show What Will Be Pasted** (⌘I, on by default): off hides only the line.
 - The shelf keeps the last citation through a running search and when the next search finds nothing.
 
 ### Inspector
@@ -248,7 +259,7 @@ Built in `ibis-core` so every front end shares them (#1204).
 - Every hint is label first, then keys, on one baseline. When the footer does not fit, shorten the status, then drop hint labels to keys.
 - **Quiet bands**: inside the shelf and footer only the main action (Copy or Paste) is filled. The library status, the source action, More, the reference count, notes and Details are quiet. A band that is itself a fill never holds another filled control.
 - Never show an action twice on one screen. With ⌥ held: "Add to citation ⇧↵", the Esc step, then More.
-- **One place for each status**: library state lives only in the footer status; citation refusals and settings notices use the middle area.
+- **One place for each status**: library state lives only in the footer status; citation refusals and settings notices use the middle area; anything passing uses the notice slot (see **Notices**).
 
 | Case | Footer |
 | --- | --- |
@@ -278,7 +289,7 @@ Built in `ibis-core` so every front end shares them (#1204).
 | ⌘/, or `?` outside a field | Keyboard shortcuts |
 | ⇧⌘P | Keep window open |
 | ⇧⌘F | The format chooser |
-| ⌘I / ⌘Y | Show what will be pasted / Peek |
+| ⌘Y | Peek |
 | ⌘+ / ⌘− | Text size |
 | Typing outside a field | Types into search |
 
@@ -295,7 +306,8 @@ Built in `ibis-core` so every front end shares them (#1204).
 - "Pasted" or "Copied" shows after the picker hides, in a window that never takes focus: one card near the top centre on every system, ignoring the pointer. What was copied is the hero: the citation in the text colour at body size, monospaced. Above it a quiet secondary line says what happened ("Copied", "Pasted into Word" or the reason). A green check in a soft green circle, centred on both lines, confirms success. A long reason wraps and is never clipped; the citation stays one line, ending in "…" with "+4 more" in view. The notice follows the chosen appearance.
 - **Plugin note**: the first paste into a word processor (Word, LibreOffice, Pages) adds a line under the citation and stays nine seconds: if this document uses a reference manager's plugin, insert with the plugin. Once per app, remembered in the per-app file, reset by Clear. It depends only on the app ID; Ibis cannot see the document, and browsers are skipped because Google Docs looks like any page.
 - No notice carries a side bar or a one-sided border. Errors are one sentence beside their cause, never a modal.
-- In-window toasts ("Removed · Undo") last 8 s, name their action and accept ⌘Z.
+- **One notice slot per window** (`ui/NoticeSlot`): notices never float. Everything that passes takes the window's status area: in the picker the footer's left side, standing in for the library status, which returns after 8 s; in Settings one line at the foot of the content area. The slot is in the layout, so it never covers content, never moves anything and opens no layer: it can sit behind any open menu or panel. One notice shows: the newest Undo offer, which is also what ⌘Z acts on, then a remark, then a running update. A notice's time runs only while it shows, so one that waits returns with the rest of its time and none passes unseen, including a failed update.
+- A notice is one line ending in an ellipsis, with short names ("Removed Vale 2021", first author and year as on the tile). An Undo offer has a quiet **Undo ⌘Z** right beside its words; it lasts 8 s, pauses on hover and focus, and ⌘Z does the same while it shows. A remark needing nothing (tip, milestone, the size after ⌘+, why Enter did nothing) is words alone, and leaves when you type. Screen readers hear both through the status role.
 
 | Reason | Words |
 | --- | --- |
@@ -351,14 +363,15 @@ Never call the destination a password field. The right paste key is shown per sy
 [C18] Its own window (in the Dock and Alt+Tab while open), opened with **Settings…** (⌘,) from More, the menu bar or tray. A sidebar of pages runs under the window buttons, as in System Settings. Every change applies at once and reaches an open picker.
 
 - **Window**: 920 × 560 by default, minimum 800 × 400. A two-column shell with a reserved `--titlebar-height`; the sidebar background runs full height. Nothing slides behind the title bar; only the page and the sidebar list scroll.
-- **Pages** (in this order): **General** (opening shortcut, Open at Login, pasting), **Look** (Appearance, Accent, Rows, text size, Window size, Search icon, Show What Will Be Pasted), **Libraries**, **Citations** (default format, Forget formats for apps, Recent citations), **Shortcuts**, then after a gap **Advanced** and **About Ibis**. A page with no built controls stays out of the sidebar.
+- **Pages** (in this order): **General** (opening shortcut, Open at Login, pasting), **Look** (Appearance, Accent, Rows, Window size, text size), **Libraries**, **Citations** (default format, Forget formats for apps, Recent citations), **Shortcuts**, then after a gap **Advanced** and **About Ibis**. A page with no built controls stays out of the sidebar.
 - **Only built settings appear**: no disabled promises or "Coming soon" rows, and nothing unbuilt in the search index.
 - Each setting is one entry in one registry (key, page, group, label, description, control, default, search words); pages and search are drawn from it.
 - **Groups and rows** [D17]: `ui/SettingsGroup` cards (`--r-card`, `--surface-grouped`) of inset rows: a label, an optional description, one control at the end. Cards keep their natural height; rows grow with text; controls move below a label that does not fit. No page opens with more than eight rows; rarer rows go behind **Details…**.
-- A search field heads the sidebar, matching labels, descriptions and common words ("dark", "startup"); it opens the page and tints the row. "ibis" or "thoth" opens About.
+- A search field heads the sidebar, matching labels, descriptions and common words ("dark", "startup"). **Results are sidebar rows** (`SideResults`), as in System Settings: the page's tile, then the setting's label, starting at one edge and wrapping there; never buttons or pills. A click, or Enter for the first, opens the page and tints the row. "ibis" or "thoth" opens About.
 - A page opens at its top with a `--type-display-*` heading; clicking the current page in the sidebar returns it to the top.
-- Visual choices are rows of real pictures of the picker (sample references, current appearance), picked by clicking: Appearance (System, Light, Dark; System split diagonally), Rows, Search icon, Window size.
-- **Accent**: the Mac's row of colour dots, **Follow the Mac** first (the default), Apple's hues in Apple's order, a divider, then **Ibis scarlet**. No free colour picker, custom fonts, themes or CSS.
+- Visual choices are rows of real pictures of the picker (sample references, current appearance), picked by clicking: Appearance (System, Light, Dark; System split diagonally), Rows, Window size.
+- **Previews** (`settings/PickerPicture`, `ui/PictureChoice`): a preview is the real part, and its frame comes from what it shows, so nothing is cut and no band is left empty. A window has a set shape and is that shape scaled (`--preview-window`). A Rows strip shows two whole rows at `--preview-rows`, in a frame that hugs them at every density.
+- **Accent**: a segmented choice of **Follow the Mac** (the default) and **Ibis scarlet**. No other hues, free colour picker, custom fonts, themes or CSS.
 - A failed save shows an alert and restores the saved choice; queued choices finish saving (at most two seconds) before the window closes. Preference resets offer Undo.
 
 **Shortcuts.** Settings › Shortcuts has a search field, then grouped cards (Open Ibis, While searching, Your library, Anywhere in Ibis, In a menu). Only the opening-shortcut recorder edits a key; fixed keys are plain secondary text. Group headings scroll with their cards, never sticking over a card's edge. Keys and the "or" between them share one baseline with equal gaps. General and Shortcuts share `ui/ShortcutSetting`. The Keyboard Shortcuts sheet (⌘/) is a readable overlay of two equal columns that hugs its content and closes with the square IconButton [C13].
@@ -369,11 +382,11 @@ Never call the destination a password field. The right paste key is shown per sy
 
 **Permissions.** A guide in Settings › General › Pasting says why in one sentence, names the system's list in its current words, shows a picture of the switch, opens the pane with one button, notices the change by itself and confirms in words. Mac auto-paste needs PostEvent and Accessibility; Settings says allowed only after both read back. The Ibis icon beside **Open System Settings** can be dragged into the list ("If Ibis is not in the list, drag it there."). Granting never replays a paste: return to the document, open Ibis again and press Enter.
 
-**General.** **Open at Login** is off until turned on and read from the system, never `settings.json`. **Show in Menu Bar** is planned (on by default; off, opening Ibis from Applications opens Settings). The menu bar icon is a one-colour bird from `brand/` opening a menu: Open Ibis, the library line, Reset Window Position, Settings…, Check for Updates…, Quit Ibis.
+**General.** **Open at Login** is off until turned on and read from the system, never `settings.json`. **Small surprises** closes the same card. **Show in Menu Bar** is planned (on by default; off, opening Ibis from Applications opens Settings). The menu bar icon is a one-colour bird from `brand/` opening a menu: Open Ibis, the library line, Reset Window Position, Settings…, Check for Updates…, Quit Ibis.
 
 **Another computer.** Settings › General ends with **Back Up Settings** (Back Up…, a save dialog that starts in iCloud Drive on macOS, OneDrive on Windows, otherwise Documents) and **Restore Settings** (Restore…). A chosen backup is checked whole, then the row lists every change as "Setting: before → after" with notes (a bibliography not on this computer, a shortcut kept for this system), **Cancel** and the primary **Restore and Restart**. Nothing changes before that button; a bibliography shows by its file name only. Refusals say why in one line and change nothing ([moving to a new computer](moving-to-a-new-computer.md)).
 
-**About.** A centred hero with the actual app icon, the name, a **Version x** button that copies it (⌥ shows and copies the full build), and the mission line; then Updates (automatic checks, Check now), links and the free-software note. It fits 920 × 560 without scrolling. **Check for Updates…** in the tray opens About and runs Check now, so its result shows there, never in an alert. Automatic update offers never show or focus the picker; they wait for empty, idle input, and **Later** is the default for every key (decision 0019).
+**About.** A centred hero with the actual app icon, the name, a **Version x** button that copies it (⌥ shows and copies the full build), the mission line and the line on the name, which keeps the room of two lines so a new fact never moves the page; then Updates (automatic checks, Check now), links and the free-software note. The icon is the page's only bird. It fits 920 × 560 without scrolling. **Check for Updates…** in the tray opens About and runs Check now, so its result shows there, never in an alert. Automatic update offers never show or focus the picker; they wait for empty, idle input, and **Later** is the default for every key (decision 0019).
 
 ## Source checks and passage reuse (planned)
 
@@ -398,11 +411,11 @@ Approved directions from ROADMAP.md; planned behaviour. No new notebook, source 
 
 ## Small delights
 
-The approved, final list; no new delights until the next design pass. Each lives only in About, the welcome, status lines or existing feedback; never changes results, output or focus; happens once within the motion cap; never loops or plays a sound. Warm, never childish: at most one short sentence, no slang, exclamation marks, emoji or jokes about the person's work. The fun items sit behind Settings › General › **Small surprises** (on by default).
+The approved, final list; no new delights until the next design pass. Each lives only in About, the welcome, the notice slot or existing feedback; never changes results, output or focus; happens once within the motion cap; never loops or plays a sound. Warm, never childish: at most one short sentence, no slang, exclamation marks, emoji or jokes about the person's work. A delight is a person's action answered, or a real moment marked; nothing appears at random. The fun items sit behind Settings › General › **Small surprises** (on by default).
 
 - **Feel:** a pressed shortcut briefly presses its footer cap; holding ⌘ shows every visible action's key; Enter with nothing to paste shakes the action once and says why; ⌘+/⌘− show the size briefly; the menu bar ibis dips its beak after a copy.
-- **Saves time:** Services › Search with Ibis; a `.bib` dropped on the menu bar ibis becomes a library; every Undo names its action ("Undo Remove Okafor & Lima, 2018"); ⌥ on About shows the full build.
-- **Fun:** About's line on the name ("Named for the bird ancient Egyptians linked with Thoth, god of writing and keeper of records."); clicking the About icon blinks the ibis; milestones once each ("A good start.", "A solid library.", "A remarkable library.").
+- **Saves time:** Services › Search with Ibis; a `.bib` dropped on the menu bar ibis becomes a library; every Undo names its action ("Undo Remove Vale 2021"); ⌥ on About shows the full build; once, after the first paste, a tip that ⇧⌘P keeps Ibis open between citations.
+- **Fun:** About's line on the name ("Named for the bird ancient Egyptians linked with Thoth, god of writing and keeper of records."); clicking the About icon dips the bird's beak, the menu bar's gesture, and the line says the next bird fact, one click, one fact, carrying on next time, until you leave the page; the first open greets with the mark; the first, 100th and 1,000th paste say so on the receipt; a library's size is marked once, with the highest milestone reached only ("A good start.", "A solid library.", "A remarkable library."), so a large import is one moment; the day a year after first use, the line reads "One year with Ibis today."
 - **Left out:** confetti, sounds, seasonal themes, joke results, a "what's new" screen, alternative app icons.
 
 ## Per platform

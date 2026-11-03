@@ -21,7 +21,7 @@ export function useCitationCopy({ api, session, state, destination, currentPin, 
 }) {
   const { copyFileCitation, hidePicker, showCopiedNotice } = api;
   const send = session.dispatch;
-  const { queryKey, format, snapshotRevision, defaultChoice, chosen, shown, previewVisible: showPastePreview, searchPending } = view;
+  const { queryKey, format, snapshotRevision, defaultChoice, chosen, shown, searchPending } = view;
   // The controller receives readiness from the existing search/preview I/O
   // adapters. Session and interaction tickets reject an obsolete render.
   useLayoutEffect(() => {
@@ -29,7 +29,7 @@ export function useCitationCopy({ api, session, state, destination, currentPin, 
       pinned: () => currentPin.current, consume: destination.consumeOnce, refresh: refreshSnapshot,
       askFormat: () => formatButtonRef.current?.click(), reportHide: (failed) => report("hide", failed) });
     send({ type: "view", session: state.session, interaction: state.interaction,
-      view: { appId: destination.appId, queryKey, format, snapshotRevision, defaultChoice, chosen, shown, previewVisible: showPastePreview, searchPending,
+      view: { appId: destination.appId, queryKey, format, snapshotRevision, defaultChoice, chosen, shown, searchPending,
         ready: destination.ready && view.ready, saving: destination.saving, shouldAsk: destination.shouldAsk,
         output: destination.copyToken() } });
   });

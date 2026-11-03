@@ -143,7 +143,6 @@ export const setupText = {
 export const densityNames = {
   compact: "Compact",
   comfortable: "Comfortable",
-  spacious: "Spacious",
 } as const;
 
 export const pickerText = {
@@ -188,6 +187,7 @@ export const pickerText = {
   fullCitation: "Full citation",
   windowReset: "Window position reset.",
   undo: "Undo",
+  notices: "Notices",
   undoFailed: "Could not undo. Try again.",
   previewPending: "Formatting…",
   previewNotReady: "Nothing was copied yet: the citation is still being formatted. Press Enter again in a moment.",
@@ -242,7 +242,6 @@ export const pickerText = {
   more: "More",
   keepOpen: "Keep Window Open",
   keepOpenMenu: "Keep Window Open",
-  showPastePreview: "Show What Will Be Pasted",
   moreTitle: (keys: string) => `More actions (${keys})`,
   chooseLibrary: "Choose Library…",
   chooseTitle: "Choose a library",
@@ -263,7 +262,7 @@ export const pickerText = {
   checkAutomatically: "Check for updates automatically",
   density: (name: string) => `Rows: ${name}`,
   rows: "Rows",
-  densityExamples: { compact: "1 line", comfortable: "2 lines", spacious: "3 lines" },
+  densityExamples: { compact: "1 line", comfortable: "2 lines" },
   densityTitle: "Show less or more of each reference",
   viewChanges: "View changes",
   largerText: "Larger text",
@@ -299,7 +298,6 @@ export const keyText = {
     source: "Open the source",
     chooseSource: "Choose a library",
     revealSource: "Show the source in its folder",
-    preview: "Show what will be pasted",
     copy: "Paste the citation",
     add: "Add another reference",
     move: "Move through results",
@@ -488,7 +486,7 @@ export const copyFormatLabels: Record<KeyFormat, string> = {
 export const rowText = {
   /** Follows the first author's name in Compact rows when there are more. */
   etAl: "et al.",
-  /** Short word for a CSL item type, shown in Spacious rows; other types show none. */
+  /** Short word for a CSL item type, read by screen readers; other types say none. */
   itemType: (type: string): string | null => (Object.hasOwn(itemTypeWords, type) ? itemTypeWords[type] ?? null : null),
 };
 

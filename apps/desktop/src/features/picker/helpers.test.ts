@@ -4,7 +4,7 @@ import type { SearchResult } from "../../api";
 import pickerConflicts from "../../testing/picker-shortcut-conflicts.json";
 import { choiceKey, choiceName, idKey, sameLibrary, styleOf } from "./choice";
 import { abbreviatedAuthors, hiddenMatch, tileName } from "./rows";
-import { commandFor, isFormatShortcut, isKeysShortcut, isMenuShortcut, isPinShortcut, isPreviewShortcut, isQuitShortcut } from "./shortcuts";
+import { commandFor, isFormatShortcut, isKeysShortcut, isMenuShortcut, isPinShortcut, isQuitShortcut } from "./shortcuts";
 
 const record = (more: Partial<SearchResult> = {}): SearchResult => ({
   revision: "1", id: { source: "refs.bib", native_key: "a" }, key: "a", title: "T", authors: "García", year: 2021,
@@ -59,23 +59,6 @@ test("a letter shortcut typed as punctuation is not the keys shortcut", () => {
   expect(isKeysShortcut(press("/", "Slash"), false)).toBe(true);
   expect(isKeysShortcut({ ...press("?", "KeyM"), shiftKey: true } as React.KeyboardEvent, false)).toBe(true);
   expect(isMenuShortcut(press("/", "Slash"), false)).toBe(false);
-});
-
-test("preview shortcuts use logical I, the platform command key and strict modifiers", () => {
-  const press = (more: Partial<React.KeyboardEvent> = {}) => ({ key: "i", code: "KeyI", ctrlKey: true,
-    metaKey: false, altKey: false, shiftKey: false, target: null, ...more }) as React.KeyboardEvent;
-  for (const mac of [false, true]) {
-    const modifier = mac ? { ctrlKey: false, metaKey: true } : {};
-    for (const key of ["i", "I"]) expect(isPreviewShortcut(press({ key, code: "Quote", ...modifier }), mac)).toBe(true);
-    for (const key of ["'", "ш", "/"]) expect(isPreviewShortcut(press({ key, ...modifier }), mac)).toBe(false);
-  }
-  expect(isKeysShortcut(press({ key: "/" }), false)).toBe(true);
-  expect(isPreviewShortcut(press({ ctrlKey: false, metaKey: true }), true)).toBe(true);
-  for (const modifiers of [{ altKey: true }, { shiftKey: true }, { metaKey: true }, { ctrlKey: false }]) {
-    expect(isPreviewShortcut(press(modifiers), false)).toBe(false);
-  }
-  expect(isPreviewShortcut(press(), true)).toBe(false);
-  expect(isPreviewShortcut(press({ key: "j" }), false)).toBe(false);
 });
 
 test("every command has one key on each system, and ⌘/ opens the keys wherever focus is", () => {

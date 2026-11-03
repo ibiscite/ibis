@@ -16,7 +16,7 @@ import type { usePointerSelection } from "../../pointerSelection";
  * wherever focus is; a key and its menu item run the same command. */
 export function usePickerKeys({
   api, pickerSession, menus, source, results, showCitations, copyChosen, actions, pointer, followKeyboard,
-  togglePastePreview, quitAfterSaving, onEmptyEnter,
+  quitAfterSaving, onEmptyEnter,
 }: {
   api: PickerApi;
   pickerSession: Pick<ReturnType<typeof usePickerSession>, "session" | "cancelCopy" | "setActive">;
@@ -28,7 +28,6 @@ export function usePickerKeys({
   actions: Pick<ReturnType<typeof usePickerActions>, "toggleHighlighted">;
   pointer: ReturnType<typeof usePointerSelection>;
   followKeyboard: { current: boolean };
-  togglePastePreview: () => void;
   quitAfterSaving: () => Promise<void>;
   onEmptyEnter?: () => void;
 }) {
@@ -41,7 +40,6 @@ export function usePickerKeys({
    * clears them, and pressing an open layer's own key closes it. */
   const run = (command: PickerCommand, event?: KeyboardEvent) => {
     if (command === "pin") togglePin();
-    else if (command === "preview") togglePastePreview();
     else if (command === "more") {
       if (menuOpen) { closeOverlays(); moreButton.current?.focus(); } else openMore();
     } else if (command === "keys") {

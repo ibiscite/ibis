@@ -3,7 +3,7 @@ import { commandKey, keysFor, matchesAccelerator, type KeyPress } from "../../ke
 import { isMac } from "../../platform";
 
 /** Everything the picker does by name. A key and its menu item run the same one. */
-export type PickerCommand = "format" | "more" | "pin" | "preview" | "source" | "revealSource" | "chooseSource" | "keys" | "settings" | "quit";
+export type PickerCommand = "format" | "more" | "pin" | "source" | "revealSource" | "chooseSource" | "keys" | "settings" | "quit";
 
 type Press = KeyPress & Pick<KeyboardEvent, "target" | "getModifierState">;
 
@@ -17,7 +17,7 @@ export function typesText(target: EventTarget | null): boolean {
 /** `?` outside a text field, or Ctrl/⌘ with / (or ?) anywhere. Hebrew types /
  * on the Q key, so a press that is a letter shortcut is not this one. */
 export function isKeysShortcut(e: Press, mac = isMac, focused: EventTarget | null = e.target): boolean {
-  if (e.altKey || isQuitShortcut(e, mac) || isMenuShortcut(e, mac) || isPinShortcut(e, mac) || isPreviewShortcut(e, mac) || isSettingsShortcut(e, mac)) return false;
+  if (e.altKey || isQuitShortcut(e, mac) || isMenuShortcut(e, mac) || isPinShortcut(e, mac) || isSettingsShortcut(e, mac)) return false;
   if ((e.key === "/" || e.key === "?") && commandKey(e, mac)) return true;
   return e.key === "?" && !e.ctrlKey && !e.metaKey && !typesText(focused);
 }
@@ -39,9 +39,6 @@ export function isPinShortcut(e: Press, mac = isMac): boolean {
 
 /** Logical I with the platform command modifier; punctuation on the physical
  * I key must not become a command on another keyboard layout. */
-export function isPreviewShortcut(e: Press, mac = isMac): boolean {
-  return e.key.toLowerCase() === "i" && matchesAccelerator(e, keysFor("preview"), mac);
-}
 
 /** Settings, as in every Mac app: ⌘, (Ctrl+, elsewhere). */
 export function isSettingsShortcut(e: Press, mac = isMac): boolean {
@@ -69,7 +66,6 @@ export function commandFor(e: Press, focused: EventTarget | null, mac = isMac): 
   if (isSourceShortcut(e, mac)) return e.altKey ? "revealSource" : "source";
   if (isFormatShortcut(e, mac)) return "format";
   if (isPinShortcut(e, mac)) return "pin";
-  if (isPreviewShortcut(e, mac)) return "preview";
   if (isKeysShortcut(e, mac, focused)) return "keys";
   if (isMenuShortcut(e, mac)) return "more";
   if (isSettingsShortcut(e, mac)) return "settings";

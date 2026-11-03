@@ -22,7 +22,7 @@
   --space-5: calc(5 * var(--unit)); --space-6: calc(6 * var(--unit)); --space-8: calc(8 * var(--unit)); --space-10: calc(10 * var(--unit));
   --inset: var(--space-2);
   --row-pad: var(--space-3); --row-gap: var(--space-3); --row-spacing: 2px;
-  --row-compact: var(--space-10); --row-comfortable: 3.625rem; --row-spacious: 4.75rem;
+  --row-compact: var(--space-10); --row-comfortable: 3.625rem;
   --row-height: var(--row-comfortable);
   --larger-text-scale: 1.15;
 
@@ -54,12 +54,12 @@
   --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
   --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
 
-  /* Motion: feedback, panels, exits. No bounce. */
-  --dur: 120ms; --dur-panel: 200ms; --dur-exit: 80ms;
+  /* Motion: feedback and panels. No bounce. */
+  --dur: 120ms; --dur-panel: 200ms;
   --ease: cubic-bezier(.2, .8, .2, 1); --ease-in: cubic-bezier(.4, 0, 1, 1);
 
   /* Layers. */
-  --z-chrome: 1; --z-overlay: 10; --z-modal: 30; --z-toast: 40;
+  --z-chrome: 1; --z-overlay: 10; --z-modal: 30;
 
   --white: #fff;
 
@@ -83,6 +83,7 @@
   --separator: GrayText; --stroke-field: transparent;
   --accent: Highlight; --accent-text: var(--accent); --text-on-accent: HighlightText;
   --selected: Highlight; --selected-text: HighlightText; --selected-text-secondary: currentColor;
+  --text-placeholder: var(--text-secondary);
   --ring: var(--accent-text);
   --scarlet: CanvasText; --on-scarlet: var(--white);
   --status-ok: CanvasText; --status-warning: CanvasText; --status-error: CanvasText;
@@ -108,12 +109,14 @@
   --surface-grouped: var(--fill-4);
   --titlebar-height: 2.75rem;
   --sidebar-width: min(12.5rem, 26%);
-  --page-general: #8e8e93; --page-look: #ff9f0a; --page-citations: #0a84ff; --page-shortcuts: #5e5ce6; --page-about: var(--ibis);
+  --page-general: #8e8e93; --page-look: #ff9f0a; --page-citations: #0a84ff; --page-shortcuts: #5e5ce6; --page-about: var(--page-general);
   --highlight: var(--accent-wash);
+  /* Previews: the real part at one size each. The window picture keeps Medium's shape. */
+  --preview-window-w: 45rem; --preview-window-h: 30rem;
+  --preview-window: .21; --preview-rows: .74;
+  /* The bird: the app icon names Ibis; the depth mark greets. */
+  --mark-app: 6rem; --mark-greeting: 3.5rem;
 
-  /* Look's dots show each Mac colour as Apple draws it. */
-  --dot-ibis: var(--ibis); --dot-blue: #007aff; --dot-purple: #953d96; --dot-pink: #f74f9e; --dot-red: #e0383e;
-  --dot-orange: #f7821b; --dot-yellow: #ffc600; --dot-green: #62ba46; --dot-graphite: #8c8c8c;
 }
 
 @media (prefers-reduced-motion: reduce) { :root { --dur: 100ms; --dur-panel: 1ms; } }
@@ -200,25 +203,17 @@
   }
 }
 
-/* One accent, three roles, both modes: the accent colours controls and the
-   focus ring; the selection is a deeper shade of it that keeps white text at
-   4.5:1, never brighter in dark than in light; accent text passes 4.5:1 on the
-   surface. Follow the Mac reaches the same roles from nativeAccent.css. */
-:root[data-accent="blue"] { --ac: #007aff; --ac-selected: light-dark(#0064e1, #0059d1); --ac-text: light-dark(#0068da, #419cff); }
-:root[data-accent="ibis"] { --ac: light-dark(var(--ibis), var(--ibis-dark)); --ac-selected: var(--ac); --ac-text: var(--ac); --ac-on: light-dark(#fff, #171717); }
-/* Dark ink needs a lighter press: darkening would lose it. */
-:root[data-accent="ibis"] { --ac-press: light-dark(black, white); }
-:root[data-accent="purple"] { --ac: light-dark(#953d96, #a550a7); --ac-selected: light-dark(#953d96, #904291); --ac-text: light-dark(#953d96, #bd71bf); }
-:root[data-accent="pink"] { --ac: light-dark(#f74f9e, #f74f9e); --ac-selected: light-dark(#e4086c, #e4086c); --ac-text: light-dark(#e4086c, #f74f9e); --ac-fill: var(--ac-selected); }
-:root[data-accent="red"] { --ac: light-dark(#e0383e, #ff5257); --ac-selected: light-dark(#de3036, #e80005); --ac-text: light-dark(#dd2c32, #ff5257); --ac-fill: var(--ac-selected); }
-:root[data-accent="orange"] { --ac: light-dark(#e77008, #f7821b); --ac-selected: light-dark(#b55c08, #b55c08); --ac-text: light-dark(#b55c08, #f7821b); --ac-fill: var(--ac-selected); }
-:root[data-accent="yellow"] { --ac: light-dark(#b48a00, #ffc600); --ac-selected: light-dark(#916e00, #916e00); --ac-text: light-dark(#916e00, #ffc600); --ac-fill: var(--ac-selected); }
-:root[data-accent="green"] { --ac: light-dark(#56a33f, #62ba46); --ac-selected: light-dark(#468337, #468337); --ac-text: light-dark(#447f35, #62ba46); --ac-fill: var(--ac-selected); }
-:root[data-accent="graphite"] { --ac: light-dark(#8c8c8c, #8c8c8c); --ac-selected: light-dark(#747474, #747474); --ac-text: light-dark(#747474, #8c8c8c); --ac-fill: var(--ac-selected); }
+/* One accent, three roles, both modes: the accent colours controls and the focus
+   ring; the selection is a deeper shade that keeps its text at 4.5:1; accent text
+   passes 4.5:1 on the surface. Follow the Mac reaches these roles from
+   nativeAccent.css; Ibis scarlet is the one fixed choice, following the same rule:
+   selection and filled controls carry white, and the bright scarlet stays for
+   accent text, the ring and marks in dark. */
 @supports (color: light-dark(white, black)) {
   @media (prefers-contrast: no-preference) and (forced-colors: none) {
-    :root[data-appearance][data-accent]:not([data-accent="system"]):not(.notice-window) {
-      --accent: var(--ac); --primary: var(--ac-fill, var(--ac)); --selected: var(--ac-selected); --accent-text: var(--ac-text); --selected-text: var(--ac-on, #fff); --text-on-accent: var(--ac-on, #fff);
+    :root[data-appearance][data-accent="ibis"]:not(.notice-window) {
+      --accent: light-dark(var(--ibis), var(--ibis-dark)); --accent-text: var(--accent);
+      --selected: var(--ibis); --primary: var(--selected); --selected-text: #fff; --text-on-accent: var(--selected-text);
     }
   }
 }
@@ -248,8 +243,8 @@
   /* Measured from NSSegmentedControl: the chosen fill lands at 19% of the text colour. */
   --segment-selected: color-mix(in srgb, var(--text) 12%, transparent);
   --primary: var(--accent);
-  --accent-hover: color-mix(in srgb, var(--primary) 90%, var(--ac-press, black));
-  --accent-pressed: color-mix(in srgb, var(--primary) 80%, var(--ac-press, black));
+  --accent-hover: color-mix(in srgb, var(--primary) 90%, black);
+  --accent-pressed: color-mix(in srgb, var(--primary) 80%, black);
 }
 
 /* The website's reading rhythm; page composition stays in website/style.css. */

@@ -2,16 +2,19 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { emit } from "@tauri-apps/api/event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { App } from "./App";
+import { keyLabel } from "./keys";
+import { isMac } from "./platform";
 import { backend, resetApp } from "./testing/app";
 
+const tip = `${keyLabel("CmdOrCtrl+Shift+P", isMac)} keeps Ibis open between citations.`;
 beforeEach(() => vi.useFakeTimers());
 afterEach(async () => { document.documentElement.style.removeProperty("zoom"); await resetApp(); });
-const view = (status: string | null, peck = false) => ({ status, peck, fun: true, fact: null, birthday: false, library: "invented.bib", revision: 1, anniversary: false, build: "0.0.0 · invented · 2026-11-01" });
+const view = (status: string | null, peck = false) => ({ status, peck, fun: true, fact: null, revision: 1, anniversary: false, build: "0.0.0 · invented · 2026-11-01" });
 
-test("a claimed tip shares the footer with library status and never copies or changes focus", async () => {
+test("a claimed tip stands in for library status and never copies or changes focus", async () => {
   const calls = backend({ delight_view: () => view("paste-tip") });
   await act(async () => { render(<App />); });
-  expect(screen.getByText("⇧⌘P keeps Ibis open").closest("footer")).toBeTruthy();
+  expect(screen.getByText(tip).closest(".notice-slot")).toBeTruthy();
   expect(screen.getByRole("button", { name: "Library" })).toBeTruthy();
   expect(document.activeElement).toBe(screen.getByLabelText("Search references"));
   expect(calls).not.toContain("copy_file_citation");
@@ -19,7 +22,7 @@ test("a claimed tip shares the footer with library status and never copies or ch
   fireEvent.keyDown(input, { key: "Enter" });
   expect(screen.getByText("Choose a reference to paste.")).toBeTruthy();
   await act(async () => fireEvent.change(input, { target: { value: "invented" } }));
-  expect(screen.queryByText("⇧⌘P keeps Ibis open")).toBeNull();
+  expect(screen.queryByText(tip)).toBeNull();
 });
 
 test("empty Enter explains refusal and zoom reports for one second, without copying", async () => {
@@ -32,7 +35,7 @@ test("empty Enter explains refusal and zoom reports for one second, without copy
   act(() => vi.advanceTimersByTime(240));
   expect(container.querySelector("[data-empty-action]")).toBeNull();
   fireEvent.keyDown(input, { key: "+", metaKey: true });
-  expect(screen.getByText("110%")).toBeTruthy();
+  expect(screen.getByText("110%").closest(".notice-slot")).toBeTruthy();
   expect(document.documentElement.style.zoom).toBe("1.1");
   act(() => vi.advanceTimersByTime(1000));
   expect(screen.queryByText("110%")).toBeNull();
@@ -48,13 +51,29 @@ test("delayed claims and closed windows cannot replace newer visible feedback", 
   const mounted = await act(async () => render(<App />));
   await act(async () => { await emit("picker:shown", 2); });
   await act(async () => { pending.at(-1)!(view("library1000")); });
-  expect(screen.getByText("1,000 references in invented.bib. A solid library.")).toBeTruthy();
+  expect(screen.getByText("1,000 references. A solid library.")).toBeTruthy();
   await act(async () => { pending[0]!(view("paste-tip")); });
-  expect(screen.queryByText("⇧⌘P keeps Ibis open")).toBeNull();
+  expect(screen.queryByText(tip)).toBeNull();
   mounted.unmount();
   backend({ delight_view: () => view(null) });
   await act(async () => { render(<App />); });
-  expect(screen.queryByText("1,000 references in invented.bib. A solid library.")).toBeNull();
+  expect(screen.queryByText("1,000 references. A solid library.")).toBeNull();
+});
+
+test("a remark passes after its own 8 s, and a tip waiting behind a refusal still shows", async () => {
+  let claim!: (value: ReturnType<typeof view>) => void;
+  backend({ delight_view: () => new Promise((resolve) => { claim = resolve; }) });
+  await act(async () => { render(<App />); });
+  fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
+  expect(screen.getByText("Choose a reference to paste.")).toBeTruthy();
+  await act(async () => { claim(view("paste-tip")); });
+  expect(screen.queryByText(tip)).toBeNull();
+  await act(async () => { await vi.advanceTimersByTimeAsync(8000); });
+  expect(screen.queryByText("Choose a reference to paste.")).toBeNull();
+  expect(screen.getByText(tip)).toBeTruthy();
+  await act(async () => { await vi.advanceTimersByTimeAsync(8000); });
+  expect(screen.queryByText(tip)).toBeNull();
+  expect(screen.getByRole("button", { name: "Library" })).toBeTruthy();
 });
 
 test("unavailable feedback persistence leaves search and empty refusal working", async () => {
@@ -66,13 +85,13 @@ test("unavailable feedback persistence leaves search and empty refusal working",
 });
 
 test.each([
-  ["library100", "100 references in invented.bib. A good start."],
-  ["library1000", "1,000 references in invented.bib. A solid library."],
-  ["library10000", "10,000 references in invented.bib. A remarkable library."],
+  ["library100", "100 references. A good start."],
+  ["library1000", "1,000 references. A solid library."],
+  ["library10000", "10,000 references. A remarkable library."],
 ])("%s renders the Rust answer beside the loaded library", async (status, message) => {
   backend({ delight_view: () => view(status) });
   await act(async () => { render(<App />); });
-  expect(screen.getByText(message).closest("footer")).toBeTruthy();
+  expect(screen.getByText(message).closest(".notice-slot")).toBeTruthy();
   expect(screen.getByRole("button", { name: "Library" })).toBeTruthy();
 });
 

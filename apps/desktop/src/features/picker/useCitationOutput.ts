@@ -10,7 +10,7 @@ import { STYLE_NAMES, type StyleId } from "../../format/styles";
 import { pickerText } from "../../messages";
 import { choiceKey, styleOf, type Choice, type CitationReference } from "./choice";
 
-export function useCitationOutput({ chosen, library, libraryVersion, sessionId = 0, isCurrentSession, format, style, showPastePreview, previewFileCitation, refreshSnapshot }: {
+export function useCitationOutput({ chosen, library, libraryVersion, sessionId = 0, isCurrentSession, format, style, previewFileCitation, refreshSnapshot }: {
   /** The selection, or the highlighted result when nothing is selected. */
   chosen: CitationReference[];
   library: LibraryStatus | null | undefined;
@@ -20,7 +20,6 @@ export function useCitationOutput({ chosen, library, libraryVersion, sessionId =
   format: Choice;
   /** The citation style, when one is chosen and formatting is available. */
   style: StyleId | null;
-  showPastePreview: boolean;
   previewFileCitation: typeof nativeApi.previewFileCitation;
   /** Reads the library status again when the preview meets a newer snapshot. */
   refreshSnapshot: () => void;
@@ -52,8 +51,7 @@ export function useCitationOutput({ chosen, library, libraryVersion, sessionId =
   // Why the preview failed, when the user can fix it.
   const previewProblem = shown === "failed" ? formatted?.problem ?? (style ? pickerText.previewStyleError(STYLE_NAMES[style]) : pickerText.previewError) : undefined;
   const previewReceipt = ownsResult ? formatted?.preview : undefined;
-  // Hiding citation text never hides the reason it cannot be copied.
-  const displayedOutput = chosen.length > 0 && (showPastePreview || shown === "failed") ? shown : undefined;
+  const displayedOutput = chosen.length > 0 ? shown : undefined;
   // Format the preview again whenever the choice or the style changes.
   // biome-ignore lint/correctness/useExhaustiveDependencies: previewKey covers the choice, its locators, forms, revision and the style or key format, so it is the only trigger.
   useEffect(() => {
