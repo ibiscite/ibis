@@ -124,21 +124,36 @@ impl Issued {
 }
 
 /// Remove CSL rich-text tags and decode the entities used to escape text.
+/// Only the tags citations use are markup: in `p<0.05` the `<` is text.
 pub fn strip_markup(rich: &str) -> String {
     let mut out = String::with_capacity(rich.len());
-    let mut in_tag = false;
-    for c in rich.chars() {
-        match c {
-            '<' => in_tag = true,
-            '>' if in_tag => in_tag = false,
-            _ if !in_tag => out.push(c),
-            _ => {}
+    let mut rest = rich;
+    while let Some(start) = rest.find('<') {
+        out.push_str(&rest[..start]);
+        rest = &rest[start..];
+        match rich_text_tag_len(rest) {
+            Some(length) => rest = &rest[length..],
+            None => {
+                out.push('<');
+                rest = &rest[1..];
+            }
         }
     }
+    out.push_str(rest);
     out.replace("&lt;", "<")
         .replace("&gt;", ">")
         .replace("&quot;", "\"")
         .replace("&amp;", "&")
+}
+
+/// The length of the rich-text tag `text` starts with, if it starts with one.
+/// The scan is bounded, so a long run of `<` stays linear.
+fn rich_text_tag_len(text: &str) -> Option<usize> {
+    let end = text.bytes().take(64).position(|byte| byte == b'>')?;
+    let tag = text[1..end].to_ascii_lowercase();
+    let name = tag.strip_prefix('/').unwrap_or(&tag);
+    let simple = matches!(name, "i" | "b" | "sc" | "sub" | "sup" | "span");
+    (simple || name.starts_with("span class=") || name.starts_with("span style=")).then_some(end + 1)
 }
 
 #[cfg(test)]
@@ -152,7 +167,24 @@ mod tests {
         // Double-escaped text decodes exactly one level.
         assert_eq!(strip_markup("&amp;lt;x&amp;gt;"), "&lt;x&gt;");
         assert_eq!(strip_markup("&amp;amp;"), "&amp;");
-        assert_eq!(strip_markup("&unknown; & <"), "&unknown; & ");
+        assert_eq!(strip_markup("&unknown; & <"), "&unknown; & <");
         assert_eq!(strip_markup(""), "");
+    }
+
+    #[test]
+    fn only_rich_text_tags_are_markup() {
+        assert_eq!(strip_markup("Effect of p<0.05 on tides"), "Effect of p<0.05 on tides");
+        assert_eq!(strip_markup("a < b > c"), "a < b > c");
+        assert_eq!(strip_markup("<foo>bar</foo>"), "<foo>bar</foo>");
+        assert_eq!(
+            strip_markup("<span class=\"nocase\">iPhone</span> and <sup>2</sup>H <sc>Ab</sc>"),
+            "iPhone and 2H Ab"
+        );
+        assert_eq!(
+            strip_markup("<span style=\"font-variant:small-caps;\">Ab</span> <B>c</B>"),
+            "Ab c"
+        );
+        // A long run of `<` stays linear and literal.
+        assert_eq!(strip_markup(&"<".repeat(100_000)), "<".repeat(100_000));
     }
 }
