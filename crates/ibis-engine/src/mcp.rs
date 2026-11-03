@@ -341,7 +341,7 @@ fn tools() -> Value {
                     "style": {"type": "string", "description": "A style id from the styles tool."},
                     "syntax": {"type": "string", "enum": SYNTAXES.map(syntax_name)},
                     "locale": {"type": "string", "description": "The language to write a formatted citation in, from the styles tool; default the style's own."},
-                    "form": {"type": "string", "enum": ["normal", "narrative", "author-only", "year-only", "full", "bibliography-only"]}
+                    "form": {"type": "string", "enum": ["normal", "narrative", "author-only", "year-only", "full", "bibliography-only"]},
                     "for_app": {"type": "string", "description": "A macOS bundle ID or Windows executable name. Uses the output Ibis uses for that app; style or syntax apply when it has none of its own."}
                 },
                 "required": ["items"]
