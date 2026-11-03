@@ -109,7 +109,7 @@ test("Esc walks the stack one layer at a time: submenu, menu, search, window", a
   await waitFor(() => expect(hides(calls)).toBe(1));
 });
 
-test("Esc closes the details popover back to its chip before anything else", async () => {
+test("Esc closes the inspector back to its chip, and Search keeps focus if it was there", async () => {
   const { calls, chip } = await chosenCitation();
   act(() => chip.focus());
   fireEvent.click(chip);
@@ -118,6 +118,31 @@ test("Esc closes the details popover back to its chip before anything else", asy
   press("Escape");
   expect(screen.queryByRole("textbox", { name: "Page" })).toBeNull();
   expect(document.activeElement).toBe(screen.getByRole("button", { name: /^Edit/ }));
+  fireEvent.click(screen.getByRole("button", { name: /^Edit/ }));
+  await screen.findByRole("textbox", { name: "Page" });
+  act(() => search().focus());
+  press("Escape");
+  expect(screen.queryByRole("textbox", { name: "Page" })).toBeNull();
+  expect(document.activeElement).toBe(search());
+  expect(hides(calls)).toBe(0);
+});
+
+test("Esc steps out of the inspector's menu, then the inspector, then the search", async () => {
+  const { calls, chip } = await chosenCitation();
+  type("invented");
+  fireEvent.click(chip);
+  await screen.findByRole("textbox", { name: "Page" });
+  const form = await screen.findByRole("button", { name: /^Show as/ });
+  fireEvent.click(form);
+  await screen.findByRole("menu");
+  press("Escape");
+  expect(screen.queryByRole("menu")).toBeNull();
+  expect(document.activeElement).toBe(screen.getByRole("button", { name: /^Show as/ }));
+  press("Escape");
+  expect(screen.queryByRole("textbox", { name: "Page" })).toBeNull();
+  expect(search().value).toBe("invented");
+  press("Escape");
+  expect(search().value).toBe("");
   expect(hides(calls)).toBe(0);
 });
 
@@ -310,18 +335,23 @@ test("a command clears every layer in its way, and the keys for an open layer cl
   expect(document.activeElement).toBe(search());
 });
 
-test("commands pass through the details popover, keeping what was typed in its field", async () => {
-  const saved = vi.fn(() => null);
-  backend({ library_status: () => library, search: () => [result("picked", "Invented reference")], open_settings: saved });
+test("the inspector stays live: a command opens over it and Esc comes back through it", async () => {
+  const opened = vi.fn(() => null);
+  backend({ library_status: () => library, search: () => [result("picked", "Invented reference")], open_settings: opened });
   render(<App />);
   await screen.findByText("Invented reference");
   const page = await openCitationDetails();
   await waitFor(() => expect(document.activeElement).toBe(page));
   fireEvent.change(page, { target: { value: "12" } });
+  press("k", { ctrlKey: true });
+  await screen.findByRole("menu", { name: /^More/ });
+  expect(screen.getByRole("textbox", { name: "Page" })).toBeTruthy();
   press(",", { ctrlKey: true });
-  await waitFor(() => expect(saved).toHaveBeenCalledOnce());
-  expect(screen.queryByRole("textbox", { name: "Page" })).toBeNull();
+  await waitFor(() => expect(opened).toHaveBeenCalledOnce());
+  expect(screen.queryByRole("menu")).toBeNull();
   expect(document.activeElement).toBe(search());
+  await reopen();
+  await waitFor(() => expect(screen.queryByRole("textbox", { name: "Page" })).toBeNull());
 });
 
 test("refused: a hide the native side declines leaves the stack working", async () => {
@@ -386,9 +416,10 @@ test.each(["More", "Library", "Format", "Keys", "Details"])("close and reopen: %
   if (layer === "Format") press("f", { ctrlKey: true, shiftKey: true });
   if (layer === "Library") fireEvent.click(document.querySelector(".library-status-trigger")!);
   if (layer === "Details") fireEvent.click(chip);
-  await waitFor(() => expect(screen.queryAllByRole("menu").length + screen.queryAllByRole("dialog").length).toBeGreaterThan(0));
+  const open = () => screen.queryAllByRole("menu").length + screen.queryAllByRole("dialog").length + document.querySelectorAll(".inspector").length;
+  await waitFor(() => expect(open()).toBeGreaterThan(0));
   await reopen();
-  await waitFor(() => expect(screen.queryAllByRole("menu").length + screen.queryAllByRole("dialog").length).toBe(0));
+  await waitFor(() => expect(open()).toBe(0));
   expect(document.activeElement).toBe(search());
   const before = hides(calls);
   press("Escape");

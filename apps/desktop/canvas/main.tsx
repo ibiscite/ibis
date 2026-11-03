@@ -25,7 +25,7 @@ import "../src/notice.css";
 // Picker root rules must not leak into the separate Settings window.
 import pickerStyles from "../src/styles.css?inline";
 
-export const scenarios = ["notice", "results", "first-run", "more", "format-menu", "states", "parts", "empty", "file-drag", "error", "loading", "empty-search", "shelf", "reference-menu", "library-menu", "shortcuts", "pinned", "no-matches", "missing", "zotero-closed", "unreadable", "stale", "compact", "spacious", "larger-text", "right-to-left", "long-titles", "update", "tokens", "settings-general", "settings-look", "settings-citations", "settings-shortcuts", "settings-about"] as const;
+export const scenarios = ["notice", "results", "first-run", "more", "format-menu", "states", "parts", "empty", "file-drag", "error", "loading", "empty-search", "shelf", "reference-details", "library-menu", "shortcuts", "pinned", "no-matches", "missing", "zotero-closed", "unreadable", "stale", "compact", "spacious", "larger-text", "right-to-left", "long-titles", "update", "tokens", "settings-general", "settings-look", "settings-citations", "settings-shortcuts", "settings-about"] as const;
 type Scenario = typeof scenarios[number];
 type Theme = "light" | "dark";
 
@@ -49,7 +49,7 @@ const fixtures: Partial<Record<Scenario, {
 }>> = {
   "empty-search": { query: "" },
   shelf: { keys: [{ key: "Enter", shiftKey: true }, { key: "ArrowDown" }, { key: "Enter", shiftKey: true }] },
-  "reference-menu": { keys: [{ key: "Enter", shiftKey: true }], click: 'button[aria-label^="Edit "]' },
+  "reference-details": { keys: [{ key: "Enter", shiftKey: true }], click: 'button[aria-label^="Edit "]' },
   "library-menu": { click: ".library-bar button" },
   shortcuts: { keys: [{ key: "/", [navigator.platform.startsWith("Mac") ? "metaKey" : "ctrlKey"]: true }] },
   pinned: { click: ".pin-button" },

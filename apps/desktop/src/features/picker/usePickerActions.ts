@@ -14,9 +14,10 @@ import type { useDestination } from "./useDestination";
 import type { useCitationOutput } from "./useCitationOutput";
 import type { useShortcutStatus } from "./useShortcutStatus";
 import type { useOperations } from "./useOperations";
+import type { CitationInspectorState } from "./useCitationInspector";
 
 export function usePickerActions({
-  api, pickerSession, menus, libraryState, searchState, destination, shown, offered, canPaste, shortcut,
+  api, pickerSession, menus, libraryState, searchState, destination, shown, inspector, offered, canPaste, shortcut,
   perform, dismissChooser, toggle,
 }: {
   api: PickerApi;
@@ -31,6 +32,7 @@ export function usePickerActions({
   canPaste: boolean;
   shortcut: ReturnType<typeof useShortcutStatus>["shortcut"];
   perform: ReturnType<typeof useOperations>["perform"];
+  inspector: CitationInspectorState;
   dismissChooser: () => void;
   toggle: (result?: SearchResult) => void;
 }) {
@@ -43,6 +45,10 @@ export function usePickerActions({
   const { hidePicker } = api;
   // The bottom of the layer stack; overlays register themselves above these.
   // Esc retains the chosen references at every step.
+  useLayer("panel", inspector.panel !== null, () => {
+    cancelCopy();
+    inspector.close();
+  });
   useLayer("chooser", choosingLibrary, () => {
     cancelCopy();
     dismissChooser();
@@ -80,7 +86,7 @@ export function usePickerActions({
     choiceKey([prepared]) !== choiceKey([{ ...highlighted, locator: usingLocator, form: prepared.form }]);
   const shiftEnterAction = highlighted && showCitations
     ? (selected.has(idKey(highlighted.id)) ? keyText.removeFromCitation : keyText.addToCitation) : null;
-  const escapeAction = nearest === "sheet" || nearest === "chooser" ? keyText.close : nearest === "menu" || nearest === "popover" ? keyText.closeMenu
+  const escapeAction = nearest === "sheet" || nearest === "panel" || nearest === "chooser" ? keyText.close : nearest === "menu" ? keyText.closeMenu
     : nearest === "search" ? keyText.clearSearch : keyText.hide;
   const toggleHighlighted = () => {
     toggle(highlighted);

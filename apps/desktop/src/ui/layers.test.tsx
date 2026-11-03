@@ -15,7 +15,7 @@ function Nearest() {
 
 test("Esc closes the nearest kind whatever order the layers opened in", () => {
   const closed: LayerKind[] = [];
-  const opened = ["window", "chooser", "sheet", "search", "popover", "menu"] as const;
+  const opened = ["window", "chooser", "sheet", "search", "panel", "menu"] as const;
   render(<>{opened.map((kind) => <Layer key={kind} kind={kind} close={() => { closed.push(kind); }} />)}</>);
   for (let step = 0; step < LAYER_ORDER.length; step += 1) closeNearestLayer();
   // Nothing was closed for real, so the nearest stays; each press asks it again.
@@ -42,11 +42,11 @@ test("the latest layer of one kind is nearest, and a layer may hand its key on",
   expect(first).not.toHaveBeenCalled();
 });
 
-test("a command clears overlays and leaves the chooser, search and window alone", () => {
+test("a command clears overlays and leaves the panel, chooser, search and window alone", () => {
   const closed: LayerKind[] = [];
   render(<>{LAYER_ORDER.map((kind) => <Layer key={kind} kind={kind} close={(event) => { if (event) throw new Error("asked by a key"); closed.push(kind); }} />)}</>);
   closeOverlays();
-  expect(closed).toEqual(["sheet", "menu", "popover"]);
+  expect(closed).toEqual(["sheet", "menu"]);
 });
 
 test("Esc reaches a layer before any control can swallow it, and only once", () => {

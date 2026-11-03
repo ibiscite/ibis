@@ -5,7 +5,7 @@ import { flushSync } from "react-dom";
 import { composing } from "../composition";
 
 /** What Esc closes, nearest first. */
-export const LAYER_ORDER = ["sheet", "menu", "popover", "chooser", "search", "window"] as const;
+export const LAYER_ORDER = ["sheet", "menu", "panel", "chooser", "search", "window"] as const;
 export type LayerKind = (typeof LAYER_ORDER)[number];
 
 /** A layer closes itself. Given the key that asked, it returns focus to what
@@ -18,7 +18,8 @@ type Layer = { kind: LayerKind; close: LayerClose };
  * listener still closes layers, so Settings' menus follow the same rule. */
 export type KeyOwner = { keyDown: (event: KeyboardEvent) => void; home: () => void };
 
-const OVERLAYS: readonly LayerKind[] = ["sheet", "menu", "popover"];
+// What floats over the window. A panel sits in it and stays live beside the list.
+const OVERLAYS: readonly LayerKind[] = ["sheet", "menu"];
 const layers: Layer[] = [];
 const watchers = new Set<() => void>();
 let owner: KeyOwner | null = null;
