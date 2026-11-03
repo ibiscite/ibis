@@ -123,9 +123,6 @@ jobs:
           # which would evict main's from the repository's cache quota.
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
-      - name: Install Pandoc
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends pandoc
-
       - name: Lint
         run: cargo clippy --all-targets --locked
 
@@ -134,12 +131,18 @@ jobs:
           rustup toolchain install 1.90.0 --profile minimal
           cargo +1.90.0 check --locked --all-targets
 
-      # The citation fidelity test compares against Pandoc here; other systems
-      # run the rest of the tests without it.
       - name: Test
+        run: cargo test --locked
+
+      # Installed only now: with Pandoc present, cargo test also runs the
+      # syntax_contract consumer tests, which fail on Ubuntu's older Pandoc.
+      - name: Install Pandoc
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends pandoc
+
+      - name: Compare rendering from BibTeX and from CSL export
         env:
           IBIS_REQUIRE_PANDOC: "1"
-        run: cargo test --locked
+        run: cargo test -p ibis --test fidelity --locked
 
       - name: Enforce 100k search budget (release)
         # Compilation and the ordinary test processes finish before measurement;

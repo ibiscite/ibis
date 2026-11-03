@@ -301,7 +301,7 @@ test("workflow limits credentials and permissions and CI classifies it conservat
   assert.match(workflow, /run: node scripts\/release-counts.mjs/);
   for (const action of workflow.matchAll(/uses: (\S+)/g)) assert.match(action[1], /@[a-f0-9]{40}$/);
   assert.doesNotMatch(workflow, /pull_request:|secrets\.|inputs\.|force: true/);
-  assert.deepEqual(classify("pull_request", 1, [{ filename: ".github/workflows/release-counts.yml", status: "added" }]), { native: true, web: true });
+  assert.deepEqual(classify("pull_request", 1, [{ filename: ".github/workflows/release-counts.yml", status: "added" }]), { core: true, interface: true, native: true, web: true });
 });
 
 test("the CLI refuses dispatches from other refs, unexpected events and arguments before network access", () => {

@@ -191,7 +191,9 @@ test("the crates' tests skip only when none of their inputs changed", () => {
   assert.match(workflow, /cargo test -p ibis-desktop --locked/);
   assert.match(workflow, /- name: Exercise the native picker \(Linux\)/);
   assert.match(workflow, /- name: Test the Windows offline observer\n        if: env.CORE == 'true' && runner.os == 'Windows'\n        shell: pwsh\n        run: \.\/scripts\/check-offline.tests.ps1/);
-  assert.match(workflow, /IBIS_REQUIRE_PANDOC: "1"\n        run: cargo test --locked/, "citation fidelity runs inside the Rust tests");
+  const engine = workflow.match(/\n  test:\n([\s\S]*?)\n  web:/)[1];
+  assert.match(engine, /IBIS_REQUIRE_PANDOC: "1"\n        run: cargo test -p ibis --test fidelity --locked/, "citation fidelity requires Pandoc");
+  assert.ok(engine.indexOf("- name: Install Pandoc") > engine.indexOf("run: cargo test --locked"), "cargo test keeps running without Pandoc");
   assert.match(workflow, /rustup toolchain install 1\.90\.0 --profile minimal\n          cargo \+1\.90\.0 check --locked --all-targets/);
 });
 
