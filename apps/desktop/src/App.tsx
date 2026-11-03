@@ -133,7 +133,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   usePickerLifecycle({ api, pickerSession, menus, destination, preferences, resetPointer, readShortcut, report, setAltHeld });
   usePickerMove(api, pickerSession.session);
   const { resultArea, followKeyboard } = useResultScroll({
-    input, active, restored: state.restored, pointer, selectedSize: selected.size, citationProblem, formatted, format, searchFocused,
+    input, active, pointer, selectedSize: selected.size, citationProblem, formatted, format, searchFocused,
   });
   useCitationFeedback(copied, preview, send);
   const rows = useCitationRows({

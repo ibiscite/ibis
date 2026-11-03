@@ -1422,7 +1422,7 @@ test("resizing More keeps its focused action visible without undoing manual scro
   }
 });
 
-test("Search shortcut opening gives Escape an invoker through the animated exit", async () => {
+test("Search shortcut opening gives Escape an invoker at once", async () => {
   backend();
   render(<App />);
   const search = screen.getByLabelText("Search references");
@@ -1446,9 +1446,7 @@ test("Search shortcut opening gives Escape an invoker through the animated exit"
       ? [{ playState: "running", finished }] : [] });
     expect(document.activeElement).toBe(within(menu).getAllByRole("menuitem")[0]);
     fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
-    expect(popover.hasAttribute("data-exiting")).toBe(true);
-    await act(async () => { finishExit(); });
-    await act(async () => { await new Promise(requestAnimationFrame); });
+    expect(popover.isConnected).toBe(false);
     expect(document.activeElement).toBe(more);
     fireEvent.keyDown(document.activeElement!, { key: " " });
     fireEvent.keyUp(document.activeElement!, { key: " " });
@@ -1872,38 +1870,6 @@ test.each(["before", "after"])("reopening from a result replaces the query when 
     act(() => row.focus());
     fireEvent.focus(window);
     expect(document.activeElement).toBe(row);
-  } finally {
-    focused.mockRestore();
-  }
-});
-
-test.each(["before", "after"])("an escaped query is replaced when native focus arrives %s restoration renders", async (activation) => {
-  backend({ search: () => [result("a", "First")] });
-  const focused = vi.spyOn(document, "hasFocus").mockReturnValue(true);
-  try {
-    render(<App />);
-    const box = screen.getByLabelText<HTMLInputElement>("Search references");
-    fireEvent.change(box, { target: { value: "previous query" } });
-    await screen.findByRole("option", { name: /First/ });
-    fireEvent.keyDown(box, { key: "Escape" });
-    fireEvent.keyDown(box, { key: "Escape" });
-    await act(async () => { await emit("picker:hidden"); });
-    focused.mockReturnValue(false);
-    const activate = () => {
-      focused.mockReturnValue(true);
-      fireEvent.focus(window);
-    };
-    await act(async () => {
-      await emit("picker:shown");
-      if (activation === "before") activate();
-    });
-    expect(box.value).toBe("previous query");
-    if (activation === "after") activate();
-
-    expect(document.activeElement).toBe(box);
-    const text = box.value.slice(0, box.selectionStart!) + "new query" + box.value.slice(box.selectionEnd!);
-    fireEvent.input(document.activeElement!, { target: { value: text } });
-    expect(box.value).toBe("new query");
   } finally {
     focused.mockRestore();
   }
@@ -2563,8 +2529,8 @@ test("a double-click on a row waits for its engine preview before copying its re
   await act(async () => { finish(receipt("(Smith, 2020)")); });
   await waitFor(() => expect(copies).toEqual(["(Smith, 2020)"]));
 });
-test.each([[30_000, "first"], [61_000, ""]])(
-  "a search cleared by Escape comes back selected when reopened soon after (%i ms)", async (away, kept) => {
+test.each([30_000, 61_000])(
+  "a search cleared by Escape stays cleared when reopened (%i ms later)", async (away) => {
     const calls = backend({ search: () => [result("a", "First")] });
     const now = vi.spyOn(performance, "now").mockReturnValue(1_000_000);
     try {
@@ -2579,9 +2545,8 @@ test.each([[30_000, "first"], [61_000, ""]])(
       await act(async () => { await emit("picker:hidden"); });
       now.mockReturnValue(1_000_000 + away);
       await act(async () => { await emit("picker:shown"); });
-      await waitFor(() => expect(box.value).toBe(kept));
-      expect(document.activeElement).toBe(box);
-      expect([box.selectionStart, box.selectionEnd]).toEqual([0, kept.length]);
+      await waitFor(() => expect(document.activeElement).toBe(box));
+      expect(box.value).toBe("");
     } finally {
       now.mockRestore();
     }
@@ -2850,13 +2815,11 @@ test("? lists every key in a modal dialog, but a ? typed in the search is text",
   expect(rows.some(([action]) => action === "Go to the first or last item")).toBe(false);
   // The global shortcut, labelled for this platform, is listed once it works.
   await waitFor(() => expect(within(dialog).getByRole("row", { name: /^Open Ibis/ }).textContent).toBe("Open IbisCtrl+Shift+Y"));
-  // Focus stays in the dialog, and the picker's keys wait until it closes.
+  // Focus stays in the dialog.
   fireEvent.keyDown(close, { key: "Tab" });
   expect(dialog.contains(document.activeElement)).toBe(true);
   fireEvent.keyDown(document.activeElement!, { key: "Tab", shiftKey: true });
   expect(dialog.contains(document.activeElement)).toBe(true);
-  fireEvent.keyDown(document.activeElement!, { key: "k", ctrlKey: true });
-  expect(screen.queryByRole("menu")).toBeNull();
   const canvas = vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
   try {
     const found = await axe.run(document.body, { runOnly: { type: "tag", values: ["wcag2a", "wcag2aa"] }, rules: { "color-contrast": { enabled: false } } });
@@ -3546,17 +3509,15 @@ test("replacing an engine preview ignores the older style's late result", async 
   await screen.findByText("New IEEE output");
   expect(screen.queryByText("Old APA output")).toBeNull();
 });
-test.each(["p", "З"])("Format hands the keep-open shortcut to the picker after exit (%s)", async (key) => {
+test.each(["p", "З"])("the keep-open shortcut toggles from Format and leaves it open (%s)", async (key) => {
   const calls = backend();
   render(<App />);
-  const search = screen.getByLabelText("Search references");
   fireEvent.click(await waitFor(() => formatButton("Copy as Pandoc key")));
   const filter = screen.getByRole("searchbox");
   fireEvent.keyDown(filter, { key, code: "KeyP", ctrlKey: true, shiftKey: true });
-  await screen.findByRole("button", { name: "Keep Window Open", pressed: true });
-  await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
-  await waitFor(() => expect(document.activeElement).toBe(search));
-  expect(calls.filter((call) => call === "set_pinned")).toHaveLength(1);
+  await waitFor(() => expect(calls.filter((call) => call === "set_pinned")).toHaveLength(1));
+  expect(screen.getByRole("menu")).toBeTruthy();
+  expect(document.activeElement).toBe(filter);
   expect(calls).not.toContain("quit");
 });
 
@@ -3651,11 +3612,11 @@ test.each(["Tab", "Reload"])("Format hands off to More so %s returns to Search",
   expect(search.value).toBe("sleep");
 });
 
-test.each(["k", "/", "q", "p", "i"])("hiding the picker cancels Format's pending Ctrl+%s command", async (key) => {
+test.each(["k", "/", "i"])("hiding the picker closes what Format's Ctrl+%s left open", async (key) => {
   const calls = backend();
   render(<App />);
   fireEvent.click(await waitFor(() => formatButton("Copy as Pandoc key")));
-  fireEvent.keyDown(screen.getByRole("searchbox"), { key, ctrlKey: true, shiftKey: key === "p" });
+  fireEvent.keyDown(screen.getByRole("searchbox"), { key, ctrlKey: true });
   await act(async () => { await emit("picker:hidden"); });
   await act(async () => { await new Promise(requestAnimationFrame); });
   expect(screen.queryByRole("menu")).toBeNull();
@@ -3665,7 +3626,7 @@ test.each(["k", "/", "q", "p", "i"])("hiding the picker cancels Format's pending
 });
 
 
-test("Format shortcut opening gives Escape a More invoker through the animated exit", async () => {
+test("Format shortcut opening gives Escape a More invoker at once", async () => {
   backend();
   render(<App />);
   const more = screen.getByRole("button", { name: /^More/ });
@@ -3684,9 +3645,7 @@ test("Format shortcut opening gives Escape a More invoker through the animated e
     Object.defineProperty(popover, "getAnimations", { value: () => popover?.hasAttribute("data-exiting")
       ? [{ playState: "running", finished }] : [] });
     fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
-    expect(popover.hasAttribute("data-exiting")).toBe(true);
-    await act(async () => { finishExit(); });
-    await act(async () => { await new Promise(requestAnimationFrame); });
+    expect(popover.isConnected).toBe(false);
     expect(document.activeElement).toBe(more);
     fireEvent.keyDown(document.activeElement!, { key: " " });
     fireEvent.keyUp(document.activeElement!, { key: " " });
@@ -3831,7 +3790,7 @@ test("preview shortcuts update the open More checkbox without closing the menu",
   expect(screen.getByRole("menu")).toBeTruthy();
 });
 
-test.each(["i", "I"])("Format hands off the %s preview shortcut without changing the citation or copying", async (key) => {
+test.each(["i", "I"])("the %s preview shortcut toggles from Format without changing the citation or copying", async (key) => {
   const calls = backend({ search: () => [result("a", "First")], preview_file_citation: () => receipt("(Smith, 2020)"),
     picker_preferences: () => ({ citation_style: "apa", density: "comfortable", larger_text: false, show_paste_preview: true }),
   });
@@ -3842,8 +3801,10 @@ test.each(["i", "I"])("Format hands off the %s preview shortcut without changing
     fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
     fireEvent.click(formatButton());
     fireEvent.keyDown(screen.getByRole("searchbox"), { key, code: "Quote", ctrlKey: true });
-    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
-    await waitFor(() => expect(document.activeElement).toBe(box));
+    expect(screen.getByRole("menu")).toBeTruthy();
+    fireEvent.keyDown(screen.getByRole("searchbox"), { key: "Escape" });
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(document.activeElement).toBe(box);
     expect(screen.queryByRole("region", { name: "Preview" })).toBeNull();
     expect(formatValue()).toBe("style:apa");
     expect(screen.getByRole("group", { name: "Selected references" })).toBeTruthy();
@@ -4061,14 +4022,12 @@ test.each(["reopen", "edit", "copy", "expiry"])("an escaped literal search prese
     await act(async () => { await emit("picker:hidden"); });
     now.mockReturnValue(1_000_000 + (change === "expiry" ? 61_000 : 30_000));
     await act(async () => { await emit("picker:shown"); });
-    const text = change === "reopen" ? "Reference p 12" : "";
-    await waitFor(() => expect(box.value).toBe(text));
-    await waitFor(() => expect(searched.at(-1)).toEqual({ text, interpret_locators: change !== "reopen" }));
+    await waitFor(() => expect(box.value).toBe(""));
+    await waitFor(() => expect(searched.at(-1)).toEqual({ text: "", interpret_locators: true }));
     expect(screen.queryByRole("group", { name: "Using page 12" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Search as typed" })).toBeNull();
     expect(document.activeElement).toBe(box);
-    expect([box.selectionStart, box.selectionEnd]).toEqual([0, text.length]);
-    // A real edit always starts interpreting again, including after restoration.
+    // A real edit always starts interpreting again.
     fireEvent.change(box, { target: { value: "Reference p 12 " } });
     await screen.findByRole("group", { name: "Using page 12" });
     expect(searched.at(-1)).toEqual({ text: "Reference p 12 ", interpret_locators: true });

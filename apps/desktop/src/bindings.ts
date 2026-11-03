@@ -168,7 +168,7 @@ export const commands = {
 	 */
 	openSettings: (page: "general" |
 /**  General, scrolled to pasting and its permission. */
-"paste" | "look" | "libraries" | "advanced" | "shortcuts" | "citations" | "about" | null) => __TAURI_INVOKE<void>("open_settings", { page }),
+"paste" | "look" | "libraries" | "advanced" | "shortcuts" | "citations" | "about" | "updates" | null) => __TAURI_INVOKE<void>("open_settings", { page }),
 	/**
 	 *  Close the paste guide after both grants; a fresh external activation opens
 	 *  the picker again. Granting permission never captures a target or retries Enter.
@@ -561,7 +561,7 @@ export type OutputQuestion = "browser" | "editor";
 /**  Where Settings opens. */
 export type Page = "general" |
 /**  General, scrolled to pasting and its permission. */
-"paste" | "look" | "libraries" | "advanced" | "shortcuts" | "citations" | "about";
+"paste" | "look" | "libraries" | "advanced" | "shortcuts" | "citations" | "about" | "updates";
 
 /**  Whether Ibis may paste, and where the person turns that on. */
 export type PastePermission = {

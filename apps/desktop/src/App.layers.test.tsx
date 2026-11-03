@@ -352,6 +352,18 @@ test.each(["More", "Library", "Format", "Keys", "Details"])("close and reopen: %
   await waitFor(() => expect(hides(calls)).toBe(before + 1));
 });
 
+test("the chooser owns the middle area: the sample library's block leaves while it is up", async () => {
+  backend({ library_status: () => ({ ...library, sample: true }) });
+  render(<App />);
+  const exit = await screen.findByText(/your own library/i);
+  act(() => search().focus());
+  press("o", { ctrlKey: true, shiftKey: true });
+  await screen.findByRole("option", { name: /^Use Zotero/ });
+  expect(exit.isConnected).toBe(false);
+  press("Escape");
+  expect(await screen.findByText(/your own library/i)).toBeTruthy();
+});
+
 test("the status dot stops being green when the status menu reports a failed group list", async () => {
   backend({ library_status: () => zotero, zotero_groups: () => { throw new Error("offline"); } });
   render(<App />);

@@ -83,20 +83,21 @@ export function usePickerKeys({
     // leaves focus on nothing. The key goes home with its native effect, so
     // the text it types lands in Search. Focus is not moved before a key:
     // that would clear a selection made with the pointer.
-    if (focusLost() && !overlayOpen()) focusHome();
+    const lost = focusLost() && !overlayOpen();
+    if (lost) focusHome();
     if (composingKey(e) || e.key === "Process") return;
     if (e.key === "Escape") {
       // One press, one step: holding Esc must not walk down to hiding.
       if (e.repeat || closeNearestLayer(e)) consumeKey(e);
       return;
     }
-    const focused = document.activeElement;
-    const command = commandFor(e, focused);
+    const target = lost ? document.activeElement : e.target;
+    const command = commandFor(e, target);
     if (command === "settings" && !openSettings) return;
     if (command) {
       consumeKey(e);
       if (!e.repeat) run(command, e);
-    } else if (focused === input.current) searchKey(e);
+    } else if (target === input.current) searchKey(e);
   };
   useKeyOwner({ keyDown, home: focusHome });
   return { run };

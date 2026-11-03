@@ -296,7 +296,7 @@ Never call the destination a password field. The right paste key is shown per sy
 
 ### Window behaviour
 
-- **Opening**: on the focused window's display, at its last place there (first time: centred, top in the upper third), with a short fade and focus in search. A search from under a minute ago returns selected; text typed while opening is kept. The window is current in its first frame.
+- **Opening**: on the focused window's display, at its last place there (first time: centred, top in the upper third), with a short fade and focus in search. A search from under a minute ago returns selected, unless Esc or Clear cleared it: an explicit clear sticks. Text typed while opening is kept. The window is current in its first frame.
 - **Moving and resizing**: drag the empty header; snap to centre, upper third and corners. Settings › Advanced › **Where Ibis opens** offers Centre and the four corners; **Reset Window Position** restores the default.
 - **Other windows**: a command that hands the screen to another window has one effect however it was reached: Settings and an opened source hide an unpinned picker, and Esc then belongs to that window. Pinned, the picker stays. A file chooser belongs to the picker, which stays behind it.
 - **Clicking outside** hides Ibis and the click reaches its target, unless pinned or a dialog, drag or file chooser is open.
@@ -353,7 +353,7 @@ Never call the destination a password field. The right paste key is shown per sy
 
 **General.** **Open at Login** is off until turned on and read from the system, never `settings.json`. **Show in Menu Bar** is planned (on by default; off, opening Ibis from Applications opens Settings). The menu bar icon is a one-colour bird from `brand/` opening a menu: Open Ibis, the library line, Reset Window Position, Settings…, Check for Updates…, Quit Ibis.
 
-**About.** A centred hero with the actual app icon, the name, a **Version x** button that copies it (⌥ shows and copies the full build), and the mission line; then Updates (automatic checks, Check now), links and the free-software note. It fits 920 × 560 without scrolling. Automatic update offers never show or focus the picker; they wait for empty, idle input, and **Later** is the default for every key (decision 0019).
+**About.** A centred hero with the actual app icon, the name, a **Version x** button that copies it (⌥ shows and copies the full build), and the mission line; then Updates (automatic checks, Check now), links and the free-software note. It fits 920 × 560 without scrolling. **Check for Updates…** in the tray opens About and runs Check now, so its result shows there, never in an alert. Automatic update offers never show or focus the picker; they wait for empty, idle input, and **Later** is the default for every key (decision 0019).
 
 ## Source checks and passage reuse (planned)
 

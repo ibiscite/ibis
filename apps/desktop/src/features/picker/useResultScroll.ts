@@ -3,10 +3,9 @@ import type { usePointerSelection } from "../../pointerSelection";
 import type { Choice } from "./choice";
 import type { useCitationOutput } from "./useCitationOutput";
 
-export function useResultScroll({ input, active, restored, pointer, selectedSize, citationProblem, formatted, format, searchFocused }: {
+export function useResultScroll({ input, active, pointer, selectedSize, citationProblem, formatted, format, searchFocused }: {
   input: RefObject<HTMLInputElement | null>;
   active: number;
-  restored: number;
   pointer: ReturnType<typeof usePointerSelection>;
   selectedSize: number;
   citationProblem: string | null;
@@ -14,12 +13,6 @@ export function useResultScroll({ input, active, restored, pointer, selectedSize
   format: Choice;
   searchFocused: boolean;
 }) {
-  // A restored search is selected once it is back in the box, so typing replaces it.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: only a restored search is selected; Search's ref is stable.
-  useEffect(() => {
-    if (restored > 0) input.current?.select();
-  }, [restored]);
-
   // Keep the highlighted result visible while moving with the arrow keys.
   // A row clicked is already under the pointer; scrolling would move it away.
   // Selection/preview reflow follows the highlight only while Search has focus.

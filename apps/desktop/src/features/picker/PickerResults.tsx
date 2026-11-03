@@ -69,6 +69,6 @@ export function PickerResults({
       libraryOf={severalLibraries ? libraryOf : noLibrary} onMouseMove={pointer.onMouseMove}
       onChoose={rows.onChoose} onContext={rows.onContext} onToggle={rows.onToggle} />}
     {!busy && emptyState}
-    {library?.sample && <SampleLibraryExit useSampleLibrary={api.useSampleLibrary} perform={perform} />}
+    {library?.sample && !choosingLibrary && <SampleLibraryExit useSampleLibrary={api.useSampleLibrary} perform={perform} />}
   </div>;
 }

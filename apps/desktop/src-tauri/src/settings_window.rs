@@ -25,6 +25,8 @@ pub(crate) enum Page {
     Shortcuts,
     Citations,
     About,
+    /// About, running Check now: the tray's update check shows its result there.
+    Updates,
 }
 
 impl Page {
@@ -38,6 +40,7 @@ impl Page {
             Page::Shortcuts => "shortcuts",
             Page::Citations => "citations",
             Page::About => "about",
+            Page::Updates => "updates",
         }
     }
 }
@@ -267,6 +270,7 @@ mod tests {
             (Page::Shortcuts, "shortcuts"),
             (Page::Citations, "citations"),
             (Page::About, "about"),
+            (Page::Updates, "updates"),
         ] {
             assert_eq!(page.name(), name);
             assert_eq!(serde_json::to_value(page).ok(), Some(serde_json::json!(name)));

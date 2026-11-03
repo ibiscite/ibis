@@ -33,7 +33,8 @@ export function usePickerMenus(api: PickerApi, { perform }: Pick<ReturnType<type
     if (left && focusLost()) focusHome();
   }, [welcomeShown, focusHome]);
   const windowUndo = useWindowResetUndo(api);
-  useEffect(() => { if (windowUndo.ticket !== null) setOverlay(null); }, [windowUndo.ticket]);
+  // A commit cannot flush the closes it causes, so they follow it.
+  useEffect(() => { if (windowUndo.ticket !== null) queueMicrotask(closeOverlays); }, [windowUndo.ticket]);
   // Where focus goes back to when the keys overlay closes.
   const keysReturn = useRef<HTMLElement | null>(null);
   const openMore = () => {
