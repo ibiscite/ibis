@@ -23,6 +23,9 @@ mod formatting;
 pub use formatting::Cancellation;
 mod prepared;
 pub use prepared::{CitationCommitError, PreparedCitation};
+mod project;
+pub use ibis_sources::project::{Doubt, EntryRefusal, KeyCheck, ProjectProblem, ProjectRead};
+pub use project::{EntryResult, ProjectKey, ProjectResult, project_name};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
@@ -499,6 +502,33 @@ impl Engine {
                 let result = self.cite(&request, cancel)?;
                 return self.finalize(DispatchResult::citation(result, request.items.len())?);
             }
+            Method::Project => {
+                let result = self.project(&parameters(params)?, cancel)?;
+                let exit_code = if result.settled() {
+                    ExitCode::Ok
+                } else {
+                    ExitCode::Findings
+                };
+                return self.finalize(DispatchResult {
+                    data: value(result)?,
+                    exit_code,
+                    text: None,
+                    source_findings: false,
+                });
+            }
+            Method::Entry => {
+                let result = self.entry(&parameters(params)?, cancel)?;
+                let exit_code = match result {
+                    EntryResult::Entry { .. } => ExitCode::Ok,
+                    EntryResult::Refused { .. } => ExitCode::Findings,
+                };
+                return self.finalize(DispatchResult {
+                    data: value(result)?,
+                    exit_code,
+                    text: None,
+                    source_findings: false,
+                });
+            }
             Method::Styles => {
                 let _: StylesRequest = parameters(params)?;
                 value(self.styles()?)?
@@ -713,6 +743,8 @@ fn response_schema(method: Method) -> Value {
         Method::Search => schema_for!(SearchResult),
         Method::Show => schema_for!(SnapshotObject),
         Method::Cite => schema_for!(CitationResult),
+        Method::Project => schema_for!(ProjectResult),
+        Method::Entry => schema_for!(EntryResult),
         Method::Styles => schema_for!(StylesResult),
         _ => schema_for!(Value),
     }

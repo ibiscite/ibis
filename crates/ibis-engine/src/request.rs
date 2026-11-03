@@ -95,6 +95,22 @@ pub struct KeyCitationRequest {
     pub output_locale: Option<String>,
 }
 
+/// Exact keys to look for in one project `.bib`, which stays out of the search
+/// libraries. Reading it never writes to it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ProjectRequest {
+    pub path: PathBuf,
+    pub keys: Vec<String>,
+}
+
+/// One reference's original BibTeX entry, with what it needs to stand alone.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct EntryRequest {
+    pub item: ItemSelector,
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct StylesRequest {}
@@ -121,6 +137,8 @@ pub fn request_schema(method: Method) -> Value {
         Method::Search => schema_for!(SearchRequest),
         Method::Show => schema_for!(ShowRequest),
         Method::Cite => schema_for!(CitationRequest),
+        Method::Project => schema_for!(ProjectRequest),
+        Method::Entry => schema_for!(EntryRequest),
         Method::Styles => schema_for!(StylesRequest),
         Method::Schema => schema_for!(SchemaRequest),
         Method::Call => schema_for!(CallRequest),

@@ -38,6 +38,15 @@ struct Slot {
     path: PathBuf,
     loaded: Arc<LoadedLibrary>,
 }
+impl Registry {
+    /// Where a file library was read from; other sources have no file.
+    pub(super) fn file_path(&self, library: &LibraryId) -> Option<PathBuf> {
+        self.slots
+            .values()
+            .find(|slot| slot.loaded.library == *library)
+            .map(|slot| slot.path.clone())
+    }
+}
 /// A strict read outcome prepared privately, including source-health failures.
 /// No publication occurs until the client accepts it under its selection guard.
 pub struct PreparedFileReload {

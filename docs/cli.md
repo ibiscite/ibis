@@ -55,6 +55,8 @@ app's choice only when given `--app-libraries`.
 | `show KEY` or `show --id ITEM_REF_JSON` | One reference's full data. |
 | `cite KEY…` | A citation. Key syntaxes with `--format` (default `pandoc`), formatted text with `--style` (see `styles`), bibliography entries with `--style S --bibliography`. `--locator`, `--prefix`, `--suffix` and `--omit-author` apply to the key before them. |
 | `cite --request` | A citation from one canonical `CitationRequest` JSON object on stdin. |
+| `project BIB KEY…` | Check exact keys against one project `.bib`, read-only ([below](#a-projects-own-bibliography)). |
+| `entry KEY` | A reference's original BibTeX entry, with what it needs to stand alone. |
 | `libraries` | The loaded libraries, their item counts and typed source warnings. |
 | `styles` | The bundled CSL styles. |
 | `schema [METHOD]` | The JSON Schema of each engine method's parameters and result. |
@@ -154,6 +156,33 @@ stderr.
 Styles that need a whole document return a full reference entry with that
 explanation. An output Ibis cannot write correctly is an explicit per-item
 `unsupported-output` refusal.
+
+### A project's own bibliography
+
+`ibis project thesis.bib smith2020 jones2019` says, for each exact key, one of: In
+thesis.bib; Missing from thesis.bib; Couldn't check thesis.bib; Key appears more than
+once; or Key may name another reference. Exit 0 means every key is in the file; 1 means
+at least one is not. `--json` gives each key's `check` with its `status` and lines.
+
+The file stays out of the libraries that are searched and is never changed. It is read
+twice, so a file still being written cannot pass. "Missing" needs a complete scan of
+that read: unreadable, damaged or changing data is "Couldn't check". A key differing only
+by letter case, an `ids` alias and an `@xdata` key are each a doubt, not a match. Name a
+library too and an entry that disagrees with it on DOI, title or year is one as well.
+"In thesis.bib" means the key is written there. It does not show that the fields match,
+that the export is current or that the document compiles.
+
+`ibis entry smith2020 --file refs.bib` prints the original entry, key included, with
+the `@string`, `crossref` and `xdata` it needs, and nothing rewritten. Check it before adding
+it to a shared file, because the original can hold fields such as `file` or `note`. It
+is refused, with how to export it instead, when the reference has no BibTeX original
+(Zotero, CSL-JSON), the file changed since it was read, the key repeats, or a dependency
+is missing or redefined. Ibis never invents a key or uses a similar record's key.
+
+To use the file with other tools, point them at the same `.bib`: Overleaf projects
+upload it beside the document, Quarto names it under `bibliography:` in the front matter,
+and Typst uses `#bibliography("thesis.bib")`. Quarto and Typst can use several files; the
+check covers only the one you name.
 
 ## JSON-RPC server
 

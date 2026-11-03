@@ -2398,6 +2398,382 @@
       }
     },
     {
+      "method": "project",
+      "params": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "description": "Exact keys to look for in one project `.bib`, which stays out of the search\nlibraries. Reading it never writes to it.",
+        "properties": {
+          "keys": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "keys"
+        ],
+        "title": "ProjectRequest",
+        "type": "object"
+      },
+      "result": {
+        "$defs": {
+          "Doubt": {
+            "description": "Why a key that is written in the file may not be the intended reference.",
+            "oneOf": [
+              {
+                "const": "fields",
+                "description": "The entry and the library disagree on DOI, title or year.",
+                "type": "string"
+              },
+              {
+                "const": "letter-case",
+                "description": "A key differs only by letter case; BibTeX treats them as one.",
+                "type": "string"
+              },
+              {
+                "const": "alias",
+                "description": "The key is written as another entry's `ids` alias.",
+                "type": "string"
+              },
+              {
+                "const": "helper",
+                "description": "The key belongs to an `@xdata` entry, which cannot be cited.",
+                "type": "string"
+              }
+            ]
+          },
+          "KeyCheck": {
+            "description": "One emitted key against one bibliography.",
+            "oneOf": [
+              {
+                "properties": {
+                  "line": {
+                    "format": "uint",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "status": {
+                    "const": "in",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "status",
+                  "line"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Only after a complete scan of a coherent read.",
+                "properties": {
+                  "status": {
+                    "const": "missing",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "status"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "status": {
+                    "const": "could-not-check",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "status"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "lines": {
+                    "items": {
+                      "format": "uint",
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "type": "array"
+                  },
+                  "status": {
+                    "const": "repeated",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "status",
+                  "lines"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "doubt": {
+                    "$ref": "#/$defs/Doubt"
+                  },
+                  "line": {
+                    "format": "uint",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "status": {
+                    "const": "may-name-another",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "status",
+                  "line",
+                  "doubt"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "ProjectKey": {
+            "description": "One key against the chosen file.",
+            "properties": {
+              "check": {
+                "$ref": "#/$defs/KeyCheck"
+              },
+              "key": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "key",
+              "check"
+            ],
+            "type": "object"
+          },
+          "ProjectProblem": {
+            "description": "Why a read could not be used.",
+            "oneOf": [
+              {
+                "enum": [
+                  "not-a-file",
+                  "too-large",
+                  "not-utf8",
+                  "changing"
+                ],
+                "type": "string"
+              },
+              {
+                "const": "unavailable",
+                "description": "Missing, online-only or not reachable in time.",
+                "type": "string"
+              },
+              {
+                "const": "not-bibtex",
+                "description": "A project bibliography is BibTeX or BibLaTeX.",
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "damaged_lines": {
+            "description": "Lines that could not be read, which is why nothing can be called missing.",
+            "items": {
+              "format": "uint",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "keys": {
+            "items": {
+              "$ref": "#/$defs/ProjectKey"
+            },
+            "type": "array"
+          },
+          "name": {
+            "description": "The file's name, never its folder.",
+            "type": "string"
+          },
+          "problem": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/ProjectProblem"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why this read could not be used; the answers then say \"could not check\"."
+          }
+        },
+        "required": [
+          "name",
+          "keys",
+          "damaged_lines"
+        ],
+        "title": "ProjectResult",
+        "type": "object"
+      }
+    },
+    {
+      "method": "entry",
+      "params": {
+        "$defs": {
+          "ItemRef": {
+            "additionalProperties": false,
+            "description": "Identity inside one library; citation keys are intentionally separate.\nNon-item kinds use source-namespaced keys (for example `tag:...`) so\nsource tags and collections cannot collide with native item keys.",
+            "properties": {
+              "key": {
+                "type": "string"
+              },
+              "library": {
+                "$ref": "#/$defs/LibraryId"
+              }
+            },
+            "required": [
+              "library",
+              "key"
+            ],
+            "type": "object"
+          },
+          "ItemSelector": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "by": {
+                    "const": "id",
+                    "type": "string"
+                  },
+                  "value": {
+                    "$ref": "#/$defs/ItemRef"
+                  }
+                },
+                "required": [
+                  "by",
+                  "value"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "by": {
+                    "const": "key",
+                    "type": "string"
+                  },
+                  "value": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "by",
+                  "value"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "LibraryId": {
+            "description": "A source identity digest, never a source location. Sources hash the full\ncanonical file identity, or profile/data-directory/library identity.",
+            "pattern": "^(file|zotero):[0-9a-f]{64}$",
+            "type": "string"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "description": "One reference's original BibTeX entry, with what it needs to stand alone.",
+        "properties": {
+          "item": {
+            "$ref": "#/$defs/ItemSelector"
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "title": "EntryRequest",
+        "type": "object"
+      },
+      "result": {
+        "$defs": {
+          "EntryRefusal": {
+            "description": "Why an entry's original text cannot be copied, so a person can re-export it.",
+            "oneOf": [
+              {
+                "enum": [
+                  "repeated"
+                ],
+                "type": "string"
+              },
+              {
+                "const": "no-original",
+                "description": "The reference does not come from a BibTeX file, so no original exists.",
+                "type": "string"
+              },
+              {
+                "const": "changed",
+                "description": "The file changed since the library was read, or could not be read.",
+                "type": "string"
+              },
+              {
+                "const": "dependency",
+                "description": "It relies on a `crossref`, `xdata` or `@string` that cannot come with it.",
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "oneOf": [
+          {
+            "description": "The entry as written, with the `@string`, `crossref` and `xdata` it needs.",
+            "properties": {
+              "key": {
+                "type": "string"
+              },
+              "outcome": {
+                "const": "entry",
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "outcome",
+              "key",
+              "text"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "outcome": {
+                "const": "refused",
+                "type": "string"
+              },
+              "reason": {
+                "$ref": "#/$defs/EntryRefusal"
+              }
+            },
+            "required": [
+              "outcome",
+              "reason"
+            ],
+            "type": "object"
+          }
+        ],
+        "title": "EntryResult"
+      }
+    },
+    {
       "method": "styles",
       "params": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -2449,6 +2825,8 @@
               "search",
               "show",
               "cite",
+              "project",
+              "entry",
               "styles",
               "schema",
               "call"
@@ -2489,6 +2867,8 @@
               "search",
               "show",
               "cite",
+              "project",
+              "entry",
               "styles",
               "schema",
               "call"
