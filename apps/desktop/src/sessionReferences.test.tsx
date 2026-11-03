@@ -97,8 +97,8 @@ test("a list that moved on since it was shown is shown again, not copied", async
 test("a copy or a save that fails says so", async () => {
   backend({
     session_references: () => list(), session_bibliography: () => formatted("text"),
-    copy_session_bibliography: () => { throw { code: "failed", message: "no" }; },
-    export_session_bibliography: () => { throw { code: "failed", message: "no" }; },
+    copy_session_bibliography: () => { throw new Error("no sentence for a person"); },
+    export_session_bibliography: () => { throw "no sentence for a person"; },
   });
   const dialog = await open();
   await within(dialog).findByText("text");

@@ -16,8 +16,8 @@ type Api = Required<Pick<PickerApi, "sessionReferences" | "editSessionReferences
 const changed = (error: unknown) => typeof error === "object" && error !== null && (error as { code?: string }).code === "snapshot_changed";
 /** Native refusals name what to do; anything else gets this sheet's own sentence. */
 const said = (error: unknown, fallback: string) => {
-  const message = typeof error === "object" && error !== null ? (error as { message?: unknown }).message : null;
-  return typeof message === "string" && message ? message : fallback;
+  const { code, message } = typeof error === "object" && error !== null ? error as { code?: unknown; message?: unknown } : {};
+  return code === "failed" && typeof message === "string" && message ? message : fallback;
 };
 
 /** The references copied this session, editable, and their bibliography. Native

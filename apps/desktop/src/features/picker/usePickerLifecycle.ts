@@ -11,7 +11,7 @@ import type { usePickerPreferences } from "./usePickerPreferences";
 export function usePickerLifecycle({ api, pickerSession, menus, destination, preferences, resetPointer, readShortcut, report, setAltHeld }: {
   api: PickerApi;
   pickerSession: Pick<ReturnType<typeof usePickerSession>, "session" | "send">;
-  menus: Pick<ReturnType<typeof usePickerMenus>, "input" | "setKeysOpen" | "setLibraryMenuOpen" | "setMenuOpen">;
+  menus: Pick<ReturnType<typeof usePickerMenus>, "input" | "setKeysOpen" | "setSessionOpen" | "setLibraryMenuOpen" | "setMenuOpen">;
   destination: ReturnType<typeof useDestination>;
   preferences: ReturnType<typeof usePickerPreferences>;
   resetPointer: () => void;
