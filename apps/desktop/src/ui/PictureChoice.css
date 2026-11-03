@@ -22,6 +22,19 @@
 /* The Mac's own row, then a divider and Ibis scarlet, the one extra. */
 .ui-picture-choices[data-dots] .ui-picture-choice:has([data-accent="ibis"]) { position: relative; margin-inline-start: var(--space-1); }
 .ui-picture-choices[data-dots] .ui-picture-choice:has([data-accent="ibis"])::before { content: ""; position: absolute; inset-block: 0; inset-inline-start: calc(-1 * var(--space-2)); width: var(--border-width); background: var(--separator); }
+/* A preview is the real part, and its frame comes from what it shows. A window or a
+   search bar has a set shape, so its picture is that shape scaled. Rows have no set
+   height, so a strip lays them out at its zoom and hugs them; WebKit keeps small text
+   legible under zoom, which is why the tiny pictures scale instead. */
+.ui-picker-picture { --preview: var(--preview-window); display: block; position: relative; overflow: hidden; pointer-events: none; min-width: 0; max-width: 100%; width: calc(var(--preview-window-w) * var(--preview)); height: calc(var(--preview-window-h) * var(--preview)); border-radius: var(--r-tile); box-shadow: 0 0 0 var(--border-width) var(--separator); text-align: start; }
+.ui-picker-picture[data-header] { --preview: var(--preview-bar); width: 9.375rem; height: calc((var(--field-h) + 2 * var(--inset) + var(--border-width)) * var(--preview)); }
+.ui-picker-picture-mask { position: absolute; inset: 0; background: var(--surface); color: var(--text); }
+.ui-picker-picture-mask[data-dark] { clip-path: polygon(100% 0, 100% 100%, 0 100%); }
+.ui-picker-picture-content { position: absolute; inset-block-start: 0; inset-inline-start: 0; width: var(--preview-window-w); transform: scale(var(--preview)); transform-origin: top left; }
+:dir(rtl) .ui-picker-picture-content { transform-origin: top right; }
+.ui-picker-picture[data-rows] { width: 100%; height: auto; }
+.ui-picker-picture[data-rows] .ui-picker-picture-mask { position: static; display: flow-root; }
+.ui-picker-picture[data-rows] .ui-picker-picture-content { position: static; display: block; width: auto; transform: none; zoom: var(--preview-rows); }
 .ui-size-picture { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-1); box-sizing: border-box; flex: none; border-radius: var(--space-1); background: var(--surface); box-shadow: 0 0 0 1px var(--fill-control-pressed); }
 .ui-size-picture b { display: block; height: var(--space-1); border-radius: var(--row-spacing); background: var(--fill-control-hover); }
 .ui-size-picture b[data-query] { height: 6px; background: var(--fill-control-pressed); }

@@ -9,7 +9,7 @@
 .settings {
   display: grid; height: 100%; min-height: 0; min-width: 0; overflow: hidden;
   grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
-  grid-template-rows: var(--titlebar-height) minmax(0, 1fr);
+  grid-template-rows: var(--titlebar-height) minmax(0, 1fr) auto;
 }
 /* A separate, non-scrolling band reserves the native traffic-light area. */
 .settings-titlebar { grid-area: 1 / 1 / 2 / -1; z-index: var(--z-chrome); height: var(--space-6); }
@@ -23,9 +23,11 @@
 .settings-page {
   /* Hidden radio inputs must stay inside this scroller's coordinate space. */
   position: relative;
-  grid-area: 1 / 2 / -1 / 3; min-width: 0; min-height: 0; overflow-y: auto; overflow-x: hidden; box-sizing: border-box;
+  grid-area: 1 / 2 / 3 / 3; min-width: 0; min-height: 0; overflow-y: auto; overflow-x: hidden; box-sizing: border-box;
   display: grid; align-content: start; grid-auto-rows: max-content; gap: 1.125rem;
   /* Below the drag band, so scrolled controls stay clickable. */
   margin-block-start: var(--space-6); padding: 0 var(--space-6) var(--space-6);
   scrollbar-gutter: stable; scroll-padding-block: var(--space-6); overscroll-behavior: contain;
 }
+/* Notices take the row under the page, so the page shortens and nothing is covered. */
+.settings > .notice-dock { grid-area: 3 / 2 / 4 / 3; margin: var(--space-2) var(--space-6) var(--space-3); }

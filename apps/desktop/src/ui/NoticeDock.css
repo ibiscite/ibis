@@ -1,0 +1,18 @@
+/* The one place a passing notice lives: in the layout, at the foot of the content,
+   so it never covers a row and the bands around it never move [Notices]. */
+.notice-dock { flex: none; display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; margin: 0 var(--inset) var(--inset); }
+/* In the picker, words start where the citation and row titles start [C3]. */
+main > .notice-dock { --notice-start: calc(var(--row-pad) + var(--tile) + var(--row-gap)); }
+.notice-band {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; column-gap: var(--space-3); box-sizing: border-box;
+  min-height: var(--control-h); min-width: 0; padding-block: var(--row-spacing); padding-inline: var(--notice-start, var(--row-pad)) var(--space-1); border-radius: var(--r-row);
+  color: var(--text); font-size: var(--type-body-size); line-height: var(--type-body-line); animation: notice-in var(--dur-panel) var(--ease);
+}
+.notice-band > span { flex: 1 1 12rem; min-width: 0; overflow-wrap: anywhere; }
+.notice-band > .ui-button { flex: none; max-inline-size: 100%; white-space: normal; overflow-wrap: anywhere; }
+/* An offer to act is a fill, like the shelf; a passing remark is words alone. */
+.notice-band[data-offer] { background: var(--fill-control); }
+.notice-band:not([data-offer]) { color: var(--text-secondary); font-size: var(--type-label-size); line-height: var(--type-label-line); }
+@keyframes notice-in { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .notice-band { animation-duration: var(--dur); } }
+@media (prefers-contrast: more), (forced-colors: active) { .notice-band[data-offer] { border: var(--border-width) solid CanvasText; } }

@@ -1055,11 +1055,50 @@ test("seven pages and search find common words, reveal and briefly tint their ca
   expect(screen.getAllByRole("option").map((x) => x.textContent)).toEqual(["General", "Look", "Citations", "Shortcuts", "About Ibis"]);
   const search = screen.getByRole("searchbox", { name: "Search Settings" });
   fireEvent.change(search, { target: { value: "dark" } });
-  fireEvent.click(await screen.findByRole("button", { name: "Appearance" }));
+  fireEvent.click(await screen.findByRole("option", { name: "Appearance, Look" }));
   expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Look");
   expect(document.getElementById("appearance")!.closest(".ui-settings-row")!.hasAttribute("data-highlighted")).toBe(true);
   await new Promise((resolve) => setTimeout(resolve, 2100));
   expect(document.getElementById("appearance")!.closest(".ui-settings-row")!.hasAttribute("data-highlighted")).toBe(false);
+});
+
+test("search results are sidebar rows, and Enter opens the first", async () => {
+  const { api } = fakeApi({ granted: true });
+  const { container } = render(<SettingsApp api={api} initialPage="general" />);
+  const search = screen.getByRole("searchbox", { name: "Search Settings" });
+  fireEvent.change(search, { target: { value: "a" } });
+  const results = await screen.findByRole("listbox", { name: "Search results" });
+  expect(within(results).queryAllByRole("button")).toEqual([]);
+  const row = within(results).getByRole("option", { name: "Appearance, Look" });
+  expect(row.classList.contains("ui-side-navigation-item")).toBe(true);
+  expect(row.querySelector('.ui-side-navigation-tile[data-page="look"] svg')).not.toBeNull();
+  fireEvent.keyDown(search, { key: "Enter", isComposing: true });
+  expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("General");
+  fireEvent.change(search, { target: { value: "appearance" } });
+  fireEvent.keyDown(search, { key: "Enter" });
+  expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Look");
+  expect(container.querySelector(".ui-settings-search-results")).toBeNull();
+  fireEvent.change(search, { target: { value: "no such setting" } });
+  expect((await screen.findByText("No matching settings")).classList.contains("ui-side-navigation-empty")).toBe(true);
+});
+
+test("the bird never labels a page: About wears the same glyph tile as the others", async () => {
+  const { api } = fakeApi({ granted: true });
+  const { container } = render(<SettingsApp api={api} initialPage="about" />);
+  await screen.findByRole("button", { name: "Ibis" });
+  for (const tile of container.querySelectorAll(".ui-side-navigation-tile")) expect(tile.querySelector("svg.ibis-mark, img")).toBeNull();
+  expect(container.querySelector('.ui-side-navigation-tile[data-page="about"] svg')).not.toBeNull();
+  expect(container.querySelectorAll(".ibis-mark")).toHaveLength(0);
+  expect(screen.queryByText("Why an ibis")).toBeNull();
+});
+
+test("Accent's subtitle names the choice and nothing else", async () => {
+  const { api } = fakeApi({ granted: true });
+  render(<SettingsApp api={api} initialPage="look" />);
+  const accent = await screen.findByRole("radiogroup", { name: "Accent" });
+  expect(document.getElementById("accent-description")?.textContent).toBe("Follow the system");
+  fireEvent.click(within(accent).getByRole("radio", { name: "Purple" }));
+  await waitFor(() => expect(document.getElementById("accent-description")?.textContent).toBe("Purple"));
 });
 
 test("Settings shows only built pages, rows and choices, including in search", async () => {
@@ -1493,7 +1532,7 @@ test.each([
   const { api } = fakeApi({ granted: true });
   render(<SettingsApp api={api} initialPage="general" />);
   fireEvent.change(screen.getByRole("searchbox", { name: "Search Settings" }), { target: { value: query } });
-  fireEvent.click(await screen.findByRole("button", { name: label }));
+  fireEvent.click(await screen.findByRole("option", { name: `${label}, ${page}` }));
   expect(screen.getByRole("heading", { level: 1 })).toHaveProperty("textContent", page);
   await waitFor(() => expect(document.getElementById(id)?.closest(".ui-settings-row")?.hasAttribute("data-highlighted")).toBe(true));
 });

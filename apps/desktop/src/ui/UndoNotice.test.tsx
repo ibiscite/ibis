@@ -2,7 +2,10 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { afterEach, expect, test, vi } from "vitest";
 import { useRef, useState } from "react";
 import { currentPlatform } from "../platform";
+import { NoticeDock, QuietNotice } from "./NoticeDock";
 import { UndoNotice } from "./UndoNotice";
+
+const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
 
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 
@@ -110,4 +113,20 @@ test("closing and reopening preserves the remaining visible Undo time", () => {
   expect(expire).not.toHaveBeenCalled();
   act(() => vi.advanceTimersByTime(1));
   expect(expire).toHaveBeenCalledOnce();
+});
+
+test("a notice takes its place in the layout, and two never share one spot", () => {
+  const { container } = render(<NoticeDock>
+    <UndoNotice action="Reset Window Position" message="Window position reset." onUndo={async () => {}} onExpire={() => {}} />
+    <QuietNotice>A remark.</QuietNotice>
+  </NoticeDock>);
+  expect(screen.getByRole("region", { name: "Notices" }).children).toHaveLength(2);
+  expect(container.querySelector(".notice-band[data-offer]")).not.toBeNull();
+  const css = readFileSync(new URL("./NoticeDock.css", import.meta.url), "utf8");
+  expect(css).not.toMatch(/position:\s*(fixed|absolute|sticky)|box-shadow|z-index/);
+});
+
+test("an empty dock draws nothing", () => {
+  const { container } = render(<NoticeDock>{null}{false}</NoticeDock>);
+  expect(container.firstChild).toBeNull();
 });

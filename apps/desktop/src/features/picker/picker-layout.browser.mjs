@@ -362,15 +362,16 @@ try {
       const band = await page.locator("main > .shelf").boundingBox();
       await search.press("Shift+Enter");
       await shelfControl(page, /^Edit /).first().press("Backspace");
-      const removal = page.locator(".undo-notices > .undo-notice").first();
+      const removal = page.locator(".notice-dock > .notice-band").first();
       await removal.getByText(/^Removed .* from citation\.$/).waitFor();
       await page.evaluate(() => window.fixtureWindowReset());
-      const undo = page.locator(".undo-notices > .undo-notice").nth(1).getByRole("button", { name: /^Undo/ });
+      const undo = page.locator(".notice-dock > .notice-band").nth(1).getByRole("button", { name: /^Undo/ });
       await undo.waitFor();
       assert.equal(await search.evaluate((node) => document.activeElement === node), true, "Reset's Undo notice leaves typing focus in Search");
       await waitForCheck("independent-undo-actions-whole-and-uncovered", () => {
-        const boxes = [...document.querySelectorAll(".undo-notices > .undo-notice")].map((node) => node.getBoundingClientRect());
-        return boxes.length === 2 && boxes.every((box) => box.top >= 7 && box.bottom <= innerHeight - 7 && box.left >= 7 && box.right <= innerWidth - 7) && boxes[0].bottom <= boxes[1].top;
+        const boxes = [...document.querySelectorAll(".notice-dock > .notice-band")].map((node) => node.getBoundingClientRect());
+        const shelf = document.querySelector("main > .shelf").getBoundingClientRect(), list = document.querySelector(".picker-content").getBoundingClientRect();
+        return boxes.length === 2 && boxes.every((box) => box.top >= list.bottom && box.bottom <= shelf.top && box.left >= 7 && box.right <= innerWidth - 7) && boxes[0].bottom <= boxes[1].top;
       });
       await undo.click();
       await page.getByRole("alert").and(page.getByText("Could not undo. Try again.", { exact: true })).waitFor();

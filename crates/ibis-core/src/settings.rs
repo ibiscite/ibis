@@ -154,7 +154,6 @@ pub struct Delights {
     pub paste_tip: bool,
     pub welcome: bool,
     pub libraries: BTreeMap<String, u8>,
-    pub about_clicks: u8,
     pub fact_index: Option<u8>,
 }
 

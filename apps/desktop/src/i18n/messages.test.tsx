@@ -135,7 +135,6 @@ test("settings wording follows the platform, and a backend reason ends on one fu
   for (const platform of ["windows", "linux"]) {
     expect(says("general-paste-description", platform)).toBe("Otherwise Ibis copies and you press Ctrl+V");
     expect(says("look-accent-system", platform)).toBe("Follow the system");
-    expect(says("look-accent-multicolor", platform)).not.toContain("Mac");
   }
   expect(says("look-accent-system", "macos")).toBe("Follow the Mac");
   expect(pickerText.shortcutError(false, "Ctrl+Shift+Y", "Restart Ibis after the desktop portal is available."))

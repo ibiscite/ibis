@@ -1,5 +1,5 @@
 import { useRef, type ReactNode } from "react";
-import { ChoiceIcon } from "../src/icons";
+import { ChoiceIcon, PageIcon } from "../src/icons";
 import { Button } from "../src/ui/Button";
 import { IconButton } from "../src/ui/IconButton";
 import { StatusMark } from "../src/ui/StatusMark";
@@ -9,11 +9,14 @@ import { ChipGroup } from "../src/ui/ChipGroup";
 import { ChoiceList } from "../src/ui/ChoiceList";
 import { IbisMark } from "../src/ui/IbisMark";
 import { KeyCaps, KeyHint } from "../src/ui/KeyCaps";
+import { NoticeDock, QuietNotice } from "../src/ui/NoticeDock";
 import { PictureChoice } from "../src/ui/PictureChoice";
 import { Segmented } from "../src/ui/Segmented";
 import { SettingsGroup, SettingsRow } from "../src/ui/SettingsGroup";
+import { SideResults } from "../src/ui/SideNavigation";
 import { SourceAction } from "../src/ui/SourceAction";
 import { Switch } from "../src/ui/Switch";
+import { UndoNotice } from "../src/ui/UndoNotice";
 
 const ignore = () => {};
 const states = ["rest", "hovered", "pressed", "focus-visible", "disabled"] as const;
@@ -78,6 +81,12 @@ export function Parts() {
       </SettingsGroup>
     </section>
     <section><h2>Choice rows</h2><ChoiceList title="A choice screen" line="One line of context." choices={choices} onChoose={ignore} /></section>
+    <section><h2>Notices</h2><NoticeDock>
+      <UndoNotice message="Removed Aster, 2026 from citation." action="Remove Aster, 2026" onUndo={async () => {}} onExpire={ignore} />
+      <QuietNotice passive>1,000 references. A solid library.</QuietNotice>
+    </NoticeDock></section>
+    <section><h2>Search results</h2><SideResults label="Search results" status="2 results" empty="No matching settings" onChoose={ignore}
+      results={[{ id: "appearance", label: "Appearance", page: "look", pageLabel: "Look", tile: <PageIcon name="look" /> }, { id: "forget", label: "A setting whose name runs on to a second line in the sidebar", page: "citations", pageLabel: "Citations", tile: <PageIcon name="citations" /> }]} /></section>
     <Section title="Marks and icons">
       <State name="mark"><IbisMark size="welcome" className="canvas-part-mark" /></State>
       {(Object.keys(iconPaths) as (keyof typeof iconPaths)[]).map((name) => <State key={name} name={name}><Icon name={name} /></State>)}

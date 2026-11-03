@@ -18,7 +18,7 @@ import type { useOperations } from "./useOperations";
 
 export function PickerStatusFooter({
   api, library, scope, sourceState, menus, actions, copyChosen, destination, recents, preferences,
-  operations, altHeld, lastOutcome, cancelCopy, quitAfterSaving, feedback, passive, emptyAction,
+  operations, altHeld, lastOutcome, cancelCopy, quitAfterSaving, emptyAction,
 }: {
   api: PickerApi;
   library: LibraryStatus | null | undefined;
@@ -35,7 +35,6 @@ export function PickerStatusFooter({
   lastOutcome: string | null;
   cancelCopy: () => void;
   quitAfterSaving: () => Promise<void>;
-  feedback?: string | null; passive?: boolean;
   emptyAction?: boolean;
 }) {
   const { useZoteroLibraries: chooseZoteroLibraries, reloadLibrary, useZotero, openSettings } = api;
@@ -47,7 +46,7 @@ export function PickerStatusFooter({
   const { toggleHighlighted, escapeStep, hints } = actions;
   // Read when More opens, the only time it is shown there.
   const libraryDetail = menuOpen ? libraryMessages.detail(library, Date.now(), (status) => zoteroLibraryNames(status, groupName)) : null;
-  return <PickerFooter library={library} groupName={groupName} feedback={feedback} passive={passive} emptyAction={emptyAction}
+  return <PickerFooter library={library} groupName={groupName} emptyAction={emptyAction}
     status={<PickerLibraryStatus library={library} groupName={groupName} isOpen={libraryMenuOpen}
       onOpenChange={(open) => { if (open) { cancelCopy(); setMenuOpen(false); } setLibraryMenuOpen(open); }}
       searchRef={input} sourceAction={sourceAction} sourceFailure={sourceOpen.failure !== null}

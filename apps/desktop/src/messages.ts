@@ -185,6 +185,7 @@ export const pickerText = {
   citationWarnings: "Citation warnings",
   windowReset: "Window position reset.",
   undo: "Undo",
+  notices: "Notices",
   undoFailed: "Could not undo. Try again.",
   previewPending: "Formatting…",
   previewNotReady: "Nothing was copied yet: the citation is still being formatted. Press Enter again in a moment.",

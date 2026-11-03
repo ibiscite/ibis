@@ -280,7 +280,7 @@ export type Copied_Serialize = {
 	delivery?: number | null,
 };
 
-export type DelightFact = "thoth" | "touch" | "scarlet" | "mummies" | "national" | "flight";
+export type DelightFact = "touch" | "scarlet" | "mummies" | "national" | "flight";
 
 export type DelightStatus = "paste-tip" | "library100" | "library1000" | "library10000";
 
@@ -291,8 +291,6 @@ export type DelightView = {
 	build: string,
 	fun: boolean,
 	fact: DelightFact | null,
-	birthday: boolean,
-	library: string | null,
 	revision: number,
 };
 

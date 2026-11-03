@@ -59,7 +59,7 @@
   --ease: cubic-bezier(.2, .8, .2, 1); --ease-in: cubic-bezier(.4, 0, 1, 1);
 
   /* Layers. */
-  --z-content: 0; --z-chrome: 1; --z-overlay: 10; --z-modal: 30; --z-toast: 40;
+  --z-content: 0; --z-chrome: 1; --z-overlay: 10; --z-modal: 30;
 
   --white: #fff;
 
@@ -108,8 +108,13 @@
   --surface-grouped: var(--fill-4);
   --titlebar-height: 2.75rem;
   --sidebar-width: min(12.5rem, 26%);
-  --page-general: #8e8e93; --page-look: #ff9f0a; --page-citations: #0a84ff; --page-shortcuts: #5e5ce6; --page-about: var(--ibis);
+  --page-general: #8e8e93; --page-look: #ff9f0a; --page-citations: #0a84ff; --page-shortcuts: #5e5ce6; --page-about: var(--page-general);
   --highlight: var(--accent-wash);
+  /* Previews: the real part at one size each. The window picture keeps Medium's shape. */
+  --preview-window-w: 45rem; --preview-window-h: 30rem;
+  --preview-window: .21; --preview-bar: .54; --preview-rows: .74;
+  /* The bird: the app icon names Ibis; the depth mark greets. */
+  --mark-app: 6rem; --mark-greeting: 3.5rem;
 
   /* Look's dots show each Mac colour as Apple draws it. */
   --dot-ibis: var(--ibis); --dot-blue: #007aff; --dot-purple: #953d96; --dot-pink: #f74f9e; --dot-red: #e0383e;

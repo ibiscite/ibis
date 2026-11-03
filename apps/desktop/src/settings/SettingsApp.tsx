@@ -6,17 +6,17 @@ import { type MessageId, useInterfaceMessages } from "../i18n";
 import { type ShortcutProblem, shortcutRefusalMessage } from "../i18n/settings";
 import { PreferencePatchQueue } from "../preferencePatchQueue";
 import { currentPlatform } from "../platform";
+import { NoticeDock } from "../ui/NoticeDock";
 import { UndoNotice } from "../ui/UndoNotice";
 import { Button } from "../ui/Button";
-import { AboutDelight } from "../ui/Delights";
-import { IbisMark } from "../ui/IbisMark";
+import { AboutDelight, AboutLine } from "../ui/Delights";
 import { localMoment } from "../ui/localMoment";
 import { useAltHeld } from "../features/picker/useAltHeld";
 import type { DelightFact, DelightView } from "../bindings";
 import { ShortcutsPage } from "./ShortcutsPage";
 import { SettingsGroup as Group, SettingsRow as Row } from "../ui/SettingsGroup";
 import { ShortcutSetting } from "../ui/ShortcutSetting";
-import { SideNavigation } from "../ui/SideNavigation";
+import { SideNavigation, SideResults } from "../ui/SideNavigation";
 import { SettingsSearch } from "../ui/SettingsSearch";
 import { useAppearance } from "../ui/appearance";
 import { DefaultFormat } from "./DefaultFormat";
@@ -29,14 +29,14 @@ import "./Settings.css";
 import { PAGES, ROWS, rowDetails, type Page } from "./rows";
 import { LookPage } from "./LookPage";
 import { initialPreferences, preferenceState } from "./preferenceState";
-const FACT_MESSAGES: Record<DelightFact, MessageId> = { thoth: "delight-thoth", touch: "delight-fact-touch", scarlet: "delight-fact-scarlet", mummies: "delight-fact-mummies", national: "delight-fact-national", flight: "delight-fact-flight" };
+const FACT_MESSAGES: Record<DelightFact, MessageId> = { touch: "delight-fact-touch", scarlet: "delight-fact-scarlet", mummies: "delight-fact-mummies", national: "delight-fact-national", flight: "delight-fact-flight" };
 const LOGIN_PROBLEMS = {
   unsupported: "general-login-unsupported", needs_approval: "general-login-needs-approval",
   refused: "general-login-refused", unreadable: "general-login-unreadable",
 } as const satisfies Record<LoginItemProblem, MessageId>;
 
 /** A page asked for by name; "paste" is General, scrolled to pasting. */
-const PAGE_TILES: Partial<Record<Page, ReactNode>> = { general: <PageIcon name="general" />, look: <PageIcon name="look" />, citations: <PageIcon name="citations" />, shortcuts: <PageIcon name="shortcuts" /> };
+const PAGE_TILES: Record<Page, ReactNode> = { general: <PageIcon name="general" />, look: <PageIcon name="look" />, citations: <PageIcon name="citations" />, shortcuts: <PageIcon name="shortcuts" />, about: <PageIcon name="about" /> };
 
 export function pageOf(name: string | null): { page: Page; focus: "paste" | null } {
   if (name === "paste") return { page: "general", focus: "paste" };
@@ -102,14 +102,15 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   }, [page]);
   const { altHeld } = useAltHeld();
   const [about, setAbout] = useState<DelightView | null>(null);
-  const [blink, setBlink] = useState(0);
+  const [fact, setFact] = useState<DelightFact | null>(null);
+  const [dip, setDip] = useState(0);
   const clickAbout = useRef<() => void>(() => {});
   // biome-ignore lint/correctness/useExhaustiveDependencies: a saved switch change retires old authorization answers.
   useEffect(() => {
     let active = true;
     let reads = 0;
     let timer: number | undefined;
-    setAbout(null);
+    setAbout(null); setFact(null);
     const read = (click = false) => {
       if (page !== "about" || !api.delightView) return;
       const operation = ++reads;
@@ -120,8 +121,8 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
         const now = localMoment();
         if (day.year !== now.year || day.month !== now.month || day.day !== now.day) { read(); return; }
         setAbout(next);
-        if (click && next?.fun) setBlink((value) => value + 1);
-        if (next?.anniversary || next?.birthday) {
+        if (click && next?.fun) { setDip((value) => value + 1); setFact(next.fact); }
+        if (next?.anniversary) {
           const midnight = new Date(); midnight.setHours(24, 0, 0, 0);
           timer = window.setTimeout(() => { if (active && operation === reads) { setAbout(null); read(); } }, midnight.getTime() - Date.now());
         }
@@ -133,7 +134,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     window.addEventListener("focus", focusRead);
     return () => { active = false; window.clearTimeout(timer); window.removeEventListener("focus", focusRead); clickAbout.current = () => {}; };
   }, [page, api.delightView, preferences?.small_surprises]);
-  useEffect(() => { if (about?.fun === false) setBlink(0); }, [about?.fun]);
+  useEffect(() => { if (about?.fun === false) setDip(0); }, [about?.fun]);
   const [forgetStatus, setForgetStatus] = useState<"idle" | "saving" | "failed">("idle");
   const [forgetUndo, setForgetUndo] = useState<number | null>(null);
   const forgetBusy = useRef(false);
@@ -239,7 +240,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
       if (active) { latestShortcut.current = next; setShortcut(next); clearShortcutUndo(); }
     });
     void shortcuts.catch(() => { if (active) setShortcutProblem({ id: "shortcuts-read-failed" }); }).then(() => { if (active) readShortcut(); });
-    const page = api.onPage((name) => { const next = pageOf(name); setDetour(name === "paste"); setBlink(0); setPage(next.page); setFocus(next.focus ?? "top"); });
+    const page = api.onPage((name) => { const next = pageOf(name); setDetour(name === "paste"); setDip(0); setPage(next.page); setFocus(next.focus ?? "top"); });
     const automatic = api.onUpdateChecks((next) => {
       if (!active) return;
       updateReads.current += 1;
@@ -332,10 +333,10 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     : preference.status === "refused" && preference.problem.row === id ? text(preference.problem.message)
     : problemRow?.id === id ? text(problemRow.message) : undefined });
   const checkSaid = checkResult === "newest" ? "about-check-newest" : checkResult === "not_run" ? "about-check-busy" : null;
-  const selectPage = (next: Page) => { highlightOperation.current += 1; setHighlighted(null); setDetour(false); setPage(next); setFocus("top"); setBlink(0); };
+  const selectPage = (next: Page) => { highlightOperation.current += 1; setHighlighted(null); setDetour(false); setPage(next); setFocus("top"); setDip(0); };
   const reveal = (row: typeof ROWS[number]) => {
     selectPage(row.page); setQuery(""); setHighlighted(row.id === "about-ibis" && query.trim().toLowerCase() === "thoth" ? "about-name" : row.id);
-    if (row.id === "about-ibis" && query.trim().toLowerCase() !== "thoth") setBlink(blink + 1);
+    if (row.id === "about-ibis" && query.trim().toLowerCase() !== "thoth") setDip(dip + 1);
     const operation = ++highlightOperation.current;
     window.setTimeout(() => { if (live.current && operation === highlightOperation.current) setHighlighted(null); }, 2000);
   };
@@ -388,18 +389,21 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     <div className="settings">
       <div className="settings-titlebar" data-tauri-drag-region />
       <nav className="settings-sidebar" aria-label={text("settings-pages")}>
-        <SettingsSearch label={text("settings-search")} value={query} onChange={setQuery} />
-        {query.trim() ? <div className="ui-side-navigation ui-settings-search-results" aria-live="polite">
-          {matches.length ? matches.map((row) => <Button key={row.id} onPress={() => reveal(row)}>{text(row.label, { platform })}</Button>) : <p>{text("settings-no-results")}</p>}
-        </div> : <SideNavigation label={text("settings-pages")} value={page} options={PAGES.map((value) => ({ value, label: text(`settings-${value}`), tile: PAGE_TILES[value], gapBefore: value === "about" }))}
+        <SettingsSearch label={text("settings-search")} value={query} onChange={setQuery} onSubmit={() => { if (matches[0]) reveal(matches[0]); }} />
+        {query.trim() ? <SideResults label={text("settings-results")} status={text("settings-results-count", { count: matches.length })} empty={text("settings-no-results")}
+          results={matches.map((row) => ({ id: row.id, label: text(row.label, { platform }), page: row.page, pageLabel: text(`settings-${row.page}`), tile: PAGE_TILES[row.page] }))}
+          onChoose={(id) => reveal(matches.find((row) => row.id === id)!)} />
+        : <SideNavigation label={text("settings-pages")} value={page} options={PAGES.map((value) => ({ value, label: text(`settings-${value}`), tile: PAGE_TILES[value], gapBefore: value === "about" }))}
           onChange={selectPage} />}
       </nav>
-      {forgetUndo !== null && <UndoNotice key={`forget-${forgetUndo}`} action={text("undo-forget-formats")} message={text("citations-forget-done")} paused={!focused}
-        onUndo={() => queue.enqueue(() => api.restoreAppOutputs(forgetUndo)).then(clearForgetUndo)}
-        onExpire={clearForgetUndo} />}
-      {shortcutUndo && <UndoNotice key={undoTicket} action={text("undo-shortcut")} message={text("settings-shortcut-restored")} paused={!focused}
-        onUndo={() => changeShortcut(shortcutUndo, true, undoTicket)}
-        onExpire={() => { if (undoTicket === shortcutUndoTicket.current) clearShortcutUndo(); }} />}
+      <NoticeDock>
+        {forgetUndo !== null && <UndoNotice key={`forget-${forgetUndo}`} action={text("undo-forget-formats")} message={text("citations-forget-done")} paused={!focused}
+          onUndo={() => queue.enqueue(() => api.restoreAppOutputs(forgetUndo)).then(clearForgetUndo)}
+          onExpire={clearForgetUndo} />}
+        {shortcutUndo && <UndoNotice key={undoTicket} action={text("undo-shortcut")} message={text("settings-shortcut-restored")} paused={!focused}
+          onUndo={() => changeShortcut(shortcutUndo, true, undoTicket)}
+          onExpire={() => { if (undoTicket === shortcutUndoTicket.current) clearShortcutUndo(); }} />}
+      </NoticeDock>
       <main ref={pageRef} className="settings-page" aria-labelledby="settings-page-title">
         <h1 id="settings-page-title" className={page === "about" ? "visually-hidden" : "settings-page-title"}>{text(`settings-${page}`)}</h1>
         {preference.status === "unknown" && preference.message && <p className="settings-problem" role="alert">{text(preference.message)}</p>}
@@ -407,11 +411,6 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
         {page === "general" && (
           <>
             {shortcutSetting}
-            <Group id="surprises">
-              <Row id="small-surprises" label={text("general-small-surprises-label")} description={text("general-small-surprises-description")} {...feedback("small-surprises")}>
-                <Switch aria-labelledby="small-surprises" aria-describedby="small-surprises-description" isSelected={preferences?.small_surprises ?? true} isDisabled={!preferences} onChange={(on) => change({ small_surprises: on })} />
-              </Row>
-            </Group>
             <Group id="startup">
                 <Row id="login" label={text("general-login-label", { platform })} description={login?.problem ? text(LOGIN_PROBLEMS[login.problem], { platform, name }) : text("general-login-description")} {...feedback("login")}>
                   <Switch aria-labelledby="login" aria-describedby="login-description" isSelected={login?.enabled ?? false}
@@ -428,6 +427,9 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
                   <Switch aria-labelledby="menu-bar" aria-describedby="menu-bar-description" isSelected={preferences?.menu_bar ?? true}
                     onChange={(on) => change({ menu_bar: on })} isDisabled={!preferences} />
                 </Row>}
+                <Row id="small-surprises" label={text("general-small-surprises-label")} description={text("general-small-surprises-description")} {...feedback("small-surprises")}>
+                  <Switch aria-labelledby="small-surprises" aria-describedby="small-surprises-description" isSelected={preferences?.small_surprises ?? true} isDisabled={!preferences} onChange={(on) => change({ small_surprises: on })} />
+                </Row>
             </Group>
             {preferences && (
               <>
@@ -469,20 +471,15 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
         {page === "about" && (
           <>
             <div id="about-ibis" className="ui-about-hero">
-              <AboutDelight blink={blink} enabled={about?.fun ?? false} onClick={() => clickAbout.current()} />
+              <AboutDelight dip={dip} enabled={about?.fun ?? false} onClick={() => clickAbout.current()} />
               <p className="ui-about-name">{name}</p>
               <Button variant="quiet" size="small" preventFocusOnPress onPress={copyVersion}>
                 {text(versionCopied ? "about-copied" : "about-version", { version: altHeld && about?.build ? about.build : version })}
               </Button>
               {versionCopyFailed && <p className="settings-problem" role="alert">{text("about-copy-failed")}</p>}
               <p className="ui-about-mission">{text("about-mission")}</p>
+              <AboutLine said={fact !== null} highlighted={highlighted === "about-name"}>{text(fact ? FACT_MESSAGES[fact] : about?.anniversary ? "delight-anniversary" : "delight-name")}</AboutLine>
             </div>
-            <Group id="about-why" title={text("about-why")}>
-              <Row id="about-name" label={text("delight-name")} highlighted={highlighted === "about-name"}
-                description={about?.fun ? (about.birthday || about.anniversary ? text(about.birthday ? "delight-birthday" : "delight-anniversary") : about.fact ? text(FACT_MESSAGES[about.fact]) : undefined) : undefined}>
-                <IbisMark className="ui-about-mark" size="search" />
-              </Row>
-            </Group>
             <Group id="about-updates" title={text("about-updates")}>
               <Row id="automatic" label={text("about-automatic")} description={updates === null && !readProblems.has("automatic") ? text("about-unavailable") : text(checkSaid ?? "about-automatic-description")} {...feedback("automatic")}>
                 {(updates !== null || readProblems.has("automatic")) && <>

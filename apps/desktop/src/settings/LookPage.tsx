@@ -34,7 +34,7 @@ export function LookPage({ preferences: p, change, feedback, windowSize, chooseW
       </Row>
     </Group>
     <Group id="look-accent">
-      <Row id="accent" label={text("look-accent")} description={accent === "system" ? text("look-accent-multicolor", { platform }) : text("look-accent-inside", { name: text(`look-accent-${accent}`, { platform }) })} {...feedback("accent")}>
+      <Row id="accent" label={text("look-accent")} description={text(`look-accent-${accent}`, { platform })} {...feedback("accent")}>
         <PictureChoice dots label={text("look-accent")} description="accent-description" value={accent}
           options={ACCENTS.map((value) => ({ value, label: text(`look-accent-${value}`, { platform }), picture: <span className="ui-accent-dot" data-accent={value} /> }))}
           onChange={(accent) => change({ accent })} />

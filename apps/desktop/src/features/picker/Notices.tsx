@@ -11,8 +11,7 @@ export type Operation = keyof typeof operationFailures;
 
 /** Settings problems, failed actions, search and copy errors, and what was
  * copied. Library failures belong to the footer's controls. */
-export function Notices({ library, failures, error, citationProblem, copyError, copied, confirmation, onDismissCopied, updateProgress, missing = [], densityAnnouncement, feedback }: {
-  feedback?: string | null;
+export function Notices({ library, failures, error, citationProblem, copyError, copied, confirmation, onDismissCopied, updateProgress, missing = [], densityAnnouncement }: {
   densityAnnouncement?: Density;
   updateProgress?: UpdateProgress | null;
   library: LibraryStatus | null | undefined;
@@ -42,10 +41,9 @@ export function Notices({ library, failures, error, citationProblem, copyError, 
       {citationProblem && <p role="alert" className="citation-problem" tabIndex={0}>{citationProblem}</p>}
       {missing.length > 0 && <p role="status">{pickerText.missingCitations(missing)}</p>}
       {copyError && <p role="alert">{copyError}</p>}
-      {feedback && <p className="copy-notice" role="status">{feedback}</p>}
       {copied && (confirmation || copied.warnings.length > 0) && (
         <div role={confirmation ? "status" : "group"} className="copy-notice">
-          {confirmation && !feedback && <p className="copy-receipt" data-outcome="copied">
+          {confirmation && <p className="copy-receipt" data-outcome="copied">
             <Icon name="check" className="copy-receipt-mark" />
             <strong>{pickerText.copied}</strong><code dir="auto" title={confirmation.text}>
               <span className="copy-receipt-excerpt">{confirmation.summary?.text ?? confirmation.text}</span>

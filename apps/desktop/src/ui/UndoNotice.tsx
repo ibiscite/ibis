@@ -4,7 +4,7 @@ import { Button } from "./Button";
 import { useInterfaceMessages } from "../i18n";
 import { currentPlatform } from "../platform";
 import { registerUndo } from "./editUndo";
-import "./UndoNotice.css";
+import "./NoticeDock.css";
 
 function noticeText(value: string) {
   const letters = [...value.replace(/\s+/gu, " ")].filter((letter) => {
@@ -58,11 +58,11 @@ export function UndoNotice({ message, action, onUndo, onExpire, paused = false, 
       if (node?.contains(document.activeElement)) fallbackFocusRef?.current?.focus({ preventScroll: true });
     };
   }, [fallbackFocusRef]);
-  return <div ref={notice} className="undo-notice" onPointerEnter={() => setHovered(true)} onPointerLeave={() => setHovered(false)}
+  return <div ref={notice} className="notice-band" data-offer onPointerEnter={() => setHovered(true)} onPointerLeave={() => setHovered(false)}
     onFocusCapture={() => setFocused(true)} onBlurCapture={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocused(false); }}>
     <span id={description} role={error ? "alert" : "status"}>{error ? pickerText.undoFailed : noticeText(message)}</span>
     {/* Retain native focus while waiting, so dismissal can return it to Search. */}
     {/* The message names the action; the short word keeps two notices on a small window. */}
-    <Button variant="secondary" size="small" aria-label={label} aria-describedby={description} aria-keyshortcuts={currentPlatform() === "macos" ? "Meta+Z" : "Control+Z"} isPending={pending} onPress={() => invoke.current()}>{pickerText.undo}</Button>
+    <Button variant="quiet" size="small" aria-label={label} aria-describedby={description} aria-keyshortcuts={currentPlatform() === "macos" ? "Meta+Z" : "Control+Z"} isPending={pending} onPress={() => invoke.current()}>{pickerText.undo}</Button>
   </div>;
 }
