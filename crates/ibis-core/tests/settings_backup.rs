@@ -597,3 +597,29 @@ fn a_shared_settings_file_keeps_each_systems_shortcut_apart() {
         "never a plain string another system would take as its own"
     );
 }
+
+#[test]
+fn the_project_bibliography_stays_on_its_computer() {
+    let dir = folder();
+    let path = dir.path().join("settings.json");
+    let chosen = PathBuf::from("/invented/work/thesis.bib");
+    settings::update(&path, |s| s.project_bibliography = Some(chosen.clone()))
+        .unwrap_or_else(|error| panic!("{error}"));
+    let saved = settings::load(&path).settings;
+    assert_eq!(saved.project_bibliography, Some(chosen.clone()));
+
+    let text = backup::export(&saved, "0.2.8").unwrap_or_else(|error| panic!("{error}"));
+    assert!(!text.contains("thesis.bib"), "the path never leaves in a backup");
+
+    let read = backup::parse(&text).unwrap_or_else(|error| panic!("{error}"));
+    let mut here = saved.clone();
+    here.project_bibliography = Some(PathBuf::from("/invented/other/paper.bib"));
+    let plan = backup::plan(&here, &read, |_| true);
+    assert_eq!(plan.restored.project_bibliography, here.project_bibliography);
+    assert!(
+        !plan
+            .changes
+            .iter()
+            .any(|change| change.setting == "project_bibliography")
+    );
+}
