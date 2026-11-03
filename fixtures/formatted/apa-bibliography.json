@@ -45,7 +45,8 @@
           "item": 0,
           "code": "sentence-case-expected"
         }
-      ]
+      ],
+      "language": "en-US"
     },
     "ibis": 1,
     "ok": true

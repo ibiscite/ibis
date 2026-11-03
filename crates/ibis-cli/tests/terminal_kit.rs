@@ -35,9 +35,9 @@ fn success_without_a_tty_reports_versions_capabilities_and_freshness_without_con
             .is_some_and(|values| !values.is_empty())
     );
     assert!(
-        report["capabilities"]["csl_styles"]
-            .as_array()
-            .is_some_and(|styles| styles.iter().any(|style| style["id"] == "apa"))
+        report["capabilities"]["csl_styles"]["count"]
+            .as_u64()
+            .is_some_and(|count| count > 10_000)
     );
     assert_eq!(
         report["capabilities"]["key_outputs"][0]["single_item_forms"],

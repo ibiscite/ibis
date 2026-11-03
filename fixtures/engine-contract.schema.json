@@ -322,6 +322,13 @@
             "null"
           ]
         },
+        "language": {
+          "description": "The language a formatted citation is written in, whatever the interface\nuses. Key syntaxes have none: the destination's processor decides.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "losses": {
           "type": "array",
           "items": {
@@ -555,7 +562,7 @@
           "const": "unknown-style"
         },
         {
-          "description": "The requested locale is not available; only en-US is for now.",
+          "description": "The requested locale is not bundled; `styles` lists the locales.",
           "type": "string",
           "const": "unknown-locale"
         },

@@ -97,11 +97,45 @@ pub struct SearchResult {
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct StylesResult {
     pub styles: Vec<StyleInfo>,
+    /// How many styles match the request, beyond this page.
+    pub total: usize,
+    /// Every language a style can be written in.
+    pub locales: Vec<LocaleInfo>,
+    /// Styles change only with an Ibis release; these say which release.
+    pub styles_release: UpstreamRelease,
+    pub locales_release: UpstreamRelease,
 }
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct StyleInfo {
     pub id: String,
     pub title: String,
+    /// The style's own last-changed date: its only version marker.
+    pub updated: String,
+    /// One of the styles offered first.
+    pub curated: bool,
+    /// The independent style whose rules this one uses.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent: Option<String>,
+    /// The language this style is written in unless a request names another.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_locale: Option<String>,
+    /// CSL's citation format, such as `author-date`, `numeric` or `note`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub format: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub fields: Vec<String>,
+}
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct LocaleInfo {
+    pub tag: String,
+    pub native: String,
+    pub english: String,
+}
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct UpstreamRelease {
+    pub repo: String,
+    pub tag: String,
+    pub commit: String,
 }
 #[derive(Debug)]
 pub struct DispatchResult {
@@ -499,10 +533,7 @@ impl Engine {
                 let result = self.cite(&request, cancel)?;
                 return self.finalize(DispatchResult::citation(result, request.items.len())?);
             }
-            Method::Styles => {
-                let _: StylesRequest = parameters(params)?;
-                value(self.styles()?)?
-            }
+            Method::Styles => value(self.styles(&parameters(params)?)?)?,
             Method::Schema => {
                 let request: SchemaRequest = parameters(params)?;
                 let methods: Vec<_> = request

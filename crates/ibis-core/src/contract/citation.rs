@@ -391,6 +391,10 @@ pub struct CitationResult {
     pub notices: Vec<Notice>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub warnings: Vec<CitationWarning>,
+    /// The language a formatted citation is written in, whatever the interface
+    /// uses. Key syntaxes have none: the destination's processor decides.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub language: Option<String>,
     /// Digest of the exact clipboard representations, including their presence.
     pub content_hash: Fingerprint,
 }
@@ -452,6 +456,7 @@ impl CitationResult {
             losses,
             notices,
             warnings: vec![],
+            language: None,
             content_hash,
         }
     }
@@ -462,6 +467,11 @@ impl CitationResult {
             .into_iter()
             .filter(|warning| self.outcomes.get(warning.item) == Some(&ItemOutcome::Rendered { item: warning.item }))
             .collect();
+        self
+    }
+
+    pub fn with_language(mut self, language: String) -> Self {
+        self.language = Some(language);
         self
     }
 

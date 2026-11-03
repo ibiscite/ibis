@@ -207,7 +207,7 @@ fn command() -> Command {
                         .long("locale")
                         .value_name("LOCALE")
                         .help_heading(OUTPUT)
-                        .help("Language for --style output; only en-US is available for now"),
+                        .help("Language for --style output, such as de-DE; default the style's own. List them with: ibis styles --locales"),
                 )
                 .arg(
                     Arg::new("locator")
@@ -243,7 +243,37 @@ fn command() -> Command {
                         .action(ArgAction::Append)
                         .help("Leave out the author of the key before it"),
                 ),
-            Method::Styles => subcommand.about("List available bundled CSL styles"),
+            Method::Styles => subcommand
+                .about("Find bundled CSL styles and citation languages")
+                .after_help("Examples:\n  ibis styles            # the common styles first\n  ibis styles nature\n  ibis styles \"gb/t 7714\"\n  ibis styles --locales")
+                .arg(
+                    Arg::new("query")
+                        .value_name("WORDS")
+                        .num_args(0..)
+                        .help("Words from a style's title or id; every word must match"),
+                )
+                .arg(
+                    Arg::new("limit")
+                        .long("limit")
+                        .value_name("N")
+                        .value_parser(clap::value_parser!(usize))
+                        .default_value("100")
+                        .help("Return at most N styles, up to 20000"),
+                )
+                .arg(
+                    Arg::new("offset")
+                        .long("offset")
+                        .value_name("N")
+                        .value_parser(clap::value_parser!(usize))
+                        .default_value("0")
+                        .help("Skip the first N styles"),
+                )
+                .arg(
+                    Arg::new("locales")
+                        .long("locales")
+                        .action(ArgAction::SetTrue)
+                        .help("List citation languages instead of styles"),
+                ),
             Method::Schema => subcommand
                 .about("Print generated method JSON schemas")
                 .arg(
@@ -889,7 +919,7 @@ fn execute<R: BufRead, W: Write + Send>(
                     Some(ErrorReason::UnknownLocale) => Failure::explained(
                         error,
                         format!(
-                            "the locale '{}' is not available yet; Ibis formats in en-US for now.",
+                            "there is no locale '{}'; list them with: ibis styles --locales",
                             human::field(args.get_one::<String>("locale").map_or("", String::as_str))
                         ),
                     ),
@@ -911,7 +941,19 @@ fn execute<R: BufRead, W: Write + Send>(
             let result = engine.finalize(DispatchResult::citation(result, keys.len())?)?;
             return Ok(Execution::Result(result, Some(citing)));
         }
-        Method::Styles => json!({}),
+        Method::Styles => {
+            let words: Vec<&str> = args
+                .get_many::<String>("query")
+                .into_iter()
+                .flatten()
+                .map(String::as_str)
+                .collect();
+            json!({
+                "query": (!words.is_empty()).then(|| words.join(" ")),
+                "limit": args.get_one::<usize>("limit").copied().unwrap_or(100),
+                "offset": args.get_one::<usize>("offset").copied().unwrap_or(0),
+            })
+        }
         Method::Schema => {
             json!({"method":args.get_one::<String>("method").map(|name|method_named(name)).transpose()?})
         }
@@ -943,7 +985,16 @@ fn execute<R: BufRead, W: Write + Send>(
             return Ok(Execution::Result(result, citing));
         }
     };
-    let result = engine.dispatch(method, &params, &cancel)?;
+    let result = explain(
+        engine.dispatch(method, &params, &cancel),
+        |EngineError { code, .. }| match code {
+            ErrorCode::BadInput if method == Method::Styles => "--limit must be between 1 and 20000.".into(),
+            code => human::code_sentence(code).into(),
+        },
+    )?;
+    if method == Method::Styles && args.get_flag("locales") && !matches.get_flag("json") {
+        return Ok(Execution::Result(human::locale_list(result), None));
+    }
     Ok(Execution::Result(
         human::with_summary(result, method, matches.get_flag("json"), libraries_open(), &names),
         None,

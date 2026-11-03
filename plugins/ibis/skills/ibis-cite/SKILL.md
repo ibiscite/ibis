@@ -38,7 +38,7 @@ If the `ibis` MCP server is connected, use its four read-only tools:
 3. `cite` with the items, in order, and either a `style` (default `apa`; ids from
    `styles`) or a key `syntax` (`pandoc`, `biblatex`, `natbib`, `latex`, `typst` or
    `keys`) that matches the document being written.
-4. `styles` lists the bundled styles.
+4. `styles` finds a style by name among every official CSL style, and lists the citation languages for `cite`'s `locale`.
 
 ## If the MCP server is unavailable
 

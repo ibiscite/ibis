@@ -1,5 +1,6 @@
 //! Formatting and cancellation stay behind the same typed engine boundary.
-use super::{Engine, StyleInfo, StylesResult, error};
+use super::{Engine, LocaleInfo, StyleInfo, StylesResult, UpstreamRelease, error};
+use crate::request::StylesRequest;
 use ibis_core::contract::*;
 use ibis_csl::{CancellationToken, FormatError};
 use std::{
@@ -84,15 +85,44 @@ impl Cancellation {
     }
 }
 impl Engine {
-    pub fn styles(&self) -> Result<StylesResult, EngineError> {
+    pub fn styles(&self, request: &StylesRequest) -> Result<StylesResult, EngineError> {
+        if !(1..=20_000).contains(&request.limit) || request.query.as_ref().is_some_and(|query| query.len() > 1024) {
+            return Err(error(ErrorCode::BadInput));
+        }
+        let page = ibis_csl::styles(request.query.as_deref().unwrap_or(""), request.limit, request.offset)
+            .map_err(formatter_error)?;
+        let release = |release: ibis_csl::Release| UpstreamRelease {
+            repo: release.repo,
+            tag: release.tag,
+            commit: release.commit,
+        };
         Ok(StylesResult {
-            styles: ibis_csl::STYLES
+            styles: page
+                .styles
                 .into_iter()
-                .map(|(id, title)| StyleInfo {
-                    id: id.into(),
-                    title: title.into(),
+                .map(|style| StyleInfo {
+                    id: style.id,
+                    title: style.title,
+                    updated: style.updated,
+                    curated: style.curated,
+                    parent: style.parent,
+                    default_locale: style.default_locale,
+                    format: style.format,
+                    fields: style.fields,
                 })
                 .collect(),
+            total: page.total,
+            locales: page
+                .locales
+                .into_iter()
+                .map(|locale| LocaleInfo {
+                    tag: locale.tag,
+                    native: locale.native,
+                    english: locale.english,
+                })
+                .collect(),
+            styles_release: release(page.styles_release),
+            locales_release: release(page.locales_release),
         })
     }
     pub(super) fn formatted(

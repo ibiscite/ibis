@@ -10,7 +10,7 @@
 //! private links or other libraries' data. Long values are cut short and every
 //! answer has a size bound. Nothing here opens a network connection.
 
-use crate::request::{ItemSelector, KeyCitationRequest, SearchRequest, ShowRequest};
+use crate::request::{ItemSelector, KeyCitationRequest, SearchRequest, ShowRequest, StylesRequest};
 use crate::{Cancellation, Engine, protocol};
 use ibis_core::citable::{citable_fields, is_variable};
 use ibis_core::contract::{
@@ -31,6 +31,8 @@ const LIST_TTL_MS: u64 = 3_600_000;
 const INSTRUCTIONS: &str = "Search the user's reference libraries and format citations. Read-only; cite items by the citation key or id that search returns.";
 /// Search results returned to an agent at most.
 pub const MAX_HITS: usize = 25;
+/// Styles one answer lists at most; the list has over ten thousand.
+pub const MAX_STYLES: usize = 200;
 /// Characters kept of any one text value.
 pub const MAX_TEXT: usize = 1_000;
 /// Entries kept of any one list (authors, keywords).
@@ -337,6 +339,7 @@ fn tools() -> Value {
                     "items": {"type": "array", "items": item, "minItems": 1},
                     "style": {"type": "string", "description": "A style id from the styles tool."},
                     "syntax": {"type": "string", "enum": SYNTAXES.map(syntax_name)},
+                    "locale": {"type": "string", "description": "The language to write a formatted citation in, from the styles tool; default the style's own."},
                     "form": {"type": "string", "enum": ["normal", "narrative", "author-only", "year-only", "full", "bibliography-only"]}
                 },
                 "required": ["items"]
@@ -345,6 +348,7 @@ fn tools() -> Value {
                 "type": "object",
                 "properties": {
                     "text": {"type": "string"},
+                    "language": {"type": "string", "description": "The language a formatted citation is written in."},
                     "notices": {"type": "array"},
                     "losses": {"type": "array"},
                     "warnings": {"type": "array"}
@@ -356,17 +360,30 @@ fn tools() -> Value {
         {
             "name": "styles",
             "title": "List citation styles",
-            "description": "List the citation styles Ibis can format.",
-            "inputSchema": {"type": "object", "properties": {}},
+            "description": "Find citation styles by name, and list the languages they can be written in. Ibis holds every official CSL style, so search by journal or style name; with no query, the common styles come first.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Words from a style's title or id."},
+                    "limit": {"type": "integer", "minimum": 1, "maximum": MAX_STYLES, "default": 25},
+                    "offset": {"type": "integer", "minimum": 0, "default": 0}
+                }
+            },
             "outputSchema": {
                 "type": "object",
                 "properties": {
                     "styles": {
                         "type": "array",
-                        "items": {"type": "object", "properties": {"id": {"type": "string"}, "title": {"type": "string"}}, "required": ["id", "title"]}
-                    }
+                        "items": {
+                            "type": "object",
+                            "properties": {"id": {"type": "string"}, "title": {"type": "string"}, "updated": {"type": "string"}},
+                            "required": ["id", "title", "updated"]
+                        }
+                    },
+                    "total": {"type": "integer", "description": "How many styles match, beyond this page."},
+                    "locales": {"type": "array"}
                 },
-                "required": ["styles"]
+                "required": ["styles", "total", "locales"]
             },
             "annotations": read_only
         }
@@ -387,9 +404,7 @@ fn call(engine: &Engine, name: &str, arguments: &Value) -> Value {
         "search" => search(engine, arguments),
         "show" => show(engine, arguments),
         "cite" => cite(engine, arguments),
-        _ => engine
-            .styles()
-            .and_then(|styles| serde_json::to_value(styles).map_err(|_| internal())),
+        _ => styles(engine, arguments),
     };
     let outcome = outcome.and_then(|data| {
         let text = data.to_string();
@@ -435,7 +450,7 @@ fn tool_error_hint(code: ErrorCode) -> &'static str {
 fn reason_hint(reason: ErrorReason) -> &'static str {
     match reason {
         ErrorReason::UnknownStyle => "No style has that id; the styles tool lists them.",
-        ErrorReason::UnknownLocale => "That locale is not available; Ibis formats in en-US for now.",
+        ErrorReason::UnknownLocale => "That locale is not available; the styles tool lists the locales.",
         ErrorReason::DuplicateKey => {
             "The library repeats this citation key, so Ibis skips every entry under it until each has its own key."
         }
@@ -450,6 +465,30 @@ fn internal() -> EngineError {
 
 fn bad_input() -> EngineError {
     EngineError::new(ErrorCode::BadInput)
+}
+
+fn styles(engine: &Engine, arguments: &Value) -> Result<Value, EngineError> {
+    let query = match arguments.get("query") {
+        None => None,
+        Some(query) => Some(query.as_str().ok_or_else(bad_input)?.to_owned()),
+    };
+    let limit = match arguments.get("limit") {
+        None => 25,
+        Some(limit) => limit
+            .as_u64()
+            .and_then(|limit| usize::try_from(limit).ok())
+            .filter(|limit| (1..=MAX_STYLES).contains(limit))
+            .ok_or_else(bad_input)?,
+    };
+    let offset = match arguments.get("offset") {
+        None => 0,
+        Some(offset) => offset
+            .as_u64()
+            .and_then(|offset| usize::try_from(offset).ok())
+            .ok_or_else(bad_input)?,
+    };
+    let page = engine.styles(&StylesRequest { query, limit, offset })?;
+    serde_json::to_value(page).map_err(|_| internal())
 }
 
 fn search(engine: &Engine, arguments: &Value) -> Result<Value, EngineError> {
@@ -534,6 +573,10 @@ fn cite(engine: &Engine, arguments: &Value) -> Result<Value, EngineError> {
         Some(form) => serde_json::from_value(form.clone()).map_err(|_| bad_input())?,
         None => CitationForm::default(),
     };
+    let locale = match arguments.get("locale") {
+        None => None,
+        Some(locale) => Some(locale.as_str().ok_or_else(bad_input)?.to_owned()),
+    };
     let cancel = Cancellation::default();
     let selectors = items.iter().map(selector).collect::<Result<Vec<_>, _>>()?;
     let result = if let Some(keys) = selectors
@@ -549,7 +592,7 @@ fn cite(engine: &Engine, arguments: &Value) -> Result<Value, EngineError> {
                 keys,
                 output,
                 form,
-                output_locale: None,
+                output_locale: locale,
             },
             &cancel,
         )?
@@ -581,7 +624,7 @@ fn cite(engine: &Engine, arguments: &Value) -> Result<Value, EngineError> {
                 keep_order: matches!(output, OutputSpec::Key { .. }),
                 output,
                 input_language: None,
-                output_locale: None,
+                output_locale: locale,
             },
             &cancel,
         )?
@@ -599,6 +642,9 @@ fn cite(engine: &Engine, arguments: &Value) -> Result<Value, EngineError> {
             });
             if !result.warnings.is_empty() {
                 answer["warnings"] = json!(result.warnings);
+            }
+            if let Some(language) = &result.language {
+                answer["language"] = json!(language);
             }
             Ok(answer)
         }

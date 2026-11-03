@@ -142,7 +142,7 @@ separate evidence.
 - **Request:** ordered items (the same reference may appear twice); a citation form (normal, narrative, author only, year only, full, bibliography only) and "keep my order"; per item a typed locator (one of the 29 CSL 1.0.2 locator terms), rich-text prefix and suffix (italic, bold, sub, superscript), author suppression, and the annotation it came from if any; an output spec or named preset; an input language for parsing typed locators and an output locale.
 - **Result:** text, HTML, RTF and a display tree; one outcome per item; typed losses; notices such as "needs the whole document"; a content hash that copy and paste must match.
 - **Key syntaxes** are pure Rust, each with a capability table (which fields and forms it carries, its escaping, a fixture checked against its own tool): Pandoc, BibLaTeX (any command, multicite), natbib, LaTeX `\cite`, Typst, org-cite, MyST, MultiMarkdown, AsciiDoc, Jupyter, Jekyll Scholar, Scannable Cite, bare keys, CSL-JSON, Better BibTeX's CAYW JSON.
-- **Formatted output:** Zotero's citeproc-js runs in embedded QuickJS (`rquickjs`) with collation from ICU4X, so the command line and the app give byte-identical output on every system. One formatter runtime runs on its own thread with a bounded FIFO queue, queued cancellation and running cancellation through QuickJS's interrupt handler. Memory and time limits bound each request, including its queue wait; the runtime is restarted after an interruption. Any official style and locale. Before formatting, Ibis applies Zotero's own data conversions (Extra fields, creators, dates, URL stripping for printed articles with pages); differential fixtures compare the result with pinned Zotero output. The formatter and AI agents then get only `ibis_core::citable` fields: note field overrides become fields, and notes, annotations and private links are dropped.
+- **Formatted output:** Zotero's citeproc-js runs in embedded QuickJS (`rquickjs`) with collation from ICU4X, so the command line and the app give byte-identical output on every system. One formatter runtime runs on its own thread with a bounded FIFO queue, queued cancellation and running cancellation through QuickJS's interrupt handler. Memory and time limits bound each request, including its queue wait; the runtime is restarted after an interruption. Every official style and locale ships in the binary as one compressed bundle pinned to an upstream release; a request unpacks only what it names, a dependent style runs its parent's rules in its own default language, and rules come from what a style declares, never from its name. A result states the language it is written in; the interface language has no say in it. Before formatting, Ibis applies Zotero's own data conversions (Extra fields, creators, dates, URL stripping for printed articles with pages); differential fixtures compare the result with pinned Zotero output. The formatter and AI agents then get only `ibis_core::citable` fields: note field overrides become fields, and notes, annotations and private links are dropped.
 - **What a citation cannot know:** selected items (or even the whole library) cannot establish a document's numbering, year suffixes or ibid. Numeric styles give the reference entry with a notice (today's fallback), note styles give the full first note, and 2020a/2020b suffixes are withheld with a notice. Byte-identical output across front ends is necessary, not sufficient: correctness is checked against Zotero.
 
 A result may report partial outcomes for inspection, but clipboard clients must
@@ -212,7 +212,7 @@ on raw item data; #1197 integrates both providers, and #1200 gates full parity.
 Advanced mixed citation editing remains in 0.4; unsupported intents are refused
 explicitly rather than approximated. The 0.2 release still requires all sources and the picker. Engine `cite` routes
 `OutputSpec::Csl` to the shared bounded formatter on the same immutable snapshot;
-`styles` lists the five offline styles. Human CLI citation/bibliography options,
+`styles` pages through every bundled style. Human CLI citation/bibliography options,
 canonical JSON requests and stdio use those same results. RPC cancellation reaches
 the formatter task, and exhaustion remains a typed resource-limit error.
 
@@ -224,6 +224,26 @@ the formatter task, and exhaustion remains a typed resource-limit error.
 - **`ibis schema`** prints the JSON Schema of every method (generated with `schemars`); TypeScript types for the app are generated from it. `ibis call <method>` reaches any method from a shell.
 - **Bounds and invalidation:** request JSON is at most 1 MiB and request IDs at most 1,024 UTF-8 bytes. Results share a 16 MiB response budget with 8 KiB reserved for ID/envelope overhead; oversized results return `resource-limit` (exit 5). Requests execute in order on one worker behind an eight-request queue; a long request delays later requests on the same connection. Running and queued requests can be cancelled. Array frames receive a single Invalid Request error (`-32600`, `id: null`). Library notifications are bounded wake-ups; subscribers read current library state after a wake. Refresh failures retain the prior snapshot and report its last successful update time plus a fixed error code.
 - **Golden cases** (a new `cases` folder in `fixtures`: library, request, exact expected result) are replayed through every front end that exposes the method and must match byte for byte.
+
+### Cost of every style (#19)
+
+All 10,870 styles and 63 locales are one 3.04 MB file in the binary (62 MB
+unpacked), in 1 MiB zstd blocks, so a request unpacks at most about 1.3 MiB. A
+release `ibis` grows from 11.9 to 14.2 MB stripped, and the app by the same 2.3 MB.
+The bundle is read from disk only when used, so an idle or hidden app that formats
+nothing pays nothing. Measured on the same machine, alternating fresh processes
+(2026-11-02, release, under other load): a one-shot citation peaks at 29 MiB
+against 17 MiB, nearly all of it released when the style is unpacked; a long-lived
+process holds 37 to 43 MiB after its first citation against 28 MiB, and up to 75 MiB
+when cycling through styles on every request against 44 MiB. That is well inside
+the 200 MiB hidden limit. First citation (113 to 153 ms against 113 to 192 ms), warm
+citation in one style (p95 12 to 26 ms against 18 to 38 ms) and a change of style
+(p50 about 90 ms) match the five-style build within noise. Only the last style
+used stays unpacked.
+
+Weekly, `style_sweep` renders six invented records in every style. On this
+snapshot none fails: 10,676 render everything and 194 refuse something with a
+typed reason, mostly because a style has no bibliography.
 
 ### Large-library measurement (#1251)
 

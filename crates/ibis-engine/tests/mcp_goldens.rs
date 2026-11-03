@@ -63,6 +63,9 @@ fn golden_cases_replay_through_mcp() {
                 if !data.warnings.is_empty() {
                     expected["warnings"] = json!(data.warnings);
                 }
+                if let Some(language) = &data.language {
+                    expected["language"] = json!(language);
+                }
                 assert_eq!(answer["structuredContent"], expected, "{}", case.name);
                 let text: Value = serde_json::from_str(answer["content"][0]["text"].as_str().unwrap()).unwrap();
                 assert_eq!(text, expected, "{}: text response", case.name);

@@ -368,7 +368,15 @@ fn libraries_name_the_file_people_gave() -> Result<(), Box<dyn std::error::Error
     assert_eq!(code, 0);
     assert_eq!(text, format!("1 library\n{}\t4 items\n", path.display()));
     let (_, text, _) = run(engine()?, &["ibis", "styles"])?;
-    assert!(text.lines().any(|line| line == "apa\tAPA (7th edition)"), "{text}");
+    assert!(
+        text.lines().any(|line| line.starts_with("apa\tAPA (7th edition)\t2")),
+        "{text}"
+    );
+    assert!(text.ends_with("narrow it with: ibis styles WORDS\n"), "{text}");
+    let (_, text, _) = run(engine()?, &["ibis", "styles", "--locales"])?;
+    assert!(text.lines().any(|line| line == "de-DE\tGerman (Germany)"), "{text}");
+    let (_, text, _) = run(engine()?, &["ibis", "styles", "invented", "nothing"])?;
+    assert_eq!(text, "No style matches those words.\n");
     Ok(())
 }
 

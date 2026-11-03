@@ -14,7 +14,6 @@
     }
     throw Error("citation formatting failed");
   };
-  const styles = new Map(__ibisStyles);
   const engines = new Map();
   let activeItems = new Map();
   const dateAsSortKey = CSL.dateAsSortKey;
@@ -270,8 +269,7 @@
   };
   const oneLine = (text) => text.replace(/\s*\n\s*/g, " ").trim();
   const wrapRtf = (text, bibliography) => `{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Times New Roman;}}\\f0\n${bibliography ? text.split("\n").join("\\par\n") : text}\n}`;
-  globalThis.__ibisFormat = (request) => {
-    let xml = styles.get(request.style).replace(/disambiguate-add-year-suffix="true"/g, 'disambiguate-add-year-suffix="false"');
+  globalThis.__ibisFormat = (request, source) => {
     const converted = processorItems(request);
     if (!converted) return JSON.stringify({ status: "refused" });
     activeItems = new Map(converted.map((item) => [item.id, item]));
@@ -280,6 +278,7 @@
     if (!engine) {
       // Keep one warm style, rather than eight independent item registries.
       engines.clear();
+      let xml = source.replace(/disambiguate-add-year-suffix="true"/g, 'disambiguate-add-year-suffix="false"');
       if (request.numeric) {
         const tree = CSL.parseXml(xml);
         const macros = new Map(tree.children.filter((node) => node.name === "macro").map((node) => [node.attrs.name, node]));
@@ -315,7 +314,7 @@
         }
         xml = tree;
       }
-      engine = new CSL.Engine({ retrieveLocale: () => __ibisLocale, retrieveItem: (id) => activeItems.get(id), uppercase_subtitles: request.style === "apa" }, xml, request.locale ?? undefined, request.locale !== null);
+      engine = new CSL.Engine({ retrieveLocale: __ibisLocaleXml, retrieveItem: (id) => activeItems.get(id), uppercase_subtitles: request.sentence_titles }, xml, request.locale ?? undefined, request.locale !== null);
       engine.opt.development_extensions.throw_on_empty = true;
       if (request.keep_order) engine.citation_sort.tokens = [];
       engines.set(key, engine);
@@ -336,6 +335,10 @@
         observation = capture;
         let output;
         if (request.bibliography) {
+          // The processor creates its nested-bracket flipper only while writing a
+          // citation, then leaves it for the bibliography. Without this, a note
+          // style's entries depend on what this engine last cited: "(2026]".
+          engine.output.checkNestedBrace = undefined;
           const bibliography = engine.makeBibliography();
           if (!bibliography || bibliography[0].bibliography_errors.length) throw unverified;
           if (format === "text") outputs.text_parts = bibliography[1];
@@ -372,9 +375,11 @@
         outputs[format] = format === "rtf" ? wrapRtf(output, request.bibliography) : output;
       }
     } catch (error) {
-      if (error !== unverified) throw error;
       // A partially evaluated engine must never be reused after a refusal.
       engines.delete(key);
+      // A style the processor cannot run on this record refuses it, like any
+      // citation Ibis cannot verify. Resource limits still surface as themselves.
+      if (error !== unverified && !(error instanceof TypeError)) throw error;
       return JSON.stringify({ status: "refused" });
     } finally {
       observation = null;
