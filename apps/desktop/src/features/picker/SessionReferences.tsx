@@ -36,7 +36,8 @@ export function SessionReferencesDialog({ api, style, onClose }: { api: Api; sty
   // or the next key would act on the picker behind it.
   // biome-ignore lint/correctness/useExhaustiveDependencies: each new answer can remove the focused control.
   useLayoutEffect(() => {
-    if (!dialog.current?.contains(document.activeElement)) dialog.current?.focus();
+    const focused = document.activeElement;
+    if (!dialog.current?.contains(focused) || (focused as HTMLButtonElement).disabled) dialog.current?.focus();
   }, [view, bibliography]);
 
   const show = useCallback((next: SessionReferencesView) => {

@@ -237,18 +237,22 @@ impl FileLibrary {
         if items.is_empty() {
             return Ok(None);
         }
-        let (citation, whole) = self.bibliography_of(items.clone(), style)?;
-        let (citation, left_out) = if whole {
+        let first = self.bibliography_of(items.clone(), style);
+        let (citation, left_out) = if let Ok((citation, true)) = first {
             (citation, vec![])
         } else {
             let mut kept = vec![];
             let mut left_out = vec![];
             for item in items {
-                if self.bibliography_of(vec![item.clone()], style)?.1 {
+                // Refused, or a failure only this record causes.
+                if matches!(self.bibliography_of(vec![item.clone()], style), Ok((_, true))) {
                     kept.push(item);
                 } else {
                     left_out.extend(session_label(&snapshot, &item.item));
                 }
+            }
+            if kept.is_empty() {
+                return Err(format!("This style can't write these references: {}.", left_out.join(", ")).into());
             }
             let (citation, whole) = self.bibliography_of(kept, style)?;
             if !whole {
@@ -272,7 +276,11 @@ impl FileLibrary {
         Ok(self
             .prepare_session_bibliography(ids, style)?
             .map(|(citation, left_out)| {
-                let warnings = citation_warnings_named(&citation);
+                // Formatted numbers do not follow the list, so each is named here.
+                let warnings = citation_warnings_named(&citation)
+                    .into_iter()
+                    .map(|warning| named_reference(&citation, warning))
+                    .collect();
                 let result = citation.into_result();
                 SessionBibliography {
                     text: result.text,
@@ -989,6 +997,21 @@ fn native_source(info: &ibis_engine::LibraryInfo) -> String {
     }
 }
 
+/// "Reference 2: …" as the reference it means.
+fn named_reference(citation: &PreparedCitation, warning: String) -> String {
+    let Some((number, detail)) = warning
+        .strip_prefix("Reference ")
+        .and_then(|rest| rest.split_once(": "))
+    else {
+        return warning;
+    };
+    number
+        .parse::<usize>()
+        .ok()
+        .and_then(|number| citation.item_label(number.checked_sub(1)?))
+        .map_or_else(|| warning.clone(), |name| format!("{name}: {detail}"))
+}
+
 fn session_label(snapshot: &Snapshot, id: &ItemRef) -> Option<String> {
     let LibraryObject::Record(record) = &snapshot.get(id)?.object else {
         return None;
@@ -1020,7 +1043,6 @@ fn citation_warnings_named(citation: &PreparedCitation) -> Vec<String> {
                 .losses
                 .iter()
                 .filter_map(|loss| loss.item)
-                .chain(citation.result().warnings.iter().map(|warning| warning.item))
                 .find_map(|item| {
                     warning
                         .starts_with(&format!("Reference {}:", item + 1))

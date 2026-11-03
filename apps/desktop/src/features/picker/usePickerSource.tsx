@@ -23,13 +23,13 @@ export function usePickerSource({ api, pickerSession, libraryState, menus, resul
 }) {
   const { session, state, cancelCopy } = pickerSession;
   const { library, libraryChoices, chooserRequest, setChoosingLibrary, refreshSnapshot } = libraryState;
-  const { input, closeMenu, setKeysOpen, restoreChooserFocus, runFromMenu, focusPicker } = menus;
+  const { input, closeMenu, setKeysOpen, setSessionOpen, restoreChooserFocus, runFromMenu, focusPicker } = menus;
   const { active, selected } = state;
   const { chooseLibrary, onLibraryFileDropped } = api;
   const sourceItem = !libraryChoices ? results[active]?.id ?? (selected.size === 1 ? [...selected.values()][0]?.id : null) ?? null : null;
   const sourceOpen = useSourceOpen(api, library, state.visibility, sourceItem, false, refreshSnapshot);
   const chooseSources = () => {
-    cancelCopy(); closeMenu(false); setKeysOpen(false);
+    cancelCopy(); closeMenu(false); setKeysOpen(false); setSessionOpen(false);
     restoreChooserFocus.current = false;
     chooserRequest.current = {};
     setChoosingLibrary(true);
@@ -70,6 +70,7 @@ export function usePickerSource({ api, pickerSession, libraryState, menus, resul
     cancelCopy();
     closeMenu(false);
     setKeysOpen(false);
+    setSessionOpen(false);
     focusPicker();
     if (missingSource && !appOnly) { chooseFile(); return; }
     if (sourceOpen.failure && !sourceOpen.failure.changed && !appOnly) {

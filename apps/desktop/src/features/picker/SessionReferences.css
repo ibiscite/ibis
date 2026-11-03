@@ -1,6 +1,6 @@
 .session-dialog.ui-sheet { display: flex; flex-direction: column; }
 .session-body { flex: 0 1 auto; min-height: 0; overflow-y: auto; overflow-wrap: anywhere; }
-.session-body:focus-visible { outline: var(--focus-ring, 2px solid var(--accent)); outline-offset: calc(-1 * var(--space-1)); }
+.session-body:focus-visible { outline: var(--ring-width) solid var(--ring); outline-offset: calc(-1 * var(--ring-width)); }
 .session-body p { margin: var(--space-2) 0; }
 .session-note { color: var(--text-secondary); }
 .session-heading { margin: var(--space-3) 0 var(--space-1); font: inherit; font-weight: 600; }

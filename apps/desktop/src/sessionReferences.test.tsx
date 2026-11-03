@@ -175,6 +175,14 @@ test("hiding the picker closes the sheet, and opening it again reads the list af
   expect(reads).toBe(2);
 });
 
+test("opening the source with its shortcut closes the sheet instead of acting behind it", async () => {
+  backend({ session_references: () => list(), session_bibliography: () => formatted("text") });
+  const dialog = await open();
+  await within(dialog).findByText("text");
+  fireEvent.keyDown(dialog, { key: "o", ctrlKey: true });
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+});
+
 test("a read that fails says so, and closing and reopening reads the list again", async () => {
   let fail = true, reads = 0;
   backend({

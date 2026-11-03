@@ -309,10 +309,11 @@ pub(crate) async fn export_session_bibliography(
         return Ok(None);
     };
     let path = chosen.into_path().map_err(|_| CommandError::from(NOT_SAVED))?;
-    let path = if path.extension().is_some() {
-        path
+    // The dialog asked about the name it returned, not one Ibis completes.
+    let (path, replace) = if path.extension().is_some() {
+        (path, true)
     } else {
-        path.with_extension("rtf")
+        (path.with_extension("rtf"), false)
     };
     let shown = path
         .file_name()
@@ -325,8 +326,13 @@ pub(crate) async fn export_session_bibliography(
         let text = file.commit_session_bibliography(&items, style, &content_hash, |content| {
             export_text(extension, &content).ok_or_else(|| "Save it as .rtf, .html or .txt.".to_owned())
         })?;
-        // The system dialog already asked before replacing a file.
-        ibis_core::settings::backup::save(&path, &text, true).map_err(|_| CommandError::from(NOT_SAVED))
+        ibis_core::settings::backup::save(&path, &text, replace).map_err(|error| {
+            CommandError::from(if error.kind() == std::io::ErrorKind::AlreadyExists {
+                "A file with that name is already there. Choose another name."
+            } else {
+                NOT_SAVED
+            })
+        })
     })
     .await
     .map_err(|_| CommandError::from(NOT_SAVED))??;
@@ -571,6 +577,31 @@ mod bibliography_tests {
             written.ok().as_deref(),
             Some(bibliography.text.as_str()),
             "what was shown is what is copied"
+        );
+    }
+
+    #[test]
+    fn a_list_the_style_cannot_write_at_all_says_which_references() {
+        let (_dir, file, ids) =
+            opened("@book{others2026,title={Synthetic signals},author={Taylor, Avery and others},year={2026}}\n");
+        match file.session_bibliography(&ids, CitationStyle::Apa) {
+            Err(CommandError::Failed { message }) => assert!(message.contains("others2026"), "{message}"),
+            _ => panic!("a refusal that names the reference"),
+        }
+    }
+
+    #[test]
+    fn a_warning_names_its_reference_in_the_sheet() {
+        let (_dir, file, ids) =
+            opened("@book{taylor2026,title={Synthetic Signals In Title Case},author={Taylor, Avery},year={2026}}\n");
+        let bibliography = shown(&file, &ids);
+        assert!(
+            bibliography
+                .warnings
+                .iter()
+                .any(|warning| warning.starts_with("taylor2026: ")),
+            "{:?}",
+            bibliography.warnings
         );
     }
 
