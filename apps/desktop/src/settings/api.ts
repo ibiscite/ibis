@@ -14,6 +14,7 @@ export const settingsApi = {
   windowSize: commands.windowSize,
   setWindowSize: commands.setWindowSize,
   forgetAppOutputs: commands.forgetAppOutputs,
+  restoreAppOutputs: commands.restoreAppOutputs,
   loginItem: commands.loginItem,
   setLoginItem: commands.setLoginItem,
   updateChecks: commands.updateChecks,
@@ -27,6 +28,10 @@ export const settingsApi = {
   shortcutStatus: commands.shortcutStatus,
   setShortcut: commands.setShortcut,
   configureShortcuts: commands.configureShortcuts,
+  backUpSettings: commands.backUpSettings,
+  chooseSettingsBackup: commands.chooseSettingsBackup,
+  restoreSettingsBackup: commands.restoreSettingsBackup,
+  cancelSettingsRestore: commands.cancelSettingsRestore,
   onShortcutStatus: (handler: (status: ShortcutStatus) => void): Promise<UnlistenFn> => listen<ShortcutStatus>("shortcut:status", (event) => handler(event.payload)),
   version: getVersion,
   /** Settings is asked to show a page, such as the paste guide after a refused paste. */

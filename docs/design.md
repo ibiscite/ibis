@@ -37,6 +37,7 @@ Anything not listed follows Apple. A new departure is added here in the same cha
 | In-window menus | `NSMenu` | Ibis's own, matching native metrics; menu bar, tray and right-click stay native |
 | Window size | Content decides | One steady size while open [C10] |
 | Key caps | Shortcuts only in menus | Caps in the footer and key lists |
+| Focus ring | A translucent keyboard focus colour | Solid accent text, so it keeps 3:1 on every surface |
 
 ## Foundations
 
@@ -55,11 +56,12 @@ Anything not listed follows Apple. A new departure is added here in the same cha
 - **Labels** [D5]: `--text`, `--text-secondary`, `--text-tertiary` (placeholders and resting glyphs, never sentences), `--text-disabled`; Apple's label ladder at AppKit alphas.
 - **Fills**: Apple's fill ladder `--fill-1` … `--fill-5`. Control rest, hover and pressed are tertiary, secondary and system fill (`--fill-control` and its states); quiet hover and grouped content are quaternary.
 - **Separators**: one `--separator` for hairlines and dividers; a field edge that meets 3:1. Never a coloured border on a control. **One edge per shape**: a border, an inset shadow or an overlay's shadow ring, never two; a divider belongs to one side.
-- **Accent and selection** [D6]: every Accent choice resolves to three roles with light and dark values: `--accent` (controls, switches, focus), `--selected` with `--selected-text` (selected rows, menu highlight, focused citation; text 4.5:1, never brighter in dark than light) and accent text on surfaces (4.5:1, also the progress ring). Follow the Mac reads the same roles from the system: on macOS `--selected` is WebKit's selection background, deeper than the accent and following it; accent text is the accent moved toward black or white only as far as 4.5:1 needs. The default button is `--accent` with `--text-on-accent`, or the deeper `--selected` where white on the accent would miss 4.5:1 (Apple's blue stays as measured); it keeps one text colour through hover and press. Hover and pressed selection darken toward black.
-- **Focus** [D8]: `--ring`, Apple's keyboard focus indicator in the current accent, only on `:focus-visible`; solid accent with Increase Contrast.
+- **Accent and selection** [D6]: every Accent choice resolves to three roles with light and dark values: `--accent` (controls, switches, focus), `--selected` with `--selected-text` (selected rows, menu highlight, focused citation; text 4.5:1, never brighter in dark than light) and accent text on surfaces (4.5:1, also the progress ring). Follow the Mac reads the same roles from the system: on macOS `--selected` is WebKit's selection background, deeper than the accent and following it; accent text is the accent moved toward black or white only as far as 4.5:1 needs. The default button is `--accent` with `--text-on-accent`, or the deeper `--selected` where white on the accent would miss 4.5:1 (Apple's blue and red stay as measured; a Mac accent goes deeper below 4:1); it keeps one text colour through hover and press. Hover and press darken toward black; Ibis scarlet in dark, with dark ink, lightens toward white. Secondary text on a selection stays at full `--selected-text`; weight and size carry the hierarchy.
+- **Focus** [D8]: `--ring`, solid accent text, only on `:focus-visible`; the system ink with Increase Contrast.
 - **Status** [D10]: `--status-ok`, `--status-warning`, `--status-error`, the Mac's system hues. A dot or symbol, optionally on a wash; status words stay in a label colour.
 - **The one Ibis red** [D9]: `--scarlet` is the flat mark colour for the search-bar mark, the shelf beak, the added tile and the logo; it is never recoloured for a material. `--on-scarlet` is what sits on a scarlet fill. On a selected row the added tile becomes `--selected-text` with a scarlet check.
 - **Ibis scarlet as accent:** offered in Look after a divider; it pairs dark ink in dark mode so white never vanishes into the brighter scarlet.
+- **Light and dark** come from one `color-scheme` on the root, in every window; `light-dark()` roles have no value without it.
 - **Contrast:** text, placeholders and key-cap labels 4.5:1 against rendered pixels on every material and wallpaper (#774); focus rings, meaningful icons and only-cue boundaries 3:1. Apple's own label, placeholder and status values stay as measured where they fall short; Increase Contrast supplies the stronger set.
 
 ### Materials and layers
@@ -112,7 +114,7 @@ Anything not listed follows Apple. A new departure is added here in the same cha
 
 - One cap per shortcut, written as menus write it: ⌘K, ⇧⌘F, ↵ on macOS; Ctrl+K on Windows and Linux (`ui/KeyCaps`).
 - Caps appear only in the footer and in key lists. Menus write shortcuts as plain trailing text in native order (⇧⌘C) [C8].
-- A cap is `--fill-control` with `--r-key`, label type, never an outline or scarlet. Inside a quiet button it keeps its fill; on the primary it is a darker veil (`--on-fill-p`). A trailing cap in a small button is concentric: `--key-gap` above, below and at the end. A one-symbol cap (↵) is square, and ↵ is lowered .1em so it sits optically centred.
+- A cap is `--fill-control` with `--r-key`, label type, never an outline or scarlet. Inside a quiet button it keeps its fill; on the primary it is the pressed fill. A trailing cap in a small button is concentric: `--key-gap` above, below and at the end. A one-symbol cap (↵) is square, and ↵ is lowered .1em so it sits optically centred.
 - "or" alternatives keep two caps. Decorative caps are hidden from screen readers; `aria-keyshortcuts` names the keys.
 
 ### Motion
@@ -237,7 +239,7 @@ Built in `ibis-core` so every front end shares them (#1204).
 | Starting, first run | "Checking library…", "No library chosen" |
 | Loaded | "Zotero · 1,204 references" or "thesis.bib · 1,204 references" |
 | Changed while open | "… · updated 2 minutes ago" (only when references changed) |
-| Reloading | "… · reloading…", count kept |
+| Reloading | "… · reloading…", count kept; rows and the citation stay until it ends |
 | Problem, old copy kept | "Zotero not updated · 2 h", then one fix button ("Open Zotero", "Find thesis.bib…") |
 
 - Counts include bibliographic records only. Background work shows a small progress ring before the words.
@@ -349,6 +351,8 @@ Never call the destination a password field. The right paste key is shown per sy
 **Permissions.** A guide in Settings › General › Pasting says why in one sentence, names the system's list in its current words, shows a picture of the switch, opens the pane with one button, notices the change by itself and confirms in words. Mac auto-paste needs PostEvent and Accessibility; Settings says allowed only after both read back. The Ibis icon beside **Open System Settings** can be dragged into the list ("If Ibis is not in the list, drag it there."). Granting never replays a paste: return to the document, open Ibis again and press Enter.
 
 **General.** **Open at Login** is off until turned on and read from the system, never `settings.json`. **Show in Menu Bar** is planned (on by default; off, opening Ibis from Applications opens Settings). The menu bar icon is a one-colour bird from `brand/` opening a menu: Open Ibis, the library line, Reset Window Position, Settings…, Check for Updates…, Quit Ibis.
+
+**Another computer.** Settings › General ends with **Back Up Settings** (Back Up…, a save dialog that starts in iCloud Drive on macOS, OneDrive on Windows, otherwise Documents) and **Restore Settings** (Restore…). A chosen backup is checked whole, then the row lists every change as "Setting: before → after" with notes (a bibliography not on this computer, a shortcut kept for this system), **Cancel** and the primary **Restore and Restart**. Nothing changes before that button; a bibliography shows by its file name only. Refusals say why in one line and change nothing ([moving to a new computer](moving-to-a-new-computer.md)).
 
 **About.** A centred hero with the actual app icon, the name, a **Version x** button that copies it (⌥ shows and copies the full build), and the mission line; then Updates (automatic checks, Check now), links and the free-software note. It fits 920 × 560 without scrolling. Automatic update offers never show or focus the picker; they wait for empty, idle input, and **Later** is the default for every key (decision 0019).
 

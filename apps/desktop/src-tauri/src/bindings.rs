@@ -3,6 +3,8 @@
 pub(crate) fn commands() -> tauri_specta::Builder<tauri::Wry> {
     tauri_specta::Builder::new()
         .typ::<crate::preferences::PreferenceChange>()
+        .typ::<crate::settings_backup::BackupProblem>()
+        .typ::<crate::settings_backup::RestorePreview>()
         .commands(tauri_specta::collect_commands![
             crate::library::commands::choose_library,
             crate::library::commands::reload_library,
@@ -28,6 +30,7 @@ pub(crate) fn commands() -> tauri_specta::Builder<tauri::Wry> {
             crate::destination::picker_destination,
             crate::destination::remember_app_output,
             crate::destination::forget_app_outputs,
+            crate::destination::restore_app_outputs,
             crate::login_item::login_item,
             crate::login_item::set_login_item,
             crate::picker::hide_picker::<tauri::Wry>,
@@ -49,6 +52,10 @@ pub(crate) fn commands() -> tauri_specta::Builder<tauri::Wry> {
             crate::updater::update_picker_activity,
             crate::settings_window::open_settings,
             crate::settings_window::finish_paste_guide,
+            crate::settings_backup::back_up_settings,
+            crate::settings_backup::choose_settings_backup,
+            crate::settings_backup::restore_settings_backup,
+            crate::settings_backup::cancel_settings_restore,
             crate::paste::permission::paste_permission,
             crate::paste::permission::open_paste_permission,
             crate::paste::permission::drag_paste_app,
@@ -85,6 +92,7 @@ mod tests {
         "window_size",
         "set_window_size",
         "forget_app_outputs",
+        "restore_app_outputs",
         "login_item",
         "set_login_item",
         "update_checks",
@@ -98,11 +106,16 @@ mod tests {
         "shortcut_status",
         "set_shortcut",
         "configure_shortcuts",
+        "back_up_settings",
+        "choose_settings_backup",
+        "restore_settings_backup",
+        "cancel_settings_restore",
     ];
 
     /// Only Settings asks about paste permission, changes the global shortcut
     /// or chooses a window size.
     const SETTINGS_ONLY: &[&str] = &[
+        "restore_app_outputs",
         "open_about_link",
         "window_size",
         "set_window_size",
@@ -112,6 +125,10 @@ mod tests {
         "finish_paste_guide",
         "set_shortcut",
         "configure_shortcuts",
+        "back_up_settings",
+        "choose_settings_backup",
+        "restore_settings_backup",
+        "cancel_settings_restore",
     ];
 
     fn destination() -> PathBuf {

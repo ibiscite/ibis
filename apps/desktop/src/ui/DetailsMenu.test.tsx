@@ -3,7 +3,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { useRef, useState } from "react";
 import type { SearchResult } from "../api";
 import { CitationShelf } from "../features/picker/CitationShelf";
-import { DetailsMenu } from "./DetailsMenu";
+import { DetailsMenu, stableAnchor } from "./DetailsMenu";
 
 afterEach(async () => {
   cleanup();
@@ -279,4 +279,12 @@ test("folding the originating segment preserves the edit and Escape returns to t
   expect(page.value).toBe("12");
   fireEvent.keyDown(page, { key: "Escape" });
   await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "Selected references" })));
+});
+
+test("a segment's menu anchors to the shelf, so typing a page never moves it", () => {
+  const shelf = document.createElement("section"), segment = document.createElement("button");
+  shelf.className = "shelf-output"; shelf.append(segment);
+  expect(stableAnchor(segment)).toBe(shelf);
+  const elsewhere = document.createElement("button");
+  expect(stableAnchor(elsewhere)).toBe(elsewhere);
 });

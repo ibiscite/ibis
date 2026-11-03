@@ -1,7 +1,7 @@
 @import "./tokens.css";
 @import "./nativeAppearance.css";
 
-:root { color-scheme: light dark; font-synthesis: none; font-family: var(--font); color: var(--text); background: var(--surface); }
+:root { font-synthesis: none; font-family: var(--font); color: var(--text); background: var(--surface); }
 
 * { box-sizing: border-box; }
 body { margin: 0; overflow: hidden; }

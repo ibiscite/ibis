@@ -85,7 +85,7 @@ export function useCitationOutput({ chosen, library, libraryVersion, sessionId =
     })), keyFormat ?? "pandoc", style, chosenRevision, abort.signal).then((result) => ({ markup: result.html ? parse(result.html) : [result.text], text: result.text, html: result.html ?? "", warnings: result.warnings, spans: result.spans, preview: result, fileTicket: result.ticket, fileHash: result.content_hash }));
     made
       .then((result) => { if (owns()) setFormatted({ key, request, preview: result.preview, result: result.preview.problem ? "failed" : result, problem: result.preview.problem ?? undefined }); })
-      .catch((error) => { if (owns()) {
+      .catch((error) => { if (owns() && !nativeApi.isLibraryLoading(error)) {
         const stale = nativeApi.isSnapshotChanged(error);
         const shared = nativeApi.sharedCitationKey(error);
         const failure = typeof error === "object" && error !== null ? error as { code?: unknown; message?: unknown } : null;

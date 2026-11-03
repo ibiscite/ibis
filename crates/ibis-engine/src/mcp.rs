@@ -537,7 +537,7 @@ fn cite(engine: &Engine, arguments: &Value) -> Result<Value, EngineError> {
         Some(app) => {
             let app = app.as_str().filter(|app| !app.is_empty()).ok_or_else(bad_input)?;
             let style = arguments.get("style").and_then(Value::as_str).unwrap_or("apa");
-            Some(destination(app, System::running(), &output, style))
+            Some(destination(app, System::HERE, &output, style))
         }
         None => None,
     };

@@ -1,5 +1,5 @@
 // Which Zotero libraries a search covers, and the group names shown for them.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type * as nativeApi from "../../api";
 import type { LibraryStatus, ZoteroGroup, ZoteroLibrary } from "../../api";
 import { pickerText } from "../../messages";
@@ -22,13 +22,23 @@ export function useZoteroScope({ library, libraryVersion, menuOpen, nothingMatch
   const [groups, setGroups] = useState<ZoteroGroup[] | null>(null);
   // A choice sent but not yet reported back, so a second toggle builds on it.
   const [pendingLibraries, setPendingLibraries] = useState<ZoteroLibrary[] | null>(null);
+  // Only the newest choice for this source may clear the pending one or report.
+  const choice = useRef(0);
   const reportedLibraries = library?.zotero_libraries ?? [];
   const sameChoice = (a: ZoteroLibrary[], b: ZoteroLibrary[]) =>
-    a.length === b.length && a.every((choice, i) => sameLibrary(choice, b[i]!));
+    a.length === b.length && a.every((option, i) => sameLibrary(option, b[i]!));
   // biome-ignore lint/correctness/useExhaustiveDependencies: library is the trigger: a new status report settles the pending choice.
   useEffect(() => {
     if (pendingLibraries && sameChoice(pendingLibraries, reportedLibraries)) setPendingLibraries(null);
   }, [library]);
+  // Every opening advances the source generation, so only leaving Zotero
+  // retires a choice; an older opening's report must not clear a newer one.
+  const zotero = Boolean(library?.zotero);
+  useEffect(() => {
+    if (zotero) return;
+    choice.current += 1;
+    setPendingLibraries(null);
+  }, [zotero]);
   const chosenLibraries = pendingLibraries ?? reportedLibraries;
   const severalLibraries = chosenLibraries.length > 1;
   const wantGroups = Boolean(zoteroGroups && library?.zotero && (menuOpen || severalLibraries || nothingMatched));
@@ -44,30 +54,30 @@ export function useZoteroScope({ library, libraryVersion, menuOpen, nothingMatch
       .catch(() => { if (current && menuOpen) report("zoteroGroups"); });
     return () => { current = false; };
   }, [wantGroups, menuOpen, libraryVersion]);
-  const isChosen = (choice: ZoteroLibrary) => chosenLibraries.some((chosen) => sameLibrary(chosen, choice));
-  const toggleLibrary = (choice: ZoteroLibrary) => {
-    if (!chooseZoteroLibraries) return;
-    const next = isChosen(choice)
-      ? chosenLibraries.filter((chosen) => !sameLibrary(chosen, choice))
-      : [...chosenLibraries, choice];
-    if (next.length === 0) return;
+  const choose = (next: ZoteroLibrary[]) => {
+    const operation = ++choice.current;
+    const current = () => operation === choice.current;
     setPendingLibraries(next);
-    void perform("zotero", () => chooseZoteroLibraries(next).catch((error: unknown) => {
-      setPendingLibraries(null);
+    void perform("zotero", () => chooseZoteroLibraries!(next).catch((error: unknown) => {
+      if (current()) setPendingLibraries(null);
       throw error;
-    }));
+    }), current);
+  };
+  const isChosen = (option: ZoteroLibrary) => chosenLibraries.some((chosen) => sameLibrary(chosen, option));
+  const toggleLibrary = (option: ZoteroLibrary) => {
+    if (!chooseZoteroLibraries) return;
+    const next = isChosen(option)
+      ? chosenLibraries.filter((chosen) => !sameLibrary(chosen, option))
+      : [...chosenLibraries, option];
+    if (next.length === 0) return;
+    choose(next);
   };
   // Every Zotero library on offer, once the group list is known.
   const allLibraries = (): ZoteroLibrary[] => ["user", ...offeredGroups.map((group) => ({ group }))];
   const searchAllLibraries = () => {
     if (!chooseZoteroLibraries) return;
-    const all = allLibraries();
-    setPendingLibraries(all);
     focusSearch();
-    void perform("zotero", () => chooseZoteroLibraries(all).catch((error: unknown) => {
-      setPendingLibraries(null);
-      throw error;
-    }));
+    choose(allLibraries());
   };
   const groupName = (id: number) => groups?.find((group) => group.id === id)?.name ?? pickerText.groupLibrary(id);
   // Every group Zotero lists, plus chosen groups it no longer lists, so they can be turned off.
@@ -77,6 +87,6 @@ export function useZoteroScope({ library, libraryVersion, menuOpen, nothingMatch
   const libraryOf = (source: string) =>
     source === "zotero:user" ? pickerText.myLibrary
       : source.startsWith("zotero:group:") ? groupName(Number(source.slice("zotero:group:".length))) : null;
-  const narrowed = Boolean(library?.zotero && chooseZoteroLibraries && groups) && allLibraries().some((choice) => !isChosen(choice));
+  const narrowed = Boolean(library?.zotero && chooseZoteroLibraries && groups) && allLibraries().some((option) => !isChosen(option));
   return { chosenLibraries, severalLibraries, isChosen, toggleLibrary, searchAllLibraries, groupName, offeredGroups, libraryOf, narrowed };
 }

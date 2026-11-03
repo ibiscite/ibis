@@ -104,8 +104,14 @@ test("accent text stays the accent's own colour, moved only as far as contrast n
   expect(darkRed).toBeLessThan(.6);
 });
 
-test("the focus ring follows the Mac's accent", () => {
-  expect(css).toMatch(/--ring: color-mix\(in srgb, var\(--accent\) 50%, transparent\);/);
+test("an accent too pale for white fills the primary with the deeper selection pair", () => {
+  expect(css).toMatch(/:root\[data-native-accent-deep="true"\]\[data-system="macos"\]:not\(\.notice-window\) \{\s*--primary: var\(--selected\); --text-on-accent: var\(--selected-text\);/);
+  for (const [rgb, deep] of [[[0, 122 / 255, 1], false], [[.878, .22, .243], false], [[.969, .31, .62], true], [[.549, .549, .549], true], [[1, .776, 0], true]] as const) {
+    setNativeAccent(rgb);
+    expect(root.hasAttribute("data-native-accent-deep")).toBe(deep);
+  }
+  setNativeAccent(null);
+  expect(root.hasAttribute("data-native-accent-deep")).toBe(false);
 });
 
 test("a primary button keeps one readable foreground through hover and press", () => {

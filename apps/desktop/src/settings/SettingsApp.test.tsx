@@ -152,7 +152,12 @@ function fakeApi(permission: Partial<PastePermission> = {}, preferences: Partial
     onWindowSaved: vi.fn(async (handler: (saved: boolean) => void) => { state.windowSaved = handler; return () => undefined; }),
     preferenceRevision: async () => ++state.revision,
     setPickerPreferences: commit,
-    forgetAppOutputs: async () => null,
+    forgetAppOutputs: async () => 7,
+    restoreAppOutputs: async () => null,
+    backUpSettings: vi.fn(async () => null),
+    chooseSettingsBackup: vi.fn(async () => null),
+    restoreSettingsBackup: vi.fn(async () => null),
+    cancelSettingsRestore: vi.fn(async () => null),
     loginItem: async () => ({ name: "Ibis Nightly", enabled: state.login, problem: null }),
     setLoginItem: async (enabled) => { state.login = enabled; return { name: "Ibis Nightly", enabled, problem: null }; },
     updateChecks: async () => state.updates,
@@ -720,7 +725,7 @@ test("picker choices save at once, in order, keeping the others", async () => {
 
 test.each(["success", "failure", "later edit"])("closing drains both queued choices (%s)", async (outcome) => {
   const { api, state, commit } = fakeApi({ granted: true });
-  const first = deferred<null>(), second = deferred<null>();
+  const first = deferred<number>(), second = deferred<null>();
   const save = vi.spyOn(api, "setPickerPreferences").mockImplementationOnce(async (next) => { await first.promise; return commit(next); }).mockImplementationOnce(async (next) => { await second.promise; return commit(next); });
   const read = vi.spyOn(api, "pickerPreferences");
   render(<SettingsApp api={api} initialPage="look" />);
@@ -732,7 +737,7 @@ test.each(["success", "failure", "later edit"])("closing drains both queued choi
   if (outcome === "later edit") fireEvent.click(screen.getByRole("radio", { name: "Larger" }));
   await act(async () => { await Promise.resolve(); });
   expect(closed).not.toHaveBeenCalled();
-  await act(async () => { if (outcome === "failure") first.reject(); else first.resolve(null); });
+  await act(async () => { if (outcome === "failure") first.reject(); else first.resolve(7); });
   expect(save).toHaveBeenNthCalledWith(2, outcome === "failure" ? { density: "spacious" } : { larger_text: true }, null, outcome === "failure" ? 1 : 2);
   expect(read).toHaveBeenCalledOnce();
   expect(closed).not.toHaveBeenCalled();
@@ -1386,7 +1391,7 @@ test("the Ibis default-format menu saves key or style, restores refusals, and re
 test.each([false, true])("Citations forgets formats with row-local refusal, retry and brief confirmation (pseudo %s)", async (pseudolocale) => {
   const { api, state } = fakeApi({}, { citation_style: "apa" });
   const messages = createInterfaceMessages(english, pseudolocale);
-  const refused = deferred<null>();
+  const refused = deferred<number>();
   const forget = vi.spyOn(api, "forgetAppOutputs").mockReturnValueOnce(refused.promise);
   const view = () => <InterfaceMessagesProvider messages={messages}><SettingsApp api={api} initialPage="citations" /></InterfaceMessagesProvider>;
   const mounted = render(view());
@@ -1409,7 +1414,7 @@ test.each([false, true])("Citations forgets formats with row-local refusal, retr
   await act(async () => state.closes.at(-1)!());
   expect(forget).toHaveBeenCalledTimes(2);
   expect(row.queryByRole("alert")).toBeNull();
-  expect(row.getByRole("status")).toHaveProperty("textContent", messages.text("citations-forget-done"));
+  expect(screen.getByText(messages.text("citations-forget-done"))).toBeTruthy();
   expect(state.preferences.citation_style).toBe("apa");
   expect(state.patches).toEqual([]);
   await act(async () => vi.advanceTimersByTime(4000));
@@ -1423,7 +1428,7 @@ test.each([false, true])("Citations forgets formats with row-local refusal, retr
 
 test.each(["success", "failed I/O"])("closing waits for a reset, and its late %s cannot replace a reopened row's refusal", async (outcome) => {
   const { api, state } = fakeApi();
-  const old = deferred<null>();
+  const old = deferred<number>();
   vi.spyOn(api, "forgetAppOutputs").mockReturnValueOnce(old.promise).mockRejectedValueOnce(new Error("synthetic I/O failure"));
   const mounted = render(<SettingsApp api={api} initialPage="citations" />);
   fireEvent.click(screen.getByRole("button", { name: "Forget formats" }));
@@ -1436,7 +1441,7 @@ test.each(["success", "failed I/O"])("closing waits for a reset, and its late %s
   fireEvent.click(screen.getByRole("button", { name: "Forget formats" }));
   const problem = await screen.findByRole("alert");
   expect(problem).toHaveProperty("textContent", "Ibis could not forget formats for apps. Try again.");
-  await act(async () => { if (outcome === "success") old.resolve(null); else old.reject(); await closing; });
+  await act(async () => { if (outcome === "success") old.resolve(7); else old.reject(); await closing; });
   expect(closed).toHaveBeenCalledOnce();
   expect(problem).toHaveProperty("textContent", "Ibis could not forget formats for apps. Try again.");
   expect(screen.queryByRole("status")).toBeNull();
@@ -1615,6 +1620,82 @@ test("version-copy failure stays visible under the version when the update-setti
   expect(version.nextElementSibling).toBe(failure);
   expect(failure.getAttribute("role")).toBe("alert");
   expect(screen.getByText("Ibis could not read your settings; reopen Settings to try again.")).toBeTruthy();
+});
+
+test("Check now says it is checking until the same check ends, across pages", async () => {
+  const { api } = fakeApi();
+  let finish!: () => void;
+  const check = vi.spyOn(api, "checkForUpdates").mockImplementation(() => new Promise<never>((resolve) => { finish = resolve as () => void; }));
+  render(<SettingsApp api={api} initialPage="about" />);
+  fireEvent.click(await screen.findByRole("button", { name: "Check now" }));
+  const busy = await screen.findByRole("button", { name: "Checking…" });
+  expect(busy.getAttribute("aria-disabled")).toBe("true");
+  expect(screen.getAllByRole("status").some((status) => status.textContent === "Checking…")).toBe(true);
+  fireEvent.click(busy);
+  expect(check).toHaveBeenCalledOnce();
+  fireEvent.click(screen.getByRole("option", { name: "General" }));
+  fireEvent.click(await screen.findByRole("option", { name: "About Ibis" }));
+  expect(await screen.findByRole("button", { name: "Checking…" })).toBeTruthy();
+  await act(async () => { finish(); });
+  expect(await screen.findByRole("button", { name: "Check now" })).toBeTruthy();
+});
+
+test.each([
+  ["newest", "You have the newest version."],
+  ["not_run", "Ibis is already checking, or an update is waiting for your answer."],
+] as const)("Check now says %s in the Updates row, without a dialog", async (result, said) => {
+  const { api } = fakeApi();
+  vi.spyOn(api, "checkForUpdates").mockResolvedValue(result);
+  render(<SettingsApp api={api} initialPage="about" />);
+  fireEvent.click(await screen.findByRole("button", { name: "Check now" }));
+  await screen.findByRole("button", { name: "Check now" });
+  expect(await screen.findByText(said, { selector: ":not(.visually-hidden)" })).toBeTruthy();
+});
+
+test("a check that ends on another page says its result back on About", async () => {
+  const { api } = fakeApi();
+  let finish!: (result: "newest") => void;
+  vi.spyOn(api, "checkForUpdates").mockImplementation(() => new Promise<never>((resolve) => { finish = resolve as never; }));
+  render(<SettingsApp api={api} initialPage="about" />);
+  fireEvent.click(await screen.findByRole("button", { name: "Check now" }));
+  fireEvent.click(await screen.findByRole("option", { name: "General" }));
+  await act(async () => { finish("newest"); });
+  fireEvent.click(await screen.findByRole("option", { name: "About Ibis" }));
+  expect(await screen.findByText("You have the newest version.", { selector: ":not(.visually-hidden)" })).toBeTruthy();
+});
+
+test("Forget formats offers Undo, and Undo restores that same ticket", async () => {
+  const { api } = fakeApi({}, { citation_style: "apa" });
+  const restore = vi.spyOn(api, "restoreAppOutputs");
+  render(<SettingsApp api={api} initialPage="citations" />);
+  fireEvent.click(await screen.findByRole("button", { name: "Forget formats" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Undo Forget Formats" }));
+  await waitFor(() => expect(restore).toHaveBeenCalledWith(7));
+  await waitFor(() => expect(screen.queryByRole("button", { name: "Undo Forget Formats" })).toBeNull());
+});
+
+test("a failed Undo stays offered so it can be tried again", async () => {
+  const { api } = fakeApi({}, { citation_style: "apa" });
+  vi.spyOn(api, "restoreAppOutputs").mockRejectedValueOnce(new Error("synthetic I/O failure"));
+  render(<SettingsApp api={api} initialPage="citations" />);
+  fireEvent.click(await screen.findByRole("button", { name: "Forget formats" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Undo Forget Formats" }));
+  await screen.findByRole("alert");
+  expect(screen.getByRole("button", { name: "Undo Forget Formats" })).toBeTruthy();
+});
+
+test("a failed permission read replaces an old Allowed with an honest answer", async () => {
+  const { api } = fakeApi();
+  const read = vi.spyOn(api, "pastePermission").mockResolvedValue({ pastes: true, needed: true, granted: true, list: "Accessibility" });
+  render(<SettingsApp api={api} initialPage="general" />);
+  await screen.findByText("Allowed in Privacy & Security › Accessibility");
+  read.mockRejectedValue(new Error("synthetic I/O failure"));
+  await act(async () => { window.dispatchEvent(new Event("focus")); });
+  expect(await screen.findByText("Ibis could not read this permission, so pasting stays off until it can.")).toBeTruthy();
+  expect(screen.queryByText("Allowed in Privacy & Security › Accessibility")).toBeNull();
+  read.mockResolvedValue({ pastes: true, needed: true, granted: true, list: "Accessibility" });
+  await act(async () => { window.dispatchEvent(new Event("focus")); });
+  expect(await screen.findByText("Allowed in Privacy & Security › Accessibility")).toBeTruthy();
 });
 
 test("manual update-check failure and retry leave the known automatic setting intact", async () => {

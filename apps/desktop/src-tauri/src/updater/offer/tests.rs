@@ -65,14 +65,6 @@ impl OfferUi for tauri::test::MockRuntime {
             .push(menu_label(available));
     }
 
-    fn tell(app: &AppHandle<Self>, text: &str) {
-        app.state::<NativePicker>()
-            .notices
-            .lock()
-            .unwrap_or_else(|e| panic!("{e}"))
-            .push(text.into());
-    }
-
     fn dialog_closed(parent: &tauri::WebviewWindow<Self>, generation: u64) {
         parent
             .state::<NativePicker>()

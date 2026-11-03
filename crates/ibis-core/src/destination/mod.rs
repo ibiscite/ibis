@@ -25,7 +25,7 @@ pub enum OutputQuestion {
 }
 
 /// The operating system an app ID belongs to.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum System {
     Macos,
@@ -34,16 +34,14 @@ pub enum System {
 }
 
 impl System {
-    /// The system this program is running on.
-    pub const fn running() -> Self {
-        if cfg!(target_os = "macos") {
-            Self::Macos
-        } else if cfg!(target_os = "windows") {
-            Self::Windows
-        } else {
-            Self::Linux
-        }
-    }
+    /// The system this build runs on; other Unix desktops count as Linux.
+    pub const HERE: Self = if cfg!(target_os = "macos") {
+        Self::Macos
+    } else if cfg!(windows) {
+        Self::Windows
+    } else {
+        Self::Linux
+    };
 }
 
 /// An app as the platform names it: a bundle ID on macOS, an executable name

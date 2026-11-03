@@ -35,18 +35,19 @@ test("recents are ordinary rows in one keyboard list; choosing one resolves it a
   expect(copies[0]).toEqual([{ id: c.id, cite: c.cite, locator: null }]);
 });
 
-test("Compact requests and renders only Cited here recently", async () => {
+test.each(["compact", "comfortable", "spacious"])("%s requests and renders the same recent groups", async (density) => {
   seed();
   const requests: unknown[] = [];
   backend({ picker_destination: destination,
-    picker_preferences: () => ({ citation_style: null, density: "compact", larger_text: false, show_paste_preview: true }),
-    recent_references: (args) => { requests.push(args.includeAdded); return [{ ...a, recent: "cited" }]; },
+    picker_preferences: () => ({ citation_style: null, density, larger_text: false, show_paste_preview: true }),
+    recent_references: (args) => { requests.push(args.includeAdded); return [{ ...a, recent: "cited" }, { ...b, recent: "added" }]; },
   });
   render(<App />);
   await screen.findByRole("heading", { name: "Cited here recently" });
-  await waitFor(() => expect(document.documentElement.dataset.density).toBe("compact"));
-  expect(requests.at(-1)).toBe(false);
-  expect(screen.queryByRole("heading", { name: "Recently added" })).toBeNull();
+  await screen.findByRole("heading", { name: "Recently added" });
+  await waitFor(() => expect(document.documentElement.dataset.density).toBe(density));
+  expect(requests.at(-1)).toBe(true);
+  expect(screen.getAllByRole("option").map((row) => row.textContent?.slice(0, 8))).toEqual([expect.stringContaining("Recent A"), expect.stringContaining("Recent B")]);
 });
 
 test("Forget Recent Citations clears durable history and an old receipt cannot repopulate it on reopen", async () => {

@@ -11,7 +11,7 @@ use std::sync::mpsc::{self, Receiver, Sender};
 
 use tauri::{AppHandle, Emitter, Manager};
 
-use super::{Updates, available, check_now, tell};
+use super::{Updates, available, check, tell};
 use crate::diagnostics::{NativeIssue, report};
 use crate::preferences::SettingsFile;
 
@@ -177,12 +177,15 @@ pub(crate) fn set_update_checks(app: AppHandle, enabled: bool) {
     }
 }
 
-/// "Check for Updates…": the same check the tray starts.
+/// Settings' "Check now": the tray's check, ending with its result, which
+/// Settings shows in place. An update found still opens the offer.
 #[tauri::command]
 #[specta::specta]
-pub(crate) async fn check_for_updates(app: AppHandle) {
+pub(crate) async fn check_for_updates(app: AppHandle) -> super::CheckResult {
     if available(&app) {
-        check_now(&app);
+        check(&app, true).await
+    } else {
+        super::CheckResult::NotRun
     }
 }
 

@@ -86,7 +86,9 @@ export const commands = {
 	/**  Remember output and an optional delivery choice; both absent reset this app to Automatic. */
 	rememberAppOutput: (appId: string, output: ({ key: KeyFormat }) & { style?: never } | ({ style: CitationStyle }) & { key?: never } | null, paste: "paste" | "copy-only" | null, identity: string | null) => __TAURI_INVOKE<null>("remember_app_output", { appId, output, paste, identity }),
 	/**  Forget output and delivery choices for every app. */
-	forgetAppOutputs: () => __TAURI_INVOKE<null>("forget_app_outputs"),
+	forgetAppOutputs: () => __TAURI_INVOKE<number>("forget_app_outputs"),
+	/**  Bring back what Forget removed, while its Undo is offered. */
+	restoreAppOutputs: (ticket: number) => __TAURI_INVOKE<null>("restore_app_outputs", { ticket }),
 	/**  Whether Ibis starts when the person logs in, read from the system now. */
 	loginItem: () => __TAURI_INVOKE<LoginItem>("login_item"),
 	/**  Start Ibis when the person logs in, or stop doing so. */
@@ -150,8 +152,11 @@ export const commands = {
 	 *  thread and is queued in click order with the tray's clicks.
 	 */
 	setUpdateChecks: (enabled: boolean) => __TAURI_INVOKE<void>("set_update_checks", { enabled }),
-	/**  "Check for Updates…": the same check the tray starts. */
-	checkForUpdates: () => __TAURI_INVOKE<void>("check_for_updates"),
+	/**
+	 *  Settings' "Check now": the tray's check, ending with its result, which
+	 *  Settings shows in place. An update found still opens the offer.
+	 */
+	checkForUpdates: () => __TAURI_INVOKE<CheckResult>("check_for_updates"),
 	openAboutLink: (link: AboutLink) => __TAURI_INVOKE<void>("open_about_link", { link }),
 	/**  Whether an automatic check found an update that has not been presented. */
 	updateAvailable: () => __TAURI_INVOKE<boolean>("update_available"),
@@ -169,6 +174,27 @@ export const commands = {
 	 *  the picker again. Granting permission never captures a target or retries Enter.
 	 */
 	finishPasteGuide: () => __TAURI_INVOKE<boolean>("finish_paste_guide"),
+	/**  Ask where to save a backup and write it there. `None` when cancelled. */
+	backUpSettings: () => __TAURI_INVOKE<string | null>("back_up_settings"),
+	/**
+	 *  Ask for a backup, check it whole and say what restoring it would change.
+	 *  `None` when cancelled. Nothing changes yet.
+	 */
+	chooseSettingsBackup: () => __TAURI_INVOKE<{
+	/**  Names this preview; only the latest one can be restored. */
+	ticket: number,
+	made_on: BackupSystem,
+	made_by: string,
+	changes: RestoreChange[],
+	notes: RestoreNote[],
+} | null>("choose_settings_backup"),
+	/**
+	 *  Restore the previewed backup, then restart so every part of Ibis starts
+	 *  from the restored settings. The replaced settings become `settings.json.bak`.
+	 */
+	restoreSettingsBackup: (ticket: number) => __TAURI_INVOKE<null>("restore_settings_backup", { ticket }),
+	/**  Forget the previewed restore. */
+	cancelSettingsRestore: (ticket: number) => __TAURI_INVOKE<null>("cancel_settings_restore", { ticket }),
 	/**  Whether Ibis may paste now. Read each time: the person can change it at any moment. */
 	pastePermission: () => __TAURI_INVOKE<PastePermission>("paste_permission"),
 	/**  On an explicit user action, repair only missing grants and open the pane. */
@@ -212,6 +238,24 @@ export type AppPaste = "paste" | "copy-only";
 /**  Settings owns these choices until the picker consumes the same event fields. */
 export type Appearance = "system" | "light" | "dark";
 
+/**  Why a backup or restore did not happen; the Settings window words it. */
+export type BackupProblem = "not-downloaded" | "unreadable" | "not-a-backup" | "settings-file" | "newer" | "invalid" |
+/**  This computer's settings are damaged, from a newer Ibis or unreadable. */
+"settings-unusable" |
+/**  The settings changed, or another backup was chosen, after the preview. */
+"changed" | "not-saved";
+
+export type BackupSystem = "macos" | "windows" | "linux";
+
+/**  How a check ended. Whoever asked says so in its own place. */
+export type CheckResult =
+/**  Nothing newer exists. */
+"newest" |
+/**  A newer version is presented, or waits for the picker. */
+"offered" |
+/**  No check ran: automatic checks are off, or one holds the updater. */
+"not_run" | "failed";
+
 export type CitationSpan = CitationSpan_Serialize | CitationSpan_Deserialize;
 
 export type CitationSpan_Deserialize = {
@@ -239,6 +283,8 @@ export type CommandError =
  *  library; search again and choose again.
  */
 { code: "snapshot_changed" } |
+/**  The library is being read; ask again when it has opened. */
+{ code: "library_loading" } |
 /**  Another loaded record has this citation key, so citing by key would be ambiguous. */
 { code: "shared_citation_key"; key: string } |
 /**  Anything else, with fixed text for the user. */
@@ -732,6 +778,28 @@ export type ReferenceDetails = {
 };
 
 export type ReferenceForm = "normal" | "narrative" | "year-only";
+
+/**
+ *  One setting a restore changes. Values are as the settings file writes
+ *  them, as text; `None` is the default. A bibliography is its file name only.
+ */
+export type RestoreChange = {
+	setting: string,
+	from: string | null,
+	to: string | null,
+};
+
+export type RestoreNote = "library-not-found" | "shortcut-kept" | "repairs-settings";
+
+/**  What restoring the chosen backup would change, before anything does. */
+export type RestorePreview = {
+	/**  Names this preview; only the latest one can be restored. */
+	ticket: number,
+	made_on: BackupSystem,
+	made_by: string,
+	changes: RestoreChange[],
+	notes: RestoreNote[],
+};
 
 export type RowAction = "copy" | "toggle";
 

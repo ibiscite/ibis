@@ -90,7 +90,6 @@ pub(super) trait OfferUi: tauri::Runtime {
     fn reveal_picker(app: &AppHandle<Self>);
     fn refresh(app: &AppHandle<Self>);
     fn availability_changed(app: &AppHandle<Self>, available: bool);
-    fn tell(app: &AppHandle<Self>, text: &str);
     /// The offer dialog closed and its lease is released: hide the picker if
     /// focus is now elsewhere, as the suppressed blur would have.
     fn dialog_closed(parent: &tauri::WebviewWindow<Self>, generation: u64);
@@ -133,10 +132,6 @@ impl OfferUi for tauri::Wry {
         if let Some(item) = app.try_state::<UpdateMenuItem>() {
             report(item.0.set_text(menu_label(available)), NativeIssue::Window);
         }
-    }
-
-    fn tell(app: &AppHandle<Self>, text: &str) {
-        tell(app, text);
     }
 
     fn dialog_closed(parent: &tauri::WebviewWindow<Self>, generation: u64) {
@@ -211,25 +206,32 @@ fn publish_available<R: OfferUi>(app: &AppHandle<R>, available: bool) {
     }
 }
 
+/// How a check ended. Whoever asked says so in its own place.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, specta::Type)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum CheckResult {
+    /// Nothing newer exists.
+    Newest,
+    /// A newer version is presented, or waits for the picker.
+    Offered,
+    /// No check ran: automatic checks are off, or one holds the updater.
+    NotRun,
+    Failed,
+}
+
 pub(super) async fn check<R: OfferUi>(
     app: &AppHandle<R>,
     asked: bool,
     found: impl std::future::Future<Output = Result<Option<Candidate>, &'static str>>,
-) {
+) -> CheckResult {
     let updates = app.state::<Updates>();
     // Re-read after scheduling too: the saved opt-out may have changed since
     // a focus event or periodic worker requested this automatic check.
     if !asked && !updates.automatic.load(Ordering::SeqCst) {
-        return;
+        return CheckResult::NotRun;
     }
     let Some(busy) = updates.begin() else {
-        if asked {
-            R::tell(
-                app,
-                "Ibis is already checking for updates, or an update is waiting for your answer.",
-            );
-        }
-        return;
+        return CheckResult::NotRun;
     };
     match found.await {
         Ok(Some(candidate)) => {
@@ -239,22 +241,14 @@ pub(super) async fn check<R: OfferUi>(
             } else {
                 publish_available(app, false);
             }
+            CheckResult::Offered
         }
         Ok(None) => {
             publish_available(app, false);
-            if asked {
-                R::tell(
-                    app,
-                    &format!("You have the newest version, {}.", app.package_info().version),
-                );
-            }
+            CheckResult::Newest
         }
-        Err(_) if asked => R::tell(
-            app,
-            "Ibis could not check for updates. Check your internet connection and try again later.",
-        ),
         // Keep the availability signal, but never fall back to old metadata.
-        Err(_) => {}
+        Err(_) => CheckResult::Failed,
     }
 }
 

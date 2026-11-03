@@ -12,6 +12,7 @@ mod app_libraries;
 mod completions;
 mod doctor;
 mod human;
+mod settings_backup;
 mod toggle;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -25,9 +26,9 @@ const OUTPUT: &str = "Output";
 const PER_KEY: &str = "Per key";
 const ROOT_HELP: &str = "\
 Examples:
-  ibis search \"garcia 2021\" --file refs.bib
-  ibis cite garcia2021 --file refs.bib --style apa
-  ibis search memory --zotero --json
+  ibis search lantern --file refs.bib
+  ibis cite vale2024lanterns --file refs.bib --style apa
+  ibis search lantern --zotero --json
 
 Add --json to any command for one versioned JSON envelope on stdout (serve and
 mcp speak their own protocols instead). Messages go to stderr. Exit codes: 0 ok, 1 findings, 2 usage, 3 bad input, 4 not found,
@@ -95,7 +96,7 @@ fn command() -> Command {
             Method::Libraries => subcommand.about("List loaded libraries and source warnings"),
             Method::Search => subcommand
                 .about("Search loaded records")
-                .after_help("Examples:\n  ibis search \"garcia 2021\" --file refs.bib\n  ibis search memory --file refs.bib --json | jq '.data.hits[].item.object.data.csl.title'")
+                .after_help("Examples:\n  ibis search lantern --file refs.bib\n  ibis search lantern --file refs.bib --json | jq '.data.hits[].item.object.data.csl.title'")
                 .arg(
                     Arg::new("query")
                         .value_name("WORDS")
@@ -129,11 +130,11 @@ fn command() -> Command {
                 .about("Render a citation through the shared engine")
                 .after_help(
                     "Options after a key apply to that key, as in the picker:\n  \
-                     ibis cite smith2020 --locator \"p. 12\" --prefix see jones2019 --omit-author\n\n\
+                     ibis cite vale2024lanterns --locator \"p. 12\" --prefix see fen2023clouds --omit-author\n\n\
                      Examples:\n  \
-                     ibis cite smith2020 --file refs.bib --format autocite\n  \
-                     ibis cite smith2020 --file refs.bib --style apa --bibliography\n  \
-                     ibis cite smith2020 --file refs.bib --for-app com.microsoft.Word\n  \
+                     ibis cite vale2024lanterns --file refs.bib --format autocite\n  \
+                     ibis cite vale2024lanterns --file refs.bib --style apa --bibliography\n  \
+                     ibis cite vale2024lanterns --file refs.bib --for-app com.microsoft.Word\n  \
                      ibis schema cite   # the CitationRequest that --request reads",
                 )
                 .arg(
@@ -321,6 +322,7 @@ fn command() -> Command {
                         .help("Check a chosen Ibis settings file without repairing it or loading its libraries"),
                 ),
         )
+        .subcommand(settings_backup::command())
         .subcommand(
             Command::new("completions")
                 .about("Generate shell completions from the CLI commands")
@@ -605,6 +607,9 @@ fn execute<R: BufRead, W: Write + Send>(
     if name == "doctor" {
         return Ok(Execution::Result(doctor::run(engine, matches, mode)?, None));
     }
+    if name == "settings" {
+        return Ok(Execution::Result(settings_backup::run(args)?, None));
+    }
     if name == "completions" {
         let shell = args
             .get_one::<String>("shell")
@@ -840,7 +845,7 @@ fn execute<R: BufRead, W: Write + Send>(
             };
             let destination = args.get_one::<String>("for-app").map(|app| {
                 let style = args.get_one::<String>("style").map_or("apa", String::as_str);
-                destination(app, System::running(), &output, style)
+                destination(app, System::HERE, &output, style)
             });
             let output = destination
                 .as_ref()

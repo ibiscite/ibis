@@ -9,7 +9,7 @@ const storage = { getItem: (key: string) => window.localStorage.getItem(key), se
  * known "on" records; a known "off" forgets, so turning it back on starts empty.
  * Every saved "off" forgets as it arrives, even when a quick "on" follows it
  * before the picker reads the settings again. */
-export function useRecentReferences(recentReferences: typeof nativeApi.recentReferences | undefined, app: string | null, compact: boolean, copy: SessionState["recentCopy"], opening: number, enabled: boolean | null = true,
+export function useRecentReferences(recentReferences: typeof nativeApi.recentReferences | undefined, app: string | null, copy: SessionState["recentCopy"], opening: number, enabled: boolean | null = true,
   onPreferencesChanged?: typeof nativeApi.onPreferencesChanged) {
   const [history, setHistory] = useState(() => readHistory(storage));
   const latest = useRef(history);
@@ -30,7 +30,7 @@ export function useRecentReferences(recentReferences: typeof nativeApi.recentRef
   // A receipt doesn't replace rows under a kept-open picker. Read the newest
   // identities on the next empty search/opening; forgetting refreshes now.
   // biome-ignore lint/correctness/useExhaustiveDependencies: opening and forgotten refresh the empty search while latest supplies its immutable request input.
-  const load = useCallback(() => recentReferences!(recentIds(latest.current, app), !compact && latest.current.length > 0), [recentReferences, app, compact, opening, forgotten]);
+  const load = useCallback(() => recentReferences!(recentIds(latest.current, app), latest.current.length > 0), [recentReferences, app, opening, forgotten]);
   const forget = useCallback(() => {
     setHistory([]);
     latest.current = [];
@@ -49,5 +49,6 @@ export function useRecentReferences(recentReferences: typeof nativeApi.recentRef
     });
     return () => { void stop.then((unlisten) => unlisten()).catch(() => undefined); };
   }, [onPreferencesChanged, forget]);
-  return { load: recentReferences ? load : undefined, forget: enabled !== false && (history.length || forgetFailed) ? forget : null };
+  // A failed clear stays offered, even with Recent citations turned off.
+  return { load: recentReferences ? load : undefined, forget: forgetFailed || enabled !== false && history.length ? forget : null, forgetFailed };
 }
