@@ -3,7 +3,7 @@
 use crate::{ParsedLibrary, SourceError, SourceWarning, WarningCode};
 use ibis_core::contract::{CitationKey, CitationKeySource, ItemRef, LibraryId, Record};
 use serde_json::Value;
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 pub(crate) fn load_str(library: &LibraryId, text: &str) -> Result<ParsedLibrary, SourceError> {
     use serde_json::value::RawValue;
@@ -43,7 +43,9 @@ pub(crate) fn load_str(library: &LibraryId, text: &str) -> Result<ParsedLibrary,
     let nonempty = !items.is_empty();
     let spans = item_spans(text);
     let mut result = ParsedLibrary::default();
-    let mut seen = HashSet::new();
+    // Each `id` with the line of its first record, and those seen again.
+    let mut seen = HashMap::<String, Option<usize>>::new();
+    let mut repeated = HashSet::new();
     for (index, raw) in items.into_iter().take(crate::MAX_LIBRARY_RECORDS).enumerate() {
         let warnings_before = result.warnings.len();
         let line = spans.get(index).map(|(_, _, line)| *line);
@@ -78,11 +80,17 @@ pub(crate) fn load_str(library: &LibraryId, text: &str) -> Result<ParsedLibrary,
         if fields.contains_key("citation-key") && explicit.is_none() {
             result.warnings.push(warning(WarningCode::Field));
         }
-        let Some(key) = explicit.clone().or_else(|| id.clone()) else {
+        // A record's `id` names it inside this file; only `citation-key` is a key.
+        // A number too large to stay exact can stand in only beside a real key.
+        let native = id.or_else(|| {
+            explicit
+                .as_ref()
+                .map(|key| numeric_native.unwrap_or_else(|| key.clone()))
+        });
+        let Some(native) = native else {
             result.warnings.push(warning(WarningCode::Syntax));
             continue;
         };
-        let native = id.as_deref().or(numeric_native.as_deref()).unwrap_or(&key);
         let kind = scalar("type");
         if native.trim().is_empty()
             || native.chars().any(char::is_control)
@@ -91,16 +99,22 @@ pub(crate) fn load_str(library: &LibraryId, text: &str) -> Result<ParsedLibrary,
             result.warnings.push(warning(WarningCode::Syntax));
             continue;
         }
-        if key.len() > 64 * 1024 || native.len() > 64 * 1024 {
+        if explicit.as_ref().is_some_and(|key| key.len() > 64 * 1024) || native.len() > 64 * 1024 {
             result.warnings.push(warning(WarningCode::WorkLimit));
             continue;
         }
-        // A repeated `id` is a repeated record, not a repeated citation key: the
-        // first stays citable, so no key is named as skipped.
-        if !seen.insert(native.to_owned()) {
-            result.warnings.push(warning(WarningCode::DuplicateKey));
+        // Ibis cannot know which record a repeated `id` means, whether written
+        // `1` or `"1"`, so none is kept. The first has its warning added below.
+        if seen.contains_key(&native) {
+            result.warnings.push(SourceWarning {
+                code: WarningCode::DuplicateKey,
+                line,
+                key: Some(native.clone()),
+            });
+            repeated.insert(format!("record:{native}"));
             continue;
         }
+        seen.insert(native.clone(), line);
         let item = ItemRef {
             library: library.clone(),
             key: format!("record:{native}"),
@@ -134,7 +148,7 @@ pub(crate) fn load_str(library: &LibraryId, text: &str) -> Result<ParsedLibrary,
         if crate::urls::remove_private_urls(&mut csl) {
             result.warnings.push(warning(WarningCode::Field));
         }
-        csl.insert("id".into(), Value::String(native.into()));
+        csl.insert("id".into(), Value::String(native));
         for (alias, canonical) in [
             ("shortTitle", "title-short"),
             ("journalAbbreviation", "container-title-short"),
@@ -147,14 +161,13 @@ pub(crate) fn load_str(library: &LibraryId, text: &str) -> Result<ParsedLibrary,
             added_at,
             id: item,
             csl,
-            citation_keys: vec![CitationKey {
-                value: key,
-                source: if explicit.is_some() {
-                    CitationKeySource::CslJsonCitationKey
-                } else {
-                    CitationKeySource::CslJsonId
-                },
-            }],
+            citation_keys: explicit
+                .map(|value| CitationKey {
+                    value,
+                    source: CitationKeySource::CslJsonCitationKey,
+                })
+                .into_iter()
+                .collect(),
             aliases: vec![],
             warnings: if result.warnings.len() == warnings_before {
                 vec![]
@@ -164,7 +177,20 @@ pub(crate) fn load_str(library: &LibraryId, text: &str) -> Result<ParsedLibrary,
             identifiers: vec![],
         });
     }
-    if nonempty && result.records.is_empty() {
+    if !repeated.is_empty() {
+        result.records.retain(|record| !repeated.contains(&record.id.key));
+        result.attachments.retain(|(item, ..)| !repeated.contains(&item.key));
+        for (native, line) in seen {
+            if repeated.contains(&format!("record:{native}")) {
+                result.warnings.push(SourceWarning {
+                    code: WarningCode::DuplicateKey,
+                    line,
+                    key: Some(native),
+                });
+            }
+        }
+    }
+    if nonempty && result.records.is_empty() && repeated.is_empty() {
         return Err(SourceError::InvalidData);
     }
     if limited {

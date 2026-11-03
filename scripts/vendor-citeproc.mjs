@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// Download the pinned citation engine, styles and locale into
-// crates/ibis-csl/vendor and check each against the SHA-256 in its
-// manifest. Run by hand when updating a pin; the app never downloads them.
+// Download the pinned citation engine into crates/ibis-csl/vendor and check it
+// against the SHA-256 in its manifest. Run by hand when updating the pin; the app
+// never downloads it. scripts/csl-bundle.mjs does the same for styles and locales.
 //
 //   node scripts/vendor-citeproc.mjs           verify and (re)write the files
 //   node scripts/vendor-citeproc.mjs --update  record new hashes for new pins

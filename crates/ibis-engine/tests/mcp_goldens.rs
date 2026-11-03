@@ -35,7 +35,11 @@ fn golden_cases_replay_through_mcp() {
                 .map(|item| item.object.clone())
                 .collect();
             engine
-                .publish_library(library, Arc::new(Snapshot::new(objects).unwrap()))
+                .publish_library(
+                    library,
+                    ibis_engine::LibraryKind::Snapshot,
+                    Arc::new(Snapshot::new(objects).unwrap()),
+                )
                 .unwrap();
         }
         let reply = mcp::handle(
@@ -65,6 +69,9 @@ fn golden_cases_replay_through_mcp() {
                 // Keep the established response shape for clean citations.
                 if !data.warnings.is_empty() {
                     expected["warnings"] = json!(data.warnings);
+                }
+                if let Some(language) = &data.language {
+                    expected["language"] = json!(language);
                 }
                 assert_eq!(answer["structuredContent"], expected, "{}", case.name);
                 let text: Value = serde_json::from_str(answer["content"][0]["text"].as_str().unwrap()).unwrap();

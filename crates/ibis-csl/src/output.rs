@@ -46,6 +46,7 @@ pub(crate) fn refused(input: &Prepared) -> CitationResult {
         input.notices.clone(),
     )
     .with_warnings(input.warnings.clone())
+    .with_language(input.language.clone())
 }
 pub(crate) fn result(
     json: &str,
@@ -94,7 +95,8 @@ pub(crate) fn result(
     let runs = parse_html(&html)?;
     if runs.iter().any(|run| unsupported_controls(&run.text))
         || !(presentation_matches(&text, &runs, superscripts)
-            || presentation_matches(&presentation, &runs, superscripts))
+            || presentation_matches(&presentation, &runs, superscripts)
+            || blocks_match(&text, &html, superscripts))
     {
         return Err(FormatError::Runtime);
     }
@@ -158,7 +160,8 @@ pub(crate) fn result(
         input.losses.clone(),
         input.notices.clone(),
     )
-    .with_warnings(input.warnings.clone()))
+    .with_warnings(input.warnings.clone())
+    .with_language(input.language.clone()))
 }
 
 /// Unicode paragraph/line separators and conventional text whitespace remain data.
@@ -215,6 +218,57 @@ fn one_line(text: &str) -> String {
     }
     result.push_str(rest);
     result.trim_matches(js_space).to_owned()
+}
+
+/// Entries laid out in blocks or margin columns are spaced by those blocks in
+/// HTML and by line breaks in text, so there the two may differ in how much
+/// whitespace separates words, never in whether it does: a block edge counts as
+/// a break, and every run of whitespace counts as one.
+fn blocks_match(text: &str, html: &str, superscripts: &BTreeMap<char, String>) -> bool {
+    const BLOCKS: [&str; 4] = ["csl-block", "csl-left-margin", "csl-right-inline", "csl-indent"];
+    if !BLOCKS
+        .iter()
+        .any(|class| html.contains(&format!("<div class=\"{class}\">")))
+    {
+        return false;
+    }
+    let mut spaced = html.replace("</div>", "</div> ");
+    for class in BLOCKS {
+        let tag = format!("<div class=\"{class}\">");
+        spaced = spaced.replace(&tag, &format!(" {tag}"));
+    }
+    let Ok(runs) = parse_html(&spaced) else {
+        return false;
+    };
+    let collapse = |text: &str, out: &mut String, last_space: &mut bool| {
+        for ch in text.chars() {
+            if js_space(ch) {
+                if !*last_space {
+                    out.push(' ');
+                }
+                *last_space = true;
+            } else {
+                out.push(ch);
+                *last_space = false;
+            }
+        }
+    };
+    let mut last_space = true;
+    let runs: Vec<_> = runs
+        .iter()
+        .map(|run| {
+            let mut text = String::new();
+            collapse(&run.text, &mut text, &mut last_space);
+            DisplayRun { text, ..run.clone() }
+        })
+        .collect();
+    let (mut flat, mut space) = (String::new(), true);
+    collapse(text, &mut flat, &mut space);
+    let mut runs = runs;
+    if let Some(last) = runs.iter_mut().rev().find(|run| !run.text.is_empty()) {
+        last.text = last.text.trim_end().to_owned();
+    }
+    presentation_matches(flat.trim_end(), &runs, superscripts)
 }
 
 /// Consume exact text, allowing only processor-known glyph presentation and
@@ -348,6 +402,8 @@ fn parse_html(html: &str) -> Result<Vec<DisplayRun>, FormatError> {
                     "sup" => style.script = Script::Superscript,
                     "sub" => style.script = Script::Subscript,
                     "span" | "span class=\"nocase\"" => {}
+                    // The processor writes `vertical-align: baseline` this way.
+                    "span style=\"baseline\"" => style.script = Script::Normal,
                     value if value.starts_with("span style=\"") && value.ends_with('"') => {
                         let css = &value[12..value.len() - 1];
                         for declaration in css.split(';').filter(|value| !value.trim().is_empty()) {
@@ -370,7 +426,11 @@ fn parse_html(html: &str) -> Result<Vec<DisplayRun>, FormatError> {
                             }
                         }
                     }
-                    "div class=\"csl-entry\"" | "div class=\"csl-block\"" | "div class=\"csl-indent\"" => {}
+                    "div class=\"csl-entry\""
+                    | "div class=\"csl-block\""
+                    | "div class=\"csl-indent\""
+                    | "div class=\"csl-left-margin\""
+                    | "div class=\"csl-right-inline\"" => {}
                     _ => return Err(FormatError::Runtime),
                 }
                 if stack.len() >= 32 {
@@ -471,6 +531,22 @@ mod tests {
         assert!(runs[0].italic);
     }
     #[test]
+    fn blocks_may_differ_from_text_in_whitespace_but_never_in_words() {
+        let html = "<div class=\"csl-entry\"><div class=\"csl-block\">Invented</div> <div class=\"csl-left-margin\">2001</div><div class=\"csl-right-inline\"> Vol. 1</div></div>";
+        let none = BTreeMap::new();
+        assert!(blocks_match("Invented 2001  Vol. 1", html, &none));
+        // A block edge is a word break: text that glues the words is refused.
+        assert!(!blocks_match("Invented2001 Vol. 1", html, &none));
+        assert!(!blocks_match("Invented 2002 Vol. 1", html, &none));
+        let flat = "<div class=\"csl-entry\">Invented 2001</div>";
+        assert!(!blocks_match("Invented  2001", flat, &none));
+    }
+    #[test]
+    fn baseline_returns_to_normal_script() {
+        let runs = parse_html("<sup>a<span style=\"baseline\">b</span></sup>").unwrap();
+        assert_eq!(runs[1].script, Script::Normal);
+    }
+    #[test]
     fn passive_style_resets_and_canonical_projection_preserve_every_display_flag() {
         let runs = parse_html("<span style=\"font-variant: small-caps;text-decoration:underline\">Caps<span style=\"font-variant:normal;text-decoration:none\">Plain</span>Tail</span>").unwrap();
         assert!(runs[0].small_caps && runs[0].underline);
@@ -488,6 +564,8 @@ mod review_tests {
     fn prepared() -> Prepared {
         Prepared {
             json: String::new(),
+            xml: "".into(),
+            language: "en-US".into(),
             outcomes: vec![ItemOutcome::Rendered { item: 0 }],
             losses: vec![],
             notices: vec![],

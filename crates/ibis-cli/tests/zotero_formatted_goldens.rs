@@ -1,12 +1,13 @@
 //! Invented Zotero items, mapped by Ibis, must format exactly as pinned Zotero
 //! code formats them (fixtures/formatted/zotero), through every front end,
 //! whether mapped directly or read from Zotero's local API.
-use ibis_core::contract::{CitationRequest, CitationResult, LibraryId, LibraryObject, Snapshot};
+use ibis_core::contract::{CitationRequest, CitationResult, LibraryObject, Snapshot};
 use ibis_engine::{
     Cancellation, Engine,
     protocol::{read_frame, write_frame},
 };
 use ibis_sources::zotero::{ZoteroItem, map_item};
+use ibis_sources::zotero_source::{Library, ZoteroSource};
 use serde_json::{Value, json};
 use std::{
     collections::BTreeSet,
@@ -45,7 +46,7 @@ fn zotero_items_match_pinned_zotero_through_engine_cli_and_framed_stdio() -> Tes
     let fixture: Value = serde_json::from_str(include_str!("../../../fixtures/formatted/zotero/expected.json"))?;
     let cases = fixture["cases"].as_array().ok_or("cases")?;
     assert_eq!(cases.len(), 10, "five styles, citation and bibliography");
-    let library = LibraryId::zotero(b"default:user");
+    let library = ZoteroSource::default().id_of(Library::User).ok_or("library id")?;
     let mut objects = vec![];
     let mut keys = vec![];
     let mut items = vec![];

@@ -67,7 +67,10 @@ line numbers. A repeated BibTeX key makes every entry under that key unavailable
 including as an inheritance parent (2026-10-30, #1519); none is kept, because
 Ibis cannot know which one the person meant. The warning names the key at
 every entry, the first included, and looking the key up says it is repeated
-(2026-11-02, #1617).
+(2026-11-02, #1617). A library's id is an opaque token: nothing reads a kind from
+it, and it is keyed by a per-person secret so that a seen id confirms no guessed
+path. That key is the one file the `ibis` command writes. A CSL `id` is never a
+citation key, and a repeated one refuses every record under it (2026-11-02, #1535).
 Zotero is read through its local API while it runs and from a
 private read-only copy of `zotero.sqlite` (with `-wal` and `-shm`) while it is
 closed, tested on Zotero 7 to 10, leaving out trashed items. Citation keys
@@ -118,6 +121,20 @@ small caps and underline; adding a reference or confirming Copied cannot flatten
 them. The citation request's affix vocabulary is unchanged. Full text is
 selectable in the reference menu as well as the tooltip, including for one
 long reference.
+
+2026-11-02 (#19): every official CSL style and locale ships in the binary as one
+compressed bundle (`crates/ibis-csl/vendor/csl-bundle.bin`), built from tagged
+upstream releases pinned by commit, so styles change only with an Ibis release.
+Each file stays byte for byte upstream's, under its CC BY-SA 3.0 licence and with
+its authors. Files sit in 1 MiB zstd blocks: a request unpacks only what it names,
+and nothing stays in memory but the last style used. A dependent style runs its
+parent's rules in its own default language. What a style does comes from what it
+declares (its class, its citation number, its year suffixes, its conjunction),
+never from its id; upstream's renames keep old ids working. A result names its
+language, which is the request's, else the style's, and never the interface's or
+the operating system's. An unknown language is refused rather than approximated,
+except that a bare language means its main dialect, as upstream's `locales.json`
+defines it.
 
 ## 0008 Offline by default
 

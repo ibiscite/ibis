@@ -225,7 +225,7 @@ fn container_fallback_uses_trimmed_visible_text() {
         let mut record = Record {
             added_at: None,
             id: ItemRef {
-                library: LibraryId::file(b"synthetic"),
+                library: LibraryId::digest(b"synthetic"),
                 key: "record:a".into(),
             },
             csl: Default::default(),
