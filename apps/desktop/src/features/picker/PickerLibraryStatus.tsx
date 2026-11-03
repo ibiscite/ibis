@@ -1,12 +1,16 @@
 import type { RefObject } from "react";
 import type { LibraryStatus, ZoteroLibrary } from "../../api";
 import type { SystemIcon } from "../../bindings";
-import { LibraryDetail, LibraryStatusLine, zoteroLibraryNames } from "../../LibraryStatusLine";
-import { libraryMessages, operationFailures, pickerText } from "../../messages";
+import { LibraryDetail, libraryCondition, LibraryStatusLine, zoteroLibraryNames } from "../../LibraryStatusLine";
+import { libraryMessages, pickerText } from "../../messages";
 import { shortenedLabel, SourceAction, type SourceActionProps } from "../../ui/SourceAction";
 import { keyLabel, keysFor } from "../../keys";
 import { isMac } from "../../platform";
 import { MenuItem, MenuSection, MenuSeparator } from "../../ui/Menu";
+
+/** The fix for these is in Zotero itself, so opening it is the action. */
+export const zoteroWaits = (problem: LibraryStatus["problem"]) =>
+  problem === "zotero_closed" || problem === "zotero_access_off" || problem === "zotero_profiles";
 
 export type LibraryScope = { offered: ZoteroLibrary[]; isChosen: (choice: ZoteroLibrary) => boolean; chosenCount: number;
   name: (choice: ZoteroLibrary) => string; toggle: (choice: ZoteroLibrary) => void; all: () => void };
@@ -26,6 +30,7 @@ export function PickerLibraryStatus({ library, groupName, isOpen, onOpenChange, 
   rowAction?: string;
 }) {
   const detail = libraryMessages.detail(library, Date.now(), (status) => zoteroLibraryNames(status, groupName));
+  const condition = libraryCondition(library, { groupsFailed, failure });
   // The engine's problem code chooses the action. A closed Zotero with a
   // usable fresh snapshot has no problem and offers no interruption.
   const libraryAction = { ...sourceAction, icon: statusIcon, file: !(library?.snapshot_zotero ?? library?.zotero) };
@@ -36,13 +41,13 @@ export function PickerLibraryStatus({ library, groupName, isOpen, onOpenChange, 
     ? !library.zotero && (library.problem === "missing" || !sourceAction.file)
       ? { ...libraryAction, label: pickerText.findSourceFile(library.name), keys: library.stale && sourceAction.file ? sourceAction.keys : undefined, open: actions.find }
       // ⌘O appears only where it does the same thing: with a reference selected it means Show in Zotero.
-      : library?.zotero && library.problem === "zotero_closed" ? { ...libraryAction, label: pickerText.openZotero, keys: sourceAction.label === pickerText.openZotero ? sourceAction.keys : undefined, open: actions.openZotero }
+      : library?.zotero && zoteroWaits(library.problem) ? { ...libraryAction, label: pickerText.openZotero, keys: sourceAction.label === pickerText.openZotero ? sourceAction.keys : undefined, open: actions.openZotero }
       : library?.zotero ? { ...libraryAction, label: pickerText.chooseLibraryMenu, keys: keysFor("chooseSource"), open: actions.choose } : sourceAction : failure ? { ...sourceAction, label: pickerText.chooseLibraryMenu, keys: keysFor("chooseSource"), open: actions.choose } : null;
-  return <LibraryStatusLine library={library} groupName={groupName} failure={failure}
+  return <LibraryStatusLine library={library} groupName={groupName} failure={failure} condition={condition}
     action={!hideAction && fix && fix.label !== rowAction && <SourceAction {...fix} />}
     menu={{ label: pickerText.libraryRegion, id: "library-menu",
       isOpen, onOpenChange, tabFocusRef: searchRef, placement: "top end", children: <>
-        <MenuSection id="library-detail" label={detail.filter(Boolean).join(". ")} header={<LibraryDetail lines={detail} problem={groupsFailed ? operationFailures.zoteroGroups : undefined} />}>
+        <MenuSection id="library-detail" label={detail.filter(Boolean).join(". ")} header={<LibraryDetail lines={detail} problem={condition.problem ?? undefined} />}>
           {/* A reload can publish a recovery screen before an animated exit
               ends. Retire the modal and its same-named menu before that I/O. */}
           {library?.name && <MenuItem id="reload" label={pickerText.reloadLibrary} closeOnSelect onAction={actions.reload} />}

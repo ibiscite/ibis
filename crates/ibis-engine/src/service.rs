@@ -68,6 +68,18 @@ impl LibraryInfo {
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct LibrariesResult {
     pub libraries: Vec<LibraryInfo>,
+    /// Answers `zotero-profiles`: each profile's safe name, never its location.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub zotero_profiles: Option<Vec<String>>,
+    /// Answers `zotero-groups`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub zotero_groups: Option<Vec<ZoteroGroup>>,
+}
+/// A Zotero group library by its public ID and a name safe to show.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+pub struct ZoteroGroup {
+    pub id: u64,
+    pub name: String,
 }
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct SearchHit {
@@ -294,6 +306,8 @@ impl Engine {
     pub fn libraries(&self) -> Result<LibrariesResult, EngineError> {
         Ok(LibrariesResult {
             libraries: self.state()?.libraries.values().cloned().collect(),
+            zotero_profiles: None,
+            zotero_groups: None,
         })
     }
     pub fn search(&self, request: &SearchRequest, cancel: &Cancellation) -> Result<SearchResult, EngineError> {
@@ -479,10 +493,18 @@ impl Engine {
                 parameters::<LibrariesRequest>(params)?
             } {
                 LibrariesRequest::List => value(self.libraries()?)?,
-                LibrariesRequest::OpenZotero { libraries } => {
-                    self.read_zotero(false, libraries.as_deref(), cancel)?;
+                LibrariesRequest::OpenZotero { libraries, profile } => {
+                    self.read_zotero(false, libraries.as_deref(), profile.as_deref(), cancel)?;
                     value(self.libraries()?)?
                 }
+                LibrariesRequest::ZoteroProfiles => value(LibrariesResult {
+                    zotero_profiles: Some(self.zotero_profiles()?),
+                    ..self.libraries()?
+                })?,
+                LibrariesRequest::ZoteroGroups => value(LibrariesResult {
+                    zotero_groups: Some(self.zotero_groups()?),
+                    ..self.libraries()?
+                })?,
                 LibrariesRequest::OpenFile { path } => {
                     self.open_file(&path, cancel)?;
                     value(self.libraries()?)?

@@ -92,6 +92,8 @@ pub(super) fn read(
         let id: i64 = r.get(0)?;
         let kind = budget.text(r, 1)?;
         let group_id: Option<i64> = r.get(2)?;
+        // A name is only shown: never let one spoil a readable library.
+        let name = String::from_utf8_lossy(r.get_ref(3)?.as_bytes().unwrap_or_default()).into_owned();
         if id < 1
             || (kind == "group" && group_id.is_none_or(|id| id < 1))
             || (kind == "user" && group_id.is_some())
@@ -105,6 +107,7 @@ pub(super) fn read(
                 ClosedLibrary {
                     library_id: id,
                     group_id,
+                    name,
                     items: Vec::new(),
                 },
             )
@@ -346,7 +349,7 @@ pub(super) fn configure(db: &mut Connection, control: &Control) -> Result<(), Cl
 }
 
 const READ_SQL: [&str; 4] = [
-    "SELECT L.libraryID,L.type,G.groupID FROM libraries L LEFT JOIN groups G USING(libraryID) WHERE L.type IN ('user','group')",
+    "SELECT L.libraryID,L.type,G.groupID,CASE WHEN typeof(G.name)='text' AND octet_length(G.name)<=1024 THEN G.name ELSE '' END FROM libraries L LEFT JOIN groups G USING(libraryID) WHERE L.type IN ('user','group')",
     "SELECT I.itemID,I.libraryID,I.key,I.version,T.typeName,I.dateAdded,I.dateModified FROM items I LEFT JOIN itemTypesCombined T USING(itemTypeID) WHERE (T.typeName IS NULL OR T.typeName NOT IN ('note','attachment','annotation')) AND NOT EXISTS(SELECT 1 FROM deletedItems D WHERE D.itemID=I.itemID)",
     "SELECT D.itemID,F.fieldName,CASE WHEN octet_length(V.value)>:max_value THEN NULL ELSE V.value END,V.valueID,octet_length(V.value) FROM itemData D LEFT JOIN fieldsCombined F USING(fieldID) LEFT JOIN itemDataValues V USING(valueID) WHERE EXISTS(SELECT 1 FROM items I JOIN libraries L USING(libraryID) JOIN itemTypesCombined T USING(itemTypeID) WHERE I.itemID=D.itemID AND L.type IN ('user','group') AND T.typeName NOT IN ('note','attachment','annotation') AND NOT EXISTS(SELECT 1 FROM deletedItems X WHERE X.itemID=I.itemID))",
     "SELECT IC.itemID,CT.creatorType,CASE WHEN octet_length(C.firstName)>:max_value THEN NULL ELSE C.firstName END,CASE WHEN octet_length(C.lastName)>:max_value THEN NULL ELSE C.lastName END,C.fieldMode,IC.orderIndex,octet_length(C.firstName),octet_length(C.lastName) FROM itemCreators IC LEFT JOIN creators C USING(creatorID) LEFT JOIN creatorTypes CT USING(creatorTypeID) WHERE EXISTS(SELECT 1 FROM items I JOIN libraries L USING(libraryID) JOIN itemTypesCombined T USING(itemTypeID) WHERE I.itemID=IC.itemID AND L.type IN ('user','group') AND T.typeName NOT IN ('note','attachment','annotation') AND NOT EXISTS(SELECT 1 FROM deletedItems X WHERE X.itemID=I.itemID))",
@@ -354,7 +357,7 @@ const READ_SQL: [&str; 4] = [
 
 const TABLES: &[(&str, &[&str])] = &[
     ("libraries", &["libraryID", "type"]),
-    ("groups", &["groupID", "libraryID"]),
+    ("groups", &["groupID", "libraryID", "name"]),
     (
         "items",
         &[

@@ -53,6 +53,12 @@ fn command() -> Command {
         .help_heading(LIBRARIES)
         .display_order(1002)
         .help("Read a local Zotero group library by its group ID; repeat for several");
+    let profile = Arg::new("zotero-profile")
+        .long("zotero-profile")
+        .value_name("NAME")
+        .help_heading(LIBRARIES)
+        .display_order(1003)
+        .help("Which Zotero profile to read while Zotero is closed, when there are several");
     let mut root = Command::new("ibis")
         .version(ibis_core::VERSION)
         .about("Find references and cite them anywhere.")
@@ -77,13 +83,13 @@ fn command() -> Command {
             .display_order(1001)
             .help("Read the local Zotero personal library, open or closed"),
     );
-    root = root.arg(group.clone()).arg(
+    root = root.arg(group.clone()).arg(profile.clone()).arg(
         Arg::new("app-libraries")
             .long("app-libraries")
             .global(true)
             .action(ArgAction::SetTrue)
             .help_heading(LIBRARIES)
-            .display_order(1003)
+            .display_order(1004)
             .help(
                 "Read the libraries chosen in the Ibis app, read-only; search, show, cite and libraries do this when no library is named",
             ),
@@ -338,7 +344,7 @@ fn command() -> Command {
                     .help("The command to explain, such as cite"),
             ),
     )
-    .mut_subcommands(|subcommand| subcommand.arg(file.clone()).arg(group.clone()))
+    .mut_subcommands(|subcommand| subcommand.arg(file.clone()).arg(group.clone()).arg(profile.clone()))
 }
 /// Native entry point, with streams kept explicit for script and terminal clients.
 pub fn run<R: BufRead, W: Write + Send, E: Write>(
@@ -504,6 +510,16 @@ fn command_help(program: &str, target: Option<&String>) -> DispatchResult {
 enum Execution {
     Result(DispatchResult, Option<human::Citing>),
     Stdio(u8),
+}
+
+/// Names for the refusal, read only once a read has been refused.
+fn zotero_profiles(engine: &Engine, cancel: &Cancellation) -> Vec<String> {
+    let request = json!({"action":"zotero-profiles"});
+    engine
+        .dispatch(Method::Libraries, &request, cancel)
+        .ok()
+        .and_then(|result| serde_json::from_value(result.data.get("zotero_profiles")?.clone()).ok())
+        .unwrap_or_default()
 }
 
 fn source_values<T: Clone + Eq + Send + Sync + 'static>(matches: &ArgMatches, id: &str) -> Vec<T> {
@@ -705,13 +721,17 @@ fn execute<R: BufRead, W: Write + Send>(
         .chain(groups.into_iter().map(ZoteroLibrary::Group))
         .collect();
     if !zotero.is_empty() {
+        let profile = source_values::<String>(matches, "zotero-profile")
+            .pop()
+            .or_else(|| app.as_ref().and_then(|app| app.zotero_profile.clone()));
         let params = serde_json::to_value(LibrariesRequest::OpenZotero {
             libraries: Some(zotero),
+            profile,
         })
         .map_err(|_| EngineError::new(ErrorCode::BadInput))?;
         let before = engine.libraries()?.libraries;
         explain(engine.dispatch(Method::Libraries, &params, &cancel), |error| {
-            human::zotero_failure(error.code)
+            human::zotero_failure(error, &zotero_profiles(engine, &cancel))
         })?;
         // Each Zotero library is the app's only when the app chose it and the command line did not.
         if let Some(app) = &app {

@@ -441,6 +441,11 @@ fn reason_hint(reason: ErrorReason) -> &'static str {
         }
         ErrorReason::AmbiguousKey => "Several references have this key; cite it by the id search returned.",
         ErrorReason::AppMissing | ErrorReason::NotIbis | ErrorReason::NoAnswer => tool_error_hint(ErrorCode::Internal),
+        ErrorReason::ZoteroSharingOff => {
+            "Zotero is running but not sharing; turn on Allow other applications in Zotero's Advanced settings."
+        }
+        ErrorReason::ZoteroProfileNeeded => "Zotero is closed and has several profiles; open Zotero or name a profile.",
+        ErrorReason::ZoteroNeedsOpening => "Zotero's library could not be read while it is closed; open Zotero.",
     }
 }
 

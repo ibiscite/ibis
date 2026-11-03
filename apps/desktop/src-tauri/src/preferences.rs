@@ -126,6 +126,11 @@ impl SettingsFile {
             .map_err(|error| settings_message(&error))
     }
 
+    /// The Zotero profile chosen for reading while Zotero is closed.
+    pub(crate) fn zotero_profile(&self) -> Option<String> {
+        settings::load(&self.path).settings.zotero_profile
+    }
+
     /// Refresh under the library lock so a reload cannot carry forward a stale
     /// recovery warning.
     pub(crate) fn refresh_notice(&self, library: &mut Library) {

@@ -16,6 +16,8 @@ use std::fs::{File, OpenOptions};
 use std::io::Read;
 use std::path::{Component, Path, PathBuf};
 
+use ibis_core::zotero::libraries::clean_name;
+
 mod preferences;
 #[cfg(all(
     test,
@@ -88,11 +90,18 @@ pub enum Origin {
 pub struct DataDirectory {
     path: PathBuf,
     origin: Origin,
+    name: String,
 }
 
 impl DataDirectory {
     pub fn path(&self) -> &Path {
         &self.path
+    }
+
+    /// The profile's name, safe to show: unique among the directories found
+    /// and the only way a choice names this directory outside native code.
+    pub fn name(&self) -> &str {
+        &self.name
     }
 
     pub fn origin(&self) -> Origin {
@@ -105,6 +114,7 @@ impl fmt::Debug for DataDirectory {
         f.debug_struct("DataDirectory")
             .field("path", &"[redacted]")
             .field("origin", &self.origin)
+            .field("name", &self.name)
             .finish()
     }
 }
@@ -146,10 +156,22 @@ pub struct Discovery {
 }
 
 impl Discovery {
-    fn add(&mut self, path: PathBuf, origin: Origin) {
-        if !self.directories.iter().any(|candidate| candidate.path == path) {
-            self.directories.push(DataDirectory { path, origin });
+    fn add(&mut self, path: PathBuf, origin: Origin, name: Option<&str>) {
+        if self.directories.iter().any(|candidate| candidate.path == path) {
+            return;
         }
+        let name = self.unique_name(name.map(clean_name).filter(|name| !name.is_empty()));
+        self.directories.push(DataDirectory { path, origin, name });
+    }
+
+    /// Profile names are the file's to choose, so two can look alike.
+    fn unique_name(&self, name: Option<String>) -> String {
+        let taken = |name: &str| self.directories.iter().any(|candidate| candidate.name == name);
+        let base = name.unwrap_or_else(|| format!("Profile {}", self.directories.len() + 1));
+        (1..=MAX_PROFILES + 1)
+            .map(|n| if n == 1 { base.clone() } else { format!("{base} ({n})") })
+            .find(|name| !taken(name))
+            .unwrap_or(base)
     }
 
     fn warn(&mut self, warning: Warning) {
@@ -166,7 +188,7 @@ pub fn discover(roots: &DiscoveryRoots, manual: Option<&Path>) -> Discovery {
     let mut result = Discovery::default();
     if let Some(path) = manual {
         if absolute(path, roots.platform) {
-            result.add(path.to_path_buf(), Origin::Manual);
+            result.add(path.to_path_buf(), Origin::Manual, None);
         } else {
             result.warn(Warning::InvalidPath);
         }
@@ -180,7 +202,7 @@ pub fn discover(roots: &DiscoveryRoots, manual: Option<&Path>) -> Discovery {
     let profiles = match registry.and_then(|text| text.map(|text| profile_paths(&text, roots)).transpose()) {
         Ok(Some(profiles)) => profiles,
         Ok(None) => {
-            result.add(roots.home.join("Zotero"), Origin::Default);
+            result.add(roots.home.join("Zotero"), Origin::Default, None);
             return result;
         }
         Err(warning) => {
@@ -188,16 +210,16 @@ pub fn discover(roots: &DiscoveryRoots, manual: Option<&Path>) -> Discovery {
             return result;
         }
     };
-    for profile in profiles {
+    for (profile, name) in profiles {
         match read_text(&profile.join("prefs.js"), MAX_PREFERENCES_BYTES).and_then(|text| {
             preferences::data_directory(text.as_deref().unwrap_or_default())
                 .map_err(|()| Warning::UnsupportedPreferences)
         }) {
             Ok(Some(path)) if absolute(Path::new(&path), roots.platform) => {
-                result.add(PathBuf::from(path), Origin::Preferences)
+                result.add(PathBuf::from(path), Origin::Preferences, name.as_deref())
             }
             Ok(Some(_)) => result.warn(Warning::InvalidPath),
-            Ok(None) => result.add(roots.home.join("Zotero"), Origin::Default),
+            Ok(None) => result.add(roots.home.join("Zotero"), Origin::Default, name.as_deref()),
             Err(warning) => result.warn(warning),
         }
     }
@@ -315,8 +337,8 @@ fn open_configuration(path: &Path) -> Result<File, Warning> {
     Ok(file)
 }
 
-fn profile_paths(text: &str, roots: &DiscoveryRoots) -> Result<Vec<PathBuf>, Warning> {
-    let mut profiles = Vec::new();
+fn profile_paths(text: &str, roots: &DiscoveryRoots) -> Result<Vec<(PathBuf, Option<String>)>, Warning> {
+    let mut profiles: Vec<(PathBuf, Option<String>)> = Vec::new();
     let mut fields = None;
     for line in text.trim_start_matches('\u{feff}').split(['\r', '\n']).chain(["[end]"]) {
         let line = line.trim();
@@ -324,8 +346,8 @@ fn profile_paths(text: &str, roots: &DiscoveryRoots) -> Result<Vec<PathBuf>, War
             continue;
         }
         if let Some(section) = line.strip_prefix('[').and_then(|s| s.strip_suffix(']')) {
-            if let Some((relative, path)) = fields.take() {
-                let (relative, path): (Option<&str>, Option<&str>) = (relative, path);
+            if let Some((relative, path, name)) = fields.take() {
+                let (relative, path, name): (Option<&str>, Option<&str>, Option<&str>) = (relative, path, name);
                 let path = path.ok_or(Warning::InvalidProfiles)?;
                 let path = match relative {
                     Some("1")
@@ -340,8 +362,8 @@ fn profile_paths(text: &str, roots: &DiscoveryRoots) -> Result<Vec<PathBuf>, War
                     Some("0") if absolute(Path::new(path), roots.platform) => PathBuf::from(path),
                     _ => return Err(Warning::InvalidProfiles),
                 };
-                if !profiles.contains(&path) {
-                    profiles.push(path);
+                if !profiles.iter().any(|(known, _)| *known == path) {
+                    profiles.push((path, name.map(str::to_owned)));
                 }
                 if profiles.len() > MAX_PROFILES {
                     return Err(Warning::TooManyProfiles);
@@ -350,12 +372,13 @@ fn profile_paths(text: &str, roots: &DiscoveryRoots) -> Result<Vec<PathBuf>, War
             fields = section
                 .strip_prefix("Profile")
                 .filter(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
-                .map(|_| (None, None));
+                .map(|_| (None, None, None));
         } else if let Some((key, value)) = line.split_once('=') {
-            if let Some((relative, path)) = fields.as_mut() {
+            if let Some((relative, path, name)) = fields.as_mut() {
                 let field = match key.trim() {
                     "IsRelative" => Some(relative),
                     "Path" => Some(path),
+                    "Name" => Some(name),
                     _ => None,
                 };
                 if let Some(field) = field

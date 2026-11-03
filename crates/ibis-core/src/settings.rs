@@ -173,6 +173,10 @@ pub struct Settings {
     /// Library to open at start.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub library: Option<LibrarySetting>,
+    /// The Zotero profile read while Zotero is closed, by its safe name;
+    /// `None` until a computer with several profiles needs a choice.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub zotero_profile: Option<String>,
     /// Syntax the picker copies citations in; remembered when chosen.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub copy_format: Option<KeyFormat>,
@@ -222,6 +226,7 @@ impl Default for Settings {
             small_surprises: None,
             shortcut: None,
             library: None,
+            zotero_profile: None,
             copy_format: None,
             update_checks: None,
             citation_style: None,

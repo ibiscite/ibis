@@ -17,6 +17,9 @@ pub struct Server {
     pub paused: Arc<AtomicBool>,
     #[allow(dead_code)] // This fixture is also shared by desktop-only membership tests.
     pub empty_group: Arc<AtomicBool>,
+    /// Zotero's "Allow other applications" setting, on by default.
+    #[allow(dead_code)]
+    pub sharing_off: Arc<AtomicBool>,
     stop: Arc<AtomicBool>,
     worker: Option<thread::JoinHandle<()>>,
 }
@@ -31,6 +34,8 @@ impl Server {
         let stop = Arc::new(AtomicBool::new(false));
         let empty_group = Arc::new(AtomicBool::new(false));
         let empty = empty_group.clone();
+        let sharing_off = Arc::new(AtomicBool::new(false));
+        let off = sharing_off.clone();
         let (id, wait, seen, stopping) = (instance.clone(), pause.clone(), paused.clone(), stop.clone());
         let worker = thread::spawn(move || {
             while !stopping.load(Ordering::Relaxed) {
@@ -70,7 +75,13 @@ impl Server {
                 };
                 let body = serde_json::to_vec(&body).unwrap();
                 let id = id.load(Ordering::Relaxed);
-                let status = if missing { "404 Not Found" } else { "200 OK" };
+                let status = if off.load(Ordering::Relaxed) {
+                    "403 Forbidden"
+                } else if missing {
+                    "404 Not Found"
+                } else {
+                    "200 OK"
+                };
                 let total = usize::from(!empty);
                 let _ = write!(
                     stream,
@@ -86,6 +97,7 @@ impl Server {
             pause,
             paused,
             empty_group,
+            sharing_off,
             stop,
             worker: Some(worker),
         }

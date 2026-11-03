@@ -75,14 +75,23 @@ pub(crate) enum LibraryProblem {
     ZoteroClosed,
     /// Zotero answered but does not let other apps read it.
     ZoteroAccessOff,
+    /// Zotero is closed and which of several profiles to read is not chosen.
+    ZoteroProfiles,
     Other,
 }
 
 impl From<LoadError> for LibraryProblem {
     fn from(error: LoadError) -> Self {
+        use ibis_core::contract::ErrorReason;
         use ibis_core::source::SourceError;
         use ibis_core::zotero::api::{TransportError, ZoteroError};
         match error {
+            LoadError::EngineZotero(error) => match error.reason {
+                Some(ErrorReason::ZoteroSharingOff) => LibraryProblem::ZoteroAccessOff,
+                Some(ErrorReason::ZoteroProfileNeeded) => LibraryProblem::ZoteroProfiles,
+                Some(ErrorReason::ZoteroNeedsOpening) => LibraryProblem::ZoteroClosed,
+                _ => LibraryProblem::Other,
+            },
             LoadError::Source(SourceError::Unavailable) => LibraryProblem::Missing,
             LoadError::InvalidData
             | LoadError::Source(

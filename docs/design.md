@@ -233,6 +233,7 @@ Built in `ibis-core` so every front end shares them (#1204).
 - **Quiet bands**: inside the shelf and footer only the main action (Copy or Paste) is filled. The library status, the source action, More, the reference count, notes and Details are quiet. A band that is itself a fill never holds another filled control.
 - Never show an action twice on one screen. With ⌥ held: "Add to citation ⇧↵", the Esc step, then More.
 - **One place for each status**: library state lives only in the footer status; citation refusals and settings notices use the middle area.
+- **One reading of a library's health**: the dot, the hover text and the library menu all draw from `libraryCondition`. A problem in words is never a green dot: anything the menu reports makes the dot at least Look.
 
 | Case | Footer |
 | --- | --- |
@@ -321,10 +322,11 @@ Never call the destination a password field. The right paste key is shown per sy
 | --- | --- | --- |
 | `missing` | Can't find thesis.bib | Find thesis.bib, Use another library |
 | `unreadable`, `other` | Can't read thesis.bib / Can't open thesis.bib | Try again, Use another library |
-| `zotero_closed` | Zotero isn't open | Try again, Use another library |
-| `zotero_access_off` | Zotero isn't sharing your library | Try again, Use another library |
+| `zotero_closed` | Zotero isn't open | Try again, Open Zotero, Use another library |
+| `zotero_access_off` | Zotero isn't sharing your library | Try again, Open Zotero, Use another library |
+| `zotero_profiles` | Which Zotero profile? | One row per profile, Open Zotero, Use another library |
 
-- Setup finishes itself: Ibis never asks "What do you write in?"; when Zotero sharing turns on, the screen continues on its own; with Zotero closed Ibis reads the library anyway.
+- Setup finishes itself: Ibis never asks "What do you write in?"; with Zotero closed Ibis reads the library anyway. A screen waiting on Zotero says where the fix is and asks Zotero every two seconds while it is shown, never while the picker is hidden, so it carries on by itself as soon as Zotero answers. With several profiles the closed path asks once, by the profile's name, and remembers the answer; a saved profile that is gone asks again and never reads another.
 - **Try sample references** loads three invented references (lantern gardens, clockwork clouds, the invented sea) for this run only, marked by the footer status "Sample references"; every desktop sample citation ends with ` [Sample]`. The website demo and help screenshots use the same set without the suffix. The practice task is identical on every surface: Search for “lantern”, choose the lantern gardens reference, then press Enter.
 
 ## Settings

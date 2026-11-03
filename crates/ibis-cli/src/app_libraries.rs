@@ -26,6 +26,7 @@ pub(crate) struct AppLibraries {
     pub app: &'static str,
     pub files: Vec<PathBuf>,
     pub zotero: Vec<ZoteroLibrary>,
+    pub zotero_profile: Option<String>,
 }
 
 /// The folder the app keeps its settings in: the same place as Tauri's
@@ -113,7 +114,12 @@ fn read(app: &'static str, path: &Path) -> Result<Option<AppLibraries>, Failure>
                 .collect(),
         ),
     };
-    Ok(Some(AppLibraries { app, files, zotero }))
+    Ok(Some(AppLibraries {
+        app,
+        files,
+        zotero,
+        zotero_profile: loaded.settings.zotero_profile,
+    }))
 }
 
 /// A fixed description: never the settings' own text, which may hold private values.

@@ -81,6 +81,7 @@ pub(super) fn load_source(
     source: Source,
     reload: bool,
     previous_file: Option<std::sync::Arc<super::engine_file::FileLibrary>>,
+    profile: Option<&str>,
     cancel: &ibis_engine::Cancellation,
     cancelled: impl Fn() -> bool,
 ) -> Result<Loaded, LoadError> {
@@ -105,12 +106,12 @@ pub(super) fn load_source(
         Source::Zotero(chosen) => {
             let (bridge, unchanged) = if let Some(bridge) = previous_file {
                 let before = bridge.revision();
-                let same_choice = bridge.refresh_zotero(&chosen, reload, cancel)?;
+                let same_choice = bridge.refresh_zotero(&chosen, profile, reload, cancel)?;
                 let unchanged = same_choice && before == bridge.revision();
                 (bridge, unchanged)
             } else {
                 (
-                    std::sync::Arc::new(super::engine_file::FileLibrary::open_zotero(&chosen, cancel)?),
+                    std::sync::Arc::new(super::engine_file::FileLibrary::open_zotero(&chosen, profile, cancel)?),
                     false,
                 )
             };
@@ -147,7 +148,7 @@ mod tests {
                     cancel.cancel();
                 }
                 assert!(matches!(
-                    load_source(source.clone(), false, None, &cancel, || !cancel_engine),
+                    load_source(source.clone(), false, None, None, &cancel, || !cancel_engine),
                     Err(LoadError::Stopped)
                 ));
             }

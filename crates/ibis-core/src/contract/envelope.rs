@@ -143,6 +143,12 @@ pub enum ErrorReason {
     NotIbis,
     /// The Ibis app started but did not confirm the request in time.
     NoAnswer,
+    /// Zotero is running but does not let other applications read it.
+    ZoteroSharingOff,
+    /// Zotero is closed and this computer has several profiles; name one.
+    ZoteroProfileNeeded,
+    /// Zotero's own copy could not be read closed; opening Zotero is the fix.
+    ZoteroNeedsOpening,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

@@ -442,10 +442,11 @@ fn open_one(app: AppHandle, open: OpenRequest) -> impl std::future::Future<Outpu
         let loaded = tauri::async_runtime::spawn_blocking(move || {
             let file_io = matches!(source, Source::File(_) | Source::Samples(_));
             let worker_cancel = cancel.token.clone();
+            let profile = loading_app.state::<SettingsFile>().zotero_profile();
             let operation = move || {
                 #[cfg(debug_assertions)]
                 let loading = std::time::Instant::now();
-                let loaded = load_source(source, force, previous_file, &worker_cancel, || {
+                let loaded = load_source(source, force, previous_file, profile.as_deref(), &worker_cancel, || {
                     worker_cancel.is_cancelled()
                         || loading_app.state::<LoadRequests>().0.load(Ordering::SeqCst) != request
                 });
@@ -628,13 +629,15 @@ pub(crate) fn choose_library_file(app: &AppHandle) {
 /// Read Zotero from now on: the libraries already chosen if Zotero is in
 /// use, otherwise the personal library.
 pub(crate) fn use_zotero_library(app: &AppHandle) {
-    let chosen = app
-        .state::<Mutex<Library>>()
+    open_zotero(app, current_zotero_choice(app));
+}
+
+fn current_zotero_choice(app: &AppHandle) -> ZoteroLibraries {
+    app.state::<Mutex<Library>>()
         .lock()
         .ok()
         .and_then(|library| zotero_choice(&library))
-        .unwrap_or_else(|| ZoteroLibrary::User.into());
-    open_zotero(app, chosen);
+        .unwrap_or_else(|| ZoteroLibrary::User.into())
 }
 
 /// Read these Zotero libraries from now on.
@@ -655,6 +658,19 @@ pub(crate) fn refresh_zotero(app: &AppHandle) {
     if let Some((request, source, reload)) = begin_zotero_retry(&app.state(), &app.state(), false) {
         run_open(app, request, source, reload, OpenIntent::retry(reload));
     }
+}
+
+/// Read Zotero with this profile from now on. It is saved first because the
+/// read takes it from settings; a name no longer here is refused unsaved.
+pub(crate) fn use_zotero_profile(app: &AppHandle, name: String) -> Result<(), String> {
+    let known = super::engine_file::zotero_profiles().map_err(|_| "Ibis could not list your Zotero profiles.")?;
+    if !known.contains(&name) {
+        return Err("That Zotero profile is no longer here. Choose again.".into());
+    }
+    let saved = app.state::<SettingsFile>().update(|settings| settings.zotero_profile = Some(name));
+    saved.map_err(|error| format!("The Zotero profile could not be saved: {error}"))?;
+    start_open(app, Source::Zotero(current_zotero_choice(app)), true);
+    Ok(())
 }
 
 /// Returning to a visible picker must also recover a failed Zotero choice.

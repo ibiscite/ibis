@@ -2337,6 +2337,8 @@ test("a failed group list is reported and My Library stays available", async () 
   await waitFor(() => expect(screen.getByRole("region", { name: "Picker actions" }).textContent).toMatch(/Zotero/));
   fireEvent.click(libraryButton());
   expect(await screen.findByText(/could not list your Zotero groups/)).toBeTruthy();
+  // Regression: the footer stayed a green Done dot beside these words.
+  expect(document.querySelector(".status-dot")?.getAttribute("data-health")).toBe("look");
   expect(screen.queryByRole("group", { name: "Zotero libraries" })).toBeNull();
   expect(screen.getByRole("menuitem", { name: "Choose Library…" })).toBeTruthy();
 });

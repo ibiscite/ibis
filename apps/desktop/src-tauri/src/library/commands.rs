@@ -3,7 +3,6 @@
 use std::sync::{Arc, Mutex};
 
 use ibis_core::settings::{ZoteroLibraries, ZoteroLibrary};
-use ibis_core::zotero::libraries;
 use ibis_zotero_local::LocalZotero;
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State, path::BaseDirectory};
@@ -13,6 +12,7 @@ use super::source::Source;
 use super::state::Library;
 use super::status::LibraryStatus;
 use super::tasks::{choose_library_file, current_status, reload_library_file, start_open, use_zotero_library};
+use crate::setup::{ZoteroPresence, zotero_presence};
 
 /// Choose a library with the system file dialog. The interface never passes
 /// file paths; the result arrives as the `library:changed` event.
@@ -67,20 +67,61 @@ pub(crate) struct ZoteroGroup {
     pub(crate) name: String,
 }
 
-/// The group libraries Zotero knows, while Zotero runs.
+/// The group libraries Zotero knows: asked of Zotero while it runs, or as
+/// listed by the closed read of the open library. Starts no read of its own.
 #[tauri::command]
 #[specta::specta]
-pub(crate) async fn zotero_groups() -> Result<Vec<ZoteroGroup>, String> {
-    tauri::async_runtime::spawn_blocking(|| libraries::groups(&mut LocalZotero::default()))
+pub(crate) async fn zotero_groups(library: State<'_, Mutex<Library>>) -> Result<Vec<ZoteroGroup>, String> {
+    let file = library.lock().ok().and_then(|library| library.file.clone());
+    tauri::async_runtime::spawn_blocking(move || match file {
+        Some(file) => file.zotero_groups(),
+        None => ibis_engine::Engine::new().and_then(|engine| super::engine_file::zotero_groups(&engine)),
+    })
+    .await
+    .map_err(|_| "listing Zotero groups stopped unexpectedly".to_string())?
+    .map(|groups| {
+        groups
+            .into_iter()
+            .map(|g| ZoteroGroup { id: g.id, name: g.name })
+            .collect()
+    })
+    .map_err(|_| "Zotero could not list its group libraries".to_string())
+}
+
+/// The Zotero profiles on this computer, by name, for choosing which one to
+/// read while Zotero is closed. Their locations stay native.
+#[tauri::command]
+#[specta::specta]
+pub(crate) async fn zotero_profiles() -> Result<Vec<String>, String> {
+    tauri::async_runtime::spawn_blocking(super::engine_file::zotero_profiles)
         .await
-        .map_err(|_| "listing Zotero groups stopped unexpectedly".to_string())?
-        .map(|groups| {
-            groups
-                .into_iter()
-                .map(|g| ZoteroGroup { id: g.id, name: g.name })
-                .collect()
-        })
-        .map_err(|e| e.to_string())
+        .map_err(|_| "listing Zotero profiles stopped unexpectedly".to_string())?
+        .map_err(|_| "Ibis could not list your Zotero profiles".to_string())
+}
+
+/// Read this Zotero profile from now on; the result arrives as
+/// `library:changed`. A name no longer on this computer is refused.
+#[tauri::command]
+#[specta::specta]
+pub(crate) async fn use_zotero_profile(app: AppHandle, name: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || super::tasks::use_zotero_profile(&app, name))
+        .await
+        .map_err(|_| "choosing the Zotero profile stopped unexpectedly".to_string())?
+}
+
+/// Whether Zotero now shares its library, asked only while a screen waiting
+/// for that is shown. Once it does, the failed choice is read again and the
+/// result arrives as `library:changed`.
+#[tauri::command]
+#[specta::specta]
+pub(crate) async fn check_zotero_sharing(app: AppHandle) -> Result<ZoteroPresence, String> {
+    let found = tauri::async_runtime::spawn_blocking(|| zotero_presence(&mut LocalZotero::default()))
+        .await
+        .map_err(|_| "checking Zotero stopped unexpectedly".to_string())?;
+    if found == ZoteroPresence::Available {
+        super::tasks::retry_zotero_on_focus(&app);
+    }
+    Ok(found)
 }
 
 /// Open the current library again; the result arrives as `library:changed`.

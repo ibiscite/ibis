@@ -81,6 +81,11 @@ fn presence(found: Presence) -> ZoteroPresence {
     }
 }
 
+/// Ask Zotero's root, which reads no library.
+pub(crate) fn zotero_presence(transport: &mut impl api::Transport) -> ZoteroPresence {
+    presence(api::presence(transport))
+}
+
 fn shown(path: &Path) -> FoundFile {
     let name = |p: Option<&Path>| {
         p.and_then(Path::file_name)
@@ -104,7 +109,7 @@ pub(crate) async fn find_sources(app: AppHandle) -> Result<Sources, String> {
         .flatten()
         .collect();
     let (zotero, found) = tauri::async_runtime::spawn_blocking(move || {
-        (api::presence(&mut LocalZotero::default()), find::bib_files(&roots))
+        (zotero_presence(&mut LocalZotero::default()), find::bib_files(&roots))
     })
     .await
     .map_err(|_| "looking for libraries stopped unexpectedly".to_string())?;
@@ -117,7 +122,7 @@ pub(crate) async fn find_sources(app: AppHandle) -> Result<Sources, String> {
         .map_err(|_| "looking for libraries stopped unexpectedly".to_string())?
         .offer(paths);
     Ok(Sources {
-        zotero: presence(zotero),
+        zotero,
         list,
         files,
         cut_short: found.cut_short,

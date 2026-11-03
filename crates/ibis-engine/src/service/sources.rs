@@ -1,5 +1,6 @@
 //! Source handles stay outside Shared: callbacks upgrade only publication state.
 use super::*;
+use ibis_core::zotero::api::TransportError;
 use ibis_sources::zotero_source::{Library, LiveError, ZoteroError, ZoteroSource};
 use ibis_sources::{LoadedLibrary, SourceError, SourceWatch};
 use std::{
@@ -15,6 +16,9 @@ pub(super) struct Owners {
     watches: Mutex<BTreeMap<u64, SourceWatch>>,
     zotero: Mutex<ZoteroSource>,
     zotero_port: Option<u16>,
+    /// What the last closed read listed. Apart from `zotero`, which a read
+    /// holds throughout, so listing never waits for one to finish.
+    closed_groups: Mutex<Option<Vec<ibis_sources::zotero_source::Group>>>,
     #[cfg(test)]
     fail_watches: std::sync::atomic::AtomicBool,
     #[cfg(test)]
@@ -392,7 +396,7 @@ impl Engine {
             .iter()
             .any(|loaded| library.is_none_or(|id| *id == loaded.library));
         if loaded_zotero {
-            let result = self.read_zotero(true, None, cancel);
+            let result = self.read_zotero(true, None, None, cancel);
             if library.is_some() {
                 return result;
             }
@@ -444,6 +448,7 @@ impl Engine {
         &self,
         reload: bool,
         libraries: Option<&[ZoteroLibrary]>,
+        profile: Option<&str>,
         cancel: &Cancellation,
     ) -> Result<(), EngineError> {
         cancel.check()?;
@@ -453,15 +458,18 @@ impl Engine {
             .lock()
             .map_err(|_| error(ErrorCode::Internal))?;
         let mut source = self.resources.zotero.lock().map_err(|_| error(ErrorCode::Internal))?;
-        let mut chosen = match libraries {
-            Some(libraries) => {
-                let libraries: Vec<Library> = libraries.iter().copied().map(Into::into).collect();
-                (source.libraries() != libraries)
-                    .then(|| ZoteroSource::new(&libraries).map_err(|_| error(ErrorCode::BadInput)))
-                    .transpose()?
-            }
-            None => None,
+        let wanted: Vec<Library> = match libraries {
+            Some(libraries) => libraries.iter().copied().map(Into::into).collect(),
+            None => source.libraries(),
         };
+        let profile = profile.or(source.profile()).map(str::to_owned);
+        let mut chosen = (source.libraries() != wanted || source.profile() != profile.as_deref())
+            .then(|| {
+                ZoteroSource::new(&wanted)
+                    .map(|new| new.with_profile(profile))
+                    .map_err(|_| error(ErrorCode::BadInput))
+            })
+            .transpose()?;
         let reload = reload || !self.state()?.zotero_ready;
         let mut guard_error = None;
         let mut began = false;
@@ -502,6 +510,8 @@ impl Engine {
                 if let Some(chosen) = chosen {
                     *source = chosen;
                 }
+                *self.resources.closed_groups.lock().map_err(|_| error(ErrorCode::Internal))? =
+                    source.closed_groups().map(<[_]>::to_vec);
                 Ok(())
             }
             Err(failure) => {
@@ -532,9 +542,41 @@ impl Engine {
                         }
                     }
                 }
-                Err(error(code))
+                Err(EngineError {
+                    code,
+                    reason: failure.reason(),
+                })
             }
         }
+    }
+    /// The Zotero profiles here by name, for a choice while Zotero is closed.
+    pub(super) fn zotero_profiles(&self) -> Result<Vec<String>, EngineError> {
+        ibis_sources::zotero_source::profiles().map_err(|_| error(ErrorCode::SourceUnavailable))
+    }
+    /// Group libraries by name. Zotero answers while it runs; a closed Zotero
+    /// has only what its last read listed, which never starts another read.
+    pub(super) fn zotero_groups(&self) -> Result<Vec<ZoteroGroup>, EngineError> {
+        let port = self.resources.zotero_port.unwrap_or(ibis_sources::zotero_source::DEFAULT_PORT);
+        let groups = match ibis_sources::zotero_source::live_groups(port) {
+            Ok(groups) => groups,
+            Err(ZoteroError::Live(LiveError::Transport(TransportError::Unreachable))) => {
+                let closed = self.resources.closed_groups.lock().map_err(|_| error(ErrorCode::Internal))?;
+                closed.clone().ok_or_else(|| error(ErrorCode::SourceUnavailable))?
+            }
+            Err(failure) => {
+                return Err(EngineError {
+                    code: ErrorCode::SourceUnavailable,
+                    reason: failure.reason(),
+                });
+            }
+        };
+        Ok(groups
+            .into_iter()
+            .map(|group| ZoteroGroup {
+                id: group.id,
+                name: group.name,
+            })
+            .collect())
     }
 }
 impl Shared {

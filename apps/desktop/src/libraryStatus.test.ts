@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { createElement } from "react";
 import { expect, onTestFinished, test, vi } from "vitest";
 import type { LibraryStatus } from "./bindings";
-import { libraryHealth, LibraryStatusLine, zoteroLibraryNames } from "./LibraryStatusLine";
+import { libraryCondition, LibraryStatusLine, zoteroLibraryNames } from "./LibraryStatusLine";
 import { ago, libraryMessages, recentUpdate } from "./messages";
 
 const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
@@ -50,7 +50,7 @@ test("native hide stops the age timer and reopen refreshes it without DOM visibi
   }
 });
 
-test.each<[string, LibraryStatus | null | undefined, string, ReturnType<typeof libraryHealth>]>([
+test.each<[string, LibraryStatus | null | undefined, string, ReturnType<typeof libraryCondition>["health"]]>([
   ["starting", undefined, "Checking library…", "idle"],
   ["status unavailable", null, "Library details unavailable", "stop"],
   ["first run", file({ state: "none", has_snapshot: false, name: null, snapshot_name: null, references: 0, checked_at: null }), "No library chosen", "idle"],
@@ -68,7 +68,7 @@ test.each<[string, LibraryStatus | null | undefined, string, ReturnType<typeof l
   ["failed switch from Zotero to a file", zotero({ state: "error", zotero: false, zotero_libraries: [], name: "missing.bib", error: "The library file is unavailable" }), "Zotero · 1,204 references · ⁨missing.bib⁩ not opened", "stop"],
 ])("%s", (_, status, expected, health) => {
   expect(line(status)).toBe(expected);
-  expect(libraryHealth(status)).toBe(health);
+  expect(libraryCondition(status).health).toBe(health);
 });
 
 test("the age leaves once the update is no longer news", () => {
@@ -337,4 +337,26 @@ test.each(["ltr", "rtl"])("the native Library trigger reserves its own hit area 
   fireEvent.click(trigger, { detail: 0 });
   expect(open).toHaveBeenCalledWith(true);
   expect(find).not.toHaveBeenCalled();
+});
+
+test.each<[string, { groupsFailed?: boolean; failure?: string }, string | null]>([
+  ["groups could not be listed", { groupsFailed: true }, "Ibis could not list your Zotero groups. Check that Zotero is open, then try again."],
+  ["an operation failed", { failure: "Ibis could not reload your library. Choose the file again." }, null],
+])("a problem in words is never a Done dot: %s", (_, trouble, problem) => {
+  const condition = libraryCondition(zotero({ checked_at: Date.now() }), trouble);
+  expect(condition).toEqual({ health: "look", problem });
+  expect(libraryCondition(zotero({ checked_at: Date.now() }))).toEqual({ health: "done", problem: null });
+});
+
+test("a stopped library stays Stop when a smaller problem joins it", () => {
+  expect(libraryCondition(zotero({ error: "Zotero is not sharing", stale: true }), { groupsFailed: true }).health).toBe("stop");
+  expect(libraryCondition(null, { groupsFailed: true }).health).toBe("stop");
+});
+
+test("the dot and every word draw from one condition", () => {
+  const condition = libraryCondition(zotero({ checked_at: Date.now() }), { groupsFailed: true });
+  const { container } = render(createElement(LibraryStatusLine, { library: zotero({ checked_at: Date.now() }), groupName: String, condition }));
+  expect(container.querySelector(".status-dot")?.getAttribute("data-health")).toBe("look");
+  expect(container.querySelector(".library-status")?.getAttribute("title")).toContain(condition.problem);
+  expect(container.querySelector(".library-detail")?.textContent).toContain(condition.problem);
 });

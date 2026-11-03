@@ -127,6 +127,9 @@ pub struct ClosedLibrary {
     pub library_id: i64,
     /// None denotes the personal library. Group IDs are Zotero's public IDs.
     pub group_id: Option<i64>,
+    /// The group's name as Zotero stored it; untrusted, and empty for the
+    /// personal library or a name past the size limit.
+    pub name: String,
     pub items: Vec<ClosedItem>,
 }
 

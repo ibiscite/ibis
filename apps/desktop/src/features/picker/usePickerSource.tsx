@@ -10,6 +10,7 @@ import type { usePickerSession } from "./usePickerSession";
 import type { useOperations } from "./useOperations";
 import type { useLibrarySearch } from "./useLibrarySearch";
 import { useSourceOpen } from "./useSourceOpen";
+import { zoteroWaits } from "./PickerLibraryStatus";
 
 export function usePickerSource({ api, pickerSession, libraryState, menus, results, altHeld, perform }: {
   api: PickerApi;
@@ -83,8 +84,8 @@ export function usePickerSource({ api, pickerSession, libraryState, menus, resul
     : altHeld ? pickerText.showSourceFolder(isMac) : pickerText.openSource(source.name);
   const sourceAction: SourceActionProps = { label: sourceLabel, keys: keysFor(altHeld && source.kind === "file" ? "revealSource" : "source"), icon: source.icon,
     file: source.kind === "file", busy: sourceOpen.busy, open: () => openSource() };
-  const sourceInChoices = !(sourceOpen.failure && !sourceOpen.failure.changed) && !libraryState.choosingLibrary && Boolean(library?.name) && Boolean(libraryChoices) && (!library?.zotero || library.problem === "zotero_closed");
-  const sourceAvailable = source.kind !== "zotero" || sourceItem !== null || Boolean(library?.zotero && library.problem === "zotero_closed");
+  const sourceInChoices = !(sourceOpen.failure && !sourceOpen.failure.changed) && !libraryState.choosingLibrary && Boolean(library?.name) && Boolean(libraryChoices) && (!library?.zotero || zoteroWaits(library.problem));
+  const sourceAvailable = source.kind !== "zotero" || sourceItem !== null || Boolean(library?.zotero && zoteroWaits(library.problem));
   const sourceChoice = { ...sourceAction, icon: <SourceIcon icon={source.icon} file={source.kind === "file"} /> };
   /** A reference's menu opens that reference, and recovers its file like More does. */
   const openReference = (id: unknown) => {
