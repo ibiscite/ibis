@@ -122,6 +122,9 @@ mod tests {
     /// Only Settings asks about paste permission, changes the global shortcut
     /// or chooses a window size.
     const SETTINGS_ONLY: &[&str] = &[
+        "editor_endpoint",
+        "set_editor_endpoint",
+        "copy_editor_endpoint",
         "restore_app_outputs",
         "open_about_link",
         "window_size",

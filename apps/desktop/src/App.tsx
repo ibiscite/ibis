@@ -137,7 +137,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   const { read: readDestination } = destination;
   // The editor takes the citation itself, so no app question or paste applies.
   // biome-ignore lint/correctness/useExhaustiveDependencies: each request and end is the trigger.
-  useEffect(() => { if (editor.version > 1) readDestination(true, false); }, [editor.version]);
+  useEffect(() => { if (editor.version > 0) readDestination(true, false); }, [editor.version]);
   const { altHeld, setAltHeld } = useAltHeld();
   useNativeRequests(api, query, setQuery, input, state.selected.size);
   usePickerLifecycle({ api, pickerSession, menus, destination, preferences, resetPointer, readShortcut, report, setAltHeld });

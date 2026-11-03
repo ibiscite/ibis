@@ -59,8 +59,11 @@ export const commands = {
 	copyFileCitation: (ticket: string, contentHash: string) => __TAURI_INVOKE<Copied_Serialize>("copy_file_citation", { ticket, contentHash }),
 	/**  The format the picker starts with: the last one chosen, or Pandoc. */
 	copyFormat: () => __TAURI_INVOKE<KeyFormat>("copy_format"),
-	/**  The format the waiting editor asked for; `None` when no editor is waiting. */
-	editorRequest: () => __TAURI_INVOKE<string | null>("editor_request"),
+	/**  `None` when no editor is waiting. */
+	editorRequest: () => __TAURI_INVOKE<{
+	request: number,
+	format: string,
+} | null>("editor_request"),
 	editorEndpoint: () => __TAURI_INVOKE<EndpointStatus>("editor_endpoint"),
 	/**
 	 *  Switch the endpoint. Off closes the port and forgets the address, so the next
@@ -384,6 +387,15 @@ export type DisplayRun_Serialize = {
 	script: Script,
 	small_caps?: boolean,
 	underline?: boolean,
+};
+
+/**
+ *  A waiting editor, for the picker to name. Each request has its own number,
+ *  so two in the same format are still two.
+ */
+export type EditorWaiting = {
+	request: number,
+	format: string,
 };
 
 /**  Why the endpoint could not listen. */

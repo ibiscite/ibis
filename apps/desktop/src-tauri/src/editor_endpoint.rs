@@ -449,11 +449,22 @@ pub(crate) fn copy_editor_endpoint(app: AppHandle) -> Result<(), String> {
     crate::copy::write_plain(&app, &url)
 }
 
-/// The format the waiting editor asked for; `None` when no editor is waiting.
+/// A waiting editor, for the picker to name. Each request has its own number,
+/// so two in the same format are still two.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, specta::Type)]
+pub(crate) struct EditorWaiting {
+    pub(crate) request: u32,
+    pub(crate) format: String,
+}
+
+/// `None` when no editor is waiting.
 #[tauri::command]
 #[specta::specta]
-pub(crate) fn editor_request(pending: State<'_, Pending>) -> Option<String> {
-    pending.current().map(|request| request.label.to_owned())
+pub(crate) fn editor_request(pending: State<'_, Pending>) -> Option<EditorWaiting> {
+    pending.current().map(|request| EditorWaiting {
+        request: request.id as u32,
+        format: request.label.to_owned(),
+    })
 }
 
 #[cfg(test)]
