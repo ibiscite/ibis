@@ -1,4 +1,5 @@
 //! Target syntax generation after identity, intent and input validation.
+use std::collections::HashSet;
 use std::io::Write;
 
 use serde::{Serialize, Serializer, ser::SerializeMap};
@@ -591,7 +592,14 @@ fn csl_json(picks: &[Pick<'_>]) -> Result<String, CitationError> {
         }
     }
     let mut output = Bounded(Vec::new());
-    let records: Vec<_> = picks.iter().map(Export).collect();
+    // A record cited twice is one record: an export repeating its `id` could
+    // not be read back.
+    let mut seen = HashSet::new();
+    let records: Vec<_> = picks
+        .iter()
+        .filter(|pick| seen.insert(&pick.record.id))
+        .map(Export)
+        .collect();
     serde_json::to_writer(&mut output, &records).map_err(|failure| {
         if failure.io_error_kind() == Some(std::io::ErrorKind::FileTooLarge) {
             CitationError::OutputTooLarge

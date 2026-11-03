@@ -358,13 +358,14 @@ fn hostile_empty_and_large_inputs_have_bounded_fixed_diagnostics() {
     );
     case.request.items[0].prefix.clear();
     let snapshot = changed(&case, |record| {
-        record.csl.insert("abstract".into(), json!("x".repeat(1024 * 1024)));
+        record
+            .csl
+            .insert("abstract".into(), json!("x".repeat(20 * 1024 * 1024)));
     });
     case.request.output = OutputSpec::Key {
         syntax: KeySyntax::CslJson,
         command: None,
     };
-    case.request.items = vec![case.request.items[0].clone(); 20];
     assert_eq!(
         syntax::cite(&snapshot, &case.request),
         Err(CitationError::OutputTooLarge)

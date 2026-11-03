@@ -234,6 +234,10 @@ impl ZoteroSource {
         cancelled: &impl Fn() -> bool,
         on_full: &mut impl FnMut() -> Result<(), LiveError>,
     ) -> Result<Vec<Arc<LoadedLibrary>>, ZoteroError> {
+        let profile = match &self.profile {
+            Profile::Known(profile) => profile.clone(),
+            Profile::Running => running_account(transport)?,
+        };
         // Every chosen library is read before any is published, so a
         // failure keeps the last complete set.
         let mut readers = self.readers.clone();
@@ -242,10 +246,10 @@ impl ZoteroSource {
                 .refresh_observed(transport, reload, cancelled, on_full)
                 .map_err(live_error)?;
         }
-        let profile = match &self.profile {
-            Profile::Known(profile) => profile.clone(),
-            Profile::Running => running_account(transport)?,
-        };
+        // The same account on both sides of the read: the items are that account's.
+        if self.profile == Profile::Running && running_account(transport)? != profile {
+            return Err(LiveError::Changing.into());
+        }
         let mut keys = BbtKeys {
             bbt,
             libraries: None,
@@ -993,6 +997,46 @@ mod tests {
             running_account(&mut Account(None)),
             running_account(&mut Account(Some(0)))
         );
+    }
+
+    #[test]
+    fn an_account_switch_during_a_read_publishes_nothing() {
+        struct Switching(Vec<u64>);
+        impl Transport for Switching {
+            fn get(&mut self, path: &str) -> Result<Response, TransportError> {
+                let (headers, body) = if path.contains("limit=1") {
+                    (vec![], json!([{"library":{"id":self.0.remove(0)}}]))
+                } else {
+                    let headers = [
+                        ("Zotero-API-Version", "3"),
+                        ("X-Zotero-Version", "10.0.6"),
+                        ("Zotero-Server-ID", "invented"),
+                        ("Last-Modified-Version", "1"),
+                        ("Total-Results", "0"),
+                    ];
+                    (
+                        headers.map(|(name, value)| (name.into(), value.into())).to_vec(),
+                        json!({}),
+                    )
+                };
+                Ok(Response {
+                    status: 200,
+                    headers,
+                    body: body.to_string().into_bytes(),
+                })
+            }
+        }
+        let read = |accounts: Vec<u64>| {
+            let mut source = ZoteroSource {
+                profile: Profile::Running,
+                ..ZoteroSource::default()
+            };
+            source
+                .refresh(&mut Switching(accounts), false, &|| false)
+                .map(|loaded| loaded.len())
+        };
+        assert_eq!(read(vec![4, 4]), Ok(1));
+        assert_eq!(read(vec![4, 5]), Err(ZoteroError::Live(LiveError::Changing)));
     }
 
     #[test]

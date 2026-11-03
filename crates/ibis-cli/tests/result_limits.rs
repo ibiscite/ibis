@@ -158,7 +158,9 @@ fn renderer_and_transport_quotas_are_resource_errors_on_real_cli_and_stdio() {
     let path = std::path::Path::new(env!("CARGO_TARGET_TMPDIR"))
         .join(format!("synthetic-renderer-threshold-{}.json", std::process::id()));
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-    std::fs::write(&path, serde_json::to_vec(&json!([{"id":"Synthetic2026","citation-key":"Synthetic2026","type":"book","title":"Synthetic size threshold","abstract":"x".repeat(200_000)}])).unwrap()).unwrap();
+    // Distinct records: CSL-JSON exports a record cited twice only once.
+    let records: Vec<_> = (0..84).map(|n| json!({"id":format!("Synthetic{n}"),"citation-key":format!("Synthetic{n}"),"type":"book","title":"Synthetic size threshold","abstract":"x".repeat(200_000)})).collect();
+    std::fs::write(&path, serde_json::to_vec(&records).unwrap()).unwrap();
     let engine = Engine::new().unwrap();
     engine
         .dispatch(
@@ -168,20 +170,27 @@ fn renderer_and_transport_quotas_are_resource_errors_on_real_cli_and_stdio() {
         )
         .unwrap();
     let snapshot = engine.snapshot().unwrap();
-    let item = json!({"item":snapshot.objects()[0].object.id()});
+    let items: Vec<_> = snapshot
+        .objects()
+        .iter()
+        .map(|item| json!({"item":item.object.id()}))
+        .collect();
     // Library ids belong to a person's key, which the real command may keep apart from this test's.
     let listed = std::process::Command::new(env!("CARGO_BIN_EXE_ibis"))
-        .args(["search", "Synthetic", "--json", "--file"])
+        .args(["libraries", "--json", "--file"])
         .arg(&path)
         .output()
         .unwrap();
     let listed: Value = serde_json::from_slice(&listed.stdout).unwrap();
-    let native_item = json!({"item":listed["data"]["hits"][0]["item"]["object"]["data"]["id"]});
+    let library = &listed["data"]["libraries"][0]["id"];
+    let native_items: Vec<_> = (0..84)
+        .map(|n| json!({"item":{"library":library,"key":format!("record:Synthetic{n}")}}))
+        .collect();
     for count in [1, 42, 83, 84] {
         let output = json!({"kind":"key","syntax":"csl-json"});
-        let params = json!({"items":vec![item.clone();count],"output":output});
+        let params = json!({"items":items[..count],"output":output});
         let typed = serde_json::from_value(params).unwrap();
-        let params = json!({"items":vec![native_item.clone();count],"output":output});
+        let params = json!({"items":native_items[..count],"output":output});
         assert_eq!(
             ibis_core::syntax::cite(&snapshot, &typed).is_ok(),
             count < 84,
