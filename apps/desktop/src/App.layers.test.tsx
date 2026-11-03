@@ -187,6 +187,22 @@ test("Esc works after a hide, when WebKitGTK calls the next press a repeat", asy
   await waitFor(() => expect(hides(calls)).toBe(2));
 });
 
+test.each(["macos", "windows"])("on %s a key held through a reopening stays a repeat", async (system) => {
+  document.documentElement.dataset.system = system;
+  try {
+    const calls = backend();
+    render(<App />);
+    await waitFor(() => expect(document.activeElement).toBe(search()));
+    press("Escape");
+    await waitFor(() => expect(hides(calls)).toBe(1));
+    await reopen();
+    await waitFor(() => expect(document.activeElement).toBe(search()));
+    press("Escape", { repeat: true });
+    await act(async () => { await new Promise(requestAnimationFrame); });
+    expect(hides(calls)).toBe(1);
+  } finally { delete document.documentElement.dataset.system; }
+});
+
 test("the footer's Esc action steps back through the same stack", async () => {
   backend({ library_status: () => library, search: () => [result("picked", "Invented reference")] });
   render(<App />);

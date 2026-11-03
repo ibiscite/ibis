@@ -1,5 +1,6 @@
 import { useRef } from "react";
 import type { PickerApi } from "../../App";
+import { currentPlatform } from "../../platform";
 import { focusChoices } from "../../ui/ChoiceList";
 import { closeNearestLayer, closeOverlays, composingKey, consumeKey, focusLost, overlayOpen, useKeyOwner } from "../../ui/layers";
 import { commandFor, type PickerCommand } from "./shortcuts";
@@ -82,9 +83,11 @@ export function usePickerKeys({
   const keyDown = (e: KeyboardEvent) => {
     pointer.resetHover();
     // A key that hides the window releases over another one, so WebKitGTK calls
-    // the next press of it a repeat. A repeat counts only within one showing.
+    // the next press of it a repeat. There a repeat counts only within one
+    // showing: the web view cannot see that release, and a key held through a
+    // reopening costs one hide, where a dead Esc would cost every press.
     const showing = session.getSnapshot().visibility;
-    const repeated = e.repeat && (lastShowing.current === null || lastShowing.current === showing);
+    const repeated = e.repeat && (currentPlatform() !== "linux" || lastShowing.current === null || lastShowing.current === showing);
     lastShowing.current = showing;
     // A click on a blank part of the picker, or a control that went away,
     // leaves focus on nothing. The key goes home with its native effect, so
