@@ -183,6 +183,8 @@ pub struct ProjectRead {
     problem: Option<ProjectProblem>,
     /// Unreadable lines of the newest read, which may not be the copy kept.
     damaged: Vec<usize>,
+    /// The newest text that could be read, so the same text is not parsed again.
+    seen: Option<u64>,
 }
 
 impl ProjectRead {
@@ -195,18 +197,24 @@ impl ProjectRead {
     }
 
     fn observe(path: &Path, previous: Option<&Self>) -> Self {
-        let unchanged = previous.and_then(|previous| previous.good.clone());
-        match observed_text(path) {
-            Ok(text) if unchanged.as_ref().is_some_and(|good| good.digest == digest(&text)) => Self {
-                damaged: unchanged
-                    .as_ref()
-                    .map_or_else(Vec::new, |good| good.keys.damaged.clone()),
-                good: unchanged,
-                problem: None,
-            },
-            Ok(text) => Self::after(previous, ProjectBibliography::from_text(path, &text)),
-            Err(problem) => Self::after(previous, Err(problem)),
+        let text = match observed_text(path) {
+            Ok(text) => text,
+            Err(problem) => return Self::after(previous, Err(problem)),
+        };
+        let seen = digest(&text);
+        if let Some(previous) = previous.filter(|previous| previous.seen == Some(seen)) {
+            return previous.clone();
         }
+        let unchanged = previous.and_then(|previous| previous.good.clone());
+        if let Some(good) = unchanged.filter(|good| good.digest == seen) {
+            return Self {
+                damaged: good.keys.damaged.clone(),
+                good: Some(good),
+                problem: None,
+                seen: Some(seen),
+            };
+        }
+        Self::after(previous, ProjectBibliography::from_text(path, &text))
     }
 
     fn after(previous: Option<&Self>, read: Result<ProjectBibliography, ProjectProblem>) -> Self {
@@ -216,11 +224,13 @@ impl ProjectRead {
         match read {
             // A damaged read cannot replace a whole one; its lines are still reported.
             Ok(bibliography) if !bibliography.complete() && kept.is_some() => Self {
+                seen: Some(bibliography.digest),
                 damaged: bibliography.keys.damaged,
                 good: kept,
                 problem: Some(ProjectProblem::Damaged),
             },
             Ok(bibliography) => Self {
+                seen: Some(bibliography.digest),
                 damaged: bibliography.keys.damaged.clone(),
                 good: Some(Arc::new(bibliography)),
                 problem: None,
@@ -229,6 +239,7 @@ impl ProjectRead {
                 good: previous.and_then(|previous| previous.good.clone()),
                 problem: Some(problem),
                 damaged: vec![],
+                seen: None,
             },
         }
     }
@@ -240,7 +251,7 @@ impl ProjectRead {
             (None, None) => true,
             _ => false,
         };
-        same_file && self.problem == other.problem
+        same_file && self.problem == other.problem && self.damaged == other.damaged
     }
 
     /// Lines of the newest read that could not be read, so a person can find them.
@@ -451,6 +462,60 @@ mod tests {
         // Prose with an address and no entry shape stays prose.
         let prose = read("Written by me@invented.example, 2026.\n@book{a,}\n");
         assert_eq!(prose.check("okafor2018", None), Missing);
+    }
+
+    #[test]
+    fn a_file_of_nothing_but_entry_shapes_stays_cheap_and_undecided() {
+        let text = "@a-b{\n".repeat(2_000_000);
+        let started = std::time::Instant::now();
+        let scan = crate::bibtex::project::scan(&text);
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(20),
+            "{:?}",
+            started.elapsed()
+        );
+        assert!(!scan.complete());
+        assert_eq!(
+            &scan.damaged[..3],
+            [1, 2, 3],
+            "lines stay right however they are counted"
+        );
+        assert!(scan.damaged.len() <= 32);
+        // Prose inside a comment can hide an entry shape too.
+        assert_eq!(
+            read("@comment{@my-type{k,}}\n").check("okafor2018", None),
+            CouldNotCheck
+        );
+    }
+
+    #[test]
+    fn a_file_read_again_unchanged_keeps_its_answer_and_new_damage_is_noticed() {
+        let dir = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
+        let path = dir.path().join("thesis.bib");
+        let write = |text: &str| std::fs::write(&path, text).unwrap_or_else(|error| panic!("{error}"));
+        write(TWO);
+        let good = ProjectRead::read(&path, None);
+        assert!(good.same_answers(&ProjectRead::read(&path, Some(&good))));
+
+        write(&format!("{TWO}@book{{x,title={{Never closed\n"));
+        let damaged = ProjectRead::read(&path, Some(&good));
+        assert_eq!(damaged.problem(), Some(ProjectProblem::Damaged));
+        assert!(
+            damaged.same_answers(&ProjectRead::read(&path, Some(&damaged))),
+            "the same damage again"
+        );
+
+        write(&format!("{TWO}\n@book{{x,title={{Never closed\n"));
+        let moved = ProjectRead::read(&path, Some(&damaged));
+        assert!(
+            !moved.same_answers(&damaged),
+            "other lines are shown, so the picker must hear of it"
+        );
+
+        write(TWO);
+        let recovered = ProjectRead::read(&path, Some(&moved));
+        assert_eq!(recovered.problem(), None);
+        assert!(recovered.damaged_lines().is_empty());
     }
 
     #[test]

@@ -45,7 +45,7 @@ impl ProjectMark {
         Self {
             generation,
             state,
-            lines: lines.into_iter().map(|line| line as u32).collect(),
+            lines: lines.into_iter().take(5).map(|line| line as u32).collect(),
         }
     }
 }

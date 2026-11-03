@@ -10,6 +10,8 @@ use std::collections::{BTreeSet, HashMap};
 use super::Budget;
 use super::lexer::{Block, Part, RawEntry, parse_entry, parse_string, split_blocks};
 
+const MAX_DAMAGED_LINES: usize = 32;
+
 /// Where a key was found. An `@xdata` entry only supplies fields, so its key
 /// cannot be cited even though it is written in the file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -62,6 +64,14 @@ impl KeyScan {
     pub fn complete(&self) -> bool {
         !self.limited && self.damaged.is_empty()
     }
+    /// Note a line that could not be read. The first few are enough to find,
+    /// so a hostile file cannot make this list its own cost. False when full.
+    fn damage(&mut self, line: usize) -> bool {
+        if self.damaged.len() < MAX_DAMAGED_LINES {
+            self.damaged.push(line);
+        }
+        self.damaged.len() < MAX_DAMAGED_LINES
+    }
 }
 
 /// The literal text of a value, or `None` when it uses a macro.
@@ -92,11 +102,13 @@ fn key_is_delimited(block: &Block<'_>) -> bool {
     after.is_empty() || after.starts_with(',')
 }
 
-/// Lines in text between blocks that look like an entry the lexer does not
-/// recognise, such as `@my-type{k,}` or `@ article{k,}`. Tools differ on these,
-/// so no key can be proved absent while one is there.
-fn unrecognised_entries(gap: &str, first_line: usize) -> Vec<usize> {
-    let mut lines = vec![];
+/// Lines in `gap`, text between blocks, that look like an entry the lexer does
+/// not recognise, such as `@my-type{k,}` or `@ article{k,}`. Tools differ on
+/// these, so no key can be proved absent while one is there. Lines are counted
+/// as the walk goes and one is enough to decide, so a file of nothing else
+/// stays linear.
+fn unrecognised_entries(gap: &str, first_line: usize, scan: &mut KeyScan) {
+    let (mut line, mut counted_to) = (first_line, 0);
     for (at, _) in gap.match_indices('@') {
         let rest = gap[at + 1..].trim_start();
         let kind = rest
@@ -104,10 +116,29 @@ fn unrecognised_entries(gap: &str, first_line: usize) -> Vec<usize> {
             .unwrap_or(rest.len());
         let after = rest[kind..].trim_start();
         if kind > 0 && (after.starts_with('{') || after.starts_with('(')) {
-            lines.push(first_line + gap[..at].matches('\n').count());
+            line += gap[counted_to..at].matches('\n').count();
+            counted_to = at;
+            if !scan.damage(line) {
+                return;
+            }
         }
     }
-    lines
+}
+
+/// Check the text around `blocks`, which were split from `text`.
+fn check_gaps(text: &str, blocks: &[Block<'_>], first_line: usize, limited: bool, scan: &mut KeyScan) {
+    let (mut end, mut line) = (0, first_line);
+    for block in blocks {
+        let start = block.text.as_ptr() as usize - text.as_ptr() as usize;
+        if let Some(gap) = text.get(end..start) {
+            unrecognised_entries(gap, line, scan);
+        }
+        end = start + block.text.len();
+        line = first_line + block.line - 1 + block.text.matches('\n').count();
+    }
+    if !limited && let Some(gap) = text.get(end..) {
+        unrecognised_entries(gap, line, scan);
+    }
 }
 
 pub(crate) fn scan(text: &str) -> KeyScan {
@@ -115,27 +146,21 @@ pub(crate) fn scan(text: &str) -> KeyScan {
     let budget = Budget::for_input(text.len());
     let (blocks, limited) = split_blocks(text);
     scan.limited = limited;
-    let offset = |inner: &str| inner.as_ptr() as usize - text.as_ptr() as usize;
-    let mut end = 0;
-    let mut line = 1;
+    check_gaps(text, &blocks, 1, limited, &mut scan);
     for block in &blocks {
-        let start = offset(block.text);
-        if let Some(gap) = text.get(end..start) {
-            scan.damaged.extend(unrecognised_entries(gap, line));
-        }
-        end = start + block.text.len();
-        line = block.line + block.text.matches('\n').count();
         if !budget.charge(block.text.len().saturating_add(256)) {
             scan.limited = true;
             break;
         }
         if !block.complete {
-            scan.damaged.push(block.line);
+            scan.damage(block.line);
             continue;
         }
         match block.kind.as_str() {
             "comment" => {
-                for inner in split_blocks(block.body).0.iter().filter(|inner| inner.complete) {
+                let (inner, limited) = split_blocks(block.body);
+                check_gaps(block.body, &inner, block.line, limited, &mut scan);
+                for inner in inner.iter().filter(|inner| inner.complete) {
                     if !matches!(inner.kind.as_str(), "comment" | "preamble" | "string")
                         && let Ok(entry) = parse_entry(inner)
                     {
@@ -145,18 +170,17 @@ pub(crate) fn scan(text: &str) -> KeyScan {
                 }
             }
             "preamble" => {}
-            "string" if parse_string(block).is_none() => scan.damaged.push(block.line),
+            "string" if parse_string(block).is_none() => {
+                scan.damage(block.line);
+            }
             "string" => {}
             _ => match parse_entry(block) {
                 Ok(entry) if key_is_delimited(block) => record(&mut scan, &entry),
-                _ => scan.damaged.push(block.line),
+                _ => {
+                    scan.damage(block.line);
+                }
             },
         }
-    }
-    if !scan.limited
-        && let Some(gap) = text.get(end..)
-    {
-        scan.damaged.extend(unrecognised_entries(gap, line));
     }
     scan
 }
@@ -178,7 +202,9 @@ fn record(scan: &mut KeyScan, entry: &RawEntry<'_>) {
                 }
             }
             // An alias list that depends on a macro could name any key.
-            None => scan.damaged.push(entry.line),
+            None => {
+                scan.damage(entry.line);
+            }
         }
     }
 }

@@ -780,7 +780,7 @@ impl FileLibrary {
         ] {
             cancel.check().map_err(CommandError::from)?;
             let semantic_reason = if entry {
-                Some("This style copies a reference entry; name forms need document context. Choose another style.")
+                Some("Reference entries have no name forms. Choose another style.")
             } else if bare_keys {
                 Some("Keys only has no name forms. Choose another output.")
             } else if textcite && form == CitationForm::Normal {
