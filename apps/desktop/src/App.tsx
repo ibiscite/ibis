@@ -190,7 +190,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
         app={destination.app} formatSource={destination.source} formatPick={destination.pick}
         onFormatOpenChange={onFormatOpenChange}
         pasteChoices={destination.pasteChoices}
-        onPasteChange={(paste) => { send({ type: "question", answer: "cancel" }); destination.choosePaste(paste); }}
+        onPasteChange={(paste) => { const asked = state.pendingCopy?.question === "open"; send({ type: "question", answer: "cancel" }); destination.choosePaste(paste, asked); }}
         formatDisabled={!destination.ready || destination.saving}
         showFormat={!libraryChoices && (library === null || Boolean(library?.has_snapshot))}
         styles onFormatChange={chooseFormat} onFormatCommand={keys.onFormatCommand}

@@ -113,15 +113,15 @@ export function useDestination({ pickerDestination, rememberAppOutput }: Destina
     if (pick === "app") remember(choice);
     else if (pick === "default") { chooseDefault(choice); setHeld(null); }
   };
-  const choosePaste = (paste: AppPaste) => {
+  const choosePaste = (paste: AppPaste, asked = false) => {
     const id = destination?.app_id;
     if (!rememberAppOutput || !id || !ready || saving) return;
     delivery.current += 1;
     lastPolicy.current = undefined;
     // Persisting delivery does not resume the Enter that opened the chooser.
     // Read the native policy back before showing an intended paste in the footer.
-    // Answering a first-paste question accepts the format it showed, so it is not asked again.
-    const output = destination?.output_question && !remembered ? outputOf(format) : null;
+    // Answering an open first-paste question accepts the format it showed, so it is not asked again.
+    const output = asked && held === null && destination?.output_question && !remembered ? outputOf(format) : null;
     save(() => rememberAppOutput(id, output, paste, destination?.app_identity ?? null), () => read(false), false);
   };
   const copyToken = (): CopyToken => ({ opening: openings.current, choice: choices.current, delivery: delivery.current });

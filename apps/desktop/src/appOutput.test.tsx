@@ -352,6 +352,16 @@ test("an unreadable per-app file says defaults apply and offers the app's own pa
   expect(calls).not.toContain("remember_app_output");
 });
 
+test.each([["the open first-paste question", true], ["the format menu with nothing asked", false]])("answering Copy only in %s saves a format only for the open question", async (_where, asked) => {
+  const { remembered } = opened(() => ({ ...BROWSER, can_choose_paste: true }));
+  await screen.findByText("First");
+  await waitFor(() => expect(formatButton().hasAttribute("disabled")).toBe(false));
+  if (asked) fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
+  else openFormats();
+  fireEvent.click(await screen.findByRole("menuitem", { name: "Copy only" }));
+  await waitFor(() => expect(remembered).toEqual([asked ? { key: "pandoc" } : null]));
+});
+
 test("an unread destination says what applies and never points at paste choices it cannot offer", async () => {
   const saved: unknown[] = [];
   const { remembered } = opened(() => { throw new Error("synthetic read failure"); }, { set_picker_preferences: ({ copyFormat }) => { saved.push(copyFormat); return null; } });

@@ -119,7 +119,7 @@ test("a held pick and its save failure are dropped on reopening, which shows wha
   expect(settings.report).toHaveBeenCalledWith("appChoice", false);
 });
 
-test("a delivery answer to the first-paste question accepts its format, so it is not asked again", async () => {
+test("a delivery answer to an open first-paste question accepts its format, so it is not asked again", async () => {
   let destination: PickerDestination = { ...browser, can_choose_paste: true };
   const rememberAppOutput = vi.fn(async (_id: string, output: PickerDestination["remembered"]) => {
     destination = { ...destination, remembered: output, paste: "copy-only" };
@@ -128,10 +128,34 @@ test("a delivery answer to the first-paste question accepts its format, so it is
   const { result } = renderHook(() => useDestination({ pickerDestination: async () => destination, rememberAppOutput }, options()));
   await act(async () => result.current.read());
   expect(result.current.shouldAsk).toBe(true);
-  await act(async () => result.current.choosePaste("copy-only"));
+  await act(async () => result.current.choosePaste("copy-only", true));
   await waitFor(() => expect(result.current.ready && !result.current.saving).toBe(true));
   expect(rememberAppOutput).toHaveBeenCalledExactlyOnceWith("example.browser", { key: "pandoc" }, "copy-only", null);
   expect(result.current).toMatchObject({ shouldAsk: false, source: "remembered" });
+});
+
+test("a delivery answer with no open question leaves the format to follow the default", async () => {
+  const rememberAppOutput = vi.fn(async () => null);
+  const { result } = renderHook(() => useDestination({ pickerDestination: async () => browser, rememberAppOutput }, options()));
+  await act(async () => result.current.read());
+  await act(async () => result.current.choosePaste("copy-only"));
+  await waitFor(() => expect(result.current.ready && !result.current.saving).toBe(true));
+  expect(rememberAppOutput).toHaveBeenCalledExactlyOnceWith("example.browser", null, "copy-only", null);
+  expect(result.current.shouldAsk).toBe(true);
+});
+
+test("a held format is never promoted by a delivery answer, even with a question open", async () => {
+  const rememberAppOutput = vi.fn(async (_id: string, output: unknown) => {
+    if (output) throw new Error("synthetic save failure");
+    return null;
+  });
+  const { result } = renderHook(() => useDestination({ pickerDestination: async () => browser, rememberAppOutput }, options()));
+  await act(async () => result.current.read());
+  await act(async () => result.current.choose("typst"));
+  await act(async () => result.current.choosePaste("copy-only", true));
+  await waitFor(() => expect(result.current.ready && !result.current.saving).toBe(true));
+  expect(rememberAppOutput).toHaveBeenLastCalledWith("example.browser", null, "copy-only", null);
+  expect(result.current).toMatchObject({ format: "typst", source: "held" });
 });
 
 test("a delivery answer keeps a held format and sends no format of its own", async () => {
