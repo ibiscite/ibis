@@ -32,13 +32,14 @@ The first command line, BibTeX reading that survives damaged files, key outputs,
 
 ### 0.3 Straight into your document
 
-- **The first citation with almost no setup.** The output follows the app you are writing in and the footer shows what Enter will do ("Paste into Word · APA"); one key changes it just this once or for that app, with a way back to automatic. The first paste into a browser, code editor or unknown app asks once, and can keep that app to copying. Setup finishes itself, including a permission detour that keeps the prepared citation. Sample references when there is no library, the same invented set as the website and help.
+- **The first citation with almost no setup.** The output follows the app you are writing in and the footer shows what Enter will do ("Paste into Word · APA"); one key changes it just this once or for that app, with a way back to automatic. The first paste into a browser, code editor or unknown app asks once, and can keep that app to copying. First run asks first, with Zotero highlighted when found. Setup finishes itself, including a permission detour that keeps the prepared citation. Sample references when there is no library, the same invented set as the website and help.
 - **Enter pastes** into that app on macOS and Windows, on by default with a switch to turn it off. Enter pressed while results load runs once. Ibis copies instead, and says why, wherever pasting is unsafe: terminals, remote desktops and viewers, editors whose paste key does something else, elevated apps, secure typing on macOS and password fields on Windows. Any other app can be set to "copy only here". A pending paste is cancelled when the computer sleeps, locks or switches user. A one-time note per word processor says that documents using a reference manager's plugin should insert with it. After the window closes a short receipt says what happened; the last outcome stays in More.
 - **Linux** copies and says why. On Wayland the shortcut comes from the desktop portal, or Ibis shows the exact binding to add.
 - **Updates** keep the paste permission on macOS through a stable self-signed identity, and an update never opens the picker.
 - **Citations:** rich text (RTF and HTML) on the clipboard, Copy as Plain Text and Copy Reference as Markdown; recent citations per app; changing the last citation as an explicit action that replaces only a selected citation; a page or page range; narrative and author-omitted citations. Short selected text becomes the search, so the paste replaces a placeholder like "smith 2020". A peek at a reference's full details; a `.bib` or CSL-JSON file dropped on the window becomes a library.
 - **For scripts and AI agents** ([decision 0033](docs/decisions.md#0033-the-engine-for-agents-and-tools)): `ibis mcp` speaks MCP 2026-07-28 and still answers 2025 clients ([#1591](https://github.com/ibiscite/ibis/issues/1591)); an Agent Skill in one plugin for Claude Code and Codex; `ibis` uses the libraries chosen in the app when none are named; the app installs the matching `ibis` command; a Homebrew tap and winget.
 - **Release gates** ([decision 0032](docs/decisions.md#0032-release-gates)): the whole citation works with VoiceOver and NVDA and with Chinese, Japanese and Korean input methods; interface text is ready for translation; speed and resource limits are checks that run.
+- **Open to early adopters:** once 0.3 is released it is announced publicly, with Report a Problem collecting feedback.
 
 ### 0.4 Build any citation
 
@@ -81,15 +82,15 @@ The first command line, BibTeX reading that survives damaged files, key outputs,
 
 ### 1.0 Stable
 
-No new features. People test everything, then the maintainer moves to 1.0. The release gates: accessibility verified with VoiceOver, NVDA and Orca; a versioned engine contract proved by real clients; Flathub, Homebrew and winget, with Linux support stated per desktop, display server and package; the documentation site; licence notices and supply-chain records. macOS keeps its stable self-signed identity and Windows installers stay unsigned with first-launch steps: 1.0 needs no paid signing (decision 0032).
+No new features. People test everything, then the maintainer moves to 1.0. The release gates: accessibility verified with VoiceOver, NVDA and Orca; a versioned engine contract proved by real clients; Flathub, Homebrew and winget, with Linux support stated per desktop, display server and package; the documentation site; licence notices and supply-chain records. macOS keeps its stable self-signed identity and Windows installers stay unsigned with first-launch steps. Open question for the 1.0 gate: paid Mac signing is undecided and revisited near 1.0 (decision 0032).
 
 ## Saved passages and project checks
 
 Five workflows in 0.4 to 0.6 were approved together on 2026-10-30, in this order: the project's bibliography ([#1377](https://github.com/ibiscite/ibis/issues/1377)), highlights and comments with exact passages ([#54](https://github.com/ibiscite/ibis/issues/54), [#359](https://github.com/ibiscite/ibis/issues/359)), quotes ([#1385](https://github.com/ibiscite/ibis/issues/1385)), evidence briefs ([#1517](https://github.com/ibiscite/ibis/issues/1517)) and changed keys ([#1092](https://github.com/ibiscite/ibis/issues/1092)). A slice that cannot yet be proved is narrowed rather than allowed to weaken its claims. Notes and comments stay distinct from quotations, Zotero annotation support is stated per version and per live or closed mode, and none of this widens MCP access to notes, annotations or private links. Detail: [research](docs/source-workflow-research.md); interaction rules: [design](docs/design.md#source-checks-and-passage-reuse-planned).
 
-## After 1.0: needs paid signing
+## Needs paid signing
 
-- Apple Developer ID signing and notarization, and Windows code signing, when there is money or a free programme accepts Ibis.
+- Apple Developer ID signing and notarization, and Windows code signing, when there is money or a free programme accepts Ibis. Paid Mac signing is revisited near 1.0.
 - Opt-in iCloud settings sync on macOS, which needs a Developer ID build (network decision first) ([#1561](https://github.com/ibiscite/ibis/issues/1561)).
 - Windows App Actions (Click to Do) and the Windows agent registry, which need signed packages.
 

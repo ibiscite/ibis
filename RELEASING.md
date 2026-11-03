@@ -74,6 +74,6 @@ Then rerun at the same tag with publication on, or upload the verified packages 
 
 ## Planned for 1.0
 
-- An SBOM with every release, and immutable stable releases. 1.0 needs no paid code signing; Apple Developer ID and Windows signing wait for money or a free programme ([ROADMAP](ROADMAP.md)).
+- An SBOM with every release, and immutable stable releases. Paid Mac signing is undecided and revisited near 1.0, an open question for the 1.0 gate; Apple Developer ID and Windows signing wait for money or a free programme ([ROADMAP](ROADMAP.md)).
 - A written procedure for losing or rotating an update key.
 - Distribution through Homebrew, winget and Flathub as well as GitHub Releases.

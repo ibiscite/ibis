@@ -844,15 +844,19 @@ tools set their own later. Where each check runs: #1536.
 2026-11-01 (maintainer): every planned feature ships before 1.0, including ideas once
 listed after it; the version numbers before 1.0 are working steps and may be
 renumbered. 1.0 adds no features: people test everything and the maintainer
-moves to 1.0 by hand. 1.0 needs no paid code signing: macOS keeps the stable
+moves to 1.0 by hand. Until signing is decided, macOS keeps the stable
 self-signed identity and Windows installers stay unsigned with first-launch
-steps; Developer ID, notarization and Windows signing wait for money or a free
-programme ([ROADMAP](../ROADMAP.md)).
+steps ([ROADMAP](../ROADMAP.md)).
 
 2026-11-02 (maintainer): every planned milestone through 0.7 stays in 1.0. The
 PDF opens in a panel inside the picker that widens, shared with the citation
 editor. Delights are quiet, with rare moments. Approved cuts: two accents only, a
-trimmed Look page, and one format memory rule.
+trimmed Look page, and one format memory rule. First run asks first, with Zotero
+highlighted when found. Agents may use the Windows laptop over ssh and a Linux VM
+on the Mac for release checks, not only for bugs. Once 0.3 is released it is
+announced publicly to open early adopters, with Report a Problem collecting
+feedback. Paid Mac signing is undecided: it is revisited near 1.0 and stays an
+open question for the 1.0 gate.
 
 2026-11-02 (maintainer): both channels stay. Each finished milestone (0.3, 0.4 and
 so on) becomes one numbered release with the maintainer's one-click approval. The
