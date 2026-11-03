@@ -101,7 +101,7 @@ pub(crate) fn library_status(app: AppHandle) -> LibraryStatus {
 /// dates for the second group. Never searches document text or reads new sources.
 #[derive(serde::Deserialize, specta::Type)]
 #[serde(transparent)]
-pub(crate) struct RecentIdentity(#[specta(type = specta_typescript::Unknown)] ibis_core::contract::ItemRef);
+pub(crate) struct RecentIdentity(#[specta(type = specta_typescript::Unknown)] pub(crate) ibis_core::contract::ItemRef);
 
 #[tauri::command]
 #[specta::specta]

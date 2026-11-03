@@ -59,6 +59,29 @@ export const commands = {
 	copyFileCitation: (ticket: string, contentHash: string) => __TAURI_INVOKE<Copied_Serialize>("copy_file_citation", { ticket, contentHash }),
 	/**  The format the picker starts with: the last one chosen, or Pandoc. */
 	copyFormat: () => __TAURI_INVOKE<KeyFormat>("copy_format"),
+	sessionReferences: () => __TAURI_INVOKE<SessionReferencesView_Serialize>("session_references"),
+	editSessionReferences: (edit: SessionEdit) => __TAURI_INVOKE<SessionReferencesView_Serialize>("edit_session_references", { edit }),
+	/**
+	 *  The list as a formatted bibliography, for the person to look at before
+	 *  copying it. `None` when nothing listed is in the open library.
+	 */
+	sessionBibliography: (style: CitationStyle) => __TAURI_INVOKE<{
+	text: string,
+	html: string | null,
+	content_hash: string,
+	warnings: string[],
+} | null>("session_bibliography", { style }),
+	/**
+	 *  Copy what was shown. Prepared again from the list as it is now, and refused
+	 *  unless that is exactly what the person saw.
+	 */
+	copySessionBibliography: (style: CitationStyle, contentHash: string) => __TAURI_INVOKE<null>("copy_session_bibliography", { style, contentHash }),
+	/**
+	 *  Save what was shown, as rich text, a web page or plain text. This is the one
+	 *  way the list leaves memory, and only because the person asked. `None` when
+	 *  the dialog was cancelled; otherwise the file's name.
+	 */
+	exportSessionBibliography: (style: CitationStyle, contentHash: string) => __TAURI_INVOKE<string | null>("export_session_bibliography", { style, contentHash }),
 	/**  The preferences the picker starts with. */
 	pickerPreferences: () => __TAURI_INVOKE<PickerPreferences_Serialize>("picker_preferences"),
 	/**  Issue a save identity inline at IPC dispatch; unused identities block nothing. */
@@ -907,6 +930,49 @@ export type SearchResult_Serialize = {
 	item_type: string,
 };
 
+/**
+ *  A formatted bibliography, shown before it is copied. The picker's own
+ *  citation receipt is untouched.
+ */
+export type SessionBibliography = {
+	text: string,
+	html: string | null,
+	content_hash: string,
+	warnings: string[],
+};
+
+export type SessionEdit = { kind: "remove"; id: RecentIdentity } | { kind: "reset" } | { kind: "undo" };
+
+export type SessionReferencesView = SessionReferencesView_Serialize | SessionReferencesView_Deserialize;
+
+export type SessionReferencesView_Deserialize = {
+	revision: number,
+	/**  The listed references that are in the open library. */
+	rows: SearchResult_Deserialize[],
+	/**
+	 *  Listed references from a library that is not open, left out of the
+	 *  bibliography until it is.
+	 */
+	absent: number,
+	/**  The list reached its limit, so a later citation was left off. */
+	overflowed: boolean,
+	undo: UndoView_Deserialize | null,
+};
+
+export type SessionReferencesView_Serialize = {
+	revision: number,
+	/**  The listed references that are in the open library. */
+	rows: SearchResult_Serialize[],
+	/**
+	 *  Listed references from a library that is not open, left out of the
+	 *  bibliography until it is.
+	 */
+	absent: number,
+	/**  The list reached its limit, so a later citation was left off. */
+	overflowed: boolean,
+	undo: UndoView_Serialize | null,
+};
+
 /**  Why a shortcut change failed. Only NotSaved changes the working shortcut. */
 export type ShortcutRefusal =
 /**  Not a key combination Ibis can register. */
@@ -976,6 +1042,15 @@ export type SystemIcon = {
 	mime: string,
 	bytes: number[],
 };
+
+/**  The edit Undo would reverse, for its label. Only the removed row is named. */
+export type UndoView = UndoView_Serialize | UndoView_Deserialize;
+
+/**  The edit Undo would reverse, for its label. Only the removed row is named. */
+export type UndoView_Deserialize = { kind: "removed"; reference: SearchResult_Deserialize | null } | ({ kind: "reset" }) & { reference?: never };
+
+/**  The edit Undo would reverse, for its label. Only the removed row is named. */
+export type UndoView_Serialize = { kind: "removed"; reference: SearchResult_Serialize | null } | ({ kind: "reset" }) & { reference?: never };
 
 /**  Settings › Look's window size. Any other dragged size is Custom. */
 export type WindowSize = "small" | "medium" | "large" | "custom";

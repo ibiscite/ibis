@@ -3,11 +3,17 @@ import { pickerText } from "../../messages";
 import { isMac } from "../../platform";
 import { UndoNotice } from "../../ui/UndoNotice";
 import { KeysDialog } from "./KeysDialog";
+import { SessionReferencesDialog } from "./SessionReferences";
+import type { PickerApi } from "../../App";
+import type { StyleId } from "../../format/styles";
 import type { usePickerSession } from "./usePickerSession";
 import type { usePickerMenus } from "./usePickerMenus";
 import type { KeyBinding } from "../../keys";
 
-export function PickerOverlays({ state, send, menus, bindings }: {
+export function PickerOverlays({ api, style, state, send, menus, bindings }: {
+  api: PickerApi;
+  /** The output's style; a key output has none, so its bibliography uses APA. */
+  style: StyleId | null;
   state: ReturnType<typeof usePickerSession>["state"];
   send: ReturnType<typeof usePickerSession>["send"];
   menus: ReturnType<typeof usePickerMenus>;
@@ -16,9 +22,13 @@ export function PickerOverlays({ state, send, menus, bindings }: {
   const { text } = useInterfaceMessages();
   const removed = state.removed?.reference;
   const reference = removed ? [removed.authors || removed.first_author || removed.key, removed.year].filter((value) => value !== null && value !== undefined).join(", ") : "";
-  const { keysOpen, closeKeys, windowUndo, input } = menus;
+  const { keysOpen, closeKeys, windowUndo, input, sessionOpen, closeSession } = menus;
+  const { sessionReferences, editSessionReferences, sessionBibliography, copySessionBibliography, exportSessionBibliography } = api;
   return <>
     {keysOpen && <KeysDialog bindings={bindings} isMac={isMac} onClose={closeKeys} />}
+    {sessionOpen && sessionReferences && editSessionReferences && sessionBibliography && copySessionBibliography && exportSessionBibliography
+      && <SessionReferencesDialog style={style ?? "apa"} onClose={closeSession}
+        api={{ sessionReferences, editSessionReferences, sessionBibliography, copySessionBibliography, exportSessionBibliography }} />}
     {(state.removed || windowUndo.ticket !== null) && <div className="undo-notices" role="region" aria-label={pickerText.undo}>
       {state.removed && <UndoNotice key={`reference-${state.removed.token}`} message={text("undo-removed", { reference })} action={text("undo-remove", { reference })} paused={state.hiddenAt !== null} fallbackFocusRef={input}
         onExpire={() => send({ type: "expire-removal", removal: state.removed! })}

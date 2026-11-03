@@ -17,6 +17,7 @@ export function usePickerMenus(api: PickerApi, { perform }: Pick<ReturnType<type
   const [formatOpen, setFormatOpen] = useState(false);
   const { pinned, currentPin, togglePin } = usePin({ setPinned, perform });
   const [keysOpen, setKeysOpen] = useState(false);
+  const [sessionOpen, setSessionOpen] = useState(false);
   const restoreChooserFocus = useRef(false);
   useLayoutEffect(() => {
     if (choosingLibrary || !restoreChooserFocus.current) return;
@@ -57,20 +58,34 @@ export function usePickerMenus(api: PickerApi, { perform }: Pick<ReturnType<type
     focusPicker();
     void perform(operation, action);
   };
-  const openKeys = () => {
+  const beforeSheet = () => {
     cancelCopy();
     closeMenu(false);
     const focused = document.activeElement;
     // A dismissed menu item returns to a visible control; welcome has no Search.
     keysReturn.current = focused instanceof HTMLElement && !focused.closest("[role='menu']") ? focused
       : welcomeShown ? moreButton.current : input.current;
-    setKeysOpen(true);
   };
-  const closeKeys = () => {
-    setKeysOpen(false);
+  const afterSheet = () => {
     const back = keysReturn.current;
     const fallback = welcomeShown ? moreButton.current : input.current;
     (back?.isConnected ? back : fallback)?.focus();
   };
-  return { input, formatButtonRef, moreButton, menuOpen, setMenuOpen, libraryMenuOpen, setLibraryMenuOpen, formatOpen, setFormatOpen, pinned, currentPin, togglePin, keysOpen, setKeysOpen, restoreChooserFocus, windowUndo, openMore, closeMenu, focusPicker, runFromMenu, openKeys, closeKeys };
+  const openKeys = () => {
+    beforeSheet();
+    setKeysOpen(true);
+  };
+  const closeKeys = () => {
+    setKeysOpen(false);
+    afterSheet();
+  };
+  const openSession = () => {
+    beforeSheet();
+    setSessionOpen(true);
+  };
+  const closeSession = () => {
+    setSessionOpen(false);
+    afterSheet();
+  };
+  return { input, formatButtonRef, moreButton, menuOpen, setMenuOpen, libraryMenuOpen, setLibraryMenuOpen, formatOpen, setFormatOpen, pinned, currentPin, togglePin, keysOpen, setKeysOpen, restoreChooserFocus, windowUndo, openMore, closeMenu, focusPicker, runFromMenu, openKeys, closeKeys, sessionOpen, openSession, closeSession };
 }

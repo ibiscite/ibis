@@ -11,6 +11,9 @@ and its local data. New Ibis data flows need a recorded decision ([decisions](do
   and a few levels of subfolders; it opens a file only after you choose it.
 - **Clipboard:** copying writes the citation to your system clipboard. Clipboard
   history, cloud clipboard and other apps may keep it under your system settings.
+- **References used this session:** which references you copied, by identity only,
+  in memory until you quit or reset the list. Ibis writes it nowhere unless you
+  save the bibliography, to the file you choose.
 - **Automatic paste on macOS:** Ibis checks the active app and process, and opaque
   Accessibility identities for the focused document and input surface. It reads
   no document titles, field roles, values or text. A bounded wait after copying

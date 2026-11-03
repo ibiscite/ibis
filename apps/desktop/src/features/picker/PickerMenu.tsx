@@ -2,7 +2,7 @@ import type { Ref, RefObject } from "react";
 import type { Density } from "../../api";
 import { keyLabel, keysFor } from "../../keys";
 import { LibraryDetail } from "../../LibraryStatusLine";
-import { densityNames, keyText, pickerText } from "../../messages";
+import { densityNames, keyText, pickerText, sessionText } from "../../messages";
 import { isMac } from "../../platform";
 import { SourceIcon } from "../../ui/SourceAction";
 import type { SourceActionProps } from "../../ui/SourceAction";
@@ -26,7 +26,8 @@ export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library
   actions: { density: (density: Density) => void; preview: () => void; pin: () => void; keys: () => void; settings: (() => void) | null;
     /** Offered for a proven ordinary app target. */
     copyOnlyHere?: { app: string; choose: () => void } | null;
-    forgetRecent?: (() => void) | null; quit: () => void };
+    forgetRecent?: (() => void) | null; quit: () => void;
+    sessionReferences?: (() => void) | null };
 }) {
   return (
     <MoreMenu isOpen={isOpen} onOpenChange={onOpenChange} buttonRef={buttonRef} searchRef={searchRef}
@@ -47,6 +48,7 @@ export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library
           </MenuSection>
         </MenuSubmenu>
         {actions.copyOnlyHere && <MenuItem id="copy-only-here" label={pickerText.copyOnlyHere(actions.copyOnlyHere.app)} onAction={actions.copyOnlyHere.choose} />}
+        {actions.sessionReferences && <MenuItem id="session-references" label={sessionText.menu} onAction={actions.sessionReferences} />}
         {actions.forgetRecent && <MenuItem id="forget-recent" label="Forget Recent Citations" onAction={actions.forgetRecent} />}
       </MenuSection>
       <MenuSection id="view-toggles">

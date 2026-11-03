@@ -52,7 +52,7 @@ import { useInterfaceMessages } from "./i18n";
 export type PickerApi = Pick<typeof nativeApi,
   "chooseLibrary" | "useZotero" | "libraryStatus" | "reloadLibrary" | "previewFileCitation" | "copyFileCitation" | "copyFormat" | "pickerPreferences" | "setPickerPreferences" |
   "hidePicker" | "pickerPresentation" | "pickerVisible" | "setPinned" | "onLibraryChanged" | "onPickerShown" | "onPickerHidden" | "quit" | "search" | "shortcutStatus"> &
-  Partial<Pick<typeof nativeApi, "pickerMoving" | "onLibraryFileDropped" | "onFileDrag" | "delightView" | "onPickerPreparing" | "recentReferences" | "openLibrarySource" | "librarySource" | "useSampleLibrary" | "useZoteroLibraries" | "zoteroGroups" | "pickerDestination" | "rememberAppOutput" | "onWindowSizeSaved" | "readWindowPositionUndo" | "undoWindowPosition" | "dismissWindowPositionUndo" | "onWindowReset" | "findSources" | "openFoundLibrary" | "rowContext" | "showCopiedNotice" | "loginItem" | "setLoginItem" | "onUpdateProgress" | "updateChecks" | "setUpdateChecks" | "onUpdateChecks" | "updateAvailable" | "onUpdateAvailable" | "updatePickerActivity" | "checkForUpdates" | "onShortcutStatus" | "openSettings" | "onPreferencesChanged" | "takeSearchRequest" | "onSearchRequested" | "alignmentTick" | "resetWindowPosition">>;
+  Partial<Pick<typeof nativeApi, "pickerMoving" | "onLibraryFileDropped" | "onFileDrag" | "delightView" | "onPickerPreparing" | "recentReferences" | "openLibrarySource" | "librarySource" | "useSampleLibrary" | "useZoteroLibraries" | "zoteroGroups" | "pickerDestination" | "sessionReferences" | "editSessionReferences" | "sessionBibliography" | "copySessionBibliography" | "exportSessionBibliography" | "rememberAppOutput" | "onWindowSizeSaved" | "readWindowPositionUndo" | "undoWindowPosition" | "dismissWindowPositionUndo" | "onWindowReset" | "findSources" | "openFoundLibrary" | "rowContext" | "showCopiedNotice" | "loginItem" | "setLoginItem" | "onUpdateProgress" | "updateChecks" | "setUpdateChecks" | "onUpdateChecks" | "updateAvailable" | "onUpdateAvailable" | "updatePickerActivity" | "checkForUpdates" | "onShortcutStatus" | "openSettings" | "onPreferencesChanged" | "takeSearchRequest" | "onSearchRequested" | "alignmentTick" | "resetWindowPosition">>;
 
 export type PickerPreview = { query?: string; copied?: Copied };
 
@@ -224,7 +224,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
         copyChosen={rows.copyChosen} destination={destination} recents={recents} preferences={preferences}
         operations={operations} altHeld={altHeld} feedback={emptyFeedback.feedback ?? delights.feedback} passive={!emptyFeedback.feedback && delights.passive} emptyAction={emptyFeedback.shaking} lastOutcome={state.lastOutcome}
         cancelCopy={cancelCopy} quitAfterSaving={quitAfterSaving} />
-      <PickerOverlays state={state} send={send} menus={menus} bindings={actions.bindings} />
+      <PickerOverlays api={api} style={styleOf(format)} state={state} send={send} menus={menus} bindings={actions.bindings} />
       <HeldKeys />
     </main>
   );

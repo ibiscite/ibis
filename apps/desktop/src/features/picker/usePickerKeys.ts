@@ -33,7 +33,7 @@ export function usePickerKeys({
   onEmptyEnter?: () => void;
 }) {
   const { session, cancelCopy, setActive } = pickerSession;
-  const { formatButtonRef, menuOpen, keysOpen, togglePin, openKeys, closeMenu, openMore, runFromMenu } = menus;
+  const { formatButtonRef, menuOpen, keysOpen, sessionOpen, togglePin, openKeys, closeMenu, openMore, runFromMenu } = menus;
   const { chooseSources, openSource } = source;
   const { escapeStep, toggleHighlighted } = actions;
   const { openSettings } = api;
@@ -57,7 +57,7 @@ export function usePickerKeys({
     if (composing(e)) return;
     if (isFormatShortcut(e)) {
       e.preventDefault();
-      if (!e.repeat && !menuOpen && !keysOpen) formatButtonRef.current?.click();
+      if (!e.repeat && !menuOpen && !keysOpen && !sessionOpen) formatButtonRef.current?.click();
     } else if (isPinShortcut(e)) {
       e.preventDefault();
       if (!e.repeat) togglePin();

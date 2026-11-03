@@ -377,6 +377,10 @@ Approved directions from ROADMAP.md; planned behaviour. No new notebook, source 
 - **Export evidence brief**: chosen passages in order, an optional question, one new Markdown file; local Zotero links labelled apart; no private paths.
 - **Changed copied key**: "You previously copied oldKey; this item's current key is newKey", only for sources whose identity survives a rename (Zotero, CSL-JSON with a stable `id`).
 
+## References used this session
+
+**More › References Used This Session…** opens a sheet, named for what Ibis knows: what it copied since it opened or since a reset, never the document's bibliography. Its lead says so. It lists each reference once, in the order first cited, with Remove; **Undo** names its action ("Undo Remove Okafor & Lima, 2018"), and undoing keeps anything copied since. **Reset List** is undoable too. Under the list is the bibliography in the output's style (APA when the output is keys), exactly what **Copy Bibliography** writes as rich and plain text together. **Save…** writes it as rich text, a web page or plain text. A reference from a library that isn't open is left out and counted, never guessed. The list holds record identities, in memory only, and leaves it only through Save.
+
 ## Small delights
 
 The approved, final list; no new delights until the next design pass. Each lives only in About, the welcome, status lines or existing feedback; never changes results, output or focus; happens once within the motion cap; never loops or plays a sound. Warm, never childish: at most one short sentence, no slang, exclamation marks, emoji or jokes about the person's work. The fun items sit behind Settings › General › **Small surprises** (on by default).
@@ -419,7 +423,7 @@ How each user-visible item planned before 1.0 in ROADMAP.md fits the components 
 | `ibis://` links, Show in Zotero, Open PDF in Zotero (0.4) | A link opens the picker filled in; the Zotero actions sit in More and the row's menu |
 | Settings window (0.4, #776) | **Settings** |
 | Browse, "Selected in Zotero", passages (0.5) | Collections and tags as search filters; a reference's highlights unfold under its row and fill in its page |
-| Bibliography, "References used this session", project `.bib` (0.4) | More and the format pop-up; rows say "In refs.bib" or "Missing from refs.bib" |
+| Bibliography, "References used this session", project `.bib` (0.4) | A sheet from More; rows say "In refs.bib" or "Missing from refs.bib" |
 | `ibis check`, DOI lookup (0.6) | Command line first; DOI lookup as an opt-in no-results fallback |
 
 ## How the design changes

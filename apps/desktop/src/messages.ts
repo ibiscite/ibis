@@ -138,6 +138,32 @@ export const setupText = {
   },
 } as const;
 
+/** Named for what Ibis knows: what it copied, never a document's bibliography. */
+export const sessionText = {
+  menu: "References Used This Session…",
+  title: "References used this session",
+  about: "What you copied with Ibis since it opened or since you reset this list. Ibis can't see your document, so check this against it.",
+  empty: "Nothing yet. References you copy appear here.",
+  close: "Close",
+  remove: "Remove",
+  removeNamed: (name: string) => `Remove ${isolate(name)}`,
+  reset: "Reset List",
+  undoReset: "Undo Reset List",
+  undoRemove: (name: string | null) => name ? `Undo Remove ${isolate(name)}` : "Undo Remove",
+  absent: (count: number) => count === 1 ? "1 reference from a library that isn't open is left out." : `${count} references from a library that isn't open are left out.`,
+  full: "This list is full, so later references were not added.",
+  bibliographyIn: (style: string) => `Bibliography in ${isolate(style)}`,
+  copy: "Copy Bibliography",
+  save: "Save…",
+  copied: "Copied the bibliography.",
+  saved: (name: string) => `Saved ${isolate(name)}.`,
+  changed: "The list changed. Check it, then try again.",
+  notRead: "The references could not be read. Try again.",
+  notFormatted: "These references could not be written as a bibliography. Try another style.",
+  notCopied: "The bibliography could not be copied. Try again.",
+  notSaved: "The bibliography could not be saved. Try again.",
+} as const;
+
 export const densityNames = {
   compact: "Compact",
   comfortable: "Comfortable",

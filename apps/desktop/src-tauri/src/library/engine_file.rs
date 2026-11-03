@@ -48,6 +48,15 @@ pub(crate) struct FileSelection {
     #[specta(optional)]
     pub(crate) form: Option<ReferenceForm>,
 }
+/// A formatted bibliography, shown before it is copied. The picker's own
+/// citation receipt is untouched.
+#[derive(Serialize, specta::Type)]
+pub(crate) struct SessionBibliography {
+    pub(crate) text: String,
+    pub(crate) html: Option<String>,
+    pub(crate) content_hash: String,
+    pub(crate) warnings: Vec<String>,
+}
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, specta::Type)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum ReferenceForm {
@@ -153,6 +162,122 @@ impl FileLibrary {
             list: None,
         })
     }
+    /// Rows for listed records in the open library, in the list's order. Each
+    /// comes from the current snapshot; the list itself holds identities only.
+    pub(crate) fn session_rows(&self, ids: &[ItemRef]) -> Result<Vec<SearchResult>, String> {
+        const FAILED: &str = "The references could not be read. Try again.";
+        let snapshot = self.engine.snapshot().map_err(|_| FAILED)?;
+        let revision = snapshot.fingerprints().full.as_str().to_owned();
+        Ok(ids
+            .iter()
+            .filter_map(|id| {
+                let object = snapshot.get(id)?;
+                let LibraryObject::Record(record) = &object.object else {
+                    return None;
+                };
+                let mut row =
+                    SearchResult::from_engine(record, object.fingerprints.cite.as_str(), vec![], false, &revision);
+                row.sample = self.sample;
+                Some(row)
+            })
+            .collect())
+    }
+
+    fn prepare_session_bibliography(
+        &self,
+        ids: &[ItemRef],
+        style: CitationStyle,
+    ) -> Result<Option<(PreparedCitation, usize)>, CommandError> {
+        let snapshot = self.engine.snapshot().map_err(CommandError::from)?;
+        let items: Vec<CitationItem> = ids
+            .iter()
+            .filter_map(|id| {
+                let object = snapshot.get(id)?;
+                matches!(object.object, LibraryObject::Record(_)).then(|| CitationItem {
+                    item: id.clone(),
+                    expected_cite: Some(object.fingerprints.cite.clone()),
+                    form: None,
+                    suppress_author: false,
+                    locator: None,
+                    prefix: vec![],
+                    suffix: vec![],
+                    annotation: None,
+                    expected_annotation_cite: None,
+                })
+            })
+            .collect();
+        if items.is_empty() {
+            return Ok(None);
+        }
+        let count = items.len();
+        let request = CitationRequest {
+            items,
+            form: CitationForm::BibliographyOnly,
+            keep_order: false,
+            output: OutputSpec::Csl {
+                style: style_id(style).into(),
+            },
+            input_language: None,
+            output_locale: None,
+        };
+        let citation = self
+            .engine
+            .prepare_citation(&request, &Cancellation::default())
+            .map_err(CommandError::from)?;
+        if citation.result().copy_content(count).is_none() {
+            return Err("These references cannot be written as a bibliography in this style.".into());
+        }
+        let citation = if self.sample {
+            citation.mark_sample().map_err(CommandError::from)?
+        } else {
+            citation
+        };
+        Ok(Some((citation, count)))
+    }
+
+    pub(crate) fn session_bibliography(
+        &self,
+        ids: &[ItemRef],
+        style: CitationStyle,
+    ) -> Result<Option<SessionBibliography>, CommandError> {
+        Ok(self.prepare_session_bibliography(ids, style)?.map(|(citation, _)| {
+            let warnings = citation_warnings_named(&citation);
+            let result = citation.into_result();
+            SessionBibliography {
+                text: result.text,
+                html: result.html,
+                content_hash: result.content_hash.as_str().to_owned(),
+                warnings,
+            }
+        }))
+    }
+
+    /// Hand `use_it` exactly what was shown, or refuse: the list, the library
+    /// or the style changed since. Same commit barrier as a citation.
+    pub(crate) fn commit_session_bibliography<T>(
+        &self,
+        ids: &[ItemRef],
+        style: CitationStyle,
+        hash: &str,
+        use_it: impl FnOnce(ibis_core::contract::ClipboardContent<'_>) -> Result<T, String>,
+    ) -> Result<T, CommandError> {
+        let (citation, _) = self
+            .prepare_session_bibliography(ids, style)?
+            .ok_or(CommandError::SnapshotChanged)?;
+        if citation.result().content_hash.as_str() != hash {
+            return Err(CommandError::SnapshotChanged);
+        }
+        self.engine
+            .commit_citation(&citation, &citation.result().content_hash, use_it)
+            .map_err(|error| match error {
+                ibis_engine::CitationCommitError::Engine(_) => {
+                    CommandError::from("The bibliography could not be copied. Try again.")
+                }
+                _ => CommandError::SnapshotChanged,
+            })?
+            .map_err(CommandError::from)
+    }
+
     pub(crate) fn open(path: &Path) -> Result<Self, super::LoadError> {
         Self::open_file(path, Engine::new().map_err(|_| super::LoadError::Stopped)?)
     }
@@ -499,14 +624,7 @@ impl FileLibrary {
         };
         let output = if let Some(style) = style {
             OutputSpec::Csl {
-                style: match style {
-                    CitationStyle::Apa => "apa",
-                    CitationStyle::ChicagoAuthorDate => "chicago-author-date",
-                    CitationStyle::HarvardCiteThemRight => "harvard-cite-them-right",
-                    CitationStyle::Ieee => "ieee",
-                    CitationStyle::ModernLanguageAssociation => "modern-language-association",
-                }
-                .into(),
+                style: style_id(style).into(),
             }
         } else {
             let (syntax, command) = match format {
@@ -807,6 +925,7 @@ impl FileLibrary {
             text: citation.result().text.clone(),
             warnings: citation_warnings_named(citation),
             delivery: None,
+            cited: citation.items(),
         })
     }
 }
@@ -835,6 +954,16 @@ fn native_source(info: &ibis_engine::LibraryInfo) -> String {
         Some(EngineZoteroLibrary::Personal) => "zotero:user".into(),
         Some(EngineZoteroLibrary::Group(id)) => format!("zotero:group:{id}"),
         None => info.id.as_str().to_owned(),
+    }
+}
+
+fn style_id(style: CitationStyle) -> &'static str {
+    match style {
+        CitationStyle::Apa => "apa",
+        CitationStyle::ChicagoAuthorDate => "chicago-author-date",
+        CitationStyle::HarvardCiteThemRight => "harvard-cite-them-right",
+        CitationStyle::Ieee => "ieee",
+        CitationStyle::ModernLanguageAssociation => "modern-language-association",
     }
 }
 
