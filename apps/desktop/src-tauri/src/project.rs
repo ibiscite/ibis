@@ -341,7 +341,10 @@ mod tests {
             "refs.bib",
             "@book{a2026,title={A}}\n@book{gone2026,title={Gone}}\n@book{clash2026,title={Library title}}\n",
         );
-        let (_project_dir, project) = written("thesis.bib", "@book{a2026,title={A}}\n@book{clash2026,title={Other title}}\n");
+        let (_project_dir, project) = written(
+            "thesis.bib",
+            "@book{a2026,title={A}}\n@book{clash2026,title={Other title}}\n",
+        );
         let slot = ProjectBibliography::default();
         let ticket = slot.choose(Some(project)).unwrap_or_else(|| panic!("a ticket"));
         assert!(slot.finish(ticket.generation, read(&ticket)));
@@ -363,8 +366,14 @@ mod tests {
         };
         let generation = serde_json::json!(ticket.generation);
         assert_eq!(state("a2026"), Some((serde_json::json!("in"), generation.clone())));
-        assert_eq!(state("gone2026"), Some((serde_json::json!("missing"), generation.clone())));
-        assert_eq!(state("clash2026"), Some((serde_json::json!("may-name-another"), generation)));
+        assert_eq!(
+            state("gone2026"),
+            Some((serde_json::json!("missing"), generation.clone()))
+        );
+        assert_eq!(
+            state("clash2026"),
+            Some((serde_json::json!("may-name-another"), generation))
+        );
 
         let ids: Vec<ItemRef> = rows["results"]
             .as_array()
@@ -438,7 +447,10 @@ mod tests {
         assert!(slot.finish(ticket.generation, read(&ticket)));
         let again = slot.check_again().unwrap_or_else(|| panic!("a ticket"));
         assert_eq!(again.generation, ticket.generation);
-        assert!(!slot.finish(again.generation, read(&again)), "an unchanged file wakes nothing");
+        assert!(
+            !slot.finish(again.generation, read(&again)),
+            "an unchanged file wakes nothing"
+        );
         assert!(slot.check_again().is_some(), "and leaves no read running");
     }
 

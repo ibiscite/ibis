@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 
 /// The apps whose settings are read, in order: the first one with a settings
 /// file is used, so the stable app wins over Nightly when both are installed.
-const APPS: [(&str, &str); 2] = [
+pub(crate) const APPS: [(&str, &str); 2] = [
     ("com.ibiscite.ibis", "Ibis"),
     ("com.ibiscite.ibis.nightly", "Ibis Nightly"),
 ];
@@ -30,7 +30,7 @@ pub(crate) struct AppLibraries {
 
 /// The folder the app keeps its settings in: the same place as Tauri's
 /// `app_config_dir`, from the environment so a test or a person can move it.
-fn config_dir() -> Option<PathBuf> {
+pub(crate) fn config_dir() -> Option<PathBuf> {
     let var = |name: &str| {
         std::env::var_os(name)
             .filter(|value| !value.is_empty())

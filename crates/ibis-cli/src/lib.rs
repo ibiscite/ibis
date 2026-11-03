@@ -11,6 +11,7 @@ mod app_libraries;
 mod completions;
 mod doctor;
 mod human;
+mod settings_backup;
 mod toggle;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -340,6 +341,7 @@ fn command() -> Command {
                         .help("Check a chosen Ibis settings file without repairing it or loading its libraries"),
                 ),
         )
+        .subcommand(settings_backup::command())
         .subcommand(
             Command::new("completions")
                 .about("Generate shell completions from the CLI commands")
@@ -623,6 +625,9 @@ fn execute<R: BufRead, W: Write + Send>(
     let (name, args) = matches.subcommand().ok_or(EngineError::new(ErrorCode::Usage))?;
     if name == "doctor" {
         return Ok(Execution::Result(doctor::run(engine, matches, mode)?, None));
+    }
+    if name == "settings" {
+        return Ok(Execution::Result(settings_backup::run(args)?, None));
     }
     if name == "completions" {
         let shell = args

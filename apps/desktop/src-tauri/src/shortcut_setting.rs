@@ -300,7 +300,7 @@ pub(crate) async fn set_shortcut(
 }
 
 fn save_shortcut(file: &SettingsFile, shortcut: Option<String>) -> Result<(), ShortcutRefusal> {
-    file.update(|settings| settings.shortcut = shortcut)
+    file.update(|settings| settings.shortcut.set_here(shortcut))
         .map(|_| ())
         .map_err(|_| ShortcutRefusal::NotSaved)
 }
@@ -372,7 +372,7 @@ mod tests {
             assert_eq!(save_shortcut(&file, Some(case.shortcut)), Ok(()));
             let saved = ibis_core::settings::load(&file.path);
             let (shortcut, label, error) =
-                crate::picker::configured_shortcut_with(saved.settings.shortcut.as_deref(), validate);
+                crate::picker::configured_shortcut_with(saved.settings.shortcut.here(), validate);
             assert_eq!(shortcut, default_shortcut(), "{}", case.name);
             assert_eq!(label, shortcut_label());
             assert!(error.is_some_and(|error| error.contains(&case.label)), "{}", case.name);
@@ -446,15 +446,14 @@ mod tests {
             let saved = ibis_core::settings::load(&file.path);
             assert!(saved.problem.is_none());
             let (restarted, label, error) =
-                crate::picker::configured_shortcut_with(saved.settings.shortcut.as_deref(), |text| {
+                crate::picker::configured_shortcut_with(saved.settings.shortcut.here(), |text| {
                     check_shortcut_for(text, Modifiers::SUPER, false)
                 });
             assert_eq!(error, None, "{}", case.name);
             assert_eq!(label, case.shortcut);
             assert_eq!(restarted, requested, "{}", case.name);
             if case.windows_refusal.is_some() {
-                let (safe, label, error) =
-                    crate::picker::configured_shortcut_for(saved.settings.shortcut.as_deref(), true);
+                let (safe, label, error) = crate::picker::configured_shortcut_for(saved.settings.shortcut.here(), true);
                 assert_eq!(safe, default_shortcut(), "{}", case.name);
                 assert_eq!(label, shortcut_label());
                 assert!(error.is_some());
@@ -548,13 +547,13 @@ mod tests {
         let saved = file
             .update(|_| {})
             .unwrap_or_else(|error| panic!("fixture failed: {error}"));
-        assert_eq!(saved.shortcut.as_deref(), Some("Alt+K"));
+        assert_eq!(saved.shortcut.here(), Some("Alt+K"));
         assert_eq!(saved.paste, Some(false));
         assert_eq!(save_shortcut(&file, None), Ok(()));
         let saved = file
             .update(|_| {})
             .unwrap_or_else(|error| panic!("fixture failed: {error}"));
-        assert_eq!(saved.shortcut, None);
+        assert_eq!(saved.shortcut.here(), None);
         assert_eq!(saved.paste, Some(false));
     }
 
