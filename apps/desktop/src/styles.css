@@ -36,6 +36,10 @@ main > .search-bar, main > .shelf, main > footer { flex: none; }
 .search-field { --search-clear-size: var(--action-h); position: relative; display: flex; flex: 1; min-width: min(12rem, calc(100% - var(--lead) - var(--icon) - var(--lead-gap))); }
 #search { width: 100%; min-width: 0; height: var(--field-h); font-size: var(--type-search-size); line-height: var(--type-search-line); letter-spacing: -.025em; background: transparent; border: 0; padding: 0; outline-offset: 4px; cursor: text; user-select: text; }
 .search-bar .pin-button { margin-inline-start: auto; }
+/* Controls fill the field's height, so their gap to the window's top and side is
+   one --inset and their corners nest in the window's (docs/design.md, Corners). */
+.search-bar .ui-popup-button.ui-button[data-variant] { min-height: var(--field-h); border-radius: var(--r-row); }
+.search-bar .pin-button.ui-button[data-variant] { --icon-button-size: var(--field-h); border-radius: var(--r-row); }
 #search::placeholder { color: var(--text-tertiary); }
 /* The search box never shows a ring: it always has focus, and the caret is the
    cue. Contrast and forced colours restore it below. The clear glyph is quiet like the other icons: secondary colour,
