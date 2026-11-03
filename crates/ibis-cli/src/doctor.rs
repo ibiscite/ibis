@@ -82,11 +82,8 @@ pub(super) fn run(engine: &Engine, matches: &ArgMatches, mode: OutputMode) -> Re
             source["kind"].as_str().unwrap_or("loaded")
         );
         text.push_str(&summary(&label, &source));
-        if let Some(time) = source["freshness"]["updated_at_ms"].as_u64() {
-            text.push_str(&format!(
-                "  Freshness: {}; last successful read: {time} ms since Unix epoch.\n",
-                source["freshness"]["state"].as_str().unwrap_or("unknown")
-            ));
+        if let Some(state) = source["freshness"]["state"].as_str() {
+            text.push_str(&format!("  Freshness: {state}.\n"));
         }
     }
     Ok(DispatchResult {
@@ -251,7 +248,7 @@ fn library_report(library: &LibraryInfo) -> Value {
         (
             "findings",
             "source-warnings",
-            "The library loaded with source warnings. Use libraries --json to inspect them.",
+            "The library loaded with warnings. See them with: ibis libraries --file <library>",
         )
     } else {
         ("ok", "source-ok", "The library was read successfully.")

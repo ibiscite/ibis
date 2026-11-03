@@ -25,6 +25,7 @@ pub(crate) fn command() -> clap::Command {
     Command::new("settings")
         .about("Back up the Ibis app's settings, or restore them on this or another computer")
         .subcommand_required(true)
+        .arg_required_else_help(true)
         .subcommand(
             Command::new("export")
                 .about("Write a backup of the app's settings, without paste approvals or window places")
