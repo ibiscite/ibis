@@ -39,10 +39,11 @@ function Beak({ closing = false }: { closing?: boolean }) {
 
 /** One line of exact engine output. All editing stays in the inspector above it;
  * a folded citation retains its full text and every reference's identity. */
-export function CitationShelf({ inspector, onSubmit, source, onOpenSource, announce, selected, highlightedReference, highlightedReferences, onChangeReference, removeLabel, onRemove, referenceLibrary, style, keys, shown, previewReceipt, outputWarnings, problem, focusable, fallbackFocusRef, presentation, present = false, copied: copiedReceipt }: {
+export function CitationShelf({ inspector, onSubmit, copyProblem, source, onOpenSource, announce, selected, highlightedReference, highlightedReferences, onChangeReference, removeLabel, onRemove, referenceLibrary, style, keys, shown, previewReceipt, outputWarnings, problem, focusable, fallbackFocusRef, presentation, present = false, copied: copiedReceipt }: {
   inspector: CitationInspectorState;
   /** Enter in Page does what it does in Search. */
   onSubmit?: () => void;
+  copyProblem?: string | null;
   presentation?: number;
   present?: boolean;
   announce: boolean;
@@ -146,17 +147,21 @@ export function CitationShelf({ inspector, onSubmit, source, onOpenSource, annou
   const opened = useRef(panel);
   if (panel) opened.current = panel;
   // Esc and the close button hand focus back to the reference. Anything else that
-  // retires the inspector has already moved focus, and is left alone.
+  // retires the inspector has already moved focus, and is left alone. Focus moves
+  // after the commit: React drops focus events during one, and the ring with them.
+  const heldFocus = useRef(false);
   const returnFocus = useCallback((node: HTMLElement | null) => {
     if (!node) return;
-    return () => {
-      if (!node.contains(document.activeElement)) return;
-      const { reference, origin } = opened.current ?? {};
-      const segment = reference ? [...output.current?.querySelectorAll<HTMLElement>(".shelf-segment") ?? []].find((part) => part.dataset.reference === reference) : undefined;
-      const target = segment?.querySelector("button") ?? (origin?.isConnected ? origin : output.current?.querySelector<HTMLElement>(".shelf-actions button")) ?? fallbackFocusRef?.current;
-      target?.focus({ preventScroll: true });
-    };
-  }, [fallbackFocusRef]);
+    return () => { heldFocus.current = node.contains(document.activeElement); };
+  }, []);
+  useLayoutEffect(() => {
+    if (!heldFocus.current || panel) return;
+    heldFocus.current = false;
+    const { reference, origin } = opened.current ?? {};
+    const segment = reference ? [...output.current?.querySelectorAll<HTMLElement>(".shelf-segment") ?? []].find((part) => part.dataset.reference === reference) : undefined;
+    const target = segment?.querySelector("button") ?? (origin?.isConnected ? origin : output.current?.querySelector<HTMLElement>(".shelf-actions button")) ?? fallbackFocusRef?.current;
+    target?.focus({ preventScroll: true });
+  }, [panel, fallbackFocusRef]);
   const segmentKeys: (event: Parameters<NonNullable<ComponentProps<typeof Button>["onKeyDown"]>>[0], reference: CitationReference) => void = (event, reference) => {
     if (composing(event)) return event.continuePropagation();
     if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
@@ -205,7 +210,7 @@ export function CitationShelf({ inspector, onSubmit, source, onOpenSource, annou
     </p>
     {panel && hasShelf && <CitationInspector key={panel.reference ?? panel.kind} ref={returnFocus} id={inspectorId} panel={panel} heading={labels[editedIndex] ?? pickerText.citationDetails}
       reference={panel.kind === "warnings" ? undefined : edited} index={editedIndex} selected={Boolean(edited && isSelected(edited))} previewReceipt={previewReceipt} citation={visible}
-      failure={shown === "failed" ? fullProblem : null} notes={{ entry: entryNotice, output: currentWarnings, closest: partialWarnings }} source={source} keys={keys}
+      failure={shown === "failed" ? fullProblem : copyProblem ?? null} notes={{ entry: entryNotice, output: currentWarnings, closest: partialWarnings }} source={source} keys={keys}
       onChange={onChangeReference} onSubmit={onSubmit} onOpenSource={onOpenSource} onRemove={remove} onClose={close} />}
     {hasShelf ? <div className="shelf" data-folded={compact || undefined} data-copied={copied ? "" : undefined} ref={preserveFocus}>
       <section ref={(node) => { output.current = node; }} aria-label={shown !== undefined || copied ? pickerText.preview : pickerText.citationDetails}

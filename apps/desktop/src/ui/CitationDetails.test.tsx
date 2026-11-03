@@ -53,6 +53,16 @@ test("before the engine answers the reference's own form shows and every form ca
   expect(change).toHaveBeenCalledExactlyOnceWith("normal");
 });
 
+test("an explicit engine answer of no form selects none, and never the requested form", async () => {
+  render(<CitationDetails page="" form="normal" onPageChange={vi.fn()} onFormChange={vi.fn()} choices={{ current_form: null, forms: [
+    { form: "normal", example: null, reason: "Keys only has no name forms. Choose another output." },
+    { form: "narrative", example: null, reason: "Keys only has no name forms. Choose another output." },
+    { form: "year-only", example: null, reason: "Keys only has no name forms. Choose another output." },
+  ] }} />);
+  fireEvent.click(screen.getByRole("button", { name: "Show as None" }));
+  expect((await screen.findAllByRole("menuitemradio")).filter((item) => item.getAttribute("aria-checked") === "true")).toEqual([]);
+});
+
 test.each(["macos", "windows", "linux"])("%s uses labelled shared controls and plain text", async (platform) => {
   document.documentElement.dataset.platform = platform;
   const { container } = render(<Editor />);
@@ -72,9 +82,4 @@ test("the fields use role tokens and retain pointer and touch targets", () => {
   expect(css).toContain("@media (pointer: coarse)");
   expect(css).toContain("min-height: var(--control-h)");
   expect(css).not.toMatch(/#[0-9a-f]{3,8}\b|\b\d+px\b/);
-});
-
-test("an unavailable form's reason sits under it as a sentence", () => {
-  const css = readFileSync(new FileURL("./CitationDetails.css", import.meta.url), "utf8");
-  expect(css).toMatch(/\.citation-form-example\.citation-form-reason \{ flex-basis: 100%;[^}]*text-align: start;/);
 });

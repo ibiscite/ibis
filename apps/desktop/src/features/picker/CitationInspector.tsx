@@ -28,18 +28,18 @@ export function CitationInspector({ ref, id, panel, heading, reference, index, s
   onSubmit?: () => void; onOpenSource?: (reference: CitationReference) => void;
   onRemove: (reference: CitationReference) => void; onClose: () => void;
 }) {
-  // The last examples stay while the next arrive, so typing a page never flickers.
-  const [details, setDetails] = useState<ReferenceDetails | "failed">();
+  const [details, setDetails] = useState<{ receipt: FilePreview; value: ReferenceDetails | "failed" }>();
   const editing = panel.kind !== "warnings";
   useEffect(() => {
     if (!editing || !previewReceipt || index < 0) return;
     let live = true;
     void citationDetails(previewReceipt.ticket, previewReceipt.content_hash, index).then(
-      (value) => { if (live) setDetails(value); },
-      () => { if (live) setDetails("failed"); },
+      (value) => { if (live) setDetails({ receipt: previewReceipt, value }); },
+      () => { if (live) setDetails({ receipt: previewReceipt, value: "failed" }); },
     );
     return () => { live = false; };
   }, [editing, previewReceipt, index]);
+  const problem = failure && <p role="alert" tabIndex={0} className="inspector-citation inspector-problem"><Icon name="warning" />{failure}</p>;
   if (!editing) {
     const { entry, output, closest } = notes;
     return <Inspector ref={ref} id={id} label={pickerText.citationWarnings} heading={pickerText.citationWarnings} closeLabel={keyText.close} onClose={onClose}>
@@ -47,8 +47,14 @@ export function CitationInspector({ ref, id, panel, heading, reference, index, s
       {output.map((warning, i) => <p key={`output-${i}`}>{warning}</p>)}
       {closest.length > 0 && <h3>{pickerText.closestMatches}</h3>}
       {closest.map((warning, i) => <p key={`partial-${i}`}>{warning}</p>)}
+      {problem}
     </Inspector>;
   }
+  const form = reference?.form ?? "normal";
+  // Examples stay while the next arrive, so typing a page never flickers. The
+  // rest of an older answer says nothing about the citation now being made.
+  const choices = !details || details.value === "failed" || details.receipt === previewReceipt ? details?.value
+    : { current_form: form, forms: details.value.forms.map((choice) => ({ ...choice, reason: null })) };
   const byline = reference && [reference.authors, reference.container, reference.year].filter(Boolean).join(" · ");
   return <Inspector ref={ref} id={id} label={reference ? citationDetailsText.details(reference.title || reference.key) : pickerText.citationDetails} heading={heading} closeLabel={keyText.close} onClose={onClose}
     onKeyDown={(event) => {
@@ -64,11 +70,11 @@ export function CitationInspector({ ref, id, panel, heading, reference, index, s
           {byline && <p><bdi dir="auto">{byline}</bdi></p>}
         </div>
       </div>}
-      {failure ? <p role="alert" tabIndex={0} className="inspector-citation inspector-problem"><Icon name="warning" />{failure}</p>
-        : citation && <section aria-label={pickerText.fullCitation} tabIndex={0} className="inspector-citation" data-keys={keys || undefined}><bdi dir="auto">{citation.markup.length && !keys ? render(citation.markup) : citation.text}</bdi></section>}
+      {citation && <section aria-label={pickerText.fullCitation} tabIndex={0} className="inspector-citation" data-keys={keys || undefined}><bdi dir="auto">{citation.markup.length && !keys ? render(citation.markup) : citation.text}</bdi></section>}
+      {problem}
       {[...notes.output, ...notes.closest].map((warning, i) => <p key={i} className="inspector-citation">{warning}</p>)}
     </>}>
-    {reference && onChange && <CitationDetails autoFocus page={reference.locator?.label === "page" ? reference.locator.value : ""} form={reference.form ?? "normal"} choices={details}
+    {reference && onChange && <CitationDetails autoFocus page={reference.locator?.label === "page" ? reference.locator.value : ""} form={form} choices={choices}
       onPageChange={(value) => onChange(reference, { locator: value.trim() ? { label: "page", value, input: "page-editor" } : null })}
       onFormChange={(form) => onChange(reference, { form })} onSubmit={onSubmit} />}
     {reference && <hr />}

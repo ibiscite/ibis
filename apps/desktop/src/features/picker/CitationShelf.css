@@ -36,9 +36,9 @@ main:has(> .shelf) > footer { border-top-color: transparent; }
 .shelf-segment > .shelf-remove.ui-icon-button.ui-button[data-variant] > svg { width: var(--space-3); height: var(--space-3); }
 .shelf-segment > .shelf-remove.ui-icon-button.ui-button[data-variant]:is([data-hovered], [data-pressed]) { background: var(--fill-control-hover); color: var(--text); }
 @media (hover: hover) {
-  .shelf-segment:hover > .shelf-remove { visibility: visible; }
+  .shelf-segment:hover:not(:has([data-focus-visible])) > .shelf-remove.ui-icon-button.ui-button[data-variant] { visibility: visible; }
   .shelf-segment:hover > .shelf-segment-button:not([aria-expanded="true"]) { background: var(--fill-control-hover); }
-  .shelf-segment[data-built]:hover > .shelf-segment-button { padding-inline-end: var(--remove-room); }
+  .shelf-segment[data-built]:hover:not(:has([data-focus-visible])) > .shelf-segment-button { padding-inline-end: var(--remove-room); }
 }
 .shelf-actions { display: flex; flex: none; align-items: center; gap: var(--space-1); margin-inline-start: var(--space-1); }
 .shelf-actions:empty { display: none; }

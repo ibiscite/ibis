@@ -495,6 +495,8 @@ test("the panel opens beside a live list; Esc steps back one layer and returns t
   fireEvent.keyDown(page, { key: "Escape" });
   await waitFor(() => expect(screen.queryByRole("textbox", { name: "Page" })).toBeNull());
   expect(document.activeElement).toBe(segment);
+  // React Aria saw the focus, so the keyboard ring draws.
+  expect(segment.hasAttribute("data-focus-visible")).toBe(true);
   expect(segment.getAttribute("aria-expanded")).toBe("false");
 });
 
@@ -676,4 +678,38 @@ test("pressing another segment moves the inspector to it and retires the first r
   expect(await screen.findByText("Second example")).toBeTruthy();
   expect(screen.queryByText("Retired first example")).toBeNull();
   expect(document.querySelector(".inspector")).toBeTruthy();
+});
+
+test("a form picked while no receipt exists shows the form asked for, and an old reason cannot block it", async () => {
+  const previews: PreviewRequest[] = [];
+  backend({ search: () => [result("a", "Synthetic work")],
+    citation_details: () => ({ current_form: "normal", forms: [{ form: "normal", example: "(Smith, 2020)", reason: null }, { form: "narrative", example: null, reason: "Cite it alone." }, { form: "year-only", example: "(2020)", reason: null }] }),
+    preview_file_citation: (request) => {
+      previews.push(request);
+      if (request.items[0]?.page_input === "pp.") throw { code: "failed", message: "Reference 1: Page needs a page or range." };
+      return receipt("(Smith, 2020)");
+    } });
+  render(<App />);
+  const page = await openCitationDetails();
+  await act(async () => { await Promise.resolve(); });
+  fireEvent.change(page, { target: { value: "pp." } });
+  await screen.findByRole("alert");
+  await chooseForm("Name in the sentence");
+  expect(await screen.findByRole("button", { name: "Show as Name in the sentence" })).toBeTruthy();
+  await waitFor(() => expect(previews.at(-1)?.items[0]?.form).toBe("narrative"));
+});
+
+test("a copy that fails says so in the panel, once, so it is seen when the panel replaces the list", async () => {
+  backend({ search: () => [result("a", "Invented work")], preview_file_citation: () => receipt("Citation"), copy_file_citation: () => { throw new Error("SYNTHETIC_PRIVATE_PAYLOAD"); } });
+  render(<App />);
+  const page = await openCitationDetails();
+  await within(screen.getByRole("region", { name: "Full citation" })).findByText("Citation");
+  fireEvent.keyDown(page, { key: "Enter" });
+  const alert = await screen.findByRole("alert");
+  expect(alert.closest(".inspector")).toBeTruthy();
+  expect(alert.textContent).not.toContain("SYNTHETIC_PRIVATE_PAYLOAD");
+  expect(screen.getByRole("region", { name: "Full citation" }).textContent).toBe("Citation");
+  closeCitationDetails();
+  await waitFor(() => expect(document.querySelector(".inspector")).toBeNull());
+  expect((await screen.findByRole("alert")).closest(".notices")).toBeTruthy();
 });

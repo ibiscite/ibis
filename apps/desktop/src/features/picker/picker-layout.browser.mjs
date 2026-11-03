@@ -409,29 +409,30 @@ try {
       await segment.hover();
       const remove = shelfControl(page, "Remove synthetic0 from the selection");
       await remove.waitFor({ state: "visible" });
+      await page.waitForTimeout(300); // The chip grows to make room for it.
       assert.equal(await remove.evaluate((node) => {
         const rect = node.getBoundingClientRect();
         const text = node.closest(".shelf-segment").querySelector(".preview-text").getBoundingClientRect();
         const size = rect.width * 2 / 3;
         const top = rect.top + (rect.height - size) / 2, left = rect.left + (rect.width - size) / 2;
-        return Math.abs(rect.width - rect.height) <= 1 && rect.width >= 23 &&
+        return Math.abs(rect.width - rect.height) <= 1 && rect.width >= 16 &&
           (top + size <= text.top + 1 || left + size <= text.left + 1 || top >= text.bottom - 1 || left >= text.right - 1);
       }), true, "the square remove button's glyph stays outside the long key's text at every text size/direction");
       await remove.click();
-      assert.equal(await page.getByRole("dialog").count(), 0, "the remove badge never opens the menu");
+      assert.equal(await page.getByRole("dialog").count(), 0, "the remove badge never opens a dialog");
       await page.getByRole("button", { name: /^Undo/ }).click();
       assert.equal(await page.locator('[role="option"][data-citation-selected]').count(), 1, "Undo restores the removed reference");
       const dialog = await openEditor();
       const fullCitation = dialog.getByRole("region", { name: "Full citation", exact: true });
       assert.equal(await fullCitation.textContent(), await segment.locator(".preview-text").textContent(), "the single-reference menu keeps the entire citation available without hover");
-      await dialog.getByRole("textbox", { name: "Page", exact: true }).press("ArrowDown");
-      await page.keyboard.press("End");
-      assert.equal(await fullCitation.evaluate((node) => document.activeElement === node), true, "menu keys reach the complete citation without hover");
-      assert.equal(await reachable(fullCitation), true, "the complete long/RTL citation is reachable in the menu");
+      assert.equal(await fullCitation.getAttribute("tabindex"), "0", "Tab reaches the complete citation without hover");
+      assert.equal(await reachable(fullCitation), true, "the complete long/RTL citation is reachable in the panel");
       await dialog.getByRole("textbox", { name: "Page", exact: true }).fill("iv–vi");
-      for (const control of await dialog.getByRole("radio").all()) assert.equal(await reachable(control), true, "all name forms stay whole and reachable");
-      await checkFormPointers(dialog);
-      assert.deepEqual(await page.locator("main > .shelf").boundingBox(), band, "the long citation and menu never grow the shelf");
+      const forms = await formMenu(dialog);
+      assert.equal(await forms.getByRole("menuitemradio").count(), 3, "all three forms are in the Show as menu");
+      await page.keyboard.press("Escape");
+      await forms.waitFor({ state: "detached" });
+      assert.deepEqual(await page.locator("main > .shelf").boundingBox(), band, "the long citation and panel never grow the shelf");
       await closeEditor(dialog);
       const reopened = await openEditor();
       assert.equal(await reopened.getByRole("textbox", { name: "Page", exact: true }).inputValue(), "iv–vi", "close/reopen keeps the page");

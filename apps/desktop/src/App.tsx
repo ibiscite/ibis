@@ -151,8 +151,9 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   });
   const source = usePickerSource({ api, pickerSession, libraryState, menus, results: sameSnapshot ? results : [], altHeld, perform });
   const inspector = useCitationInspector();
-  // The refusal stays beside the fields that can correct it, in one place.
-  const listProblem = inspector.panel && inspector.panel.kind !== "warnings" ? null : citationProblem;
+  // A failure stays beside the fields that can correct it, in one place, also
+  // when the panel takes the list's place.
+  const listProblem = inspector.panel ? null : citationProblem;
   const actions = usePickerActions({
     api, pickerSession, menus, libraryState, searchState, destination, shown, inspector,
     // The footer names what Enter copies now, or after the running search.
@@ -211,7 +212,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
           </p>
         </div>}
         <Notices feedback={zoomFeedback} densityAnnouncement={preferences.densityAnnouncement} updateProgress={updateProgress} library={library} failures={failures}
-          error={error} copyError={copyError} copied={copied} missing={ready ? list?.missing : undefined}
+          error={error} copyError={inspector.panel ? null : copyError} copied={copied} missing={ready ? list?.missing : undefined}
           citationProblem={listProblem} confirmation={state.copyNotice}
           onDismissCopied={() => send({ type: "dismiss" })} />
         <PickerResults

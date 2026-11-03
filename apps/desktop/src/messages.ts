@@ -3,7 +3,7 @@ import type { Platform } from "./platform";
 
 export const citationDetailsText = {
   page: "Page",
-  pageNone: "None",
+  none: "None",
   pageHint: "A page or range",
   form: "Show as",
   examplesUnavailable: "Examples are unavailable",

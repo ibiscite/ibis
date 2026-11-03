@@ -234,8 +234,8 @@ Built in `ibis-core` so every front end shares them (#1204).
 
 - **Where**: in the middle row, on the trailing edge, `--inspector-width` wide, with the shelf running under both. The window stays its one steady size. Search, list, shelf and footer stay where they are and stay live. Below 36 rem wide the panel takes the list's place instead.
 - **Order**: the reference's name and ×; **Show as** and **Page** as label and control rows; a separator; the source action; **Remove from Citation ⌫**. Then the document: the full title and byline, then what will be pasted in full. These rows are the same in every state and nothing above the document changes height, so nothing moves while typing.
-- **Show as is a pop-up**, its value the current form, its menu the three forms with quiet examples. Only the engine says a form cannot be used; until it answers every form can be tried, so a refused citation can always be corrected here. Examples stay while the next arrive.
-- **One place for a refusal**: while the panel is open a citation refusal takes the citation's place in the panel, beside the fields that fix it, and not above the list.
+- **Show as is a pop-up**, its value the current form, or None where the output has no name forms; its menu the three forms with quiet examples. Only the engine says a form cannot be used, and only for the citation it was asked about; until it answers every form can be tried, so a refused citation can always be corrected here. Examples stay while the next arrive.
+- **One place for a failure**: while the panel is open, a citation refusal or a failed copy shows in the panel, beside the fields that fix it, and not above the list.
 - **Shelf and panel work together**: pressing a segment shows its details and focuses Page; pressing another moves them; pressing the same one closes them. A reference that leaves the shelf closes them.
 - **Keys**: Tab moves through it in order, never trapped. Enter in Page does what the footer says. Esc closes the Show as menu, then the panel, and focus returns to the segment if it was inside; Search keeps focus if it was there.
 - **Warnings** use the same panel without a document.

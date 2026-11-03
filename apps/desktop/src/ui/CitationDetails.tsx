@@ -21,11 +21,12 @@ export function CitationDetails({ page, form, pageRef, choices, autoFocus = fals
 }) {
   const formButton = useRef<HTMLButtonElement>(null);
   const answer = typeof choices === "object" ? choices : undefined;
-  const current = answer?.current_form ?? form;
+  // The engine answers null where no name form applies, as for Keys only.
+  const current = answer ? answer.current_form : form;
   return <div className="citation-details">
     <div className="citation-field">
       <span className="citation-label" aria-hidden="true">{text.form}</span>
-      <ToolbarMenu buttonRef={formButton} returnFocusRef={formButton} label={text.form} value={text.forms.find((option) => option.value === current)?.label ?? ""} selectedKey={current}
+      <ToolbarMenu buttonRef={formButton} returnFocusRef={formButton} label={text.form} value={text.forms.find((option) => option.value === current)?.label ?? text.none} selectedKey={current ?? ""}
         sections={[{ id: "forms", label: choices === "failed" ? text.examplesUnavailable : undefined, items: text.forms.map((option) => {
           const choice = answer?.forms.find((choice) => choice.form === option.value);
           return { id: option.value, label: option.label, sample: choice?.example ?? undefined, note: choice?.reason ?? undefined, disabled: Boolean(choice?.reason) };
@@ -36,7 +37,7 @@ export function CitationDetails({ page, form, pageRef, choices, autoFocus = fals
     </div>
     <TextField className="citation-field" value={page} onChange={onPageChange}>
       <Label className="citation-label">{text.page}</Label>
-      <Input ref={pageRef} autoFocus={autoFocus} placeholder={text.pageNone} onKeyDown={(event) => {
+      <Input ref={pageRef} autoFocus={autoFocus} placeholder={text.none} onKeyDown={(event) => {
         if (event.key === "Enter" && !event.repeat && !composing(event)) { event.preventDefault(); onSubmit?.(); }
       }} />
       <Text slot="description" className="visually-hidden">{text.pageHint}</Text>
