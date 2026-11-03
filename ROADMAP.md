@@ -1,6 +1,6 @@
 # Roadmap
 
-Every feature planned here ships before 1.0. The version numbers before 1.0 are working steps and may change; each release is usable on its own, and each milestone on GitHub has the same name. 1.0 adds no features: people test everything, then the maintainer moves to 1.0 by hand. Dates are not promised; scope is.
+Every feature and milestone planned here, through 0.7, ships before 1.0. The version numbers before 1.0 are working steps and may change; each release is usable on its own, and each milestone on GitHub has the same name. 1.0 adds no features: people test everything, then the maintainer moves to 1.0 by hand. Dates are not promised; scope is.
 
 ## Direction
 
@@ -13,6 +13,7 @@ Ibis sits between the references people already keep and the apps they already w
 - **Only what Ibis can get right.** A plausible but wrong citation is worse than none. Where correctness needs the whole document (numbering, ibid., 2020a and 2020b), Ibis gives what is correct on its own and says why. Every feature must be right from what Ibis knows and save real work.
 - **Languages and platforms count.** Names, search, input methods, text direction and citation locales work on Windows, macOS and Linux; limits are written down, not hidden.
 - **Offline by default.** Any online feature is opt-in and needs a recorded network decision and the maintainer's yes ([decision 0008](docs/decisions.md#0008-offline-by-default)).
+- **Quiet delight.** Delights are quiet, with rare moments.
 - **Long-lived foundations.** Open standards (CSL, CSL-JSON, BibTeX) and widely used open source (citeproc-js, SQLite, PDF.js, Tauri, React Aria), each behind one Ibis module so it can be replaced.
 
 Each release claims only what it has demonstrated, in the [compatibility guide](docs/compatibility.md). Until 1.0 nothing is kept for compatibility (decision 0027): anything wrong is rebuilt.
@@ -59,7 +60,7 @@ The first command line, BibTeX reading that survives damaged files, key outputs,
 - **Quotes:** a PDF dropped on the window finds its reference; Copy Quote with Reference as plain text or Markdown, with the quotation, known page, reference and source link, and comments kept separate. Selected passages and comments exported as one Markdown evidence brief ([#1517](https://github.com/ibiscite/ibis/issues/1517)).
 - **Is this in my library?** for a pasted identifier, reference or reference list.
 - **Attachments:** results say whether a reference has a PDF or a saved web page, with the PDF's page count where it can be read safely.
-- **A read-only reader inside Ibis** for PDFs, EPUB and web snapshots, for what the reader people already use cannot do ([#1252](https://github.com/ibiscite/ibis/issues/1252)).
+- **A read-only reader inside Ibis** for PDFs, EPUB and web snapshots, for what the reader people already use cannot do ([#1252](https://github.com/ibiscite/ibis/issues/1252)). A PDF opens in a panel inside the picker that widens, shared with the citation editor.
 
 ### 0.6 Your document
 

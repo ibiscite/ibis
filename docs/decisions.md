@@ -825,6 +825,10 @@ self-signed identity and Windows installers stay unsigned with first-launch
 steps; Developer ID, notarization and Windows signing wait for money or a free
 programme ([ROADMAP](../ROADMAP.md)).
 
+2026-11-02 (maintainer): every planned milestone through 0.7 stays in 1.0. The
+PDF opens in a panel inside the picker that widens, shared with the citation
+editor. Delights are quiet, with rare moments.
+
 ## 0033 The engine for agents and tools
 
 The `ibis` command is a complete, independent way into a person's references,
@@ -874,3 +878,7 @@ gone; and a separate review of the final head is needed only for the updater,
 release signing and publishing, CI permissions and security boundaries. Pull
 requests run only what their paths can affect, main runs everything, and a
 nightly never waits for CI or the release checks. A numbered release does.
+
+The testing rhythm (maintainer, 2026-11-02): agents merge to main on green, a
+testing session checks the real app on the Mac, and the maintainer tries one
+nightly a day with a short list of what changed.

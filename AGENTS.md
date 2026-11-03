@@ -6,7 +6,7 @@ look and behaviour in [docs/design.md](docs/design.md), testing and coverage in
 [docs/testing.md](docs/testing.md), lasting decisions in
 [docs/decisions.md](docs/decisions.md). Current work and owners: the tracking issue (label `tracking`).
 
-The goal is a finished change on the nightly quickly, so the maintainer can test everything at once ([decision 0027](docs/decisions.md#0027-process-until-10-with-0011-0015-and-0017)).
+The goal is a finished change on the nightly quickly. Agents merge to main on green, a testing session checks the real app on the Mac, and the maintainer tries one nightly a day with a short list of what changed ([decision 0027](docs/decisions.md#0027-process-until-10-with-0011-0015-and-0017)).
 
 ```sh
 node scripts/check.mjs                     # what CI would run for this branch's changes
