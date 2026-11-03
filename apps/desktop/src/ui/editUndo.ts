@@ -2,7 +2,7 @@ import { composing } from "../composition";
 import { matchesAccelerator } from "../keys";
 import { currentPlatform } from "../platform";
 
-type Stop = (() => void) & { pause: (paused: boolean) => void };
+type Stop = (() => void) & { pause: (paused: boolean) => void; isNewest: () => boolean };
 type Action = { run: () => void; paused: boolean; typed: string | null };
 type Field = HTMLInputElement | HTMLTextAreaElement;
 
@@ -13,13 +13,19 @@ const text = (node: EventTarget | Element | null) =>
  * person has typed since it appeared: then it is their text to undo. */
 export class UndoOwner {
   private actions = new Map<symbol, Action>();
+  private listeners = new Set<() => void>();
+  /** The slot shows the newest offer, so one stays beside the words ⌘Z acts on. */
+  subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
+  private changed() { for (const listener of this.listeners) listener(); }
   private get current() { return [...this.actions.values()].reverse().find((action) => !action.paused); }
   register(run: () => void, typed: string | null = null): Stop {
     const identity = Symbol();
     const action = { run, paused: false, typed };
     this.actions.set(identity, action);
-    const stop = (() => { this.actions.delete(identity); }) as Stop;
+    const stop = (() => { this.actions.delete(identity); this.changed(); }) as Stop;
     stop.pause = (paused) => { action.paused = paused; };
+    stop.isNewest = () => [...this.actions.keys()].at(-1) === identity;
+    this.changed();
     return stop;
   }
   takes(field: string | null) {
@@ -35,6 +41,7 @@ export class UndoOwner {
 }
 
 const owner = new UndoOwner();
+export const subscribeUndo = owner.subscribe;
 
 const key = (event: KeyboardEvent) => {
   if (composing(event) || !matchesAccelerator(event, "CmdOrCtrl+Z", currentPlatform() === "macos") || !owner.takes(text(event.target))) return;
@@ -50,5 +57,5 @@ export function registerUndo(run: () => void) {
   return Object.assign(() => {
     stop();
     if (--notices === 0) window.removeEventListener("keydown", key, true);
-  }, { pause: stop.pause });
+  }, { pause: stop.pause, isNewest: stop.isNewest });
 }

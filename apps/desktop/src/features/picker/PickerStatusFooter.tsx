@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { libraryMessages, operationFailures as FAILURE_MESSAGES, pickerText } from "../../messages";
 import { zoteroLibraryNames } from "../../LibraryStatusLine";
 import type { PickerApi } from "../../App";
@@ -18,7 +19,7 @@ import type { useOperations } from "./useOperations";
 
 export function PickerStatusFooter({
   api, library, scope, sourceState, menus, actions, copyChosen, destination, recents, preferences,
-  operations, altHeld, lastOutcome, cancelCopy, quitAfterSaving, feedback, passive, emptyAction,
+  operations, altHeld, lastOutcome, cancelCopy, quitAfterSaving, emptyAction, notices,
 }: {
   api: PickerApi;
   library: LibraryStatus | null | undefined;
@@ -35,20 +36,20 @@ export function PickerStatusFooter({
   lastOutcome: string | null;
   cancelCopy: () => void;
   quitAfterSaving: () => Promise<void>;
-  feedback?: string | null; passive?: boolean;
   emptyAction?: boolean;
+  notices?: ReactNode;
 }) {
   const { useZoteroLibraries: chooseZoteroLibraries, reloadLibrary, useZotero, openSettings } = api;
   const { groupName, offeredGroups, isChosen, chosenLibraries, toggleLibrary, searchAllLibraries } = scope;
   const { libraryMenuOpen, setMenuOpen, setLibraryMenuOpen, input, menuOpen, openMore, closeMenu, moreButton, pinned, togglePin, openKeys, runFromMenu } = menus;
   const { sourceAction, sourceOpen, source, chooseSources, chooseFile, openSource } = sourceState;
-  const { density, changeDensity, showPastePreview, togglePastePreview } = preferences;
+  const { density, changeDensity } = preferences;
   const { failures, report } = operations;
   const { toggleHighlighted, escapeStep, hints } = actions;
   // Read when More opens, the only time it is shown there.
   const libraryDetail = menuOpen ? libraryMessages.detail(library, Date.now(), (status) => zoteroLibraryNames(status, groupName)) : null;
-  return <PickerFooter library={library} groupName={groupName} feedback={feedback} passive={passive} emptyAction={emptyAction}
-    status={<PickerLibraryStatus library={library} groupName={groupName} isOpen={libraryMenuOpen}
+  return <PickerFooter library={library} groupName={groupName} emptyAction={emptyAction}
+    status={<PickerLibraryStatus library={library} groupName={groupName} notice={notices} isOpen={libraryMenuOpen}
       onOpenChange={(open) => { if (open) { cancelCopy(); setMenuOpen(false); } setLibraryMenuOpen(open); }}
       searchRef={input} sourceAction={sourceAction} sourceFailure={sourceOpen.failure !== null}
       statusIcon={source.status_icon ?? null} hideAction={sourceState.libraryChoices}
@@ -68,10 +69,9 @@ export function PickerStatusFooter({
         buttonRef={moreButton} searchRef={input} libraryDetail={libraryDetail}
         source={api.openLibrarySource && sourceState.sourceAvailable ? sourceAction : undefined}
         lastOutcome={lastOutcome}
-        density={density} showPastePreview={showPastePreview} pinned={pinned}
+        density={density} pinned={pinned}
         actions={{
           density: changeDensity,
-          preview: togglePastePreview,
           pin: togglePin,
           keys: openKeys,
           settings: openSettings ? () => runFromMenu("settings", () => openSettings(null)) : null,

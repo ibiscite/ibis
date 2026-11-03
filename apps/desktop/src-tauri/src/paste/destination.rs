@@ -1,6 +1,7 @@
 use ibis_core::destination::{AppPaste, CopyReason, Decision, PastePermission, System, decide, lookup};
 use tauri::{AppHandle, Manager};
 
+use super::capture::Selection;
 use super::{Captured, LastTarget, permission};
 
 pub(super) fn paste_policy(app: &AppHandle, enabled: bool, choosing: bool) -> bool {
@@ -27,14 +28,16 @@ pub(super) fn paste_policy(app: &AppHandle, enabled: bool, choosing: bool) -> bo
         };
         preference
     };
-    intended_paste(
-        captured,
-        PastePermission {
-            enabled,
-            granted: enabled && permission::paste_permission().granted,
-            app: preference,
-        },
-    )
+    let permission = PastePermission {
+        enabled,
+        granted: enabled && permission::paste_permission().granted,
+        app: preference,
+    };
+    // What is selected now says nothing about choosing paste for this app.
+    if choosing {
+        return captured.is_some_and(|captured| policy_decision(captured, permission) == Decision::Paste);
+    }
+    intended_paste(captured, permission)
 }
 
 pub(super) fn intended_paste(captured: Option<&Captured>, permission: PastePermission) -> bool {
@@ -42,6 +45,14 @@ pub(super) fn intended_paste(captured: Option<&Captured>, permission: PastePermi
 }
 
 pub(super) fn delivery_decision(captured: &Captured, permission: PastePermission) -> Decision {
+    match policy_decision(captured, permission) {
+        // A paste replaces the selection; Ibis never deletes text it did not show.
+        Decision::Paste if captured.selection == Selection::Ignored => Decision::Copy(CopyReason::SelectionNotShown),
+        decision => decision,
+    }
+}
+
+fn policy_decision(captured: &Captured, permission: PastePermission) -> Decision {
     let decision = decide(&captured.target, permission);
     if let Err(reason) = captured.paste
         && matches!(

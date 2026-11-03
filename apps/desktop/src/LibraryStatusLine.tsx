@@ -55,10 +55,12 @@ function useMinuteTick() {
  * detail is the tooltip; the live region holds no clock, so it is not repeated
  * every age tick.
  */
-export function LibraryStatusLine({ library, groupName, menu, action, failure }: {
+export function LibraryStatusLine({ library, groupName, menu, action, failure, notice }: {
   library: LibraryStatus | null | undefined; groupName: (id: number) => string;
   menu?: Omit<ComponentProps<typeof Menu>, "trigger" | "triggerTitle" | "triggerClassName">;
   action?: ReactNode;
+  /** Stands in for the status while it passes; the status stays mounted beneath. */
+  notice?: ReactNode;
   failure?: string | null;
 }) {
   useMinuteTick();
@@ -102,6 +104,7 @@ export function LibraryStatusLine({ library, groupName, menu, action, failure }:
             triggerLabel={pickerText.libraryRegion} triggerVariant="quiet" triggerSize="small" triggerClassName="library-status-trigger" triggerTitle={detail} />
         </span>
         {action}
+        {notice}
       </span> : <span className="library-status" data-health={health} title={detail}>{content}</span>}
       {/* Button descendants can become presentational in native trees. Keep
           exactly one live announcement beside it, with a stable button name

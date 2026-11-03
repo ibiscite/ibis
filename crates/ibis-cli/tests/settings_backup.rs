@@ -107,7 +107,7 @@ fn a_backup_restored_on_another_computer_finds_the_library_under_its_home() {
     second.library();
     second.settings(
         STABLE,
-        &serde_json::json!({"density": "spacious", "update_checks": false}),
+        &serde_json::json!({"density": "comfortable", "update_checks": false}),
     );
     let before = std::fs::read_to_string(second.settings_path(STABLE)).unwrap();
     let copied = second.file("Ibis settings.json");
@@ -217,7 +217,7 @@ fn nothing_to_back_up_or_damaged_settings_are_refused_with_the_reason() {
 #[test]
 fn foreign_damaged_and_newer_backups_change_nothing() {
     let computer = Computer::new("refusals");
-    computer.settings(STABLE, &serde_json::json!({"density": "spacious"}));
+    computer.settings(STABLE, &serde_json::json!({"density": "comfortable"}));
     let before = std::fs::read_to_string(computer.settings_path(STABLE)).unwrap();
     let write = |name: &str, text: &str| {
         let path = computer.file(name);
@@ -269,7 +269,7 @@ fn foreign_damaged_and_newer_backups_change_nothing() {
 fn the_same_backup_twice_changes_nothing_and_nightly_is_chosen_by_name() {
     let computer = Computer::new("again");
     computer.settings(STABLE, &serde_json::json!({"density": "compact"}));
-    computer.settings(NIGHTLY, &serde_json::json!({"density": "spacious"}));
+    computer.settings(NIGHTLY, &serde_json::json!({"density": "comfortable"}));
     let backup = computer.file("stable.json");
     assert_eq!(computer.run(&["settings", "export", &backup]).0, 0);
     let (code, stdout, _) = computer.run(&["settings", "import", &backup]);
