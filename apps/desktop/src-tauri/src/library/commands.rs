@@ -137,6 +137,8 @@ pub(crate) async fn recent_references(
 /// page's newest one returns no results, which the interface ignores because
 /// it belongs to an outdated query. `scope` contains exact loaded source IDs:
 /// omitted/null searches all, an empty list searches none. It never reloads sources.
+// Each managed state is its own argument: Tauri hands them to commands that way.
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 #[specta::specta]
 pub(crate) async fn search(
