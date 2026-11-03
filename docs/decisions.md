@@ -899,3 +899,8 @@ completed fixes, including the picker fade, logo and compact-window work,
 after required review, CI and budget gates pass; stable deployment keeps its
 one-click approval. The website demo is critical and stays functionally
 aligned with the released app; Settings #776 remains future polish.
+
+2026-11-02: One reference's details and, later, a source's PDF share one panel
+inside the picker, beside the list as in Preview's sidebar; never an anchored
+popover. The picker widens only to hold the PDF. Rules: design.md **Inspector**
+[C19] (maintainer).

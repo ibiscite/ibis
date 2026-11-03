@@ -393,6 +393,9 @@ pub struct CitationResult {
     pub warnings: Vec<CitationWarning>,
     /// Digest of the exact clipboard representations, including their presence.
     pub content_hash: Fingerprint,
+    /// The app this citation was made for, when a caller named one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub destination: Option<crate::destination::Destination>,
 }
 
 /// Borrowed canonical representations, available only after the copy gate succeeds.
@@ -453,6 +456,7 @@ impl CitationResult {
             notices,
             warnings: vec![],
             content_hash,
+            destination: None,
         }
     }
 

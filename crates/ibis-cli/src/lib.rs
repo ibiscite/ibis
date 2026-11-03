@@ -1,6 +1,7 @@
 //! The CLI parses arguments and presents typed engine results; no source or citation rules live here.
 use clap::{Arg, ArgAction, ArgMatches, Command};
 use ibis_core::contract::*;
+use ibis_core::destination::{System, destination};
 use ibis_engine::{Cancellation, DispatchResult, Engine, Method, protocol, request::*};
 use serde_json::{Value, json};
 use std::{
@@ -133,6 +134,7 @@ fn command() -> Command {
                      Examples:\n  \
                      ibis cite vale2024lanterns --file refs.bib --format autocite\n  \
                      ibis cite vale2024lanterns --file refs.bib --style apa --bibliography\n  \
+                     ibis cite vale2024lanterns --file refs.bib --for-app com.microsoft.Word\n  \
                      ibis schema cite   # the CitationRequest that --request reads",
                 )
                 .arg(
@@ -151,6 +153,7 @@ fn command() -> Command {
                             "keys",
                             "format",
                             "style",
+                            "for-app",
                             "form",
                             "locale",
                             "bibliography",
@@ -185,6 +188,14 @@ fn command() -> Command {
                         .value_name("STYLE_ID")
                         .help_heading(OUTPUT)
                         .help("Format with a CSL style instead, such as apa; list them with: ibis styles"),
+                )
+                .arg(
+                    Arg::new("for-app")
+                        .long("for-app")
+                        .value_name("APP_ID")
+                        .value_parser(clap::builder::NonEmptyStringValueParser::new())
+                        .help_heading(OUTPUT)
+                        .help("Use the output Ibis uses for this app, a macOS bundle ID or Windows executable; --style and --format apply when it has none of its own"),
                 )
                 .arg(
                     Arg::new("bibliography")
@@ -836,6 +847,13 @@ fn execute<R: BufRead, W: Write + Send>(
                     command: command.map(str::to_owned),
                 }
             };
+            let destination = args.get_one::<String>("for-app").map(|app| {
+                let style = args.get_one::<String>("style").map_or("apa", String::as_str);
+                destination(app, System::HERE, &output, style)
+            });
+            let output = destination
+                .as_ref()
+                .map_or(output, |destination| destination.output.clone());
             let form = if args.get_flag("bibliography") {
                 CitationForm::BibliographyOnly
             } else {
@@ -870,14 +888,17 @@ fn execute<R: BufRead, W: Write + Send>(
                         .collect()
                     })
                     .collect(),
-                output: args
-                    .get_one::<String>("style")
-                    .or_else(|| args.get_one::<String>("format"))
-                    .cloned()
-                    .unwrap_or_else(|| "pandoc".into()),
+                output: match &destination {
+                    Some(destination) => output_name(&destination.output),
+                    None => args
+                        .get_one::<String>("style")
+                        .or_else(|| args.get_one::<String>("format"))
+                        .cloned()
+                        .unwrap_or_else(|| "pandoc".into()),
+                },
                 form,
             };
-            let result = engine
+            let mut result = engine
                 .cite_keys(
                     &KeyCitationRequest {
                         keys: keys.clone(),
@@ -917,6 +938,7 @@ fn execute<R: BufRead, W: Write + Send>(
                             |key| key_failure(engine, key, error, libraries_open()),
                         ),
                 })?;
+            result.destination = destination;
             let result = engine.finalize(DispatchResult::citation(result, keys.len())?)?;
             return Ok(Execution::Result(result, Some(citing)));
         }
@@ -964,16 +986,19 @@ fn request_citing(params: &Value) -> Option<human::Citing> {
     Some(human::Citing {
         labels: vec![],
         flags: vec![],
-        output: match &request.output {
-            OutputSpec::Csl { style } => style.clone(),
-            OutputSpec::Key { syntax, .. } => serde_json::to_value(syntax)
-                .ok()
-                .and_then(|syntax| syntax.as_str().map(str::to_owned))
-                .unwrap_or_default(),
-            OutputSpec::Preset { .. } => "this output".into(),
-        },
+        output: output_name(&request.output),
         form: request.form,
     })
+}
+fn output_name(output: &OutputSpec) -> String {
+    match output {
+        OutputSpec::Csl { style } => style.clone(),
+        OutputSpec::Key { syntax, .. } => serde_json::to_value(syntax)
+            .ok()
+            .and_then(|syntax| syntax.as_str().map(str::to_owned))
+            .unwrap_or_default(),
+        OutputSpec::Preset { .. } => "this output".into(),
+    }
 }
 /// Keys with the options that follow each one, the way the picker attaches them.
 fn key_items(args: &ArgMatches) -> Result<Vec<KeyItem>, Failure> {
