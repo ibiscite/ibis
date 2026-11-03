@@ -154,6 +154,10 @@ function fakeApi(permission: Partial<PastePermission> = {}, preferences: Partial
     setPickerPreferences: commit,
     forgetAppOutputs: async () => 7,
     restoreAppOutputs: async () => null,
+    backUpSettings: vi.fn(async () => null),
+    chooseSettingsBackup: vi.fn(async () => null),
+    restoreSettingsBackup: vi.fn(async () => null),
+    cancelSettingsRestore: vi.fn(async () => null),
     loginItem: async () => ({ name: "Ibis Nightly", enabled: state.login, problem: null }),
     setLoginItem: async (enabled) => { state.login = enabled; return { name: "Ibis Nightly", enabled, problem: null }; },
     updateChecks: async () => state.updates,
@@ -1646,6 +1650,18 @@ test.each([
   fireEvent.click(await screen.findByRole("button", { name: "Check now" }));
   await screen.findByRole("button", { name: "Check now" });
   expect(await screen.findByText(said, { selector: ":not(.visually-hidden)" })).toBeTruthy();
+});
+
+test("a check that ends on another page says its result back on About", async () => {
+  const { api } = fakeApi();
+  let finish!: (result: "newest") => void;
+  vi.spyOn(api, "checkForUpdates").mockImplementation(() => new Promise<never>((resolve) => { finish = resolve as never; }));
+  render(<SettingsApp api={api} initialPage="about" />);
+  fireEvent.click(await screen.findByRole("button", { name: "Check now" }));
+  fireEvent.click(await screen.findByRole("option", { name: "General" }));
+  await act(async () => { finish("newest"); });
+  fireEvent.click(await screen.findByRole("option", { name: "About Ibis" }));
+  expect(await screen.findByText("You have the newest version.", { selector: ":not(.visually-hidden)" })).toBeTruthy();
 });
 
 test("Forget formats offers Undo, and Undo restores that same ticket", async () => {

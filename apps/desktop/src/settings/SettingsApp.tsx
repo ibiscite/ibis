@@ -22,6 +22,7 @@ import { useAppearance } from "../ui/appearance";
 import { DefaultFormat } from "./DefaultFormat";
 import { Switch } from "../ui/Switch";
 import { PasteGuide, usePastePermission } from "./PasteGuide";
+import { BackupRows } from "./BackupRows";
 import type { SettingsApi } from "./api";
 import "../ui/SettingsLayout.css";
 import "./Settings.css";
@@ -97,8 +98,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   // biome-ignore lint/correctness/useExhaustiveDependencies: changing pages retires feedback and pending operations.
   useEffect(() => {
     setVersionCopied(false); setVersionCopyFailed(false); versionCopy.current += 1;
-    setCheckResult(null); manualCheck.current += 1;
-    return () => { versionCopy.current += 1; manualCheck.current += 1; };
+    return () => { versionCopy.current += 1; };
   }, [page]);
   const { altHeld } = useAltHeld();
   const [about, setAbout] = useState<DelightView | null>(null);
@@ -450,6 +450,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
                 )}
               </>
             )}
+            <BackupRows api={api} />
           </>
         )}
         {page === "look" && preferences && <LookPage preferences={preferences} change={change} feedback={feedback} windowSize={windowSize} chooseWindowSize={chooseWindowSize} />}

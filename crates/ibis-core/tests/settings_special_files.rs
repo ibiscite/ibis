@@ -28,10 +28,10 @@ fn special_settings_files_never_block_or_replace_a_recovery_file() {
         fs::write(&backup, recovery).unwrap_or_else(|e| panic!("{e}"));
         let loaded = settings::load(&path);
         assert!(loaded.from_backup);
-        assert_eq!(loaded.settings.shortcut.as_deref(), Some("Alt+Space"));
+        assert_eq!(loaded.settings.shortcut.here(), Some("Alt+Space"));
         assert!(matches!(loaded.problem, Some(SettingsError::Unreadable(_))));
         assert_eq!(loaded.primary_read, settings::PrimaryRead::Unreadable);
-        assert!(settings::update(&path, |s| s.shortcut = None).is_err());
+        assert!(settings::update(&path, |s| s.shortcut.set_here(None)).is_err());
         assert!(settings::save(&path, &Settings::default()).is_err());
         assert!(
             fs::symlink_metadata(&path)
@@ -54,7 +54,7 @@ fn special_settings_files_never_block_or_replace_a_recovery_file() {
             Err(SettingsError::NewerVersion(99))
         ));
         fs::write(&path, b"{}").unwrap_or_else(|e| panic!("{e}"));
-        assert!(settings::update(&path, |s| s.shortcut = Some("Alt+Space".into())).is_err());
+        assert!(settings::update(&path, |s| s.shortcut.set_here(Some("Alt+Space".into()))).is_err());
         assert!(settings::save(&path, &Settings::default()).is_err());
         assert_eq!(fs::read(&path).unwrap_or_default(), b"{}");
         assert!(!temporary.exists());
@@ -68,7 +68,7 @@ fn special_settings_files_never_block_or_replace_a_recovery_file() {
         fs::remove_file(&backup).unwrap_or_else(|e| panic!("{e}"));
         fs::write(&backup, recovery).unwrap_or_else(|e| panic!("{e}"));
         pipe(&temporary);
-        assert!(settings::update(&path, |s| s.shortcut = Some("Alt+Space".into())).is_err());
+        assert!(settings::update(&path, |s| s.shortcut.set_here(Some("Alt+Space".into()))).is_err());
         assert_eq!(fs::read(&path).unwrap_or_default(), b"{}");
         assert_eq!(fs::read(&backup).unwrap_or_default(), recovery);
         assert!(
@@ -82,7 +82,7 @@ fn special_settings_files_never_block_or_replace_a_recovery_file() {
         let ordinary = root.join("ordinary.json");
         fs::write(&ordinary, recovery).unwrap_or_else(|e| panic!("{e}"));
         std::os::unix::fs::symlink(&ordinary, &path).unwrap_or_else(|e| panic!("{e}"));
-        assert_eq!(settings::load(&path).settings.shortcut.as_deref(), Some("Alt+Space"));
+        assert_eq!(settings::load(&path).settings.shortcut.here(), Some("Alt+Space"));
         return;
     }
 
