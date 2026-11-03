@@ -47,12 +47,26 @@ fn settings_message(problem: &settings::SettingsError) -> String {
 
 /// This notice is for the interface only: its settings path must not be logged.
 pub(crate) fn settings_notice(path: &Path, loaded: &settings::Loaded) -> Option<String> {
-    loaded.problem.as_ref().map(|problem| {
+    let Some(problem) = loaded.problem.as_ref() else {
+        // A sync service's copy is named, never merged (#1561). The scan is an
+        // optional warning: a stalled synced folder only skips it, after at
+        // most the file deadline.
+        let scanned = path.to_path_buf();
+        let copies = crate::settings_backup::within(move || settings::sync_conflicts(&scanned)).unwrap_or_default();
+        return (!copies.is_empty()).then(|| {
+            format!(
+                "A synced copy of settings.json is beside it ({}). Ibis uses settings.json; delete the copy once you have checked it. Settings file: {}",
+                copies.join(", "),
+                path.display()
+            )
+        });
+    };
+    Some({
         if loaded.primary_read == settings::PrimaryRead::Missing && loaded.from_backup {
-            return format!(
+            return Some(format!(
                 "settings.json is missing; using the backup. The next save will restore settings.json and keep the backup unchanged. Settings file: {}",
                 path.display()
-            );
+            ));
         }
         let recovery = if loaded.from_backup { "the backup" } else { "defaults" };
         let recoverable = match problem {
@@ -106,6 +120,16 @@ impl SettingsFile {
     pub(crate) fn update(&self, change: impl FnOnce(&mut settings::Settings)) -> Result<settings::Settings, String> {
         self.update_when(|| true, change)?
             .ok_or_else(|| "settings are unavailable".to_string())
+    }
+
+    /// Run `work` on the settings file while no save can interleave, such as a
+    /// restore that must find the settings it was shown.
+    pub(crate) fn exclusive<T>(&self, work: impl FnOnce(&Path) -> T) -> Result<T, String> {
+        let _writing = self
+            .writing
+            .lock()
+            .map_err(|_| "settings are unavailable".to_string())?;
+        Ok(work(&self.path))
     }
 
     /// Conditional writes test their immutable owner after acquiring the writer.
@@ -1149,7 +1173,7 @@ mod tests {
         // Simulate an external edit after dispatch, before the writer can read.
         let current = serde_json::json!({
             "schema_version": 2, "copy_format": "cite", "citation_style": "apa",
-            "library": { "bibtex": "refs.bib" }, "shortcut": "Alt+Space", "update_checks": false,
+            "library": { "bibtex": "refs.bib" }, "shortcut": { "macos": "Alt+Space", "windows": "Alt+Space", "linux": "Alt+Space" }, "update_checks": false,
             "picker_windows": { "display-a": {
                 "width": 840, "height": 600, "custom_size": true, "x": 40, "y": 60
             } },
@@ -1619,7 +1643,7 @@ mod tests {
         assert!(PickerPreferences::from_settings(&settings::Settings::default()).show_paste_preview);
 
         let original = serde_json::json!({
-            "schema_version": 2, "shortcut": "Alt+Space", "library": { "bibtex": "refs.bib" },
+            "schema_version": 2, "shortcut": { "macos": "Alt+Space", "windows": "Alt+Space", "linux": "Alt+Space" }, "library": { "bibtex": "refs.bib" },
             "copy_format": "typst", "update_checks": false, "citation_style": "ieee",
             "density": "compact", "larger_text": true, "future_choice": { "kept": [true, null] },
         });

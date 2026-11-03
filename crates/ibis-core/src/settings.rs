@@ -6,6 +6,12 @@
 //! settings. Fields this build does not know are kept on save, so builds
 //! that add fields within one format do not erase each other's (ADR 0022).
 //! Other format versions are refused, without migration (ADR 0016).
+//!
+//! The file is meant to work on another computer too (#1561): bibliography
+//! files in the home folder are written as `~/…`, and the opening shortcut is
+//! kept per system. [`backup`] makes and restores a backup file from it.
+
+pub mod backup;
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -17,6 +23,7 @@ use serde_json::Value;
 use thiserror::Error;
 
 use crate::cite::KeyFormat;
+use crate::destination::System;
 
 /// Version of the settings format this build reads and writes.
 pub const SCHEMA_VERSION: u32 = 2;
@@ -29,8 +36,9 @@ const MAX_SETTINGS_BYTES: u64 = 1024 * 1024;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum LibrarySetting {
-    /// A BibTeX/BibLaTeX file: `{"bibtex": "/path/refs.bib"}`.
-    Bibtex(PathBuf),
+    /// A BibTeX/BibLaTeX file: `{"bibtex": "/path/refs.bib"}`, or
+    /// `{"bibtex": "~/Documents/refs.bib"}` inside the home folder.
+    Bibtex(#[serde(with = "home_path")] PathBuf),
     /// Zotero libraries, read from Zotero itself: `{"zotero": "user"}`,
     /// `{"zotero": {"group": 42}}`, or several read together:
     /// `{"zotero": ["user", {"group": 42}]}`.
@@ -86,6 +94,127 @@ impl From<ZoteroLibraries> for OneOrMore {
             [library] => OneOrMore::One(*library),
             _ => OneOrMore::More(value.0),
         }
+    }
+}
+
+/// The opening shortcut chosen on each system, so one settings file or backup
+/// serves a Mac and a Windows PC alike (#1561). Ibis always writes one entry
+/// per system, `"shortcut": {"macos": "Control+Command+R", "windows": "Alt+Space"}`,
+/// so a file shared between systems never hands one system's shortcut to
+/// another. A plain string, as people write it by hand, is this system's.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Shortcuts(BTreeMap<System, String>);
+
+impl Shortcuts {
+    /// Only this system's shortcut.
+    pub fn only_here(shortcut: impl Into<String>) -> Self {
+        Self(BTreeMap::from([(System::HERE, shortcut.into())]))
+    }
+
+    /// The explicit shortcut for this system; `None` means the default.
+    pub fn here(&self) -> Option<&str> {
+        self.0.get(&System::HERE).map(String::as_str)
+    }
+
+    /// Choose this system's shortcut, or `None` for the default. Other
+    /// systems' shortcuts are kept.
+    pub fn set_here(&mut self, shortcut: Option<String>) {
+        match shortcut {
+            Some(shortcut) => self.0.insert(System::HERE, shortcut),
+            None => self.0.remove(&System::HERE),
+        };
+    }
+
+    /// Every system's explicit shortcut.
+    pub fn by_system(&self) -> &BTreeMap<System, String> {
+        &self.0
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+
+impl From<BTreeMap<System, String>> for Shortcuts {
+    fn from(shortcuts: BTreeMap<System, String>) -> Self {
+        Self(shortcuts)
+    }
+}
+
+impl Serialize for Shortcuts {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.0.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for Shortcuts {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Written {
+            Here(String),
+            BySystem(BTreeMap<System, String>),
+        }
+        Ok(match Option::<Written>::deserialize(deserializer)? {
+            None => Self::default(),
+            Some(Written::Here(shortcut)) => Self(BTreeMap::from([(System::HERE, shortcut)])),
+            Some(Written::BySystem(shortcuts)) => Self(shortcuts),
+        })
+    }
+}
+
+/// A bibliography path inside the home folder is written as `~/` and the
+/// rest of the path with `/` between names, so the same setting finds the same
+/// file on another computer with another user name or system. Other paths are
+/// written as they are.
+mod home_path {
+    use std::path::{Path, PathBuf};
+
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    pub(super) fn serialize<S: Serializer>(path: &Path, serializer: S) -> Result<S::Ok, S::Error> {
+        match super::portable_path(path, std::env::home_dir().as_deref()) {
+            Some(portable) => portable.serialize(serializer),
+            None => path.serialize(serializer),
+        }
+    }
+
+    pub(super) fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<PathBuf, D::Error> {
+        let written = String::deserialize(deserializer)?;
+        Ok(super::resolve_path(&written, std::env::home_dir().as_deref()))
+    }
+}
+
+/// `path` as `~/…` when it is a file inside `home`; `None` keeps it as it is.
+pub fn portable_path(path: &Path, home: Option<&Path>) -> Option<String> {
+    let home = home.filter(|home| home.is_absolute())?;
+    let names = path
+        .strip_prefix(home)
+        .ok()?
+        .components()
+        .map(|component| match component {
+            std::path::Component::Normal(name) => name.to_str().filter(|name| !name.contains(['/', '\\'])),
+            _ => None,
+        })
+        .collect::<Option<Vec<_>>>()?;
+    (!names.is_empty()).then(|| format!("~/{}", names.join("/")))
+}
+
+/// A written path, with a leading `~/` (or `~\` on Windows) read as `home`.
+/// Without a home folder the text stays as written, so it is reported as not
+/// found rather than read somewhere else.
+pub fn resolve_path(written: &str, home: Option<&Path>) -> PathBuf {
+    let rest = written
+        .strip_prefix("~/")
+        .or_else(|| written.strip_prefix("~\\").filter(|_| cfg!(windows)));
+    match (rest, home.filter(|home| home.is_absolute())) {
+        (Some(rest), Some(home)) => {
+            let separators: &[char] = if cfg!(windows) { &['/', '\\'] } else { &['/'] };
+            let mut path = home.to_path_buf();
+            path.extend(rest.split(separators).filter(|name| !name.is_empty()));
+            path
+        }
+        _ => PathBuf::from(written),
     }
 }
 
@@ -167,9 +296,9 @@ pub struct Settings {
     /// Quiet bird facts and milestones; absent means enabled.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub small_surprises: Option<bool>,
-    /// Explicit global shortcut, e.g. `"CommandOrControl+Shift+Y"`; `None` stays unwritten.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub shortcut: Option<String>,
+    /// Explicit global shortcut per system; none stays unwritten.
+    #[serde(skip_serializing_if = "Shortcuts::is_empty")]
+    pub shortcut: Shortcuts,
     /// Library to open at start.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub library: Option<LibrarySetting>,
@@ -224,7 +353,7 @@ impl Default for Settings {
             schema_version: SCHEMA_VERSION,
             delights: None,
             small_surprises: None,
-            shortcut: None,
+            shortcut: Shortcuts::default(),
             library: None,
             zotero_profile: None,
             copy_format: None,
@@ -289,8 +418,11 @@ fn backup_path(path: &Path) -> PathBuf {
 }
 
 fn parse(text: &str) -> Result<Settings, SettingsError> {
+    parse_value(serde_json::from_str(text).map_err(|e| SettingsError::Invalid(e.to_string()))?)
+}
+
+fn parse_value(value: Value) -> Result<Settings, SettingsError> {
     let invalid = |e: serde_json::Error| SettingsError::Invalid(e.to_string());
-    let value: Value = serde_json::from_str(text).map_err(invalid)?;
     // The version is checked before any other field: a newer format may
     // change field types, and must still be recognised as newer.
     let version = match value.get("schema_version") {
@@ -410,10 +542,24 @@ fn write_settings(path: &Path, settings: &Settings, recovering: bool) -> Result<
     if recovering {
         preserve_invalid(path)?;
     }
+    // A settings file linked into a synced folder stays linked: the file it
+    // points to is replaced, never the link (#1561). A link to one of Ibis's
+    // own side files (an interrupted write, the backup) is replaced instead.
+    let target = match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_symlink() => {
+            let linked = fs::canonicalize(path)?;
+            if is_side_file(path, &linked) {
+                path.to_path_buf()
+            } else {
+                linked
+            }
+        }
+        _ => path.to_path_buf(),
+    };
     // The new contents reach the disk before they replace the old file, so a
     // power cut leaves either file whole, never an empty one.
     // Never remove an interrupted write: the primary or backup may point to it.
-    let (temporary, mut file) = create_temporary(path)?;
+    let (temporary, mut file) = create_temporary(&target)?;
     file.write_all(format!("{json}\n").as_bytes())?;
     if let Some(permissions) = permissions {
         file.set_permissions(permissions)?;
@@ -425,9 +571,90 @@ fn write_settings(path: &Path, settings: &Settings, recovering: bool) -> Result<
         // Windows flushes only a handle opened for writing.
         fs::OpenOptions::new().write(true).open(&backup)?.sync_all()?;
     }
-    fs::rename(&temporary, path)?;
-    sync_directory(path);
+    fs::rename(&temporary, &target)?;
+    sync_directory(&target);
     Ok(())
+}
+
+/// Whether `linked` is a file Ibis keeps beside `path`, such as
+/// `settings.json.tmp`, `settings.json.bak` or `settings.json.invalid-1`.
+fn is_side_file(path: &Path, linked: &Path) -> bool {
+    let same_folder = match (path.parent().map(fs::canonicalize), linked.parent()) {
+        (Some(Ok(folder)), Some(linked_folder)) => folder == linked_folder,
+        _ => false,
+    };
+    let (Some(file), Some(name)) = (
+        path.file_name().and_then(|s| s.to_str()),
+        linked.file_name().and_then(|s| s.to_str()),
+    ) else {
+        return false;
+    };
+    let numbered = |suffix: &str, prefix: &str| {
+        suffix
+            .strip_prefix(prefix)
+            .is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
+    };
+    same_folder
+        && name
+            .strip_prefix(file)
+            .and_then(|rest| rest.strip_prefix('.'))
+            .is_some_and(|suffix| {
+                matches!(suffix, "tmp" | "bak") || numbered(suffix, "tmp-") || numbered(suffix, "invalid-")
+            })
+}
+
+/// Copies that a sync service made of the settings file when two computers
+/// changed it at once, such as `settings 2.json` (iCloud Drive),
+/// `settings-PC.json` (OneDrive), `settings (conflicted copy).json` (Dropbox),
+/// `settings (1).json` (Google Drive) or `settings.sync-conflict-….json`
+/// (Syncthing). Ibis never merges them; it names them so the person can choose.
+/// Only names are returned, from the folder of the file and, for a linked file,
+/// the folder it points to; at most [`MAX_CONFLICTS`], sorted.
+pub fn sync_conflicts(path: &Path) -> Vec<String> {
+    let (Some(stem), Some(folder)) = (path.file_stem().and_then(|s| s.to_str()), path.parent()) else {
+        return Vec::new();
+    };
+    let mut folders = vec![folder.to_path_buf()];
+    if fs::symlink_metadata(path).is_ok_and(|metadata| metadata.file_type().is_symlink())
+        && let Some(linked) = fs::canonicalize(path)
+            .ok()
+            .and_then(|target| target.parent().map(Path::to_path_buf))
+        && !folders.contains(&linked)
+    {
+        folders.push(linked);
+    }
+    let mut names: Vec<String> = folders
+        .iter()
+        .filter_map(|folder| fs::read_dir(folder).ok())
+        .flat_map(|entries| entries.take(MAX_FOLDER_ENTRIES).flatten())
+        .filter_map(|entry| entry.file_name().into_string().ok())
+        .filter(|name| is_sync_conflict(stem, name))
+        .collect();
+    names.sort();
+    names.dedup();
+    names.truncate(MAX_CONFLICTS);
+    names
+}
+
+/// At most this many conflict copies are named.
+pub const MAX_CONFLICTS: usize = 5;
+/// A settings folder is small; a large synced folder is not read to its end.
+const MAX_FOLDER_ENTRIES: usize = 4096;
+
+fn is_sync_conflict(stem: &str, name: &str) -> bool {
+    let Some(middle) = name.strip_prefix(stem).and_then(|rest| rest.strip_suffix(".json")) else {
+        return false;
+    };
+    let digits = |text: &str| !text.is_empty() && text.bytes().all(|byte| byte.is_ascii_digit());
+    middle.strip_prefix(' ').is_some_and(digits)
+        || middle
+            .strip_prefix(" (")
+            .and_then(|rest| rest.strip_suffix(')'))
+            .is_some_and(|inside| digits(inside) || inside.contains("conflicted copy"))
+        || middle
+            .strip_prefix('-')
+            .is_some_and(|host| !host.is_empty() && !host.contains('.'))
+        || middle.starts_with(".sync-conflict-")
 }
 
 fn create_temporary(path: &Path) -> io::Result<(PathBuf, fs::File)> {
@@ -688,7 +915,7 @@ mod tests {
             fs::write(&path, text).unwrap_or_else(|e| panic!("{e}"));
             let present = load(&path);
             assert_eq!(present.primary_read, PrimaryRead::Present);
-            assert_eq!(present.settings.shortcut.as_deref(), shortcut);
+            assert_eq!(present.settings.shortcut.here(), shortcut);
             assert!(present.problem.is_none());
             assert!(!present.from_backup);
             assert_eq!(fs::read_to_string(&path).unwrap_or_default(), text);
@@ -705,7 +932,7 @@ mod tests {
         fs::write(backup_path(&path), backup).unwrap_or_else(|e| panic!("{e}"));
         let loaded = load(&path);
         assert_eq!(loaded.primary_read, PrimaryRead::Missing);
-        assert_eq!(loaded.settings.shortcut.as_deref(), Some("Alt+Space"));
+        assert_eq!(loaded.settings.shortcut.here(), Some("Alt+Space"));
         assert!(matches!(loaded.problem, Some(SettingsError::Unreadable(e)) if e.kind() == io::ErrorKind::NotFound));
         assert!(loaded.from_backup);
         assert!(!path.exists());
@@ -940,7 +1167,7 @@ mod tests {
         let directory = dir("roundtrip");
         let path = directory.path().join("nested/settings.json");
         let settings = Settings {
-            shortcut: Some("Control+Command+R".into()),
+            shortcut: Shortcuts::only_here("Control+Command+R"),
             copy_format: Some(KeyFormat::Typst),
             update_checks: Some(false),
             ..Settings::default()
@@ -1014,7 +1241,7 @@ mod tests {
         let directory = dir("corrupt");
         let path = directory.path().join("settings.json");
         let good = Settings {
-            shortcut: Some("Alt+Space".into()),
+            shortcut: Shortcuts::only_here("Alt+Space"),
             ..Settings::default()
         };
         save(&path, &good).unwrap_or_else(|e| panic!("{e}"));
@@ -1290,7 +1517,7 @@ mod tests {
         let edited = r#"{"schema_version": 2, "shortcut": "Alt+Space", "copy_format": "typst"}"#;
         fs::write(&path, edited).unwrap_or_else(|e| panic!("{e}"));
         let after = update(&path, |s| s.copy_format = Some(KeyFormat::Keys)).unwrap_or_else(|e| panic!("{e}"));
-        assert_eq!(after.shortcut.as_deref(), Some("Alt+Space"));
+        assert_eq!(after.shortcut.here(), Some("Alt+Space"));
         assert_eq!(load(&path).settings, after);
         fs::remove_file(backup_path(&path)).unwrap_or_else(|e| panic!("{e}"));
         fs::write(&path, "{ not json").unwrap_or_else(|e| panic!("{e}"));
@@ -1312,10 +1539,16 @@ mod tests {
             "later_flag": [true, null, 1.5],
         });
         fs::write(&path, newer_build.to_string()).unwrap_or_else(|e| panic!("{e}"));
-        update(&path, |s| s.shortcut = Some("Alt+Space".into())).unwrap_or_else(|e| panic!("{e}"));
+        update(&path, |s| s.shortcut.set_here(Some("Alt+Space".into()))).unwrap_or_else(|e| panic!("{e}"));
         let saved: Value =
             serde_json::from_str(&fs::read_to_string(&path).unwrap_or_default()).unwrap_or_else(|e| panic!("{e}"));
-        assert_eq!(saved["shortcut"], "Alt+Space");
+        assert_eq!(
+            saved["shortcut"][serde_json::to_value(System::HERE)
+                .unwrap_or_default()
+                .as_str()
+                .unwrap_or_default()],
+            "Alt+Space"
+        );
         assert_eq!(saved["citation_style"], "apa");
         assert_eq!(saved["window_position"], newer_build["window_position"]);
         assert_eq!(saved["later_flag"], newer_build["later_flag"]);
@@ -1362,7 +1595,7 @@ mod tests {
             let loaded = load(&path);
             assert!(matches!(loaded.problem, Some(SettingsError::Invalid(_))));
             assert!(loaded.from_backup);
-            assert_eq!(loaded.settings.shortcut.as_deref(), Some("Alt+Space"));
+            assert_eq!(loaded.settings.shortcut.here(), Some("Alt+Space"));
             assert_eq!(loaded.settings.copy_format, None);
             assert_eq!(loaded.settings.library, None);
             assert_eq!(fs::read_to_string(&path).unwrap_or_default(), old);
