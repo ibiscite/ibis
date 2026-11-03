@@ -1056,7 +1056,7 @@ test.each([1, 20])("the %i-result heading keeps its English word order on an RTL
 
 test("every system shares the Mac focus ring and accessibility overrides", () => {
   expect(styles).toMatch(/:focus-visible:not\(\.ui-button, \.menu-item\)\s*\{[^}]*outline:\s*var\(--ring-width\) solid var\(--ring\)/);
-  expect(tokens).toMatch(/--ring:\s*var\(--accent\)/);
+  expect(tokens).toMatch(/--ring:\s*var\(--accent-text\)/);
   expect(tokens).not.toMatch(/:root\[data-platform="windows"\]\s*\{[^}]*--ring/);
   expect(tokens).toContain("--ring: CanvasText");
 });
@@ -1177,6 +1177,8 @@ test.each([false, true])("axe checks picker structure (library open: %s) and det
   const canvas = vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
   try {
     expect((await axe.run(document.body, options)).violations.map((v) => v.id)).toEqual([]);
+    // Welcome has no search yet, so only an open library can break it.
+    if (!open) { expect(document.querySelector<HTMLElement>(".search-bar")!.hidden).toBe(true); return; }
     screen.getByRole("combobox", { name: "Search references" }).removeAttribute("aria-expanded");
     const broken = await axe.run(document.body, options);
     expect(broken.violations.map((v) => v.id)).toContain("aria-required-attr");
@@ -1222,7 +1224,8 @@ test("a reload keeps the previous library searchable without adding an opening s
   await screen.findByText("Kept reference");
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 450)); });
   expect(screen.queryByRole("progressbar")).toBeNull();
-  expect(document.querySelector(".results-heading")).toBeNull();
+  // The heading stays too: rows do not move while the library reloads.
+  expect(document.querySelector(".results-heading")).not.toBeNull();
 });
 
 

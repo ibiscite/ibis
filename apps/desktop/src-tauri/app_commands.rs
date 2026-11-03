@@ -24,6 +24,7 @@ pub const APP_COMMANDS: &[&str] = &[
     "picker_destination",
     "remember_app_output",
     "forget_app_outputs",
+    "restore_app_outputs",
     "login_item",
     "set_login_item",
     "hide_picker",

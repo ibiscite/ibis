@@ -28,7 +28,7 @@ export function CitationDetails({ label, page, pageRef, choices, autoFocus = fal
           isDisabled={Boolean(reason)} aria-describedby={description}>
           <span className="citation-form-check" aria-hidden="true">{current === option.value ? <Icon name="check" /> : null}</span>
           <span className="citation-form-label">{option.label}</span>
-          <span id={description} className="citation-form-example">{reason ?? choice?.example}</span>
+          <span id={description} className={reason ? "citation-form-example citation-form-reason" : "citation-form-example"}>{reason ?? choice?.example}</span>
         </Radio>;
       })}
     </RadioGroup>

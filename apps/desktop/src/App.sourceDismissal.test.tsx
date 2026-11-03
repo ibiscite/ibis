@@ -167,8 +167,11 @@ test("Choose Library uses the welcome shortcut guidance and Escape restores Sear
   chooseSources();
   await screen.findByRole("option", { name: /^Use Zotero/ });
   expect(screen.getByText("After this, open Ibis from any app with Ctrl+Shift+Y.")).toBeTruthy();
+  expect(document.querySelector<HTMLElement>(".search-bar")!.hidden).toBe(true);
   press("Escape");
   expect(document.querySelector(".library-welcome")).toBeNull();
+  // Explicit, so WebKit can't keep the header hidden after the chooser leaves.
+  expect(document.querySelector<HTMLElement>(".search-bar")!.hidden).toBe(false);
   expect(document.activeElement).toBe(search());
 });
 

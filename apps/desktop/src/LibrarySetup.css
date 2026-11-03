@@ -1,6 +1,5 @@
 .library-setup { display: flex; flex: 1; min-width: 0; }
-/* Welcome owns the whole middle and has no search yet. This presentation rule
-   avoids changing App's structure while the picker layout PR owns it. */
-main:has(.library-welcome) > .search-bar { display: none; }
+/* Welcome owns the whole middle and has no search yet. */
+.search-bar[hidden] { display: none; }
 .welcome-note { display: block; }
 .welcome-note + .welcome-note { margin-top: var(--space-2); }

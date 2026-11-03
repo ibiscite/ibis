@@ -87,3 +87,8 @@ test("fields and segmented choices use role tokens, wrap and retain keyboard and
   expect(segmented).toContain("@media (pointer: coarse)");
   expect(css).not.toMatch(/#[0-9a-f]{3,8}\b|\b\d+px\b/);
 });
+
+test("an unavailable form's reason sits under it as a sentence", () => {
+  const css = readFileSync(new FileURL("./CitationDetails.css", import.meta.url), "utf8");
+  expect(css).toMatch(/\.citation-form-example\.citation-form-reason \{ flex-basis: 100%;[^}]*text-align: start;/);
+});

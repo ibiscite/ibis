@@ -7,7 +7,6 @@
       --accent: var(--native-accent-fill);
       --accent-text: light-dark(var(--native-accent-light), var(--native-accent-dark));
       --text-on-accent: var(--native-accent-on);
-      --ring: color-mix(in srgb, var(--accent) 50%, transparent);
       --selected: var(--accent); --selected-text: var(--text-on-accent);
     }
     /* macOS keeps WebKit's selection pair: deeper than the accent, and it follows it. */
@@ -15,6 +14,10 @@
       :root[data-native-accent="true"][data-system="macos"]:not(.notice-window) {
         --selected: -apple-system-selected-content-background;
         --selected-text: -apple-system-alternate-selected-text;
+      }
+      /* An accent too bright for white text fills the primary with that deeper pair. */
+      :root[data-native-accent-deep="true"][data-system="macos"]:not(.notice-window) {
+        --primary: var(--selected); --text-on-accent: var(--selected-text);
       }
     }
   }

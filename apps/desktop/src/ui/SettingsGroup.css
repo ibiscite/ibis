@@ -52,4 +52,4 @@
 }
 
 .ui-settings-search input::-webkit-search-cancel-button { appearance: none; -webkit-appearance: none; display: none; }
-.ui-settings-search-clear { position: absolute; inset-block-start: 50%; inset-inline-end: var(--space-1); translate: 0 -50%; --ring-offset: calc(-1 * var(--ring-width)); }
+.ui-settings-search > .ui-settings-search-clear.ui-button { position: absolute; inset-block-start: 50%; inset-inline-end: var(--space-1); translate: 0 -50%; --ring-offset: calc(-1 * var(--ring-width)); }

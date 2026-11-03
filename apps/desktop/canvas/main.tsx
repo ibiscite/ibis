@@ -9,6 +9,7 @@ import { useAppearance } from "../src/ui/appearance";
 import { englishMessages } from "../src/i18n";
 import type { LibraryStatus, SearchResult } from "../src/bindings";
 import { setPlatform } from "../src/nativeAppearance";
+export { setNativeAccent } from "../src/nativeAccent";
 import { SettingsApp } from "../src/settings/SettingsApp";
 import { demoApi } from "../src/settings/demo";
 import type { SettingsApi } from "../src/settings/api";

@@ -28,6 +28,7 @@ pub(crate) fn commands() -> tauri_specta::Builder<tauri::Wry> {
             crate::destination::picker_destination,
             crate::destination::remember_app_output,
             crate::destination::forget_app_outputs,
+            crate::destination::restore_app_outputs,
             crate::login_item::login_item,
             crate::login_item::set_login_item,
             crate::picker::hide_picker::<tauri::Wry>,
@@ -85,6 +86,7 @@ mod tests {
         "window_size",
         "set_window_size",
         "forget_app_outputs",
+        "restore_app_outputs",
         "login_item",
         "set_login_item",
         "update_checks",
@@ -103,6 +105,7 @@ mod tests {
     /// Only Settings asks about paste permission, changes the global shortcut
     /// or chooses a window size.
     const SETTINGS_ONLY: &[&str] = &[
+        "restore_app_outputs",
         "open_about_link",
         "window_size",
         "set_window_size",

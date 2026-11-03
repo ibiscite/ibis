@@ -21,7 +21,7 @@ export function usePickerMenus(api: PickerApi, { perform }: Pick<ReturnType<type
   useLayoutEffect(() => {
     if (choosingLibrary || !restoreChooserFocus.current) return;
     restoreChooserFocus.current = false;
-    // Welcome hides Search with CSS. Inspect the committed screen, after the
+    // Welcome hides Search. Inspect the committed screen, after the
     // chooser leaves, so focus never goes to the header it just replaced.
     const welcome = input.current?.closest("main")?.querySelector(".library-welcome");
     (welcome ? moreButton.current : input.current)?.focus();

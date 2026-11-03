@@ -154,6 +154,10 @@ export function sharedCitationKey(error: unknown): string | null {
 }
 
 /** Only the backend's snapshot rejection code becomes a recovery explanation. */
+export function isLibraryLoading(error: unknown): boolean {
+  return typeof error === "object" && error !== null && (error as Partial<CommandError>).code === "library_loading";
+}
+
 export function isSnapshotChanged(error: unknown): boolean {
   return typeof error === "object" && error !== null && (error as Partial<CommandError>).code === "snapshot_changed";
 }
