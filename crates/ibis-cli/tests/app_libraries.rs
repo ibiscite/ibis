@@ -223,6 +223,26 @@ fn the_plugin_declares_local_execution_and_ships_its_listing_icons() {
     }
 }
 
+#[test]
+fn plugin_versions_move_with_each_release() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let json = |path: &str| -> serde_json::Value {
+        serde_json::from_slice(&std::fs::read(root.join(path)).unwrap()).unwrap()
+    };
+    let extra_files = json("release-please-config.json")["packages"]["."]["extra-files"].clone();
+    for manifest in ["plugins/ibis/plugin.json", "plugins/ibis/.claude-plugin/plugin.json"] {
+        assert_eq!(json(manifest)["version"], ibis_core::VERSION, "{manifest}");
+        assert!(
+            extra_files
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|file| file["path"] == manifest),
+            "the release does not update {manifest}"
+        );
+    }
+}
+
 /// Launch exactly what each plugin manifest declares, using a synthetic app choice.
 fn plugin_citation(home: &Home, config: &str, key: &str) -> String {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../plugins/ibis");
@@ -251,7 +271,7 @@ fn plugin_citation(home: &Home, config: &str, key: &str) -> String {
             "protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"synthetic","version":"1"}
         }}),
         serde_json::json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{
-            "name":"cite","arguments":{"items":[{"key":key}],"syntax":"pandoc"}
+            "name":"cite","arguments":{"items":[{"ref":key}],"syntax":"pandoc"}
         }}),
     ]
     .iter()

@@ -131,7 +131,7 @@ fn search_row(hit: &Value) -> Option<String> {
             let mut authors = names
                 .iter()
                 .take(3)
-                .map(author)
+                .map(|name| Name::from_csl(name).display())
                 .filter(|name| !name.is_empty())
                 .collect::<Vec<_>>();
             if names.len() > 3 {
@@ -163,19 +163,6 @@ fn search_row(hit: &Value) -> Option<String> {
             csl.get("title").and_then(Value::as_str).unwrap_or("[untitled]")
         ))
     ))
-}
-
-fn author(value: &Value) -> String {
-    let text = |name| value.get(name).and_then(Value::as_str).map(str::to_owned);
-    Name {
-        family: text("family"),
-        given: text("given"),
-        literal: text("literal"),
-        dropping_particle: text("dropping-particle"),
-        non_dropping_particle: text("non-dropping-particle"),
-        suffix: text("suffix"),
-    }
-    .display()
 }
 
 pub(super) fn field(text: &str) -> String {

@@ -97,7 +97,7 @@ fn arguments(request: &CitationRequest) -> Option<Value> {
         return None;
     }
     let mut arguments = json!({
-        "items": request.items.iter().map(|item| json!({"id": item.item})).collect::<Vec<_>>(),
+        "items": request.items.iter().map(|item| json!({"ref": mcp::reference(&item.item)})).collect::<Vec<_>>(),
         "form": request.form,
     });
     match &request.output {

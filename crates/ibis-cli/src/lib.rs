@@ -458,7 +458,7 @@ fn run_engine<R: BufRead, W: Write + Send, E: Write>(
         let help = command_help(&program, args.get_one::<String>("command"));
         return emit(json, Ok(help), None, &mut output, &mut errors, mode);
     }
-    match execute(&engine, &matches, defaults, &mut input, &mut output, mode) {
+    match execute(&engine, &matches, defaults, &mut input, &mut output, &mut errors, mode) {
         Ok(Execution::Stdio(code)) => code,
         Ok(Execution::Result(result, citing)) => {
             emit(json, Ok(result), citing.as_ref(), &mut output, &mut errors, mode)
@@ -538,6 +538,8 @@ pub(crate) fn bounded<T: Send + 'static>(operation: impl FnOnce() -> T + Send + 
 struct Failure {
     error: EngineError,
     message: Option<String>,
+    /// The sentence for readers who must not see the file it names, when `message` names one.
+    unnamed: Option<String>,
 }
 impl Failure {
     fn new(code: ErrorCode, message: impl Into<String>) -> Self {
@@ -547,7 +549,21 @@ impl Failure {
         Self {
             error,
             message: Some(message.into()),
+            unnamed: None,
         }
+    }
+    fn sentence(&self) -> &str {
+        self.message
+            .as_deref()
+            .unwrap_or_else(|| human::code_sentence(self.error.code))
+    }
+    /// What an agent reads when its libraries did not open. Agents never see paths.
+    fn refusal(&self) -> ibis_engine::mcp::Refusal {
+        let reason = self.unnamed.as_deref().unwrap_or_else(|| self.sentence());
+        ibis_engine::mcp::Refusal::new(
+            self.error.code,
+            format!("The library could not be opened: {reason} Pass this on to the user; once it is fixed, start a new session."),
+        )
     }
 }
 impl From<EngineError> for Failure {
@@ -555,6 +571,7 @@ impl From<EngineError> for Failure {
         Self {
             error,
             message: error.reason.map(|reason| human::reason_sentence(reason).to_owned()),
+            unnamed: None,
         }
     }
 }
@@ -584,12 +601,13 @@ fn explain<T>(result: Result<T, EngineError>, message: impl FnOnce(EngineError) 
     })
 }
 
-fn execute<R: BufRead, W: Write + Send>(
+fn execute<R: BufRead, W: Write + Send, E: Write>(
     engine: &Engine,
     matches: &ArgMatches,
     defaults: Defaults,
     input: &mut R,
     output: &mut W,
+    errors: &mut E,
     mode: OutputMode,
 ) -> Result<Execution, Failure> {
     let (name, args) = matches.subcommand().ok_or(EngineError::new(ErrorCode::Usage))?;
@@ -629,6 +647,43 @@ fn execute<R: BufRead, W: Write + Send>(
             None,
         ));
     }
+    let opened = open_libraries(engine, matches, name, defaults);
+    if name == "mcp" {
+        let session = match opened {
+            Ok(_) => ibis_engine::mcp::Session::default(),
+            Err(failure) => {
+                let _ = writeln!(errors, "ibis: {}", terminal_display(failure.sentence()));
+                ibis_engine::mcp::Session::without_libraries(failure.refusal())
+            }
+        };
+        return Ok(Execution::Stdio(
+            match ibis_engine::mcp::serve(engine, session, input, output) {
+                Ok(()) => 0,
+                Err(_) => 70,
+            },
+        ));
+    }
+    let names = opened?;
+    if name == "serve" {
+        return Ok(Execution::Stdio(
+            match ibis_engine::server::serve(engine.clone(), input, output) {
+                Ok(()) => 0,
+                Err(protocol::FrameError::Io) => 70,
+                Err(_) => 3,
+            },
+        ));
+    }
+    run_method(engine, matches, name, args, names, input)
+}
+
+/// Opens the libraries this run names, or the app's choice when it names none,
+/// and returns how people should hear each one called.
+fn open_libraries(
+    engine: &Engine,
+    matches: &ArgMatches,
+    name: &str,
+    defaults: Defaults,
+) -> Result<std::collections::BTreeMap<String, String>, Failure> {
     let cancel = Cancellation::default();
     let mut names = std::collections::BTreeMap::new();
     let mut files = source_values::<PathBuf>(matches, "file");
@@ -692,7 +747,13 @@ fn execute<R: BufRead, W: Write + Send>(
                 ),
                 None => human::file_failure(&path, code),
             },
-        )?;
+        )
+        .map_err(|mut failure| {
+            if chosen.is_none() {
+                failure.unnamed = Some(human::file_reason(&path, failure.error.code).to_owned());
+            }
+            failure
+        })?;
         // Library ids are digests, never locations; people see the path they gave.
         for library in engine.libraries()?.libraries {
             if !before.iter().any(|old| old.id == library.id) {
@@ -743,21 +804,19 @@ fn execute<R: BufRead, W: Write + Send>(
             }
         }
     }
-    if name == "mcp" {
-        return Ok(Execution::Stdio(match ibis_engine::mcp::serve(engine, input, output) {
-            Ok(()) => 0,
-            Err(_) => 70,
-        }));
-    }
-    if name == "serve" {
-        return Ok(Execution::Stdio(
-            match ibis_engine::server::serve(engine.clone(), input, output) {
-                Ok(()) => 0,
-                Err(protocol::FrameError::Io) => 70,
-                Err(_) => 3,
-            },
-        ));
-    }
+    Ok(names)
+}
+
+/// Runs an engine method once its libraries are open.
+fn run_method<R: BufRead>(
+    engine: &Engine,
+    matches: &ArgMatches,
+    name: &str,
+    args: &ArgMatches,
+    names: std::collections::BTreeMap<String, String>,
+    input: &mut R,
+) -> Result<Execution, Failure> {
+    let cancel = Cancellation::default();
     let method = Method::parse(name).map_err(EngineError::new)?;
     let libraries_open = || engine.libraries().is_ok_and(|result| !result.libraries.is_empty());
     let params = match method {
@@ -1032,20 +1091,15 @@ fn key_items(args: &ArgMatches) -> Result<Vec<KeyItem>, Failure> {
 }
 /// The canonical locator reader, applied to the whole value.
 fn locator(text: &str) -> Result<Locator, Failure> {
-    [format!("x {text}"), format!("x, {text}")]
-        .iter()
-        .filter_map(|query| ibis_core::locator::parse_trailing(query))
-        .find(|split| split.search == "x")
-        .map(|split| split.locator)
-        .ok_or_else(|| {
-            Failure::new(
-                ErrorCode::Usage,
-                format!(
-                    "--locator '{}' is not a locator Ibis reads; write it like \"p. 12\", \"ch. 3\" or \"12-14\".",
-                    human::field(text)
-                ),
-            )
-        })
+    ibis_core::locator::read_given(text).ok_or_else(|| {
+        Failure::new(
+            ErrorCode::Usage,
+            format!(
+                "--locator '{}' is not a locator Ibis reads; write it like \"p. 12\", \"ch. 3\" or \"12-14\".",
+                human::field(text)
+            ),
+        )
+    })
 }
 const ITEM_REF_HELP: &str = "--id must be an ItemRef JSON object, as ibis search --json prints it.";
 fn method_named(name: &str) -> Result<Method, Failure> {
@@ -1161,9 +1215,7 @@ fn emit(
 fn terminal_display(text: &str) -> String {
     let mut output = String::with_capacity(text.len());
     for character in text.chars() {
-        if (character.is_control() && !matches!(character, '\n' | '\t'))
-            || matches!(character,'\u{200e}'|'\u{200f}'|'\u{202a}'..='\u{202e}'|'\u{2066}'..='\u{2069}')
-        {
+        if ibis_core::model::is_hidden(character) || matches!(character, '\u{200e}' | '\u{200f}') {
             output.extend(character.escape_unicode());
         } else {
             output.push(character);
