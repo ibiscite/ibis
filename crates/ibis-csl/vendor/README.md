@@ -1,11 +1,10 @@
 # Citation engine, styles and locale
 
-Unmodified third-party files used for formatted citations (ADR 0007). Each is pinned by upstream commit and SHA-256 in `manifest.json`; `scripts/vendor-citeproc.mjs` downloads them and checks the hashes, and `tests/vendor.rs` checks them on every test run. Ibis never downloads these at run time.
+Unmodified third-party files used for formatted citations (decision 0007). Ibis never downloads these at run time, so styles change only with an Ibis release. `tests/vendor.rs` checks every file against its hash on every test run.
 
 - `citeproc.mjs`: Zotero's build of citeproc-js by Frank Bennett, from [zotero/zotero](https://github.com/zotero/zotero), dual-licensed CPAL 1.0 or AGPL 3.0 (Ibis uses it under the AGPL). The only change is the appended `export default CSL;` line that makes it an ES module.
-- `styles/*.csl`: styles from the [Citation Style Language](https://citationstyles.org/) project ([citation-style-language/styles](https://github.com/citation-style-language/styles)), licensed CC BY-SA 3.0; authors are listed in each file.
-- `locales/en-US.xml`: from [citation-style-language/locales](https://github.com/citation-style-language/locales), licensed CC BY-SA 3.0.
+- `csl-bundle.bin`: every style from the [Citation Style Language](https://citationstyles.org/) project ([citation-style-language/styles](https://github.com/citation-style-language/styles)) and every locale from [citation-style-language/locales](https://github.com/citation-style-language/locales), byte for byte, compressed, each licensed CC BY-SA 3.0. Authors are listed in each style. `csl-bundle.json` is its manifest: the upstream tag and commit, each file's SHA-256, and upstream's renames.
 
-To move a pin, change its commit in `manifest.json` and run `node scripts/vendor-citeproc.mjs --update`, then review the output changes in the tests like snapshots.
+To move the citeproc pin, change its commit in `manifest.json` and run `node scripts/vendor-citeproc.mjs --update`. To move the styles and locales to their newest tags, run `node scripts/csl-bundle.mjs --update`; without `--update` it rebuilds at the pins and checks them. Review the output changes in the tests like snapshots.
 
 Code scanning reports findings inside `citeproc.mjs` (regular expressions that can be slow, partial string sanitizing, writes to computed object keys). Ibis does not patch the file, so these are dismissed in GitHub with the reason rather than fixed here. Three things in `ibis-csl` bound them: reference ids are replaced with engine keys before the engine sees them (`src/input.rs`), each run is interrupted at its deadline and memory limit and its runtime discarded (`src/service.rs`, `src/runtime.rs`), and the engine's HTML is read through an allowlist of tags and styles before anything is copied (`src/output.rs`). When moving the pin, check new findings against those limits and report real problems upstream.

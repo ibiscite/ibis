@@ -249,10 +249,7 @@ fn an_unknown_style_or_locale_refuses_the_whole_request() -> Result<(), Box<dyn 
             serde_json::json!({"ibis":1,"ok":false,"error":{"code":"bad-input","reason":reason}})
         );
         let errors = String::from_utf8(errors)?;
-        assert!(
-            errors.contains(if locale.is_some() { "en-US" } else { "ibis styles" }),
-            "{errors}"
-        );
+        assert!(errors.contains("ibis styles"), "{errors}");
     }
     Ok(())
 }

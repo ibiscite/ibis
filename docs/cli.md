@@ -59,7 +59,7 @@ it stays a usage error (exit 2), so a script that forgets its command fails loud
 | `cite KEY…` | A citation. Key syntaxes with `--format` (default `pandoc`), formatted text with `--style` (see `styles`), bibliography entries with `--style S --bibliography`. `--for-app ID` uses the output for that app ([below](#output-for-an-app)). `--locator`, `--prefix`, `--suffix` and `--omit-author` apply to the key before them. |
 | `cite --request` | A citation from one canonical `CitationRequest` JSON object on stdin. |
 | `libraries` | The loaded libraries, their item counts and typed source warnings. |
-| `styles` | The bundled CSL styles. |
+| `styles [WORDS]` | Every official CSL style, with each one's updated date, the common ones first; `--locales` lists the citation languages. |
 | `schema [METHOD]` | The JSON Schema of each engine method's parameters and result. |
 | `call METHOD --params JSON` or `--stdin` | Any engine method with raw JSON parameters. |
 | `serve --stdio` | A JSON-RPC 2.0 server for programs ([below](#json-rpc-server)). |

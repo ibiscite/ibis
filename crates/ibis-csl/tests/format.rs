@@ -358,9 +358,15 @@ fn hostile_huge_stale_and_duplicate_inputs_never_copy_wrong_output() {
         Err(FormatError::ResourceLimit)
     );
     let bad = library(&[json!({"type":"book","title":"Synthetic","author":[{"family":5}]})]);
+    // The processor cannot run on this record: a refusal, never partial text.
+    let refused = formatter.format(&bad, &selection(&bad, "apa", true)).unwrap();
+    assert!(refused.copy_content(1).is_none());
     assert_eq!(
-        formatter.format(&bad, &selection(&bad, "apa", true)),
-        Err(FormatError::Runtime)
+        refused.outcomes,
+        [ItemOutcome::Refused {
+            item: 0,
+            error: CitationError::UnsupportedForm
+        }]
     );
     let (_, request) = sample();
     assert!(formatter.format(&snapshot, &request).unwrap().copy_content(1).is_some());

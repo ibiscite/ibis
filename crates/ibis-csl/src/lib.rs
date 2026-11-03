@@ -1,12 +1,14 @@
 //! One bounded CSL formatter shared by the command line and desktop clients.
 //! The pinned Zotero processor has no filesystem, network or native-input API.
 
+mod catalog;
 mod input;
 mod locale;
 mod output;
 mod runtime;
 mod service;
 
+pub use catalog::{LocaleEntry, Release, StyleEntry, StylePage, files, styles};
 use ibis_core::contract::{CitationRequest, CitationResult, OutputSpec, Snapshot};
 pub use service::{CancellationToken, FormatTask};
 use std::sync::Arc;
@@ -73,7 +75,8 @@ impl Limits {
     }
 }
 
-/// Five offline styles and their bundled English locale. No runtime downloads.
+/// The styles checked most closely, each against a pinned Zotero result. All
+/// the others come from the bundle: see [`styles`]. No runtime downloads.
 pub const STYLES: [(&str, &str); 5] = [
     ("apa", "APA (7th edition)"),
     ("chicago-author-date", "Chicago (author-date)"),

@@ -1,32 +1,35 @@
-use crate::{FormatError, Limits};
+use crate::{FormatError, Limits, catalog};
 use ibis_core::contract::*;
 use serde::Serialize;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
 use std::io::{self, Write};
-use std::sync::LazyLock;
+use std::sync::Arc;
 
-#[derive(Clone, Copy, Default)]
-struct StyleTraits {
-    numeric: bool,
-    citation_has_issued: bool,
+/// What a style's own XML says, so rules hold for every style and not by name.
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct StyleTraits {
+    /// Its citations are document numbers, by category or by the number itself.
+    pub numeric: bool,
+    pub citation_has_issued: bool,
+    /// Citations are notes: outside a document, the full first note.
+    pub note: bool,
+    /// It separates same-author, same-year works with 2020a and 2020b.
+    pub year_suffix: bool,
+    /// Its in-text names join with a symbol, which cannot start a sentence.
+    pub symbol_and: bool,
 }
-
-static STYLE_TRAITS: LazyLock<BTreeMap<&str, StyleTraits>> = LazyLock::new(|| {
-    crate::runtime::style_xml()
-        .iter()
-        .map(|(id, xml)| (*id, style_traits(xml)))
-        .collect()
-});
 
 // Read only trusted embedded CSL tags, preserving quoted attributes and skipping
 // comments. This is a capability scan, not a validator or an external XML loader.
-fn style_traits(mut xml: &str) -> StyleTraits {
+pub(crate) fn style_traits(mut xml: &str) -> StyleTraits {
     let mut traits = StyleTraits::default();
     let mut stack = Vec::<(&str, Option<&str>)>::new();
     let mut dependencies = BTreeMap::<&str, Vec<&str>>::new();
     let mut issued = Vec::new();
+    let mut numbers = Vec::new();
+    let mut symbols = Vec::new();
     while let Some(start) = xml.find('<') {
         xml = &xml[start + 1..];
         if let Some(comment) = xml.strip_prefix("!--") {
@@ -63,14 +66,30 @@ fn style_traits(mut xml: &str) -> StyleTraits {
             // Labels need not be document citation numbers; only numeric falls back.
             traits.numeric |= trait_attribute(attrs, "citation-format").as_deref() == Some("numeric");
         }
+        if name == "style" {
+            traits.note = trait_attribute(attrs, "class").as_deref() == Some("note");
+        }
+        if matches!(name, "style" | "citation") {
+            traits.symbol_and |= trait_attribute(attrs, "and").as_deref() == Some("symbol");
+        }
+        if name == "citation" {
+            traits.year_suffix = trait_attribute(attrs, "disambiguate-add-year-suffix").as_deref() == Some("true");
+        }
         if name == "macro" {
             scope = attribute(attrs, "name");
         } else if name == "layout" && parent.is_some_and(|(name, _)| name == "citation") {
             scope = Some(""); // Citation layout, excluding its sort keys.
         }
         if let Some(scope) = scope {
-            if matches!(name, "date" | "text") && trait_attribute(attrs, "variable").as_deref() == Some("issued") {
+            let variable = trait_attribute(attrs, "variable");
+            if matches!(name, "date" | "text") && variable.as_deref() == Some("issued") {
                 issued.push(scope);
+            }
+            if name == "text" && variable.as_deref() == Some("citation-number") {
+                numbers.push(scope);
+            }
+            if name == "name" && trait_attribute(attrs, "and").as_deref() == Some("symbol") {
+                symbols.push(scope);
             }
             if let Some(called) = attribute(attrs, "macro") {
                 dependencies.entry(scope).or_default().push(called);
@@ -85,6 +104,8 @@ fn style_traits(mut xml: &str) -> StyleTraits {
     while let Some(scope) = pending.pop() {
         if seen.insert(scope) {
             traits.citation_has_issued |= issued.contains(&scope);
+            traits.numeric |= numbers.contains(&scope);
+            traits.symbol_and |= symbols.contains(&scope);
             pending.extend(dependencies.get(scope).into_iter().flatten().copied());
         }
     }
@@ -127,6 +148,10 @@ fn trait_attribute(attrs: &str, key: &str) -> Option<String> {
 
 pub(crate) struct Prepared {
     pub json: String,
+    /// The rules to run, unpacked once and shared with the worker.
+    pub xml: Arc<str>,
+    /// The language the citation is written in.
+    pub language: String,
     // Eligibility only: output must prove representation coverage before exposure.
     pub outcomes: Vec<ItemOutcome>,
     pub losses: Vec<Loss>,
@@ -140,14 +165,8 @@ pub(crate) fn check_output(output: &OutputSpec, locale: Option<&str>) -> Result<
     let OutputSpec::Csl { style } = output else {
         return Err(FormatError::UnsupportedStyle);
     };
-    STYLE_TRAITS.get(style.as_str()).ok_or(FormatError::UnsupportedStyle)?;
-    check_locale(locale)
-}
-fn check_locale(locale: Option<&str>) -> Result<(), FormatError> {
-    if locale.is_some_and(|locale| !matches!(locale, "en" | "en-US")) {
-        return Err(FormatError::InvalidLocale);
-    }
-    Ok(())
+    catalog::resolve(style)?;
+    locale.map(catalog::locale_tag).transpose().map(|_| ())
 }
 
 pub(crate) fn prepare(
@@ -161,21 +180,23 @@ pub(crate) fn prepare(
     let OutputSpec::Csl { style } = &request.output else {
         return Err(FormatError::UnsupportedStyle);
     };
-    check_output(&request.output, request.output_locale.as_deref())?;
-    let traits = STYLE_TRAITS.get(style.as_str()).ok_or(FormatError::UnsupportedStyle)?;
-    prepare_with_traits(snapshot, request, limits, *traits)
+    prepare_with_style(snapshot, request, limits, &*catalog::resolve(style)?)
 }
 
-fn prepare_with_traits(
+fn prepare_with_style(
     snapshot: &Snapshot,
     request: &CitationRequest,
     limits: &Limits,
-    traits: StyleTraits,
+    style: &catalog::Resolved,
 ) -> Result<Prepared, FormatError> {
-    let OutputSpec::Csl { style } = &request.output else {
-        return Err(FormatError::UnsupportedStyle);
-    };
-    check_locale(request.output_locale.as_deref())?;
+    let traits = style.traits;
+    let locale = request
+        .output_locale
+        .as_deref()
+        .map(catalog::locale_tag)
+        .transpose()?
+        .map(str::to_owned)
+        .or_else(|| style.forced_locale.clone());
     bounded_json(request, limits.input_bytes)?;
     if request
         .input_language
@@ -209,6 +230,8 @@ fn prepare_with_traits(
     let mut affixes = Vec::new();
     if traits.numeric {
         notices.extend([Notice::NeedsDocumentContext, Notice::ReferenceEntry]);
+    } else if traits.note && !bibliography {
+        notices.extend([Notice::NeedsDocumentContext, Notice::FullFirstNote]);
     }
     let mut remaining = limits.input_bytes;
     for (index, pick) in request.items.iter().enumerate() {
@@ -221,6 +244,11 @@ fn prepare_with_traits(
             || (!traits.citation_has_issued && !bibliography && form == CitationForm::YearOnly)
             || ((matches!(form, CitationForm::Full | CitationForm::BibliographyOnly)) != bibliography
                 && !traits.numeric)
+            // Only styles whose output for these forms has been checked against
+            // Zotero offer them; anywhere else they can print residue ("…, pp.").
+            || ((matches!(form, CitationForm::AuthorOnly | CitationForm::YearOnly | CitationForm::Narrative)
+                || pick.suppress_author && !bibliography)
+                && !style.verified_forms)
         {
             Some(CitationError::UnsupportedForm)
         } else {
@@ -257,7 +285,7 @@ fn prepare_with_traits(
                 entry.insert(value)
             }
         };
-        if style == "apa"
+        if style.sentence_titles
             && bibliography
             && record.get("title").is_some()
             && record.get("language").and_then(Value::as_str).is_none_or(|language| {
@@ -275,18 +303,20 @@ fn prepare_with_traits(
         // Name::OTHERS is source metadata for an incomplete name list, not an
         // institution named "others". citeproc has no data form for that marker.
         // Refuse this item rather than inventing missing authors or printing it.
-        // APA's parenthetical names use a symbol conjunction that cannot be
-        // reused as a narrative subject. Refuse multiple names until the
-        // narrative path has its own verified name rendering.
-        let apa_narrative = style == "apa" && form == CitationForm::Narrative;
-        // When an item has authors, the in-text layouts of the bundled
-        // author-date styles print only these name lists; every other one is
-        // a substitute after `author` or appears only in entries.
+        // A symbol conjunction in the parenthetical names cannot be reused as a
+        // narrative subject. Refuse multiple names until the narrative path has
+        // its own verified name rendering.
+        let symbol_narrative = traits.symbol_and && form == CitationForm::Narrative;
+        // When an item has authors, the in-text layouts of the styles checked
+        // against Zotero print only these name lists; every other one is a
+        // substitute after `author` or appears only in entries. A note style's
+        // citation is a full note, so it is checked like an entry.
         let has_authors = named(record.get("author"));
         if record
             .iter()
             .filter(|(field, _)| {
                 bibliography
+                    || traits.note
                     || !has_authors
                     || matches!(field.as_str(), "author" | "composer" | "interviewer" | "recipient")
             })
@@ -328,7 +358,7 @@ fn prepare_with_traits(
                 names
                     .iter()
                     .any(|name| name.get("literal").and_then(Value::as_str) == Some(ibis_core::model::OTHERS))
-                    || apa_narrative && names.len() > 1
+                    || symbol_narrative && names.len() > 1
             })
         {
             outcomes.push(ItemOutcome::Refused {
@@ -437,7 +467,7 @@ fn prepare_with_traits(
         cites.push(cite);
         outcomes.push(ItemOutcome::Rendered { item: index });
     }
-    if style != "ieee" && style != "modern-language-association" && shares_author_and_year(&items) {
+    if traits.year_suffix && shares_author_and_year(&items) {
         notices.push(Notice::YearSuffixWithheld);
     }
     if bibliography && request.keep_order {
@@ -447,7 +477,8 @@ fn prepare_with_traits(
             reason: LossReason::Unsupported,
         });
     }
-    let json=String::from_utf8(bounded_json(&json!({"style":style,"numeric":traits.numeric,"items":items,"cites":cites,"affixes":affixes,"bibliography":bibliography,"keep_order":request.keep_order,"locale":request.output_locale}),limits.input_bytes)?).map_err(|_|FormatError::InvalidRequest)?;
+    let language = locale.clone().unwrap_or_else(|| style.language.clone());
+    let json=String::from_utf8(bounded_json(&json!({"style":style.rules,"numeric":traits.numeric,"sentence_titles":style.sentence_titles,"items":items,"cites":cites,"affixes":affixes,"bibliography":bibliography,"keep_order":request.keep_order,"locale":locale}),limits.input_bytes)?).map_err(|_|FormatError::InvalidRequest)?;
     // Each placeholder (in its cite and in the affix list) must be the only
     // place its sentinel occurs, or the bridge could write an affix into a
     // record's own text.
@@ -458,6 +489,8 @@ fn prepare_with_traits(
     }
     Ok(Prepared {
         json,
+        xml: style.xml.clone(),
+        language,
         outcomes,
         losses,
         notices,
@@ -762,6 +795,19 @@ mod tests {
     use super::*;
     use CitationForm::{AuthorOnly, Full, Narrative, Normal, YearOnly};
 
+    fn synthetic_style(id: &str, xml: &str) -> catalog::Resolved {
+        catalog::Resolved {
+            id: id.into(),
+            rules: id.into(),
+            xml: xml.into(),
+            traits: style_traits(xml),
+            forced_locale: None,
+            language: "en-US".into(),
+            sentence_titles: false,
+            verified_forms: true,
+        }
+    }
+
     #[test]
     fn xml_traits_drive_fallback_and_form_refusals_independently_of_style_name() {
         let id = ItemRef {
@@ -780,12 +826,12 @@ mod tests {
             let xml = format!(
                 "<style><info><title>{name}</title><category citation-format = '{format}'/></info><citation><layout><date variable='issued'/></layout></citation></style>"
             );
-            let traits = style_traits(&xml);
+            let style = synthetic_style(name, &xml);
             let mut request: CitationRequest =
                 serde_json::from_value(json!({"items":[{"item":id}],"output":{"kind":"csl","style":name}})).unwrap();
             for form in [Normal, Full, AuthorOnly, YearOnly, Narrative] {
                 request.form = form;
-                let prepared = prepare_with_traits(&snapshot, &request, &Limits::default(), traits).unwrap();
+                let prepared = prepare_with_style(&snapshot, &request, &Limits::default(), &style).unwrap();
                 let json: Value = serde_json::from_str(&prepared.json).unwrap();
                 assert_eq!(json["numeric"], numeric);
                 assert_eq!(json["bibliography"], numeric || form == Full);
@@ -803,31 +849,47 @@ mod tests {
                 }
             }
         }
-        let traits = style_traits(
+        let style = synthetic_style(
+            "invented-no-year",
             "<style><macro name='unused'><date variable='issued'/></macro><citation><sort><key macro='unused'/></sort><layout><text variable='locator'/></layout></citation><bibliography><layout><date variable='issued'/></layout></bibliography></style>",
         );
         let request = serde_json::from_value(json!({"items":[{"item":id,"locator":{"term":"page","value":"42"}}],"form":"year-only","output":{"kind":"csl","style":"invented-no-year"}})).unwrap();
-        let prepared = prepare_with_traits(&snapshot, &request, &Limits::default(), traits).unwrap();
+        let prepared = prepare_with_style(&snapshot, &request, &Limits::default(), &style).unwrap();
         let refused = json!([{"outcome":"refused","item":0,"error":"unsupported-form"}]);
         assert_eq!(serde_json::to_value(&prepared.outcomes).unwrap(), refused);
     }
 
     #[test]
     fn bundled_styles_keep_the_behaviour_their_names_used_to_choose() {
-        let traits: Vec<_> = STYLE_TRAITS
+        let traits: Vec<_> = crate::STYLES
             .iter()
-            .map(|(id, traits)| (*id, traits.numeric, traits.citation_has_issued))
+            .map(|(id, _)| {
+                let traits = catalog::resolve(id).unwrap().traits;
+                (*id, traits.numeric, traits.citation_has_issued, traits.year_suffix)
+            })
             .collect();
         assert_eq!(
             traits,
             [
-                ("apa", false, true),
-                ("chicago-author-date", false, true),
-                ("harvard-cite-them-right", false, true),
-                ("ieee", true, false),
-                ("modern-language-association", false, false),
+                ("apa", false, true, true),
+                ("chicago-author-date", false, true, true),
+                ("harvard-cite-them-right", false, true, true),
+                ("ieee", true, false, false),
+                ("modern-language-association", false, false, false),
             ]
         );
+    }
+
+    #[test]
+    fn a_number_or_note_in_the_style_itself_decides_how_it_is_copied() {
+        let numbered = "<style><info><category citation-format='author-date'/></info><macro name='n'><text variable='citation-number'/></macro><citation><layout><text macro='n'/></layout></citation></style>";
+        assert!(style_traits(numbered).numeric);
+        let sorted = "<style><macro name='n'><text variable='citation-number'/></macro><citation><sort><key macro='n'/></sort><layout><text variable='title'/></layout></citation></style>";
+        assert!(!style_traits(sorted).numeric);
+        assert!(style_traits("<style class='note'><citation><layout/></citation></style>").note);
+        assert!(style_traits("<style><citation and='symbol'><layout/></citation></style>").symbol_and);
+        let symbol = "<style><macro name='a'><names variable='author'><name and='symbol'/></names></macro><citation><layout><text macro='a'/></layout></citation></style>";
+        assert!(style_traits(symbol).symbol_and);
     }
 
     #[test]

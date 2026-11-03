@@ -424,8 +424,8 @@ fn bundled_styles_are_available_and_unknown_styles_or_locales_refuse_the_request
     let engine = Engine::from_snapshot(Arc::new(case.library));
     let cancel = Cancellation::default();
     let catalog = engine.dispatch(Method::Styles, &json!({}), &cancel).unwrap().data;
-    assert_eq!(catalog["styles"].as_array().unwrap().len(), 5);
     assert_eq!(catalog["styles"][0]["id"], "apa");
+    assert!(catalog["total"].as_u64().unwrap() > 10_000);
     case.request.output = OutputSpec::Csl {
         style: "unknown-style".into(),
     };
