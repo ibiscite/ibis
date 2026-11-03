@@ -15,7 +15,9 @@ import type { AppPaste } from "../../api";
 
 /** The search bar: the search box and the copy format. It is also
  * the window's drag region; the editable box itself is not. */
-export function PickerHeader({ onResetPosition, inputRef, query, pageToken, onQueryChange, onSearchKeyDown, expanded, activeDescendant, format, formatButtonRef, app = null, formatScope, onFormatOpenChange, onceOnly = false, onToggleOnce = () => undefined, onAutomatic = () => undefined, onDefault = () => undefined, pasteChoices, onPasteChange, formatDisabled = false, showFormat, styles, onFormatChange, onFormatCommand, pinned, onTogglePin, icon = "magnifier" }: {
+export function PickerHeader({ hidden = false, onResetPosition, inputRef, query, pageToken, onQueryChange, onSearchKeyDown, expanded, activeDescendant, format, formatButtonRef, app = null, formatScope, onFormatOpenChange, onceOnly = false, onToggleOnce = () => undefined, onAutomatic = () => undefined, onDefault = () => undefined, pasteChoices, onPasteChange, formatDisabled = false, showFormat, styles, onFormatChange, onFormatCommand, pinned, onTogglePin, icon = "magnifier" }: {
+  /** Welcome has no search yet; the field stays mounted so focus can return to it. */
+  hidden?: boolean;
   inputRef: React.RefObject<HTMLInputElement | null>;
   pinned: boolean;
   /** What leads the search field, a person's choice in Look. */
@@ -57,7 +59,7 @@ export function PickerHeader({ onResetPosition, inputRef, query, pageToken, onQu
     return twice;
   };
   return (
-    <header className="search-bar" data-icon={icon} data-tauri-drag-region title={pickerText.dragSearchBar}
+    <header className="search-bar" hidden={hidden} data-icon={icon} data-tauri-drag-region title={pickerText.dragSearchBar}
       onMouseDown={emptyArea} onMouseUp={(event) => { if (emptyArea(event)) onResetPosition?.(); }}>
       {icon === "ibis" && <IbisMark className="search-mark" size="search" />}
       {icon === "magnifier" && <Icon name="find" />}

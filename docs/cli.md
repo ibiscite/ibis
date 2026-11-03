@@ -108,6 +108,14 @@ The envelope looks like this:
 | 70 | `internal` | The output could not be written (stderr says why, unless the reader closed the pipe), or a bug in Ibis; please [report it](https://github.com/ibiscite/ibis/issues). |
 | 130 | `cancelled` | The request was cancelled. |
 
+Some errors add `reason` beside `code`, for example
+`{"error":{"code":"bad-input","reason":"unknown-style"}}`: `unknown-style`,
+`unknown-locale` (a wrong request, refused before anything is formatted),
+`duplicate-key` (the library repeats the key, so every entry under it is skipped;
+`ibis libraries --json` lists each line with the key), `ambiguous-key`, and for
+`toggle`, `app-missing`, `not-ibis` or `no-answer`. `toggle` succeeds only when
+the program it starts confirms that it is Ibis.
+
 Input JSON is at most 1 MiB and duplicate members are refused. A response is at most
 16 MiB; a larger one is a `resource-limit` error, so ask for fewer results.
 

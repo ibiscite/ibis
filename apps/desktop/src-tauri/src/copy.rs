@@ -173,23 +173,34 @@ pub(crate) async fn preview_file_citation(
     let cancel = requests
         .start(intent)
         .ok_or_else(|| CommandError::from("A newer citation preview replaced this request."))?;
-    let file = {
+    let (file, generation) = {
         let library = library
             .lock()
             .map_err(|_| CommandError::from("The library is unavailable."))?;
         let _ = expected_revision;
         if library.opening {
-            return Err("The library is loading. Try again after it opens.".into());
+            return Err(CommandError::LibraryLoading);
         }
-        library
+        let file = library
             .file
             .clone()
-            .ok_or_else(|| CommandError::from("The selected file is no longer open."))?
+            .ok_or_else(|| CommandError::from("The selected file is no longer open."))?;
+        (file, library.source_generation)
     };
     let reservation = file.reserve_preview_with(cancel);
-    tauri::async_runtime::spawn_blocking(move || file.preview(reservation, items, format, style))
+    let result = tauri::async_runtime::spawn_blocking(move || file.preview(reservation, items, format, style))
         .await
-        .map_err(|_| CommandError::from("The preview is unavailable. Try again."))?
+        .map_err(|_| CommandError::from("The preview is unavailable. Try again."))?;
+    // A reload cancels previews it overtakes; that is waiting, not a failure.
+    let overtaken = result.is_err()
+        && library
+            .lock()
+            .is_ok_and(|library| library.opening || library.source_generation != generation);
+    if overtaken {
+        Err(CommandError::LibraryLoading)
+    } else {
+        result
+    }
 }
 #[tauri::command]
 #[specta::specta]

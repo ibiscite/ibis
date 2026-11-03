@@ -86,7 +86,9 @@ export const commands = {
 	/**  Remember output and an optional delivery choice; both absent reset this app to Automatic. */
 	rememberAppOutput: (appId: string, output: ({ key: KeyFormat }) & { style?: never } | ({ style: CitationStyle }) & { key?: never } | null, paste: "paste" | "copy-only" | null, identity: string | null) => __TAURI_INVOKE<null>("remember_app_output", { appId, output, paste, identity }),
 	/**  Forget output and delivery choices for every app. */
-	forgetAppOutputs: () => __TAURI_INVOKE<null>("forget_app_outputs"),
+	forgetAppOutputs: () => __TAURI_INVOKE<number>("forget_app_outputs"),
+	/**  Bring back what Forget removed, while its Undo is offered. */
+	restoreAppOutputs: (ticket: number) => __TAURI_INVOKE<null>("restore_app_outputs", { ticket }),
 	/**  Whether Ibis starts when the person logs in, read from the system now. */
 	loginItem: () => __TAURI_INVOKE<LoginItem>("login_item"),
 	/**  Start Ibis when the person logs in, or stop doing so. */
@@ -150,8 +152,11 @@ export const commands = {
 	 *  thread and is queued in click order with the tray's clicks.
 	 */
 	setUpdateChecks: (enabled: boolean) => __TAURI_INVOKE<void>("set_update_checks", { enabled }),
-	/**  "Check for Updates…": the same check the tray starts. */
-	checkForUpdates: () => __TAURI_INVOKE<void>("check_for_updates"),
+	/**
+	 *  Settings' "Check now": the tray's check, ending with its result, which
+	 *  Settings shows in place. An update found still opens the offer.
+	 */
+	checkForUpdates: () => __TAURI_INVOKE<CheckResult>("check_for_updates"),
 	openAboutLink: (link: AboutLink) => __TAURI_INVOKE<void>("open_about_link", { link }),
 	/**  Whether an automatic check found an update that has not been presented. */
 	updateAvailable: () => __TAURI_INVOKE<boolean>("update_available"),
@@ -242,6 +247,15 @@ export type BackupProblem = "not-downloaded" | "unreadable" | "not-a-backup" | "
 
 export type BackupSystem = "macos" | "windows" | "linux";
 
+/**  How a check ended. Whoever asked says so in its own place. */
+export type CheckResult =
+/**  Nothing newer exists. */
+"newest" |
+/**  A newer version is presented, or waits for the picker. */
+"offered" |
+/**  No check ran: automatic checks are off, or one holds the updater. */
+"not_run" | "failed";
+
 export type CitationSpan = CitationSpan_Serialize | CitationSpan_Deserialize;
 
 export type CitationSpan_Deserialize = {
@@ -269,6 +283,8 @@ export type CommandError =
  *  library; search again and choose again.
  */
 { code: "snapshot_changed" } |
+/**  The library is being read; ask again when it has opened. */
+{ code: "library_loading" } |
 /**  Another loaded record has this citation key, so citing by key would be ambiguous. */
 { code: "shared_citation_key"; key: string } |
 /**  Anything else, with fixed text for the user. */

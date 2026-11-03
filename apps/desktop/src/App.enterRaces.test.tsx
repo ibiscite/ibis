@@ -34,6 +34,24 @@ test("queued Enter survives results arriving before their library revision", asy
   expect(copies).toMatchObject([{ expectedRevision: "2", items: [{ id: { key: "a" } }] }]);
 });
 
+test("Enter during a reload waits for its end, then copies once", async () => {
+  const fresh = { ...result("a", "Fresh reference"), revision: "1" };
+  const loaded = { state: "loaded", has_snapshot: true, revision: "1", references: 1 };
+  const copies: unknown[] = [];
+  backend({
+    library_status: () => loaded,
+    search: () => [fresh],
+    copy_file_citation: (args) => { const citation = prepared(args); copies.push(citation.request); return { text: citation.preview.text, warnings: [] }; },
+  });
+  await act(async () => { render(<App />); });
+  await act(async () => { await emit("library:changed", { ...loaded, state: "reloading" }); });
+  await enter();
+  expect(copies).toEqual([]);
+  expect(screen.queryByRole("alert")).toBeNull();
+  await act(async () => { await emit("library:changed", loaded); });
+  expect(copies).toHaveLength(1);
+});
+
 test.each(["initial", "reconciliation"].flatMap((read) => ["later turn", "same turn"].map((recovery) => ({ read, recovery }))))("a failed $read status read cancels Enter before recovery in a $recovery", async ({ read, recovery }) => {
   const found = deferred<unknown>(), status = deferred<unknown>();
   const fresh = { ...result("a", "Fresh reference"), revision: "2" };

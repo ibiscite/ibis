@@ -74,21 +74,14 @@ fn run_with_changes<R: BufRead, W: Write + Send>(
                     job.cancel.check()?;
                     Ok(result)
                 })
-                .unwrap_or(Err(EngineError {
-                    code: ErrorCode::Internal,
-                }));
+                .unwrap_or(Err(EngineError::new(ErrorCode::Internal)));
                 if let Some(id) = job.id {
                     let mut reply = match result {
                         Ok(result) => rpc::success(&id, result.data),
                         Err(error) => rpc::failure(Some(&id), error),
                     };
                     if crate::wire::encode(&reply, protocol::MAX_RESPONSE_BYTES).is_err() {
-                        reply = rpc::failure(
-                            Some(&id),
-                            EngineError {
-                                code: ErrorCode::ResourceLimit,
-                            },
-                        );
+                        reply = rpc::failure(Some(&id), EngineError::new(ErrorCode::ResourceLimit));
                     }
                     // Retire this token before exposing its reply, so ID reuse is fresh.
                     let _ = completed.send(id);

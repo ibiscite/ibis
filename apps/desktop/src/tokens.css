@@ -83,7 +83,7 @@
   --separator: GrayText; --stroke-field: transparent;
   --accent: Highlight; --accent-text: var(--accent); --text-on-accent: HighlightText;
   --selected: Highlight; --selected-text: HighlightText; --selected-text-secondary: currentColor;
-  --ring: var(--accent);
+  --ring: var(--accent-text);
   --scarlet: CanvasText; --on-scarlet: var(--white);
   --status-ok: CanvasText; --status-warning: CanvasText; --status-error: CanvasText;
   /* System, secondary, tertiary and quaternary fill. */
@@ -125,7 +125,7 @@
     --status-ok: light-dark(#34c759, #30d158); --status-warning: light-dark(#ffcc00, #ffd600); --status-error: light-dark(#ff383c, #ff4245);
     --accent: #007aff; --accent-text: light-dark(#0068da, #419cff);
     --selected: light-dark(#0064e1, #0059d1); --selected-text: #fff; --text-on-accent: var(--selected-text);
-    --selected-text-secondary: color-mix(in srgb, var(--selected-text) 82%, transparent);
+    --selected-text-secondary: var(--selected-text);
     --scrim: light-dark(rgb(0 0 0 / 20%), rgb(0 0 0 / 40%));
   }
 }
@@ -134,7 +134,6 @@
     :root {
       --surface: light-dark(#ffffff, #1e1e1e); --raised: light-dark(#f6f6f6, #282828);
       --surface-overlay: light-dark(#ffffff, #282828); --sheet: var(--surface-overlay);
-      --ring: light-dark(rgb(0 103 244 / 50%), rgb(26 169 255 / 50%));
       --text: light-dark(rgb(0 0 0 / 84.7%), rgb(255 255 255 / 84.7%));
       --text-secondary: light-dark(rgb(0 0 0 / 49.8%), rgb(255 255 255 / 54.9%));
       --text-tertiary: light-dark(rgb(0 0 0 / 25.9%), rgb(255 255 255 / 24.7%));
@@ -207,6 +206,8 @@
    surface. Follow the Mac reaches the same roles from nativeAccent.css. */
 :root[data-accent="blue"] { --ac: #007aff; --ac-selected: light-dark(#0064e1, #0059d1); --ac-text: light-dark(#0068da, #419cff); }
 :root[data-accent="ibis"] { --ac: light-dark(var(--ibis), var(--ibis-dark)); --ac-selected: var(--ac); --ac-text: var(--ac); --ac-on: light-dark(#fff, #171717); }
+/* Dark ink needs a lighter press: darkening would lose it. */
+:root[data-accent="ibis"] { --ac-press: light-dark(black, white); }
 :root[data-accent="purple"] { --ac: light-dark(#953d96, #a550a7); --ac-selected: light-dark(#953d96, #904291); --ac-text: light-dark(#953d96, #bd71bf); }
 :root[data-accent="pink"] { --ac: light-dark(#f74f9e, #f74f9e); --ac-selected: light-dark(#e4086c, #e4086c); --ac-text: light-dark(#e4086c, #f74f9e); --ac-fill: var(--ac-selected); }
 :root[data-accent="red"] { --ac: light-dark(#e0383e, #ff5257); --ac-selected: light-dark(#de3036, #e80005); --ac-text: light-dark(#dd2c32, #ff5257); --ac-fill: var(--ac-selected); }
@@ -217,10 +218,12 @@
 @supports (color: light-dark(white, black)) {
   @media (prefers-contrast: no-preference) and (forced-colors: none) {
     :root[data-appearance][data-accent]:not([data-accent="system"]):not(.notice-window) {
-      --accent: var(--ac); --primary: var(--ac-fill, var(--ac)); --selected: var(--ac-selected); --accent-text: var(--ac-text); --ring: color-mix(in srgb, var(--ac) 50%, transparent); --selected-text: var(--ac-on, #fff); --text-on-accent: var(--ac-on, #fff);
+      --accent: var(--ac); --primary: var(--ac-fill, var(--ac)); --selected: var(--ac-selected); --accent-text: var(--ac-text); --selected-text: var(--ac-on, #fff); --text-on-accent: var(--ac-on, #fff);
     }
   }
 }
+/* Every window: light-dark() has no value without a scheme. */
+:root { color-scheme: light dark; }
 :root[data-appearance="light"] { color-scheme: light; }
 :root[data-appearance="dark"] { color-scheme: dark; }
 :root.settings-window[data-larger-text="true"] { font-size: calc(100% * var(--larger-text-scale)); }
@@ -244,8 +247,8 @@
   /* Measured from NSSegmentedControl: the chosen fill lands at 19% of the text colour. */
   --segment-selected: color-mix(in srgb, var(--text) 12%, transparent);
   --primary: var(--accent);
-  --accent-hover: color-mix(in srgb, var(--primary) 90%, black);
-  --accent-pressed: color-mix(in srgb, var(--primary) 80%, black);
+  --accent-hover: color-mix(in srgb, var(--primary) 90%, var(--ac-press, black));
+  --accent-pressed: color-mix(in srgb, var(--primary) 80%, var(--ac-press, black));
 }
 
 /* The website's reading rhythm; page composition stays in website/style.css. */

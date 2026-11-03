@@ -44,6 +44,11 @@ pub struct LibraryInfo {
     /// Which Zotero library this is, for a Zotero library.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub zotero: Option<ZoteroLibrary>,
+    /// Every repeated citation key, beyond the warnings shown, so a lookup can
+    /// say why the key selects nothing.
+    #[serde(skip)]
+    #[schemars(skip)]
+    pub duplicate_keys: std::collections::BTreeSet<String>,
 }
 impl LibraryInfo {
     fn clean(id: LibraryId, objects: usize) -> Self {
@@ -56,6 +61,7 @@ impl LibraryInfo {
             updated_at_ms: now_ms(),
             watch_warning: None,
             zotero: None,
+            duplicate_keys: Default::default(),
         }
     }
 }
@@ -382,7 +388,7 @@ impl Engine {
     }
     pub fn show(&self, request: &ShowRequest) -> Result<SnapshotObject, EngineError> {
         let state = self.state()?;
-        let selected = select(state.index.snapshot(), &request.item)?;
+        let selected = select(state.index.snapshot(), &state.libraries, &request.item)?;
         ensure_budget(selected)?;
         Ok(selected.clone())
     }
@@ -395,13 +401,14 @@ impl Engine {
         if request.keys.is_empty() || request.keys.len() > ibis_core::syntax::MAX_CITATION_ITEMS {
             return Err(error(ErrorCode::BadInput));
         }
-        let snapshot = self.snapshot()?;
+        let state = self.state()?;
+        let snapshot = state.index.snapshot();
         let items = request
             .keys
             .iter()
             .map(|key| {
                 cancel.check()?;
-                let selected = select(&snapshot, &ItemSelector::Key(key.key.clone()))?;
+                let selected = select(snapshot, &state.libraries, &ItemSelector::Key(key.key.clone()))?;
                 Ok(CitationItem {
                     item: selected.object.id().clone(),
                     expected_cite: Some(selected.fingerprints.cite.clone()),
@@ -659,7 +666,11 @@ fn ensure_budget(value: &impl Serialize) -> Result<(), EngineError> {
         .map(|_| ())
         .map_err(|_| error(ErrorCode::ResourceLimit))
 }
-fn select<'a>(snapshot: &'a Snapshot, selector: &ItemSelector) -> Result<&'a SnapshotObject, EngineError> {
+fn select<'a>(
+    snapshot: &'a Snapshot,
+    libraries: &BTreeMap<LibraryId, LibraryInfo>,
+    selector: &ItemSelector,
+) -> Result<&'a SnapshotObject, EngineError> {
     match selector {
         ItemSelector::Id(id) => snapshot.get(id).ok_or_else(|| error(ErrorCode::NotFound)),
         ItemSelector::Key(key) => {
@@ -672,9 +683,15 @@ fn select<'a>(snapshot: &'a Snapshot, selector: &ItemSelector) -> Result<&'a Sna
                 };
                 record.citation_keys.iter().any(|candidate| candidate.value == *key) || record.aliases.contains(key)
             });
-            let found = matches.next().ok_or_else(|| error(ErrorCode::NotFound))?;
+            let found = matches.next().ok_or_else(|| {
+                if libraries.values().any(|library| library.duplicate_keys.contains(key)) {
+                    EngineError::because(ErrorCode::NotFound, ErrorReason::DuplicateKey)
+                } else {
+                    error(ErrorCode::NotFound)
+                }
+            })?;
             if matches.next().is_some() {
-                return Err(error(ErrorCode::BadInput));
+                return Err(EngineError::because(ErrorCode::BadInput, ErrorReason::AmbiguousKey));
             }
             Ok(found)
         }
@@ -688,7 +705,7 @@ fn value(value: impl Serialize) -> Result<Value, EngineError> {
     serde_json::to_value(value).map_err(|_| error(ErrorCode::Internal))
 }
 pub(crate) fn error(code: ErrorCode) -> EngineError {
-    EngineError { code }
+    EngineError::new(code)
 }
 fn response_schema(method: Method) -> Value {
     match method {

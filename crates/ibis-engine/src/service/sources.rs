@@ -83,6 +83,12 @@ fn info(loaded: &LoadedLibrary) -> LibraryInfo {
         updated_at_ms: now_ms(),
         watch_warning: None,
         zotero: None,
+        duplicate_keys: loaded
+            .warnings
+            .iter()
+            .filter(|warning| warning.code == ibis_sources::WarningCode::DuplicateKey)
+            .filter_map(|warning| warning.key.clone())
+            .collect(),
     }
 }
 impl Engine {
@@ -786,7 +792,8 @@ mod tests {
         assert!(matches!(
             engine.accept_file_reload(prepared),
             Err(EngineError {
-                code: ErrorCode::Cancelled
+                code: ErrorCode::Cancelled,
+                reason: None
             })
         ));
         assert_eq!(engine.snapshot().unwrap().fingerprints(), &newer);
@@ -835,7 +842,8 @@ mod tests {
         assert!(matches!(
             engine.accept_file_reload(prepared),
             Err(EngineError {
-                code: ErrorCode::Cancelled
+                code: ErrorCode::Cancelled,
+                reason: None
             })
         ));
     }
@@ -855,7 +863,8 @@ mod tests {
         assert!(matches!(
             engine.accept_file_reload(prepared),
             Err(EngineError {
-                code: ErrorCode::Cancelled
+                code: ErrorCode::Cancelled,
+                reason: None
             })
         ));
         assert_eq!(engine.snapshot().unwrap().fingerprints(), original.fingerprints());
@@ -864,7 +873,8 @@ mod tests {
         assert!(matches!(
             other.accept_file_reload(prepared),
             Err(EngineError {
-                code: ErrorCode::BadInput
+                code: ErrorCode::BadInput,
+                reason: None
             })
         ));
         assert_eq!(engine.snapshot().unwrap().fingerprints(), original.fingerprints());
@@ -909,7 +919,8 @@ mod tests {
         assert!(matches!(
             engine.commit_citation(&old, &old.result().content_hash, |_| panic!("uncertain Zotero")),
             Err(CitationCommitError::Engine(EngineError {
-                code: ErrorCode::SourceUnavailable
+                code: ErrorCode::SourceUnavailable,
+                reason: None
             }))
         ));
         engine
@@ -1043,7 +1054,8 @@ mod tests {
         same.warnings = vec![
             ibis_sources::SourceWarning {
                 code: ibis_sources::WarningCode::Field,
-                line: None
+                line: None,
+                key: None,
             };
             MAX_WARNING_DETAILS + 1
         ];

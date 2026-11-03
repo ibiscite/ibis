@@ -406,20 +406,52 @@ pub(super) fn zotero_failure(code: ErrorCode) -> String {
 }
 
 /// Why a citation key did not select exactly one reference.
-pub(super) fn key_failure(key: &str, code: ErrorCode, libraries_open: bool) -> String {
+pub(super) fn key_failure(key: &str, error: EngineError, libraries_open: bool, lines: &[usize]) -> String {
     let shown = field(&key.chars().take(80).collect::<String>());
-    match code {
-        ErrorCode::NotFound if !libraries_open => {
-            format!("cannot look up '{shown}': no library is open; add --file <library> or --zotero.")
+    match (error.code, error.reason) {
+        (_, Some(ErrorReason::DuplicateKey)) => {
+            let at = match lines {
+                [] => String::new(),
+                [line] => format!(" (line {line})"),
+                [rest @ .., last] => format!(
+                    " (lines {} and {last})",
+                    rest.iter().map(usize::to_string).collect::<Vec<_>>().join(", ")
+                ),
+            };
+            format!(
+                "the citation key '{shown}' is used by more than one entry{at}, so Ibis skips them all; give each entry its own key."
+            )
         }
-        ErrorCode::NotFound => {
-            format!("no reference has the citation key '{shown}'; find the right key with: ibis search <words>")
-        }
-        ErrorCode::BadInput if key.is_empty() => "a citation key cannot be empty.".into(),
-        ErrorCode::BadInput if key.len() > 64 * 1024 => format!("the citation key '{shown}…' is too long."),
-        ErrorCode::BadInput => {
+        (_, Some(ErrorReason::AmbiguousKey)) => {
             format!("several references use the citation key '{shown}'; give each one its own key in your library.")
         }
-        code => code_sentence(code).into(),
+        (ErrorCode::NotFound, _) if !libraries_open => {
+            format!("cannot look up '{shown}': no library is open; add --file <library> or --zotero.")
+        }
+        (ErrorCode::NotFound, _) => {
+            format!("no reference has the citation key '{shown}'; find the right key with: ibis search <words>")
+        }
+        (ErrorCode::BadInput, _) if key.is_empty() => "a citation key cannot be empty.".into(),
+        (ErrorCode::BadInput, _) if key.len() > 64 * 1024 => format!("the citation key '{shown}…' is too long."),
+        (code, reason) => reason.map_or_else(|| code_sentence(code), reason_sentence).into(),
+    }
+}
+
+/// The sentence for each reason an engine error gives.
+pub(super) fn reason_sentence(reason: ErrorReason) -> &'static str {
+    match reason {
+        ErrorReason::UnknownStyle => "there is no style with that name; list the styles with: ibis styles",
+        ErrorReason::UnknownLocale => "this locale is not available yet; Ibis formats in en-US for now.",
+        ErrorReason::DuplicateKey => {
+            "the citation key is used by more than one entry, so Ibis skips them all; give each entry its own key."
+        }
+        ErrorReason::AmbiguousKey => {
+            "several references use this citation key; give each one its own key in your library."
+        }
+        ErrorReason::AppMissing => "the Ibis app was not found; install it, or give its location with --app <path>.",
+        ErrorReason::NotIbis => {
+            "the program given as the Ibis app is not Ibis; give the Ibis app's location with --app <path>."
+        }
+        ErrorReason::NoAnswer => "the Ibis app started but did not answer; open Ibis once by hand, then try again.",
     }
 }

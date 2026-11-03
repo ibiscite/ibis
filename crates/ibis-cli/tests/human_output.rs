@@ -162,12 +162,13 @@ fn a_refused_citation_prints_its_reason_and_fails() -> Result<(), Box<dyn std::e
         errors,
         "ibis: cannot cite 'first' in apa with --form narrative; try --form normal.\n"
     );
+    // An unknown style is a wrong request, not a refused reference.
     let (code, text, errors) = run_file(&path, &["cite", "--style", "invented", "first"])?;
-    assert_eq!(code, 1);
+    assert_eq!(code, 3);
     assert!(text.is_empty());
     assert_eq!(
         errors,
-        "ibis: there is no style invented; list the styles with: ibis styles\n"
+        "ibis: there is no style 'invented'; list the styles with: ibis styles\n"
     );
     let (code, text, _) = run_file(
         &path,

@@ -76,12 +76,7 @@ pub fn parse_message(message: &Value) -> Message<'_> {
     let params = object.get("params").unwrap_or(&Value::Null);
     if !(params.is_null() || params.is_object() || params.is_array()) {
         return if id.is_some() {
-            Message::Reply(failure(
-                id.as_ref(),
-                EngineError {
-                    code: ErrorCode::BadInput,
-                },
-            ))
+            Message::Reply(failure(id.as_ref(), EngineError::new(ErrorCode::BadInput)))
         } else {
             Message::Ignore
         };
@@ -98,7 +93,7 @@ pub fn parse_message(message: &Value) -> Message<'_> {
     match Method::parse(method) {
         Ok(method) => Message::Request(Request { id, method, params }),
         Err(_) if id.is_none() => Message::Ignore,
-        Err(_) => Message::Reply(failure(id.as_ref(), EngineError { code: ErrorCode::Usage })),
+        Err(_) => Message::Reply(failure(id.as_ref(), EngineError::new(ErrorCode::Usage))),
     }
 }
 
@@ -116,7 +111,11 @@ pub fn failure(id: Option<&RequestId>, error: EngineError) -> Value {
         ErrorCode::Internal => (-32603, "Internal error"),
         ErrorCode::Cancelled => (-32800, "Request cancelled"),
     };
-    error_response(id, code, message, error.code)
+    let mut response = error_response(id, code, message, error.code);
+    if let Some(reason) = error.reason {
+        response["error"]["data"]["reason"] = json!(reason);
+    }
+    response
 }
 pub fn invalid_request(id: Option<&RequestId>) -> Value {
     error_response(id, -32600, "Invalid request", ErrorCode::BadInput)

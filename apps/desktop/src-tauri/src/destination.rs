@@ -106,10 +106,15 @@ struct MemoryFile {
     recovery: bool,
 }
 
+/// Every app's choices, and whether lost choices still need resolving.
+type Choices = (Vec<Remembered>, bool);
+
 /// The per-app file, read once and written on every change.
 pub(crate) struct AppMemory {
     path: PathBuf,
-    state: Mutex<(Vec<Remembered>, bool)>,
+    state: Mutex<Choices>,
+    /// What the newest Forget removed, for its Undo. Never written to disk.
+    forgotten: Mutex<(u32, Option<Choices>)>,
 }
 
 fn normalized(app: &AppId) -> AppId {
@@ -131,6 +136,7 @@ impl AppMemory {
         AppMemory {
             path,
             state: Mutex::new((apps, unreadable)),
+            forgotten: Mutex::new((0, None)),
         }
     }
 
@@ -204,7 +210,8 @@ impl AppMemory {
         if paste == Some(AppPaste::Paste) && lookup(&app).is_none() && identity.is_none() {
             return Err(io::Error::other("this app has no proven identity to approve"));
         }
-        self.change(false, |apps| {
+        let chosen = app.clone();
+        self.change(|apps| {
             let previous = apps.iter().find(|entry| entry.app == app);
             let paste = paste.or_else(|| {
                 output.and_then(|_| previous?.paste).filter(|paste| {
@@ -225,15 +232,50 @@ impl AppMemory {
                     identity,
                 });
             }
-        })
+        })?;
+        // Any explicit choice since Forget, even a reset, is no longer Undo's to restore.
+        if let Ok(mut forgotten) = self.forgotten.lock()
+            && let Some((removed, _)) = forgotten.1.as_mut()
+        {
+            removed.retain(|old| old.app != chosen);
+        }
+        Ok(())
     }
 
-    /// Forget every app.
-    pub(crate) fn forget(&self) -> io::Result<()> {
-        self.change(true, Vec::clear)
+    /// Forget every app, returning the ticket that can undo it.
+    pub(crate) fn forget(&self) -> io::Result<u32> {
+        let unavailable = || io::Error::other("app choices are unavailable");
+        let mut state = self.state.lock().map_err(|_| unavailable())?;
+        let mut forgotten = self.forgotten.lock().map_err(|_| unavailable())?;
+        write(&self.path, &[], false)?;
+        let removed = std::mem::take(&mut *state);
+        *forgotten = (forgotten.0.wrapping_add(1), Some(removed));
+        Ok(forgotten.0)
     }
 
-    fn change(&self, reset: bool, change: impl FnOnce(&mut Vec<Remembered>)) -> io::Result<()> {
+    /// Undo the newest Forget. A choice made since then wins for its app, and
+    /// an older ticket changes nothing. A failed write can be tried again.
+    pub(crate) fn restore(&self, ticket: u32) -> io::Result<()> {
+        let unavailable = || io::Error::other("app choices are unavailable");
+        let mut state = self.state.lock().map_err(|_| unavailable())?;
+        let mut forgotten = self.forgotten.lock().map_err(|_| unavailable())?;
+        if forgotten.0 != ticket {
+            return Ok(());
+        }
+        let Some((removed, recovery)) = forgotten.1.as_ref() else {
+            return Ok(());
+        };
+        let mut apps = removed.clone();
+        apps.extend(state.0.iter().cloned());
+        apps.drain(..apps.len().saturating_sub(MAX_APPS));
+        let recovery = *recovery || state.1;
+        write(&self.path, &apps, recovery)?;
+        *state = (apps, recovery);
+        forgotten.1 = None;
+        Ok(())
+    }
+
+    fn change(&self, change: impl FnOnce(&mut Vec<Remembered>)) -> io::Result<()> {
         let mut state = self
             .state
             .lock()
@@ -242,7 +284,7 @@ impl AppMemory {
         change(&mut apps);
         let excess = apps.len().saturating_sub(MAX_APPS);
         apps.drain(..excess);
-        let recovery = state.1 && !reset;
+        let recovery = state.1;
         write(&self.path, &apps, recovery)?;
         *state = (apps, recovery);
         Ok(())
@@ -425,11 +467,22 @@ fn remember_choice_for(
 /// Forget output and delivery choices for every app.
 #[tauri::command]
 #[specta::specta]
-pub(crate) fn forget_app_outputs(app: AppHandle, memory: State<'_, AppMemory>) -> Result<(), String> {
+pub(crate) fn forget_app_outputs(app: AppHandle, memory: State<'_, AppMemory>) -> Result<u32, String> {
     crate::paste::change_destination(&app, true, |_| {
         memory
             .forget()
             .map_err(|_| "the choices for apps could not be forgotten".into())
+    })
+}
+
+/// Bring back what Forget removed, while its Undo is offered.
+#[tauri::command]
+#[specta::specta]
+pub(crate) fn restore_app_outputs(ticket: u32, app: AppHandle, memory: State<'_, AppMemory>) -> Result<(), String> {
+    crate::paste::change_destination(&app, true, |_| {
+        memory
+            .restore(ticket)
+            .map_err(|_| "the choices for apps could not be restored".into())
     })
 }
 
@@ -458,6 +511,81 @@ mod tests {
             system: System::Macos,
             id: id.into(),
         }
+    }
+
+    #[test]
+    fn undo_restores_forgotten_choices_and_a_newer_choice_wins() -> io::Result<()> {
+        let directory = tempfile::tempdir()?;
+        let path = directory.path().join("apps.json");
+        let memory = AppMemory::open(path.clone());
+        let (kept, changed) = (mac("com.invented.kept"), mac("com.invented.changed"));
+        memory.set_choice(&kept, Some(AppOutput::Key(KeyFormat::Pandoc)), None)?;
+        memory.set_choice(&changed, Some(AppOutput::Key(KeyFormat::Pandoc)), None)?;
+        let ticket = memory.forget()?;
+        assert_eq!(memory.get(&kept).0, None);
+        memory.set_choice(&changed, Some(AppOutput::Key(KeyFormat::Typst)), None)?;
+        memory.restore(ticket)?;
+        assert_eq!(memory.get(&kept).0, Some(AppOutput::Key(KeyFormat::Pandoc)));
+        assert_eq!(memory.get(&changed).0, Some(AppOutput::Key(KeyFormat::Typst)));
+        // Close and reopen: the restored choices are on disk.
+        assert_eq!(
+            AppMemory::open(path).get(&kept).0,
+            Some(AppOutput::Key(KeyFormat::Pandoc))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn undo_leaves_an_app_reset_since_forget_alone() -> io::Result<()> {
+        let directory = tempfile::tempdir()?;
+        let memory = AppMemory::open(directory.path().join("apps.json"));
+        let app = mac("com.invented.writer");
+        memory.set_choice(&app, Some(AppOutput::Key(KeyFormat::Pandoc)), None)?;
+        let ticket = memory.forget()?;
+        memory.set_choice(&app, None, None)?; // Automatic, in a picker still open from before.
+        memory.restore(ticket)?;
+        assert_eq!(memory.get(&app).0, None);
+        Ok(())
+    }
+
+    #[test]
+    fn only_the_newest_ticket_restores_and_only_once() -> io::Result<()> {
+        let directory = tempfile::tempdir()?;
+        let memory = AppMemory::open(directory.path().join("apps.json"));
+        let app = mac("com.invented.writer");
+        memory.set_choice(&app, Some(AppOutput::Key(KeyFormat::Pandoc)), None)?;
+        let older = memory.forget()?;
+        let newer = memory.forget()?;
+        memory.restore(older)?;
+        assert_eq!(memory.get(&app).0, None);
+        memory.restore(newer)?;
+        assert_eq!(memory.get(&app).0, None);
+        memory.set_choice(&app, Some(AppOutput::Key(KeyFormat::Typst)), None)?;
+        let last = memory.forget()?;
+        memory.restore(last)?;
+        memory.forget()?;
+        memory.restore(last)?;
+        assert_eq!(memory.get(&app).0, None);
+        Ok(())
+    }
+
+    #[test]
+    fn a_failed_restore_can_be_tried_again() -> io::Result<()> {
+        let directory = tempfile::tempdir()?;
+        let path = directory.path().join("nested").join("apps.json");
+        std::fs::create_dir(directory.path().join("nested"))?;
+        let memory = AppMemory::open(path.clone());
+        let app = mac("com.invented.writer");
+        memory.set_choice(&app, Some(AppOutput::Key(KeyFormat::Pandoc)), None)?;
+        let ticket = memory.forget()?;
+        std::fs::remove_file(&path)?;
+        std::fs::create_dir(&path)?; // A directory where the file belongs refuses the write.
+        assert!(memory.restore(ticket).is_err());
+        assert_eq!(memory.get(&app).0, None);
+        std::fs::remove_dir(&path)?;
+        memory.restore(ticket)?;
+        assert_eq!(memory.get(&app).0, Some(AppOutput::Key(KeyFormat::Pandoc)));
+        Ok(())
     }
 
     #[test]

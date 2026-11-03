@@ -168,7 +168,6 @@ fn formatted_failures_stay_explicit_and_uncopyable() -> Result<(), Box<dyn std::
     use ibis_core::contract::*;
     for (kind, expected) in [
         ("missing", CitationError::MissingItem),
-        ("style", CitationError::UnsupportedOutput),
         ("nonprinting", CitationError::UnsupportedForm),
     ] {
         let mut case: GoldenCase = serde_json::from_str(include_str!("../../../fixtures/cases/02-pandoc.json"))?;
@@ -217,6 +216,43 @@ fn formatted_failures_stay_explicit_and_uncopyable() -> Result<(), Box<dyn std::
             "{kind}"
         );
         assert!(citation.copy_content(1).is_none());
+    }
+    Ok(())
+}
+
+#[test]
+fn an_unknown_style_or_locale_refuses_the_whole_request() -> Result<(), Box<dyn std::error::Error>> {
+    use ibis_core::contract::*;
+    for (style, locale, reason) in [
+        ("unknown-synthetic-style", None, "unknown-style"),
+        ("modern-language-association", Some("xx-synthetic"), "unknown-locale"),
+    ] {
+        let mut case: GoldenCase = serde_json::from_str(include_str!("../../../fixtures/cases/02-pandoc.json"))?;
+        case.request.output = OutputSpec::Csl { style: style.into() };
+        case.request.output_locale = locale.map(Into::into);
+        let mut output = vec![];
+        let mut errors = vec![];
+        let code = ibis::run_with(
+            Engine::from_snapshot(Arc::new(case.library)),
+            ["ibis", "cite", "--request", "--json"]
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+            Cursor::new(serde_json::to_vec(&case.request)?),
+            &mut output,
+            &mut errors,
+            ibis::OutputMode::Plain,
+        );
+        assert_eq!(code, 3, "{reason}");
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&output)?,
+            serde_json::json!({"ibis":1,"ok":false,"error":{"code":"bad-input","reason":reason}})
+        );
+        let errors = String::from_utf8(errors)?;
+        assert!(
+            errors.contains(if locale.is_some() { "en-US" } else { "ibis styles" }),
+            "{errors}"
+        );
     }
     Ok(())
 }

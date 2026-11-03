@@ -10,10 +10,13 @@ export const RECHECK_MS = 1_000;
 /** After this long without the permission, say how to clear a stale switch. */
 export const STALE_HINT_MS = 15_000;
 
+/** A failed read never leaves an old "Allowed" in place. */
+export type ReadPermission = PastePermission & { unreadable?: boolean };
+
 /** Whether Ibis may paste, read live while the guide waits (#1292). Coming
  * back to the window reads it at once, so the answer is never stale. */
 export function usePastePermission(api: Pick<SettingsApi, "pastePermission">, active: boolean, poll = true) {
-  const [permission, setPermission] = useState<PastePermission | null>(null);
+  const [permission, setPermission] = useState<ReadPermission | null>(null);
   const [visible, setVisible] = useState(!document.hidden);
   useEffect(() => {
     const changed = () => setVisible(!document.hidden);
@@ -29,7 +32,8 @@ export function usePastePermission(api: Pick<SettingsApi, "pastePermission">, ac
     const read = () => {
       if (document.hidden) return;
       const current = ++request;
-      void api.pastePermission().then((next) => { if (live && current === request) setPermission(next); }).catch(() => undefined);
+      void api.pastePermission().then((next) => { if (live && current === request) setPermission(next); })
+        .catch(() => { if (live && current === request) setPermission((old) => old && { ...old, granted: false, unreadable: true }); });
     };
     void read();
     const timer = waiting ? window.setInterval(read, RECHECK_MS) : undefined;
@@ -43,7 +47,7 @@ export function usePastePermission(api: Pick<SettingsApi, "pastePermission">, ac
  * live answer once both grants are on. Only a deliberate Open action navigates
  * to System Settings; permission reads never request a grant. */
 export function PasteGuide({ name, permission, onOpen, onDrag }: {
-  name: string; permission: PastePermission; onOpen: () => void; onDrag: () => Promise<void>;
+  name: string; permission: ReadPermission; onOpen: () => void; onDrag: () => Promise<void>;
 }) {
   const { text } = useInterfaceMessages();
   const [opened, setOpened] = useState(false);
@@ -77,7 +81,7 @@ export function PasteGuide({ name, permission, onOpen, onDrag }: {
               onDrag={() => { setDragFailed(false); void onDrag().catch(() => setDragFailed(true)); }} />
           </>}
           <p className="paste-guide-status" role="status" aria-live="polite" data-done={permission.granted || undefined}>
-            {permission.granted ? text("general-paste-granted") : opened ? text("general-paste-waiting") : ""}
+            {permission.granted ? text("general-paste-granted") : permission.unreadable ? text("general-paste-unreadable") : opened ? text("general-paste-waiting") : ""}
           </p>
         </div>
         {!permission.granted && <p className="settings-description">{text("general-paste-drag-fallback")}</p>}

@@ -67,6 +67,12 @@ expression: "summary(\"damaged.bib\")"
   "warnings": [
     {
       "code": "duplicate-key",
+      "key": "good1",
+      "line": 3
+    },
+    {
+      "code": "duplicate-key",
+      "key": "good1",
       "line": 9
     },
     {

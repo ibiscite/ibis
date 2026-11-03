@@ -14,6 +14,7 @@ pub mod search;
 pub mod settings;
 pub mod source;
 pub mod syntax;
+pub mod toggle;
 pub mod zotero;
 
 /// The version this build reports. A nightly sets `IBIS_VERSION` at build time

@@ -28,6 +28,7 @@ export function setNativeAccent(value: unknown): void {
     && Array.from(value).every((c) => typeof c === "number" && Number.isFinite(c) && c >= 0 && c <= 1) ? value as number[] : null;
   for (const name of ["fill", "on", "light", "dark"]) root.style.removeProperty(`--native-accent-${name}`);
   delete root.dataset.nativeAccent;
+  delete root.dataset.nativeAccentDeep;
   if (!rgb) return;
   root.style.setProperty("--native-accent-fill", `color(srgb ${rgb.join(" ")})`);
   root.style.setProperty("--native-accent-on", onColor(rgb));
@@ -35,6 +36,8 @@ export function setNativeAccent(value: unknown): void {
   for (const [theme, toward, surface] of [["light", 0, .78], ["dark", 1, .04]] as const) {
     root.style.setProperty(`--native-accent-${theme}`, `color(srgb ${accentText(rgb, toward, surface).join(" ")})`);
   }
+  // Apple's blue (4.02:1) and red keep their measured fill; paler accents go deeper.
+  if (1.05 / (luminance(rgb) + .05) < 4) root.dataset.nativeAccentDeep = "true";
   root.dataset.nativeAccent = "true";
 }
 

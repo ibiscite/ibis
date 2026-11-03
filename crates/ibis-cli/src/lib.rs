@@ -464,7 +464,7 @@ fn run_engine<R: BufRead, W: Write + Send, E: Write>(
             emit(json, Ok(result), citing.as_ref(), &mut output, &mut errors, mode)
         }
         Err(failure) if matches.subcommand_name() == Some("serve") => {
-            let error = EngineError { code: failure.code };
+            let error = failure.error;
             if protocol::write_frame(&mut output, &ibis_engine::rpc::failure(None, error)).is_err() {
                 70
             } else {
@@ -536,13 +536,16 @@ pub(crate) fn bounded<T: Send + 'static>(operation: impl FnOnce() -> T + Send + 
 }
 
 struct Failure {
-    code: ErrorCode,
+    error: EngineError,
     message: Option<String>,
 }
 impl Failure {
     fn new(code: ErrorCode, message: impl Into<String>) -> Self {
+        Self::explained(EngineError::new(code), message)
+    }
+    fn explained(error: EngineError, message: impl Into<String>) -> Self {
         Self {
-            code,
+            error,
             message: Some(message.into()),
         }
     }
@@ -550,14 +553,35 @@ impl Failure {
 impl From<EngineError> for Failure {
     fn from(error: EngineError) -> Self {
         Self {
-            code: error.code,
-            message: None,
+            error,
+            message: error.reason.map(|reason| human::reason_sentence(reason).to_owned()),
         }
     }
 }
-/// Attach a sentence to an engine error without changing its code.
-fn explain<T>(result: Result<T, EngineError>, message: impl FnOnce(ErrorCode) -> String) -> Result<T, Failure> {
-    result.map_err(|error| Failure::new(error.code, message(error.code)))
+/// Why a citation key selected no single reference, with every line that repeats it.
+fn key_failure(engine: &Engine, key: &str, error: EngineError, libraries_open: bool) -> Failure {
+    let lines: Vec<usize> = if error.reason == Some(ErrorReason::DuplicateKey) {
+        engine
+            .libraries()
+            .map(|result| result.libraries)
+            .unwrap_or_default()
+            .iter()
+            .flat_map(|library| &library.warnings)
+            .filter(|warning| warning.key.as_deref() == Some(key))
+            .filter_map(|warning| warning.line)
+            .collect()
+    } else {
+        vec![]
+    };
+    Failure::explained(error, human::key_failure(key, error, libraries_open, &lines))
+}
+/// Attach a sentence to an engine error without changing its code or reason.
+/// A reason has its own sentence; front ends never guess one from the code.
+fn explain<T>(result: Result<T, EngineError>, message: impl FnOnce(EngineError) -> String) -> Result<T, Failure> {
+    result.map_err(|error| match error.reason {
+        Some(reason) => Failure::explained(error, human::reason_sentence(reason)),
+        None => Failure::explained(error, message(error)),
+    })
 }
 
 fn execute<R: BufRead, W: Write + Send>(
@@ -568,7 +592,7 @@ fn execute<R: BufRead, W: Write + Send>(
     output: &mut W,
     mode: OutputMode,
 ) -> Result<Execution, Failure> {
-    let (name, args) = matches.subcommand().ok_or(EngineError { code: ErrorCode::Usage })?;
+    let (name, args) = matches.subcommand().ok_or(EngineError::new(ErrorCode::Usage))?;
     if name == "doctor" {
         return Ok(Execution::Result(doctor::run(engine, matches, mode)?, None));
     }
@@ -578,7 +602,7 @@ fn execute<R: BufRead, W: Write + Send>(
     if name == "completions" {
         let shell = args
             .get_one::<String>("shell")
-            .ok_or(EngineError { code: ErrorCode::Usage })?;
+            .ok_or(EngineError::new(ErrorCode::Usage))?;
         let script = completions::generate(command(), shell);
         return Ok(Execution::Result(
             DispatchResult {
@@ -593,7 +617,7 @@ fn execute<R: BufRead, W: Write + Send>(
     if name == "toggle" {
         explain(
             toggle::run(args.get_one::<PathBuf>("app").map(PathBuf::as_path)),
-            |_| "could not start the Ibis app; install it, or give its location with --app <path>.".into(),
+            |_| "could not prepare the toggle; check that the temporary folder can be written, then try again.".into(),
         )?;
         return Ok(Execution::Result(
             DispatchResult {
@@ -653,16 +677,14 @@ fn execute<R: BufRead, W: Write + Send>(
     // A path named on the command line is the person's own, even if the app chose it too.
     let chosen_in = |path: &PathBuf| app.as_ref().filter(|_| !named_files.contains(path)).map(|app| app.app);
     for path in files {
-        let params =
-            serde_json::to_value(LibrariesRequest::OpenFile { path: path.clone() }).map_err(|_| EngineError {
-                code: ErrorCode::BadInput,
-            })?;
+        let params = serde_json::to_value(LibrariesRequest::OpenFile { path: path.clone() })
+            .map_err(|_| EngineError::new(ErrorCode::BadInput))?;
         let before = engine.libraries()?.libraries;
         let chosen = chosen_in(&path);
         // A path the app chose is never shown: agents read these messages too.
         explain(
             engine.dispatch(Method::Libraries, &params, &cancel),
-            |code| match chosen {
+            |EngineError { code, .. }| match chosen {
                 Some(app) => format!(
                     "cannot open the library chosen in {app}: {} Choose it again there, or {}.",
                     human::file_reason(&path, code),
@@ -691,14 +713,11 @@ fn execute<R: BufRead, W: Write + Send>(
         let params = serde_json::to_value(LibrariesRequest::OpenZotero {
             libraries: Some(zotero),
         })
-        .map_err(|_| EngineError {
-            code: ErrorCode::BadInput,
-        })?;
+        .map_err(|_| EngineError::new(ErrorCode::BadInput))?;
         let before = engine.libraries()?.libraries;
-        explain(
-            engine.dispatch(Method::Libraries, &params, &cancel),
-            human::zotero_failure,
-        )?;
+        explain(engine.dispatch(Method::Libraries, &params, &cancel), |error| {
+            human::zotero_failure(error.code)
+        })?;
         // Each Zotero library is the app's only when the app chose it and the command line did not.
         if let Some(app) = &app {
             for library in engine.libraries()?.libraries {
@@ -739,7 +758,7 @@ fn execute<R: BufRead, W: Write + Send>(
             },
         ));
     }
-    let method = Method::parse(name).map_err(|code| EngineError { code })?;
+    let method = Method::parse(name).map_err(EngineError::new)?;
     let libraries_open = || engine.libraries().is_ok_and(|result| !result.libraries.is_empty());
     let params = match method {
         Method::Libraries => json!({"action":"list"}),
@@ -748,7 +767,7 @@ fn execute<R: BufRead, W: Write + Send>(
             let limit = args.get_one::<usize>("limit").copied().unwrap_or(10);
             let result = explain(
                 engine.dispatch(Method::Search, &json!({"query":query,"limit":limit}), &cancel),
-                |code| match code {
+                |EngineError { code, .. }| match code {
                     ErrorCode::BadInput if limit > 1000 => "--limit must be 1000 or less.".into(),
                     ErrorCode::BadInput => "the search words are too long; use fewer.".into(),
                     code => human::code_sentence(code).into(),
@@ -770,11 +789,13 @@ fn execute<R: BufRead, W: Write + Send>(
                     (json!({"item":{"by":"key","value":key}}), Some(key))
                 }
             };
-            let result = explain(engine.dispatch(method, &params, &cancel), |code| match &key {
-                Some(key) => human::key_failure(key, code, libraries_open()),
-                None if code == ErrorCode::NotFound => "no open library holds the reference that --id names.".into(),
-                None if code == ErrorCode::BadInput => ITEM_REF_HELP.into(),
-                None => human::code_sentence(code).into(),
+            let result = engine.dispatch(method, &params, &cancel).map_err(|error| match &key {
+                Some(key) => key_failure(engine, key, error, libraries_open()),
+                None if error.code == ErrorCode::NotFound => {
+                    Failure::explained(error, "no open library holds the reference that --id names.")
+                }
+                None if error.code == ErrorCode::BadInput => Failure::explained(error, ITEM_REF_HELP),
+                None => Failure::from(error),
             })?;
             return Ok(Execution::Result(result, None));
         }
@@ -782,10 +803,13 @@ fn execute<R: BufRead, W: Write + Send>(
             const REQUEST_HELP: &str = "stdin must hold one CitationRequest JSON object; see: ibis schema cite";
             let params = explain(stdin_json(input), |_| REQUEST_HELP.into())?;
             let citing = request_citing(&params).ok_or_else(|| Failure::new(ErrorCode::BadInput, REQUEST_HELP))?;
-            let result = explain(engine.dispatch(method, &params, &cancel), |code| match code {
-                ErrorCode::BadInput => REQUEST_HELP.into(),
-                code => human::code_sentence(code).into(),
-            })?;
+            let result = explain(
+                engine.dispatch(method, &params, &cancel),
+                |EngineError { code, .. }| match code {
+                    ErrorCode::BadInput => REQUEST_HELP.into(),
+                    code => human::code_sentence(code).into(),
+                },
+            )?;
             return Ok(Execution::Result(result, Some(citing)));
         }
         Method::Cite => {
@@ -799,7 +823,7 @@ fn execute<R: BufRead, W: Write + Send>(
                     "cite" => (KeySyntax::Latex, Some("cite")),
                     "typst" => (KeySyntax::Typst, None),
                     other => (
-                        serde_json::from_value(json!(other)).map_err(|_| EngineError { code: ErrorCode::Usage })?,
+                        serde_json::from_value(json!(other)).map_err(|_| EngineError::new(ErrorCode::Usage))?,
                         None,
                     ),
                 };
@@ -814,7 +838,7 @@ fn execute<R: BufRead, W: Write + Send>(
                 serde_json::from_value(json!(
                     args.get_one::<String>("form").map(String::as_str).unwrap_or("normal")
                 ))
-                .map_err(|_| EngineError { code: ErrorCode::Usage })?
+                .map_err(|_| EngineError::new(ErrorCode::Usage))?
             };
             let keys = key_items(args)?;
             if keys.len() > ibis_core::syntax::MAX_CITATION_ITEMS {
@@ -859,20 +883,35 @@ fn execute<R: BufRead, W: Write + Send>(
                     },
                     &cancel,
                 )
-                .map_err(|error| {
-                    // The engine reports only a code; find the key that caused it.
-                    let culprit = keys.iter().map(|item| &item.key).find_map(|key| {
-                        engine
-                            .dispatch(Method::Show, &json!({"item":{"by":"key","value":key}}), &cancel)
-                            .err()
-                            .map(|failure| (key, failure.code))
-                    });
-                    match culprit {
-                        Some((key, code)) if code == error.code => {
-                            Failure::new(code, human::key_failure(key, code, libraries_open()))
-                        }
-                        _ => Failure::new(error.code, human::code_sentence(error.code)),
-                    }
+                .map_err(|error| match error.reason {
+                    Some(ErrorReason::UnknownStyle) => Failure::explained(
+                        error,
+                        format!(
+                            "there is no style '{}'; list the styles with: ibis styles",
+                            human::field(args.get_one::<String>("style").map_or("", String::as_str))
+                        ),
+                    ),
+                    Some(ErrorReason::UnknownLocale) => Failure::explained(
+                        error,
+                        format!(
+                            "the locale '{}' is not available yet; Ibis formats in en-US for now.",
+                            human::field(args.get_one::<String>("locale").map_or("", String::as_str))
+                        ),
+                    ),
+                    // The error names no key; the first key that fails the same way is the one.
+                    _ => keys
+                        .iter()
+                        .map(|item| &item.key)
+                        .find(|key| {
+                            engine
+                                .dispatch(Method::Show, &json!({"item":{"by":"key","value":key}}), &cancel)
+                                .err()
+                                == Some(error)
+                        })
+                        .map_or_else(
+                            || Failure::from(error),
+                            |key| key_failure(engine, key, error, libraries_open()),
+                        ),
                 })?;
             let result = engine.finalize(DispatchResult::citation(result, keys.len())?)?;
             return Ok(Execution::Result(result, Some(citing)));
@@ -900,7 +939,7 @@ fn execute<R: BufRead, W: Write + Send>(
             };
             let result = explain(
                 engine.dispatch(method, &json!({"method":called,"params":params}), &cancel),
-                |code| match code {
+                |EngineError { code, .. }| match code {
                     ErrorCode::BadInput => params_help(),
                     code => human::code_sentence(code).into(),
                 },
@@ -1019,18 +1058,14 @@ fn method_named(name: &str) -> Result<Method, Failure> {
     })
 }
 fn parse_json(bytes: &[u8]) -> Result<Value, EngineError> {
-    protocol::parse_json(bytes).map_err(|_| EngineError {
-        code: ErrorCode::BadInput,
-    })
+    protocol::parse_json(bytes).map_err(|_| EngineError::new(ErrorCode::BadInput))
 }
 fn stdin_json(input: &mut impl BufRead) -> Result<Value, EngineError> {
     let mut bytes = vec![];
     input
         .take(protocol::MAX_REQUEST_BYTES as u64 + 1)
         .read_to_end(&mut bytes)
-        .map_err(|_| EngineError {
-            code: ErrorCode::BadInput,
-        })?;
+        .map_err(|_| EngineError::new(ErrorCode::BadInput))?;
     parse_json(&bytes)
 }
 fn emit(
@@ -1078,11 +1113,11 @@ fn emit(
             say(failure
                 .message
                 .as_deref()
-                .unwrap_or_else(|| human::code_sentence(failure.code)));
+                .unwrap_or_else(|| human::code_sentence(failure.error.code)));
             if !json {
-                return failure.code.exit_code().value();
+                return failure.error.code.exit_code().value();
             }
-            (failure.code.exit_code(), Envelope::failure(failure.code), None)
+            (failure.error.code.exit_code(), Envelope::failure(failure.error), None)
         }
     };
     let encoded = if json {

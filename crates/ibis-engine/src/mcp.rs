@@ -14,8 +14,8 @@ use crate::request::{ItemSelector, KeyCitationRequest, SearchRequest, ShowReques
 use crate::{Cancellation, Engine, protocol};
 use ibis_core::citable::{citable_fields, is_variable};
 use ibis_core::contract::{
-    CitationForm, CitationItem, CitationRequest, EngineError, ErrorCode, ItemRef, KeySyntax, LibraryObject, OutputSpec,
-    Record,
+    CitationForm, CitationItem, CitationRequest, EngineError, ErrorCode, ErrorReason, ItemRef, KeySyntax,
+    LibraryObject, OutputSpec, Record,
 };
 use serde_json::{Map, Value, json};
 use std::io::{self, BufRead, Read, Write};
@@ -394,9 +394,7 @@ fn call(engine: &Engine, name: &str, arguments: &Value) -> Value {
     let outcome = outcome.and_then(|data| {
         let text = data.to_string();
         if text.len() > MAX_ANSWER {
-            return Err(EngineError {
-                code: ErrorCode::ResourceLimit,
-            });
+            return Err(EngineError::new(ErrorCode::ResourceLimit));
         }
         Ok((text, data))
     });
@@ -406,12 +404,12 @@ fn call(engine: &Engine, name: &str, arguments: &Value) -> Value {
             "structuredContent": data,
             "isError": false
         }),
-        Err(EngineError { code }) => {
+        Err(EngineError { code, reason }) => {
             let name = serde_json::to_value(code).unwrap_or(Value::Null);
             let text = format!(
                 "error: {}. {}",
                 name.as_str().unwrap_or("internal"),
-                tool_error_hint(code)
+                reason.map_or_else(|| tool_error_hint(code), reason_hint)
             );
             json!({"content": [{"type": "text", "text": text}], "isError": true})
         }
@@ -433,16 +431,25 @@ fn tool_error_hint(code: ErrorCode) -> &'static str {
     }
 }
 
-fn internal() -> EngineError {
-    EngineError {
-        code: ErrorCode::Internal,
+/// Fixed advice for a reason the code alone cannot give.
+fn reason_hint(reason: ErrorReason) -> &'static str {
+    match reason {
+        ErrorReason::UnknownStyle => "No style has that id; the styles tool lists them.",
+        ErrorReason::UnknownLocale => "That locale is not available; Ibis formats in en-US for now.",
+        ErrorReason::DuplicateKey => {
+            "The library repeats this citation key, so Ibis skips every entry under it until each has its own key."
+        }
+        ErrorReason::AmbiguousKey => "Several references have this key; cite it by the id search returned.",
+        ErrorReason::AppMissing | ErrorReason::NotIbis | ErrorReason::NoAnswer => tool_error_hint(ErrorCode::Internal),
     }
 }
 
+fn internal() -> EngineError {
+    EngineError::new(ErrorCode::Internal)
+}
+
 fn bad_input() -> EngineError {
-    EngineError {
-        code: ErrorCode::BadInput,
-    }
+    EngineError::new(ErrorCode::BadInput)
 }
 
 fn search(engine: &Engine, arguments: &Value) -> Result<Value, EngineError> {
@@ -498,9 +505,7 @@ fn show(engine: &Engine, arguments: &Value) -> Result<Value, EngineError> {
             Ok(data)
         }
         // Notes, annotations and the rest are not shared with agents.
-        _ => Err(EngineError {
-            code: ErrorCode::NotFound,
-        }),
+        _ => Err(EngineError::new(ErrorCode::NotFound)),
     }
 }
 

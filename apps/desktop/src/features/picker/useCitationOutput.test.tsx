@@ -222,6 +222,20 @@ test("a stale file preview waits for a changed source instead of retrying each u
   }
 });
 
+test("a preview refused by a reload that began first waits instead of failing", async () => {
+  const previewFileCitation = vi.fn<Preview>().mockRejectedValueOnce({ code: "library_loading" }).mockResolvedValue(preview("[@fresh]"));
+  const refreshSnapshot = vi.fn();
+  const initial = options({ previewFileCitation, refreshSnapshot });
+  const { result, rerender } = renderHook(useCitationOutput, { initialProps: initial });
+  await act(async () => { await Promise.resolve(); });
+  expect(result.current.shown).toBeNull();
+  expect(result.current.previewProblem).toBeUndefined();
+  expect(refreshSnapshot).not.toHaveBeenCalled();
+
+  rerender({ ...initial, libraryVersion: 1 });
+  await waitFor(() => expect(result.current.shown).toMatchObject({ text: "[@fresh]" }));
+});
+
 test("a stale file preview recovers when a refreshed search has a new source revision", async () => {
   const previewFileCitation = vi.fn<Preview>()
     .mockRejectedValueOnce({ code: "snapshot_changed" })

@@ -14,6 +14,7 @@ export const settingsApi = {
   windowSize: commands.windowSize,
   setWindowSize: commands.setWindowSize,
   forgetAppOutputs: commands.forgetAppOutputs,
+  restoreAppOutputs: commands.restoreAppOutputs,
   loginItem: commands.loginItem,
   setLoginItem: commands.setLoginItem,
   updateChecks: commands.updateChecks,

@@ -42,12 +42,7 @@ fn errors_are_fixed_and_response_ids_stay_separate() {
     assert_ne!(Some(id.clone()), RequestId::parse(&json!(1)));
     assert_eq!(success(&id, json!([])), json!({"jsonrpc":"2.0","id":"1","result":[]}));
     assert_eq!(
-        failure(
-            Some(&id),
-            EngineError {
-                code: ErrorCode::Cancelled
-            }
-        )["error"]["data"]["code"],
+        failure(Some(&id), EngineError::new(ErrorCode::Cancelled))["error"]["data"]["code"],
         "cancelled"
     );
     for message in [
@@ -72,12 +67,7 @@ fn explicit_null_id_is_a_request_not_a_notification() {
 fn escaped_request_ids_fit_reserved_overhead_and_oversized_ids_are_not_echoed() {
     let accepted = json!("\u{1}".repeat(1024));
     let id = RequestId::parse(&accepted).unwrap_or_else(|| panic!("bounded ID"));
-    let response = failure(
-        Some(&id),
-        EngineError {
-            code: ErrorCode::ResourceLimit,
-        },
-    );
+    let response = failure(Some(&id), EngineError::new(ErrorCode::ResourceLimit));
     assert!(ibis_engine::wire::encode(&response, ibis_engine::protocol::RESPONSE_OVERHEAD).is_ok());
     let rejected = json!({"jsonrpc":"2.0","id":"\u{1}".repeat(1025),"method":"libraries"});
     let Message::Reply(response) = parse_message(&rejected) else {

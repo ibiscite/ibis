@@ -10,7 +10,7 @@ const IDS = [
   ...SETTINGS_IDS,
   "choice-use-file", "choice-back", "choice-use-zotero", "choice-zotero-help", "choice-library-file", "choice-library-file-help", "choice-drop-file", "shelf-references",
   "keys-title", "keys-close", "keys-action", "keys-shortcut", "shortcuts-filter", "shortcuts-global", "shortcuts-system", "shortcuts-empty",
-  "general-small-surprises-label", "general-small-surprises-description", "delight-name", "delight-fact-touch", "delight-fact-scarlet", "delight-fact-mummies", "delight-fact-national", "delight-fact-flight", "delight-birthday", "undo-action", "undo-remove", "undo-removed", "undo-reset-window", "undo-shortcut",
+  "general-small-surprises-label", "general-small-surprises-description", "delight-name", "delight-fact-touch", "delight-fact-scarlet", "delight-fact-mummies", "delight-fact-national", "delight-fact-flight", "delight-birthday", "undo-action", "undo-remove", "undo-removed", "undo-reset-window", "undo-forget-formats", "undo-shortcut",
   "delight-ibis", "delight-thoth", "delight-tip", "delight-library100", "delight-library1000", "delight-library10000", "delight-empty", "delight-loading", "delight-no-library", "delight-zoom", "delight-citation", "delight-anniversary", "delight-about-words", "canvas-hovered", "canvas-pressed", "canvas-focused",
   "settings-pages", "settings-general", "settings-shortcuts", "settings-about",
   "general-login-label", "general-login-description", "general-login-place", "general-login-when",
@@ -19,7 +19,7 @@ const IDS = [
   "general-paste-title", "general-paste-label", "general-paste-key", "general-paste-description", "general-paste-allowed", "general-paste-allowed-note",
   "general-paste-guide-title", "general-paste-guide-why", "general-paste-step-open", "general-paste-step-allow", "general-paste-step-return",
   "general-paste-pane", "general-paste-open", "general-paste-drag", "general-paste-drag-keyboard", "general-paste-drag-fallback",
-  "general-paste-drag-failed", "general-paste-waiting", "general-paste-granted", "general-paste-return-failed", "general-paste-stale",
+  "general-paste-drag-failed", "general-paste-waiting", "general-paste-granted", "general-paste-unreadable", "general-paste-return-failed", "general-paste-stale",
   "general-rows", "general-density-compact", "general-density-comfortable", "general-density-spacious",
   "general-preview", "general-preview-description",
   "shortcuts-open", "shortcuts-description", "shortcuts-record", "shortcuts-use-default", "shortcuts-change", "shortcuts-not-assigned",
@@ -32,7 +32,7 @@ const IDS = [
   "shortcuts-action-choose-source", "shortcuts-action-reveal-source", "shortcuts-action-source", "shortcuts-action-preview", "shortcuts-action-copy", "shortcuts-action-copy-only", "shortcuts-action-add", "shortcuts-action-move", "shortcuts-action-escape",
   "shortcuts-action-format", "shortcuts-action-more", "shortcuts-action-pin", "shortcuts-action-keys", "shortcuts-action-settings", "shortcuts-action-quit",
   "shortcuts-action-menu-move", "shortcuts-action-menu-ends", "shortcuts-action-menu-choose", "shortcuts-action-menu-leave", "shortcuts-or",
-  "about-automatic", "about-automatic-description", "about-check", "about-check-failed", "about-mission", "about-why", "about-updates", "about-links", "about-website", "about-source", "about-problem", "about-licences", "about-free", "about-copied", "about-copy-failed", "about-version", "about-unavailable",
+  "about-automatic", "about-automatic-description", "about-check", "about-checking", "about-check-failed", "about-check-newest", "about-check-busy", "about-mission", "about-why", "about-updates", "about-links", "about-website", "about-source", "about-problem", "about-licences", "about-free", "about-copied", "about-copy-failed", "about-version", "about-unavailable",
 ] as const;
 export type MessageId = typeof IDS[number];
 type Variables = Readonly<Record<string, string | number>>;

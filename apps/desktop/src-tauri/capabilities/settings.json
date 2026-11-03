@@ -18,6 +18,7 @@
     "allow-window-size",
     "allow-set-window-size",
     "allow-forget-app-outputs",
+    "allow-restore-app-outputs",
     "allow-login-item",
     "allow-set-login-item",
     "allow-update-checks",

@@ -63,7 +63,7 @@ enum InstanceAction {
 }
 
 fn is_toggle(args: &[String]) -> bool {
-    matches!(args, [_, command] if command == "toggle")
+    matches!(args, [_, command] if command == "toggle") || ibis_core::toggle::receipt_path(args).is_some()
 }
 
 /// Only a macOS toggle shares the shortcut's main thread; see the callback.
@@ -94,6 +94,14 @@ fn instance_action(args: &[String], visible: impl FnOnce() -> Option<bool>) -> I
 }
 
 fn main() {
+    // Answer `ibis toggle` first, whether this copy opens the picker or hands
+    // the toggle to the one already running.
+    let args: Vec<String> = std::env::args_os()
+        .map(|arg| arg.to_string_lossy().into_owned())
+        .collect();
+    if let Some(receipt) = ibis_core::toggle::receipt_path(&args) {
+        let _ = ibis_core::toggle::sign_receipt(receipt);
+    }
     let mut context = tauri::generate_context!();
     native_feel::configure(&mut context);
     // Started by the login entry: wait in the background for the shortcut.
@@ -277,7 +285,11 @@ fn main() {
             // Complete size and placement while the native window is hidden,
             // before either the panel readiness gate or a window show.
             if let Some(window) = checked(app.get_webview_window("main").ok_or(()), NativeIssue::Window) {
-                if !sizing::prepare(app.handle(), &window, true, false) {
+                // A session with no display yet (remote, headless) can still run:
+                // each opening prepares the frame again.
+                let no_display =
+                    checked(window.available_monitors(), NativeIssue::Monitor).is_some_and(|all| all.is_empty());
+                if !sizing::prepare(app.handle(), &window, true, false) && !no_display {
                     return Err("the picker frame could not be prepared".into());
                 }
                 sizing::watch_display(app.handle(), &window);
@@ -402,10 +414,17 @@ mod toggle_tests {
 
     #[test]
     fn toggle_hides_a_visible_picker_and_shows_a_hidden_or_missing_one() {
-        let args = ["/synthetic/Ibis 文献 app/ibis-desktop".into(), "toggle".into()];
-        assert_eq!(instance_action(&args, || Some(true)), InstanceAction::Hide);
-        assert_eq!(instance_action(&args, || Some(false)), InstanceAction::Show);
-        assert_eq!(instance_action(&args, || None), InstanceAction::Show);
+        let plain: Vec<String> = ["/synthetic/Ibis 文献 app/ibis-desktop", "toggle"]
+            .map(String::from)
+            .to_vec();
+        let receipt: Vec<String> = ["/synthetic/ibis-desktop", "toggle", "--receipt", "/synthetic/receipt"]
+            .map(String::from)
+            .to_vec();
+        for args in [plain, receipt] {
+            assert_eq!(instance_action(&args, || Some(true)), InstanceAction::Hide);
+            assert_eq!(instance_action(&args, || Some(false)), InstanceAction::Show);
+            assert_eq!(instance_action(&args, || None), InstanceAction::Show);
+        }
     }
 
     #[test]

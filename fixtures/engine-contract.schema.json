@@ -502,6 +502,16 @@
       "properties": {
         "code": {
           "$ref": "#/$defs/ErrorCode"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ErrorReason"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "additionalProperties": false,
@@ -534,6 +544,46 @@
         "newer-format",
         "internal",
         "cancelled"
+      ]
+    },
+    "ErrorReason": {
+      "description": "Why a request failed, when the code alone cannot tell a caller what to change.\nFront ends choose their words from it; they never guess a reason from the code.",
+      "oneOf": [
+        {
+          "description": "No style has the requested id; `styles` lists them.",
+          "type": "string",
+          "const": "unknown-style"
+        },
+        {
+          "description": "The requested locale is not available; only en-US is for now.",
+          "type": "string",
+          "const": "unknown-locale"
+        },
+        {
+          "description": "The key is repeated in a library, so every entry under it is skipped.",
+          "type": "string",
+          "const": "duplicate-key"
+        },
+        {
+          "description": "Several references share the key.",
+          "type": "string",
+          "const": "ambiguous-key"
+        },
+        {
+          "description": "The program started as the Ibis app does not exist.",
+          "type": "string",
+          "const": "app-missing"
+        },
+        {
+          "description": "The program started as the Ibis app is not Ibis.",
+          "type": "string",
+          "const": "not-ibis"
+        },
+        {
+          "description": "The Ibis app started but did not confirm the request in time.",
+          "type": "string",
+          "const": "no-answer"
+        }
       ]
     },
     "ExitCode": {
