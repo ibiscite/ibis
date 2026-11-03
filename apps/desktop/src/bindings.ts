@@ -65,6 +65,10 @@ export const commands = {
 	state: ProjectState,
 	/**  Answers come from an earlier read, because the newest one failed. */
 	last_good: boolean,
+	/**  Why the newest read failed, as a sentence ending in a full stop. */
+	reason: string | null,
+	/**  The first lines that could not be read. */
+	damaged_lines: number[],
 } | null>("project_status"),
 	/**  Choose the file with the system dialog; the interface never handles a path. */
 	chooseProject: () => __TAURI_INVOKE<void>("choose_project"),
@@ -793,6 +797,8 @@ export type ProjectKeyState = "in" | "missing" | "could-not-check" | "repeated" 
 export type ProjectMark = {
 	generation: number,
 	state: ProjectKeyState,
+	/**  Where to look in the file, when the state asks a person to look. */
+	lines: number[],
 };
 
 export type ProjectState =
@@ -812,6 +818,10 @@ export type ProjectStatus = {
 	state: ProjectState,
 	/**  Answers come from an earlier read, because the newest one failed. */
 	last_good: boolean,
+	/**  Why the newest read failed, as a sentence ending in a full stop. */
+	reason: string | null,
+	/**  The first lines that could not be read. */
+	damaged_lines: number[],
 };
 
 export type ReceiptSummary = {

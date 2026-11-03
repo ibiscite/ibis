@@ -92,10 +92,7 @@ impl Engine {
             name: name.to_owned(),
             keys,
             problem: read.problem(),
-            damaged_lines: read
-                .bibliography()
-                .map(|good| good.damaged_lines().to_vec())
-                .unwrap_or_default(),
+            damaged_lines: read.damaged_lines().to_vec(),
         })
     }
 

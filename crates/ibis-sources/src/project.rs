@@ -11,6 +11,7 @@ use std::sync::Arc;
 
 use ibis_core::contract::{LibraryObject, Record};
 use ibis_core::model::strip_markup;
+use ibis_core::panic_guard;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -31,6 +32,8 @@ pub enum ProjectProblem {
     Changing,
     /// A project bibliography is BibTeX or BibLaTeX.
     NotBibtex,
+    /// The newest read has parts that cannot be read, and an earlier one did not.
+    Damaged,
 }
 
 impl From<SourceError> for ProjectProblem {
@@ -57,6 +60,8 @@ pub enum Doubt {
     Alias,
     /// The key belongs to an `@xdata` entry, which cannot be cited.
     Helper,
+    /// The key is inside `@comment`. Biber skips it; classic BibTeX reads it.
+    Commented,
 }
 
 /// One emitted key against one bibliography.
@@ -120,11 +125,6 @@ impl ProjectBibliography {
         self.keys.complete()
     }
 
-    /// Lines that could not be read, so a person can find them.
-    pub fn damaged_lines(&self) -> &[usize] {
-        &self.keys.damaged
-    }
-
     fn check(&self, key: &str, library: Option<&Record>) -> KeyCheck {
         let found = self.keys.occurrences(key);
         if let [_, _, ..] = found {
@@ -147,7 +147,13 @@ impl ProjectBibliography {
                     line: self.keys.spelling_line(key).unwrap_or_default(),
                     doubt: Doubt::LetterCase,
                 },
-                None => KeyCheck::Missing,
+                None => match self.keys.commented_line(key) {
+                    Some(line) => KeyCheck::MayNameAnother {
+                        line,
+                        doubt: Doubt::Commented,
+                    },
+                    None => KeyCheck::Missing,
+                },
             };
         };
         let line = occurrence.line;
@@ -175,15 +181,26 @@ impl ProjectBibliography {
 pub struct ProjectRead {
     good: Option<Arc<ProjectBibliography>>,
     problem: Option<ProjectProblem>,
+    /// Unreadable lines of the newest read, which may not be the copy kept.
+    damaged: Vec<usize>,
 }
 
 impl ProjectRead {
     /// Read `path`, keeping `previous`'s good copy if this read fails. An
     /// unchanged file is not parsed again, so opening the picker stays cheap.
     pub fn read(path: &Path, previous: Option<&Self>) -> Self {
+        // The owner of this read waits on it, so no failure may leave it waiting.
+        panic_guard::attempt(|| Self::observe(path, previous))
+            .unwrap_or_else(|_| Self::after(previous, Err(ProjectProblem::Unavailable)))
+    }
+
+    fn observe(path: &Path, previous: Option<&Self>) -> Self {
         let unchanged = previous.and_then(|previous| previous.good.clone());
         match observed_text(path) {
             Ok(text) if unchanged.as_ref().is_some_and(|good| good.digest == digest(&text)) => Self {
+                damaged: unchanged
+                    .as_ref()
+                    .map_or_else(Vec::new, |good| good.keys.damaged.clone()),
                 good: unchanged,
                 problem: None,
             },
@@ -193,14 +210,25 @@ impl ProjectRead {
     }
 
     fn after(previous: Option<&Self>, read: Result<ProjectBibliography, ProjectProblem>) -> Self {
+        let kept = previous
+            .and_then(|previous| previous.good.clone())
+            .filter(|good| good.complete());
         match read {
+            // A damaged read cannot replace a whole one; its lines are still reported.
+            Ok(bibliography) if !bibliography.complete() && kept.is_some() => Self {
+                damaged: bibliography.keys.damaged,
+                good: kept,
+                problem: Some(ProjectProblem::Damaged),
+            },
             Ok(bibliography) => Self {
+                damaged: bibliography.keys.damaged.clone(),
                 good: Some(Arc::new(bibliography)),
                 problem: None,
             },
             Err(problem) => Self {
                 good: previous.and_then(|previous| previous.good.clone()),
                 problem: Some(problem),
+                damaged: vec![],
             },
         }
     }
@@ -213,6 +241,11 @@ impl ProjectRead {
             _ => false,
         };
         same_file && self.problem == other.problem
+    }
+
+    /// Lines of the newest read that could not be read, so a person can find them.
+    pub fn damaged_lines(&self) -> &[usize] {
+        &self.damaged
     }
 
     pub fn problem(&self) -> Option<ProjectProblem> {
@@ -363,9 +396,17 @@ mod tests {
             "taylor2026, in prose\n@comment{@book{commented2026,title={Hidden}}}\n@string{strung2026 = {A}}\n\
              @book{real2026,note={see taylor2026}}\n",
         );
-        for key in ["taylor2026", "commented2026", "strung2026"] {
+        for key in ["taylor2026", "strung2026"] {
             assert_eq!(project.check(key, None), Missing, "{key}");
         }
+        // Biber skips it and classic BibTeX reads it, so neither answer is safe.
+        assert_eq!(
+            project.check("commented2026", None),
+            MayNameAnother {
+                line: 2,
+                doubt: Doubt::Commented
+            }
+        );
         assert_eq!(project.check("real2026", None), In { line: 4 });
     }
 
@@ -383,6 +424,7 @@ mod tests {
             "@string{broken = }\n@book{taylor2026,title={Synthetic signals}}\n",
         ] {
             let project = read(damaged);
+            assert!(!project.damaged_lines().is_empty() || project.bibliography().is_some());
             assert!(!project.bibliography().is_some_and(ProjectBibliography::complete));
             assert_eq!(project.check("okafor2018", None), CouldNotCheck, "{damaged}");
             assert_eq!(project.check("taylor2026", None), CouldNotCheck, "{damaged}");
@@ -392,6 +434,42 @@ mod tests {
             Repeated { lines: vec![1, 2] },
             "a repeat stays true whatever else is damaged"
         );
+    }
+
+    #[test]
+    fn an_entry_the_reader_does_not_recognise_means_nothing_can_be_called_missing() {
+        for text in [
+            "@my-type{hyphen2026,title={A}}\n@book{real2026,}\n",
+            "@book{real2026,}\n@ article{spaced2026,title={B}}\n",
+            "@book{real2026,}\n\n@typé{accent2026,title={C}}\n",
+        ] {
+            let project = read(text);
+            assert_eq!(project.check("okafor2018", None), CouldNotCheck, "{text}");
+        }
+        let lines = read("@book{a,}\n\n@my-type{b,}\n");
+        assert_eq!(lines.damaged_lines(), [3]);
+        // Prose with an address and no entry shape stays prose.
+        let prose = read("Written by me@invented.example, 2026.\n@book{a,}\n");
+        assert_eq!(prose.check("okafor2018", None), Missing);
+    }
+
+    #[test]
+    fn a_key_with_no_comma_after_it_is_not_an_entry() {
+        let project = read("@book{taylor2026 title={Synthetic signals}}\n");
+        assert_eq!(project.check("taylor2026", None), CouldNotCheck);
+        assert_eq!(
+            read("@book{ taylor2026 , title={A}}\n").check("taylor2026", None),
+            In { line: 1 }
+        );
+        assert_eq!(read("@book{taylor2026}\n").check("taylor2026", None), In { line: 1 });
+    }
+
+    #[test]
+    fn line_endings_and_parentheses_read_as_any_other_entry() {
+        let project = read("@book(paren2026,\r\n  title = {A}\r\n)\r\n\r\n@BOOK{upper2026,}\r\n");
+        assert_eq!(project.check("paren2026", None), In { line: 1 });
+        assert_eq!(project.check("upper2026", None), In { line: 5 });
+        assert_eq!(project.check("okafor2018", None), Missing);
     }
 
     #[test]
@@ -455,6 +533,18 @@ mod tests {
         assert_eq!(failed.check("okafor2018", None), CouldNotCheck);
 
         assert!(!failed.same_answers(&good), "the label changes what is shown");
+        let damaged = ProjectRead::after(
+            Some(&good),
+            Ok(ProjectBibliography::parsed(
+                "@book{taylor2026,}\n@article{broken,title={Never closed\n",
+            )),
+        );
+        assert!(damaged.last_good(), "a damaged read cannot replace a whole one");
+        assert_eq!(damaged.problem(), Some(ProjectProblem::Damaged));
+        assert_eq!(damaged.damaged_lines(), [2]);
+        assert_eq!(damaged.check("morgan2025", None), In { line: 3 }, "from the copy kept");
+        assert_eq!(damaged.check("okafor2018", None), CouldNotCheck);
+
         assert!(failed.same_answers(&failed.clone()));
 
         // A later good read clears the label; a first failure has nothing to keep.
@@ -516,12 +606,33 @@ mod tests {
                 EntryRefusal::Dependency,
             ),
             ("@book{a,crossref=m}\n@string{m={x}}\n", EntryRefusal::Dependency),
+            ("@book{a,xref={gone}}\n", EntryRefusal::Dependency),
+            ("@set{a,entryset={gone}}\n", EntryRefusal::Dependency),
+            (
+                "@string{broken = }\n@string{m={x}}\n@book{a,publisher=m}\n",
+                EntryRefusal::Dependency,
+            ),
+            (
+                "@book{a,crossref={b}}\n@book{b,title={Never closed\n",
+                EntryRefusal::Dependency,
+            ),
+            ("@book{a,}\n@book{a,title={Never closed\n", EntryRefusal::Repeated),
             ("@book{a,}\n@book{a,}\n", EntryRefusal::Repeated),
             ("@book{b,}\n", EntryRefusal::Changed),
             ("@xdata{a,}\n", EntryRefusal::Changed),
         ] {
             assert_eq!(entry_in(text, "a"), Err(refusal), "{text}");
         }
+    }
+
+    #[test]
+    fn a_set_comes_with_its_members_and_a_related_entry_with_its_target() {
+        let text = "@set{a,entryset={b,c}}\n@book{b,}\n@book{c,related={d}}\n@book{d,}\n@book{e,}\n";
+        let entry = entry_in(text, "a").unwrap_or_else(|problem| panic!("{problem:?}"));
+        for needed in ["@set{a,", "@book{b,", "@book{c,", "@book{d,"] {
+            assert!(entry.contains(needed), "{entry}");
+        }
+        assert!(!entry.contains("@book{e,"), "{entry}");
     }
 
     #[test]

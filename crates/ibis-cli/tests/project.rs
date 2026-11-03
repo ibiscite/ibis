@@ -133,6 +133,19 @@ fn a_missing_entry_comes_as_written_with_its_key() -> Result {
     Ok(())
 }
 
+#[cfg(unix)]
+#[test]
+fn an_entry_comes_from_a_library_opened_through_a_link() -> Result {
+    let files = Files::new("linked")?;
+    let link = files.dir.join("link.bib");
+    let _ = std::fs::remove_file(&link);
+    std::os::unix::fs::symlink(files.dir.join("refs.bib"), &link)?;
+    let (code, text, errors) = run(&["entry", "okafor2018", "--file", &link.to_string_lossy()])?;
+    assert_eq!(code, 0, "{text}{errors}");
+    assert!(text.contains("@book{okafor2018,"), "{text}");
+    Ok(())
+}
+
 #[test]
 fn an_entry_that_cannot_come_says_how_to_get_it() -> Result {
     let files = Files::new("refused")?;

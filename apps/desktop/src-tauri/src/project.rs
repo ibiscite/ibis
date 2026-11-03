@@ -9,7 +9,7 @@
 use std::path::PathBuf;
 use std::sync::Mutex;
 
-use ibis_engine::{EntryRefusal, EntryResult, KeyCheck, ProjectRead, project_name};
+use ibis_engine::{EntryRefusal, EntryResult, KeyCheck, ProjectProblem, ProjectRead, project_name};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_dialog::DialogExt;
@@ -41,6 +41,10 @@ pub(crate) struct ProjectStatus {
     pub(crate) state: ProjectState,
     /// Answers come from an earlier read, because the newest one failed.
     pub(crate) last_good: bool,
+    /// Why the newest read failed, as a sentence ending in a full stop.
+    pub(crate) reason: Option<String>,
+    /// The first lines that could not be read.
+    pub(crate) damaged_lines: Vec<u32>,
 }
 
 /// The newest read of the current choice, for one reply to use throughout.
@@ -126,6 +130,14 @@ impl ProjectBibliography {
             name,
             state,
             last_good,
+            reason: slot
+                .read
+                .as_ref()
+                .and_then(ProjectRead::problem)
+                .map(|problem| reason(problem).to_owned()),
+            damaged_lines: slot.read.as_ref().map_or_else(Vec::new, |read| {
+                read.damaged_lines().iter().take(5).map(|line| *line as u32).collect()
+            }),
         })
     }
 
@@ -141,6 +153,18 @@ impl ProjectBibliography {
 
     fn is_current(&self, generation: u32) -> bool {
         self.lock().generation == generation
+    }
+}
+
+fn reason(problem: ProjectProblem) -> &'static str {
+    match problem {
+        ProjectProblem::Unavailable => "It is not there, or not on this computer yet.",
+        ProjectProblem::NotAFile => "It is not a file.",
+        ProjectProblem::TooLarge => "It is larger than 64 MiB.",
+        ProjectProblem::NotUtf8 => "It is not UTF-8 text.",
+        ProjectProblem::Changing => "It is still changing.",
+        ProjectProblem::NotBibtex => "It must be a BibTeX or BibLaTeX file.",
+        ProjectProblem::Damaged => "Part of it cannot be read.",
     }
 }
 
@@ -393,6 +417,47 @@ mod tests {
             ],
             "the key that is in the file adds nothing"
         );
+    }
+
+    #[test]
+    fn copying_reports_what_the_preview_warned_about_for_key_outputs_only() {
+        use crate::library::engine_file::FileLibrary;
+        use ibis_core::cite::KeyFormat;
+        use ibis_core::settings::CitationStyle;
+        use ibis_engine::Cancellation;
+        let (_library_dir, library) = written(
+            "refs.bib",
+            "@book{gone2026,title={Gone},author={Lee, Kim},year={2026}}\n",
+        );
+        let (_project_dir, project) = written("thesis.bib", A);
+        let slot = ProjectBibliography::default();
+        let ticket = slot.choose(Some(project)).unwrap_or_else(|| panic!("a ticket"));
+        slot.finish(ticket.generation, read(&ticket));
+        let current = slot.current();
+
+        let file = FileLibrary::open(&library).unwrap_or_else(|_| panic!("a library"));
+        let query = serde_json::from_value(serde_json::json!({"text":"gone","interpret_locators":false}))
+            .unwrap_or_else(|error| panic!("{error}"));
+        let reply = file
+            .search(&query, 10, None, &Cancellation::default())
+            .unwrap_or_else(|error| panic!("{error}"));
+        let rows = serde_json::to_value(&reply).unwrap_or_else(|error| panic!("{error}"));
+        let copied = |style: Option<CitationStyle>| {
+            let selection = serde_json::from_value(serde_json::json!({
+                "id": rows["results"][0]["id"], "cite": rows["results"][0]["cite"], "locator": null
+            }))
+            .unwrap_or_else(|error| panic!("{error}"));
+            let preview = file
+                .preview(file.reserve_preview(), vec![selection], KeyFormat::Pandoc, style)
+                .unwrap_or_else(|_| panic!("a preview"));
+            let mut copied = file
+                .copy(&preview.ticket, &preview.content_hash, |_| Ok(()))
+                .unwrap_or_else(|_| panic!("a copy"));
+            file.warn_project(&mut copied, current.as_ref());
+            copied.warnings
+        };
+        assert_eq!(copied(None), ["gone2026 is missing from thesis.bib."]);
+        assert_eq!(copied(Some(CitationStyle::Apa)), Vec::<String>::new());
     }
 
     #[test]

@@ -474,6 +474,14 @@ impl FileLibrary {
             .collect()
     }
 
+    /// Copying reports the same keys its preview warned about, so a citation
+    /// is never delivered past a warning the person may not have seen.
+    pub(crate) fn warn_project(&self, copied: &mut crate::copy::Copied, project: Option<&crate::project::Current>) {
+        if let Some(project) = project.filter(|_| copied.key_output) {
+            copied.warnings.extend(self.project_warnings(&copied.cited, project));
+        }
+    }
+
     pub(crate) fn original_entry(&self, id: &ItemRef) -> Result<ibis_engine::EntryResult, String> {
         self.engine
             .original_entry(id, &Cancellation::default())
@@ -839,6 +847,8 @@ impl FileLibrary {
             text: citation.result().text.clone(),
             warnings: citation_warnings_named(citation),
             delivery: None,
+            cited: citation.items(),
+            key_output: matches!(citation.request_output(), OutputSpec::Key { .. }),
         })
     }
 }

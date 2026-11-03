@@ -168,14 +168,16 @@ at least one is not. `--json` gives each key's `check` with its `status` and lin
 
 The file stays out of the libraries that are searched and is never changed. It is read
 twice, so a file still being written cannot pass. "Missing" needs a complete scan of
-that read: unreadable, damaged or changing data is "Couldn't check". A key differing only
-by letter case, an `ids` alias and an `@xdata` key are each a doubt, not a match. Name a
-library too and an entry that disagrees with it on DOI, title or year is one as well.
+that read: unreadable, damaged or changing data is "Couldn't check", as is any text that
+looks like an entry Ibis does not recognise, such as `@my-type{…}`. A key differing only by
+letter case, an `ids` alias, an `@xdata` key and a key inside `@comment` (Biber skips it;
+classic BibTeX reads it) are each a doubt, not a match. Name a library too and an entry
+that disagrees with it on DOI, title or year is one as well.
 "In thesis.bib" means the key is written there. It does not show that the fields match,
 that the export is current or that the document compiles.
 
 `ibis entry smith2020 --file refs.bib` prints the original entry, key included, with
-the `@string`, `crossref` and `xdata` it needs, and nothing rewritten. Check it before adding
+the `@string`, `crossref`, `xdata`, `xref`, `related` and `entryset` it needs, and nothing rewritten. Check it before adding
 it to a shared file, because the original can hold fields such as `file` or `note`. It
 is refused, with how to export it instead, when the reference has no BibTeX original
 (Zotero, CSL-JSON), the file changed since it was read, the key repeats, or a dependency

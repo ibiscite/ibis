@@ -146,18 +146,20 @@ export const densityNames = {
 } as const;
 
 export const pickerText = {
-  projectState: (state: ProjectKeyState, name: string, lastGood: boolean) => {
+  projectState: (state: ProjectKeyState, name: string, lastGood: boolean, lines: number[] = []) => {
     const file = isolate(name);
     const text = { in: `In ${file}`, missing: `Missing from ${file}`, "could-not-check": `Couldn't check ${file}`,
       repeated: "Key appears more than once", "may-name-another": "Key may name another reference" }[state];
-    return lastGood ? `${text} (last good copy)` : text;
+    const where = lines.length ? ` (${lines.length === 1 ? "line" : "lines"} ${lines.join(", ")})` : "";
+    return lastGood ? `${text}${where} (last good copy)` : `${text}${where}`;
   },
   /** The file the rows are marked against, and what is wrong with it if anything. */
-  projectDetail: ({ name, state, last_good }: ProjectStatus) => {
+  projectDetail: ({ name, state, last_good, reason, damaged_lines: lines }: ProjectStatus) => {
     const file = isolate(name);
+    const where = lines.length ? ` Check ${lines.length === 1 ? "line" : "lines"} ${lines.join(", ")}.` : "";
     if (state === "reading") return `Reading ${file}`;
-    if (state === "damaged") return `Couldn't read all of ${file}, so nothing is called missing`;
-    if (state === "failed") return last_good ? `Couldn't read ${file}; using the last good copy` : `Couldn't read ${file}`;
+    if (state === "damaged") return `Couldn't read all of ${file}, so nothing is called missing.${where}`;
+    if (state === "failed") return `Couldn't read ${file}${last_good ? "; using the last good copy" : ""}. ${reason ?? ""}${where}`.trim();
     return `Checking against ${file}`;
   },
   chooseProject: "Check Against a Project Bibliography…",
@@ -165,7 +167,7 @@ export const pickerText = {
   stopProject: (name: string) => `Stop Checking ${isolate(name)}`,
   copyProjectEntry: (name: string) => `Copy Entry for ${isolate(name)}`,
   projectEntry: (outcome: EntryCopy, key: string, name: string) => ({
-    copied: `Copied the entry for ${isolate(key)}. Add it to ${isolate(name)}.`,
+    copied: `Copied the entry for ${isolate(key)} as your file has it, including any file or note field. Check it, then add it to ${isolate(name)}.`,
     "no-original": "This reference has no original BibTeX entry here. Export it from your reference manager in your project's dialect, keeping its key.",
     changed: "The library or the bibliography changed. Search again, then try again.",
     repeated: "The library file repeats this key, so Ibis can't tell which entry to copy.",

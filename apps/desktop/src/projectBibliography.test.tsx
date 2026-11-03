@@ -3,22 +3,23 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
 import type { EntryCopy, ProjectStatus } from "./api";
-import { backend, chooseFromMore, resetApp, result } from "./testing/app";
+import { backend, chooseFromMore, receipt, resetApp, result } from "./testing/app";
 
 afterEach(resetApp);
 
-const file = (over: Partial<ProjectStatus> = {}): ProjectStatus => ({ generation: 1, name: "thesis.bib", state: "ready", last_good: false, ...over });
+const file = (over: Partial<ProjectStatus> = {}): ProjectStatus => ({ generation: 1, name: "thesis.bib", state: "ready", last_good: false, reason: null, damaged_lines: [], ...over });
 /** Names sit in invisible direction marks; a person reads the words between. */
 const plain = (text: string | null | undefined) => (text ?? "").replace(/[\u2068\u2069]/g, "");
 const shownRow = () => plain(screen.getByRole("option").textContent);
-const row = (state: string, generation = 1) => ({ ...result("okafor2018", "Invented seas"), project: { generation, state } });
+const row = (state: string, generation = 1, lines: number[] = []) => ({ ...result("okafor2018", "Invented seas"), project: { generation, state, lines } });
 
 /** The picker on one searched row, with `status` as the native slot. */
+let called: string[] = [];
+const calls = (command: string) => called.filter((name) => name === command).length;
 function picker(state: string, status: () => ProjectStatus | null, handlers: Parameters<typeof backend>[0] = {}) {
-  const calls = backend({ project_status: status, search: () => [row(state)], ...handlers });
+  called = backend({ project_status: status, search: () => [row(state)], ...handlers });
   render(<App />);
   fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "seas" } });
-  return calls;
 }
 
 test.each([
@@ -27,6 +28,26 @@ test.each([
 ])("a row in the %s state says so in words", async (state, words) => {
   picker(state, () => file());
   await waitFor(() => expect(shownRow()).toContain(words));
+});
+
+test("a repeated key says where to look in the file", async () => {
+  backend({ project_status: () => file(), search: () => [row("repeated", 1, [12, 88])] });
+  render(<App />);
+  fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "seas" } });
+  await waitFor(() => expect(shownRow()).toContain("Key appears more than once (lines 12, 88)"));
+});
+
+test("a citation with a warning stays open and says why instead of pasting", async () => {
+  const warning = "okafor2018 is missing from thesis.bib.";
+  picker("missing", () => file(), {
+    preview_file_citation: () => receipt("[@okafor2018]", null, [warning]),
+    copy_file_citation: () => ({ text: "[@okafor2018]", warnings: [warning] }),
+  });
+  await waitFor(() => expect(shownRow()).toContain("Missing from thesis.bib"));
+  await waitFor(() => expect(document.body.textContent).toContain("[@okafor2018]"));
+  fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
+  await waitFor(() => expect(document.body.textContent).toContain(warning));
+  expect(calls("hide_picker")).toBe(0);
 });
 
 test("a failed read keeps its last good copy, labelled", async () => {
@@ -59,11 +80,13 @@ test("a row answers only for the choice it was marked against, across a change o
 test("a status read that finishes after a newer one cannot replace it", async () => {
   let release: (status: ProjectStatus) => void = () => {};
   const answers: (() => Promise<ProjectStatus> | ProjectStatus)[] = [
-    () => file(), () => new Promise((resolve) => { release = resolve; }), () => file({ generation: 3, name: "newest.bib" }),
+    // The hook reads at mount and again once its listener exists.
+    () => file(), () => file(), () => new Promise((resolve) => { release = resolve; }), () => file({ generation: 3, name: "newest.bib" }),
   ];
   backend({ project_status: () => answers.shift()?.() ?? null, search: () => [row("in", 3)] });
   render(<App />);
   fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "seas" } });
+  await waitFor(() => expect(answers).toHaveLength(2));
   await act(() => emit("project:changed"));
   await act(() => emit("project:changed"));
   await waitFor(() => expect(shownRow()).toContain("In newest.bib"));
@@ -80,7 +103,7 @@ test("the status survives the picker closing and opening again", async () => {
 });
 
 test.each<[EntryCopy, RegExp]>([
-  ["copied", /Copied the entry for .*okafor2018.*Add it to .*thesis\.bib/],
+  ["copied", /Copied the entry for okafor2018 as your file has it, including any file or note field\. Check it, then add it to thesis\.bib/],
   ["no-original", /Export it from your reference manager/],
   ["dependency", /can't come with it/],
   ["changed", /Search again, then try again/],
@@ -107,12 +130,19 @@ test("More says what is wrong with the file, and offers the choice when none is 
   picker("could-not-check", () => status);
   await waitFor(() => expect(shownRow()).toContain("Couldn't check thesis.bib"));
   fireEvent.click(screen.getByRole("button", { name: /^More/ }));
-  expect(plain((await screen.findByRole("menu")).textContent)).toContain("Couldn't read all of thesis.bib");
+  expect(plain((await screen.findByRole("menu")).textContent)).toContain("Couldn't read all of thesis.bib, so nothing is called missing.");
   fireEvent.keyDown(await screen.findByRole("menu"), { key: "Escape" });
   status = null;
   await act(() => emit("project:changed"));
   await waitFor(() => expect(shownRow()).not.toContain("thesis.bib"));
   await chooseFromMore("Check Against a Project Bibliography…");
+});
+
+test("More names the failed read and the lines to look at", async () => {
+  picker("could-not-check", () => file({ state: "failed", last_good: true, reason: "Part of it cannot be read.", damaged_lines: [7] }));
+  await waitFor(() => expect(shownRow()).toContain("Couldn't check thesis.bib (last good copy)"));
+  fireEvent.click(screen.getByRole("button", { name: /^More/ }));
+  expect(plain((await screen.findByRole("menu")).textContent)).toContain("Couldn't read thesis.bib; using the last good copy. Part of it cannot be read. Check line 7.");
 });
 
 test("a choice that could not be saved says so", async () => {

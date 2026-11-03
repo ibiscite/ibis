@@ -220,7 +220,8 @@ pub fn original_entry(
         return Err(EntryRefusal::NoOriginal);
     }
     let observation = stable_observation(path).map_err(|_| EntryRefusal::Changed)?;
-    let loaded = parse(path, &observation.text, false, None).map_err(|_| EntryRefusal::Changed)?;
+    // Parsed from the canonical path, as the library was, so the item's ID matches.
+    let loaded = parse(&observation.source, &observation.text, false, None).map_err(|_| EntryRefusal::Changed)?;
     let current = loaded.snapshot.get(item).ok_or(EntryRefusal::Changed)?;
     if current.fingerprints.cite != *cite {
         return Err(EntryRefusal::Changed);

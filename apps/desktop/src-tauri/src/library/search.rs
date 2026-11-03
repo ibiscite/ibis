@@ -24,23 +24,29 @@ pub(crate) enum ProjectKeyState {
     MayNameAnother,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, specta::Type)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, specta::Type)]
 pub(crate) struct ProjectMark {
     pub(crate) generation: u32,
     pub(crate) state: ProjectKeyState,
+    /// Where to look in the file, when the state asks a person to look.
+    pub(crate) lines: Vec<u32>,
 }
 
 impl ProjectMark {
     pub(crate) fn new(generation: u32, check: &ibis_engine::KeyCheck) -> Self {
         use ibis_engine::KeyCheck;
-        let state = match check {
-            KeyCheck::In { .. } => ProjectKeyState::In,
-            KeyCheck::Missing => ProjectKeyState::Missing,
-            KeyCheck::CouldNotCheck => ProjectKeyState::CouldNotCheck,
-            KeyCheck::Repeated { .. } => ProjectKeyState::Repeated,
-            KeyCheck::MayNameAnother { .. } => ProjectKeyState::MayNameAnother,
+        let (state, lines) = match check {
+            KeyCheck::In { .. } => (ProjectKeyState::In, vec![]),
+            KeyCheck::Missing => (ProjectKeyState::Missing, vec![]),
+            KeyCheck::CouldNotCheck => (ProjectKeyState::CouldNotCheck, vec![]),
+            KeyCheck::Repeated { lines } => (ProjectKeyState::Repeated, lines.clone()),
+            KeyCheck::MayNameAnother { line, .. } => (ProjectKeyState::MayNameAnother, vec![*line]),
         };
-        Self { generation, state }
+        Self {
+            generation,
+            state,
+            lines: lines.into_iter().map(|line| line as u32).collect(),
+        }
     }
 }
 

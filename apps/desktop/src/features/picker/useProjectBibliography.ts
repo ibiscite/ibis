@@ -22,7 +22,9 @@ export function useProjectBibliography(api: PickerApi, report: ReturnType<typeof
   }, [projectStatus, report]);
   useEffect(() => {
     read();
+    // A read that finished before this listener existed sent its event to nobody.
     const changed = onProjectChanged?.(read);
+    void changed?.then(read);
     const notSaved = onProjectNotSaved?.(() => report("project"));
     return () => {
       reading.current += 1;
@@ -51,5 +53,5 @@ export function useProjectBibliography(api: PickerApi, report: ReturnType<typeof
 /** A row's mark, when it belongs to the bibliography on screen and the output uses keys. */
 export function projectText(row: SearchResult, status: ProjectStatus | null): string | null {
   return row.project && status && row.project.generation === status.generation
-    ? pickerText.projectState(row.project.state, status.name, status.last_good) : null;
+    ? pickerText.projectState(row.project.state, status.name, status.last_good, row.project.lines) : null;
 }

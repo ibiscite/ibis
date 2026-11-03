@@ -21,6 +21,12 @@ pub(crate) struct Copied {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[specta(optional)]
     pub(crate) delivery: Option<u32>,
+    /// What was cited; stays on this side of the bridge.
+    #[serde(skip)]
+    pub(crate) cited: Vec<ibis_core::contract::ItemRef>,
+    /// The output emits citation keys, so a project bibliography applies.
+    #[serde(skip)]
+    pub(crate) key_output: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize, specta::Type)]
@@ -232,6 +238,7 @@ pub(crate) fn copy_file_citation(
     content_hash: String,
     app: AppHandle,
     library: State<'_, Mutex<Library>>,
+    project: State<'_, crate::project::ProjectBibliography>,
 ) -> Result<Copied, CommandError> {
     #[cfg(target_os = "windows")]
     let attempt = crate::paste::begin_copy(&app);
@@ -258,5 +265,7 @@ pub(crate) fn copy_file_citation(
         Ok(())
     })?;
     copied.delivery = delivery;
+    // As at the preview: a key not plainly in the file keeps the picker open and says why.
+    file.warn_project(&mut copied, project.current().as_ref());
     Ok(copied)
 }

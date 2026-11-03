@@ -127,6 +127,7 @@ fn project_report(data: &Value) -> Option<String> {
             ProjectProblem::NotUtf8 => "the file is not UTF-8 text",
             ProjectProblem::Changing => "the file is still changing",
             ProjectProblem::NotBibtex => "a project bibliography must be a BibTeX or BibLaTeX file",
+            ProjectProblem::Damaged => "part of the file cannot be read",
         };
         report.push(format!("Couldn't read {name}: {why}."));
     }
@@ -149,6 +150,7 @@ fn project_report(data: &Value) -> Option<String> {
                     Doubt::LetterCase => "a key differs only by letter case",
                     Doubt::Alias => "it is another entry's alias",
                     Doubt::Helper => "it belongs to an @xdata entry, which cannot be cited",
+                    Doubt::Commented => "it is inside @comment, which some tools still read",
                 }
             ),
         };

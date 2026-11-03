@@ -25,6 +25,9 @@ pub(crate) struct KeyScan {
     spellings: HashMap<String, BTreeSet<String>>,
     /// Keys named by a BibLaTeX `ids` field, which Biber also resolves.
     aliases: HashMap<String, usize>,
+    /// Keys of entries inside `@comment`. Biber skips them; classic BibTeX
+    /// ignores only the word `@comment` and reads what follows.
+    commented: HashMap<String, usize>,
     /// Lines the scan could not read, in file order.
     pub damaged: Vec<usize>,
     /// The scan stopped before the end of the file.
@@ -53,6 +56,9 @@ impl KeyScan {
     pub fn alias_line(&self, key: &str) -> Option<usize> {
         self.aliases.get(key).copied()
     }
+    pub fn commented_line(&self, key: &str) -> Option<usize> {
+        self.commented.get(key).copied()
+    }
     pub fn complete(&self) -> bool {
         !self.limited && self.damaged.is_empty()
     }
@@ -75,12 +81,50 @@ fn keys_in(value: &str) -> impl Iterator<Item = &str> {
     value.split(',').map(str::trim).filter(|key| !key.is_empty())
 }
 
+/// Whether the key ends as BibTeX needs: at a comma, or at the end of the entry.
+/// The parser takes `@book{k title={x}}` as key `k`; BibTeX refuses it.
+fn key_is_delimited(block: &Block<'_>) -> bool {
+    let rest = block.body.trim_start();
+    let after = rest
+        .find(|c: char| c == ',' || c.is_whitespace())
+        .map_or("", |end| &rest[end..]);
+    let after = after.trim_start();
+    after.is_empty() || after.starts_with(',')
+}
+
+/// Lines in text between blocks that look like an entry the lexer does not
+/// recognise, such as `@my-type{k,}` or `@ article{k,}`. Tools differ on these,
+/// so no key can be proved absent while one is there.
+fn unrecognised_entries(gap: &str, first_line: usize) -> Vec<usize> {
+    let mut lines = vec![];
+    for (at, _) in gap.match_indices('@') {
+        let rest = gap[at + 1..].trim_start();
+        let kind = rest
+            .find(|c: char| c.is_whitespace() || "{}(),=\"#%@".contains(c))
+            .unwrap_or(rest.len());
+        let after = rest[kind..].trim_start();
+        if kind > 0 && (after.starts_with('{') || after.starts_with('(')) {
+            lines.push(first_line + gap[..at].matches('\n').count());
+        }
+    }
+    lines
+}
+
 pub(crate) fn scan(text: &str) -> KeyScan {
     let mut scan = KeyScan::default();
     let budget = Budget::for_input(text.len());
     let (blocks, limited) = split_blocks(text);
     scan.limited = limited;
+    let offset = |inner: &str| inner.as_ptr() as usize - text.as_ptr() as usize;
+    let mut end = 0;
+    let mut line = 1;
     for block in &blocks {
+        let start = offset(block.text);
+        if let Some(gap) = text.get(end..start) {
+            scan.damaged.extend(unrecognised_entries(gap, line));
+        }
+        end = start + block.text.len();
+        line = block.line + block.text.matches('\n').count();
         if !budget.charge(block.text.len().saturating_add(256)) {
             scan.limited = true;
             break;
@@ -90,14 +134,29 @@ pub(crate) fn scan(text: &str) -> KeyScan {
             continue;
         }
         match block.kind.as_str() {
-            "comment" | "preamble" => {}
+            "comment" => {
+                for inner in split_blocks(block.body).0.iter().filter(|inner| inner.complete) {
+                    if !matches!(inner.kind.as_str(), "comment" | "preamble" | "string")
+                        && let Ok(entry) = parse_entry(inner)
+                    {
+                        let line = block.line + entry.line - 1;
+                        scan.commented.entry(entry.key).or_insert(line);
+                    }
+                }
+            }
+            "preamble" => {}
             "string" if parse_string(block).is_none() => scan.damaged.push(block.line),
             "string" => {}
             _ => match parse_entry(block) {
-                Ok(entry) => record(&mut scan, &entry),
-                Err(_) => scan.damaged.push(block.line),
+                Ok(entry) if key_is_delimited(block) => record(&mut scan, &entry),
+                _ => scan.damaged.push(block.line),
             },
         }
+    }
+    if !scan.limited
+        && let Some(gap) = text.get(end..)
+    {
+        scan.damaged.extend(unrecognised_entries(gap, line));
     }
     scan
 }
@@ -148,29 +207,39 @@ struct Definition<'b, 's> {
 }
 
 /// One entry exactly as written, after the `@string`s it uses and before the
-/// `crossref` and `xdata` entries it inherits from, as BibTeX needs them.
+/// entries it inherits from or names, as BibTeX needs them.
 /// Every line is original text: nothing is rewritten, so the key stays the same.
 pub(crate) fn entry_text(text: &str, key: &str) -> Result<String, EntryProblem> {
-    let (blocks, _) = split_blocks(text);
+    let (blocks, limited) = split_blocks(text);
+    if limited {
+        return Err(EntryProblem::Dependency);
+    }
     let mut entries: HashMap<String, Vec<(usize, RawEntry<'_>)>> = HashMap::new();
     let mut definitions: HashMap<String, Vec<Definition<'_, '_>>> = HashMap::new();
-    for (index, block) in blocks.iter().enumerate().filter(|(_, block)| block.complete) {
+    // What a damaged block might have been: a repeat of a key, or any macro.
+    let mut damaged_keys = BTreeSet::new();
+    let mut damaged_string = false;
+    for (index, block) in blocks.iter().enumerate() {
         match block.kind.as_str() {
             "comment" | "preamble" => {}
-            "string" => {
-                if let Some((name, parts)) = parse_string(block) {
-                    definitions
-                        .entry(name)
-                        .or_default()
-                        .push(Definition { index, block, parts });
+            "string" => match parse_string(block).filter(|_| block.complete) {
+                Some((name, parts)) => definitions
+                    .entry(name)
+                    .or_default()
+                    .push(Definition { index, block, parts }),
+                None => damaged_string = true,
+            },
+            _ => match parse_entry(block) {
+                Ok(entry) if block.complete => entries.entry(entry.key.clone()).or_default().push((index, entry)),
+                // The parser may stop before the key, so read it from the text.
+                _ => {
+                    damaged_keys.extend(block.body.split(',').next().map(|key| key.trim().to_owned()));
                 }
-            }
-            _ => {
-                if let Ok(entry) = parse_entry(block) {
-                    entries.entry(entry.key.clone()).or_default().push((index, entry));
-                }
-            }
+            },
         }
+    }
+    if damaged_keys.contains(key) {
+        return Err(EntryProblem::Repeated);
     }
     match entries.get(key).map(Vec::as_slice) {
         None | Some([]) => return Err(EntryProblem::NotFound),
@@ -183,6 +252,9 @@ pub(crate) fn entry_text(text: &str, key: &str) -> Result<String, EntryProblem> 
     let mut parents = BTreeSet::new();
     let mut strings = BTreeSet::new();
     while let Some(next) = needed.pop() {
+        if damaged_keys.contains(&next) {
+            return Err(EntryProblem::Dependency);
+        }
         let [(index, entry)] = entries.get(&next).map(Vec::as_slice).ok_or(EntryProblem::Dependency)? else {
             return Err(EntryProblem::Dependency);
         };
@@ -196,7 +268,10 @@ pub(crate) fn entry_text(text: &str, key: &str) -> Result<String, EntryProblem> 
                     macros.push((name.clone(), *index));
                 }
             }
-            if matches!(field.name.as_str(), "crossref" | "xdata") {
+            if matches!(
+                field.name.as_str(),
+                "crossref" | "xdata" | "xref" | "entryset" | "related"
+            ) {
                 let value = literal(&field.parts).ok_or(EntryProblem::Dependency)?;
                 for parent in keys_in(&value) {
                     // Each parent is followed once, so a cycle ends here.
@@ -211,6 +286,10 @@ pub(crate) fn entry_text(text: &str, key: &str) -> Result<String, EntryProblem> 
         }
         while let Some((name, used_at)) = macros.pop() {
             let name = name.to_ascii_lowercase();
+            // A damaged @string could define or redefine any macro.
+            if damaged_string {
+                return Err(EntryProblem::Dependency);
+            }
             let Some(found) = definitions.get(&name) else {
                 if built_in(&name) {
                     continue;
