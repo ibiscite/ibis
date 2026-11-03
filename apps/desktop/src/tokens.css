@@ -59,7 +59,7 @@
   --ease: cubic-bezier(.2, .8, .2, 1); --ease-in: cubic-bezier(.4, 0, 1, 1);
 
   /* Layers. */
-  --z-content: 0; --z-chrome: 1; --z-overlay: 10; --z-modal: 30; --z-toast: 40;
+  --z-chrome: 1; --z-overlay: 10; --z-modal: 30; --z-toast: 40;
 
   --white: #fff;
 
@@ -242,6 +242,7 @@
   --r-key: max(var(--r-floor-mark), calc(var(--r-row) - var(--key-gap)));
   --r-toast: 18px;
   --footer-h: calc(var(--control-small-h) + 2 * var(--inset));
+  --inspector-width: 18rem; --inspector-column: 15rem;
   /* One Settings row, in every group and the shortcuts list. */
   --settings-row-h: 2.75rem;
   /* Measured from NSSegmentedControl: the chosen fill lands at 19% of the text colour. */

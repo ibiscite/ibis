@@ -1,5 +1,5 @@
 import { Icon } from "../icons";
-import { Children, createContext, isValidElement, useCallback, useContext, useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type ComponentPropsWithRef, type PointerEvent, type ReactElement, type ReactNode, type Ref, type RefObject } from "react";
+import { Children, createContext, isValidElement, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type ComponentPropsWithRef, type PointerEvent, type ReactElement, type ReactNode, type Ref, type RefObject } from "react";
 import { composing as isComposing } from "../composition";
 import { flushSync } from "react-dom";
 import { mergeProps, setInteractionModality } from "react-aria";
@@ -23,13 +23,9 @@ export function useMenuPlacement(open: boolean, trigger: RefObject<HTMLElement |
  * return field. A wrapped picker can put its footer trigger below the window.
  * A menu opened from above the `[data-menu-floor]` region (the footer) also
  * ends above it, so it never covers the footer's actions. */
-export function useMenuBoundary(open: boolean, returnRef?: RefObject<HTMLElement | null>, trigger?: RefObject<HTMLElement | null>, options?: {
-  overlayRef: RefObject<HTMLElement | null>; scrollRef: RefObject<HTMLElement | null>; onAnchorUnavailable: () => void;
-}) {
+export function useMenuBoundary(open: boolean, returnRef?: RefObject<HTMLElement | null>, trigger?: RefObject<HTMLElement | null>) {
   const [boundary, setBoundary] = useState<HTMLElement>();
   const [clearBottom, setClearBottom] = useState(0);
-  const { overlayRef, scrollRef } = options ?? {};
-  const unavailable = useEffectEvent(() => options?.onAnchorUnavailable());
   useLayoutEffect(() => {
     if (!open) return;
     let current = true, frame = 0, signature = "";
@@ -37,39 +33,12 @@ export function useMenuBoundary(open: boolean, returnRef?: RefObject<HTMLElement
     const floor = document.querySelector<HTMLElement>("[data-menu-floor]");
     const above = floor && trigger?.current && !floor.contains(trigger.current) ? floor : null;
     const layout = trigger?.current?.closest("main") ?? trigger?.current?.parentElement;
-    const update = (validate = false) => {
+    const update = () => {
       if (!current) return;
       const bottom = Math.max(0, returnRef?.current?.getBoundingClientRect().bottom ?? 0);
       // Never above the top edge, even in a window too short for both.
       const end = above && window.innerHeight > 400 ? Math.max(bottom, above.getBoundingClientRect().top) : window.innerHeight;
-      const anchor = trigger?.current;
-      const rect = anchor?.getBoundingClientRect();
-      if (validate && overlayRef && anchor && (!anchor.isConnected || anchor.closest("[hidden]"))) { unavailable(); return; }
-      if (validate && overlayRef && scrollRef && anchor && rect && rect.width > 0 && rect.height > 0) {
-        // A details menu must retain a visible cause. Do not invent an anchor
-        // at the window edge after its segment leaves a scrolling viewport.
-        let top = Math.max(0, rect.top), left = Math.max(0, rect.left);
-        let right = Math.min(innerWidth, rect.right), endVisible = Math.min(innerHeight, rect.bottom);
-        for (let parent = anchor.parentElement; parent; parent = parent.parentElement) {
-          const style = getComputedStyle(parent), bounds = parent.getBoundingClientRect();
-          if (/auto|scroll|hidden|clip/.test(style.overflowY) && bounds.height > 0) { top = Math.max(top, bounds.top); endVisible = Math.min(endVisible, bounds.bottom); }
-          if (/auto|scroll|hidden|clip/.test(style.overflowX) && bounds.width > 0) { left = Math.max(left, bounds.left); right = Math.min(right, bounds.right); }
-        }
-        const overlay = overlayRef.current, scroll = scrollRef.current;
-        const box = overlay?.getBoundingClientRect(), port = scroll?.getBoundingClientRect();
-        // Keep the fixed heading and at least one whole focus target usable;
-        // everything else can scroll in the menu. Initial zero geometry waits
-        // for layout rather than dismissing before the first measurement.
-        let minimum = 0;
-        if (overlay && scroll && box && port && box.height > 0) {
-          const style = getComputedStyle(overlay);
-          const control = scroll.querySelector<HTMLElement>('input:not([type="radio"]), button, [tabindex="0"]') ?? overlay.querySelector<HTMLElement>("button");
-          const row = control?.getBoundingClientRect().height ?? 0;
-          minimum = Math.max(0, port.top - box.top) + (parseFloat(style.paddingBottom) || 0) + (parseFloat(style.borderBottomWidth) || 0) + Math.min(scroll.scrollHeight, row);
-        }
-        const space = Math.max(rect.top - bottom, end - rect.bottom) - 8 - 6;
-        if (right <= left || endVisible <= top || space <= 0 || space < minimum) { unavailable(); return; }
-      }
+      const rect = trigger?.current?.getBoundingClientRect();
       const next = [innerWidth, innerHeight, bottom, end, rect?.x, rect?.y, rect?.width, rect?.height].join(",");
       if (next === signature) return;
       signature = next;
@@ -89,14 +58,12 @@ export function useMenuBoundary(open: boolean, returnRef?: RefObject<HTMLElement
     update();
     const schedule = () => {
       if (!current || frame) return;
-      frame = requestAnimationFrame(() => { frame = 0; update(true); });
+      frame = requestAnimationFrame(() => { frame = 0; update(); });
     };
     const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(schedule);
     if (returnRef?.current) observer?.observe(returnRef.current);
     if (above) observer?.observe(above);
     if (trigger?.current) observer?.observe(trigger.current);
-    if (overlayRef?.current) observer?.observe(overlayRef.current);
-    if (scrollRef?.current) observer?.observe(scrollRef.current);
     // A neighbour can move a fixed-size anchor: header wrapping, middle-area
     // settling, shelf folding and a footer growing all belong to this owner.
     if (layout) {
@@ -119,7 +86,7 @@ export function useMenuBoundary(open: boolean, returnRef?: RefObject<HTMLElement
       document.removeEventListener("scroll", schedule, true);
       node?.remove();
     };
-  }, [open, returnRef, trigger, overlayRef, scrollRef]);
+  }, [open, returnRef, trigger]);
   const getTargetRect = useCallback((target: Element) => {
     const rect = target.getBoundingClientRect();
     if (!boundary?.isConnected) return rect;
