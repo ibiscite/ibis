@@ -153,8 +153,8 @@ export const commands = {
 	 */
 	setUpdateChecks: (enabled: boolean) => __TAURI_INVOKE<void>("set_update_checks", { enabled }),
 	/**
-	 *  Settings' "Check now": the tray's check, ending with its result, which
-	 *  Settings shows in place. An update found still opens the offer.
+	 *  Settings' "Check now", which the tray's "Check for Updates…" opens and runs,
+	 *  so a result always shows in place. An update found still opens the offer.
 	 */
 	checkForUpdates: () => __TAURI_INVOKE<CheckResult>("check_for_updates"),
 	openAboutLink: (link: AboutLink) => __TAURI_INVOKE<void>("open_about_link", { link }),
@@ -168,7 +168,9 @@ export const commands = {
 	 */
 	openSettings: (page: "general" |
 /**  General, scrolled to pasting and its permission. */
-"paste" | "look" | "libraries" | "advanced" | "shortcuts" | "citations" | "about" | "updates" | null) => __TAURI_INVOKE<void>("open_settings", { page }),
+"paste" | "look" | "libraries" | "advanced" | "shortcuts" | "citations" | "about" |
+/**  About, running Check now: the tray's update check shows its result there. */
+"updates" | null) => __TAURI_INVOKE<void>("open_settings", { page }),
 	/**
 	 *  Close the paste guide after both grants; a fresh external activation opens
 	 *  the picker again. Granting permission never captures a target or retries Enter.
@@ -591,7 +593,9 @@ export type OutputQuestion = "browser" | "editor";
 /**  Where Settings opens. */
 export type Page = "general" |
 /**  General, scrolled to pasting and its permission. */
-"paste" | "look" | "libraries" | "advanced" | "shortcuts" | "citations" | "about" | "updates";
+"paste" | "look" | "libraries" | "advanced" | "shortcuts" | "citations" | "about" |
+/**  About, running Check now: the tray's update check shows its result there. */
+"updates";
 
 /**  Whether Ibis may paste, and where the person turns that on. */
 export type PastePermission = {
