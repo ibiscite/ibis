@@ -64,6 +64,8 @@ app's choice only when given `--app-libraries`.
 | `doctor` | An offline health report on the named sources and settings file ([terminal kit](../crates/ibis-cli/README.md#offline-diagnosis)). |
 | `completions bash\|zsh\|fish` | Shell completions ([terminal kit](../crates/ibis-cli/README.md#shell-completions)). |
 | `toggle [--app PATH]` | Show or hide the desktop picker. |
+| `settings export [FILE] [--force]` | Back up the app's settings for another computer, to FILE or stdout; never replaces FILE without `--force`. Paste approvals and window places are left out. |
+| `settings import FILE [--dry-run]` | Restore a backup into the app's settings after checking all of it, listing every change; `--dry-run` only lists them. The replaced settings become `settings.json.bak`. Both use the stable app's settings, or Nightly's with `--nightly` or when only Nightly is installed ([moving to a new computer](moving-to-a-new-computer.md)). |
 
 ## Output for scripts and agents
 
@@ -124,14 +126,14 @@ say when they do, and `ibis schema` always describes the version you have.
 
 ```sh
 # Titles of the first five matches
-ibis search "memory" --file refs.bib --limit 5 --json | jq -r '.data.hits[].item.object.data.csl.title'
+ibis search "lantern" --file refs.bib --limit 5 --json | jq -r '.data.hits[].item.object.data.csl.title'
 
 # Cite the first hit in APA
-key=$(ibis search "garcia 2021" --file refs.bib --json | jq -r '.data.hits[0].item.object.data.citation_keys[0].value')
+key=$(ibis search "vale 2024" --file refs.bib --json | jq -r '.data.hits[0].item.object.data.citation_keys[0].value')
 ibis cite "$key" --file refs.bib --style apa
 
 # Branch on the exit status, not on the wording; 1 may still hold a citation
-out=$(ibis cite smith2020 --file refs.bib --json)
+out=$(ibis cite vale2024lanterns --file refs.bib --json)
 case $? in
   0 | 1) jq -er '.data.text | select(. != "")' <<<"$out" || echo "refused; see .data.outcomes" ;;
   4) echo "no such key" ;;

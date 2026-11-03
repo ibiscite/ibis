@@ -79,7 +79,7 @@ export function createInterfaceMessages(source: string, pseudo = false): Interfa
   // Errors remain fixed text and cannot disclose variables or source content.
   try {
     for (const platform of ["macos", "windows", "linux"]) {
-      for (const id of IDS) text(id, { platform, name: "Ibis", list: "Synthetic List", version: "0.0.0", percent: 100, count: 1, keys: "Synthetic Keys", action: "Synthetic Action", reference: "Synthetic Reference", command: "Synthetic Command" });
+      for (const id of IDS) text(id, { platform, name: "Ibis", list: "Synthetic List", version: "0.0.0", percent: 100, count: 1, keys: "Synthetic Keys", action: "Synthetic Action", reference: "Synthetic Reference", command: "Synthetic Command", file: "Invented.json", setting: "Synthetic Setting", from: "A", to: "B", system: "Synthetic System", id: 1 });
     }
   } catch { throw invalid(); }
   return Object.freeze({ locale: INTERFACE_LOCALE, text });

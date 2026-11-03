@@ -28,6 +28,9 @@ export function demoApi(): SettingsApi {
     onWindowSaved: subscribe,
     forgetAppOutputs: async () => 1,
     restoreAppOutputs: async () => null,
+    // The demo has no files: backing up and restoring are cancelled at once.
+    backUpSettings: async () => null, chooseSettingsBackup: async () => null,
+    restoreSettingsBackup: async () => null, cancelSettingsRestore: async () => null,
     loginItem: async () => ({ name: "Ibis", enabled, problem: null }),
     setLoginItem: async (on) => { enabled = on; return { name: "Ibis", enabled, problem: null }; },
     updateChecks: async () => automatic,

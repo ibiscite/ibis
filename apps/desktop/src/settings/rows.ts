@@ -7,6 +7,8 @@ export const ROWS: readonly { id: string; page: Page; label: MessageId; descript
   { id: "login", page: "general", label: "general-login-label", description: "general-login-description", keywords: "settings-startup-words" },
   { id: "menu-bar", page: "general", label: "general-menu-bar-label", description: "general-menu-bar-description" },
   { id: "small-surprises", page: "general", label: "general-small-surprises-label", description: "general-small-surprises-description", keywords: "settings-surprises-words" },
+  { id: "backup-settings", page: "general", label: "backup-label", description: "backup-description", keywords: "backup-words" },
+  { id: "restore-settings", page: "general", label: "restore-label", description: "restore-description", keywords: "backup-words" },
   { id: "paste-label", page: "general", label: "general-paste-label", description: "general-paste-description", keywords: "settings-paste-words" },
   { id: "appearance", page: "look", label: "look-appearance", description: "look-appearance-description", keywords: "settings-appearance-words" },
   { id: "accent", page: "look", label: "look-accent", keywords: "look-accent-words" },
