@@ -191,7 +191,7 @@ Zotero's port cannot reach it. Formats and options are listed in
 
 | Editor client | What has passed | Formats and options |
 | --- | --- | --- |
-| VS Code: Citation Picker for Zotero 0.2.1 (`zotero-citation-picker.port`) | Its recorded requests, replayed against the endpoint (`cayw_clients.rs`). Not yet run against Ibis in VS Code, so compatibility is not claimed. | `pandoc`, `biblatex`, `natbib`, `typst`, `formatted-citation`, `formatted-bibliography` |
+| VS Code: Citation Picker for Zotero 0.2.1 (its `zotero-citation-picker.port` setting takes the whole URL) | Requests rebuilt from its source with the same Node HTTP client options, replayed against the endpoint (`cayw_clients.rs`). Not yet run against Ibis in VS Code, so compatibility is not claimed. | `pandoc`, `biblatex`, `natbib`, `typst`, `formatted-citation`, `formatted-bibliography` |
 
 The extension's **Zotero: Check Connection** and PDF commands use Better BibTeX's
 JSON-RPC, which Ibis does not offer; they report an error.

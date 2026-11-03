@@ -167,12 +167,14 @@ fn check_headers<'a>(lines: impl Iterator<Item = &'a str>, port: u16) -> Result<
     // Under DNS rebinding the browser names the attacker's host, so anything
     // but this computer's own names is a web page.
     let host = host.ok_or(Refusal::Browser)?;
+    // Exactly one of this computer's own names and this port, compared as bytes:
+    // no slicing can split a character, and `+23124` or `023124` is not 23124.
+    let port = port.to_string();
     let named = |name: &str| {
-        host.len() > name.len()
-            && host[..name.len()].eq_ignore_ascii_case(name)
-            && host[name.len()..]
-                .strip_prefix(':')
-                .is_some_and(|given| given.parse() == Ok(port))
+        host.len() == name.len() + 1 + port.len()
+            && host.as_bytes()[..name.len()].eq_ignore_ascii_case(name.as_bytes())
+            && host.as_bytes()[name.len()] == b':'
+            && &host.as_bytes()[name.len() + 1..] == port.as_bytes()
     };
     if named("127.0.0.1") || named("localhost") {
         Ok(())
@@ -500,6 +502,17 @@ mod tests {
         ] {
             assert!(parse(&with_host(&host), PORT, TOKEN).is_ok(), "{host}");
         }
+        // Bytes that would split a character if sliced, and numbers that only parse as the port.
+        for host in [
+            format!("12345678é:{PORT}"),
+            format!("localhosé:{PORT}"),
+            "é".repeat(40),
+            format!("127.0.0.1:+{PORT}"),
+            format!("127.0.0.1:0{PORT}"),
+            format!("127.0.0.1: {PORT}"),
+        ] {
+            assert_eq!(parse(&with_host(&host), PORT, TOKEN), Err(Refusal::Browser), "{host}");
+        }
         let no_host = format!("GET {} HTTP/1.1\r\n\r\n", cayw("")).into_bytes();
         assert_eq!(parse(&no_host, PORT, TOKEN), Err(Refusal::Browser));
         let two = format!(
@@ -591,6 +604,46 @@ mod tests {
         }
         let text = String::from_utf8(response((200, "OK"), "[@é]")).unwrap_or_default();
         assert!(text.contains("Content-Length: 5\r\n"), "bytes, not characters: {text}");
+    }
+
+    /// Any bytes at all end in a request or a refusal, never a panic. A fixed
+    /// generator keeps every run the same, with no new dependency.
+    #[test]
+    fn no_bytes_make_the_parser_panic() {
+        let mut state: u64 = 0x2545_f491_4f6c_dd1d;
+        let mut next = move || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state
+        };
+        let pieces: [&[u8]; 12] = [
+            b"GET ",
+            b" HTTP/1.1",
+            b"\r\n",
+            b"Host: ",
+            b"127.0.0.1:",
+            b"23124",
+            b"%",
+            b"?format=",
+            "é".as_bytes(),
+            b"\xff",
+            b":",
+            TOKEN.as_bytes(),
+        ];
+        for _ in 0..20_000 {
+            let mut bytes = vec![];
+            for _ in 0..(next() % 24) {
+                match next() % 3 {
+                    0 => bytes.push(next() as u8),
+                    _ => bytes.extend_from_slice(pieces[(next() % pieces.len() as u64) as usize]),
+                }
+            }
+            if next() % 2 == 0 {
+                bytes.extend_from_slice(b"\r\n\r\n");
+            }
+            let _ = parse(&bytes, PORT, TOKEN);
+        }
     }
 
     #[test]

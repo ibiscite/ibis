@@ -252,15 +252,14 @@ pub(crate) fn copy_file_citation(
             return Err(CommandError::SnapshotChanged);
         }
         return file.copy(&ticket, &content_hash, |content| {
-            let text = content.text;
+            // The editor first: a request that has gone leaves the clipboard alone.
+            if !editor.answer(request.id, content.text) {
+                return Err("Your editor stopped waiting for this citation.".to_owned());
+            }
             if request.clipboard {
                 write_plain_content(&app, content)?;
             }
-            if editor.answer(request.id, text) {
-                Ok(())
-            } else {
-                Err("Your editor stopped waiting for this citation.".to_owned())
-            }
+            Ok(())
         });
     }
     let mut delivery = None;

@@ -60,15 +60,18 @@ impl Pending {
         self.active.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
-    fn begin(&self, pick: &CaywPick, style: &str) -> Option<(u64, Receiver<Option<String>>)> {
+    /// `retire` runs under the lock, before the request is visible, so no receipt
+    /// made for the picker's own output can answer for it.
+    fn begin(&self, pick: &CaywPick, style: &str, retire: impl FnOnce()) -> Option<(u64, Receiver<Option<String>>)> {
         let mut active = self.lock();
         if active.is_some() {
             return None;
         }
+        retire();
         let id = self.next.fetch_add(1, Ordering::SeqCst) + 1;
         let (send, receive) = mpsc::sync_channel(1);
-        // Numeric styles write whole entries, as the picker does.
-        let form = if style == "ieee" && pick.form == CitationForm::Normal {
+        // Numeric styles write whole entries, as the picker does; keys are keys.
+        let form = if pick.output == cayw::CaywOutput::Style && style == "ieee" && pick.form == CitationForm::Normal {
             CitationForm::BibliographyOnly
         } else {
             pick.form
@@ -88,7 +91,8 @@ impl Pending {
         self.lock().as_ref().map(|(request, _)| request.clone())
     }
 
-    /// Give `id` its citation. False when that request has ended.
+    /// Give `id` its citation. False when that request has ended. The caller's
+    /// copy has consumed its receipt, so nothing else needs retiring.
     pub(crate) fn answer(&self, id: u64, text: &str) -> bool {
         let mut active = self.lock();
         match active.take() {
@@ -101,9 +105,12 @@ impl Pending {
     }
 
     /// End `id` with no citation, which is how a client hears it was cancelled.
-    fn cancel(&self, id: u64) -> bool {
+    /// `retire` runs under the lock first, so no receipt made for the editor can
+    /// be copied as if it were the picker's own once the request is gone.
+    fn cancel(&self, id: u64, retire: impl FnOnce()) -> bool {
         let mut active = self.lock();
         if active.as_ref().is_some_and(|(request, _)| request.id == id) {
+            retire();
             if let Some((_, send)) = active.take() {
                 let _ = send.try_send(None);
             }
@@ -113,9 +120,9 @@ impl Pending {
         }
     }
 
-    fn cancel_any(&self) -> bool {
+    fn cancel_any(&self, retire: impl FnOnce()) -> bool {
         let id = self.lock().as_ref().map(|(request, _)| request.id);
-        id.is_some_and(|id| self.cancel(id))
+        id.is_some_and(|id| self.cancel(id, retire))
     }
 }
 
@@ -125,8 +132,10 @@ trait Host: Send + Sync + 'static {
     fn pending(&self) -> &Pending;
     fn ready(&self) -> bool;
     fn style(&self) -> String;
-    /// A request began or ended.
+    /// A request began or ended; the picker should ask again.
     fn changed(&self);
+    /// Retire the picker's prepared receipt. Called under the request lock.
+    fn retire(&self);
     fn present(&self);
 }
 
@@ -173,26 +182,31 @@ fn cancel_when_closed<H: Host>(mut stream: TcpStream, id: u64, host: Arc<H>) {
             let _ = stream.set_read_timeout(None);
             let mut byte = [0; 1];
             while matches!(stream.read(&mut byte), Ok(1)) {}
-            if host.pending().cancel(id) {
+            if host.pending().cancel(id, || host.retire()) {
                 host.changed();
             }
         });
 }
 
-fn serve<H: Host>(mut stream: TcpStream, port: u16, token: &str, host: Arc<H>) {
+fn serve<H: Host>(mut stream: TcpStream, port: u16, token: &str, host: Arc<H>, stop: &AtomicBool) {
     let request = read_head(&mut stream).and_then(|head| cayw::parse(&head, port, token));
+    // A connection accepted before the endpoint was switched off gets nothing after.
+    if stop.load(Ordering::SeqCst) {
+        let _ = stream.shutdown(Shutdown::Both);
+        return;
+    }
     match request {
         Err(refusal) => reply(&mut stream, refusal.status(), refusal.message()),
         Ok(CaywRequest::Probe) => reply(&mut stream, (200, "OK"), if host.ready() { "ready" } else { "No" }),
         Ok(CaywRequest::Pick(pick)) => {
-            let Some((id, answer)) = host.pending().begin(&pick, &host.style()) else {
+            let Some((id, answer)) = host.pending().begin(&pick, &host.style(), || host.retire()) else {
                 reply(&mut stream, (409, "Conflict"), BUSY);
                 return;
             };
             match stream.try_clone() {
                 Ok(watched) => cancel_when_closed(watched, id, Arc::clone(&host)),
                 Err(_) => {
-                    host.pending().cancel(id);
+                    host.pending().cancel(id, || host.retire());
                     reply(&mut stream, (500, "Internal Server Error"), "");
                     return;
                 }
@@ -200,12 +214,21 @@ fn serve<H: Host>(mut stream: TcpStream, port: u16, token: &str, host: Arc<H>) {
             host.changed();
             host.present();
             let text = answer.recv_timeout(ANSWER_DEADLINE).ok().flatten();
-            host.pending().cancel(id);
+            host.pending().cancel(id, || host.retire());
             host.changed();
             reply(&mut stream, (200, "OK"), text.as_deref().unwrap_or_default());
         }
     }
     let _ = stream.shutdown(Shutdown::Both);
+}
+
+/// One counted connection, returned when dropped, a panic included.
+struct Slot(Arc<AtomicUsize>);
+
+impl Drop for Slot {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::SeqCst);
+    }
 }
 
 /// The listening socket, on loopback only.
@@ -242,17 +265,15 @@ fn listen<H: Host>(port: u16, token: String, host: Arc<H>) -> std::io::Result<Li
                     open.fetch_sub(1, Ordering::SeqCst);
                     continue;
                 }
-                let (open, token, host) = (Arc::clone(&open), Arc::clone(&token), Arc::clone(&host));
-                let spawned = std::thread::Builder::new().name("ibis-editor-request".into()).spawn({
-                    let open = Arc::clone(&open);
-                    move || {
-                        serve(stream, port, &token, host);
-                        open.fetch_sub(1, Ordering::SeqCst);
-                    }
-                });
-                if spawned.is_err() {
-                    open.fetch_sub(1, Ordering::SeqCst);
-                }
+                let slot = Slot(Arc::clone(&open));
+                let (token, host, stop) = (Arc::clone(&token), Arc::clone(&host), Arc::clone(&stopping));
+                // The slot travels with the thread and is given back however it ends.
+                let _ = std::thread::Builder::new()
+                    .name("ibis-editor-request".into())
+                    .spawn(move || {
+                        let _slot = slot;
+                        serve(stream, port, &token, host, &stop);
+                    });
             }
         })?;
     Ok(Listening { port, stop })
@@ -277,17 +298,19 @@ impl Host for AppHost {
         crate::library::engine_file::style_id(chosen.unwrap_or(settings::CitationStyle::Apa)).to_owned()
     }
     fn changed(&self) {
+        report(self.0.emit("editor:request", ()), NativeIssue::LibraryEvent);
+    }
+    fn retire(&self) {
         // A ticket made under one output must not be copied under another.
-        if let Some(file) = self
+        let file = self
             .0
             .state::<Mutex<Library>>()
             .lock()
             .ok()
-            .and_then(|library| library.file.clone())
-        {
+            .and_then(|library| library.file.clone());
+        if let Some(file) = file {
             file.invalidate_preview();
         }
-        report(self.0.emit("editor:request", ()), NativeIssue::LibraryEvent);
     }
     fn present(&self) {
         crate::picker::reveal_picker(&self.0);
@@ -368,8 +391,9 @@ pub(crate) fn start(app: &AppHandle, saved: Option<EditorEndpoint>) {
     let handle = app.clone();
     // Hiding the picker is how a person says no.
     app.listen("picker:hidden", move |_| {
-        if handle.state::<Pending>().cancel_any() {
-            AppHost(handle.clone()).changed();
+        let host = AppHost(handle.clone());
+        if handle.state::<Pending>().cancel_any(|| host.retire()) {
+            host.changed();
         }
     });
 }
@@ -405,8 +429,9 @@ pub(crate) fn set_editor_endpoint(on: bool, app: AppHandle) -> EndpointStatus {
         state.0.take()
     };
     drop(closing);
-    if app.state::<Pending>().cancel_any() {
-        AppHost(app.clone()).changed();
+    let host = AppHost(app.clone());
+    if app.state::<Pending>().cancel_any(|| host.retire()) {
+        host.changed();
     }
     let problem = if on {
         let Some(token) = new_token() else {
@@ -482,6 +507,7 @@ mod tests {
         pending: Pending,
         presented: AtomicUsize,
         changes: AtomicUsize,
+        retired: AtomicUsize,
         ready: AtomicBool,
         then: StdMutex<Option<Then>>,
     }
@@ -498,6 +524,9 @@ mod tests {
         }
         fn changed(&self) {
             self.changes.fetch_add(1, Ordering::SeqCst);
+        }
+        fn retire(&self) {
+            self.retired.fetch_add(1, Ordering::SeqCst);
         }
         fn present(&self) {
             self.presented.fetch_add(1, Ordering::SeqCst);
@@ -591,7 +620,7 @@ mod tests {
     fn hiding_the_picker_answers_with_nothing() {
         let fake = Fake::default();
         *fake.then.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(Box::new(|pending: &Pending| {
-            assert!(pending.cancel_any());
+            assert!(pending.cancel_any(|| {}));
         }));
         let (_listening, port, _host) = server(fake);
         let mut stream = connect(port);
@@ -637,11 +666,15 @@ mod tests {
             Ok(CaywRequest::Pick(pick)) => pick,
             other => panic!("{other:?}"),
         };
-        let (first, _first_answer) = pending.begin(&pick, "apa").unwrap_or_else(|| panic!("a request"));
-        assert!(pending.cancel(first));
-        let (second, second_answer) = pending.begin(&pick, "apa").unwrap_or_else(|| panic!("a request"));
+        let (first, _first_answer) = pending
+            .begin(&pick, "apa", || {})
+            .unwrap_or_else(|| panic!("a request"));
+        assert!(pending.cancel(first, || {}));
+        let (second, second_answer) = pending
+            .begin(&pick, "apa", || {})
+            .unwrap_or_else(|| panic!("a request"));
         assert!(!pending.answer(first, "late"), "A finished after B began");
-        assert!(!pending.cancel(first));
+        assert!(!pending.cancel(first, || panic!("nothing to retire for an ended request")));
         assert_eq!(pending.current().map(|request| request.id), Some(second));
         assert!(pending.answer(second, "newer"));
         assert_eq!(second_answer.recv().ok().flatten().as_deref(), Some("newer"));
@@ -701,10 +734,84 @@ mod tests {
             clipboard: false,
             label: "Formatted citation",
         };
-        pending.begin(&pick, "ieee").unwrap_or_else(|| panic!("a request"));
+        pending
+            .begin(&pick, "ieee", || {})
+            .unwrap_or_else(|| panic!("a request"));
         let request = pending.current().unwrap_or_else(|| panic!("a request"));
         assert_eq!(request.output, OutputSpec::Csl { style: "ieee".into() });
         assert_eq!(request.form, CitationForm::BibliographyOnly);
+    }
+
+    #[test]
+    fn a_key_request_stays_a_key_whatever_the_persons_style() {
+        let pending = Pending::default();
+        let pick = CaywPick {
+            output: CaywOutput::Key(OutputSpec::Key {
+                syntax: ibis_core::contract::KeySyntax::Pandoc,
+                command: None,
+            }),
+            form: CitationForm::Normal,
+            clipboard: false,
+            label: "Pandoc",
+        };
+        pending
+            .begin(&pick, "ieee", || {})
+            .unwrap_or_else(|| panic!("a request"));
+        assert_eq!(
+            pending.current().map(|request| request.form),
+            Some(CitationForm::Normal)
+        );
+    }
+
+    #[test]
+    fn a_receipt_is_retired_as_a_request_begins_and_as_it_ends() {
+        let pending = Pending::default();
+        let pick = CaywPick {
+            output: CaywOutput::Style,
+            form: CitationForm::Normal,
+            clipboard: false,
+            label: "Formatted citation",
+        };
+        let mut retired = 0;
+        let (id, _answer) = pending
+            .begin(&pick, "apa", || retired += 1)
+            .unwrap_or_else(|| panic!("a request"));
+        assert!(
+            pending.begin(&pick, "apa", || retired += 10).is_none(),
+            "a busy request retires nothing"
+        );
+        assert!(pending.cancel(id, || retired += 100));
+        assert_eq!(retired, 101);
+    }
+
+    #[test]
+    fn a_host_name_that_would_split_a_character_cannot_use_up_the_connections() {
+        let (_listening, port, host) = server(Fake::default());
+        for _ in 0..(MAX_CONNECTIONS * 2) {
+            let mut stream = connect(port);
+            let text = format!("GET {} HTTP/1.1\r\nHost: 12345678é:{port}\r\n\r\n", cayw(""));
+            stream
+                .write_all(text.as_bytes())
+                .unwrap_or_else(|error| panic!("{error}"));
+            assert!(answer(&mut stream).starts_with("HTTP/1.1 403"));
+        }
+        host.ready.store(true, Ordering::SeqCst);
+        let mut stream = connect(port);
+        send(&mut stream, port, &cayw("?probe=true"), "");
+        assert!(answer(&mut stream).ends_with("ready"), "still answering");
+    }
+
+    #[test]
+    fn a_connection_open_when_the_endpoint_is_switched_off_gets_nothing() {
+        let (listening, port, host) = server(Fake::default());
+        let mut early = connect(port);
+        // Let the listener accept it before switching off.
+        std::thread::sleep(Duration::from_millis(100));
+        drop(listening);
+        send(&mut early, port, &cayw(""), "");
+        assert_eq!(answer(&mut early), "");
+        assert_eq!(host.presented.load(Ordering::SeqCst), 0);
+        assert_eq!(host.pending.current(), None);
     }
 
     #[test]
