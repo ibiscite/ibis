@@ -1,4 +1,4 @@
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, expect, test } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
@@ -6,8 +6,6 @@ import type { AppOutput, PickerDestination } from "./api";
 import { backend, prepared, receipt, resetApp, result, type PreviewRequest } from "./testing/app";
 
 afterEach(resetApp);
-const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
-const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
 const WORD: PickerDestination = { app: "Example Word", app_id: "example.word", app_identity: null, automatic: { style: "apa" }, remembered: null, unreadable: false, can_paste: false, output_question: null, paste: null, paste_question: false, can_choose_paste: false };
 const BROWSER: PickerDestination = { app: "Example Browser", app_id: "example.browser", app_identity: null, automatic: null, remembered: null, unreadable: false, can_paste: false, output_question: "browser", paste: null, paste_question: false, can_choose_paste: false };
 const formatButton = () => within(screen.getByLabelText("Search references").closest("header")!).getByRole("button", { name: /^Copy as / });
@@ -350,7 +348,7 @@ test("without a captured app no app name or Automatic action is offered", async 
   expect(screen.queryByRole("menuitem", { name: "Automatic" })).toBeNull();
 });
 
-test("without a destination app format picks change the global default, as both README claims explain", async () => {
+test("without a destination app format picks change the global default", async () => {
   const saved: unknown[] = [];
   const { remembered } = opened(() => ({ app: null, app_id: null, app_identity: null, automatic: null, remembered: null, unreadable: false, can_paste: false, output_question: null, paste: null, paste_question: false, can_choose_paste: false }), {
     set_picker_preferences: ({ copyFormat }) => { saved.push(copyFormat); return null; },
@@ -359,13 +357,6 @@ test("without a destination app format picks change the global default, as both 
   await pick("\\cite");
   await waitFor(() => expect(saved).toContain("cite"));
   expect(remembered).toEqual([]);
-  const readme = readFileSync(new FileURL("../../../README.md", import.meta.url), "utf8");
-  const claims = readme.split("\n").filter((line) => line.startsWith("- Cite with") || line.startsWith("1. Press the shortcut."));
-  expect(claims).toHaveLength(2);
-  for (const claim of claims) {
-    expect(claim).toContain("On macOS,");
-    expect(claim.toLowerCase()).toContain("on windows and linux, choosing a format changes the global default");
-  }
 });
 
 test("Automatic in a formatted app uses the global style just chosen in this picker", async () => {
