@@ -144,16 +144,29 @@ fn links_to_this_computer_never_reach_an_agent() {
 @misc{nas2020, title={Tide nas}, year=2020, url={http://192.168.1.20/nas/tide.pdf}}
 @misc{login2020, title={Tide login}, year=2020, url={https://user:hunter2@files.invented.test/tide.pdf}}
 @misc{home2020, title={Tide home}, year=2020, url={http://nas.local/tide.pdf}}
-@misc{open2020, title={Tide open}, year=2020, url={https://example.org/tide.pdf}}
+@misc{open2020, title={Tide open}, year=2020, url={https://example.org/tide.pdf},
+  note={original-title: Case File: The Lanterns}}
+@misc{copy2020, title={Tide copy}, year=2020, note={source: copy in /Users/invented/Private/s.pdf}}
+@misc{scan2020, title={Tide scan}, year=2020, note={source: Scanned at C:\Users\invented\scan.pdf}}
+@misc{box2020, title={Tide box}, year=2020, note={source: Box 3, ~/Private/box3}}
 ",
     );
-    for key in ["local2020", "nas2020", "login2020", "home2020"] {
+    for key in [
+        "local2020",
+        "nas2020",
+        "login2020",
+        "home2020",
+        "copy2020",
+        "scan2020",
+        "box2020",
+    ] {
         let shown = tool(&engine, "show", json!({"ref":key}));
         assert!(answer(&shown)["fields"].get("URL").is_none(), "{shown}");
         assert!(answer(&shown)["fields"].get("source").is_none(), "{shown}");
     }
     let shown = tool(&engine, "show", json!({"ref":"open2020"}));
     assert_eq!(answer(&shown)["fields"]["URL"], "https://example.org/tide.pdf");
+    assert_eq!(answer(&shown)["fields"]["original-title"], "Case File: The Lanterns");
 }
 
 #[test]

@@ -264,18 +264,22 @@ fn private_host(url: &str) -> bool {
         })
 }
 
-/// Whether text from a note points at this device. Notes can hold anything, and
-/// such a line is not something the person wrote to be printed.
+/// Whether text from a note points at this device anywhere in it. Notes can hold
+/// anything, and such a line is not something the person wrote to be printed.
 fn points_to_device(value: &str) -> bool {
-    let local_path = value.starts_with('/')
-        || value.starts_with("~/")
-        || value.starts_with('\\')
-        || value.as_bytes().get(1..3) == Some(b":\\");
-    local_path
-        || value.split_whitespace().any(|word| {
-            let lower = word.to_ascii_lowercase();
-            lower.starts_with("file:") || lower.starts_with("zotero:") || (lower.contains("://") && !public_url(word))
-        })
+    value.split_whitespace().any(|word| {
+        let word = word.trim_matches(|c: char| "<>()[]{},;.\"'".contains(c));
+        let bytes = word.as_bytes();
+        let unix_path = (word.starts_with('/') || word.starts_with("~/")) && word.len() > 2;
+        let windows_path = word.starts_with("\\\\")
+            || (bytes.len() > 3 && bytes[0].is_ascii_alphabetic() && matches!(&bytes[1..3], b":\\" | b":/"));
+        let lower = word.to_ascii_lowercase();
+        unix_path
+            || windows_path
+            || lower.starts_with("file:/")
+            || lower.starts_with("zotero:/")
+            || (lower.contains("://") && !public_url(word))
+    })
 }
 
 const DOCUMENT_SUFFIXES: &[&str] = &[
