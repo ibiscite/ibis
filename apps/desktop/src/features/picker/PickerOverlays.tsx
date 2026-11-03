@@ -31,7 +31,7 @@ export function PickerNotices({ state, send, menus, updateProgress, remark, pass
   const reference = removed ? tileName(removed) : "";
   const { windowUndo, input } = menus;
   // A failure stays until it has been seen, then the library status returns.
-  const [seenUpdate, setSeenUpdate] = useState<UpdateProgress | null>(null);
+  const [seenAttempt, setSeenAttempt] = useState<number | null>(null);
   const paused = state.hiddenAt !== null;
   const offered = Boolean(state.removed) || windowUndo.ticket !== null;
   return <NoticeSlot>
@@ -40,6 +40,6 @@ export function PickerNotices({ state, send, menus, updateProgress, remark, pass
         onUndo={async () => { send({ type: "undo-reference", removal: state.removed! }); }} />}
     {windowUndo.ticket !== null && <UndoNotice key={`window-${windowUndo.ticket}`} message={pickerText.windowReset} action={text("undo-reset-window")} onUndo={windowUndo.undo} onExpire={windowUndo.expire} paused={state.hiddenAt !== null} fallbackFocusRef={input} />}
     {!offered && (remark ? <QuietNotice passive={passive} paused={paused} onExpire={onRemarkPassed}>{remark}</QuietNotice>
-      : updateProgress && updateProgress !== seenUpdate && <UpdateNotice progress={updateProgress} paused={paused} onSeen={() => setSeenUpdate(updateProgress)} />)}
+      : updateProgress && updateProgress.attempt !== seenAttempt && <UpdateNotice progress={updateProgress} paused={paused} onSeen={() => setSeenAttempt(updateProgress.attempt)} />)}
   </NoticeSlot>;
 }

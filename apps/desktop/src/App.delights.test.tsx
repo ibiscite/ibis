@@ -60,6 +60,22 @@ test("delayed claims and closed windows cannot replace newer visible feedback", 
   expect(screen.queryByText("1,000 references. A solid library.")).toBeNull();
 });
 
+test("a remark passes after its own 8 s, and a tip waiting behind a refusal still shows", async () => {
+  let claim!: (value: ReturnType<typeof view>) => void;
+  backend({ delight_view: () => new Promise((resolve) => { claim = resolve; }) });
+  await act(async () => { render(<App />); });
+  fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
+  expect(screen.getByText("Choose a reference to paste.")).toBeTruthy();
+  await act(async () => { claim(view("paste-tip")); });
+  expect(screen.queryByText(tip)).toBeNull();
+  await act(async () => { await vi.advanceTimersByTimeAsync(8000); });
+  expect(screen.queryByText("Choose a reference to paste.")).toBeNull();
+  expect(screen.getByText(tip)).toBeTruthy();
+  await act(async () => { await vi.advanceTimersByTimeAsync(8000); });
+  expect(screen.queryByText(tip)).toBeNull();
+  expect(screen.getByRole("button", { name: "Library" })).toBeTruthy();
+});
+
 test("unavailable feedback persistence leaves search and empty refusal working", async () => {
   backend({ delight_view: () => { throw new Error("invented write failure"); } });
   await act(async () => { render(<App />); });

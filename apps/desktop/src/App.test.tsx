@@ -213,10 +213,9 @@ test("the shelf shows what Enter pastes in a key syntax, without copying, and le
   expect(calls).not.toContain("copy_file_citation");
 });
 
-test.each([true, false])("a duplicate-key refusal stays visible before Details and copying stays blocked (Preview=%s)", async (preview) => {
+test("a duplicate-key refusal stays visible before Details and copying stays blocked", async () => {
   const shared = { code: "shared_citation_key", key: "same" };
   const calls = backend({
-    picker_preferences: () => ({ show_paste_preview: preview }),
     search: () => [result("same", "First")],
     preview_file_citation: () => { throw shared; },
     copy_file_citation: () => { throw shared; },
@@ -242,28 +241,6 @@ test.each([true, false])("a duplicate-key refusal stays visible before Details a
   expect(screen.getAllByRole("alert").filter((alert) => alert.textContent?.includes(message))).toHaveLength(1);
   expect(document.body.textContent).not.toContain("Nothing was copied. Try again");
   expect(calls).not.toContain("hide_picker");
-});
-
-test("hidden output still prepares the current engine receipt without displaying it", async () => {
-  const calls = backend({
-    search: ({ query: { text: query } }) => [query === "again" ? result("b", "Second") : result("a", "First")],
-    preview_file_citation: ({ items }) => receipt(`[@${items.map(({ id }) => id.key).join("; @")}]`),
-  });
-  const previews = () => calls.filter((c) => c === "preview_file_citation").length;
-  render(<App />);
-  const box = screen.getByLabelText("Search references");
-  fireEvent.change(box, { target: { value: "first" } });
-  await waitFor(() => expect(screen.getByRole("region", { name: "Preview" }).textContent).toContain("[@a]"));
-  fireEvent.keyDown(box, { key: "i", code: "KeyI", ctrlKey: true });
-  expect(screen.queryByRole("region", { name: "Preview" })).toBeNull();
-  const fetched = previews();
-  fireEvent.change(box, { target: { value: "again" } });
-  await screen.findByText("Second");
-  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
-  expect(previews()).toBe(fetched + 1);
-  fireEvent.keyDown(box, { key: "i", code: "KeyI", ctrlKey: true });
-  await waitFor(() => expect(screen.getByRole("region", { name: "Preview" }).textContent).toContain("[@b]"));
-  expect(previews()).toBe(fetched + 1);
 });
 
 const selections = (ids: SyntheticId[]) => ids.map((id) => ({ id, cite: `synthetic-cite-${id.key}`, locator: null }));
@@ -1459,30 +1436,7 @@ test("Search shortcut opening gives Escape an invoker through the animated exit"
   }
 });
 
-test.each(["output", "elsewhere"].flatMap((destination) => ["saved", "keyboard"].map((route) => ({ destination, route }))))(
-  "a delayed saved preview choice returns only owned output focus ($destination, $route)", async ({ destination, route }) => {
-  let finish!: () => void;
-  const reading = new Promise<void>((resolve) => { finish = resolve; });
-  backend({ search: () => [result("a", "First")], picker_preferences: async () => {
-    await reading;
-    return { citation_style: null, density: "comfortable", larger_text: false };
-  } });
-  render(<App />);
-  await screen.findByText("First");
-  const box = screen.getByLabelText("Search references");
-  fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
-  const output = await screen.findByRole("region", { name: "Preview" });
-  const segment = await within(output).findByRole("button", { name: /^Edit / });
-  const target = destination === "output" ? segment : screen.getByRole("button", { name: /^More/ });
-  act(() => target.focus());
-  if (route === "keyboard") fireEvent.keyDown(target, { key: "i", code: "KeyI", ctrlKey: true });
-  await act(async () => { finish(); await reading; });
-  expect(screen.queryByRole("region", { name: "Preview" })).toBeNull();
-  expect(document.activeElement).toBe(destination === "output" ? box : target);
-  await waitFor(() => expect(selectedKeys()).toEqual(["a"]));
-});
-
-test("preview visibility keeps ordered chips and exact key copying", async () => {
+test("the output keeps ordered chips and exact key copying", async () => {
   const copies: unknown[] = [];
   backend({ search: () => [result("a", "First"), result("b", "Second")],
     copy_file_citation: (nativeReceipt) => { const { items } = prepared(nativeReceipt).request; copies.push(items); return { text: "@a; @b", warnings: [] }; } });
@@ -1493,16 +1447,13 @@ test("preview visibility keeps ordered chips and exact key copying", async () =>
   fireEvent.keyDown(box, { key: "ArrowDown" });
   fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
   await waitFor(() => expect(screen.getByRole("region", { name: "Preview" }).textContent).toContain("@a; @b"));
-  fireEvent.keyDown(box, { key: "i", code: "KeyI", ctrlKey: true });
-  expect(screen.queryByRole("region", { name: "Preview" })).toBeNull();
   await waitFor(() => expect(selectedKeys()).toEqual(["a", "b"]));
   expect(screen.getByRole("group", { name: "Keys" }).textContent).toContain("Copy 2 as Pandoc");
   fireEvent.keyDown(box, { key: "Enter" });
   await waitFor(() => expect(copies).toEqual([selections([result("a", "First").id, result("b", "Second").id])]));
-  expect(document.querySelector(".copy-notice code")?.textContent).toBe("@a; @b");
 });
 
-test.each(["same", "hidden", "different"])("copy feedback only omits exact visible output (%s)", async (presentation) => {
+test.each(["same", "different"])("copy feedback only omits exact visible output (%s)", async (presentation) => {
   const copied = presentation === "different" ? "@a; @b" : "@a";
   backend({ search: () => [result("a", "First"), ...(presentation === "different" ? [result("b", "Second")] : [])],
     copy_file_citation: () => ({ text: copied, warnings: ["Synthetic copy warning"] }) });
@@ -1514,10 +1465,6 @@ test.each(["same", "hidden", "different"])("copy feedback only omits exact visib
     fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
     fireEvent.keyDown(box, { key: "ArrowDown" });
     fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
-  }
-  if (presentation === "hidden") {
-    fireEvent.keyDown(box, { key: "i", code: "KeyI", ctrlKey: true });
-    expect(screen.queryByRole("region", { name: "Preview" })).toBeNull();
   }
   fireEvent.keyDown(box, { key: "Enter" });
   await screen.findByText("Synthetic copy warning");
@@ -1579,7 +1526,7 @@ test("a row says why it matched only when the match is not visible", async () =>
   expect(screen.getByText("Best matches")).toBeTruthy();
 });
 
-test("rows with the same first author and year are told apart by their container and type", async () => {
+test("rows with the same first author and year are told apart by their container", async () => {
   const garcia = { authors: "García, Okafor", first_author: "García", author_count: 2, year: 2021 };
   let density = "comfortable";
   backend({
@@ -1597,7 +1544,7 @@ test("rows with the same first author and year are told apart by their container
   // Comfortable: authors and container, no type word and no first-author repeat.
   expect(rows[0]?.querySelector(".result-container")?.textContent).toBe("Journal of Sleep \u202eResearch");
   expect(rows[0]?.textContent).toContain("García, Okafor");
-  expect(rows[0]?.querySelector(".result-type, .result-first-author")).toBeNull();
+  expect(rows[0]?.querySelector(".result-first-author")).toBeNull();
   // One separator part between authors and container, spaced like the words
   // around it: a no-break space before the dot and a preserved space after it
   // (white-space: pre), and no gap, margin or padding of its own.
@@ -1620,14 +1567,6 @@ test("rows with the same first author and year are told apart by their container
   expect(rows[2]?.querySelector(".result-container")).toBeNull();
   unmount();
 
-  density = "compact";
-  render(<App />);
-  fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "spindles" } });
-  await screen.findByText("Untyped");
-  rows = within(screen.getByRole("listbox", { name: "Results" })).getAllByRole("option");
-  expect(rows[0]?.querySelector(".result-type")?.textContent).toBe("Article");
-  expect(rows[1]?.querySelector(".result-type")?.textContent).toBe("Book");
-  expect(rows[2]?.querySelector(".result-type")).toBeNull();
   cleanup();
 
   density = "compact";
@@ -1650,7 +1589,7 @@ test("rows with the same first author and year are told apart by their container
   expect(line?.textContent).toBe("Sleep spindlesGarcía et al.2021");
   expect(line?.querySelector(":scope > .result-year")?.textContent).toBe("2021");
   expect(rows[2]?.querySelector(".result-first-author")?.textContent).toBe("Smith");
-  expect(rows[0]?.querySelector(".result-container, .result-type")).toBeNull();
+  expect(rows[0]?.querySelector(".result-container")).toBeNull();
   // The container is out of sight in Compact, so a match there is named.
   expect(rows[1]?.textContent).toContain("Matched in");
 });
@@ -1686,7 +1625,6 @@ test("rows shorten the authors and keep the journal and library label visible", 
   expect(styles).toMatch(/\.result-container \{ flex: 0 1 auto; min-width: 0;[^}]*text-overflow: ellipsis/);
   expect(styles).not.toMatch(/\.result-key \{/);
   expect(styles).toMatch(/\.result-library \{ flex: 0 1000 auto; min-width: min\(5em, 100%\);[^}]*text-overflow: ellipsis/);
-  expect(styles).toMatch(/\.result-type \{ flex: none; max-width: 100%;[^}]*text-overflow: ellipsis/);
   expect(styles).not.toMatch(/\.result-library \{[^}]*min-width: 0/);
 });
 
@@ -2019,7 +1957,7 @@ test("rapid A-B-A choices keep the last failed choice for retry without replayin
   expect(remembered).toBe("cite");
   expect(keys).toEqual(["cite", "pandoc", "cite", "cite", null]);
   remembered = "keys"; // A hand edit after a successful save must survive.
-  await chooseRows("compact");
+  await chooseRows("comfortable");
   await waitFor(() => expect(keys).toHaveLength(6));
   expect(keys[5]).toBeNull();
   expect(remembered).toBe("keys");
@@ -3647,7 +3585,7 @@ test.each(["Tab", "Reload"])("Format hands off to More so %s returns to Search",
   expect(search.value).toBe("sleep");
 });
 
-test.each(["k", "/", "q", "p", "i"])("hiding the picker cancels Format's pending Ctrl+%s command", async (key) => {
+test.each(["k", "/", "q", "p"])("hiding the picker cancels Format's pending Ctrl+%s command", async (key) => {
   const calls = backend();
   render(<App />);
   fireEvent.click(await waitFor(() => formatButton("Copy as Pandoc key")));
@@ -3692,19 +3630,6 @@ test("Format shortcut opening gives Escape a More invoker through the animated e
     focus.mockRestore();
   }
 });
-
-test.each([{ repeat: true }, { isComposing: true }, { keyCode: 229 }, { altKey: true }, { shiftKey: true }, { key: "'" }, { key: "ш" }])(
-  "Format ignores a modified/composing/held preview shortcut: %j", async (more) => {
-    const calls = backend();
-    render(<App />);
-    fireEvent.click(await waitFor(() => formatButton("Copy as Pandoc key")));
-    fireEvent.keyDown(screen.getByRole("searchbox"), { key: "i", code: "KeyI", ctrlKey: true, ...more });
-    await act(async () => { await new Promise(requestAnimationFrame); await new Promise(requestAnimationFrame); });
-    expect(screen.getByRole("menu")).toBeTruthy();
-    expect(calls).not.toContain("set_picker_preferences");
-    expect(calls).not.toContain("quit");
-  },
-);
 
 test.each(["keyboard", "fallback", "other focus", "pointer", "oversized"])("footer reflow follows only the Search keyboard owner (%s)", async (mode) => {
   const observations: { callback: () => void; nodes: Set<Element> }[] = [];
@@ -3929,8 +3854,6 @@ test.each(Object.keys(copyFormatNames) as api.CopyFormat[])("%s previews and cop
     page: expect.any(Number), request: expect.any(Number), cancel: false,
   } }));
   const box = screen.getByLabelText("Search references");
-  fireEvent.keyDown(box, { key: "i", code: "KeyI", ctrlKey: true });
-  expect(screen.queryByRole("region", { name: "Preview" })).toBeNull();
   fireEvent.keyDown(box, { key: "Enter" });
   await waitFor(() => expect(copy).toHaveBeenCalledExactlyOnceWith({ ticket: output.ticket, contentHash: output.content_hash }));
 });
