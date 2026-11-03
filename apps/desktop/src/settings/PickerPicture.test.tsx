@@ -7,7 +7,7 @@ import { PickerPicture } from "./PickerPicture";
 const sources = await vi.hoisted(async () => {
   const { readFileSync } = await vi.importActual<{ readFileSync: (url: URL, encoding: string) => string }>("node:fs");
   const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
-  return { picker: readFileSync(new FileURL("../styles.css", import.meta.url), "utf8"), button: readFileSync(new FileURL("../ui/Button.css", import.meta.url), "utf8"), iconButton: readFileSync(new FileURL("../ui/IconButton.css", import.meta.url), "utf8") };
+  return { picker: readFileSync(new FileURL("../styles.css", import.meta.url), "utf8"), button: readFileSync(new FileURL("../ui/Button.css", import.meta.url), "utf8"), iconButton: readFileSync(new FileURL("../ui/IconButton.css", import.meta.url), "utf8"), choices: readFileSync(new FileURL("../ui/PictureChoice.css", import.meta.url), "utf8") };
 });
 vi.mock("../styles.css?raw", () => ({ default: sources.picker }));
 vi.mock("../ui/Button.css?raw", () => ({ default: sources.button }));
@@ -27,4 +27,13 @@ test("System has two explicitly themed snapshots and crops through the frame's d
   const { container } = render(<PickerPicture appearance="light" split />);
   expect([...container.querySelectorAll<HTMLElement>(".ui-picker-picture-content > div")].map((host) => host.style.colorScheme)).toEqual(["light", "dark"]);
   expect(container.querySelector(".ui-picker-picture-mask[data-dark]")).toBeTruthy();
+});
+
+test("a strip shows two whole rows and its frame comes from them", () => {
+  const { container } = render(<PickerPicture rowsOnly density="compact" />);
+  expect(container.querySelector(".ui-picker-picture-content > div")!.shadowRoot!.querySelectorAll('[role="option"]')).toHaveLength(2);
+  const strip = sources.choices.split("\n").filter((line) => line.startsWith(".ui-picker-picture[data-rows]")).join("\n");
+  expect(strip).toMatch(/\{ width: 100%; height: auto; \}/);
+  expect(strip).toMatch(/transform: none; zoom: var\(--preview-rows\)/);
+  expect(strip).toMatch(/display: flow-root/);
 });

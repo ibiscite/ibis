@@ -164,6 +164,11 @@ export const commands = {
 	text: string,
 	more?: number | null,
 	milestone?: number | null,
+	/**
+	 *  The first paste into this word processor: insert with its plugin if the
+	 *  document uses one.
+	 */
+	plugin_note?: boolean,
 } | null>("copied_notice"),
 	/**  Initial command runs asynchronously; native mutations stay on the main thread. */
 	nativeAppearance: () => __TAURI_INVOKE<string>("native_appearance"),
@@ -252,7 +257,7 @@ export const commands = {
 /**  A fixed page linked from About. The web page never chooses the address. */
 export type AboutLink = "website" | "source" | "problem" | "licences";
 
-export type Accent = "system" | "ibis" | "blue" | "purple" | "pink" | "red" | "orange" | "yellow" | "green" | "graphite";
+export type Accent = "system" | "ibis";
 
 /**  One output the picker can copy: a key syntax or a citation style. */
 export type AppOutput = ({ key: KeyFormat }) & { style?: never } | ({ style: CitationStyle }) & { key?: never };
@@ -335,7 +340,7 @@ export type Copied_Serialize = {
 	delivery?: number | null,
 };
 
-export type DelightFact = "thoth" | "touch" | "scarlet" | "mummies" | "national" | "flight";
+export type DelightFact = "touch" | "scarlet" | "mummies" | "national" | "flight";
 
 export type DelightStatus = "paste-tip" | "library100" | "library1000" | "library10000";
 
@@ -346,8 +351,6 @@ export type DelightView = {
 	build: string,
 	fun: boolean,
 	fact: DelightFact | null,
-	birthday: boolean,
-	library: string | null,
 	revision: number,
 };
 
@@ -362,7 +365,7 @@ app: string | null } | { outcome: "copied";
 reason: string | null };
 
 /**  How much each result row shows (ADR 0020). */
-export type Density = "compact" | "comfortable" | "spacious";
+export type Density = "compact" | "comfortable";
 
 export type DesktopShortcut = {
 	configurable: boolean,
@@ -602,6 +605,11 @@ export type NoticeMessage_Deserialize = {
 	text: string,
 	more?: number | null,
 	milestone?: number | null,
+	/**
+	 *  The first paste into this word processor: insert with its plugin if the
+	 *  document uses one.
+	 */
+	plugin_note: boolean,
 };
 
 /**
@@ -613,6 +621,11 @@ export type NoticeMessage_Serialize = {
 	text: string,
 	more?: number | null,
 	milestone?: number | null,
+	/**
+	 *  The first paste into this word processor: insert with its plugin if the
+	 *  document uses one.
+	 */
+	plugin_note?: boolean,
 };
 
 /**  An app ID that cannot tell Ibis which output its document needs. */
@@ -640,7 +653,7 @@ export type PastedList = {
 };
 
 /**  Command identifiers shared with KEY_TABLE and the refusal's translated name. */
-export type PickerCommand = "format" | "pin" | "keys" | "more" | "preview" | "source" | "settings" | "quit";
+export type PickerCommand = "format" | "pin" | "keys" | "more" | "source" | "settings" | "quit";
 
 /**  What the picker needs to know about the app it was opened from. */
 export type PickerDestination = {
@@ -684,8 +697,6 @@ export type PickerPreferencesPatch_Deserialize = {
 	citation_style?: CitationStyle | null,
 	density?: Density | null,
 	larger_text?: boolean | null,
-	show_paste_preview?: boolean | null,
-	search_icon?: SearchIcon | null,
 	paste?: boolean | null,
 	menu_bar?: boolean | null,
 	recent_citations?: boolean | null,
@@ -699,8 +710,6 @@ export type PickerPreferencesPatch_Serialize = {
 	citation_style?: CitationStyle | null,
 	density?: Density | null,
 	larger_text?: boolean | null,
-	show_paste_preview?: boolean | null,
-	search_icon?: SearchIcon | null,
 	paste?: boolean | null,
 	menu_bar?: boolean | null,
 	recent_citations?: boolean | null,
@@ -719,9 +728,6 @@ export type PickerPreferences_Deserialize = {
 	citation_style: CitationStyle | null,
 	density: Density,
 	larger_text: boolean,
-	show_paste_preview: boolean,
-	/**  What leads the search field; the Ibis mark by default. */
-	search_icon: SearchIcon,
 	/**  Enter pastes into the app the picker was opened from; on by default. */
 	paste: boolean,
 	/**  The menu bar item; on by default. */
@@ -743,9 +749,6 @@ export type PickerPreferences_Serialize = {
 	citation_style: CitationStyle | null,
 	density: Density,
 	larger_text: boolean,
-	show_paste_preview: boolean,
-	/**  What leads the search field; the Ibis mark by default. */
-	search_icon: SearchIcon,
 	/**  Enter pastes into the app the picker was opened from; on by default. */
 	paste: boolean,
 	/**  The menu bar item; on by default. */
@@ -879,9 +882,6 @@ export type RestorePreview = {
 export type RowAction = "copy" | "toggle";
 
 export type Script = "normal" | "subscript" | "superscript";
-
-/**  What leads the search field: the Ibis mark, a magnifier or nothing. */
-export type SearchIcon = "ibis" | "magnifier" | "none";
 
 /**  Query text and the explicit choice to read a trailing locator. */
 export type SearchQuery = {

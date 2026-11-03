@@ -28,6 +28,7 @@ export const operationFailures = {
   format: "Ibis could not read your saved copy format. Check Copy as before copying.",
   shortcut: "Ibis could not check the shortcut. Open Ibis from the menu bar or tray.",
   choose: "The file chooser did not open. Try again.",
+  dropRefused: "Ibis opens one .bib, .biblatex or CSL-JSON file at a time.",
   zotero: "Ibis could not start reading Zotero. Try again.",
   samples: "Ibis could not change the sample library. Try again.",
   zoteroGroups: "Ibis could not list your Zotero groups. Check that Zotero is open, then try again.",
@@ -143,7 +144,6 @@ export const setupText = {
 export const densityNames = {
   compact: "Compact",
   comfortable: "Comfortable",
-  spacious: "Spacious",
 } as const;
 
 export const pickerText = {
@@ -215,6 +215,7 @@ export const pickerText = {
   fullCitation: "Full citation",
   windowReset: "Window position reset.",
   undo: "Undo",
+  notices: "Notices",
   undoFailed: "Could not undo. Try again.",
   previewPending: "Formatting…",
   previewNotReady: "Nothing was copied yet: the citation is still being formatted. Press Enter again in a moment.",
@@ -270,7 +271,6 @@ export const pickerText = {
   keepOpen: "Keep Window Open",
   keepOpenMenu: "Keep Window Open",
   stopKeepingOpen: "Stop keeping open",
-  showPastePreview: "Show What Will Be Pasted",
   moreTitle: (keys: string) => `More actions (${keys})`,
   chooseLibrary: "Choose Library…",
   chooseTitle: "Choose a library",
@@ -291,7 +291,7 @@ export const pickerText = {
   checkAutomatically: "Check for updates automatically",
   density: (name: string) => `Rows: ${name}`,
   rows: "Rows",
-  densityExamples: { compact: "1 line", comfortable: "2 lines", spacious: "3 lines" },
+  densityExamples: { compact: "1 line", comfortable: "2 lines" },
   densityTitle: "Show less or more of each reference",
   viewChanges: "View changes",
   largerText: "Larger text",
@@ -327,7 +327,6 @@ export const keyText = {
     source: "Open the source",
     chooseSource: "Choose a library",
     revealSource: "Show the source in its folder",
-    preview: "Show what will be pasted",
     copy: "Paste the citation",
     add: "Add another reference",
     move: "Move through results",
@@ -516,7 +515,7 @@ export const copyFormatLabels: Record<KeyFormat, string> = {
 export const rowText = {
   /** Follows the first author's name in Compact rows when there are more. */
   etAl: "et al.",
-  /** Short word for a CSL item type, shown in Spacious rows; other types show none. */
+  /** Short word for a CSL item type, read by screen readers; other types say none. */
   itemType: (type: string): string | null => (Object.hasOwn(itemTypeWords, type) ? itemTypeWords[type] ?? null : null),
 };
 
@@ -572,7 +571,9 @@ export const copiedNoticeText = {
     "paste-unavailable": "Copied. Press ⌘V to paste.",
     "elevated-app": "Copied. Not pasted into an administrator app",
     "key-release-failed": "Copied. Press and release Ctrl and V",
+    "selection-not-shown": "Copied. Ibis replaces only text it showed you. Press ⌘V to replace it.",
   } as Record<string, string>,
+  pluginNote: "If this document uses a reference manager's plugin (Zotero, Mendeley, EndNote, Citavi, Paperpile and others), insert with the plugin.",
   windowsTitle: "Citation copied. Press Ctrl+V to paste.",
   source: "Ibis",
   noticeFailed: "The Copied notice could not be shown.",

@@ -13,7 +13,7 @@ function scenario() {
   const send = (event: SessionEvent) => { [state, effects] = reduceSession(state, event); return effects; };
   const view = (change: Partial<SessionView> = {}): SessionEvent => ({ type: "view", session: state.session, interaction: state.interaction,
     view: { queryKey: sessionQueryKey(state), format: "pandoc", snapshotRevision: "synthetic", defaultChoice: choiceKey([a]),
-      chosen: [a], shown: prepared, previewVisible: true, searchPending: false, ready: true, saving: false, shouldAsk: false,
+      chosen: [a], shown: prepared, searchPending: false, ready: true, saving: false, shouldAsk: false,
       output: { opening: 0, choice: 0, delivery: 0 }, ...change } });
   const complete = (id: number, change: Partial<Extract<SessionEvent, { type: "copied" }>> = {}) => send({ type: "copied", id, session: 0, outcome: { text: prepared.text, warnings: [] },
     output: { opening: 0, choice: 0, delivery: 0 }, pinned: false, ...change });
@@ -294,18 +294,6 @@ test("delivery revocation keeps completed-write feedback without hiding or deliv
   expect(s.effects).toEqual([{ type: "consume", output }]);
 });
 
-test("a revoked write confirms in Notices when Preview is hidden, without retaining its delivery proof", () => {
-  const s = scenario();
-  s.send(s.view({ previewVisible: false }));
-  s.send({ type: "enter", choice: choiceKey([a]) });
-  const output = { opening: 0, choice: 0, delivery: 1 };
-  s.send(s.view({ output, previewVisible: false }));
-  s.complete(1, { output, outcome: { text: prepared.text, warnings: [], delivery: 17 } });
-  expect(s.state.shelfCopied).toBeNull();
-  expect(s.state.copyNotice).toEqual({ text: prepared.text, warnings: [] });
-  expect(s.effects).toEqual([{ type: "consume", output }]);
-});
-
 test.each(["before", "after"])("a revoked write arriving %s a newer copy's response cannot consume its feedback", (order) => {
   const s = scenario();
   s.send(s.view());
@@ -370,4 +358,141 @@ test("preparing clears an expired search before the window appears, and showing 
   expect(s.state.hiddenAt).toBeNull();
   s.send({ type: "shown", now: 61_100, presentation: 2 });
   expect(s.state.presentation).toBe(2);
+});
+
+test("short selected text opens as a search that lasts one opening", () => {
+  const s = scenario();
+  s.send({ type: "hidden", now: 0 });
+  s.send({ type: "preparing", now: 10, selection: "smith 2020" });
+  s.send({ type: "shown", now: 11, presentation: 1 });
+  expect(s.state).toMatchObject({ query: "smith 2020", fromDocument: true, restored: 1 });
+  s.send({ type: "hidden", now: 20 });
+  s.send({ type: "preparing", now: 30, selection: null });
+  s.send({ type: "shown", now: 31, presentation: 2 });
+  expect(s.state).toMatchObject({ query: "", fromDocument: false });
+});
+
+test("a newer selection replaces an earlier search and keeps the shelf", () => {
+  const s = scenario();
+  s.send({ type: "toggle", result: a });
+  s.send({ type: "query", value: "typed earlier" });
+  s.send({ type: "hidden", now: 0 });
+  s.send({ type: "preparing", now: 10, selection: "smith 2020" });
+  expect(s.state.query).toBe("smith 2020");
+  expect([...s.state.selected.values()]).toHaveLength(1);
+});
+
+test("no selection leaves a recent typed search to return as before", () => {
+  const s = scenario();
+  s.send({ type: "query", value: "typed earlier" });
+  s.send({ type: "hidden", now: 0 });
+  s.send({ type: "preparing", now: 10, selection: null });
+  s.send({ type: "shown", now: 11, presentation: 1 });
+  expect(s.state).toMatchObject({ query: "typed earlier", fromDocument: false });
+});
+
+test("editing document text makes it the person's own search", () => {
+  const s = scenario();
+  s.send({ type: "preparing", now: 10, selection: "smith 2020" });
+  s.send({ type: "query", value: "smith 20" });
+  s.send({ type: "hidden", now: 20 });
+  s.send({ type: "preparing", now: 30 });
+  expect(s.state).toMatchObject({ query: "smith 20", fromDocument: false });
+});
+
+test("Escape clears document text for good: it never comes back as a search", () => {
+  const s = scenario();
+  s.send({ type: "preparing", now: 10, selection: "smith 2020" });
+  s.send({ type: "escape-search" });
+  expect(s.state).toMatchObject({ query: "", escapedQuery: null, fromDocument: false });
+  s.send({ type: "hidden", now: 20 });
+  s.send({ type: "preparing", now: 30, selection: null });
+  expect(s.state.query).toBe("");
+});
+
+test("a new selection ends a permission detour: the text a paste would replace is always shown", () => {
+  const s = scenario();
+  s.send({ type: "toggle", result: a });
+  s.send({ type: "query", value: "prepared" });
+  s.send(s.view());
+  s.send({ type: "enter", choice: choiceKey([a]) });
+  s.complete(1);
+  s.send({ type: "hid", id: 1, session: 0 });
+  s.send({ type: "delivered", id: 1, session: 0, delivered: { outcome: "copied", reason: "no-permission" } });
+  expect(s.state.permissionDetour).toBe(true);
+  s.send({ type: "hidden", now: 20 });
+  s.send({ type: "preparing", now: 30, selection: "smith 2020" });
+  expect(s.state).toMatchObject({ query: "smith 2020", fromDocument: true, permissionDetour: false });
+  expect([...s.state.selected.values()]).toHaveLength(1);
+});
+
+test("a detour keeps its prepared search when the document has no selection", () => {
+  const s = scenario();
+  s.send({ type: "query", value: "prepared" });
+  s.send(s.view());
+  s.send({ type: "enter", choice: choiceKey([a]) });
+  s.complete(1);
+  s.send({ type: "hid", id: 1, session: 0 });
+  s.send({ type: "delivered", id: 1, session: 0, delivered: { outcome: "copied", reason: "no-permission" } });
+  s.send({ type: "hidden", now: 20 });
+  s.send({ type: "preparing", now: 30, selection: null });
+  expect(s.state).toMatchObject({ query: "prepared", permissionDetour: true });
+});
+
+test("a fresh Enter after a detour ends it, so a reopen during delivery cannot leave it stuck", () => {
+  const s = scenario();
+  s.send({ type: "query", value: "prepared" });
+  s.send(s.view());
+  s.send({ type: "enter", choice: choiceKey([a]) });
+  s.complete(1);
+  s.send({ type: "hid", id: 1, session: 0 });
+  s.send({ type: "delivered", id: 1, session: 0, delivered: { outcome: "copied", reason: "no-permission" } });
+  s.send({ type: "hidden", now: 20 });
+  s.send({ type: "preparing", now: 30, selection: null });
+  s.send({ type: "shown", now: 31, presentation: 0 });
+  expect(s.state.permissionDetour).toBe(true);
+  s.send(s.view());
+  s.send({ type: "enter", choice: choiceKey([a]) });
+  s.send({ type: "copied", id: 2, session: s.state.session, outcome: { text: prepared.text, warnings: [] }, output: { opening: 0, choice: 0, delivery: 0 }, pinned: false });
+  expect(s.state.permissionDetour).toBe(false);
+});
+
+test("a detour keeps a citation prepared from document text", () => {
+  const s = scenario();
+  s.send({ type: "preparing", now: 1, selection: "smith 2020" });
+  s.send(s.view());
+  s.send({ type: "enter", choice: choiceKey([a]) });
+  s.complete(1);
+  s.send({ type: "hid", id: 1, session: 0 });
+  s.send({ type: "delivered", id: 1, session: 0, delivered: { outcome: "copied", reason: "no-permission" } });
+  s.send({ type: "hidden", now: 20 });
+  s.send({ type: "preparing", now: 30, selection: null });
+  expect(s.state.query).toBe("smith 2020");
+});
+
+test("reopening during delivery is no detour: the new selection opens, and the late refusal cannot stick", () => {
+  const s = scenario();
+  s.send({ type: "query", value: "prepared" });
+  s.send(s.view());
+  s.send({ type: "enter", choice: choiceKey([a]) });
+  s.complete(1);
+  s.send({ type: "hid", id: 1, session: 0 });
+  s.send({ type: "hidden", now: 20 });
+  s.send({ type: "preparing", now: 21, selection: "jones 2021" });
+  s.send({ type: "shown", now: 22, presentation: 1 });
+  expect(s.state).toMatchObject({ query: "jones 2021", fromDocument: true });
+  s.send({ type: "delivered", id: 1, session: 0, delivered: { outcome: "copied", reason: "no-permission" } });
+  expect(s.state.permissionDetour).toBe(false);
+  s.send({ type: "hidden", now: 30 });
+  s.send({ type: "preparing", now: 31, selection: "newer 2022" });
+  expect(s.state.query).toBe("newer 2022");
+});
+
+test("a selection arriving with a waiting Enter cancels it: Enter never pastes a citation from an older search", () => {
+  const s = scenario();
+  s.send(s.view({ searchPending: true }));
+  s.send({ type: "enter", choice: null });
+  expect(s.state.pendingCopy).not.toBeNull();
+  s.send({ type: "preparing", now: 10, selection: "smith 2020" });
+  expect(s.state.pendingCopy).toBeNull();
 });

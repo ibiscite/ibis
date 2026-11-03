@@ -26,14 +26,14 @@ test("footer caps pulse for keyboard shortcuts only and retire old timers", () =
   expect(container.querySelector("[data-echo]")).toBeNull();
 });
 
-test("About renders only the authorized blink and clicking never changes focus", () => {
+test("About renders only the authorized dip and clicking never changes focus", () => {
   const click = vi.fn();
-  const { container, rerender } = render(<AboutDelight blink={1} enabled={false} onClick={click} />);
-  expect(container.querySelector('[data-blink]')).toBeNull();
+  const { container, rerender } = render(<AboutDelight dip={1} enabled={false} onClick={click} />);
+  expect(container.querySelector("[data-dip]")).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Ibis" }));
   expect(click).toHaveBeenCalledOnce();
-  rerender(<AboutDelight blink={1} enabled onClick={click} />);
-  expect(container.querySelector('[data-blink]')).not.toBeNull();
+  rerender(<AboutDelight dip={1} enabled onClick={click} />);
+  expect(container.querySelector("[data-dip]")).not.toBeNull();
 });
 
 test("listed shortcut echo is quiet and refuses recording or composition", () => {
