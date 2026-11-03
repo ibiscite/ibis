@@ -277,6 +277,7 @@ Built in `ibis-core` so every front end shares them (#1204).
 ### Notices
 
 - "Pasted" or "Copied" shows after the picker hides, in a window that never takes focus: one card near the top centre on every system, ignoring the pointer. What was copied is the hero: the citation in the text colour at body size, monospaced. Above it a quiet secondary line says what happened ("Copied", "Pasted into Word" or the reason). A green check in a soft green circle, centred on both lines, confirms success. A long reason wraps and is never clipped; the citation stays one line, ending in "…" with "+4 more" in view. The notice follows the chosen appearance.
+- **Plugin note**: the first paste into a word processor (Word, LibreOffice, Pages) adds a line under the citation and stays nine seconds: if this document uses a reference manager's plugin, insert with the plugin. Once per app, remembered in the per-app file, reset by Clear. It depends only on the app ID; Ibis cannot see the document, and browsers are skipped because Google Docs looks like any page.
 - No notice carries a side bar or a one-sided border. Errors are one sentence beside their cause, never a modal.
 - In-window toasts ("Removed · Undo") last 8 s, name their action and accept ⌘Z.
 

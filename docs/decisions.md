@@ -655,7 +655,8 @@ libraries and sources (0033).
 The output chooser remembers a format picked for the captured app unless the
 person selects "Just this once". `apps.json`, beside `settings.json`, keeps
 only the operating system, normalised app ID, output, optional delivery choice
-(`paste` or `copy-only`) and the identity binding described below for at most 200 apps;
+(`paste` or `copy-only`), the identity binding described below and whether the
+one-time plugin note was shown, for at most 200 apps;
 the least recently chosen app is dropped first. Never a document title, URL,
 window title, document text or citation. Browser and editor IDs cannot identify
 a project's syntax, so the first paste in each browser or code editor opens

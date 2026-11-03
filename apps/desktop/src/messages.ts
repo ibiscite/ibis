@@ -535,6 +535,7 @@ export const copiedNoticeText = {
     "elevated-app": "Copied. Not pasted into an administrator app",
     "key-release-failed": "Copied. Press and release Ctrl and V",
   } as Record<string, string>,
+  pluginNote: "If this document uses a reference manager's plugin (Zotero, Mendeley, EndNote, Citavi, Paperpile and others), insert with the plugin.",
   windowsTitle: "Citation copied. Press Ctrl+V to paste.",
   source: "Ibis",
   noticeFailed: "The Copied notice could not be shown.",

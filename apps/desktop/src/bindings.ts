@@ -139,6 +139,11 @@ export const commands = {
 	text: string,
 	more?: number | null,
 	milestone?: number | null,
+	/**
+	 *  The first paste into this word processor: insert with its plugin if the
+	 *  document uses one.
+	 */
+	plugin_note?: boolean,
 } | null>("copied_notice"),
 	/**  Initial command runs asynchronously; native mutations stay on the main thread. */
 	nativeAppearance: () => __TAURI_INVOKE<string>("native_appearance"),
@@ -572,6 +577,11 @@ export type NoticeMessage_Deserialize = {
 	text: string,
 	more?: number | null,
 	milestone?: number | null,
+	/**
+	 *  The first paste into this word processor: insert with its plugin if the
+	 *  document uses one.
+	 */
+	plugin_note: boolean,
 };
 
 /**
@@ -583,6 +593,11 @@ export type NoticeMessage_Serialize = {
 	text: string,
 	more?: number | null,
 	milestone?: number | null,
+	/**
+	 *  The first paste into this word processor: insert with its plugin if the
+	 *  document uses one.
+	 */
+	plugin_note?: boolean,
 };
 
 /**  An app ID that cannot tell Ibis which output its document needs. */

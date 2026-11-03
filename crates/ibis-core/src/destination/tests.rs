@@ -295,6 +295,28 @@ fn no_captured_app_copies() {
 }
 
 #[test]
+fn only_word_processors_get_the_plugin_note_and_only_by_app_id() {
+    for app in [
+        mac("com.microsoft.Word"),
+        mac("com.apple.iWork.Pages"),
+        mac("org.libreoffice.script"),
+        windows("WINWORD.EXE"),
+        windows("soffice.bin"),
+    ] {
+        assert!(has_citation_plugins(&app), "{app:?}");
+    }
+    for app in [
+        mac("com.apple.Safari"),
+        mac("com.google.Chrome"),
+        mac("com.apple.mail"),
+        mac("org.example.Unknown"),
+        windows("chrome.exe"),
+    ] {
+        assert!(!has_citation_plugins(&app), "{app:?}");
+    }
+}
+
+#[test]
 fn password_fields_copy() {
     let mut secure = target(mac("com.microsoft.Word"));
     secure.secure_field = true;

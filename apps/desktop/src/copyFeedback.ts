@@ -108,6 +108,12 @@ export function renderNotice(root: HTMLElement, platform: NoticePlatform): (mess
     code.title = message.text;
     notice.dataset.outcome = message.delivered.outcome;
     notice.replaceChildren(source, mark, title, code);
+    if (message.plugin_note) {
+      const note = document.createElement("span");
+      note.className = "copy-receipt-note";
+      note.textContent = copiedNoticeText.pluginNote;
+      notice.append(note);
+    }
     // Restart the fade for a notice shown again while still visible.
     notice.classList.remove("showing", "leaving");
     void notice.offsetWidth;
