@@ -9,7 +9,7 @@ use std::sync::Mutex;
 
 use ibis_core::contract::ItemRef;
 use ibis_core::settings::CitationStyle;
-use ibis_core::syntax::MAX_CITATION_ITEMS;
+use ibis_engine::MAX_CITATION_ITEMS;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State, WebviewWindow};
 use tauri_plugin_dialog::DialogExt;

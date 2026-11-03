@@ -13,6 +13,9 @@ pub mod rpc;
 mod service;
 pub use service::*;
 
+/// The most references one citation or bibliography can hold.
+pub use ibis_core::syntax::MAX_CITATION_ITEMS;
+
 pub mod wire;
 
 pub mod server;

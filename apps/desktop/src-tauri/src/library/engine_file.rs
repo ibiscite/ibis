@@ -244,11 +244,11 @@ impl FileLibrary {
             let mut kept = vec![];
             let mut left_out = vec![];
             for item in items {
-                // Refused, or a failure only this record causes.
-                if matches!(self.bibliography_of(vec![item.clone()], style), Ok((_, true))) {
-                    kept.push(item);
-                } else {
-                    left_out.extend(session_label(&snapshot, &item.item));
+                // Refused, or a failure only this record causes. The engine names it.
+                match self.bibliography_of(vec![item.clone()], style) {
+                    Ok((_, true)) => kept.push(item),
+                    Ok((single, false)) => left_out.extend(single.item_label(0)),
+                    Err(_) => left_out.extend(session_key(&snapshot, &item.item)),
                 }
             }
             if kept.is_empty() {
@@ -1012,16 +1012,18 @@ fn named_reference(citation: &PreparedCitation, warning: String) -> String {
         .map_or_else(|| warning.clone(), |name| format!("{name}: {detail}"))
 }
 
-fn session_label(snapshot: &Snapshot, id: &ItemRef) -> Option<String> {
+fn session_key(snapshot: &Snapshot, id: &ItemRef) -> Option<String> {
     let LibraryObject::Record(record) = &snapshot.get(id)?.object else {
         return None;
     };
-    record
-        .citation_key()
-        .ok()
-        .flatten()
-        .map(str::to_owned)
-        .or_else(|| record.csl.get("title")?.as_str().map(ibis_core::model::strip_markup))
+    Some(
+        record
+            .citation_key()
+            .ok()
+            .flatten()
+            .unwrap_or("a reference without a key")
+            .to_owned(),
+    )
 }
 
 fn style_id(style: CitationStyle) -> &'static str {
