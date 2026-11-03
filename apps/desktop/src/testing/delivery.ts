@@ -56,7 +56,7 @@ class Work<Args, Input = void, Output = void> {
 
 type PreviewContent = Pick<FilePreview, "text"> & Partial<Pick<FilePreview, "html" | "warnings" | "spans">>;
 type DeliveryRequest = { text: string; delivery: number | null };
-type Capture = { window: number | null; surface: number | null; reason: string | null };
+type Capture = { window: number | null; surface: number | null; reason: string | null; selection: string | null; unread: boolean };
 type Proof = DeliveryRequest & Capture & { delivery: number; sequence: number; presentation: number; app: string; epoch: number; written: number; paste: AppPaste | null };
 type AppChoice = { output: AppOutput | null; paste: AppPaste | null };
 
@@ -82,7 +82,7 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
   ]);
   const target = { window: 100 as number | null, verified: true, available: true,
     appId: "example.writer", refusal: null as "terminal" | "remote-desktop" | "virtual-machine" | "nonstandard-shortcut" | null,
-    surface: null as number | null, focusedPid: 42, focusAvailable: true, focusTimedOut: false };
+    surface: null as number | null, focusedPid: 42, focusAvailable: true, focusTimedOut: false, readsSelection: false, selectionFails: false };
   const authorizations = { postEvent: true, accessibility: true };
   const lifecycle = { epoch: 1, elapsed: 0, available: true };
   // Detached to keep this second window out of the picker's DOM and focus scope.
@@ -96,10 +96,13 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
   let activeTicket: string | null = null;
   let latestNotice = 0;
   let captured: Capture | null = null;
+  const selectedText = () => document.text.slice(...document.selection);
+  const shows = (text: string) => text.length <= 120 && !text.includes("\n");
   const capture = (): Capture => {
     const reason = !authorizations.postEvent ? "no-permission" : !authorizations.accessibility ? "accessibility-required"
       : target.window === null || !target.focusAvailable || target.focusTimedOut || target.focusedPid !== 42 ? "paste-unavailable" : null;
-    return { window: reason ? null : target.window, surface: reason ? null : target.surface ?? target.window, reason };
+    return { window: reason ? null : target.window, surface: reason ? null : target.surface ?? target.window, reason,
+      selection: target.readsSelection && !target.refusal && !target.selectionFails ? selectedText() : null, unread: target.readsSelection && (Boolean(target.refusal) || target.selectionFails) };
   };
 
   const deliver = ({ text, delivery }: DeliveryRequest): Delivered => {
@@ -120,6 +123,8 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
     if (target.focusedPid !== 42) return { outcome: "copied", reason: "target-changed" };
     if (clipboard.owner !== "ibis" || owned.sequence !== clipboard.sequence) return { outcome: "copied", reason: "clipboard-changed" };
     if (!target.available || owned.window !== target.window || owned.surface !== (target.surface ?? target.window)) return { outcome: "copied", reason: "target-changed" };
+    if (owned.unread && selectedText() !== "") return { outcome: "copied", reason: "selection-not-shown" };
+    if (owned.selection !== null && (!shows(owned.selection) && owned.selection !== "" || owned.selection !== selectedText())) return { outcome: "copied", reason: "selection-not-shown" };
     if (visible || owned.presentation !== presentation || clipboard.owner !== "ibis"
       || owned.sequence !== clipboard.sequence || owned.app !== document.app) return { outcome: "copied", reason: null };
     const destination = owned.surface === null ? undefined : documents.get(owned.surface);
@@ -139,7 +144,7 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
       const choice = appChoices.get(target.appId);
       const paste = target.refusal ? null : choice?.paste ?? null;
       return { app: document.app, app_id: target.appId, app_identity: target.appId, automatic: { key: "pandoc" }, remembered: choice?.output ?? null, unreadable: false,
-        can_paste: !target.refusal && (target.verified || paste === "paste") && paste !== "copy-only" && captured.reason === null,
+        can_paste: !target.refusal && (target.verified || paste === "paste") && paste !== "copy-only" && captured.reason === null && (!captured.selection || shows(captured.selection)),
         output_question: null, paste, can_choose_paste: !target.refusal && captured.reason === null, paste_question: !target.refusal && !target.verified && paste === null && captured.reason === null };
     },
     remember_app_output: ({ appId, output, paste }) => {
@@ -204,6 +209,8 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
       proof = null;
       captured = capture();
       visible = true;
+      const text = captured.selection;
+      await emit("picker:preparing", text && shows(text) ? text : null);
       await emit("picker:shown");
     },
     copyElsewhere(text: string) {
