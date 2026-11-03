@@ -86,7 +86,7 @@ main > .search-bar, main > .shelf, main > footer { flex: none; }
 /* The year shares the title's first line in every density, size and view. */
 .result-line, .result-meta { display: flex; align-items: baseline; gap: var(--space-3); min-width: 0; }
 .result-title { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: var(--type-title-size); font-weight: var(--strong); line-height: var(--type-title-line); letter-spacing: -.01em; }
-.result-year, .result-meta, .result-why { color: var(--text-secondary); font-size: var(--type-body-size); line-height: var(--type-body-line); }
+.result-year, .result-meta, .result-why, .result-project { color: var(--text-secondary); font-size: var(--type-body-size); line-height: var(--type-body-line); }
 .result-year { flex-shrink: 0; margin-inline-start: auto; font-variant-numeric: tabular-nums; }
 /* The meta line wraps only when the byline, type and library badge cannot
    all fit at their sizes; then they move under the byline. A body at least
@@ -112,7 +112,7 @@ main > .search-bar, main > .shelf, main > footer { flex: none; }
    every platform (C4, D7): the system accent on macOS and Windows, the GTK
    selection colour on Linux. Fill only: no border, ring or side pill. */
 [role="option"][data-active] { background: var(--selected); color: var(--selected-text); }
-[data-active] .result-meta, [data-active] .result-year, [data-active] .result-why { color: var(--selected-text-secondary); }
+[data-active] .result-meta, [data-active] .result-year, [data-active] .result-why, [data-active] .result-project { color: var(--selected-text-secondary); }
 /* An added row that is also selected keeps its tile apart from any accent,
    red and orange included (D9): the selected text colour with a scarlet check. */
 [role="option"][data-active][data-citation-selected] .result-tile { background: var(--selected-text); color: var(--scarlet); }

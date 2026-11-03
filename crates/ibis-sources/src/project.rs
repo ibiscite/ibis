@@ -82,6 +82,7 @@ pub enum KeyCheck {
 pub struct ProjectBibliography {
     keys: KeyScan,
     records: HashMap<String, Record>,
+    digest: u64,
 }
 
 impl std::fmt::Debug for ProjectBibliography {
@@ -108,7 +109,11 @@ impl ProjectBibliography {
                 _ => None,
             })
             .collect();
-        Ok(Self { keys, records })
+        Ok(Self {
+            keys,
+            records,
+            digest: digest(text),
+        })
     }
 
     pub fn complete(&self) -> bool {
@@ -173,9 +178,18 @@ pub struct ProjectRead {
 }
 
 impl ProjectRead {
-    /// Read `path`, keeping `previous`'s good copy if this read fails.
+    /// Read `path`, keeping `previous`'s good copy if this read fails. An
+    /// unchanged file is not parsed again, so opening the picker stays cheap.
     pub fn read(path: &Path, previous: Option<&Self>) -> Self {
-        Self::after(previous, read_project(path))
+        let unchanged = previous.and_then(|previous| previous.good.clone());
+        match observed_text(path) {
+            Ok(text) if unchanged.as_ref().is_some_and(|good| good.digest == digest(&text)) => Self {
+                good: unchanged,
+                problem: None,
+            },
+            Ok(text) => Self::after(previous, ProjectBibliography::from_text(path, &text)),
+            Err(problem) => Self::after(previous, Err(problem)),
+        }
     }
 
     fn after(previous: Option<&Self>, read: Result<ProjectBibliography, ProjectProblem>) -> Self {
@@ -189,6 +203,16 @@ impl ProjectRead {
                 problem: Some(problem),
             },
         }
+    }
+
+    /// Whether every answer stays the same, so nobody needs to ask again.
+    pub fn same_answers(&self, other: &Self) -> bool {
+        let same_file = match (&self.good, &other.good) {
+            (Some(a), Some(b)) => Arc::ptr_eq(a, b),
+            (None, None) => true,
+            _ => false,
+        };
+        same_file && self.problem == other.problem
     }
 
     pub fn problem(&self) -> Option<ProjectProblem> {
@@ -216,7 +240,7 @@ impl ProjectRead {
     }
 }
 
-fn read_project(path: &Path) -> Result<ProjectBibliography, ProjectProblem> {
+fn observed_text(path: &Path) -> Result<Arc<str>, ProjectProblem> {
     let bibtex = path.extension().is_none_or(|extension| {
         !["json", "csljson"]
             .iter()
@@ -225,8 +249,14 @@ fn read_project(path: &Path) -> Result<ProjectBibliography, ProjectProblem> {
     if !bibtex {
         return Err(ProjectProblem::NotBibtex);
     }
-    let observation = file::stable_observation(path).map_err(ProjectProblem::from)?;
-    ProjectBibliography::from_text(path, observation.text())
+    Ok(file::stable_observation(path).map_err(ProjectProblem::from)?.text())
+}
+
+fn digest(text: &str) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    text.hash(&mut hasher);
+    hasher.finish()
 }
 
 /// Disagreement needs a value on both sides; absence proves nothing. A DOI
@@ -423,6 +453,9 @@ mod tests {
         assert_eq!(failed.problem(), Some(ProjectProblem::Unavailable));
         assert_eq!(failed.check("taylor2026", None), In { line: 1 });
         assert_eq!(failed.check("okafor2018", None), CouldNotCheck);
+
+        assert!(!failed.same_answers(&good), "the label changes what is shown");
+        assert!(failed.same_answers(&failed.clone()));
 
         // A later good read clears the label; a first failure has nothing to keep.
         let recovered = ProjectRead::after(Some(&failed), Ok(ProjectBibliography::parsed(TWO)));

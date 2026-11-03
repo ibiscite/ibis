@@ -30,6 +30,7 @@ mod paste;
 mod picker;
 mod placement;
 mod preferences;
+mod project;
 mod row_context;
 mod settings_window;
 mod setup;
@@ -162,6 +163,7 @@ fn main() {
         .manage(setup::Offered::default())
         .manage(ChooserOpen::default())
         .manage(row_context::RowContext::default())
+        .manage(project::ProjectBibliography::default())
         .on_menu_event(row_context::selected)
         .manage(Pinned::default())
         .manage(picker::Moving::default())
@@ -336,6 +338,8 @@ fn main() {
             // After the tray, so the menu item shows the saved choice.
             updater::start(app.handle(), loaded.settings.update_checks, loaded.problem.is_none());
             // The library from settings; IBIS_LIBRARY overrides it for development.
+            project::start(app.handle(), loaded.settings.project_bibliography.clone());
+            project::watch_openings(app.handle());
             let library = std::env::var_os("IBIS_LIBRARY")
                 .map(|path| Source::File(PathBuf::from(path)))
                 .or_else(|| loaded.settings.library.clone().map(Source::from));

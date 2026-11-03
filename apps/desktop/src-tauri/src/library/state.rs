@@ -378,6 +378,7 @@ mod tests {
             let app = tauri::test::mock_builder()
                 .manage(Mutex::new(Library::default()))
                 .manage(super::super::PreviewRequests::default())
+                .manage(crate::project::ProjectBibliography::default())
                 .build(tauri::test::mock_context(tauri::test::noop_assets()))
                 .unwrap();
             let library = app.state::<Mutex<Library>>();
@@ -418,6 +419,7 @@ mod tests {
                     request: 1,
                     cancel: false,
                 },
+                app.state(),
                 app.state(),
                 app.state(),
             ))

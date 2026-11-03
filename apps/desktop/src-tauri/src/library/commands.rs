@@ -13,6 +13,7 @@ use super::source::Source;
 use super::state::Library;
 use super::status::LibraryStatus;
 use super::tasks::{choose_library_file, current_status, reload_library_file, start_open, use_zotero_library};
+use crate::project::ProjectBibliography;
 
 /// Choose a library with the system file dialog. The interface never passes
 /// file paths; the result arrives as the `library:changed` event.
@@ -101,7 +102,7 @@ pub(crate) fn library_status(app: AppHandle) -> LibraryStatus {
 /// dates for the second group. Never searches document text or reads new sources.
 #[derive(serde::Deserialize, specta::Type)]
 #[serde(transparent)]
-pub(crate) struct RecentIdentity(#[specta(type = specta_typescript::Unknown)] ibis_core::contract::ItemRef);
+pub(crate) struct RecentIdentity(#[specta(type = specta_typescript::Unknown)] pub(crate) ibis_core::contract::ItemRef);
 
 #[tauri::command]
 #[specta::specta]
@@ -109,6 +110,7 @@ pub(crate) async fn recent_references(
     ids: Vec<RecentIdentity>,
     include_added: bool,
     library: State<'_, Mutex<Library>>,
+    project: State<'_, ProjectBibliography>,
 ) -> Result<SearchReply, String> {
     if ids.len() > 30 {
         return Err("Too many recent references.".into());
@@ -120,9 +122,13 @@ pub(crate) async fn recent_references(
         .file
         .clone()
         .ok_or("No library is open.")?;
-    tauri::async_runtime::spawn_blocking(move || file.recents(&ids, include_added))
-        .await
-        .map_err(|_| "Recent references are unavailable.".to_owned())?
+    let project = project.current();
+    tauri::async_runtime::spawn_blocking(move || {
+        file.recents(&ids, include_added)
+            .map(|reply| file.mark_project(reply, project.as_ref()))
+    })
+    .await
+    .map_err(|_| "Recent references are unavailable.".to_owned())?
 }
 
 /// Search the open library. An empty query returns no results. Async so it
@@ -141,6 +147,7 @@ pub(crate) async fn search(
     scope: Option<Vec<String>>,
     library: State<'_, Mutex<Library>>,
     requests: State<'_, SearchRequests>,
+    project: State<'_, ProjectBibliography>,
 ) -> Result<SearchReply, String> {
     // The library lock is held only to take the engine.
     let file = {
@@ -163,7 +170,11 @@ pub(crate) async fn search(
             list: None,
         });
     };
-    tauri::async_runtime::spawn_blocking(move || file.search(&query, limit, scope, &cancel))
-        .await
-        .map_err(|_| "searching stopped unexpectedly".to_string())?
+    let project = project.current();
+    tauri::async_runtime::spawn_blocking(move || {
+        file.search(&query, limit, scope, &cancel)
+            .map(|reply| file.mark_project(reply, project.as_ref()))
+    })
+    .await
+    .map_err(|_| "searching stopped unexpectedly".to_string())?
 }

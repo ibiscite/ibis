@@ -143,8 +143,8 @@ pub struct SourceSnapshot {
 }
 
 impl SourceSnapshot {
-    pub(crate) fn text(&self) -> &str {
-        &self.text
+    pub(crate) fn text(&self) -> Arc<str> {
+        self.text.clone()
     }
 }
 

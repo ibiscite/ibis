@@ -173,6 +173,9 @@ pub struct Settings {
     /// Library to open at start.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub library: Option<LibrarySetting>,
+    /// The `.bib` results are checked against, read-only.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub project_bibliography: Option<PathBuf>,
     /// Syntax the picker copies citations in; remembered when chosen.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub copy_format: Option<KeyFormat>,
@@ -222,6 +225,7 @@ impl Default for Settings {
             small_surprises: None,
             shortcut: None,
             library: None,
+            project_bibliography: None,
             copy_format: None,
             update_checks: None,
             citation_style: None,

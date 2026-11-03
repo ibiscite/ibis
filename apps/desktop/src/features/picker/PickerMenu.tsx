@@ -1,5 +1,5 @@
 import type { Ref, RefObject } from "react";
-import type { Density } from "../../api";
+import type { Density, ProjectStatus } from "../../api";
 import { keyLabel, keysFor } from "../../keys";
 import { LibraryDetail } from "../../LibraryStatusLine";
 import { densityNames, keyText, pickerText } from "../../messages";
@@ -13,7 +13,7 @@ const label = (accelerator: string) => keyLabel(accelerator, isMac);
 
 /** More holds working actions; preferences live in Settings and source choices
  * have their own library menu. Rows is the one look changed while working. */
-export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, libraryDetail, lastOutcome, density, showPastePreview, pinned, actions, source }: {
+export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, libraryDetail, lastOutcome, density, showPastePreview, pinned, actions, source, project }: {
   source?: SourceActionProps;
   isOpen: boolean; onOpenChange: (open: boolean) => void;
   buttonRef: Ref<HTMLButtonElement>; searchRef: RefObject<HTMLElement | null>;
@@ -27,6 +27,8 @@ export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library
     /** Offered for a proven ordinary app target. */
     copyOnlyHere?: { app: string; choose: () => void } | null;
     forgetRecent?: (() => void) | null; quit: () => void };
+  /** The bibliography keys are checked against, and the entry of the highlighted row. */
+  project?: { status: ProjectStatus | null; choose: (() => void) | null; stop: (() => void) | null; copyEntry: (() => void) | null };
 }) {
   return (
     <MoreMenu isOpen={isOpen} onOpenChange={onOpenChange} buttonRef={buttonRef} searchRef={searchRef}
@@ -38,6 +40,13 @@ export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library
         {source && <MenuItem id="source" label={source.label} icon={<SourceIcon icon={source.icon} file={source.file} />} keys={source.keys ? label(source.keys) : undefined} onAction={source.open} />}
       </MenuSection>
       <MenuSeparator />
+      {project?.choose && <MenuSection id="project" label={project.status ? pickerText.projectDetail(project.status) : undefined}
+        header={project.status ? <MenuDetail title={pickerText.projectDetail(project.status)} /> : undefined}>
+        {project.copyEntry && project.status && <MenuItem id="project-entry" label={pickerText.copyProjectEntry(project.status.name)} onAction={project.copyEntry} />}
+        <MenuItem id="project-choose" label={project.status ? pickerText.chooseOtherProject : pickerText.chooseProject} onAction={project.choose} />
+        {project.status && project.stop && <MenuItem id="project-stop" label={pickerText.stopProject(project.status.name)} onAction={project.stop} />}
+      </MenuSection>}
+      {project?.choose && <MenuSeparator />}
       <MenuSection id="view">
         <MenuSubmenu id="density" label={pickerText.rows} value={pickerText.density(densityNames[density])} title={pickerText.densityTitle}>
           <MenuSection id="densities" selectionMode="single">

@@ -169,6 +169,7 @@ pub(crate) async fn preview_file_citation(
     intent: PreviewIntent,
     library: State<'_, Mutex<Library>>,
     requests: State<'_, PreviewRequests>,
+    project: State<'_, crate::project::ProjectBibliography>,
 ) -> Result<crate::library::engine_file::FilePreview, CommandError> {
     let cancel = requests
         .start(intent)
@@ -188,9 +189,18 @@ pub(crate) async fn preview_file_citation(
         (file, library.source_generation)
     };
     let reservation = file.reserve_preview_with(cancel);
-    let result = tauri::async_runtime::spawn_blocking(move || file.preview(reservation, items, format, style))
-        .await
-        .map_err(|_| CommandError::from("The preview is unavailable. Try again."))?;
+    // Only a key output depends on what the project's file holds.
+    let project = project.current().filter(|_| style.is_none());
+    let chosen: Vec<_> = items.iter().map(|item| item.id.clone()).collect();
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let mut preview = file.preview(reservation, items, format, style)?;
+        if let Some(project) = &project {
+            preview.warnings.extend(file.project_warnings(&chosen, project));
+        }
+        Ok(preview)
+    })
+    .await
+    .map_err(|_| CommandError::from("The preview is unavailable. Try again."))?;
     // A reload cancels previews it overtakes; that is waiting, not a failure.
     let overtaken = result.is_err()
         && library
@@ -202,6 +212,19 @@ pub(crate) async fn preview_file_citation(
         result
     }
 }
+/// Plain text with no delivery: it is copied, never pasted.
+pub(crate) fn write_plain(app: &AppHandle, text: &str) -> Result<(), String> {
+    clipboard::write(
+        app,
+        ibis_core::contract::ClipboardContent {
+            text,
+            html: None,
+            rtf: None,
+        },
+    )
+    .map(|_| ())
+}
+
 #[tauri::command]
 #[specta::specta]
 pub(crate) fn copy_file_citation(

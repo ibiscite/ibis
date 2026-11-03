@@ -59,6 +59,22 @@ export const commands = {
 	copyFileCitation: (ticket: string, contentHash: string) => __TAURI_INVOKE<Copied_Serialize>("copy_file_citation", { ticket, contentHash }),
 	/**  The format the picker starts with: the last one chosen, or Pandoc. */
 	copyFormat: () => __TAURI_INVOKE<KeyFormat>("copy_format"),
+	projectStatus: () => __TAURI_INVOKE<{
+	generation: number,
+	name: string,
+	state: ProjectState,
+	/**  Answers come from an earlier read, because the newest one failed. */
+	last_good: boolean,
+} | null>("project_status"),
+	/**  Choose the file with the system dialog; the interface never handles a path. */
+	chooseProject: () => __TAURI_INVOKE<void>("choose_project"),
+	/**  Stop checking. The file itself is untouched. */
+	stopProject: () => __TAURI_INVOKE<null>("stop_project"),
+	/**
+	 *  Copy a reference's original entry with its key, for adding to the project's
+	 *  file. The text goes to the clipboard here and never through the web view.
+	 */
+	copyProjectEntry: (id: RecentIdentity, generation: number) => __TAURI_INVOKE<EntryCopy>("copy_project_entry", { id, generation }),
 	/**  The preferences the picker starts with. */
 	pickerPreferences: () => __TAURI_INVOKE<PickerPreferences_Serialize>("picker_preferences"),
 	/**  Issue a save identity inline at IPC dispatch; unused identities block nothing. */
@@ -345,6 +361,11 @@ export type DisplayRun_Serialize = {
 	small_caps?: boolean,
 	underline?: boolean,
 };
+
+/**  How an entry copy ended; a refusal says how to get the entry another way. */
+export type EntryCopy = "copied" | "no-original" |
+/**  The file or the choice changed since this was offered. */
+"changed" | "repeated" | "dependency";
 
 export type FilePreview = FilePreview_Serialize | FilePreview_Deserialize;
 
@@ -729,6 +750,40 @@ export type PreviewIntent = {
 	cancel: boolean,
 };
 
+/**
+ *  The newest search each interface page has sent, so a search for a query
+ *  the person has already typed past stops early instead of delaying the
+ *  newer one. The interface numbers its searches, because commands can start
+ *  in a different order than they were sent, and names its page, because a
+ *  reloaded page counts from the start again.
+ *  The state of one emitted key in the project bibliography, for the row.
+ */
+export type ProjectKeyState = "in" | "missing" | "could-not-check" | "repeated" | "may-name-another";
+
+export type ProjectMark = {
+	generation: number,
+	state: ProjectKeyState,
+};
+
+export type ProjectState =
+/**  No answer yet for this choice. */
+"reading" |
+/**  Every entry could be read. */
+"ready" |
+/**  Part of the file could not be read, so nothing can be called missing. */
+"damaged" |
+/**  The newest read failed. */
+"failed";
+
+/**  What the picker may show. A file name, never a folder. */
+export type ProjectStatus = {
+	generation: number,
+	name: string,
+	state: ProjectState,
+	/**  Answers come from an earlier read, because the newest one failed. */
+	last_good: boolean,
+};
+
 export type ReceiptSummary = {
 	text: string,
 	more: number,
@@ -785,6 +840,8 @@ export type SearchResult = SearchResult_Serialize | SearchResult_Deserialize;
 
 export type SearchResult_Deserialize = {
 	recent?: RecentGroup | null,
+	/**  This row's key against the project bibliography of that generation. */
+	project?: ProjectMark | null,
 	/**  This row comes from the bundled invented library, including while a replacement search is pending. */
 	sample?: boolean,
 	/**  Revision captured with the index used for this result. */
@@ -821,6 +878,8 @@ export type SearchResult_Deserialize = {
 
 export type SearchResult_Serialize = {
 	recent?: RecentGroup | null,
+	/**  This row's key against the project bibliography of that generation. */
+	project?: ProjectMark | null,
 	/**  This row comes from the bundled invented library, including while a replacement search is pending. */
 	sample?: boolean,
 	/**  Revision captured with the index used for this result. */

@@ -11,8 +11,10 @@ export type Operation = keyof typeof operationFailures;
 
 /** Settings problems, failed actions, search and copy errors, and what was
  * copied. Library failures belong to the footer's controls. */
-export function Notices({ library, failures, error, citationProblem, copyError, copied, confirmation, onDismissCopied, updateProgress, missing = [], densityAnnouncement, feedback }: {
+export function Notices({ library, failures, error, citationProblem, copyError, copied, confirmation, onDismissCopied, updateProgress, missing = [], densityAnnouncement, feedback, projectNotice }: {
   feedback?: string | null;
+  /** What became of the last project entry copy. */
+  projectNotice?: string | null;
   densityAnnouncement?: Density;
   updateProgress?: UpdateProgress | null;
   library: LibraryStatus | null | undefined;
@@ -41,6 +43,7 @@ export function Notices({ library, failures, error, citationProblem, copyError, 
       {error && <p role="alert">{error}</p>}
       {citationProblem && <p role="alert" className="citation-problem" tabIndex={0}>{citationProblem}</p>}
       {missing.length > 0 && <p role="status">{pickerText.missingCitations(missing)}</p>}
+      {projectNotice && <p role="status">{projectNotice}</p>}
       {copyError && <p role="alert">{copyError}</p>}
       {feedback && <p className="copy-notice" role="status">{feedback}</p>}
       {copied && (confirmation || copied.warnings.length > 0) && (

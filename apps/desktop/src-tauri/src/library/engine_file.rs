@@ -448,6 +448,38 @@ impl FileLibrary {
                 .map(|list| super::search::PastedList { missing: list.missing }),
         })
     }
+    /// Mark each row by the key a citation of it would emit. A row whose key
+    /// cannot be emitted has no mark; the citation refuses it as before.
+    pub(crate) fn mark_project(
+        &self,
+        mut reply: SearchReply,
+        project: Option<&crate::project::Current>,
+    ) -> SearchReply {
+        let Some(project) = project else { return reply };
+        for row in &mut reply.results {
+            let check = serde_json::from_value::<ItemRef>(row.id.clone())
+                .ok()
+                .and_then(|id| self.engine.project_check_item(&project.read, &id).ok().flatten());
+            row.project = project.mark(check.map(|(_, check)| check));
+        }
+        reply
+    }
+
+    /// A sentence for each chosen key not plainly in the project's file.
+    pub(crate) fn project_warnings(&self, items: &[ItemRef], project: &crate::project::Current) -> Vec<String> {
+        items
+            .iter()
+            .filter_map(|id| self.engine.project_check_item(&project.read, id).ok().flatten())
+            .filter_map(|(key, check)| project.warning(&key, &check))
+            .collect()
+    }
+
+    pub(crate) fn original_entry(&self, id: &ItemRef) -> Result<ibis_engine::EntryResult, String> {
+        self.engine
+            .original_entry(id, &Cancellation::default())
+            .map_err(|_| "The entry could not be read.".to_owned())
+    }
+
     pub(crate) fn reserve_preview(&self) -> u64 {
         self.reserve_preview_with(Cancellation::default())
     }

@@ -99,6 +99,38 @@ impl Engine {
         })
     }
 
+    /// One record against the file, by the key a citation of it would emit.
+    /// `None` when the record has no usable key, which key outputs refuse anyway.
+    pub fn project_check_item(
+        &self,
+        read: &ProjectRead,
+        item: &ItemRef,
+    ) -> Result<Option<(String, KeyCheck)>, EngineError> {
+        let state = self.state()?;
+        let Some(SnapshotObject {
+            object: LibraryObject::Record(record),
+            ..
+        }) = state.index.snapshot().get(item)
+        else {
+            return Ok(None);
+        };
+        Ok(record
+            .citation_key()
+            .ok()
+            .flatten()
+            .map(|key| (key.to_owned(), read.check(key, Some(record)))))
+    }
+
+    /// The original entry of one loaded record.
+    pub fn original_entry(&self, item: &ItemRef, cancel: &Cancellation) -> Result<EntryResult, EngineError> {
+        self.entry(
+            &EntryRequest {
+                item: ItemSelector::Id(item.clone()),
+            },
+            cancel,
+        )
+    }
+
     pub(super) fn entry(&self, request: &EntryRequest, cancel: &Cancellation) -> Result<EntryResult, EngineError> {
         cancel.check()?;
         let state = self.state()?;

@@ -13,6 +13,37 @@ use serde::{Deserialize, Serialize};
 /// newer one. The interface numbers its searches, because commands can start
 /// in a different order than they were sent, and names its page, because a
 /// reloaded page counts from the start again.
+/// The state of one emitted key in the project bibliography, for the row.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, specta::Type)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum ProjectKeyState {
+    In,
+    Missing,
+    CouldNotCheck,
+    Repeated,
+    MayNameAnother,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, specta::Type)]
+pub(crate) struct ProjectMark {
+    pub(crate) generation: u32,
+    pub(crate) state: ProjectKeyState,
+}
+
+impl ProjectMark {
+    pub(crate) fn new(generation: u32, check: &ibis_engine::KeyCheck) -> Self {
+        use ibis_engine::KeyCheck;
+        let state = match check {
+            KeyCheck::In { .. } => ProjectKeyState::In,
+            KeyCheck::Missing => ProjectKeyState::Missing,
+            KeyCheck::CouldNotCheck => ProjectKeyState::CouldNotCheck,
+            KeyCheck::Repeated { .. } => ProjectKeyState::Repeated,
+            KeyCheck::MayNameAnother { .. } => ProjectKeyState::MayNameAnother,
+        };
+        Self { generation, state }
+    }
+}
+
 #[derive(Default)]
 pub(crate) struct SearchRequests(Mutex<HashMap<u32, (u32, Cancellation)>>);
 
@@ -63,6 +94,10 @@ pub(crate) struct SearchResult {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[specta(optional)]
     pub(super) recent: Option<RecentGroup>,
+    /// This row's key against the project bibliography of that generation.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[specta(optional)]
+    pub(super) project: Option<ProjectMark>,
     /// This row comes from the bundled invented library, including while a replacement search is pending.
     #[specta(optional)]
     pub(super) sample: bool,
@@ -152,6 +187,7 @@ impl SearchResult {
             .map(|text| capped(text, CONTAINER_LIMIT));
         Self {
             recent: None,
+            project: None,
             sample: false,
             revision: revision.into(),
             id: serde_json::json!(&record.id),
