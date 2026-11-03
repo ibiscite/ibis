@@ -1015,6 +1015,11 @@ fn execute<R: BufRead, W: Write + Send>(
     let result = explain(
         engine.dispatch(method, &params, &cancel),
         |EngineError { code, .. }| match code {
+            ErrorCode::BadInput
+                if method == Method::Styles && params["query"].as_str().is_some_and(|query| query.len() > 1024) =>
+            {
+                "the search words are too long; use fewer.".into()
+            }
             ErrorCode::BadInput if method == Method::Styles => "--limit must be between 1 and 20000.".into(),
             code => human::code_sentence(code).into(),
         },

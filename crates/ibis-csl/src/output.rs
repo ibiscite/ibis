@@ -96,7 +96,7 @@ pub(crate) fn result(
     if runs.iter().any(|run| unsupported_controls(&run.text))
         || !(presentation_matches(&text, &runs, superscripts)
             || presentation_matches(&presentation, &runs, superscripts)
-            || blocks_match(&text, &html, &runs, superscripts))
+            || blocks_match(&text, &html, superscripts))
     {
         return Err(FormatError::Runtime);
     }
@@ -221,21 +221,54 @@ fn one_line(text: &str) -> String {
 }
 
 /// Entries laid out in blocks or margin columns are spaced by those blocks in
-/// HTML and by the processor's own line rules in text, so only there the two may
-/// differ in whitespace. Every other character must still match exactly.
-fn blocks_match(text: &str, html: &str, runs: &[DisplayRun], superscripts: &BTreeMap<char, String>) -> bool {
-    let unspaced = |text: &str| text.chars().filter(|ch| !js_space(*ch)).collect::<String>();
-    let runs: Vec<_> = runs
-        .iter()
-        .map(|run| DisplayRun {
-            text: unspaced(&run.text),
-            ..run.clone()
-        })
-        .collect();
-    ["csl-block", "csl-left-margin", "csl-right-inline", "csl-indent"]
+/// HTML and by line breaks in text, so there the two may differ in how much
+/// whitespace separates words, never in whether it does: a block edge counts as
+/// a break, and every run of whitespace counts as one.
+fn blocks_match(text: &str, html: &str, superscripts: &BTreeMap<char, String>) -> bool {
+    const BLOCKS: [&str; 4] = ["csl-block", "csl-left-margin", "csl-right-inline", "csl-indent"];
+    if !BLOCKS
         .iter()
         .any(|class| html.contains(&format!("<div class=\"{class}\">")))
-        && presentation_matches(&unspaced(text), &runs, superscripts)
+    {
+        return false;
+    }
+    let mut spaced = html.replace("</div>", "</div> ");
+    for class in BLOCKS {
+        let tag = format!("<div class=\"{class}\">");
+        spaced = spaced.replace(&tag, &format!(" {tag}"));
+    }
+    let Ok(runs) = parse_html(&spaced) else {
+        return false;
+    };
+    let collapse = |text: &str, out: &mut String, last_space: &mut bool| {
+        for ch in text.chars() {
+            if js_space(ch) {
+                if !*last_space {
+                    out.push(' ');
+                }
+                *last_space = true;
+            } else {
+                out.push(ch);
+                *last_space = false;
+            }
+        }
+    };
+    let mut last_space = true;
+    let runs: Vec<_> = runs
+        .iter()
+        .map(|run| {
+            let mut text = String::new();
+            collapse(&run.text, &mut text, &mut last_space);
+            DisplayRun { text, ..run.clone() }
+        })
+        .collect();
+    let (mut flat, mut space) = (String::new(), true);
+    collapse(text, &mut flat, &mut space);
+    let mut runs = runs;
+    if let Some(last) = runs.iter_mut().rev().find(|run| !run.text.is_empty()) {
+        last.text = last.text.trim_end().to_owned();
+    }
+    presentation_matches(flat.trim_end(), &runs, superscripts)
 }
 
 /// Consume exact text, allowing only processor-known glyph presentation and
@@ -500,12 +533,13 @@ mod tests {
     #[test]
     fn blocks_may_differ_from_text_in_whitespace_but_never_in_words() {
         let html = "<div class=\"csl-entry\"><div class=\"csl-block\">Invented</div> <div class=\"csl-left-margin\">2001</div><div class=\"csl-right-inline\"> Vol. 1</div></div>";
-        let runs = parse_html(html).unwrap();
-        assert!(blocks_match("Invented2001  Vol. 1", html, &runs, &BTreeMap::new()));
-        assert!(!blocks_match("Invented2002  Vol. 1", html, &runs, &BTreeMap::new()));
+        let none = BTreeMap::new();
+        assert!(blocks_match("Invented 2001  Vol. 1", html, &none));
+        // A block edge is a word break: text that glues the words is refused.
+        assert!(!blocks_match("Invented2001 Vol. 1", html, &none));
+        assert!(!blocks_match("Invented 2002 Vol. 1", html, &none));
         let flat = "<div class=\"csl-entry\">Invented 2001</div>";
-        let runs = parse_html(flat).unwrap();
-        assert!(!blocks_match("Invented2001", flat, &runs, &BTreeMap::new()));
+        assert!(!blocks_match("Invented  2001", flat, &none));
     }
     #[test]
     fn baseline_returns_to_normal_script() {

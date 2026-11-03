@@ -103,6 +103,9 @@ pub(crate) struct Resolved {
     pub language: String,
     /// Its titles are written in sentence case, with capitalized subtitles.
     pub sentence_titles: bool,
+    /// Author only, year only and narrative were checked against Zotero for
+    /// these rules; elsewhere they are refused until each style's output is verified.
+    pub verified_forms: bool,
 }
 
 static HEADER: LazyLock<Result<Header, FormatError>> = LazyLock::new(|| {
@@ -249,12 +252,16 @@ pub(crate) fn resolve(id: &str) -> Result<Arc<Resolved>, FormatError> {
         id: own.0.to_owned(),
         rules: rules.0.to_owned(),
         traits: crate::input::style_traits(&xml),
+        // A style may name a bare language ("fr"); report the dialect it means.
         language: forced_locale
-            .clone()
-            .or_else(|| rules.4.map(str::to_owned))
-            .unwrap_or_else(|| "en-US".into()),
+            .as_deref()
+            .or(rules.4)
+            .map_or(Ok("en-US"), locale_tag)
+            .unwrap_or("en-US")
+            .to_owned(),
         forced_locale,
         sentence_titles,
+        verified_forms: crate::STYLES.iter().any(|(id, _)| *id == rules.0),
         xml,
     });
     *LAST.lock().map_err(|_| FormatError::Runtime)? = Some(resolved.clone());
@@ -275,9 +282,25 @@ pub(crate) fn locale_tag(tag: &str) -> Result<&'static str, FormatError> {
 }
 
 /// A locale file for the processor, or `None` if no such language is bundled.
+/// The processor also asks for shortened tags of the language it runs in
+/// (`sr-Latn` for `sr-Latn-RS`): those name the one bundled dialect they start,
+/// or the language's main dialect.
 pub(crate) fn locale_xml(tag: &str) -> Result<Option<String>, FormatError> {
-    let Ok(tag) = locale_tag(tag) else { return Ok(None) };
-    let row = header()?.locales.iter().find(|locale| locale.0 == tag);
+    let header = header()?;
+    let prefixed: Vec<_> = header
+        .locales
+        .iter()
+        .filter(|locale| locale.0.strip_prefix(tag).is_some_and(|rest| rest.starts_with('-')))
+        .collect();
+    let tag = match (locale_tag(tag), prefixed.as_slice()) {
+        (Ok(tag), _) => tag,
+        (Err(_), [only]) => only.0.as_str(),
+        (Err(_), _) => match tag.split('-').next().map(locale_tag) {
+            Some(Ok(main)) => main,
+            _ => return Ok(None),
+        },
+    };
+    let row = header.locales.iter().find(|locale| locale.0 == tag);
     row.map(|locale| file(locale.3, locale.4, locale.5)).transpose()
 }
 
@@ -450,6 +473,22 @@ mod tests {
         let nature = resolve("nature").unwrap();
         assert_ne!(apa.xml, nature.xml);
         assert_eq!(resolve("apa").unwrap().xml, apa.xml);
+    }
+
+    #[test]
+    fn every_listed_language_has_a_file_the_processor_can_find() {
+        for locale in &header().unwrap().locales {
+            assert!(locale_xml(&locale.0).unwrap().is_some(), "{}", locale.0);
+        }
+        // What the processor asks for while running sr-Latn-RS and sr-Cyrl-RS.
+        for (asked, found) in [
+            ("sr-Latn", "sr-Latn-RS"),
+            ("sr-Cyrl", "sr-Cyrl-RS"),
+            ("sr-RS", "sr-Latn-RS"),
+        ] {
+            assert!(locale_xml(asked).unwrap().unwrap().contains(found), "{asked}");
+        }
+        assert_eq!(locale_xml("xx-INVENTED"), Ok(None));
     }
 
     #[test]

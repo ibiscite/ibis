@@ -113,6 +113,11 @@
   CSL.titlecaseSentenceOrNormal = function (...args) { return withSubtitleBoundaries(args[0], caseTitle, this, args); };
   const decodeRich = (text, lessThan = "<") => inline(text.split(markup)
     .map((part, index) => index % 2 ? part : decodeText(part, lessThan)).join(""));
+  // The processor's text format opens a block with a line break but never
+  // closes it, gluing the next word to the block's last one: "Noor2021". HTML
+  // shows the break, so the text keeps it too, and one-line folding spaces it.
+  CSL.Output.Formats.text["@display/block"] = (state, str) => "\n" + str + "\n";
+  CSL.Output.Formats.text["@display/indent"] = (state, str) => "\n    " + str + "\n";
   let literalLessThan = null;
   for (const format of ["text", "html", "rtf"]) {
     const escape = CSL.Output.Formats[format].text_escape;
@@ -273,7 +278,7 @@
     const converted = processorItems(request);
     if (!converted) return JSON.stringify({ status: "refused" });
     activeItems = new Map(converted.map((item) => [item.id, item]));
-    const key = JSON.stringify([request.style, request.locale, request.keep_order]);
+    const key = JSON.stringify([request.style, request.locale, request.keep_order, request.sentence_titles]);
     let engine = engines.get(key);
     if (!engine) {
       // Keep one warm style, rather than eight independent item registries.

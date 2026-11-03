@@ -57,11 +57,24 @@ fn line(result: Result<CitationResult, ibis_csl::FormatError>) -> Value {
 fn render(formatter: &Formatter, snapshot: &Snapshot, style: &str) -> Value {
     let count = snapshot.objects().len();
     let all: Vec<usize> = (0..count).collect();
+    let forms: Vec<Vec<Value>> = [
+        CitationForm::AuthorOnly,
+        CitationForm::YearOnly,
+        CitationForm::Narrative,
+    ]
+    .into_iter()
+    .map(|form| {
+        all.iter()
+            .map(|index| line(formatter.format(snapshot, &request(style, &[*index], form))))
+            .collect()
+    })
+    .collect();
     json!({
         "citations": all.iter().map(|index| {
             line(formatter.format(snapshot, &request(style, &[*index], CitationForm::Normal)))
         }).collect::<Vec<_>>(),
         "bibliography": line(formatter.format(snapshot, &request(style, &all, CitationForm::BibliographyOnly))),
+        "forms": forms,
     })
 }
 

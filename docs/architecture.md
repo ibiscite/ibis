@@ -240,7 +240,9 @@ the formatter task, and exhaustion remains a typed resource-limit error.
 ### Cost of every style (#19)
 
 All 10,870 styles and 63 locales are one 3.04 MB file in the binary (62 MB
-unpacked), in 1 MiB zstd blocks, so a request unpacks at most about 1.3 MiB. A
+unpacked), in 1 MiB zstd blocks. Changing style unpacks the style list (1.7 MB) and
+one block (at most 1.3 MB), then lets both go; formatting again in the same style
+unpacks nothing. A
 release `ibis` grows from 11.9 to 14.2 MB stripped, and the app by the same 2.3 MB.
 The bundle is read from disk only when used, so an idle or hidden app that formats
 nothing pays nothing. Measured on the same machine, alternating fresh processes
@@ -253,9 +255,9 @@ citation in one style (p95 12 to 26 ms against 18 to 38 ms) and a change of styl
 (p50 about 90 ms) match the five-style build within noise. Only the last style
 used stays unpacked.
 
-Weekly, `style_sweep` renders six invented records in every style. On this
-snapshot none fails: 10,676 render everything and 194 refuse something with a
-typed reason, mostly because a style has no bibliography.
+`style_sweep` renders six invented records in every style, in every form. Author
+only, year only and narrative are offered only for the styles checked against
+Zotero; other styles refuse them until their output for those forms is verified.
 
 ### Large-library measurement (#1251)
 

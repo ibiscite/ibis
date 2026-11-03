@@ -11,7 +11,7 @@
 // concatenated files. Reading one style therefore unpacks about 1 MiB.
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { lstatSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -19,6 +19,7 @@ import { constants, zstdCompressSync } from "node:zlib";
 
 const BLOCK_BYTES = 1024 * 1024;
 const MAX_FILE_BYTES = 1024 * 1024;
+const MAX_ARCHIVE_BYTES = 256 * 1024 * 1024;
 const ENTITIES = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" };
 
 export const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
@@ -49,14 +50,17 @@ export function styleMetadata(id, xml) {
   if (!title || !updated) throw new Error(`${id}: a style needs a title and an updated date`);
   if (declared && !declared.endsWith(`/${id}`) && declared !== id) throw new Error(`${id}: declares id ${declared}`);
   // Joiners stay: Persian and Indic titles need them. Overrides could reorder a menu.
-  if (/[\p{Cc}\u202a-\u202e\u2066-\u206f]/u.test(title)) throw new Error(`${id}: control character in title`);
+  if (/[\p{Cc}\u202a-\u202e\u2066-\u206f]/u.test(title + updated)) throw new Error(`${id}: control character in title`);
   const links = [...info.matchAll(/<link\b[^>]*>/g)].map(([tag]) => tag);
   const parentLink = links.find((tag) => attribute(tag, "rel") === "independent-parent");
   const parent = parentLink ? attribute(parentLink, "href")?.split("/").pop() ?? null : null;
   const categories = [...info.matchAll(/<category\b[^>]*>/g)].map(([tag]) => tag);
   const format = categories.map((tag) => attribute(tag, "citation-format")).find(Boolean) ?? null;
   const fields = categories.map((tag) => attribute(tag, "field")).filter(Boolean);
-  return { id, title, updated: updated.slice(0, 10), parent, locale: attribute(style, "default-locale"), format, fields };
+  const plain = /^[A-Za-z0-9_-]*$/;
+  const locale = attribute(style, "default-locale");
+  if (![format ?? "", locale ?? "", ...fields].every((value) => plain.test(value))) throw new Error(`${id}: unexpected characters in a category or locale`);
+  return { id, title, updated: updated.slice(0, 10), parent, locale, format, fields };
 }
 
 const compress = (bytes) => zstdCompressSync(bytes, {
@@ -143,15 +147,19 @@ async function download(source, into) {
   const url = `https://codeload.github.com/${source.repo}/tar.gz/${source.commit}`;
   const response = await fetch(url);
   if (!response.ok) throw new Error(`${url}: HTTP ${response.status}`);
+  const bytes = Buffer.from(await response.arrayBuffer());
+  if (bytes.length > MAX_ARCHIVE_BYTES) throw new Error(`${url}: larger than ${MAX_ARCHIVE_BYTES} bytes`);
   const archive = join(into, "archive.tar.gz");
-  writeFileSync(archive, Buffer.from(await response.arrayBuffer()));
+  writeFileSync(archive, bytes);
   const out = join(into, "tree");
   run("mkdir", [out]);
   run("tar", ["xzf", archive, "-C", out, "--strip-components=1"]);
   return out;
 }
 
+/** A regular file from the archive: a link could point outside it. */
 function checkedFile(path) {
+  if (!lstatSync(path).isFile()) throw new Error(`${path}: not a regular file`);
   const bytes = readFileSync(path);
   if (bytes.length > MAX_FILE_BYTES) throw new Error(`${path}: larger than ${MAX_FILE_BYTES} bytes`);
   return bytes;
@@ -175,7 +183,10 @@ export function readStyles(tree) {
 }
 
 export function readLocales(tree) {
-  const catalogue = JSON.parse(readFileSync(join(tree, "locales.json"), "utf8"));
+  const catalogue = JSON.parse(checkedFile(join(tree, "locales.json")).toString("utf8"));
+  for (const names of Object.values(catalogue["language-names"])) {
+    if (names.some((name) => /[\p{Cc}\u202a-\u202e\u2066-\u206f]/u.test(name))) throw new Error("control character in a language name");
+  }
   const locales = readdirSync(tree).sort().flatMap((name) => {
     const tag = /^locales-(.+)\.xml$/.exec(name)?.[1];
     if (!tag) return [];
@@ -201,7 +212,7 @@ async function main() {
     const localesTree = await download(manifest.sources.locales, join(work, "locales"));
     const styles = readStyles(stylesTree);
     const { locales, primary } = readLocales(localesTree);
-    const renames = JSON.parse(readFileSync(join(stylesTree, "renamed-styles.json"), "utf8"));
+    const renames = JSON.parse(checkedFile(join(stylesTree, "renamed-styles.json")).toString("utf8"));
     const releases = Object.fromEntries(["styles", "locales"].map((name) => {
       const { repo, tag, commit } = manifest.sources[name];
       return [name, { repo, tag, commit }];
@@ -211,12 +222,15 @@ async function main() {
       releases,
       bundle: { path: "csl-bundle.bin", bytes: bundle.length, sha256: sha256(bundle) },
       renames,
+      primary,
       files: Object.fromEntries([...styles, ...locales].map(({ path, bytes }) => [path, sha256(bytes)]).sort(([a], [b]) => (a < b ? -1 : 1))),
     };
     const recordPath = join(vendor, "csl-bundle.json");
     if (!update) {
       const pinned = JSON.parse(readFileSync(recordPath, "utf8"));
-      if (JSON.stringify(pinned.files) !== JSON.stringify(record.files)) throw new Error("the pinned release no longer matches csl-bundle.json");
+      for (const part of ["files", "renames", "primary"]) {
+        if (JSON.stringify(pinned[part]) !== JSON.stringify(record[part])) throw new Error(`the pinned release's ${part} no longer match csl-bundle.json`);
+      }
     }
     writeFileSync(join(vendor, "csl-bundle.bin"), bundle);
     writeFileSync(recordPath, `${JSON.stringify(record, null, 1)}\n`);

@@ -20,8 +20,10 @@ export function readSweep(text) {
 }
 
 /** Outputs a style could not produce, by its own fault rather than a refusal. */
+const parts = (output) => [...output.citations, output.bibliography, ...(output.forms ?? []).flat()];
+
 function failed(output) {
-  return [...output.citations, output.bibliography].some((part) => part?.failed !== undefined);
+  return parts(output).some((part) => part?.failed !== undefined);
 }
 
 export function compareSweeps(previous, next, exceptions) {
@@ -57,8 +59,8 @@ export function report({ removed, added, changed, newFailures, fixed }, previous
     lines.push("", `<details><summary>${style}</summary>`, "", "```diff");
     const before = previous.get(style);
     const after = next.get(style);
-    const parts = (output) => [...output.citations, output.bibliography].map((part) => (typeof part === "string" ? part : JSON.stringify(part)));
-    const [old, updated] = [parts(before), parts(after)];
+    const shown = (output) => parts(output).map((part) => (typeof part === "string" ? part : JSON.stringify(part)));
+    const [old, updated] = [shown(before), shown(after)];
     for (const [index, line] of updated.entries()) {
       if (old[index] !== line) lines.push(`- ${old[index]}`, `+ ${line}`);
     }

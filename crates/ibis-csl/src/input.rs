@@ -244,6 +244,10 @@ fn prepare_with_style(
             || (!traits.citation_has_issued && !bibliography && form == CitationForm::YearOnly)
             || ((matches!(form, CitationForm::Full | CitationForm::BibliographyOnly)) != bibliography
                 && !traits.numeric)
+            // Only styles whose output for these forms has been checked against
+            // Zotero offer them; anywhere else they can print residue ("…, pp.").
+            || (matches!(form, CitationForm::AuthorOnly | CitationForm::YearOnly | CitationForm::Narrative)
+                && !style.verified_forms)
         {
             Some(CitationError::UnsupportedForm)
         } else {
@@ -302,14 +306,16 @@ fn prepare_with_style(
         // narrative subject. Refuse multiple names until the narrative path has
         // its own verified name rendering.
         let symbol_narrative = traits.symbol_and && form == CitationForm::Narrative;
-        // When an item has authors, the in-text layouts of the bundled
-        // author-date styles print only these name lists; every other one is
-        // a substitute after `author` or appears only in entries.
+        // When an item has authors, the in-text layouts of the styles checked
+        // against Zotero print only these name lists; every other one is a
+        // substitute after `author` or appears only in entries. A note style's
+        // citation is a full note, so it is checked like an entry.
         let has_authors = named(record.get("author"));
         if record
             .iter()
             .filter(|(field, _)| {
                 bibliography
+                    || traits.note
                     || !has_authors
                     || matches!(field.as_str(), "author" | "composer" | "interviewer" | "recipient")
             })
@@ -797,6 +803,7 @@ mod tests {
             forced_locale: None,
             language: "en-US".into(),
             sentence_titles: false,
+            verified_forms: true,
         }
     }
 
