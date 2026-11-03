@@ -516,7 +516,7 @@ mod tests {
     fn item() -> CitationItem {
         CitationItem {
             item: ItemRef {
-                library: LibraryId::file(b"synthetic-library"),
+                library: LibraryId::digest(b"synthetic-library"),
                 key: "work-1".into(),
             },
             expected_cite: None,

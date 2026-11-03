@@ -58,6 +58,15 @@ pub(super) fn run(engine: &Engine, matches: &ArgMatches, mode: OutputMode) -> Re
     let styles = engine
         .dispatch(Method::Styles, &json!({}), &Cancellation::default())?
         .data;
+    let library_ids = if ibis_engine::identity::ids_last() {
+        check("ok", "ids-last", "Library ids last across runs on this computer.")
+    } else {
+        check(
+            "not-checked",
+            "ids-this-run",
+            "Library ids hold for this run: there is no usable saved key, and doctor writes none. Any other command saves one where it can.",
+        )
+    };
     let data = json!({
         "contract_version": Version,
         "cli_version": ibis_core::VERSION,
@@ -68,6 +77,7 @@ pub(super) fn run(engine: &Engine, matches: &ArgMatches, mode: OutputMode) -> Re
         }},
         "config":config,
         "library_check":library_check,
+        "library_ids":library_ids,
         "sources":sources,
     });
     let text = report_text(&data, unix_ms());
@@ -108,6 +118,7 @@ fn report_text(data: &Value, now_ms: u64) -> String {
         let kind = source["kind"].as_str().unwrap_or("source");
         checks.push((format!("Library {} ({kind})", source["index"]), source));
     }
+    checks.push(("Library ids".to_owned(), &data["library_ids"]));
     for (label, result) in &checks {
         text.push_str(&summary(label, result));
         if let (Some("stale"), Some(time)) = (
@@ -305,11 +316,7 @@ fn library_report(library: &LibraryInfo) -> Value {
         ("ok", "source-ok", "The library was read successfully.")
     };
     let mut result = check(status, code, message);
-    result["kind"] = json!(if library.id.as_str().starts_with("zotero:") {
-        "zotero"
-    } else {
-        "file"
-    });
+    result["kind"] = json!(library.kind);
     result["id"] = json!(library.id);
     result["warning_count"] = json!(library.warnings_total);
     result["refresh_error"] = json!(library.refresh_error);
@@ -327,7 +334,9 @@ mod tests {
     #[test]
     fn a_failed_refresh_reports_the_retained_snapshot_as_stale() {
         let library = LibraryInfo {
-            id: LibraryId::file(b"invented-source"),
+            id: LibraryId::digest(b"invented-source"),
+            kind: ibis_engine::LibraryKind::File,
+            capabilities: vec![],
             objects: 3,
             warnings: vec![],
             warnings_total: 0,

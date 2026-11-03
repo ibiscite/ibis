@@ -281,7 +281,9 @@ mod tests {
             ErrorCode::ResourceLimit
         );
         let id = case.request.items[0].item.library.clone();
-        engine.publish_library(id, Arc::new(case.library)).unwrap();
+        engine
+            .publish_library(id, crate::LibraryKind::Snapshot, Arc::new(case.library))
+            .unwrap();
         assert!(
             engine
                 .cite(&case.request, &Cancellation::default())

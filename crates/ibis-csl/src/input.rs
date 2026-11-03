@@ -811,7 +811,7 @@ mod tests {
     #[test]
     fn xml_traits_drive_fallback_and_form_refusals_independently_of_style_name() {
         let id = ItemRef {
-            library: LibraryId::file(b"synthetic-traits"),
+            library: LibraryId::digest(b"synthetic-traits"),
             key: "work".into(),
         };
         let csl = json!({"type":"book","author":[{"family":"Taylor"}],"issued":{"date-parts":[[2026]]}});

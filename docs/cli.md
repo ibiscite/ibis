@@ -35,7 +35,10 @@ Each run reads the libraries you name and nothing else:
 
 Library options may come before or after the command; they add up in that order and
 duplicates are ignored. Reading never writes to a library, and one-shot commands
-watch no files. Library IDs in the output are opaque digests, never paths.
+watch no files. Library IDs in the output are opaque tokens: they say nothing about
+the library (`libraries` reports its `kind` and `capabilities`), never reveal a path
+and last across runs on one computer, thanks to a private key Ibis saves once in its
+configuration folder. That key is the only file the command writes.
 
 When you name no library, `search`, `show`, `cite` and `libraries` read the one chosen
 in the Ibis app, as if you had given `--app-libraries`. They read the stable app's

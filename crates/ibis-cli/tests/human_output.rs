@@ -384,7 +384,7 @@ fn libraries_name_the_file_people_gave() -> Result<(), Box<dyn std::error::Error
 fn year_letters_notice_sees_the_same_year_and_names_however_they_are_written() -> Result<(), Box<dyn std::error::Error>>
 {
     let work = |id: &str, extra: serde_json::Value| {
-        let mut item = serde_json::json!({"id":id,"type":"book","title":format!("Synthetic {id}")});
+        let mut item = serde_json::json!({"id":id,"citation-key":id,"type":"book","title":format!("Synthetic {id}")});
         for (field, value) in extra.as_object().into_iter().flatten() {
             item[field] = value.clone();
         }

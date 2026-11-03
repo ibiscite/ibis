@@ -155,6 +155,7 @@ fn reason_hint(reason: ErrorReason) -> &'static str {
             "The library repeats this citation key, so Ibis skips every entry under it until each has its own key."
         }
         ErrorReason::AmbiguousKey => "Several references have this key; use the ref search returned.",
+        ErrorReason::MissingKey => "This reference has no citation key; use a style, or ask the user to give it one.",
         ErrorReason::AppMissing | ErrorReason::NotIbis | ErrorReason::NoAnswer => code_hint(ErrorCode::Internal),
     }
 }

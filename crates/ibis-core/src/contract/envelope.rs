@@ -137,6 +137,8 @@ pub enum ErrorReason {
     DuplicateKey,
     /// Several references share the key.
     AmbiguousKey,
+    /// A key output needs a citation key this reference does not have.
+    MissingKey,
     /// The program started as the Ibis app does not exist.
     AppMissing,
     /// The program started as the Ibis app is not Ibis.

@@ -86,6 +86,7 @@ fn labelled_samples_keep_the_source_change_guard_and_cannot_label_a_refusal() ->
     engine
         .publish_library(
             record.id.library.clone(),
+            ibis_engine::LibraryKind::Snapshot,
             Arc::new(Snapshot::new(vec![LibraryObject::Record(record)])?),
         )
         .map_err(|_| "publish")?;
@@ -131,6 +132,7 @@ fn changed_pick_never_reaches_the_native_commit() -> Result<(), Box<dyn std::err
     engine
         .publish_library(
             record.id.library.clone(),
+            ibis_engine::LibraryKind::Snapshot,
             Arc::new(Snapshot::new(vec![LibraryObject::Record(record)])?),
         )
         .map_err(|error| format!("{:?}", error.code))?;
@@ -177,7 +179,7 @@ fn commit_binds_preview_and_engine_but_allows_a_full_only_refresh() -> Result<()
     assert_ne!(next.fingerprints().full, case.library.fingerprints().full);
     assert_eq!(next.fingerprints().cite, case.library.fingerprints().cite);
     engine
-        .publish_library(record.id.library, next)
+        .publish_library(record.id.library, ibis_engine::LibraryKind::Snapshot, next)
         .map_err(|error| format!("{:?}", error.code))?;
     let text = engine.commit_citation(&prepared, &prepared.result().content_hash, |content| {
         content.text.to_owned()
@@ -200,10 +202,11 @@ fn key_collision_refuses_keys_but_not_formatted_citations() -> Result<(), Box<dy
     let LibraryObject::Record(mut other) = case.library.objects()[0].object.clone() else {
         return Err("record".into());
     };
-    other.id.library = LibraryId::zotero(b"another synthetic library");
+    other.id.library = LibraryId::digest(b"another synthetic library");
     engine
         .publish_library(
             other.id.library.clone(),
+            ibis_engine::LibraryKind::Snapshot,
             Arc::new(Snapshot::new(vec![LibraryObject::Record(other)])?),
         )
         .map_err(|_| "publish")?;
@@ -232,7 +235,7 @@ fn formatted_zotero_picks_need_no_agreeing_key() -> Result<(), Box<dyn std::erro
         let LibraryObject::Record(mut record) = case.library.objects()[0].object.clone() else {
             return Err("record".into());
         };
-        record.id.library = LibraryId::zotero(b"synthetic keyless library");
+        record.id.library = LibraryId::digest(b"synthetic keyless library");
         record.citation_keys.clear();
         if conflicting {
             record.citation_keys = vec![
@@ -319,6 +322,7 @@ fn annotation_uses_printed_label_and_rechecks_its_file() -> Result<(), Box<dyn s
     engine
         .publish_library(
             id.library,
+            ibis_engine::LibraryKind::Snapshot,
             Arc::new(Snapshot::new(vec![
                 record,
                 LibraryObject::Attachment(attachment),
@@ -365,7 +369,7 @@ fn publication_waits_for_the_native_write() -> Result<(), Box<dyn std::error::Er
             .recv_timeout(Duration::from_secs(5))
             .map_err(|_| "write start")?;
         let publishing = scope.spawn(|| {
-            let result = engine.publish_library(record.id.library, next);
+            let result = engine.publish_library(record.id.library, ibis_engine::LibraryKind::Snapshot, next);
             let _ = published.send(());
             result
         });

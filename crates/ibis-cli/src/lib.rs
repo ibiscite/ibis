@@ -510,6 +510,10 @@ fn run_engine<R: BufRead, W: Write + Send, E: Write>(
             );
         }
     };
+    if defaults == Defaults::App {
+        // Doctor writes nothing: without a saved key its ids last only for its report.
+        ibis_engine::identity::use_saved_key(matches.subcommand_name() != Some("doctor"));
+    }
     let engine = if matches!(matches.subcommand_name(), Some("serve" | "mcp")) {
         engine
     } else {

@@ -8,7 +8,7 @@ static FORMAT_TESTS: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 fn sample() -> (Snapshot, CitationRequest) {
     let id = ItemRef {
-        library: LibraryId::file(b"synthetic-format-library"),
+        library: LibraryId::digest(b"synthetic-format-library"),
         key: "example".into(),
     };
     let csl=serde_json::from_value(json!({"type":"book","title":"Synthetic signals","author":[{"family":"Taylor","given":"Avery"}],"issued":{"date-parts":[[2026]]},"publisher":"Imaginary Press"})).unwrap();
@@ -193,7 +193,7 @@ fn library(items: &[serde_json::Value]) -> Snapshot {
                 LibraryObject::Record(Record {
                     added_at: None,
                     id: ItemRef {
-                        library: LibraryId::file(b"synthetic-format-library"),
+                        library: LibraryId::digest(b"synthetic-format-library"),
                         // Snapshot sorts identities; preserve fixture order beyond ten records.
                         key: format!("work-{index:04}"),
                     },

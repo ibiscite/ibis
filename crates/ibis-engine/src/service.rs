@@ -4,6 +4,7 @@ use ibis_core::{
     contract::*,
     search::{MatchField, SnapshotIndex},
 };
+pub use ibis_sources::{LibraryKind, SourceCapability};
 use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
@@ -33,6 +34,8 @@ pub enum WatchWarning {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct LibraryInfo {
     pub id: LibraryId,
+    pub kind: LibraryKind,
+    pub capabilities: Vec<SourceCapability>,
     pub objects: usize,
     pub warnings: Vec<ibis_sources::SourceWarning>,
     pub warnings_total: usize,
@@ -51,9 +54,11 @@ pub struct LibraryInfo {
     pub duplicate_keys: std::collections::BTreeSet<String>,
 }
 impl LibraryInfo {
-    fn clean(id: LibraryId, objects: usize) -> Self {
+    fn clean(id: LibraryId, kind: LibraryKind, objects: usize) -> Self {
         Self {
             id,
+            kind,
+            capabilities: kind.capabilities().to_vec(),
             objects,
             warnings: vec![],
             warnings_total: 0,
@@ -261,7 +266,7 @@ impl Engine {
             let id = item.object.id().library.clone();
             libraries
                 .entry(id.clone())
-                .or_insert_with(|| LibraryInfo::clean(id, 0))
+                .or_insert_with(|| LibraryInfo::clean(id, LibraryKind::Snapshot, 0))
                 .objects += 1;
         }
         Self {
@@ -285,8 +290,12 @@ impl Engine {
     }
     /// An isolated IPv4-loopback transport for synthetic clients.
     pub fn with_zotero_port(port: u16) -> Result<Self, EngineError> {
+        Self::with_zotero_profile(port, b"")
+    }
+    /// The same, with `profile` standing for a Zotero profile's data directory.
+    pub fn with_zotero_profile(port: u16, profile: &[u8]) -> Result<Self, EngineError> {
         let mut engine = Self::new()?;
-        engine.resources = Arc::new(sources::Owners::on_port(port));
+        engine.resources = Arc::new(sources::Owners::on_port(port, profile));
         Ok(engine)
     }
     fn state(&self) -> Result<Arc<State>, EngineError> {
@@ -309,9 +318,17 @@ impl Engine {
             receiver,
         })
     }
-    pub fn publish_library(&self, library: LibraryId, snapshot: Arc<Snapshot>) -> Result<(), EngineError> {
-        self.shared
-            .install(LibraryInfo::clean(library, snapshot.objects().len()), &snapshot, None)
+    pub fn publish_library(
+        &self,
+        library: LibraryId,
+        kind: LibraryKind,
+        snapshot: Arc<Snapshot>,
+    ) -> Result<(), EngineError> {
+        self.shared.install(
+            LibraryInfo::clean(library, kind, snapshot.objects().len()),
+            &snapshot,
+            None,
+        )
     }
     /// Apply source health to the process outcome while preserving canonical data.
     pub fn finalize(&self, mut result: DispatchResult) -> Result<DispatchResult, EngineError> {
@@ -584,7 +601,7 @@ impl State {
     fn replacement(
         old: &Self,
         entries: Vec<(LibraryInfo, &Snapshot)>,
-        replaced: impl Fn(&LibraryId) -> bool,
+        replaced: impl Fn(&LibraryInfo) -> bool,
     ) -> Result<Self, EngineError> {
         if entries.iter().any(|(info, snapshot)| {
             snapshot
@@ -594,22 +611,26 @@ impl State {
         }) {
             return Err(error(ErrorCode::BadInput));
         }
+        let replaced: std::collections::BTreeSet<_> = old
+            .libraries
+            .values()
+            .filter(|info| replaced(info))
+            .map(|info| &info.id)
+            .chain(entries.iter().map(|(info, _)| &info.id))
+            .collect();
         // Unchanged libraries keep their prepared objects; nothing is re-fingerprinted.
         let combined = old
             .index
             .snapshot()
             .merged_many(
                 &entries.iter().map(|(_, snapshot)| *snapshot).collect::<Vec<_>>(),
-                |id| !replaced(id),
+                |id| !replaced.contains(id),
             )
             .map_err(|_| error(ErrorCode::BadInput))?;
         let combined = Arc::new(combined);
-        let zotero_ready = old.zotero_ready
-            || entries
-                .iter()
-                .any(|(info, _)| ibis_sources::zotero_source::is_zotero(&info.id));
+        let zotero_ready = old.zotero_ready || entries.iter().any(|(info, _)| info.kind == LibraryKind::Zotero);
         let mut libraries = old.libraries.clone();
-        libraries.retain(|id, _| !replaced(id));
+        libraries.retain(|id, _| !replaced.contains(id));
         libraries.extend(entries.into_iter().map(|(info, _)| (info.id.clone(), info)));
         let index = if combined.fingerprints().full == old.index.snapshot().fingerprints().full {
             old.index.clone()
@@ -645,16 +666,14 @@ impl Shared {
     }
 
     fn install(&self, info: LibraryInfo, snapshot: &Snapshot, remove: Option<LibraryId>) -> Result<(), EngineError> {
-        let library = info.id.clone();
-        self.publish(vec![(info, snapshot)], |id| {
-            *id == library || remove.as_ref() == Some(id)
-        })
+        self.publish(vec![(info, snapshot)], |old| remove.as_ref() == Some(&old.id))
     }
-    /// Replace every library `replaced` matches with `entries`, in one publication.
+    /// Replace `entries`' own libraries and every one `replaced` matches, in
+    /// one publication.
     fn publish(
         &self,
         entries: Vec<(LibraryInfo, &Snapshot)>,
-        replaced: impl Fn(&LibraryId) -> bool,
+        replaced: impl Fn(&LibraryInfo) -> bool,
     ) -> Result<(), EngineError> {
         let _publication = self.publication.lock().map_err(|_| error(ErrorCode::Internal))?;
         let old = self.state_view()?;

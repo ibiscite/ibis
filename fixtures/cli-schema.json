@@ -5,8 +5,8 @@
       "params": {
         "$defs": {
           "LibraryId": {
-            "description": "A source identity digest, never a source location. Sources hash the full\ncanonical file identity, or profile/data-directory/library identity.",
-            "pattern": "^(file|zotero):[0-9a-f]{64}$",
+            "description": "A library's opaque token. It says nothing about the library: its kind and\ncapabilities are fields of its description, and nothing may read them from\nhere. Sources mint one with [`LibraryId::digest`] over a private key and the\nsource's identity, so a seen id confirms no guessed location.",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
             "type": "string"
           },
           "ZoteroLibrary": {
@@ -137,14 +137,23 @@
             "type": "string"
           },
           "LibraryId": {
-            "description": "A source identity digest, never a source location. Sources hash the full\ncanonical file identity, or profile/data-directory/library identity.",
-            "pattern": "^(file|zotero):[0-9a-f]{64}$",
+            "description": "A library's opaque token. It says nothing about the library: its kind and\ncapabilities are fields of its description, and nothing may read them from\nhere. Sources mint one with [`LibraryId::digest`] over a private key and the\nsource's identity, so a seen id confirms no guessed location.",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
             "type": "string"
           },
           "LibraryInfo": {
             "properties": {
+              "capabilities": {
+                "items": {
+                  "$ref": "#/$defs/SourceCapability"
+                },
+                "type": "array"
+              },
               "id": {
                 "$ref": "#/$defs/LibraryId"
+              },
+              "kind": {
+                "$ref": "#/$defs/LibraryKind"
               },
               "objects": {
                 "format": "uint",
@@ -202,12 +211,46 @@
             },
             "required": [
               "id",
+              "kind",
+              "capabilities",
               "objects",
               "warnings",
               "warnings_total",
               "updated_at_ms"
             ],
             "type": "object"
+          },
+          "LibraryKind": {
+            "description": "What a library is. Front ends read this, never the library's id.",
+            "oneOf": [
+              {
+                "enum": [
+                  "zotero"
+                ],
+                "type": "string"
+              },
+              {
+                "const": "file",
+                "description": "A BibTeX, BibLaTeX or CSL-JSON file.",
+                "type": "string"
+              },
+              {
+                "const": "snapshot",
+                "description": "Data handed to the engine whole, with no source behind it.",
+                "type": "string"
+              }
+            ]
+          },
+          "SourceCapability": {
+            "description": "A fixed list per kind, not a plugin system. Zotero's two read paths share\none kind, so running and closed Zotero cannot offer different lists.",
+            "enum": [
+              "bibliographic-records",
+              "native-citation-keys",
+              "extra-citation-keys",
+              "key-aliases",
+              "key-conflicts"
+            ],
+            "type": "string"
           },
           "SourceWarning": {
             "additionalProperties": false,
@@ -216,7 +259,7 @@
                 "$ref": "#/$defs/WarningCode"
               },
               "key": {
-                "description": "The repeated BibTeX citation key, for `duplicate-key` only. It is the person's own\ndata and is shown only to them; no other warning carries source text.",
+                "description": "The repeated citation key or CSL `id`, for `duplicate-key` only. It is the person's\nown data and is shown only to them; no other warning carries source text.",
                 "type": [
                   "string",
                   "null"
@@ -311,8 +354,8 @@
       "params": {
         "$defs": {
           "LibraryId": {
-            "description": "A source identity digest, never a source location. Sources hash the full\ncanonical file identity, or profile/data-directory/library identity.",
-            "pattern": "^(file|zotero):[0-9a-f]{64}$",
+            "description": "A library's opaque token. It says nothing about the library: its kind and\ncapabilities are fields of its description, and nothing may read them from\nhere. Sources mint one with [`LibraryId::digest`] over a private key and the\nsource's identity, so a seen id confirms no guessed location.",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
             "type": "string"
           }
         },
@@ -470,7 +513,6 @@
             "enum": [
               "bibtex",
               "csl-json-citation-key",
-              "csl-json-id",
               "zotero",
               "extra",
               "better-bibtex"
@@ -629,8 +671,8 @@
             "type": "object"
           },
           "LibraryId": {
-            "description": "A source identity digest, never a source location. Sources hash the full\ncanonical file identity, or profile/data-directory/library identity.",
-            "pattern": "^(file|zotero):[0-9a-f]{64}$",
+            "description": "A library's opaque token. It says nothing about the library: its kind and\ncapabilities are fields of its description, and nothing may read them from\nhere. Sources mint one with [`LibraryId::digest`] over a private key and the\nsource's identity, so a seen id confirms no guessed location.",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
             "type": "string"
           },
           "LibraryObject": {
@@ -1167,8 +1209,8 @@
             ]
           },
           "LibraryId": {
-            "description": "A source identity digest, never a source location. Sources hash the full\ncanonical file identity, or profile/data-directory/library identity.",
-            "pattern": "^(file|zotero):[0-9a-f]{64}$",
+            "description": "A library's opaque token. It says nothing about the library: its kind and\ncapabilities are fields of its description, and nothing may read them from\nhere. Sources mint one with [`LibraryId::digest`] over a private key and the\nsource's identity, so a seen id confirms no guessed location.",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
             "type": "string"
           }
         },
@@ -1304,7 +1346,6 @@
             "enum": [
               "bibtex",
               "csl-json-citation-key",
-              "csl-json-id",
               "zotero",
               "extra",
               "better-bibtex"
@@ -1463,8 +1504,8 @@
             "type": "object"
           },
           "LibraryId": {
-            "description": "A source identity digest, never a source location. Sources hash the full\ncanonical file identity, or profile/data-directory/library identity.",
-            "pattern": "^(file|zotero):[0-9a-f]{64}$",
+            "description": "A library's opaque token. It says nothing about the library: its kind and\ncapabilities are fields of its description, and nothing may read them from\nhere. Sources mint one with [`LibraryId::digest`] over a private key and the\nsource's identity, so a seen id confirms no guessed location.",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
             "type": "string"
           },
           "LibraryObject": {
@@ -1901,8 +1942,8 @@
             "type": "string"
           },
           "LibraryId": {
-            "description": "A source identity digest, never a source location. Sources hash the full\ncanonical file identity, or profile/data-directory/library identity.",
-            "pattern": "^(file|zotero):[0-9a-f]{64}$",
+            "description": "A library's opaque token. It says nothing about the library: its kind and\ncapabilities are fields of its description, and nothing may read them from\nhere. Sources mint one with [`LibraryId::digest`] over a private key and the\nsource's identity, so a seen id confirms no guessed location.",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
             "type": "string"
           },
           "Locator": {
