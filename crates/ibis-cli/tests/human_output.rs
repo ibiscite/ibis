@@ -485,4 +485,3 @@ fn a_bare_less_than_sign_keeps_the_whole_title() -> Result<(), Box<dyn std::erro
     assert!(text.contains("Effect of p<0.05 on tidal rats"), "{text}");
     Ok(())
 }
-

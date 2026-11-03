@@ -553,6 +553,12 @@ fn cite(engine: &Engine, arguments: &Map<String, Value>) -> Result<Value, Refusa
                 .to_owned(),
         ),
     };
+    // A key syntax leaves language to the document's processor; nothing would read it.
+    if locale.is_some() && matches!(output, OutputSpec::Key { .. }) {
+        return Err(Refusal::bad(
+            "locale applies only to a style; a key syntax leaves language to the document's processor.",
+        ));
+    }
     let form: CitationForm = match arguments.get("form") {
         Some(form) => serde_json::from_value(form.clone())
             .map_err(|_| Refusal::bad("form must be one of the values in this tool's input schema."))?,
@@ -720,9 +726,9 @@ fn styles_input() -> Value {
     json!({
         "type": "object",
         "properties": {
-            "query": {"type": "string", "description": "Words from a style's title or id, such as a journal's name."},
+            "query": {"type": "string", "maxLength": 1024, "description": "Words from a style's title or id, such as a journal's name."},
             "limit": {"type": "integer", "minimum": 1, "maximum": MAX_STYLES, "default": 25},
-            "offset": {"type": "integer", "minimum": 0, "default": 0}
+            "offset": {"type": "integer", "minimum": 0, "default": 0, "description": "How many matching styles to skip, for the next page."}
         },
         "additionalProperties": false
     })
@@ -748,18 +754,17 @@ fn styles_output() -> Value {
 }
 
 fn styles(engine: &Engine, arguments: &Map<String, Value>) -> Result<Value, Refusal> {
-    let number = |name: &str, default: usize, range: std::ops::RangeInclusive<usize>| match arguments.get(name) {
+    let number = |name: &str, default: usize, most: Option<usize>| match arguments.get(name) {
         None => Ok(default),
         Some(value) => value
             .as_u64()
             .and_then(|value| usize::try_from(value).ok())
-            .filter(|value| range.contains(value))
+            .filter(|value| most.is_none_or(|most| (1..=most).contains(value)))
             .ok_or_else(|| {
-                Refusal::bad(format!(
-                    "{name} must be a whole number from {} to {}.",
-                    range.start(),
-                    range.end()
-                ))
+                Refusal::bad(match most {
+                    Some(most) => format!("{name} must be a whole number from 1 to {most}."),
+                    None => format!("{name} must be a whole number, 0 or more."),
+                })
             }),
     };
     let query = match arguments.get("query") {
@@ -767,14 +772,15 @@ fn styles(engine: &Engine, arguments: &Map<String, Value>) -> Result<Value, Refu
         Some(query) => Some(
             query
                 .as_str()
-                .ok_or_else(|| Refusal::bad("query must be text."))?
+                .filter(|query| query.len() <= 1024)
+                .ok_or_else(|| Refusal::bad("query must be text of at most 1,024 bytes."))?
                 .to_owned(),
         ),
     };
     let page = engine.styles(&StylesRequest {
         query,
-        limit: number("limit", 25, 1..=MAX_STYLES)?,
-        offset: number("offset", 0, 0..=usize::MAX)?,
+        limit: number("limit", 25, Some(MAX_STYLES))?,
+        offset: number("offset", 0, None)?,
     })?;
     serde_json::to_value(page).map_err(|_| EngineError::new(ErrorCode::Internal).into())
 }
