@@ -8,11 +8,12 @@ import type { useCitationOutput } from "./useCitationOutput";
 import type { useCitationRows } from "./useCitationRows";
 import type { usePickerSource } from "./usePickerSource";
 import type { useZoteroScope } from "./useZoteroScope";
+import type { CitationInspectorState } from "./useCitationInspector";
 const noSelection = new Map<string, CitationReference>();
 
 export function PickerCitationShelf({
-  state, send, showCitations, results, output, chosen, changeReference, libraryOf, format,
-  input, sourceState,
+  state, send, showCitations, results, output, chosen, changeReference, copyChosen, libraryOf, format,
+  input, sourceState, inspector,
 }: {
   state: ReturnType<typeof usePickerSession>["state"];
   send: ReturnType<typeof usePickerSession>["send"];
@@ -21,10 +22,12 @@ export function PickerCitationShelf({
   output: ReturnType<typeof useCitationOutput>;
   chosen: CitationReference[];
   changeReference: ReturnType<typeof useCitationRows>["changeReference"];
+  copyChosen: ReturnType<typeof useCitationRows>["copyChosen"];
   libraryOf: ReturnType<typeof useZoteroScope>["libraryOf"];
   format: Choice;
   input: RefObject<HTMLInputElement | null>;
   sourceState: ReturnType<typeof usePickerSource>;
+  inspector: CitationInspectorState;
 }) {
   const { selected, selectionChanged } = state;
   const { previewReceipt, keyFormat, displayedOutput, shown, previewProblem } = output;
@@ -40,7 +43,7 @@ export function PickerCitationShelf({
     send({ type: "remove-reference", reference: r });
     input.current?.focus({ preventScroll: true });
   }} highlightedReferences={selected.size === 0 ? chosen : undefined} previewReceipt={previewReceipt}
-    onChangeReference={changeReference} referenceLibrary={(r) => libraryOf(r.source ?? "")} style={style} keys={keyFormat !== null}
+    onChangeReference={changeReference} onSubmit={copyChosen} copyProblem={state.copyError} inspector={inspector} referenceLibrary={(r) => libraryOf(r.source ?? "")} style={style} keys={keyFormat !== null}
     shown={showCitations ? displayedOutput : undefined} outputWarnings={shown && typeof shown === "object" ? shown.warnings : []}
     problem={previewProblem} copied={showCitations ? state.shelfCopied : null} focusable={selected.size > 0} fallbackFocusRef={input}
     source={source.kind === "zotero" ? { ...sourceAction, label: pickerText.showInZotero } : sourceAction} onOpenSource={(reference) => sourceState.openReference(reference.id)} />;
