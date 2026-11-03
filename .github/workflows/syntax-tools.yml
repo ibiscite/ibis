@@ -9,6 +9,7 @@ on:
     paths:
       - crates/ibis-core/src/syntax/**
       - crates/ibis-core/src/contract/citation.rs
+      - crates/ibis-cli/**
       - fixtures/syntax-tools/**
       - scripts/syntax-tools.mjs
       - .github/workflows/syntax-tools.yml
@@ -16,8 +17,11 @@ on:
     branches: [main]
     paths:
       - crates/ibis-core/src/syntax/**
+      - crates/ibis-core/src/contract/citation.rs
+      - crates/ibis-cli/**
       - fixtures/syntax-tools/**
       - scripts/syntax-tools.mjs
+      - .github/workflows/syntax-tools.yml
   workflow_dispatch:
 
 permissions:

@@ -1346,7 +1346,9 @@ proptest! {
                     for escape in ["\\&", "\\%", "\\#", "\\$", "\\_", "\\char92{}", "\\char94{}", "\\char123{}", "\\char124{}", "\\char125{}", "\\char126{}"] {
                         rest = rest.replace(escape, "");
                     }
-                    let rest = rest.replacen("\\cite", "", 1);
+                    let rest = ["\\cite", "\\space", "\\removeunwantedspaces", "\\removepunctuation"]
+                        .into_iter()
+                        .fold(rest, |rest, command| rest.replace(command, ""));
                     prop_assert!(!rest.contains(['\\', '&', '%', '#', '$', '_', '^', '~', '|']), "{}", result.text);
                     prop_assert_eq!(rest.matches('{').count(), rest.matches('}').count(), "{}", result.text);
                 },

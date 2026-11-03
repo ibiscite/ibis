@@ -25,14 +25,14 @@ function run(command, args, cwd) {
 const available = (command, args = ["--version"]) => run(command, args).error?.code !== "ENOENT";
 
 /** What Ibis writes for a citation, which is what a person pastes. */
-export function cite(format, ...options) {
+function cite(format, ...options) {
   const result = run(ibis, ["cite", "taylor2026", "--file", references, "--format", format, ...options]);
   if (result.status !== 0) throw new Error(`ibis cite --format ${format}: ${result.stderr.trim()}`);
   return result.stdout.trim();
 }
 
 // Words only, for the checks below; nothing here is shown as HTML.
-const text = (xml) => xml.replace(/<[^>]*>/g, "").replace(/[<>]/g, "").replaceAll("&amp;", "&").replaceAll("\u00a0", " ");
+const text = (xml) => xml.replace(/<style[^>]*>[^]*?<\/style>/g, "").replace(/<[^>]*>/g, "").replace(/[<>]/g, "").replaceAll("&amp;", "&").replaceAll("\u00a0", " ");
 
 function context(work) {
   const citation = cite("context", "--locator", "p. 12", "--prefix", "see & so", "--suffix", "50%, a {b}");
@@ -41,7 +41,7 @@ function context(work) {
 \\usebtxdataset[references.bib]
 \\usebtxdefinitions[apa]
 \\starttext
-Here ${citation} and \\cite[alternative=year][taylor2026].
+Here ${citation}.
 
 \\placelistofpublications
 \\stoptext
@@ -87,7 +87,7 @@ function multimarkdown(work) {
 `);
   const result = run("multimarkdown", ["document.md"], work);
   if (result.status !== 0) throw new Error(`multimarkdown failed:\n${result.stderr.slice(-1500)}`);
-  return result.stdout;
+  return result.stdout.replace(/[^]*<body>|<\/body>[^]*/g, "");
 }
 
 function jupyter() {
@@ -119,12 +119,12 @@ Here ${cite("jekyll-scholar", "--locator", "p. 12")}.
 
 /** Each tool, how to know it is installed, and what its output must say. */
 const CHECKS = [
-  { name: "ConTeXt", found: () => available("context", ["--help"]), read: context, expect: ["see & so", "Taylor", "2026", "p. 12", "50%, a {b}"] },
-  { name: "MyST", found: () => available("sphinx-build"), read: myst, expect: ["Taylor", "Synthetic signals"] },
-  { name: "AsciiDoc", found: () => available("asciidoctor"), read: asciidoc, expect: ["Taylor", "12", "Synthetic signals"] },
-  { name: "MultiMarkdown", found: () => available("multimarkdown"), read: multimarkdown, expect: ["p. 12", "Synthetic signals"] },
+  { name: "ConTeXt", found: () => available("context", ["--help"]), read: context, expect: ["(see & so Taylor & Dale, 2026, p. 12, 50%, a {b})"] },
+  { name: "MyST", found: () => available("sphinx-build"), read: myst, expect: ["Taylor", "Synthetic signals"], gone: ["{cite:p}"] },
+  { name: "AsciiDoc", found: () => available("asciidoctor"), read: asciidoc, expect: ["Taylor", "12", "Synthetic signals"], gone: ["cite:["] },
+  { name: "MultiMarkdown", found: () => available("multimarkdown"), read: multimarkdown, expect: ['href="#taylor2026"', "p. 12"], gone: ["[#taylor2026]", "[p. 12]"] },
   { name: "Jupyter", found: () => run("python3", ["-c", "import nbconvert"]).status === 0, read: jupyter, expect: ["\\cite{taylor2026}"] },
-  { name: "Jekyll Scholar", found: () => available("jekyll"), read: jekyll, expect: ["Taylor", "2026", "12"] },
+  { name: "Jekyll Scholar", found: () => available("jekyll"), read: jekyll, expect: ["Taylor", "2026", "12"], gone: ["{% cite"] },
 ];
 
 function main() {
@@ -141,8 +141,12 @@ function main() {
     try {
       cpSync(references, join(work, "references.bib"));
       const output = check.read(work);
+      // What the tool must print, and the source it must have replaced.
       const missing = check.expect.filter((word) => !output.includes(word));
-      if (missing.length) throw new Error(`output lacks ${missing.join(", ")}:\n${output.slice(0, 1500)}`);
+      const left = (check.gone ?? []).filter((word) => output.includes(word));
+      if (missing.length || left.length) {
+        throw new Error(`output lacks ${missing.join(", ")}; still has ${left.join(", ")}:\n${output.slice(0, 1500)}`);
+      }
       console.log(`${check.name}: ok`);
     } catch (error) {
       console.log(`${check.name}: failed\n${error.message}`);

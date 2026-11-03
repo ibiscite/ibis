@@ -37,7 +37,7 @@ fn select<'a>(text: &'a str, work: &mut Work<'_>) -> Option<Citation<'a>> {
     if let Some(read) = json(text, work) {
         return Some(read);
     }
-    // ConTeXt's `\\cite[keys]` reads as a LaTeX `\\cite` with notes and no keys.
+    // ConTeXt's `\cite[keys]` reads as a LaTeX `\cite` with notes and no keys.
     if let Some(read) = context(text, work) {
         return Some(read);
     }
@@ -117,16 +117,31 @@ fn tex<'a>(text: &'a str, command: &str, multi: bool, work: &mut Work<'_>) -> Op
     (rest.len() < text.len() - command.len() - 1).then(|| explicit(keys, rest))
 }
 
-/// `\\cite[settings][keys]` or `\\cite[keys]`: the last bracket holds the keys.
+/// `\cite[settings][keys]` or `\cite[keys]`: the last bracket holds the keys.
+/// Anything a LaTeX `\cite` could still be is left to the TeX reader.
 fn context<'a>(text: &'a str, work: &mut Work<'_>) -> Option<Citation<'a>> {
     let mut rest = text.strip_prefix("\\cite[")?;
-    let (mut body, after) = group(rest, '[', ']', false, work);
-    rest = after;
-    if let Some(next) = rest.strip_prefix('[') {
-        (body, rest) = group(next, '[', ']', false, work);
+    let mut body = "";
+    for bracket in 0..2 {
+        if bracket == 1 {
+            match work.trim_start(rest).strip_prefix('[') {
+                Some(next) => rest = next,
+                None => break,
+            }
+        }
+        let (inside, after) = group(rest, '[', ']', false, work);
+        // A bracket that never closes is damaged, not a citation.
+        if inside.len() == rest.len() {
+            return None;
+        }
+        (body, rest) = (inside, after);
     }
-    // `\\cite[see]{key}` is LaTeX: its bracket holds a note.
-    if work.trim_start(rest).starts_with('{') || !work.spend(body.len()) {
+    // `\cite[see] [p. 12]{key}` and `\cite[see]%` then `{key}` are LaTeX.
+    let mut tail = work.trim_start(rest);
+    if let Some(comment) = tail.strip_prefix('%') {
+        tail = work.trim_start(comment.split_once('\n').map_or("", |(_, next)| next));
+    }
+    if tail.starts_with(['[', '{']) || !work.spend(body.len()) {
         return None;
     }
     // A single bracket of settings names no key.

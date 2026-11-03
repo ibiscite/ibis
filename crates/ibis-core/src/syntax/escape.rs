@@ -253,13 +253,16 @@ pub(crate) fn key_fits(escaping: Escaping, key: &str) -> bool {
         Escaping::Myst => &['`', ';', '<', '>'],
         Escaping::MultiMarkdown => &['[', ']', '\\', '^'],
         Escaping::AsciiDoc => &['(', ')', '[', ']'],
-        // ConTeXt reads `a=b` in the citation's bracket as a setting, not a key.
-        Escaping::Context => &['[', ']', '=', '%', '#', '\\', '~', '^', '$', '&', '|'],
+        // ConTeXt reads `a=b` in the citation's bracket as a setting, `a::b` as a
+        // dataset, `*` as every entry and `match(...)` or `tag(...)` as a search.
+        Escaping::Context => &['[', ']', '=', '%', '#', '\\', '~', '^', '$', '&', '|', '(', ')'],
         Escaping::Liquid => &['%', '"', '\''],
         Escaping::Org => &[';', '[', ']', ',', '"', '\\', '='],
         _ => &[],
     };
-    !key.contains(forbidden) && !(escaping == Escaping::Liquid && key.starts_with('-'))
+    !key.contains(forbidden)
+        && !(escaping == Escaping::Liquid && key.starts_with('-'))
+        && !(escaping == Escaping::Context && (key == "*" || key.contains("::")))
 }
 
 pub(crate) fn locator_fits(escaping: Escaping, locator: &Locator) -> bool {

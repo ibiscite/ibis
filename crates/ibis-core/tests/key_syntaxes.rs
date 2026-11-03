@@ -431,7 +431,7 @@ fn context_carries_notes_for_one_reference_and_reports_them_for_several() {
     let one = render(KeySyntax::Context, noted);
     assert_eq!(
         one.text,
-        "\\cite[lefttext={{see}},righttext={{pp. 12–14, emphasis added}}][Example2026]"
+        r"\cite[lefttext={{see\space}},righttext={{\removeunwantedspaces\removepunctuation, pp. 12–14, emphasis added}}][Example2026]"
     );
     assert!(one.losses.is_empty());
     // ConTeXt sorts the keys, and its texts follow the sorted order.
@@ -453,13 +453,24 @@ fn context_keeps_its_special_characters_literal() {
     });
     assert_eq!(
         result.text,
-        r"\cite[righttext={{a \& b \% c \# d \$ e \_ f \char94{} g \char126{} h \char123{} i \char125{} j \char92{} k \char124{} l, m [n] = o}}][Example2026]"
+        r"\cite[righttext={{\removeunwantedspaces\removepunctuation, a \& b \% c \# d \$ e \_ f \char94{} g \char126{} h \char123{} i \char125{} j \char92{} k \char124{} l, m [n] = o}}][Example2026]"
     );
 }
 
 #[test]
 fn context_refuses_a_key_it_would_read_as_something_else() {
-    for key in ["a=b", "a[b", "a%b", "a#b"] {
+    for key in [
+        "a=b",
+        "a[b",
+        "a%b",
+        "a#b",
+        "*",
+        "a::b",
+        "::a",
+        "a::",
+        "match(year:2025)",
+        "tag(a)",
+    ] {
         let mut case = seed();
         let LibraryObject::Record(record) = case.library.objects()[0].object.clone() else {
             panic!("a record")
@@ -484,4 +495,23 @@ fn context_refuses_a_key_it_would_read_as_something_else() {
             "{key}"
         );
     }
+}
+
+#[test]
+fn context_refuses_forms_one_cite_cannot_hold_together() {
+    let result = render(KeySyntax::Context, |r| {
+        two(r);
+        r.items[1].form = Some(CitationForm::YearOnly);
+    });
+    assert_eq!(
+        result.outcomes,
+        [
+            ItemOutcome::Rendered { item: 0 },
+            ItemOutcome::Refused {
+                item: 1,
+                error: CitationError::UnsupportedForm
+            }
+        ]
+    );
+    assert!(result.copy_content(2).is_none());
 }

@@ -354,8 +354,10 @@ pub fn cite(snapshot: &Snapshot, request: &CitationRequest) -> Result<CitationRe
                     item: index,
                     code: *code,
                 }));
-                // A MyST role applies one form to every key it contains.
-                if caps.syntax == KeySyntax::Myst && picks.first().is_some_and(|first: &Pick<'_>| first.form != form) {
+                // A MyST role and a ConTeXt `\cite` apply one form to every key they contain.
+                if matches!(caps.syntax, KeySyntax::Myst | KeySyntax::Context)
+                    && picks.first().is_some_and(|first: &Pick<'_>| first.form != form)
+                {
                     outcomes.push(ItemOutcome::Refused {
                         item: index,
                         error: CitationError::UnsupportedForm,

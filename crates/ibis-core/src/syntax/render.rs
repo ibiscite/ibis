@@ -677,8 +677,10 @@ fn mmd(caps: &SyntaxCapabilities, picks: &[Pick<'_>]) -> String {
         .collect()
 }
 
-/// ConTeXt publications: `\\cite[alternative=year,righttext={p. 12}][key]`. The
-/// style puts its own separator before the right text.
+/// ConTeXt publications: `\cite[alternative=year,righttext={...}][key]`. Styles
+/// differ in what they put around the texts: apa and chicago add a space and a
+/// comma, default and aps nothing. Checked in all four, a trailing space and a
+/// right text that clears punctuation before its own comma read right in each.
 fn context(caps: &SyntaxCapabilities, picks: &[Pick<'_>]) -> String {
     let first = &picks[0];
     let alternative = match first.form {
@@ -703,8 +705,13 @@ fn context(caps: &SyntaxCapabilities, picks: &[Pick<'_>]) -> String {
     let settings = alternative
         .map(|alternative| format!("alternative={alternative}"))
         .into_iter()
-        .chain((!left.is_empty()).then(|| format!("lefttext={{{{{}}}}}", context_escape(&left))))
-        .chain((!right.is_empty()).then(|| format!("righttext={{{{{}}}}}", context_escape(&right))))
+        .chain((!left.is_empty()).then(|| format!("lefttext={{{{{}\\space}}}}", context_escape(&left))))
+        .chain((!right.is_empty()).then(|| {
+            format!(
+                "righttext={{{{\\removeunwantedspaces\\removepunctuation, {}}}}}",
+                context_escape(&right)
+            )
+        }))
         .collect::<Vec<_>>()
         .join(",");
     let keys = keys(picks, ",");
