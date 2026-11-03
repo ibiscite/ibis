@@ -59,7 +59,7 @@ fn chosen() -> Settings {
             y: 20,
         },
     );
-    settings.unknown.insert("accent".into(), json!("purple"));
+    settings.unknown.insert("accent".into(), json!("ibis"));
     settings
 }
 
@@ -262,7 +262,7 @@ fn a_backup_holds_what_travels_and_names_the_system_of_each_shortcut() {
     }
     assert_eq!(settings["shortcut"], json!({system_name(System::HERE): "Alt+Shift+K"}));
     assert_eq!(settings["library"], json!({"zotero": {"group": 42}}));
-    assert_eq!(settings["accent"], "purple");
+    assert_eq!(settings["accent"], "ibis");
     let read = backup::parse(&text).unwrap_or_else(|error| panic!("{error}"));
     assert_eq!(read.made_on, System::HERE);
     assert_eq!(read.settings.citation_style, Some(CitationStyle::Ieee));
@@ -373,7 +373,7 @@ fn restoring_on_another_computer_keeps_its_local_settings_and_shortcut() {
     };
     let mut here = Settings {
         update_checks: Some(false),
-        density: Some(Density::Compact),
+        density: Some(Density::Comfortable),
         ..Settings::default()
     };
     here.shortcut.set_here(Some("Alt+Space".into()));
@@ -419,7 +419,7 @@ fn restoring_on_another_computer_keeps_its_local_settings_and_shortcut() {
     let density = plan.changes.iter().find(|change| change.setting == "density");
     assert_eq!(
         density.map(|change| (change.from.clone(), change.to.clone())),
-        Some((Some(json!("spacious")), Some(json!("compact"))))
+        Some((Some(json!("comfortable")), Some(json!("compact"))))
     );
 }
 
@@ -469,7 +469,7 @@ fn restore_saves_the_backup_and_keeps_the_settings_it_replaced() {
 fn a_restore_shown_before_another_change_is_refused_and_changes_nothing() {
     let directory = folder();
     let path = directory.path().join("settings.json");
-    write(&path, r#"{"density":"spacious"}"#);
+    write(&path, r#"{"density":"comfortable"}"#);
     let backup = backup::parse(&backup::export(&chosen(), "0.2.8").unwrap_or_default())
         .unwrap_or_else(|error| panic!("{error}"));
     let plan = backup::plan(&settings::load(&path).settings, &backup, |_| true);

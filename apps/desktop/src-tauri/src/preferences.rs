@@ -941,19 +941,17 @@ mod tests {
             None,
         )
         .unwrap_or_else(|e| panic!("{e}"));
-        for accent in [Accent::Ibis] {
-            file.save_preferences(
-                PickerPreferencesPatch {
-                    accent: Some(accent),
-                    ..Default::default()
-                },
-                None,
-            )
-            .unwrap_or_else(|e| panic!("{e}"));
-            let loaded = read_preferences(&path).unwrap_or_else(|e| panic!("{e}"));
-            assert_eq!(loaded.appearance, Some(Appearance::Dark));
-            assert_eq!(loaded.accent, Some(accent));
-        }
+        file.save_preferences(
+            PickerPreferencesPatch {
+                accent: Some(Accent::Ibis),
+                ..Default::default()
+            },
+            None,
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
+        let loaded = read_preferences(&path).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(loaded.appearance, Some(Appearance::Dark));
+        assert_eq!(loaded.accent, Some(Accent::Ibis));
         file.save_preferences(
             PickerPreferencesPatch {
                 appearance: Some(Appearance::System),
