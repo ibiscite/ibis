@@ -40,6 +40,7 @@ import { useCitationFeedback } from "./features/picker/useCitationFeedback";
 import { useCitationRows } from "./features/picker/useCitationRows";
 import { usePickerSource } from "./features/picker/usePickerSource";
 import { usePickerActions } from "./features/picker/usePickerActions";
+import { useCitationInspector } from "./features/picker/useCitationInspector";
 import { usePickerKeys } from "./features/picker/usePickerKeys";
 import { useWindowSizeStatus } from "./features/picker/useWindowSizeStatus";
 import type { Copied } from "./api";
@@ -149,8 +150,9 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
     focusSearch: () => input.current?.focus(),
   });
   const source = usePickerSource({ api, pickerSession, libraryState, menus, results: sameSnapshot ? results : [], altHeld, perform });
+  const inspector = useCitationInspector();
   const actions = usePickerActions({
-    api, pickerSession, menus, libraryState, searchState, destination, shown,
+    api, pickerSession, menus, libraryState, searchState, destination, shown, inspector,
     // The footer names what Enter copies now, or after the running search.
     offered: chosen.length > 0 || searchPending ? shownChoice : [], canPaste: deliveryTarget.canPaste,
     shortcut, perform, dismissChooser: source.dismissChooser, toggle: rows.toggle,
@@ -199,7 +201,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
         showFormat={!libraryChoices && (library === null || Boolean(library?.has_snapshot))}
         styles onFormatChange={chooseFormat} onFormatCommand={keys.onFormatCommand}
       />
-      <PickerScroll onFileDrag={api.onFileDrag} presentation={state.visibility} citationProblem={citationProblem} citationProblemIdentity={citationProblem ? formatted?.request : undefined}>
+      <PickerScroll onFileDrag={api.onFileDrag} presentation={state.visibility} citationProblem={citationProblem} citationProblemIdentity={citationProblem ? formatted?.request : undefined} covered={inspector.panel !== null}>
         {shortcut?.error && <div className="notices">
           <p role="status">
             {pickerText.shortcutError(shortcut.registered, shortcut.shortcut, shortcut.error)}
@@ -218,7 +220,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
       {/* Keep the selection live region mounted when choices remove citation controls. */}
       <PickerCitationShelf
         state={state} send={send} showCitations={showCitations} results={results} output={output} chosen={shownChoice}
-        changeReference={rows.changeReference} libraryOf={scope.libraryOf} format={format} input={input} sourceState={source} />
+        changeReference={rows.changeReference} copyChosen={rows.copyChosen} libraryOf={scope.libraryOf} format={format} input={input} sourceState={source} inspector={inspector} />
       <PickerStatusFooter
         api={api} library={library} scope={scope} sourceState={source} menus={menus} actions={actions}
         copyChosen={rows.copyChosen} destination={destination} recents={recents} preferences={preferences}

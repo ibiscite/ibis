@@ -1,0 +1,25 @@
+/* [C19] Takes the middle area's place. Narrow or short frames stack it into one
+   scroller; otherwise the column sits on the trailing edge, as Xcode's and
+   Finder's inspectors do, and only the document scrolls. */
+.inspector { grid-area: middle; container: inspector / size; min-width: 0; min-height: 0; }
+.inspector-body { display: flex; flex-direction: column; height: 100%; padding-block: var(--inset); overflow: auto; overscroll-behavior: contain; }
+.inspector-column, .inspector-document { flex: none; min-width: 0; padding-inline: calc(var(--inset) + var(--row-pad)); }
+.inspector-column { --ring-offset: calc(-1 * var(--ring-width)); display: flex; flex-direction: column; gap: var(--space-2); }
+.inspector-heading { flex: none; display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); min-height: var(--control-h); }
+.inspector-heading h2 { min-width: 0; margin: 0; overflow: hidden; font: var(--strong) var(--type-body-size) / var(--type-body-line) var(--font); text-overflow: ellipsis; white-space: nowrap; }
+.inspector-heading .ui-icon-button { flex: none; margin-inline-end: calc(-1 * var(--space-1)); }
+.inspector-column > p { margin: 0; font-size: var(--type-body-size); line-height: var(--type-body-line); overflow-wrap: break-word; }
+.inspector-column > h3 { margin: 0; font: var(--strong) var(--type-body-size) / var(--type-body-line) var(--font); }
+.inspector-column > hr { width: 100%; margin: 0; border: 0; border-top: var(--border-width) solid var(--separator); }
+/* Quiet rows: the label starts on the column's edge, its hover fill hangs past it. */
+.inspector-action.ui-button[data-variant] { justify-content: space-between; gap: var(--space-4); width: calc(100% + 2 * var(--space-2)); max-width: none; min-height: var(--control-small-h); margin-inline: calc(-1 * var(--space-2)); padding-inline: var(--space-2); border: 0; border-radius: var(--r-tile); font: var(--type-body-size) / var(--type-body-line) var(--font); text-align: start; }
+.inspector-keys { flex: none; color: var(--text-secondary); }
+.inspector-action[data-disabled] .inspector-keys { color: inherit; }
+@container inspector (min-width: 34rem) and (min-height: 11rem) {
+  .inspector-body { flex-direction: row-reverse; overflow: hidden; }
+  .inspector-column { flex: 0 0 var(--inspector-column); overflow: auto; }
+  .inspector-column:only-child { flex: 1; }
+  .inspector-document { flex: 1; overflow: auto; }
+  /* One divider, which keeps S from the header's divider and from the shelf. */
+  .inspector-column:not(:only-child) { border-inline-start: var(--border-width) solid var(--separator); }
+}

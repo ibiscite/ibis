@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
 import axe from "axe-core";
 import type { ReferenceForm } from "../bindings";
@@ -12,55 +12,48 @@ const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
 function Editor() {
   const [page, setPage] = useState("");
   const [form, setForm] = useState<ReferenceForm>("normal");
-  return <CitationDetails label="Citation details for Synthetic work" page={page} choices={{ current_form: form, forms: [
+  return <CitationDetails page={page} form={form} choices={{ current_form: form, forms: [
     { form: "normal", example: "(Example, 2026)", reason: null },
     { form: "narrative", example: "Example (2026)", reason: null },
     { form: "year-only", example: "(2026)", reason: null },
   ] }} onPageChange={setPage} onFormChange={setForm} />;
 }
 
-test("every native form input has the full labelled row as its pointer target", () => {
-  const style = document.createElement("style");
-  style.textContent = readFileSync(new FileURL("./CitationDetails.css", import.meta.url), "utf8");
-  document.head.append(style);
-  try {
-    render(<Editor />);
-    for (const radio of screen.getAllByRole("radio")) {
-      const row = radio.closest("label")!;
-      const wrapper = radio.parentElement!;
-      expect(getComputedStyle(row).position).toBe("relative");
-      expect(getComputedStyle(wrapper).display).toBe("contents");
-      const target = getComputedStyle(radio);
-      expect(target.position).toBe("absolute");
-      expect(target.width).toBe("100%");
-      expect(target.height).toBe("100%");
-      expect(target.opacity).toBe("0");
-    }
-    const year = screen.getByRole<HTMLInputElement>("radio", { name: "Year only" });
-    expect(year.tabIndex).toBe(-1);
-    fireEvent.click(year.closest("label")!.querySelector(".citation-form-example")!);
-    expect(year.checked).toBe(true);
-    expect(screen.getByRole<HTMLInputElement>("radio", { name: "Name in brackets" }).checked).toBe(false);
-  } finally { style.remove(); }
+test("the Form pop-up names the current form, and a pick changes it", async () => {
+  render(<Editor />);
+  fireEvent.click(screen.getByRole("button", { name: "Form Name in brackets" }));
+  const item = await screen.findByRole("menuitemradio", { name: "Year only" });
+  expect(item.textContent).toContain("(2026)");
+  fireEvent.click(item);
+  expect(await screen.findByRole("button", { name: "Form Year only" })).toBeTruthy();
 });
 
-test("Year only uses its own engine form and unsupported choices expose the reason before editing", () => {
+test("Year only uses its own engine form and an unavailable form says why under its label", async () => {
   const change = vi.fn();
-  render(<CitationDetails label="Synthetic details" page="12" onPageChange={vi.fn()} onFormChange={change} choices={{ current_form: "normal", forms: [
+  render(<CitationDetails page="12" form="normal" onPageChange={vi.fn()} onFormChange={change} choices={{ current_form: "normal", forms: [
     { form: "normal", example: "(Example, 2026)", reason: null },
-    { form: "narrative", example: null, reason: "Cite this reference alone for Name in the sentence." },
+    { form: "narrative", example: null, reason: "Cite it alone or choose another output." },
     { form: "year-only", example: "(2026)", reason: null },
   ] }} />);
-  const narrative = screen.getByRole("radio", { name: "Name in the sentence" });
-  expect(narrative.matches(":disabled, [aria-disabled=true]")).toBe(true);
-  expect(document.getElementById(narrative.getAttribute("aria-describedby")!)?.textContent).toContain("Cite this reference alone");
-  fireEvent.click(narrative.closest("label")!.querySelector(".citation-form-example")!);
+  fireEvent.click(screen.getByRole("button", { name: /^Form / }));
+  const narrative = await screen.findByRole("menuitemradio", { name: "Name in the sentence" });
+  expect(narrative.getAttribute("aria-disabled")).toBe("true");
+  expect(document.getElementById(narrative.getAttribute("aria-describedby")!)?.textContent).toBe("Cite it alone or choose another output.");
+  fireEvent.click(narrative);
   expect(change).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole("radio", { name: "Year only" }));
+  fireEvent.click(screen.getByRole("menuitemradio", { name: "Year only" }));
   expect(change).toHaveBeenCalledExactlyOnceWith("year-only");
 });
 
-test.each(["macos", "windows", "linux"])("%s uses labelled shared controls, plain text and keyboard form choices", async (platform) => {
+test("before the engine answers the reference's own form shows and every form can be tried", async () => {
+  const change = vi.fn();
+  render(<CitationDetails page="" form="narrative" onPageChange={vi.fn()} onFormChange={change} />);
+  fireEvent.click(screen.getByRole("button", { name: "Form Name in the sentence" }));
+  fireEvent.click(await screen.findByRole("menuitemradio", { name: "Name in brackets" }));
+  expect(change).toHaveBeenCalledExactlyOnceWith("normal");
+});
+
+test.each(["macos", "windows", "linux"])("%s uses labelled shared controls and plain text", async (platform) => {
   document.documentElement.dataset.platform = platform;
   const { container } = render(<Editor />);
   const page = screen.getByRole("textbox", { name: "Page" }) as HTMLInputElement;
@@ -69,26 +62,14 @@ test.each(["macos", "windows", "linux"])("%s uses labelled shared controls, plai
   expect(page.value).toBe(text);
   expect(container.querySelector("script")).toBeNull();
   expect(page.getAttribute("aria-describedby")).toBeTruthy();
-  const normal = screen.getByRole("radio", { name: "Name in brackets" });
-  act(() => normal.focus());
-  fireEvent.keyDown(normal, { key: "ArrowDown" });
-  expect(screen.getByRole("radio", { name: "Name in the sentence", checked: true })).toBeTruthy();
   const results = await axe.run(container, { rules: { "color-contrast": { enabled: false } } });
   expect(results.violations).toEqual([]);
   delete document.documentElement.dataset.platform;
 });
 
-test("fields and segmented choices use role tokens, wrap and retain keyboard and touch targets", () => {
+test("the fields use role tokens and retain pointer and touch targets", () => {
   const css = readFileSync(new FileURL("./CitationDetails.css", import.meta.url), "utf8");
-  const segmented = readFileSync(new FileURL("./Segmented.css", import.meta.url), "utf8");
-  expect(css).toContain("input:focus-visible");
   expect(css).toContain("@media (pointer: coarse)");
-  expect(segmented).toContain("min-height: var(--control-small-h)");
-  expect(segmented).toContain("@media (pointer: coarse)");
+  expect(css).toContain("min-height: var(--control-h)");
   expect(css).not.toMatch(/#[0-9a-f]{3,8}\b|\b\d+px\b/);
-});
-
-test("an unavailable form's reason sits under it as a sentence", () => {
-  const css = readFileSync(new FileURL("./CitationDetails.css", import.meta.url), "utf8");
-  expect(css).toMatch(/\.citation-form-example\.citation-form-reason \{ flex-basis: 100%;[^}]*text-align: start;/);
 });

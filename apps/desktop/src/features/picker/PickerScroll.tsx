@@ -2,7 +2,7 @@ import { Component, createRef, useEffect, useRef, type ReactNode } from "react";
 
 import { useFileDrag } from "../../ui/useFileDrag";
 
-type Props = { onFileDrag?: (change: (active: boolean) => void) => Promise<() => void>; presentation?: number; drag?: ReturnType<typeof useFileDrag>; children: ReactNode; citationProblem?: string | null; citationProblemIdentity?: object };
+type Props = { onFileDrag?: (change: (active: boolean) => void) => Promise<() => void>; presentation?: number; drag?: ReturnType<typeof useFileDrag>; children: ReactNode; citationProblem?: string | null; citationProblemIdentity?: object; covered?: boolean };
 type Place = { node: HTMLElement; owner: HTMLElement; top: number; noticeHeight: number };
 
 /** Preserve browsing place across notices and scroll-owner changes. The commit
@@ -81,7 +81,9 @@ class PickerScrollFrame extends Component<Props> {
   }
 
   render() {
-    return <div {...this.props.drag} className="picker-content scroll-area" ref={this.middle}>{this.props.children}</div>;
+    // The inspector covers the middle with its scroll place kept, out of reach.
+    const { covered } = this.props;
+    return <div {...this.props.drag} className="picker-content scroll-area" ref={this.middle} data-covered={covered || undefined} inert={covered} aria-hidden={covered || undefined}>{this.props.children}</div>;
   }
 }
 

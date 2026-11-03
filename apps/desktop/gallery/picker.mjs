@@ -98,7 +98,9 @@ await search.fill("qui"); await page.waitForTimeout(250); await shot("02-results
 await search.press("ArrowDown"); await search.press("Shift+Enter"); await search.press("ArrowDown"); await search.press("Shift+Enter"); await page.waitForTimeout(300); await shot("03-two-added");
 await page.locator(".shelf-count").click().catch(() => {}); await page.waitForTimeout(250); await shot("04-selected-references");
 await page.keyboard.press("Escape"); await page.waitForTimeout(150);
-await page.locator(".shelf-segment-button").first().click().catch(() => {}); await page.waitForTimeout(250); await shot("05-reference-menu");
+await page.locator(".shelf-segment-button").first().click().catch(() => {}); await page.waitForTimeout(250); await shot("05-reference-details");
+await page.getByRole("button", { name: /^Form / }).click().catch(() => {}); await page.waitForTimeout(250); await shot("05-form-menu");
+await page.keyboard.press("Escape"); await page.waitForTimeout(150);
 await page.keyboard.press("Escape"); await page.waitForTimeout(150);
 await search.focus();
 await page.getByRole("button", { name: /^More/ }).click(); await page.waitForTimeout(250); await shot("06-more");

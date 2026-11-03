@@ -20,16 +20,6 @@ export function shelfControl(page, name) {
     .and(page.locator("main > .shelf button:visible"));
 }
 
-// A visible/enabled hidden radio can still resolve outside its label or be
-// covered by it. Test the native control's real hit area, not just its name.
-export function isWholeRadioTarget(input) {
-  const label = input.closest(".citation-form");
-  if (!label || input.type !== "radio") return false;
-  const target = input.getBoundingClientRect(), row = label.getBoundingClientRect();
-  return row.width > 0 && row.height > 0 && ["left", "right", "top", "bottom"].every((edge) => Math.abs(target[edge] - row[edge]) <= 1) &&
-    document.elementFromPoint(target.left + target.width / 2, target.top + target.height / 2) === input;
-}
-
 // Keep this function self-contained: Playwright serializes it into the page.
 export function isWholeNotice(text) {
   const node = [...document.querySelectorAll('.notices [role="alert"]')].find((node) => node.textContent === text);
@@ -88,18 +78,14 @@ export function isWholeShelf() {
     getComputedStyle(shelf).flexShrink === "0" && !/auto|scroll/.test(getComputedStyle(shelf).overflowY);
 }
 
-// A centred panel can fit the viewport and still fail the segment-menu rule.
-// Check the actual anchor gap and the same corner token as the shared menu.
-export function isAnchoredDetails(anchor) {
-  const menus = document.querySelectorAll(".details-menu");
-  if (menus.length !== 1) return false;
-  const menu = menus[0], rect = menu.getBoundingClientRect(), style = getComputedStyle(menu);
-  const gap = menu.dataset.placement === "top" ? anchor.top - rect.bottom
-    : menu.dataset.placement === "bottom" ? rect.top - anchor.bottom : NaN;
-  const radius = style.getPropertyValue("--menu-radius").trim();
-  return rect.width > 0 && rect.height > 0 && rect.left >= 7 && rect.top >= 7 && rect.right <= innerWidth - 7 && rect.bottom <= innerHeight - 7 &&
-    Math.abs(gap - 6) <= 2 && Math.min(rect.right, anchor.right) > Math.max(rect.left, anchor.left) &&
-    radius !== "" && radius === style.getPropertyValue("--r-menu").trim();
+// The inspector takes exactly the middle area's place: nothing else in the
+// picker moves or resizes, and it never leaves the window.
+export function isSeatedInspector(middle) {
+  const panes = document.querySelectorAll(".inspector");
+  if (panes.length !== 1) return false;
+  const rect = panes[0].getBoundingClientRect();
+  return ["top", "bottom", "left", "right"].every((edge) => Math.abs(rect[edge] - middle[edge]) <= 1) &&
+    rect.left >= 0 && rect.top >= 0 && rect.right <= innerWidth && rect.bottom <= innerHeight;
 }
 
 // Only fixed keys and numeric geometry may cross out of the page on failure.
@@ -116,12 +102,10 @@ export function layoutGeometry() {
     middle: box(document.querySelector(".picker-content")), results: box(document.querySelector(".results-area")),
     active: box(document.querySelector('[role="option"][aria-selected="true"]')),
     shelf: box(document.querySelector(".shelf")), footer: box(document.querySelector("footer")),
-    menu: box(document.querySelector(".details-menu")), menuScroll: box(document.querySelector(".details-menu-scroll")),
+    inspector: box(document.querySelector(".inspector")), inspectorScroll: box(document.querySelector(".inspector-body")),
     notices: [...document.querySelectorAll(".notices")].map(box),
     alerts: [...document.querySelectorAll('.notices [role="alert"]')].map(box),
     segments: [...document.querySelectorAll(".shelf-segment")].map(box),
-    radios: [...document.querySelectorAll(".citation-form input")].map(box),
-    radioRows: [...document.querySelectorAll(".citation-form")].map(box),
   };
 }
 

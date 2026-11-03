@@ -2,10 +2,11 @@ import { act, fireEvent, queryAllByRole, render, screen, within } from "@testing
 import { afterEach, expect, test, vi } from "vitest";
 import { App } from "../../App";
 import { CitationShelf } from "./CitationShelf";
+import { useCitationInspector } from "./useCitationInspector";
 import { Notices } from "./Notices";
 import { pickerText } from "../../messages";
 import { backend, resetApp } from "../../testing/app";
-import { dismissMenu, hasMiddleViewport, isAnchoredDetails, isWholeNotice, isWholeRadioTarget, isWholeShelf, layoutGeometry, noticeText, refusalGeometry, refusalPresentation, shelfControl, waitForLayout } from "./picker-layout-checks.mjs";
+import { dismissMenu, hasMiddleViewport, isSeatedInspector, isWholeNotice, isWholeShelf, layoutGeometry, noticeText, refusalGeometry, refusalPresentation, shelfControl, waitForLayout } from "./picker-layout-checks.mjs";
 
 const { readFileSync } = await vi.importActual("node:fs");
 const { URL: FileURL } = await vi.importActual("node:url");
@@ -82,28 +83,6 @@ test("the refusal oracle distinguishes offscreen text, clipping and lost keyboar
   expect(refusalPresentation(refusal)).toEqual({ ...whole, keyboardReachable: false });
 });
 
-test("the radio pointer oracle refuses displaced, clipped and covered controls", () => {
-  const label = document.createElement("label"), radio = document.createElement("input");
-  label.className = "citation-form"; radio.type = "radio"; label.append(radio);
-  const row = new DOMRect(24, 80, 400, 48);
-  let target = new DOMRect(0, 0, 13, 13), hit = label;
-  vi.spyOn(label, "getBoundingClientRect").mockReturnValue(row);
-  vi.spyOn(radio, "getBoundingClientRect").mockImplementation(() => target);
-  const original = Object.getOwnPropertyDescriptor(document, "elementFromPoint");
-  Object.defineProperty(document, "elementFromPoint", { configurable: true, value: () => hit });
-  try {
-    expect(isWholeRadioTarget(radio)).toBe(false);
-    target = row;
-    expect(isWholeRadioTarget(radio)).toBe(false);
-    hit = radio;
-    expect(isWholeRadioTarget(radio)).toBe(true);
-    target = new DOMRect(24, 80, 13, 13);
-    expect(isWholeRadioTarget(radio)).toBe(false);
-  } finally {
-    if (original) Object.defineProperty(document, "elementFromPoint", original); else delete document.elementFromPoint;
-  }
-});
-
 test.each([[720, 480, 1], [480, 360, 1], [480, 360, 2]])("the probe selects one rendered reference-count control at %s×%s/%s× text, including with its menu open", async (width, height, scale) => {
   vi.stubGlobal("innerWidth", width); vi.stubGlobal("innerHeight", height);
   const computed = window.getComputedStyle;
@@ -116,7 +95,8 @@ test.each([[720, 480, 1], [480, 360, 1], [480, 360, 2]])("the probe selects one 
     revision: "1", id: { source: "invented.bib", native_key: `reference${i}` }, key: `reference${i}`, title: `Invented reference ${i}`,
     authors: "Aster", first_author: "Aster", author_count: 1, year: 2026, container: null, item_type: "book", partial: false, matched: ["title"],
   }));
-  render(<main><CitationShelf announce={false} selected={new Map(records.map((r) => [r.key, r]))} removeLabel={(r) => `Remove ${r.key} from the selection`}
+  const Shelf = (props) => <CitationShelf inspector={useCitationInspector()} {...props} />;
+  render(<main><Shelf announce={false} selected={new Map(records.map((r) => [r.key, r]))} removeLabel={(r) => `Remove ${r.key} from the selection`}
     onRemove={() => {}} style={null} keys focusable={false} outputWarnings={[]} shown={{ markup: [], text: "Synthetic citation", html: "", warnings: [] }} /><footer /></main>);
   const band = document.querySelector("main > .shelf");
   const name = "9 references";
@@ -140,12 +120,12 @@ test.each([[720, 480, 1], [480, 360, 1], [480, 360, 2]])("the probe selects one 
   expect(control.nodes).toEqual([trigger]);
   expect(foldedAnchor.nodes).toEqual([trigger]);
   fireEvent.click(trigger);
-  const dialog = screen.getByRole("dialog", { name: "Selected references", exact: true });
-  expect(within(dialog).getAllByRole("button", { name: /^Edit / })).toHaveLength(9);
+  const menu = await screen.findByRole("menu");
+  expect(within(menu).getAllByRole("menuitemradio")).toHaveLength(9);
   expect(band.closest('[aria-hidden="true"]')).not.toBeNull();
   expect(control.nodes).toEqual([trigger]);
   expect(foldedAnchor.nodes).toEqual([trigger]);
-  fireEvent.keyDown(dialog, { key: "Escape" });
+  fireEvent.keyDown(menu, { key: "Escape" });
   await act(async () => { await new Promise(requestAnimationFrame); });
   expect(within(band).getByRole("button", { name, exact: true })).toBe(trigger);
 });
@@ -239,19 +219,18 @@ test.each([{ coarse: false, doubled: false }, { coarse: true, doubled: false }, 
   expect(isWholeShelf()).toBe(false);
 });
 
-test("the details oracle rejects a centred panel, clipped menu and unrelated corner token", () => {
-  let rect = new DOMRect(100, 100, 320, 180);
+test("the inspector oracle rejects a pane that leaves the middle area or the window", () => {
+  let rect = new DOMRect(0, 69, 720, 300);
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(() => rect);
-  render(<div className="details-menu" data-placement="top" style={{ "--menu-radius": "12px", "--r-menu": "12px" }} />);
-  const anchor = { top: 286, bottom: 310, left: 100, right: 240 };
-  expect(isAnchoredDetails(anchor)).toBe(true);
-  rect = new DOMRect(100, 180, 320, 180);
-  expect(isAnchoredDetails(anchor)).toBe(false);
-  rect = new DOMRect(-2, 100, 320, 180);
-  expect(isAnchoredDetails(anchor)).toBe(false);
-  rect = new DOMRect(100, 100, 320, 180);
-  document.querySelector(".details-menu").style.setProperty("--menu-radius", "24px");
-  expect(isAnchoredDetails(anchor)).toBe(false);
+  render(<section className="inspector" />);
+  const middle = { top: 69, bottom: 369, left: 0, right: 720 };
+  vi.stubGlobal("innerWidth", 720); vi.stubGlobal("innerHeight", 480);
+  expect(isSeatedInspector(middle)).toBe(true);
+  rect = new DOMRect(0, 69, 720, 240);
+  expect(isSeatedInspector(middle)).toBe(false);
+  rect = new DOMRect(-2, 69, 722, 300);
+  expect(isSeatedInspector(middle)).toBe(false);
+  vi.unstubAllGlobals();
 });
 
 test.each(["TimeoutError", "Error"])("a %s during a probe wait reports its case, check and numeric geometry only", async (name) => {
