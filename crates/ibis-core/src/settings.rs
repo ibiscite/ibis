@@ -578,15 +578,24 @@ fn is_side_file(path: &Path, linked: &Path) -> bool {
         (Some(Ok(folder)), Some(linked_folder)) => folder == linked_folder,
         _ => false,
     };
-    let (Some(stem), Some(name)) = (
-        path.file_stem().and_then(|s| s.to_str()),
+    let (Some(file), Some(name)) = (
+        path.file_name().and_then(|s| s.to_str()),
         linked.file_name().and_then(|s| s.to_str()),
     ) else {
         return false;
     };
+    let numbered = |suffix: &str, prefix: &str| {
+        suffix
+            .strip_prefix(prefix)
+            .is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
+    };
     same_folder
-        && name.starts_with(&format!("{stem}."))
-        && name != path.file_name().and_then(|s| s.to_str()).unwrap_or("")
+        && name
+            .strip_prefix(file)
+            .and_then(|rest| rest.strip_prefix('.'))
+            .is_some_and(|suffix| {
+                matches!(suffix, "tmp" | "bak") || numbered(suffix, "tmp-") || numbered(suffix, "invalid-")
+            })
 }
 
 /// Copies that a sync service made of the settings file when two computers

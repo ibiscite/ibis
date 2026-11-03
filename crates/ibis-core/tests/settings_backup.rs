@@ -173,6 +173,19 @@ fn shortcuts_are_kept_and_written_per_system() {
 
 #[test]
 #[cfg(unix)]
+fn a_link_to_a_file_beside_it_stays_linked_unless_ibis_owns_that_file() {
+    let directory = folder();
+    let path = directory.path().join("settings.json");
+    let shared = directory.path().join("settings.synced.json");
+    write(&shared, r#"{"paste":false}"#);
+    std::os::unix::fs::symlink(&shared, &path).unwrap_or_else(|error| panic!("{error}"));
+    settings::update(&path, |s| s.larger_text = Some(true)).unwrap_or_else(|error| panic!("{error}"));
+    assert!(fs::symlink_metadata(&path).is_ok_and(|metadata| metadata.file_type().is_symlink()));
+    assert_eq!(settings::load(&shared).settings.larger_text, Some(true));
+}
+
+#[test]
+#[cfg(unix)]
 fn a_settings_file_linked_into_a_synced_folder_stays_linked() {
     let directory = folder();
     let synced = directory.path().join("Cloud Drive");
