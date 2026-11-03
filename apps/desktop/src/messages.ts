@@ -242,7 +242,6 @@ export const pickerText = {
   more: "More",
   keepOpen: "Keep Window Open",
   keepOpenMenu: "Keep Window Open",
-  stopKeepingOpen: "Stop keeping open",
   moreTitle: (keys: string) => `More actions (${keys})`,
   chooseLibrary: "Choose Library…",
   chooseTitle: "Choose a library",

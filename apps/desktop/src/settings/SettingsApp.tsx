@@ -36,11 +36,13 @@ const LOGIN_PROBLEMS = {
   refused: "general-login-refused", unreadable: "general-login-unreadable",
 } as const satisfies Record<LoginItemProblem, MessageId>;
 
-/** A page asked for by name; "paste" is General, scrolled to pasting. */
+/** A page asked for by name; "paste" is General, scrolled to pasting, and
+ * "updates" is About, running Check now. */
 const PAGE_TILES: Record<Page, ReactNode> = { general: <PageIcon name="general" />, look: <PageIcon name="look" />, citations: <PageIcon name="citations" />, shortcuts: <PageIcon name="shortcuts" />, about: <PageIcon name="about" /> };
 
 export function pageOf(name: string | null): { page: Page; focus: "paste" | null } {
   if (name === "paste") return { page: "general", focus: "paste" };
+  if (name === "updates") return { page: "about", focus: null };
   return { page: PAGES.includes(name as Page) ? name as Page : "general", focus: null };
 }
 
@@ -74,6 +76,8 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   const [highlighted, setHighlighted] = useState<string | null>(null);
   const highlightOperation = useRef(0);
   useEffect(() => { live.current = true; return () => { live.current = false; }; }, []);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: opened to check, once; a later ask arrives as a page event.
+  useEffect(() => { if (initialPage === "updates") checkNow(); }, []);
   const [shortcut, setShortcut] = useState<ShortcutStatus | null>(null);
   const [shortcutProblem, setShortcutProblem] = useState<ShortcutProblem | null>(null);
   const [shortcutUndo, setShortcutUndo] = useState<string | null>(null);
@@ -93,6 +97,18 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   const [checkResult, setCheckResult] = useState<CheckResult | null>(null);
   const [checking, setChecking] = useState(false);
   const manualCheck = useRef(0);
+  const checkRunning = useRef(false);
+  /** The one update check a person asks for: the button, and the tray through this page. */
+  const checkNow = useCallback(() => {
+    if (checkRunning.current) return;
+    checkRunning.current = true;
+    const operation = ++manualCheck.current;
+    setCheckResult(null);
+    setChecking(true);
+    const finished = (result: CheckResult) => { if (live.current && operation === manualCheck.current) setCheckResult(result); };
+    void api.checkForUpdates().then(finished, () => finished("failed"))
+      .finally(() => { checkRunning.current = false; if (live.current) setChecking(false); });
+  }, [api]);
   const versionCopy = useRef(0);
   // Feedback belongs to this page presentation, independently of delight preferences.
   // biome-ignore lint/correctness/useExhaustiveDependencies: changing pages retires feedback and pending operations.
@@ -242,7 +258,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
       if (active) { latestShortcut.current = next; setShortcut(next); clearShortcutUndo(); }
     });
     void shortcuts.catch(() => { if (active) setShortcutProblem({ id: "shortcuts-read-failed" }); }).then(() => { if (active) readShortcut(); });
-    const page = api.onPage((name) => { const next = pageOf(name); setDetour(name === "paste"); setDip(0); setPage(next.page); setFocus(next.focus ?? "top"); });
+    const page = api.onPage((name) => { const next = pageOf(name); setDetour(name === "paste"); setDip(0); setPage(next.page); setFocus(next.focus ?? "top"); if (name === "updates") checkNow(); });
     const automatic = api.onUpdateChecks((next) => {
       if (!active) return;
       updateReads.current += 1;
@@ -264,7 +280,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
       void automatic.then((stop) => stop()).catch(() => undefined);
       void close.then((stop) => stop()).catch(() => undefined);
     };
-  }, [api, queue, readProblem, clearShortcutUndo]);
+  }, [api, queue, readProblem, clearShortcutUndo, checkNow]);
   useEffect(() => {
     const scroller = pageRef.current;
     if (!focus || !scroller) return;
@@ -486,15 +502,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
             <Group id="about-updates" title={text("about-updates")}>
               <Row id="automatic" label={text("about-automatic")} description={updates === null && !readProblems.has("automatic") ? text("about-unavailable") : text(checkSaid ?? "about-automatic-description")} {...feedback("automatic")}>
                 {(updates !== null || readProblems.has("automatic")) && <>
-                  <Button aria-disabled={checking || undefined} onPress={() => {
-                    if (checking) return;
-                    const operation = ++manualCheck.current;
-                    setCheckResult(null);
-                    setChecking(true);
-                    const finished = (result: CheckResult) => { if (live.current && operation === manualCheck.current) setCheckResult(result); };
-                    void api.checkForUpdates().then(finished, () => finished("failed"))
-                      .finally(() => { if (live.current) setChecking(false); });
-                  }}>{text(checking ? "about-checking" : "about-check")}</Button>
+                  <Button aria-disabled={checking || undefined} onPress={checkNow}>{text(checking ? "about-checking" : "about-check")}</Button>
                   <span className="visually-hidden" role="status">{checking ? text("about-checking") : checkSaid && text(checkSaid)}</span>
                   <Switch aria-labelledby="automatic" aria-describedby="automatic-description" isSelected={updates ?? false}
                     isDisabled={updatesSaving || updates === null} onChange={(on) => {
