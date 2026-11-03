@@ -97,8 +97,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   // biome-ignore lint/correctness/useExhaustiveDependencies: changing pages retires feedback and pending operations.
   useEffect(() => {
     setVersionCopied(false); setVersionCopyFailed(false); versionCopy.current += 1;
-    setCheckResult(null); manualCheck.current += 1;
-    return () => { versionCopy.current += 1; manualCheck.current += 1; };
+    return () => { versionCopy.current += 1; };
   }, [page]);
   const { altHeld } = useAltHeld();
   const [about, setAbout] = useState<DelightView | null>(null);

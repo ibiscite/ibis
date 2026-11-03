@@ -1687,6 +1687,18 @@ test.each([
   expect(await screen.findByText(said, { selector: ":not(.visually-hidden)" })).toBeTruthy();
 });
 
+test("a check that ends on another page says its result back on About", async () => {
+  const { api } = fakeApi();
+  let finish!: (result: "newest") => void;
+  vi.spyOn(api, "checkForUpdates").mockImplementation(() => new Promise<never>((resolve) => { finish = resolve as never; }));
+  render(<SettingsApp api={api} initialPage="about" />);
+  fireEvent.click(await screen.findByRole("button", { name: "Check now" }));
+  fireEvent.click(await screen.findByRole("option", { name: "General" }));
+  await act(async () => { finish("newest"); });
+  fireEvent.click(await screen.findByRole("option", { name: "About Ibis" }));
+  expect(await screen.findByText("You have the newest version.", { selector: ":not(.visually-hidden)" })).toBeTruthy();
+});
+
 test("Forget formats offers Undo, and Undo restores that same ticket", async () => {
   const { api } = fakeApi({}, { citation_style: "apa" });
   const restore = vi.spyOn(api, "restoreAppOutputs");
