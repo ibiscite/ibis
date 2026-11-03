@@ -313,7 +313,7 @@ mod tests {
             )))
             .manage(super::super::PreviewRequests::default())
             .build(tauri::test::mock_context(tauri::test::noop_assets()))
-            .unwrap();
+            .unwrap_or_else(|e| panic!("{e}"));
         let preview = |request| {
             // An empty citation is refused whatever the library is doing.
             tauri::async_runtime::block_on(crate::copy::preview_file_citation(
@@ -331,9 +331,15 @@ mod tests {
             ))
             .err()
         };
-        app.state::<Mutex<Library>>().lock().unwrap().checking = true;
+        let checking = |value| {
+            app.state::<Mutex<Library>>()
+                .lock()
+                .unwrap_or_else(|e| panic!("{e}"))
+                .checking = value;
+        };
+        checking(true);
         assert_eq!(preview(1), Some(CommandError::LibraryLoading));
-        app.state::<Mutex<Library>>().lock().unwrap().checking = false;
+        checking(false);
         assert_eq!(
             preview(2),
             Some(CommandError::from("The citation could not be prepared. Try again."))

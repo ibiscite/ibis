@@ -152,7 +152,9 @@ test("the action column truncates its label and can never push More off the trai
   };
   expect(rule(".library-bar")).toMatch(/display: grid/);
   expect(rule(".library-bar")).toMatch(/grid-template-columns: [^;]*minmax\(0, auto\) auto/);
-  expect(rule(".library-bar > .more")).toMatch(/grid-column: 3/);
+  expect(rule(".library-bar > .more")).toMatch(/grid-area: 1 \/ 3/);
+  // The leading slot can hold anything: only the two fixed columns are named.
+  expect(footerStyles).toMatch(/\.library-bar > :not\(\.enter-hints, \.more, \.ui-quiet-status\) \{ grid-column: 1; min-width: 0; \}/);
   expect(rule(".library-bar .footer-action .key-hint-label")).toMatch(/text-overflow: ellipsis/);
   expect(pickerStyles).not.toMatch(/\.more \{[^}]*margin-inline-start: auto/);
 });

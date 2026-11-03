@@ -193,9 +193,9 @@ pub(crate) async fn preview_file_citation(
     // each show retires Zotero while it reads. Both publish when they end, which
     // asks again; that is waiting, not a failure.
     let overtaken = result.is_err()
-        && library.lock().is_ok_and(|library| {
-            library.opening || library.checking || library.source_generation != generation
-        });
+        && library
+            .lock()
+            .is_ok_and(|library| library.opening || library.checking || library.source_generation != generation);
     if overtaken {
         Err(CommandError::LibraryLoading)
     } else {
