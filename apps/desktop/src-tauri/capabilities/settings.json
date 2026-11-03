@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "settings",
-  "description": "Settings window: read and change saved choices, the login item, update checks, the paste permission and the shortcut. No library, copy, file system, shell or network access.",
+  "description": "Settings window: read and change saved choices, the login item, update checks, the paste permission and the shortcut, and back up or restore settings through system file dialogs. No library, copy, file system, shell or network access.",
   "windows": [
     "settings"
   ],
@@ -31,6 +31,10 @@
     "allow-finish-paste-guide",
     "allow-shortcut-status",
     "allow-set-shortcut",
-    "allow-configure-shortcuts"
+    "allow-configure-shortcuts",
+    "allow-back-up-settings",
+    "allow-choose-settings-backup",
+    "allow-restore-settings-backup",
+    "allow-cancel-settings-restore"
   ]
 }
