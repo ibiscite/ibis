@@ -1,6 +1,6 @@
 # Roadmap
 
-Every feature and milestone planned here, through 0.7, ships before 1.0. The version numbers before 1.0 are working steps and may change; each release is usable on its own, and each milestone on GitHub has the same name. 1.0 adds no features: people test everything, then the maintainer moves to 1.0 by hand. Dates are not promised; scope is.
+Every feature and milestone planned here, through 0.7, ships before 1.0. The version numbers before 1.0 are working steps and may change; each finished milestone becomes one numbered release, usable on its own, and each milestone on GitHub has the same name. Numbered releases are the roughly stable version for early adopters on every distribution; daily testing happens on Nightly. 1.0 adds no features: people test everything, then the maintainer moves to 1.0 by hand. Dates are not promised; scope is.
 
 ## Direction
 

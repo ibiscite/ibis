@@ -25,6 +25,8 @@ Packages are named `Ibis-<platform>.<extension>` with no version (for example `I
 
 ## How a release is built
 
+Each finished milestone becomes one numbered release: the roughly stable version for early adopters, which every distribution follows (the Claude plugin, Homebrew and the command line included). Daily testing happens on Nightly. So Release Please's pull request stays open while a milestone is built, and merging it is the agents' last step before the maintainer's one click.
+
 Release Please keeps a pull request titled `chore: release X.Y.Z`. Merging it updates `CHANGELOG.md` and the versions, then tags `vX.Y.Z` with the `ibis-release` app's token. The tag starts Preview builds (`.github/workflows/preview.yml`):
 
 1. CI builds Windows, macOS (Apple silicon and Intel) and Linux packages with SHA-256 checksums and build-provenance attestations. All four jobs must succeed.

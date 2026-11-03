@@ -6,7 +6,8 @@
 // Exit codes: 0 all passed, 1 a check failed, 2 incomplete (a tool is missing).
 import { spawnSync } from "node:child_process";
 import { readdirSync, realpathSync } from "node:fs";
-import { resolve } from "node:path";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { classify } from "./ci-paths.mjs";
 
@@ -112,6 +113,7 @@ function main() {
   // unused_result_ok (restriction): discarded .ok(); enabled below (zero hits).
   // let_underscore_must_use / let_underscore_untyped (restriction): many current
   // deliberate discards; do not enable wholesale without resolving those cases.
+  const webkit = join(tmpdir(), `ibis-webkit-${process.pid}`);
   // The names after each step are the path decisions that select it, as in CI.
   const steps = [
     ["Workflow expressions", "actionlint", ["-shellcheck=", "-pyflakes="]],
@@ -131,6 +133,12 @@ function main() {
     ["Desktop: picker size", "pnpm", ["exec", "vite", "build"], desktop, "web"],
     ["Desktop: picker budget", "node", ["../../scripts/picker-budget.mjs", "dist"], desktop, "web"],
     ["Desktop: lint app", "cargo", ["clippy", "-p", "ibis-desktop", "--all-targets", "--locked", "--", "-D", "warnings", "-D", "clippy::unused_result_ok"], {}, "native"],
+    // Only the system's own WebKit shows these colours; jsdom and Chromium cannot.
+    ...process.platform === "darwin" ? [
+      ["WebKit: canvas", "pnpm", ["build:canvas"], desktop, "interface"],
+      ["WebKit: compile", "swiftc", ["-O", "apps/desktop/gallery/webkit.swift", "-o", webkit], {}, "interface"],
+      ["WebKit colours", webkit, ["apps/desktop/dist-canvas", `${webkit}-pictures`], {}, "interface"],
+    ] : [],
   ];
   const changed = args.length === 0;
   const files = changed ? changedFiles() : null;
@@ -149,7 +157,7 @@ function main() {
     const result = spawnSync(cmd, args, { stdio: "inherit", shell, ...options });
     if (result.status === 0) continue;
     const probe = cmd === "actionlint" ? ["-version"] : args[0] === "deny" ? ["deny", "--version"] : args[0].startsWith("+") ? [args[0], "--version"] : ["--version"];
-    if (result.error?.code === "ENOENT" || !hasCommand(cmd, probe) || name === "Brand assets" && result.status === 2) {
+    if (cmd !== webkit && (result.error?.code === "ENOENT" || !hasCommand(cmd, probe)) || name === "Brand assets" && result.status === 2) {
       console.log(`${name} could not run: the tool is not installed.`);
       skipped.push(name);
       continue;

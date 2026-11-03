@@ -8,10 +8,11 @@ import { fileURLToPath } from "node:url";
 import { classify } from "./ci-paths.mjs";
 import { nightlyConfig } from "./update-feed.mjs";
 
-const full = { core: true, native: true, web: true };
-const appOnly = { core: false, native: true, web: true };
-const webOnly = { core: false, native: false, web: true };
-const docsOnly = { core: false, native: false, web: false };
+const full = { core: true, interface: true, native: true, web: true };
+const appOnly = { core: false, interface: true, native: true, web: true };
+const interfaceOnly = { core: false, interface: true, native: false, web: true };
+const websiteOnly = { core: false, interface: false, native: false, web: true };
+const docsOnly = { core: false, interface: false, native: false, web: false };
 const row = (filename, previous_filename = null) => ({ filename, previous_filename, status: previous_filename ? "renamed" : "modified" });
 const pr = (files, expected = files.length) => classify("pull_request", expected, files);
 
@@ -26,7 +27,7 @@ function workflowStep() {
 
 test("interface-only changes retain web checks without native jobs", () => {
   for (const path of ["apps/desktop/src/App.tsx", "apps/desktop/src/features/picker/PickerFooter.css", "apps/desktop/src/messages.ts", "apps/desktop/src/icon.svg", "apps/desktop/index.html"]) {
-    assert.deepEqual(pr([row(path), row("docs/design.md")]), webOnly, path);
+    assert.deepEqual(pr([row(path), row("docs/design.md")]), interfaceOnly, path);
   }
 });
 
@@ -37,7 +38,7 @@ test("generated bindings always run native contract checks, including renames", 
   }
   assert.deepEqual(pr([row("apps/desktop/src/renamed.ts", bindings)]), appOnly);
   assert.deepEqual(pr([row(bindings, "apps/desktop/src/old.ts")]), appOnly);
-  assert.deepEqual(pr([row("apps/desktop/src/tokens.css")]), webOnly);
+  assert.deepEqual(pr([row("apps/desktop/src/tokens.css")]), interfaceOnly);
 });
 
 test("changes inside the app skip the crates, and anything the crates read does not", () => {
@@ -58,7 +59,7 @@ test("no crate reads the app or the website", () => {
 
 test("website-only changes keep web checks without native jobs", () => {
   for (const path of ["website/index.html", "website/site.js", "website/_headers"]) {
-    assert.deepEqual(pr([row(path)]), webOnly, path);
+    assert.deepEqual(pr([row(path)]), websiteOnly, path);
   }
   assert.deepEqual(pr([row("website/site.js"), row("apps/desktop/src-tauri/src/lib.rs")]), appOnly);
   assert.equal(pr([row("websites/site.js")]).native, true, "only the website directory itself");
@@ -83,7 +84,7 @@ test("Markdown additions and deletions beside code and vendor assets require Rus
     for (const filename of ["crates/ibis-csl/vendor/README.md", "crates/ibis-csl/README.md", "fixtures/README.md", "vendor/README.md", "docs/vendor/README.md", "scripts/README.md", "unknown/README.md", "LICENSE/README.md"]) {
       assert.deepEqual(pr([{ filename, status }]), full, `${status}: ${filename}`);
     }
-    assert.deepEqual(pr([{ filename: "website/vendor/README.md", status }]), webOnly);
+    assert.deepEqual(pr([{ filename: "website/vendor/README.md", status }]), websiteOnly);
   }
 });
 
@@ -95,7 +96,7 @@ test("native, tooling and unknown changes stay conservative", () => {
 });
 
 test("both sides of a rename determine the required checks", () => {
-  assert.deepEqual(pr([row("apps/desktop/src/Renamed.tsx", "apps/desktop/src/App.tsx")]), webOnly);
+  assert.deepEqual(pr([row("apps/desktop/src/Renamed.tsx", "apps/desktop/src/App.tsx")]), interfaceOnly);
   assert.equal(pr([row("docs/old.md", "crates/ibis-desktop/src/lib.rs")]).native, true);
   assert.deepEqual(pr([row("docs/vendor-notes.md", "crates/ibis-csl/vendor/README.md")]), full);
   assert.deepEqual(pr([row("crates/ibis-csl/vendor/README.md", "docs/vendor-notes.md")]), full);
@@ -111,7 +112,7 @@ test("empty, incomplete, malformed or ambiguous file lists run everything", () =
 });
 
 test("Unicode paths work without interpreting markup or shell syntax", () => {
-  assert.deepEqual(pr([row("apps/desktop/src/研究.tsx"), row("apps/desktop/src/مرحبا.css"), row("docs/$(false)`x`.md")]), webOnly);
+  assert.deepEqual(pr([row("apps/desktop/src/研究.tsx"), row("apps/desktop/src/مرحبا.css"), row("docs/$(false)`x`.md")]), interfaceOnly);
 });
 
 test("main and merge queue always validate the complete app", () => {
@@ -134,7 +135,7 @@ test("the CLI emits only fixed decisions for valid, missing and malformed metada
   const dir = mkdtempSync(join(tmpdir(), "ibis-ci-paths-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const file = join(dir, "synthetic.ndjson");
-  for (const [contents, expected] of [[JSON.stringify(row("apps/desktop/src/研究.tsx")), "core=false\nnative=false\nweb=true\n"], ["private-資料: invalid metadata", "core=true\nnative=true\nweb=true\n"], ["", "core=true\nnative=true\nweb=true\n"], [null, "core=true\nnative=true\nweb=true\n"]]) {
+  for (const [contents, expected] of [[JSON.stringify(row("apps/desktop/src/研究.tsx")), "core=false\ninterface=true\nnative=false\nweb=true\n"], ["private-資料: invalid metadata", "core=true\ninterface=true\nnative=true\nweb=true\n"], ["", "core=true\ninterface=true\nnative=true\nweb=true\n"], [null, "core=true\ninterface=true\nnative=true\nweb=true\n"]]) {
     if (contents !== null) writeFileSync(file, contents);
     else rmSync(file);
     const result = spawnSync(process.execPath, [fileURLToPath(new URL("./ci-paths.mjs", import.meta.url))], { encoding: "utf8", env: { ...process.env, EVENT: "pull_request", EXPECTED: "1", FILES: file }, timeout: 5000 });
@@ -159,7 +160,7 @@ test("Desktop starts after classification and CI result retains the required job
   assert.match(changes, /pnpm exec vite build\n/);
   assert.match(changes, /- name: Share the web interface\n        if: steps\.classify\.outputs\.native == 'true'[\s\S]*name: desktop-web/);
   assert.match(workflow.match(/\n  desktop:\n([\s\S]*?)\n    steps:/)[1], /\n    needs: changes\n/);
-  assert.match(workflow, /result:[\s\S]*needs: \[changes, test, web, desktop, dependencies\]/, "CI result still needs every required job");
+  assert.match(workflow, /result:[\s\S]*needs: \[changes, test, web, desktop, webkit, dependencies\]/, "CI result still needs every required job");
 });
 
 test("pull request CI gates search and picker size; Preview gates open and refresh", () => {
@@ -202,29 +203,35 @@ test("CI result accepts only deliberate skips and rejects failures, cancellation
   assert.match(resultJob, /WEB: \$\{\{ needs.changes.outputs.web \}\}/);
   assert.match(resultJob, /NATIVE: \$\{\{ needs.changes.outputs.native \}\}/);
   assert.match(resultJob, /CORE: \$\{\{ needs.changes.outputs.core \}\}/);
+  assert.match(resultJob, /INTERFACE: \$\{\{ needs.changes.outputs.interface \}\}/);
   assert.match(resultJob, /TEST: \$\{\{ needs.test.result \}\}/);
+  assert.match(resultJob, /WEBKIT: \$\{\{ needs.webkit.result \}\}/);
   const command = resultJob.match(/        run: \|\n([\s\S]*)/)[1].replace(/^          /gm, "");
   const check = (overrides, expected) => {
     const result = spawnSync("bash", ["-e", "-o", "pipefail", "-c", command], {
       encoding: "utf8", timeout: 5000,
-      env: { ...process.env, EVENT: "pull_request", BASE: "main", WEB: "true", NATIVE: "true", CORE: "true", RESULTS: "success success success success", TEST: "success", ...overrides },
+      env: { ...process.env, EVENT: "pull_request", BASE: "main", WEB: "true", INTERFACE: "true", NATIVE: "true", CORE: "true", RESULTS: "success success success success", TEST: "success", WEBKIT: "success", ...overrides },
     });
     assert.equal(result.status, expected, `${JSON.stringify(overrides)}: ${result.stdout}${result.stderr}`);
   };
   check({}, 0);
   for (const status of ["added", "removed"]) {
     const selection = pr([{ filename: "crates/ibis-csl/vendor/README.md", status }]);
-    check({ WEB: String(selection.web), NATIVE: String(selection.native), CORE: String(selection.core), TEST: "skipped" }, 1);
+    check({ WEB: String(selection.web), INTERFACE: String(selection.interface), NATIVE: String(selection.native), CORE: String(selection.core), TEST: "skipped", WEBKIT: "skipped" }, 1);
   }
-  check({ WEB: "false", NATIVE: "false", CORE: "false", TEST: "skipped" }, 0);
-  check({ NATIVE: "false", CORE: "false", TEST: "skipped" }, 0); // Interface and website changes.
+  const skipped = { TEST: "skipped", WEBKIT: "skipped" };
+  check({ WEB: "false", INTERFACE: "false", NATIVE: "false", CORE: "false", ...skipped }, 0);
+  check({ INTERFACE: "false", NATIVE: "false", CORE: "false", ...skipped }, 0); // The website.
+  check({ NATIVE: "false", CORE: "false", TEST: "skipped" }, 0); // The interface.
+  check({ NATIVE: "false", CORE: "false", ...skipped }, 1); // The interface always reaches WebKit.
   check({ CORE: "false", TEST: "skipped" }, 0); // Changes only inside the app.
   check({ EVENT: "push", BASE: "" }, 0);
   check({ BASE: "feature" }, 1);
-  for (const value of ["", "unknown"]) for (const name of ["WEB", "NATIVE", "CORE"]) check({ [name]: value }, 1);
+  for (const value of ["", "unknown"]) for (const name of ["WEB", "INTERFACE", "NATIVE", "CORE"]) check({ [name]: value }, 1);
   check({ NATIVE: "false" }, 1); // The crates never run without the app.
-  check({ WEB: "false", TEST: "skipped" }, 1);
-  check({ EVENT: "push", WEB: "false", NATIVE: "false", CORE: "false", TEST: "skipped" }, 1);
+  check({ INTERFACE: "false", WEBKIT: "skipped" }, 1); // Native changes always reach WebKit.
+  check({ WEB: "false", ...skipped }, 1);
+  check({ EVENT: "push", WEB: "false", INTERFACE: "false", NATIVE: "false", CORE: "false", ...skipped }, 1);
   check({ EVENT: "push", CORE: "false", TEST: "skipped" }, 1);
   for (const state of ["failure", "cancelled", "skipped", ""]) {
     for (let i = 0; i < 4; i++) {
@@ -233,8 +240,11 @@ test("CI result accepts only deliberate skips and rejects failures, cancellation
       check({ RESULTS: results.join(" ") }, 1);
     }
     check({ TEST: state }, 1);
+    check({ WEBKIT: state }, 1);
   }
-  for (const state of ["failure", "cancelled", "success", ""]) check({ WEB: "false", NATIVE: "false", CORE: "false", TEST: state }, 1);
+  for (const state of ["failure", "cancelled", "success", ""]) {
+    for (const results of [{ TEST: state }, { WEBKIT: state }]) check({ WEB: "false", INTERFACE: "false", NATIVE: "false", CORE: "false", ...skipped, ...results }, 1);
+  }
 });
 
 test("slow checks run in the existing nightly/release workflow, never on pull requests", () => {
@@ -257,6 +267,16 @@ test("slow checks run in the existing nightly/release workflow, never on pull re
   assert.match(preview, /\n  zotero:\n    name: Real Zotero\n    if: \$\{\{ !inputs.update_test \}\}/);
   assert.match(preview, /inputs:\n[\s\S]*?zotero_capture_version:/);
   assert.match(preview, /run: scripts\/real-zotero.sh --capture/);
+});
+
+test("every interface change reaches the system's own WebKit on macOS", () => {
+  const workflow = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
+  const webkit = workflow.split("\n  webkit:\n")[1].split("\n  dependencies:\n")[0];
+  assert.match(webkit, /\n    needs: changes\n    if: needs\.changes\.outputs\.interface == 'true'\n    runs-on: macos-15\n/);
+  assert.match(webkit, /pnpm build:canvas\n/);
+  assert.match(webkit, /swiftc -O apps\/desktop\/gallery\/webkit\.swift -o "\$RUNNER_TEMP\/ibis-webkit"\n\s+"\$RUNNER_TEMP\/ibis-webkit" apps\/desktop\/dist-canvas webkit-pictures/);
+  for (const path of ["apps/desktop/src/tokens.css", "apps/desktop/src-tauri/src/lib.rs", "apps/desktop/gallery/webkit.swift", "crates/ibis-core/src/lib.rs"]) assert.equal(pr([row(path)]).interface, true, path);
+  for (const path of ["website/index.html", "docs/design.md", "README.md"]) assert.equal(pr([row(path)]).interface, false, path);
 });
 
 test("release checks stop a numbered release but never a nightly", () => {
@@ -291,7 +311,7 @@ test("the real workflow shell falls back on failed reads or changing refs", { sk
       env: { ...process.env, EVENT: "pull_request", EXPECTED: scenario === "partial" ? "2" : "1", EXPECTED_REFS: `${"a".repeat(40)}:${"b".repeat(40)}`, RUNNER_TEMP: dir, GITHUB_OUTPUT: join(dir, "output"), SCENARIO: scenario, METADATA: scenario === "malformed" ? "invalid-private-資料" : JSON.stringify(row("apps/desktop/src/App.tsx")) },
     });
     assert.equal(result.status, 0, scenario);
-    assert.equal(result.stdout, scenario === "valid" ? "core=false\nnative=false\nweb=true\n" : "core=true\nnative=true\nweb=true\n", scenario);
+    assert.equal(result.stdout, scenario === "valid" ? "core=false\ninterface=true\nnative=false\nweb=true\n" : "core=true\ninterface=true\nnative=true\nweb=true\n", scenario);
     assert.equal(result.stderr, "", scenario);
   }
 });
@@ -300,7 +320,7 @@ test("a classifier crash fails the configured workflow shell, even after partial
   const dir = mkdtempSync(join(tmpdir(), "ibis-ci-crash-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const { command, args } = workflowStep();
-  for (const partial of ["", "core=false\\nnative=false\\nweb=false\\n"]) {
+  for (const partial of ["", "core=false\\ninterface=false\\nnative=false\\nweb=false\\n"]) {
     const result = spawnSync("bash", [...args, "-c", `node() { printf '%b' "$PARTIAL"; return 17; }\n${command}`], {
       cwd: fileURLToPath(new URL("..", import.meta.url)), encoding: "utf8", timeout: 5000,
       env: { ...process.env, EVENT: "merge_group", RUNNER_TEMP: dir, GITHUB_OUTPUT: join(dir, "output"), PARTIAL: partial },

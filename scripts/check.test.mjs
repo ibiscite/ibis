@@ -97,6 +97,8 @@ test("a change selects the checks CI would run", { skip: process.platform === "w
   mkdirSync(scripts); mkdirSync(bin); mkdirSync(desktop, { recursive: true });
   copyChecker(scripts);
   for (const tool of ["actionlint", "cargo", "pnpm", "python3"]) writeFileSync(join(bin, tool), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+  // Compiles a WebKit check that ends as SWIFT_RESULT says.
+  writeFileSync(join(bin, "swiftc"), '#!/bin/sh\nprintf "#!/bin/sh\\nexit ${SWIFT_RESULT:-0}\\n" > "$4"\nchmod +x "$4"\n', { mode: 0o755 });
   const env = { ...process.env, [pathKey]: `${bin}${delimiter}${process.env[pathKey] ?? ""}`, GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@example.org", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@example.org" };
   delete env.NODE_TEST_CONTEXT;
   const git = (...args) => assert.equal(spawnSync("git", args, { cwd: root, env }).status, 0, args.join(" "));
@@ -105,7 +107,8 @@ test("a change selects the checks CI would run", { skip: process.platform === "w
   git("add", ".gitignore"); git("commit", "-qm", "base");
   git("update-ref", "refs/remotes/origin/main", "HEAD");
   const run = (...args) => spawnSync(process.execPath, [join(scripts, "check.mjs"), ...args], { cwd: root, env, encoding: "utf8", timeout: 60_000 });
-  const ran = (result) => [...result.stdout.matchAll(/^== (.+?): (?:actionlint|cargo|node|pnpm|python3) /gm)].map((match) => match[1]);
+  const ran = (result) => [...result.stdout.matchAll(/^== (.+?): (?:actionlint|cargo|node|pnpm|python3|swiftc|\/\S+) /gm)].map((match) => match[1]);
+  const macOS = process.platform === "darwin";
   const change = (path, text = "x") => { mkdirSync(join(root, path, ".."), { recursive: true }); writeFileSync(join(root, path), text); };
   const steps = (...paths) => {
     for (const path of paths) change(path);
@@ -115,9 +118,15 @@ test("a change selects the checks CI would run", { skip: process.platform === "w
   };
   const docs = steps("docs/note.md");
   assert.ok(docs.includes("Workflow expressions") && docs.includes("Dependency policy"));
-  assert.ok(!docs.some((step) => /^(Lint|Test|Format|Desktop: (app|type))/.test(step)), docs.join());
+  assert.ok(!docs.some((step) => /^(Lint|Test|Format|WebKit|Desktop: (app|type))/.test(step)), docs.join());
   const front = steps("apps/desktop/src/App.tsx");
   assert.ok(front.includes("Desktop: interface tests") && !front.includes("Desktop: app tests") && !front.includes("Test"), front.join());
+  assert.equal(front.includes("WebKit colours"), macOS);
+  if (macOS) {
+    const failed = spawnSync(process.execPath, [join(scripts, "check.mjs")], { cwd: root, env: { ...env, SWIFT_RESULT: "1" }, encoding: "utf8", timeout: 60_000 });
+    assert.equal(failed.status, 1, "a wrong colour is a failure, not a missing tool");
+    assert.match(failed.stderr, /WebKit colours failed/);
+  }
   const app = steps("apps/desktop/src-tauri/src/lib.rs");
   assert.ok(app.includes("Desktop: app tests") && app.includes("Format") && !app.includes("Test") && !app.includes("Minimum Rust"), app.join());
   const core = steps("crates/ibis-core/src/lib.rs");

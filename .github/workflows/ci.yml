@@ -33,6 +33,7 @@ jobs:
       pull-requests: read
     outputs:
       core: ${{ steps.classify.outputs.core }}
+      interface: ${{ steps.classify.outputs.interface }}
       native: ${{ steps.classify.outputs.native }}
       web: ${{ steps.classify.outputs.web }}
     steps:
@@ -345,6 +346,53 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+  # jsdom and Chromium show neither WebKit's system colours nor its light-dark().
+  # Interface changes skip the macOS Desktop job, so this one runs by itself.
+  webkit:
+    name: WebKit colours (macOS)
+    needs: changes
+    if: needs.changes.outputs.interface == 'true'
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          package-manager-cache: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          package_json_file: apps/desktop/package.json
+          cache: true
+          cache_dependency_path: apps/desktop/pnpm-lock.yaml
+
+      - name: Build the design canvas
+        working-directory: apps/desktop
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build:canvas
+
+      - name: Check colours in the system's own WebKit
+        run: |
+          swiftc -O apps/desktop/gallery/webkit.swift -o "$RUNNER_TEMP/ibis-webkit"
+          "$RUNNER_TEMP/ibis-webkit" apps/desktop/dist-canvas webkit-pictures
+
+      - name: Keep the pictures of a failure
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: webkit-${{ github.sha }}
+          path: webkit-pictures/*
+          if-no-files-found: warn
+          retention-days: 14
+
   dependencies:
     name: Dependency policy
     runs-on: ubuntu-24.04
@@ -366,15 +414,15 @@ jobs:
           arguments: --all-features --locked
 
   # One check that stands for every required job, for the ruleset to require
-  # instead of five names. A matrix job skipped because a job it needs failed
+  # instead of six names. A matrix job skipped because a job it needs failed
   # never reports its per-system checks; this job always reports. Every
-  # unconditional job must succeed. Test may be skipped only when no input of
-  # the crates changed; missing classifier output fails shut.
+  # unconditional job must succeed. Test and WebKit may be skipped only when
+  # their inputs did not change; missing classifier output fails shut.
   # It also refuses stacked pull requests: every pull request targets main.
   result:
     name: CI result
     if: always()
-    needs: [changes, test, web, desktop, dependencies]
+    needs: [changes, test, web, desktop, webkit, dependencies]
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:
@@ -384,7 +432,9 @@ jobs:
           WEB: ${{ needs.changes.outputs.web }}
           NATIVE: ${{ needs.changes.outputs.native }}
           CORE: ${{ needs.changes.outputs.core }}
+          INTERFACE: ${{ needs.changes.outputs.interface }}
           TEST: ${{ needs.test.result }}
+          WEBKIT: ${{ needs.webkit.result }}
           EVENT: ${{ github.event_name }}
           BASE: ${{ github.base_ref }}
         run: |
@@ -404,12 +454,13 @@ jobs:
               exit 1
             fi
           done
-          case "$EVENT:$WEB:$NATIVE:$CORE" in
-            pull_request:false:false:false|pull_request:true:false:false|pull_request:true:true:false) expected=skipped ;;
-            *:true:true:true) expected=success ;;
+          case "$EVENT:$WEB:$INTERFACE:$NATIVE:$CORE" in
+            pull_request:false:false:false:false|pull_request:true:false:false:false) test=skipped webkit=skipped ;;
+            pull_request:true:true:false:false|pull_request:true:true:true:false) test=skipped webkit=success ;;
+            *:true:true:true:true) test=success webkit=success ;;
             *) echo "::error::Missing or invalid check selection."; exit 1 ;;
           esac
-          if [ "$TEST" != "$expected" ]; then
-            echo "::error::Expected Test to be '$expected', got '$TEST'."
+          if [ "$TEST" != "$test" ] || [ "$WEBKIT" != "$webkit" ]; then
+            echo "::error::Expected Test '$test' and WebKit '$webkit', got '$TEST' and '$WEBKIT'."
             exit 1
           fi

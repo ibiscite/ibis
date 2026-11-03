@@ -827,7 +827,14 @@ programme ([ROADMAP](../ROADMAP.md)).
 
 2026-11-02 (maintainer): every planned milestone through 0.7 stays in 1.0. The
 PDF opens in a panel inside the picker that widens, shared with the citation
-editor. Delights are quiet, with rare moments.
+editor. Delights are quiet, with rare moments. Approved cuts: two accents only, a
+trimmed Look page, and one format memory rule.
+
+2026-11-02 (maintainer): both channels stay. Each finished milestone (0.3, 0.4 and
+so on) becomes one numbered release with the maintainer's one-click approval. The
+numbered release is the roughly stable version for early adopters, and every
+distribution stays on it, including the Claude plugin, Homebrew and the command
+line. Nightly is where daily testing happens.
 
 ## 0033 The engine for agents and tools
 

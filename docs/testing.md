@@ -295,7 +295,8 @@ A pull request runs only what its paths can affect
 | What changed | What runs | Typical wait |
 |---|---|---|
 | Documentation | Script tests, dependency policy | 1 minute |
-| Interface or website | Those, plus type check, lint, interface tests and picker size | 4 minutes |
+| Website | Those, plus type check, lint, interface tests and picker size | 4 minutes |
+| Interface | Those, plus colours in the system's own WebKit on macOS | 4 minutes |
 | Inside `apps/desktop` | Those, plus the app on Linux, macOS and Windows and the native smoke | 6 minutes |
 | Crates, fixtures, scripts, workflows, anything else | Those, plus the crates on Linux (with citation fidelity, minimum Rust and the search budget) and Windows | 13 minutes |
 
@@ -326,7 +327,8 @@ coverage. Do not provision paid replacement runs.
 
 Colours need the real engine: [`apps/desktop/gallery/webkit.swift`](../apps/desktop/gallery/webkit.swift)
 renders the canvas in the Mac's own WKWebView and checks every accent in System,
-Light and Dark. Run it on macOS after any change to colours or appearance.
+Light and Dark. Bugs that passed in jsdom have failed here, so it is required for
+every interface change, and `node scripts/check.mjs` runs it on a Mac.
 
 Native delivery must start with a selected placeholder and surrounding text,
 summon Ibis normally, then read the destination independently through saved

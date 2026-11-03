@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
 const maxFiles = 3000; // GitHub's pull-request files endpoint stops here.
-const full = { core: true, native: true, web: true };
+const full = { core: true, interface: true, native: true, web: true };
 const validPath = (path) => typeof path === "string" && path.length > 0 && !/[\x00-\x1f\x7f\\]/.test(path)
   && path.split("/").every((part) => part && part !== "." && part !== "..");
 // Markdown beside code or vendored assets can be pinned by Rust tests.
@@ -35,7 +35,7 @@ export function classify(event, expected, files) {
   }
   const web = paths.filter((path) => !documentation(path));
   const native = web.filter((path) => !interfaceFile(path) && !websiteFile(path));
-  return { core: native.some((path) => !appFile(path)), native: native.length > 0, web: web.length > 0 };
+  return { core: native.some((path) => !appFile(path)), interface: web.some((path) => !websiteFile(path)), native: native.length > 0, web: web.length > 0 };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

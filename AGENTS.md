@@ -27,6 +27,7 @@ node scripts/pr-lint.mjs --title "fix: explain the change"
 
 - Each pull request gets its own branch and worktree from `origin/main`, with its own Cargo target directory; no stacking, never push to `main`. Related changes go together in one pull request; unrelated ones get their own.
 - One writer per set of paths and mutable-state owners. If yours overlap an open pull request, finish or review that one instead of starting a second.
+- Parallel sessions on the 10-core, 16 GB Mac must share a build limit, and heavy checks belong in CI. Locally prefer `cargo check -p CRATE`, one test filter and one Vitest file; run `node scripts/check.mjs` when the machine has room (2026-11-02).
 - Files everyone touches (`ROADMAP.md`, `docs/design.md`, `docs/decisions.md`, `tokens.css`, `App.tsx`) get small edits that merge quickly.
 
 ## Building
@@ -43,7 +44,7 @@ node scripts/pr-lint.mjs --title "fix: explain the change"
 
 - Pull request titles are Conventional Commits; they become the release notes. Say what changed and how it was checked, and link `Closes #N`.
 - Sign off commits (`git commit -s`) with a public project or GitHub noreply identity, and disclose AI help with an `Assisted-by:` or `Co-authored-by:` trailer.
-- Trust `node scripts/check.mjs`, push, and open the pull request with `gh pr merge --squash --auto`: it merges itself on a green "CI result". Do your own adversarial check first, and hold a pull request back only for a named reason.
+- Check, push, and open the pull request with `gh pr merge --squash --auto`: it merges itself on a green "CI result". Do your own adversarial check first, and hold a pull request back only for a named reason.
 - These changes also need one review of the final head by a session that did not write them, with every P1 and P2 fixed: the updater; release signing and publishing; CI permissions; security boundaries (unsafe native modules, window permissions and the shortcut portal, network access, what untrusted input can reach). The reviewer attacks stale ownership, fail-open uncertainty, lost meaning, private-data propagation and changed interactions. Findings below P2 go into one 1.0 issue per area, not new issues.
 - Merge only with a green "CI result" on the exact head, by squash, never bypassing. If a green pull request is still open, squash-merge it yourself. A head with no "CI result" usually has a merge conflict, which stops GitHub running checks: merge `origin/main` into it. A change to a shared contract merges current `origin/main` before its final CI.
 - Main runs every check; a pull request runs only what its paths can affect, and a nightly does not wait for either. If `main` turns red, revert the merge that broke it first, then fix.
