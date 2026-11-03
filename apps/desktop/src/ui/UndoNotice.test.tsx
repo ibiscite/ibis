@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { afterEach, expect, test, vi } from "vitest";
 import { useRef, useState } from "react";
 import { currentPlatform } from "../platform";
-import { NoticeDock, QuietNotice } from "./NoticeDock";
+import { NoticeSlot, QuietNotice } from "./NoticeSlot";
 import { UndoNotice } from "./UndoNotice";
 
 const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
@@ -116,18 +116,21 @@ test("closing and reopening preserves the remaining visible Undo time", () => {
   expect(expire).toHaveBeenCalledOnce();
 });
 
-test("a notice takes its place in the layout, and two never share one spot", () => {
-  const { container } = render(<NoticeDock>
+test("a notice stays in the layout on one line, and the newest takes the slot", () => {
+  const { container } = render(<NoticeSlot>
     <UndoNotice action="Reset Window Position" message="Window position reset." onUndo={async () => {}} onExpire={() => {}} />
     <QuietNotice>A remark.</QuietNotice>
-  </NoticeDock>);
+  </NoticeSlot>);
   expect(screen.getByRole("region", { name: "Notices" }).children).toHaveLength(2);
   expect(container.querySelector(".notice-band[data-offer]")).not.toBeNull();
-  const css = readFileSync(new FileURL("./NoticeDock.css", import.meta.url), "utf8");
+  const css = readFileSync(new FileURL("./NoticeSlot.css", import.meta.url), "utf8");
   expect(css).not.toMatch(/position:\s*(fixed|absolute|sticky)|box-shadow|z-index/);
+  expect(css).toMatch(/\.notice-slot > :not\(:last-child\) \{ display: none; \}/);
+  expect(css).toMatch(/white-space: nowrap/);
+  expect(screen.getByRole("button", { name: "Undo Reset Window Position" }).getAttribute("aria-keyshortcuts")).toBeTruthy();
 });
 
-test("an empty dock draws nothing", () => {
-  const { container } = render(<NoticeDock>{null}{false}</NoticeDock>);
+test("an empty slot draws nothing", () => {
+  const { container } = render(<NoticeSlot>{null}{false}</NoticeSlot>);
   expect(container.firstChild).toBeNull();
 });

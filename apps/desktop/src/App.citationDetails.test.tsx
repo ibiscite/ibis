@@ -151,12 +151,12 @@ test("reference and window Undo keep separate reachable actions and cannot consu
   const actions = screen.getAllByRole("button", { name: /^Undo / });
   expect(actions).toHaveLength(2);
   const descriptions = actions.map((button) => document.getElementById(button.getAttribute("aria-describedby")!)?.textContent);
-  expect(descriptions).toEqual(["Removed Smith, 2020 from citation.", "Window position reset."]);
+  expect(descriptions).toEqual(["Removed Smith 2020", "Window position reset."]);
   for (const button of actions) { act(() => button.focus()); expect(document.activeElement).toBe(button); }
   await act(async () => { fireEvent.click(actions[1]!); });
   expect(windowUndos).toEqual([{ revision: 17 }]);
   expect(screen.queryByText("Window position reset.")).toBeNull();
-  expect(screen.getByText("Removed Smith, 2020 from citation.")).toBeTruthy();
+  expect(screen.getByText("Removed Smith 2020")).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: /^Undo / }));
   expect(screen.queryByRole("button", { name: /^Undo / })).toBeNull();
   expect(screen.getByRole("button", { name: "Remove a from the selection" })).toBeTruthy();
@@ -398,7 +398,7 @@ test("changing only the form does not offer to reapply an unchanged search page"
   expect(screen.queryByRole("button", { name: "Apply locator to a" })).toBeNull();
 });
 
-test("page and form survive changing output and remain editable with the paste preview hidden", async () => {
+test("page and form survive changing output and remain editable", async () => {
   const previews: PreviewRequest[] = [];
   backend({ search: () => [result("a", "Synthetic work")],
     preview_file_citation: (request) => { previews.push(request); return receipt(`preview ${previews.length}`); } });
@@ -412,8 +412,6 @@ test("page and form survive changing output and remain editable with the paste p
   fireEvent.click(screen.getByRole("menuitemradio", { name: "Typst key" }));
   await waitFor(() => expect(previews.at(-1)?.format).toBe("typst"));
   expect(previews.at(-1)?.items[0]).toMatchObject({ locator: null, page_input: "42", form: "narrative" });
-  fireEvent.keyDown(search, { key: "i", code: "KeyI", ctrlKey: true });
-  expect(screen.queryByRole("region", { name: "Preview" })).toBeNull();
   page = await openCitationDetails();
   fireEvent.change(page, { target: { value: "42–45" } });
   await waitFor(() => expect(previews.at(-1)?.items[0]?.page_input).toBe("42–45"));

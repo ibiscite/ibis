@@ -244,7 +244,7 @@ undo-reset-window = Reset Window Position
 undo-forget-formats = Forget Formats
 undo-shortcut = Restore Default Shortcut
 
-undo-removed = Removed { $reference } from citation.
+undo-removed = Removed { $reference }
 
 choice-use-zotero = Use Zotero
 choice-zotero-help = Your Zotero library, open or closed

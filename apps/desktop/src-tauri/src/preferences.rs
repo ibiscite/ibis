@@ -170,18 +170,7 @@ pub(crate) enum Appearance {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum Accent {
-    // Removed choices read as the default, so they cannot fail every preference read.
     #[default]
-    #[serde(
-        alias = "blue",
-        alias = "purple",
-        alias = "pink",
-        alias = "red",
-        alias = "orange",
-        alias = "yellow",
-        alias = "green",
-        alias = "graphite"
-    )]
     System,
     Ibis,
 }

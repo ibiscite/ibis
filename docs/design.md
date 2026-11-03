@@ -120,13 +120,13 @@ The bird appears only where Ibis itself is the subject, in the one treatment of 
 | Ibis as an app: About, the Dock, Finder, the paste guide's drag icon | The real app icon on its tile, never redrawn | `--mark-app` |
 | Greeting: welcome, the first open | The depth mark, no tile | `--mark-greeting` |
 | Waiting: opening a library | The flat mark, breathing | 2.5 rem |
-| Working: the search bar, the update ring | The flat mark in `--scarlet`, eye open | The search glyph's size |
+| Working: the search bar | The flat mark in `--scarlet`, eye open | The search glyph's size |
 | System chrome: the menu bar | The one-colour bird the system tints | The system's |
 
 ### Key caps
 
 - One cap per shortcut, written as menus write it: ⌘K, ⇧⌘F, ↵ on macOS; Ctrl+K on Windows and Linux (`ui/KeyCaps`).
-- Caps appear only in the footer and in key lists. Menus write shortcuts as plain trailing text in native order (⇧⌘C) [C8].
+- Caps appear only in the footer, the notice slot and key lists. Menus write shortcuts as plain trailing text in native order (⇧⌘C) [C8].
 - A cap is `--fill-control` with `--r-key`, label type, never an outline or scarlet. Inside a quiet button it keeps its fill; on the primary it is the pressed fill. A trailing cap in a small button is concentric: `--key-gap` above, below and at the end. A one-symbol cap (↵) is square, and ↵ is lowered .1em so it sits optically centred.
 - "or" alternatives keep two caps. Decorative caps are hidden from screen readers; `aria-keyshortcuts` names the keys.
 
@@ -177,8 +177,8 @@ Each component in `apps/desktop/src/ui/` wraps one React Aria component (decisio
 | Key caps (`ui/KeyCaps`) | See **Key caps**. |
 | Shelf (`ChipGroup`, `LocatorToken`, `CitationDetails`) | See **Shelf**. |
 | Footer and status line (`LibraryStatus`, `SourceAction`) | See **Footer**. A status line is words, never a filled band. |
-| Notice dock (`ui/NoticeDock`, `UndoNotice`) and receipt (`CopyReceipt`) | See **Notices**. |
-| Progress (`ui/Progress`) | A task such as an update is a quiet card on the row grid: an accent ring around the Ibis mark in the tile column, the title and phase ("Updating Ibis", "Downloading · 3.1 of 7.4 MB") where titles start, the percent where years end. An unknown phase turns the ring; Reduce Motion shows it dashed and still. Opening a library keeps a thin bar. |
+| Notice slot (`ui/NoticeSlot`, `UndoNotice`) and receipt (`CopyReceipt`) | See **Notices**. |
+| Progress (`ui/Progress`) | A task such as an update is one line of the notice slot: a small ring where the status dot sits, then the title, phase and percent ("Updating Ibis", "Downloading · 3.1 of 7.4 MB", "42%"), so no row moves. An unknown phase turns the ring; Reduce Motion shows it dashed and still. Opening a library keeps a thin bar. |
 | Choice cards (`ui/ChoiceList`) | See **First run and choice screens**. |
 | Picture choice (`ui/PictureChoice`) | Equal columns, one per choice, captions on one baseline; never wrap three as two plus one. |
 | Sidebar (`ui/SideNavigation`) | Single-selection list with `aria-current="page"`, the Mac's medium sidebar row, selected fill and paired text. `SideResults` draws search results as the same rows. |
@@ -243,7 +243,7 @@ Built in `ibis-core` so every front end shares them (#1204).
 - Every hint is label first, then keys, on one baseline. When the footer does not fit, shorten the status, then drop hint labels to keys.
 - **Quiet bands**: inside the shelf and footer only the main action (Copy or Paste) is filled. The library status, the source action, More, the reference count, notes and Details are quiet. A band that is itself a fill never holds another filled control.
 - Never show an action twice on one screen. With ⌥ held: "Add to citation ⇧↵", the Esc step, then More.
-- **One place for each status**: library state lives only in the footer status; citation refusals and settings notices use the middle area; anything passing uses the dock (see **Notices**).
+- **One place for each status**: library state lives only in the footer status; citation refusals and settings notices use the middle area; anything passing uses the notice slot (see **Notices**).
 
 | Case | Footer |
 | --- | --- |
@@ -289,7 +289,8 @@ Built in `ibis-core` so every front end shares them (#1204).
 
 - "Pasted" or "Copied" shows after the picker hides, in a window that never takes focus: one card near the top centre on every system, ignoring the pointer. What was copied is the hero: the citation in the text colour at body size, monospaced. Above it a quiet secondary line says what happened ("Copied", "Pasted into Word" or the reason). A green check in a soft green circle, centred on both lines, confirms success. A long reason wraps and is never clipped; the citation stays one line, ending in "…" with "+4 more" in view. The notice follows the chosen appearance.
 - No notice carries a side bar or a one-sided border. Errors are one sentence beside their cause, never a modal.
-- **The dock** (`ui/NoticeDock`): everything that passes takes one slot in the layout at the foot of the content, above the shelf in the picker and under the page in Settings. The content above gives up the room, so a notice never covers a row, nothing floats or casts a shadow, and the shelf and footer stay where they are. Several stack in order. An Undo offer ("Removed Okafor & Lima, 2018 from citation. Undo") is a band with the shelf's fill and shape, a quiet Undo at its end and its words on the title column; it lasts 8 s, pauses on hover and focus, and accepts ⌘Z. A remark needing nothing (tip, milestone, the size after ⌘+, why Enter did nothing) is words alone in the same slot, and leaves when you type.
+- **One notice slot per window** (`ui/NoticeSlot`): notices never float. Everything that passes takes the window's status area: in the picker the footer's left side, standing in for the library status, which returns after 8 s; in Settings one line at the foot of the content area. The slot is in the layout, so it never covers content, never moves anything and opens no layer: it can sit behind any open menu or panel. The newest shows; an older one returns when it goes, with the rest of its time.
+- A notice is one line ending in an ellipsis, with short names ("Removed Vale 2021", first author and year as on the tile). An Undo offer has a quiet **Undo ⌘Z** right beside its words; it lasts 8 s, pauses on hover and focus, and ⌘Z does the same while it shows. A remark needing nothing (tip, milestone, the size after ⌘+, why Enter did nothing) is words alone, and leaves when you type. Screen readers hear both through the status role.
 
 | Reason | Words |
 | --- | --- |
@@ -391,10 +392,10 @@ Approved directions from ROADMAP.md; planned behaviour. No new notebook, source 
 
 ## Small delights
 
-The approved, final list; no new delights until the next design pass. Each lives only in About, the welcome, the notice dock or existing feedback; never changes results, output or focus; happens once within the motion cap; never loops or plays a sound. Warm, never childish: at most one short sentence, no slang, exclamation marks, emoji or jokes about the person's work. A delight is a person's action answered, or a real moment marked; nothing appears at random. The fun items sit behind Settings › General › **Small surprises** (on by default).
+The approved, final list; no new delights until the next design pass. Each lives only in About, the welcome, the notice slot or existing feedback; never changes results, output or focus; happens once within the motion cap; never loops or plays a sound. Warm, never childish: at most one short sentence, no slang, exclamation marks, emoji or jokes about the person's work. A delight is a person's action answered, or a real moment marked; nothing appears at random. The fun items sit behind Settings › General › **Small surprises** (on by default).
 
 - **Feel:** a pressed shortcut briefly presses its footer cap; holding ⌘ shows every visible action's key; Enter with nothing to paste shakes the action once and says why; ⌘+/⌘− show the size briefly; the menu bar ibis dips its beak after a copy.
-- **Saves time:** Services › Search with Ibis; a `.bib` dropped on the menu bar ibis becomes a library; every Undo names its action ("Undo Remove Okafor & Lima, 2018"); ⌥ on About shows the full build; once, after the first paste, a tip that ⇧⌘P keeps Ibis open between citations.
+- **Saves time:** Services › Search with Ibis; a `.bib` dropped on the menu bar ibis becomes a library; every Undo names its action ("Undo Remove Vale 2021"); ⌥ on About shows the full build; once, after the first paste, a tip that ⇧⌘P keeps Ibis open between citations.
 - **Fun:** About's line on the name ("Named for the bird ancient Egyptians linked with Thoth, god of writing and keeper of records."); clicking the About icon dips the bird's beak, the menu bar's gesture, and the line says the next bird fact, one click, one fact, carrying on next time, until you leave the page; the first open greets with the mark; the first, 100th and 1,000th paste say so on the receipt; a library's size is marked once, with the highest milestone reached only ("A good start.", "A solid library.", "A remarkable library."), so a large import is one moment; the day a year after first use, the line reads "One year with Ibis today."
 - **Left out:** confetti, sounds, seasonal themes, joke results, a "what's new" screen, alternative app icons.
 

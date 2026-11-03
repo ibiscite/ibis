@@ -2,9 +2,8 @@ import { useEffect, useId, useLayoutEffect, useRef, useState, type RefObject } f
 import { pickerText } from "../messages";
 import { Button } from "./Button";
 import { useInterfaceMessages } from "../i18n";
-import { currentPlatform } from "../platform";
 import { registerUndo } from "./editUndo";
-import "./NoticeDock.css";
+import "./NoticeSlot.css";
 
 function noticeText(value: string) {
   const letters = [...value.replace(/\s+/gu, " ")].filter((letter) => {
@@ -60,9 +59,9 @@ export function UndoNotice({ message, action, onUndo, onExpire, paused = false, 
   }, [fallbackFocusRef]);
   return <div ref={notice} className="notice-band" data-offer onPointerEnter={() => setHovered(true)} onPointerLeave={() => setHovered(false)}
     onFocusCapture={() => setFocused(true)} onBlurCapture={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocused(false); }}>
-    <span id={description} role={error ? "alert" : "status"}>{error ? pickerText.undoFailed : noticeText(message)}</span>
+    <span id={description} role={error ? "alert" : "status"} title={noticeText(message)}>{error ? pickerText.undoFailed : noticeText(message)}</span>
     {/* Retain native focus while waiting, so dismissal can return it to Search. */}
-    {/* The message names the action; the short word keeps two notices on a small window. */}
-    <Button variant="quiet" size="small" aria-label={label} aria-describedby={description} aria-keyshortcuts={currentPlatform() === "macos" ? "Meta+Z" : "Control+Z"} isPending={pending} onPress={() => invoke.current()}>{pickerText.undo}</Button>
+    {/* The message names the action; the key cap says ⌘Z does the same. */}
+    <Button variant="quiet" size="small" label={pickerText.undo} keys="CmdOrCtrl+Z" aria-label={label} aria-describedby={description} isPending={pending} onPress={() => invoke.current()} />
   </div>;
 }

@@ -6,7 +6,7 @@ import { type MessageId, useInterfaceMessages } from "../i18n";
 import { type ShortcutProblem, shortcutRefusalMessage } from "../i18n/settings";
 import { PreferencePatchQueue } from "../preferencePatchQueue";
 import { currentPlatform } from "../platform";
-import { NoticeDock } from "../ui/NoticeDock";
+import { NoticeSlot } from "../ui/NoticeSlot";
 import { UndoNotice } from "../ui/UndoNotice";
 import { Button } from "../ui/Button";
 import { AboutDelight, AboutLine } from "../ui/Delights";
@@ -398,14 +398,14 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
         : <SideNavigation label={text("settings-pages")} value={page} options={PAGES.map((value) => ({ value, label: text(`settings-${value}`), tile: PAGE_TILES[value], gapBefore: value === "about" }))}
           onChange={selectPage} />}
       </nav>
-      <NoticeDock>
+      <NoticeSlot>
         {forgetUndo !== null && <UndoNotice key={`forget-${forgetUndo}`} action={text("undo-forget-formats")} message={text("citations-forget-done")} paused={!focused}
           onUndo={() => queue.enqueue(() => api.restoreAppOutputs(forgetUndo)).then(clearForgetUndo)}
           onExpire={clearForgetUndo} />}
         {shortcutUndo && <UndoNotice key={undoTicket} action={text("undo-shortcut")} message={text("settings-shortcut-restored")} paused={!focused}
           onUndo={() => changeShortcut(shortcutUndo, true, undoTicket)}
           onExpire={() => { if (undoTicket === shortcutUndoTicket.current) clearShortcutUndo(); }} />}
-      </NoticeDock>
+      </NoticeSlot>
       <main ref={pageRef} className="settings-page" aria-labelledby="settings-page-title">
         <h1 id="settings-page-title" className={page === "about" ? "visually-hidden" : "settings-page-title"}>{text(`settings-${page}`)}</h1>
         {preference.status === "unknown" && preference.message && <p className="settings-problem" role="alert">{text(preference.message)}</p>}

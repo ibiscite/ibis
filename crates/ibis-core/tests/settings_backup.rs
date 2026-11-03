@@ -373,7 +373,7 @@ fn restoring_on_another_computer_keeps_its_local_settings_and_shortcut() {
     };
     let mut here = Settings {
         update_checks: Some(false),
-        density: Some(Density::Spacious),
+        density: Some(Density::Compact),
         ..Settings::default()
     };
     here.shortcut.set_here(Some("Alt+Space".into()));

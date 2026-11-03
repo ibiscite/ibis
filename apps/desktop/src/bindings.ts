@@ -227,11 +227,7 @@ export const commands = {
 /**  A fixed page linked from About. The web page never chooses the address. */
 export type AboutLink = "website" | "source" | "problem" | "licences";
 
-export type Accent = Accent_Serialize | Accent_Deserialize;
-
-export type Accent_Deserialize = "system" | "blue" | "purple" | "pink" | "red" | "orange" | "yellow" | "green" | "graphite" | "ibis";
-
-export type Accent_Serialize = "system" | "ibis";
+export type Accent = "system" | "ibis";
 
 /**  One output the picker can copy: a key syntax or a citation style. */
 export type AppOutput = ({ key: KeyFormat }) & { style?: never } | ({ style: CitationStyle }) & { key?: never };
@@ -339,13 +335,7 @@ app: string | null } | { outcome: "copied";
 reason: string | null };
 
 /**  How much each result row shows (ADR 0020). */
-export type Density = Density_Serialize | Density_Deserialize;
-
-/**  How much each result row shows (ADR 0020). */
-export type Density_Deserialize = "compact" | "comfortable" | "spacious";
-
-/**  How much each result row shows (ADR 0020). */
-export type Density_Serialize = "compact" | "comfortable";
+export type Density = "compact" | "comfortable";
 
 export type DesktopShortcut = {
 	configurable: boolean,
@@ -658,9 +648,9 @@ export type PickerPreferencesPatch = PickerPreferencesPatch_Serialize | PickerPr
 /**  Only fields deliberately changed in one window cross the write boundary. */
 export type PickerPreferencesPatch_Deserialize = {
 	appearance?: Appearance | null,
-	accent?: Accent_Deserialize | null,
+	accent?: Accent | null,
 	citation_style?: CitationStyle | null,
-	density?: Density_Deserialize | null,
+	density?: Density | null,
 	larger_text?: boolean | null,
 	paste?: boolean | null,
 	menu_bar?: boolean | null,
@@ -671,9 +661,9 @@ export type PickerPreferencesPatch_Deserialize = {
 /**  Only fields deliberately changed in one window cross the write boundary. */
 export type PickerPreferencesPatch_Serialize = {
 	appearance?: Appearance | null,
-	accent?: Accent_Serialize | null,
+	accent?: Accent | null,
 	citation_style?: CitationStyle | null,
-	density?: Density_Serialize | null,
+	density?: Density | null,
 	larger_text?: boolean | null,
 	paste?: boolean | null,
 	menu_bar?: boolean | null,
@@ -688,10 +678,10 @@ export type PickerPreferencesPatch_Serialize = {
 export type PickerPreferences_Deserialize = {
 	copy_format?: KeyFormat | null,
 	appearance?: Appearance | null,
-	accent?: Accent_Deserialize | null,
+	accent?: Accent | null,
 	/**  A style chosen in the format menu, or `null` to copy citation keys. */
 	citation_style: CitationStyle | null,
-	density: Density_Deserialize,
+	density: Density,
 	larger_text: boolean,
 	/**  Enter pastes into the app the picker was opened from; on by default. */
 	paste: boolean,
@@ -709,10 +699,10 @@ export type PickerPreferences_Deserialize = {
 export type PickerPreferences_Serialize = {
 	copy_format?: KeyFormat | null,
 	appearance?: Appearance | null,
-	accent?: Accent_Serialize | null,
+	accent?: Accent | null,
 	/**  A style chosen in the format menu, or `null` to copy citation keys. */
 	citation_style: CitationStyle | null,
-	density: Density_Serialize,
+	density: Density,
 	larger_text: boolean,
 	/**  Enter pastes into the app the picker was opened from; on by default. */
 	paste: boolean,

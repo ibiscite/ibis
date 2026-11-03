@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { libraryMessages, operationFailures as FAILURE_MESSAGES, pickerText } from "../../messages";
 import { zoteroLibraryNames } from "../../LibraryStatusLine";
 import type { PickerApi } from "../../App";
@@ -18,7 +19,7 @@ import type { useOperations } from "./useOperations";
 
 export function PickerStatusFooter({
   api, library, scope, sourceState, menus, actions, copyChosen, destination, recents, preferences,
-  operations, altHeld, lastOutcome, cancelCopy, quitAfterSaving, emptyAction,
+  operations, altHeld, lastOutcome, cancelCopy, quitAfterSaving, emptyAction, notices,
 }: {
   api: PickerApi;
   library: LibraryStatus | null | undefined;
@@ -36,6 +37,7 @@ export function PickerStatusFooter({
   cancelCopy: () => void;
   quitAfterSaving: () => Promise<void>;
   emptyAction?: boolean;
+  notices?: ReactNode;
 }) {
   const { useZoteroLibraries: chooseZoteroLibraries, reloadLibrary, useZotero, openSettings } = api;
   const { groupName, offeredGroups, isChosen, chosenLibraries, toggleLibrary, searchAllLibraries } = scope;
@@ -47,7 +49,7 @@ export function PickerStatusFooter({
   // Read when More opens, the only time it is shown there.
   const libraryDetail = menuOpen ? libraryMessages.detail(library, Date.now(), (status) => zoteroLibraryNames(status, groupName)) : null;
   return <PickerFooter library={library} groupName={groupName} emptyAction={emptyAction}
-    status={<PickerLibraryStatus library={library} groupName={groupName} isOpen={libraryMenuOpen}
+    status={<PickerLibraryStatus library={library} groupName={groupName} notice={notices} isOpen={libraryMenuOpen}
       onOpenChange={(open) => { if (open) { cancelCopy(); setMenuOpen(false); } setLibraryMenuOpen(open); }}
       searchRef={input} sourceAction={sourceAction} sourceFailure={sourceOpen.failure !== null}
       statusIcon={source.status_icon ?? null} hideAction={sourceState.libraryChoices}

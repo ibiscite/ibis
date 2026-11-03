@@ -11,10 +11,10 @@ beforeEach(() => vi.useFakeTimers());
 afterEach(async () => { document.documentElement.style.removeProperty("zoom"); await resetApp(); });
 const view = (status: string | null, peck = false) => ({ status, peck, fun: true, fact: null, revision: 1, anniversary: false, build: "0.0.0 · invented · 2026-11-01" });
 
-test("a claimed tip sits in the notice dock beside library status and never copies or changes focus", async () => {
+test("a claimed tip stands in for library status and never copies or changes focus", async () => {
   const calls = backend({ delight_view: () => view("paste-tip") });
   await act(async () => { render(<App />); });
-  expect(screen.getByText(tip).closest(".notice-dock")).toBeTruthy();
+  expect(screen.getByText(tip).closest(".notice-slot")).toBeTruthy();
   expect(screen.getByRole("button", { name: "Library" })).toBeTruthy();
   expect(document.activeElement).toBe(screen.getByLabelText("Search references"));
   expect(calls).not.toContain("copy_file_citation");
@@ -35,7 +35,7 @@ test("empty Enter explains refusal and zoom reports for one second, without copy
   act(() => vi.advanceTimersByTime(240));
   expect(container.querySelector("[data-empty-action]")).toBeNull();
   fireEvent.keyDown(input, { key: "+", metaKey: true });
-  expect(screen.getByText("110%").closest(".notice-dock")).toBeTruthy();
+  expect(screen.getByText("110%").closest(".notice-slot")).toBeTruthy();
   expect(document.documentElement.style.zoom).toBe("1.1");
   act(() => vi.advanceTimersByTime(1000));
   expect(screen.queryByText("110%")).toBeNull();
@@ -75,7 +75,7 @@ test.each([
 ])("%s renders the Rust answer beside the loaded library", async (status, message) => {
   backend({ delight_view: () => view(status) });
   await act(async () => { render(<App />); });
-  expect(screen.getByText(message).closest(".notice-dock")).toBeTruthy();
+  expect(screen.getByText(message).closest(".notice-slot")).toBeTruthy();
   expect(screen.getByRole("button", { name: "Library" })).toBeTruthy();
 });
 

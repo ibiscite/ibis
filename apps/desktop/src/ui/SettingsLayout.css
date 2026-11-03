@@ -29,5 +29,5 @@
   margin-block-start: var(--space-6); padding: 0 var(--space-6) var(--space-6);
   scrollbar-gutter: stable; scroll-padding-block: var(--space-6); overscroll-behavior: contain;
 }
-/* Notices take the row under the page, so the page shortens and nothing is covered. */
-.settings > .notice-dock { grid-area: 3 / 2 / 4 / 3; margin: var(--space-2) var(--space-6) var(--space-3); }
+/* Notices take one line under the page, with words where row labels start. */
+.settings > .notice-slot { --notice-start: var(--space-4); grid-area: 3 / 2 / 4 / 3; padding: var(--space-2) var(--space-6); border-block-start: var(--border-width) solid var(--separator); }

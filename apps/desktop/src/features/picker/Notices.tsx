@@ -1,5 +1,6 @@
 import { Icon } from "../../icons";
 import type { Copied, Density, LibraryStatus, UpdateProgress } from "../../api";
+import { QuietNotice } from "../../ui/NoticeSlot";
 import { Progress } from "../../ui/Progress";
 import { Button } from "../../ui/Button";
 import { densityNames, operationFailures, pickerText, updateText } from "../../messages";
@@ -11,9 +12,8 @@ export type Operation = keyof typeof operationFailures;
 
 /** Settings problems, failed actions, search and copy errors, and what was
  * copied. Library failures belong to the footer's controls. */
-export function Notices({ library, failures, error, citationProblem, copyError, copied, confirmation, onDismissCopied, updateProgress, missing = [], densityAnnouncement }: {
+export function Notices({ library, failures, error, citationProblem, copyError, copied, confirmation, onDismissCopied, missing = [], densityAnnouncement }: {
   densityAnnouncement?: Density;
-  updateProgress?: UpdateProgress | null;
   library: LibraryStatus | null | undefined;
   failures: Partial<Record<Operation, boolean>>;
   error: string | null;
@@ -29,10 +29,6 @@ export function Notices({ library, failures, error, citationProblem, copyError, 
       {densityAnnouncement === undefined ? "" : pickerText.density(densityNames[densityAnnouncement])}
     </p>
     <div className="notices">
-      {updateProgress && (updateProgress.phase === "failed" ? <p role="alert">{updateText.failed}</p> :
-        <Progress title={updateText.title} label={updateText[updateProgress.phase]} detail={updateSize(updateProgress)}
-          value={updateProgress.phase === "downloading" && updateProgress.total
-            ? Math.min(100, 100 * updateProgress.received / updateProgress.total) : undefined} />)}
       {library?.settings_notice && <p role="alert">{library.settings_notice}</p>}
       {(Object.keys(failures) as Operation[]).filter((operation) => failures[operation] && !libraryOperations.has(operation)).map((operation) => (
         <p role="alert" key={operation}>{operationFailures[operation]}</p>
@@ -66,6 +62,13 @@ export function Notices({ library, failures, error, citationProblem, copyError, 
       )}
     </div>
   </>;
+}
+
+/** An update in the notice slot, so no row moves while it runs. */
+export function UpdateNotice({ progress }: { progress: UpdateProgress }) {
+  if (progress.phase === "failed") return <QuietNotice role="alert">{updateText.failed}</QuietNotice>;
+  return <Progress title={updateText.title} label={updateText[progress.phase]} detail={updateSize(progress)}
+    value={progress.phase === "downloading" && progress.total ? Math.min(100, 100 * progress.received / progress.total) : undefined} />;
 }
 
 /** Library failures stay beside the footer's library controls. */

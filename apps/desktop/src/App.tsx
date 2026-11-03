@@ -11,7 +11,7 @@ import { PickerPageToken } from "./features/picker/PickerPageToken";
 import { PickerResults } from "./features/picker/PickerResults";
 import { PickerCitationShelf } from "./features/picker/PickerCitationShelf";
 import { PickerStatusFooter } from "./features/picker/PickerStatusFooter";
-import { PickerNoticeDock, PickerOverlays } from "./features/picker/PickerOverlays";
+import { PickerNotices, PickerOverlays } from "./features/picker/PickerOverlays";
 import { useOperations } from "./features/picker/useOperations";
 import { useShortcutStatus } from "./features/picker/useShortcutStatus";
 import { usePickerPreferences } from "./features/picker/usePickerPreferences";
@@ -206,7 +206,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
             {shortcut.desktop && !welcomeShown && ` ${shortcut.desktop.guidance}`}
           </p>
         </div>}
-        <Notices densityAnnouncement={preferences.densityAnnouncement} updateProgress={updateProgress} library={library} failures={failures}
+        <Notices densityAnnouncement={preferences.densityAnnouncement} library={library} failures={failures}
           error={error} copyError={copyError} copied={copied} missing={ready ? list?.missing : undefined}
           citationProblem={citationProblem} confirmation={state.copyNotice}
           onDismissCopied={() => send({ type: "dismiss" })} />
@@ -215,7 +215,6 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
           shortcut={shortcut} perform={perform} input={input} pointer={pointer} rows={rows}
           density={density} resultArea={resultArea} setQuery={setQuery} peck={delights.peck} />
       </PickerScroll>
-      <PickerNoticeDock state={state} send={send} menus={menus} remark={zoomFeedback ?? emptyFeedback.feedback ?? delights.feedback} passive={!zoomFeedback && !emptyFeedback.feedback && delights.passive} />
       {/* Keep the selection live region mounted when choices remove citation controls. */}
       <PickerCitationShelf
         state={state} send={send} showCitations={showCitations} results={results} output={output} chosen={shownChoice}
@@ -223,7 +222,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
       <PickerStatusFooter
         api={api} library={library} scope={scope} sourceState={source} menus={menus} actions={actions}
         copyChosen={rows.copyChosen} destination={destination} recents={recents} preferences={preferences}
-        operations={operations} altHeld={altHeld} emptyAction={emptyFeedback.shaking} lastOutcome={state.lastOutcome}
+        operations={operations} altHeld={altHeld} notices={<PickerNotices state={state} send={send} menus={menus} updateProgress={updateProgress} remark={zoomFeedback ?? emptyFeedback.feedback ?? delights.feedback} passive={!zoomFeedback && !emptyFeedback.feedback && delights.passive} />} emptyAction={emptyFeedback.shaking} lastOutcome={state.lastOutcome}
         cancelCopy={cancelCopy} quitAfterSaving={quitAfterSaving} />
       <PickerOverlays menus={menus} bindings={actions.bindings} />
       <HeldKeys />
