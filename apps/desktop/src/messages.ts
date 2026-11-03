@@ -542,6 +542,7 @@ export const copiedNoticeText = {
     "paste-unavailable": "Copied. Press ⌘V to paste.",
     "elevated-app": "Copied. Not pasted into an administrator app",
     "key-release-failed": "Copied. Press and release Ctrl and V",
+    "selection-not-shown": "Copied. Ibis replaces only text it showed you. Press ⌘V to replace it.",
   } as Record<string, string>,
   pluginNote: "If this document uses a reference manager's plugin (Zotero, Mendeley, EndNote, Citavi, Paperpile and others), insert with the plugin.",
   windowsTitle: "Citation copied. Press Ctrl+V to paste.",
