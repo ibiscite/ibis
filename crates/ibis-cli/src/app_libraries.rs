@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 
 /// The apps whose settings are read, in order: the first one with a settings
 /// file is used, so the stable app wins over Nightly when both are installed.
-const APPS: [(&str, &str); 2] = [
+pub(crate) const APPS: [(&str, &str); 2] = [
     ("com.ibiscite.ibis", "Ibis"),
     ("com.ibiscite.ibis.nightly", "Ibis Nightly"),
 ];

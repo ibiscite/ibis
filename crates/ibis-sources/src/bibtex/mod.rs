@@ -147,11 +147,11 @@ pub(crate) fn load_with_budget(
             Err(message) => result
                 .warnings
                 .push(warn(WarningCode::Syntax, None, format!("{message}; skipped"))),
-            Ok(entry) if let Some(&first) = seen.get(&entry.key) => {
+            Ok(entry) if seen.contains_key(&entry.key) => {
                 // Every entry under a repeated key is skipped, so each one is
                 // named, the first included, and the person can find them all.
                 if duplicates.insert(entry.key.clone()) {
-                    result.warnings.push(duplicate(first, &entry.key));
+                    result.warnings.push(duplicate(seen[&entry.key], &entry.key));
                 }
                 result.warnings.push(duplicate(block.line, &entry.key));
             }
