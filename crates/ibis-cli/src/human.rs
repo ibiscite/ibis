@@ -59,10 +59,11 @@ fn summary(method: Method, data: &Value, libraries_open: bool, names: &BTreeMap<
                     "{}\t{} {}{}{}{}",
                     field(&{
                         let id = library.get("id")?.as_str()?;
+                        let zotero = library.get("kind").and_then(Value::as_str) == Some("zotero");
                         names.get(id).cloned().unwrap_or_else(|| {
                             match library.pointer("/zotero/group").and_then(Value::as_u64) {
                                 Some(group) => format!("Zotero group {group}"),
-                                None if id.starts_with("zotero:") => "Zotero".into(),
+                                None if zotero => "Zotero".into(),
                                 None => id.into(),
                             }
                         })
@@ -448,6 +449,7 @@ pub(super) fn reason_sentence(reason: ErrorReason) -> &'static str {
         ErrorReason::AmbiguousKey => {
             "several references use this citation key; give each one its own key in your library."
         }
+        ErrorReason::MissingKey => "this reference has no citation key; give it one in your library, or use --style.",
         ErrorReason::AppMissing => "the Ibis app was not found; install it, or give its location with --app <path>.",
         ErrorReason::NotIbis => {
             "the program given as the Ibis app is not Ibis; give the Ibis app's location with --app <path>."

@@ -665,7 +665,7 @@ fn cancelled_reload_cannot_publish_over_a_newer_accepted_snapshot() -> Result<()
     let snapshot = newer.snapshot().map_err(|_| "R2 snapshot")?;
     let id = newer.libraries().map_err(|_| "R2 library")?.libraries[0].id.clone();
     file.engine
-        .publish_library(id, snapshot.clone())
+        .publish_library(id, ibis_engine::LibraryKind::Snapshot, snapshot.clone())
         .map_err(|_| "watcher accepts R2")?;
     let missing = Source::File(dir.path().join("unavailable.bib"));
     let (b, _, _) = begin_open(&library, &requests, missing.clone()).ok_or("new choice B")?;

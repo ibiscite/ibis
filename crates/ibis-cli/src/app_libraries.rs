@@ -28,25 +28,6 @@ pub(crate) struct AppLibraries {
     pub zotero: Vec<ZoteroLibrary>,
 }
 
-/// The folder the app keeps its settings in: the same place as Tauri's
-/// `app_config_dir`, from the environment so a test or a person can move it.
-fn config_dir() -> Option<PathBuf> {
-    let var = |name: &str| {
-        std::env::var_os(name)
-            .filter(|value| !value.is_empty())
-            .map(PathBuf::from)
-    };
-    if cfg!(target_os = "macos") {
-        var("HOME").map(|home| home.join("Library/Application Support"))
-    } else if cfg!(windows) {
-        var("APPDATA")
-    } else {
-        var("XDG_CONFIG_HOME")
-            .filter(|path| path.is_absolute())
-            .or_else(|| var("HOME").map(|home| home.join(".config")))
-    }
-}
-
 pub(crate) fn load() -> Result<AppLibraries, Failure> {
     let missing = || {
         Failure::new(
@@ -54,7 +35,7 @@ pub(crate) fn load() -> Result<AppLibraries, Failure> {
             format!("no library is named and the Ibis app has no settings here; {NAME_ONE}."),
         )
     };
-    let directory = config_dir().ok_or_else(missing)?;
+    let directory = ibis_engine::identity::config_dir().ok_or_else(missing)?;
     for (identifier, app) in APPS {
         if let Some(chosen) = read(app, &directory.join(identifier).join("settings.json"))? {
             return Ok(chosen);

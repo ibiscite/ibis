@@ -1396,7 +1396,7 @@ mod tests {
     }
 
     fn library_id(name: &str) -> LibraryId {
-        LibraryId::file(name.as_bytes())
+        LibraryId::digest(name.as_bytes())
     }
 
     fn build_index(records: Vec<Record>) -> SnapshotIndex {

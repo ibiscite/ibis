@@ -158,7 +158,7 @@ fn renderer_and_transport_quotas_are_resource_errors_on_real_cli_and_stdio() {
     let path = std::path::Path::new(env!("CARGO_TARGET_TMPDIR"))
         .join(format!("synthetic-renderer-threshold-{}.json", std::process::id()));
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-    std::fs::write(&path, serde_json::to_vec(&json!([{"id":"Synthetic2026","type":"book","title":"Synthetic size threshold","abstract":"x".repeat(200_000)}])).unwrap()).unwrap();
+    std::fs::write(&path, serde_json::to_vec(&json!([{"id":"Synthetic2026","citation-key":"Synthetic2026","type":"book","title":"Synthetic size threshold","abstract":"x".repeat(200_000)}])).unwrap()).unwrap();
     let engine = Engine::new().unwrap();
     engine
         .dispatch(
@@ -169,9 +169,19 @@ fn renderer_and_transport_quotas_are_resource_errors_on_real_cli_and_stdio() {
         .unwrap();
     let snapshot = engine.snapshot().unwrap();
     let item = json!({"item":snapshot.objects()[0].object.id()});
+    // Library ids belong to a person's key, which the real command may keep apart from this test's.
+    let listed = std::process::Command::new(env!("CARGO_BIN_EXE_ibis"))
+        .args(["search", "Synthetic", "--json", "--file"])
+        .arg(&path)
+        .output()
+        .unwrap();
+    let listed: Value = serde_json::from_slice(&listed.stdout).unwrap();
+    let native_item = json!({"item":listed["data"]["hits"][0]["item"]["object"]["data"]["id"]});
     for count in [1, 42, 83, 84] {
-        let params = json!({"items":vec![item.clone();count],"output":{"kind":"key","syntax":"csl-json"}});
-        let typed = serde_json::from_value(params.clone()).unwrap();
+        let output = json!({"kind":"key","syntax":"csl-json"});
+        let params = json!({"items":vec![item.clone();count],"output":output});
+        let typed = serde_json::from_value(params).unwrap();
+        let params = json!({"items":vec![native_item.clone();count],"output":output});
         assert_eq!(
             ibis_core::syntax::cite(&snapshot, &typed).is_ok(),
             count < 84,

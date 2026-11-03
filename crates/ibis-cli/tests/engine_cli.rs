@@ -343,6 +343,7 @@ fn citations_use_note_overrides_but_never_note_text_or_app_links() -> Result<(),
         &path,
         json!([{
             "id": "untitled",
+            "citation-key": "untitled",
             "type": "book",
             "author": [{"family": "Invented", "given": "Ada"}],
             "issued": {"date-parts": [[2020]]},

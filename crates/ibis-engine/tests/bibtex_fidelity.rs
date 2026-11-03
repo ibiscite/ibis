@@ -21,7 +21,7 @@ fn article(fields: &str) -> Snapshot {
 fn zotero(fields: Value) -> Snapshot {
     let item: ZoteroItem = serde_json::from_value(fields).unwrap();
     Snapshot::new(vec![LibraryObject::Record(
-        map_item(LibraryId::zotero(b"invented"), &item).unwrap().record,
+        map_item(LibraryId::digest(b"invented"), &item).unwrap().record,
     )])
     .unwrap()
 }

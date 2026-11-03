@@ -85,7 +85,7 @@ fn records_from_zotero_carry_pmid_isbn_and_arxiv() {
         "ISBN": "0-306-40615-2", "extra": "PMID: 555\narXiv: 2101.00001"
     }))
     .unwrap();
-    let record = zotero::map_item(LibraryId::zotero(b"invented"), &item).unwrap().record;
+    let record = zotero::map_item(LibraryId::digest(b"invented"), &item).unwrap().record;
     let ids = of_record(&record);
     assert!(ids.contains(&Identifier::Pmid("555".into())), "{ids:?}");
     assert!(ids.contains(&Identifier::Isbn("9780306406157".into())), "{ids:?}");
@@ -98,7 +98,7 @@ fn extra_identifiers_require_explicit_valid_labels_and_deduplicate() {
         "key": "SYN00001", "itemType": "book", "title": "Synthetic identifiers",
         "extra": "PMID: 000000555\npmid: 555\nNot PMID: 999\nPMID: 000\nPMID: 1234567890\nPMID: invalid\narXiv: 2101.00001v2"
     })).unwrap();
-    let record = zotero::map_item(LibraryId::zotero(b"invented"), &item).unwrap().record;
+    let record = zotero::map_item(LibraryId::digest(b"invented"), &item).unwrap().record;
     assert_eq!(
         of_record(&record),
         [

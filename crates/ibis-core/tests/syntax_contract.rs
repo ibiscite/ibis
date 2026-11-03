@@ -234,7 +234,7 @@ fn snapshot_identity_aliases_and_missing_keys_are_checked_before_rendering() {
     let LibraryObject::Record(mut other) = first.clone() else {
         panic!("seed");
     };
-    other.id.library = LibraryId::zotero(b"invented second library");
+    other.id.library = LibraryId::digest(b"invented second library");
     other.citation_keys[0].value = "Other2026".into();
     other.aliases.push("Example2026".into());
     let snapshot = Snapshot::new(vec![first, LibraryObject::Record(other)]).unwrap();

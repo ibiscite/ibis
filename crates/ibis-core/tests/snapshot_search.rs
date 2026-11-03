@@ -117,7 +117,7 @@ fn record_search_preserves_ranking_scripts_identifiers_scope_and_cancellation() 
     first.identifiers.push(Identifier::Arxiv("2101.00001".into()));
     first.aliases.push("older-key".into());
     let mut other = first.clone();
-    other.id.library = LibraryId::file(b"second synthetic library");
+    other.id.library = LibraryId::digest(b"second synthetic library");
     other.id.key = "second".into();
     other.citation_keys[0].value = "other".into();
     other.aliases.clear();

@@ -14,8 +14,8 @@ use crate::request::{ItemSelector, KeyCitationRequest, SearchRequest, ShowReques
 use crate::{Cancellation, Engine, protocol};
 use ibis_core::citable::{citable_fields, is_variable};
 use ibis_core::contract::{
-    CitationForm, CitationItem, CitationRequest, EngineError, ErrorCode, ErrorReason, ItemRef, KeySyntax,
-    LibraryObject, OutputSpec, Record,
+    CitationError, CitationForm, CitationItem, CitationRequest, EngineError, ErrorCode, ErrorReason, ItemOutcome,
+    ItemRef, KeySyntax, LibraryObject, OutputSpec, Record,
 };
 use serde_json::{Map, Value, json};
 use std::io::{self, BufRead, Read, Write};
@@ -440,6 +440,7 @@ fn reason_hint(reason: ErrorReason) -> &'static str {
             "The library repeats this citation key, so Ibis skips every entry under it until each has its own key."
         }
         ErrorReason::AmbiguousKey => "Several references have this key; cite it by the id search returned.",
+        ErrorReason::MissingKey => "This reference has no citation key; use a style, or ask the user to give it one.",
         ErrorReason::AppMissing | ErrorReason::NotIbis | ErrorReason::NoAnswer => tool_error_hint(ErrorCode::Internal),
     }
 }
@@ -602,7 +603,21 @@ fn cite(engine: &Engine, arguments: &Value) -> Result<Value, EngineError> {
             }
             Ok(answer)
         }
-        None => Err(bad_input()),
+        None => Err(result
+            .outcomes
+            .iter()
+            .find_map(|outcome| match outcome {
+                ItemOutcome::Refused {
+                    error: CitationError::MissingKey,
+                    ..
+                } => Some(EngineError::because(ErrorCode::BadInput, ErrorReason::MissingKey)),
+                ItemOutcome::Refused {
+                    error: CitationError::AmbiguousKey,
+                    ..
+                } => Some(EngineError::because(ErrorCode::BadInput, ErrorReason::AmbiguousKey)),
+                _ => None,
+            })
+            .unwrap_or_else(bad_input)),
     }
 }
 

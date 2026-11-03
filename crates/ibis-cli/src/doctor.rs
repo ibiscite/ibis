@@ -58,6 +58,15 @@ pub(super) fn run(engine: &Engine, matches: &ArgMatches, mode: OutputMode) -> Re
     let styles = engine
         .dispatch(Method::Styles, &json!({}), &Cancellation::default())?
         .data;
+    let library_ids = if ibis_engine::identity::ids_last() {
+        check("ok", "ids-last", "Library ids last across runs on this computer.")
+    } else {
+        check(
+            "not-checked",
+            "ids-this-run",
+            "Library ids hold for this run: no saved key yet, and doctor writes none. Any other command saves one where it can.",
+        )
+    };
     let data = json!({
         "contract_version": Version,
         "cli_version": ibis_core::VERSION,
@@ -65,6 +74,7 @@ pub(super) fn run(engine: &Engine, matches: &ArgMatches, mode: OutputMode) -> Re
         "capabilities": {"methods":Method::ALL, "key_outputs":key_outputs, "csl_styles":styles["styles"]},
         "config":config,
         "library_check":library_check,
+        "library_ids":library_ids,
         "sources":sources,
     });
     let mut text = format!("Ibis {} · contract {}\n", ibis_core::VERSION, data["contract_version"]);
@@ -72,7 +82,11 @@ pub(super) fn run(engine: &Engine, matches: &ArgMatches, mode: OutputMode) -> Re
         "Capabilities: {}\n",
         Method::ALL.map(Method::as_str).join(", ")
     ));
-    for (label, result) in [("Config", &data["config"]), ("Libraries", &data["library_check"])] {
+    for (label, result) in [
+        ("Config", &data["config"]),
+        ("Libraries", &data["library_check"]),
+        ("Library ids", &data["library_ids"]),
+    ] {
         text.push_str(&summary(label, result));
     }
     for source in sources {
@@ -257,11 +271,7 @@ fn library_report(library: &LibraryInfo) -> Value {
         ("ok", "source-ok", "The library was read successfully.")
     };
     let mut result = check(status, code, message);
-    result["kind"] = json!(if library.id.as_str().starts_with("zotero:") {
-        "zotero"
-    } else {
-        "file"
-    });
+    result["kind"] = json!(library.kind);
     result["id"] = json!(library.id);
     result["warning_count"] = json!(library.warnings_total);
     result["refresh_error"] = json!(library.refresh_error);
@@ -279,7 +289,9 @@ mod tests {
     #[test]
     fn a_failed_refresh_reports_the_retained_snapshot_as_stale() {
         let library = LibraryInfo {
-            id: LibraryId::file(b"invented-source"),
+            id: LibraryId::digest(b"invented-source"),
+            kind: ibis_engine::LibraryKind::File,
+            capabilities: vec![],
             objects: 3,
             warnings: vec![],
             warnings_total: 0,

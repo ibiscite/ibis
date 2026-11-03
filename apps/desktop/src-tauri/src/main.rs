@@ -271,6 +271,8 @@ fn main() {
                     let _ = ibis_zotero_local::closed::remove_obsolete_file_cache(&cache);
                 });
             }
+            // Before the first library, so its id lasts and matches `ibis`.
+            ibis_engine::identity::use_saved_key(true);
             let settings_path = app.path().app_config_dir()?.join("settings.json");
             let loaded = settings::load(&settings_path);
             app.manage(SettingsFile::new(settings_path.clone()));

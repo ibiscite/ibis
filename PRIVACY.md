@@ -38,6 +38,11 @@ and its local data. New Ibis data flows need a recorded decision ([decisions](do
   library IDs, shortcut, copy format, style, display choices and update consent.
   Older or hand-added fields are preserved. The command line has no settings
   file of its own and writes its results to the terminal.
+- **Library ID key:** the app and the `ibis` command keep one random key,
+  `library-ids.key`, in the app's configuration folder, readable only by you. It
+  makes library IDs last across runs without revealing a path, holds no library
+  data and goes nowhere. Deleting it only changes those IDs, so recent citations
+  no longer find their references.
 - **AI agents:** `ibis mcp` answers only the agent that started it, over its
   standard input and output. It gives that agent item summaries, CSL data and
   citations from the libraries named on its command line, never notes,

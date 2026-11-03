@@ -2028,6 +2028,7 @@ dependencies = [
  "ibis-engine",
  "ibis-sources",
  "serde_json",
+ "tempfile",
 ]
 
 [[package]]
@@ -2134,6 +2135,7 @@ name = "ibis-sources"
 version = "0.2.7"
 dependencies = [
  "biblatex",
+ "getrandom 0.4.3",
  "ibis-core",
  "ibis-zotero-local",
  "insta",

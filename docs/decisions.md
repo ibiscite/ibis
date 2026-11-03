@@ -62,7 +62,10 @@ line numbers. A repeated BibTeX key makes every entry under that key unavailable
 including as an inheritance parent (2026-10-30, #1519); none is kept, because
 Ibis cannot know which one the person meant. The warning names the key at
 every entry, the first included, and looking the key up says it is repeated
-(2026-11-02, #1617).
+(2026-11-02, #1617). A library's id is an opaque token: nothing reads a kind from
+it, and it is keyed by a per-person secret so that a seen id confirms no guessed
+path. That key is the one file the `ibis` command writes. A CSL `id` is never a
+citation key, and a repeated one refuses every record under it (2026-11-02, #1535).
 Zotero is read through its local API while it runs and from a
 private read-only copy of `zotero.sqlite` (with `-wal` and `-shm`) while it is
 closed, tested on Zotero 7 to 10, leaving out trashed items. Citation keys

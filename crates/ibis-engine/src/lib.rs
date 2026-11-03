@@ -11,6 +11,7 @@ pub mod request;
 pub mod rpc;
 
 mod service;
+pub use ibis_sources::identity;
 pub use service::*;
 
 pub mod wire;

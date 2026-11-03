@@ -35,7 +35,11 @@ fn golden_cases_replay_through_mcp() {
                 .map(|item| item.object.clone())
                 .collect();
             engine
-                .publish_library(library, Arc::new(Snapshot::new(objects).unwrap()))
+                .publish_library(
+                    library,
+                    ibis_engine::LibraryKind::Snapshot,
+                    Arc::new(Snapshot::new(objects).unwrap()),
+                )
                 .unwrap();
         }
         let reply = mcp::handle(

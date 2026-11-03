@@ -561,7 +561,10 @@ fn csl_json(picks: &[Pick<'_>]) -> Result<String, CitationError> {
     impl Serialize for Export<'_> {
         fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
             let mut map = serializer.serialize_map(None)?;
-            map.serialize_entry("id", self.0.key)?;
+            // The key has its own field; a source `id` stays what it was, so
+            // the export still matches the file it came from.
+            let id = self.0.record.csl.get("id").and_then(serde_json::Value::as_str);
+            map.serialize_entry("id", id.unwrap_or(self.0.key))?;
             map.serialize_entry("citation-key", self.0.key)?;
             for (key, value) in &self.0.record.csl {
                 if key != "id" && key != "citation-key" {

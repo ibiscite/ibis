@@ -49,14 +49,14 @@
   },
   "library": {
     "fingerprints": {
-      "cite": "13c710478fca1537f757b1746e57baa8a9d8d83d0a44109b12283fb5e580bc27",
-      "full": "13c710478fca1537f757b1746e57baa8a9d8d83d0a44109b12283fb5e580bc27"
+      "cite": "ffef22c4aea12a202b4a167a5ae6bcdbc76f05777c6cf15820bf3056ceb5b37b",
+      "full": "ffef22c4aea12a202b4a167a5ae6bcdbc76f05777c6cf15820bf3056ceb5b37b"
     },
     "objects": [
       {
         "fingerprints": {
-          "cite": "1d5a79b668e609791739e339945760cb805572409fcde5e8096d233500439ebf",
-          "full": "1d5a79b668e609791739e339945760cb805572409fcde5e8096d233500439ebf"
+          "cite": "64b3f303ea0b33f3f1c3db56bae557b67cf756570440138e283c40fe6aa0b76e",
+          "full": "64b3f303ea0b33f3f1c3db56bae557b67cf756570440138e283c40fe6aa0b76e"
         },
         "object": {
           "data": {
@@ -87,7 +87,7 @@
             },
             "id": {
               "key": "work-1",
-              "library": "file:159acb77b9ff3cbd146b2b03055a16b3d6798aa12165374df6b81a8ce2d64ed2"
+              "library": "lib_159acb77b9ff3cbd146b2b03055a16b3"
             }
           },
           "kind": "record"
@@ -107,7 +107,7 @@
         "form": null,
         "item": {
           "key": "work-1",
-          "library": "file:159acb77b9ff3cbd146b2b03055a16b3d6798aa12165374df6b81a8ce2d64ed2"
+          "library": "lib_159acb77b9ff3cbd146b2b03055a16b3"
         },
         "locator": null,
         "prefix": [],
