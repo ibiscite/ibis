@@ -13,8 +13,6 @@ export const settingsApi = {
   setPickerPreferences: (preferences: Partial<PickerPreferences>, copyFormat: KeyFormat | null, revision: number) => commands.setPickerPreferences(preferences, copyFormat, revision),
   windowSize: commands.windowSize,
   setWindowSize: commands.setWindowSize,
-  forgetAppOutputs: commands.forgetAppOutputs,
-  restoreAppOutputs: commands.restoreAppOutputs,
   loginItem: commands.loginItem,
   setLoginItem: commands.setLoginItem,
   updateChecks: commands.updateChecks,

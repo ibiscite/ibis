@@ -1301,8 +1301,17 @@ fn unreadable_app_choices_copy_without_guessing_that_copy_only_was_off() {
         .unwrap_or_else(|e| panic!("{e}"));
     let proof = last.take_copy(TEXT, token).unwrap_or_else(|| panic!("copy proof"));
     desk.presentation.set(proof.presentation);
-    // Repairing preferences cannot authorize the already written citation.
-    memory.forget().unwrap_or_else(|e| panic!("{e}"));
+    // Answering for the app cannot authorize the already written citation.
+    memory
+        .set_choice(
+            &AppId {
+                system: System::Macos,
+                id: desk.app_id.into(),
+            },
+            None,
+            Some(AppPaste::Paste),
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
     assert_eq!(deliver(&desk, Some(&proof), true), copied(Some("paste-unavailable")));
     assert!(desk.posts.borrow().is_empty());
 }

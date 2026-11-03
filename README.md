@@ -15,7 +15,7 @@ Ibis is an early preview.
 
 - Open the picker with **Ctrl+Shift+Y** on Windows or Linux/X11, or **Command+Shift+Y** on macOS, if the shortcut is available. Existing custom shortcuts are kept. **Nightly, until the next release:** on Wayland, [bind `ibis toggle` in your desktop](docs/compatibility.md#bind-a-system-shortcut); it starts Ibis or shows/hides the running picker. Use `ibis toggle --app "Ibis Nightly"` for macOS Nightly, or `--app <executable-path>` on Linux/Windows. Portal shortcuts ([#782](https://github.com/ibiscite/ibis/issues/782)) have not shipped.
 - Search a BibTeX/BibLaTeX (`.bib`, `.bibtex`) or CSL-JSON (`.json`, `.csljson`) file, or your Zotero library and any group libraries you choose (Zotero 7–10, open or closed).
-- Cite with a key for Pandoc, BibLaTeX, LaTeX or Typst, a formatted citation in APA, Chicago, Harvard or MLA, or an IEEE reference entry. On macOS, output is chosen per app; on Windows and Linux, choosing a format changes the global default. Change the output in the picker.
+- Cite with a key for Pandoc, BibLaTeX, LaTeX or Typst, a formatted citation in APA, Chicago, Harvard or MLA, or an IEEE reference entry. Ibis remembers a format per app, and you change it in the picker. When Ibis can't tell the app, a format you pick becomes your default.
 - Press **Enter** to paste on macOS. Elsewhere, or when pasting is unavailable, Ibis copies. The paste permission guide is in **Settings > General > Pasting**.
 - Works offline and never changes your library.
 - **Nightly only, until the next release:** start Ibis when you log in, and paste a DOI, ISBN, PubMed ID (`PMID:…`) or arXiv ID to find that record in your library (Ibis does not fetch it from the internet).
@@ -43,7 +43,7 @@ Some Linux desktops, including GNOME without a tray extension, show no tray icon
 
 ## First use
 
-1. Press the shortcut. Choose **Zotero** or a **BibTeX, BibLaTeX or CSL-JSON file**. **Look for libraries on this computer** checks for running Zotero and `.bib` files in your Documents, Desktop and Downloads folders when asked. On macOS, the format beside search follows the app you came from; choose another format there to remember it for that app. On Windows and Linux, choosing a format changes the global default. Use **Just this once** for one citation.
+1. Press the shortcut. Choose **Zotero** or a **BibTeX, BibLaTeX or CSL-JSON file**. **Look for libraries on this computer** checks for running Zotero and `.bib` files in your Documents, Desktop and Downloads folders when asked. The format beside search belongs to the app you came from; choose another there and Ibis remembers it for that app. When Ibis can't tell the app, a format you pick becomes your default. **Settings › Citations › Default format** applies to apps with no remembered format.
 2. Search by author, title, year, journal, citation key or keywords. You can combine words from different fields. Use the arrow keys to pick a reference.
 3. Press **Enter** to paste into your document on macOS. If permission is needed, follow the guide in **Settings > General > Pasting**. On Windows and Linux, or when pasting is unavailable, Ibis copies the citation; paste it into your document yourself. **Shift+Enter** adds several references to one citation. Press **Ctrl+/** (**⌘/** on macOS) to see every key.
 

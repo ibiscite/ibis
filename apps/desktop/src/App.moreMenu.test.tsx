@@ -38,7 +38,7 @@ test("the native preferences smoke can virtually open Copy as and choose Typst w
   render(<App />);
   fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "zzqx no such reference" } });
   await screen.findByText("No matching references");
-  const button = await screen.findByRole<HTMLButtonElement>("button", { name: "Copy as Pandoc key" });
+  const button = await screen.findByRole<HTMLButtonElement>("button", { name: "Copy as Pandoc key · Default" });
   expect(button.tagName).toBe("BUTTON");
   expect(button.type).toBe("button");
   expect(button.disabled).toBe(false);
@@ -53,7 +53,7 @@ test("the native preferences smoke can virtually open Copy as and choose Typst w
   fireEvent.keyDown(choice, { key: "Enter" });
   fireEvent.keyUp(choice, { key: "Enter" });
   await waitFor(() => expect(saved).toEqual(["typst"]));
-  expect(await screen.findByRole("button", { name: "Copy as Typst used as global default" })).toBeTruthy();
+  expect(await screen.findByRole("button", { name: "Copy as Typst key · Default" })).toBeTruthy();
 });
 
 test("More holds working actions, leaving preferences and update checks to Settings", async () => {
@@ -67,8 +67,6 @@ test("More holds working actions, leaving preferences and update checks to Setti
   const more = screen.getByRole("menu", { name: "More" });
   expect([...more.querySelectorAll('[role^="menuitem"]')].map((item) => item.getAttribute("aria-label") ?? item.textContent))
     .toEqual(["Open ⁨refs.bib⁩Ctrl+O", "Rows: Comfortable", "Keep Window OpenCtrl+Shift+P", "Show What Will Be PastedCtrl+I", "Keyboard ShortcutsCtrl+/", "Settings…Ctrl+,", "Quit IbisCtrl+Q"]);
-  expect(within(more).queryByRole("menuitem", { name: "Forget formats for apps" })).toBeNull();
-  expect(calls).not.toContain("forget_app_outputs");
 });
 
 test.each(["Compact", "Comfortable", "Spacious"])("Rows offers every density and its line count, then chooses %s directly", async (choice) => {

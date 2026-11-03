@@ -26,8 +26,6 @@ export function demoApi(): SettingsApi {
     windowSize: async () => "medium",
     setWindowSize: async () => null,
     onWindowSaved: subscribe,
-    forgetAppOutputs: async () => 1,
-    restoreAppOutputs: async () => null,
     loginItem: async () => ({ name: "Ibis", enabled, problem: null }),
     setLoginItem: async (on) => { enabled = on; return { name: "Ibis", enabled, problem: null }; },
     updateChecks: async () => automatic,

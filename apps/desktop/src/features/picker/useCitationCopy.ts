@@ -26,7 +26,7 @@ export function useCitationCopy({ api, session, state, destination, currentPin, 
   // adapters. Session and interaction tickets reject an obsolete render.
   useLayoutEffect(() => {
     session.connect({ copyFileCitation, hidePicker, pickerPresentation: api.pickerPresentation, showCopiedNotice, output: destination.copyToken,
-      pinned: () => currentPin.current, consume: destination.consumeOnce, refresh: refreshSnapshot,
+      pinned: () => currentPin.current, consume: destination.consumeHeld, refresh: refreshSnapshot,
       askFormat: () => formatButtonRef.current?.click(), reportHide: (failed) => report("hide", failed) });
     send({ type: "view", session: state.session, interaction: state.interaction,
       view: { appId: destination.appId, queryKey, format, snapshotRevision, defaultChoice, chosen, shown, previewVisible: showPastePreview, searchPending,
@@ -38,16 +38,11 @@ export function useCitationCopy({ api, session, state, destination, currentPin, 
     destination.choose(choice);
     send({ type: "question", format: choice, output: destination.copyToken(), answer: destination.askPaste ? "cancel" : "answered" });
   };
-  const questionScope = (action: () => void, keepOpen = false) => {
-    action();
-    send({ type: "question", format: null, output: destination.copyToken(), answer: keepOpen ? "open" : destination.askPaste ? "cancel" : "answered" });
-    if (keepOpen && session.getSnapshot().pendingCopy?.question === "open") formatButtonRef.current?.click();
-  };
   const onFormatOpenChange = (open: boolean, reason?: MenuCloseReason) => {
     setFormatOpen(open);
     if (open || state.pendingCopy?.question !== "open" || reason === "action") return;
     // Dismissal uses the fallback for this attempt; application commands cancel it.
     send({ type: "question", answer: destination.askPaste || reason === "command" ? "cancel" : "answered" });
   };
-  return { requestCopy, chooseFormat, questionScope, onFormatOpenChange };
+  return { requestCopy, chooseFormat, onFormatOpenChange };
 }

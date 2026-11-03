@@ -5,7 +5,7 @@
     "event": { "key": "F", "code": "KeyF", "shiftKey": true, "metaKey": true },
     "typed": { "3": ["f", "F"] },
     "command": "format",
-    "label": "Choose Output Format"
+    "label": "Change the Format"
   },
   {
     "name": "pin",

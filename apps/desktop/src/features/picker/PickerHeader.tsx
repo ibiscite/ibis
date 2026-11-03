@@ -12,10 +12,11 @@ import type { Choice } from "./choice";
 import { FormatMenu, type FormatCommand } from "./FormatMenu";
 import type { MenuCloseReason, ToolbarMenuCommand } from "../../ui/ToolbarMenu";
 import type { AppPaste } from "../../api";
+import type { FormatPick, FormatSource } from "./useDestination";
 
 /** The search bar: the search box and the copy format. It is also
  * the window's drag region; the editable box itself is not. */
-export function PickerHeader({ hidden = false, onResetPosition, inputRef, query, pageToken, onQueryChange, onSearchKeyDown, expanded, activeDescendant, format, formatButtonRef, app = null, formatScope, onFormatOpenChange, onceOnly = false, onToggleOnce = () => undefined, onAutomatic = () => undefined, onDefault = () => undefined, pasteChoices, onPasteChange, formatDisabled = false, showFormat, styles, onFormatChange, onFormatCommand, pinned, onTogglePin, icon = "magnifier" }: {
+export function PickerHeader({ hidden = false, onResetPosition, inputRef, query, pageToken, onQueryChange, onSearchKeyDown, expanded, activeDescendant, format, formatButtonRef, app = null, formatSource = "default", formatPick = "default", onFormatOpenChange, pasteChoices, onPasteChange, formatDisabled = false, showFormat, styles, onFormatChange, onFormatCommand, pinned, onTogglePin, icon = "magnifier" }: {
   /** Welcome has no search yet; the field stays mounted so focus can return to it. */
   hidden?: boolean;
   inputRef: React.RefObject<HTMLInputElement | null>;
@@ -35,12 +36,9 @@ export function PickerHeader({ hidden = false, onResetPosition, inputRef, query,
   formatButtonRef?: React.RefObject<HTMLButtonElement | null>;
   /** The app the picker was opened from, when Ibis knows it. */
   app?: string | null;
-  formatScope?: string | null;
+  formatSource?: FormatSource;
+  formatPick?: FormatPick;
   onFormatOpenChange?: (open: boolean, reason?: MenuCloseReason) => void;
-  onceOnly?: boolean;
-  onToggleOnce?: () => void;
-  onAutomatic?: () => void;
-  onDefault?: () => void;
   pasteChoices?: boolean;
   onPasteChange?: (paste: AppPaste) => void;
   formatDisabled?: boolean;
@@ -106,7 +104,7 @@ export function PickerHeader({ hidden = false, onResetPosition, inputRef, query,
         </div>
         {pageToken}
       </div>
-      {showFormat && <FormatMenu format={format} buttonRef={formatButtonRef} app={app} scope={formatScope} onOpenChange={onFormatOpenChange} onceOnly={onceOnly} onToggleOnce={onToggleOnce} onAutomatic={onAutomatic} onDefault={onDefault} pasteChoices={pasteChoices} onPasteChange={onPasteChange} disabled={formatDisabled} styles={styles} onChange={onFormatChange} searchRef={inputRef} onCommand={onFormatCommand} />}
+      {showFormat && <FormatMenu format={format} buttonRef={formatButtonRef} app={app} source={formatSource} pick={formatPick} onOpenChange={onFormatOpenChange} pasteChoices={pasteChoices} onPasteChange={onPasteChange} disabled={formatDisabled} styles={styles} onChange={onFormatChange} searchRef={inputRef} onCommand={onFormatCommand} />}
       <IconButton icon="pin" size="large" className="pin-button" aria-label={pickerText.keepOpen} aria-keyshortcuts={ariaKeys(keysFor("pin"), currentPlatform() === "macos")}
         isSelected={pinned} onChange={onTogglePin}/>
     </header>
