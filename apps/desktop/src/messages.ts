@@ -27,6 +27,7 @@ export const operationFailures = {
   format: "Ibis could not read your saved copy format. Check Copy as before copying.",
   shortcut: "Ibis could not check the shortcut. Open Ibis from the menu bar or tray.",
   choose: "The file chooser did not open. Try again.",
+  dropRefused: "Ibis opens one .bib, .biblatex or CSL-JSON file at a time.",
   zotero: "Ibis could not start reading Zotero. Try again.",
   samples: "Ibis could not change the sample library. Try again.",
   zoteroGroups: "Ibis could not list your Zotero groups. Check that Zotero is open, then try again.",

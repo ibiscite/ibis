@@ -314,6 +314,7 @@ Never call the destination a password field. The right paste key is shown per sy
 ### Window behaviour
 
 - **Opening**: on the focused window's display, at its last place there (first time: centred, top in the upper third), with a short fade and focus in search. A search from under a minute ago returns selected; text typed while opening is kept. The window is current in its first frame.
+- **Dropping a file**: one `.bib`, `.biblatex` or CSL-JSON file dropped on the picker becomes the library, and the footer shows its name and count. Anything else leaves the library alone and says what Ibis accepts until the next good drop or opening.
 - **Moving and resizing**: drag the empty header; snap to centre, upper third and corners. Settings › Advanced › **Where Ibis opens** offers Centre and the four corners; **Reset Window Position** restores the default.
 - **Clicking outside** hides Ibis and the click reaches its target, unless pinned or a dialog, drag or file chooser is open.
 - Overlays close when the picker hides and do not reopen. Tooltips appear after 600 ms and never take focus.

@@ -99,6 +99,22 @@ test("Escape from Choose Library restores Search and its source shortcut", async
   await waitFor(() => expect(open).toHaveBeenCalledOnce());
 });
 
+test("a dropped file Ibis cannot use says what it accepts, until the next good drop or opening", async () => {
+  backend({ library_status: () => library,
+    search: () => ({ revision: library.revision, results: [{ ...result("kept", "Invented kept reference"), revision: library.revision }] }) });
+  render(<App />);
+  await screen.findByText("Invented kept reference");
+  const refusal = "Ibis opens one .bib, .biblatex or CSL-JSON file at a time.";
+  await act(async () => { await emit("library:file-refused"); });
+  expect(screen.getByRole("alert").textContent).toBe(refusal);
+  expect(screen.getByText("Invented kept reference")).toBeTruthy();
+  await act(async () => { await emit("library:file-dropped"); });
+  expect(screen.queryByText(refusal)).toBeNull();
+  await act(async () => { await emit("library:file-refused"); });
+  await act(async () => { await emit("picker:hidden"); });
+  expect(screen.queryByText(refusal)).toBeNull();
+});
+
 test("watcher updates keep Choose Library and its focus until its own selection command completes", async () => {
   let finish!: () => void;
   let current = library;
@@ -242,6 +258,22 @@ test("an accepted file drop leaves Choose Library and shows the dropped library'
   expect(document.activeElement).toBe(search());
   commandO();
   await waitFor(() => expect(open).toHaveBeenCalledOnce());
+});
+
+test("a dropped file Ibis cannot use says what it accepts, until the next good drop or opening", async () => {
+  backend({ library_status: () => library,
+    search: () => ({ revision: library.revision, results: [{ ...result("kept", "Invented kept reference"), revision: library.revision }] }) });
+  render(<App />);
+  await screen.findByText("Invented kept reference");
+  const refusal = "Ibis opens one .bib, .biblatex or CSL-JSON file at a time.";
+  await act(async () => { await emit("library:file-refused"); });
+  expect(screen.getByRole("alert").textContent).toBe(refusal);
+  expect(screen.getByText("Invented kept reference")).toBeTruthy();
+  await act(async () => { await emit("library:file-dropped"); });
+  expect(screen.queryByText(refusal)).toBeNull();
+  await act(async () => { await emit("library:file-refused"); });
+  await act(async () => { await emit("picker:hidden"); });
+  expect(screen.queryByText(refusal)).toBeNull();
 });
 
 test("a file chosen on first-run setup hands the keyboard to Search when the results replace setup", async () => {
