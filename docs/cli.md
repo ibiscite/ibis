@@ -54,7 +54,7 @@ app's choice only when given `--app-libraries`.
 | --- | --- |
 | `search WORDS [--limit N]` | Find references by author, title, year or key. An empty result is a success. |
 | `show KEY` or `show --id ITEM_REF_JSON` | One reference's full data. |
-| `cite KEY…` | A citation. Key syntaxes with `--format` (default `pandoc`), formatted text with `--style` (see `styles`), bibliography entries with `--style S --bibliography`. `--locator`, `--prefix`, `--suffix` and `--omit-author` apply to the key before them. |
+| `cite KEY…` | A citation. Key syntaxes with `--format` (default `pandoc`), formatted text with `--style` (see `styles`), bibliography entries with `--style S --bibliography`. `--for-app ID` uses the output for that app ([below](#output-for-an-app)). `--locator`, `--prefix`, `--suffix` and `--omit-author` apply to the key before them. |
 | `cite --request` | A citation from one canonical `CitationRequest` JSON object on stdin. |
 | `libraries` | The loaded libraries, their item counts and typed source warnings. |
 | `styles` | The bundled CSL styles. |
@@ -158,6 +158,21 @@ Styles that need a whole document return a full reference entry with that
 explanation. An output Ibis cannot write correctly is an explicit per-item
 `unsupported-output` refusal.
 
+### Output for an app
+
+`ibis cite KEY --for-app ID` gives what Ibis gives that app: `com.microsoft.Word` or
+`WINWORD.EXE` the formatted citation, `md.obsidian` Pandoc, `TeXShop` BibLaTeX. `ID` is a
+macOS bundle ID or a Windows executable, with or without its folder, on any system.
+`--style` picks the style a formatted app gets (APA without it). `--format` or `--style`
+is what an app with no output of its own gets; the table comes first, so `--format`
+does not change what Word gets.
+
+The answer comes from the same table as the app, not from the choices remembered in
+it. `--json` adds `data.destination`: the app, its `name` when Ibis knows it, the
+`output`, `delivery` (`paste`, or `copy` and its `reason`, with pasting on and
+permitted) and `output_question` for an app that asks which output a document needs.
+Plain output is the citation alone, with a note on stderr.
+
 ## JSON-RPC server
 
 `ibis serve --stdio --file refs.bib` speaks JSON-RPC 2.0 with LSP-style
@@ -170,7 +185,7 @@ behind a queue of eight; a long request delays the ones after it.
 ## AI agents (MCP)
 
 `ibis mcp` serves the Model Context Protocol over stdio with four read-only tools:
-`search`, `show`, `cite` and `styles`. It speaks revision 2026-07-28, in which every
+`search`, `show`, `cite` and `styles`; `cite` takes `for_app`, the [ID above](#output-for-an-app). It speaks revision 2026-07-28, in which every
 request names its revision and the client's capabilities and `server/discover`
 describes the server, and it still answers clients that start with `initialize` on
 2025-11-25 or 2025-06-18. A request that names any other revision is refused with

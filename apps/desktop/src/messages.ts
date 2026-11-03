@@ -3,9 +3,10 @@ import type { Platform } from "./platform";
 
 export const citationDetailsText = {
   page: "Page",
-  pageNone: "None",
+  none: "None",
   pageHint: "A page or range",
-  form: "Citation form",
+  form: "Show as",
+  examplesUnavailable: "Examples are unavailable",
   forms: [
     { value: "normal", label: "Name in brackets" },
     { value: "narrative", label: "Name in the sentence" },
@@ -190,6 +191,7 @@ export const pickerText = {
   edit: "Edit",
   details: "Details",
   citationWarnings: "Citation warnings",
+  fullCitation: "Full citation",
   windowReset: "Window position reset.",
   undo: "Undo",
   undoFailed: "Could not undo. Try again.",
@@ -210,6 +212,7 @@ export const pickerText = {
   copyWarnings: "Copy warnings",
   citationSelection: "Citation selection",
   selectedReferences: "Selected references",
+  filterReferences: "Filter references",
   references: "References",
   searchResults: "Search results",
   results: "Results",
