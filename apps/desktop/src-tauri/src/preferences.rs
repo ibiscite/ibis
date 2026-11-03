@@ -928,9 +928,7 @@ mod tests {
             None,
         )
         .unwrap_or_else(|e| panic!("{e}"));
-        for accent in [
-            Accent::Ibis,
-        ] {
+        for accent in [Accent::Ibis] {
             file.save_preferences(
                 PickerPreferencesPatch {
                     accent: Some(accent),
@@ -1616,10 +1614,7 @@ mod tests {
             .unwrap_or_else(|e| panic!("{e}"));
         let saved: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&file.path).unwrap_or_default())
             .unwrap_or_else(|e| panic!("{e}"));
-        assert!(
-            saved.get("paste").is_none(),
-            "the on default stays unwritten"
-        );
+        assert!(saved.get("paste").is_none(), "the on default stays unwritten");
         assert_eq!(saved["future_choice"], original["future_choice"]);
     }
 

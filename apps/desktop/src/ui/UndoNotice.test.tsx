@@ -6,6 +6,7 @@ import { NoticeDock, QuietNotice } from "./NoticeDock";
 import { UndoNotice } from "./UndoNotice";
 
 const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
+const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
 
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 
@@ -122,7 +123,7 @@ test("a notice takes its place in the layout, and two never share one spot", () 
   </NoticeDock>);
   expect(screen.getByRole("region", { name: "Notices" }).children).toHaveLength(2);
   expect(container.querySelector(".notice-band[data-offer]")).not.toBeNull();
-  const css = readFileSync(new URL("./NoticeDock.css", import.meta.url), "utf8");
+  const css = readFileSync(new FileURL("./NoticeDock.css", import.meta.url), "utf8");
   expect(css).not.toMatch(/position:\s*(fixed|absolute|sticky)|box-shadow|z-index/);
 });
 

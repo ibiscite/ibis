@@ -932,12 +932,7 @@ mod tests {
             assert_eq!(parse(text).map(|settings| settings.larger_text).ok(), Some(None));
         }
         let saved = serde_json::to_string(&Settings::default()).unwrap_or_default();
-        for field in [
-            "citation_style",
-            "density",
-            "larger_text",
-            "paste",
-        ] {
+        for field in ["citation_style", "density", "larger_text", "paste"] {
             assert!(!saved.contains(field), "{field} is written only once chosen");
         }
         let settings = parse(

@@ -75,7 +75,7 @@ test.each([
 ])("%s renders the Rust answer beside the loaded library", async (status, message) => {
   backend({ delight_view: () => view(status) });
   await act(async () => { render(<App />); });
-  expect(screen.getByText(message).closest("footer")).toBeTruthy();
+  expect(screen.getByText(message).closest(".notice-dock")).toBeTruthy();
   expect(screen.getByRole("button", { name: "Library" })).toBeTruthy();
 });
 

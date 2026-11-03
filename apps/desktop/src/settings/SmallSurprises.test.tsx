@@ -49,6 +49,23 @@ test("each click dips the bird and says the next fact, and leaving About returns
   expect(screen.getByText("White ibises find food by touch as they probe the mud.")).toBeTruthy();
 });
 
+test("a focus read while a click is pending cannot lose that click's fact", async () => {
+  const api = demoApi(), answer = api.delightView!;
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => { release = resolve; });
+  api.delightView = async (now, presentation, revision, click) => {
+    const view = await answer(now, presentation, revision, click);
+    if (click) await held;
+    return view;
+  };
+  await act(async () => render(<SettingsApp api={api} initialPage="about" />));
+  await act(async () => fireEvent.click(screen.getByRole("button", { name: "Ibis" })));
+  await act(async () => { window.dispatchEvent(new Event("focus")); });
+  await act(async () => { release(); await held; });
+  expect(screen.getByText("White ibises find food by touch as they probe the mud.")).toBeTruthy();
+  expect(document.querySelector("[data-dip]")).not.toBeNull();
+});
+
 test("a focus read keeps the fact a click just said", async () => {
   await act(async () => render(<SettingsApp api={demoApi()} initialPage="about" />));
   await act(async () => fireEvent.click(screen.getByRole("button", { name: "Ibis" })));

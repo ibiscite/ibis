@@ -80,7 +80,7 @@ test.each(["Compact", "Comfortable"])("Rows offers every density and its line co
   const options = within(rows).getAllByRole("menuitemradio");
   expect(options.map((item) => item.textContent)).toEqual(["Compact1 line", "Comfortable2 lines"]);
   expect(options.map((item) => document.getElementById(item.getAttribute("aria-describedby")!)?.textContent))
-    .toEqual(["1 line", "2 lines", "3 lines"]);
+    .toEqual(["1 line", "2 lines"]);
   expect(options.map((item) => item.getAttribute("aria-checked"))).toEqual(["false", "true"]);
   const option = within(rows).getByRole("menuitemradio", { name: choice });
   act(() => option.focus());
@@ -106,7 +106,7 @@ test("Rows supports arrow navigation and Escape returns to More without saving",
   act(() => trigger.focus());
   fireEvent.keyDown(trigger, { key: "ArrowRight" });
   const submenu = await screen.findByRole("menu", { name: "Rows" });
-  fireEvent.keyDown(document.activeElement!, { key: "End" });
+  fireEvent.keyDown(document.activeElement!, { key: "Home" });
   expect(document.activeElement).toBe(within(submenu).getByRole("menuitemradio", { name: "Compact" }));
   fireEvent.keyDown(document.activeElement!, { key: "Escape" });
   await waitFor(() => expect(screen.queryByRole("menu", { name: "Rows" })).toBeNull());

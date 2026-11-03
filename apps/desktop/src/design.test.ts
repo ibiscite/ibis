@@ -160,11 +160,10 @@ test("the only fixed accent is Ibis scarlet", () => {
   expect(tokens).not.toMatch(/--ac-|--dot-/);
 });
 
-test("Ibis scarlet stays readable in both modes", () => {
+test("Ibis scarlet carries white like every macOS accent, and stays readable in both modes", () => {
   const [, light, dark] = parameters;
-  expect(tokens).toContain("--selected-text: light-dark(#fff, #171717);");
-  expect(contrast(white, light!), "white on light scarlet").toBeGreaterThanOrEqual(4.5);
-  expect(contrast("#171717", dark!), "ink on dark scarlet").toBeGreaterThanOrEqual(4.5);
+  expect(tokens).toContain("--selected: var(--ibis); --primary: var(--selected); --selected-text: #fff;");
+  expect(contrast(white, light!), "white on the selection, in both modes").toBeGreaterThanOrEqual(4.5);
   expect(contrast(light!, surfaces[0]!), "accent text, light").toBeGreaterThanOrEqual(4.5);
   expect(contrast(dark!, surfaces[1]!), "accent text, dark").toBeGreaterThanOrEqual(4.5);
 });

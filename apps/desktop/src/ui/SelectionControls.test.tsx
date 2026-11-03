@@ -50,7 +50,7 @@ test("switch activation and segmented arrow keys preserve names and controlled v
   const comfortable = screen.getByRole("radio", { name: "Comfortable", checked: true });
   act(() => comfortable.focus());
   fireEvent.keyDown(comfortable, { key: "ArrowRight" });
-  expect(document.activeElement).toBe(screen.getByRole("radio", { name: "Compact", checked: true }));
+  expect(document.activeElement).toBe(screen.getByRole("radio", { name: "Wide", checked: true }));
   expect(screen.getByRole("radiogroup", { name: "Invented rows" })).toBeTruthy();
 });
 

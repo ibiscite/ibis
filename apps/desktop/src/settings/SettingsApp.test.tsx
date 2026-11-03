@@ -1168,10 +1168,10 @@ test("a picker preference event updates open Settings without focus, and Setting
   state.preferences = { ...state.preferences, density: "compact" };
   await act(async () => { for (const changed of state.preferenceEvents) changed(++state.revision); });
   expect(screen.getByRole("radio", { name: "Compact" })).toHaveProperty("checked", true);
-  fireEvent.click(screen.getByRole("radio", { name: "Compact" }));
+  fireEvent.click(screen.getByRole("radio", { name: "Comfortable" }));
   await act(async () => state.closes[0]!());
-  expect(state.preferences).toMatchObject({ density: "compact" });
-  expect(state.patches).toEqual([{ density: "compact" }]);
+  expect(state.preferences).toMatchObject({ density: "comfortable" });
+  expect(state.patches).toEqual([{ density: "comfortable" }]);
   unmount();
   await act(async () => undefined);
   expect(state.preferenceEvents).toEqual([]);
@@ -1292,7 +1292,7 @@ test("a picker notification before a queued save fails stays uncertain until the
   await act(async () => { fireEvent.focus(window); });
   expect(screen.queryByRole("alert")).toBeNull();
   expect(screen.getByRole("radio", { name: "Compact" })).toHaveProperty("checked", true);
-  expect(screen.getByRole("radio", { name: "Purple" })).toHaveProperty("checked", true);
+  expect(screen.getByRole("radio", { name: "Ibis scarlet" })).toHaveProperty("checked", true);
   expect(screen.getByRole("radio", { name: "Default" })).toHaveProperty("checked", true);
 });
 
@@ -1321,14 +1321,10 @@ test("a picker change survives a Settings save reply delayed beyond the close ti
   expect(await screen.findByRole("radio", { name: "Compact" })).toHaveProperty("checked", true);
 });
 
-test("Appearance, ten accents, both search icons, both text sizes and preview persist separately", async () => {
+test("Appearance, both accents and both text sizes persist separately", async () => {
   const { api, state } = fakeApi({ granted: true });
   const mounted = render(<SettingsApp api={api} initialPage="look" />);
-  const accents = within(await screen.findByRole("radiogroup", { name: "Accent" })).getAllByRole("radio");
-  expect(accents).toHaveLength(10);
-  expect(accents.map((radio) => radio.getAttribute("aria-label"))).toEqual(expect.arrayContaining(["Follow the system", "Blue", "Ibis scarlet"]));
-  expect(accents[0]?.getAttribute("aria-label")).toBe("Follow the system");
-  expect(accents.at(-1)?.getAttribute("aria-label")).toBe("Ibis scarlet");
+  await screen.findByRole("radiogroup", { name: "Accent" });
   fireEvent.click(screen.getByRole("radio", { name: "Dark" }));
   fireEvent.click(screen.getByRole("radio", { name: "Ibis scarlet" }));
   fireEvent.click(screen.getByRole("radio", { name: "Larger" }));

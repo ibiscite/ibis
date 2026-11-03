@@ -147,14 +147,14 @@ test("an unreadable initial file holds explicit edits until a successful read", 
   const { api, queue, saved } = fixture({ readAfterWrites: true });
   api.read.mockResolvedValueOnce({ preferences: null, copy_format: "typst" });
   queue.change({ citation_style: null }, "cite");
-  queue.change({ });
+  queue.change({ paste: false });
   await queue.load();
   expect(api.write).not.toHaveBeenCalled();
   await queue.load();
   await queue.finishSaving();
-  expect(api.write.mock.calls).toEqual([[{ citation_style: null }, "cite"], [{ }, null]]);
+  expect(api.write.mock.calls).toEqual([[{ citation_style: null }, "cite"], [{ paste: false }, null]]);
   expect(api.revision).toHaveBeenCalledTimes(2);
-  expect(saved()).toMatchObject({ preferences: { }, copy_format: "cite" });
+  expect(saved()).toMatchObject({ preferences: { paste: false }, copy_format: "cite" });
 });
 
 test.each([false, true])("the latest read supersedes older read success and failure (readAfterWrites=%s)", async (readAfterWrites) => {
@@ -198,9 +198,9 @@ test("Settings recovery restores durable state, but cannot overwrite a newer edi
   queue.change({ larger_text: false });
   await queue.finishSaving();
   expect(events).toHaveBeenLastCalledWith({ type: "read", value: saved(), pendingStyle: false });
-  queue.change({ });
+  queue.change({ paste: false });
   await queue.finishSaving();
-  expect(api.write).toHaveBeenLastCalledWith({ }, null);
+  expect(api.write).toHaveBeenLastCalledWith({ paste: false }, null);
 });
 
 test("Settings focus restores saved choices after a failed recovery read and keeps the edit retryable", async () => {

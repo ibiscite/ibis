@@ -10,13 +10,13 @@ import { demoApi } from "./demo";
 
 afterEach(resetApp);
 
-test("late Settings A and newer picker B converge on B in both real interfaces and saved state", async () => {
+test("late Settings A and newer picker B both reach both real interfaces and saved state", async () => {
   let release!: () => void;
   const slow = new Promise<void>((resolve) => { release = resolve; });
   const writes: number[] = [];
   backend({ set_picker_preferences: async ({ preferences, revision }) => {
     writes.push(revision as number);
-    if ((preferences as { density: string }).density === "compact") await slow;
+    if ((preferences as { larger_text: boolean }).larger_text) await slow;
   } });
   // Keep platform-only panels fake; exercise the actual command wrappers and
   // event subscription for the shared preference state in both interfaces.
@@ -25,7 +25,7 @@ test("late Settings A and newer picker B converge on B in both real interfaces a
     onPreferencesChanged: settingsApi.onPreferencesChanged };
   const view = render(<><App /><SettingsApp api={api} initialPage="look" /></>);
   const rows = await screen.findByRole("radiogroup", { name: "Rows" });
-  fireEvent.click(within(rows).getByRole("radio", { name: "Compact" }));
+  fireEvent.click(screen.getByRole("radio", { name: "Larger" }));
   await waitFor(() => expect(writes).toHaveLength(1));
   await chooseRows("compact");
   await waitFor(() => expect(writes).toHaveLength(2));
@@ -34,7 +34,7 @@ test("late Settings A and newer picker B converge on B in both real interfaces a
   await act(async () => { await emit("preferences:changed", { ...await commands.pickerPreferences(), revision: writes[1]! }); });
   await act(async () => { release(); });
   await waitFor(() => expect(within(rows).getByRole("radio", { name: "Compact" })).toHaveProperty("checked", true));
-  expect((await commands.pickerPreferences()).density).toBe("compact");
+  expect(await commands.pickerPreferences()).toMatchObject({ density: "compact", larger_text: true });
   fireEvent.click(screen.getByRole("button", { name: /^More/ }));
   expect(await screen.findByRole("menuitem", { name: "Rows: Compact" })).toBeTruthy();
   fireEvent.keyDown(document.activeElement!, { key: "Escape" });

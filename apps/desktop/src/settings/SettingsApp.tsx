@@ -107,23 +107,25 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   // biome-ignore lint/correctness/useExhaustiveDependencies: a saved switch change retires old authorization answers.
   useEffect(() => {
     let active = true;
-    let reads = 0;
+    // A click has spent its fact, so a refresh must never retire its answer.
+    let reads = 0, clicks = 0;
     let timer: number | undefined;
     setAbout(null); setFact(null);
     const read = (click = false) => {
       if (page !== "about" || !api.delightView) return;
-      const operation = ++reads;
+      const operation = click ? ++clicks : ++reads;
+      const current = () => active && operation === (click ? clicks : reads);
       const day = localMoment();
       window.clearTimeout(timer);
       void api.delightView(day, null, null, click).then((next) => {
-        if (!active || operation !== reads) return;
+        if (!current()) return;
+        if (click && next?.fun) { setDip((value) => value + 1); setFact(next.fact); }
         const now = localMoment();
         if (day.year !== now.year || day.month !== now.month || day.day !== now.day) { read(); return; }
         setAbout(next);
-        if (click && next?.fun) { setDip((value) => value + 1); setFact(next.fact); }
         if (next?.anniversary) {
           const midnight = new Date(); midnight.setHours(24, 0, 0, 0);
-          timer = window.setTimeout(() => { if (active && operation === reads) { setAbout(null); read(); } }, midnight.getTime() - Date.now());
+          timer = window.setTimeout(() => { if (current()) { setAbout(null); read(); } }, midnight.getTime() - Date.now());
         }
       }).catch(() => undefined);
     };

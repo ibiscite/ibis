@@ -206,13 +206,14 @@
 /* One accent, three roles, both modes: the accent colours controls and the focus
    ring; the selection is a deeper shade that keeps its text at 4.5:1; accent text
    passes 4.5:1 on the surface. Follow the Mac reaches these roles from
-   nativeAccent.css; Ibis scarlet is the one fixed choice, and its dark ink needs a
-   lighter press, since darkening would lose it. */
+   nativeAccent.css; Ibis scarlet is the one fixed choice, following the same rule:
+   selection and filled controls carry white, and the bright scarlet stays for
+   accent text, the ring and marks in dark. */
 @supports (color: light-dark(white, black)) {
   @media (prefers-contrast: no-preference) and (forced-colors: none) {
     :root[data-appearance][data-accent="ibis"]:not(.notice-window) {
-      --accent: light-dark(var(--ibis), var(--ibis-dark)); --primary: var(--accent); --selected: var(--accent); --accent-text: var(--accent);
-      --selected-text: light-dark(#fff, #171717); --text-on-accent: var(--selected-text); --press: light-dark(black, white);
+      --accent: light-dark(var(--ibis), var(--ibis-dark)); --accent-text: var(--accent);
+      --selected: var(--ibis); --primary: var(--selected); --selected-text: #fff; --text-on-accent: var(--selected-text);
     }
   }
 }
@@ -241,8 +242,8 @@
   /* Measured from NSSegmentedControl: the chosen fill lands at 19% of the text colour. */
   --segment-selected: color-mix(in srgb, var(--text) 12%, transparent);
   --primary: var(--accent);
-  --accent-hover: color-mix(in srgb, var(--primary) 90%, var(--press, black));
-  --accent-pressed: color-mix(in srgb, var(--primary) 80%, var(--press, black));
+  --accent-hover: color-mix(in srgb, var(--primary) 90%, black);
+  --accent-pressed: color-mix(in srgb, var(--primary) 80%, black);
 }
 
 /* The website's reading rhythm; page composition stays in website/style.css. */
