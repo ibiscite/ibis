@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { PickerApi } from "../../App";
 import type { SessionBibliography, SessionEdit, SessionReferencesView } from "../../api";
 import { STYLE_NAMES, type StyleId } from "../../format/styles";
@@ -14,6 +14,11 @@ import "./SessionReferences.css";
 type Api = Required<Pick<PickerApi, "sessionReferences" | "editSessionReferences" | "sessionBibliography" | "copySessionBibliography" | "exportSessionBibliography">>;
 
 const changed = (error: unknown) => typeof error === "object" && error !== null && (error as { code?: string }).code === "snapshot_changed";
+/** Native refusals name what to do; anything else gets this sheet's own sentence. */
+const said = (error: unknown, fallback: string) => {
+  const message = typeof error === "object" && error !== null ? (error as { message?: unknown }).message : null;
+  return typeof message === "string" && message ? message : fallback;
+};
 
 /** The references copied this session, editable, and their bibliography. Native
     code owns the list; each answer counts only if it is still the newest asked. */
@@ -27,6 +32,12 @@ export function SessionReferencesDialog({ api, style, onClose }: { api: Api; sty
   const listing = useRef(0);
   const formatting = useRef(0);
   useEffect(() => { dialog.current?.focus(); }, []);
+  // A removed row takes its focused button with it. The sheet keeps the keyboard,
+  // or the next key would act on the picker behind it.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: each new answer can remove the focused control.
+  useLayoutEffect(() => {
+    if (!dialog.current?.contains(document.activeElement)) dialog.current?.focus();
+  }, [view, bibliography]);
 
   const show = useCallback((next: SessionReferencesView) => {
     setView(next);
@@ -34,7 +45,7 @@ export function SessionReferencesDialog({ api, style, onClose }: { api: Api; sty
     setBibliography(null);
     sessionBibliography(style).then(
       (formatted) => { if (request === formatting.current) setBibliography(formatted); },
-      () => { if (request === formatting.current) setProblem(sessionText.notFormatted); });
+      (error) => { if (request === formatting.current) setProblem(said(error, sessionText.notFormatted)); });
   }, [sessionBibliography, style]);
   const load = useCallback((read: () => Promise<SessionReferencesView>) => {
     const request = ++listing.current;
@@ -56,7 +67,7 @@ export function SessionReferencesDialog({ api, style, onClose }: { api: Api; sty
     setStatus(null);
     setProblem(null);
     act().then((done) => { if (done) setStatus(done); }, (error) => {
-      if (changed(error)) { setProblem(sessionText.changed); load(sessionReferences); } else setProblem(failure);
+      if (changed(error)) { setProblem(sessionText.changed); load(sessionReferences); } else setProblem(said(error, failure));
     });
   };
   const hash = bibliography?.content_hash;
@@ -101,6 +112,7 @@ export function SessionReferencesDialog({ api, style, onClose }: { api: Api; sty
           <h3 className="session-heading">{sessionText.bibliographyIn(name)}</h3>
           <p className="session-bibliography" dir="auto">{bibliography.text}</p>
           {bibliography.warnings.map((warning) => <p key={warning} role="status">{warning}</p>)}
+          {bibliography.left_out.length > 0 && <p role="status">{sessionText.leftOut(bibliography.left_out)}</p>}
         </>}
         {problem && <p role="alert">{problem}</p>}
         {status && <p role="status">{status}</p>}

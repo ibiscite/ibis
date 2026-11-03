@@ -17,6 +17,7 @@ use tauri_plugin_dialog::DialogExt;
 use crate::library::commands::RecentIdentity;
 use crate::library::engine_file::{FileLibrary, SessionBibliography};
 use crate::library::{CommandError, Library, SearchResult};
+use crate::picker::ChooserOpen;
 
 const FAILED: &str = "The references could not be read. Try again.";
 const MAX_UNDO: usize = 20;
@@ -26,7 +27,7 @@ const MAX_UNDO: usize = 20;
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Undo {
     Removed { item: ItemRef, at: usize },
-    Reset { items: Vec<ItemRef> },
+    Reset { items: Vec<ItemRef>, overflowed: bool },
 }
 
 #[derive(Debug, Default)]
@@ -78,19 +79,24 @@ impl List {
             return;
         }
         let items = std::mem::take(&mut self.items);
-        self.overflowed = false;
-        self.push_undo(Undo::Reset { items });
+        let overflowed = std::mem::take(&mut self.overflowed);
+        self.push_undo(Undo::Reset { items, overflowed });
         self.changed();
     }
 
     fn undo(&mut self) {
         match self.undo.pop() {
             Some(Undo::Removed { item, at }) if !self.items.contains(&item) => {
+                if self.items.len() >= MAX_CITATION_ITEMS {
+                    self.overflowed = true;
+                    return;
+                }
                 self.items.insert(at.min(self.items.len()), item);
                 self.changed();
             }
-            Some(Undo::Reset { items }) => {
+            Some(Undo::Reset { items, overflowed }) => {
                 let newer = std::mem::replace(&mut self.items, items);
+                self.overflowed |= overflowed;
                 self.add(newer);
                 self.changed();
             }
@@ -209,7 +215,10 @@ pub(crate) async fn session_bibliography(
     session: State<'_, SessionReferences>,
     library: State<'_, Mutex<Library>>,
 ) -> Result<Option<SessionBibliography>, CommandError> {
-    let file = open_file(&library).ok_or(CommandError::SnapshotChanged)?;
+    // With no library open nothing listed can be written, which is no failure.
+    let Some(file) = open_file(&library) else {
+        return Ok(None);
+    };
     let items = session.items();
     tauri::async_runtime::spawn_blocking(move || file.session_bibliography(&items, style))
         .await
@@ -267,8 +276,17 @@ pub(crate) async fn export_session_bibliography(
     const NOT_SAVED: &str = "The bibliography could not be saved. Try again.";
     let file = open_file(&library).ok_or(CommandError::SnapshotChanged)?;
     let items = session.items();
-    let dialog = window
-        .app_handle()
+    let app = window.app_handle().clone();
+    // The dialog belongs to the picker, which hides when it loses focus unless
+    // a chooser holds it open; hiding would take away the dialog's parent.
+    let owner = app
+        .state::<ChooserOpen>()
+        .begin()
+        .ok_or_else(|| CommandError::from(NOT_SAVED))?;
+    #[cfg(target_os = "macos")]
+    crate::panel::activate_for_dialog(&app);
+    let generation = app.state::<crate::picker::PickerGeneration>().current();
+    let dialog = app
         .dialog()
         .file()
         .set_parent(&window)
@@ -277,11 +295,25 @@ pub(crate) async fn export_session_bibliography(
         .add_filter("Rich Text", &["rtf"])
         .add_filter("Web page", &["html"])
         .add_filter("Plain text", &["txt"]);
-    let chosen = tauri::async_runtime::spawn_blocking(move || dialog.blocking_save_file())
-        .await
-        .map_err(|_| CommandError::from(NOT_SAVED))?;
-    let Some(chosen) = chosen else { return Ok(None) };
+    let chosen = tauri::async_runtime::spawn_blocking(move || owner.during(|| dialog.blocking_save_file())).await;
+    let handle = app.clone();
+    crate::diagnostics::report(
+        app.run_on_main_thread(move || {
+            if let Some(window) = handle.get_webview_window("main") {
+                crate::picker::reconcile_suppressed_blur(&window, generation);
+            }
+        }),
+        crate::diagnostics::NativeIssue::Window,
+    );
+    let Some(chosen) = chosen.map_err(|_| CommandError::from(NOT_SAVED))? else {
+        return Ok(None);
+    };
     let path = chosen.into_path().map_err(|_| CommandError::from(NOT_SAVED))?;
+    let path = if path.extension().is_some() {
+        path
+    } else {
+        path.with_extension("rtf")
+    };
     let shown = path
         .file_name()
         .map_or_else(String::new, |name| name.to_string_lossy().into_owned());
@@ -291,7 +323,7 @@ pub(crate) async fn export_session_bibliography(
             .and_then(|extension| extension.to_str())
             .unwrap_or_default();
         let text = file.commit_session_bibliography(&items, style, &content_hash, |content| {
-            export_text(extension, &content).ok_or_else(|| NOT_SAVED.to_owned())
+            export_text(extension, &content).ok_or_else(|| "Save it as .rtf, .html or .txt.".to_owned())
         })?;
         // The system dialog already asked before replacing a file.
         ibis_core::settings::backup::save(&path, &text, true).map_err(|_| CommandError::from(NOT_SAVED))
@@ -379,6 +411,24 @@ mod tests {
         assert_eq!(list.items.len(), MAX_CITATION_ITEMS);
         list.reset();
         assert!(!list.overflowed);
+    }
+
+    #[test]
+    fn undoing_never_passes_the_limit_and_keeps_the_full_notice() {
+        let mut list = List::default();
+        list.add((0..MAX_CITATION_ITEMS).map(|index| item(&format!("k{index}"))));
+        list.remove(&item("k0"));
+        list.add([item("newcomer")]);
+        list.undo();
+        assert_eq!(list.items.len(), MAX_CITATION_ITEMS);
+        assert!(list.overflowed, "k0 could not come back, and the list says so");
+
+        let mut list = List::default();
+        list.add((0..MAX_CITATION_ITEMS).map(|index| item(&format!("k{index}"))));
+        list.add([item("one-more")]);
+        list.reset();
+        list.undo();
+        assert!(list.overflowed, "the notice returns with the list");
     }
 
     #[test]
@@ -501,6 +551,27 @@ mod bibliography_tests {
         assert_eq!(other.session_rows(&ids).map(|rows| rows.len()), Ok(0));
         assert!(matches!(other.session_bibliography(&ids, CitationStyle::Apa), Ok(None)));
         assert_eq!(file.session_rows(&ids).map(|rows| rows.len()), Ok(2));
+    }
+
+    #[test]
+    fn a_reference_the_style_cannot_write_is_named_and_the_rest_still_come() {
+        let (_dir, file, ids) = opened(
+            "@book{others2026,title={Synthetic signals},author={Taylor, Avery and others},year={2026}}\n\
+             @book{morgan2025,title={Synthetic noise},author={Morgan, Ann},year={2025}}\n",
+        );
+        let bibliography = shown(&file, &ids);
+        assert_eq!(bibliography.left_out, ["others2026"], "{}", bibliography.text);
+        assert!(bibliography.text.contains("Morgan, A. (2025)"), "{}", bibliography.text);
+        assert!(!bibliography.text.contains("Taylor"), "{}", bibliography.text);
+        let written =
+            file.commit_session_bibliography(&ids, CitationStyle::Apa, &bibliography.content_hash, |content| {
+                Ok(content.text.to_owned())
+            });
+        assert_eq!(
+            written.ok().as_deref(),
+            Some(bibliography.text.as_str()),
+            "what was shown is what is copied"
+        );
     }
 
     #[test]

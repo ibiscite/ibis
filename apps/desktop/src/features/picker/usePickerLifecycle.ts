@@ -20,7 +20,7 @@ export function usePickerLifecycle({ api, pickerSession, menus, destination, pre
   setAltHeld: (held: boolean) => void;
 }) {
   const { session, send } = pickerSession;
-  const { input, setKeysOpen, setLibraryMenuOpen, setMenuOpen } = menus;
+  const { input, setKeysOpen, setSessionOpen, setLibraryMenuOpen, setMenuOpen } = menus;
   const { pickerVisible, onPickerPreparing, onPickerShown, onPickerHidden, onPreferencesChanged } = api;
   // When the picker is shown, put the cursor in the search box with the
   // previous query selected, so typing replaces it.
@@ -75,6 +75,7 @@ export function usePickerLifecycle({ api, pickerSession, menus, destination, pre
       resetPointer();
       send({ type: "hidden", now: performance.now() });
       setKeysOpen(false);
+      setSessionOpen(false);
       setLibraryMenuOpen(false);
       setMenuOpen(false);
       setAltHeld(false);

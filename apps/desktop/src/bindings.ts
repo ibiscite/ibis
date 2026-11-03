@@ -70,6 +70,11 @@ export const commands = {
 	html: string | null,
 	content_hash: string,
 	warnings: string[],
+	/**
+	 *  References this style cannot write, by key or title. They are named so
+	 *  that the rest can still be used.
+	 */
+	left_out: string[],
 } | null>("session_bibliography", { style }),
 	/**
 	 *  Copy what was shown. Prepared again from the list as it is now, and refused
@@ -939,6 +944,11 @@ export type SessionBibliography = {
 	html: string | null,
 	content_hash: string,
 	warnings: string[],
+	/**
+	 *  References this style cannot write, by key or title. They are named so
+	 *  that the rest can still be used.
+	 */
+	left_out: string[],
 };
 
 export type SessionEdit = { kind: "remove"; id: RecentIdentity } | { kind: "reset" } | { kind: "undo" };

@@ -87,5 +87,5 @@ export function usePickerMenus(api: PickerApi, { perform }: Pick<ReturnType<type
     setSessionOpen(false);
     afterSheet();
   };
-  return { input, formatButtonRef, moreButton, menuOpen, setMenuOpen, libraryMenuOpen, setLibraryMenuOpen, formatOpen, setFormatOpen, pinned, currentPin, togglePin, keysOpen, setKeysOpen, restoreChooserFocus, windowUndo, openMore, closeMenu, focusPicker, runFromMenu, openKeys, closeKeys, sessionOpen, openSession, closeSession };
+  return { input, formatButtonRef, moreButton, menuOpen, setMenuOpen, libraryMenuOpen, setLibraryMenuOpen, formatOpen, setFormatOpen, pinned, currentPin, togglePin, keysOpen, setKeysOpen, restoreChooserFocus, windowUndo, openMore, closeMenu, focusPicker, runFromMenu, openKeys, closeKeys, sessionOpen, setSessionOpen, openSession, closeSession };
 }

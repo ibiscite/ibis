@@ -1,5 +1,6 @@
 import { afterEach, expect, test } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
 import type { SessionBibliography, SessionReferencesView } from "./api";
 import { backend, chooseFromMore, resetApp, result } from "./testing/app";
@@ -9,7 +10,7 @@ afterEach(resetApp);
 const plain = (text: string | null | undefined) => (text ?? "").replace(/[⁨⁩]/g, "");
 const taylor = result("taylor2026", "Synthetic signals"), morgan = result("morgan2025", "Synthetic noise");
 const list = (over: Partial<SessionReferencesView> = {}): SessionReferencesView => ({ revision: 1, rows: [taylor, morgan], absent: 0, overflowed: false, undo: null, ...over });
-const formatted = (text: string): SessionBibliography => ({ text, html: `<p>${text}</p>`, content_hash: `hash-${text}`, warnings: [] });
+const formatted = (text: string, left_out: string[] = []): SessionBibliography => ({ text, html: `<p>${text}</p>`, content_hash: `hash-${text}`, warnings: [], left_out });
 
 async function open() {
   render(<App />);
@@ -122,7 +123,56 @@ test("a saved file is named, and a cancelled dialog says nothing", async () => {
 test("references from a library that is not open are counted, not hidden", async () => {
   backend({ session_references: () => list({ rows: [taylor], absent: 2 }), session_bibliography: () => formatted("text") });
   const dialog = await open();
-  await within(dialog).findByText("2 references from a library that isn't open are left out.");
+  await within(dialog).findByText("2 references aren't in the open library, so they are left out.");
+});
+
+test("a reference the style cannot write is named, and the rest can still be copied", async () => {
+  backend({ session_references: () => list(), session_bibliography: () => formatted("Morgan, A.", ["taylor2026"]) });
+  const dialog = await open();
+  await waitFor(() => expect(plain(dialog.textContent)).toContain("Left out because this style can't write them: taylor2026."));
+  expect(within(dialog).getByRole<HTMLButtonElement>("button", { name: "Copy Bibliography" }).disabled).toBe(false);
+});
+
+test("a native refusal keeps its own words", async () => {
+  backend({
+    session_references: () => list(), session_bibliography: () => formatted("text"),
+    export_session_bibliography: () => { throw { code: "failed", message: "Save it as .rtf, .html or .txt." }; },
+  });
+  const dialog = await open();
+  await within(dialog).findByText("text");
+  fireEvent.click(within(dialog).getByRole("button", { name: "Save…" }));
+  await within(dialog).findByText("Save it as .rtf, .html or .txt.");
+});
+
+test("a removed row leaves the keyboard in the sheet, so the next key cannot act behind it", async () => {
+  let current = list();
+  const calls = backend({
+    session_references: () => current, session_bibliography: () => formatted("text"),
+    edit_session_references: () => { current = list({ rows: [morgan] }); return current; },
+  });
+  const dialog = await open();
+  await within(dialog).findByText("text");
+  const remove = within(dialog).getAllByRole("button", { name: /^Remove / })[0]!;
+  act(() => remove.focus());
+  fireEvent.click(remove);
+  await waitFor(() => expect(within(dialog).getAllByRole("button", { name: /^Remove / })).toHaveLength(1));
+  await waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true));
+  fireEvent.keyDown(document.activeElement!, { key: "Enter" });
+  expect(calls.filter((command) => command === "copy_file_citation")).toHaveLength(0);
+  expect(screen.getByRole("dialog")).toBe(dialog);
+});
+
+test("hiding the picker closes the sheet, and opening it again reads the list afresh", async () => {
+  let reads = 0;
+  backend({ session_references: () => { reads += 1; return list(); }, session_bibliography: () => formatted("text") });
+  const dialog = await open();
+  await within(dialog).findByText("text");
+  await act(() => emit("picker:hidden"));
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  await act(() => emit("picker:shown", 1));
+  await chooseFromMore("References Used This Session…");
+  await within(await screen.findByRole("dialog")).findByText("text");
+  expect(reads).toBe(2);
 });
 
 test("a read that fails says so, and closing and reopening reads the list again", async () => {

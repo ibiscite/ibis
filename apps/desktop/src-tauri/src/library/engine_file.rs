@@ -5,7 +5,7 @@ use ibis_core::{
     cite::KeyFormat,
     contract::{
         CitationError, CitationForm, CitationItem, CitationRequest, CitationResult, CitationWarningCode, Fingerprint,
-        ItemOutcome, ItemRef, KeySyntax, LibraryId, LibraryObject, LocatorTerm, Notice, OutputSpec,
+        ItemOutcome, ItemRef, KeySyntax, LibraryId, LibraryObject, LocatorTerm, Notice, OutputSpec, Snapshot,
     },
     settings::{CitationStyle, ZoteroLibraries, ZoteroLibrary},
 };
@@ -56,6 +56,9 @@ pub(crate) struct SessionBibliography {
     pub(crate) html: Option<String>,
     pub(crate) content_hash: String,
     pub(crate) warnings: Vec<String>,
+    /// References this style cannot write, by key or title. They are named so
+    /// that the rest can still be used.
+    pub(crate) left_out: Vec<String>,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, specta::Type)]
 #[serde(rename_all = "kebab-case")]
@@ -183,32 +186,26 @@ impl FileLibrary {
             .collect())
     }
 
-    fn prepare_session_bibliography(
+    fn session_item(&self, snapshot: &Snapshot, id: &ItemRef) -> Option<CitationItem> {
+        let object = snapshot.get(id)?;
+        matches!(object.object, LibraryObject::Record(_)).then(|| CitationItem {
+            item: id.clone(),
+            expected_cite: Some(object.fingerprints.cite.clone()),
+            form: None,
+            suppress_author: false,
+            locator: None,
+            prefix: vec![],
+            suffix: vec![],
+            annotation: None,
+            expected_annotation_cite: None,
+        })
+    }
+
+    fn bibliography_of(
         &self,
-        ids: &[ItemRef],
+        items: Vec<CitationItem>,
         style: CitationStyle,
-    ) -> Result<Option<(PreparedCitation, usize)>, CommandError> {
-        let snapshot = self.engine.snapshot().map_err(CommandError::from)?;
-        let items: Vec<CitationItem> = ids
-            .iter()
-            .filter_map(|id| {
-                let object = snapshot.get(id)?;
-                matches!(object.object, LibraryObject::Record(_)).then(|| CitationItem {
-                    item: id.clone(),
-                    expected_cite: Some(object.fingerprints.cite.clone()),
-                    form: None,
-                    suppress_author: false,
-                    locator: None,
-                    prefix: vec![],
-                    suffix: vec![],
-                    annotation: None,
-                    expected_annotation_cite: None,
-                })
-            })
-            .collect();
-        if items.is_empty() {
-            return Ok(None);
-        }
+    ) -> Result<(PreparedCitation, bool), CommandError> {
         let count = items.len();
         let request = CitationRequest {
             items,
@@ -224,15 +221,47 @@ impl FileLibrary {
             .engine
             .prepare_citation(&request, &Cancellation::default())
             .map_err(CommandError::from)?;
-        if citation.result().copy_content(count).is_none() {
-            return Err("These references cannot be written as a bibliography in this style.".into());
+        let whole = citation.result().copy_content(count).is_some();
+        Ok((citation, whole))
+    }
+
+    /// The list as a bibliography. A record the style cannot write must not
+    /// cost the person all the others, so it is found and named instead.
+    fn prepare_session_bibliography(
+        &self,
+        ids: &[ItemRef],
+        style: CitationStyle,
+    ) -> Result<Option<(PreparedCitation, Vec<String>)>, CommandError> {
+        let snapshot = self.engine.snapshot().map_err(CommandError::from)?;
+        let items: Vec<_> = ids.iter().filter_map(|id| self.session_item(&snapshot, id)).collect();
+        if items.is_empty() {
+            return Ok(None);
         }
+        let (citation, whole) = self.bibliography_of(items.clone(), style)?;
+        let (citation, left_out) = if whole {
+            (citation, vec![])
+        } else {
+            let mut kept = vec![];
+            let mut left_out = vec![];
+            for item in items {
+                if self.bibliography_of(vec![item.clone()], style)?.1 {
+                    kept.push(item);
+                } else {
+                    left_out.extend(session_label(&snapshot, &item.item));
+                }
+            }
+            let (citation, whole) = self.bibliography_of(kept, style)?;
+            if !whole {
+                return Err("These references cannot be written as a bibliography in this style.".into());
+            }
+            (citation, left_out)
+        };
         let citation = if self.sample {
             citation.mark_sample().map_err(CommandError::from)?
         } else {
             citation
         };
-        Ok(Some((citation, count)))
+        Ok(Some((citation, left_out)))
     }
 
     pub(crate) fn session_bibliography(
@@ -240,16 +269,19 @@ impl FileLibrary {
         ids: &[ItemRef],
         style: CitationStyle,
     ) -> Result<Option<SessionBibliography>, CommandError> {
-        Ok(self.prepare_session_bibliography(ids, style)?.map(|(citation, _)| {
-            let warnings = citation_warnings_named(&citation);
-            let result = citation.into_result();
-            SessionBibliography {
-                text: result.text,
-                html: result.html,
-                content_hash: result.content_hash.as_str().to_owned(),
-                warnings,
-            }
-        }))
+        Ok(self
+            .prepare_session_bibliography(ids, style)?
+            .map(|(citation, left_out)| {
+                let warnings = citation_warnings_named(&citation);
+                let result = citation.into_result();
+                SessionBibliography {
+                    text: result.text,
+                    html: result.html,
+                    content_hash: result.content_hash.as_str().to_owned(),
+                    warnings,
+                    left_out,
+                }
+            }))
     }
 
     /// Hand `use_it` exactly what was shown, or refuse: the list, the library
@@ -957,6 +989,18 @@ fn native_source(info: &ibis_engine::LibraryInfo) -> String {
     }
 }
 
+fn session_label(snapshot: &Snapshot, id: &ItemRef) -> Option<String> {
+    let LibraryObject::Record(record) = &snapshot.get(id)?.object else {
+        return None;
+    };
+    record
+        .citation_key()
+        .ok()
+        .flatten()
+        .map(str::to_owned)
+        .or_else(|| record.csl.get("title")?.as_str().map(ibis_core::model::strip_markup))
+}
+
 fn style_id(style: CitationStyle) -> &'static str {
     match style {
         CitationStyle::Apa => "apa",
@@ -976,6 +1020,7 @@ fn citation_warnings_named(citation: &PreparedCitation) -> Vec<String> {
                 .losses
                 .iter()
                 .filter_map(|loss| loss.item)
+                .chain(citation.result().warnings.iter().map(|warning| warning.item))
                 .find_map(|item| {
                     warning
                         .starts_with(&format!("Reference {}:", item + 1))
