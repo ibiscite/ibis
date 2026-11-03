@@ -1,4 +1,3 @@
-import type { SearchIcon } from "../bindings";
 import { createRef, useLayoutEffect, useRef } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { Density, SearchResult } from "../bindings";
@@ -15,8 +14,8 @@ const ignore = () => undefined;
 // appearance or owns its explicitly requested scheme, never the system default.
 const styles = (foundationStyles + buttonStyles + iconButtonStyles + pickerStyles).replace(/@import[^;]+;/g, "")
   .replace(/:root(\[[^\]]+\])?/g, (_, attribute: string | undefined) => attribute ? `:host(${attribute})` : ":host");
-export function PickerPicture({ density = "comfortable", icon = "ibis", appearance, split = false, headerOnly = false, rowsOnly = false }: {
-  density?: Density; icon?: SearchIcon; appearance?: string; split?: boolean; headerOnly?: boolean; rowsOnly?: boolean;
+export function PickerPicture({ density = "comfortable", appearance, split = false, rowsOnly = false }: {
+  density?: Density; appearance?: string; split?: boolean; rowsOnly?: boolean;
 }) {
   const { text } = useInterfaceMessages();
   const record: SearchResult = {
@@ -28,14 +27,14 @@ export function PickerPicture({ density = "comfortable", icon = "ibis", appearan
   const html = renderToStaticMarkup(<>
     {!rowsOnly && <PickerHeader inputRef={createRef()} query="" onQueryChange={ignore} onSearchKeyDown={ignore}
       expanded={false} activeDescendant={undefined} format="pandoc" showFormat={false} styles={false}
-      onFormatChange={ignore} onFormatCommand={() => ({ run: ignore, isCurrent: () => false })} pinned={false} onTogglePin={ignore} icon={icon} />}
-    {!headerOnly && <div className="results-area"><ul id="results">{(["look-sample-title", "look-sample-title-2", "look-sample-title-3"] as const).map((title, index) =>
+      onFormatChange={ignore} onFormatCommand={() => ({ run: ignore, isCurrent: () => false })} pinned={false} onTogglePin={ignore} />}
+    <div className="results-area"><ul id="results">{(rowsOnly ? ["look-sample-title", "look-sample-title-2"] as const : ["look-sample-title", "look-sample-title-2", "look-sample-title-3"] as const).map((title, index) =>
       <ResultRow key={title} record={{ ...record, title: text(title) }} index={index} active={index === 0} added={false} density={density} hoverAllowed={false} library={null}
         handlers={{ onPointerDown: ignore, onClick: ignore, onContext: ignore, onTileClick: ignore }} />
-    )}</ul></div>}
+    )}</ul></div>
   </>);
   const scheme = split ? "light" : appearance === "light" || appearance === "dark" ? appearance : undefined;
-  return <span className="ui-picker-picture" data-header={headerOnly || undefined} data-rows={rowsOnly || undefined} data-density={density} data-split={split || undefined} aria-hidden="true" inert>
+  return <span className="ui-picker-picture" data-rows={rowsOnly || undefined} data-density={density} data-split={split || undefined} aria-hidden="true" inert>
     <Snapshot html={html} density={density} scheme={scheme} />
     {split && <Snapshot html={html} density={density} scheme="dark" dark />}
   </span>;

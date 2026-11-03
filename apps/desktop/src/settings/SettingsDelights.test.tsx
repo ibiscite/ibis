@@ -4,14 +4,14 @@ import { SettingsApp } from "./SettingsApp";
 import { demoApi } from "./demo";
 
 afterEach(() => vi.useRealTimers());
-const details = { fun: true, fact: null, birthday: false, library: null, revision: 1, status: null, peck: false, anniversary: true, build: "0.0.0+invented · invented-build · 2026-11-01" } as const;
+const details = { fun: true, fact: null, revision: 1, status: null, peck: false, anniversary: true, build: "0.0.0+invented · invented-build · 2026-11-01" } as const;
 
 test("About reveals full build with Option and uses the same copy path, including failed I/O", async () => {
   const write = vi.fn().mockResolvedValue(undefined);
   Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: write } });
   const api = { ...demoApi(), delightView: vi.fn().mockResolvedValue(details) };
   const mounted = render(<SettingsApp api={api} initialPage="about" />);
-  expect(await screen.findByText("One year with Ibis")).toBeTruthy();
+  expect(await screen.findByText("One year with Ibis today.")).toBeTruthy();
   expect(screen.queryByText(/invented-build/)).toBeNull();
   fireEvent.keyDown(window, { key: "Alt", altKey: true });
   const row = await screen.findByRole("button", { name: `Version ${details.build}` });
@@ -28,18 +28,18 @@ test("About reveals full build with Option and uses the same copy path, includin
   mounted.unmount();
   render(<SettingsApp api={{ ...api, delightView: vi.fn().mockResolvedValue({ ...details, anniversary: false }) }} initialPage="about" />);
   await screen.findByRole("button", { name: "Version 0.2.1" });
-  expect(screen.queryByText("One year with Ibis")).toBeNull();
+  expect(screen.queryByText("One year with Ibis today.")).toBeNull();
 });
 
-test("a search blink cannot replay when About opens later from navigation", async () => {
+test("a search dip cannot replay when About opens later from navigation", async () => {
   const api = { ...demoApi(), delightView: vi.fn().mockResolvedValue(details) };
   const { container } = await act(async () => render(<SettingsApp api={api} initialPage="general" />));
   fireEvent.change(screen.getByRole("searchbox"), { target: { value: "ibis" } });
-  await act(async () => fireEvent.click(screen.getByRole("button", { name: "About Ibis" })));
-  expect(container.querySelector('[data-blink]')).not.toBeNull();
+  await act(async () => fireEvent.click(screen.getByRole("option", { name: /^About Ibis/ })));
+  expect(container.querySelector("[data-dip]")).not.toBeNull();
   fireEvent.click(screen.getByRole("option", { name: "General" }));
   fireEvent.click(screen.getByRole("option", { name: "About Ibis" }));
-  expect(container.querySelector('[data-blink]')).toBeNull();
+  expect(container.querySelector("[data-dip]")).toBeNull();
 });
 
 test("the anniversary expires at local midnight and a delayed older read cannot restore it", async () => {
@@ -47,19 +47,19 @@ test("the anniversary expires at local midnight and a delayed older read cannot 
   vi.setSystemTime(new Date(2027, 10, 1, 23, 59, 59));
   const api = { ...demoApi(), delightView: vi.fn().mockResolvedValueOnce(details).mockResolvedValue({ ...details, anniversary: false }) };
   await act(async () => { render(<SettingsApp api={api} initialPage="about" />); });
-  expect(screen.getByText("One year with Ibis")).toBeTruthy();
+  expect(screen.getByText("One year with Ibis today.")).toBeTruthy();
   await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
-  expect(screen.queryByText("One year with Ibis")).toBeNull();
+  expect(screen.queryByText("One year with Ibis today.")).toBeNull();
 });
 
-test("ibis search offers About, blinks on opening, and a stale About read cannot leak to General", async () => {
+test("ibis search offers About, dips on opening, and a stale About read cannot leak to General", async () => {
   let complete!: (value: typeof details) => void;
   const api = { ...demoApi(), delightView: vi.fn(() => new Promise<typeof details>((resolve) => { complete = resolve; })) };
   const { container } = await act(async () => render(<SettingsApp api={api} initialPage="general" />));
   fireEvent.change(screen.getByRole("searchbox"), { target: { value: "ibis" } });
-  await act(async () => fireEvent.click(screen.getByRole("button", { name: "About Ibis" })));
-  expect(container.querySelector('[data-blink]')).toBeNull();
+  await act(async () => fireEvent.click(screen.getByRole("option", { name: /^About Ibis/ })));
+  expect(container.querySelector("[data-dip]")).toBeNull();
   fireEvent.click(screen.getByRole("option", { name: "General" }));
   await act(async () => { complete(details); });
-  expect(screen.queryByText("One year with Ibis")).toBeNull();
+  expect(screen.queryByText("One year with Ibis today.")).toBeNull();
 });

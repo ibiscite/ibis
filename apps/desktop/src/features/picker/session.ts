@@ -13,7 +13,6 @@ export type SessionView = {
   appId?: string | null;
   queryKey: string; format: Choice; snapshotRevision: string | undefined; defaultChoice: string;
   chosen: CitationReference[]; shown: Prepared | "failed" | "stale" | null;
-  previewVisible: boolean;
   searchPending: boolean; ready: boolean; saving: boolean; shouldAsk: boolean; output: OutputToken;
 };
 type Pending = { choice: string | null; selection: SessionState["selected"]; queryKey: string;
@@ -141,7 +140,7 @@ export function reduceSession(s: SessionState, event: SessionEvent): [SessionSta
         key === "output" ? sameOutput(old.output, v.output) : old[key as keyof SessionView] === value);
       const newOutput = old && (old.format !== v.format || old.snapshotRevision !== v.snapshotRevision);
       return advance(same && s.viewInteraction === s.interaction ? s : { ...s, view: v, viewInteraction: s.interaction, context: s.context + (contextChanged ? 1 : 0),
-        shelfCopied: newOutput || !v.previewVisible ? null : s.shelfCopied, copyNotice: newOutput ? null : s.copyNotice });
+        shelfCopied: newOutput ? null : s.shelfCopied, copyNotice: newOutput ? null : s.copyNotice });
     }
     case "query": return [changed(s, { query: event.value, interpretLocators: true, escapedQuery: null }), []];
     case "literal": return [changed(s, { interpretLocators: false }), []];
@@ -236,7 +235,7 @@ export function reduceSession(s: SessionState, event: SessionEvent): [SessionSta
       if (f.id > s.lastSuccessfulCopy) s = { ...s, lastSuccessfulCopy: f.id, lastOutcome: copiedNoticeText.title, recentCopy: { app: f.appId, ids: f.references } };
       // Consuming a built citation can reveal a different default reference.
       // Confirm on the shelf only when its next target is this exact output.
-      const sameVisibleOutput = s.view?.previewVisible && s.view.defaultChoice === f.choice && s.view.shown && typeof s.view.shown === "object" && s.view.shown.text === outcome.text;
+      const sameVisibleOutput = s.view?.defaultChoice === f.choice && s.view.shown && typeof s.view.shown === "object" && s.view.shown.text === outcome.text;
       // Delivery can be revoked after the native write but before its response.
       // Confirm that write in place, without hiding or forwarding its old proof.
       // A newer citation, operation or opening still owns its own feedback.

@@ -29,3 +29,18 @@ test("text typed since the notice appeared keeps its own undo", () => {
 test("nothing to undo leaves the key alone", () => {
   expect(new UndoOwner().takes(null)).toBe(false);
 });
+
+test("the newest offer is known to the slot, including while paused", () => {
+  const owner = new UndoOwner();
+  const changed = vi.fn();
+  const stop = owner.subscribe(changed);
+  const a = owner.register(() => {});
+  const b = owner.register(() => {});
+  expect([a.isNewest(), b.isNewest()]).toEqual([false, true]);
+  b.pause(true);
+  expect(b.isNewest()).toBe(true);
+  b();
+  expect(a.isNewest()).toBe(true);
+  expect(changed).toHaveBeenCalledTimes(3);
+  stop();
+});
