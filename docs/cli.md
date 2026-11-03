@@ -97,7 +97,7 @@ The envelope looks like this:
 
 | Exit | `error.code` | Meaning |
 | --- | --- | --- |
-| 0 | | Success, including an empty search. |
+| 0 | | Success, including a search that finds nothing. |
 | 1 | | Done with findings: refusals, losses, source warnings or a failed refresh. `ok` is `true` and `data` says what. |
 | 2 | `usage` | The command line is not valid. |
 | 3 | `bad-input` | The input JSON or a value is not valid. |

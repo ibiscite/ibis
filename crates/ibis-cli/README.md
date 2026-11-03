@@ -14,8 +14,8 @@ bash crates/ibis-cli/recipes/ibis-fzf references.bib 'garcia'
 
 The first argument is a BibTeX/BibLaTeX or CSL-JSON file; the required second
 argument is a nonblank initial Ibis search. Missing, empty or whitespace-only
-search words print usage and exit 2 before reading the library. An empty Ibis
-search does not list records. The recipe searches through `ibis search --json`,
+search words print usage and exit 2 before reading the library. Ibis also
+refuses a blank search. The recipe searches through `ibis search --json`,
 then lets fzf filter those results. Tab selects several references; Enter prints
 one Pandoc citation. Escape or a failed fzf invocation prints no citation.
 It returns at most 1,000 search hits: narrow the initial search for a larger
@@ -122,6 +122,7 @@ if any requested check fails, has source warnings or cannot be checked, or if no
 library was selected. An unrequested config check does not cause exit 1.
 Invalid arguments exit **2** with the usual `usage` error envelope under
 `--json`. The shared response-size limit exits **5** with `resource-limit` if
-the report itself is too large; internal/transport failures exit **70**.
+the report itself is too large; internal/transport failures exit **70**, but a
+reader that closes the pipe early is not a failure.
 Individual source failures remain in the report with exit 1, even when ordinary
 `search` or `libraries` would exit 3, 5 or 6 for that same source.

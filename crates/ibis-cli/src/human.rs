@@ -41,7 +41,7 @@ fn summary(method: Method, data: &Value, holdings: Holdings, names: &BTreeMap<St
                     match holdings {
                         Holdings::NoLibrary => "No library is open; add --file <library> or --zotero.",
                         Holdings::Empty => {
-                            "The library holds no references; check that it is a BibTeX, BibLaTeX or CSL-JSON file."
+                            "No open library holds any references. A file must be BibTeX, BibLaTeX or CSL-JSON."
                         }
                         Holdings::References => "No references found.",
                     }
@@ -131,7 +131,7 @@ fn summary(method: Method, data: &Value, holdings: Holdings, names: &BTreeMap<St
 fn search_row(hit: &Value) -> Option<String> {
     let record = hit.pointer("/item/object/data")?;
     let csl = record.get("csl")?;
-    let authors = authors(csl);
+    let authors = authors(csl, Some(3));
     Some(format!(
         "{}\t{}\t{}\t{}",
         field(citation_key(record)?),
@@ -167,17 +167,19 @@ fn citation_key(record: &Value) -> Option<&str> {
     )
 }
 
-fn authors(csl: &Value) -> String {
+/// The authors' names, at most `limit` of them and then "et al.".
+fn authors(csl: &Value, limit: Option<usize>) -> String {
     csl.get("author")
         .and_then(Value::as_array)
         .map_or_else(String::new, |names| {
+            let limit = limit.unwrap_or(names.len());
             let mut authors = names
                 .iter()
-                .take(3)
+                .take(limit)
                 .map(author)
                 .filter(|name| !name.is_empty())
                 .collect::<Vec<_>>();
-            if names.len() > 3 {
+            if names.len() > limit {
                 authors.push("et al.".into());
             }
             authors.join(", ")
@@ -202,7 +204,7 @@ fn reference(data: &Value) -> Option<String> {
     let record = data.pointer("/object/data")?;
     let csl = record.get("csl")?;
     let text = |name: &str| csl.get(name).and_then(Value::as_str).map(strip_markup);
-    let authors = Some(authors(csl)).filter(|authors| !authors.is_empty());
+    let authors = Some(authors(csl, None)).filter(|authors| !authors.is_empty());
     let number = |name: &str| {
         csl.get(name)
             .map(|value| value.as_str().map_or_else(|| value.to_string(), str::to_owned))
@@ -263,10 +265,13 @@ fn author(value: &Value) -> String {
     .display()
 }
 
-/// A word for a command line, quoted when a shell would otherwise split it.
+/// A word for a command line, quoted when this system's shell would otherwise split it.
 pub(super) fn quoted(text: &str) -> String {
-    if !text.is_empty() && text.chars().all(|c| c.is_alphanumeric() || "/._-:".contains(c)) {
+    let plain = |c: char| c.is_alphanumeric() || "/._-:".contains(c) || (cfg!(windows) && c == '\\');
+    if !text.is_empty() && text.chars().all(plain) {
         text.to_owned()
+    } else if cfg!(windows) {
+        format!("\"{text}\"")
     } else {
         format!("'{}'", text.replace('\'', "'\\''"))
     }

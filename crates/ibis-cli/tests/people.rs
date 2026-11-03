@@ -11,6 +11,7 @@ const BIB: &str = r"@article{vale2024lanterns,
   volume = {12}, pages = {45--67}, year = {2024}, doi = {10.1000/invented.1},
   note = {Invented private note}
 }
+@book{many2020, title={Many Hands}, author={Ash, Ada and Birch, Bo and Cedar, Cy and Dale, Di and Elm, Ed}, year=2020}
 @article{same, title={First}, year=2000}
 @article{same, title={Second}, year=2001}
 ";
@@ -107,7 +108,7 @@ fn a_file_with_no_entries_is_not_called_a_failed_search() {
     let file = lab.file("notes.txt", "Shopping list\nno references here\n");
     let (code, stdout, _) = lab.run(&["search", "shopping", "--file", &file]);
     assert_eq!(code, 0);
-    assert!(stdout.contains("holds no references"), "{stdout}");
+    assert!(stdout.contains("holds any references"), "{stdout}");
 }
 
 #[test]
@@ -140,6 +141,13 @@ fn show_prints_a_reference_for_reading_and_json_keeps_everything() {
     }
     assert!(!stdout.contains("fingerprints"), "{stdout}");
     assert!(stdout.lines().count() < 12, "{stdout}");
+    let (_, stdout, _) = lab.run(&["show", "many2020", "--file", &file]);
+    assert!(
+        stdout.contains("Authors: Ada Ash, Bo Birch, Cy Cedar, Di Dale, Ed Elm"),
+        "{stdout}"
+    );
+    let (_, stdout, _) = lab.run(&["search", "many", "--file", &file]);
+    assert!(stdout.contains("Ada Ash, Bo Birch, Cy Cedar, et al."), "{stdout}");
     let (_, stdout, _) = lab.run(&["show", "vale2024lanterns", "--file", &file, "--json"]);
     assert!(stdout.contains("fingerprints"), "{stdout}");
 }
@@ -151,18 +159,23 @@ fn the_warning_note_gives_a_command_that_works() {
     let (code, _, stderr) = lab.run(&["search", "lantern", "--file", &file]);
     assert_eq!(code, 1);
     let command = stderr.split("see: ibis ").nth(1).unwrap().trim();
-    assert_eq!(command, format!("libraries --file '{file}'"));
+    let quoted = if cfg!(windows) {
+        format!("\"{file}\"")
+    } else {
+        format!("'{file}'")
+    };
+    assert_eq!(command, format!("libraries --file {quoted}"));
     let (code, stdout, stderr) = lab.run(&["libraries", "--file", &file]);
     assert_eq!(code, 1, "{stderr}");
     assert!(stdout.contains("2 warnings"), "{stdout}");
     assert!(
-        stdout.contains("line 8: the citation key 'same' is used by more than one entry"),
+        stdout.contains("line 9: the citation key 'same' is used by more than one entry"),
         "{stdout}"
     );
 }
 
 #[test]
-fn call_reads_the_same_libraries_as_the_command_it_calls() {
+fn call_of_search_reads_the_same_libraries_as_search() {
     let lab = Lab::new("call");
     let (code, stdout, stderr) = lab.run(&["call", "search", "--params", r#"{"query":"lantern"}"#]);
     assert_eq!((code, stdout.as_str()), (2, ""), "{stderr}");

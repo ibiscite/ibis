@@ -132,7 +132,7 @@ fn command() -> Command {
                 .arg(
                     Arg::new("id")
                         .long("id")
-                        .value_name("ITEM_REF_JSON")
+                        .value_name("ID_JSON")
                         .help("The reference's id, as the JSON that ibis search --json prints"),
                 ),
             Method::Cite => subcommand
@@ -441,7 +441,10 @@ fn run_engine<R: BufRead, W: Write + Send, E: Write>(
                         mode,
                     );
                 }
-                return if write!(output, "{error}").is_ok() { 0 } else { 70 };
+                return match write!(output, "{error}") {
+                    Err(failure) if failure.kind() != std::io::ErrorKind::BrokenPipe => 70,
+                    _ => 0,
+                };
             }
             // clap names the argument and prints the usage line; keep its words,
             // but a line break typed in an argument must not start a forged line.
@@ -690,7 +693,7 @@ fn execute<R: BufRead, W: Write + Send>(
             "--app-libraries is not available here; name the libraries to read.",
         ));
     }
-    // `call` reads what the command it calls would read.
+    // `call` of search, show or cite reads what those commands would read.
     let called = matches
         .subcommand_matches("call")
         .and_then(|call| call.get_one::<String>("method"));
