@@ -10,6 +10,7 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
+use ibis_core::destination::AppId;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 
@@ -31,7 +32,7 @@ const FADE_OUT: Duration = Duration::from_millis(200);
 const GRACE: Duration = Duration::from_millis(100);
 /// A new window's timer starts when its page has loaded; this one takes it
 /// away if the page never loads.
-const LOAD_LIMIT: Duration = Duration::from_millis(8_000);
+const LOAD_LIMIT: Duration = Duration::from_millis(10_000);
 /// The notice names what was copied on one line; longer text is cut short.
 const TEXT_LIMIT: usize = 200;
 
@@ -52,8 +53,8 @@ impl Platform {
     };
 }
 
-/// Shared 560x100-point notice frame: room for the longest reason and a
-/// second line for the citation, with 16 points for the pill's shadow. The
+/// Shared 560x140-point notice frame: room for the longest reason, the
+/// citation and the plugin note, with 16 points for the pill's shadow. The
 /// window ignores the pointer, so its clear margins never block a click.
 pub(crate) fn notice_size(_platform: Platform) -> (f64, f64) {
     (560.0, 140.0)
@@ -220,9 +221,7 @@ pub(crate) async fn show_copied_notice(
     } else {
         None
     };
-    let plugin_note = receipt.is_some()
-        && matches!(delivered, Delivered::Pasted { .. })
-        && target.is_some_and(|id| app.state::<crate::destination::AppMemory>().take_plugin_note(&id));
+    let pasted_into = target.filter(|_| receipt.is_some() && matches!(delivered, Delivered::Pasted { .. }));
     show(
         &app,
         NoticeMessage {
@@ -232,14 +231,15 @@ pub(crate) async fn show_copied_notice(
                 .map_or_else(|| self::summary(&text), |receipt| self::summary(&receipt.text)),
             more: summary.map(|receipt| receipt.more),
             milestone,
-            plugin_note,
+            plugin_note: false,
         },
         receipt,
+        pasted_into,
     );
     delivered
 }
 
-fn show(app: &AppHandle, text: NoticeMessage, receipt: Option<u64>) {
+fn show(app: &AppHandle, mut text: NoticeMessage, receipt: Option<u64>, pasted_into: Option<AppId>) {
     let notice = app.state::<Notice>();
     // Check after acquiring the publication lock. If B publishes while A
     // waits here, A cannot replace B's text, restart its timer or show itself.
@@ -248,6 +248,8 @@ fn show(app: &AppHandle, text: NoticeMessage, receipt: Option<u64>) {
     if !owner.current(receipt) {
         return;
     }
+    // Spent only here: a notice a newer one replaced keeps it for the next paste.
+    text.plugin_note = pasted_into.is_some_and(|id| app.state::<crate::destination::AppMemory>().take_plugin_note(&id));
     let shown_for = text.shown_for();
     if let Ok(mut current) = notice.text.lock() {
         *current = Some(text.clone());

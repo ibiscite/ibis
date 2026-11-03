@@ -257,6 +257,11 @@ impl AppMemory {
             return false;
         }
         let app = normalized(app);
+        let Ok(state) = self.state.lock() else { return false };
+        if state.0.iter().any(|entry| entry.app == app && entry.noted) {
+            return false;
+        }
+        drop(state);
         let mut first = false;
         let saved = self.change(|apps| {
             if let Some(entry) = apps.iter_mut().find(|entry| entry.app == app) {
@@ -299,8 +304,16 @@ impl AppMemory {
         let Some((removed, recovery)) = forgotten.1.as_ref() else {
             return Ok(());
         };
+        // One entry per app, or the next read refuses the whole file. A choice
+        // made since wins; a note shown since keeps the forgotten choices.
         let mut apps = removed.clone();
-        apps.extend(state.0.iter().cloned());
+        for newer in &state.0 {
+            match apps.iter_mut().find(|old| old.app == newer.app) {
+                Some(old) if newer.output.is_none() && newer.paste.is_none() => old.noted |= newer.noted,
+                Some(old) => *old = newer.clone(),
+                None => apps.push(newer.clone()),
+            }
+        }
         apps.drain(..apps.len().saturating_sub(MAX_APPS));
         let recovery = *recovery || state.1;
         write(&self.path, &apps, recovery)?;
@@ -576,6 +589,33 @@ mod tests {
         assert!(!memory.take_plugin_note(&word()), "Automatic is not Clear");
         memory.forget()?;
         assert!(memory.take_plugin_note(&word()));
+        Ok(())
+    }
+
+    #[test]
+    fn a_note_after_clear_survives_undo_without_a_second_entry_for_the_app() -> io::Result<()> {
+        let directory = tempfile::tempdir()?;
+        let memory = memory_in(&directory);
+        memory.set(&word(), Some(AppOutput::Style(CitationStyle::Apa)))?;
+        let ticket = memory.forget()?;
+        assert!(memory.take_plugin_note(&word()));
+        memory.restore(ticket)?;
+        let reopened = memory_in(&directory);
+        assert!(!reopened.unreadable(), "a duplicate entry would refuse the whole file");
+        assert_eq!(reopened.get(&word()).0, Some(AppOutput::Style(CitationStyle::Apa)));
+        assert!(!reopened.take_plugin_note(&word()), "the note was shown");
+        Ok(())
+    }
+
+    #[test]
+    fn a_shown_note_leaves_the_file_alone_on_every_later_paste() -> io::Result<()> {
+        let directory = tempfile::tempdir()?;
+        let memory = memory_in(&directory);
+        assert!(memory.take_plugin_note(&word()));
+        let path = directory.path().join("apps.json");
+        fs::remove_file(&path)?;
+        assert!(!memory.take_plugin_note(&word()));
+        assert!(!path.exists(), "an already noted app writes nothing");
         Ok(())
     }
 
