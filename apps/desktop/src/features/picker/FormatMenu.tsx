@@ -49,8 +49,9 @@ export function FormatMenu({ format, buttonRef, app, source, pick, onOpenChange,
   const value = source === "held" ? pickerText.formatThisPaste(name) : source === "default" || !app ? pickerText.formatDefault(name) : pickerText.formatForApp(name, app);
   const why = source === "held" ? pickerText.formatHeld(name) : source === "default" ? app ? pickerText.formatAppDefault(app) : pickerText.formatNoApp
     : app ? source === "remembered" ? pickerText.formatRemembered(app) : pickerText.formatSuggested(app) : pickerText.formatNoApp;
-  const next = pick === "paste" ? pickerText.pickThisPaste : pick === "default" ? pickerText.pickDefault : source === "remembered" ? pickerText.pickReplaces : pickerText.pickRemembered;
-  return <><span role="status" className="visually-hidden">{`${name}. ${why}`}</span><ToolbarMenu buttonRef={buttonRef} onOpenChange={onOpenChange} buttonShortcut={ariaKeys(keysFor("format"), isMac)} disabled={disabled} label={pickerText.copyAs} value={value} note={`${why} ${next}`} sections={sections} selectedKey={format}
+  const next = source === "held" ? pick === "app" ? pickerText.pickToRemember : pick === "default" ? pickerText.pickToSetDefault : ""
+    : pick === "paste" ? pickerText.pickThisPaste : pick === "default" ? pickerText.pickDefault : source === "remembered" ? pickerText.pickReplaces : pickerText.pickRemembered;
+  return <><span role="status" className="visually-hidden">{`${name}. ${why}`}</span><ToolbarMenu buttonRef={buttonRef} onOpenChange={onOpenChange} buttonShortcut={ariaKeys(keysFor("format"), isMac)} disabled={disabled} label={pickerText.copyAs} value={value} note={`${why} ${next}`.trim()} sections={sections} selectedKey={format}
     filterLabel={pickerText.filterFormats} onKeyCommand={(event) => {
       const command = isMenuShortcut(event) ? "more" : isPinShortcut(event) && !event.repeat ? "pin" : isKeysShortcut(event) ? "keys"
         : isPreviewShortcut(event) && !event.repeat ? "preview" : isQuitShortcut(event) ? "quit"

@@ -50,6 +50,7 @@ export function useDestination({ pickerDestination, rememberAppOutput }: Destina
       lastPolicy.current = undefined;
       preserveOpeningOutput.current = preserveOutput;
       setHeld(preserveOutput ? preparedFormat.current : null);
+      report("appChoice", false);
     }
     setReady(false);
     // A reopening reads after outstanding saves, so it sees the durable choice.
@@ -64,11 +65,13 @@ export function useDestination({ pickerDestination, rememberAppOutput }: Destina
       if (!reset && lastPolicy.current !== undefined && lastPolicy.current !== policy) delivery.current += 1;
       lastPolicy.current = policy;
       setDestination(next);
+      report("appRead", false);
       report("appChoices", next.unreadable);
     }).catch(() => {
       if (request !== reads.current) return;
       setDestination(null);
-      report("appChoices");
+      report("appChoices", false);
+      report("appRead");
     }).finally(() => { if (request === reads.current) setReady(true); });
   }, [pickerDestination, report]);
   const app = rememberAppOutput ? destination?.app ?? null : null;
@@ -117,7 +120,9 @@ export function useDestination({ pickerDestination, rememberAppOutput }: Destina
     lastPolicy.current = undefined;
     // Persisting delivery does not resume the Enter that opened the chooser.
     // Read the native policy back before showing an intended paste in the footer.
-    save(() => rememberAppOutput(id, null, paste, destination?.app_identity ?? null), () => read(false), false);
+    // Answering a first-paste question accepts the format it showed, so it is not asked again.
+    const output = destination?.output_question && !remembered ? outputOf(format) : null;
+    save(() => rememberAppOutput(id, output, paste, destination?.app_identity ?? null), () => read(false), false);
   };
   const copyToken = (): CopyToken => ({ opening: openings.current, choice: choices.current, delivery: delivery.current });
   const isCurrentCopy = (token: CopyToken) => token.opening === openings.current && token.choice === choices.current && token.delivery === delivery.current;

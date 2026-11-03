@@ -63,7 +63,7 @@ test("an unread destination may be a real app, so a pick holds for this paste an
   const rememberAppOutput = vi.fn();
   const { result } = renderHook(() => useDestination({ pickerDestination: async () => { throw new Error("synthetic read failure"); }, rememberAppOutput }, settings));
   await act(async () => result.current.read());
-  expect(settings.report).toHaveBeenCalledWith("appChoices");
+  expect(settings.report).toHaveBeenLastCalledWith("appRead");
   expect(result.current).toMatchObject({ source: "default", pick: "paste" });
   act(() => result.current.choose("typst"));
   expect(result.current).toMatchObject({ format: "typst", source: "held" });
@@ -106,15 +106,32 @@ test.each(["failed I/O", "refused by the native side"])("a pick whose save is %s
   expect(result.current).toMatchObject({ format: "pandoc", source: "default" });
 });
 
-test("a held pick is dropped on reopening, which shows what is durably saved", async () => {
+test("a held pick and its save failure are dropped on reopening, which shows what is durably saved", async () => {
   let destination = browser;
-  const { result } = renderHook(() => useDestination({ pickerDestination: async () => destination, rememberAppOutput: refused() }, options()));
+  const settings = options();
+  const { result } = renderHook(() => useDestination({ pickerDestination: async () => destination, rememberAppOutput: refused() }, settings));
   await act(async () => result.current.read());
   await act(async () => result.current.choose("cite"));
   expect(result.current.source).toBe("held");
   destination = { ...browser, remembered: { key: "typst" } };
   await act(async () => result.current.read());
   expect(result.current).toMatchObject({ format: "typst", source: "remembered" });
+  expect(settings.report).toHaveBeenCalledWith("appChoice", false);
+});
+
+test("a delivery answer to the first-paste question accepts its format, so it is not asked again", async () => {
+  let destination: PickerDestination = { ...browser, can_choose_paste: true };
+  const rememberAppOutput = vi.fn(async (_id: string, output: PickerDestination["remembered"]) => {
+    destination = { ...destination, remembered: output, paste: "copy-only" };
+    return null;
+  });
+  const { result } = renderHook(() => useDestination({ pickerDestination: async () => destination, rememberAppOutput }, options()));
+  await act(async () => result.current.read());
+  expect(result.current.shouldAsk).toBe(true);
+  await act(async () => result.current.choosePaste("copy-only"));
+  await waitFor(() => expect(result.current.ready && !result.current.saving).toBe(true));
+  expect(rememberAppOutput).toHaveBeenCalledExactlyOnceWith("example.browser", { key: "pandoc" }, "copy-only", null);
+  expect(result.current).toMatchObject({ shouldAsk: false, source: "remembered" });
 });
 
 test("a delivery answer keeps a held format and sends no format of its own", async () => {

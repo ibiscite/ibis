@@ -46,7 +46,8 @@ export const operationFailures = {
   updateChecksChange: "Ibis could not change its update setting. Try again.",
   checkForUpdates: "Ibis could not check for updates. Try again.",
   settings: "Settings could not open. Try again.",
-  appChoices: "Ibis could not read the formats it remembers for apps. Choose Paste or Copy only for this app in the format menu.",
+  appChoices: "Ibis needs your paste choice for this app because its saved app choices were damaged. Choose Paste or Copy only in the format menu.",
+  appRead: "Ibis could not tell which app this is for. Your default applies, and a format you pick is for this paste only. Reopen Ibis to try again.",
   appChoice: "Ibis could not save the choice for this app. Try again.",
 } as const;
 
@@ -182,6 +183,8 @@ export const pickerText = {
   pickRemembered: "Your pick is remembered for this app.",
   pickDefault: "Your pick becomes your default.",
   pickThisPaste: "Your pick applies to this paste only.",
+  pickToRemember: "Pick a format to remember it for this app.",
+  pickToSetDefault: "Pick a format to make it your default.",
   forApp: (app: string) => `For ${app}`,
   pasteFromNowOn: (app: string) => `Paste into ${app} from now on`,
   copyOnly: "Copy only",

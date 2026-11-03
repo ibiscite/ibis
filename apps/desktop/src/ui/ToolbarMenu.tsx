@@ -123,7 +123,7 @@ export function ToolbarMenu({ buttonRef, buttonShortcut, disabled, label, value,
       <PopupButton ref={button} aria-keyshortcuts={buttonShortcut} isDisabled={disabled} className="toolbar-menu-button" aria-label={`${label} ${value}`}>{value}</PopupButton>
       <Popover ref={popoverRef} className="menu-popover toolbar-menu-popover ui-overlay" placement={renderedPlacement} offset={4} containerPadding={8} shouldSkipAnimation={skipExit} {...boundary}>
         {note && <p id={noteId} className="toolbar-menu-note">{note}</p>}
-        {filtered ? <Autocomplete key={opening} filter={contains}><SearchField className="toolbar-menu-filter" aria-label={filterLabel} autoFocus><Input placeholder={filterLabel} /></SearchField>{menu}</Autocomplete> : menu}
+        {filtered ? <Autocomplete key={opening} filter={contains}><SearchField className="toolbar-menu-filter" aria-label={filterLabel} autoFocus><Input placeholder={filterLabel} aria-describedby={note ? noteId : undefined} /></SearchField>{menu}</Autocomplete> : menu}
       </Popover>
     </MenuTrigger>
   </span>;

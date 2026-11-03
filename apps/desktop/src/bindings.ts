@@ -619,7 +619,7 @@ export type PickerDestination = {
 	app_id: string | null,
 	/**  Opaque app-location fingerprint; no path crosses IPC. */
 	app_identity: string | null,
-	/**  The app suggestion; `None` follows the saved global default. */
+	/**  The app suggestion; `None` follows the saved default. */
 	automatic: AppOutput | null,
 	/**  The output the person chose to always use for this app. */
 	remembered: AppOutput | null,

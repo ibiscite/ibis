@@ -69,7 +69,7 @@ test.each(["browser", "editor"] as const)("the first %s paste asks, remembers th
   expect(screen.queryByRole("menu")).toBeNull();
 });
 
-test.each(["Escape", "Tab"])("%s uses the global default for this paste and asks again next time", async (key) => {
+test.each(["Escape", "Tab"])("%s uses the default for this paste and asks again next time", async (key) => {
   const { copies, remembered } = opened(() => BROWSER);
   await screen.findByText("First");
   fireEvent.click(screen.getByRole("button", { name: "Keep Window Open" }));
@@ -280,7 +280,7 @@ test("a pick that cannot be saved says it is for this paste, then the saved form
   await waitFor(() => expect(formatShown()).toBe("Typst key · This paste"));
   expect((await screen.findByText(/could not save the choice for this app/)).getAttribute("role")).toBe("alert");
   openFormats();
-  expect(screen.getByText("Typst key applies to this paste only. Your pick is remembered for this app.")).toBeTruthy();
+  expect(screen.getByText("Typst key applies to this paste only. Pick a format to remember it for this app.")).toBeTruthy();
   fireEvent.keyDown(await screen.findByRole("searchbox"), { key: "Escape" });
   await waitFor(() => expect(previews.at(-1)).toMatchObject({ style: null, format: "typst" }));
   await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
@@ -343,13 +343,27 @@ test("the menu says why the next paste uses its format and where a pick goes", a
 test("an unreadable per-app file says defaults apply and offers the app's own paste answer", async () => {
   const { calls } = opened(() => ({ ...WORD, unreadable: true, can_choose_paste: true }));
   await screen.findByText("First");
-  expect((await screen.findByText(/could not read the formats it remembers for apps/)).textContent).toContain("Choose Paste or Copy only for this app");
+  expect((await screen.findByText(/saved app choices were damaged/)).textContent).toContain("Choose Paste or Copy only in the format menu");
   await waitFor(() => expect(formatButton().hasAttribute("disabled")).toBe(false));
   openFormats();
   expect(await screen.findByRole("menuitem", { name: "Copy only" })).toBeTruthy();
   expect(screen.getByRole("menuitem", { name: "Paste into Example Word from now on" })).toBeTruthy();
   fireEvent.keyDown(await screen.findByRole("searchbox"), { key: "Escape" });
   expect(calls).not.toContain("remember_app_output");
+});
+
+test("an unread destination says what applies and never points at paste choices it cannot offer", async () => {
+  const saved: unknown[] = [];
+  const { remembered } = opened(() => { throw new Error("synthetic read failure"); }, { set_picker_preferences: ({ copyFormat }) => { saved.push(copyFormat); return null; } });
+  await screen.findByText("First");
+  expect((await screen.findByText(/could not tell which app this is for/)).textContent).toContain("Reopen Ibis to try again");
+  expect(screen.queryByText(/Choose Paste or Copy only/)).toBeNull();
+  await pick("Typst key");
+  await waitFor(() => expect(formatShown()).toBe("Typst key · This paste"));
+  openFormats();
+  expect(screen.getByText("Typst key applies to this paste only.")).toBeTruthy();
+  expect(saved).toEqual([]);
+  expect(remembered).toEqual([]);
 });
 
 test("without a destination app format picks change the default, as both README claims explain", async () => {

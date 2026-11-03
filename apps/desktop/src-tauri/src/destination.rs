@@ -45,7 +45,7 @@ pub(crate) struct PickerDestination {
     pub(crate) app_id: Option<String>,
     /// Opaque app-location fingerprint; no path crosses IPC.
     pub(crate) app_identity: Option<String>,
-    /// The app suggestion; `None` follows the saved global default.
+    /// The app suggestion; `None` follows the saved default.
     pub(crate) automatic: Option<AppOutput>,
     /// The output the person chose to always use for this app.
     pub(crate) remembered: Option<AppOutput>,

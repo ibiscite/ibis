@@ -670,8 +670,9 @@ window title, document text or citation. Browser and editor IDs cannot identify
 a project's syntax, so the first paste in each browser or code editor opens
 the output chooser once and remembers the pick (maintainer, 2026-10-28).
 Remembered choices beat app-table suggestions, then the
-default; a format save and a delivery save each leave the other alone, and a
-new default never erases app choices.
+default; a format save and a delivery save each leave the other alone, except that
+answering Paste or Copy only in a first-paste question accepts the format it
+showed. A new default never erases app choices.
 
 2026-10-31 (#1486): Recent citations keep only opaque reference identities and
 known originating app IDs in the channel's WebView storage, bounded to 20 apps,
