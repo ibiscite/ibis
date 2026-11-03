@@ -31,7 +31,8 @@ export function cite(format, ...options) {
   return result.stdout.trim();
 }
 
-const text = (xml) => xml.replace(/<[^>]+>/g, "").replaceAll("&amp;", "&").replaceAll(" ", " ");
+// Words only, for the checks below; nothing here is shown as HTML.
+const text = (xml) => xml.replace(/<[^>]*>/g, "").replace(/[<>]/g, "").replaceAll("&amp;", "&").replaceAll("\u00a0", " ");
 
 function context(work) {
   const citation = cite("context", "--locator", "p. 12", "--prefix", "see & so", "--suffix", "50%, a {b}");
