@@ -592,7 +592,11 @@ mod tests {
     #[test]
     fn a_failed_save_shows_no_note_so_it_cannot_repeat() -> io::Result<()> {
         let directory = tempfile::tempdir()?;
-        let memory = AppMemory::open(directory.path().join("missing").join("apps.json"));
+        let memory = memory_in(&directory);
+        // A directory in the file's place: nothing can be saved over it.
+        let blocked = directory.path().join("apps.json");
+        fs::create_dir(&blocked)?;
+        fs::write(blocked.join("kept"), "")?;
         assert!(!memory.take_plugin_note(&word()));
         Ok(())
     }
@@ -604,7 +608,7 @@ mod tests {
         let saved: serde_json::Value = serde_json::from_slice(&fs::read(directory.path().join("apps.json"))?)?;
         assert_eq!(
             saved["apps"][0],
-            serde_json::json!({ "app": { "system": "macos", "id": "com.microsoft.word" }, "noted": true })
+            serde_json::json!({ "app": { "system": "macos", "id": "com.microsoft.word" }, "output": null, "noted": true })
         );
         Ok(())
     }

@@ -704,8 +704,8 @@ mod tests {
     #[test]
     fn all_platforms_use_the_shared_pill_frame_and_top_centre_placement() {
         for platform in [Platform::MacOs, Platform::Windows, Platform::Linux] {
-            assert_eq!(notice_size(platform), (560.0, 100.0));
-            let (x, y) = notice_position(platform, LEFT, 560.0, 100.0);
+            assert_eq!(notice_size(platform), (560.0, 140.0));
+            let (x, y) = notice_position(platform, LEFT, 560.0, 140.0);
             assert_eq!(x + 280.0, LEFT.x + LEFT.width / 2.0);
             assert_eq!(y, LEFT.y + 24.0);
         }
