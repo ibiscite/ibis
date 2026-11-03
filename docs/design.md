@@ -260,7 +260,7 @@ Built in `ibis-core` so every front end shares them (#1204).
 | Problem, old copy kept | "Zotero not updated · 2 h", then one fix button ("Open Zotero", "Find thesis.bib…") |
 
 - Counts include bibliographic records only. Background work shows a small progress ring before the words.
-- The status opens the **library menu**: the library with count and age; with several Zotero profiles, a **Zotero Profile** heading with one checked row each; with several Zotero libraries, a **Search in** heading, All Libraries, then one checked row per library; a library that could not load stays dimmed with "Couldn't load"; Choose Library… ⇧⌘O; Reload Library.
+- The status opens the **library menu**: the library with count and age; with several Zotero profiles and Zotero not running, a **Zotero Profile** heading with one checked row each; with several Zotero libraries, a **Search in** heading, All Libraries, then one checked row per library; a library that could not load stays dimmed with "Couldn't load"; Choose Library… ⇧⌘O; Reload Library.
 - **Open the source** (⌘O): the words always name the target. **Show in Zotero** selects the reference in Zotero (starting it if closed); **Open thesis.bib** opens the file; **Open Zotero** only when Zotero is the source and not running. ⌥ turns "Open thesis.bib" into "Show in Finder". If the source cannot open, offer Choose Library… or Find….
 
 ### Keys
@@ -340,11 +340,11 @@ Never call the destination a password field. The right paste key is shown per sy
 | `missing` | Can't find thesis.bib | Find thesis.bib, Use another library |
 | `unreadable`, `other` | Can't read thesis.bib / Can't open thesis.bib | Try again, Use another library |
 | `zotero_closed` | Ibis needs Zotero open | Open Zotero, Use another library |
-| `zotero_missing` | Zotero's library isn't on this computer | Use another library, Try again |
+| `zotero_missing` | Ibis can't find Zotero's library | Use another library, Try again |
 | `zotero_access_off` | Zotero isn't sharing your library | Open Zotero, Use another library |
 | `zotero_profiles` | Which Zotero profile? | One row per profile, Open Zotero, Use another library |
 
-- Setup finishes itself: Ibis never asks "What do you write in?"; with Zotero closed Ibis reads the library anyway. A screen waiting on Zotero says where the fix is and asks Zotero every two seconds while it is shown, never while the picker is hidden, so it carries on by itself as soon as Zotero answers. With several profiles the closed path asks once, by the profile's name, and a read that succeeds remembers the answer; a saved profile that is gone or unreadable asks again and never reads another. With references on screen the choice stays out of the way: the footer offers **Choose Zotero Profile…**, and the library menu lists the profiles whenever there are several, so a mistaken choice can be changed.
+- Setup finishes itself: Ibis never asks "What do you write in?"; with Zotero closed Ibis reads the library anyway. A screen waiting on Zotero says where the fix is and asks Zotero every two seconds while it is shown, never while the picker is hidden, so it carries on by itself as soon as Zotero answers. With several profiles the closed path asks once, by the profile's name, and only a closed read that used it remembers the answer; a saved profile that is gone or unreadable asks again and never reads another. With references on screen the choice stays out of the way: the footer offers **Choose Zotero Profile…**, and the library menu lists the profiles whenever there are several and Zotero is not running, so a mistaken choice can be changed. A running Zotero answers for the profile it opened, so it offers no choice.
 - **Try sample references** loads three invented references (lantern gardens, clockwork clouds, the invented sea) for this run only, marked by the footer status "Sample references"; every desktop sample citation ends with ` [Sample]`. The website demo and help screenshots use the same set without the suffix. The practice task is identical on every surface: Search for “lantern”, choose the lantern gardens reference, then press Enter.
 
 ## Settings

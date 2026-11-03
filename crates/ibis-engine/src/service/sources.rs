@@ -31,6 +31,9 @@ impl Owners {
             ..Self::default()
         }
     }
+    pub(super) fn read_closed(&self) -> bool {
+        self.closed_groups.lock().is_ok_and(|groups| groups.is_some())
+    }
 }
 #[derive(Default)]
 pub(super) struct Registry {

@@ -90,7 +90,7 @@ test("no Zotero here says so and offers the way on, never Open Zotero", () => {
   const openSource = vi.fn();
   render(<EmptyState library={waiting("zotero_missing")} query="" narrowed={false} onChooseLibrary={vi.fn()} onClearSearch={vi.fn()} onSearchAll={vi.fn()}
     onReload={vi.fn()} setup={setup} />);
-  expect(screen.getByText("Zotero's library isn't on this computer")).toBeTruthy();
+  expect(screen.getByText("Ibis can't find Zotero's library")).toBeTruthy();
   expect(screen.getByRole("option", { name: /Use another library/ }).getAttribute("data-suggested")).toBe("true");
   expect(screen.getByRole("option", { name: /Try again/ })).toBeTruthy();
   expect(screen.queryByRole("option", { name: /Open Zotero/ })).toBeNull();
@@ -99,7 +99,7 @@ test("no Zotero here says so and offers the way on, never Open Zotero", () => {
 
 test("several profiles are offered by name and a choice names only that", async () => {
   const chooseProfile = vi.fn();
-  recovery(waiting("zotero_profiles"), { listProfiles: async () => ({ names: ["Home", "Work"], chosen: null }), chooseProfile });
+  recovery(waiting("zotero_profiles"), { listProfiles: async () => ({ names: ["Home", "Work"], chosen: null, running: false }), chooseProfile });
   expect(screen.getByText("Which Zotero profile?")).toBeTruthy();
   fireEvent.click(await screen.findByRole("option", { name: /Work/ }));
   expect(chooseProfile).toHaveBeenCalledExactlyOnceWith("Work");
@@ -118,7 +118,7 @@ test("a list that answers after the screen left changes nothing", async () => {
   let answer: (found: ZoteroProfiles) => void = () => {};
   const { unmount } = recovery(waiting("zotero_profiles"), { listProfiles: () => new Promise((resolve) => { answer = resolve; }) });
   unmount();
-  await act(async () => { answer({ names: ["Home"], chosen: null }); await Promise.resolve(); });
+  await act(async () => { answer({ names: ["Home"], chosen: null, running: false }); await Promise.resolve(); });
   expect(screen.queryByRole("option", { name: /Home/ })).toBeNull();
 });
 

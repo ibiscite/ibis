@@ -251,6 +251,11 @@ impl FileLibrary {
         Ok(bridge)
     }
 
+    /// Whether this library's references came from Zotero's closed database.
+    pub(super) fn read_zotero_closed(&self) -> bool {
+        self.engine.zotero_read_closed()
+    }
+
     /// The group libraries this engine knows, Zotero running or not.
     pub(super) fn zotero_groups(&self) -> Result<Vec<ibis_engine::ZoteroGroup>, ibis_core::contract::EngineError> {
         zotero_groups(&self.engine)

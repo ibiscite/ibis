@@ -125,8 +125,8 @@ export const setupText = {
   findFileHelp: "Choose where it is now",
   unreadableTitle: (name: string) => `Can't read ${name}`,
   zoteroClosedTitle: "Ibis needs Zotero open",
-  zoteroMissingTitle: "Zotero's library isn't on this computer",
-  zoteroMissingLine: "Install Zotero and open it once and Ibis will carry on by itself, or use another library.",
+  zoteroMissingTitle: "Ibis can't find Zotero's library",
+  zoteroMissingLine: "If Zotero isn't installed, install it and open it once. Ibis will carry on by itself.",
   zoteroClosedLine: "Open Zotero and Ibis will carry on by itself.",
   zoteroAccessOffTitle: "Zotero isn't sharing your library",
   zoteroAccessOffWaiting: "Ibis will carry on by itself once it's on.",
@@ -339,7 +339,7 @@ export const libraryMessages = {
     if (zotero) {
       // Each fix is named once: sharing is a setting, and a profile is chosen here.
       const fix = problem === "zotero_access_off" ? ` ${setupText.zoteroAccessOff}`
-        : problem === "zotero_profiles" || problem === "zotero_missing" ? "" : " Open Zotero, then reload.";
+        : problem === "zotero_closed" || problem === null ? " Open Zotero, then reload." : "";
       return `${isolate(name ?? "Zotero")} could not be read. ${sentence}${fix}`;
     }
     return `The library could not be opened: ${isolate(name ?? "the chosen file")}. ${sentence} Choose it again or reconnect the drive.`;

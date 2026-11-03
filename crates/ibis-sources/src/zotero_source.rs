@@ -61,12 +61,15 @@ impl ZoteroError {
         match self {
             Self::Live(LiveError::NotAllowed) => Some(ErrorReason::ZoteroSharingOff),
             Self::ProfileNeeded => Some(ErrorReason::ZoteroProfileNeeded),
-            Self::Location | Self::Closed(closed::ClosedError::NotFound) => Some(ErrorReason::ZoteroNotFound),
+            Self::Closed(closed::ClosedError::NotFound) => Some(ErrorReason::ZoteroNotFound),
             Self::Closed(closed::ClosedError::NoSpace) => Some(ErrorReason::ZoteroNoSpace),
-            Self::Closed(
+            Self::Location
+            | Self::Closed(
                 closed::ClosedError::Running
                 | closed::ClosedError::ProcessCheck
                 | closed::ClosedError::UnsafeSource
+                | closed::ClosedError::Unreadable
+                | closed::ClosedError::PrivateStorage
                 | closed::ClosedError::Damaged
                 | closed::ClosedError::TooOld
                 | closed::ClosedError::NeedsRecovery,
@@ -747,6 +750,8 @@ mod tests {
             closed::ClosedError::Running,
             closed::ClosedError::ProcessCheck,
             closed::ClosedError::UnsafeSource,
+            closed::ClosedError::Unreadable,
+            closed::ClosedError::PrivateStorage,
             closed::ClosedError::Damaged,
             closed::ClosedError::TooOld,
             closed::ClosedError::NeedsRecovery,
@@ -756,12 +761,11 @@ mod tests {
                 Some(ErrorReason::ZoteroNeedsOpening)
             );
         }
-        for not_here in [
-            ZoteroError::Location,
-            ZoteroError::Closed(closed::ClosedError::NotFound),
-        ] {
-            assert_eq!(not_here.reason(), Some(ErrorReason::ZoteroNotFound));
-        }
+        assert_eq!(ZoteroError::Location.reason(), Some(ErrorReason::ZoteroNeedsOpening));
+        assert_eq!(
+            ZoteroError::Closed(closed::ClosedError::NotFound).reason(),
+            Some(ErrorReason::ZoteroNotFound)
+        );
         assert_eq!(
             ZoteroError::Closed(closed::ClosedError::NoSpace).reason(),
             Some(ErrorReason::ZoteroNoSpace)

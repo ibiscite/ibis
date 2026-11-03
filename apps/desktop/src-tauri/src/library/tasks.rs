@@ -381,7 +381,7 @@ pub(crate) fn start_open(app: &AppHandle, source: Source, remember: bool) {
 }
 
 /// Read Zotero with this profile from now on. The request is numbered here, so
-/// a newer choice replaces it, and an unknown name fails its read unsaved.
+/// a newer choice replaces it; it is saved only by a closed read that used it.
 pub(crate) fn use_zotero_profile(app: &AppHandle, name: String) {
     let source = Source::Zotero(current_zotero_choice(app));
     if let Some((request, reload, _)) = begin_open(&app.state(), &app.state(), source.clone()) {
@@ -517,6 +517,15 @@ fn open_one(app: AppHandle, open: OpenRequest) -> impl std::future::Future<Outpu
         }
         if installed.is_some() {
             let mut show_note = false;
+            // A running Zotero answers for whichever profile it opened, so only
+            // a closed read proves the name. Nothing else may save it.
+            let profile = profile.filter(|_| {
+                app.state::<Mutex<Library>>()
+                    .lock()
+                    .ok()
+                    .and_then(|library| library.file.clone())
+                    .is_some_and(|file| file.read_zotero_closed())
+            });
             if let Some(chosen) = chosen.filter(|chosen| intent.saves_choice(&refresh_source, chosen)) {
                 // Saving and the note belong to this request, never a newer choice.
                 let accepted = update_notices(

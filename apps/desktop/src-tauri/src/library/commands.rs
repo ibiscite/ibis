@@ -93,6 +93,9 @@ pub(crate) async fn zotero_groups(library: State<'_, Mutex<Library>>) -> Result<
 pub(crate) struct ZoteroProfiles {
     pub(crate) names: Vec<String>,
     pub(crate) chosen: Option<String>,
+    /// Zotero is running, so it answers for the profile it opened and a choice
+    /// here would change nothing on screen.
+    pub(crate) running: bool,
 }
 
 /// The profiles to choose from for reading while Zotero is closed. Their
@@ -102,7 +105,8 @@ pub(crate) struct ZoteroProfiles {
 pub(crate) async fn zotero_profiles(app: AppHandle) -> Result<ZoteroProfiles, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let chosen = app.state::<crate::preferences::SettingsFile>().zotero_profile();
-        super::engine_file::zotero_profiles().map(|names| ZoteroProfiles { names, chosen })
+        let running = zotero_presence(&mut LocalZotero::default()) != ZoteroPresence::Absent;
+        super::engine_file::zotero_profiles().map(|names| ZoteroProfiles { names, chosen, running })
     })
     .await
     .map_err(|_| "listing Zotero profiles stopped unexpectedly".to_string())?
@@ -110,7 +114,7 @@ pub(crate) async fn zotero_profiles(app: AppHandle) -> Result<ZoteroProfiles, St
 }
 
 /// Read this Zotero profile from now on; the result arrives as
-/// `library:changed`, and only a read that succeeds saves the choice.
+/// `library:changed`, and only a closed read that used it saves the choice.
 #[tauri::command]
 #[specta::specta]
 pub(crate) fn use_zotero_profile(app: AppHandle, name: String) {

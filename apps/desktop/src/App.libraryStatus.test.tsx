@@ -318,30 +318,54 @@ test("kept references stay on screen while a profile is chosen from the library 
   const chosen = vi.fn(() => null);
   backend({
     library_status: () => stale({ problem: "zotero_profiles", error: "choose which Zotero profile to read; keeping the last loaded references" }),
-    zotero_profiles: () => ({ names: ["Home", "Work"], chosen: "Home" }), use_zotero_profile: chosen,
+    zotero_profiles: () => ({ names: ["Home", "Work"], chosen: "Home", running: false }), use_zotero_profile: chosen,
   });
   render(<App />);
   fireEvent.click(await within(footer()).findByRole("button", { name: "Choose Zotero Profile…" }));
   const menu = await screen.findByRole("menu", { name: "Library" });
-  expect(within(menu).getByRole("menuitemcheckbox", { name: "Home" }).getAttribute("aria-checked")).toBe("true");
-  fireEvent.click(within(menu).getByRole("menuitemcheckbox", { name: "Work" }));
+  expect(within(menu).getByRole("menuitemradio", { name: "Home" }).getAttribute("aria-checked")).toBe("true");
+  fireEvent.click(within(menu).getByRole("menuitemradio", { name: "Work" }));
   await waitFor(() => expect(chosen).toHaveBeenCalledOnce());
   expect(chosen.mock.calls[0]).toEqual([{ name: "Work" }]);
   expect(screen.queryByText("Which Zotero profile?")).toBeNull();
 });
 
-test("one profile offers no choice, and a list that cannot be read is said in the menu", async () => {
-  backend({ library_status: () => library(), zotero_profiles: () => ({ names: ["Home"], chosen: null }) });
-  const first = render(<App />);
-  fireEvent.click(await within(footer()).findByRole("button", { name: "Library" }));
-  const menu = await screen.findByRole("menu", { name: "Library" });
-  await waitFor(() => expect(within(menu).queryByText("Zotero Profile")).toBeNull());
-  first.unmount();
-  backend({ library_status: () => library(), zotero_profiles: () => { throw new Error("synthetic"); } });
+test.each([
+  ["one profile", { names: ["Home"], chosen: null, running: false }],
+  ["a running Zotero", { names: ["Home", "Work"], chosen: "Home", running: true }],
+])("%s offers no profile choice", async (_, profiles) => {
+  backend({ library_status: () => library(), zotero_profiles: () => profiles });
   render(<App />);
   fireEvent.click(await within(footer()).findByRole("button", { name: "Library" }));
-  expect(await screen.findByText(/could not list your Zotero profiles/)).toBeTruthy();
-  expect(document.querySelector(".status-dot")?.getAttribute("data-health")).toBe("look");
+  const menu = await screen.findByRole("menu", { name: "Library" });
+  await act(async () => { await Promise.resolve(); });
+  expect(within(menu).queryByRole("menuitemradio", { name: "Work" })).toBeNull();
+  expect(within(menu).queryByRole("menuitemradio", { name: "Home" })).toBeNull();
+});
+
+test("a list that cannot be read leaves a healthy library alone and is said when it was asked for", async () => {
+  backend({ library_status: () => library(), zotero_groups: () => [], zotero_profiles: () => { throw new Error("synthetic"); } });
+  const healthy = render(<App />);
+  fireEvent.click(await within(footer()).findByRole("button", { name: "Library" }));
+  await screen.findByRole("menu", { name: "Library" });
+  await act(async () => { await Promise.resolve(); });
+  expect(screen.queryByText(/could not list your Zotero profiles/)).toBeNull();
+  expect(document.querySelector(".status-dot")?.getAttribute("data-health")).toBe("done");
+  healthy.unmount();
+  backend({ library_status: () => stale({ problem: "zotero_profiles", error: "choose which Zotero profile to read" }), zotero_profiles: () => { throw new Error("synthetic"); } });
+  render(<App />);
+  fireEvent.click(await within(footer()).findByRole("button", { name: "Choose Zotero Profile…" }));
+  expect(await screen.findAllByText(/could not list your Zotero profiles/)).toBeTruthy();
+});
+
+test("one profile left is still a way forward when a choice was asked for", async () => {
+  const chosen = vi.fn(() => null);
+  backend({ library_status: () => stale({ problem: "zotero_profiles", error: "choose which Zotero profile to read" }),
+    zotero_profiles: () => ({ names: ["Home"], chosen: "Gone", running: false }), use_zotero_profile: chosen });
+  render(<App />);
+  fireEvent.click(await within(footer()).findByRole("button", { name: "Choose Zotero Profile…" }));
+  fireEvent.click(await screen.findByRole("menuitemradio", { name: "Home" }));
+  await waitFor(() => expect(chosen).toHaveBeenCalledOnce());
 });
 
 test("Zotero recovering by itself clears the failure that came before it", async () => {

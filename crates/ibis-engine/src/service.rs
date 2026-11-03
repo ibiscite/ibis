@@ -310,6 +310,11 @@ impl Engine {
         }
         result.bounded()
     }
+    /// Whether Zotero's references here came from its closed database, the
+    /// only read a profile choice affects.
+    pub fn zotero_read_closed(&self) -> bool {
+        self.resources.read_closed()
+    }
     pub fn libraries(&self) -> Result<LibrariesResult, EngineError> {
         Ok(LibrariesResult {
             libraries: self.state()?.libraries.values().cloned().collect(),

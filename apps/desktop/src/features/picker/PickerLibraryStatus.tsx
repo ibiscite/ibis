@@ -38,15 +38,19 @@ export function PickerLibraryStatus({ library, groupName, isOpen, onOpenChange, 
   const wantProfiles = isOpen && Boolean(library?.zotero) ? listProfiles : undefined;
   useEffect(() => {
     setProfilesFailed(false);
+    setProfiles(null);
     if (!wantProfiles) return;
     let current = true;
     void wantProfiles().then((found) => { if (current) setProfiles(found); }, () => { if (current) setProfilesFailed(true); });
     return () => { current = false; };
   }, [wantProfiles]);
-  const profileRows = wantProfiles && chooseProfile && profiles && profiles.names.length > 1 ? profiles : null;
+  const asked = library?.zotero && library.problem === "zotero_profiles";
+  // A running Zotero answers for the profile it opened, so no choice is offered.
+  const profileRows = wantProfiles && chooseProfile && profiles && !profiles.running && profiles.names.length > (asked ? 0 : 1) ? profiles : null;
   const detail = libraryMessages.detail(library, Date.now(), (status) => zoteroLibraryNames(status, groupName));
-  const condition = libraryCondition(library, { groupsFailed, profilesFailed, failure });
-  const openProfiles: SourceActionProps | null = library?.zotero && library.problem === "zotero_profiles" && library.has_snapshot
+  // An optional list that fails says nothing about a healthy library.
+  const condition = libraryCondition(library, { groupsFailed, profilesFailed: profilesFailed && Boolean(asked), failure });
+  const openProfiles: SourceActionProps | null = asked && library.has_snapshot
     ? { ...sourceAction, icon: statusIcon, file: false, label: pickerText.chooseZoteroProfile, keys: undefined, open: () => onOpenChange(true) } : null;
   // The engine's problem code chooses the action. A closed Zotero with a
   // usable fresh snapshot has no problem and offers no interruption.
@@ -64,7 +68,7 @@ export function PickerLibraryStatus({ library, groupName, isOpen, onOpenChange, 
     action={!hideAction && fix && fix.label !== rowAction && <SourceAction {...fix} />}
     menu={{ label: pickerText.libraryRegion, id: "library-menu",
       isOpen, onOpenChange, tabFocusRef: searchRef, placement: "top end", children: <>
-        <MenuSection id="library-detail" label={detail.filter(Boolean).join(". ")} header={<LibraryDetail lines={detail} problem={condition.problem ?? undefined} />}>
+        <MenuSection id="library-detail" label={[...detail, condition.problem].filter(Boolean).join(". ")} header={<LibraryDetail lines={detail} problem={condition.problem ?? undefined} />}>
           {/* A reload can publish a recovery screen before an animated exit
               ends. Retire the modal and its same-named menu before that I/O. */}
           {library?.name && <MenuItem id="reload" label={pickerText.reloadLibrary} closeOnSelect onAction={actions.reload} />}
@@ -72,7 +76,7 @@ export function PickerLibraryStatus({ library, groupName, isOpen, onOpenChange, 
           {!library?.zotero && <MenuItem id="zotero" label={pickerText.useZotero} onAction={actions.useZotero} />}
         </MenuSection>
         {profileRows && <MenuSeparator />}
-        {profileRows && <MenuSection id="zotero-profile" label={pickerText.zoteroProfile} header={pickerText.zoteroProfile} layout="list">
+        {profileRows && <MenuSection id="zotero-profile" label={pickerText.zoteroProfile} header={pickerText.zoteroProfile} layout="list" selectionMode="single">
           {profileRows.names.map((name, index) => <MenuItem key={name} id={`profile-${index}`} label={shortenedLabel(name, 36)} title={name}
             checked={name === profileRows.chosen} closeOnSelect onAction={() => chooseProfile?.(name)} />)}
         </MenuSection>}

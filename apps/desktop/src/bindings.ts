@@ -52,7 +52,7 @@ export const commands = {
 	zoteroProfiles: () => __TAURI_INVOKE<ZoteroProfiles>("zotero_profiles"),
 	/**
 	 *  Read this Zotero profile from now on; the result arrives as
-	 *  `library:changed`, and only a read that succeeds saves the choice.
+	 *  `library:changed`, and only a closed read that used it saves the choice.
 	 */
 	useZoteroProfile: (name: string) => __TAURI_INVOKE<void>("use_zotero_profile", { name }),
 	/**
@@ -1028,4 +1028,9 @@ export type ZoteroPresence = "available" | "access_off" |
 export type ZoteroProfiles = {
 	names: string[],
 	chosen: string | null,
+	/**
+	 *  Zotero is running, so it answers for the profile it opened and a choice
+	 *  here would change nothing on screen.
+	 */
+	running: boolean,
 };
