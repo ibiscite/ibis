@@ -478,14 +478,3 @@ fn a_bare_less_than_sign_keeps_the_whole_title() -> Result<(), Box<dyn std::erro
     Ok(())
 }
 
-#[test]
-fn a_bare_less_than_sign_keeps_the_whole_title() -> Result<(), Box<dyn std::error::Error>> {
-    let path = library_file(
-        "less-than.json",
-        r#"[{"id":"lee2021","type":"article-journal","title":"Effect of p<0.05 on tidal rats"}]"#,
-    )?;
-    let (code, text, _) = run_file(&path, &["search", "tidal"])?;
-    assert_eq!(code, 0);
-    assert!(text.contains("Effect of p<0.05 on tidal rats"), "{text}");
-    Ok(())
-}
