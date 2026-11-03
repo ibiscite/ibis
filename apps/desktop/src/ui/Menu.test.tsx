@@ -171,8 +171,8 @@ function holdExit(menu: HTMLElement) {
   let finishExit!: () => void;
   const finished = new Promise<void>((resolve) => { finishExit = resolve; });
   const popover = menu.closest(".menu-popover")!;
-  // JSDOM has no CSS animation lifecycle: keep the real popover mounted until
-  // its exit finishes, as the browser does for menu-exit in Menu.css.
+  // JSDOM has no CSS animation lifecycle: hold the real popover mounted, as
+  // React Aria does while any exit animation runs.
   Object.defineProperty(popover, "getAnimations", { value: () => popover.hasAttribute("data-exiting")
     ? [{ playState: "running", finished }] : [] });
   return { popover, finish: async () => {

@@ -47,8 +47,6 @@ Some Linux desktops, including GNOME without a tray extension, show no tray icon
 2. Search by author, title, year, journal, citation key or keywords. You can combine words from different fields. Use the arrow keys to pick a reference.
 3. Press **Enter** to paste into your document on macOS. If permission is needed, follow the guide in **Settings > General > Pasting**. On Windows and Linux, or when pasting is unavailable, Ibis copies the citation; paste it into your document yourself. **Shift+Enter** adds several references to one citation. Press **Ctrl+/** (**⌘/** on macOS) to see every key.
 
-Hide or show the citation output with **Show what will be pasted** in **More**, or **Ctrl+I** (**⌘I** on macOS). Ibis remembers this choice; the references you added stay selected.
-
 **Nightly only, until the next release:** add a locator at the end of a search,
 such as `memory p 12–14`, `memory ch. 3` or `memory S. 12`. Ibis shows how it interpreted the locator; **Search as typed**
 searches the complete text instead. Each reference you add keeps its own locator

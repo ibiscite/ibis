@@ -118,18 +118,9 @@ pub enum CitationStyle {
 #[serde(rename_all = "lowercase")]
 pub enum Density {
     Compact,
+    // A removed choice reads as the default, so it cannot invalidate the whole file.
+    #[serde(alias = "spacious")]
     Comfortable,
-    Spacious,
-}
-
-/// What leads the search field: the Ibis mark, a magnifier or nothing.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
-#[serde(rename_all = "lowercase")]
-pub enum SearchIcon {
-    Ibis,
-    Magnifier,
-    None,
 }
 
 /// Picker content size and position relative to a display's work area, in
@@ -191,12 +182,6 @@ pub struct Settings {
     /// Frames explicitly dragged by the person, indexed by display.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub picker_windows: BTreeMap<String, PickerWindow>,
-    /// Whether to show the citation output. `None` means shown (ADR 0020).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub show_paste_preview: Option<bool>,
-    /// The Ibis mark in place of the search glyph. `None` means the magnifier.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub search_icon: Option<SearchIcon>,
     /// Whether Enter pastes into the app the picker was opened from. `None`
     /// means on; `false` only copies.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -227,8 +212,6 @@ impl Default for Settings {
             density: None,
             larger_text: None,
             picker_windows: BTreeMap::new(),
-            show_paste_preview: None,
-            search_icon: None,
             paste: None,
             menu_bar: None,
             recent_citations: None,
@@ -945,34 +928,38 @@ mod tests {
 
     #[test]
     fn picker_preferences_round_trip_and_stay_optional() {
-        for text in ["{}", r#"{"show_paste_preview":null}"#] {
-            assert_eq!(parse(text).map(|settings| settings.show_paste_preview).ok(), Some(None));
+        for text in ["{}", r#"{"larger_text":null}"#] {
+            assert_eq!(parse(text).map(|settings| settings.larger_text).ok(), Some(None));
         }
         let saved = serde_json::to_string(&Settings::default()).unwrap_or_default();
         for field in [
             "citation_style",
             "density",
             "larger_text",
-            "show_paste_preview",
-            "search_icon",
             "paste",
         ] {
             assert!(!saved.contains(field), "{field} is written only once chosen");
         }
         let settings = parse(
-            r#"{"schema_version": 2, "citation_style": "chicago-author-date", "density": "compact", "larger_text": true, "show_paste_preview": false, "search_icon": "magnifier", "paste": false}"#,
+            r#"{"schema_version": 2, "citation_style": "chicago-author-date", "density": "compact", "larger_text": true, "paste": false}"#,
         )
         .unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(settings.paste, Some(false));
-        assert_eq!(settings.search_icon, Some(SearchIcon::Magnifier));
         assert_eq!(settings.citation_style, Some(CitationStyle::ChicagoAuthorDate));
         assert_eq!(settings.density, Some(Density::Compact));
         assert_eq!(settings.larger_text, Some(true));
-        assert_eq!(settings.show_paste_preview, Some(false));
         let directory = dir("preferences");
         let path = directory.path().join("settings.json");
         save(&path, &settings).unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(load(&path).settings, settings);
+    }
+
+    #[test]
+    fn a_removed_choice_keeps_the_file_loadable_and_the_rest_of_its_settings() {
+        let settings = parse(r#"{"density": "spacious", "shortcut": "Alt+J", "search_icon": "none"}"#)
+            .unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(settings.density, Some(Density::Comfortable));
+        assert_eq!(settings.shortcut.as_deref(), Some("Alt+J"));
     }
 
     #[test]
@@ -981,8 +968,6 @@ mod tests {
             r#"{"citation_style": "vancouver"}"#,
             r#"{"density": "tiny"}"#,
             r#"{"larger_text": "yes"}"#,
-            r#"{"show_paste_preview": "yes"}"#,
-            r#"{"show_paste_preview": 0}"#,
         ] {
             assert!(matches!(parse(text), Err(SettingsError::Invalid(_))), "{text}");
         }

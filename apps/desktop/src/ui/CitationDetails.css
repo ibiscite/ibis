@@ -19,7 +19,7 @@
 .citation-page { padding-inline-start: var(--menu-label-start); }
 .citation-page label { flex: none; }
 .citation-page input { flex: 1; min-width: 0; border: 0; padding: 0; background: transparent; color: var(--text); font: inherit; font-variant-numeric: tabular-nums; text-align: end; }
-.citation-page input::placeholder { color: var(--text-secondary); opacity: 1; }
+.citation-page input::placeholder { color: var(--text-placeholder); opacity: 1; }
 .citation-page:focus-within { background: var(--surface-field); }
 .citation-page input:focus-visible { outline: none; }
 @media (pointer: coarse) {

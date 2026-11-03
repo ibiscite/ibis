@@ -10,7 +10,6 @@ import { ChoiceList } from "../src/ui/ChoiceList";
 import { IbisMark } from "../src/ui/IbisMark";
 import { KeyCaps, KeyHint } from "../src/ui/KeyCaps";
 import { NoticeDock, QuietNotice } from "../src/ui/NoticeDock";
-import { PictureChoice } from "../src/ui/PictureChoice";
 import { Segmented } from "../src/ui/Segmented";
 import { SettingsGroup, SettingsRow } from "../src/ui/SettingsGroup";
 import { SideResults } from "../src/ui/SideNavigation";
@@ -21,7 +20,6 @@ import { UndoNotice } from "../src/ui/UndoNotice";
 const ignore = () => {};
 const states = ["rest", "hovered", "pressed", "focus-visible", "disabled"] as const;
 const variants = ["primary", "secondary"] as const;
-const dots = [["#007aff", "Blue"], ["#953d96", "Purple"], ["#e0383e", "Red"], ["#62ba46", "Green"]] as const;
 const choices = [
   { id: "retry", title: "Try again", help: "Read the library again", icon: <ChoiceIcon name="retry" />, suggested: true },
   { id: "another", title: "Use another library", help: "Zotero or another library file", icon: <ChoiceIcon name="swap" /> },
@@ -69,9 +67,6 @@ export function Parts() {
     <Section title="Chips and source action">
       <State name="chips"><ChipGroup label="Libraries" items={[{ id: "a", label: "invented.bib", textValue: "invented.bib", removeLabel: "Remove invented.bib" }, { id: "b", label: "Zotero", textValue: "Zotero", removeLabel: "Remove Zotero" }]} onRemove={ignore} fallbackFocusRef={fallback} /></State>
       <State name="source"><SourceAction label="Open invented.bib" keys="CmdOrCtrl+O" icon={null} file open={ignore} /></State>
-    </Section>
-    <Section title="Pictures and dots">
-      <State name="accent"><PictureChoice dots label="Accent" value="Blue" onChange={ignore} options={dots.map(([colour, label]) => ({ value: label, label, picture: <span className="ui-accent-dot" style={{ background: colour }} /> }))} /></State>
     </Section>
     <section><h2>Settings rows</h2>
       <SettingsGroup id="canvas-group" title="Group title">

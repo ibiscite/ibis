@@ -3,7 +3,7 @@ import type { PickerApi } from "../../App";
 import { focusChoices } from "../../ui/ChoiceList";
 import type { FormatCommand } from "./FormatMenu";
 import type { ToolbarMenuCommand } from "../../ui/ToolbarMenu";
-import { composing, isFormatShortcut, isKeysShortcut, isMenuShortcut, isPinShortcut, isPreviewShortcut, isQuitShortcut, isSettingsShortcut, isSourceShortcut, isChooseSourceShortcut } from "./shortcuts";
+import { composing, isFormatShortcut, isKeysShortcut, isMenuShortcut, isPinShortcut, isQuitShortcut, isSettingsShortcut, isSourceShortcut, isChooseSourceShortcut } from "./shortcuts";
 import type { usePickerSession } from "./usePickerSession";
 import type { usePickerMenus } from "./usePickerMenus";
 import type { usePickerSource } from "./usePickerSource";
@@ -15,7 +15,7 @@ import type { useOperations } from "./useOperations";
 
 export function usePickerKeys({
   api, pickerSession, menus, source, results, showCitations, copyChosen, actions, pointer, followKeyboard,
-  togglePastePreview, quitAfterSaving, perform, onEmptyEnter,
+  quitAfterSaving, perform, onEmptyEnter,
 }: {
   api: PickerApi;
   pickerSession: Pick<ReturnType<typeof usePickerSession>, "session" | "cancelCopy" | "setActive">;
@@ -27,7 +27,6 @@ export function usePickerKeys({
   actions: Pick<ReturnType<typeof usePickerActions>, "escapeStep" | "toggleHighlighted">;
   pointer: ReturnType<typeof usePointerSelection>;
   followKeyboard: { current: boolean };
-  togglePastePreview: () => void;
   quitAfterSaving: () => Promise<void>;
   perform: ReturnType<typeof useOperations>["perform"];
   onEmptyEnter?: () => void;
@@ -61,9 +60,6 @@ export function usePickerKeys({
     } else if (isPinShortcut(e)) {
       e.preventDefault();
       if (!e.repeat) togglePin();
-    } else if (isPreviewShortcut(e)) {
-      e.preventDefault();
-      if (!e.repeat) togglePastePreview();
     } else if (isKeysShortcut(e)) {
       e.preventDefault();
       openKeys();
@@ -117,7 +113,6 @@ export function usePickerKeys({
         if (command === "more") openMore();
         else if (command === "keys") openKeys();
         else if (command === "pin") togglePin();
-        else if (command === "preview") togglePastePreview();
         else if (command === "quit") void perform("quit", quitAfterSaving);
         else if (command === "chooseSource") chooseSources();
         else if (command === "source" || command === "revealSource") openSource(false, command === "revealSource");

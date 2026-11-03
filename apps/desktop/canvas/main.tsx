@@ -25,7 +25,7 @@ import "../src/notice.css";
 // Picker root rules must not leak into the separate Settings window.
 import pickerStyles from "../src/styles.css?inline";
 
-export const scenarios = ["notice", "results", "first-run", "more", "format-menu", "states", "parts", "empty", "file-drag", "error", "loading", "empty-search", "shelf", "reference-menu", "library-menu", "shortcuts", "pinned", "no-matches", "missing", "zotero-closed", "unreadable", "stale", "compact", "spacious", "larger-text", "right-to-left", "long-titles", "update", "tokens", "settings-general", "settings-look", "settings-citations", "settings-shortcuts", "settings-about"] as const;
+export const scenarios = ["notice", "results", "first-run", "more", "format-menu", "states", "parts", "empty", "file-drag", "error", "loading", "empty-search", "shelf", "reference-menu", "library-menu", "shortcuts", "pinned", "no-matches", "missing", "zotero-closed", "unreadable", "stale", "compact", "larger-text", "right-to-left", "long-titles", "update", "tokens", "settings-general", "settings-look", "settings-citations", "settings-shortcuts", "settings-about"] as const;
 type Scenario = typeof scenarios[number];
 type Theme = "light" | "dark";
 
@@ -44,7 +44,7 @@ const longRows = rows.map((row) => ({ ...row, title: longTitle, authors: "Aster,
 /** What differs from the loaded picker. Each entry is real app state: the
  * picture is whatever the app draws for it. */
 const fixtures: Partial<Record<Scenario, {
-  query?: string; library?: Partial<LibraryStatus>; rows?: SearchResult[]; preferences?: { density?: "compact" | "spacious"; larger_text?: boolean };
+  query?: string; library?: Partial<LibraryStatus>; rows?: SearchResult[]; preferences?: { density?: "compact"; larger_text?: boolean };
   click?: string; keys?: KeyboardEventInit[];
 }>> = {
   "empty-search": { query: "" },
@@ -59,7 +59,6 @@ const fixtures: Partial<Record<Scenario, {
   unreadable: { query: "", library: { state: "error", has_snapshot: false, references: 0, problem: "unreadable", error: "The invented file has an entry Ibis can't read" } },
   stale: { library: { stale: true, zotero: true, name: "Zotero", snapshot_name: "Zotero", error: "Zotero isn't open", problem: "zotero_closed" } },
   compact: { preferences: { density: "compact" } },
-  spacious: { preferences: { density: "spacious" } },
   "larger-text": { preferences: { larger_text: true } },
   "right-to-left": {},
   "long-titles": { rows: longRows },

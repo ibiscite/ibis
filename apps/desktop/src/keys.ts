@@ -21,7 +21,6 @@ export const KEY_TABLE: readonly KeyBinding[] = [
   { region: "picker", action: "format", keys: ["CmdOrCtrl+Shift+F"] },
   { region: "picker", action: "more", keys: ["CmdOrCtrl+K"] },
   { region: "picker", action: "pin", keys: ["CmdOrCtrl+Shift+P"] },
-  { region: "picker", action: "preview", keys: ["CmdOrCtrl+I"] },
   { region: "library", action: "source", keys: ["CmdOrCtrl+O"] },
   { region: "library", action: "chooseSource", keys: ["CmdOrCtrl+Shift+O"] },
   { region: "library", action: "revealSource", keys: ["Alt+CmdOrCtrl+O"] },

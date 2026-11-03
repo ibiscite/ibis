@@ -30,7 +30,7 @@ test("System has two explicitly themed snapshots and crops through the frame's d
 });
 
 test("a strip shows two whole rows and its frame comes from them", () => {
-  const { container } = render(<PickerPicture rowsOnly density="spacious" />);
+  const { container } = render(<PickerPicture rowsOnly density="compact" />);
   expect(container.querySelector(".ui-picker-picture-content > div")!.shadowRoot!.querySelectorAll('[role="option"]')).toHaveLength(2);
   const strip = sources.choices.split("\n").filter((line) => line.startsWith(".ui-picker-picture[data-rows]")).join("\n");
   expect(strip).toMatch(/\{ width: 100%; height: auto; \}/);

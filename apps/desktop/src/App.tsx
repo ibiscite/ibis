@@ -80,7 +80,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   });
   const updateProgress = useUpdateProgress(api, setFailures);
   const preferences = usePickerPreferences(api, { styles: true, report, perform, presentation: state.visibility });
-  const { density, searchIcon, showPastePreview, togglePastePreview, quitAfterSaving: quitPreferences } = preferences;
+  const { density, quitAfterSaving: quitPreferences } = preferences;
   const deliveryTarget = useDeliveryTarget(api);
   const destination = useDestination(deliveryTarget.api, {
     fallback: preferences.format, fallbackReady: preferences.available, chooseDefault: preferences.chooseFormat, report,
@@ -108,7 +108,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   const chosen = selected.size > 0 || ready ? shownChoice : [];
   const output = useCitationOutput({
     chosen: shownChoice, library: settledLibrary, libraryVersion, sessionId: state.session, isCurrentSession, format, style: styleOf(format),
-    showPastePreview, previewFileCitation: api.previewFileCitation, refreshSnapshot,
+    previewFileCitation: api.previewFileCitation, refreshSnapshot,
   });
   const { formatted, shown, previewProblem, displayedOutput } = output;
   const citationProblem = displayedOutput === "failed" ? previewProblem ?? pickerText.previewError : null;
@@ -123,7 +123,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   const { requestCopy, chooseFormat, questionScope, onFormatOpenChange } = useCitationCopy({
     api, session, state, destination, currentPin, formatButtonRef, refreshSnapshot, report, setFormatOpen,
     view: {
-      queryKey, format, snapshotRevision, defaultChoice, chosen, shown, previewVisible: showPastePreview,
+      queryKey, format, snapshotRevision, defaultChoice, chosen, shown,
       // The citation stays in view through a reload, but Enter waits for its end.
       searchPending, ready: preferences.ready && library?.state !== "reloading",
     },
@@ -157,7 +157,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   });
   const keys = usePickerKeys({
     api, pickerSession, menus, source, results, showCitations, copyChosen: rows.copyChosen, actions, pointer, followKeyboard,
-    togglePastePreview, quitAfterSaving, perform,
+    quitAfterSaving, perform,
     onEmptyEnter: () => {
       if (chosen.length > 0 || searchPending || state.pendingCopy) return;
       delights.dismiss();
@@ -176,7 +176,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
       onKeyDown={keys.onKeyDown}
     >
       <PickerHeader
-        hidden={welcomeShown} pinned={pinned} icon={searchIcon} onTogglePin={() => { togglePin(); input.current?.focus(); }}
+        hidden={welcomeShown} pinned={pinned} onTogglePin={() => { togglePin(); input.current?.focus(); }}
         onResetPosition={api.resetWindowPosition}
         inputRef={input} query={query}
         pageToken={<PickerPageToken

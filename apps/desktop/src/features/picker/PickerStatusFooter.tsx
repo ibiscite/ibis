@@ -41,7 +41,7 @@ export function PickerStatusFooter({
   const { groupName, offeredGroups, isChosen, chosenLibraries, toggleLibrary, searchAllLibraries } = scope;
   const { libraryMenuOpen, setMenuOpen, setLibraryMenuOpen, input, menuOpen, openMore, closeMenu, moreButton, pinned, togglePin, openKeys, runFromMenu } = menus;
   const { sourceAction, sourceOpen, source, chooseSources, chooseFile, openSource } = sourceState;
-  const { density, changeDensity, showPastePreview, togglePastePreview } = preferences;
+  const { density, changeDensity } = preferences;
   const { failures, report } = operations;
   const { toggleHighlighted, escapeStep, hints } = actions;
   // Read when More opens, the only time it is shown there.
@@ -67,10 +67,9 @@ export function PickerStatusFooter({
         buttonRef={moreButton} searchRef={input} libraryDetail={libraryDetail}
         source={api.openLibrarySource && sourceState.sourceAvailable ? sourceAction : undefined}
         lastOutcome={lastOutcome}
-        density={density} showPastePreview={showPastePreview} pinned={pinned}
+        density={density} pinned={pinned}
         actions={{
           density: changeDensity,
-          preview: togglePastePreview,
           pin: togglePin,
           keys: openKeys,
           settings: openSettings ? () => runFromMenu("settings", () => openSettings(null)) : null,
