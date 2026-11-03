@@ -989,11 +989,8 @@ mod tests {
             library_id(&identity("/invented/one"), Library::Group(7)),
             library_id(&identity("/invented/two"), Library::Group(7))
         );
-        assert_ne!(
-            running_owner(&mut Account(Some(4))),
-            running_owner(&mut Account(Some(5)))
-        );
-        assert_eq!(running_owner(&mut Account(None)), running_owner(&mut Account(Some(0))));
+        assert_ne!(running_owner(&mut Owner(Some(4))), running_owner(&mut Owner(Some(5))));
+        assert_eq!(running_owner(&mut Owner(None)), running_owner(&mut Owner(Some(0))));
     }
 
     #[test]
