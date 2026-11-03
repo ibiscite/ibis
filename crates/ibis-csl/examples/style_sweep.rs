@@ -32,7 +32,7 @@ fn library() -> Snapshot {
 
 fn reference(index: usize) -> ItemRef {
     ItemRef {
-        library: LibraryId::file(b"style-sweep"),
+        library: LibraryId::digest(b"style-sweep"),
         key: format!("item-{index}"),
     }
 }
