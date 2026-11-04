@@ -12,7 +12,9 @@ export type Operation = keyof typeof operationFailures;
 
 /** Settings problems, failed actions, search and copy errors, and what was
  * copied. Library failures belong to the footer's controls. */
-export function Notices({ library, failures, error, citationProblem, copyError, copied, confirmation, onDismissCopied, missing = [], densityAnnouncement }: {
+export function Notices({ library, failures, error, citationProblem, copyError, copied, confirmation, onDismissCopied, missing = [], densityAnnouncement, editorNotice }: {
+  /** The format an editor waiting on the endpoint asked for. */
+  editorNotice?: string | null;
   densityAnnouncement?: Density;
   library: LibraryStatus | null | undefined;
   failures: Partial<Record<Operation, boolean>>;
@@ -36,6 +38,7 @@ export function Notices({ library, failures, error, citationProblem, copyError, 
       {error && <p role="alert">{error}</p>}
       {citationProblem && <p role="alert" className="citation-problem" tabIndex={0}>{citationProblem}</p>}
       {missing.length > 0 && <p role="status">{pickerText.missingCitations(missing)}</p>}
+      {editorNotice && <p role="status" className="editor-notice">{pickerText.editorWaiting(editorNotice)}</p>}
       {copyError && <p role="alert">{copyError}</p>}
       {copied && (confirmation || copied.warnings.length > 0) && (
         <div role={confirmation ? "status" : "group"} className="copy-notice">

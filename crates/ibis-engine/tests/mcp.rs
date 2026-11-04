@@ -199,9 +199,9 @@ fn cite_offers_exactly_the_engines_outputs() {
     );
     assert_eq!(unknown["isError"], true);
     let text = unknown["content"][0]["text"].as_str().unwrap();
-    assert!(
-        text.starts_with("error: bad-input. format must be one of: pandoc, autocite,"),
-        "{text}"
+    assert_eq!(
+        text,
+        format!("error: bad-input. format must be one of: {}.", listed.join(", "))
     );
     // With neither, the registry's default style.
     let plain = tool(&engine, "cite", json!({"items":[{"ref":"demo2026"}]}));

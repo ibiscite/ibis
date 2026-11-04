@@ -270,7 +270,7 @@ fn each_refusal_says_what_to_change() {
         (
             "cite",
             json!({"items":[{"ref":"fen2023clouds"}],"format":"word"}),
-            "pandoc, autocite, parencite",
+            "format must be one of: pandoc, pandoc-bare, autocite,",
         ),
         (
             "cite",

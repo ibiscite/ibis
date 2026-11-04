@@ -45,6 +45,7 @@
     "allow-show-copied-notice",
     "allow-native-appearance",
     "allow-row-context",
+    "allow-editor-request",
     "allow-session-references",
     "allow-edit-session-references",
     "allow-session-bibliography",

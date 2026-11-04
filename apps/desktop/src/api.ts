@@ -21,6 +21,7 @@ export const {
   zoteroGroups,
   reloadLibrary,
   libraryStatus,
+  editorRequest,
   sessionReferences,
   editSessionReferences,
   sessionBibliography,
@@ -150,6 +151,11 @@ export function onLibraryFileRefused(handler: () => void): Promise<UnlistenFn> {
 
 export function onLibraryChanged(handler: (status: LibraryStatus) => void): Promise<UnlistenFn> {
   return listen<LibraryStatus>("library:changed", (event) => handler(event.payload));
+}
+
+/** An editor began or stopped waiting for a citation. */
+export function onEditorRequest(handler: () => void): Promise<UnlistenFn> {
+  return listen("editor:request", () => handler());
 }
 
 export const COPY_FORMATS = Object.entries(copyFormatLabels).map(([value, label]) => ({
