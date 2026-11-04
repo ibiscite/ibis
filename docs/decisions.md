@@ -65,11 +65,16 @@ line and agents is the priority. Three rules apply to that shared contract:
   the explicit option planned in #1538.
 
 These are planned rules, not a claim that implementation has landed. They do
-not choose a shared engine process or settle whether an unreadable project
-bibliography must block key output. Context and source ownership are described
+not choose a shared engine process. Context and source ownership are described
 in [architecture](architecture.md#task-contexts-planned); visible behavior is
 in [design](design.md#source-checks-and-passage-reuse-planned). Follow-up belongs
 to #1697, #1260 and #1538, with the work order on #1300 unchanged.
+
+2026-11-04 (maintainer, #1697): when a project's bibliography becomes unreadable,
+an established coherent last-good copy remains usable for copying keys, with a
+clear warning that the check used the last-good copy. It is never presented as
+a current successful read. This preserves the existing warning behavior and
+does not override the planned refusal for a known conflicting key.
 
 ## 0004 Desktop shell (with 0012)
 
