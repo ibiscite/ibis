@@ -1,6 +1,6 @@
 import type React from "react";
 import { memo, useCallback, useLayoutEffect, useMemo, useRef } from "react";
-import type { Density, SearchResult } from "../../api";
+import type { Density, ProjectStatus, SearchResult } from "../../api";
 import { rowClickAction } from "../../copyFeedback";
 import { isMac } from "../../platform";
 import { AddGlyph, TypeIcon } from "../../icons";
@@ -9,6 +9,7 @@ import { PointerButton } from "../../ui/Button";
 import { Option } from "../../ui/Option";
 import { idKey } from "./choice";
 import { abbreviatedAuthors, hiddenMatch, tileName } from "./rows";
+import { projectText } from "./useProjectBibliography";
 
 /** "et al." in its own isolate, so it keeps its reading order beside a right-to-left name. */
 const etAl = <bdi>{rowText.etAl}</bdi>;
@@ -22,8 +23,9 @@ type RowHandlers = {
 
 /** The result list: one option per search result, the highlighted one active.
  * Rows are memoised; moving the highlight re-renders only the rows it leaves and reaches. */
-export function ResultList({ results, active, selected, density, hoverAllowed = false, libraryOf, onMouseMove, onChoose, onToggle, onContext }: {
+export function ResultList({ results, active, selected, density, hoverAllowed = false, libraryOf, project = null, onMouseMove, onChoose, onToggle, onContext }: {
   results: SearchResult[];
+  project?: ProjectStatus | null;
   active: number;
   selected: Map<string, SearchResult>;
   density: Density;
@@ -72,7 +74,7 @@ export function ResultList({ results, active, selected, density, hoverAllowed = 
     <ul id="results" role="listbox" aria-label={pickerText.results} onMouseMove={onMouseMove}>
       {results.map((r, i) => <ResultGroup key={idKey(r.id)} record={r} previous={results[i - 1]}>
         <ResultRow record={r} index={i} active={i === active} added={selected.has(idKey(r.id))}
-          density={density} hoverAllowed={hoverAllowed} library={libraryOf(r.source ?? "")} handlers={handlers} />
+          density={density} hoverAllowed={hoverAllowed} library={libraryOf(r.source ?? "")} project={projectText(r, project)} handlers={handlers} />
       </ResultGroup>)}
     </ul>
   );
@@ -85,7 +87,7 @@ function ResultGroup({ record, previous, children }: { record: SearchResult; pre
 }
 
 /** One search result as an option of the result list. */
-export const ResultRow = memo(function ResultRow({ record: r, index: i, active, added, density, hoverAllowed, library, handlers }: {
+export const ResultRow = memo(function ResultRow({ record: r, index: i, active, added, density, hoverAllowed, library, project, handlers }: {
   record: SearchResult;
   index: number;
   active: boolean;
@@ -94,6 +96,8 @@ export const ResultRow = memo(function ResultRow({ record: r, index: i, active, 
   density: Density;
   hoverAllowed: boolean;
   library: string | null;
+  /** This row's key against the project bibliography, in words. */
+  project?: string | null;
   handlers: RowHandlers;
 }) {
   const compact = density === "compact";
@@ -148,6 +152,7 @@ export const ResultRow = memo(function ResultRow({ record: r, index: i, active, 
           {library && <span className="result-library">{library}</span>}
         </span>
         {why && <span className="result-why">{pickerText.matchedIn(why)}</span>}
+        {project && <span className="result-project">{project}</span>}
         {/* The type in words; the tile's icon is decorative. */}
         {rowText.itemType(r.item_type) && <span className="visually-hidden">{rowText.itemType(r.item_type)}</span>}
         {added && <span className="visually-hidden">{pickerText.addedToCitation}</span>}

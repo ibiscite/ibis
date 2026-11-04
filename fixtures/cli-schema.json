@@ -70,6 +70,46 @@
                   "array",
                   "null"
                 ]
+              },
+              "profile": {
+                "description": "The Zotero profile to read while Zotero is closed, by the name\n`zotero-profiles` gives; never a location. Omitted, a computer with\none profile reads it and one with several is refused.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "reload": {
+                "default": false,
+                "description": "Read everything again, not only what changed.",
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "action"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "description": "The Zotero profiles on this computer, by name; reads no library.",
+            "properties": {
+              "action": {
+                "const": "zotero-profiles",
+                "type": "string"
+              }
+            },
+            "required": [
+              "action"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "description": "The Zotero group libraries known now, by name: asked of Zotero while\nit runs, otherwise those its closed copy listed when last read.",
+            "properties": {
+              "action": {
+                "const": "zotero-groups",
+                "type": "string"
               }
             },
             "required": [
@@ -136,6 +176,81 @@
             ],
             "type": "string"
           },
+          "ErrorReason": {
+            "description": "Why a request failed, when the code alone cannot tell a caller what to change.\nFront ends choose their words from it; they never guess a reason from the code.",
+            "oneOf": [
+              {
+                "const": "unknown-style",
+                "description": "No style has the requested id; `styles` lists them.",
+                "type": "string"
+              },
+              {
+                "const": "unknown-output",
+                "description": "No output has the requested id; `outputs` lists them.",
+                "type": "string"
+              },
+              {
+                "const": "unknown-locale",
+                "description": "The requested locale is not bundled; `styles` lists the locales.",
+                "type": "string"
+              },
+              {
+                "const": "duplicate-key",
+                "description": "The key is repeated in a library, so every entry under it is skipped.",
+                "type": "string"
+              },
+              {
+                "const": "ambiguous-key",
+                "description": "Several references share the key.",
+                "type": "string"
+              },
+              {
+                "const": "missing-key",
+                "description": "A key output needs a citation key this reference does not have.",
+                "type": "string"
+              },
+              {
+                "const": "app-missing",
+                "description": "The program started as the Ibis app does not exist.",
+                "type": "string"
+              },
+              {
+                "const": "not-ibis",
+                "description": "The program started as the Ibis app is not Ibis.",
+                "type": "string"
+              },
+              {
+                "const": "no-answer",
+                "description": "The Ibis app started but did not confirm the request in time.",
+                "type": "string"
+              },
+              {
+                "const": "zotero-sharing-off",
+                "description": "Zotero is running but does not let other applications read it.",
+                "type": "string"
+              },
+              {
+                "const": "zotero-profile-needed",
+                "description": "Zotero is closed and which profile to read is not settled; name one.",
+                "type": "string"
+              },
+              {
+                "const": "zotero-needs-opening",
+                "description": "A closed read is unsafe or impossible here; opening Zotero is the fix.",
+                "type": "string"
+              },
+              {
+                "const": "zotero-not-found",
+                "description": "No Zotero library is on this computer.",
+                "type": "string"
+              },
+              {
+                "const": "zotero-no-space",
+                "description": "A closed read needs a private copy and there is no room for it.",
+                "type": "string"
+              }
+            ]
+          },
           "LibraryId": {
             "description": "A library's opaque token. It says nothing about the library: its kind and\ncapabilities are fields of its description, and nothing may read them from\nhere. Sources mint one with [`LibraryId::digest`] over a private key and the\nsource's identity, so a seen id confirms no guessed location.",
             "pattern": "^[A-Za-z0-9_-]{1,64}$",
@@ -169,6 +284,17 @@
                     "type": "null"
                   }
                 ]
+              },
+              "refresh_reason": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/ErrorReason"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "What a person can do about `refresh_error`, when the failure says."
               },
               "updated_at_ms": {
                 "format": "uint64",
@@ -306,6 +432,24 @@
             ],
             "type": "string"
           },
+          "ZoteroGroup": {
+            "description": "A Zotero group library by its public ID and a name safe to show.",
+            "properties": {
+              "id": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name"
+            ],
+            "type": "object"
+          },
           "ZoteroLibrary": {
             "description": "A Zotero library: the personal library (\"My Library\") or a group by its\nZotero group ID.",
             "oneOf": [
@@ -340,6 +484,33 @@
               "$ref": "#/$defs/LibraryInfo"
             },
             "type": "array"
+          },
+          "zotero_groups": {
+            "description": "Answers `zotero-groups`.",
+            "items": {
+              "$ref": "#/$defs/ZoteroGroup"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "zotero_installed": {
+            "description": "Answers `zotero-profiles`: whether a Zotero library is on this computer.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "zotero_profiles": {
+            "description": "Answers `zotero-profiles`: each profile's safe name, never its location.",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
           }
         },
         "required": [
@@ -2703,6 +2874,392 @@
       }
     },
     {
+      "method": "project",
+      "params": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "description": "Exact keys to look for in one project `.bib`, which stays out of the search\nlibraries. Reading it never writes to it.",
+        "properties": {
+          "keys": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "keys"
+        ],
+        "title": "ProjectRequest",
+        "type": "object"
+      },
+      "result": {
+        "$defs": {
+          "Doubt": {
+            "description": "Why a key that is written in the file may not be the intended reference.",
+            "oneOf": [
+              {
+                "const": "fields",
+                "description": "The entry and the library disagree on DOI, title or year.",
+                "type": "string"
+              },
+              {
+                "const": "letter-case",
+                "description": "A key differs only by letter case; BibTeX treats them as one.",
+                "type": "string"
+              },
+              {
+                "const": "alias",
+                "description": "The key is written as another entry's `ids` alias.",
+                "type": "string"
+              },
+              {
+                "const": "helper",
+                "description": "The key belongs to an `@xdata` entry, which cannot be cited.",
+                "type": "string"
+              },
+              {
+                "const": "commented",
+                "description": "The key is inside `@comment`. Biber skips it; classic BibTeX reads it.",
+                "type": "string"
+              }
+            ]
+          },
+          "KeyCheck": {
+            "description": "One emitted key against one bibliography.",
+            "oneOf": [
+              {
+                "properties": {
+                  "line": {
+                    "format": "uint",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "status": {
+                    "const": "in",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "status",
+                  "line"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Only after a complete scan of a coherent read.",
+                "properties": {
+                  "status": {
+                    "const": "missing",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "status"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "status": {
+                    "const": "could-not-check",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "status"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "lines": {
+                    "items": {
+                      "format": "uint",
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "type": "array"
+                  },
+                  "status": {
+                    "const": "repeated",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "status",
+                  "lines"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "doubt": {
+                    "$ref": "#/$defs/Doubt"
+                  },
+                  "line": {
+                    "format": "uint",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "status": {
+                    "const": "may-name-another",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "status",
+                  "line",
+                  "doubt"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "ProjectKey": {
+            "description": "One key against the chosen file.",
+            "properties": {
+              "check": {
+                "$ref": "#/$defs/KeyCheck"
+              },
+              "key": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "key",
+              "check"
+            ],
+            "type": "object"
+          },
+          "ProjectProblem": {
+            "description": "Why a read could not be used.",
+            "oneOf": [
+              {
+                "enum": [
+                  "not-a-file",
+                  "too-large",
+                  "not-utf8",
+                  "changing"
+                ],
+                "type": "string"
+              },
+              {
+                "const": "unavailable",
+                "description": "Missing, online-only or not reachable in time.",
+                "type": "string"
+              },
+              {
+                "const": "not-bibtex",
+                "description": "A project bibliography is BibTeX or BibLaTeX.",
+                "type": "string"
+              },
+              {
+                "const": "damaged",
+                "description": "The newest read has parts that cannot be read, and an earlier one did not.",
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "damaged_lines": {
+            "description": "Lines that could not be read, which is why nothing can be called missing.",
+            "items": {
+              "format": "uint",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "keys": {
+            "items": {
+              "$ref": "#/$defs/ProjectKey"
+            },
+            "type": "array"
+          },
+          "name": {
+            "description": "The file's name, never its folder.",
+            "type": "string"
+          },
+          "problem": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/ProjectProblem"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why this read could not be used; the answers then say \"could not check\"."
+          }
+        },
+        "required": [
+          "name",
+          "keys",
+          "damaged_lines"
+        ],
+        "title": "ProjectResult",
+        "type": "object"
+      }
+    },
+    {
+      "method": "entry",
+      "params": {
+        "$defs": {
+          "ItemRef": {
+            "additionalProperties": false,
+            "description": "Identity inside one library; citation keys are intentionally separate.\nNon-item kinds use source-namespaced keys (for example `tag:...`) so\nsource tags and collections cannot collide with native item keys.",
+            "properties": {
+              "key": {
+                "type": "string"
+              },
+              "library": {
+                "$ref": "#/$defs/LibraryId"
+              }
+            },
+            "required": [
+              "library",
+              "key"
+            ],
+            "type": "object"
+          },
+          "ItemSelector": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "by": {
+                    "const": "id",
+                    "type": "string"
+                  },
+                  "value": {
+                    "$ref": "#/$defs/ItemRef"
+                  }
+                },
+                "required": [
+                  "by",
+                  "value"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "by": {
+                    "const": "key",
+                    "type": "string"
+                  },
+                  "value": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "by",
+                  "value"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "LibraryId": {
+            "description": "A library's opaque token. It says nothing about the library: its kind and\ncapabilities are fields of its description, and nothing may read them from\nhere. Sources mint one with [`LibraryId::digest`] over a private key and the\nsource's identity, so a seen id confirms no guessed location.",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
+            "type": "string"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "description": "One reference's original BibTeX entry, with what it needs to stand alone.",
+        "properties": {
+          "item": {
+            "$ref": "#/$defs/ItemSelector"
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "title": "EntryRequest",
+        "type": "object"
+      },
+      "result": {
+        "$defs": {
+          "EntryRefusal": {
+            "description": "Why an entry's original text cannot be copied, so a person can re-export it.",
+            "oneOf": [
+              {
+                "enum": [
+                  "repeated"
+                ],
+                "type": "string"
+              },
+              {
+                "const": "no-original",
+                "description": "The reference does not come from a BibTeX file, so no original exists.",
+                "type": "string"
+              },
+              {
+                "const": "changed",
+                "description": "The file changed since the library was read, or could not be read.",
+                "type": "string"
+              },
+              {
+                "const": "dependency",
+                "description": "It relies on a `crossref`, `xdata` or `@string` that cannot come with it.",
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "oneOf": [
+          {
+            "description": "The entry as written, with the `@string`, `crossref` and `xdata` it needs.",
+            "properties": {
+              "key": {
+                "type": "string"
+              },
+              "outcome": {
+                "const": "entry",
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "outcome",
+              "key",
+              "text"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "outcome": {
+                "const": "refused",
+                "type": "string"
+              },
+              "reason": {
+                "$ref": "#/$defs/EntryRefusal"
+              }
+            },
+            "required": [
+              "outcome",
+              "reason"
+            ],
+            "type": "object"
+          }
+        ],
+        "title": "EntryResult"
+      }
+    },
+    {
       "method": "styles",
       "params": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -3063,6 +3620,8 @@
               "search",
               "show",
               "cite",
+              "project",
+              "entry",
               "styles",
               "outputs",
               "schema",
@@ -3104,6 +3663,8 @@
               "search",
               "show",
               "cite",
+              "project",
+              "entry",
               "styles",
               "outputs",
               "schema",

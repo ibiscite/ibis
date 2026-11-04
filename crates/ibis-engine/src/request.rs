@@ -18,7 +18,20 @@ pub enum LibrariesRequest {
         #[serde(default)]
         #[schemars(length(min = 1, max = 32))]
         libraries: Option<Vec<ZoteroLibrary>>,
+        /// The Zotero profile to read while Zotero is closed, by the name
+        /// `zotero-profiles` gives; never a location. Omitted, a computer with
+        /// one profile reads it and one with several is refused.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        profile: Option<String>,
+        /// Read everything again, not only what changed.
+        #[serde(default)]
+        reload: bool,
     },
+    /// The Zotero profiles on this computer, by name; reads no library.
+    ZoteroProfiles,
+    /// The Zotero group libraries known now, by name: asked of Zotero while
+    /// it runs, otherwise those its closed copy listed when last read.
+    ZoteroGroups,
     OpenFile {
         path: PathBuf,
     },
@@ -95,6 +108,22 @@ pub struct KeyCitationRequest {
     pub output_locale: Option<String>,
 }
 
+/// Exact keys to look for in one project `.bib`, which stays out of the search
+/// libraries. Reading it never writes to it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ProjectRequest {
+    pub path: PathBuf,
+    pub keys: Vec<String>,
+}
+
+/// One reference's original BibTeX entry, with what it needs to stand alone.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct EntryRequest {
+    pub item: ItemSelector,
+}
+
 /// A page of the style list: the curated styles first, then the rest by id.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -148,6 +177,8 @@ pub fn request_schema(method: Method) -> Value {
         Method::Search => schema_for!(SearchRequest),
         Method::Show => schema_for!(ShowRequest),
         Method::Cite => schema_for!(CitationRequest),
+        Method::Project => schema_for!(ProjectRequest),
+        Method::Entry => schema_for!(EntryRequest),
         Method::Styles => schema_for!(StylesRequest),
         Method::Outputs => schema_for!(OutputsRequest),
         Method::Schema => schema_for!(SchemaRequest),

@@ -74,6 +74,12 @@ fn command() -> Command {
         .help_heading(LIBRARIES)
         .display_order(1002)
         .help("Read a local Zotero group library by its group ID; repeat for several");
+    let profile = Arg::new("zotero-profile")
+        .long("zotero-profile")
+        .value_name("NAME")
+        .help_heading(LIBRARIES)
+        .display_order(1003)
+        .help("Which Zotero profile to read while Zotero is closed, when there are several");
     let mut root = Command::new("ibis")
         .version(ibis_core::VERSION)
         .about("Find references and cite them anywhere.")
@@ -99,13 +105,13 @@ fn command() -> Command {
             .display_order(1001)
             .help("Read the local Zotero personal library, open or closed"),
     );
-    root = root.arg(group.clone()).arg(
+    root = root.arg(group.clone()).arg(profile.clone()).arg(
         Arg::new("app-libraries")
             .long("app-libraries")
             .global(true)
             .action(ArgAction::SetTrue)
             .help_heading(LIBRARIES)
-            .display_order(1003)
+            .display_order(1004)
             .help(
                 "Read the libraries chosen in the Ibis app, read-only; search, show, cite and libraries do this when no library is named",
             ),
@@ -269,6 +275,36 @@ fn command() -> Command {
                         .action(ArgAction::Append)
                         .help("Leave out the author of the key before it"),
                 ),
+            Method::Project => subcommand
+                .about("Check citation keys against a project's own .bib, read-only")
+                .after_help(
+                    "Each exact key is reported as in the file, missing, repeated, doubtful or not checkable.\n\
+                     Name a library too, and a key whose entry disagrees with it is flagged.\n\n\
+                     Examples:\n  \
+                     ibis project thesis.bib vale2024lanterns fen2023clouds\n  \
+                     ibis project thesis.bib vale2024lanterns --file refs.bib --json",
+                )
+                .arg(
+                    Arg::new("bib")
+                        .value_name("BIB_FILE")
+                        .required(true)
+                        .value_parser(clap::value_parser!(PathBuf))
+                        .help("The .bib the document compiles against; it is never changed"),
+                )
+                .arg(
+                    Arg::new("keys")
+                        .value_name("KEY")
+                        .required(true)
+                        .num_args(1..)
+                        .help("Citation keys, exactly as the document uses them"),
+                ),
+            Method::Entry => subcommand
+                .about("Print a reference's original BibTeX entry, with what it needs to stand alone")
+                .after_help(
+                    "The entry comes as written, key included, with its @string, crossref and xdata.\n\n\
+                     Example:\n  ibis entry vale2024lanterns --file refs.bib >> thesis.bib",
+                )
+                .arg(Arg::new("key").value_name("KEY").required(true).help("The citation key of the reference")),
             Method::Styles => subcommand
                 .about("Find bundled CSL styles and citation languages")
                 .after_help("Examples:\n  ibis styles            # the common styles first\n  ibis styles nature\n  ibis styles \"gb/t 7714\"\n  ibis styles --locales")
@@ -396,7 +432,7 @@ fn command() -> Command {
                     .help("The command to explain, such as cite"),
             ),
     )
-    .mut_subcommands(|subcommand| subcommand.arg(file.clone()).arg(group.clone()))
+    .mut_subcommands(|subcommand| subcommand.arg(file.clone()).arg(group.clone()).arg(profile.clone()))
 }
 /// Native entry point, with streams kept explicit for script and terminal clients.
 pub fn run<R: BufRead, W: Write + Send, E: Write>(
@@ -608,6 +644,16 @@ enum Execution {
     Stdio(u8),
 }
 
+/// Names for the refusal, read only once a read has been refused.
+fn zotero_profiles(engine: &Engine, cancel: &Cancellation) -> Vec<String> {
+    let request = json!({"action":"zotero-profiles"});
+    engine
+        .dispatch(Method::Libraries, &request, cancel)
+        .ok()
+        .and_then(|result| serde_json::from_value(result.data.get("zotero_profiles")?.clone()).ok())
+        .unwrap_or_default()
+}
+
 fn source_values<T: Clone + Eq + Send + Sync + 'static>(matches: &ArgMatches, id: &str) -> Vec<T> {
     let mut values = Vec::new();
     for scope in std::iter::once(matches).chain(matches.subcommand().map(|(_, args)| args)) {
@@ -676,6 +722,13 @@ impl From<EngineError> for Failure {
             unnamed: None,
         }
     }
+}
+/// Why Zotero did not open. Profile names are the person's own choosing, so
+/// an agent reads the sentence without them, as it reads none of their paths.
+fn zotero_open_failure(error: EngineError, profiles: &[String]) -> Failure {
+    let mut failure = Failure::explained(error, human::zotero_failure(error, profiles));
+    failure.unnamed = Some(human::zotero_failure(error, &[]));
+    failure
 }
 /// Why a citation key selected no single reference, with every line that repeats it.
 fn key_failure(engine: &Engine, key: &str, error: EngineError, libraries_open: bool) -> Failure {
@@ -805,7 +858,7 @@ fn open_libraries(
     let called = matches
         .subcommand_matches("call")
         .and_then(|call| call.get_one::<String>("method"));
-    let reads_app = matches!(name, "search" | "show" | "cite" | "libraries")
+    let reads_app = matches!(name, "search" | "show" | "cite" | "entry" | "libraries")
         || called.is_some_and(|called| matches!(called.as_str(), "search" | "show" | "cite"));
     let app = if asked || (defaults == Defaults::App && !named && reads_app) {
         Some(bounded(app_libraries::load).unwrap_or_else(|| {
@@ -885,13 +938,25 @@ fn open_libraries(
         .chain(groups.into_iter().map(ZoteroLibrary::Group))
         .collect();
     if !zotero.is_empty() {
+        let profile = source_values::<String>(matches, "zotero-profile")
+            .pop()
+            .or_else(|| app.as_ref().and_then(|app| app.zotero_profile.clone()));
         let params = serde_json::to_value(LibrariesRequest::OpenZotero {
             libraries: Some(zotero),
+            profile,
+            reload: false,
         })
         .map_err(|_| EngineError::new(ErrorCode::BadInput))?;
         let before = engine.libraries()?.libraries;
-        explain(engine.dispatch(Method::Libraries, &params, &cancel), |error| {
-            human::zotero_failure(error.code)
+        // A Zotero failure keeps its own wording with a reason too, so the
+        // profiles a person can name are listed beside it.
+        engine.dispatch(Method::Libraries, &params, &cancel).map_err(|error| {
+            let profiles = if error.reason == Some(ErrorReason::ZoteroProfileNeeded) {
+                zotero_profiles(engine, &cancel)
+            } else {
+                vec![]
+            };
+            zotero_open_failure(error, &profiles)
         })?;
         // Each Zotero library is the app's only when the app chose it and the command line did not.
         if let Some(app) = &app {
@@ -1111,6 +1176,31 @@ fn run_method<R: BufRead>(
             result.destination = destination;
             let result = engine.finalize(DispatchResult::citation(result, keys.len())?)?;
             return Ok(Execution::Result(result, Some(citing)));
+        }
+        Method::Project => {
+            let path = args.get_one::<PathBuf>("bib").cloned().unwrap_or_default();
+            let keys: Vec<&String> = args.get_many::<String>("keys").into_iter().flatten().collect();
+            let result = explain(
+                engine.dispatch(method, &json!({"path":path,"keys":keys}), &cancel),
+                |EngineError { code, .. }| match code {
+                    ErrorCode::BadInput => "at most 1000 keys can be checked at once.".into(),
+                    code => human::code_sentence(code).into(),
+                },
+            )?;
+            return Ok(Execution::Result(
+                human::with_summary(result, method, matches.get_flag("json"), holdings(), &names),
+                None,
+            ));
+        }
+        Method::Entry => {
+            let key = args.get_one::<String>("key").cloned().unwrap_or_default();
+            let result = engine
+                .dispatch(method, &json!({"item":{"by":"key","value":key}}), &cancel)
+                .map_err(|error| key_failure(engine, &key, error, libraries_open()))?;
+            return Ok(Execution::Result(
+                human::with_summary(result, method, matches.get_flag("json"), holdings(), &names),
+                None,
+            ));
         }
         Method::Styles => {
             let words: Vec<&str> = args
@@ -1413,6 +1503,20 @@ mod tests {
         let stalled = bounded(|| std::thread::sleep(std::time::Duration::from_secs(30)));
         assert_eq!(stalled, None);
         assert!(started.elapsed() < std::time::Duration::from_secs(5));
+    }
+
+    #[test]
+    fn an_agent_never_reads_the_zotero_profile_names_a_person_does() {
+        let error = EngineError::because(ErrorCode::SourceUnavailable, ErrorReason::ZoteroProfileNeeded);
+        let failure = zotero_open_failure(error, &["Invented Home".into(), "Invented Work".into()]);
+        assert!(failure.sentence().contains("Profiles: Invented Home, Invented Work."));
+        let refusal = format!("{:?}", failure.refusal());
+        assert!(!refusal.contains("Invented"), "{refusal}");
+        assert!(!refusal.contains("Profiles"), "{refusal}");
+        assert!(refusal.contains("--zotero-profile"), "{refusal}");
+        // Without names to hide, both readers get the same sentence.
+        let plain = zotero_open_failure(EngineError::new(ErrorCode::SourceUnavailable), &[]);
+        assert!(format!("{:?}", plain.refusal()).contains(plain.sentence()));
     }
 
     #[test]

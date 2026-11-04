@@ -19,6 +19,11 @@ export const commands = {
 	/**  Samples are an explicit, temporary source, never a saved library preference. */
 	useSampleLibrary: (enabled: boolean) => __TAURI_INVOKE<null>("use_sample_library", { enabled }),
 	/**
+	 *  What the welcome screen can say about Zotero before anything is chosen, so
+	 *  it can offer Zotero first. Reads Zotero's profile configuration and no library.
+	 */
+	findZotero: () => __TAURI_INVOKE<ZoteroPresence>("find_zotero"),
+	/**
 	 *  Find what setup can offer: whether Zotero is open, and `.bib` files in
 	 *  the documents, desktop and downloads folders.
 	 */
@@ -35,8 +40,26 @@ export const commands = {
 	 *  is refused.
 	 */
 	useZoteroLibraries: (libraries: ZoteroLibrary[]) => __TAURI_INVOKE<null>("use_zotero_libraries", { libraries }),
-	/**  The group libraries Zotero knows, while Zotero runs. */
+	/**
+	 *  The group libraries Zotero knows: asked of Zotero while it runs, or as
+	 *  listed by the closed read of the open library. Starts no read of its own.
+	 */
 	zoteroGroups: () => __TAURI_INVOKE<ZoteroGroup[]>("zotero_groups"),
+	/**
+	 *  The profiles to choose from for reading while Zotero is closed. Their
+	 *  locations stay native.
+	 */
+	zoteroProfiles: () => __TAURI_INVOKE<ZoteroProfiles>("zotero_profiles"),
+	/**
+	 *  Read this Zotero profile from now on; the result arrives as
+	 *  `library:changed`, and only a closed read that used it saves the choice.
+	 */
+	useZoteroProfile: (name: string) => __TAURI_INVOKE<void>("use_zotero_profile", { name }),
+	/**
+	 *  Ask Zotero while a screen waiting on it is shown. Once it answers, the
+	 *  failed choice is read again and the result arrives as `library:changed`.
+	 */
+	checkZoteroSharing: () => __TAURI_INVOKE<ZoteroPresence>("check_zotero_sharing"),
 	/**  The library as it is now, for the interface when it starts. */
 	libraryStatus: () => __TAURI_INVOKE<LibraryStatus>("library_status"),
 	/**  Open the searched source or launch Zotero for a reported Zotero problem. */
@@ -59,6 +82,31 @@ export const commands = {
 	copyFileCitation: (ticket: string, contentHash: string, replaces: string | null) => __TAURI_INVOKE<Copied_Serialize>("copy_file_citation", { ticket, contentHash, replaces }),
 	/**  The format the picker starts with: the last one chosen, or Pandoc. */
 	copyFormat: () => __TAURI_INVOKE<KeyFormat>("copy_format"),
+	projectStatus: () => __TAURI_INVOKE<{
+	generation: number,
+	/**
+	 *  Counts reads that changed an answer, which can happen with the status
+	 *  otherwise the same, as when an entry is added to a healthy file.
+	 */
+	revision: number,
+	name: string,
+	state: ProjectState,
+	/**  Answers come from an earlier read, because the newest one failed. */
+	last_good: boolean,
+	/**  Why the newest read failed, as a sentence ending in a full stop. */
+	reason: string | null,
+	/**  The first lines that could not be read. */
+	damaged_lines: number[],
+} | null>("project_status"),
+	/**  Choose the file with the system dialog; the interface never handles a path. */
+	chooseProject: () => __TAURI_INVOKE<void>("choose_project"),
+	/**  Stop checking. The file itself is untouched. */
+	stopProject: () => __TAURI_INVOKE<null>("stop_project"),
+	/**
+	 *  Copy a reference's original entry with its key, for adding to the project's
+	 *  file. The text goes to the clipboard here and never through the web view.
+	 */
+	copyProjectEntry: (id: RecentIdentity, generation: number) => __TAURI_INVOKE<EntryCopy>("copy_project_entry", { id, generation }),
 	/**  `None` when no editor is waiting. */
 	editorRequest: () => __TAURI_INVOKE<{
 	request: number,
@@ -449,6 +497,11 @@ export type EndpointStatus = {
 	problem: EndpointProblem | null,
 };
 
+/**  How an entry copy ended; a refusal says how to get the entry another way. */
+export type EntryCopy = "copied" | "no-original" |
+/**  The file or the choice changed since this was offered. */
+"changed" | "repeated" | "dependency";
+
 export type FilePreview = FilePreview_Serialize | FilePreview_Deserialize;
 
 export type FilePreview_Deserialize = {
@@ -521,7 +574,11 @@ export type LibraryProblem =
 /**  Zotero did not answer: it is closed or still starting. */
 "zotero_closed" |
 /**  Zotero answered but does not let other apps read it. */
-"zotero_access_off" | "other";
+"zotero_access_off" |
+/**  Zotero is closed and which profile to read is not settled. */
+"zotero_profiles" |
+/**  No Zotero library is on this computer. */
+"zotero_missing" | "other";
 
 export type LibraryState = "none" | "loading" | "loaded" | "reloading" | "error";
 
@@ -834,6 +891,44 @@ export type PreviewIntent = {
 	cancel: boolean,
 };
 
+/**  The state of one emitted key in the project bibliography, for the row. */
+export type ProjectKeyState = "in" | "missing" | "could-not-check" | "repeated" | "may-name-another";
+
+export type ProjectMark = {
+	generation: number,
+	state: ProjectKeyState,
+	/**  Where to look in the file, when the state asks a person to look. */
+	lines: number[],
+};
+
+export type ProjectState =
+/**  No answer yet for this choice. */
+"reading" |
+/**  Every entry could be read. */
+"ready" |
+/**  Part of the file could not be read, so nothing can be called missing. */
+"damaged" |
+/**  The newest read failed. */
+"failed";
+
+/**  What the picker may show. A file name, never a folder. */
+export type ProjectStatus = {
+	generation: number,
+	/**
+	 *  Counts reads that changed an answer, which can happen with the status
+	 *  otherwise the same, as when an entry is added to a healthy file.
+	 */
+	revision: number,
+	name: string,
+	state: ProjectState,
+	/**  Answers come from an earlier read, because the newest one failed. */
+	last_good: boolean,
+	/**  Why the newest read failed, as a sentence ending in a full stop. */
+	reason: string | null,
+	/**  The first lines that could not be read. */
+	damaged_lines: number[],
+};
+
 export type ReceiptSummary = {
 	text: string,
 	more: number,
@@ -913,6 +1008,8 @@ export type SearchResult = SearchResult_Serialize | SearchResult_Deserialize;
 
 export type SearchResult_Deserialize = {
 	recent?: RecentGroup | null,
+	/**  This row's key against the project bibliography of that generation. */
+	project?: ProjectMark | null,
 	/**  This row comes from the bundled invented library, including while a replacement search is pending. */
 	sample?: boolean,
 	/**  Revision captured with the index used for this result. */
@@ -949,6 +1046,8 @@ export type SearchResult_Deserialize = {
 
 export type SearchResult_Serialize = {
 	recent?: RecentGroup | null,
+	/**  This row's key against the project bibliography of that generation. */
+	project?: ProjectMark | null,
 	/**  This row comes from the bundled invented library, including while a replacement search is pending. */
 	sample?: boolean,
 	/**  Revision captured with the index used for this result. */
@@ -1126,4 +1225,17 @@ export type ZoteroLibrary =
 /**  A group library, by its numeric group ID. */
 { group: number };
 
-export type ZoteroPresence = "available" | "access_off" | "absent";
+export type ZoteroPresence = "available" | "access_off" |
+/**  Not running, but its library is on this computer and can be read. */
+"closed" | "absent";
+
+/**  The Zotero profiles on this computer and the one chosen, by name. */
+export type ZoteroProfiles = {
+	names: string[],
+	chosen: string | null,
+	/**
+	 *  Zotero is running, so it answers for the profile it opened and a choice
+	 *  here would change nothing on screen.
+	 */
+	running: boolean,
+};

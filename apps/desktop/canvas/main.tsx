@@ -2,7 +2,6 @@ import { useEffect, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { App, type PickerApi } from "../src/App";
 import { Button } from "../src/ui/Button";
-import { Switch } from "../src/ui/Switch";
 import { KeyCaps } from "../src/ui/KeyCaps";
 import { SettingsGroup, SettingsRow } from "../src/ui/SettingsGroup";
 import { useAppearance } from "../src/ui/appearance";
@@ -57,7 +56,7 @@ const fixtures: Partial<Record<Scenario, {
   missing: { query: "", library: { state: "error", has_snapshot: false, references: 0, problem: "missing", error: "The invented library file is unavailable" } },
   "zotero-closed": { query: "", library: { state: "error", has_snapshot: false, references: 0, zotero: true, name: "Zotero", problem: "zotero_closed", error: "Zotero isn't open" } },
   unreadable: { query: "", library: { state: "error", has_snapshot: false, references: 0, problem: "unreadable", error: "The invented file has an entry Ibis can't read" } },
-  stale: { library: { stale: true, zotero: true, name: "Zotero", snapshot_name: "Zotero", error: "Zotero isn't open", problem: "zotero_closed" } },
+  stale: { library: { stale: true, zotero: true, snapshot_zotero: true, name: "Zotero", snapshot_name: "Zotero", error: "Zotero isn't open", problem: "zotero_closed" } },
   compact: { preferences: { density: "compact" } },
   "larger-text": { preferences: { larger_text: true } },
   "right-to-left": {},
@@ -127,24 +126,42 @@ function pickerApi(scenario: Scenario, settings: SettingsApi, openSettings: (pag
 const tokensStyle = `
 .canvas-tokens { padding: var(--space-6); overflow: auto; height: 100%; box-sizing: border-box; color: var(--text); }
 .canvas-tokens h2 { font-size: var(--type-title-size); margin: var(--space-4) 0 var(--space-2); }
-.canvas-token-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); gap: var(--space-2); }
-.canvas-token-grid span { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.canvas-token-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr)); gap: var(--space-2) var(--space-4); }
+.canvas-token-grid span { display: flex; align-items: center; gap: var(--space-2); min-width: 0; min-height: calc(2 * var(--type-body-line)); }
 .canvas-token-grid i { flex: none; width: var(--space-6); height: var(--space-6); box-shadow: inset 0 0 0 1px var(--separator); }
-.canvas-token-grid code { font: var(--type-label-size) var(--mono); color: var(--text-secondary); overflow-wrap: anywhere; }
+/* A long name wraps at its hyphens onto a second line, never inside a word. */
+.canvas-token-grid code { min-width: 0; font: var(--type-label-size) / var(--type-label-line) var(--mono); color: var(--text-secondary); overflow-wrap: normal; }
 `;
 
 function States({ theme }: { theme: Theme }) {
   useAppearance({ appearance: theme });
-  return <SettingsGroup id="canvas-states">{(["hovered", "pressed", "focus-visible"] as const).map((state, index) => <SettingsRow key={state} id={`canvas-${state}`} label={englishMessages.text((["canvas-hovered", "canvas-pressed", "canvas-focused"] as const)[index]!)}><Switch aria-label={englishMessages.text((["canvas-hovered", "canvas-pressed", "canvas-focused"] as const)[index]!)} isSelected={index === 1} onChange={() => {}} {...{ [`data-${state}`]: true }} /><Button variant={index === 1 ? "primary" : index === 2 ? "quiet" : "secondary"} render={(native) => <button {...native} {...{ [`data-${state}`]: true }} />}><KeyCaps accelerator="CmdOrCtrl+K" /></Button></SettingsRow>)}</SettingsGroup>;
+  // One control in every row, each state drawn by the part's own attribute through its
+  // render prop, so the picture is the real rule.
+  const labels = ["canvas-hovered", "canvas-pressed", "canvas-focused"] as const;
+  return <div className="canvas-parts"><SettingsGroup id="canvas-states">{(["hovered", "pressed", "focus-visible"] as const).map((state, index) => <SettingsRow key={state} id={`canvas-${state}`} label={englishMessages.text(labels[index]!)}>
+    <Button variant="secondary" render={(native) => <button {...native} {...{ [`data-${state}`]: true }} />}>Check now<KeyCaps accelerator="CmdOrCtrl+K" /></Button>
+  </SettingsRow>)}</SettingsGroup></div>;
 }
 
 const tokenNames = [...new Set([...tokenSource.matchAll(/(--[a-z][\w-]*):/g)].map((match) => match[1]!))];
 const family = (...prefixes: string[]) => tokenNames.filter((name) => prefixes.some((prefix) => name === prefix || name.startsWith(`${prefix}-`)));
 
+/** A type role's size in pixels, as the page resolves it, so the roles list from small to large. */
+function typeSize(name: string): number {
+  const probe = document.createElement("span");
+  probe.style.fontSize = `var(${name})`;
+  document.body.append(probe);
+  try { return parseFloat(getComputedStyle(probe).fontSize) || 0; } finally { probe.remove(); }
+}
+
 /** The tokens as the app resolves them, so this page cannot drift from the code. */
 function Tokens({ theme }: { theme: Theme }) {
   useAppearance({ appearance: theme });
-  const colours = family("--text", "--surface", "--raised", "--sheet", "--accent", "--selected", "--fill", "--separator", "--scarlet", "--status", "--ring");
+  // Only the tokens that resolve to a colour: sizes such as --status-dot and --ring-width share these prefixes.
+  // A browser without the resolved value (a DOM without a cascade) keeps them all.
+  const resolved = getComputedStyle(document.documentElement);
+  const colour = (name: string) => { const value = resolved.getPropertyValue(name).trim(); return !value || typeof CSS === "undefined" || CSS.supports("color", value); };
+  const colours = family("--text", "--surface", "--sheet", "--accent", "--selected", "--fill", "--separator", "--scarlet", "--status", "--ring").filter(colour);
   return <div className="canvas-tokens"><style>{tokensStyle}</style>
     <h2>Colour</h2>
     <div className="canvas-token-grid">{colours.map((name) => <span key={name}><i style={{ background: `var(${name})` }} /><code>{name}</code></span>)}</div>
@@ -153,7 +170,7 @@ function Tokens({ theme }: { theme: Theme }) {
     <h2>Space</h2>
     <div className="canvas-token-grid">{family("--space").map((name) => <span key={name}><i style={{ width: `var(${name})`, height: `var(${name})` }} /><code>{name}</code></span>)}</div>
     <h2>Type</h2>
-    {family("--type").filter((name) => name.endsWith("-size")).map((name) => <p key={name} style={{ fontSize: `var(${name})`, lineHeight: `var(${name.replace("-size", "-line")})` }}>{name.slice(7, -5)}: The quiet garden</p>)}
+    {family("--type").filter((name) => name.endsWith("-size")).sort((a, b) => typeSize(a) - typeSize(b)).map((name) => <p key={name} style={{ fontSize: `var(${name})`, lineHeight: `var(${name.replace("-size", "-line")})` }}>{name.slice(7, -5)}: The quiet garden</p>)}
   </div>;
 }
 
@@ -170,7 +187,7 @@ function Notice({ theme }: { theme: Theme }) {
     const element = root.current;
     if (!element) return;
     renderNotice(element, currentPlatform())({ text: "[Aster, 2026]", more: 0,
-      delivered: { outcome: "copied", reason: "disabled" } });
+      delivered: { outcome: "copied", reason: "paste-off" } });
     return () => element.replaceChildren();
   }, []);
   return <div ref={root} />;

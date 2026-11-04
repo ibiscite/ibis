@@ -3,9 +3,10 @@ use crate::{
     LibraryKind, LoadedLibrary, SourceWarning, WarningCode,
     zotero::{self, MappingError, MappingWarning, ZoteroCreator, ZoteroItem},
 };
-use ibis_core::contract::{CitationKeySource, ItemRef, LibraryId, LibraryObject, Snapshot};
+use ibis_core::contract::{CitationKeySource, ErrorReason, ItemRef, LibraryId, LibraryObject, Snapshot};
 use ibis_core::zotero::api::{Transport, TransportError};
-use ibis_core::zotero::libraries::{self, Group};
+use ibis_core::zotero::libraries;
+pub use ibis_core::zotero::libraries::Group;
 pub use ibis_zotero_local::DEFAULT_PORT;
 use ibis_zotero_local::bbt::{BbtError, BbtLibrary, LiveBbt};
 pub use ibis_zotero_local::live::{AttachmentKind, Library, LiveError};
@@ -32,6 +33,8 @@ pub enum ZoteroError {
     Closed(#[from] closed::ClosedError),
     #[error("the default Zotero directory is unavailable")]
     Location,
+    #[error("Zotero is closed and which profile to read is not settled; choose one")]
+    ProfileNeeded,
     #[error("a chosen Zotero library was not found")]
     LibraryNotFound,
     #[error("the choice of Zotero libraries is invalid")]
@@ -54,6 +57,28 @@ impl ZoteroError {
                 | Self::Live(LiveError::Limit | LiveError::Transport(TransportError::TooLarge))
         )
     }
+    /// What a person can do about this failure, when the kind of failure says.
+    pub fn reason(self) -> Option<ErrorReason> {
+        match self {
+            Self::Live(LiveError::NotAllowed) => Some(ErrorReason::ZoteroSharingOff),
+            Self::ProfileNeeded => Some(ErrorReason::ZoteroProfileNeeded),
+            Self::Closed(closed::ClosedError::NotFound) => Some(ErrorReason::ZoteroNotFound),
+            Self::Closed(closed::ClosedError::NoSpace) => Some(ErrorReason::ZoteroNoSpace),
+            Self::Location
+            | Self::Closed(
+                closed::ClosedError::Running
+                | closed::ClosedError::ProcessCheck
+                | closed::ClosedError::UnsafeSource
+                | closed::ClosedError::Unreadable
+                | closed::ClosedError::PrivateStorage
+                | closed::ClosedError::Damaged
+                | closed::ClosedError::TooOld
+                | closed::ClosedError::NeedsRecovery,
+            ) => Some(ErrorReason::ZoteroNeedsOpening),
+            // Passing trouble: the same read may work, so nothing else is advised.
+            _ => None,
+        }
+    }
 }
 fn live_error(error: LiveError) -> ZoteroError {
     if error == LiveError::GroupNotFound {
@@ -68,14 +93,15 @@ pub enum ZoteroMode {
     Closed,
 }
 /// What tells one Zotero profile from another, so two profiles never share an
-/// id. A profile is its data directory, which live and closed reads agree on.
+/// id. Live and closed reads of one profile must agree on it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Profile {
-    /// The identity of a data directory, or one a caller fixed.
+    /// The identity of the lone data directory, or one a caller fixed.
     Known(Vec<u8>),
-    /// Several directories are configured. A closed read is refused then, and
-    /// Zotero's API never says which directory it runs on, so a live read goes
-    /// by whose library the running profile holds.
+    /// Several directories are configured. Zotero's API never says which
+    /// directory it runs on, so both reads go by whose library the profile
+    /// holds: a live read asks the running Zotero, a closed read the chosen
+    /// profile's database, and the two name the owner the same way.
     Running,
 }
 
@@ -92,6 +118,10 @@ pub struct ZoteroSource {
     profile: Profile,
     current: Vec<Arc<LoadedLibrary>>,
     mode: Option<ZoteroMode>,
+    /// The profile to read while Zotero is closed, by its safe name.
+    profile_name: Option<String>,
+    /// Groups the last closed read listed; Zotero has no API while closed.
+    closed_groups: Vec<Group>,
 }
 impl Default for ZoteroSource {
     fn default() -> Self {
@@ -100,6 +130,8 @@ impl Default for ZoteroSource {
             profile: Profile::Known(vec![]),
             current: vec![],
             mode: None,
+            profile_name: None,
+            closed_groups: vec![],
         }
     }
 }
@@ -123,7 +155,22 @@ impl ZoteroSource {
             profile: Profile::Known(vec![]),
             current: vec![],
             mode: None,
+            profile_name: None,
+            closed_groups: vec![],
         })
+    }
+    /// Read this profile while Zotero is closed. A running Zotero answers for
+    /// whichever profile it opened, so this says nothing about a live read.
+    pub fn with_profile(mut self, profile: Option<String>) -> Self {
+        self.profile_name = profile;
+        self
+    }
+    pub fn profile(&self) -> Option<&str> {
+        self.profile_name.as_deref()
+    }
+    /// Group libraries the last read listed, when that read was closed.
+    pub fn closed_groups(&self) -> Option<&[Group]> {
+        (self.mode == Some(ZoteroMode::Closed)).then_some(&self.closed_groups)
     }
     /// Read as this profile from now on, whatever discovery would say.
     pub fn on_profile(mut self, identity: &[u8]) -> Self {
@@ -134,6 +181,7 @@ impl ZoteroSource {
     pub fn choosing(&self, libraries: &[Library]) -> Result<Self, ZoteroError> {
         let mut chosen = Self::new(libraries)?;
         chosen.profile = self.profile.clone();
+        chosen.profile_name = self.profile_name.clone();
         Ok(chosen)
     }
     /// The id this source gives `library`, for a known profile.
@@ -201,10 +249,10 @@ impl ZoteroSource {
         on_full: &mut impl FnMut() -> Result<(), LiveError>,
     ) -> Result<Vec<Arc<LoadedLibrary>>, ZoteroError> {
         // Discovery reads two small configuration files and no library.
-        let data = default_directory();
-        self.profile = data
-            .as_ref()
-            .map_or(Profile::Running, |data| Profile::Known(directory_identity(data)));
+        let found = here();
+        // A chosen profile only says which database a closed read copies;
+        // it never changes the identity either read gives.
+        self.profile = read_profile(found.as_ref().map_err(|error| *error));
         match self.refresh_observed(DEFAULT_PORT, reload, &|| cancelled(), on_full) {
             Ok(loaded) => return Ok(loaded),
             Err(ZoteroError::Live(LiveError::Transport(TransportError::Unreachable))) => (),
@@ -214,8 +262,9 @@ impl ZoteroSource {
         if cancelled() {
             return Err(LiveError::Cancelled.into());
         }
-        let data = data?;
-        let acquired = read_closed_at(&data, &std::env::temp_dir(), cancelled.clone())?;
+        let data = found.and_then(|found| chosen_directory(&found, self.profile_name.as_deref()))?;
+        let acquired = read_closed_at(&data, &std::env::temp_dir(), cancelled.clone())
+            .map_err(|error| chosen_read_failed(error, self.profile_name.as_deref()))?;
         self.publish_closed(&acquired, &|| cancelled())
     }
     pub fn refresh(
@@ -335,8 +384,9 @@ impl ZoteroSource {
         cancelled: &impl Fn() -> bool,
     ) -> Result<Vec<Arc<LoadedLibrary>>, ZoteroError> {
         let chosen = self.libraries();
-        let Profile::Known(profile) = self.profile.clone() else {
-            return Err(ZoteroError::Location);
+        let profile = match &self.profile {
+            Profile::Known(profile) => profile.clone(),
+            Profile::Running => owner_identity(snapshot.owner),
         };
         let mut loaded = Vec::with_capacity(chosen.len());
         for &library in &chosen {
@@ -407,6 +457,7 @@ impl ZoteroSource {
         self.current = loaded.clone();
         self.mode = Some(ZoteroMode::Closed);
         self.readers = Self::readers(&chosen);
+        self.closed_groups = closed_groups(snapshot);
         Ok(loaded)
     }
     fn map_items(
@@ -547,6 +598,92 @@ fn read_closed_at(
     reader.read_cancellable(data, cancelled).map_err(Into::into)
 }
 
+/// The groups a closed copy lists, named as the live list names them.
+fn closed_groups(snapshot: &closed::ClosedSnapshot) -> Vec<Group> {
+    snapshot
+        .libraries
+        .iter()
+        .filter_map(|library| {
+            let id = u64::try_from(library.group_id?).ok()?;
+            let name = libraries::clean_name(&library.name);
+            Some(Group {
+                id,
+                name: if name.is_empty() { format!("Group {id}") } else { name },
+            })
+        })
+        .collect()
+}
+
+/// The profiles on this computer, by name; reads no library.
+pub fn profiles() -> Result<Vec<String>, ZoteroError> {
+    profile_names(&here()?)
+}
+
+/// Whether a Zotero library is on this computer, Zotero running or not. Reads
+/// Zotero's profile configuration and checks that a database file exists; no
+/// library is read before a person chooses Zotero.
+pub fn installed() -> bool {
+    here().is_ok_and(|found| {
+        found
+            .directories
+            .iter()
+            .any(|found| found.path().join("zotero.sqlite").is_file())
+    })
+}
+
+/// The groups a running Zotero lists; reads no library.
+pub fn live_groups(port: u16) -> Result<Vec<Group>, ZoteroError> {
+    libraries::groups(&mut ibis_zotero_local::LocalZotero::on_port(port)).map_err(|error| match error {
+        ibis_core::zotero::api::ZoteroError::NotAllowed => LiveError::NotAllowed.into(),
+        ibis_core::zotero::api::ZoteroError::Transport(transport) => LiveError::Transport(transport).into(),
+        _ => LiveError::Incomplete.into(),
+    })
+}
+
+fn profile_names(found: &discovery::Discovery) -> Result<Vec<String>, ZoteroError> {
+    if found.directories.is_empty() {
+        return Err(ZoteroError::Location);
+    }
+    Ok(found.directories.iter().map(|found| found.name().to_owned()).collect())
+}
+
+/// The directory to read closed. A profile asked for by name must still be
+/// there: like a missing group, it never falls back to another library.
+fn chosen_directory(found: &discovery::Discovery, profile: Option<&str>) -> Result<PathBuf, ZoteroError> {
+    if let Some(profile) = profile {
+        return found
+            .directories
+            .iter()
+            .find(|found| found.name() == profile)
+            .map(|found| found.path().to_owned())
+            .ok_or(ZoteroError::ProfileNeeded);
+    }
+    match found.directories.as_slice() {
+        [only] if found.warnings.is_empty() => Ok(only.path().to_owned()),
+        [_, _, ..] => Err(ZoteroError::ProfileNeeded),
+        _ => Err(ZoteroError::Location),
+    }
+}
+
+/// The profile both reads go by. Zotero's API never says which directory it
+/// runs on, so only a lone directory names one; with several, live and closed
+/// reads both go by the profile's owner.
+fn read_profile(found: Result<&discovery::Discovery, ZoteroError>) -> Profile {
+    found
+        .and_then(|found| chosen_directory(found, None))
+        .map_or(Profile::Running, |data| Profile::Known(directory_identity(&data)))
+}
+
+/// A chosen profile on an unplugged drive asks again; otherwise the choice
+/// could never be changed from the screen that reports it.
+fn chosen_read_failed(error: ZoteroError, profile: Option<&str>) -> ZoteroError {
+    if profile.is_some() && error == ZoteroError::Closed(closed::ClosedError::NotFound) {
+        ZoteroError::ProfileNeeded
+    } else {
+        error
+    }
+}
+
 /// A directory's spelling from discovery, which both read paths share.
 fn directory_identity(data: &Path) -> Vec<u8> {
     let mut identity = b"directory:".to_vec();
@@ -568,10 +705,16 @@ fn running_owner(transport: &mut impl Transport) -> Result<Vec<u8>, ZoteroError>
     }
     let rows: Value = serde_json::from_slice(&response.body).map_err(|_| ZoteroError::InvalidData)?;
     let owner = rows.get(0).and_then(|row| row.pointer("/library/id")?.as_u64());
-    Ok(format!("owner:{}", owner.unwrap_or_default()).into_bytes())
+    Ok(owner_identity(owner.unwrap_or_default()))
 }
 
-fn default_directory() -> Result<PathBuf, ZoteroError> {
+/// The identity of the profile whose personal library `owner` holds, as a live
+/// read finds it and a closed read records it.
+fn owner_identity(owner: u64) -> Vec<u8> {
+    format!("owner:{owner}").into_bytes()
+}
+
+fn here() -> Result<discovery::Discovery, ZoteroError> {
     let platform = if cfg!(target_os = "macos") {
         discovery::Platform::MacOs
     } else if cfg!(windows) {
@@ -583,11 +726,7 @@ fn default_directory() -> Result<PathBuf, ZoteroError> {
     };
     let home = std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).ok_or(ZoteroError::Location)?;
     let roots = discovery::DiscoveryRoots::new(platform, home.into(), std::env::var_os("APPDATA").map(PathBuf::from));
-    let found = discovery::discover(&roots, None);
-    if !found.warnings.is_empty() || found.directories.len() != 1 {
-        return Err(ZoteroError::Location);
-    }
-    Ok(found.directories[0].path().to_owned())
+    Ok(discovery::discover(&roots, None))
 }
 
 #[cfg(test)]
@@ -596,6 +735,130 @@ mod tests {
     use super::*;
     use ibis_core::zotero::api::Response;
     use serde_json::{Value, json};
+    fn registry(profiles: &[(&str, &str)]) -> (tempfile::TempDir, discovery::Discovery) {
+        let home = tempfile::tempdir().unwrap();
+        let root = home.path().join(".zotero/zotero");
+        let mut ini = String::new();
+        for (n, (name, directory)) in profiles.iter().enumerate() {
+            let folder = root.join(format!("p{n}"));
+            std::fs::create_dir_all(&folder).unwrap();
+            std::fs::write(
+                folder.join("prefs.js"),
+                format!(
+                    "user_pref(\"extensions.zotero.dataDir\", \"{directory}\");\nuser_pref(\"extensions.zotero.useDataDir\", true);\n"
+                ),
+            )
+            .unwrap();
+            ini.push_str(&format!("[Profile{n}]\nName={name}\nIsRelative=1\nPath=p{n}\n"));
+        }
+        std::fs::write(root.join("profiles.ini"), ini).unwrap();
+        let roots = discovery::DiscoveryRoots::new(discovery::Platform::Linux, home.path().into(), None);
+        let found = discovery::discover(&roots, None);
+        (home, found)
+    }
+    #[test]
+    fn a_profiles_ini_with_several_profiles_asks_and_a_choice_reads_that_one() {
+        let (_home, found) = registry(&[("Home", "/invented/home"), ("Work", "/invented/work")]);
+        assert_eq!(profile_names(&found).unwrap(), ["Home", "Work"]);
+        assert_eq!(chosen_directory(&found, None), Err(ZoteroError::ProfileNeeded));
+        assert_eq!(
+            ZoteroError::ProfileNeeded.reason(),
+            Some(ErrorReason::ZoteroProfileNeeded)
+        );
+        assert_eq!(
+            chosen_directory(&found, Some("Work")).unwrap(),
+            Path::new("/invented/work")
+        );
+    }
+    #[test]
+    fn a_chosen_profile_that_cannot_be_reached_asks_again() {
+        let not_found = ZoteroError::Closed(closed::ClosedError::NotFound);
+        assert_eq!(chosen_read_failed(not_found, Some("Work")), ZoteroError::ProfileNeeded);
+        assert_eq!(chosen_read_failed(not_found, None), not_found);
+        let running = ZoteroError::Closed(closed::ClosedError::Running);
+        assert_eq!(chosen_read_failed(running, Some("Work")), running);
+    }
+    #[test]
+    fn a_chosen_profile_that_is_gone_never_falls_back_to_another() {
+        let (_home, found) = registry(&[("Home", "/invented/home")]);
+        assert_eq!(chosen_directory(&found, None).unwrap(), Path::new("/invented/home"));
+        assert_eq!(chosen_directory(&found, Some("Work")), Err(ZoteroError::ProfileNeeded));
+    }
+    #[test]
+    fn a_closed_read_names_groups_as_a_live_list_does() {
+        let library = |group_id, name: &str| closed::ClosedLibrary {
+            library_id: 1,
+            group_id,
+            name: name.into(),
+            items: vec![],
+        };
+        let groups = closed_groups(&closed::ClosedSnapshot {
+            schema_version: 1,
+            libraries: vec![
+                library(None, ""),
+                library(Some(7), "  Lab\u{202e} group "),
+                library(Some(8), "\u{200b}"),
+            ],
+            warnings: vec![],
+            better_bibtex_unknown: false,
+            owner: 0,
+        });
+        assert_eq!(
+            groups,
+            [
+                Group {
+                    id: 7,
+                    name: "Lab group".into()
+                },
+                Group {
+                    id: 8,
+                    name: "Group 8".into()
+                }
+            ]
+        );
+    }
+    #[test]
+    fn each_failure_says_what_a_person_can_do() {
+        assert_eq!(
+            ZoteroError::Live(LiveError::NotAllowed).reason(),
+            Some(ErrorReason::ZoteroSharingOff)
+        );
+        for fix_by_opening in [
+            closed::ClosedError::Running,
+            closed::ClosedError::ProcessCheck,
+            closed::ClosedError::UnsafeSource,
+            closed::ClosedError::Unreadable,
+            closed::ClosedError::PrivateStorage,
+            closed::ClosedError::Damaged,
+            closed::ClosedError::TooOld,
+            closed::ClosedError::NeedsRecovery,
+        ] {
+            assert_eq!(
+                ZoteroError::Closed(fix_by_opening).reason(),
+                Some(ErrorReason::ZoteroNeedsOpening)
+            );
+        }
+        assert_eq!(ZoteroError::Location.reason(), Some(ErrorReason::ZoteroNeedsOpening));
+        assert_eq!(
+            ZoteroError::Closed(closed::ClosedError::NotFound).reason(),
+            Some(ErrorReason::ZoteroNotFound)
+        );
+        assert_eq!(
+            ZoteroError::Closed(closed::ClosedError::NoSpace).reason(),
+            Some(ErrorReason::ZoteroNoSpace)
+        );
+        for no_advice in [
+            ZoteroError::Closed(closed::ClosedError::TooNew),
+            ZoteroError::Closed(closed::ClosedError::TooLarge),
+            ZoteroError::Closed(closed::ClosedError::Cancelled),
+            ZoteroError::Closed(closed::ClosedError::Changing),
+            ZoteroError::Closed(closed::ClosedError::StorageInUse),
+            ZoteroError::Closed(closed::ClosedError::TimedOut),
+            ZoteroError::LibraryNotFound,
+        ] {
+            assert_eq!(no_advice.reason(), None);
+        }
+    }
     struct ParityApi;
     impl Transport for ParityApi {
         fn get(&mut self, path: &str) -> Result<Response, TransportError> {
@@ -849,10 +1112,12 @@ mod tests {
                 libraries: vec![closed::ClosedLibrary {
                     library_id: 1,
                     group_id: None,
+                    name: String::new(),
                     items: vec![item],
                 }],
                 warnings: vec![],
                 better_bibtex_unknown: unknown,
+                owner: 0,
             };
             let loaded = ZoteroSource::default()
                 .publish_closed(&snapshot, &|| false)
@@ -1034,22 +1299,75 @@ mod tests {
     }
 
     #[test]
-    fn several_data_directories_refuse_a_closed_read_for_want_of_a_profile() {
-        let mut source = ZoteroSource {
+    fn several_data_directories_give_an_item_one_id_live_and_closed() {
+        /// A running Zotero names its owner in each item it lists.
+        struct Owned(u64, ItemsApi);
+        impl Transport for Owned {
+            fn get(&mut self, path: &str) -> Result<Response, TransportError> {
+                if path.starts_with("users/0/items/top?limit=1&") {
+                    return Ok(Response {
+                        status: 200,
+                        headers: vec![],
+                        body: json!([{"library":{"id":self.0}}]).to_string().into_bytes(),
+                    });
+                }
+                self.1.get(path)
+            }
+        }
+        let chosen = [Library::User, Library::Group(7)];
+        let several = || ZoteroSource {
             profile: Profile::Running,
-            ..ZoteroSource::default()
+            ..ZoteroSource::new(&chosen).unwrap()
         };
-        assert_eq!(source.id_of(Library::User), None);
-        let closed = closed::ClosedSnapshot {
-            schema_version: 0,
-            libraries: vec![],
-            warnings: vec![],
-            better_bibtex_unknown: false,
-        };
+        let (_home, found) = registry(&[("Home", "/invented/home"), ("Work", "/invented/work")]);
+        assert_eq!(read_profile(Ok(&found)), Profile::Running);
+        let (_home, found) = registry(&[("Home", "/invented/home")]);
         assert_eq!(
-            source.publish_closed(&closed, &|| false).err(),
-            Some(ZoteroError::Location)
+            read_profile(Ok(&found)),
+            Profile::Known(directory_identity(Path::new("/invented/home")))
         );
+        assert_eq!(several().id_of(Library::User), None);
+        let ids = |loaded: Vec<Arc<LoadedLibrary>>| {
+            loaded
+                .iter()
+                .flat_map(|loaded| {
+                    loaded
+                        .snapshot
+                        .objects()
+                        .iter()
+                        .map(|object| object.object.id().clone())
+                })
+                .collect::<Vec<_>>()
+        };
+        let live = |owner| {
+            let item = json!({"key":"SYNTH001","itemType":"book","title":"Invented atlas","creators":[]});
+            ids(several()
+                .refresh(&mut Owned(owner, ItemsApi(vec![item])), false, &|| false)
+                .unwrap())
+        };
+        let closed = |owner| {
+            let snapshot = closed::ClosedSnapshot {
+                schema_version: 123,
+                libraries: vec![
+                    closed_library(1, None, "Invented atlas", ""),
+                    closed_library(2, Some(7), "Invented atlas", ""),
+                ],
+                warnings: vec![],
+                better_bibtex_unknown: false,
+                owner,
+            };
+            let mut source = several();
+            let loaded = source.publish_closed(&snapshot, &|| false).unwrap();
+            assert_eq!(source.mode(), Some(ZoteroMode::Closed));
+            ids(loaded)
+        };
+        // Opening or closing Zotero keeps every reference, groups included.
+        assert_eq!(closed(4242).len(), 2);
+        assert_eq!(closed(4242), live(4242));
+        assert_eq!(closed(0), live(0));
+        // Another account's profile is another library.
+        assert_ne!(closed(4242), closed(4243));
+        assert_ne!(closed(4242)[1], closed(4243)[1]);
     }
 
     #[test]
@@ -1222,6 +1540,7 @@ mod tests {
         closed::ClosedLibrary {
             library_id,
             group_id,
+            name: String::new(),
             items: vec![closed::ClosedItem {
                 data: closed::RawItem {
                     key: "SYNTH001".into(),
@@ -1254,6 +1573,7 @@ mod tests {
             ],
             warnings: vec![],
             better_bibtex_unknown: false,
+            owner: 0,
         };
         let (port, _) = serve_groups(invented_libraries());
         for chosen in [
@@ -1300,6 +1620,7 @@ mod tests {
                 libraries: vec![library],
                 warnings: vec![],
                 better_bibtex_unknown: false,
+                owner: 0,
             };
             let closed = ZoteroSource::new(&[chosen])
                 .unwrap()

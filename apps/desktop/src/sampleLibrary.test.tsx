@@ -33,7 +33,7 @@ function setup(density: Density = "comfortable", formatted = true) {
   });
   const switchTo = async (next: typeof mode) => { mode = next; await emit("library:changed", status()); };
   const copied = vi.fn((args: unknown) => ({ text: prepared(args).preview.text, warnings: prepared(args).preview.warnings }));
-  const notice = vi.fn(() => ({ outcome: "copied", reason: "paste-disabled", app: null }));
+  const notice = vi.fn(() => ({ outcome: "copied", reason: "paste-off", app: null }));
   const preview = vi.fn(async ({ items }: { items: { id: { library: string } }[] }) =>
     receipt(items[0]?.id.library === "samples" ? formatted ? apa : sampleKeys : "(Fen, 2023)",
       formatted ? items[0]?.id.library === "samples" ? "(Vale, 2024)<span> [Sample]</span>" : "(Fen, 2023)" : null,

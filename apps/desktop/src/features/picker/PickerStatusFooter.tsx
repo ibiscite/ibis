@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { libraryMessages, operationFailures as FAILURE_MESSAGES, pickerText } from "../../messages";
 import { zoteroLibraryNames } from "../../LibraryStatusLine";
 import type { PickerApi } from "../../App";
-import type { LibraryStatus } from "../../api";
+import type { LibraryStatus, SearchResult } from "../../api";
 import { PickerFooter } from "./PickerFooter";
 import { PickerLibraryStatus } from "./PickerLibraryStatus";
 import { PickerMenu } from "./PickerMenu";
@@ -18,11 +18,15 @@ import type { useDestination } from "./useDestination";
 import type { useRecentReferences } from "./useRecentReferences";
 import type { usePickerPreferences } from "./usePickerPreferences";
 import type { useOperations } from "./useOperations";
+import type { useProjectBibliography } from "./useProjectBibliography";
 
 export function PickerStatusFooter({
   api, library, scope, sourceState, menus, actions, run, copyChosen, destination, recents, preferences,
-  operations, altHeld, lastOutcome, cancelCopy, emptyAction, notices,
+  operations, altHeld, lastOutcome, cancelCopy, emptyAction, notices, project, highlighted,
 }: {
+  project: ReturnType<typeof useProjectBibliography>;
+  /** The active row of a key output, the one a missing entry can be copied for. */
+  highlighted?: SearchResult;
   api: PickerApi;
   library: LibraryStatus | null | undefined;
   scope: ReturnType<typeof useZoteroScope>;
@@ -62,6 +66,7 @@ export function PickerStatusFooter({
       } : null}
       actions={{ choose: chooseSources, find: chooseFile, reload: () => runFromMenu("reload", reloadLibrary),
         useZotero: () => runFromMenu("zotero", useZotero), openZotero: () => openSource(source.kind !== "zotero") }}
+      listProfiles={api.zoteroProfiles} chooseProfile={api.useZoteroProfile && ((name) => runFromMenu("zotero", async () => api.useZoteroProfile!(name)))}
       groupsFailed={failures.zoteroGroups} failure={sourceOpen.failure?.message ?? [...libraryOperations].filter((operation) => operation !== "zoteroGroups" && failures[operation]).map((operation) => FAILURE_MESSAGES[operation]).join(" ")} />}
 
     hints={hints}
@@ -71,6 +76,9 @@ export function PickerStatusFooter({
         buttonRef={moreButton} searchRef={input} libraryDetail={libraryDetail}
         source={api.openLibrarySource && sourceState.sourceAvailable ? sourceAction : undefined}
         lastOutcome={lastOutcome}
+        project={{ status: project.status, choose: project.choose, stop: project.stop,
+          copyEntry: highlighted?.project?.state === "missing" && highlighted.project.generation === project.status?.generation
+            ? () => { project.copyEntry(highlighted); focusHome(); } : null }}
         density={density} pinned={pinned}
         actions={{
           density: changeDensity,

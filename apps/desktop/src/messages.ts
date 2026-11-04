@@ -1,4 +1,4 @@
-import type { KeyFormat, LibraryStatus, LoginItemProblem } from "./bindings";
+import type { EntryCopy, KeyFormat, LibraryStatus, LoginItemProblem, ProjectKeyState, ProjectStatus, ZoteroPresence } from "./bindings";
 import type { Platform } from "./platform";
 
 export const citationDetailsText = {
@@ -22,6 +22,7 @@ export const citationDetailsText = {
  */
 export const operationFailures = {
   recentHistory: "Recent citations could not be forgotten. Try again.",
+  project: "The project bibliography could not be changed. Try again.",
   rowContext: "The reference menu could not open. Use Enter to copy or Shift+Enter to add.",
   status: "Ibis could not check your library. Choose the file again.",
   format: "Ibis could not read your saved copy format. Check Copy as before copying.",
@@ -118,16 +119,23 @@ export const setupText = {
     "“Allow other applications on this computer to communicate with Zotero”.",
   cutShort: "Some folders were too large to search fully. Choose the file yourself if it is not listed.",
   nothingFound: "No Zotero or .bib files found nearby. Choose the file yourself.",
-  found: (files: number, zotero: boolean) =>
-    [zotero ? "Zotero is open." : "", files ? `${files} .bib ${files === 1 ? "file" : "files"} found.` : ""].filter(Boolean).join(" "),
+  found: (files: number, zotero: ZoteroPresence | null) =>
+    [zotero === "available" ? "Zotero is open." : zotero === "closed" ? "Zotero is on this computer." : "",
+      files ? `${files} .bib ${files === 1 ? "file" : "files"} found.` : ""].filter(Boolean).join(" "),
   missingTitle: (name: string) => `Can't find ${name}`,
   missingLine: "It may have moved, or its drive is disconnected.",
   find: (name: string) => `Find ${name}`,
   findFileHelp: "Choose where it is now",
   unreadableTitle: (name: string) => `Can't read ${name}`,
-  zoteroClosedTitle: "Zotero isn't open",
-  zoteroClosedLine: "Open Zotero, then try again.",
+  zoteroClosedTitle: "Ibis needs Zotero open",
+  zoteroMissingTitle: "Ibis can't find Zotero's library",
+  zoteroMissingLine: "If Zotero isn't installed, install it and open it once. Ibis will carry on by itself.",
+  zoteroClosedLine: "Open Zotero and Ibis will carry on by itself.",
   zoteroAccessOffTitle: "Zotero isn't sharing your library",
+  zoteroAccessOffWaiting: "Ibis will carry on by itself once it's on.",
+  zoteroProfilesTitle: "Which Zotero profile?",
+  zoteroProfilesLine: "Zotero is closed. Choose the profile to read.",
+  zoteroProfilesFailed: "Ibis could not list your Zotero profiles. Open Zotero and Ibis will carry on by itself.",
   otherTitle: (name: string) => `Can't open ${name}`,
   theLibrary: "the library",
   tryAgain: "Try again",
@@ -174,6 +182,33 @@ export const densityNames = {
 } as const;
 
 export const pickerText = {
+  projectState: (state: ProjectKeyState, name: string, lastGood: boolean, lines: number[] = []) => {
+    const file = isolate(name);
+    const text = { in: `In ${file}`, missing: `Missing from ${file}`, "could-not-check": `Couldn't check ${file}`,
+      repeated: "Key appears more than once", "may-name-another": "Key may name another reference" }[state];
+    const where = lines.length ? ` (${lines.length === 1 ? "line" : "lines"} ${lines.join(", ")})` : "";
+    return lastGood ? `${text}${where} (last good copy)` : `${text}${where}`;
+  },
+  /** The file the rows are marked against, and what is wrong with it if anything. */
+  projectDetail: ({ name, state, last_good, reason, damaged_lines: lines }: ProjectStatus) => {
+    const file = isolate(name);
+    const where = lines.length ? ` Check ${lines.length === 1 ? "line" : "lines"} ${lines.join(", ")}.` : "";
+    if (state === "reading") return `Reading ${file}`;
+    if (state === "damaged") return `Couldn't read all of ${file}, so nothing is called missing.${where}`;
+    if (state === "failed") return `Couldn't read ${file}${last_good ? "; using the last good copy" : ""}. ${reason ?? ""}${where}`.trim();
+    return `Checking against ${file}`;
+  },
+  chooseProject: "Check Against a Project Bibliography…",
+  chooseOtherProject: "Check Against Another Bibliography…",
+  stopProject: (name: string) => `Stop Checking ${isolate(name)}`,
+  copyProjectEntry: (name: string) => `Copy Entry for ${isolate(name)}`,
+  projectEntry: (outcome: EntryCopy, key: string, name: string) => ({
+    copied: `Copied the entry for ${isolate(key)} as your file has it, including any file or note field. Check it, then add it to ${isolate(name)}.`,
+    "no-original": "This reference has no original BibTeX entry here. Export it from your reference manager in your project's dialect, keeping its key.",
+    changed: "The library or the bibliography changed. Search again, then try again.",
+    repeated: "The library file repeats this key, so Ibis can't tell which entry to copy.",
+    dependency: "This entry relies on a crossref, xdata or @string that can't come with it. Export it from your reference manager, keeping its key.",
+  })[outcome],
   /** An editor asked through the endpoint; it receives exactly what is shown. */
   editorWaiting: (format: string) => `Citing for your editor in ${isolate(format)}. Enter sends what you see; Esc cancels.`,
   openZotero: "Open Zotero",
@@ -296,6 +331,8 @@ export const pickerText = {
   reload: "Reload",
   reloadTitle: "Reload Library",
   reloadLibrary: "Reload Library",
+  chooseZoteroProfile: "Choose Zotero Profile…",
+  zoteroProfile: "Zotero Profile",
   chooseLibraryMenu: "Choose Library…",
   copyAs: "Copy as",
   quitLabel: "Quit Ibis",
@@ -374,9 +411,14 @@ export const keyText = {
 export const libraryMessages = {
   opening: (name: string | null) => `Opening ${name ?? "library"}…`,
   reloading: (name: string | null) => `Reloading ${name ?? "library"}…`,
-  openError: (name: string | null, reason: string, zotero = false) => {
+  openError: (name: string | null, reason: string, zotero = false, problem: LibraryStatus["problem"] = null) => {
     const sentence = /[.!?]$/.test(reason) ? reason : `${reason}.`;
-    if (zotero) return `${isolate(name ?? "Zotero")} could not be read. ${sentence} Open Zotero, then reload.`;
+    if (zotero) {
+      // Each fix is named once: sharing is a setting, and a profile is chosen here.
+      const fix = problem === "zotero_access_off" ? ` ${setupText.zoteroAccessOff}`
+        : problem === "zotero_closed" || problem === null ? " Open Zotero, then reload." : "";
+      return `${isolate(name ?? "Zotero")} could not be read. ${sentence}${fix}`;
+    }
     return `The library could not be opened: ${isolate(name ?? "the chosen file")}. ${sentence} Choose it again or reconnect the drive.`;
   },
   emptyTitle: (name: string | null) => `No references in ${name ?? "this library"}`,
@@ -425,7 +467,7 @@ export const libraryMessages = {
     const parts = [
       zoteroSnapshot(status) && !(status.error && !status.stale) ? libraryNames(status) : null,
       checked === null ? null : isolate(`${status.stale ? "last read" : "checked"} ${ago(checked, now)}, ${clock(checked, now)}`),
-      status.error ? libraryMessages.openError(status.name, status.error, status.zotero)
+      status.error ? libraryMessages.openError(status.name, status.error, status.zotero, status.problem)
         : status.stale ? (zoteroSnapshot(status) ? "Zotero could not be reached" : "the file could not be read")
         : null,
     ].filter((part): part is string => part !== null);

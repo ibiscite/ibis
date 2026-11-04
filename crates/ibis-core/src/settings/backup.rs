@@ -34,10 +34,19 @@ pub const FORMAT: u64 = 1;
 const MARKER: &str = "ibis_settings_backup";
 
 /// Settings that belong to one computer and never travel: window places, quiet
-/// device-local feedback, the editor endpoint, whose token opens the picker, and
-/// the update question, which each computer answers for itself because it allows
-/// network use (decision 0008). A restore keeps this computer's values for them.
-pub const LOCAL: [&str; 4] = ["picker_windows", "delights", "editor_endpoint", "update_checks"];
+/// device-local feedback, the project bibliography being checked, which names
+/// a working folder, the editor endpoint, whose token opens the picker, the
+/// update question, which each computer answers for itself because it allows
+/// network use (decision 0008), and the Zotero profile, a name that means
+/// nothing elsewhere. A restore keeps this computer's values for them.
+pub const LOCAL: [&str; 6] = [
+    "picker_windows",
+    "delights",
+    "project_bibliography",
+    "editor_endpoint",
+    "update_checks",
+    "zotero_profile",
+];
 
 /// A backup read and checked whole.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -339,8 +348,10 @@ pub fn plan(current: &Settings, backup: &Backup, exists: impl FnOnce(&Path) -> b
     restored.schema_version = SCHEMA_VERSION;
     restored.picker_windows = current.picker_windows.clone();
     restored.delights = current.delights.clone();
+    restored.project_bibliography = current.project_bibliography.clone();
     restored.editor_endpoint = current.editor_endpoint.clone();
     restored.update_checks = current.update_checks;
+    restored.zotero_profile = current.zotero_profile.clone();
     let mut notes = Vec::new();
     // Each system keeps its own shortcut unless the backup has one for it.
     let mut shortcuts: BTreeMap<System, String> = current.shortcut.by_system().clone();

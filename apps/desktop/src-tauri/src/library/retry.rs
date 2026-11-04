@@ -188,7 +188,9 @@ mod tests {
         assert!(begin_check(&library, &requests).is_none(), "only one check per opening");
         let file = library.lock().map_err(|_| "library")?.file.clone();
         let loaded =
-            crate::library::load::load_source(checked, true, file, &ibis_engine::Cancellation::default(), || false);
+            crate::library::load::load_source(checked, true, file, None, &ibis_engine::Cancellation::default(), || {
+                false
+            });
         let visible = install_loaded(&library, &requests, request, loaded).ok_or("accepted recovery")?;
         assert_eq!(visible.references, 1);
         assert!(visible.error.is_none());
@@ -216,8 +218,10 @@ mod tests {
         let (request, checked) = begin_check_with(&library, &requests, |_| true).ok_or("picker-open check")?;
         let file = library.lock().map_err(|_| "library")?.file.clone();
         let loaded =
-            crate::library::load::load_source(checked, true, file, &ibis_engine::Cancellation::default(), || false)
-                .map_err(|e| e.to_string())?;
+            crate::library::load::load_source(checked, true, file, None, &ibis_engine::Cancellation::default(), || {
+                false
+            })
+            .map_err(|e| e.to_string())?;
         let visible = install_loaded(&library, &requests, request, Ok(loaded)).ok_or("current result")?;
         assert_eq!(visible.references, 2);
         assert!(visible.error.is_none());

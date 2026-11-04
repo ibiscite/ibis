@@ -17,8 +17,8 @@ type Props = {
   buttonRef?: RefObject<HTMLButtonElement | null>; buttonShortcut?: string; disabled?: boolean; label: string; value: string; sections: ToolbarMenuSection[]; selectedKey: string;
   /** One plain line above the choices, read with the menu. */
   note?: string;
-  /** A pop-up that draws more than its value, such as the shelf's count. */
-  button?: { className: string; label: string; title?: string; content: ReactNode };
+  /** A pop-up that draws more than its value, such as the shelf's count; quiet inside a band that is itself a fill. */
+  button?: { className: string; label: string; title?: string; content: ReactNode; quiet?: boolean };
   placement?: "top end" | "bottom end";
   isOpen?: boolean; onOpenChange?: (open: boolean, reason?: MenuCloseReason) => void;
   filterLabel?: string; onAction: (key: string) => void; returnFocusRef?: RefObject<HTMLElement | null>;
@@ -81,7 +81,7 @@ export function ToolbarMenu({ buttonRef, buttonShortcut, disabled, label, value,
       else if (open && event.key === "Tab") { event.preventDefault(); event.stopPropagation(); changeOpen(false); }
     }}>
     <MenuTrigger isOpen={open} onOpenChange={(next) => changeOpen(next)}>
-      <PopupButton ref={button} aria-keyshortcuts={buttonShortcut} isDisabled={disabled} className={`toolbar-menu-button ${drawn?.className ?? ""}`} size={drawn ? "small" : undefined} title={drawn?.title} aria-label={drawn?.label ?? `${label} ${value}`}>{drawn?.content ?? value}</PopupButton>
+      <PopupButton ref={button} aria-keyshortcuts={buttonShortcut} isDisabled={disabled} className={`toolbar-menu-button ${drawn?.className ?? ""}`} size={drawn ? "small" : undefined} variant={drawn?.quiet ? "quiet" : undefined} title={drawn?.title} aria-label={drawn?.label ?? `${label} ${value}`}>{drawn?.content ?? value}</PopupButton>
       <Popover ref={wholeRows} className="menu-popover toolbar-menu-popover ui-overlay" placement={renderedPlacement} offset={4} containerPadding={8} shouldSkipAnimation={skipExit} {...boundary}>
         {note && <p id={noteId} className="toolbar-menu-note">{note}</p>}
         {filtered ? <Autocomplete key={opening} filter={contains}><SearchField className="toolbar-menu-filter" aria-label={filterLabel} autoFocus><Input placeholder={filterLabel} aria-describedby={note ? noteId : undefined} /></SearchField>{menu}</Autocomplete> : menu}

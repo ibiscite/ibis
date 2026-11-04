@@ -17,8 +17,9 @@ const interfaceFile = (path) => path !== "apps/desktop/src/bindings.ts" && (
 );
 // The website is plain files checked by the script tests in the Web job.
 const websiteFile = (path) => path.startsWith("website/");
-// Plain `cargo test` never builds the app and no crate reads its files.
-const appFile = (path) => path.startsWith("apps/desktop/");
+// Plain `cargo test` never builds the app, and no crate reads its files except
+// its manifest: the engine boundary test reads the crate graph from cargo metadata.
+const appFile = (path) => path.startsWith("apps/desktop/") && path !== "apps/desktop/src-tauri/Cargo.toml";
 
 export function classify(event, expected, files) {
   if (event !== "pull_request") return { ...full };

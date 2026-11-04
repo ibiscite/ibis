@@ -6,7 +6,9 @@ use ibis_core::{
     model::{Name, strip_markup},
     syntax::MAX_CITATION_ITEMS,
 };
-use ibis_engine::{DispatchResult, Method};
+use ibis_engine::{
+    DispatchResult, Doubt, EntryRefusal, EntryResult, KeyCheck, Method, ProjectKey, ProjectProblem, ProjectResult,
+};
 use serde_json::Value;
 use std::{collections::BTreeMap, path::Path};
 
@@ -127,6 +129,11 @@ fn summary(method: Method, data: &Value, holdings: Holdings, names: &BTreeMap<St
             })
             .collect::<Option<Vec<_>>>()
             .map(|lines| lines.join("\n")),
+        Method::Project => project_report(data),
+        Method::Entry => match serde_json::from_value(data.clone()).ok()? {
+            EntryResult::Entry { text, .. } => Some(text.trim_end().to_owned()),
+            EntryResult::Refused { reason } => Some(entry_refusal(reason).into()),
+        },
         Method::Styles => {
             let styles = data.get("styles")?.as_array()?;
             let total = data.get("total")?.as_u64()?;
@@ -152,6 +159,65 @@ fn summary(method: Method, data: &Value, holdings: Holdings, names: &BTreeMap<St
             Some(lines.join("\n"))
         }
         _ => None,
+    }
+}
+
+/// One line per key, the file's own state first, in the words the app uses.
+fn project_report(data: &Value) -> Option<String> {
+    let result: ProjectResult = serde_json::from_value(data.clone()).ok()?;
+    let name = field(&result.name);
+    let lines = |lines: &[usize]| lines.iter().map(usize::to_string).collect::<Vec<_>>().join(", ");
+    let mut report = vec![];
+    if let Some(problem) = result.problem {
+        let why = match problem {
+            ProjectProblem::Unavailable => "the file is not there or is not on this computer yet",
+            ProjectProblem::NotAFile => "it is not a file",
+            ProjectProblem::TooLarge => "the file is larger than 64 MiB",
+            ProjectProblem::NotUtf8 => "the file is not UTF-8 text",
+            ProjectProblem::Changing => "the file is still changing",
+            ProjectProblem::NotBibtex => "a project bibliography must be a BibTeX or BibLaTeX file",
+            ProjectProblem::Damaged => "part of the file cannot be read",
+        };
+        report.push(format!("Couldn't read {name}: {why}."));
+    }
+    if !result.damaged_lines.is_empty() {
+        report.push(format!(
+            "Couldn't read all of {name}: check line {}.",
+            lines(&result.damaged_lines)
+        ));
+    }
+    for ProjectKey { key, check } in &result.keys {
+        let status = match check {
+            KeyCheck::In { line } => format!("In {name} (line {line})"),
+            KeyCheck::Missing => format!("Missing from {name}"),
+            KeyCheck::CouldNotCheck => format!("Couldn't check {name}"),
+            KeyCheck::Repeated { lines: found } => format!("Key appears more than once (lines {})", lines(found)),
+            KeyCheck::MayNameAnother { line, doubt } => format!(
+                "Key may name another reference (line {line}): {}",
+                match doubt {
+                    Doubt::Fields => "this entry and the library differ",
+                    Doubt::LetterCase => "a key differs only by letter case",
+                    Doubt::Alias => "it is another entry's alias",
+                    Doubt::Helper => "it belongs to an @xdata entry, which cannot be cited",
+                    Doubt::Commented => "it is inside @comment, which some tools still read",
+                }
+            ),
+        };
+        report.push(format!("{}\t{status}", field(key)));
+    }
+    Some(report.join("\n"))
+}
+
+fn entry_refusal(reason: EntryRefusal) -> &'static str {
+    match reason {
+        EntryRefusal::NoOriginal => {
+            "This reference has no original BibTeX entry here. Export it from your reference manager in your project's dialect, keeping its key."
+        }
+        EntryRefusal::Changed => "The library file changed or could not be read. Reload it and try again.",
+        EntryRefusal::Repeated => "The library file repeats this key, so Ibis cannot tell which entry to give.",
+        EntryRefusal::Dependency => {
+            "This entry relies on a crossref, xdata or @string that cannot come with it. Export it from your reference manager, keeping its key."
+        }
     }
 }
 
@@ -563,16 +629,26 @@ fn path_reason(path: &Path) -> Option<&'static str> {
     }
 }
 
-pub(super) fn zotero_failure(code: ErrorCode) -> String {
-    let reason = match code {
-        ErrorCode::SourceUnavailable => {
+pub(super) fn zotero_failure(error: EngineError, profiles: &[String]) -> String {
+    let reason = match (error.code, error.reason) {
+        (_, Some(reason)) => reason_sentence(reason),
+        (ErrorCode::SourceUnavailable, None) => {
             "no local Zotero library was found or it could not be read; check that Zotero is installed and has been opened once, or use --file."
         }
-        ErrorCode::BadInput => "its data could not be understood; open Zotero once so it can repair its database.",
-        ErrorCode::NewerFormat => "a newer version of Zotero wrote it; update Ibis.",
-        ErrorCode::ResourceLimit => "it is larger than Ibis reads at once.",
-        code => code_sentence(code),
+        (ErrorCode::BadInput, None) => {
+            "its data could not be understood; open Zotero once so it can repair its database."
+        }
+        (ErrorCode::NewerFormat, None) => "a newer version of Zotero wrote it; update Ibis.",
+        (ErrorCode::ResourceLimit, None) => "it is larger than Ibis reads at once.",
+        (code, None) => code_sentence(code),
     };
+    if error.reason == Some(ErrorReason::ZoteroProfileNeeded) && !profiles.is_empty() {
+        let names: Vec<_> = profiles.iter().map(|name| field(name)).collect();
+        return format!(
+            "cannot read the Zotero library: {reason} Profiles: {}.",
+            names.join(", ")
+        );
+    }
     format!("cannot read the Zotero library: {reason}")
 }
 
@@ -626,5 +702,20 @@ pub(super) fn reason_sentence(reason: ErrorReason) -> &'static str {
             "the program given as the Ibis app is not Ibis; give the Ibis app's location with --app <path>."
         }
         ErrorReason::NoAnswer => "the Ibis app started but did not answer; open Ibis once by hand, then try again.",
+        ErrorReason::ZoteroSharingOff => {
+            "Zotero is not sharing its library; in Zotero open Settings, Advanced, and turn on Allow other applications on this computer to communicate with Zotero."
+        }
+        ErrorReason::ZoteroProfileNeeded => {
+            "Zotero is closed and Ibis needs to know which profile to read; open Zotero, or name one with --zotero-profile NAME."
+        }
+        ErrorReason::ZoteroNeedsOpening => {
+            "Zotero's library cannot be read while it is closed; open Zotero, then try again."
+        }
+        ErrorReason::ZoteroNotFound => {
+            "no local Zotero library was found or it could not be read; check that Zotero is installed and has been opened once, or use --file."
+        }
+        ErrorReason::ZoteroNoSpace => {
+            "there is not enough free space to read Zotero while it is closed; free some space, or open Zotero."
+        }
     }
 }

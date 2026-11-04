@@ -46,6 +46,7 @@ fn chosen() -> Settings {
         citation_style: Some(CitationStyle::Ieee),
         density: Some(Density::Compact),
         update_checks: Some(true),
+        zotero_profile: Some("Invented elsewhere".into()),
         ..Settings::default()
     };
     settings.shortcut.set_here(Some("Alt+Shift+K".into()));
@@ -374,6 +375,7 @@ fn restoring_on_another_computer_keeps_its_local_settings_and_shortcut() {
     let mut here = Settings {
         update_checks: Some(false),
         density: Some(Density::Comfortable),
+        zotero_profile: Some("Invented here".into()),
         ..Settings::default()
     };
     here.shortcut.set_here(Some("Alt+Space".into()));
@@ -393,6 +395,7 @@ fn restoring_on_another_computer_keeps_its_local_settings_and_shortcut() {
         Some(false),
         "the update question stays this computer's"
     );
+    assert_eq!(plan.restored.zotero_profile, here.zotero_profile);
     assert_eq!(plan.restored.picker_windows, here.picker_windows);
     assert_eq!(plan.restored.shortcut.here(), Some("Alt+Space"));
     assert_eq!(
@@ -595,6 +598,32 @@ fn a_shared_settings_file_keeps_each_systems_shortcut_apart() {
         written["shortcut"],
         json!({ here: "Alt+Space" }),
         "never a plain string another system would take as its own"
+    );
+}
+
+#[test]
+fn the_project_bibliography_stays_on_its_computer() {
+    let dir = folder();
+    let path = dir.path().join("settings.json");
+    let chosen = PathBuf::from("/invented/work/thesis.bib");
+    settings::update(&path, |s| s.project_bibliography = Some(chosen.clone()))
+        .unwrap_or_else(|error| panic!("{error}"));
+    let saved = settings::load(&path).settings;
+    assert_eq!(saved.project_bibliography, Some(chosen.clone()));
+
+    let text = backup::export(&saved, "0.2.8").unwrap_or_else(|error| panic!("{error}"));
+    assert!(!text.contains("thesis.bib"), "the path never leaves in a backup");
+
+    let read = backup::parse(&text).unwrap_or_else(|error| panic!("{error}"));
+    let mut here = saved.clone();
+    here.project_bibliography = Some(PathBuf::from("/invented/other/paper.bib"));
+    let plan = backup::plan(&here, &read, |_| true);
+    assert_eq!(plan.restored.project_bibliography, here.project_bibliography);
+    assert!(
+        !plan
+            .changes
+            .iter()
+            .any(|change| change.setting == "project_bibliography")
     );
 }
 

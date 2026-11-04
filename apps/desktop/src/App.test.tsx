@@ -1509,7 +1509,7 @@ test("Ctrl+K opens More with every action, Escape closes it before hiding the pi
   fireEvent.keyDown(box, { key: "k", ctrlKey: true });
   const menu = await screen.findByRole("menu");
   const items = within(menu).getAllByRole("menuitem").map((item) => item.textContent);
-  expect(items).toEqual(["Open ⁨refs.bib⁩Ctrl+O", "Rows: Comfortable›", "References Used This Session…", "Keyboard ShortcutsCtrl+/", "Settings…Ctrl+,", "Quit IbisCtrl+Q"]);
+  expect(items).toEqual(["Open ⁨refs.bib⁩Ctrl+O", "Check Against a Project Bibliography…", "Rows: Comfortable›", "References Used This Session…", "Keyboard ShortcutsCtrl+/", "Settings…Ctrl+,", "Quit IbisCtrl+Q"]);
   expect(within(menu).getByRole("menuitemcheckbox", { name: "Keep Window Open" }).getAttribute("aria-checked")).toBe("false");
   expect(document.activeElement).toBe(within(menu).getAllByRole("menuitem")[0]);
   fireEvent.keyDown(document.activeElement!, { key: "ArrowUp" });
@@ -2265,7 +2265,9 @@ test("a failed group list is reported and My Library stays available", async () 
   render(<App />);
   await waitFor(() => expect(screen.getByRole("region", { name: "Picker actions" }).textContent).toMatch(/Zotero/));
   fireEvent.click(libraryButton());
-  expect(await screen.findByText(/could not list your Zotero groups/)).toBeTruthy();
+  expect(await screen.findAllByText(/could not list your Zotero groups/)).toBeTruthy();
+  // Regression: the footer stayed a green Done dot beside these words.
+  expect(document.querySelector(".status-dot")?.getAttribute("data-health")).toBe("look");
   expect(screen.queryByRole("group", { name: "Zotero libraries" })).toBeNull();
   expect(screen.getByRole("menuitem", { name: "Choose Library…" })).toBeTruthy();
 });
@@ -2284,7 +2286,7 @@ test.each(["Ctrl+K", "Escape", "Tab", "outside click"])("closing the library men
   await waitFor(() => expect(screen.getByRole("region", { name: "Picker actions" }).textContent).toMatch(/Zotero/));
   const more = libraryButton();
   fireEvent.click(more);
-  await screen.findByText(/could not list your Zotero groups/);
+  await screen.findAllByText(/could not list your Zotero groups/);
   // A click outside, on More itself too, lands on the menu's underlay, as in a native menu.
   if (closeWith === "Ctrl+K") {
     fireEvent.keyDown(screen.getByRole("menu"), { key: "k", ctrlKey: true });
@@ -2299,7 +2301,7 @@ test.each(["Ctrl+K", "Escape", "Tab", "outside click"])("closing the library men
   await waitFor(() => expect(requests).toBe(2));
   expect(screen.queryByText(/could not list your Zotero groups/)).toBeNull();
   await act(async () => { rejectRetry(new Error("synthetic: still closed")); });
-  expect(await screen.findByText(/could not list your Zotero groups/)).toBeTruthy();
+  expect(await screen.findAllByText(/could not list your Zotero groups/)).toBeTruthy();
 });
 
 test("background group-name lookup keeps cached names without showing a closed-menu error", async () => {
@@ -2320,7 +2322,7 @@ test("background group-name lookup keeps cached names without showing a closed-m
   expect(screen.queryByText(/could not list your Zotero groups/)).toBeNull();
   expect(within(shared).getByText("Synthetic lab")).toBeTruthy();
   fireEvent.click(libraryButton());
-  expect(await screen.findByText(/could not list your Zotero groups/)).toBeTruthy();
+  expect(await screen.findAllByText(/could not list your Zotero groups/)).toBeTruthy();
   expect(screen.getByRole("menuitemcheckbox", { name: "Synthetic lab" })).toBeTruthy();
 });
 
@@ -2368,7 +2370,7 @@ test("switching to a file removes a previous Zotero group-list failure", async (
   render(<App />);
   await waitFor(() => expect(screen.getByRole("region", { name: "Picker actions" }).textContent).toMatch(/Zotero/));
   fireEvent.click(libraryButton());
-  await screen.findByText(/could not list your Zotero groups/);
+  await screen.findAllByText(/could not list your Zotero groups/);
   await act(async () => { await emit("library:changed", { revision: "1", state: "loaded", has_snapshot: true, zotero: false,
     name: "synthetic.bib", snapshot_name: "synthetic.bib", references: 1, warnings: 0, error: null, problem: null, note: null }); });
   expect(screen.queryByRole("group", { name: "Zotero libraries" })).toBeNull();

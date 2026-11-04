@@ -1,7 +1,7 @@
 #![allow(clippy::unwrap_used)]
 #[path = "support/zotero.rs"]
 mod fixture;
-use ibis_core::contract::{ErrorCode, GoldenCase};
+use ibis_core::contract::{ErrorCode, ErrorReason, GoldenCase};
 use ibis_engine::{Cancellation, CitationCommitError, Engine, Method, request::ZoteroLibrary};
 use serde_json::json;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -131,4 +131,81 @@ fn chosen_group_libraries_publish_separately_and_a_new_choice_replaces_the_old()
         .unwrap();
     assert_eq!(chosen(), vec![Some(ZoteroLibrary::Group(7))]);
     assert_eq!(engine.snapshot().unwrap().fingerprints(), &group);
+}
+
+#[test]
+fn a_zotero_that_stops_refusing_is_read_without_any_other_change() {
+    let server = fixture::Server::new();
+    server.sharing_off.store(true, Ordering::Relaxed);
+    let engine = Engine::with_zotero_port(server.port).unwrap();
+    let cancel = Cancellation::default();
+    let open = json!({"action":"open-zotero","libraries":["personal"]});
+    let refused = engine.dispatch(Method::Libraries, &open, &cancel).unwrap_err();
+    assert_eq!(refused.code, ErrorCode::SourceUnavailable);
+    assert_eq!(refused.reason, Some(ErrorReason::ZoteroSharingOff));
+    assert!(
+        engine.libraries().unwrap().libraries.is_empty(),
+        "a refusal publishes nothing"
+    );
+
+    server.sharing_off.store(false, Ordering::Relaxed);
+    engine.dispatch(Method::Libraries, &open, &cancel).unwrap();
+    assert_eq!(engine.libraries().unwrap().libraries[0].objects, 1);
+}
+
+#[test]
+fn turning_sharing_off_later_keeps_the_last_read_and_says_why() {
+    let server = fixture::Server::new();
+    let engine = Engine::with_zotero_port(server.port).unwrap();
+    let cancel = Cancellation::default();
+    engine
+        .dispatch(Method::Libraries, &json!({"action":"open-zotero"}), &cancel)
+        .unwrap();
+    server.sharing_off.store(true, Ordering::Relaxed);
+    // Reloading everything reports each library's own health, not one failure.
+    engine
+        .dispatch(Method::Libraries, &json!({"action":"reload"}), &cancel)
+        .unwrap();
+    let info = engine.libraries().unwrap();
+    assert_eq!(info.libraries[0].objects, 1, "the last good references stay");
+    assert_eq!(info.libraries[0].refresh_error, Some(ErrorCode::SourceUnavailable));
+    assert_eq!(info.libraries[0].refresh_reason, Some(ErrorReason::ZoteroSharingOff));
+
+    server.sharing_off.store(false, Ordering::Relaxed);
+    engine
+        .dispatch(Method::Libraries, &json!({"action":"reload"}), &cancel)
+        .unwrap();
+    let info = engine.libraries().unwrap();
+    assert_eq!(info.libraries[0].refresh_error, None);
+    assert_eq!(info.libraries[0].refresh_reason, None, "recovery leaves no old reason");
+}
+
+#[test]
+fn group_names_come_from_a_running_zotero_and_a_refusal_says_why() {
+    let server = fixture::Server::new();
+    let engine = Engine::with_zotero_port(server.port).unwrap();
+    let cancel = Cancellation::default();
+    let ask = json!({"action":"zotero-groups"});
+    server.sharing_off.store(true, Ordering::Relaxed);
+    assert_eq!(
+        engine.dispatch(Method::Libraries, &ask, &cancel).unwrap_err().reason,
+        Some(ErrorReason::ZoteroSharingOff)
+    );
+}
+
+#[test]
+fn a_closed_zotero_with_nothing_read_lists_no_groups_and_starts_no_read() {
+    let free = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+    let port = free.local_addr().unwrap().port();
+    drop(free);
+    let engine = Engine::with_zotero_port(port).unwrap();
+    let failure = engine
+        .dispatch(
+            Method::Libraries,
+            &json!({"action":"zotero-groups"}),
+            &Cancellation::default(),
+        )
+        .unwrap_err();
+    assert_eq!(failure.code, ErrorCode::SourceUnavailable);
+    assert!(engine.libraries().unwrap().libraries.is_empty());
 }

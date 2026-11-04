@@ -1,0 +1,2 @@
+/* One shortcut is one unit: at any text size it moves whole, never breaking between keys. */
+.ui-shortcut-recorder-keys { white-space: nowrap; }

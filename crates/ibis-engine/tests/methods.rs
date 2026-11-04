@@ -8,6 +8,8 @@ fn one_method_list_drives_all_front_ends() {
         "search",
         "show",
         "cite",
+        "project",
+        "entry",
         "styles",
         "outputs",
         "schema",

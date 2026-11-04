@@ -1,4 +1,4 @@
-import { createRef, useLayoutEffect, useRef } from "react";
+import { createRef, useLayoutEffect, useRef, type CSSProperties } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { Density, SearchResult } from "../bindings";
 import { PickerHeader } from "../features/picker/PickerHeader";
@@ -14,8 +14,9 @@ const ignore = () => undefined;
 // appearance or owns its explicitly requested scheme, never the system default.
 const styles = (foundationStyles + buttonStyles + iconButtonStyles + pickerStyles).replace(/@import[^;]+;/g, "")
   .replace(/:root(\[[^\]]+\])?/g, (_, attribute: string | undefined) => attribute ? `:host(${attribute})` : ":host");
-export function PickerPicture({ density = "comfortable", appearance, split = false, rowsOnly = false }: {
-  density?: Density; appearance?: string; split?: boolean; rowsOnly?: boolean;
+/** `frame` is the window's size in CSS pixels; the picture is that window scaled (the default size otherwise). */
+export function PickerPicture({ density = "comfortable", appearance, split = false, rowsOnly = false, frame }: {
+  density?: Density; appearance?: string; split?: boolean; rowsOnly?: boolean; frame?: readonly [number, number];
 }) {
   const { text } = useInterfaceMessages();
   const record: SearchResult = {
@@ -34,7 +35,8 @@ export function PickerPicture({ density = "comfortable", appearance, split = fal
     )}</ul></div>
   </>);
   const scheme = split ? "light" : appearance === "light" || appearance === "dark" ? appearance : undefined;
-  return <span className="ui-picker-picture" data-rows={rowsOnly || undefined} data-density={density} data-split={split || undefined} aria-hidden="true" inert>
+  const shape = frame && { "--preview-window-w": `${frame[0] / 16}rem`, "--preview-window-h": `${frame[1] / 16}rem` } as CSSProperties;
+  return <span className="ui-picker-picture" style={shape} data-rows={rowsOnly || undefined} data-density={density} data-split={split || undefined} aria-hidden="true" inert>
     <Snapshot html={html} density={density} scheme={scheme} />
     {split && <Snapshot html={html} density={density} scheme="dark" dark />}
   </span>;

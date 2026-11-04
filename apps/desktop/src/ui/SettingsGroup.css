@@ -4,21 +4,26 @@
   display: flex; flex-direction: column;
   scroll-margin-block: var(--space-6);
 }
-/* One group heading, shared with the shortcuts list. */
+/* One group heading, shared with the shortcuts list, starting where its rows' text
+   starts, as System Settings aligns them. */
 .ui-settings-group-title, .ui-shortcut-table th[scope="rowgroup"] {
-  margin: 0; padding: 0 var(--space-1) var(--space-2); color: var(--text-secondary); font-size: var(--type-label-size);
+  margin: 0; padding: 0 calc(var(--settings-row-pad) + var(--border-width)) var(--space-2); color: var(--text-secondary); font-size: var(--type-label-size);
   line-height: var(--type-label-line); font-weight: var(--strong);
 }
+/* Grouped content [D17]: the Mac's quaternary fill, so the window shows through. */
 .ui-settings-card {
-  flex: none; min-width: 0; border-radius: var(--r-card); background: var(--raised);
+  flex: none; min-width: 0; border-radius: var(--r-card); background: var(--surface-grouped);
   border: var(--border-width) solid var(--separator); overflow: hidden;
 }
 .ui-settings-row {
-  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-4);
-  min-height: var(--settings-row-h); padding: var(--space-2) var(--space-4); box-sizing: border-box; font-size: var(--type-body-size); line-height: var(--type-body-line);
+  position: relative; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-4);
+  min-height: var(--settings-row-h); padding: var(--space-2) var(--settings-row-pad); box-sizing: border-box; font-size: var(--type-body-size); line-height: var(--type-body-line);
 }
-.ui-settings-row[data-bare] { padding: var(--space-3); }
-.ui-settings-row + .ui-settings-row { border-top: var(--border-width) solid var(--separator); }
+.ui-settings-row[data-bare] { --settings-row-pad: var(--space-3); padding: var(--space-3); }
+/* A divider belongs to the row below and is inset to its text on both sides, as System Settings draws it.
+   A highlighted row's fill is its own edge, so no divider touches it. */
+.ui-settings-row + .ui-settings-row::before { content: ""; position: absolute; inset-block-start: 0; inset-inline: var(--settings-row-pad); border-top: var(--border-width) solid var(--separator); }
+.ui-settings-row[data-highlighted]::before, .ui-settings-row[data-highlighted] + .ui-settings-row::before { display: none; }
 .ui-settings-row-text { display: flex; flex-direction: column; flex: 1 1 14rem; min-width: 0; overflow-wrap: anywhere; }
 .ui-settings-row > :not(.ui-settings-row-text) { max-inline-size: 100%; }
 .ui-settings-row .ui-button { padding-block: var(--space-1); }
@@ -34,19 +39,11 @@
 /* No native search appearance: its focus glow is the Mac's accent, not Ibis's. */
 .ui-settings-search input { appearance: none; -webkit-appearance: none; width: 100%; min-width: 0; box-sizing: border-box; min-height: var(--action-h); border-radius: var(--r-control); border: var(--border-width) solid var(--separator); padding-block: 0; padding-inline: calc(var(--space-2) + var(--icon) + var(--space-2)) calc(var(--control-small-h) + var(--space-2)); background: transparent; color: var(--text); font-size: var(--type-body-size); }
 .ui-settings-search input::placeholder { color: var(--text-placeholder); }
-.ui-picker-picture { --picture-scale: .21; display: block; position: relative; overflow: hidden; pointer-events: none; width: 9.4375rem; max-width: 100%; min-width: 0; height: 6.3125rem; border-radius: var(--r-tile); box-shadow: 0 0 0 var(--border-width) var(--separator); text-align: start; }
-.ui-picker-picture[data-rows] { --picture-scale: .74; width: 100%; height: 7.375rem; }
-.ui-picker-picture[data-rows] .ui-picker-picture-content { width: calc(100% / var(--picture-scale)); }
-.ui-picker-picture[data-header] { --picture-scale: .54; width: 9.375rem; height: calc((var(--field-h) + 2 * var(--inset) + var(--border-width)) * var(--picture-scale)); }
-.ui-picker-picture-mask { position: absolute; inset: 0; background: var(--surface); color: var(--text); }
-.ui-picker-picture-mask[data-dark] { clip-path: polygon(100% 0, 100% 100%, 0 100%); }
-.ui-picker-picture-content { position: absolute; inset-block-start: 0; inset-inline-start: 0; width: 45rem; transform: scale(var(--picture-scale)); transform-origin: top left; }
-:dir(rtl) .ui-picker-picture-content { transform-origin: top right; }
 @media (pointer: coarse) {
   .ui-settings-search input { min-height: var(--touch-target); }
 }
 @media (prefers-contrast: more), (forced-colors: active) {
-  .ui-settings-row[data-highlighted] { background: Highlight; color: HighlightText; }
+  .ui-settings-row[data-highlighted] { forced-color-adjust: none; background: Highlight; color: HighlightText; }
   .ui-settings-row[data-highlighted] .ui-settings-description { color: inherit; }
 }
 

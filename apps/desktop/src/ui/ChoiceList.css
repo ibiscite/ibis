@@ -20,7 +20,9 @@ main .picker-content .results-area:has(.choice-screen) { display: flex; flex-dir
 .choice-screen .choice-row[data-focus-visible] { outline: none; box-shadow: none; }
 .choice-row[data-focused] { background: var(--selected); color: var(--selected-text); }
 .choice-row[data-focused] .choice-help, .choice-row[data-focused] .choice-tag { color: var(--selected-text-secondary); }
-.choice-row[data-focused]:not([data-suggested]) .choice-tile { background: var(--on-selected-fill); color: inherit; }
+/* A list row's tile takes the selected row's tile fill; grid cards draw no tile behind a glyph. */
+.choice-screen:not([data-grid]) .choice-row[data-focused]:not([data-suggested]) .choice-tile { background: var(--on-selected-fill); }
+.choice-row[data-focused]:not([data-suggested]) .choice-tile { color: inherit; }
 @media (hover: hover) {
   .choice-row[data-hovered]:not([data-focused]) { background: var(--fill-quiet-hover); }
   /* A choice tile keeps its icon; only result tiles turn into add controls. */
