@@ -37,7 +37,7 @@ fi
 git push -q -u origin "$branch"
 pr=$(gh api "repos/{owner}/{repo}/pulls?head={owner}:$branch&state=open" --jq '.[0].number' 2>/dev/null || true)
 if [ -n "$pr" ] && [ "$pr" != null ]; then
-  gh api -X PUT "repos/{owner}/{repo}/pulls/$pr/ccr/auto_merge" -f merge_method=squash >/dev/null && echo "Pushed; #$pr merges itself on a green CI result."
+  gh pr merge "$pr" --squash --auto && echo "Pushed; #$pr merges itself on a green CI result."
 else
   echo "Pushed $branch. Open its pull request, then rerun to turn on auto-merge."
 fi
