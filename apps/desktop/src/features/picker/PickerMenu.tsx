@@ -2,7 +2,7 @@ import type { Ref, RefObject } from "react";
 import type { Density, ProjectStatus } from "../../api";
 import { keyLabel, keysFor } from "../../keys";
 import { LibraryDetail } from "../../LibraryStatusLine";
-import { densityNames, keyText, pickerText } from "../../messages";
+import { densityNames, keyText, pickerText, sessionText } from "../../messages";
 import { isMac } from "../../platform";
 import { SourceIcon } from "../../ui/SourceAction";
 import type { SourceActionProps } from "../../ui/SourceAction";
@@ -23,9 +23,12 @@ export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library
   density: Density;
   pinned: boolean;
   actions: { density: (density: Density) => void; pin: () => void; keys: () => void; settings: (() => void) | null;
+    /** Offered once this app has a citation from this run of Ibis. */
+    changeLast?: (() => void) | null;
     /** Offered for a proven ordinary app target. */
     copyOnlyHere?: { app: string; choose: () => void } | null;
-    forgetRecent?: (() => void) | null; quit: () => void };
+    forgetRecent?: (() => void) | null; quit: () => void;
+    sessionReferences?: (() => void) | null };
   /** The bibliography keys are checked against, and the entry of the highlighted row. */
   project?: { status: ProjectStatus | null; choose: (() => void) | null; stop: (() => void) | null; copyEntry: (() => void) | null };
 }) {
@@ -46,6 +49,9 @@ export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library
         {project.status && project.stop && <MenuItem id="project-stop" label={pickerText.stopProject(project.status.name)} onAction={project.stop} />}
       </MenuSection>}
       {project?.choose && <MenuSeparator />}
+      {actions.changeLast && <MenuSection id="citation">
+        <MenuItem id="change-last" label={pickerText.changeLastCitation} keys={label(keysFor("changeLast"))} onAction={actions.changeLast} />
+      </MenuSection>}
       <MenuSection id="view">
         <MenuSubmenu id="density" label={pickerText.rows} value={pickerText.density(densityNames[density])} title={pickerText.densityTitle}>
           <MenuSection id="densities" selectionMode="single">
@@ -55,6 +61,7 @@ export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library
           </MenuSection>
         </MenuSubmenu>
         {actions.copyOnlyHere && <MenuItem id="copy-only-here" label={pickerText.copyOnlyHere(actions.copyOnlyHere.app)} onAction={actions.copyOnlyHere.choose} />}
+        {actions.sessionReferences && <MenuItem id="session-references" label={sessionText.menu} onAction={actions.sessionReferences} />}
         {actions.forgetRecent && <MenuItem id="forget-recent" label="Forget Recent Citations" onAction={actions.forgetRecent} />}
       </MenuSection>
       <MenuSection id="view-toggles">

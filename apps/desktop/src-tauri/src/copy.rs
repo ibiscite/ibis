@@ -21,7 +21,8 @@ pub(crate) struct Copied {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[specta(optional)]
     pub(crate) delivery: Option<u32>,
-    /// What was cited; stays on this side of the bridge.
+    /// What was cited, for the session's list and the project check; stays
+    /// on this side of the bridge.
     #[serde(skip)]
     pub(crate) cited: Vec<ibis_core::contract::ItemRef>,
     /// The output emits citation keys, so a project bibliography applies.
@@ -179,9 +180,7 @@ pub(crate) async fn preview_file_citation(
     requests: State<'_, PreviewRequests>,
     project: State<'_, crate::project::ProjectBibliography>,
 ) -> Result<crate::library::engine_file::FilePreview, CommandError> {
-    let cancel = requests
-        .start(intent)
-        .ok_or_else(|| CommandError::from("A newer citation preview replaced this request."))?;
+    let cancel = requests.start(intent).ok_or(CommandError::Cancelled)?;
     let (file, generation) = {
         let library = library
             .lock()
@@ -209,41 +208,54 @@ pub(crate) async fn preview_file_citation(
     })
     .await
     .map_err(|_| CommandError::from("The preview is unavailable. Try again."))?;
-    // A reload cancels previews it overtakes; that is waiting, not a failure.
+    // A reload cancels previews it overtakes, and the quiet check that follows
+    // each show retires Zotero while it reads. Both publish when they end, which
+    // asks again; that is waiting, not a failure.
     let overtaken = result.is_err()
         && library
             .lock()
-            .is_ok_and(|library| library.opening || library.source_generation != generation);
+            .is_ok_and(|library| library.opening || library.checking || library.source_generation != generation);
     if overtaken {
         Err(CommandError::LibraryLoading)
     } else {
         result
     }
 }
-/// Plain text with no delivery: it is copied, never pasted.
-pub(crate) fn write_plain(app: &AppHandle, text: &str) -> Result<(), String> {
-    clipboard::write(
-        app,
-        ibis_core::contract::ClipboardContent {
-            text,
-            html: None,
-            rtf: None,
-        },
-    )
-    .map(|_| ())
-}
-
 #[tauri::command]
 #[specta::specta]
 pub(crate) fn copy_file_citation(
     ticket: String,
     content_hash: String,
+    replaces: Option<String>,
     app: AppHandle,
     library: State<'_, Mutex<Library>>,
     project: State<'_, crate::project::ProjectBibliography>,
 ) -> Result<Copied, CommandError> {
     #[cfg(target_os = "windows")]
-    let attempt = crate::paste::begin_copy(&app);
+    let attempt = crate::paste::begin_copy(&app, replaces.as_deref());
+    let session = tauri::Manager::state::<crate::session_references::SessionReferences>(&app);
+    commit_copy(&ticket, &content_hash, &library, &project, &session, |content| {
+        #[cfg(target_os = "windows")]
+        let delivery = {
+            let (token, sequence) = clipboard::write(&app, content)?;
+            crate::paste::remember_copy(&app, attempt, sequence, token)
+        };
+        #[cfg(not(target_os = "windows"))]
+        let delivery = clipboard::write(&app, content, replaces.as_deref())?;
+        Ok(delivery)
+    })
+}
+
+/// Commit the shown citation through `write`, which returns its delivery,
+/// then say what the copy needs said and remember what it cited.
+pub(crate) fn commit_copy(
+    ticket: &str,
+    content_hash: &str,
+    library: &Mutex<Library>,
+    project: &crate::project::ProjectBibliography,
+    session: &crate::session_references::SessionReferences,
+    write: impl FnOnce(ibis_core::contract::ClipboardContent<'_>) -> Result<Option<u32>, String>,
+) -> Result<Copied, CommandError> {
     // The library lock is held only to take the engine; the engine's own
     // commit barrier guards the write.
     let file = {
@@ -254,20 +266,29 @@ pub(crate) fn copy_file_citation(
         library.file.clone().ok_or(CommandError::SnapshotChanged)?
     };
     let mut delivery = None;
-    let mut copied = file.copy(&ticket, &content_hash, |content| {
-        #[cfg(target_os = "windows")]
-        {
-            let (token, sequence) = clipboard::write(&app, content)?;
-            delivery = crate::paste::remember_copy(&app, attempt, sequence, token);
-        }
-        #[cfg(not(target_os = "windows"))]
-        {
-            delivery = clipboard::write(&app, content)?;
-        }
+    let mut copied = file.copy(ticket, content_hash, |content| {
+        delivery = write(content)?;
         Ok(())
     })?;
     copied.delivery = delivery;
-    // As at the preview: a key not plainly in the file keeps the picker open and says why.
-    file.warn_project(&mut copied, project.current().as_ref());
+    // As at the preview: a key not plainly in the file keeps the picker open
+    // and says why. The check and the session list each read what was cited,
+    // so neither can leave the other with nothing.
+    let warnings = file.copy_project_warnings(&copied.cited, copied.key_output, project.current().as_ref());
+    copied.warnings.extend(warnings);
+    session.cited(copied.cited.clone());
     Ok(copied)
+}
+
+/// Whole content with no delivery: it is copied, never pasted.
+pub(crate) fn write_copy_only(
+    app: &AppHandle,
+    content: ibis_core::contract::ClipboardContent<'_>,
+) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    let written = clipboard::write(app, content);
+    // Nothing is replaced: this is a new copy, not a change to the last citation.
+    #[cfg(not(target_os = "windows"))]
+    let written = clipboard::write(app, content, None);
+    written.map(|_| ())
 }

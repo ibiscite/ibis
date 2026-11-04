@@ -83,11 +83,13 @@ export function PickerStatusFooter({
           density: changeDensity,
           pin: () => run("pin"),
           keys: () => run("keys"),
+          changeLast: actions.canChangeLast ? () => run("changeLast") : null,
           settings: openSettings ? () => run("settings") : null,
           copyOnlyHere: destination.pasteChoices && destination.app ? { app: destination.app, choose: () => {
             cancelCopy();
             destination.choosePaste("copy-only");
           } } : null,
+          sessionReferences: api.sessionReferences ? menus.openSession : null,
           forgetRecent: recents.forget ? () => { report("recentHistory", !recents.forget!()); focusHome(); } : null,
           quit: () => run("quit"),
         }} />

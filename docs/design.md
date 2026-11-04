@@ -253,10 +253,43 @@ Built in `ibis-core` so every front end shares them (#1204).
 - **Warnings** use the same panel without a document.
 - **A wider panel**: at 34 rem the column keeps its width on the trailing edge and the document sits beside it, scrolling alone.
 
+### Reader (planned, #1252)
+
+[C20] A read-only view of a reference's PDF that is already in Zotero or a `.bib` `file` field, for looking at a source and choosing its page without opening Zotero (decision 0036). Ibis never imports, downloads, edits or annotates a PDF; **Open in Zotero** stays beside it.
+
+- **Where**: the Inspector's document area. **Show PDF** (proposed ⌘D, Ctrl+D elsewhere, added to `KEY_TABLE` with its code) sits under the source action. Opening widens the window once, toward its trailing side and within the screen, by the width of one page at Fit Width: the one planned exception to [C10], with no animated resize. The column, list, shelf and footer stay where they were. Closing the reader returns the window to its steady size; the details stay open. Below 36 rem the reader takes the list's place, as the panel does.
+- **Anatomy**: a toolbar on one line above the pages, built from `ui/` parts only: the page indicator, then a zoom `PopupButton` and a find `IconButton` at the trailing edge. Pages scroll vertically and alone on `--surface-grouped`, each a sheet with one `--separator` edge and `--inset` between them. With several PDFs a pop-up names each by its title, never a path, and the reader asks before showing one.
+- **Page indicator**: "PDF page 8 of 312 · cite p. 416", `tabular-nums`. An unknown label reads "PDF page 8 of 312 · Citation page unknown"; a label printed on two pages adds "also PDF page 3". The tooltip and accessible description say where the printed page came from: the PDF's page labels, a Zotero annotation, or an offset you confirmed. It never shows the physical number as the citation page. A label that is not a citable page (decision 0036) shows in quotes with "Citation page unknown"; one outside the record's pages shows both ("cite p. 12 · record pp. 413–440").
+- **Choosing the page**: once scrolling settles, the Page field follows the page in view, but only to a known, citable printed page, and only within the record's page range when it has one. Otherwise Page stays as it was and the indicator says why; a page outside the range is taken only when the person confirms it with **Cite This Page**. Typing in Page stops it following, and **Cite This Page** (⌘↵, Ctrl+Enter elsewhere, in the reader) starts it again. Choosing a page never copies or pastes; Enter still does what the footer says.
+- **Go to a page** (⌥⌘G, Ctrl+G elsewhere): a field in the toolbar. "417" goes to the page printed 417; with none it says "No page printed 417 in this PDF" and offers **Go to PDF Page 417** as a named choice; with several it lists them. It never jumps silently.
+- **Zoom**: Fit Width by default, then Actual Size and 50 to 400 %. With focus in the pages ⌘+, ⌘− and ⌘0 (Ctrl elsewhere) zoom as in Preview; elsewhere they keep changing text size. Pages redraw sharp at the screen's scale; zoom lasts the session only and is never a setting.
+- **Find in the PDF** (⌘F, Ctrl+F elsewhere, with focus in the reader): the toolbar becomes a search field with "3 of 12" and previous and next; ↵ and ⌘G (F3) go forward, ⇧↵ and ⇧⌘G (Shift+F3) back, Esc closes it. Matches are a quiet fill, the current one `--selected`; the count, not colour, says where you are. It searches the PDF's own text, page by page in the worker, stops when closed and never runs while hidden. A page without text says so ("This page is an image without text"), never "no matches".
+- **Keys**: all by key, Tab in order (column, toolbar, pages). In the pages: ↑ ↓ scroll, Space and ⇧Space or Page Down and Page Up by a screen, ⌥↑ ⌥↓ by a page, Home and End to the first and last page; typing there never goes to search. On Windows and Linux no reader key uses Ctrl+Alt, which is AltGr. Esc steps back: find, Go to page, the reader (focus returns to Show PDF), then the panel. The keys sheet lists the reader's keys under their own heading.
+- **Screen readers**: the pages are one region named by the reference's title, never the PDF's own /Title; each page is a group named by its indicator words, holding its text in reading order; the drawn page is hidden from them. Moving page by key announces the indicator once, politely; scrolling announces only where it settles.
+- **Light, dark and contrast**: the paper is drawn as the PDF draws it, white in dark mode as in Preview; only the surround follows the theme. Increase Contrast adds `--stroke-field` to each sheet. Forced colours draw the page in `Canvas` and `CanvasText`, and text selection uses `Highlight`.
+- **Motion**: page jumps and zoom are instant; nothing scrolls or zooms by animation, so Reduce Motion changes nothing here.
+- **Right to left**: the panel and toolbar mirror; the pages, their text and the numbers in the indicator never do (each number is isolated).
+- **Hidden and reopened**: hiding the picker closes the PDF and frees it. Reopening within a minute returns to the same page from memory; the place is never saved to disk.
+- **Where it is unavailable**: on Linux until the web view sandbox is on, and where the web view's engine is too old (decision 0036), Show PDF stays, dimmed, with the reason in one quiet line; **Open in Zotero** still works.
+- **When it cannot open**: the document area shows one sentence and one fix, centred, never a dialog; the column stays usable, so a page can still be typed. Nothing passes through the notice slot.
+
+| State | Words | Fix |
+| --- | --- | --- |
+| No PDF | Show PDF is dimmed: "No PDF for this reference" | — |
+| Missing file | Can't find this PDF | Show in Zotero, or Open thesis.bib |
+| Not downloaded or in the cloud | This PDF isn't on this computer | Open in Zotero |
+| Password-protected | This PDF is password-protected | Open in Zotero |
+| Damaged | This PDF is damaged | Open in Zotero |
+| Over 256 MiB | This PDF is too large to open in Ibis (412 MB) | Open in Zotero |
+| Over 15 s | This PDF took too long to open | Try Again, or Open in Zotero |
+| One page fails | That page shows "Couldn't draw this page"; the rest stay | — |
+| An image over the limits | That page shows "Part of this page is too large to draw", never a blank page as its content | Open in Zotero |
+
 ### Footer
 
-- **Footer** [C8]: status dot and text at the leading edge (dot on the tiles' column), the source action, "More ⌘K", and last, on the rows' trailing edge, the one primary action: "Paste into Word · APA ↵" or "Copy N as <format> ↵".
-- Every hint is label first, then keys, on one baseline. When the footer does not fit, shorten the status, then drop hint labels to keys.
+- **Footer** [C8]: status dot and text at the leading edge (dot on the tiles' column), the source action, the one primary action ("Paste into Word · APA ↵" or "Copy N as <format> ↵"), and last, on the rows' trailing edge, "More ⌘K".
+- **More never moves**: it has the last column of its own, so nothing about the action moves it: not a longer label, not Alt, not the action being absent. A click aimed at More can never land on Copy. The action sits against it and grows toward the status. The leading slot always keeps room for its fix ("Find thesis.bib…"), so the fix never wraps onto the action; a failure line under them spans the footer.
+- Every hint is label first, then keys, on one baseline. When the footer does not fit, shorten the status, then truncate the action's label with "…", its keys and full name kept, and only by the window's width drop hint labels to keys. The action's own width never decides that fold.
 - **Quiet bands**: inside the shelf and footer only the main action (Copy or Paste) is filled. The library status, the source action, More, the reference count, notes and Details are quiet. A band that is itself a fill never holds another filled control.
 - Never show an action twice on one screen. With ⌥ held: "Add to citation ⇧↵", the Esc step, then More.
 - **One place for each status**: library state lives only in the footer status; citation refusals and settings notices use the middle area; anything passing uses the notice slot (see **Notices**).
@@ -290,16 +323,21 @@ Built in `ibis-core` so every front end shares them (#1204).
 | ⇧⌘P | Keep window open |
 | ⇧⌘F | The format chooser |
 | ⌘Y | Peek |
+| ⌘E | Change the last citation for this app |
 | ⌘+ / ⌘− | Text size |
-| Typing outside a field | Types into search |
+| Typing outside a field | Types into search, except in the reader's pages |
 
 ### Copying and pasting
 
+- Cancelled work is not a failure and never reaches the person: a preview stopped by a newer choice or a reload says nothing. A preview that fails belongs to the opening that saw it: reopening or choosing the citation again prepares it afresh, and the failure is gone from the first frame.
 - Enter does what the footer says. Pressed while results or the preview load, it waits and runs once. Repeated activations on the same citation never copy twice; a changed query, reference, page or format, arrows, Esc or hiding cancel a waiting Enter. A stale reply never replaces newer shelf or feedback.
-- **First paste in an app**: a browser, a code editor or an unrecognised app opens the format chooser once; the pick is remembered for that app (decision 0031). An unrecognised app also asks **Paste into [app name] from now on** or **Copy only**; answering never replays the held Enter.
-- Chooser items read as plain names with a quiet example ("BibLaTeX brackets   \parencite{key}"). "Just this once" applies to one copy; "Automatic" forgets the app's choices; "Use as global default" changes the fallback. A pick says its scope ("APA for this citation").
+- **One format rule** (decision 0031): Ibis remembers a format per app, and you change it in the format menu. An app with none starts from the table's suggestion (Word uses your default style, Obsidian Pandoc) or else your **Default format** in Settings › Citations. When Ibis can't tell the app, the default applies and a pick changes it, so no choice is lost. There is no one-time override and no reset; a later pick replaces the old one.
+- **The format control always says why.** Closed, it reads "APA · Word" for a format belonging to the app, "APA · Default" for the default, or "APA · This paste" for a format that could not be saved or that a permission return kept. Opened, one plain line says why that format applies and where a pick goes ("Remembered for Word. Your pick replaces it."). The same reason is announced to screen readers.
+- **First paste in an app**: a browser, a code editor or an unrecognised app opens the format chooser once; the pick is remembered for that app. In a browser or code editor, answering Paste or Copy only in that question accepts the format it shows. An unrecognised app also asks **Paste into [app name] from now on** or **Copy only**; answering never replays the held Enter.
+- Chooser items read as plain names with a quiet example ("BibLaTeX brackets   \parencite{key}").
 - Refused apps (terminals, remote viewers, virtual machines) and targets Ibis cannot prove only copy, with the reason. A permission detour keeps the prepared citation and waits for a fresh Enter; newly selected text still opens as the search, with the shelf kept, because Enter would replace it.
 - **Selected text as the search** (macOS): short text on one line, selected in the target app, opens as the search, all selected, so typing replaces it; Enter pastes over it. It lasts one opening: it never returns as a recent search unless edited. Long or multi-line selections, secure typing, password fields, copy-only, refused or unapproved apps and failed reads open an empty search and change nothing. **Ibis replaces only text the person saw**: with a long selection the footer offers Copy, and any selection that changed, or was never read, stays as it is, with the reason. Enter still pastes at the caret when nothing is selected.
+- **Change Last Citation** (More, ⌘E): reopens the last citation for this app on the shelf, with its pages and options; the footer says "Change Citation". Enter replaces text only when the old citation is selected in the document, proved just before the paste; otherwise it copies the changed citation and says so. Ibis never deletes text it cannot see. The last citation lives in memory only, for this run of Ibis and at most eight apps. Forget Recent Citations clears it, and the shortcut that opens Ibis never reopens it: hiding Ibis abandons the change.
 - A successful copy hides Ibis, returns focus to the previous window and shows the notice. Pinned, Ibis stays.
 
 ### Notices
@@ -320,6 +358,7 @@ Built in `ibis-core` so every front end shares them (#1204).
 | Target changed | Copied. The target app or window changed |
 | Clipboard replaced | Copied. The clipboard changed; copy the citation again |
 | Selected text never shown | Copied. Ibis replaces only text it showed you. Press ⌘V to replace it. |
+| Old citation not selected | Copied. Ibis replaces a citation only when it is selected. Select it, then press ⌘V. |
 | Expired | Copied. The paste expired; paste it yourself |
 | Windows keys stuck | Copied. Press and release Ctrl and V |
 
@@ -365,7 +404,7 @@ Never call the destination a password field. The right paste key is shown per sy
 [C18] Its own window (in the Dock and Alt+Tab while open), opened with **Settings…** (⌘,) from More, the menu bar or tray. A sidebar of pages runs under the window buttons, as in System Settings. Every change applies at once and reaches an open picker.
 
 - **Window**: 920 × 560 by default, minimum 800 × 400. A two-column shell with a reserved `--titlebar-height`; the sidebar background runs full height. Nothing slides behind the title bar; only the page and the sidebar list scroll.
-- **Pages** (in this order): **General** (opening shortcut, Open at Login, pasting), **Look** (Appearance, Accent, Rows, Window size, text size), **Libraries**, **Citations** (default format, Forget formats for apps, Recent citations), **Shortcuts**, then after a gap **Advanced** and **About Ibis**. A page with no built controls stays out of the sidebar.
+- **Pages** (in this order): **General** (opening shortcut, Open at Login, pasting), **Look** (Appearance, Accent, Rows, Window size, text size), **Libraries**, **Citations** (default format, Recent citations), **Shortcuts**, then after a gap **Advanced** and **About Ibis**. A page with no built controls stays out of the sidebar.
 - **Only built settings appear**: no disabled promises or "Coming soon" rows, and nothing unbuilt in the search index.
 - Each setting is one entry in one registry (key, page, group, label, description, control, default, search words); pages and search are drawn from it.
 - **Groups and rows** [D17]: `ui/SettingsGroup` cards (`--r-card`, `--surface-grouped`) of inset rows: a label, an optional description, one control at the end. Cards keep their natural height; rows grow with text; controls move below a label that does not fit. No page opens with more than eight rows; rarer rows go behind **Details…**.
@@ -413,6 +452,10 @@ Built for key outputs: **More › Check Against a Project Bibliography…** choo
 - **Export evidence brief**: chosen passages in order, an optional question, one new Markdown file; local Zotero links labelled apart; no private paths.
 - **Changed copied key**: "You previously copied oldKey; this item's current key is newKey", only for sources whose identity survives a rename (Zotero, CSL-JSON with a stable `id`).
 
+## References used this session
+
+**More › References Used This Session…** opens a sheet, named for what Ibis knows: what it copied since it opened or since a reset, never the document's bibliography. Its lead says so. It lists each reference once, in the order first cited, with Remove; **Undo** names its action ("Undo Remove Okafor & Lima, 2018"), and undoing keeps anything copied since. **Reset List** is undoable too. Under the list is the bibliography in the output's style (APA when the output is keys), exactly what **Copy Bibliography** writes as rich and plain text together. **Save…** writes it as rich text, a web page or plain text. A reference from a library that isn't open is left out and counted, never guessed. The list holds record identities, in memory only, and leaves it only through Save.
+
 ## Small delights
 
 The approved, final list; no new delights until the next design pass. Each lives only in About, the welcome, the notice slot or existing feedback; never changes results, output or focus; happens once within the motion cap; never loops or plays a sound. Warm, never childish: at most one short sentence, no slang, exclamation marks, emoji or jokes about the person's work. A delight is a person's action answered, or a real moment marked; nothing appears at random. The fun items sit behind Settings › General › **Small surprises** (on by default).
@@ -453,14 +496,15 @@ How each user-visible item planned before 1.0 in ROADMAP.md fits the components 
 | `ibis://` links, Show in Zotero, Open PDF in Zotero (0.4) | A link opens the picker filled in; the Zotero actions sit in More and the row's menu |
 | Settings window (0.4, #776) | **Settings** |
 | Browse, "Selected in Zotero", passages (0.5) | Collections and tags as search filters; a reference's highlights unfold under its row and fill in its page |
-| Bibliography, "References used this session", project `.bib` (0.4) | More and the format pop-up; rows say "In refs.bib" or "Missing from refs.bib" |
+| Bibliography, "References used this session", project `.bib` (0.4) | A sheet from More; rows say "In refs.bib" or "Missing from refs.bib" |
 | `ibis check`, DOI lookup (0.6) | Command line first; DOI lookup as an opt-in no-results fallback |
-| A source's PDF, choosing the page there (#1252) | The **Inspector** widens with the picker, the one planned exception to [C10]; its document shows the pages beside the list, and the column stays put, its Page field following the page in view |
+| A source's PDF, choosing the page there (#1252) | **Reader**: the **Inspector** widens with the picker, the one planned exception to [C10]; its document shows the pages beside the list, and the column stays put, its Page field following a known printed page in view |
 
 ## How the design changes
 
 - Change `tokens.css` or the shared component in `src/ui/`, never one screen; fix a visual bug in the rule or component that allowed it, with a regression test.
 - The five parameters at the top of `tokens.css` (spacing unit, control radius, body text size, Ibis red light and dark) are the knobs. The canvas's Parameters board turns them live; `node apps/desktop/canvas/apply-params.mjs --radius=10px …` writes chosen values back (then `python3 brand/build.py` for the reds).
 - The canvas boards run the real app live (`pnpm -C apps/desktop build:canvas`, then upload `ibis-canvas.js` and `.css` and point `Screen.dc.html` at them); a missing state gets a scenario in `apps/desktop/canvas/main.tsx`, never a hand-drawn copy.
+- **Judged from pictures, by several eyes** (maintainer, 2026-11-04): every visible change renders its canvas scenarios (light and dark, plus larger text, right-to-left and Windows key labels where it matters) and is scored by independent reviewers who did not make it, each from one view: a macOS purist, a first-time user, a keyboard-only user, accessibility, a visual designer and a Windows or Linux user. It merges at 9 out of 10 or better from every view; anything short of 10 names why. A defect is fixed in the rule that allowed it, so it cannot come back.
 - Record maintainer decisions in [decisions.md](decisions.md) and update the rule here in place, deleting the text it replaces.
 - Review this page against Apple's guidelines on each new macOS release.

@@ -6,7 +6,7 @@ import { commands, type CommandError, type KeyFormat, type LibraryStatus, type P
 
 export type { Sources } from "./bindings";
 export type {
-  AppOutput, AppPaste, Copied, Density, EntryCopy, LibraryStatus, Locator, LocatorQuery, LoginItem, LoginItemProblem, PastedList, PickerDestination, PickerPreferences, ProjectStatus, SearchQuery, SearchResult, ShortcutStatus, ZoteroGroup, ZoteroLibrary,
+  AppOutput, AppPaste, Copied, Density, EntryCopy, LibraryStatus, Locator, LocatorQuery, LoginItem, LoginItemProblem, PastedList, PickerDestination, PickerPreferences, ProjectStatus, SearchQuery, SearchResult, SessionBibliography, SessionEdit, SessionReferencesView, ShortcutStatus, ZoteroGroup, ZoteroLibrary,
 } from "./bindings";
 export type CopyFormat = KeyFormat;
 /** What the notice after a copy says: pasted into an app, or copied and why. */
@@ -25,6 +25,11 @@ export const {
   chooseProject,
   stopProject,
   copyProjectEntry,
+  sessionReferences,
+  editSessionReferences,
+  sessionBibliography,
+  copySessionBibliography,
+  exportSessionBibliography,
   openLibrarySource,
   librarySource,
   hidePicker,
@@ -40,7 +45,6 @@ export const {
   pickerPreferences,
   pickerDestination,
   rememberAppOutput,
-  forgetAppOutputs,
   loginItem,
   setLoginItem,
   findSources,
@@ -176,6 +180,11 @@ export function sharedCitationKey(error: unknown): string | null {
 /** Only the backend's snapshot rejection code becomes a recovery explanation. */
 export function isLibraryLoading(error: unknown): boolean {
   return typeof error === "object" && error !== null && (error as Partial<CommandError>).code === "library_loading";
+}
+
+/** Work stopped on purpose. It is never a failure and never reaches the person. */
+export function isCancelled(error: unknown): boolean {
+  return typeof error === "object" && error !== null && (error as Partial<CommandError>).code === "cancelled";
 }
 
 export function isSnapshotChanged(error: unknown): boolean {

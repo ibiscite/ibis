@@ -8,7 +8,7 @@ use ibis_core::destination::CopyReason;
 use objc2_app_kit::NSRunningApplication;
 use tauri_nspanel::objc2::rc::Retained;
 
-use super::super::capture::{SHORT_SELECTION, SelectedText, Selection};
+use super::super::capture::{OldCitation, SHORT_SELECTION, SelectedText, Selection};
 use super::diagnostics;
 
 const LIMIT: Duration = Duration::from_millis(50);
@@ -114,19 +114,18 @@ trait Provider {
     fn password_field(&self, element: &Self::Element, deadline: Instant) -> Reply<bool>;
     /// Selected length in UTF-16 units, so long text is never copied across.
     fn selected_length(&self, element: &Self::Element, deadline: Instant) -> Reply<usize>;
-    fn selected_text(&self, element: &Self::Element, deadline: Instant) -> Reply<String>;
+    /// `limit` units at most; anything longer answers `TooLong` without a copy.
+    fn selected_text(&self, element: &Self::Element, limit: usize, deadline: Instant) -> Reply<String>;
 }
 
-/// The focused control's selection, or why it stays unread. Never touches the
-/// clipboard or posts a key; every failure leaves the search empty.
-fn read_selection<P: Provider>(
+/// A budget for one selection read: a late success is still a timeout.
+fn selection_budget<P: Provider>(
     provider: &P,
-    pid: i32,
     limit: Duration,
     deadline: Instant,
-) -> Result<(Selection, Option<SelectedText>), CopyReason> {
+) -> impl Fn() -> Result<(), CopyReason> {
     let started = provider.elapsed();
-    let available = || {
+    move || {
         let age = provider
             .elapsed()
             .checked_sub(started)
@@ -136,7 +135,17 @@ fn read_selection<P: Provider>(
             return Err(CopyReason::PasteUnavailable);
         }
         Ok(())
-    };
+    }
+}
+
+/// The focused control, once it is safe to ask for its selected text: secure
+/// typing off, Accessibility granted, owned by the target, not a password field.
+fn readable_control<P: Provider>(
+    provider: &P,
+    pid: i32,
+    limit: Duration,
+    deadline: Instant,
+) -> Result<P::Element, CopyReason> {
     match provider.secure_typing() {
         Some(false) => {}
         Some(true) => return Err(CopyReason::SecureInput),
@@ -145,6 +154,7 @@ fn read_selection<P: Provider>(
     if !provider.trusted() {
         return Err(CopyReason::AccessibilityRequired);
     }
+    let available = selection_budget(provider, limit, deadline);
     let system = provider.system()?;
     let focused = provider.read(&system, Attribute::FocusedElement, deadline)?;
     available()?;
@@ -160,6 +170,19 @@ fn read_selection<P: Provider>(
         Reply::TooLong | Reply::Failed => return Err(CopyReason::PasteUnavailable),
     }
     available()?;
+    Ok(focused)
+}
+
+/// The focused control's selection, or why it stays unread. Never touches the
+/// clipboard or posts a key; every failure leaves the search empty.
+fn read_selection<P: Provider>(
+    provider: &P,
+    pid: i32,
+    limit: Duration,
+    deadline: Instant,
+) -> Result<(Selection, Option<SelectedText>), CopyReason> {
+    let available = selection_budget(provider, limit, deadline);
+    let focused = readable_control(provider, pid, limit, deadline)?;
     diagnostics::stage("ax.selection_range");
     let something_selected = match provider.selected_length(&focused, deadline) {
         Reply::Value(0) => return Ok((Selection::Nothing, None)),
@@ -171,7 +194,7 @@ fn read_selection<P: Provider>(
     };
     available()?;
     diagnostics::stage("ax.selection_text");
-    let selected = match provider.selected_text(&focused, deadline) {
+    let selected = match provider.selected_text(&focused, SHORT_SELECTION, deadline) {
         Reply::Value(text) if !text.is_empty() => Selection::of_text(&text),
         Reply::TooLong => (Selection::Ignored, None),
         Reply::Failed => return Err(CopyReason::PasteUnavailable),
@@ -183,6 +206,32 @@ fn read_selection<P: Provider>(
     // A late success is still a timeout: the app may have moved on.
     available()?;
     Ok(selected)
+}
+
+/// A changed citation replaces only the old one (#1245). Whatever cannot prove
+/// that is "not selected": the citation stays copied and the notice says so.
+fn old_citation_selected<P: Provider>(
+    provider: &P,
+    pid: i32,
+    old: &OldCitation,
+    deadline: Instant,
+) -> Result<(), CopyReason> {
+    let available = selection_budget(provider, FINAL_SELECTION_LIMIT, deadline);
+    let focused = match readable_control(provider, pid, FINAL_SELECTION_LIMIT, deadline) {
+        Err(CopyReason::SecureField | CopyReason::PasteUnavailable) => return Err(CopyReason::CitationNotSelected),
+        focused => focused?,
+    };
+    let limit = old.limit();
+    if matches!(provider.selected_length(&focused, deadline), Reply::Value(length) if length == 0 || length > limit) {
+        return Err(CopyReason::CitationNotSelected);
+    }
+    available().map_err(|_| CopyReason::CitationNotSelected)?;
+    let selected = provider.selected_text(&focused, limit, deadline);
+    available().map_err(|_| CopyReason::CitationNotSelected)?;
+    match selected {
+        Reply::Value(text) if old.is(&text) => Ok(()),
+        _ => Err(CopyReason::CitationNotSelected),
+    }
 }
 
 /// The selection for the search, or `Unread` for the final read to settle:
@@ -206,8 +255,10 @@ fn check_selection<P: Provider>(
     expected: &Selection,
     deadline: Instant,
 ) -> Result<(), CopyReason> {
-    if *expected == Selection::Unknown {
-        return Ok(());
+    match expected {
+        Selection::Unknown => return Ok(()),
+        Selection::Citation(old) => return old_citation_selected(provider, pid, old, deadline),
+        Selection::Unread | Selection::Nothing | Selection::Ignored | Selection::Short(_) => {}
     }
     let (found, _text) = read_selection(provider, pid, FINAL_SELECTION_LIMIT, deadline)?;
     match (expected, found) {
@@ -583,11 +634,12 @@ mod tests {
             self.selection_reads.borrow_mut().push("range");
             self.selected_length.get().map_or(Reply::Unsupported, Reply::Value)
         }
-        fn selected_text(&self, _: &u32, _: Instant) -> Reply<String> {
+        fn selected_text(&self, _: &u32, limit: usize, _: Instant) -> Reply<String> {
             self.selection_reads.borrow_mut().push("text");
             self.clock.set(self.clock.get() + self.selection_delay);
             self.elapsed.set(self.elapsed.get() + self.selection_delay);
             match &*self.selected.borrow() {
+                Reply::Value(text) if text.encode_utf16().count() > limit => Reply::TooLong,
                 Reply::Value(text) => Reply::Value(text.clone()),
                 Reply::TooLong => Reply::TooLong,
                 Reply::NoValue => Reply::NoValue,
@@ -901,6 +953,67 @@ mod tests {
             ),
             Err(CopyReason::SecureInput)
         );
+    }
+
+    #[test]
+    fn a_changed_citation_replaces_only_the_old_citation_proved_selected() {
+        let old = OldCitation::of("(Smith, 2020, p. 12)");
+        let check = |fake: &Fake| {
+            check_selection(
+                fake,
+                42,
+                &Selection::Citation(old.clone()),
+                fake.now() + SELECTION_LIMIT,
+            )
+        };
+        assert_eq!(check(&Fake::selecting("(Smith, 2020, p. 12)")), Ok(()));
+        assert_eq!(check(&Fake::selecting("(Smith,\u{a0}2020, p.\u{a0}12)")), Ok(()));
+        for fake in [
+            Fake::selecting(""),
+            Fake::selecting("(Jones, 2021)"),
+            Fake::new(),
+            Fake {
+                selected: RefCell::new(Reply::Failed),
+                ..Fake::new()
+            },
+            Fake {
+                password: Reply::Value(true),
+                ..Fake::selecting("(Smith, 2020, p. 12)")
+            },
+            Fake {
+                selection_delay: FINAL_SELECTION_LIMIT,
+                ..Fake::selecting("(Smith, 2020, p. 12)")
+            },
+        ] {
+            assert_eq!(check(&fake), Err(CopyReason::CitationNotSelected));
+        }
+    }
+
+    #[test]
+    fn a_selection_much_longer_than_the_old_citation_is_never_copied_across() {
+        let old = OldCitation::of("(Smith, 2020)");
+        let fake = Fake::selecting(&"Invented paragraph. ".repeat(50));
+        assert_eq!(
+            check_selection(&fake, 42, &Selection::Citation(old), fake.now() + SELECTION_LIMIT),
+            Err(CopyReason::CitationNotSelected)
+        );
+        assert!(!fake.selection_reads.borrow().contains(&"text"));
+    }
+
+    #[test]
+    fn secure_typing_keeps_its_own_reason_when_replacing_a_citation_too() {
+        let fake = Fake::selecting("(Smith, 2020)");
+        fake.secure_typing.set(Some(true));
+        assert_eq!(
+            check_selection(
+                &fake,
+                42,
+                &Selection::Citation(OldCitation::of("(Smith, 2020)")),
+                fake.now() + SELECTION_LIMIT
+            ),
+            Err(CopyReason::SecureInput)
+        );
+        assert!(fake.reads.borrow().is_empty());
     }
 
     #[test]

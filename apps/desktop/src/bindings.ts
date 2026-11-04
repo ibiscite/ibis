@@ -56,7 +56,7 @@ export const commands = {
 	previewFileCitation: (items: FileSelection[], format: KeyFormat, style: "apa" | "chicago-author-date" | "harvard-cite-them-right" | "ieee" | "modern-language-association" | null, expectedRevision: string, intent: PreviewIntent) => __TAURI_INVOKE<FilePreview_Serialize>("preview_file_citation", { items, format, style, expectedRevision, intent }),
 	/**  Read-only examples owned by a prepared preview; never publishes a new ticket. */
 	citationDetails: (ticket: string, contentHash: string, item: number) => __TAURI_INVOKE<ReferenceDetails>("citation_details", { ticket, contentHash, item }),
-	copyFileCitation: (ticket: string, contentHash: string) => __TAURI_INVOKE<Copied_Serialize>("copy_file_citation", { ticket, contentHash }),
+	copyFileCitation: (ticket: string, contentHash: string, replaces: string | null) => __TAURI_INVOKE<Copied_Serialize>("copy_file_citation", { ticket, contentHash, replaces }),
 	/**  The format the picker starts with: the last one chosen, or Pandoc. */
 	copyFormat: () => __TAURI_INVOKE<KeyFormat>("copy_format"),
 	projectStatus: () => __TAURI_INVOKE<{
@@ -84,6 +84,34 @@ export const commands = {
 	 *  file. The text goes to the clipboard here and never through the web view.
 	 */
 	copyProjectEntry: (id: RecentIdentity, generation: number) => __TAURI_INVOKE<EntryCopy>("copy_project_entry", { id, generation }),
+	sessionReferences: () => __TAURI_INVOKE<SessionReferencesView_Serialize>("session_references"),
+	editSessionReferences: (edit: SessionEdit) => __TAURI_INVOKE<SessionReferencesView_Serialize>("edit_session_references", { edit }),
+	/**
+	 *  The list as a formatted bibliography, for the person to look at before
+	 *  copying it. `None` when nothing listed is in the open library.
+	 */
+	sessionBibliography: (style: CitationStyle) => __TAURI_INVOKE<{
+	text: string,
+	html: string | null,
+	content_hash: string,
+	warnings: string[],
+	/**
+	 *  References this style cannot write, by key or title. They are named so
+	 *  that the rest can still be used.
+	 */
+	left_out: string[],
+} | null>("session_bibliography", { style }),
+	/**
+	 *  Copy what was shown. Prepared again from the list as it is now, and refused
+	 *  unless that is exactly what the person saw.
+	 */
+	copySessionBibliography: (style: CitationStyle, contentHash: string) => __TAURI_INVOKE<null>("copy_session_bibliography", { style, contentHash }),
+	/**
+	 *  Save what was shown, as rich text, a web page or plain text. This is the one
+	 *  way the list leaves memory, and only because the person asked. `None` when
+	 *  the dialog was cancelled; otherwise the file's name.
+	 */
+	exportSessionBibliography: (style: CitationStyle, contentHash: string) => __TAURI_INVOKE<string | null>("export_session_bibliography", { style, contentHash }),
 	/**  The preferences the picker starts with. */
 	pickerPreferences: () => __TAURI_INVOKE<PickerPreferences_Serialize>("picker_preferences"),
 	/**  Issue a save identity inline at IPC dispatch; unused identities block nothing. */
@@ -108,12 +136,11 @@ export const commands = {
 "keys" | null, revision: number) => __TAURI_INVOKE<PickerSave_Serialize>("set_picker_preferences", { preferences, copyFormat, revision }),
 	/**  The app the picker was opened from, its output and what Ibis remembers for it. */
 	pickerDestination: () => __TAURI_INVOKE<PickerDestination>("picker_destination"),
-	/**  Remember output and an optional delivery choice; both absent reset this app to Automatic. */
+	/**
+	 *  Remember a format, a delivery choice or both for the captured app. Whichever
+	 *  is absent keeps its saved value; only a delivery choice revokes outstanding proofs.
+	 */
 	rememberAppOutput: (appId: string, output: ({ key: KeyFormat }) & { style?: never } | ({ style: CitationStyle }) & { key?: never } | null, paste: "paste" | "copy-only" | null, identity: string | null) => __TAURI_INVOKE<null>("remember_app_output", { appId, output, paste, identity }),
-	/**  Forget output and delivery choices for every app. */
-	forgetAppOutputs: () => __TAURI_INVOKE<number>("forget_app_outputs"),
-	/**  Bring back what Forget removed, while its Undo is offered. */
-	restoreAppOutputs: (ticket: number) => __TAURI_INVOKE<null>("restore_app_outputs", { ticket }),
 	/**  Whether Ibis starts when the person logs in, read from the system now. */
 	loginItem: () => __TAURI_INVOKE<LoginItem>("login_item"),
 	/**  Start Ibis when the person logs in, or stop doing so. */
@@ -317,6 +344,8 @@ export type CommandError =
 { code: "snapshot_changed" } |
 /**  The library is being read; ask again when it has opened. */
 { code: "library_loading" } |
+/**  The work stopped because it was cancelled or replaced. Nothing failed. */
+{ code: "cancelled" } |
 /**  Another loaded record has this citation key, so citing by key would be ambiguous. */
 { code: "shared_citation_key"; key: string } |
 /**  Anything else, with fixed text for the user. */
@@ -657,7 +686,7 @@ export type PastedList = {
 };
 
 /**  Command identifiers shared with KEY_TABLE and the refusal's translated name. */
-export type PickerCommand = "format" | "pin" | "keys" | "more" | "source" | "settings" | "quit";
+export type PickerCommand = "format" | "pin" | "keys" | "more" | "change-last" | "source" | "settings" | "quit";
 
 /**  What the picker needs to know about the app it was opened from. */
 export type PickerDestination = {
@@ -667,11 +696,11 @@ export type PickerDestination = {
 	app_id: string | null,
 	/**  Opaque app-location fingerprint; no path crosses IPC. */
 	app_identity: string | null,
-	/**  The app suggestion; `None` follows the saved global default. */
+	/**  The app suggestion; `None` follows the saved default. */
 	automatic: AppOutput | null,
 	/**  The output the person chose to always use for this app. */
 	remembered: AppOutput | null,
-	/**  Unresolved recovery from an unreadable per-app file; formats use defaults. */
+	/**  This app needs a delivery choice after an unreadable per-app file; formats use defaults. */
 	unreadable: boolean,
 	/**  The current paste policy permits an attempt; final delivery checks still apply. */
 	can_paste: boolean,
@@ -796,14 +825,7 @@ export type PreviewIntent = {
 	cancel: boolean,
 };
 
-/**
- *  The newest search each interface page has sent, so a search for a query
- *  the person has already typed past stops early instead of delaying the
- *  newer one. The interface numbers its searches, because commands can start
- *  in a different order than they were sent, and names its page, because a
- *  reloaded page counts from the start again.
- *  The state of one emitted key in the project bibliography, for the row.
- */
+/**  The state of one emitted key in the project bibliography, for the row. */
 export type ProjectKeyState = "in" | "missing" | "could-not-check" | "repeated" | "may-name-another";
 
 export type ProjectMark = {
@@ -994,6 +1016,54 @@ export type SearchResult_Serialize = {
 	item_type: string,
 };
 
+/**
+ *  A formatted bibliography, shown before it is copied. The picker's own
+ *  citation receipt is untouched.
+ */
+export type SessionBibliography = {
+	text: string,
+	html: string | null,
+	content_hash: string,
+	warnings: string[],
+	/**
+	 *  References this style cannot write, by key or title. They are named so
+	 *  that the rest can still be used.
+	 */
+	left_out: string[],
+};
+
+export type SessionEdit = { kind: "remove"; id: RecentIdentity } | { kind: "reset" } | { kind: "undo" };
+
+export type SessionReferencesView = SessionReferencesView_Serialize | SessionReferencesView_Deserialize;
+
+export type SessionReferencesView_Deserialize = {
+	revision: number,
+	/**  The listed references that are in the open library. */
+	rows: SearchResult_Deserialize[],
+	/**
+	 *  Listed references from a library that is not open, left out of the
+	 *  bibliography until it is.
+	 */
+	absent: number,
+	/**  The list reached its limit, so a later citation was left off. */
+	overflowed: boolean,
+	undo: UndoView_Deserialize | null,
+};
+
+export type SessionReferencesView_Serialize = {
+	revision: number,
+	/**  The listed references that are in the open library. */
+	rows: SearchResult_Serialize[],
+	/**
+	 *  Listed references from a library that is not open, left out of the
+	 *  bibliography until it is.
+	 */
+	absent: number,
+	/**  The list reached its limit, so a later citation was left off. */
+	overflowed: boolean,
+	undo: UndoView_Serialize | null,
+};
+
 /**  Why a shortcut change failed. Only NotSaved changes the working shortcut. */
 export type ShortcutRefusal =
 /**  Not a key combination Ibis can register. */
@@ -1063,6 +1133,15 @@ export type SystemIcon = {
 	mime: string,
 	bytes: number[],
 };
+
+/**  The edit Undo would reverse, for its label. Only the removed row is named. */
+export type UndoView = UndoView_Serialize | UndoView_Deserialize;
+
+/**  The edit Undo would reverse, for its label. Only the removed row is named. */
+export type UndoView_Deserialize = { kind: "removed"; reference: SearchResult_Deserialize | null } | ({ kind: "reset" }) & { reference?: never };
+
+/**  The edit Undo would reverse, for its label. Only the removed row is named. */
+export type UndoView_Serialize = { kind: "removed"; reference: SearchResult_Serialize | null } | ({ kind: "reset" }) & { reference?: never };
 
 /**  Settings › Look's window size. Any other dragged size is Custom. */
 export type WindowSize = "small" | "medium" | "large" | "custom";

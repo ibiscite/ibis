@@ -57,7 +57,7 @@ documentation](https://retorque.re/zotero-better-bibtex/citing/cayw/index.html).
 | Edit the citation text by hand | excluded | — | Breaks "what you see is what's pasted"; use prefix, suffix and forms |
 | Ibid, subsequent and disambiguation across a document | excluded | — | Needs the whole document; Ibis reports a notice instead (`format.rs::bibliography_reports_document_year_suffixes_withheld`) |
 | Footnote or endnote placement | excluded | — | The word processor decides |
-| Insert or edit a bibliography | planned | #356 (session bibliography); bibliography-only form done | `formatted.rs` goldens |
+| Insert or edit a bibliography | done as "References used this session": copied, not inserted, because Ibis cannot see the document | #356 | `session_references.rs::the_bibliography_is_formatted_as_rich_and_plain_text_together`, `sessionReferences.test.tsx` |
 | Item edited in Zotero shows up on the next citation | done | — | `crates/ibis-sources/tests/source_watch.rs` |
 
 ## Better BibTeX Cite as You Write
@@ -77,7 +77,8 @@ exactly what the picker would copy.
 | `format=pandoc` with `brackets` | done as a syntax | #42 | `syntax_contract.rs` |
 | `format=typst` | done as a syntax | #42 | `syntax_rules.rs::typst_prefix_escapes_heading_and_list_markers`, `syntax_rules.rs::typst_prefix_escapes_hyphen_list_markers` |
 | `format=mmd`, `asciidoctor-bibtex`, `jupyter` | done as syntaxes (`multi-markdown`, `ascii-doc`, `jupyter`); AsciiDoc locators support pages only | #1207 | `key_syntaxes.rs` |
-| `format=scannable-cite` | planned | #1207 | to add |
+| `format=scannable-cite` | planned | #1531 | to add |
+| ConTeXt `\cite`; key form, author, year and full entry, with notes for one reference | done as a syntax (`context`), checked in ConTeXt itself; narrative refused | #1207 | `key_syntaxes.rs`, `scripts/syntax-tools.mjs` |
 | `format=formatted-citation`, `formatted-bibliography` (BBT uses Zotero's Quick Copy style; Ibis uses the chosen style) | planned | #42 | to add |
 | `format=json` (the picks themselves) | done as `cayw-json` (BBT's `pick` shape, without Zotero item ids) | #1207 | `key_syntaxes.rs` |
 | Picks carry locator, prefix, suffix and suppress author | done in the contract | #42 | to add, one recorded request per editor |

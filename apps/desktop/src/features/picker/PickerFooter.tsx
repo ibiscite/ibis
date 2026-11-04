@@ -11,7 +11,8 @@ import { QuietStatus } from "../../ui/Delights";
 
 export type KeyHints = { enter: string | null; shiftEnter: string | null; escape: string };
 
-/** Status and its fix, More, then Copy. Shorten status before dropping hint labels. */
+/** Status and its fix, Copy, then More. More's place never depends on the action:
+ * shorten the status, then truncate the label, then fold labels to keys by width. */
 export function PickerFooter({ library, groupName, hints, altHeld, actions, more, status, emptyAction }: {
   library: LibraryStatus | null | undefined; groupName: (id: number) => string; hints: KeyHints; altHeld: boolean;
   actions: { copy: () => void; add: () => void; escape: () => void };
@@ -22,8 +23,8 @@ export function PickerFooter({ library, groupName, hints, altHeld, actions, more
   const menu = useRef<HTMLSpanElement>(null);
   const statusSize = useRef<HTMLSpanElement>(null);
   const statusMinimum = useRef<HTMLSpanElement>(null);
-  const [fit, setFit] = useState({ status: false, labels: false });
-  const moreControl = <span key="more" ref={menu} className="more">{more}</span>;
+  const labelMinimum = useRef<HTMLSpanElement>(null);
+  const [fit, setFit] = useState({ status: false, labels: false, alt: false });
   const platform = currentPlatform();
   // biome-ignore lint/correctness/useExhaustiveDependencies: labels, Alt and platform change intrinsic control widths.
   useLayoutEffect(() => {
@@ -35,20 +36,29 @@ export function PickerFooter({ library, groupName, hints, altHeld, actions, more
       const preferred = width(statusSize.current);
       if (!(available > 0 && preferred > 0)) return;
       const gap = parseFloat(getComputedStyle(element).columnGap) || 0;
-      const fix = width(element.querySelector(".source-action"));
       const intrinsic = (button: Element | null) => {
         const label = button?.querySelector<HTMLElement>(".key-hint-label");
-        const hidden = label && getComputedStyle(label).position === "absolute";
-        const labelGap = label?.parentElement ? parseFloat(getComputedStyle(label.parentElement).columnGap) || 0 : 0;
-        return width(button) + (hidden ? label.scrollWidth + labelGap : 0);
+        if (!label) return width(button);
+        const labelGap = label.parentElement ? parseFloat(getComputedStyle(label.parentElement).columnGap) || 0 : 0;
+        // A truncated button is narrower than its name; fit by what it wants.
+        return width(button) + (getComputedStyle(label).position === "absolute" ? label.scrollWidth + labelGap : Math.max(0, label.scrollWidth - label.clientWidth));
       };
+      // The fix's own wish, never what the action leaves it: it reserves its
+      // room in the leading column, so it can neither wrap onto the action nor fold it.
+      const fix = intrinsic(element.querySelector(".source-action"));
+      element.style.setProperty("--footer-fix", `${fix}px`);
       const actions = [...(hintsRow.current?.children ?? [])];
       const hintGap = hintsRow.current ? parseFloat(getComputedStyle(hintsRow.current).columnGap) || 0 : 0;
-      const controls = intrinsic(menu.current?.querySelector("button") ?? null) + actions.reduce((sum, action) => sum + intrinsic(action), 0)
-        + Math.max(0, actions.length - 1) * hintGap + gap * 2;
-      const status = preferred + fix + controls > available;
-      const labels = width(statusMinimum.current) + fix + controls > available;
-      setFit((old) => old.status === status && old.labels === labels ? old : { status, labels });
+      const moreWidth = intrinsic(menu.current?.querySelector("button") ?? null);
+      const status = preferred + fix + moreWidth + actions.reduce((sum, action) => sum + intrinsic(action), 0)
+        + Math.max(0, actions.length - 1) * hintGap + gap * 2 > available;
+      // Never the action's own width: its label must not be able to resize More.
+      const labels = width(statusMinimum.current) + fix + moreWidth + width(labelMinimum.current) + gap * 2 > available;
+      // Alt's two actions cannot truncate both into one line: they keep their
+      // keys and fold their labels, never More's, so More keeps its size.
+      const alt = altHeld && width(statusMinimum.current) + fix + moreWidth + gap * 2
+        + actions.reduce((sum, action) => sum + intrinsic(action), 0) + Math.max(0, actions.length - 1) * hintGap > available;
+      setFit((old) => old.status === status && old.labels === labels && old.alt === alt ? old : { status, labels, alt });
     };
     measure();
     const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
@@ -60,10 +70,9 @@ export function PickerFooter({ library, groupName, hints, altHeld, actions, more
     {/* The region includes More and Copy. Its name must stay distinct from
         the Library button, so native name lookup cannot activate the region. */}
     <section ref={bar} aria-label={pickerText.pickerActions} className="library-bar" data-empty-action={emptyAction || undefined}
-      data-status-compact={fit.status || undefined} data-hints-compact={fit.labels || undefined}>
-      <span className="footer-fit-measure" aria-hidden="true" inert><span ref={statusSize} className="footer-status-size" /><span ref={statusMinimum} className="footer-status-minimum" /></span>
+      data-status-compact={fit.status || undefined} data-hints-compact={fit.labels || undefined} data-alt-compact={altHeld && fit.alt || undefined}>
+      <span className="footer-fit-measure" aria-hidden="true" inert><span ref={statusSize} className="footer-status-size" /><span ref={statusMinimum} className="footer-status-minimum" /><span ref={labelMinimum} className="footer-label-minimum" /></span>
       {status ?? <LibraryStatusLine library={library} groupName={groupName} />}
-      {!altHeld && moreControl}
       <small key="hints" ref={hintsRow} className="enter-hints" aria-label={keyText.footer} role="group">
         {altHeld ? <>
           {hints.shiftEnter && <FooterAction label={hints.shiftEnter} keys={keysFor("add")} onAction={actions.add} />}
@@ -71,12 +80,12 @@ export function PickerFooter({ library, groupName, hints, altHeld, actions, more
         </> : hints.enter ? <FooterAction label={hints.enter} keys={keysFor("copy")} primary onAction={actions.copy} />
           : emptyAction && <FooterAction label={keyText.copy} keys={keysFor("copy")} disabled onAction={actions.copy} />}
       </small>
-      {altHeld && moreControl}
+      <span key="more" ref={menu} className="more">{more}</span>
       <QuietStatus>{library?.note}</QuietStatus>
     </section>
   </footer>;
 }
 
 function FooterAction({ label, keys, primary, onAction, disabled }: { label: string; keys: string; primary?: boolean; onAction: () => void; disabled?: boolean }) {
-  return <Button variant={primary ? "primary" : "quiet"} size="small" className="footer-action" label={label} keys={keys} isDisabled={disabled} onPress={onAction} />;
+  return <Button variant={primary ? "primary" : "quiet"} size="small" className="footer-action" label={label} keys={keys} title={label} isDisabled={disabled} onPress={onAction} />;
 }

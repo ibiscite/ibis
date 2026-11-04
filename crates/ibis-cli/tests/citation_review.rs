@@ -16,8 +16,7 @@ fn citation_intent_and_literal_affixes_survive_the_source_and_cli_boundaries() -
             engine.clone(),
             vec![
                 "ibis".into(),
-                "search".into(),
-                "".into(),
+                "libraries".into(),
                 "--file".into(),
                 path.to_str().ok_or("path")?.into(),
                 "--json".into()

@@ -401,7 +401,7 @@ test("page and form survive changing output and remain editable", async () => {
   await chooseForm("Name in the sentence");
   const search = screen.getByLabelText("Search references");
   closeCitationDetails();
-  fireEvent.click(within(search.closest("header")!).getByRole("button", { name: "Copy as Pandoc key" }));
+  fireEvent.click(within(search.closest("header")!).getByRole("button", { name: "Copy as Pandoc key · Default" }));
   fireEvent.click(screen.getByRole("menuitemradio", { name: "Typst key" }));
   await waitFor(() => expect(previews.at(-1)?.format).toBe("typst"));
   expect(previews.at(-1)?.items[0]).toMatchObject({ locator: null, page_input: "42", form: "narrative" });
@@ -610,6 +610,20 @@ test("failed examples leave every form usable and say so once, quietly", async (
   await openCitationDetails();
   fireEvent.click(screen.getByRole("button", { name: /^Show as / }));
   expect(await screen.findByText("Examples are unavailable")).toBeTruthy();
+  fireEvent.click(screen.getByRole("menuitemradio", { name: "Year only" }));
+  await waitFor(() => expect(previews.at(-1)?.items[0]?.form).toBe("year-only"));
+  expect(screen.queryByRole("alert")).toBeNull();
+});
+
+test("cancelled examples say nothing: a newer preview owns the answer", async () => {
+  const previews: PreviewRequest[] = [];
+  backend({ search: () => [result("a", "Invented work")], citation_details: () => { throw { code: "cancelled" }; },
+    preview_file_citation: (request) => { previews.push(request); return receipt("Output"); } });
+  render(<App />);
+  await openCitationDetails();
+  fireEvent.click(screen.getByRole("button", { name: /^Show as / }));
+  await act(async () => { await Promise.resolve(); });
+  expect(screen.queryByText("Examples are unavailable")).toBeNull();
   fireEvent.click(screen.getByRole("menuitemradio", { name: "Year only" }));
   await waitFor(() => expect(previews.at(-1)?.items[0]?.form).toBe("year-only"));
   expect(screen.queryByRole("alert")).toBeNull();

@@ -125,7 +125,7 @@ test("a preferences event superseding the permission return keeps the prepared o
   await act(async () => { await emit("preferences:changed"); });
   expect(calls.filter((call) => call === "picker_destination")).toHaveLength(3);
   await act(async () => { finishReturn({ ...destination, app: "Stale Editor", app_id: "example.stale" }); });
-  expect(screen.getByRole("button", { name: "Copy as Typst key · Example Writer" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Copy as Typst key · This paste" })).toBeTruthy();
   expect(copies).toHaveLength(1);
   await copy();
   expect(copies).toHaveLength(2);

@@ -153,9 +153,6 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     return () => { active = false; window.clearTimeout(timer); window.removeEventListener("focus", focusRead); clickAbout.current = () => {}; };
   }, [page, api.delightView, preferences?.small_surprises]);
   useEffect(() => { if (about?.fun === false) setDip(0); }, [about?.fun]);
-  const [forgetStatus, setForgetStatus] = useState<"idle" | "saving" | "failed">("idle");
-  const [forgetUndo, setForgetUndo] = useState<number | null>(null);
-  const forgetBusy = useRef(false);
   const updateIntent = useRef<boolean | null>(null);
   /** The guide stays to confirm a permission given while it was open. */
   const [guided, setGuided] = useState(false);
@@ -336,17 +333,6 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     void api.configureShortcuts().catch(() => setShortcutProblem({ id: "shortcuts-configure-failed" }))
       .finally(() => { shortcutBusy.current = false; setShortcutSaving(false); });
   };
-  const forgetFormats = () => {
-    if (forgetBusy.current) return;
-    forgetBusy.current = true;
-    setForgetStatus("saving");
-    setForgetUndo(null);
-    void queue.enqueue(() => api.forgetAppOutputs())
-      .then((ticket) => { if (live.current) { setForgetStatus("idle"); setForgetUndo(ticket); } })
-      .catch(() => { if (live.current) setForgetStatus("failed"); })
-      .finally(() => { forgetBusy.current = false; });
-  };
-  const clearForgetUndo = useCallback(() => setForgetUndo(null), []);
   const feedback = (id: string) => ({ highlighted: highlighted === id, problem: readProblems.has(id) ? text("settings-read-failed")
     : preference.status === "refused" && preference.problem.row === id ? text(preference.problem.message)
     : problemRow?.id === id ? text(problemRow.message) : undefined });
@@ -415,9 +401,6 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
           onChange={selectPage} />}
       </nav>
       <NoticeSlot>
-        {forgetUndo !== null && <UndoNotice key={`forget-${forgetUndo}`} action={text("undo-forget-formats")} message={text("citations-forget-done")} paused={!focused}
-          onUndo={() => queue.enqueue(() => api.restoreAppOutputs(forgetUndo)).then(clearForgetUndo)}
-          onExpire={clearForgetUndo} />}
         {shortcutUndo && <UndoNotice key={undoTicket} action={text("undo-shortcut")} message={text("settings-shortcut-restored")} paused={!focused}
           onUndo={() => changeShortcut(shortcutUndo, true, undoTicket)}
           onExpire={() => { if (undoTicket === shortcutUndoTicket.current) clearShortcutUndo(); }} />}
@@ -478,10 +461,6 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
           {preferences && <Row id="default-format" {...rowDetails("default-format", text)} {...feedback("default-format")}>
             <DefaultFormat preferences={preferences} change={change} />
           </Row>}
-          <Row id="forget-formats" {...rowDetails("forget-formats", text)} highlighted={highlighted === "forget-formats"}
-            problem={forgetStatus === "failed" ? text("citations-forget-failed") : undefined}>
-            <Button aria-describedby="forget-formats-description" isDisabled={forgetStatus === "saving"} onPress={forgetFormats}>{text("citations-forget-button")}</Button>
-          </Row>
           {preferences && <Row id="recent-citations" {...rowDetails("recent-citations", text)} {...feedback("recent-citations")}>
             <Switch aria-labelledby="recent-citations" aria-describedby="recent-citations-description" isSelected={preferences.recent_citations ?? true} onChange={(on) => change({ recent_citations: on })} />
           </Row>}

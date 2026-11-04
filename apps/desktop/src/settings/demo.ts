@@ -26,8 +26,6 @@ export function demoApi(): SettingsApi {
     windowSize: async () => "medium",
     setWindowSize: async () => null,
     onWindowSaved: subscribe,
-    forgetAppOutputs: async () => 1,
-    restoreAppOutputs: async () => null,
     // The demo has no files: backing up and restoring are cancelled at once.
     backUpSettings: async () => null, chooseSettingsBackup: async () => null,
     restoreSettingsBackup: async () => null, cancelSettingsRestore: async () => null,

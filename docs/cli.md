@@ -40,8 +40,8 @@ the library (`libraries` reports its `kind` and `capabilities`), never reveal a 
 and last across runs on one computer, thanks to a private key Ibis saves once in its
 configuration folder. That key is the only file the command writes.
 
-When you name no library, `search`, `show`, `cite` and `libraries` read the one chosen
-in the Ibis app, as if you had given `--app-libraries`. They read the stable app's
+When you name no library, `search`, `show`, `cite`, `libraries` and `call` of the first
+three read the one chosen in the Ibis app, as if you had given `--app-libraries`. They read the stable app's
 settings, or Ibis Nightly's when only Nightly is installed, and never change them.
 `ibis libraries` says which app the library came from. Messages never show the path
 or contents of the app's settings, because agents read them too. If those settings
@@ -53,17 +53,18 @@ app's choice only when given `--app-libraries`.
 ## Commands
 
 `ibis` alone at a terminal prints a short start and exits 0. With its output piped,
-it stays a usage error (exit 2), so a script that forgets its command fails loudly.
+it stays a usage error (exit 2) that lists the commands on stderr, so a script that
+forgets its command fails loudly. `ibis settings` alone lists its own commands the same way.
 
 | Command | Does |
 | --- | --- |
 | `search WORDS [--limit N]` | Find references by author, title, year or key. An empty result is a success. |
-| `show KEY` or `show --id ITEM_REF_JSON` | One reference's full data. |
+| `show KEY` or `show --id ID_JSON` | One reference's main fields; `--json` gives all of its data. |
 | `cite KEY…` | A citation. Key syntaxes with `--format` (default `pandoc`), formatted text with `--style` (see `styles`), bibliography entries with `--style S --bibliography`. `--for-app ID` uses the output for that app ([below](#output-for-an-app)). `--locator`, `--prefix`, `--suffix` and `--omit-author` apply to the key before them. |
 | `cite --request` | A citation from one canonical `CitationRequest` JSON object on stdin. |
 | `project BIB KEY…` | Check exact keys against one project `.bib`, read-only ([below](#a-projects-own-bibliography)). |
 | `entry KEY` | A reference's original BibTeX entry, with what it needs to stand alone. |
-| `libraries` | The loaded libraries, their item counts and typed source warnings. |
+| `libraries` | The open libraries, their item counts and each warning in words. |
 | `styles [WORDS]` | Every official CSL style, with each one's updated date, the common ones first; `--locales` lists the citation languages. |
 | `schema [METHOD]` | The JSON Schema of each engine method's parameters and result. |
 | `call METHOD --params JSON` or `--stdin` | Any engine method with raw JSON parameters. |
@@ -105,7 +106,7 @@ The envelope looks like this:
 
 | Exit | `error.code` | Meaning |
 | --- | --- | --- |
-| 0 | | Success, including an empty search. |
+| 0 | | Success, including a search that finds nothing. |
 | 1 | | Done with findings: refusals, losses, source warnings or a failed refresh. `ok` is `true` and `data` says what. |
 | 2 | `usage` | The command line is not valid. |
 | 3 | `bad-input` | The input JSON or a value is not valid. |
@@ -113,7 +114,7 @@ The envelope looks like this:
 | 5 | `source-unavailable` | A library could not be read right now. |
 | 5 | `resource-limit` | The request or its result is too large. |
 | 6 | `newer-format` | A newer Ibis wrote this data. |
-| 70 | `internal` | The output could not be written (stderr says why, unless the reader closed the pipe), or a bug in Ibis; please [report it](https://github.com/ibiscite/ibis/issues). |
+| 70 | `internal` | The output could not be written (stderr says why), or a bug in Ibis; please [report it](https://github.com/ibiscite/ibis/issues). A reader that closes the pipe early, as `\| head` does, is not an error. |
 | 130 | `cancelled` | The request was cancelled. |
 
 Some errors add `reason` beside `code`, for example

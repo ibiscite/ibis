@@ -351,7 +351,14 @@ pub(crate) async fn copy_project_entry(
     if !app.state::<ProjectBibliography>().is_current(generation) {
         return Ok(EntryCopy::Changed);
     }
-    crate::copy::write_plain(&app, &text)?;
+    crate::copy::write_copy_only(
+        &app,
+        ibis_core::contract::ClipboardContent {
+            text: &text,
+            html: None,
+            rtf: None,
+        },
+    )?;
     Ok(EntryCopy::Copied)
 }
 
@@ -470,11 +477,133 @@ mod tests {
             let mut copied = file
                 .copy(&preview.ticket, &preview.content_hash, |_| Ok(()))
                 .unwrap_or_else(|_| panic!("a copy"));
-            file.warn_project(&mut copied, current.as_ref());
+            let warnings = file.copy_project_warnings(&copied.cited, copied.key_output, current.as_ref());
+            copied.warnings.extend(warnings);
             copied.warnings
         };
         assert_eq!(copied(None), ["gone2026 is missing from thesis.bib."]);
         assert_eq!(copied(Some(CitationStyle::Apa)), Vec::<String>::new());
+    }
+
+    /// One picker copy on the mock app, as `copy_file_citation` makes it with
+    /// the clipboard left out: the preview, then the commit.
+    struct Picker {
+        app: tauri::App<tauri::test::MockRuntime>,
+        _library_dir: tempfile::TempDir,
+    }
+
+    impl Picker {
+        fn new(library: &str, project: &std::path::Path) -> Self {
+            use crate::library::engine_file::FileLibrary;
+            let (library_dir, path) = written("refs.bib", library);
+            let file = FileLibrary::open(&path).unwrap_or_else(|_| panic!("a library"));
+            let mut open = Library::default();
+            open.file = Some(std::sync::Arc::new(file));
+            let app = tauri::test::mock_builder()
+                .manage(Mutex::new(open))
+                .manage(crate::library::PreviewRequests::default())
+                .manage(ProjectBibliography::default())
+                .manage(crate::session_references::SessionReferences::default())
+                .build(tauri::test::mock_context(tauri::test::noop_assets()))
+                .unwrap_or_else(|error| panic!("{error}"));
+            let slot = app.state::<ProjectBibliography>();
+            let ticket = slot.choose(Some(project.to_owned())).unwrap_or_else(|| panic!("a ticket"));
+            assert!(slot.finish(ticket.generation, read(&ticket)));
+            Self {
+                app,
+                _library_dir: library_dir,
+            }
+        }
+
+        fn read_again(&self) {
+            let slot = self.app.state::<ProjectBibliography>();
+            let again = slot.check_again().unwrap_or_else(|| panic!("a ticket"));
+            slot.finish(again.generation, read(&again));
+        }
+
+        /// The preview's warnings, then the copy's, of the one row `text` finds.
+        fn cite(&self, text: &str, request: u32) -> (Vec<String>, crate::copy::Copied) {
+            use ibis_engine::Cancellation;
+            let file = self.app.state::<Mutex<Library>>().lock().ok().and_then(|library| library.file.clone());
+            let file = file.unwrap_or_else(|| panic!("a library"));
+            let query = serde_json::from_value(serde_json::json!({"text":text,"interpret_locators":false}))
+                .unwrap_or_else(|error| panic!("{error}"));
+            let reply = file
+                .search(&query, 10, None, &Cancellation::default())
+                .unwrap_or_else(|error| panic!("{error}"));
+            let rows = serde_json::to_value(&reply).unwrap_or_else(|error| panic!("{error}"));
+            let selection = serde_json::from_value(serde_json::json!({
+                "id": rows["results"][0]["id"], "cite": rows["results"][0]["cite"], "locator": null
+            }))
+            .unwrap_or_else(|error| panic!("{error}"));
+            let preview = tauri::async_runtime::block_on(crate::copy::preview_file_citation(
+                vec![selection],
+                ibis_core::cite::KeyFormat::Pandoc,
+                None,
+                String::new(),
+                crate::library::PreviewIntent {
+                    page: 1,
+                    request,
+                    cancel: false,
+                },
+                self.app.state(),
+                self.app.state(),
+                self.app.state(),
+            ))
+            .unwrap_or_else(|_| panic!("a preview"));
+            let copied = crate::copy::commit_copy(
+                &preview.ticket,
+                &preview.content_hash,
+                &self.app.state::<Mutex<Library>>(),
+                &self.app.state::<ProjectBibliography>(),
+                &self.app.state::<crate::session_references::SessionReferences>(),
+                |_| Ok(None),
+            )
+            .unwrap_or_else(|_| panic!("a copy"));
+            (preview.warnings, copied)
+        }
+
+        fn listed(&self) -> Vec<ItemRef> {
+            self.app.state::<crate::session_references::SessionReferences>().items()
+        }
+    }
+
+    #[test]
+    fn a_copy_warns_about_the_project_and_still_lists_the_reference_for_the_session() {
+        let (_project_dir, project) = written("thesis.bib", A);
+        let picker = Picker::new("@book{gone2026,title={Gone},author={Lee, Kim},year={2026}}\n", &project);
+
+        let (previewed, copied) = picker.cite("gone", 1);
+        assert_eq!(previewed, ["gone2026 is missing from thesis.bib."]);
+        assert_eq!(copied.warnings, previewed, "the copy says what the preview said");
+        assert_eq!(copied.text, "[@gone2026]");
+        assert_eq!(picker.listed(), copied.cited, "and the session list has the reference");
+        assert_eq!(picker.listed().len(), 1);
+    }
+
+    #[test]
+    fn a_key_found_only_in_the_last_good_copy_warns_so_the_copy_stays_open() {
+        let (_project_dir, project) = written("thesis.bib", A);
+        let picker = Picker::new("@book{a2026,title={A},author={Lee, Kim},year={2026}}\n", &project);
+        let (previewed, copied) = picker.cite("a2026", 1);
+        assert!(previewed.is_empty() && copied.warnings.is_empty(), "plainly in the file");
+
+        // The key is deleted, and the file is left damaged.
+        std::fs::write(&project, "@book{b2026,}\n@article{broken,title={Never closed\n")
+            .unwrap_or_else(|error| panic!("{error}"));
+        picker.read_again();
+        let expected = ["Checked a2026 against the last good copy of thesis.bib; the file can't be read now."];
+        let (previewed, copied) = picker.cite("a2026", 2);
+        assert_eq!(previewed, expected);
+        assert_eq!(copied.warnings, expected, "a warning keeps the picker open with its reason");
+
+        // And the same once the file is gone.
+        std::fs::remove_file(&project).unwrap_or_else(|error| panic!("{error}"));
+        picker.read_again();
+        let (previewed, copied) = picker.cite("a2026", 3);
+        assert_eq!(previewed, expected);
+        assert_eq!(copied.warnings, expected);
+        assert_eq!(picker.listed().len(), 1, "one reference, cited three times");
     }
 
     #[test]

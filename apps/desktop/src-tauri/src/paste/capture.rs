@@ -28,6 +28,48 @@ pub(crate) enum Selection {
     Ignored,
     /// A digest only; the text itself goes to the search once.
     Short(Fingerprint),
+    /// Set by a changed citation at its copy: the paste may replace only this
+    /// old citation, proved selected, and nothing else (#1245).
+    Citation(OldCitation),
+}
+
+/// What Enter must find selected to replace it. Only macOS reads it back.
+#[derive(Clone, PartialEq, Eq)]
+#[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
+pub(crate) struct OldCitation {
+    pub(crate) digest: Fingerprint,
+    /// UTF-16 units, so a much longer selection is never copied across.
+    pub(crate) units: usize,
+}
+
+#[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
+impl OldCitation {
+    pub(crate) fn of(text: &str) -> Self {
+        let plain = plain(text);
+        Self {
+            digest: Fingerprint::of_bytes(plain.as_bytes()),
+            units: plain.encode_utf16().count(),
+        }
+    }
+
+    /// Whether `selected` is this citation. Apps may turn spaces into
+    /// no-break spaces or wrap a line, and neither changes the citation.
+    pub(crate) fn is(&self, selected: &str) -> bool {
+        Fingerprint::of_bytes(plain(selected).as_bytes()) == self.digest
+    }
+
+    /// The longest selection that could still be this citation once its
+    /// white space is folded. Only the macOS read uses it.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    pub(crate) fn limit(&self) -> usize {
+        self.units.saturating_add(32)
+    }
+}
+
+/// Runs of white space, including no-break spaces, count as one space.
+#[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
+fn plain(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 /// Variant names only: a digest of a few words can be guessed.
@@ -39,6 +81,7 @@ impl std::fmt::Debug for Selection {
             Self::Nothing => "Nothing",
             Self::Ignored => "Ignored",
             Self::Short(_) => "Short",
+            Self::Citation(_) => "Citation",
         })
     }
 }
@@ -271,6 +314,18 @@ mod tests {
         .unwrap_or_else(|| panic!("capture"));
         assert_eq!(captured.selection, selection);
         assert!(!format!("{captured:?}").contains("Invented"));
+    }
+
+    #[test]
+    fn an_old_citation_matches_through_folded_white_space_only() {
+        let old = OldCitation::of("(Smith, 2020, p. 12)");
+        assert!(old.is("(Smith, 2020, p. 12)"));
+        assert!(old.is("(Smith,\u{a0}2020,\np.\u{a0}12) "));
+        assert!(!old.is("(Smith, 2020, p. 13)"));
+        assert!(!old.is("(Smith, 2020, p. 12) and more"));
+        assert!(!old.is(""));
+        assert_eq!(old.units, 20);
+        assert!(!format!("{:?}", Selection::Citation(old)).contains("Smith"));
     }
 
     #[test]

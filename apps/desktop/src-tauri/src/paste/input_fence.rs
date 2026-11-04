@@ -62,6 +62,7 @@ pub(super) enum PostResult {
     Expired,
     TargetChanged,
     SelectionNotShown,
+    CitationNotSelected,
     ClipboardChanged,
     AccessibilityRequired,
     NoPermission,
@@ -215,6 +216,7 @@ pub(super) fn checked_post(desk: &impl PostDesk, request: &PostRequest) -> PostR
     if let Err(reason) = desk.selection_unchanged(&request.selection) {
         return match reason {
             CopyReason::SelectionNotShown => PostResult::SelectionNotShown,
+            CopyReason::CitationNotSelected => PostResult::CitationNotSelected,
             CopyReason::TargetChanged => PostResult::TargetChanged,
             CopyReason::SecureInput => PostResult::SecureInput,
             CopyReason::SecureField => PostResult::SecureField,
