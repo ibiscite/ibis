@@ -122,6 +122,15 @@ The UX is in [Shared project edits](design.md#shared-project-edits-planned),
 under #1697 and #1260. Historical reproducibility is a separate question;
 retaining task choices is not a promise to archive old records or styles.
 
+2026-11-04 (maintainer, planned under #1260): writing projects may optionally
+save an explicit default search scope, naming libraries or collections for new
+tasks. A project without one starts with all connected libraries. Temporary
+task filters stay local and never silently replace the saved project default.
+Existing tasks retain their applied scope under the shared-edit rules above.
+This is a later extension to decision 0031's connected-library search default;
+it does not make collection membership evidence of the document's bibliography.
+See [Project search defaults](design.md#project-search-defaults-planned).
+
 ## 0004 Desktop shell (with 0012)
 
 Tauri 2 with a React interface, in one process: the picker window is hidden
@@ -816,7 +825,8 @@ Selection grants no paste permission. Explicit editor and command-line requests
 keep their own output and do not change the GUI selection. Project switches
 replace format and bibliography together and retire pending copy authority;
 failed saves keep the previous context whole. Search continues across connected
-libraries. The checked bibliography remains one read-only file, not proof about
+libraries by default; optional project search defaults are planned under
+decision 0028. The checked bibliography remains one read-only file, not proof about
 the actual document. Implementation and acceptance scenarios: #1697.
 
 2026-11-02 (maintainer): with no writing project selected, Ibis remembers a

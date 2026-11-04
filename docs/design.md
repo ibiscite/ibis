@@ -323,6 +323,16 @@ writing task keeps its established citation choices.
 - Changing the project's selected bibliography or source scope is a pending context edit. New contents in the already bound bibliography or sources are factual updates: refresh and validate them normally, apply the unreadability policy below, and refuse newly conflicting keys. Explicit source disconnection or access revocation stops affected work.
 - Failed or conflicting saves keep current task choices intact. Show the other writer's change before overwriting the shared definition; preserve valid user input.
 
+### Project search defaults (planned)
+
+Approved 2026-11-04, decision 0028, under #1260: a writing project may optionally
+save which libraries or collections a new task searches. Projects without a
+saved scope start with **All Connected Libraries**.
+
+- Saving a project search default is explicit. A temporary task filter stays local and never silently changes that default.
+- New tasks start with the project's saved scope; ongoing tasks keep their applied choices and adopt external material edits through **Apply Updates**.
+- Collection membership filters discovery. The selected bibliography remains the separate authority for checking emitted keys; a collection does not establish what the document compiles against.
+
 ### Keys
 
 `KEY_TABLE` in [`apps/desktop/src/keys.ts`](../apps/desktop/src/keys.ts) is the one source of shortcuts; the keys sheet, footer and More read it. A key is added only with the code that handles it.
