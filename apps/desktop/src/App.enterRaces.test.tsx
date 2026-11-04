@@ -151,7 +151,7 @@ test("a fresh activation joins even when the native copy response arrives in the
   expect(calls.filter((call) => call === "show_copied_notice")).toHaveLength(1);
 });
 
-test.each(["copy", "hide", "delivery"])("a fresh Enter after changing only chooser scope joins the pending %s and delivers once", async (stage) => {
+test.each(["copy", "hide", "delivery"])("a fresh Enter after picking the same format joins the pending %s and delivers once", async (stage) => {
   const paused = deferred<void>();
   let copies = 0;
   const calls = backend({
@@ -167,8 +167,8 @@ test.each(["copy", "hide", "delivery"])("a fresh Enter after changing only choos
   });
   await act(async () => { render(<App />); });
   await enter();
-  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Copy as Pandoc key · Example Writer" })); });
-  await act(async () => { fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Just this once" })); });
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Copy as Pandoc key · Default" })); });
+  await act(async () => { fireEvent.click(screen.getByRole("menuitemradio", { name: "Pandoc key" })); });
   await act(async () => { await vi.advanceTimersByTimeAsync(300); });
   await enter();
   const copiesWhilePending = calls.filter((call) => call === "copy_file_citation").length;
