@@ -50,7 +50,7 @@ try {
         if (!ids.length) throw Error("Synthetic reset listener unavailable");
         for (const id of ids) callbacks.get(id)?.({ event, id, payload: { revision: 7, undo: 7 } });
       };
-      const preferences = { citation_style: shelfDetails === "warnings" ? "ieee" : shelfDetails === "forms" ? "apa" : null, density: "comfortable", larger_text: larger, paste: false, menu_bar: true };
+      const preferences = { output: shelfDetails === "warnings" ? "ieee" : shelfDetails === "forms" ? "apa" : "pandoc", density: "comfortable", larger_text: larger, paste: false, menu_bar: true };
       const library = { state: "loaded", revision: "1", has_snapshot: true, zotero: false, name: "invented.bib", snapshot_name: "invented.bib", references: 14, warnings: 0, error: null, problem: null, note: null, settings_notice: startupNotice ? "Synthetic startup settings notice." : null };
       if (viewState === "first-run") Object.assign(library, { state: "none", has_snapshot: false, name: null, snapshot_name: null, references: 0 });
       if (viewState === "empty-library") library.references = 0;
