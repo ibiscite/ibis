@@ -33,10 +33,6 @@ use serde_json::{Value, json};
 
 use crate::{CONNECT_TIMEOUT, DEADLINE, DEFAULT_PORT, Deadline, IO_TIMEOUT, io_error, read_response};
 
-/// Better BibTeX's own database, in Zotero's data directory.
-pub const STORE_FILE: &str = "better-bibtex.sqlite";
-/// Keys for read-only libraries, relative to Zotero's data directory.
-pub const READ_ONLY_FILE: [&str; 2] = ["better-bibtex", "read-only.json"];
 /// As many records as the closed reader reads items.
 pub const MAX_RECORDS: usize = 1_000_000;
 /// Better BibTeX keys are short; a longer one marks a damaged store. With
@@ -74,7 +70,7 @@ pub struct StoredKey {
     pub citation_key: String,
 }
 
-/// Reads the `citationkey` table of a private copy of [`STORE_FILE`] for a
+/// Reads the `citationkey` table of a private copy of `better-bibtex.sqlite` for a
 /// Zotero of major version `zotero`. Only Better BibTeX 7, for Zotero 7, serves
 /// these keys; a store without that table is an older layout Ibis does not read.
 pub fn read_store(copy: &rusqlite::Connection, zotero: u32) -> Result<Vec<StoredKey>, BbtError> {
@@ -105,7 +101,7 @@ pub fn read_store(copy: &rusqlite::Connection, zotero: u32) -> Result<Vec<Stored
     Ok(keys)
 }
 
-/// Parses [`READ_ONLY_FILE`]: an array of `{itemID, libraryID, itemKey,
+/// Parses `better-bibtex/read-only.json`: an array of `{itemID, libraryID, itemKey,
 /// citationKey}` records. Better BibTeX serves Zotero's own key over these, so
 /// the caller uses one only for an item whose own key is empty.
 pub fn read_only_keys(json: &[u8]) -> Result<Vec<StoredKey>, BbtError> {
