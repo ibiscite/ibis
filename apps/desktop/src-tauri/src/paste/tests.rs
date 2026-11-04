@@ -1619,3 +1619,60 @@ fn a_changed_citation_overrides_what_the_opening_read() {
         Some(Selection::Citation(capture::OldCitation::of("(Smith, 2020)")))
     );
 }
+#[test]
+fn a_new_bibliography_answer_revokes_even_a_detached_delivery_before_it_can_post() {
+    use tauri::Manager;
+    let app = tauri::test::mock_builder()
+        .manage(super::LastTarget::default())
+        .manage(crate::project::ProjectBibliography::default())
+        .build(tauri::test::mock_context(tauri::test::noop_assets()))
+        .unwrap_or_else(|error| panic!("mock app: {error}"));
+    let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("test directory: {error}"));
+    let path = directory.path().join("invented.bib");
+    std::fs::write(&path, "@book{synthetic,title={Work},doi={10.5555/intended}}\n")
+        .unwrap_or_else(|error| panic!("initial bibliography: {error}"));
+    let project = app.state::<crate::project::ProjectBibliography>();
+    let first = ibis_engine::ProjectRead::read(&path, None);
+    assert!(project.finish_read(app.handle(), 0, first.clone()));
+    let target = app.state::<super::LastTarget>();
+    target.begin_presentation(Some(writer("com.microsoft.word")));
+    let token = target
+        .write_copy(TEXT, None, |_| Ok(None), || Ok(Some(COUNT)))
+        .unwrap_or_else(|error| panic!("clipboard receipt: {error}"));
+    let detached = target
+        .take_copy(TEXT, token)
+        .unwrap_or_else(|| panic!("detached proof"));
+    assert!(!project.finish_read(app.handle(), 0, first.clone()));
+    assert!(
+        detached.policy.current(),
+        "an unchanged check preserves the pending delivery"
+    );
+    std::fs::write(&path, "@book{synthetic,title={Other work},doi={10.5555/other}}\n")
+        .unwrap_or_else(|error| panic!("updated bibliography: {error}"));
+    let conflicting = ibis_engine::ProjectRead::read(&path, Some(&first));
+    assert!(!project.finish_read(app.handle(), 99, conflicting.clone()));
+    assert!(
+        detached.policy.current(),
+        "a stale other-context read cannot revoke the current operation"
+    );
+    assert!(project.finish_read(app.handle(), 0, conflicting));
+    let mut posted = false;
+    let request = PostRequest::new(
+        DeliveryRequest {
+            pid: 42,
+            id: "com.microsoft.word".into(),
+            began: detached.written,
+            deadline: detached.written + LATE,
+        },
+        &detached,
+    );
+    let outcome = target.post_if_current(&request, || {
+        posted = true;
+        PostResult::Pasted
+    });
+    assert_eq!(outcome, PostResult::Refused);
+    assert!(
+        !posted,
+        "the delivery already taken by a worker is revoked before final input posting"
+    );
+}

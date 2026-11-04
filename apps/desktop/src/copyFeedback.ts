@@ -10,10 +10,11 @@ import { currentPlatform, platformOf, type Platform } from "./platform";
 /**
  * After a copy: hide the picker and say "Copied" in the small notice window,
  * or stay open. A pinned picker stays beside the document and shows the
- * confirmation itself; warnings stay in the picker until dismissed.
+ * confirmation itself; blocking warnings stay in the picker until dismissed.
+ * Native evidence-only notices preserve intended delivery and travel in its receipt.
  */
 export function afterCopy(outcome: Copied, pinned: boolean): "hide-and-notify" | "stay" {
-  return outcome.warnings.length === 0 && !pinned ? "hide-and-notify" : "stay";
+  return (outcome.warnings.length === 0 || outcome.project_warning_only === true) && !pinned ? "hide-and-notify" : "stay";
 }
 
 export type RowClick = {
@@ -134,6 +135,14 @@ export function renderNotice(root: HTMLElement, platform: NoticePlatform): (mess
     code.title = message.text;
     notice.dataset.outcome = message.delivered.outcome;
     notice.replaceChildren(source, mark, title, code);
+    if (message.project_warning) {
+      const warning = document.createElement("span");
+      warning.className = "copy-receipt-note";
+      const checked = message.project_checked_at_ms;
+      warning.textContent = message.project_warning + (checked && Number.isFinite(checked)
+        ? ` ${new Date(checked).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" })}` : "");
+      notice.append(warning);
+    }
     if (message.plugin_note) {
       const note = document.createElement("span");
       note.className = "copy-receipt-note";

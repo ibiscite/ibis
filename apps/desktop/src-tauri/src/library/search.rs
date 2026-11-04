@@ -80,6 +80,9 @@ pub(crate) struct PreviewIntent {
     pub(crate) page: u32,
     pub(crate) request: u32,
     pub(crate) cancel: bool,
+    #[serde(default)]
+    #[specta(optional)]
+    pub(crate) context: Option<(u32, u32)>,
 }
 
 impl PreviewRequests {

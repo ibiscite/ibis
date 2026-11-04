@@ -39,13 +39,15 @@ const MARKER: &str = "ibis_settings_backup";
 /// update question, which each computer answers for itself because it allows
 /// network use (decision 0008), and the Zotero profile, a name that means
 /// nothing elsewhere. A restore keeps this computer's values for them.
-pub const LOCAL: [&str; 6] = [
+pub const LOCAL: [&str; 8] = [
     "picker_windows",
     "delights",
     "project_bibliography",
     "editor_endpoint",
     "update_checks",
     "zotero_profile",
+    "writing_projects",
+    "writing_project_apps",
 ];
 
 /// A backup read and checked whole.
@@ -349,6 +351,8 @@ pub fn plan(current: &Settings, backup: &Backup, exists: impl FnOnce(&Path) -> b
     restored.picker_windows = current.picker_windows.clone();
     restored.delights = current.delights.clone();
     restored.project_bibliography = current.project_bibliography.clone();
+    restored.writing_projects = current.writing_projects.clone();
+    restored.writing_project_apps = current.writing_project_apps.clone();
     restored.editor_endpoint = current.editor_endpoint.clone();
     restored.update_checks = current.update_checks;
     restored.zotero_profile = current.zotero_profile.clone();
@@ -424,6 +428,7 @@ fn is_damaged(problem: Option<&SettingsError>) -> bool {
 /// recover from one; a file from a newer Ibis or one that cannot be read is
 /// left alone.
 pub fn restore(path: &Path, plan: &Plan) -> Result<Settings, BackupError> {
+    let _writer = super::writer_lock(path)?;
     let mut loaded = super::load(path);
     let missing = loaded.primary_read == PrimaryRead::Missing;
     let repair = needs_repair(&loaded);

@@ -119,8 +119,44 @@ deliberately:
   another writer changed before overwriting the shared definition.
 
 The UX is in [Shared project edits](design.md#shared-project-edits-planned),
-under #1697 and #1260. Historical reproducibility is a separate question;
-retaining task choices is not a promise to archive old records or styles.
+under #1697 and #1260. Retaining task choices is not a promise to archive old
+records or styles.
+
+2026-11-04 (maintainer, planned under #1260): writing projects may optionally
+save an explicit default search scope, naming libraries or collections for new
+tasks. A project without one starts with all connected libraries. Temporary
+task filters stay local and never silently replace the saved project default.
+Existing tasks retain their applied scope under the shared-edit rules above.
+This is a later extension to decision 0031's connected-library search default;
+it does not make collection membership evidence of the document's bibliography.
+See [Project search defaults](design.md#project-search-defaults-planned).
+
+2026-11-04 (maintainer, planning only): historical reproducibility has three
+distinct actions, with no silent substitution between them:
+
+- **Copy Saved Text** recovers the text and rich-text representations actually
+  retained, clearly dated. It is a historical artifact, not current verification.
+  Exact retained text and markup do not promise identical layout in every app.
+- **Recreate the Earlier Citation** uses the old reference data, request and
+  necessary formatting inputs when available. Missing records, style/locale
+  assets or compatible rendering behavior get an honest explanation; current
+  rendering is offered as a separate new result, never called exact replay.
+- **Create Current Citation** uses current coherent reference information and
+  the task's applicable formatting choices with normal validation. Plain text
+  already pasted is left alone; a changed prepared citation needs fresh review.
+  An ongoing generation job uses consistent formatting rules and explains an
+  inability to resume with them before continuing.
+
+A receipt identifies the references, options, source checks and formatting
+versions used; it is not a backup of material that was never saved. Reusing a
+historical key in today's project still requires current key-to-work validation
+and never bypasses a known conflict. Durable preservation is a deliberate
+project export containing the relevant references, requests, rendered outputs
+and formatting inputs, not a silent archive of libraries, documents or
+attachments. Existing recents and Change Last Citation do not imply permanent
+historical storage. UX: [Historical citations](design.md#historical-citations-planned).
+Follow-up: #1538 receipts and #667/#1386 document exports and locks; no
+implementation or work-order change is authorized by this planning record.
 
 ## 0004 Desktop shell (with 0012)
 
@@ -805,7 +841,22 @@ libraries and sources (0033).
 
 ## 0031 What Ibis remembers per app
 
-2026-11-02 (maintainer): one rule replaces the format scopes. Ibis remembers a
+2026-11-04 (maintainer, #1697): an optional writing project remembers its output
+and optional checked bibliography together. Each app remembers its own selected
+project; selecting No Writing Project restores that app's ordinary output.
+The selected project's output takes precedence over the app's format, and a
+format pick changes the project while it is selected. The picker continuously
+names that project and offers a quick explicit switch. A project is chosen by
+the person, never inferred from a document, window title or browser URL.
+Selection grants no paste permission. Explicit editor and command-line requests
+keep their own output and do not change the GUI selection. Project switches
+replace format and bibliography together and retire pending copy authority;
+failed saves keep the previous context whole. Search continues across connected
+libraries by default; optional project search defaults are planned under
+decision 0028. The checked bibliography remains one read-only file, not proof about
+the actual document. Implementation and acceptance scenarios: #1697.
+
+2026-11-02 (maintainer): with no writing project selected, Ibis remembers a
 format per app, and the person changes it in the format menu. One default in
 Settings › Citations applies to apps with no remembered format. "Just this
 once", "Automatic", "Use as global default" and "Forget formats for apps" are

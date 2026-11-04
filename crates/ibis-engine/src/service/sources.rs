@@ -82,7 +82,7 @@ impl PreparedFileReload {
 
 pub(super) fn source_error(error: SourceError) -> EngineError {
     super::error(match error {
-        SourceError::TooLarge | SourceError::LoadLimit => ErrorCode::ResourceLimit,
+        SourceError::TooLarge => ErrorCode::ResourceLimit,
         SourceError::NotRegular | SourceError::Unreadable | SourceError::Incomplete | SourceError::InvalidData => {
             ErrorCode::BadInput
         }

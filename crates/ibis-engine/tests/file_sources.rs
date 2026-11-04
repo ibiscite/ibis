@@ -118,7 +118,8 @@ fn damaged_refresh_keeps_last_good_data_and_exposes_fixed_status() {
     let id = open(&engine, &path);
     let old = engine.snapshot().unwrap();
     let updated = engine.libraries().unwrap().libraries[0].updated_at_ms;
-    std::fs::write(&path, "@article{unfinished,title={").unwrap();
+    // Not UTF-8: the refresh fails as an open would, so the old data stays.
+    std::fs::write(&path, b"@article{demo,title={\xff}}").unwrap();
     let failure = engine
         .dispatch(
             Method::Libraries,
@@ -152,6 +153,55 @@ fn damaged_refresh_keeps_last_good_data_and_exposes_fixed_status() {
             .unwrap()
             .contains("Original synthetic")
     );
+}
+/// The stress-test regression: a library opened with one damaged entry never
+/// refreshed again, so its edited titles were never found.
+#[test]
+fn a_library_opened_with_one_damaged_entry_reloads_its_edits() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("synthetic.bib");
+    let library = |title: &str| {
+        format!("@book{{first,title={{{title}}}}}\n@book{{broken,title={{Unclosed\n@book{{second,title={{Other}}}}\n")
+    };
+    std::fs::write(&path, library("Synthetic lantern")).unwrap();
+    let engine = Engine::new().unwrap();
+    let cancel = Cancellation::default();
+    let opened = engine
+        .dispatch(Method::Libraries, &json!({"action":"open-file","path":path}), &cancel)
+        .unwrap();
+    let id = opened.data["libraries"][0]["id"].as_str().unwrap().to_owned();
+    let status = || engine.libraries().unwrap().libraries[0].clone();
+    assert_eq!((status().objects, status().warnings_total), (2, 1));
+    let hits = |query: &str| {
+        engine
+            .search(
+                &SearchRequest {
+                    interpret_locator: false,
+                    query: query.into(),
+                    limit: 10,
+                    libraries: None,
+                },
+                &cancel,
+            )
+            .unwrap()
+            .hits
+            .len()
+    };
+    let reload = || {
+        engine
+            .dispatch(Method::Libraries, &json!({"action":"reload","library":id}), &cancel)
+            .unwrap()
+    };
+    std::fs::write(&path, library("Synthetic zebra")).unwrap();
+    reload();
+    assert_eq!(status().refresh_error, None);
+    assert_eq!((status().objects, status().warnings_total), (2, 1));
+    assert_eq!((hits("zebra"), hits("lantern")), (1, 0));
+    // The exact bytes it opened with reload too.
+    std::fs::write(&path, library("Synthetic lantern")).unwrap();
+    reload();
+    assert_eq!(status().refresh_error, None);
+    assert_eq!((hits("zebra"), hits("lantern")), (0, 1));
 }
 #[test]
 fn watcher_refreshes_search_and_notifies_without_mutating_prior_snapshots() {

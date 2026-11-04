@@ -2,7 +2,7 @@ import { Component, createRef, useEffect, useRef, type ReactNode } from "react";
 
 import { useFileDrag } from "../../ui/useFileDrag";
 
-type Props = { onFileDrag?: (change: (active: boolean) => void) => Promise<() => void>; presentation?: number; drag?: ReturnType<typeof useFileDrag>; children: ReactNode; citationProblem?: string | null; citationProblemIdentity?: object };
+type Props = { onFileDrag?: (change: (active: boolean) => void) => Promise<() => void>; presentation?: number; drag?: ReturnType<typeof useFileDrag>; children: ReactNode; citationProblem?: string | null; citationProblemIdentity?: object; contextNotice?: string | null; contextNoticeIdentity?: object };
 type Place = { node: HTMLElement; owner: HTMLElement; top: number; noticeHeight: number };
 
 /** Preserve browsing place across notices and scroll-owner changes. The commit
@@ -22,8 +22,9 @@ class PickerScrollFrame extends Component<Props> {
     // Preserve the refusal's reading place; otherwise anchor the first row of
     // the unchanged list, even offscreen. DOM identity excludes replaced rows.
     const problem = middle.querySelector<HTMLElement>(":scope > .notices > .citation-problem");
-    const node = problem ?? area?.querySelector<HTMLElement>('[role="option"]');
-    const owner = problem ? middle : [area, middle].find((part) => part && /auto|scroll/.test(getComputedStyle(part).overflowY));
+    const context = this.props.contextNotice ? middle.querySelector<HTMLElement>(":scope > .project-context-status") : null;
+    const node = problem ?? context ?? area?.querySelector<HTMLElement>('[role="option"]');
+    const owner = problem || context ? middle : [area, middle].find((part) => part && /auto|scroll/.test(getComputedStyle(part).overflowY));
     if (!node || !owner) return null;
     const noticeHeight = [...middle.querySelectorAll(":scope > .notices")]
       .reduce((height, part) => height + part.getBoundingClientRect().height, 0);
@@ -58,6 +59,15 @@ class PickerScrollFrame extends Component<Props> {
     this.anchor = this.capture();
   };
 
+  revealContextNotice = (notice: string, identity?: object) => {
+    if (this.props.contextNotice !== notice || this.props.contextNoticeIdentity !== identity) return;
+    const middle = this.middle.current;
+    const context = middle?.querySelector<HTMLElement>(":scope > .project-context-status");
+    if (!middle || !context) return;
+    middle.scrollTop = middle.scrollTop + context.getBoundingClientRect().top - middle.getBoundingClientRect().top - middle.clientTop;
+    this.anchor = this.capture();
+  };
+
   componentDidMount() {
     const middle = this.middle.current!;
     this.anchor = this.capture();
@@ -88,12 +98,15 @@ class PickerScrollFrame extends Component<Props> {
 export function PickerScroll(props: Props) {
   const frame = useRef<PickerScrollFrame>(null);
   const drag = useFileDrag(props.onFileDrag, props.presentation);
-  const { citationProblem, citationProblemIdentity } = props;
+  const { citationProblem, citationProblemIdentity, contextNotice, contextNoticeIdentity } = props;
   // Arrival has one owner, separate from preserving an existing reading place.
   // Equal wording from a newer format request is still a new notice. Renders
   // and later layout changes for the same notice never repeat this scroll.
   useEffect(() => {
     if (citationProblem) frame.current?.revealCitationProblem(citationProblem, citationProblemIdentity);
   }, [citationProblem, citationProblemIdentity]);
+  useEffect(() => {
+    if (contextNotice) frame.current?.revealContextNotice(contextNotice, contextNoticeIdentity);
+  }, [contextNotice, contextNoticeIdentity]);
   return <PickerScrollFrame {...props} drag={drag} ref={frame} />;
 }

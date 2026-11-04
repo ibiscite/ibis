@@ -13,10 +13,10 @@ export type KeyHints = { enter: string | null; shiftEnter: string | null; escape
 
 /** Status and its fix, Copy, then More. More's place never depends on the action:
  * shorten the status, then truncate the label, then fold labels to keys by width. */
-export function PickerFooter({ library, groupName, hints, altHeld, actions, more, status, emptyAction }: {
+export function PickerFooter({ library, groupName, hints, altHeld, actions, more, status, emptyAction, copyProblem }: {
   library: LibraryStatus | null | undefined; groupName: (id: number) => string; hints: KeyHints; altHeld: boolean;
   actions: { copy: () => void; add: () => void; escape: () => void };
-  more: React.ReactNode; status?: React.ReactNode; emptyAction?: boolean;
+  more: React.ReactNode; status?: React.ReactNode; emptyAction?: boolean; copyProblem?: string | null;
 }) {
   const bar = useRef<HTMLElement>(null);
   const hintsRow = useRef<HTMLElement>(null);
@@ -77,7 +77,7 @@ export function PickerFooter({ library, groupName, hints, altHeld, actions, more
         {altHeld ? <>
           {hints.shiftEnter && <FooterAction label={hints.shiftEnter} keys={keysFor("add")} onAction={actions.add} />}
           <FooterAction label={hints.escape} keys={keysFor("escape")} onAction={actions.escape} />
-        </> : hints.enter ? <FooterAction label={hints.enter} keys={keysFor("copy")} primary onAction={actions.copy} />
+        </> : hints.enter ? <FooterAction label={hints.enter} keys={keysFor("copy")} primary onAction={actions.copy} disabled={Boolean(copyProblem)} description={copyProblem ?? undefined} />
           : emptyAction && <FooterAction label={keyText.copy} keys={keysFor("copy")} disabled onAction={actions.copy} />}
       </small>
       <span key="more" ref={menu} className="more">{more}</span>
@@ -86,6 +86,6 @@ export function PickerFooter({ library, groupName, hints, altHeld, actions, more
   </footer>;
 }
 
-function FooterAction({ label, keys, primary, onAction, disabled }: { label: string; keys: string; primary?: boolean; onAction: () => void; disabled?: boolean }) {
-  return <Button variant={primary ? "primary" : "quiet"} size="small" className="footer-action" label={label} keys={keys} title={label} isDisabled={disabled} onPress={onAction} />;
+function FooterAction({ label, keys, primary, onAction, disabled, description }: { label: string; keys: string; primary?: boolean; onAction: () => void; disabled?: boolean; description?: string }) {
+  return <Button variant={primary ? "primary" : "quiet"} size="small" className="footer-action" label={label} keys={keys} title={description ?? label} isDisabled={disabled} onPress={onAction} />;
 }

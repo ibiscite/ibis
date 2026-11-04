@@ -41,11 +41,13 @@ test("on Linux every refusal keeps its reason and ends with Ctrl+V, and a paste 
   expect(root.querySelector("strong")?.textContent).toBe("Pasted into Example Writer");
 });
 
-test("only a clean copy from an unpinned picker hides it and says Copied", () => {
+test("only unpinned copies without blocking warnings hide the picker", () => {
   expect(afterCopy({ text: "[@a]", warnings: [] }, false)).toBe("hide-and-notify");
   expect(afterCopy({ text: "[@a]", warnings: [] }, true)).toBe("stay");
   expect(afterCopy({ text: "a", warnings: ["bare keys cannot carry page numbers"] }, false)).toBe("stay");
   expect(afterCopy({ text: "a", warnings: ["w"] }, true)).toBe("stay");
+  expect(afterCopy({ text: "a", warnings: ["Using the last checked bibliography copy."], project_warning_only: true }, false)).toBe("hide-and-notify");
+  expect(afterCopy({ text: "a", warnings: ["Explicit unverified key."], project_warning_only: true }, true)).toBe("stay");
 });
 
 const click: RowClick = { shiftKey: false, ctrlKey: false, metaKey: false, altKey: false, detail: 1, moved: 0, onControl: false, selectedText: false };

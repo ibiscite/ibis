@@ -318,17 +318,17 @@ fn remote_and_ambiguous_attachment_locations_never_become_local_paths() -> Resul
 }
 
 #[test]
-fn limited_json_warns_on_initial_read_and_refuses_replacement() -> Result<(), Box<dyn std::error::Error>> {
-    use ibis_sources::{SourceError, WarningCode};
+fn an_oversized_json_record_is_skipped_alike_on_open_and_reload() -> Result<(), Box<dyn std::error::Error>> {
+    use ibis_sources::WarningCode;
     let dir = tempfile::tempdir()?;
     let path = dir.path().join("synthetic.json");
-    std::fs::write(
-        &path,
+    let library = |title: &str| {
         format!(
-            r#"[{{"id":"huge","type":"book","title":"{}"}},{{"id":"good","type":"book"}}]"#,
+            r#"[{{"id":"huge","type":"book","title":"{}"}},{{"id":"good","type":"book","title":"{title}"}}]"#,
             "x".repeat(1024 * 1024)
-        ),
-    )?;
+        )
+    };
+    std::fs::write(&path, library("Lantern"))?;
     let loaded = ibis_sources::load_file(&path)?;
     assert_eq!(loaded.snapshot.objects().len(), 1);
     assert!(
@@ -337,7 +337,24 @@ fn limited_json_warns_on_initial_read_and_refuses_replacement() -> Result<(), Bo
             .iter()
             .any(|warning| warning.code == WarningCode::WorkLimit)
     );
-    assert_eq!(ibis_sources::reload_file(&path).err(), Some(SourceError::LoadLimit));
+    // The same bytes give the same library, opened or reloaded.
+    let reloaded = ibis_sources::reload_file(&path)?;
+    assert_eq!(reloaded.snapshot.fingerprints(), loaded.snapshot.fingerprints());
+    assert_eq!(reloaded.warnings, loaded.warnings);
+    // A save beside the oversized record is picked up, with the same warning.
+    std::fs::write(&path, library("Zebra"))?;
+    let edited = ibis_sources::reload_file_reusing(&path, &reloaded.snapshot)?;
+    let titles: Vec<_> = edited
+        .snapshot
+        .objects()
+        .iter()
+        .filter_map(|item| match &item.object {
+            LibraryObject::Record(record) => Some(record.csl["title"].clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(titles, ["Zebra"]);
+    assert_eq!(edited.warnings, loaded.warnings);
     Ok(())
 }
 
@@ -489,7 +506,7 @@ fn relative_file_urls_stay_in_private_provenance() -> Result<(), Box<dyn std::er
 }
 
 #[test]
-fn attachment_limits_keep_records_and_refuse_reloads() -> Result<(), Box<dyn std::error::Error>> {
+fn attachment_limits_keep_records_alike_on_open_and_reload() -> Result<(), Box<dyn std::error::Error>> {
     let dir = tempfile::tempdir()?;
     let path = dir.path().join("synthetic.json");
     std::fs::write(dir.path().join("neighbor.pdf"), b"invented attachment")?;
@@ -517,15 +534,14 @@ fn attachment_limits_keep_records_and_refuse_reloads() -> Result<(), Box<dyn std
             .iter()
             .any(|warning| warning.code == ibis_sources::WarningCode::WorkLimit)
     );
-    assert_eq!(
-        ibis_sources::reload_file(&path).err(),
-        Some(ibis_sources::SourceError::LoadLimit)
-    );
+    let reloaded = ibis_sources::reload_file(&path)?;
+    assert_eq!(reloaded.snapshot.fingerprints(), loaded.snapshot.fingerprints());
+    assert_eq!(reloaded.warnings, loaded.warnings);
     Ok(())
 }
 
 #[test]
-fn record_caps_keep_a_bounded_prefix_and_refuse_reload() -> Result<(), Box<dyn std::error::Error>> {
+fn record_caps_keep_the_same_bounded_prefix_on_open_and_reload() -> Result<(), Box<dyn std::error::Error>> {
     const LIMIT: usize = ibis_sources::MAX_LIBRARY_RECORDS;
     let dir = tempfile::tempdir()?;
     for extension in ["json", "bib"] {
@@ -558,11 +574,11 @@ fn record_caps_keep_a_bounded_prefix_and_refuse_reload() -> Result<(), Box<dyn s
                 .iter()
                 .any(|warning| warning.code == ibis_sources::WarningCode::WorkLimit)
         );
+        let (fingerprints, warnings) = (initial.snapshot.fingerprints().clone(), initial.warnings.clone());
         drop(initial);
-        assert_eq!(
-            ibis_sources::reload_file(&path).err(),
-            Some(ibis_sources::SourceError::LoadLimit)
-        );
+        let reloaded = ibis_sources::reload_file(&path)?;
+        assert_eq!(reloaded.snapshot.fingerprints(), &fingerprints, "{extension}");
+        assert_eq!(reloaded.warnings, warnings, "{extension}");
     }
     Ok(())
 }
