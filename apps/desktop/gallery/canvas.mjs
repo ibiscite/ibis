@@ -7,7 +7,7 @@ const dist = process.argv[2], out = process.argv[3];
 await mkdir(out, { recursive: true });
 const browser = await chromium.launch({ headless: true });
 const size = (scenario) => scenario === "notice" ? { width: 560, height: 100 }
-  : boards(scenario) ? { width: 920, height: 560 } : { width: 720, height: 480 };
+  : boards(scenario) ? { width: 920, height: 560 } : scenario === "reader" ? { width: 1000, height: 760 } : { width: 720, height: 480 };
 // Boards and Settings pages are captured whole: the window grows until nothing
 // scrolls, so no picture is cut off by a fixed height. The picker keeps its one
 // steady size [C10], as people see it.
