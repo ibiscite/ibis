@@ -26,6 +26,9 @@ export const settingsApi = {
   shortcutStatus: commands.shortcutStatus,
   setShortcut: commands.setShortcut,
   configureShortcuts: commands.configureShortcuts,
+  editorEndpoint: commands.editorEndpoint,
+  setEditorEndpoint: commands.setEditorEndpoint,
+  copyEditorEndpoint: commands.copyEditorEndpoint,
   backUpSettings: commands.backUpSettings,
   chooseSettingsBackup: commands.chooseSettingsBackup,
   restoreSettingsBackup: commands.restoreSettingsBackup,
@@ -42,4 +45,5 @@ export const settingsApi = {
   onCloseRequested: (handler: () => Promise<void>): Promise<UnlistenFn> => getCurrentWindow().onCloseRequested(handler),
 };
 
-export type SettingsApi = Omit<typeof settingsApi, "delightView"> & Partial<Pick<typeof settingsApi, "delightView">>;
+type Optional = "delightView" | "editorEndpoint" | "setEditorEndpoint" | "copyEditorEndpoint";
+export type SettingsApi = Omit<typeof settingsApi, Optional> & Partial<Pick<typeof settingsApi, Optional>>;

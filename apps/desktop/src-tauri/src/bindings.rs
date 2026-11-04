@@ -23,6 +23,15 @@ pub(crate) fn commands() -> tauri_specta::Builder<tauri::Wry> {
             crate::copy::citation_details,
             crate::copy::copy_file_citation,
             crate::copy::copy_format,
+            crate::editor_endpoint::editor_request,
+            crate::editor_endpoint::editor_endpoint,
+            crate::editor_endpoint::set_editor_endpoint,
+            crate::editor_endpoint::copy_editor_endpoint,
+            crate::session_references::session_references,
+            crate::session_references::edit_session_references,
+            crate::session_references::session_bibliography,
+            crate::session_references::copy_session_bibliography,
+            crate::session_references::export_session_bibliography,
             crate::preferences::picker_preferences,
             crate::preferences::preference_revision,
             crate::delights::delight_view,
@@ -85,6 +94,9 @@ mod tests {
     const SETTINGS_COMMANDS: &[&str] = &[
         "picker_preferences",
         "preference_revision",
+        "editor_endpoint",
+        "set_editor_endpoint",
+        "copy_editor_endpoint",
         "delight_view",
         "set_picker_preferences",
         "window_size",
@@ -111,6 +123,9 @@ mod tests {
     /// Only Settings asks about paste permission, changes the global shortcut
     /// or chooses a window size.
     const SETTINGS_ONLY: &[&str] = &[
+        "editor_endpoint",
+        "set_editor_endpoint",
+        "copy_editor_endpoint",
         "open_about_link",
         "window_size",
         "set_window_size",

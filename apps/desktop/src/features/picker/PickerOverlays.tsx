@@ -8,12 +8,27 @@ import { UndoNotice } from "../../ui/UndoNotice";
 import { KeysDialog } from "./KeysDialog";
 import { UpdateNotice } from "./Notices";
 import { tileName } from "./rows";
+import { SessionReferencesDialog } from "./SessionReferences";
+import type { PickerApi } from "../../App";
+import type { StyleId } from "../../format/styles";
 import type { usePickerSession } from "./usePickerSession";
 import type { usePickerMenus } from "./usePickerMenus";
 import type { KeyBinding } from "../../keys";
 
-export function PickerOverlays({ menus, bindings }: { menus: ReturnType<typeof usePickerMenus>; bindings: readonly KeyBinding[] }) {
-  return menus.keysOpen ? <KeysDialog bindings={bindings} isMac={isMac} onClose={menus.closeKeys} /> : null;
+export function PickerOverlays({ api, style, menus, bindings }: {
+  api: PickerApi;
+  /** The output's style; a key output has none, so its bibliography uses APA. */
+  style: StyleId | null;
+  menus: ReturnType<typeof usePickerMenus>;
+  bindings: readonly KeyBinding[];
+}) {
+  const { sessionReferences, editSessionReferences, sessionBibliography, copySessionBibliography, exportSessionBibliography } = api;
+  return <>
+    {menus.keysOpen && <KeysDialog bindings={bindings} isMac={isMac} onClose={menus.closeKeys} />}
+    {menus.sessionOpen && sessionReferences && editSessionReferences && sessionBibliography && copySessionBibliography && exportSessionBibliography
+      && <SessionReferencesDialog style={style ?? "apa"} onClose={menus.closeSession}
+        api={{ sessionReferences, editSessionReferences, sessionBibliography, copySessionBibliography, exportSessionBibliography }} />}
+  </>;
 }
 
 /** What passes, in the footer's status area; the library status returns after it. */

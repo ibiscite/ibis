@@ -21,6 +21,9 @@ pub(crate) struct Copied {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[specta(optional)]
     pub(crate) delivery: Option<u32>,
+    /// What was cited, for the session's list; stays on this side of the bridge.
+    #[serde(skip)]
+    pub(crate) cited: Vec<ibis_core::contract::ItemRef>,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize, specta::Type)]
@@ -159,6 +162,8 @@ pub(crate) async fn citation_details(
         .map_err(|_| CommandError::from("Citation examples are unavailable. Close and reopen the menu to try again."))?
 }
 
+// Each managed state is its own argument: Tauri hands them to commands that way.
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 #[specta::specta]
 pub(crate) async fn preview_file_citation(
@@ -169,6 +174,7 @@ pub(crate) async fn preview_file_citation(
     intent: PreviewIntent,
     library: State<'_, Mutex<Library>>,
     requests: State<'_, PreviewRequests>,
+    editor: State<'_, crate::editor_endpoint::Pending>,
 ) -> Result<crate::library::engine_file::FilePreview, CommandError> {
     let cancel = requests.start(intent).ok_or(CommandError::Cancelled)?;
     let (file, generation) = {
@@ -186,9 +192,12 @@ pub(crate) async fn preview_file_citation(
         (file, library.source_generation)
     };
     let reservation = file.reserve_preview_with(cancel);
-    let result = tauri::async_runtime::spawn_blocking(move || file.preview(reservation, items, format, style))
-        .await
-        .map_err(|_| CommandError::from("The preview is unavailable. Try again."))?;
+    let editor = editor.current();
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        file.preview_for(reservation, items, format, style, editor.as_ref())
+    })
+    .await
+    .map_err(|_| CommandError::from("The preview is unavailable. Try again."))?;
     // A reload cancels previews it overtakes, and the quiet check that follows
     // each show retires Zotero while it reads. Both publish when they end, which
     // asks again; that is waiting, not a failure.
@@ -202,6 +211,18 @@ pub(crate) async fn preview_file_citation(
         result
     }
 }
+/// Plain text with no delivery.
+pub(crate) fn write_plain(app: &AppHandle, text: &str) -> Result<(), String> {
+    write_copy_only(
+        app,
+        ibis_core::contract::ClipboardContent {
+            text,
+            html: None,
+            rtf: None,
+        },
+    )
+}
+
 #[tauri::command]
 #[specta::specta]
 pub(crate) fn copy_file_citation(
@@ -210,6 +231,7 @@ pub(crate) fn copy_file_citation(
     replaces: Option<String>,
     app: AppHandle,
     library: State<'_, Mutex<Library>>,
+    editor: State<'_, crate::editor_endpoint::Pending>,
 ) -> Result<Copied, CommandError> {
     #[cfg(target_os = "windows")]
     let attempt = crate::paste::begin_copy(&app, replaces.as_deref());
@@ -222,6 +244,41 @@ pub(crate) fn copy_file_citation(
         }
         library.file.clone().ok_or(CommandError::SnapshotChanged)?
     };
+    // A waiting editor gets the citation in place of the clipboard. It is
+    // handed over under the same commit barrier, and nothing is pasted.
+    if let Some(request) = editor.current() {
+        if !file.prepared_for(&ticket, &request) {
+            return Err(CommandError::SnapshotChanged);
+        }
+        // The text leaves the commit barrier first; the editor is answered with no
+        // lock held, because ending a request takes these locks the other way round.
+        let mut text = None;
+        let copied = file.copy(&ticket, &content_hash, |content| {
+            text = Some((
+                content.text.to_owned(),
+                content.html.map(str::to_owned),
+                content.rtf.map(str::to_owned),
+            ));
+            Ok(())
+        })?;
+        let (text, html, rtf) = text.ok_or(CommandError::SnapshotChanged)?;
+        if !editor.answer(request.id, &text, || file.invalidate_preview()) {
+            return Err("Your editor stopped waiting for this citation.".into());
+        }
+        // Only a request that was answered may leave its citation on the clipboard.
+        if request.clipboard {
+            write_copy_only(
+                &app,
+                ibis_core::contract::ClipboardContent {
+                    text: &text,
+                    html: html.as_deref(),
+                    rtf: rtf.as_deref(),
+                },
+            )
+            .map_err(CommandError::from)?;
+        }
+        return Ok(copied);
+    }
     let mut delivery = None;
     let mut copied = file.copy(&ticket, &content_hash, |content| {
         #[cfg(target_os = "windows")]
@@ -236,5 +293,20 @@ pub(crate) fn copy_file_citation(
         Ok(())
     })?;
     copied.delivery = delivery;
+    tauri::Manager::state::<crate::session_references::SessionReferences>(&app)
+        .cited(std::mem::take(&mut copied.cited));
     Ok(copied)
+}
+
+/// Whole content with no delivery: it is copied, never pasted.
+pub(crate) fn write_copy_only(
+    app: &AppHandle,
+    content: ibis_core::contract::ClipboardContent<'_>,
+) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    let written = clipboard::write(app, content);
+    // Nothing is replaced: this is a new copy, not a change to the last citation.
+    #[cfg(not(target_os = "windows"))]
+    let written = clipboard::write(app, content, None);
+    written.map(|_| ())
 }
