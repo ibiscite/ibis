@@ -35,7 +35,7 @@ type Theme = "light" | "dark";
 const rows: SearchResult[] = Array.from({ length: 14 }, (_, i) => ({
   revision: "1", id: { library: "invented.bib", key: `synthetic${i}` }, cite: `synthetic-cite-${i}`,
   source: "invented.bib", key: `synthetic${i}`, title: `Invented reference ${i}`,
-  authors: "Aster", first_author: "Aster", author_count: 1, year: 2026, container: null,
+  authors: "Aster", first_author: "Aster", author_count: 1, year: "2026", container: null,
   item_type: "article-journal", partial: false, matched: ["title"],
 }));
 

@@ -185,7 +185,7 @@ fn results_carry_what_tells_similar_references_apart() {
     assert_eq!(row("b").author_count, 1);
     assert_eq!(row("b").item_type, "book");
     let capped = row("b").container.as_deref().unwrap_or_default();
-    assert_eq!(capped.chars().count(), CONTAINER_LIMIT);
+    assert_eq!(capped.chars().count(), ibis_core::summary::CONTAINER_LIMIT);
     assert!(capped.ends_with('…') && !capped.ends_with(" …"));
     assert_eq!(
         (
@@ -295,4 +295,45 @@ fn matched_fields_reach_the_interface_under_their_serde_names() {
         let name = serde_json::to_value(field).unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(name, serde_json::json!(format!("{field:?}").to_lowercase()));
     }
+}
+
+/// The picker's half of the golden in `crates/ibis-cli/tests/record_summary.rs`:
+/// the same record shows the same year, and the same people by surname.
+#[test]
+fn the_picker_reads_a_record_as_every_front_end_does() {
+    let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+    let path = directory.path().join("invented.json");
+    std::fs::write(&path, include_str!("../../../../../../fixtures/record-summary.json"))
+        .unwrap_or_else(|e| panic!("{e}"));
+    let file = FileLibrary::open(&path).unwrap_or_else(|e| panic!("synthetic library: {e}"));
+    let reply = search(&file, "tide", None);
+    let rows: Vec<_> = reply
+        .results
+        .iter()
+        .map(|row| {
+            (
+                row.key.as_str(),
+                row.authors.as_str(),
+                row.year.as_deref(),
+                row.author_count,
+            )
+        })
+        .collect();
+    for expected in [
+        (
+            "quill1890",
+            "Quill, Invented Survey Office, Moss",
+            Some("circa spring 1890s"),
+            3,
+        ),
+        ("stone2016", "Stone, Reed", Some("2016"), 2),
+        ("", "Vale", Some("2021"), 1),
+    ] {
+        assert!(rows.contains(&expected), "{expected:?} in {rows:?}");
+    }
+    let by_year = search(&file, "2016", None);
+    assert_eq!(
+        by_year.results.iter().map(|row| row.key.as_str()).collect::<Vec<_>>(),
+        ["stone2016"]
+    );
 }

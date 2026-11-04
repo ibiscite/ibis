@@ -122,7 +122,8 @@ pub(crate) struct SearchResult {
     pub(super) key: String,
     title: String,
     authors: String,
-    year: Option<i32>,
+    /// The year, or the source's own date text: `RecordSummary::year`.
+    year: Option<String>,
     matched: Vec<MatchField>,
     /// Only some query words matched; shown under "Closest matches".
     partial: bool,
@@ -146,18 +147,6 @@ pub(crate) enum RecentGroup {
     Added,
 }
 
-/// Longest container sent to the interface, in characters, ellipsis included.
-const CONTAINER_LIMIT: usize = 120;
-
-/// Shorten `text` to at most `limit` characters, ending with an ellipsis.
-pub(super) fn capped(text: String, limit: usize) -> String {
-    if text.chars().count() <= limit {
-        return text;
-    }
-    let kept: String = text.chars().take(limit.saturating_sub(1)).collect();
-    format!("{}…", kept.trim_end())
-}
-
 impl SearchResult {
     pub(super) fn from_engine(
         record: &ibis_core::contract::Record,
@@ -166,34 +155,7 @@ impl SearchResult {
         partial: bool,
         revision: &str,
     ) -> Self {
-        let text = |field: &str| {
-            record
-                .csl
-                .get(field)
-                .and_then(serde_json::Value::as_str)
-                .map(ibis_core::model::strip_markup)
-                .unwrap_or_default()
-        };
-        let authors: Vec<_> = record
-            .csl
-            .get("author")
-            .and_then(serde_json::Value::as_array)
-            .into_iter()
-            .flatten()
-            .filter_map(|author| {
-                author
-                    .get("literal")
-                    .or_else(|| author.get("family"))
-                    .and_then(serde_json::Value::as_str)
-            })
-            .map(ibis_core::model::strip_markup)
-            .collect();
-        let container = ["container-title", "publisher"]
-            .into_iter()
-            .map(text)
-            .map(|text| text.trim().to_owned())
-            .find(|text| !text.is_empty())
-            .map(|text| capped(text, CONTAINER_LIMIT));
+        let summary = record.summary();
         Self {
             recent: None,
             project: None,
@@ -203,22 +165,24 @@ impl SearchResult {
             source: record.id.library.as_str().to_owned(),
             cite: cite.into(),
             key: record.citation_key().ok().flatten().unwrap_or_default().into(),
-            title: text("title"),
-            first_author: authors.first().cloned().unwrap_or_default(),
-            author_count: u32::try_from(authors.len()).unwrap_or(u32::MAX),
-            authors: authors.join(", "),
-            year: record
-                .csl
-                .get("issued")
-                .and_then(|issued| issued.get("date-parts"))
-                .and_then(|parts| parts.get(0))
-                .and_then(|parts| parts.get(0))
-                .and_then(serde_json::Value::as_i64)
-                .and_then(|year| i32::try_from(year).ok()),
+            title: summary.title.clone().unwrap_or_default(),
+            first_author: summary
+                .authors
+                .first()
+                .map(|author| author.short.clone())
+                .unwrap_or_default(),
+            author_count: u32::try_from(summary.authors.len()).unwrap_or(u32::MAX),
+            authors: summary
+                .authors
+                .iter()
+                .map(|author| author.short.as_str())
+                .collect::<Vec<_>>()
+                .join(", "),
+            year: summary.year.clone(),
             matched,
             partial,
-            container,
-            item_type: text("type"),
+            container: summary.container,
+            item_type: summary.item_type.unwrap_or_default(),
         }
     }
 }

@@ -105,14 +105,7 @@ impl SnapshotIndex {
                     .map(|key| key.value.clone())
                     .chain(record.aliases.iter().cloned())
                     .collect();
-                let year = record
-                    .csl
-                    .get("issued")
-                    .and_then(|date| date.get("date-parts"))
-                    .and_then(|parts| parts.get(0))
-                    .and_then(|parts| parts.get(0))
-                    .and_then(serde_json::Value::as_i64)
-                    .and_then(|year| i32::try_from(year).ok());
+                let year = crate::summary::issued_year(record.csl.get("issued"));
                 let text = |field: &str| record.csl.get(field).and_then(serde_json::Value::as_str).unwrap_or("");
                 let names: Vec<Name> = record
                     .csl
