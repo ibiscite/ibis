@@ -312,8 +312,9 @@ pub struct Settings {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub editor_endpoint: Option<EditorEndpoint>,
     /// The default output: an id from the engine's `outputs` list, written
-    /// once chosen. An id this Ibis does not list means the engine's default.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// once chosen. An id this Ibis does not list means the engine's default;
+    /// anything but text reads as no choice, so the rest of the file is kept.
+    #[serde(skip_serializing_if = "Option::is_none", deserialize_with = "text_or_none")]
     pub output: Option<String>,
     /// Whether Ibis checks GitHub for updates (ADR 0019). `None` means the
     /// person has not been asked yet; nothing is checked until they say yes.
@@ -413,6 +414,15 @@ pub struct Loaded {
 
 fn backup_path(path: &Path) -> PathBuf {
     path.with_extension("json.bak")
+}
+
+/// A stored choice read leniently: anything but text, as another version may
+/// have written, is no choice at all.
+fn text_or_none<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Option<String>, D::Error> {
+    Ok(match Value::deserialize(deserializer)? {
+        Value::String(text) => Some(text),
+        _ => None,
+    })
 }
 
 fn parse(text: &str) -> Result<Settings, SettingsError> {
@@ -1293,18 +1303,21 @@ mod tests {
     }
 
     #[test]
-    fn unknown_picker_preference_values_are_invalid_not_guessed() {
-        for text in [
-            r#"{"output": 7}"#,
-            r#"{"density": "tiny"}"#,
-            r#"{"larger_text": "yes"}"#,
-        ] {
+    fn unknown_picker_preference_values_are_refused_or_read_as_no_choice() {
+        for text in [r#"{"density": "tiny"}"#, r#"{"larger_text": "yes"}"#] {
             assert!(matches!(parse(text), Err(SettingsError::Invalid(_))), "{text}");
         }
         // An output id is the engine's to read: one this Ibis does not list
         // keeps the file valid and means the default where it is used.
         let later = parse(r#"{"output": "a-later-output"}"#).unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(later.output.as_deref(), Some("a-later-output"));
+        // An output in another shape is no choice, and the settings beside it stay.
+        for shape in [r#"7"#, r#"{"key": "typst"}"#, "null"] {
+            let text = format!(r#"{{"output": {shape}, "larger_text": true}}"#);
+            let kept = parse(&text).unwrap_or_else(|e| panic!("{shape}: {e}"));
+            assert_eq!(kept.output, None, "{shape}");
+            assert_eq!(kept.larger_text, Some(true), "{shape}");
+        }
     }
 
     #[test]
@@ -1353,7 +1366,7 @@ mod tests {
             let damaged = [
                 b"".as_slice(),
                 b"{ not json",
-                br#"{"output":["typst"]}"#,
+                br#"{"density":"tiny"}"#,
                 br#"{"library":{"zotero":["user",{"group":-1}]}}"#,
                 b"\xff",
             ];
