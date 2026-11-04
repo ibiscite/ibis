@@ -249,5 +249,10 @@ pub(crate) fn write_copy_only(
     app: &AppHandle,
     content: ibis_core::contract::ClipboardContent<'_>,
 ) -> Result<(), String> {
-    clipboard::write(app, content).map(|_| ())
+    #[cfg(target_os = "windows")]
+    let written = clipboard::write(app, content);
+    // Nothing is replaced: this is a new copy, not a change to the last citation.
+    #[cfg(not(target_os = "windows"))]
+    let written = clipboard::write(app, content, None);
+    written.map(|_| ())
 }
