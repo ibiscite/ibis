@@ -16,7 +16,6 @@ export const ROWS: readonly { id: string; page: Page; label: MessageId; descript
   { id: "window-size", page: "look", label: "look-window-size", keywords: "look-window-large" },
   { id: "text-size", page: "look", label: "look-text-size" },
   { id: "default-format", page: "citations", label: "citations-default", description: "citations-default-description" },
-  { id: "forget-formats", page: "citations", label: "citations-forget", description: "citations-forget-description" },
   { id: "recent-citations", page: "citations", label: "citations-recent", description: "citations-recent-description", keywords: "citations-recent-words" },
   { id: "about-ibis", page: "about", label: "settings-about", keywords: "delight-about-words" },
   { id: "automatic", page: "about", label: "about-automatic", description: "about-automatic-description", keywords: "about-check" },

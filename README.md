@@ -17,7 +17,7 @@ No account, no uploads, no telemetry; sources read without changes. [Privacy](PR
 
 - **Opens from any app.** Press **Ctrl+Shift+Y** on Windows or Linux, or **Command+Shift+Y** on a Mac. If another app already uses that shortcut, Ibis tells you, and a shortcut you have set yourself is kept. Linux desktops that use Wayland cannot use this shortcut yet; Ibis Nightly lets you [set one in your desktop's settings](docs/compatibility.md#bind-a-system-shortcut).
 - **Finds the reference.** Search your Zotero library and any group libraries you choose (Zotero 7–10, open or closed), or a reference file: BibTeX or BibLaTeX (`.bib`, `.bibtex`) or CSL-JSON (`.json`, `.csljson`).
-- **Gives you the citation you need.** A citation key for Pandoc, BibLaTeX, LaTeX or Typst; a formatted citation in APA, Chicago, Harvard or MLA; or an IEEE reference entry. A citation key is a short label for a reference, such as `vale2024lanterns`; those tools use it to find the full reference.
+- **Gives you the citation you need.** A citation key for Pandoc, BibLaTeX, LaTeX or Typst; a formatted citation in APA, Chicago, Harvard or MLA; or an IEEE reference entry. A citation key is a short label for a reference, such as `vale2024lanterns`; those tools use it to find the full reference. Ibis remembers a format per app, and you change it in the picker. When Ibis can't tell the app, a format you pick becomes your default.
 - **Gets it into your document.** Press **Enter**. On a Mac, Ibis pastes for you once you allow it, and the guide is in **Settings > General > Pasting**. On Windows and Linux, or when pasting is not possible, Ibis copies the citation and you paste it yourself.
 - **Leaves your library alone.** Ibis works offline after setup and never changes your library.
 - **Nightly only, until the next release:** start Ibis when you log in, and paste a DOI, ISBN, PubMed ID (`PMID:…`) or arXiv ID to find that record in your library (Ibis does not fetch it from the internet).
@@ -51,7 +51,7 @@ Some Linux desktops, including GNOME without a tray extension, show no tray icon
 
 **Shift+Enter** adds several references to one citation. Press **Ctrl+/** (**⌘/** on a Mac) to see every key.
 
-To change the format, use the control beside search. On a Mac the format follows the app you came from, and choosing another one remembers it for that app. On Windows and Linux, choosing a format changes it everywhere. **Just this once** applies it to one citation only.
+To change the format, use the control beside search. The format belongs to the app you came from, and choosing another one remembers it for that app. When Ibis can't tell the app, a format you pick becomes your default. **Settings › Citations › Default format** applies to apps with no remembered format.
 
 **Nightly only, until the next release:** add a locator at the end of a search,
 such as `memory p 12–14`, `memory ch. 3` or `memory S. 12`. Ibis shows how it interpreted the locator; **Search as typed**

@@ -74,6 +74,7 @@ test("every command has one key on each system, and ⌘/ opens the keys wherever
     expect(commandFor(press("o", "KeyO", { ...command, altKey: true }), null, mac)).toBe("revealSource");
     expect(commandFor(press("o", "KeyO", { ...command, shiftKey: true }), null, mac)).toBe("chooseSource");
     expect(commandFor(press("q", "KeyQ", command), null, mac)).toBe("quit");
+    expect(commandFor(press("e", "KeyE", command), field, mac)).toBe("changeLast");
   }
   // A bare ? is text in a field, and on nothing it is the keys sheet.
   expect(commandFor(press("?", "Slash", { shiftKey: true }), field, true)).toBeNull();

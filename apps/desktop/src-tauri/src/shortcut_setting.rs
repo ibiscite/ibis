@@ -24,6 +24,7 @@ pub(crate) enum PickerCommand {
     Pin,
     Keys,
     More,
+    ChangeLast,
     Source,
     Settings,
     Quit,
@@ -32,10 +33,11 @@ pub(crate) enum PickerCommand {
 impl std::fmt::Display for PickerCommand {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
-            Self::Format => "Choose Output Format",
+            Self::Format => "Change Format",
             Self::Pin => "Keep Window Open",
             Self::Keys => "Keyboard Shortcuts",
             Self::More => "More",
+            Self::ChangeLast => "Change Last Citation",
             Self::Source => "Open the Source",
             Self::Settings => "Settings",
             Self::Quit => "Quit Ibis",
@@ -195,6 +197,9 @@ fn picker_command(shortcut: Shortcut, character: Option<char>) -> Option<PickerC
         }
         if letter('o', Code::KeyO) {
             return Some(PickerCommand::Source);
+        }
+        if letter('e', Code::KeyE) {
+            return Some(PickerCommand::ChangeLast);
         }
         if letter('q', Code::KeyQ) {
             return Some(PickerCommand::Quit);

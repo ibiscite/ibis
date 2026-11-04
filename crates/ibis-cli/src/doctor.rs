@@ -310,7 +310,7 @@ fn library_report(library: &LibraryInfo) -> Value {
         (
             "findings",
             "source-warnings",
-            "The library loaded with source warnings. Use libraries --json to inspect them.",
+            "The library loaded with warnings. See them with ibis libraries and the same library options.",
         )
     } else {
         ("ok", "source-ok", "The library was read successfully.")

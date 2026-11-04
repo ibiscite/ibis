@@ -58,7 +58,8 @@ export const noticePlatform: (platform: string) => NoticePlatform = platformOf;
 export const COPY_REASONS = [
   "paste-off", "unsupported-system", "no-target", "unknown-app", "copy-only", "target-changed", "clipboard-changed",
   "paste-expired", "secure-field", "secure-input", "paste-unavailable", "elevated-app", "terminal", "remote-desktop",
-  "virtual-machine", "nonstandard-shortcut", "no-permission", "accessibility-required", "selection-not-shown", "key-release-failed",
+  "virtual-machine", "nonstandard-shortcut", "no-permission", "accessibility-required", "selection-not-shown", "citation-not-selected",
+  "key-release-failed",
 ] as const;
 export type CopyReason = typeof COPY_REASONS[number];
 /** What happened to a copy, with its reason checked: an unknown reason does not compile. */

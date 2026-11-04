@@ -16,9 +16,9 @@ use tauri_nspanel::objc2::rc::Retained;
 
 use super::super::secure_input;
 use super::{
-    Attribute, FINAL_SELECTION_LIMIT, Identity, LIMIT, Provider, Reply, SELECTION_LIMIT, SHORT_SELECTION, SelectedText,
-    Selection, capture_query, check_selection, claim_process, diagnostics, missing_identity_attribute,
-    opening_selection, query, range_length, same_live_process, selection_error,
+    Attribute, FINAL_SELECTION_LIMIT, Identity, LIMIT, Provider, Reply, SELECTION_LIMIT, SelectedText, Selection,
+    capture_query, check_selection, claim_process, diagnostics, missing_identity_attribute, opening_selection, query,
+    range_length, same_live_process, selection_error,
 };
 
 // SAFETY: AXUIElement.h declares AXError=int32_t, pid_t=int and Boolean=u8.
@@ -283,10 +283,10 @@ impl Provider for Native {
         range_length(read, range.location, range.length)
     }
 
-    fn selected_text(&self, element: &Element, deadline: Instant) -> Reply<String> {
+    fn selected_text(&self, element: &Element, limit: usize, deadline: Instant) -> Reply<String> {
         match self.selection_value(element, SelectionAttribute::Text, deadline) {
             Reply::Value(value) => match value.downcast_ref::<CFString>() {
-                Some(text) if usize::try_from(text.length()).is_ok_and(|length| length <= SHORT_SELECTION) => {
+                Some(text) if usize::try_from(text.length()).is_ok_and(|length| length <= limit) => {
                     Reply::Value(text.to_string())
                 }
                 Some(_) => Reply::TooLong,

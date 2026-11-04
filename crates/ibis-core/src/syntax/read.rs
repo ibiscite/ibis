@@ -37,6 +37,10 @@ fn select<'a>(text: &'a str, work: &mut Work<'_>) -> Option<Citation<'a>> {
     if let Some(read) = json(text, work) {
         return Some(read);
     }
+    // ConTeXt's `\cite[keys]` reads as a LaTeX `\cite` with notes and no keys.
+    if let Some(read) = context(text, work) {
+        return Some(read);
+    }
     for caps in &CAPABILITIES {
         if !work.spend(1) {
             return None;
@@ -58,7 +62,8 @@ fn select<'a>(text: &'a str, work: &mut Work<'_>) -> Option<Citation<'a>> {
             KeySyntax::AsciiDoc => asciidoc(text, work),
             KeySyntax::Jupyter => html(text, work),
             KeySyntax::JekyllScholar => jekyll(text, work),
-            KeySyntax::Pandoc
+            KeySyntax::Context
+            | KeySyntax::Pandoc
             | KeySyntax::MultiMarkdown
             | KeySyntax::Keys
             | KeySyntax::ScannableCite
@@ -110,6 +115,38 @@ fn tex<'a>(text: &'a str, command: &str, multi: bool, work: &mut Work<'_>) -> Op
     }
     // Even a damaged optional argument is consumed once, keeping scanning linear.
     (rest.len() < text.len() - command.len() - 1).then(|| explicit(keys, rest))
+}
+
+/// `\cite[settings][keys]` or `\cite[keys]`: the last bracket holds the keys.
+/// Anything a LaTeX `\cite` could still be is left to the TeX reader.
+fn context<'a>(text: &'a str, work: &mut Work<'_>) -> Option<Citation<'a>> {
+    let mut rest = text.strip_prefix("\\cite[")?;
+    let mut body = "";
+    for bracket in 0..2 {
+        if bracket == 1 {
+            match work.trim_start(rest).strip_prefix('[') {
+                Some(next) => rest = next,
+                None => break,
+            }
+        }
+        let (inside, after) = group(rest, '[', ']', false, work);
+        // A bracket that never closes is damaged, not a citation.
+        if inside.len() == rest.len() {
+            return None;
+        }
+        (body, rest) = (inside, after);
+    }
+    // `\cite[see] [p. 12]{key}` and `\cite[see]%` then `{key}` are LaTeX.
+    let mut tail = work.trim_start(rest);
+    if let Some(comment) = tail.strip_prefix('%') {
+        tail = work.trim_start(comment.split_once('\n').map_or("", |(_, next)| next));
+    }
+    if tail.starts_with(['[', '{']) || !work.spend(body.len()) {
+        return None;
+    }
+    // A single bracket of settings names no key.
+    let keys = (!body.contains('=')).then(|| comma_keys(body)).into_iter().flatten();
+    Some(explicit(keys, rest))
 }
 
 fn typst<'a>(text: &'a str, work: &mut Work<'_>) -> Option<Citation<'a>> {

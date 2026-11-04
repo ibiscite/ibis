@@ -77,7 +77,8 @@ exactly what the picker would copy.
 | `format=pandoc` with `brackets` | done as a syntax | #42 | `syntax_contract.rs` |
 | `format=typst` | done as a syntax | #42 | `syntax_rules.rs::typst_prefix_escapes_heading_and_list_markers`, `syntax_rules.rs::typst_prefix_escapes_hyphen_list_markers` |
 | `format=mmd`, `asciidoctor-bibtex`, `jupyter` | done as syntaxes (`multi-markdown`, `ascii-doc`, `jupyter`); AsciiDoc locators support pages only | #1207 | `key_syntaxes.rs` |
-| `format=scannable-cite` | planned | #1207 | to add |
+| `format=scannable-cite` | planned | #1531 | to add |
+| ConTeXt `\cite`; key form, author, year and full entry, with notes for one reference | done as a syntax (`context`), checked in ConTeXt itself; narrative refused | #1207 | `key_syntaxes.rs`, `scripts/syntax-tools.mjs` |
 | `format=formatted-citation`, `formatted-bibliography` (BBT uses Zotero's Quick Copy style; Ibis uses the chosen style) | planned | #42 | to add |
 | `format=json` (the picks themselves) | done as `cayw-json` (BBT's `pick` shape, without Zotero item ids) | #1207 | `key_syntaxes.rs` |
 | Picks carry locator, prefix, suffix and suppress author | done in the contract | #42 | to add, one recorded request per editor |

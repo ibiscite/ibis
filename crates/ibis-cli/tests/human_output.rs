@@ -235,8 +235,8 @@ fn errors_name_the_key_file_or_argument_and_keep_their_exit_codes() -> Result<()
     assert_eq!(text, "No library is open; add --file <library> or --zotero.\n");
 
     let (code, _, errors) = run(engine()?, &["ibis", "search", "x", "--limit", "5000"])?;
-    assert_eq!(code, 3);
-    assert_eq!(errors, "ibis: --limit must be 1000 or less.\n");
+    assert_eq!(code, 2);
+    assert!(errors.contains("give a whole number from 1 to 1000"), "{errors}");
     let (code, _, errors) = run(engine()?, &["ibis", "call", "invented"])?;
     assert_eq!(code, 2);
     assert!(
@@ -252,7 +252,7 @@ fn errors_name_the_key_file_or_argument_and_keep_their_exit_codes() -> Result<()
     assert!(errors.contains("<WORDS>"), "{errors}");
     let (code, _, errors) = run(engine()?, &["ibis", "show", "--id", "nonsense"])?;
     assert_eq!(code, 3);
-    assert!(errors.contains("--id must be an ItemRef"), "{errors}");
+    assert!(errors.contains("--id must be a reference's id"), "{errors}");
 
     // Scripts and agents get the stable code on stdout and the same sentence on stderr.
     let (_, _, plain) = run(engine()?, &["ibis", "show", "absent"])?;

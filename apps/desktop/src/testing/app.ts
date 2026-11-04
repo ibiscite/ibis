@@ -165,7 +165,6 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
     // Opened from no app Ibis knows: the default format applies.
     picker_destination: () => ({ app: null, app_id: null, app_identity: null, automatic: null, remembered: null, unreadable: false, can_paste: false, output_question: null, paste: null, paste_question: false, can_choose_paste: false }),
     remember_app_output: () => null,
-    forget_app_outputs: () => null,
     login_item: () => ({ name: "Ibis", enabled: false, problem: null }),
     set_login_item: ({ enabled }) => ({ name: "Ibis", enabled, problem: null }),
     // Builds without an update key have no update controls.
@@ -181,7 +180,7 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
     (cmd, args) => {
       calls.push(cmd);
       if (cmd === "preview_file_citation" && (args as PreviewRequest).intent.cancel) {
-        return Promise.reject({ code: "failed", message: "A newer citation preview replaced this request." });
+        return Promise.reject({ code: "cancelled" });
       }
       const handler = overrides[cmd] ?? defaults[cmd];
       if (!handler) throw new Error(`unexpected command ${cmd}`);

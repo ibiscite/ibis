@@ -25,7 +25,7 @@ export function usePickerKeys({
   results: ReturnType<typeof useLibrarySearch>["results"];
   showCitations: boolean;
   copyChosen: ReturnType<typeof useCitationRows>["copyChosen"];
-  actions: Pick<ReturnType<typeof usePickerActions>, "toggleHighlighted">;
+  actions: Pick<ReturnType<typeof usePickerActions>, "toggleHighlighted" | "changeLast">;
   pointer: ReturnType<typeof usePointerSelection>;
   followKeyboard: { current: boolean };
   quitAfterSaving: () => Promise<void>;
@@ -34,7 +34,7 @@ export function usePickerKeys({
   const { session, cancelCopy, setActive } = pickerSession;
   const { input, moreButton, menuOpen, keysOpen, formatOpen, togglePin, openKeys, openMore, openFormat, focusHome, runFromMenu } = menus;
   const { chooseSources, openSource } = source;
-  const { toggleHighlighted } = actions;
+  const { toggleHighlighted, changeLast } = actions;
   const { openSettings } = api;
   /** Toggles leave layers as they are; a command that opens something first
    * clears them, and pressing an open layer's own key closes it. */
@@ -46,7 +46,8 @@ export function usePickerKeys({
       if (keysOpen) closeNearestLayer(event); else openKeys();
     } else if (command === "format") {
       if (formatOpen) closeNearestLayer(event); else openFormat();
-    } else if (command === "chooseSource") chooseSources();
+    } else if (command === "changeLast") changeLast();
+    else if (command === "chooseSource") chooseSources();
     else if (command === "source" || command === "revealSource") openSource(false, command === "revealSource");
     else if (command === "settings") { if (openSettings) runFromMenu("settings", () => openSettings(null, session.getSnapshot().presentation)); }
     else runFromMenu("quit", quitAfterSaving);

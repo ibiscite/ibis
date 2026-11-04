@@ -292,6 +292,40 @@ fn an_at_sign_inside_a_doi_is_not_a_citation_marker() {
 }
 
 #[test]
+fn context_citations_read_and_latex_ones_stay_latex() {
+    let index = index();
+    let keys = |query: &str| {
+        index.pasted_list(query, None, &|| false).unwrap().map(|list| {
+            (
+                list.hits
+                    .iter()
+                    .map(|hit| hit.item.object.id().key.clone())
+                    .collect::<Vec<_>>(),
+                list.missing,
+            )
+        })
+    };
+    for (query, expected) in [
+        ("\\cite[a,b]", vec!["a", "b"]),
+        ("\\cite[alternative=year,righttext={{p. 1, 2}}][b]", vec!["b"]),
+        ("\\cite[righttext={p. 1}] [a]", vec!["a"]),
+        // LaTeX: optional arguments, however spaced, then the keys in braces.
+        ("\\cite[see]{a}", vec!["a"]),
+        ("\\cite[see] [p. 12]{a}", vec!["a"]),
+        ("\\cite[see]\n[p. 12]{a}", vec!["a"]),
+        ("\\cite[x][y][z]{a}", vec!["a"]),
+    ] {
+        let (hits, missing) = keys(query).unwrap();
+        assert_eq!(hits, expected, "{query}");
+        assert!(missing.is_empty(), "{query}");
+    }
+    // Damaged input never turns its prose into a guessed key.
+    for query in ["\\cite[p. 12", "\\cite[see b"] {
+        assert!(keys(query).is_none_or(|(_, missing)| missing.is_empty()), "{query}");
+    }
+}
+
+#[test]
 fn multiline_arguments_and_every_biblatex_multicite_group_are_kept() {
     let index = index();
     for (query, expected) in [

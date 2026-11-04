@@ -47,6 +47,14 @@ Try it:
 With the Ibis app installed you can leave out --file.
 Add --json to any command for scripts and agents. All commands: ibis --help";
 
+/// A number of search results a person can ask for.
+fn search_limit(text: &str) -> Result<usize, String> {
+    text.parse()
+        .ok()
+        .filter(|limit| (1..=1000).contains(limit))
+        .ok_or_else(|| "give a whole number from 1 to 1000".to_owned())
+}
+
 fn command() -> Command {
     // Keep list values in their own scope: clap's global propagation replaces
     // root values when the same flag also appears after the subcommand.
@@ -71,6 +79,7 @@ fn command() -> Command {
         .about("Find references and cite them anywhere.")
         .after_help(ROOT_HELP)
         .subcommand_required(true)
+        .arg_required_else_help(true)
         // Our own help command takes the global options, so `ibis help search --json` works.
         .disable_help_subcommand(true)
         .arg(
@@ -104,9 +113,9 @@ fn command() -> Command {
     for method in Method::ALL {
         let subcommand = Command::new(method.as_str());
         root = root.subcommand(match method {
-            Method::Libraries => subcommand.about("List loaded libraries and source warnings"),
+            Method::Libraries => subcommand.about("List the libraries and their warnings"),
             Method::Search => subcommand
-                .about("Search loaded records")
+                .about("Find references")
                 .after_help("Examples:\n  ibis search lantern --file refs.bib\n  ibis search lantern --file refs.bib --json | jq '.data.hits[].item.object.data.csl.title'")
                 .arg(
                     Arg::new("query")
@@ -118,12 +127,12 @@ fn command() -> Command {
                     Arg::new("limit")
                         .long("limit")
                         .value_name("N")
-                        .value_parser(clap::value_parser!(usize))
+                        .value_parser(search_limit)
                         .default_value("10")
-                        .help("Return at most N results, up to 1000"),
+                        .help("Return at most N results, from 1 to 1000"),
                 ),
             Method::Show => subcommand
-                .about("Show one object by citation key or ItemRef")
+                .about("Show one reference")
                 .arg(
                     Arg::new("key")
                         .value_name("KEY")
@@ -134,11 +143,11 @@ fn command() -> Command {
                 .arg(
                     Arg::new("id")
                         .long("id")
-                        .value_name("ITEM_REF_JSON")
-                        .help("An ItemRef JSON object, as ibis search --json prints it"),
+                        .value_name("ID_JSON")
+                        .help("The reference's id, as the JSON that ibis search --json prints"),
                 ),
             Method::Cite => subcommand
-                .about("Render a citation through the shared engine")
+                .about("Write a citation")
                 .after_help(
                     "Options after a key apply to that key, as in the picker:\n  \
                      ibis cite vale2024lanterns --locator \"p. 12\" --prefix see fen2023clouds --omit-author\n\n\
@@ -173,7 +182,7 @@ fn command() -> Command {
                             "suffix",
                             "omit-author",
                         ])
-                        .help("Read a canonical CitationRequest JSON object from stdin"),
+                        .help("Read the whole request from stdin as JSON; see: ibis schema cite"),
                 )
                 .arg(Arg::new("format").long("format").value_name("FORMAT").help_heading(OUTPUT).help("Key syntax to write [default: pandoc]").conflicts_with("style").value_parser([
                     "pandoc",
@@ -181,6 +190,7 @@ fn command() -> Command {
                     "parencite",
                     "textcite",
                     "cite",
+                    "context",
                     "typst",
                     "keys",
                     "csl-json",
@@ -298,20 +308,20 @@ fn command() -> Command {
                         .help("List citation languages instead of styles"),
                 ),
             Method::Schema => subcommand
-                .about("Print generated method JSON schemas")
+                .about("Print the JSON Schema of each method")
                 .arg(
                     Arg::new("method")
                         .value_name("METHOD")
                         .help("Print only this method's schema; leave out for every method"),
                 ),
             Method::Call => subcommand
-                .about("Call any typed engine method")
+                .about("Call a method with JSON parameters")
                 .after_help("Example:\n  ibis call search --params '{\"query\":\"garcia\",\"limit\":5}' --file refs.bib --json")
                 .arg(
                     Arg::new("method")
                         .value_name("METHOD")
                         .required(true)
-                        .help("The engine method, as ibis schema lists them"),
+                        .help("The method, as ibis schema lists them"),
                 )
                 .arg(
                     Arg::new("params")
@@ -331,7 +341,7 @@ fn command() -> Command {
     root = root
         .subcommand(
             Command::new("serve")
-                .about("Serve JSON-RPC over Content-Length framed stdio")
+                .about("Serve JSON-RPC to other programs over stdio")
                 .arg(
                     Arg::new("stdio")
                         .long("stdio")
@@ -365,15 +375,13 @@ fn command() -> Command {
         )
         .subcommand(settings_backup::command())
         .subcommand(
-            Command::new("completions")
-                .about("Generate shell completions from the CLI commands")
-                .arg(
-                    Arg::new("shell")
-                        .value_name("SHELL")
-                        .required(true)
-                        .value_parser(["bash", "zsh", "fish"])
-                        .help("The shell to generate completions for"),
-                ),
+            Command::new("completions").about("Print shell completions").arg(
+                Arg::new("shell")
+                    .value_name("SHELL")
+                    .required(true)
+                    .value_parser(["bash", "zsh", "fish"])
+                    .help("The shell to generate completions for"),
+            ),
         );
     // The command list comes from the tree itself, so completions offer every help target.
     let mut targets: Vec<String> = root
@@ -408,6 +416,7 @@ pub fn run<R: BufRead, W: Write + Send, E: Write>(
             arguments.iter().any(|argument| argument == "--json"),
             Err(error.into()),
             None,
+            "",
             &mut output,
             &mut errors,
             mode,
@@ -477,12 +486,16 @@ fn run_engine<R: BufRead, W: Write + Send, E: Write>(
                             exit_code: ibis_core::contract::ExitCode::Ok,
                         }),
                         None,
+                        "",
                         &mut output,
                         &mut errors,
                         mode,
                     );
                 }
-                return if write!(output, "{error}").is_ok() { 0 } else { 70 };
+                return match write!(output, "{error}") {
+                    Err(failure) if failure.kind() != std::io::ErrorKind::BrokenPipe => 70,
+                    _ => 0,
+                };
             }
             // clap names the argument and prints the usage line; keep its words,
             // but a line break typed in an argument must not start a forged line.
@@ -504,6 +517,7 @@ fn run_engine<R: BufRead, W: Write + Send, E: Write>(
                     message.trim_start_matches("error: ").trim_end(),
                 )),
                 None,
+                "",
                 &mut output,
                 &mut errors,
                 mode,
@@ -521,13 +535,20 @@ fn run_engine<R: BufRead, W: Write + Send, E: Write>(
     };
     if let Some(("help", args)) = matches.subcommand() {
         let help = command_help(&program, args.get_one::<String>("command"));
-        return emit(json, Ok(help), None, &mut output, &mut errors, mode);
+        return emit(json, Ok(help), None, "", &mut output, &mut errors, mode);
     }
+    let libraries = library_options(&matches);
     match execute(&engine, &matches, defaults, &mut input, &mut output, &mut errors, mode) {
         Ok(Execution::Stdio(code)) => code,
-        Ok(Execution::Result(result, citing)) => {
-            emit(json, Ok(result), citing.as_ref(), &mut output, &mut errors, mode)
-        }
+        Ok(Execution::Result(result, citing)) => emit(
+            json,
+            Ok(result),
+            citing.as_ref(),
+            &libraries,
+            &mut output,
+            &mut errors,
+            mode,
+        ),
         Err(failure) if matches.subcommand_name() == Some("serve") => {
             let error = failure.error;
             if protocol::write_frame(&mut output, &ibis_engine::rpc::failure(None, error)).is_err() {
@@ -536,8 +557,26 @@ fn run_engine<R: BufRead, W: Write + Send, E: Write>(
                 error.code.exit_code().value()
             }
         }
-        Err(failure) => emit(json, Err(failure), None, &mut output, &mut errors, mode),
+        Err(failure) => emit(json, Err(failure), None, "", &mut output, &mut errors, mode),
     }
+}
+
+/// The library options of this run, as they would be typed again.
+fn library_options(matches: &ArgMatches) -> String {
+    let mut options = String::new();
+    for path in source_values::<PathBuf>(matches, "file") {
+        options.push_str(&format!(" --file {}", human::quoted(&path.display().to_string())));
+    }
+    if matches.get_flag("zotero") {
+        options.push_str(" --zotero");
+    }
+    for group in source_values::<u64>(matches, "zotero-group") {
+        options.push_str(&format!(" --zotero-group {group}"));
+    }
+    if matches.get_flag("app-libraries") {
+        options.push_str(" --app-libraries");
+    }
+    options
 }
 
 /// The name this program was started as, such as `ibis.exe`; `ibis` when that name is
@@ -766,20 +805,25 @@ fn open_libraries(
             "--app-libraries is not available here; name the libraries to read.",
         ));
     }
-    let app =
-        if asked || (defaults == Defaults::App && !named && matches!(name, "search" | "show" | "cite" | "libraries")) {
-            Some(bounded(app_libraries::load).unwrap_or_else(|| {
-                Err(Failure::new(
-                    ErrorCode::SourceUnavailable,
-                    format!(
-                        "the Ibis app's settings could not be read in time; try again, or {}.",
-                        app_libraries::NAME_ONE
-                    ),
-                ))
-            })?)
-        } else {
-            None
-        };
+    // `call` of search, show or cite reads what those commands would read.
+    let called = matches
+        .subcommand_matches("call")
+        .and_then(|call| call.get_one::<String>("method"));
+    let reads_app = matches!(name, "search" | "show" | "cite" | "libraries")
+        || called.is_some_and(|called| matches!(called.as_str(), "search" | "show" | "cite"));
+    let app = if asked || (defaults == Defaults::App && !named && reads_app) {
+        Some(bounded(app_libraries::load).unwrap_or_else(|| {
+            Err(Failure::new(
+                ErrorCode::SourceUnavailable,
+                format!(
+                    "the Ibis app's settings could not be read in time; try again, or {}.",
+                    app_libraries::NAME_ONE
+                ),
+            ))
+        })?)
+    } else {
+        None
+    };
     let named_files = files.clone();
     let (named_personal, named_groups) = (personal, groups.clone());
     if let Some(app) = &app {
@@ -799,8 +843,15 @@ fn open_libraries(
     // A path named on the command line is the person's own, even if the app chose it too.
     let chosen_in = |path: &PathBuf| app.as_ref().filter(|_| !named_files.contains(path)).map(|app| app.app);
     for path in files {
-        let params = serde_json::to_value(LibrariesRequest::OpenFile { path: path.clone() })
-            .map_err(|_| EngineError::new(ErrorCode::BadInput))?;
+        let params = serde_json::to_value(LibrariesRequest::OpenFile { path: path.clone() }).map_err(|_| {
+            Failure::new(
+                ErrorCode::BadInput,
+                format!(
+                    "cannot open {}: its name is not valid text; rename it.",
+                    human::field(&path.display().to_string())
+                ),
+            )
+        })?;
         let before = engine.libraries()?.libraries;
         let chosen = chosen_in(&path);
         // A path the app chose is never shown: agents read these messages too.
@@ -886,21 +937,39 @@ fn run_method<R: BufRead>(
     let cancel = Cancellation::default();
     let method = Method::parse(name).map_err(EngineError::new)?;
     let libraries_open = || engine.libraries().is_ok_and(|result| !result.libraries.is_empty());
+    let holdings = || match engine.libraries() {
+        // Entries Ibis skipped are still references; the note about warnings says why they are absent.
+        Ok(result)
+            if result
+                .libraries
+                .iter()
+                .any(|library| library.objects > 0 || library.warnings_total > 0) =>
+        {
+            human::Holdings::References
+        }
+        Ok(result) if !result.libraries.is_empty() => human::Holdings::Empty,
+        _ => human::Holdings::NoLibrary,
+    };
     let params = match method {
         Method::Libraries => json!({"action":"list"}),
         Method::Search => {
             let query = args.get_one::<String>("query").map_or("", String::as_str);
             let limit = args.get_one::<usize>("limit").copied().unwrap_or(10);
+            if query.trim().is_empty() {
+                return Err(Failure::new(
+                    ErrorCode::Usage,
+                    "give some words to search for: an author, title words, a year or a key.",
+                ));
+            }
             let result = explain(
                 engine.dispatch(Method::Search, &json!({"query":query,"limit":limit}), &cancel),
                 |EngineError { code, .. }| match code {
-                    ErrorCode::BadInput if limit > 1000 => "--limit must be 1000 or less.".into(),
                     ErrorCode::BadInput => "the search words are too long; use fewer.".into(),
                     code => human::code_sentence(code).into(),
                 },
             )?;
             return Ok(Execution::Result(
-                human::with_summary(result, method, matches.get_flag("json"), libraries_open(), &names),
+                human::with_summary(result, method, matches.get_flag("json"), holdings(), &names),
                 None,
             ));
         }
@@ -923,7 +992,10 @@ fn run_method<R: BufRead>(
                 None if error.code == ErrorCode::BadInput => Failure::explained(error, ITEM_REF_HELP),
                 None => Failure::from(error),
             })?;
-            return Ok(Execution::Result(result, None));
+            return Ok(Execution::Result(
+                human::with_summary(result, method, matches.get_flag("json"), holdings(), &names),
+                None,
+            ));
         }
         Method::Cite if args.get_flag("request") => {
             const REQUEST_HELP: &str = "stdin must hold one CitationRequest JSON object; see: ibis schema cite";
@@ -1113,7 +1185,7 @@ fn run_method<R: BufRead>(
         return Ok(Execution::Result(human::locale_list(result), None));
     }
     Ok(Execution::Result(
-        human::with_summary(result, method, matches.get_flag("json"), libraries_open(), &names),
+        human::with_summary(result, method, matches.get_flag("json"), holdings(), &names),
         None,
     ))
 }
@@ -1208,7 +1280,7 @@ fn locator(text: &str) -> Result<Locator, Failure> {
         )
     })
 }
-const ITEM_REF_HELP: &str = "--id must be an ItemRef JSON object, as ibis search --json prints it.";
+const ITEM_REF_HELP: &str = "--id must be a reference's id, the JSON that ibis search --json prints.";
 fn method_named(name: &str) -> Result<Method, Failure> {
     Method::parse(name).map_err(|code| {
         let names = Method::ALL.map(Method::as_str).join(", ");
@@ -1233,6 +1305,7 @@ fn emit(
     json: bool,
     result: Result<DispatchResult, Failure>,
     citing: Option<&human::Citing>,
+    libraries: &str,
     output: &mut impl Write,
     errors: &mut impl Write,
     mode: OutputMode,
@@ -1252,11 +1325,10 @@ fn emit(
         }
     };
     if result.as_ref().is_ok_and(|result| result.source_findings) {
-        say(if json {
-            "note: a library has warnings or could not refresh; see: ibis libraries --json"
-        } else {
-            "note: a library has warnings or could not refresh; see: ibis libraries"
-        });
+        let json_flag = if json { " --json" } else { "" };
+        say(&format!(
+            "note: a library has warnings or could not refresh; see: ibis libraries{libraries}{json_flag}"
+        ));
     }
     if !json && let (Ok(result), Some(citing)) = (&result, citing) {
         for line in human::citation_report(&result.data, citing, result.text.is_some()) {
@@ -1308,10 +1380,11 @@ fn emit(
         .and_then(|()| output.write_all(b"\n"))
         .and_then(|()| output.flush())
     {
-        // A reader that closed the pipe early (`| head`) asked for no more; anything else is said.
-        if error.kind() != std::io::ErrorKind::BrokenPipe {
-            say(human::write_failure(&error));
+        // A reader that closed the pipe early (`| head`) asked for no more, so nothing went wrong.
+        if error.kind() == std::io::ErrorKind::BrokenPipe {
+            return code.value();
         }
+        say(human::write_failure(&error));
         return 70;
     }
     code.value()
@@ -1405,11 +1478,12 @@ mod tests {
                     json,
                     Ok(result()),
                     None,
+                    "",
                     &mut Failing(kind),
                     &mut errors,
                     OutputMode::Plain,
                 );
-                assert_eq!(code, 70);
+                assert_eq!(code, if expected.is_empty() { 0 } else { 70 });
                 assert_eq!(String::from_utf8_lossy(&errors), expected, "{kind:?} json={json}");
             }
         }
@@ -1433,7 +1507,15 @@ mod tests {
             exit_code: ibis_core::contract::ExitCode::Ok,
         };
         assert_eq!(
-            emit(true, Ok(result), None, &mut Broken, &mut Vec::new(), OutputMode::Plain),
+            emit(
+                true,
+                Ok(result),
+                None,
+                "",
+                &mut Broken,
+                &mut Vec::new(),
+                OutputMode::Plain
+            ),
             70
         );
     }
