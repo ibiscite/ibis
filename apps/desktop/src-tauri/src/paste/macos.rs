@@ -243,7 +243,7 @@ impl Mac {
                     Some("unknown-app") => Some("policy.unknown_app"),
                     Some("no-target") => Some("policy.no_target"),
                     Some("secure-input") => Some("secure_input"),
-                    Some("selection-not-shown") => Some("selection"),
+                    Some("selection-not-shown" | "citation-not-selected") => Some("selection"),
                     Some("clipboard-changed") => Some("clipboard"),
                     _ => None, // Keep the detailed AX/readiness/lifecycle failure stage.
                 };

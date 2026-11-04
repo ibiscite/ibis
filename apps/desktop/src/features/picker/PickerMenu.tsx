@@ -23,6 +23,8 @@ export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library
   density: Density;
   pinned: boolean;
   actions: { density: (density: Density) => void; pin: () => void; keys: () => void; settings: (() => void) | null;
+    /** Offered once this app has a citation from this run of Ibis. */
+    changeLast?: (() => void) | null;
     /** Offered for a proven ordinary app target. */
     copyOnlyHere?: { app: string; choose: () => void } | null;
     forgetRecent?: (() => void) | null; quit: () => void };
@@ -37,6 +39,9 @@ export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library
         {source && <MenuItem id="source" label={source.label} icon={<SourceIcon icon={source.icon} file={source.file} />} keys={source.keys ? label(source.keys) : undefined} onAction={source.open} />}
       </MenuSection>
       <MenuSeparator />
+      {actions.changeLast && <MenuSection id="citation">
+        <MenuItem id="change-last" label={pickerText.changeLastCitation} keys={label(keysFor("changeLast"))} onAction={actions.changeLast} />
+      </MenuSection>}
       <MenuSection id="view">
         <MenuSubmenu id="density" label={pickerText.rows} value={pickerText.density(densityNames[density])} title={pickerText.densityTitle}>
           <MenuSection id="densities" selectionMode="single">

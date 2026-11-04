@@ -1,9 +1,9 @@
 import { KEY_TABLE, type KeyBinding } from "../../keys";
-import { keyText } from "../../messages";
+import { keyText, pickerText } from "../../messages";
 import { useLayer, useNearestLayer } from "../../ui/layers";
 import type { SearchResult } from "../../api";
 import type { PickerApi } from "../../App";
-import { choiceKey, idKey, type CitationReference } from "./choice";
+import { choiceKey, choiceName, idKey, type CitationReference } from "./choice";
 import { enterLabel, enterPastes } from "./enterLabel";
 import { closestMatchWarnings } from "./rows";
 import type { usePickerSession } from "./usePickerSession";
@@ -37,7 +37,7 @@ export function usePickerActions({
   toggle: (result?: SearchResult) => void;
 }) {
   const { session, state, send, cancelCopy } = pickerSession;
-  const { pinned, focusHome } = menus;
+  const { pinned, focusHome, leaveOverlays } = menus;
   const { choosingLibrary, welcomeShown, showCitations } = libraryState;
   const { ready, results, list, interpretation } = searchState;
   const { query, active, selected, interpretLocators } = state;
@@ -77,6 +77,7 @@ export function usePickerActions({
   // What Enter does now, from the same state the copy uses; null when it does nothing.
   // A refused or stale engine preview cannot be copied.
   const enterAction = offered.length === 0 || shown === "stale" || shown === "failed" ? null
+    : state.changing !== null ? pickerText.changeCitation(choiceName(format))
     : enterLabel(format, offered.length, destination.app, canPaste, stayOpen, Boolean(list && selected.size === 0));
   // Only a row that answers the current query can be added or given a locator.
   const highlighted = ready ? results[active] : undefined;
@@ -88,9 +89,17 @@ export function usePickerActions({
     ? (selected.has(idKey(highlighted.id)) ? keyText.removeFromCitation : keyText.addToCitation) : null;
   const escapeAction = nearest === "sheet" || nearest === "panel" || nearest === "chooser" ? keyText.close : nearest === "menu" ? keyText.closeMenu
     : nearest === "search" ? keyText.clearSearch : keyText.hide;
+  const lastCitation = showCitations && state.view?.remembersLast && destination.appId ? state.lastCitations.get(destination.appId) : undefined;
+  /** Change Last Citation acts on the shelf, so nothing stays in its way. */
+  const changeLast = () => {
+    if (!lastCitation) return;
+    leaveOverlays();
+    if (lastCitation.format !== format) destination.chooseOnce(lastCitation.format);
+    send({ type: "change-last" });
+  };
   const toggleHighlighted = () => {
     toggle(highlighted);
     focusHome();
   };
-  return { bindings, usingLocator, prepared, canApplyLocator, toggleHighlighted, hints: { enter: enterAction, shiftEnter: shiftEnterAction, escape: escapeAction } };
+  return { bindings, usingLocator, prepared, canApplyLocator, toggleHighlighted, canChangeLast: Boolean(lastCitation), changeLast, hints: { enter: enterAction, shiftEnter: shiftEnterAction, escape: escapeAction } };
 }
