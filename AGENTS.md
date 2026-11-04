@@ -28,12 +28,14 @@ node scripts/pr-lint.mjs --title "fix: explain the change"
 
 - Each pull request gets its own branch and worktree from `origin/main`, with its own Cargo target directory; no stacking, never push to `main`. Related changes go together in one pull request; unrelated ones get their own.
 - One writer per set of paths and mutable-state owners. If yours overlap an open pull request, finish or review that one instead of starting a second.
+- Cloud sessions: run `bash scripts/cloud-setup.sh` once (it installs what `ibis-desktop` needs), then build with `CARGO_PROFILE_DEV_DEBUG=0 CARGO_INCREMENTAL=0` and a target directory inside the worktree. Never share a target directory between worktrees (Cargo hands one worktree another's stale build), and delete it once pushed; disk is small.
 - Parallel sessions on the 10-core, 16 GB Mac must share a build limit, and heavy checks belong in CI. Locally prefer `cargo check -p CRATE`, one test filter and one Vitest file; run `node scripts/check.mjs` when the machine has room (2026-11-02).
 - Files everyone touches (`ROADMAP.md`, `docs/design.md`, `docs/decisions.md`, `tokens.css`, `App.tsx`) get small edits that merge quickly.
 
 ## Building
 
 - Before code, write executable scenarios for success, refusal, failed I/O, delayed A after B and close/reopen; assert the final outcome a person sees. Build the smallest slice meeting the issue's "Done when", including cancellation and stale-result correctness; defer features, not invariants. Delete what you replace. Until 1.0, replace wrong behaviour: no compatibility code or settings migrations.
+- Testing: test what a person or a client sees, not how the code is written; delete a test only when another one covers the same outcome. Before pushing a change or a merge that touches Rust, run `cargo test --workspace --locked --no-run` (it includes `ibis-desktop`): a merge with no conflict can still fail to compile. Timing checks only report on shared runners and enforce where `IBIS_ENFORCE_BUDGETS` is set; prefer deterministic counts.
 - Debugging: reproduce each bug in a failing regression test, then fix the cause. After two identical check failures, fix the cause or narrow the reproduction without weakening the required outcome. After three CI rounds on one blocker, cut scope and write the diagnosis on the issue. Before treating compiler inference cascades as missing imports, read the platform binding's signatures in locked source.
 - Each async operation has one owner and an immutable identity; stale completion cannot consume newer state. Front ends never reinterpret engine intent.
 - UI: keep it simple and on the design system. Changes go through `apps/desktop/src/tokens.css`, a shared component in `apps/desktop/src/ui/` or `docs/design.md`, never one screen on its own. When the maintainer says something looks or behaves wrong, fix it and write the rule into `docs/design.md`. Visual fine-tuning waits until close to 1.0.
