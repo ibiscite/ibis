@@ -1,5 +1,5 @@
 //! Native-only preparation/commit; the serialized method surface has no clipboard operation.
-use super::{Cancellation, Engine, Shared, error};
+use super::{Cancellation, Engine, ProjectKey, ProjectRead, Shared, error};
 use ibis_core::contract::*;
 use std::{
     collections::HashMap,
@@ -15,6 +15,27 @@ pub struct PreparedCitation {
     sample: bool,
 }
 impl PreparedCitation {
+    /// Check exactly the emitted keys and record fields that made this receipt,
+    /// even if a later source snapshot has renamed or replaced a reference.
+    pub fn project_checks(&self, read: &ProjectRead) -> Vec<ProjectKey> {
+        if !matches!(self.request.output, OutputSpec::Key { .. }) {
+            return Vec::new();
+        }
+        self.request
+            .items
+            .iter()
+            .filter_map(|pick| {
+                let LibraryObject::Record(record) = &self.snapshot.get(&pick.item)?.object else {
+                    return None;
+                };
+                let key = record.citation_key().ok().flatten()?;
+                Some(ProjectKey {
+                    key: key.to_owned(),
+                    check: read.check(key, Some(record)),
+                })
+            })
+            .collect()
+    }
     pub fn result(&self) -> &CitationResult {
         &self.result
     }

@@ -14,6 +14,7 @@ mod doctor;
 mod human;
 mod settings_backup;
 mod toggle;
+mod writing_projects;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OutputMode {
@@ -180,6 +181,7 @@ fn command() -> Command {
                             "format",
                             "style",
                             "for-app",
+                            "project",
                             "form",
                             "locale",
                             "bibliography",
@@ -190,25 +192,7 @@ fn command() -> Command {
                         ])
                         .help("Read the whole request from stdin as JSON; see: ibis schema cite"),
                 )
-                .arg(Arg::new("format").long("format").value_name("FORMAT").help_heading(OUTPUT).help("Key syntax to write [default: pandoc]").conflicts_with("style").value_parser([
-                    "pandoc",
-                    "autocite",
-                    "parencite",
-                    "textcite",
-                    "cite",
-                    "context",
-                    "typst",
-                    "keys",
-                    "csl-json",
-                    "natbib",
-                    "org-cite",
-                    "myst",
-                    "multi-markdown",
-                    "ascii-doc",
-                    "jupyter",
-                    "jekyll-scholar",
-                    "cayw-json",
-                ]))
+                .arg(Arg::new("format").long("format").value_name("FORMAT").help_heading(OUTPUT).help("Key syntax to write [default: pandoc]").conflicts_with("style").value_parser(writing_projects::FORMATS))
                 .arg(
                     Arg::new("style")
                         .long("style")
@@ -216,6 +200,14 @@ fn command() -> Command {
                         .help_heading(OUTPUT)
                         .help("Format with a CSL style instead, such as apa; list them with: ibis styles"),
                 )
+                .arg(
+                    Arg::new("project").long("project").value_name("PROJECT_ID")
+                        .help_heading(OUTPUT)
+                        .conflicts_with_all(["format", "style", "for-app", "request"])
+                        .help("Use this writing project's output and bibliography; list IDs with: ibis projects list"),
+                )
+                .arg(Arg::new("nightly").long("nightly").action(ArgAction::SetTrue)
+                    .requires("project").help("Read the writing project from Ibis Nightly's settings"))
                 .arg(
                     Arg::new("for-app")
                         .long("for-app")
@@ -410,6 +402,7 @@ fn command() -> Command {
                 ),
         )
         .subcommand(settings_backup::command())
+        .subcommand(writing_projects::command())
         .subcommand(
             Command::new("completions").about("Print shell completions").arg(
                 Arg::new("shell")
@@ -776,6 +769,9 @@ fn execute<R: BufRead, W: Write + Send, E: Write>(
     if name == "settings" {
         return Ok(Execution::Result(settings_backup::run(args)?, None));
     }
+    if name == "projects" {
+        return Ok(Execution::Result(writing_projects::run(engine, args)?, None));
+    }
     if name == "completions" {
         let shell = args
             .get_one::<String>("shell")
@@ -1076,24 +1072,13 @@ fn run_method<R: BufRead>(
             return Ok(Execution::Result(result, Some(citing)));
         }
         Method::Cite => {
-            let output = if let Some(style) = args.get_one::<String>("style") {
+            let project = writing_projects::chosen(args)?;
+            let output = if let Some(project) = &project {
+                project.output.clone()
+            } else if let Some(style) = args.get_one::<String>("style") {
                 OutputSpec::Csl { style: style.clone() }
             } else {
-                let (syntax, command) = match args.get_one::<String>("format").map(String::as_str).unwrap_or("pandoc") {
-                    "autocite" => (KeySyntax::Biblatex, Some("autocite")),
-                    "parencite" => (KeySyntax::Biblatex, Some("parencite")),
-                    "textcite" => (KeySyntax::Biblatex, Some("textcite")),
-                    "cite" => (KeySyntax::Latex, Some("cite")),
-                    "typst" => (KeySyntax::Typst, None),
-                    other => (
-                        serde_json::from_value(json!(other)).map_err(|_| EngineError::new(ErrorCode::Usage))?,
-                        None,
-                    ),
-                };
-                OutputSpec::Key {
-                    syntax,
-                    command: command.map(str::to_owned),
-                }
+                writing_projects::key_output(args.get_one::<String>("format").map(String::as_str).unwrap_or("pandoc"))?
             };
             let destination = args.get_one::<String>("for-app").map(|app| {
                 let style = args.get_one::<String>("style").map_or("apa", String::as_str);
@@ -1138,6 +1123,7 @@ fn run_method<R: BufRead>(
                     .collect(),
                 output: match &destination {
                     Some(destination) => output_name(&destination.output),
+                    None if project.is_some() => output_name(&output),
                     None => args
                         .get_one::<String>("style")
                         .or_else(|| args.get_one::<String>("format"))
@@ -1146,8 +1132,25 @@ fn run_method<R: BufRead>(
                 },
                 form,
             };
-            let mut result = engine
-                .cite_keys(
+            let writing_project = project
+                .as_ref()
+                .map(|project| {
+                    engine.cite_writing_project_keys(
+                        project,
+                        &KeyCitationRequest {
+                            keys: keys.clone(),
+                            output: output.clone(),
+                            form,
+                            output_locale: args.get_one::<String>("locale").cloned(),
+                        },
+                        &cancel,
+                    )
+                })
+                .transpose()?;
+            let mut result = if let Some(project) = &writing_project {
+                Ok(project.citation.clone())
+            } else {
+                engine.cite_keys(
                     &KeyCitationRequest {
                         keys: keys.clone(),
                         output,
@@ -1156,38 +1159,40 @@ fn run_method<R: BufRead>(
                     },
                     &cancel,
                 )
-                .map_err(|error| match error.reason {
-                    Some(ErrorReason::UnknownStyle) => Failure::explained(
-                        error,
-                        format!(
-                            "there is no style '{}'; list the styles with: ibis styles",
-                            human::field(args.get_one::<String>("style").map_or("", String::as_str))
-                        ),
+            }
+            .map_err(|error| match error.reason {
+                Some(ErrorReason::UnknownStyle) => Failure::explained(
+                    error,
+                    format!(
+                        "there is no style '{}'; list the styles with: ibis styles",
+                        human::field(args.get_one::<String>("style").map_or("", String::as_str))
                     ),
-                    Some(ErrorReason::UnknownLocale) => Failure::explained(
-                        error,
-                        format!(
-                            "there is no locale '{}'; list them with: ibis styles --locales",
-                            human::field(args.get_one::<String>("locale").map_or("", String::as_str))
-                        ),
+                ),
+                Some(ErrorReason::UnknownLocale) => Failure::explained(
+                    error,
+                    format!(
+                        "there is no locale '{}'; list them with: ibis styles --locales",
+                        human::field(args.get_one::<String>("locale").map_or("", String::as_str))
                     ),
-                    // The error names no key; the first key that fails the same way is the one.
-                    _ => keys
-                        .iter()
-                        .map(|item| &item.key)
-                        .find(|key| {
-                            engine
-                                .dispatch(Method::Show, &json!({"item":{"by":"key","value":key}}), &cancel)
-                                .err()
-                                == Some(error)
-                        })
-                        .map_or_else(
-                            || Failure::from(error),
-                            |key| key_failure(engine, key, error, libraries_open()),
-                        ),
-                })?;
+                ),
+                // The error names no key; the first key that fails the same way is the one.
+                _ => keys
+                    .iter()
+                    .map(|item| &item.key)
+                    .find(|key| {
+                        engine
+                            .dispatch(Method::Show, &json!({"item":{"by":"key","value":key}}), &cancel)
+                            .err()
+                            == Some(error)
+                    })
+                    .map_or_else(
+                        || Failure::from(error),
+                        |key| key_failure(engine, key, error, libraries_open()),
+                    ),
+            })?;
             result.destination = destination;
             let result = engine.finalize(DispatchResult::citation(result, keys.len())?)?;
+            let result = writing_projects::with_check(result, writing_project)?;
             return Ok(Execution::Result(result, Some(citing)));
         }
         Method::Project => {
@@ -1421,8 +1426,14 @@ fn emit(
         ));
     }
     if !json && let (Ok(result), Some(citing)) = (&result, citing) {
-        for line in human::citation_report(&result.data, citing, result.text.is_some()) {
+        let citation = result.data.get("citation").unwrap_or(&result.data);
+        for line in human::citation_report(citation, citing, result.text.is_some()) {
             say(&line);
+        }
+        if let Some(project) = result.data.get("project").filter(|value| !value.is_null())
+            && let Some(report) = human::project_report(project)
+        {
+            say(&report);
         }
         if result.text.is_none() {
             // Refused citations print their reasons above and nothing to stdout.

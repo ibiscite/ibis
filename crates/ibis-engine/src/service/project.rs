@@ -5,6 +5,23 @@ use std::path::{Path, PathBuf};
 
 const MAX_KEYS: usize = 1000;
 
+/// A request-local writing context, with the ordinary citation contract kept
+/// intact. Paths are native input only; the check names just its bibliography.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct WritingProjectCitation {
+    pub id: String,
+    pub name: String,
+    pub revision: String,
+    pub citation: CitationResult,
+    pub project: Option<ProjectResult>,
+}
+impl WritingProjectCitation {
+    pub fn schema() -> serde_json::Value {
+        schemars::schema_for!(Self).into()
+    }
+}
+
 /// One key against the chosen file.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct ProjectKey {
@@ -49,6 +66,61 @@ pub fn project_name(path: &Path) -> String {
 }
 
 impl Engine {
+    /// Resolve keys through the same path as an ordinary citation, then apply
+    /// one explicit project's output and bibliography. GUI selection is absent.
+    pub fn cite_writing_project_keys(
+        &self,
+        project: &ibis_core::settings::writing_projects::WritingProject,
+        request: &KeyCitationRequest,
+        cancel: &Cancellation,
+    ) -> Result<WritingProjectCitation, EngineError> {
+        let mut request = request.clone();
+        request.output = project.output.clone();
+        let request = self.key_citation_request(&request, cancel)?;
+        self.cite_writing_project(project, &request, cancel)
+    }
+
+    /// The project definition is immutable for this request. Its output is the
+    /// authority; callers choose another request rather than mixing outputs.
+    pub fn cite_writing_project(
+        &self,
+        project: &ibis_core::settings::writing_projects::WritingProject,
+        request: &CitationRequest,
+        cancel: &Cancellation,
+    ) -> Result<WritingProjectCitation, EngineError> {
+        ibis_core::settings::writing_projects::validate(std::slice::from_ref(project))
+            .map_err(|_| error(ErrorCode::BadInput))?;
+        let mut request = request.clone();
+        request.output = project.output.clone();
+        let prepared = self.prepare_citation(&request, cancel)?;
+        let checked = if matches!(prepared.request_output(), OutputSpec::Key { .. }) {
+            project
+                .bibliography
+                .as_ref()
+                .map(|path| {
+                    cancel.check()?;
+                    let read = ProjectRead::read(path, None);
+                    cancel.check()?;
+                    let keys = prepared.project_checks(&read);
+                    Ok::<_, EngineError>(ProjectResult {
+                        name: project_name(path),
+                        keys,
+                        problem: read.problem(),
+                        damaged_lines: read.damaged_lines().to_vec(),
+                    })
+                })
+                .transpose()?
+        } else {
+            None
+        };
+        Ok(WritingProjectCitation {
+            id: project.id.clone(),
+            name: project.name.clone(),
+            revision: project.revision(),
+            citation: prepared.into_result(),
+            project: checked,
+        })
+    }
     pub(super) fn project(
         &self,
         request: &ProjectRequest,
