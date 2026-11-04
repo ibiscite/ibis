@@ -186,6 +186,9 @@ struct OpenRequest {
     source: Source,
     reload: bool,
     intent: OpenIntent,
+    /// A Zotero profile just chosen, read in place of the saved one and saved
+    /// only by this request's success, like any other choice of library.
+    profile: Option<String>,
     cancel: OpenCancellation,
     #[cfg(debug_assertions)]
     started: std::time::Instant,
@@ -374,7 +377,16 @@ pub(crate) fn start_open(app: &AppHandle, source: Source, remember: bool) {
     } else {
         OpenIntent::Read
     };
-    run_open(app, request, source, reload, intent);
+    run_open(app, request, source, reload, intent, None);
+}
+
+/// Read Zotero with this profile from now on. The request is numbered here, so
+/// a newer choice replaces it; it is saved only by a closed read that used it.
+pub(crate) fn use_zotero_profile(app: &AppHandle, name: String) {
+    let source = Source::Zotero(current_zotero_choice(app));
+    if let Some((request, reload, _)) = begin_open(&app.state(), &app.state(), source.clone()) {
+        run_open(app, request, source, reload, OpenIntent::Remember, Some(name));
+    }
 }
 
 #[cfg(debug_assertions)]
@@ -394,7 +406,7 @@ struct LoadPhases {
     load_ok: u8,
 }
 
-fn run_open(app: &AppHandle, request: u64, source: Source, reload: bool, intent: OpenIntent) {
+fn run_open(app: &AppHandle, request: u64, source: Source, reload: bool, intent: OpenIntent, profile: Option<String>) {
     #[cfg(debug_assertions)]
     let started = std::time::Instant::now();
     if !matches!(intent, OpenIntent::Refresh) {
@@ -405,6 +417,7 @@ fn run_open(app: &AppHandle, request: u64, source: Source, reload: bool, intent:
         source,
         reload,
         intent,
+        profile,
         cancel: OpenCancellation::default(),
         #[cfg(debug_assertions)]
         started,
@@ -425,6 +438,7 @@ fn open_one(app: AppHandle, open: OpenRequest) -> impl std::future::Future<Outpu
         source,
         reload,
         intent,
+        profile,
         cancel,
         ..
     } = open;
@@ -437,18 +451,31 @@ fn open_one(app: AppHandle, open: OpenRequest) -> impl std::future::Future<Outpu
     });
     let force = intent.rereads_source(&source, reload);
     let refresh_source = source.clone();
+    let reading_profile = profile.clone();
     let loading_app = app.clone();
     async move {
         let loaded = tauri::async_runtime::spawn_blocking(move || {
             let file_io = matches!(source, Source::File(_) | Source::Samples(_));
             let worker_cancel = cancel.token.clone();
+            let read_profile = if matches!(source, Source::Zotero(_)) {
+                reading_profile.or_else(|| loading_app.state::<SettingsFile>().zotero_profile())
+            } else {
+                None
+            };
             let operation = move || {
                 #[cfg(debug_assertions)]
                 let loading = std::time::Instant::now();
-                let loaded = load_source(source, force, previous_file, &worker_cancel, || {
-                    worker_cancel.is_cancelled()
-                        || loading_app.state::<LoadRequests>().0.load(Ordering::SeqCst) != request
-                });
+                let loaded = load_source(
+                    source,
+                    force,
+                    previous_file,
+                    read_profile.as_deref(),
+                    &worker_cancel,
+                    || {
+                        worker_cancel.is_cancelled()
+                            || loading_app.state::<LoadRequests>().0.load(Ordering::SeqCst) != request
+                    },
+                );
                 #[cfg(debug_assertions)]
                 {
                     Ok((loaded, loading.elapsed().as_secs_f64() * 1000.0))
@@ -490,6 +517,15 @@ fn open_one(app: AppHandle, open: OpenRequest) -> impl std::future::Future<Outpu
         }
         if installed.is_some() {
             let mut show_note = false;
+            // A running Zotero answers for whichever profile it opened, so only
+            // a closed read proves the name. Nothing else may save it.
+            let profile = profile.filter(|_| {
+                app.state::<Mutex<Library>>()
+                    .lock()
+                    .ok()
+                    .and_then(|library| library.file.clone())
+                    .is_some_and(|file| file.read_zotero_closed())
+            });
             if let Some(chosen) = chosen.filter(|chosen| intent.saves_choice(&refresh_source, chosen)) {
                 // Saving and the note belong to this request, never a newer choice.
                 let accepted = update_notices(
@@ -505,6 +541,9 @@ fn open_one(app: AppHandle, open: OpenRequest) -> impl std::future::Future<Outpu
                                 && (matches!(intent, OpenIntent::Remember) || s.library == refresh_source.setting())
                             {
                                 s.library = Some(chosen);
+                                if profile.is_some() {
+                                    s.zotero_profile = profile;
+                                }
                             }
                         });
                         if let Err(e) = saved {
@@ -628,13 +667,15 @@ pub(crate) fn choose_library_file(app: &AppHandle) {
 /// Read Zotero from now on: the libraries already chosen if Zotero is in
 /// use, otherwise the personal library.
 pub(crate) fn use_zotero_library(app: &AppHandle) {
-    let chosen = app
-        .state::<Mutex<Library>>()
+    open_zotero(app, current_zotero_choice(app));
+}
+
+fn current_zotero_choice(app: &AppHandle) -> ZoteroLibraries {
+    app.state::<Mutex<Library>>()
         .lock()
         .ok()
         .and_then(|library| zotero_choice(&library))
-        .unwrap_or_else(|| ZoteroLibrary::User.into());
-    open_zotero(app, chosen);
+        .unwrap_or_else(|| ZoteroLibrary::User.into())
 }
 
 /// Read these Zotero libraries from now on.
@@ -649,11 +690,11 @@ pub(super) fn open_zotero(app: &AppHandle, chosen: ZoteroLibraries) {
 /// the picker is shown. No timer runs while the picker is hidden.
 pub(crate) fn refresh_zotero(app: &AppHandle) {
     if let Some((request, source)) = begin_check(&app.state(), &app.state()) {
-        run_open(app, request, source, true, OpenIntent::Refresh);
+        run_open(app, request, source, true, OpenIntent::Refresh, None);
         return;
     }
     if let Some((request, source, reload)) = begin_zotero_retry(&app.state(), &app.state(), false) {
-        run_open(app, request, source, reload, OpenIntent::retry(reload));
+        run_open(app, request, source, reload, OpenIntent::retry(reload), None);
     }
 }
 
@@ -661,7 +702,7 @@ pub(crate) fn refresh_zotero(app: &AppHandle) {
 /// Healthy libraries are checked only on show, and no timer retries failures.
 pub(crate) fn retry_zotero_on_focus(app: &AppHandle) {
     if let Some((request, source, reload)) = begin_focus_retry(&app.state(), &app.state()) {
-        run_open(app, request, source, reload, OpenIntent::retry(reload));
+        run_open(app, request, source, reload, OpenIntent::retry(reload), None);
     }
 }
 
@@ -730,6 +771,7 @@ mod engine_read_cancellation {
             source: Source::Zotero(ibis_core::settings::ZoteroLibrary::User.into()),
             reload: true,
             intent: OpenIntent::Refresh,
+            profile: None,
             cancel: OpenCancellation {
                 token: cancel,
                 ..Default::default()

@@ -3,15 +3,18 @@ import { expect, test } from "vitest";
 import { SettingsApp } from "./SettingsApp";
 import { demoApi } from "./demo";
 
-test("Shortcuts filters action names, keeps alternatives whole, and edits only Open Ibis", async () => {
+test("Shortcuts filters action names, keeps alternatives whole, edits only Open Ibis and lists every other key as plain text", async () => {
   await act(async () => render(<SettingsApp api={demoApi()} initialPage="shortcuts" />));
   const table = screen.getByRole("table", { name: "Keyboard Shortcuts" });
   expect(within(table).getAllByRole("columnheader").map((node) => node.textContent)).toEqual(["Action", "Shortcut"]);
   expect(within(table).getAllByRole("rowgroup").slice(1).map((node) => within(node).getAllByRole("row")[0]!.textContent))
     .toEqual(["Open Ibis (global)", "While searching", "Your library", "Anywhere in Ibis", "In a menu"]);
   const quit = within(table).getByRole("row", { name: /Quit Ibis/ });
-  expect(within(quit).getByText("System")).toBeTruthy();
   expect(quit.querySelector("kbd")?.textContent).toBeTruthy();
+  // Only the recorder edits a key, so every key the table lists is plain text, none a cap.
+  const listed = [...table.querySelectorAll("tbody:not(#shortcuts-system) kbd")];
+  expect(listed.length).toBeGreaterThan(10);
+  expect(listed.filter((kbd) => !kbd.hasAttribute("data-plain"))).toEqual([]);
   expect(within(quit).queryByRole("button")).toBeNull();
   const move = within(table).getByRole("row", { name: /Move through results/ });
   expect([...move.querySelectorAll("kbd")].map((node) => node.textContent)).toEqual(["↓", "↑"]);

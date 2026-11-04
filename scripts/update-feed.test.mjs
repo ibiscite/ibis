@@ -17,17 +17,13 @@ test("previous identity lookup reads actual published and current source", () =>
   assert.equal(previousNightlyIdentity(readFileSync(new URL("./update-feed.mjs", import.meta.url), "utf8")), nightlyConfig("0.1.2-nightly.20261026000000").identifier);
 });
 
-test("the real previous-nightly workflow never blocks publication on unavailable identity evidence", () => {
-  const workflow = readFileSync(new URL("../.github/workflows/preview.yml", import.meta.url), "utf8");
-  const step = workflow.split("      - name: Keep the previous nightly for the update test\n")[1]?.split("      - name:")[0];
-  assert.ok(step, "find the publishing step");
-  const shell = step.split("        run: |\n")[1].split("\n").map((line) => line.replace(/^          /, "")).join("\n");
+test("keeping the previous nightly never blocks publication on unavailable identity evidence", { skip: process.platform === "win32" }, () => {
   for (const mode of ["published", "current", "source-error", "unknown", "moved", "tag-error", "no-feed"]) {
     const dir = mkdtempSync(join(tmpdir(), "ibis-previous-"));
     try {
       mkdirSync(join(dir, "scripts"));
-      copyFileSync(new URL("./update-feed.mjs", import.meta.url), join(dir, "scripts/update-feed.mjs"));
-      // Only GitHub is substituted. Execute the workflow shell and real CLI/source.
+      for (const name of ["update-feed.mjs", "keep-previous-nightly.sh"]) copyFileSync(new URL(`./${name}`, import.meta.url), join(dir, "scripts", name));
+      // Only GitHub is substituted. Execute the nightly job's script and real CLI/source.
       writeFileSync(join(dir, "gh"), `#!/usr/bin/env node
 const fs = require("node:fs");
 const args = process.argv.slice(2).join(" ");
@@ -46,7 +42,7 @@ if (args.includes("release download")) {
   console.log((mode === "moved" && seen ? "b" : "a").repeat(40));
 } else process.exit(2);
 `, { mode: 0o755 });
-      const result = spawnSync("bash", ["-e", "-o", "pipefail", "-c", shell], {
+      const result = spawnSync("scripts/keep-previous-nightly.sh", [], {
         cwd: dir, encoding: "utf8", timeout: 30000, env: { ...process.env, [pathKey]: `${dir}${delimiter}${process.env[pathKey] ?? ""}`, RUNNER_TEMP: dir,
           REPO: "example/ibis", TEST_MODE: mode,
           CURRENT_SOURCE: fileURLToPath(new URL("./update-feed.mjs", import.meta.url)),
@@ -105,26 +101,59 @@ test("Stable and Nightly Linux package file sets never share icons, launchers or
   }
 });
 
-test("the real qualification gate fails missing or unknown evidence, skips legacy and accepts current identity", () => {
-  const workflow = readFileSync(new URL("../.github/workflows/preview.yml", import.meta.url), "utf8");
-  const gate = workflow.slice(workflow.indexOf("          previous_identifier=$(cat previous/identifier.txt"), workflow.indexOf("          # Standalone, so an unreadable feed"))
-    .split("\n").map((line) => line.replace(/^          /, "")).join("\n");
-  assert.ok(gate.includes("case"));
-  const dir = mkdtempSync(join(tmpdir(), "ibis-qualify-"));
-  try {
-    mkdirSync(join(dir, "previous"));
-    for (const identity of [undefined, "", "unavailable", "other", "io.github.ibiscite.ibis.nightly", "com.ibiscite.ibis.nightly"]) {
-      if (identity !== undefined) writeFileSync(join(dir, "previous/identifier.txt"), identity);
-      const result = spawnSync("bash", ["-e", "-o", "pipefail", "-c", `${gate}\necho qualified`], { cwd: dir, encoding: "utf8", timeout: 30000 });
-      const known = ["io.github.ibiscite.ibis.nightly", "com.ibiscite.ibis.nightly"].includes(identity);
-      assert.equal(result.status, known ? 0 : 1, `${String(identity)}: ${result.stdout}${result.stderr}`);
-      assert.equal(result.stdout.includes("qualified"), identity === "com.ibiscite.ibis.nightly", String(identity));
-      if (!known) assert.match(result.stdout, /::error::.*identity/i);
-      if (identity === "io.github.ibiscite.ibis.nightly") assert.match(result.stdout, /::notice::Earlier app identities/);
-    }
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
+// The update test's "Decide whether to run" script, from the publisher's
+// checkout, with only the network (curl), Git (the version) and jq replaced.
+function decide(t, { identity, previousVersion = "0.2.4-nightly.20261030000000", published = "0.2.4-nightly.20261031000000", previousKey = signature, publishedKey = signature, feed = true, curl = 0 } = {}) {
+  const dir = mkdtempSync(join(tmpdir(), "ibis-decide-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  for (const name of ["scripts", "previous", "bin"]) mkdirSync(join(dir, name));
+  copyFileSync(new URL("./update-feed.mjs", import.meta.url), join(dir, "scripts/update-feed.mjs"));
+  const node = process.execPath.replaceAll("'", "'\\''");
+  writeFileSync(join(dir, "bin/node"), `#!/bin/sh\nif [ "$1" = scripts/update-feed.mjs ] && [ "$2" = version ]; then\n  echo 0.2.4-nightly.20261031000000\nelse\n  exec '${node}' "$@"\nfi\n`, { mode: 0o755 });
+  writeFileSync(join(dir, "bin/curl"), `#!/bin/sh\n[ "$CURL_STATUS" = 0 ] || exit "$CURL_STATUS"\n[ "$2" = https://github.com/example/ibis/releases/download/nightly/latest.json ] && [ "$3" = -o ] || exit 2\nprintf '%s' "$PUBLISHED_FEED" > "$4"\n`, { mode: 0o755 });
+  writeFileSync(join(dir, "bin/jq"), `#!/bin/sh\n[ "$1" = -r ] && [ "$2" = .version ] && [ $# = 3 ] || exit 2\nexec '${node}' -e 'console.log(JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8")).version)' "$3"\n`, { mode: 0o755 });
+  const feedFor = (version, key) => JSON.stringify({ version, platforms: { "linux-x86_64": { signature: key } } });
+  if (feed) writeFileSync(join(dir, "previous/latest.json"), feedFor(previousVersion, previousKey));
+  writeFileSync(join(dir, "previous/Ibis-Linux.AppImage"), "invented package");
+  if (identity !== undefined) writeFileSync(join(dir, "previous/identifier.txt"), identity);
+  writeFileSync(join(dir, "output"), "");
+  const result = spawnSync(fileURLToPath(new URL("./update-test-decision.sh", import.meta.url)), [], {
+    cwd: dir, encoding: "utf8", timeout: 30000,
+    env: { ...process.env, [pathKey]: `${join(dir, "bin")}${delimiter}${process.env[pathKey] ?? ""}`, REPO: "example/ibis", PACKAGE: "Ibis-Linux.AppImage", GITHUB_OUTPUT: join(dir, "output"), CURL_STATUS: String(curl), PUBLISHED_FEED: feedFor(published, publishedKey) },
+  });
+  return { ...result, output: readFileSync(join(dir, "output"), "utf8") };
+}
+
+test("the update test fails missing or unknown identity evidence, skips legacy and qualifies current identity", { skip: process.platform === "win32" }, (t) => {
+  for (const identity of [undefined, "", "unavailable", "other", "io.github.ibiscite.ibis.nightly", "com.ibiscite.ibis.nightly"]) {
+    const result = decide(t, { identity });
+    const known = ["io.github.ibiscite.ibis.nightly", "com.ibiscite.ibis.nightly"].includes(identity);
+    assert.equal(result.status, known ? 0 : 1, `${String(identity)}: ${result.stdout}${result.stderr}`);
+    assert.equal(result.output, `version=0.2.4-nightly.20261031000000\n${identity === "com.ibiscite.ibis.nightly" ? "run=true\n" : ""}`, String(identity));
+    if (!known) assert.match(result.stdout, /::error::.*identity/i);
+    if (identity === "io.github.ibiscite.ibis.nightly") assert.match(result.stdout, /::notice::Earlier app identities/);
   }
+});
+
+test("the update test runs only when the previous nightly can update to the published build", { skip: process.platform === "win32" }, (t) => {
+  const identity = "com.ibiscite.ibis.nightly";
+  for (const [scenario, options, notice] of [
+    ["no previous feed", { feed: false }, /no update feed/],
+    ["another nightly key", { publishedKey: fixture("other-key.pub") }, /another key/],
+    ["a newer nightly published", { published: "0.2.4-nightly.20261101000000" }, /published nightly is 0\.2\.4-nightly\.20261101000000/],
+    ["the same build", { previousVersion: "0.2.4-nightly.20261031000000" }, /same build/],
+  ]) {
+    const result = decide(t, { identity, ...options });
+    assert.equal(result.status, 0, `${scenario}: ${result.stdout}${result.stderr}`);
+    assert.equal(result.output, "version=0.2.4-nightly.20261031000000\n", scenario);
+    assert.match(result.stdout, notice, scenario);
+  }
+  const unreadable = decide(t, { identity, curl: 22 });
+  assert.equal(unreadable.status, 22, "an unreadable published feed fails instead of skipping");
+  assert.doesNotMatch(unreadable.output, /run=/);
+});
+
+test("Ibis Nightly keeps the default main binary name outside Linux", () => {
   for (const platform of ["darwin", "win32"]) {
     assert.equal(nightlyConfig("0.1.2-nightly.20261026000000", platform).mainBinaryName, undefined);
   }
@@ -188,13 +217,6 @@ test("publication refuses missing or replayed signed versions", () => {
   for (const v of [`v${version}`, "9.9.9", "9.9.9-nightly.209912312359+other"]) {
     assert.throws(() => make(v, signature), /signed version/);
   }
-});
-
-test("both publication paths bind the same version they put in the feed", () => {
-  const workflow = readFileSync(new URL("../.github/workflows/preview.yml", import.meta.url), "utf8");
-  assert.equal((workflow.match(/signer sign --app-version "\$VERSION"/g) ?? []).length, 2);
-  assert.match(workflow, /VERSION="\$\{TAG#v\}"/);
-  assert.match(workflow, /VERSION="\$\(node scripts\/update-feed.mjs version\)"/);
 });
 
 test("Ibis Nightly is a separate app that reads only the nightly feed", () => {

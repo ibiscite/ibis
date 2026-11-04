@@ -10,15 +10,10 @@ const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf
 const pathKey = Object.keys(process.env).find((key) => key.toLowerCase() === "path") ?? "PATH";
 // Linux-only publication steps use POSIX executable shims in these fixtures.
 const skip = process.platform === "win32";
-const workflow = read(".github/workflows/preview.yml");
-const job = (name) => workflow.split(`\n  ${name}:\n`)[1]?.split(/^  [\w-]+:\n/m)[0];
-const step = (name, prefix) => {
-  const text = job(name)?.split(/^      - name: /m).find((part) => part.startsWith(prefix));
-  assert.ok(text, `${name}: ${prefix}`);
-  return text.split("        run: |\n")[1].replace(/^          /gm, "");
-};
+// The jobs of preview.yml that publish, and the script each one runs.
+const scripts = { publish: "publish-release.sh", "stable-feed": "publish-stable-feed.sh", nightly: "publish-nightly.sh" };
 
-// Execute the workflow's shell and real version comparator with fake GitHub and jq.
+// Execute the publication scripts and real version comparator with fake GitHub and jq.
 function fakeGithub() {
   const fs = require("node:fs");
   const args = process.argv.slice(2);
@@ -145,7 +140,7 @@ function fixture(t, initial = {}) {
   const dir = mkdtempSync(join(tmpdir(), "ibis-release-config-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   for (const name of ["scripts", "dist", "feed"]) mkdirSync(join(dir, name));
-  for (const name of ["update-feed.mjs", "release-notes.mjs", "publication-guard.mjs"]) {
+  for (const name of ["update-feed.mjs", "release-notes.mjs", "publication-guard.mjs", ...Object.values(scripts)]) {
     copyFileSync(new URL(name, import.meta.url), join(dir, "scripts", name));
   }
   writeFileSync(join(dir, "gh"), `#!/usr/bin/env node\n(${fakeGithub.toString()})();\n`, { mode: 0o755 });
@@ -160,24 +155,18 @@ function fixture(t, initial = {}) {
   const draft = { isDraft: true, prerelease: true, body: "### Bug Fixes\n* invented fix", assets: {} };
   writeFileSync(join(dir, "github.json"), JSON.stringify({ latest: "v0.2.2", releases: { "v0.2.3": draft }, calls: [], ...initial }));
   const state = () => JSON.parse(readFileSync(join(dir, "github.json"), "utf8"));
-  const run = (name, prefix, env = {}) => spawnSync("bash", ["--noprofile", "--norc", "-e", "-o", "pipefail", "-c", step(name, prefix)], {
+  // As the workflow runs them: executed from the checkout.
+  const run = (job, env = {}) => spawnSync(`scripts/${scripts[job]}`, [], {
     cwd: dir, encoding: "utf8", timeout: 15_000,
     env: { ...process.env, [pathKey]: `${dir}${delimiter}${process.env[pathKey] ?? ""}`, REPO: "example/ibis", TAG: "v0.2.3", ACTOR: "maintainer", FEED: "stable", SHA: "a".repeat(40), ...env },
   });
   return { dir, state, run };
 }
 
-test("numbered publishes and stable-feed updates queue without interleaving or cancelling an active job", () => {
-  const publish = job("publish");
-  assert.match(publish, /^    concurrency:\n      group: publish-numbered-release\n      queue: max\n      cancel-in-progress: false$/m);
-  assert.doesNotMatch(publish, /^\s+cancel-in-progress:\s*true\b/m);
-  assert.match(job("stable-feed"), /^    concurrency:\n      group: publish-stable-feed\n      queue: max\n      cancel-in-progress: false$/m);
-});
-
 test("numbered releases publish fully with a versioned title and explicit Latest choice", { skip }, (t) => {
   for (const releases of [undefined, {}]) for (const latest of ["v0.2.2", "v0.2.3", "v0.2.10"]) {
     const f = fixture(t, { latest, ...(releases ? { releases } : {}) });
-    const result = f.run("publish", "Publish the verified");
+    const result = f.run("publish");
     assert.equal(result.status, 0, result.stdout + result.stderr);
     const state = f.state(), release = state.releases["v0.2.3"];
     assert.equal(release.isDraft, false);
@@ -192,7 +181,7 @@ test("numbered releases publish fully with a versioned title and explicit Latest
 test("failed Latest I/O or package upload leaves a numbered draft unpublished", { skip }, (t) => {
   for (const initial of [{ failLatest: true }, { failLatest: true, releases: {} }, { failUpload: true }]) {
     const f = fixture(t, initial);
-    assert.notEqual(f.run("publish", "Publish the verified").status, 0);
+    assert.notEqual(f.run("publish").status, 0);
     assert.notEqual(f.state().releases["v0.2.3"]?.isDraft, false);
     assert.ok(!f.state().calls.some((args) => args.includes("--draft=false")));
     assert.equal(f.state().latest, "v0.2.2");
@@ -203,7 +192,7 @@ test("failed Latest I/O or package upload leaves a numbered draft unpublished", 
 test("public numbered releases and bot tags without a draft still refuse publication", { skip }, (t) => {
   for (const releases of [{ "v0.2.3": { isDraft: false, assets: {} } }, {}]) {
     const f = fixture(t, { releases });
-    const result = f.run("publish", "Publish the verified", { ACTOR: "release[bot]" });
+    const result = f.run("publish", { ACTOR: "release[bot]" });
     assert.notEqual(result.status, 0);
     assert.match(result.stdout, /already public|No draft release/);
     assert.ok(f.state().calls.every((args) => args[0] === "api" || args[1] === "view"));
@@ -213,7 +202,7 @@ test("public numbered releases and bot tags without a draft still refuse publica
 test("stable-feed alone replaces assets, uploads the feed last and never moves the fixed tag", { skip }, (t) => {
   const f = fixture(t, { releases: { stable: { isDraft: false, assets: { "latest.json": '{"version":"0.2.2"}', "old.zip": "old" } } } });
   for (let rerun = 0; rerun < 2; rerun++) {
-    const result = f.run("stable-feed", "Move the stable update feed to this release");
+    const result = f.run("stable-feed");
     assert.equal(result.status, 0, result.stdout + result.stderr);
     const state = f.state(), feed = state.releases.stable;
     assert.equal(feed.prerelease, true);
@@ -236,13 +225,13 @@ test("delayed older runs cannot move Latest or the stable feed backwards", { ski
     "v0.2.3": { isDraft: true, prerelease: true, body: "", assets: {} },
     stable: { isDraft: false, assets: { "latest.json": '{"version":"0.2.10"}' } },
   } });
-  assert.equal(f.run("publish", "Publish the verified").status, 0);
+  assert.equal(f.run("publish").status, 0);
   assert.equal(f.state().latest, "v0.2.10");
   assert.equal(f.state().releases["v0.2.3"].prerelease, false);
-  assert.notEqual(f.run("publish", "Publish the verified").status, 0, "a rerun cannot overwrite the now-public older release");
+  assert.notEqual(f.run("publish").status, 0, "a rerun cannot overwrite the now-public older release");
   const callsBeforeFeed = f.state().calls.length;
   for (let rerun = 0; rerun < 2; rerun++) {
-    assert.equal(f.run("stable-feed", "Move the stable update feed to this release").status, 0);
+    assert.equal(f.run("stable-feed").status, 0);
     assert.equal(f.state().latest, "v0.2.10");
     assert.equal(JSON.parse(f.state().releases.stable.assets["latest.json"]).version, "0.2.10");
     assert.ok(f.state().calls.slice(callsBeforeFeed).every((args) => args[0] === "api" || args[1] === "download"));
@@ -252,7 +241,7 @@ test("delayed older runs cannot move Latest or the stable feed backwards", { ski
 test("stable feed publication permits confirmed absence or an older parsed feed", { skip }, (t) => {
   for (const assets of [undefined, { "old.zip": "old" }, { "latest.json": '{"version":"0.2.2"}' }]) {
     const f = fixture(t, { releases: assets === undefined ? {} : { stable: { isDraft: false, assets } } });
-    const result = f.run("stable-feed", "Move the stable update feed to this release");
+    const result = f.run("stable-feed");
     assert.equal(result.status, 0, result.stdout + result.stderr);
     assert.equal(JSON.parse(f.state().releases.stable.assets["latest.json"]).version, "0.2.3");
   }
@@ -261,7 +250,7 @@ test("stable feed publication permits confirmed absence or an older parsed feed"
 test("stable feed checks authenticated draft assets before replacing permanent downloads", { skip }, (t) => {
   const assets = { "latest.json": '{"version":"0.2.10"}', "Ibis-synthetic.zip": "newer package" };
   const f = fixture(t, { releases: { stable: { isDraft: true, assets } } });
-  const result = f.run("stable-feed", "Move the stable update feed to this release");
+  const result = f.run("stable-feed");
   assert.equal(result.status, 0, result.stdout + result.stderr);
   assert.deepEqual(f.state().releases.stable.assets, assets);
   assert.equal(f.state().releases.stable.isDraft, true);
@@ -281,7 +270,7 @@ test("stable draft discovery reads every release page and refuses incomplete or 
   ]) {
     const assets = { "latest.json": '{"version":"0.2.10"}', "Ibis-synthetic.zip": "newer package" };
     const f = fixture(t, { releases: { stable: { isDraft: true, assets } }, releasePages: [firstPage, [stable]], ...failure });
-    const result = f.run("stable-feed", "Move the stable update feed to this release");
+    const result = f.run("stable-feed");
     if (Object.keys(failure).length === 0) assert.equal(result.status, 0, result.stdout + result.stderr);
     else assert.notEqual(result.status, 0, JSON.stringify(failure));
     assert.deepEqual(f.state().releases.stable.assets, assets);
@@ -295,7 +284,7 @@ test("stable release absence requires a complete successful release listing", { 
   const firstPage = Array.from({ length: 100 }, (_, index) => ({ id: 100 + index, tag_name: `synthetic-${index}`, draft: false }));
   for (const status of [200, 500]) {
     const f = fixture(t, { releases: {}, releasePages: [firstPage, []], releaseStatuses: [200, status] });
-    const result = f.run("stable-feed", "Move the stable update feed to this release");
+    const result = f.run("stable-feed");
     if (status === 200) {
       assert.equal(result.status, 0, result.stdout + result.stderr);
       assert.equal(f.state().releases.stable.isDraft, false);
@@ -320,7 +309,7 @@ test("oversized release pages are projected by gh before buffering without losin
       releases: current === undefined ? {} : { stable: { isDraft: true, assets } },
       releasePages: [firstPage, current === undefined ? [] : [{ id: 12, tag_name: "stable", draft: true }]],
     });
-    const result = f.run("stable-feed", "Move the stable update feed to this release");
+    const result = f.run("stable-feed");
     assert.equal(result.status, 0, result.stdout + result.stderr);
     const state = f.state();
     const listing = state.calls.filter((args) => args[1]?.includes("/releases?"));
@@ -340,13 +329,13 @@ test("oversized release pages are projected by gh before buffering without losin
 test("equal-version retries finish cleanup and finalization after the feed upload", { skip }, (t) => {
   for (const isDraft of [false, true]) for (const failure of ["failAfterFeedUpload", "failCleanup", "failFinalize"]) {
     const f = fixture(t, { releases: { stable: { isDraft, assets: { "latest.json": '{"version":"0.2.2"}', "old.zip": "old" } } }, [failure]: true });
-    const interrupted = f.run("stable-feed", "Move the stable update feed to this release");
+    const interrupted = f.run("stable-feed");
     assert.notEqual(interrupted.status, 0, failure);
     assert.equal(JSON.parse(f.state().releases.stable.assets["latest.json"]).version, "0.2.3", "the candidate feed is already uploaded");
     assert.equal(f.state().releases.stable.isDraft, isDraft);
     assert.equal("old.zip" in f.state().releases.stable.assets, failure !== "failFinalize");
     const callsBeforeRetry = f.state().calls.length;
-    const retried = f.run("stable-feed", "Move the stable update feed to this release");
+    const retried = f.run("stable-feed");
     assert.equal(retried.status, 0, retried.stdout + retried.stderr);
     const release = f.state().releases.stable;
     assert.equal(release.isDraft, false);
@@ -365,7 +354,7 @@ test("stable feed must read later asset pages and refuses an incomplete listing"
       assetPages: [Array.from({ length: 100 }, (_, index) => ({ name: `old-${index}.zip` })), [{ name: "latest.json" }]],
       assetStatuses: [200, status],
     });
-    const result = f.run("stable-feed", "Move the stable update feed to this release");
+    const result = f.run("stable-feed");
     if (status === 200) assert.equal(result.status, 0, result.stdout + result.stderr);
     else assert.notEqual(result.status, 0);
     assert.deepEqual(f.state().releases.stable.assets, assets);
@@ -383,7 +372,7 @@ test("stable feed read failures stop before changing permanent installers or lat
   ]) {
     const assets = { "latest.json": failure.body ?? '{"version":"0.2.10"}', "Ibis-synthetic.zip": "newer package" };
     const f = fixture(t, { ...failure, releases: { stable: { isDraft: false, assets } } });
-    const result = f.run("stable-feed", "Move the stable update feed to this release");
+    const result = f.run("stable-feed");
     assert.notEqual(result.status, 0, JSON.stringify(failure));
     assert.deepEqual(f.state().releases.stable.assets, assets);
     assert.ok(f.state().calls.every((args) => args[0] === "api" || args[1] === "download"), "no publication mutations after uncertainty");
@@ -393,7 +382,7 @@ test("stable feed read failures stop before changing permanent installers or lat
 test("nightly only publishes after a successful ahead comparison or confirmed ref absence", { skip }, (t) => {
   for (const currentSha of [undefined, "b".repeat(40)]) {
     const f = fixture(t, { currentSha });
-    const result = f.run("nightly", "Replace the nightly pre-release", { TAG: "nightly" });
+    const result = f.run("nightly", { TAG: "nightly" });
     assert.equal(result.status, 0, result.stdout + result.stderr);
     assert.equal(f.state().releases.nightly.isDraft, false);
     assert.equal(JSON.parse(f.state().releases.nightly.assets["latest.json"]).version, "0.2.3");
@@ -413,7 +402,7 @@ test("nightly read failures and malformed ref responses stop before any publicat
   ]) {
     const assets = { "latest.json": '{"version":"0.2.10"}', "Ibis-synthetic.zip": "newer package" };
     const f = fixture(t, { currentSha: "b".repeat(40), ...failure, releases: { nightly: { isDraft: false, assets } } });
-    const result = f.run("nightly", "Replace the nightly pre-release", { TAG: "nightly" });
+    const result = f.run("nightly", { TAG: "nightly" });
     assert.notEqual(result.status, 0, JSON.stringify(failure));
     assert.deepEqual(f.state().releases.nightly.assets, assets);
     assert.ok(f.state().calls.every((args) => args[0] === "api" && !args.includes("--method")), "no publication mutations after uncertainty");
@@ -424,22 +413,26 @@ test("nightly leaves a newer, equal or diverged nightly untouched", { skip }, (t
   for (const relation of ["behind", "identical", "diverged"]) {
     const assets = { "latest.json": '{"version":"0.2.10"}', "Ibis-synthetic.zip": "newer package" };
     const f = fixture(t, { currentSha: "b".repeat(40), relation, releases: { nightly: { isDraft: false, assets } } });
-    const result = f.run("nightly", "Replace the nightly pre-release", { TAG: "nightly" });
+    const result = f.run("nightly", { TAG: "nightly" });
     assert.equal(result.status, 0, result.stdout + result.stderr);
     assert.deepEqual(f.state().releases.nightly.assets, assets);
     assert.equal(f.state().calls.length, 2, "only the ref and comparison may be read");
   }
 });
 
-test("nightly has a fixed title, never Latest, and links to the numbered release", () => {
-  const nightly = job("nightly");
-  for (const command of ["create", "edit"]) {
-    const line = nightly.split("\n").find((line) => line.includes(`gh release ${command}`));
-    assert.match(line, /--title "Ibis Nightly"/);
-    if (command === "edit") assert.match(line, /--latest=false/);
+test("nightly has a fixed title, never Latest, and links to the numbered release", { skip }, (t) => {
+  for (const currentSha of [undefined, "b".repeat(40)]) {
+    const f = fixture(t, { currentSha });
+    const result = f.run("nightly", { TAG: "nightly" });
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    const state = f.state(), nightly = state.releases.nightly;
+    assert.equal(nightly.title, "Ibis Nightly");
+    assert.equal(nightly.prerelease, true);
+    assert.equal(state.latest, "v0.2.2", "the nightly never becomes Latest");
+    assert.ok(state.calls.filter((args) => args[1] === "edit").every((args) => args.includes("--latest=false")));
+    assert.match(nightly.body, /^\*\*Ibis Nightly 0\.2\.4-nightly\.20261031000000\*\*, built from `aaaaaaaaaaaa` on main/);
+    assert.ok(nightly.body.includes("[newest numbered preview release](https://github.com/example/ibis/releases/latest)"));
   }
-  assert.match(nightly, /\*\*Ibis Nightly \$version\*\*/);
-  assert.ok(nightly.includes("[newest numbered preview release](https://github.com/$REPO/releases/latest)"));
 });
 
 test("release flags leave versioning and draft tag creation unchanged", () => {

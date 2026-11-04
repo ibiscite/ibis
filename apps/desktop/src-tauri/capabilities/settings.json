@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "settings",
-  "description": "Settings window: read and change saved choices, the login item, update checks, the paste permission and the shortcut, and back up or restore settings through system file dialogs. No library, copy, file system, shell or network access.",
+  "description": "Settings window: read and change saved choices, the login item, update checks, the paste permission and the shortcut, and back up or restore settings through system file dialogs, and switch the loopback editor endpoint on or off and copy its address. No library, copy, file system or shell access, and no network beyond that one 127.0.0.1 listener.",
   "windows": [
     "settings"
   ],
@@ -13,6 +13,9 @@
     "core:window:allow-destroy",
     "allow-picker-preferences",
     "allow-preference-revision",
+    "allow-editor-endpoint",
+    "allow-set-editor-endpoint",
+    "allow-copy-editor-endpoint",
     "allow-delight-view",
     "allow-set-picker-preferences",
     "allow-window-size",

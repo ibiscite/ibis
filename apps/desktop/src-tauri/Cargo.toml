@@ -12,6 +12,7 @@ publish = false
 tauri-build = { version = "2.6", features = [] }
 
 [dependencies]
+getrandom = "0.3"
 ibis-core = { path = "../../../crates/ibis-core", features = ["type-export"] }
 ibis-engine = { path = "../../../crates/ibis-engine" }
 ibis-zotero-local = { path = "../../../crates/ibis-zotero-local" }

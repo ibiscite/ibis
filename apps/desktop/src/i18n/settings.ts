@@ -55,6 +55,8 @@ export const SETTINGS_IDS = [
   "settings-shortcut-restored",
   "citations-default-description",
   "citations-recent", "citations-recent-description", "citations-recent-words",
+  "citations-editor", "citations-editor-description", "citations-editor-words", "citations-editor-address", "citations-editor-address-description",
+  "citations-editor-copy", "citations-editor-copied", "citations-editor-port-in-use", "citations-editor-bad-setting", "citations-editor-not-saved",
   "citations-format-pandoc",
   "citations-format-autocite",
   "citations-format-parencite",

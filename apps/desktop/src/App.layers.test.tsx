@@ -475,6 +475,7 @@ test("the status dot stops being green when the status menu reports a failed gro
   expect(dot()).toBe("done");
   fireEvent.click(document.querySelector(".library-status-trigger")!);
   const menu = await screen.findByRole("menu");
-  await within(menu).findByText(/group/i);
+  // The section label repeats the heading for screen readers, so the words appear twice.
+  expect((await within(menu).findAllByText(/could not list your Zotero groups/i)).length).toBeGreaterThan(0);
   await waitFor(() => expect(dot()).toBe("look"));
 });

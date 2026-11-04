@@ -6,32 +6,34 @@ import { SHORTCUT_ACTIONS, SHORTCUT_REGIONS } from "../i18n/settings";
 import { useKeyPulse } from "./Delights";
 import "./ShortcutTable.css";
 
-/** Read-only combinations are one cap each; alternatives keep separate caps. */
-export function ShortcutKeys({ binding, isMac, system = false }: { binding: KeyBinding; isMac: boolean; system?: boolean }) {
+/** One cap per combination in a key list; plain secondary text where keys are
+ * read, not edited (Settings). Alternatives stay apart either way. */
+export function ShortcutKeys({ binding, isMac, plain = false }: { binding: KeyBinding; isMac: boolean; plain?: boolean }) {
   const { text } = useInterfaceMessages();
-  return <span className="ui-settings-keys">{system && <span className="visually-hidden">{text("shortcuts-system")}</span>}{binding.keys.map((keys, i) => <span className="keys-binding key-caps" key={keys} aria-keyshortcuts={binding.displayLabel ? undefined : ariaKeys(keys, isMac)}>
+  return <span className="ui-settings-keys">{binding.keys.map((keys, i) => <span className="keys-binding key-caps" key={keys} aria-keyshortcuts={binding.displayLabel ? undefined : ariaKeys(keys, isMac)}>
     {i > 0 && <>{" "}<span>{text("shortcuts-or")}</span>{" "}</>}
-    <kbd data-system={system || undefined} dir="ltr">{binding.displayLabel ?? keyLabel(keys, isMac)}</kbd>
+    <kbd data-plain={plain || undefined} dir="ltr">{binding.displayLabel ?? keyLabel(keys, isMac)}</kbd>
   </span>)}</span>;
 }
 
-function ShortcutRow({ binding, isMac, system, ids, echo }: { binding: KeyBinding; isMac: boolean; system: boolean; ids: boolean; echo: boolean }) {
+function ShortcutRow({ binding, isMac, plain, ids }: { binding: KeyBinding; isMac: boolean; plain: boolean; ids: boolean }) {
   const { text } = useInterfaceMessages();
-  const pressed = useKeyPulse(binding.keys, echo);
+  const pressed = useKeyPulse(binding.keys, plain);
   return <tr id={ids ? `key-${binding.action}` : undefined} data-echo={pressed || undefined}>
     <th scope="row">{text(binding.label ?? SHORTCUT_ACTIONS[binding.action])}</th>
-    <td><ShortcutKeys binding={binding} isMac={isMac} system={system} /></td>
+    <td><ShortcutKeys binding={binding} isMac={isMac} plain={plain} /></td>
   </tr>;
 }
 
-export function ShortcutGroup({ region, bindings, isMac, title, children, systemNotes = false, ids = false }: {
-  region: KeyBinding["region"]; bindings: readonly KeyBinding[]; isMac: boolean; title?: string; children?: ReactNode; systemNotes?: boolean; ids?: boolean;
+/** `plain` is Settings › Shortcuts: only the opening-shortcut recorder edits a
+ * key, so every key the table lists is plain secondary text, never a cap. */
+export function ShortcutGroup({ region, bindings, isMac, title, children, plain = false, ids = false }: {
+  region: KeyBinding["region"]; bindings: readonly KeyBinding[]; isMac: boolean; title?: string; children?: ReactNode; plain?: boolean; ids?: boolean;
 }) {
   const { text } = useInterfaceMessages();
-  const fixed = new Set(["copy", "move", "escape", "settings", "quit", "menuMove", "menuEnds", "menuChoose", "menuLeave"]);
   return <tbody id={ids ? `shortcuts-${region}` : undefined}>
     <tr><th scope="rowgroup" colSpan={2}>{title ?? text(SHORTCUT_REGIONS[region])}</th></tr>
     {children}
-    {bindings.filter((binding) => binding.region === region).map((binding) => <ShortcutRow key={binding.action} binding={binding} isMac={isMac} system={systemNotes && fixed.has(binding.action)} ids={ids} echo={systemNotes} />)}
+    {bindings.filter((binding) => binding.region === region).map((binding) => <ShortcutRow key={binding.action} binding={binding} isMac={isMac} plain={plain} ids={ids} />)}
   </tbody>;
 }

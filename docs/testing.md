@@ -24,9 +24,9 @@ Windows qualification runs on GitHub runners.
   synthetic inputs. Desktop Rust tests run separately from the default
   workspace tests. These establish the asserted contracts and simulated
   decisions; native permission, focus and insertion still need a desktop.
-- **Engine boundary:** `crates/ibis-engine/tests/engine_boundary.rs` pins which
-  crate may use which, and fails when a front end calls a lower crate in a new
-  place (decision 0028). #1260 empties its list of remaining direct calls.
+- **Engine boundary:** `crates/ibis-engine/tests/engine_boundary.rs` reads the
+  crate graph from `cargo metadata` and pins which crate may ship with which
+  (decision 0028). #1260 removes the front ends' remaining lower crates from it.
 - **CLI/MCP goldens:** [canonical cases](../fixtures/cases/README.md) and
   [formatted fixtures](../fixtures/formatted/README.md) check text, markup,
   notices, losses and refusals through the engine and CLI. MCP replays the
@@ -294,6 +294,13 @@ Rules for native harnesses, each learned from a false result:
 A pull request runs only what its paths can affect
 ([`ci-paths.mjs`](../scripts/ci-paths.mjs)), and an unclear file list runs everything.
 `node scripts/check.mjs` makes the same choice locally. Main always runs everything; there is no merge queue (see AGENTS.md › Merging).
+Workflow logic that a test covers lives in a script under `scripts/`, and the
+test runs that script; no test matches workflow text with regular expressions
+(decision 0035). Rules only the structure can show, such as "CI result" running
+`always()` and needing every job, are read with a YAML parser
+(`scripts/test_workflow_policy.py`). Scripts the workflows run (`ci-*.sh`,
+`publish-*.sh`, `keep-previous-nightly.sh`, `update-test-decision.sh`) are
+workflow code: changing them needs the same review as the workflow.
 
 | What changed | What runs | Typical wait |
 |---|---|---|

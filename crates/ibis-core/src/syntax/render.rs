@@ -16,7 +16,7 @@ pub(super) fn render(
         return Ok(String::new());
     }
     let text = match caps.syntax {
-        KeySyntax::Pandoc => flatten(&pandoc(picks)),
+        KeySyntax::Pandoc => flatten(&pandoc(caps, picks)),
         KeySyntax::Biblatex => flatten(&biblatex(caps.command.unwrap_or("autocite"), picks)),
         KeySyntax::Natbib => natbib(picks, requested_items),
         KeySyntax::Latex => flatten(&latex(picks)),
@@ -54,7 +54,7 @@ pub(super) fn display(
         return Ok(DisplayTree::default());
     }
     let tree = match caps.syntax {
-        KeySyntax::Pandoc => pandoc(picks),
+        KeySyntax::Pandoc => pandoc(caps, picks),
         KeySyntax::Biblatex => biblatex(caps.command.unwrap_or("autocite"), picks),
         KeySyntax::Latex => latex(picks),
         KeySyntax::Typst => typst(picks),
@@ -113,8 +113,13 @@ fn groups(picks: &[Pick<'_>], parts: Vec<String>, separator: &str, prefix: &str,
     DisplayTree { nodes }
 }
 
-fn pandoc(picks: &[Pick<'_>]) -> DisplayTree {
+fn pandoc(caps: &SyntaxCapabilities, picks: &[Pick<'_>]) -> DisplayTree {
     let narrative = picks.iter().any(|pick| pick.form == Narrative);
+    // A locator, an affix or an omitted author only means that inside brackets.
+    let bare = caps.command == Some("bare")
+        && picks.iter().all(|pick| {
+            pick.item.locator.is_none() && pick.item.prefix.is_empty() && pick.item.suffix.is_empty() && !pick.suppress
+        });
     let parts = picks
         .iter()
         .map(|pick| {
@@ -159,8 +164,8 @@ fn pandoc(picks: &[Pick<'_>]) -> DisplayTree {
         picks,
         parts,
         "; ",
-        if narrative { "" } else { "[" },
-        if narrative { "" } else { "]" },
+        if narrative || bare { "" } else { "[" },
+        if narrative || bare { "" } else { "]" },
     )
 }
 

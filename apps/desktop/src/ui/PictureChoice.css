@@ -8,7 +8,7 @@
 }
 .ui-picture-choice { justify-content: end; }
 .ui-picture-choice-art { display: contents; }
-.ui-picture-choice[data-selected] :is(.ui-picker-picture, .ui-size-picture) { outline: var(--ring-width) solid var(--accent); outline-offset: var(--ring-width); }
+.ui-picture-choice[data-selected] .ui-picker-picture { outline: var(--ring-width) solid var(--accent-mark); outline-offset: var(--ring-width); }
 .ui-picture-choice[data-selected] { color: var(--text); font-weight: var(--strong); }
 .ui-picture-choice[data-focus-visible] { outline: var(--ring-width) solid var(--ring); outline-offset: var(--ring-offset); }
 .ui-picture-choice[data-disabled] { color: var(--text-disabled); }
@@ -29,14 +29,10 @@
 .ui-picker-picture[data-rows] { width: 100%; height: auto; }
 .ui-picker-picture[data-rows] .ui-picker-picture-mask { position: static; display: flow-root; }
 .ui-picker-picture[data-rows] .ui-picker-picture-content { position: static; display: block; width: auto; transform: none; zoom: var(--preview-rows); }
-.ui-size-picture { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-1); box-sizing: border-box; flex: none; border-radius: var(--space-1); background: var(--surface); box-shadow: 0 0 0 1px var(--fill-control-pressed); }
-.ui-size-picture b { display: block; height: var(--space-1); border-radius: var(--row-spacing); background: var(--fill-control-hover); }
-.ui-size-picture b[data-query] { height: 6px; background: var(--fill-control-pressed); }
-.ui-size-picture b[data-short] { width: 70%; }
-.ui-size-picture[data-custom] { background: transparent; box-shadow: none; border: 1px dashed var(--text-tertiary); }
 @media (prefers-contrast: more), (forced-colors: active) {
   .ui-picture-choice { border: var(--border-width) solid CanvasText; }
-  .ui-picture-choice[data-selected] { background: Highlight; color: HighlightText; }
+  .ui-picture-choice[data-selected] { forced-color-adjust: none; background: Highlight; color: HighlightText; }
+  .ui-picture-choice[data-selected] .ui-picture-choice-note { color: inherit; }
   .ui-picture-choice[data-focus-visible] { outline-color: CanvasText; }
 }
 @media (pointer: coarse) {

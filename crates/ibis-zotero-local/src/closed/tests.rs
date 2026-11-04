@@ -132,6 +132,7 @@ fn all_four_versions_return_neutral_fields_groups_and_ordered_creators() {
         assert_eq!(item.data.creators[1].name, "Synthetic Institute");
         assert_eq!(item.data.creators[1].field_mode, 1);
         assert_eq!(snapshot.libraries[1].group_id, Some(4321));
+        assert_eq!(snapshot.libraries[1].name, "Invented Reading Group");
         assert_eq!(snapshot.libraries[1].items.len(), 1);
         assert_eq!(
             std::fs::read(dir.path().join("zotero.sqlite")).unwrap_or_default(),

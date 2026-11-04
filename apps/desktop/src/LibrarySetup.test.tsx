@@ -129,14 +129,15 @@ test("closing and reopening drops a pending discovery and focuses the new welcom
   expect(document.activeElement).toBe(option(/^Use Zotero/));
 });
 
-test.each(["available", "absent", "access_off"] as const)("Zotero %s is told in its row or a note, never as a second suggestion", async (zotero) => {
+test.each(["available", "absent", "access_off"] as const)("Zotero %s is told in its row or a note, and is the only suggestion when found", async (zotero) => {
   render(<LibrarySetup api={{ chooseLibrary: async () => undefined, useZotero: async () => undefined,
     findSources: async () => ({ zotero, list: 1, files: [], cut_short: false }) }} perform={perform} />);
   press(option(/^Find them on this computer/));
   await waitFor(() => expect(option(/^Look again/).textContent).not.toContain("Looking"));
-  expect(option(/^Use Zotero/).textContent?.includes("Found on this")).toBe(zotero === "available");
+  expect(option(/^Use Zotero/).textContent?.includes("Found on this")).toBe(zotero !== "absent");
   expect(screen.queryByText(/To read your references, in Zotero/) !== null).toBe(zotero === "access_off");
-  expect(document.querySelectorAll("[data-suggested]")).toHaveLength(0);
+  const suggested = [...document.querySelectorAll("[data-suggested]")];
+  expect(suggested).toEqual(zotero === "absent" ? [] : [option(/^Use Zotero/)]);
 });
 
 const found = { zotero: "available" as const, list: 7, files: [{ name: "研究<literal>.bib", folder: "مراجع" }], cut_short: false };
@@ -251,4 +252,34 @@ test("empty-library choices show a known Zotero tag without searching or adding 
   expect(option(/^Use Zotero/).textContent).toMatch(/Found on this (Mac|PC|computer)/);
   expect(screen.getByText("Or drag a .bib or CSL-JSON file into this window.")).toBeTruthy();
   expect(findSources).not.toHaveBeenCalled();
+});
+
+test.each(["available", "closed", "access_off"] as const)("first run still asks: a Zotero that is %s is offered first and Enter takes it", async (found) => {
+  const useZotero = vi.fn(async () => undefined);
+  render(<LibrarySetup api={{ chooseLibrary: async () => undefined, useZotero, findZotero: async () => found }}
+    perform={async (_action, run) => { await run(); }} />);
+  const row = screen.getByRole("option", { name: /Zotero/ });
+  await waitFor(() => expect(row.getAttribute("data-suggested")).toBe("true"));
+  expect(useZotero).not.toHaveBeenCalled();
+  expect(document.activeElement).toBe(row);
+  fireEvent.keyDown(row, { key: "Enter" });
+  fireEvent.keyUp(row, { key: "Enter" });
+  await waitFor(() => expect(useZotero).toHaveBeenCalledOnce());
+});
+
+test.each([["absent", async () => "absent" as const], ["a failed look", async () => { throw new Error("refused"); }]])("%s suggests nothing and keeps every start", async (_, findZotero) => {
+  render(<LibrarySetup api={{ chooseLibrary: async () => undefined, useZotero: async () => undefined, findZotero }}
+    perform={async (_action, run) => { await run(); }} />);
+  await act(async () => { await Promise.resolve(); });
+  expect(document.querySelectorAll("[data-suggested]")).toHaveLength(0);
+  expect(screen.getByRole("option", { name: /Zotero/ })).toBeTruthy();
+});
+
+test("an answer after the screen left changes nothing", async () => {
+  let answer: (found: "available") => void = () => {};
+  const { unmount } = render(<LibrarySetup api={{ chooseLibrary: async () => undefined, useZotero: async () => undefined,
+    findZotero: () => new Promise((resolve) => { answer = resolve; }) }} perform={async (_action, run) => { await run(); }} />);
+  unmount();
+  await act(async () => { answer("available"); await Promise.resolve(); });
+  expect(document.querySelectorAll("[data-suggested]")).toHaveLength(0);
 });
