@@ -260,7 +260,13 @@ impl ProjectBibliography {
             name,
             state,
             last_good,
-            last_checked_ms: slot.read.as_ref().and_then(ProjectRead::last_checked_ms),
+            // A healthy unchanged read has no new visible answer. Expose the
+            // date only when the status explains reliance on retained evidence.
+            last_checked_ms: if last_good {
+                slot.read.as_ref().and_then(ProjectRead::last_checked_ms)
+            } else {
+                None
+            },
             reason: slot
                 .read
                 .as_ref()
