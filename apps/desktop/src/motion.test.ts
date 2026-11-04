@@ -116,7 +116,6 @@ test("the design's motion tokens stay within the 280 ms limit", () => {
   }
   // Panels and layout move; with reduced motion they change at once.
   expect(milliseconds("var(--dur-panel)", reduced)).toEqual([REDUCED_MS]);
-  expect(milliseconds("var(--dur-panel)", reduced)).toEqual([REDUCED_MS]);
 });
 
 test("no transition or animation is longer than 280 ms or moves with reduced motion", () => {

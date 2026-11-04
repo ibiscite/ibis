@@ -2,8 +2,6 @@ import { listen } from "@tauri-apps/api/event";
 import { platformOf } from "./platform";
 import { setNativeAccent, subscribeNativeAccent } from "./nativeAccent";
 
-export { platformOf, type Platform } from "./platform";
-
 type Dispose = () => void;
 
 /** One macOS look; actual system facts (such as the UI font) remain separate. */

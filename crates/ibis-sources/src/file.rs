@@ -332,19 +332,10 @@ pub fn load_file(path: &Path) -> Result<LoadedLibrary, SourceError> {
 
 /// Explicit refresh obeys the same two-identical-observations rule as watches.
 pub fn reload_file(path: &Path) -> Result<LoadedLibrary, SourceError> {
-    reload(path, None)
-}
-
-/// Reuse unchanged records while parsing, before a second CSL library accumulates.
-pub fn reload_file_reusing(path: &Path, previous: &Snapshot) -> Result<LoadedLibrary, SourceError> {
-    reload(path, Some(previous))
-}
-
-fn reload(path: &Path, previous: Option<&Snapshot>) -> Result<LoadedLibrary, SourceError> {
     let (sender, events) = mpsc::sync_channel(1);
     let stopped = AtomicBool::new(false);
     let mut snapshot = None;
-    let result = stable_read(path, &events, &stopped, &mut snapshot, false, previous)?.ok_or(SourceError::Changing);
+    let result = stable_read(path, &events, &stopped, &mut snapshot, false, None)?.ok_or(SourceError::Changing);
     drop(sender);
     result
 }
