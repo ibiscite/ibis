@@ -16,7 +16,7 @@ use std::io::{self, BufRead, Read, Write};
 
 mod tools;
 mod view;
-pub use tools::{MAX_ANSWER, MAX_HITS, MAX_LIST, Refusal};
+pub use tools::{MAX_ANSWER, MAX_HITS, MAX_LIST, MAX_STYLES, Refusal};
 pub use view::{MAX_TEXT, reference};
 
 /// The current MCP revision: no handshake, the version travels in each request's `_meta`.

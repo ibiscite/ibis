@@ -5,20 +5,17 @@ import { COPY_FORMATS, type AppPaste } from "../../api";
 import { FORMATTED_STYLES } from "../../format/styles";
 import { STYLE_SAMPLES } from "../../format/styles";
 import { copyFormatMenu, pickerText } from "../../messages";
-import { ToolbarMenu, type ToolbarMenuCommand, type ToolbarMenuSection, type MenuCloseReason } from "../../ui/ToolbarMenu";
+import { ToolbarMenu, type ToolbarMenuSection, type MenuCloseReason } from "../../ui/ToolbarMenu";
 import { outputName, type Choice } from "./choice";
-import { isChooseSourceShortcut, isKeysShortcut, isMenuShortcut, isPinShortcut, isQuitShortcut, isSourceShortcut } from "./shortcuts";
 
 const ONCE = "just-once";
 const AUTOMATIC = "automatic";
 const DEFAULT = "global-default";
 
-export type FormatCommand = "more" | "keys" | "pin" | "quit" | "source" | "revealSource" | "chooseSource";
-
 /** The copy format menu: key syntaxes and citation styles, each with a real
  * sample. Styles stay listed but unavailable while the engine is not offered.
  * Focus goes back to the search box after a pick, Escape or Tab. */
-export function FormatMenu({ format, buttonRef, app, scope, onOpenChange, onceOnly, onToggleOnce, onAutomatic, onDefault, pasteChoices, onPasteChange, disabled, styles, onChange, searchRef, onCommand }: {
+export function FormatMenu({ format, buttonRef, app, scope, onOpenChange, onceOnly, onToggleOnce, onAutomatic, onDefault, pasteChoices, onPasteChange, disabled, styles, onChange, searchRef }: {
   format: Choice;
   buttonRef?: RefObject<HTMLButtonElement | null>;
   /** The app the picker was opened from, named beside the format. */
@@ -36,7 +33,6 @@ export function FormatMenu({ format, buttonRef, app, scope, onOpenChange, onceOn
   styles: boolean;
   onChange: (choice: Choice) => void;
   searchRef: RefObject<HTMLElement | null>;
-  onCommand: (command: FormatCommand) => ToolbarMenuCommand;
 }) {
   const sections: ToolbarMenuSection[] = [
     ...pasteChoices && app ? [{ id: "delivery", label: pickerText.forApp(app), items: [
@@ -54,11 +50,5 @@ export function FormatMenu({ format, buttonRef, app, scope, onOpenChange, onceOn
   ];
   const name = outputName(format);
   return <><span role="status" className="visually-hidden">{scope}</span><ToolbarMenu buttonRef={buttonRef} onOpenChange={onOpenChange} buttonShortcut={ariaKeys(keysFor("format"), isMac)} disabled={disabled} label={pickerText.copyAs} value={scope ?? (app ? pickerText.formatForApp(name, app) : name)} sections={sections} selectedKey={format}
-    filterLabel={pickerText.filterFormats} onKeyCommand={(event) => {
-      const command = isMenuShortcut(event) ? "more" : isPinShortcut(event) && !event.repeat ? "pin" : isKeysShortcut(event) ? "keys"
-        : isQuitShortcut(event) ? "quit"
-        : isChooseSourceShortcut(event) && !event.repeat ? "chooseSource"
-        : isSourceShortcut(event) && !event.repeat ? event.altKey ? "revealSource" : "source" : null;
-      return command ? onCommand(command) : undefined;
-    }} onAction={(key) => key === "paste" || key === "copy-only" ? onPasteChange?.(key) : key === ONCE ? onToggleOnce() : key === AUTOMATIC ? onAutomatic() : key === DEFAULT ? onDefault() : onChange(key as Choice)} returnFocusRef={searchRef} /></>;
+    filterLabel={pickerText.filterFormats} onAction={(key) => key === "paste" || key === "copy-only" ? onPasteChange?.(key) : key === ONCE ? onToggleOnce() : key === AUTOMATIC ? onAutomatic() : key === DEFAULT ? onDefault() : onChange(key as Choice)} returnFocusRef={searchRef} /></>;
 }

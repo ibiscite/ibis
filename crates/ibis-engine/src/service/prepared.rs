@@ -160,10 +160,12 @@ impl Engine {
     ) -> Result<PreparedCitation, EngineError> {
         cancel.check()?;
         let state = self.state()?;
-        let uses_zotero = request
-            .items
-            .iter()
-            .any(|pick| ibis_sources::zotero_source::is_zotero(&pick.item.library));
+        let uses_zotero = request.items.iter().any(|pick| {
+            state
+                .libraries
+                .get(&pick.item.library)
+                .is_some_and(|library| library.kind == ibis_sources::LibraryKind::Zotero)
+        });
         if uses_zotero && !state.zotero_ready {
             return Err(error(ErrorCode::SourceUnavailable));
         }

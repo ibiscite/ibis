@@ -576,6 +576,16 @@ mod tests {
         format!("/{TOKEN}/better-bibtex/cayw{query}")
     }
 
+    /// Whether a probe gets "ready". A finished connection's thread can hold its
+    /// slot a moment after its client is done, so a probe may at first be closed
+    /// unread; a slot never given back keeps it closed until `wait_for` gives up.
+    fn probe_answers(port: u16) -> bool {
+        let mut stream = connect(port);
+        let probe = format!("GET {} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\n\r\n", cayw("?probe=true"));
+        let _ = stream.write_all(probe.as_bytes());
+        answer(&mut stream).ends_with("ready")
+    }
+
     fn wait_for(what: impl Fn() -> bool) {
         let started = Instant::now();
         while !what() {
@@ -801,9 +811,7 @@ mod tests {
             assert!(answer(&mut stream).starts_with("HTTP/1.1 403"));
         }
         host.ready.store(true, Ordering::SeqCst);
-        let mut stream = connect(port);
-        send(&mut stream, port, &cayw("?probe=true"), "");
-        assert!(answer(&mut stream).ends_with("ready"), "still answering");
+        wait_for(|| probe_answers(port));
     }
 
     #[test]
@@ -815,9 +823,7 @@ mod tests {
             drop(stream);
         }
         host.ready.store(true, Ordering::SeqCst);
-        let mut stream = connect(port);
-        send(&mut stream, port, &cayw("?probe=true"), "");
-        assert!(answer(&mut stream).ends_with("ready"), "still answering");
+        wait_for(|| probe_answers(port));
     }
 
     #[test]

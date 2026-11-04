@@ -1,10 +1,10 @@
-import { useEffect, useRef, type RefObject } from "react";
+import { useEffect, useRef } from "react";
 import type { LibraryStatus } from "../../api";
 import type { SessionEvent } from "./session";
 import type { useOperations } from "./useOperations";
 
 export function useLibrarySetup(library: LibraryStatus | null | undefined, setFailures: ReturnType<typeof useOperations>["setFailures"],
-  send: (event: SessionEvent) => void, input: RefObject<HTMLInputElement | null>) {
+  send: (event: SessionEvent) => void, focusHome: () => void) {
   // Setup failures belong to the setup screen; they go when a library is chosen.
   const setupDone = library !== undefined && library?.state !== "none";
   useEffect(() => {
@@ -17,6 +17,6 @@ export function useLibrarySetup(library: LibraryStatus | null | undefined, setFa
     if (previousSample.current === sample) return;
     previousSample.current = sample;
     send({ type: "sample" });
-    input.current?.focus();
+    focusHome();
   }, [sample, send]);
 }
