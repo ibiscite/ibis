@@ -303,19 +303,39 @@ test("a cancelled preview whose owner still wants it is not a failure: it asks o
   expect(refreshSnapshot).not.toHaveBeenCalled();
 });
 
-test("a preview cancelled twice waits for the next change instead of looping or failing", async () => {
+test("a preview the engine keeps refusing ends in a stated failure, not Formatting… forever", async () => {
+  // The engine also answers "cancelled" when it refuses the writing-project
+  // context it was asked under; nothing newer is coming to replace it.
   const previewFileCitation = vi.fn<Preview>().mockRejectedValue({ code: "cancelled" });
   const initial = options({ previewFileCitation, sessionId: 0 });
   const { result, rerender } = renderHook(useCitationOutput, { initialProps: initial });
-  await waitFor(() => expect(previewFileCitation).toHaveBeenCalledTimes(2));
+  await waitFor(() => expect(result.current.shown).toBe("failed"));
+  expect(previewFileCitation).toHaveBeenCalledTimes(2);
+  expect(result.current.previewProblem).toBe(pickerText.previewRefused);
   await act(async () => { await Promise.resolve(); });
   expect(previewFileCitation).toHaveBeenCalledTimes(2);
-  expect(result.current.shown).toBeNull();
-  expect(result.current.previewProblem).toBeUndefined();
 
   previewFileCitation.mockResolvedValue(preview("After reopening"));
   rerender({ ...initial, sessionId: 1 });
+  expect(result.current.previewProblem).toBeUndefined();
   await waitFor(() => expect(result.current.shown).toMatchObject({ text: "After reopening" }));
+});
+
+test("a preview refused while the destination is being read waits for that answer, then asks again", async () => {
+  const previewFileCitation = vi.fn<Preview>().mockRejectedValue({ code: "cancelled" });
+  const initial = options({ previewFileCitation, contextReady: false });
+  const { result, rerender } = renderHook(useCitationOutput, { initialProps: initial });
+  await waitFor(() => expect(previewFileCitation).toHaveBeenCalledTimes(1));
+  await act(async () => { await Promise.resolve(); });
+  expect(previewFileCitation).toHaveBeenCalledTimes(1);
+  expect(result.current.shown).toBeNull();
+  expect(result.current.previewProblem).toBeUndefined();
+
+  // The read answered with the same project context: the same citation is asked again.
+  previewFileCitation.mockRejectedValueOnce({ code: "cancelled" }).mockResolvedValue(preview("After the read"));
+  rerender({ ...initial, contextReady: true });
+  await waitFor(() => expect(result.current.shown).toMatchObject({ text: "After the read" }));
+  expect(previewFileCitation).toHaveBeenCalledTimes(3);
 });
 
 test("reopening drops a failure from the first frame and prepares the same citation afresh", async () => {

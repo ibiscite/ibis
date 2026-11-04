@@ -10,7 +10,7 @@ import { STYLE_NAMES, type StyleId } from "../../format/styles";
 import { pickerText } from "../../messages";
 import { choiceKey, styleOf, type Choice, type CitationReference } from "./choice";
 
-export function useCitationOutput({ chosen, library, libraryVersion, sessionId = 0, opened = sessionId, isCurrentSession, format, style, previewFileCitation, refreshSnapshot, projectContext }: {
+export function useCitationOutput({ chosen, library, libraryVersion, sessionId = 0, opened = sessionId, isCurrentSession, format, style, previewFileCitation, refreshSnapshot, projectContext, contextReady = true }: {
   /** The selection, or the highlighted result when nothing is selected. */
   chosen: CitationReference[];
   library: LibraryStatus | null | undefined;
@@ -26,6 +26,8 @@ export function useCitationOutput({ chosen, library, libraryVersion, sessionId =
   /** Reads the library status again when the preview meets a newer snapshot. */
   refreshSnapshot: () => void;
   projectContext?: [number, number] | null;
+  /** False while the destination, and with it the project context, is being read. */
+  contextReady?: boolean;
 }) {
   // Tagged with the style, choice and library it was made for, so Enter never
   // copies a preview of an earlier choice.
@@ -34,6 +36,10 @@ export function useCitationOutput({ chosen, library, libraryVersion, sessionId =
   // A preview stopped under a live owner is asked for once more per opening.
   const [attempt, setAttempt] = useState(0);
   const askedAgain = useRef<string | null>(null);
+  // A refusal under a context that is still being read waits for that answer.
+  const waitingForContext = useRef<string | null>(null);
+  const contextSettled = useRef(contextReady);
+  contextSettled.current = contextReady;
   const currentOpening = useRef(opened);
   currentOpening.current = opened;
   const currentSession = useRef(sessionId);
@@ -97,13 +103,21 @@ export function useCitationOutput({ chosen, library, libraryVersion, sessionId =
       .then((result) => { if (owns()) { askedAgain.current = null; setFormatted({ key, request, session: sessionId, opened: currentOpening.current, preview: result.preview, result: result.preview.problem ? "failed" : result, problem: result.preview.problem ?? undefined }); } })
       .catch((error) => { if (owns() && !nativeApi.isLibraryLoading(error)) {
         if (nativeApi.isCancelled(error)) {
-          // Nothing failed and this owner still wants the citation. A second
-          // stop waits for the next change or opening: no loop, no message.
+          // The engine also says "cancelled" when it refuses the project
+          // context it was asked under, so this is not always newer work.
+          // While that context is being read, its answer asks again. Otherwise
+          // ask once more; a second refusal is stated, never Formatting… forever.
           const again = `${sessionId}\u0002${key}`;
+          if (!contextSettled.current) {
+            waitingForContext.current = again;
+            return;
+          }
           if (askedAgain.current !== again) {
             askedAgain.current = again;
             setAttempt((value) => value + 1);
+            return;
           }
+          setFormatted({ key, request, session: sessionId, opened: currentOpening.current, result: "failed", problem: pickerText.previewRefused });
           return;
         }
         const stale = nativeApi.isSnapshotChanged(error);
@@ -118,5 +132,15 @@ export function useCitationOutput({ chosen, library, libraryVersion, sessionId =
       } });
     return () => { live = false; abort.abort(); };
   }, [previewKey, request, sessionId]);
+  // The context's answer may keep the same key, so the refused citation is asked again.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the context's answer is the only trigger; the key is compared, not watched.
+  useEffect(() => {
+    const waited = waitingForContext.current;
+    if (!contextReady || waited === null) return;
+    waitingForContext.current = null;
+    if (waited !== `${currentSession.current}\u0002${previewKey}`) return;
+    askedAgain.current = null;
+    setAttempt((value) => value + 1);
+  }, [contextReady]);
   return { formatted, previewReceipt, chosenKey, keyFormat, shown, previewProblem, displayedOutput };
 }
