@@ -7,6 +7,7 @@ import { commands, type CommandError, type KeyFormat, type LibraryStatus, type P
 export type { Sources } from "./bindings";
 export type {
   AppOutput, AppPaste, Copied, Density, EntryCopy, LibraryStatus, Locator, LocatorQuery, LoginItem, LoginItemProblem, PastedList, PickerDestination, PickerPreferences, ProjectStatus, SearchQuery, SearchResult, SessionBibliography, SessionEdit, SessionReferencesView, ShortcutStatus, ZoteroGroup, ZoteroLibrary, ZoteroProfiles,
+  WritingProjectView, WritingProjectsView, WritingProjectEdit, WritingProjectUpdate,
 } from "./bindings";
 export type CopyFormat = KeyFormat;
 /** What the notice after a copy says: pasted into an app, or copied and why. */
@@ -28,6 +29,8 @@ export const {
   chooseProject,
   stopProject,
   copyProjectEntry,
+  writingProjects,
+  editWritingProject,
   editorRequest,
   sessionReferences,
   editSessionReferences,
@@ -42,7 +45,6 @@ export const {
   setPinned,
   quit,
   shortcutStatus,
-  copyFileCitation,
   citationDetails,
   recentReferences,
   copyFormat,
@@ -62,6 +64,16 @@ export const {
   updatePickerActivity,
   openSettings,
 } = commands;
+
+/** Unverified insertion is one explicit action; ordinary copies never opt in. */
+export function copyFileCitation(ticket: string, contentHash: string, replaces: string | null, unverifiedProject?: boolean) {
+  return commands.copyFileCitation(ticket, contentHash, replaces, unverifiedProject ?? false);
+}
+
+/** Retry refreshes evidence only; the person chooses insertion afresh. */
+export function retryProject() {
+  return commands.retryProject();
+}
 
 /** Native saves are ordered by the settings owner before publishing a result. */
 export function onWindowSizeSaved(handler: (saved: boolean) => void): Promise<UnlistenFn> {
@@ -96,8 +108,9 @@ export function previewFileCitation(
   style: Parameters<typeof commands.previewFileCitation>[2],
   expectedRevision: string,
   signal?: AbortSignal,
+  context?: [number, number] | null,
 ) {
-  const intent = { page: searchPage, request: ++previewRequest, cancel: false };
+  const intent = { page: searchPage, request: ++previewRequest, cancel: false, context: context ?? null };
   const pending = commands.previewFileCitation(items, format, style, expectedRevision, intent);
   const cancel = () => { void commands.previewFileCitation([], format, style, expectedRevision, { ...intent, cancel: true }).catch(() => {}); };
   signal?.addEventListener("abort", cancel, { once: true });
@@ -162,8 +175,13 @@ export function onLibraryChanged(handler: (status: LibraryStatus) => void): Prom
 }
 
 /** The project bibliography's choice or its read changed. */
-export function onProjectChanged(handler: () => void): Promise<UnlistenFn> {
-  return listen("project:changed", () => handler());
+export function onProjectChanged(handler: (version: [number, number] | null) => void): Promise<UnlistenFn> {
+  return listen<[number, number]>("project:changed", ({ payload }) => handler(payload ?? null));
+}
+
+/** Saved-definition metadata can change without retargeting the current task. */
+export function onWritingProjectsChanged(handler: () => void): Promise<UnlistenFn> {
+  return listen("writing-projects:changed", handler);
 }
 
 /** A chosen project bibliography could not be saved, so the old choice stands. */

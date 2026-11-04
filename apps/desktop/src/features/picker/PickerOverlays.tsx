@@ -9,22 +9,29 @@ import { KeysDialog } from "./KeysDialog";
 import { UpdateNotice } from "./Notices";
 import { tileName } from "./rows";
 import { SessionReferencesDialog } from "./SessionReferences";
+import { WritingProjectsDialog } from "./WritingProjects";
+import type { Choice } from "./choice";
 import type { PickerApi } from "../../App";
 import type { StyleId } from "../../format/styles";
 import type { usePickerSession } from "./usePickerSession";
 import type { usePickerMenus } from "./usePickerMenus";
 import type { KeyBinding } from "../../keys";
 
-export function PickerOverlays({ api, style, menus, bindings }: {
+export function PickerOverlays({ api, style, format, menus, bindings }: {
   api: PickerApi;
   /** The output's style; a key output has none, so its bibliography uses APA. */
   style: StyleId | null;
+  format?: Choice;
   menus: ReturnType<typeof usePickerMenus>;
   bindings: readonly KeyBinding[];
 }) {
   const { sessionReferences, editSessionReferences, sessionBibliography, copySessionBibliography, exportSessionBibliography } = api;
   return <>
     {menus.keysOpen && <KeysDialog bindings={bindings} isMac={isMac} onClose={menus.closeKeys} />}
+    {menus.projectsOpen && api.writingProjects && api.editWritingProject && <WritingProjectsDialog
+      api={{ writingProjects: api.writingProjects, editWritingProject: api.editWritingProject,
+        chooseProject: api.chooseProject, stopProject: api.stopProject, onProjectChanged: api.onProjectChanged }}
+      format={format ?? (style ? `style:${style}` : "pandoc")} onClose={menus.closeProjects} />}
     {menus.sessionOpen && sessionReferences && editSessionReferences && sessionBibliography && copySessionBibliography && exportSessionBibliography
       && <SessionReferencesDialog style={style ?? "apa"} onClose={menus.closeSession}
         api={{ sessionReferences, editSessionReferences, sessionBibliography, copySessionBibliography, exportSessionBibliography }} />}

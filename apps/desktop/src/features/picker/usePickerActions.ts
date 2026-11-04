@@ -89,7 +89,9 @@ export function usePickerActions({
     ? (selected.has(idKey(highlighted.id)) ? keyText.removeFromCitation : keyText.addToCitation) : null;
   const escapeAction = nearest === "sheet" || nearest === "panel" || nearest === "chooser" ? keyText.close : nearest === "menu" ? keyText.closeMenu
     : nearest === "search" ? keyText.clearSearch : keyText.hide;
-  const lastCitation = showCitations && state.view?.remembersLast && destination.appId ? state.lastCitations.get(destination.appId) : undefined;
+  const rememberedCitation = showCitations && destination.ready && state.view?.remembersLast && destination.appId ? state.lastCitations.get(destination.appId) : undefined;
+  const lastCitation = rememberedCitation && (rememberedCitation.project ?? null) === (destination.writingProject?.id ?? null)
+    && (!destination.writingProject || rememberedCitation.format === format) ? rememberedCitation : undefined;
   /** Change Last Citation acts on the shelf, so nothing stays in its way. */
   const changeLast = () => {
     if (!lastCitation) return;

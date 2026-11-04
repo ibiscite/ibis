@@ -1,0 +1,5 @@
+.ui-text-field { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
+.ui-text-field input { appearance: none; -webkit-appearance: none; box-sizing: border-box; min-width: 0; width: 100%; min-height: var(--control-h); border: var(--border-width) solid var(--separator); border-radius: var(--r-control); padding: var(--space-1) var(--space-2); background: var(--surface-field); color: var(--text); font: inherit; }
+.ui-text-field input:focus-visible { outline: var(--ring-width) solid var(--ring); outline-offset: var(--ring-offset); }
+.ui-text-field[data-disabled] { color: var(--text-disabled); }
+.ui-text-field input:disabled { color: var(--text-disabled); }

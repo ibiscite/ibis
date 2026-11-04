@@ -213,8 +213,8 @@ impl TargetState {
 
 /// Serialize successful policy changes with proof publication and native
 /// posting. Detached workers keep a revocable epoch after taking their proof.
-pub(crate) fn change_destination<T>(
-    app: &AppHandle,
+pub(crate) fn change_destination<T, R: tauri::Runtime>(
+    app: &AppHandle<R>,
     revoke: bool,
     change: impl FnOnce(Option<&Captured>) -> Result<T, String>,
 ) -> Result<T, String> {
