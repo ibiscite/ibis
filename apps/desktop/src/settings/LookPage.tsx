@@ -9,13 +9,8 @@ import { PickerPicture } from "./PickerPicture";
 const ACCENTS: readonly Accent[] = ["system", "ibis"];
 const APPEARANCES: readonly Appearance[] = ["system", "light", "dark"];
 type Feedback = (id: string) => { highlighted: boolean; problem?: string };
-const SIZES = { small: [64, 40], medium: [72, 48], large: [84, 60], custom: [72, 48] } as const;
-function SizePicture({ size }: { size: WindowSize }) {
-  const [width, height] = SIZES[size];
-  return <span className="ui-size-picture" data-custom={size === "custom" || undefined} style={{ width, height }}>
-    {size !== "custom" && <><b data-query /><b /><b data-short /></>}
-  </span>;
-}
+/** Each size's window in CSS pixels (src-tauri sizing.rs); Custom has no set shape, so it shows the default. */
+const WINDOWS = { small: [640, 400], medium: [720, 480], large: [840, 600], custom: [720, 480] } as const;
 export function LookPage({ preferences: p, change, feedback, windowSize, chooseWindowSize }: {
   preferences: PickerPreferences; change: (patch: Partial<PickerPreferences>) => void; feedback: Feedback;
   windowSize: WindowSize | null; chooseWindowSize: (size: WindowSize) => void;
@@ -49,7 +44,7 @@ export function LookPage({ preferences: p, change, feedback, windowSize, chooseW
       <Row bare id="window-size" label={text("look-window-size")} {...feedback("window-size")}>
         <PictureChoice label={text("look-window-size")} value={windowSize ?? "medium"} isDisabled={windowSize === null}
           options={(windowSize === "custom" ? ["small", "medium", "large", "custom"] as const : ["small", "medium", "large"] as const)
-            .map((value) => ({ value, label: text(`look-window-${value}`), picture: <SizePicture size={value} /> }))}
+            .map((value) => ({ value, label: text(`look-window-${value}`), picture: <PickerPicture density={p.density} frame={WINDOWS[value]} /> }))}
           onChange={chooseWindowSize} />
         {windowSize === "custom" && <p className="ui-settings-note">{text("look-window-custom-note")}</p>}
       </Row>

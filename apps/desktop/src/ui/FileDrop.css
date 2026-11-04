@@ -1,2 +1,5 @@
-/* The whole content area is the drop target, including empty space. */
-[data-file-drag] { outline: var(--ring-width) solid var(--accent); outline-offset: calc(-1 * var(--ring-width)); }
+/* The whole content area is the drop target, including empty space. Its ring
+   keeps S from the window's edge and the dividers [C1] and follows the window's
+   corner, concentric at --r-row [C15]: the area takes that corner plus S while a
+   file is over it, and the ring is drawn S inside it. */
+[data-file-drag] { border-radius: calc(var(--r-row) + var(--inset)); outline: var(--ring-width) solid var(--accent); outline-offset: calc(-1 * (var(--inset) + var(--ring-width))); }

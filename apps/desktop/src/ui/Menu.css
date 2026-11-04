@@ -38,8 +38,9 @@
 /* The one section title, as macOS menus write one: small, bold and secondary,
    aligned with the item labels, so it never reads as an item. */
 .menu-heading { padding-block: var(--space-2) var(--space-1); padding-inline: var(--menu-label-start) var(--menu-item-pad); color: var(--text-secondary); font-size: var(--type-label-size); line-height: var(--type-label-line); font-weight: var(--strong); }
-.menu-detail { width: 0; min-width: 100%; margin: 0; padding: var(--space-1) 0 var(--space-2); display: flex; flex-direction: column; gap: var(--space-1); color: var(--text-secondary); font-size: var(--type-label-size); overflow-wrap: break-word; }
-.menu-detail-title { color: var(--text); font-weight: var(--strong); }
+.menu-detail { width: 0; min-width: 100%; margin: 0; padding: var(--space-1) 0 var(--space-2); display: flex; flex-direction: column; gap: var(--space-1); color: var(--text-secondary); font-size: var(--type-label-size); line-height: var(--type-label-line); overflow-wrap: break-word; }
+/* A menu heading: small, bold and secondary like .menu-heading, never an item. */
+.menu-detail-title { font-weight: var(--strong); }
 .menu-item {
   display: flex; flex: none; align-items: center; min-height: var(--menu-item-height); padding-block: var(--space-1); padding-inline: var(--menu-item-pad); gap: var(--menu-item-gap);
   border-radius: var(--menu-item-radius); outline: none; cursor: default; text-align: start;

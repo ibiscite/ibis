@@ -68,7 +68,7 @@ Anything not listed follows Apple. A new departure is added here in the same cha
 
 ### Materials and layers
 
-- **Surfaces** [D4]: `--surface` (window), `--surface-grouped` (grouped content), `--surface-overlay` (every overlay), `--surface-field`; `--raised` only for cards and the segmented thumb. No other surface colours.
+- **Surfaces** [D4]: `--surface` (window), `--surface-grouped` (grouped content), `--surface-overlay` (every overlay), `--surface-field`. Settings cards are grouped content. No other surface colours.
 - **Window glass** [C13]: on macOS one glass sheet for the whole panel (Liquid Glass, popover vibrancy fallback) under a surface veil, so colour shows through but never readable shapes. Never glass on glass or CSS blur posing as the desktop. Elsewhere an opaque surface.
 - **Readable overlays** [C13]: menus, the keys sheet and dialogs use the panel's glass, denser than the window, so content behind reads as soft colour only.
 - **Elevation** [D11]: one overlay shadow for every menu; none on rows, chips or inside an overlay. In dark mode fills and hairlines separate layers first.
