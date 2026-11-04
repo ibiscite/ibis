@@ -8,7 +8,7 @@
 }
 .ui-picture-choice { justify-content: end; }
 .ui-picture-choice-art { display: contents; }
-.ui-picture-choice[data-selected] .ui-picker-picture { outline: var(--ring-width) solid var(--accent); outline-offset: var(--ring-width); }
+.ui-picture-choice[data-selected] .ui-picker-picture { outline: var(--ring-width) solid var(--accent-mark); outline-offset: var(--ring-width); }
 .ui-picture-choice[data-selected] { color: var(--text); font-weight: var(--strong); }
 .ui-picture-choice[data-focus-visible] { outline: var(--ring-width) solid var(--ring); outline-offset: var(--ring-offset); }
 .ui-picture-choice[data-disabled] { color: var(--text-disabled); }

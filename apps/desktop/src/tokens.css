@@ -82,6 +82,8 @@
   --text: CanvasText; --text-secondary: CanvasText; --text-tertiary: CanvasText; --text-disabled: GrayText;
   --separator: GrayText; --stroke-field: transparent;
   --accent: Highlight; --accent-text: var(--accent); --text-on-accent: HighlightText;
+  /* Rings and marks drawn in the accent, with no text on them: they need 3:1, never 4.5:1 under white. */
+  --accent-mark: var(--accent);
   --selected: Highlight; --selected-text: HighlightText; --selected-text-secondary: currentColor;
   --text-placeholder: var(--text-secondary);
   --ring: var(--accent-text);
@@ -168,7 +170,13 @@
 /* As the Mac accent is, a system accent keeps 3:1 on the window: no lighter than
    oklch .62 in light (about 3.6:1 on white), no darker than .6 in dark. */
 @supports (color: light-dark(oklch(from white l c h), black)) {
-  :root[data-system="windows"], :root[data-system="linux"] { --accent: light-dark(oklch(from Highlight min(l, .62) c h), oklch(from Highlight max(l, .6) c h)); }
+  /* Light: darken until the accent clears 3:1 and white on it reads. Dark: only
+     rings and marks are lifted to 3:1; a fill keeps the system accent so white
+     text on it does not drop below 4.5:1. */
+  :root[data-system="windows"], :root[data-system="linux"] {
+    --accent: light-dark(oklch(from Highlight min(l, .62) c h), Highlight);
+    --accent-mark: light-dark(oklch(from Highlight min(l, .62) c h), oklch(from Highlight max(l, .6) c h));
+  }
 }
 :root[data-system="windows"] { --font: "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif; }
 :root[data-system="linux"] { --font: system-ui, "Adwaita Sans", Cantarell, sans-serif; }

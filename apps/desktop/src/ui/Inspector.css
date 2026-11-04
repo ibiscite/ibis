@@ -18,7 +18,8 @@
 .inspector-heading .ui-icon-button { flex: none; margin-inline-end: calc(-1 * var(--space-1)); }
 .inspector-column > p { margin: 0; font-size: var(--type-body-size); line-height: var(--type-body-line); overflow-wrap: break-word; }
 .inspector-column > h3 { margin: 0; font: var(--strong) var(--type-body-size) / var(--type-body-line) var(--font); }
-.inspector-column > hr { width: 100%; margin: 0; border: 0; border-top: var(--border-width) solid var(--separator); }
+/* The column gap is a quarter step; a divider keeps S from the fills beside it [C1]. */
+.inspector-column > hr { width: 100%; margin: calc(var(--inset) - var(--space-1)) 0; border: 0; border-top: var(--border-width) solid var(--separator); }
 /* Quiet rows: the label starts on the column's edge, its hover fill hangs past it. */
 .inspector-action.ui-button[data-variant] { justify-content: space-between; gap: var(--space-4); width: calc(100% + 2 * var(--space-2)); max-width: none; min-height: var(--control-h); margin-inline: calc(-1 * var(--space-2)); padding-inline: var(--space-2); border: 0; border-radius: var(--r-tile); font: var(--type-body-size) / var(--type-body-line) var(--font); text-align: start; }
 .inspector-keys { flex: none; color: var(--text-secondary); }
