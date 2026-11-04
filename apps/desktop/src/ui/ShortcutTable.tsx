@@ -6,11 +6,14 @@ import { SHORTCUT_ACTIONS, SHORTCUT_REGIONS } from "../i18n/settings";
 import { useKeyPulse } from "./Delights";
 import "./ShortcutTable.css";
 
+/** The one order of shortcut groups, in Settings › Shortcuts and the keys sheet alike. */
+export const SHORTCUT_GROUPS = ["system", "search", "citation", "library", "picker", "menu"] as const satisfies readonly KeyBinding["region"][];
+
 /** One cap per combination in a key list; plain secondary text where keys are
  * read, not edited (Settings). Alternatives stay apart either way. */
 export function ShortcutKeys({ binding, isMac, plain = false }: { binding: KeyBinding; isMac: boolean; plain?: boolean }) {
   const { text } = useInterfaceMessages();
-  return <span className="ui-settings-keys">{binding.keys.map((keys, i) => <span className="keys-binding key-caps" key={keys} aria-keyshortcuts={binding.displayLabel ? undefined : ariaKeys(keys, isMac)}>
+  return <span className="ui-settings-keys">{binding.keys.map((keys, i) => <span className="keys-binding key-caps" key={keys} aria-keyshortcuts={binding.displayLabel ? undefined : ariaKeys(keys, isMac) || undefined}>
     {i > 0 && <>{" "}<span>{text("shortcuts-or")}</span>{" "}</>}
     <kbd data-plain={plain || undefined} dir="ltr">{binding.displayLabel ?? keyLabel(keys, isMac)}</kbd>
   </span>)}</span>;

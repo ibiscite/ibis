@@ -27,7 +27,7 @@ test.each(["success", "refusal"])("a found-file request A completing with %s aft
     open_found_library: open,
   });
   render(<App />);
-  pressRow(await screen.findByRole("option", { name: /^Find them on this computer/ }));
+  pressRow(await screen.findByRole("option", { name: /^Find Them on This Computer/ }));
   const file = await screen.findByRole("option", { name: /^Use example\.bib/ });
   pressRow(file);
   pressRow(file);
@@ -88,7 +88,7 @@ test("missing-file Find uses the requested name and cancellation leaves its keyb
   expect(screen.queryByRole("region", { name: "Preview" })).toBeNull();
   expect(within(document.querySelector("footer")!).queryByRole("button", { name: /^Copy/ })).toBeNull();
   fireEvent.keyDown(find, { key: "ArrowDown", code: "ArrowDown" });
-  const another = choiceRow(/^Use another library/);
+  const another = choiceRow(/^Use Another Library/);
   expect(document.activeElement).toBe(another);
   pressRow(another);
   await waitFor(() => expect(document.activeElement).toBe(choiceRow(/^Use Zotero/)));

@@ -76,8 +76,12 @@ export function usePickerSource({ api, pickerSession, libraryState, menus, resul
   const chooseFile = () => runFromMenu("choose", chooseLibrary);
   const missingSource = library?.problem === "missing" && !library.zotero && (!library.has_snapshot || library.stale ||
     library.references === 0 && library.source_is_requested);
+  // While opening Zotero is the fix, ⌘O opens Zotero: the footer's fix and More
+  // then name the same target, and the words always name what ⌘O does.
+  const zoteroFix = Boolean(library?.zotero && (library.error || library.stale) && zoteroWaits(library.problem));
   const openSource = (appOnly = false, reveal = altHeld) => {
     leaveOverlays();
+    appOnly ||= zoteroFix && sourceOpen.source.kind === "zotero";
     if (missingSource && !appOnly) { chooseFile(); return; }
     if (sourceOpen.failure && !sourceOpen.failure.changed && !appOnly) {
       if (sourceOpen.failure.kind === "file" && library?.name) chooseFile();
@@ -86,7 +90,7 @@ export function usePickerSource({ api, pickerSession, libraryState, menus, resul
   };
   const source = sourceOpen.source;
   const sourceLabel = missingSource ? pickerText.findSourceFile(library?.name ?? null) : sourceOpen.failure && !sourceOpen.failure.changed ? sourceOpen.failure.kind === "file" && library?.name ? pickerText.findSourceFile(source.name) : pickerText.chooseLibraryMenu
-    : source.kind === "zotero" ? sourceItem ? pickerText.showInZotero : pickerText.openZotero
+    : source.kind === "zotero" ? sourceItem && !zoteroFix ? pickerText.showInZotero : pickerText.openZotero
     : altHeld ? pickerText.showSourceFolder(isMac) : pickerText.openSource(source.name);
   const sourceAction: SourceActionProps = { label: sourceLabel, keys: keysFor(altHeld && source.kind === "file" ? "revealSource" : "source"), icon: source.icon,
     file: source.kind === "file", busy: sourceOpen.busy, open: () => openSource() };

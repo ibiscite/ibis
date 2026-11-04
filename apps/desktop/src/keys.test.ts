@@ -5,7 +5,31 @@ import pickerCommands from "./testing/picker-command-shortcuts.json";
 
 test("Enter's description follows the footer in both delivery modes", () => {
   expect(keysFor("copy")).toBe("Enter");
-  expect(keyText.actions.copy).toBe("Paste the citation");
+  expect(keyText.actions.copy).toBe("Paste or copy the citation");
+});
+
+test("Windows and Linux write modifiers Ctrl, Alt, Shift, as their menus do; macOS ⌃⌥⇧⌘", () => {
+  expect(keyLabel("Alt+CmdOrCtrl+O", false)).toBe("Ctrl+Alt+O");
+  expect(keyLabel("Shift+Alt+CmdOrCtrl+O", false)).toBe("Ctrl+Alt+Shift+O");
+  expect(keyLabel("Alt+CmdOrCtrl+O", true)).toBe("⌥⌘O");
+  expect(shortcutLabel("Shift+Control+Y", false)).toBe("Ctrl+Shift+Y");
+  expect(shortcutLabel("Shift+Alt+Super+Y", false)).toBe("Alt+Shift+Super+Y");
+});
+
+test("the keys Ibis handles but once left out are in the table, with their system's words", () => {
+  const listed = (action: string) => KEY_TABLE.find((binding) => binding.action === action)?.keys;
+  expect(listed("add")).toEqual(["Shift+Enter", "CmdOrCtrl+Click"]);
+  expect(listed("undo")).toEqual(["CmdOrCtrl+Z"]);
+  expect(listed("textSize")?.map((keys) => keyLabel(keys, true))).toEqual(["⌘+", "⌘−"]);
+  expect(listed("textSize")?.map((keys) => keyLabel(keys, false))).toEqual(["Ctrl+Plus", "Ctrl+Minus"]);
+  expect(listed("citationMove")?.map((keys) => keyLabel(keys, true))).toEqual(["←", "→"]);
+  expect(listed("citationRemove")?.map((keys) => keyLabel(keys, true))).toEqual(["⌫", "⌦"]);
+  expect(keyLabel("CmdOrCtrl+Click", true)).toBe("⌘-click");
+  expect(keyLabel("CmdOrCtrl+Click", false)).toBe("Ctrl+click");
+  // A click is no key, so assistive technology is not told it is one.
+  expect(ariaKeys("CmdOrCtrl+Click", true)).toBe("");
+  // Peek (⌘Y) is not handled yet, so it is not listed.
+  expect(KEY_TABLE.flatMap((binding) => binding.keys)).not.toContain("CmdOrCtrl+Y");
 });
 
 test("key labels follow the platform", () => {
@@ -32,7 +56,8 @@ test("every key in the table has words and a region, and none is listed twice", 
 });
 
 test("native shortcut refusals cover every modified picker command", () => {
-  const commands = KEY_TABLE.flatMap((binding) => binding.keys.filter((keys) => keys.includes("CmdOrCtrl")));
+  // A click is no shortcut, so the recorder never sees one.
+  const commands = KEY_TABLE.flatMap((binding) => binding.keys.filter((keys) => keys.includes("CmdOrCtrl") && !keys.endsWith("+Click")));
   // isKeysShortcut also accepts the shifted punctuation used to type ?.
   expect(new Set(pickerCommands)).toEqual(new Set([...commands, "CmdOrCtrl+Shift+/"]));
 });
@@ -132,10 +157,10 @@ test("the default shortcut follows Y across Latin layouts and falls back only wi
   expect(matchesAccelerator(press("r", { code: "KeyR", ctrlKey: true, metaKey: true }), DEFAULT_PICKER_SHORTCUT, true)).toBe(false);
 });
 
-test("macOS displays modifiers in native order without changing other platforms", () => {
+test("every system displays modifiers in its menus' order; matching keeps the binding", () => {
   expect(keyLabel("CmdOrCtrl+Shift+Alt+C", true)).toBe("⌥⇧⌘C");
   expect(shortcutLabel("super+shift+ctrl+option+KeyC", true)).toBe("⌃⌥⇧⌘C");
-  expect(shortcutLabel("super+shift+ctrl+option+KeyC", false)).toBe("Super+Shift+Ctrl+Alt+C");
+  expect(shortcutLabel("super+shift+ctrl+option+KeyC", false)).toBe("Ctrl+Alt+Shift+Super+C");
   expect(keyLabel("CmdOrCtrl++", true)).toBe("⌘+");
   expect(ariaKeys("CmdOrCtrl+Shift+P", true)).toBe("Meta+Shift+P");
 });

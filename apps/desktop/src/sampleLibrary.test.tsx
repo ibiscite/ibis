@@ -56,14 +56,14 @@ function setup(density: Density = "comfortable", formatted = true) {
 }
 
 async function chooseSamples() {
-  press(await screen.findByRole("option", { name: /^Try sample references/ }));
-  await screen.findByRole("option", { name: /^Use your own library/ });
+  press(await screen.findByRole("option", { name: /^Try Sample References/ }));
+  await screen.findByRole("option", { name: /^Use Your Own Library/ });
 }
 
 test.each([true, false])("first citation: choose samples, search, Enter and receipt (formatted: %s)", async (formatted) => {
   const { calls, copied, notice } = setup("comfortable", formatted);
   const text = formatted ? apa : sampleKeys;
-  await screen.findByRole("option", { name: /^Try sample references/ });
+  await screen.findByRole("option", { name: /^Try Sample References/ });
   expect(calls).not.toContain("use_sample_library");
   await chooseSamples();
   expect(screen.getByText("Search for “lantern”, choose the lantern gardens reference, then press Enter.")).toBeTruthy();
@@ -97,7 +97,7 @@ test.each<Density>(["compact", "comfortable"])("samples stay labelled in %s rows
   expect(row.querySelector(".result-title")?.textContent).toBe(`Sample · ${title}`);
 });
 
-test("Use your own library returns to normal choices, clears sample selection, and a cancelled file choice stays there", async () => {
+test("Use Your Own Library returns to normal choices, clears sample selection, and a cancelled file choice stays there", async () => {
   const { calls } = setup();
   await chooseSamples();
   const input = screen.getByRole("combobox");
@@ -105,7 +105,7 @@ test("Use your own library returns to normal choices, clears sample selection, a
   await screen.findByRole("option", { name: new RegExp(title) });
   fireEvent.keyDown(input, { key: "Enter", shiftKey: true });
   await waitFor(() => expect(document.querySelector("main")?.dataset.selection).toBe("true"));
-  press(screen.getByRole("option", { name: /^Use your own library/ }));
+  press(screen.getByRole("option", { name: /^Use Your Own Library/ }));
   const file = await screen.findByRole("option", { name: /^Choose a Library File…/ });
   expect(screen.queryByRole("option", { name: new RegExp(title) })).toBeNull();
   expect(screen.getByRole("option", { name: /^Use Zotero/ })).toBeTruthy();
@@ -123,7 +123,7 @@ test.each(["none", "More", "keys", "keys from More"] as const)("welcome Escape d
   const input = screen.getByRole<HTMLInputElement>("combobox");
   fireEvent.change(input, { target: { value: "lantern" } });
   await screen.findByRole("option", { name: new RegExp(title) });
-  press(screen.getByRole("option", { name: /^Use your own library/ }));
+  press(screen.getByRole("option", { name: /^Use Your Own Library/ }));
   const zotero = await screen.findByRole("option", { name: /^Use Zotero/ });
   act(() => zotero.focus());
   expect(input.value).toBe("lantern");
@@ -157,7 +157,7 @@ test("welcome footer Escape offers Hide Ibis even while a sample query is retain
   await chooseSamples();
   fireEvent.change(screen.getByRole("combobox"), { target: { value: "lantern" } });
   await screen.findByRole("option", { name: new RegExp(title) });
-  press(screen.getByRole("option", { name: /^Use your own library/ }));
+  press(screen.getByRole("option", { name: /^Use Your Own Library/ }));
   const zotero = await screen.findByRole("option", { name: /^Use Zotero/ });
   fireEvent.keyDown(zotero, { key: "Alt", altKey: true });
   const footer = within(document.querySelector("footer")!);
@@ -177,7 +177,7 @@ test("a real source replaces samples even when selected sample references were o
   await act(() => switchTo("real"));
   const row = await screen.findByRole("option", { name: /My invented reference/ });
   expect(row.textContent).not.toContain("Sample");
-  expect(screen.queryByRole("option", { name: /^Use your own library/ })).toBeNull();
+  expect(screen.queryByRole("option", { name: /^Use Your Own Library/ })).toBeNull();
   expect(document.querySelector("main")?.dataset.selection).toBeUndefined();
   await waitFor(() => expect(document.querySelector(".shelf")?.textContent).toContain("(Fen, 2023)"));
   fireEvent.keyDown(input, { key: "Enter" });
@@ -196,7 +196,7 @@ test("leaving samples cancels an Enter waiting for its citation preview", async 
   await screen.findByRole("option", { name: new RegExp(title) });
   await waitFor(() => expect(preview).toHaveBeenCalled());
   fireEvent.keyDown(input, { key: "Enter" });
-  press(screen.getByRole("option", { name: /^Use your own library/ }));
+  press(screen.getByRole("option", { name: /^Use Your Own Library/ }));
   await screen.findByRole("option", { name: /^Use Zotero/ });
   await act(async () => { finish(receipt(apa)); });
   expect(copied).not.toHaveBeenCalled();
@@ -212,7 +212,7 @@ test.each(["setup", "real"] as const)("sample copy notices leave with the sample
   fireEvent.keyDown(input, { key: "Enter" });
   expect(await screen.findByText("Copied", { selector: ".shelf-copied, .copy-receipt strong" })).toBeTruthy();
   if (next === "real") await act(() => switchTo("real"));
-  else press(screen.getByRole("option", { name: /^Use your own library/ }));
+  else press(screen.getByRole("option", { name: /^Use Your Own Library/ }));
   await waitFor(() => expect(document.querySelector(".copy-notice")).toBeNull());
 });
 
@@ -222,7 +222,7 @@ test("a sample-command failure reports one visible error and keeps setup availab
     use_sample_library: () => { throw new Error("invented failure"); },
   });
   render(<App />);
-  press(await screen.findByRole("option", { name: /^Try sample references/ }));
+  press(await screen.findByRole("option", { name: /^Try Sample References/ }));
   expect(await screen.findByRole("alert")).toHaveProperty("textContent", "Ibis could not change the sample library. Try again.");
   expect(screen.getByRole("option", { name: /^Use Zotero/ })).toBeTruthy();
 });

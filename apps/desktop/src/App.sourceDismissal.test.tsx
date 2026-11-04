@@ -170,7 +170,7 @@ test("Choose Library uses the welcome shortcut guidance and Escape restores Sear
   expect(document.querySelector<HTMLElement>(".search-bar")!.hidden).toBe(true);
   press("Escape");
   expect(document.querySelector(".library-welcome")).toBeNull();
-  // Explicit, so WebKit can't keep the header hidden after the chooser leaves.
+  // Explicit, so WebKit can’t keep the header hidden after the chooser leaves.
   expect(document.querySelector<HTMLElement>(".search-bar")!.hidden).toBe(false);
   expect(document.activeElement).toBe(search());
 });
@@ -207,7 +207,7 @@ test("a stale found-file completion cannot clear the explicit chooser's newer re
   await waitFor(() => expect(screen.getByRole("status", { name: "Library status" }).textContent).toContain("thesis.bib"));
   act(() => search().focus());
   chooseSources();
-  fireEvent.click(await screen.findByRole("option", { name: /^Find them on this computer/ }));
+  fireEvent.click(await screen.findByRole("option", { name: /^Find Them on This Computer/ }));
   const file = await screen.findByRole("option", { name: /^Use example\.bib/ });
   fireEvent.click(file);
   fireEvent.click(file);

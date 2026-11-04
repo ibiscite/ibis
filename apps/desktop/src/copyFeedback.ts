@@ -80,11 +80,8 @@ export const readNotice = (message: NoticeMessage): Notice => ({ ...message, del
 /** The notice's heading: pasted into an app, or copied and why it was not pasted. */
 export function noticeTitle({ delivered }: Pick<Notice, "delivered">, platform = currentPlatform()): string {
   if (delivered.outcome === "pasted") return copiedNoticeText.pasted(delivered.app);
-  if (delivered.reason) {
-    const text = copiedNoticeText.reasons[delivered.reason]!;
-    return platform === "macos" ? text : text.replace("⌘V", "Ctrl+V");
-  }
-  return copiedNoticeText.hint(platform);
+  const text = delivered.reason ? copiedNoticeText.reasons[delivered.reason]! : copiedNoticeText.hint;
+  return platform === "macos" ? text : text.replaceAll("⌘V", "Ctrl+V");
 }
 
 /**

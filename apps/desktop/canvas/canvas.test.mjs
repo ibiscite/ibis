@@ -65,16 +65,16 @@ test("the built scenario list renders, switches and reopens without Tauri or net
         expect(host.textContent).toContain("No references in invented.bib");
         if (scenario === "file-drag") expect(host.querySelector(".picker-content[data-file-drag]")).not.toBeNull();
       }
-      else if (scenario === "error") expect(host.textContent).toContain("Can't open invented.bib");
+      else if (scenario === "error") expect(host.textContent).toContain("Can’t open invented.bib");
       else if (scenario === "loading") expect(host.textContent).toContain("Opening invented.bib");
       else if (scenario === "tokens") for (const token of ["--accent", "--space-8", "--r-card", "--r-key"]) expect(host.textContent).toContain(token);
       else if (scenario === "shortcuts") expect(window.document.querySelector('[role="dialog"]')).not.toBeNull();
       else if (scenario === "parts") for (const part of ["Button: primary", "Settings rows", "Marks and icons"]) expect(host.textContent).toContain(part);
       else if (scenario === "empty-search") expect(host.textContent).toContain("Type to find");
       else if (scenario === "no-matches") expect(host.textContent).toContain("No matching references");
-      else if (scenario === "missing") expect(host.textContent).toContain("Can't find invented.bib");
-      else if (scenario === "zotero-closed") expect(host.textContent).toContain("Ibis needs Zotero open");
-      else if (scenario === "unreadable") expect(host.textContent).toContain("Can't read invented.bib");
+      else if (scenario === "missing") expect(host.textContent).toContain("Can’t find invented.bib");
+      else if (scenario === "zotero-closed") expect(host.textContent).toContain("Open Zotero to read your library");
+      else if (scenario === "unreadable") expect(host.textContent).toContain("Can’t read invented.bib");
       else if (scenario === "long-titles") expect(host.textContent).toContain("An invented reference whose title");
       else {
         expect(host.textContent).toContain("Invented reference 0");

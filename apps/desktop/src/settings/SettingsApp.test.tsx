@@ -79,7 +79,13 @@ test.each(["success", "failure"])("localized About keeps newer updates after an 
   await act(async () => { if (outcome === "success") old.resolve(false); else old.reject(); });
   expect(automatic).toHaveProperty("checked", true);
   expect(screen.getByText(pseudo.text("about-version", { name: "Ibis Nightly", version: "0.3.0" }))).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", { name: pseudo.text("about-check") }));
+  // One control per row: the switch alone, then Check Now in a row of its own.
+  const rowOf = (node: Element) => node.closest(".ui-settings-row")!;
+  const check = screen.getByRole("button", { name: pseudo.text("about-check") });
+  expect(rowOf(check)).not.toBe(rowOf(automatic));
+  expect(rowOf(automatic).querySelectorAll("button, [role=switch], input")).toHaveLength(1);
+  expect(rowOf(check).textContent).toContain(pseudo.text("about-check-label"));
+  fireEvent.click(check);
   fireEvent.click(automatic);
   expect(api.setUpdateChecks).toHaveBeenCalledWith(false);
   await act(async () => state.closes[0]!());
@@ -224,18 +230,18 @@ test("localized General rejects delayed A after B without changing settings or l
   expect(state.patches).toEqual([]);
 });
 
-test("Show in Menu Bar is a Mac choice that saves as a patch and goes back on failure", async () => {
+test("Show in menu bar is a Mac choice that saves as a patch and goes back on failure", async () => {
   document.documentElement.dataset.system = "macos";
   const { api, state, commit } = fakeApi({ granted: true });
   const save = vi.spyOn(api, "setPickerPreferences").mockRejectedValueOnce(new Error("refused")).mockImplementation(commit);
   const mounted = render(<SettingsApp api={api} initialPage="general" />);
-  const choice = await screen.findByRole("switch", { name: "Show in Menu Bar" });
+  const choice = await screen.findByRole("switch", { name: "Show in menu bar" });
   await waitFor(() => expect((choice as HTMLInputElement).disabled).toBe(false));
   expect((choice as HTMLInputElement).checked).toBe(true);
   fireEvent.click(choice);
   await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
   await waitFor(() => expect((choice as HTMLInputElement).checked).toBe(true));
-  expect((await screen.findByRole("alert")).closest(".ui-settings-row")?.textContent).toContain("Show in Menu Bar");
+  expect((await screen.findByRole("alert")).closest(".ui-settings-row")?.textContent).toContain("Show in menu bar");
   fireEvent.click(choice);
   await waitFor(() => expect(state.patches).toEqual([{ menu_bar: false }]));
   expect((choice as HTMLInputElement).checked).toBe(false);
@@ -244,12 +250,13 @@ test("Show in Menu Bar is a Mac choice that saves as a patch and goes back on fa
   try {
     render(<SettingsApp api={api} initialPage="general" />);
     await screen.findByText("Start on Login");
-    expect(screen.queryByRole("switch", { name: "Show in Menu Bar" })).toBeNull();
+    expect(screen.queryByRole("switch", { name: "Show in menu bar" })).toBeNull();
   } finally { delete document.documentElement.dataset.system; }
 });
 
 test.each([
-  ["pastes", { pastes: true, granted: true }, { paste: true }, "Paste the citation"],
+  // Where Enter pastes depends on the app, which Settings cannot know.
+  ["pastes", { pastes: true, granted: true }, { paste: true }, "Paste or copy the citation"],
   ["still needs the paste permission", { pastes: true, needed: true, granted: false }, { paste: true }, "Copy the citation"],
   ["paste switched off", { pastes: true, granted: true }, { paste: false }, "Copy the citation"],
   ["a system that copies", { pastes: false, needed: false }, { paste: true }, "Copy the citation"],
@@ -257,7 +264,7 @@ test.each([
   const { api } = fakeApi(permission, preferences);
   render(<SettingsApp api={api} initialPage="shortcuts" />);
   expect(await screen.findByText(words)).toBeTruthy();
-  expect(screen.queryByText(words === "Copy the citation" ? "Paste the citation" : "Copy the citation")).toBeNull();
+  expect(screen.queryByText(words === "Copy the citation" ? "Paste or copy the citation" : "Copy the citation")).toBeNull();
 });
 
 test("Recent citations is on by default, saves off as a patch and goes back on failure", async () => {
@@ -372,7 +379,7 @@ test.each([1, 2])("Wayland portal v%s shows the desktop trigger, never a recorde
   expect(result.violations).toEqual([]);
 });
 
-test.each(["Strg + Umschalt + Y", "Alt + F9", ""])("General preserves the desktop's trigger and guidance (%j)", async (trigger) => {
+test.each(["Strg + Umschalt + Y", "Alt + F9", ""])("General preserves the desktop’s trigger and guidance (%j)", async (trigger) => {
   const { api, state } = fakeApi();
   const guidance = "Your desktop manages this shortcut. Bind ibis toggle in Keyboard Settings.";
   state.shortcut = { shortcut: trigger, registered: !!trigger, error: null, desktop: { configurable: true, guidance } };
@@ -680,7 +687,7 @@ test("a failed guide return keeps recovery instructions in Settings", async () =
   await screen.findByRole("heading", { name: "Allow Ibis to paste for you" });
   state.permission = { ...state.permission, granted: true };
   fireEvent.focus(window);
-  expect((await screen.findByRole("alert")).textContent).toBe("Couldn't return to your citation. Open Ibis with your shortcut to continue.");
+  expect((await screen.findByRole("alert")).textContent).toBe("Couldn’t return to your citation. Open Ibis with your shortcut to continue.");
 });
 
 test("a permission already given shows one quiet line, and turning pasting off hides the guide", async () => {
@@ -1463,7 +1470,7 @@ test("a failed update read retains the saved switch and explains the uncertainty
 
 
 test.each([
-  ["no remembered format", "Default format", "Citations", "default-format"],
+  ["no remembered format.", "Default format", "Citations", "default-format"],
   ["Follow the system", "Appearance", "Look", "appearance"],
 ])("search includes the displayed description %s and reveals its row", async (query, label, page, id) => {
   const { api } = fakeApi({ granted: true });
@@ -1571,10 +1578,10 @@ test("a successful manual update check cannot turn an unreadable update setting 
   const check = vi.spyOn(api, "checkForUpdates").mockResolvedValue(undefined as never);
   render(<SettingsApp api={api} initialPage="about" />);
   await screen.findByText("Ibis could not read your settings; reopen Settings to try again.");
-  const button = screen.getByRole("button", { name: "Check now" });
+  const button = screen.getByRole("button", { name: "Check Now" });
   await act(async () => fireEvent.click(button));
   expect(check).toHaveBeenCalledOnce();
-  expect(screen.getByRole("button", { name: "Check now" })).toBe(button);
+  expect(screen.getByRole("button", { name: "Check Now" })).toBe(button);
   expect(screen.getByRole("switch", { name: "Check for updates automatically" })).toHaveProperty("disabled", true);
   expect(screen.getByText("Ibis could not read your settings; reopen Settings to try again.")).toBeTruthy();
   expect(screen.queryByText("This build does not update itself.")).toBeNull();
@@ -1599,7 +1606,7 @@ test("Check now says it is checking until the same check ends, across pages", as
   let finish!: () => void;
   const check = vi.spyOn(api, "checkForUpdates").mockImplementation(() => new Promise<never>((resolve) => { finish = resolve as () => void; }));
   render(<SettingsApp api={api} initialPage="about" />);
-  fireEvent.click(await screen.findByRole("button", { name: "Check now" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Check Now" }));
   const busy = await screen.findByRole("button", { name: "Checking…" });
   expect(busy.getAttribute("aria-disabled")).toBe("true");
   expect(screen.getAllByRole("status").some((status) => status.textContent === "Checking…")).toBe(true);
@@ -1609,7 +1616,7 @@ test("Check now says it is checking until the same check ends, across pages", as
   fireEvent.click(await screen.findByRole("option", { name: "About Ibis" }));
   expect(await screen.findByRole("button", { name: "Checking…" })).toBeTruthy();
   await act(async () => { finish(); });
-  expect(await screen.findByRole("button", { name: "Check now" })).toBeTruthy();
+  expect(await screen.findByRole("button", { name: "Check Now" })).toBeTruthy();
 });
 
 test.each([
@@ -1619,8 +1626,8 @@ test.each([
   const { api } = fakeApi();
   vi.spyOn(api, "checkForUpdates").mockResolvedValue(result);
   render(<SettingsApp api={api} initialPage="about" />);
-  fireEvent.click(await screen.findByRole("button", { name: "Check now" }));
-  await screen.findByRole("button", { name: "Check now" });
+  fireEvent.click(await screen.findByRole("button", { name: "Check Now" }));
+  await screen.findByRole("button", { name: "Check Now" });
   expect(await screen.findByText(said, { selector: ":not(.visually-hidden)" })).toBeTruthy();
 });
 
@@ -1643,7 +1650,7 @@ test("a check that ends on another page says its result back on About", async ()
   let finish!: (result: "newest") => void;
   vi.spyOn(api, "checkForUpdates").mockImplementation(() => new Promise<never>((resolve) => { finish = resolve as never; }));
   render(<SettingsApp api={api} initialPage="about" />);
-  fireEvent.click(await screen.findByRole("button", { name: "Check now" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Check Now" }));
   fireEvent.click(await screen.findByRole("option", { name: "General" }));
   await act(async () => { finish("newest"); });
   fireEvent.click(await screen.findByRole("option", { name: "About Ibis" }));
@@ -1669,11 +1676,11 @@ test("manual update-check failure and retry leave the known automatic setting in
   vi.spyOn(api, "checkForUpdates").mockRejectedValueOnce(new Error("invented manual check failure")).mockResolvedValue(undefined as never);
   render(<SettingsApp api={api} initialPage="about" />);
   const automatic = await screen.findByRole("switch", { name: "Check for updates automatically" });
-  fireEvent.click(screen.getByRole("button", { name: "Check now" }));
+  fireEvent.click(screen.getByRole("button", { name: "Check Now" }));
   await screen.findByText("Ibis could not check for updates. Try again.");
   expect(screen.queryByText("Ibis could not read your settings; reopen Settings to try again.")).toBeNull();
   expect(automatic).toHaveProperty("disabled", false);
-  await act(async () => fireEvent.click(screen.getByRole("button", { name: "Check now" })));
+  await act(async () => fireEvent.click(screen.getByRole("button", { name: "Check Now" })));
   expect(screen.queryByText("Ibis could not check for updates. Try again.")).toBeNull();
   expect(screen.getByRole("switch", { name: "Check for updates automatically" })).toBe(automatic);
 });
@@ -1686,7 +1693,7 @@ test.each(["version copy", "manual update check"])("About keeps %s failure when 
   Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
   vi.spyOn(api, "checkForUpdates").mockRejectedValueOnce(new Error("invented update failure")).mockResolvedValue(undefined as never);
   const failureText = action === "version copy" ? "The version could not be copied." : "Ibis could not check for updates. Try again.";
-  const buttonName = action === "version copy" ? "Version 0.3.0" : "Check now";
+  const buttonName = action === "version copy" ? "Version 0.3.0" : "Check Now";
   render(<SettingsApp api={api} initialPage="about" />);
   fireEvent.click(await screen.findByRole("button", { name: buttonName }));
   await screen.findByText(failureText);

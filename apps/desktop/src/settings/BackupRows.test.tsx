@@ -81,11 +81,11 @@ test("cancelling forgets the preview, and a backup with no changes offers nothin
 });
 
 test.each([
-  ["not-downloaded", /isn't downloaded to this computer yet/],
-  ["settings-file", /Ibis's own settings file, not a backup/],
+  ["not-downloaded", /isn’t downloaded to this computer yet/],
+  ["settings-file", /Ibis’s own settings file, not a backup/],
   ["newer", /newer version of Ibis/],
   ["invalid", /backup is damaged\. Nothing changed/],
-  [new Error("private synthetic detail"), /couldn't save\. Nothing changed/],
+  [new Error("private synthetic detail"), /couldn’t save\. Nothing changed/],
 ])("a refused backup (%s) is explained and nothing is restored", async (refusal, words) => {
   const api = fakeApi({ chooseSettingsBackup: vi.fn().mockRejectedValueOnce(refusal) });
   render(<BackupRows api={api} />);

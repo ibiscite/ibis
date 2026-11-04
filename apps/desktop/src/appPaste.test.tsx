@@ -40,7 +40,7 @@ test("the first unknown-app Enter asks in the format chooser; approval needs fre
   await enter();
   expect(screen.getByRole("menuitemradio", { name: "APA · text" })).toBeTruthy();
   expect(h.copy.calls).toHaveLength(0);
-  await answer("Paste into Example Writer from now on");
+  await answer("Paste into Example Writer from Now On");
   expect(h.copy.calls).toHaveLength(0);
   expect(h.document.text).toBe("Draft: [citation].");
   expect(screen.queryByRole("menu")).toBeNull();
@@ -60,14 +60,14 @@ test.each(["first Enter", "recognised app's format chooser"])("Copy only through
   const h = await open((h) => { h.target.verified = route !== "first Enter"; });
   if (route === "first Enter") await enter();
   else await act(async () => { fireEvent.click(screen.getByRole("button", { name: /^Copy as / })); });
-  expect(screen.getByRole("menuitem", { name: "Paste into Example Writer from now on" })).toBeTruthy();
-  await answer("Copy only");
+  expect(screen.getByRole("menuitem", { name: "Paste into Example Writer from Now On" })).toBeTruthy();
+  await answer("Copy Only");
   expect(h.copy.calls).toHaveLength(0);
   await enter();
   await finish(h);
   expect(h.clipboard.text).toBe("[@a]");
   expect(h.document.pastes).toHaveLength(0);
-  expect(receipt(h)).toBe("Copied. Copy only is set for this app");
+  expect(receipt(h)).toBe("Copied. Copy Only is set for this app. Press ⌘V to paste.");
   await reopen(h);
   await enter();
   expect(screen.queryByRole("menu")).toBeNull();
@@ -85,7 +85,7 @@ test("saving Copy only while a paste-approved clipboard response is delayed cann
   expect(h.clipboard.text).toBe("[@a]");
   expect(h.visible).toBe(true);
   await act(async () => { fireEvent.click(screen.getByRole("button", { name: /^More/ })); });
-  await answer("Copy only in Example Writer");
+  await answer("Copy Only in Example Writer");
   await act(async () => { await vi.advanceTimersByTimeAsync(200); });
   await enter();
   h.holdCopyReplies = false;
@@ -98,7 +98,7 @@ test("saving Copy only while a paste-approved clipboard response is delayed cann
   expect(h.document.text).toBe("Draft: [citation].");
   expect(h.document.pastes).toHaveLength(0);
   expect(h.copy.calls).toHaveLength(2);
-  expect(receipt(h)).toBe("Copied. Copy only is set for this app");
+  expect(receipt(h)).toBe("Copied. Copy Only is set for this app. Press ⌘V to paste.");
 });
 
 test("revoking paste after the write still confirms Copied when its delayed response arrives without another Enter", async () => {
@@ -110,7 +110,7 @@ test("revoking paste after the write still confirms Copied when its delayed resp
   await act(async () => { h.copy.pending[0]!.complete(); });
   expect(h.clipboard.text).toBe("[@a]");
   await act(async () => { fireEvent.click(screen.getByRole("button", { name: /^More/ })); });
-  await answer("Copy only in Example Writer");
+  await answer("Copy Only in Example Writer");
   await act(async () => { h.copyReplies.pending[0]!.complete(); });
   expect(screen.getAllByRole("status").some((status) => status.textContent?.includes("Copied"))).toBe(true);
   expect(within(screen.getByRole("region", { name: "Preview" })).getByRole("status", { name: "Copied" })).toBeTruthy();
@@ -125,13 +125,13 @@ test("revoking paste after the write still confirms Copied when its delayed resp
 test("More can keep a recognised writing app to copying, with a fresh Enter", async () => {
   const h = await open((h) => { h.target.verified = true; });
   await act(async () => { fireEvent.click(screen.getByRole("button", { name: /^More/ })); });
-  await answer("Copy only in Example Writer");
+  await answer("Copy Only in Example Writer");
   await act(async () => { await vi.advanceTimersByTimeAsync(200); });
   expect(h.copy.calls).toHaveLength(0);
   await enter();
   await finish(h);
   expect(h.document.pastes).toHaveLength(0);
-  expect(receipt(h)).toBe("Copied. Copy only is set for this app");
+  expect(receipt(h)).toBe("Copied. Copy Only is set for this app. Press ⌘V to paste.");
 });
 
 test("an unknown app without a proven target only copies and never asks for approval", async () => {
@@ -141,7 +141,7 @@ test("an unknown app without a proven target only copies and never asks for appr
   await finish(h);
   expect(h.document.pastes).toHaveLength(0);
   expect(h.appChoices.size).toBe(0);
-  expect(receipt(h)).toBe("Copied. Automatic paste is not approved for this app");
+  expect(receipt(h)).toBe("Copied. Automatic paste is not approved for this app. Press ⌘V to paste.");
 });
 
 test("dismissing the unknown-app question or picking a format never grants paste", async () => {
@@ -153,7 +153,7 @@ test("dismissing the unknown-app question or picking a format never grants paste
   await act(async () => { fireEvent.click(screen.getByRole("menuitemradio", { name: "Pandoc key" })); });
   expect(h.copy.calls).toHaveLength(0);
   await enter();
-  expect(screen.getByRole("menuitem", { name: "Copy only" })).toBeTruthy();
+  expect(screen.getByRole("menuitem", { name: "Copy Only" })).toBeTruthy();
   expect(h.document.pastes).toHaveLength(0);
 });
 
@@ -165,7 +165,7 @@ test("a format pick and paste approval are saved apart, and each keeps the other
   expect(h.copy.calls).toHaveLength(0);
   expect(h.appChoices.get("example.writer")).toEqual({ output: { key: "typst" }, paste: null });
   await enter();
-  await answer("Paste into Example Writer from now on");
+  await answer("Paste into Example Writer from Now On");
   expect(h.appChoices.get("example.writer")).toEqual({ output: { key: "typst" }, paste: "paste" });
   expect(h.copy.calls).toHaveLength(0);
   await enter();
@@ -187,18 +187,18 @@ test.each(["terminal", "remote-desktop", "virtual-machine", "nonstandard-shortcu
 test("a failed approval save keeps asking and cannot release the held Enter", async () => {
   const h = await open((h) => { h.holdAppSaves = true; });
   await enter();
-  await answer("Paste into Example Writer from now on");
+  await answer("Paste into Example Writer from Now On");
   await act(async () => { h.appSaves.pending[0]!.fail(new Error("invented write failure")); });
   expect(h.copy.calls).toHaveLength(0);
   await enter();
-  expect(screen.getByRole("menuitem", { name: "Paste into Example Writer from now on" })).toBeTruthy();
+  expect(screen.getByRole("menuitem", { name: "Paste into Example Writer from Now On" })).toBeTruthy();
   expect(h.document.pastes).toHaveLength(0);
 });
 
 test("a delayed approval cannot replay its held citation after reopening in another app", async () => {
   const h = await open((h) => { h.holdAppSaves = true; });
   await enter();
-  await answer("Paste into Example Writer from now on");
+  await answer("Paste into Example Writer from Now On");
   h.document.app = "Other Writer";
   h.target.appId = "example.other";
   h.target.verified = true;
@@ -220,7 +220,7 @@ test("a delayed approval cannot replay its held citation after reopening in anot
 test("close and reopen while saving approval never replays Enter", async () => {
   const h = await open((h) => { h.holdAppSaves = true; });
   await enter();
-  await answer("Paste into Example Writer from now on");
+  await answer("Paste into Example Writer from Now On");
   await reopen(h);
   await act(async () => { h.appSaves.pending[0]!.complete(); });
   expect(h.copy.calls).toHaveLength(0);

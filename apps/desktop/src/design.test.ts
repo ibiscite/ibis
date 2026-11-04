@@ -203,10 +203,48 @@ test("the ladders hold the values measured from AppKit on macOS 27.2", () => {
     "--separator: light-dark(rgb(0 0 0 / 10%), rgb(255 255 255 / 12%))", "--surface: light-dark(#ffffff, #1e1e1e)", "--selected: light-dark(#0064e1, #0059d1)"]) expect(tokens).toContain(value);
 });
 
-test("menus and buttons use title case, as the Mac does", () => {
-  const messages = read("messages.ts");
-  for (const label of ["Clear Search", "Keep Window Open", "Keyboard Shortcuts", "Remove from Citation", "Search All Zotero Libraries", "Choose Library…", "Reload Library"]) expect(messages).toContain(`"${label}"`);
-  for (const label of ["Clear search", "Keep window open", "Keyboard shortcuts", "Remove from citation", "Reload library", "Choose library…"]) expect(messages).not.toContain(`"${label}"`);
+test("menus, buttons and choice rows use title case, as the Mac does", () => {
+  const messages = read("messages.ts"), ftl = read("i18n/en-US.ftl");
+  for (const label of ["Clear Search", "Keep Window Open", "Keyboard Shortcuts", "Remove from Citation", "Search All Zotero Libraries", "Choose Library…", "Reload Library",
+    "Find Them on This Computer", "Try Sample References", "Try Again", "Use Another Library", "Use Your Own Library", "Look Again", "Choose a Found Library",
+    "Add to Citation", "Close Menu", "Copy Only"]) expect(messages).toContain(`"${label}"`);
+  for (const label of ["Clear search", "Keep window open", "Keyboard shortcuts", "Remove from citation", "Reload library", "Choose library…",
+    "Find them on this computer", "Try sample references", "Try again", "Use another library", "Add to citation", "Close menu", "Copy only"]) expect(messages).not.toContain(`"${label}"`);
+  expect(ftl).toMatch(/^about-check = Check Now$/m);
+});
+
+/** Every message a person reads, as `[where, text]`: string literals in messages.ts, values in en-US.ftl. */
+function userStrings(): [string, string][] {
+  const code = read("messages.ts").replace(/\/\*[^]*?\*\/|\/\/[^\n]*/g, "");
+  const literals = [...code.matchAll(/"((?:[^"\\\n]|\\.)*)"|`((?:[^`\\]|\\.)*)`/g)].map((match) => match[1] ?? match[2]!);
+  const ftl = read("i18n/en-US.ftl").split("\n").filter((line) => line && !line.startsWith("#"))
+    .map((line) => line.replace(/^[a-z][\w-]* =/, "").replace(/\{[^}]*\}/g, ""));
+  return [...literals.map((text) => ["messages.ts", text] as [string, string]), ...ftl.map((text) => ["en-US.ftl", text] as [string, string])];
+}
+
+test("people read typographic apostrophes, never typewriter ones", () => {
+  const straight = userStrings().filter(([, text]) => /[A-Za-z]'|'[A-Za-z]/.test(text));
+  expect(straight.map(([where, text]) => `${where}: ${text}`)).toEqual([]);
+  // The lint reads both files: a planted straight apostrophe would be caught.
+  expect(userStrings().some(([where, text]) => where === "en-US.ftl" && text.includes("’"))).toBe(true);
+  expect(userStrings().some(([where, text]) => where === "messages.ts" && text.includes("’"))).toBe(true);
+});
+
+test("Settings descriptions are sentences that end with a full stop", () => {
+  const ftl = read("i18n/en-US.ftl");
+  const descriptions = [...ftl.matchAll(/^([a-z][\w-]*-description) = (.+)$/gm)];
+  expect(descriptions.length).toBeGreaterThan(10);
+  expect(descriptions.filter(([, , text]) => !/[.?]$/.test(text!.trim())).map(([, id]) => id)).toEqual([]);
+});
+
+test("Settings row labels are sentence case, except Apple's own name for a login item", () => {
+  const ftl = read("i18n/en-US.ftl");
+  const labels = ["general-menu-bar-label", "general-small-surprises-label", "backup-label", "restore-label", "general-paste-label", "about-automatic", "about-check-label",
+    "look-appearance", "look-window-size", "look-text-size", "citations-default", "citations-recent", "citations-editor", "citations-editor-address"]
+    .map((id) => ftl.match(new RegExp(`^${id} = (.+)$`, "m"))![1]!);
+  // After the first word, only names stay capitalised.
+  const names = /^(Ibis|Zotero|Mac|BibTeX|GitHub)$/;
+  expect(labels.filter((label) => label.split(" ").slice(1).some((word) => /^[A-Z]/.test(word) && !names.test(word)))).toEqual([]);
 });
 
 test("a value is declared once: lengths come from the space scale, colours from one primitive", () => {

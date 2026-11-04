@@ -57,7 +57,14 @@ test("a fresh closed Zotero snapshot stays quiet and the footer opens its librar
   expect(document.querySelector(".notices")?.textContent).toBe("");
   fireEvent.click(within(footer()).getByRole("button", { name: "Library" }));
   const menu = await screen.findByRole("menu", { name: "Library" });
-  expect(within(menu).getByRole("menuitem", { name: "Choose Library…" })).toBeTruthy();
+  // The spec's order: the library with its count and age, a separator, then Choose Library… ⇧⌘O and Reload Library.
+  const heading = menu.querySelector(".menu-detail")!;
+  expect(heading.textContent).toMatch(/^\u2068?Zotero\u2069? · 12 references.*checked 2 hours ago/);
+  expect(heading.closest("section")?.nextElementSibling?.getAttribute("role")).toBe("separator");
+  expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["Choose Library…Ctrl+Shift+O", "Reload Library"]);
+  // A keyboard user entering the actions hears what the menu is about.
+  const actions = within(menu).getAllByRole("group").find((group) => group.contains(within(menu).getByRole("menuitem", { name: "Reload Library" })))!;
+  expect(actions.getAttribute("aria-label")).toMatch(/^\u2068Zotero\u2069 · 12 references\. .*checked 2 hours ago/);
   fireEvent.click(within(menu).getByRole("menuitem", { name: "Reload Library" }));
   await waitFor(() => expect(calls).toContain("reload_library"));
 });
@@ -139,6 +146,29 @@ test.each([
   expect(choose).not.toHaveBeenCalled();
 });
 
+test.each([
+  ["an older copy kept after a failed refresh", stale()],
+  ["a failed switch that keeps the previous library", library({ state: "error", zotero: false, name: "missing.bib", error: "the library file is unavailable" })],
+])("%s still says when a search finds nothing there, and recovers on the next answer", async (_, kept) => {
+  let current = kept;
+  backend({ library_status: () => current, search: ({ query }) => query.text === "invented" ? [{ ...result("a", "Invented reference"), revision: current.revision }] : [] });
+  render(<App />);
+  const box = await screen.findByLabelText("Search references");
+  fireEvent.change(box, { target: { value: "nothing here" } });
+  await screen.findByText("No matching references");
+  expect(screen.getByText("Try a surname, year or fewer words.")).toBeTruthy();
+  // Its fix, beside the search field's own clear button.
+  expect(screen.getAllByRole("button", { name: "Clear Search" })).toHaveLength(2);
+  // The newer answer replaces it, and a later read keeps the screen honest.
+  fireEvent.change(box, { target: { value: "invented" } });
+  await screen.findByText("Invented reference");
+  expect(screen.queryByText("No matching references")).toBeNull();
+  current = library({ revision: "2", checked_at: Date.now() });
+  await act(async () => { await emit("library:changed", current); });
+  fireEvent.change(box, { target: { value: "nothing again" } });
+  await screen.findByText("No matching references");
+});
+
 test("a stale snapshot has one footer problem and action, and a successful read clears it", async () => {
   const opened = vi.fn(() => null);
   let current = stale();
@@ -148,11 +178,18 @@ test("a stale snapshot has one footer problem and action, and a successful read 
   expect(status().textContent).toBe("Zotero not updated");
   expect(status().closest("button")).toBeNull();
   expect(footer().textContent).toContain("2 h");
-  expect(document.querySelector(".status-dot")?.getAttribute("data-health")).toBe("stop");
+  // The older copy is still searched: a warning, never the stop of nothing to search.
+  expect(document.querySelector(".status-dot")?.getAttribute("data-health")).toBe("look");
   expect(document.querySelector(".notices")?.textContent).toBe("");
-  fireEvent.click(within(footer()).getByRole("button", { name: "Open Zotero" }));
+  // The fix shows its key, as More shows ⌘K, and does what its words say: open Zotero, not the row.
+  const fix = within(footer()).getByRole("button", { name: "Open Zotero" });
+  expect(fix.getAttribute("aria-keyshortcuts")).toBe("Control+O");
+  fireEvent.click(fix);
   await waitFor(() => expect(opened).toHaveBeenCalledOnce());
-  expect(opened.mock.calls[0]).toEqual([{ item: result("a", "Invented reference").id, expectedRevision: "1", expectedSourceGeneration: "1", zoteroOnly: false, reveal: false, presentation: 0 }]);
+  expect(opened.mock.calls[0]).toEqual([{ item: null, expectedRevision: "1", expectedSourceGeneration: "1", zoteroOnly: true, reveal: false, presentation: 0 }]);
+  openKey();
+  await waitFor(() => expect(opened).toHaveBeenCalledTimes(2));
+  expect(opened.mock.calls[1]).toEqual(opened.mock.calls[0]);
   expect(status().textContent).toContain("not updated");
   current = library({ revision: "2", checked_at: Date.now() });
   await act(async () => { await emit("library:changed", current); });
@@ -233,8 +270,8 @@ test("Command-O works on a recovery screen and a missing source refuses with a v
   const opened = vi.fn(() => { throw { code: "failed" }; });
   backend({ library_status: () => library({ state: "error", has_snapshot: false, problem: "zotero_closed", error: "Zotero is closed" }), open_library_source: opened });
   render(<App />);
-  await screen.findByText("Ibis needs Zotero open");
-  const sourceRow = screen.getByRole("option", { name: "Open Zotero" });
+  await screen.findByText("Open Zotero to read your library");
+  const sourceRow = screen.getByRole("option", { name: /^Open Zotero/ });
   expect(sourceRow.textContent).toContain("Ctrl+O");
   expect(status().getAttribute("aria-live")).toBe("off");
   openKey();
@@ -372,7 +409,7 @@ test("Zotero recovering by itself clears the failure that came before it", async
   backend({ library_status: () => library({ state: "error", has_snapshot: false, problem: "zotero_closed", error: "closed" }),
     use_zotero: () => { throw new Error("synthetic"); } });
   render(<App />);
-  await screen.findByText("Ibis needs Zotero open");
+  await screen.findByText("Open Zotero to read your library");
   await act(async () => { await emit("library:changed", library()); });
   await waitFor(() => expect(status().textContent).toBe("Zotero · 12 references"));
   expect(document.querySelector(".status-dot")?.getAttribute("data-health")).toBe("done");

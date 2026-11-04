@@ -1,6 +1,6 @@
 import type { ShortcutStatus } from "../bindings";
 import { useInterfaceMessages } from "../i18n";
-import { SHORTCUT_COMMANDS, type ShortcutProblem } from "../i18n/settings";
+import { SHORTCUT_ACTIONS, SHORTCUT_COMMANDS, type ShortcutProblem } from "../i18n/settings";
 import { DEFAULT_PICKER_SHORTCUT, shortcutLabel } from "../keys";
 import { currentPlatform } from "../platform";
 import { Button } from "./Button";
@@ -30,7 +30,7 @@ export function ShortcutSetting({ id, rowId, status, problem, saving, highlighte
       {status?.error && <span role="status">{status.error}</span>}
 </>;
   if (table) return <>
-    <tr id={rowId} data-echo={pressed || undefined} data-highlighted={highlighted || undefined}><th scope="row">{text("shortcuts-open")}</th><td><span className="ui-settings-keys">{controls}
+    <tr id={rowId} data-echo={pressed || undefined} data-highlighted={highlighted || undefined}><th scope="row">{text(SHORTCUT_ACTIONS.open)}</th><td><span className="ui-settings-keys">{controls}
       {status && !status.desktop && !isDefault && <Button size="small" isDisabled={saving} onPress={() => onRecord(null)}>{text("shortcuts-use-default")}</Button>}
     </span></td></tr>
     {(problem || status?.desktop?.guidance) && <tr><td colSpan={2}>
